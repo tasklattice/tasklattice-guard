@@ -5,8 +5,20 @@ import type { SQL } from "drizzle-orm";
 import type { ControllerConfig } from "../config.js";
 import type { ControllerDatabase } from "../db/client.js";
 import { ControlPlaneService } from "./control-plane.js";
+import { runWithTenantContext } from "./tenant-context.js";
 
 describe("Runner registration removal", () => {
+  it("denies tenant users infrastructure mutation before accessing the database", async () => {
+    const db = { transaction: vi.fn() } as unknown as ControllerDatabase;
+    const service = new ControlPlaneService(db, {} as ControllerConfig);
+    await runWithTenantContext({ tenantId: "tenantA", role: "user" }, async () => {
+      await expect(service.updateRunnerPool({ id: "default", desiredReplicas: 2, safeRpsPerRunner: 50,
+        maxConcurrencyPerRunner: 64, actorId: "tenant-operator" })).rejects.toMatchObject({ status: 403 });
+      await expect(service.removeRunnerInstance({ runnerId: "foreign-runner", actorId: "tenant-operator" }))
+        .rejects.toMatchObject({ status: 403 });
+    });
+    expect(db.transaction).not.toHaveBeenCalled();
+  });
   it("keeps the GuardRails 0 desired capacity at two or more", async () => {
     const db = { transaction: vi.fn() } as unknown as ControllerDatabase;
     const update = new ControlPlaneService(db, {} as ControllerConfig).updateRunnerPool({

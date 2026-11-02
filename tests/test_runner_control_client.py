@@ -11,6 +11,47 @@ from runner import generated as protocol
 from tests.capability_binding import capability_binding
 
 
+@pytest.mark.asyncio
+@pytest.mark.parametrize("pool_token", [None, "pool-a-token-with-at-least-32-characters"])
+async def test_control_stream_uses_pool_token_when_configured(monkeypatch, pool_token):
+    from unittest.mock import Mock
+
+    settings = SimpleNamespace(controller_token="legacy-controller-token", control_token=pool_token, compiler_capable=False)
+    channel = SimpleNamespace(close=AsyncMock())
+    response_stream = SimpleNamespace(cancel=Mock())
+    stub = SimpleNamespace(Connect=Mock(return_value=response_stream))
+    monkeypatch.setattr("runner.control_client.services.RunnerControlStub", lambda _channel: stub)
+    client = RunnerControlClient(settings, Store(), Metrics())
+    monkeypatch.setattr(client, "_channel", lambda: channel)
+    monkeypatch.setattr(client, "_heartbeats", AsyncMock())
+    monkeypatch.setattr(client, "_write_messages", AsyncMock())
+    monkeypatch.setattr(client, "_receive_messages", AsyncMock())
+
+    await client._connect_once()
+    stub.Connect.assert_called_once_with(metadata=(("authorization", f"Bearer {pool_token or settings.controller_token}"),))
+    channel.close.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("pool_token", [None, "pool-a-token-with-at-least-32-characters"])
+async def test_model_credentials_use_pool_token_when_configured(monkeypatch, pool_token):
+    settings = SimpleNamespace(controller_token="legacy-controller-token", control_token=pool_token, compiler_capable=False,
+                               telemetry_endpoint="http://controller/api/internal/v1/runtime-events")
+    response = SimpleNamespace(raise_for_status=lambda: None, json=lambda: {"credentials": {"provider-1": "secret"}})
+    post = AsyncMock(return_value=response)
+    class Client:
+        def __init__(self, **_kwargs): pass
+        async def __aenter__(self): return self
+        async def __aexit__(self, *_args): pass
+        async def post(self, *args, **kwargs): return await post(*args, **kwargs)
+    monkeypatch.setattr("runner.control_client.httpx.AsyncClient", Client)
+    client = RunnerControlClient(settings, Store(), Metrics())
+    configuration = protocol.DataPlaneModelConfiguration(runtimes=[protocol.ModelRuntime(credential_ref="provider-1")])
+    assert await client._model_credentials(configuration, "lease-1") == {"provider-1": "secret"}
+    assert post.await_args.kwargs["headers"]["authorization"] == f"Bearer {pool_token or settings.controller_token}"
+    assert post.await_args.kwargs["json"]["leaseId"] == "lease-1"
+
+
 @pytest.mark.parametrize("tls", [False, True])
 def test_both_controller_transports_use_finite_message_limits(monkeypatch, tmp_path, tls):
     from unittest.mock import Mock
@@ -105,10 +146,31 @@ async def test_runner_acknowledges_an_endpoint_only_generation_immediately():
     assert message.WhichOneof("body") == "desired_state_result"
     assert message.desired_state_result.accepted is True
     assert message.desired_state_result.generation == 11
+    assert not message.desired_state_result.HasField("snapshot_nonce")
     heartbeat = await client._outgoing.get()
     assert heartbeat.WhichOneof("body") == "heartbeat"
     assert heartbeat.heartbeat.runner_id == "runner-0"
     assert heartbeat.heartbeat.applied_generation == 11
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("fails", [False, True])
+async def test_runner_echoes_snapshot_nonce_only_after_apply_attempt(fails):
+    store = Store()
+    store.fail = fails
+    client = RunnerControlClient(_settings(), store, Metrics())
+    await client._apply_desired_state(protocol.DesiredState(generation=11, snapshot_nonce="challenge"))
+    result = await client._outgoing.get()
+    assert result.WhichOneof("body") == "desired_state_result"
+    assert result.desired_state_result.snapshot_nonce == "challenge"
+    assert result.desired_state_result.accepted is not fails
+    assert store.generation == (0 if fails else 11)
+
+
+def test_runner_advertises_optional_snapshot_ack_capability():
+    settings = SimpleNamespace(**vars(_settings()), max_concurrency=4)
+    client = RunnerControlClient(settings, Store(), Metrics())
+    assert client._registration().registration.labels["tasklattice.snapshot-ack"] == "1"
 
 
 @pytest.mark.asyncio

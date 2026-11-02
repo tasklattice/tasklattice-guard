@@ -5,6 +5,7 @@ import { drizzle } from "drizzle-orm/node-postgres";
 import { Pool } from "pg";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import * as schema from "../db/schema.js";
+import type { ControllerDatabase } from "../db/client.js";
 import { AccessTokenService } from "./access-tokens.js";
 const url = process.env.GUARD_TEST_POSTGRES_URL;
 describe.skipIf(!url)("Personal access tokens in PostgreSQL", () => {
@@ -62,6 +63,37 @@ describe.skipIf(!url)("Personal access tokens in PostgreSQL", () => {
     expect(await service.authenticate(issued.secret)).toBeNull();
     expect(await service.list("owner")).toEqual([]);
   });
+  it.each([
+    ["role demotion", "UPDATE auth_user SET role='user' WHERE id='owner'"],
+    ["tenant reassignment", "UPDATE auth_user SET tenant_id='tenantB' WHERE id='owner'"],
+    ["account ban", "UPDATE auth_user SET banned=true WHERE id='owner'"],
+    ["token expiry", "UPDATE personal_access_token SET expires_at=clock_timestamp()+interval '100 milliseconds' WHERE user_id='owner'; SELECT pg_sleep(0.2)"],
+  ])("rejects a token when %s occurs between lookup and touch", async (_change, changeOwner) => {
+    const issued = await service.create("owner", input);
+    const db = drizzle(pool, { schema });
+    // Perform the real lookup, mutate the owner on another query, then allow
+    // authenticate() to run its real conditional UPDATE. This deterministically
+    // exercises the window between the two database statements.
+    const racingDb = {
+      select: (...args: Parameters<typeof db.select>) => {
+        const selected = db.select(...args);
+        return { from: (table: typeof schema.personalAccessTokens) => {
+          const from = selected.from(table);
+          return { innerJoin: (joined: typeof schema.user, condition: Parameters<typeof from.innerJoin>[1]) => {
+            const joinedQuery = from.innerJoin(joined, condition);
+            return { where: async (condition: Parameters<typeof joinedQuery.where>[0]) => {
+              const rows = await joinedQuery.where(condition);
+              await pool.query(changeOwner);
+              return rows;
+            } };
+          } };
+        } };
+      },
+      update: db.update.bind(db),
+    } as unknown as ControllerDatabase;
+    expect(await new AccessTokenService(racingDb).authenticate(issued.secret)).toBeNull();
+    expect((await pool.query("SELECT last_used_at FROM personal_access_token WHERE id=$1", [issued.token.id])).rows[0].last_used_at).toBeNull();
+  }, 30000);
   it("fails closed when the persisted owner has an unsupported role", async () => {
     const issued = await service.create("owner", input);
     await pool.query("UPDATE auth_user SET role='viewer' WHERE id='owner'");

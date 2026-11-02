@@ -65,6 +65,7 @@ const platformRoutes = [
   ["GET", "/model-pricing"], ["GET", "/model-pricing/catalog?q=model"],
   ["PUT", "/models/model/pricing"],
   ["GET", "/audit-events"],
+  ["PATCH", "/runner-pools/pool"], ["DELETE", "/runner-instances/runner"],
 ] as const;
 
 function setup(role: string | null) {

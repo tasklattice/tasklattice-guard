@@ -1,5 +1,5 @@
 import { createHash, randomBytes, randomUUID } from "node:crypto";
-import { and, desc, eq, gt, isNull } from "drizzle-orm";
+import { and, desc, eq, gt, isNull, sql } from "drizzle-orm";
 import { allowsTokenPermission, createAccessTokenSchema, type AccessTokenView, type TokenModule, type TokenPermissions } from "../../shared/access-tokens.js";
 import type { ControllerDatabase } from "../db/client.js";
 import { auditEvents, personalAccessTokens, user } from "../db/schema.js";
@@ -62,9 +62,15 @@ export class AccessTokenService {
       .innerJoin(user, eq(user.id, personalAccessTokens.userId))
       .where(and(eq(personalAccessTokens.tokenHash, digest(secret)), isNull(personalAccessTokens.revokedAt), gt(personalAccessTokens.expiresAt, now), eq(user.banned, false)));
     if (!row || !isAccountRole(row.owner.role) || (row.owner.role === "user" && !row.owner.tenantId?.trim())) return null;
-    // Conditional update also rejects a revocation that raced the lookup.
+    // Recheck both token and owner state in the update statement. A tenant
+    // move, ban, or role change between lookup and touch invalidates this
+    // authentication attempt; authorization is not locked for the entire
+    // subsequent HTTP request.
     const touched = await this.db.update(personalAccessTokens).set({ lastUsedAt: now })
-      .where(and(eq(personalAccessTokens.id, row.token.id), isNull(personalAccessTokens.revokedAt), gt(personalAccessTokens.expiresAt, now))).returning({ id: personalAccessTokens.id });
+      .where(and(eq(personalAccessTokens.id, row.token.id), isNull(personalAccessTokens.revokedAt), gt(personalAccessTokens.expiresAt, sql`now()`),
+        sql`exists (select 1 from ${user} where ${user.id} = ${personalAccessTokens.userId}
+          and ${user.role} = ${row.owner.role} and ${user.tenantId} = ${row.owner.tenantId} and ${user.banned} = false)`))
+      .returning({ id: personalAccessTokens.id });
     return touched.length ? { id: row.owner.id, role: row.owner.role, tenantId: row.owner.tenantId,
       tokenId: row.token.id, permissions: row.token.permissions } : null;
   }

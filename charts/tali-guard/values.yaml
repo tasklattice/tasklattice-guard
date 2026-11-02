@@ -39,6 +39,14 @@ imagePullSecrets: []
 publicUrl: ""
 
 controller:
+  # Optional complete provenance budget override (rows include retained history;
+  # bytes are logical context payload, separate from PostgreSQL disk/RAM).
+  # endpointContextStorage:
+  #   maxRowsPerPool: 256
+  #   maxRowsGlobal: 2048
+  #   maxPayloadBytesPerContext: 65536
+  #   maxPayloadBytesPerPool: 16777216
+  #   maxPayloadBytesGlobal: 67108864
   # Singleton UI/API service. Image tags default to Chart.appVersion.
   image:
     repository: ghcr.io/tasklattice/tali-guard-controller
@@ -106,12 +114,46 @@ runner:
   #     requests: { cpu: 500m, memory: 1Gi }
   #     limits: { memory: 4Gi }
   # Managed Redis URL; required for multi-replica pools unless redis.enabled=true.
+  # Optional admission objects belong on default or each pools[] entry, with no
+  # inheritance. Omit them to leave admission off. Exact Runner JSON field names:
+  # tenantAdmission:
+  #   capacity: 4
+  #   tenant_limits: { tenantA: 2, tenantB: 2 }
+  #   max_queued: 8
+  #   max_queued_per_tenant: 4
+  #   queue_timeout_seconds: 0.25
+  # distributedRateAdmission: # additionally needs pool auth and external Redis
+  #   pool_id: default # must match this entry's trusted pool name
+  #   revision: v1
+  #   window_ms: 1000
+  #   pool_limit: 20
+  #   tenant_limits: { tenantA: 12, tenantB: 12 }
+  # groupRateAdmission: # alternative to distributedRateAdmission, across pools
+  #   group_id: group-ab # exact Controller group ID
+  #   revision: group-v1
+  #   window_ms: 1000
+  #   group_limit: 20
+  #   tenant_limits: { tenantA: 12, tenantB: 12 }
+  #   pool_limits: { default: 15, batch: 15 }
+  #   pool_epochs: { default: 0, batch: 0 } # exact Controller allocation epochs
+  # Every declared member pool needs the identical complete group policy plus
+  # its own local tenantAdmission. Remote releases need coordinated validation.
+  # Operator must provision the identical Redis policy separately; Helm never
+  # creates/reset quotas. Bundled ephemeral Redis is rejected in distributed mode.
   callContextRedisUrl: ""
   # Example: redis://redis.uat.svc.cluster.local:6379/0
   # Use rediss:// and the required authentication for a managed TLS Redis.
   state:
     # Ephemeral artifact cache, rebuilt from Controller state after rescheduling.
     sizeLimit: 2Gi
+  telemetryProgress:
+    persistence:
+      # Enable explicitly with security.poolAuthentication.telemetryProgress.
+      # One retained PVC per StatefulSet replica; artifact cache stays ephemeral.
+      enabled: false
+      size: 64Mi
+      # Empty selects the cluster's default StorageClass.
+      storageClass: ""
 
 database:
   # Choose an existing Secret or bundled PostgreSQL.
@@ -184,6 +226,22 @@ security:
   #   existingSecret: guard-artifact-signing # private-key.pem, public-key.pem
   # controlSecret:
   #   existingSecret: guard-control # runner-token, better-auth-secret
+  # poolAuthentication: # optional: references only; never put token values here
+  #   enabled: true
+  #   scopedTelemetry: false # opt-in quarantine/freshness limitations; see README
+  #   telemetryProgress: false # opt-in authenticated WAL progress; requires PVCs below
+  #   controllerSecret: guard-pool-token-map
+  #   controllerKey: pool-tokens.json
+  #   runnerSecrets:
+  #     default: { name: guard-default-pool-token, key: token }
+  #     batch: { name: guard-batch-pool-token, key: token } # when batch pool is configured
+  # runnerHttpAuthentication: # optional separate Controller-to-Runner role; requires poolAuthentication
+  #   enabled: true
+  #   controllerSecret: guard-http-token-map
+  #   controllerKey: pool-http-tokens.json
+  #   runnerSecrets:
+  #     default: { name: guard-default-http-token, key: token }
+  #     batch: { name: guard-batch-http-token, key: token }
   # metrics:
   #   existingSecret: guard-metrics # metrics-token
   # runtimeLogs:
@@ -274,3 +332,20 @@ networkPolicy:
   # Requires a NetworkPolicy-capable CNI. Limits Controller gRPC to this release's
   # Runners and bundled Redis ingress to Runners; HTTP routing remains available.
   enabled: true
+  runnerIsolation:
+    # Opt-in default-deny ingress/egress per Runner pool; needs an enforcing CNI.
+    # Controller access, bundled Redis and DNS below are allowed explicitly.
+    enabled: false
+    # Additional trusted runtime gateways/scrapers (NetworkPolicyPeer objects).
+    ingressPeers: []
+    dnsPeers:
+      - namespaceSelector:
+          matchLabels: { kubernetes.io/metadata.name: kube-system }
+        podSelector:
+          matchLabels: { k8s-app: kube-dns }
+    # Per-pool additional egress. External Redis, Providers and OTLP collectors
+    # need explicit destinations/ports. Keys must name configured pools.
+    poolEgress: {}
+    # default:
+    #   - to: [{ ipBlock: { cidr: 192.0.2.10/32 } }]
+    #     ports: [{ protocol: TCP, port: 443 }]

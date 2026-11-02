@@ -1,6 +1,6 @@
-import { currentTenantId, tenantOwnerForCreate, resourceReadPredicate, resourceWritePredicate } from "./tenant-context.js";
+import { currentTenantId, tenantOwnerForCreate, resourceReadPredicate, policyWritePredicate } from "./tenant-context.js";
 import { randomUUID } from "node:crypto";
-import { and, desc, eq, isNull } from "drizzle-orm";
+import { and, desc, eq, getTableColumns, isNull } from "drizzle-orm";
 import { canonicalJson } from "../../shared/canonical-json.js";
 import { guardrailVersionId } from "../../shared/guardrail-version.js";
 import { definitionIssues, policyDefinitionSchema, type PolicyDefinition, type PolicyResource, type ResourceValidation, type DefinitionTest } from "../../shared/policy-definition.js";
@@ -40,9 +40,11 @@ export class PolicyResourceService {
       await advisoryTransactionLock(tx, `policy-resource:${id}`);
       const [current] = await tx.select().from(resources).where(eq(resources.id, id)).for("update");
       if (currentTenantId() && current && current.tenantId !== currentTenantId()) throw new NotFoundError("Policy draft", id);
-      const [legacy] = await tx.select({ id: policyRecords.id }).from(policyRecords).where(eq(policyRecords.id, id));
-      const [imported] = await tx.select({ id: policyImportedVersions.policyId, tenantId: policyImportedVersions.tenantId }).from(policyImportedVersions).where(eq(policyImportedVersions.policyId, id)).limit(1);
-      if (currentTenantId() && imported && imported.tenantId !== currentTenantId()) throw new NotFoundError("Policy draft", id);
+      const [legacy] = await tx.select({ id: policyRecords.id, tenantId: policyRecords.tenantId }).from(policyRecords).where(eq(policyRecords.id, id));
+      if (currentTenantId() && legacy && legacy.tenantId !== currentTenantId()) throw new NotFoundError("Policy draft", id);
+      const importedVersions = await tx.select({ id: policyImportedVersions.policyId, tenantId: policyImportedVersions.tenantId }).from(policyImportedVersions).where(eq(policyImportedVersions.policyId, id));
+      if (currentTenantId() && importedVersions.some(imported => imported.tenantId !== currentTenantId())) throw new NotFoundError("Policy draft", id);
+      const imported = importedVersions[0];
       if (legacy) throw new ConflictError("This ID belongs to a legacy programmable Policy.", "policy_identity_conflict");
       if (input.create && (current || imported || this.catalog().some(p => p.id === id))) throw new ConflictError("Policy ID already exists.", "policy_identity_conflict");
       if ((current?.revision ?? 0) !== input.expectedRevision) throw new ConflictError("Policy changed. Reopen its current draft before saving.", "policy_draft_conflict");
@@ -72,7 +74,7 @@ export class PolicyResourceService {
     if (!compilerAvailable) throw new ConflictError("A healthy GuardRails 0 Runner is required to run Policy tests.", "default_runner_unavailable");
     const runId = `policy-report-${randomUUID()}`;
     await this.db.transaction(async tx => {
-      const [row] = await tx.select().from(resources).where(and(eq(resources.id, id), resourceWritePredicate(resources.tenantId))).for("update");
+      const [row] = await tx.select().from(resources).where(and(eq(resources.id, id), policyWritePredicate(resources.id, resources.tenantId))).for("update");
       if (!row) throw new NotFoundError("Policy draft", id);
       const issues = definitionIssues(row.definition);
       if (issues.length) throw new ValidationError(issues.join("\n"), { issues });
@@ -115,7 +117,12 @@ export class PolicyResourceService {
       const [row] = await this.db.select({ id: resources.id }).from(resources).where(and(eq(resources.id, id), resourceReadPredicate("policy", resources.id, resources.tenantId)));
       if (!row) throw new NotFoundError("Policy draft", id);
     }
-    const [run] = await this.db.select().from(runs).where(and(eq(runs.policyId, id), isNull(runs.parentId), ...(runId ? [eq(runs.id, runId)] : []))).orderBy(desc(runs.createdAt)).limit(1);
+    // Recheck read/share scope in the statement that reads the child as well:
+    // a grant may have been revoked after the existence check above.
+    const [run] = await this.db.select({ ...getTableColumns(runs) }).from(runs)
+      .innerJoin(resources, eq(resources.id, runs.policyId))
+      .where(and(eq(runs.policyId, id), isNull(runs.parentId), resourceReadPredicate("policy", resources.id, resources.tenantId), ...(runId ? [eq(runs.id, runId)] : [])))
+      .orderBy(desc(runs.createdAt)).limit(1);
     return run ?? null;
   }
   async running(id: string): Promise<boolean> {
@@ -147,7 +154,7 @@ export class PolicyResourceService {
 
   async publish(id: string, expectedRevision: number, actorId: string) {
     return this.db.transaction(async tx => {
-      const [row] = await tx.select().from(resources).where(and(eq(resources.id, id), resourceWritePredicate(resources.tenantId))).for("update");
+      const [row] = await tx.select().from(resources).where(and(eq(resources.id, id), policyWritePredicate(resources.id, resources.tenantId))).for("update");
       if (!row) throw new NotFoundError("Policy draft", id);
       const [existing] = await tx.select().from(versions).where(and(eq(versions.policyId, id), eq(versions.revision, expectedRevision)));
       if (existing) return existing.view;

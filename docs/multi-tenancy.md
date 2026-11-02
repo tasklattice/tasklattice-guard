@@ -1,6 +1,10 @@
 # Multi-tenancy design and progress
 
+This page preserves the October implementation history. For current behavior and remaining work, use the [current status](multi-tenancy-status.md), [implementation progress](multi-tenancy-implementation-progress.md), and [2 November validation checkpoint](multi-tenancy-validation-2026-11-02.md). Later tenant-group controls supersede the early deployment-wide Runner permissions and single runtime Model configuration described below.
+
 Updated: 2026-10-22. This is the implementation record for `feat/multi-tenant-v2`, rebased onto upstream main at `9e16c86`. The tenant work follows the current upstream resource and authorization models. The stakeholder proposal is [multi-tenancy-github-proposal.md](multi-tenancy-github-proposal.md).
+
+See the [storage and isolation diagram](multi-tenancy-storage-isolation.md) for the shared PostgreSQL row model, tenant read and write boundaries, resource grants, and platform-managed Provider data.
 
 ## Identity and authority
 
@@ -53,6 +57,8 @@ Deleting or restoring a shared Guardrail clears only the owner's invocation evid
 The five share kinds are `policy`, `guardrail`, `router`, `endpoint`, and `model`. There is no Provider share. A grant names one current owner, one root resource, and one recipient tenant. Owners manage grants through `/sharing`; the account sharing API requires a tenant user's browser session. Personal access tokens use the same resource authorization rules for supported resource commands, but cannot administer these browser-session-only sharing routes.
 
 Sharing grants read access and supported composition, not edit, publish, delete, credential access, ownership transfer, or onward sharing. A recipient can bind a shared Policy into its Guardrail or target a shared Guardrail from its Router. Endpoint binding remains same-tenant. A Router share does not transitively expose its target Guardrails, and a Guardrail share does not expose the owner's runtime logs or unrelated Policies.
+
+Tenant-facing Router views omit Endpoint and Guardrail references that the viewer cannot independently read, including target entries and publication-context names. Known private Endpoint IDs in `endpoint.id` and `auth.principal` selectors are replaced with `[restricted]`, and Runner rollout error details are generalized. These views can therefore be incomplete; platform administrators retain the full view. A Router share still exposes text deliberately authored into the Router itself, such as route names, arbitrary selector values, tickets, and reasons. The system cannot reliably identify private information embedded in that free text, so owners should review shared Router content before granting access.
 
 The server checks references during save, preview, validation, publication, rollback, and binding as applicable, including references in snapshots. Publication rechecks live grants even if a draft previously passed validation. Imported package reads, exports, explicit environment checks, and automatic routing checks also enforce their respective owner or read boundaries.
 
@@ -112,3 +118,21 @@ Rebase checks recorded on 2026-10-22:
 | `git diff --check` | Passed |
 
 This remains a management-plane implementation with automated isolation coverage. The local browser and CLI walkthrough, a production identity provider and tenant onboarding, and deployed Runner validation are not yet verified. Runners consume one global platform model configuration; tenant Model activation needs a protocol and delivery design. Runner management and system status remain deployment-wide for both roles. These limits must remain visible when demonstrating the feature or assessing production readiness.
+
+## Local visual experiment — 2026-10-26
+
+The deployed administrator [Tenant Load Lab](tenant-load-lab.md) now drives real three-tenant Input/Output checks through one shared Runner, with a fixed-delay local HTTP model between the checks. It plots measured occupancy, latency, throughput, queueing, and shared Runner CPU/memory, with temporary tenant peaks and a clearly labeled client quota simulation. The guide includes setup, measurement definitions, the final live comparison, and observed local resource limits. The current API contract has 143 operations and 436 schemas.
+
+See the [deployment record](multi-tenancy-deployment-2026-10-26.md) for earlier real runtime checks and the [resource-isolation audit](multi-tenancy-isolation-audit-2026-10-24.md) for the remaining Runner isolation gaps. These later local checks supersede the unverified local-runtime status in the earlier scope notes above; they do not establish production CPU quotas or failure isolation.
+
+## Tenant Group allocation — 2026-10-27
+
+[**Tenant Groups**](tenant-groups.md) now assign tenants and Runner pools to a shared compute group. Runner desired-state delivery, Endpoint credentials, published routing, validation dispatch and Playground transport follow the group allocation. Existing tenants and pools migrate to a default group; sharing a group does not grant access to other tenants' resources. The local verification runs two group pools and checks that each Runner rejects the other group's Endpoint.
+
+The earlier isolation audit and shared-Runner lab describe their respective pre-group and shared-pool scenarios. Group allocation does not make the shared Controller, database, Redis, provider configuration or physical node independent failure domains.
+
+## Guardrail Policy content visibility — 2026-10-30
+
+A Guardrail share permits reading its shared configuration, but does not transitively share private Policy source or tests. A tenant can inspect a retained version's compiled and Policy-derived details only when its frozen Policy definitions match currently readable Policy versions, or the exact shipped public catalog definition. Version responses report `policyContentAccessible=false` and withhold plans, Policy nodes, compiled Artifact content, inspection and test evidence when that proof is missing. The console shows an access notice instead of compiled and Policy tabs. Frozen suites, generated Policy cases and validation-result detail fail closed on missing access or provenance. Explicit Policy read shares can enable these reads and revocation is rechecked on subsequent reads.
+
+Legacy versions without recorded Policy nodes, deleted or reused Policy identities, and contradictory plan projections cannot be assumed safe to disclose. This can hide content from the Guardrail owner when original Policy provenance cannot be established. Platform administrators retain operational access. Package export has a stronger onward-redistribution rule: a read-only Policy share does not grant permission to embed its source in an exported package. Compiled file integrity continues to rely on the stored publication/import contract; these visibility checks do not recompile an Artifact. The permission checks do not serialize an entire multi-statement request against concurrent share changes.

@@ -68,6 +68,8 @@ const navigation = [
     items: [
       { label: "nav.health", to: "/settings/health", icon: Activity },
       { label: "nav.runner", to: "/settings/runner", icon: Server },
+      { label: "nav.tenantGroups", to: "/settings/tenant-groups", icon: Building2 },
+      { label: "nav.tenantLoadLab", to: "/settings/tenant-load-lab", icon: Activity },
       { label: "nav.version", to: "/settings/version", icon: GitBranch },
     ],
   },

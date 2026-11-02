@@ -24,6 +24,23 @@ export interface DesiredState {
   'guardrailLoggingLevels'?: ({[key: string]: string});
   'modelConfiguration'?: (_tasklattice_guard_control_v1_DataPlaneModelConfiguration | null);
   'routerRevisions'?: (_tasklattice_guard_control_v1_RouterRevision)[];
+  /**
+   * Optional per-dispatch challenge, understood only by capable Runners.
+   * An ACK is evidence of this snapshot on this stream, not a serving lease.
+   */
+  'snapshotNonce'?: (string);
+  /**
+   * Epoch persisted with this exact dispatch. Required by experimental lease
+   * consumers; never inferred from a Runner's cached state or defaulted to 0.
+   */
+  'allocationEpoch'?: (number | string | Long);
+  /**
+   * Controller-assigned group of this exact dispatched pool snapshot.
+   */
+  'allocationGroupId'?: (string);
+  '_snapshotNonce'?: "snapshotNonce";
+  '_allocationEpoch'?: "allocationEpoch";
+  '_allocationGroupId'?: "allocationGroupId";
 }
 
 /**
@@ -44,4 +61,21 @@ export interface DesiredState__Output {
   'guardrailLoggingLevels': ({[key: string]: string});
   'modelConfiguration': (_tasklattice_guard_control_v1_DataPlaneModelConfiguration__Output | null);
   'routerRevisions': (_tasklattice_guard_control_v1_RouterRevision__Output)[];
+  /**
+   * Optional per-dispatch challenge, understood only by capable Runners.
+   * An ACK is evidence of this snapshot on this stream, not a serving lease.
+   */
+  'snapshotNonce'?: (string);
+  /**
+   * Epoch persisted with this exact dispatch. Required by experimental lease
+   * consumers; never inferred from a Runner's cached state or defaulted to 0.
+   */
+  'allocationEpoch'?: (string);
+  /**
+   * Controller-assigned group of this exact dispatched pool snapshot.
+   */
+  'allocationGroupId'?: (string);
+  '_snapshotNonce'?: "snapshotNonce";
+  '_allocationEpoch'?: "allocationEpoch";
+  '_allocationGroupId'?: "allocationGroupId";
 }

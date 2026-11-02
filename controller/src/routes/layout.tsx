@@ -45,6 +45,8 @@ const names: Record<string, { group?: string; page: string }> = {
   "/settings/version": { group: "nav.settings", page: "nav.version" },
   "/settings/health": { group: "nav.settings", page: "nav.health" },
   "/settings/runner": { group: "nav.settings", page: "nav.runner" },
+  "/settings/tenant-load-lab": { group: "nav.settings", page: "nav.tenantLoadLab" },
+  "/settings/tenant-groups": { group: "nav.settings", page: "nav.tenantGroups" },
   "/settings/providers": { group: "nav.modelServices", page: "nav.providers" },
   "/settings/models": { group: "nav.modelServices", page: "nav.models" },
   "/settings/guardrail-catalog": { group: "nav.modelServices", page: "nav.guardrailCatalog" },

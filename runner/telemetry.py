@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 import httpx
+from .telemetry_progress import ProgressWAL
 
 if TYPE_CHECKING:
     from .metrics import RunnerMetrics
@@ -28,12 +29,19 @@ class RuntimeTelemetryExporter:
         batch_size: int,
         runner_id: str,
         metrics: RunnerMetrics | None = None,
+        *, progress_enabled: bool = False, progress_state_path: Path | None = None,
     ) -> None:
         self._endpoint = endpoint
         self._token = token
         self._batch_size = batch_size
         self._runner_id = runner_id
         self._metrics = metrics
+        if not progress_enabled:
+            ProgressWAL.require_drained_for_legacy(progress_state_path or state_path)
+        if progress_enabled and (state_path / "runtime-events.wal").exists() and (state_path / "runtime-events.wal").stat().st_size:
+            raise ValueError("Drain the legacy telemetry WAL before enabling authenticated progress.")
+        self._progress_wal = ProgressWAL(progress_state_path or state_path) if progress_enabled else None
+        self._progress_capability: str | None = None
         self._wal_path = state_path / "runtime-events.wal"
         self._wake = asyncio.Event()
         self._stop = asyncio.Event()
@@ -44,6 +52,11 @@ class RuntimeTelemetryExporter:
         self._refresh_wal_state()
 
     async def emit(self, event: dict[str, Any]) -> None:
+        if self._progress_wal is not None:
+            await self._progress_wal.append(_normalize_event_for_transport(event))
+            self._set_progress_wal_state()
+            self._wake.set()
+            return
         encoded = json.dumps(event, sort_keys=True, separators=(",", ":")) + "\n"
         try:
             async with self._lock:
@@ -81,8 +94,38 @@ class RuntimeTelemetryExporter:
     async def stop(self) -> None:
         self._stop.set()
         self._wake.set()
+        if self._progress_wal is not None:
+            await self._progress_wal.close()
+
+    @property
+    def progress_wal_id(self) -> str | None:
+        return self._progress_wal.wal_id if self._progress_wal is not None else None
+
+    def clear_progress_authorization(self) -> None:
+        self._progress_capability = None
+
+    async def authorize_progress(self, authorization) -> None:
+        if self._progress_wal is None:
+            return
+        self._progress_capability = None
+        if (not authorization.wal_id or len(authorization.capability) != 64 or
+            any(character not in "0123456789abcdef" for character in authorization.capability)):
+            raise RuntimeError("Authenticated telemetry progress authorization is unavailable.")
+        await self._progress_wal.bind(authorization.wal_id, authorization.acknowledged_cursor, authorization.produced_cursor,
+            getattr(authorization, "last_batch_id", ""), getattr(authorization, "last_batch_digest", ""))
+        self._progress_capability = authorization.capability
+        self._set_progress_wal_state()
+        self._wake.set()
 
     async def _flush_once(self, client: httpx.AsyncClient) -> bool:
+        if self._progress_wal is not None:
+            if self._progress_capability is None:
+                return False
+            batch = await self._progress_wal.batch(self._batch_size)
+            if not batch["events"]:
+                return False
+            await self._send_progress_batch(client, batch)
+            return bool(self._progress_wal.events)
         async with self._lock:
             lines = await asyncio.to_thread(self._read_lines)
             batch = lines[: self._batch_size]
@@ -129,6 +172,15 @@ class RuntimeTelemetryExporter:
 
     async def _report_watermark(self, client: httpx.AsyncClient) -> None:
         """Confirm that the telemetry channel is healthy even during zero traffic."""
+        if self._progress_wal is not None:
+            if self._progress_capability is None:
+                return
+            batch = await self._progress_wal.batch(self._batch_size)
+            if batch["events"]:
+                self._wake.set()
+                return
+            await self._send_progress_batch(client, batch)
+            return
         started = time.perf_counter()
         try:
             response = await client.post(
@@ -160,6 +212,29 @@ class RuntimeTelemetryExporter:
             stream.write(encoded)
             stream.flush()
 
+    async def _send_progress_batch(self, client: httpx.AsyncClient, batch: dict) -> None:
+        capability = self._progress_capability
+        if capability is None:
+            return
+        encoded = json.dumps(batch, sort_keys=True, separators=(",", ":"), allow_nan=False).encode()
+        response = await client.post(self._endpoint,
+            headers={"authorization": f"Bearer {self._token}", "content-type": "application/json",
+                "x-tasklattice-telemetry-capability": capability}, content=encoded)
+        response.raise_for_status()
+        payload = response.json()
+        if (not isinstance(payload, dict) or type(payload.get("accepted")) is not int or
+            payload["accepted"] != len(batch["events"])):
+            raise RuntimeError("Controller did not acknowledge telemetry event dispositions.")
+        await self._progress_wal.acknowledge(batch, payload.get("progress"))
+        self._set_progress_wal_state()
+
+    def _set_progress_wal_state(self):
+        events = self._progress_wal.events
+        self._wal_event_count = len(events)
+        self._wal_size_bytes = self._progress_wal.path.stat().st_size
+        self._wal_oldest_timestamp = _event_timestamp(events[0]) if events else 0.0
+        self._publish_wal_metrics()
+
     def _read_lines(self) -> list[str]:
         if not self._wal_path.exists():
             return []
@@ -171,6 +246,9 @@ class RuntimeTelemetryExporter:
         temporary.replace(self._wal_path)
 
     def _refresh_wal_state(self) -> None:
+        if self._progress_wal is not None:
+            self._set_progress_wal_state()
+            return
         self._set_wal_state(self._read_lines())
 
     def _set_wal_state(self, lines: list[str]) -> None:

@@ -1,4 +1,8 @@
 import { hasPermission, isAccountRole } from "../../shared/rbac.js";
+import { createHash } from "node:crypto";
+import { telemetryProgressInput } from "../services/telemetry-progress.js";
+import { guardrailTelemetryFilter } from "../services/guardrail-operational-data.js";
+import { TelemetryUploadAdmission, readBoundedTelemetryBody } from "./telemetry-upload-budget.js";
 import { modelReadiness } from "../../shared/model-readiness.js";
 import { pricingRuleSchema, costQuerySchema } from "../../shared/model-pricing.js";
 import { protectionModes } from "../../shared/protection-mode.js";
@@ -39,6 +43,7 @@ import { enforcementActions } from "../domain/guardrail-plan.js";
 import { deriveRunnerFleetStatus } from "../domain/platform-status.js";
 import { deriveComponentHealth, withModelHealth } from "../domain/component-health.js";
 import type { RunnerControlServer } from "../control-channel/control-server.js";
+import { authenticateRunnerPrincipal } from "../control-channel/runner-authentication.js";
 import { endpointSetup, type ControlPlaneService } from "../services/control-plane.js";
 import { endpointRequestOrigin } from "./endpoint-origin.js";
 import type { ControllerMetrics } from "../metrics.js";
@@ -61,6 +66,12 @@ import { TenantShareService } from "../services/tenant-shares.js";
 import { LEGACY_TENANT_ID, runWithTenantContext } from "../services/tenant-context.js";
 import type { PlatformStatusSnapshot } from "../../shared/platform-status.js";
 import { protectionDirectories } from "../../shared/protection-map.js";
+import { tenantLoadLabControlSchema } from "../../shared/tenant-load-lab.js";
+import { requestTenantLoadLab } from "../services/tenant-load-lab.js";
+import { admissionMonitorQuerySchema } from "../../shared/admission-monitor.js";
+import { groupModelConfigurationInput } from "../../shared/group-model-configuration.js";
+import { createGroupPoolSchema, createTenantGroupSchema, tenantGroupAssignmentSchema,
+  tenantGroupIdSchema, updatePoolConnectivitySchema, updateTenantGroupSchema } from "../../shared/tenant-groups.js";
 
 type Actor = { id: string; role: string; tenantId: string; tokenId?: string; permissions?: TokenIdentity["permissions"] };
 type Variables = { actor: Actor };
@@ -176,6 +187,7 @@ const runtimeEventInput = z.object({
   guardrailVersion: guardrailVersionInput.optional(),
   endpointId: z.string().optional(),
   routerId: z.string().optional(),
+  allocationContextId: z.string().min(1).max(128).optional(),
   direction: z.enum(["incoming", "outgoing"]),
   decision: z.string().min(1),
   durationMs: z.number().int().nonnegative(),
@@ -185,8 +197,9 @@ const runtimeEventBatchInput = z.object({
   events: z.array(z.union([routingEventSchema, runtimeEventInput])).max(1_000),
   runnerId: z.string().min(1).optional(),
   observedAt: z.coerce.date().optional(),
+  progress: telemetryProgressInput.optional(),
 }).superRefine((value, context) => {
-  if (value.events.length === 0 && !value.runnerId) {
+  if (value.events.length === 0 && !value.runnerId && !value.progress) {
     context.addIssue({ code: "custom", path: ["runnerId"], message: "runnerId is required for an empty telemetry batch." });
   }
 });
@@ -211,6 +224,7 @@ export function createHttpApp(input: {
   playgroundRunner?: RunnerPlaygroundClient | null;
 }) {
   const app = new Hono<{ Variables: Variables }>();
+  const telemetryUploads = new TelemetryUploadAdmission();
   const { registerMetrics } = prometheus({
     registry: input.metrics.registry,
     prefix: "guard_controller_",
@@ -232,14 +246,34 @@ export function createHttpApp(input: {
     return configured ? new OpenAICompatiblePlaygroundModel(configured) : legacyPlaygroundModel;
   };
   const playgroundDraftPreviews = new PlaygroundDraftPreviewStore();
-  const withEndpointSetup = <T extends { id: string; adapter: string }>(resource: T, context: Context) => ({
-    ...resource,
-    setup: endpointSetup(input.config.runtimePublicUrl ?? endpointRequestOrigin(context.req.raw), resource.id, resource.adapter),
-  });
-  const withDistribution = async <T extends { id: string; adapter: string }>(resource: T, context: Context, wait = false) => ({
-    ...withEndpointSetup(resource, context),
-    ...(wait ? await input.runnerControl.distributeDesiredState() : await input.runnerControl.distributionStatus()),
-  });
+  const tenantPool = async (tenantId: string) => input.service.groupRouting
+    ? input.service.groupRouting.poolForTenant(tenantId)
+    : { poolId: "default", groupId: "default", runtimeUrl: input.config.runtimeServiceUrl, publicUrl: input.config.runtimePublicUrl };
+  const selectRunnerForTenant = async (tenantId: string) => {
+    if (!playgroundRunner) throw new ControllerError("Runner is not configured.", 503, "playground_runner_unavailable");
+    const pool = await tenantPool(tenantId);
+    if (input.config.runnerHttpTokens != null) {
+      const token = input.config.runnerHttpTokens.get(pool.poolId);
+      if (!token) throw new ControllerError("The selected Runner pool has no configured Controller HTTP credential.", 503, "runner_http_credential_unavailable");
+      return { pool, runner: playgroundRunner.forBaseUrl(pool.runtimeUrl, token) };
+    }
+    const runner = pool.poolId === "default" && pool.runtimeUrl === input.config.runtimeServiceUrl
+      ? playgroundRunner : playgroundRunner.forBaseUrl(pool.runtimeUrl);
+    return { pool, runner };
+  };
+  const runnerForTenant = async (tenantId: string) => (await selectRunnerForTenant(tenantId)).runner;
+  const hasTenantCompiler = async (tenantId: string) => {
+    if (!input.service.groupRouting || !input.runnerControl.hasCompilerForPools) return input.runnerControl.hasDefaultCompiler();
+    const pools = await input.service.groupRouting.poolsForTenant(tenantId);
+    return input.runnerControl.hasCompilerForPools(pools.map(pool => pool.id));
+  };
+  const withDistribution = async <T extends { id: string; adapter: string; tenantId: string }>(resource: T, context: Context, wait = false) => {
+    const pool = await tenantPool(resource.tenantId);
+    const distribution = wait
+      ? await input.runnerControl.distributeDesiredState(pool.poolId)
+      : await input.runnerControl.distributionStatus(pool.poolId);
+    return { ...resource, setup: endpointSetup(pool.publicUrl ?? endpointRequestOrigin(context.req.raw), resource.id, resource.adapter), ...distribution };
+  };
   app.use("*", logger());
   app.use("*", secureHeaders());
   app.use("*", (context, next) => {
@@ -512,9 +546,18 @@ export function createHttpApp(input: {
   app.post("/api/v1/model-configuration/apply", authenticated, async (context) => {
     if (!input.models) throw new ControllerError("Model configuration is unavailable.", 503, "model_configuration_unavailable");
     const selection = partialModelActivationSchema.parse(await context.req.json());
+    // Scoped-group ACKs cannot prove that the platform defaults were loaded.
+    // Choose an explicit legacy-mode consumer before changing draft state.
+    const activationPoolId = input.models.groupRuntime
+      ? await input.models.groupRuntime.platformActivationPoolId() : "default";
+    if (!activationPoolId) throw new ConflictError(
+      "No Runner pool consumes platform Model defaults. Use a group Model grant or configure a legacy-mode platform pool.", "platform_model_activation_pool_unavailable");
     const revision = await input.models.applyConfiguration(context.get("actor").id, selection);
-    const distribution = await input.runnerControl.distributeDesiredState("default", 10_000);
-    if (distribution.distributionStatus === "ready") await input.models.finalizeActivation(revision.id);
+    let distribution = await input.runnerControl.distributeDesiredState(activationPoolId, 10_000, revision.id);
+    if (distribution.distributionStatus === "ready") {
+      const completed = await input.models.finalizeActivation(revision.id, activationPoolId);
+      if (completed === false) distribution = { ...distribution, distributionStatus: "syncing" };
+    }
     const view = await input.models.view();
     if (view.failed?.id === revision.id) {
       throw new ConflictError(view.failed.failureReason || "Runner rejected the Model configuration.", "model_configuration_runner_rejected");
@@ -534,7 +577,7 @@ export function createHttpApp(input: {
     if (body.definition.metadata.id !== context.req.param("id")) throw new ValidationError("Policy identity must match its URL.");
     return context.json(await input.service.policyResources.save({ ...body, ...(body.create === undefined ? {} : { create: body.create }), actorId: context.get("actor").id }));
   });
-  app.post("/api/v1/policies/:id/definition/test-runs", authenticated, async context => context.json(await input.service.policyResources.validate(context.req.param("id"), context.get("actor").id, input.runnerControl.hasDefaultCompiler()), 202));
+  app.post("/api/v1/policies/:id/definition/test-runs", authenticated, async context => context.json(await input.service.policyResources.validate(context.req.param("id"), context.get("actor").id, await hasTenantCompiler(context.get("actor").tenantId)), 202));
   app.get("/api/v1/policies/:id/definition/test-runs/latest", authenticated, async context => context.json(await input.service.policyResources.report(context.req.param("id"))));
   app.get("/api/v1/policies/:id/definition/test-runs/:runId", authenticated, async context => {
     const report = await input.service.policyResources.report(context.req.param("id"), context.req.param("runId"));
@@ -583,7 +626,7 @@ export function createHttpApp(input: {
   app.post("/api/v1/policies/:id/test-runs", authenticated, async (context) => {
     const run = await input.service.requestPolicyValidation({
       id: context.req.param("id"), actorId: context.get("actor").id,
-      compilerAvailable: input.runnerControl.hasDefaultCompiler(),
+      compilerAvailable: await hasTenantCompiler(context.get("actor").tenantId),
     });
     const statusUrl = `/api/v1/policies/${encodeURIComponent(context.req.param("id"))}/test-runs/${encodeURIComponent(run.id)}`;
     context.header("Location", statusUrl);
@@ -656,8 +699,10 @@ export function createHttpApp(input: {
       throw new ControllerError("Guardrail Playground has no model connection configured.", 503, "playground_unavailable");
     }
     const candidate = await input.service.playgroundDraftCandidate(context.req.param("guardrailId"));
+    const { pool, runner: groupRunner } = await selectRunnerForTenant(context.get("actor").tenantId);
     const preview = playgroundDraftPreviews.create({
       actorId: context.get("actor").id,
+      allocation: { poolId: pool.poolId, groupId: pool.groupId, runtimeUrl: pool.runtimeUrl },
       guardrailId: candidate.guardrailId,
       guardrailName: candidate.guardrailName,
       draftRevision: candidate.draftRevision,
@@ -667,7 +712,7 @@ export function createHttpApp(input: {
       compilerVersion: candidate.compilerVersion,
     });
     try {
-      const prepared = await playgroundRunner.prepareDraft(preview);
+      const prepared = await groupRunner.prepareDraft(preview);
       preview.compilerVersion = prepared.compiler_version;
       return context.json({
         preview_id: preview.previewId,
@@ -700,6 +745,11 @@ export function createHttpApp(input: {
       playgroundDraftPreviews.delete(preview.previewId);
       throw new ControllerError("The Guardrail draft changed. Prepare a new preview before testing.", 409, "playground_draft_revision_changed");
     }
+    const { pool, runner } = await selectRunnerForTenant(context.get("actor").tenantId);
+    if (pool.poolId !== preview.allocation.poolId || pool.groupId !== preview.allocation.groupId || pool.runtimeUrl !== preview.allocation.runtimeUrl) {
+      playgroundDraftPreviews.delete(preview.previewId);
+      throw new ControllerError("The Runner allocation changed. Prepare a new preview before testing.", 409, "playground_draft_allocation_changed");
+    }
     return context.json(await runPlaygroundInteraction({
       guardrail: {
         id: preview.guardrailId,
@@ -712,7 +762,9 @@ export function createHttpApp(input: {
       },
       target: preview,
       model: playgroundModel,
-      runner: playgroundRunner,
+      runner,
+      registerInvocation: callId => input.service.registerPlaygroundInvocation({ callId, tenantId: context.get("actor").tenantId,
+        guardrailId: preview.guardrailId, guardrailVersion: preview.candidateVersion, poolId: pool.poolId, groupId: pool.groupId }),
       modelId: body.model_id,
       message: body.message,
       history: body.history,
@@ -729,6 +781,7 @@ export function createHttpApp(input: {
     if (!version || version.status !== "ready" || !version.artifactId) {
       throw new ValidationError("Playground requires a ready, immutable Guardrail Version.");
     }
+    const { pool, runner } = await selectRunnerForTenant(context.get("actor").tenantId);
     return context.json(await runPlaygroundInteraction({
       guardrail: {
         id: guardrail.id,
@@ -743,7 +796,9 @@ export function createHttpApp(input: {
       },
       target: { kind: "published", version: version.version },
       model: playgroundModel,
-      runner: playgroundRunner,
+      runner,
+      registerInvocation: callId => input.service.registerPlaygroundInvocation({ callId, tenantId: context.get("actor").tenantId,
+        guardrailId: guardrail.id, guardrailVersion: version.version, poolId: pool.poolId, groupId: pool.groupId }),
       modelId: body.model_id,
       message: body.message,
       history: body.history,
@@ -907,16 +962,13 @@ export function createHttpApp(input: {
       ...options,
       guardrailId: context.req.param("guardrailId"),
       actorId: context.get("actor").id,
-      compilerAvailable: input.runnerControl.hasDefaultCompiler(),
+      compilerAvailable: await hasTenantCompiler(context.get("actor").tenantId),
     }), 202);
   });
 
   app.get("/api/v1/endpoints", authenticated, async (context) => {
-    const [items, distribution] = await Promise.all([
-      input.service.listEndpoints(),
-      input.runnerControl.distributionStatus(),
-    ]);
-    return context.json({ items: items.map((item) => ({ ...withEndpointSetup(item, context), ...distribution })) });
+    const items = await input.service.listEndpoints();
+    return context.json({ items: await Promise.all(items.map(item => withDistribution(item, context))) });
   });
   app.post("/api/v1/endpoints", authenticated, async (context) => {
     const body = endpointInput.parse(await context.req.json());
@@ -943,12 +995,13 @@ export function createHttpApp(input: {
     return context.json(await withDistribution(updated, context, true), 201);
   });
   app.delete("/api/v1/endpoints/:id/credentials/:credentialId", authenticated, async (context) => {
+    const endpoint = await input.service.getEndpoint(context.req.param("id"));
     await input.service.revokeEndpointCredential({
       id: context.req.param("id"),
       credentialId: context.req.param("credentialId"),
       actorId: context.get("actor").id,
     });
-    await input.runnerControl.distributeDesiredState();
+    await input.runnerControl.distributeDesiredState((await tenantPool(endpoint.tenantId)).poolId);
     return context.body(null, 204);
   });
   app.get("/api/v1/endpoints/:id/deletion-impact", authenticated, async (context) => {
@@ -984,6 +1037,61 @@ export function createHttpApp(input: {
         software: parseSoftwareVersion(runner.labels?.["tasklattice.build"], runner.runnerVersion),
       }))),
     });
+  });
+  app.get("/api/v1/tenant-groups", authenticated, async context => context.json(await input.service.tenantGroups.list()));
+  app.get("/api/v1/tenant-groups/:id/model-configuration", authenticated, async context => {
+    if (!input.models) throw new ControllerError("Model configuration is unavailable.", 503, "model_configuration_unavailable");
+    return context.json(await input.models.groupRuntime.view(context.req.param("id")));
+  });
+  app.put("/api/v1/tenant-groups/:id/model-configuration", authenticated, async context => {
+    if (!input.models) throw new ControllerError("Model configuration is unavailable.", 503, "model_configuration_unavailable");
+    const body = groupModelConfigurationInput.parse(await context.req.json());
+    return context.json(await input.models.groupRuntime.update(context.req.param("id"), body, context.get("actor").id,
+      input.config.runnerPoolTokens != null));
+  });
+  app.post("/api/v1/tenant-groups", authenticated, async context => context.json(await input.service.tenantGroups.create(
+    createTenantGroupSchema.parse(await context.req.json()), context.get("actor").id), 201));
+  app.patch("/api/v1/tenant-groups/:id", authenticated, async context => context.json(await input.service.tenantGroups.update(
+    tenantGroupIdSchema.parse(context.req.param("id")), updateTenantGroupSchema.parse(await context.req.json()), context.get("actor").id)));
+  app.delete("/api/v1/tenant-groups/:id", authenticated, async context => {
+    await input.service.tenantGroups.remove(tenantGroupIdSchema.parse(context.req.param("id")), context.get("actor").id);
+    return context.body(null, 204);
+  });
+  app.get("/api/v1/tenants", authenticated, async context => context.json({ items: await input.service.tenantGroups.listTenants() }));
+  app.put("/api/v1/tenants/:id/group", authenticated, async context => context.json(await input.service.tenantGroups.assignTenant(
+    context.req.param("id"), tenantGroupAssignmentSchema.parse(await context.req.json()), context.get("actor").id)));
+  app.post("/api/v1/tenant-groups/:id/pools", authenticated, async context => context.json(await input.service.tenantGroups.createPool(
+    tenantGroupIdSchema.parse(context.req.param("id")), createGroupPoolSchema.parse(await context.req.json()), context.get("actor").id), 201));
+  app.put("/api/v1/runner-pools/:id/group", authenticated, async context => context.json(await input.service.tenantGroups.assignPool(
+    context.req.param("id"), tenantGroupAssignmentSchema.parse(await context.req.json()), context.get("actor").id)));
+  app.put("/api/v1/runner-pools/:id/connectivity", authenticated, async context => context.json(await input.service.tenantGroups.updateConnectivity(
+    context.req.param("id"), updatePoolConnectivitySchema.parse(await context.req.json()), context.get("actor").id)));
+
+  app.get("/api/v1/tenant-admission-monitor", authenticated, async context => {
+    if (context.get("actor").role !== "admin") throw new ControllerError("Platform administrator access is required.", 403, "forbidden");
+    const query = admissionMonitorQuerySchema.parse(context.req.query());
+    context.header("Cache-Control", "no-store");
+    return context.json(await input.service.admissionMonitor.view(query.poolId));
+  });
+  app.get("/api/v1/tenant-load-lab/state", authenticated, async context => {
+    context.header("Cache-Control", "no-store");
+    return context.json(await requestTenantLoadLab(input.config.tenantLoadLabUrl));
+  });
+  app.post("/api/v1/tenant-load-lab/control", authenticated, async context => {
+    const command = tenantLoadLabControlSchema.parse(await context.req.json());
+    context.header("Cache-Control", "no-store");
+    if (command.action === "start" || command.action === "peak") {
+      // The lab's private target configuration is independent from Controller's
+      // group assignments. Refuse new load when those assignments have drifted.
+      const state = await requestTenantLoadLab(input.config.tenantLoadLabUrl);
+      for (const tenant of state.tenants) {
+        const pools = await input.service.groupRouting.poolsForTenant(tenant.id);
+        if (!pools.some(pool => pool.id === tenant.poolId && pool.groupId === tenant.groupId)) {
+          throw new ConflictError("The lab Runner allocation is out of date. Update its private configuration before starting traffic.", "tenant_load_lab_allocation_changed");
+        }
+      }
+    }
+    return context.json(await requestTenantLoadLab(input.config.tenantLoadLabUrl, command));
   });
   app.get("/api/v1/runner-pools", authenticated, async (context) => context.json({ items: await input.service.listRunnerPoolsWithCapacity() }));
   app.patch("/api/v1/runner-pools/:id", authenticated, async (context) => {
@@ -1124,7 +1232,7 @@ export function createHttpApp(input: {
       if (input.tenantShares) await input.tenantShares.assertOwner("endpoint", body.targetId);
     }
     if (!playgroundRunner) throw new ControllerError("Runner is not configured.", 503, "playground_runner_unavailable");
-    return context.json(await playgroundRunner.testPath(body, endpointAdapter));
+    return context.json(await (await runnerForTenant(context.get("actor").tenantId)).testPath(body, endpointAdapter));
   });
   app.post("/api/v1/routers/:id/simulations", authenticated, async context => {
     await input.service.trafficRouting.get(context.req.param("id"));
@@ -1179,14 +1287,60 @@ export function createHttpApp(input: {
     return context.json(await input.service.listAuditEvents(query));
   });
 
-  app.post("/api/internal/v1/runtime-events", runnerAuthentication(input.config.runnerToken), async (context) => {
-    const body = runtimeEventBatchInput.parse(await context.req.json());
+  app.post("/api/internal/v1/runtime-events", async (context) => {
+    let authenticatedPoolId: string | undefined;
+    if (input.config.runnerScopedTelemetry) {
+      const principal = authenticateRunnerPrincipal(context.req.header("authorization"), input.config);
+      if (!principal?.poolId) return context.json({ error: { code: "runner_unauthenticated", message: "Runner authentication failed." } }, 401);
+      authenticatedPoolId = principal.poolId;
+    } else if (context.req.header("authorization") !== `Bearer ${input.config.runnerToken}`) {
+      return context.json({ error: { code: "runner_unauthenticated", message: "Runner authentication failed." } }, 401);
+    }
+    let upload: ReturnType<TelemetryUploadAdmission["acquire"]>;
+    try { upload = telemetryUploads.acquire(authenticatedPoolId ?? "legacy"); }
+    catch (error) { context.header("Retry-After", "1"); throw error; }
+    try {
+    const rawBody = await readBoundedTelemetryBody(context.req.raw);
+    const body = runtimeEventBatchInput.parse(JSON.parse(rawBody));
+    let modelCalls = 0;
+    for (const event of body.events) {
+      if (!("metadata" in event)) continue;
+      const usage = event.metadata.usage;
+      const calls = usage && typeof usage === "object" && !Array.isArray(usage)
+        ? (usage as Record<string, unknown>).model_calls : undefined;
+      if (Array.isArray(calls)) {
+        modelCalls += calls.length;
+        if (calls.length > 64 || modelCalls > 256) throw new ControllerError(
+          "Telemetry model-call work budget exceeded.", 413, "telemetry_batch_work_exceeded");
+      }
+    }
     try {
       const routing = body.events.filter(event => "eventType" in event);
       const runtime = body.events.filter(event => "requestId" in event);
-      if (routing.length) await input.service.trafficRouting.recordEvents(routing);
-      await input.service.recordRuntimeEvents(runtime);
-      if (body.runnerId) await input.service.recordTelemetryWatermark(body.runnerId);
+      if (body.progress) {
+        if (!input.config.runnerTelemetryProgress || authenticatedPoolId === undefined) throw new ControllerError(
+          "Authenticated telemetry progress is unavailable.", 403, "telemetry_progress_unavailable");
+        if (body.runnerId || body.observedAt) throw new ValidationError("Progress batches cannot supply a legacy watermark identity.");
+        const progress = await input.service.telemetryProgress.ingest(authenticatedPoolId,
+          context.req.header("x-tasklattice-telemetry-capability"), body.progress,
+          createHash("sha256").update(rawBody).digest("hex"), body.events, async tx => {
+            // Lock the combined sorted Guardrail set before either writer
+            // acquires the shared Endpoint-context lifecycle lock.
+            await guardrailTelemetryFilter(tx, body.events.map(event => event.guardrailId));
+            if (routing.length) await input.service.trafficRouting.recordEvents(routing, true, authenticatedPoolId, tx);
+            await input.service.recordRuntimeEvents(runtime, authenticatedPoolId, tx);
+          });
+        input.metrics.observeTelemetryBatch?.("accepted", body.events.map(event => event.occurredAt), body.events.length);
+        return context.json({ accepted: body.events.length, progress }, 202);
+      }
+      if (authenticatedPoolId === undefined) {
+        if (routing.length) await input.service.trafficRouting.recordEvents(routing);
+        await input.service.recordRuntimeEvents(runtime);
+      } else {
+        if (routing.length) await input.service.trafficRouting.recordEvents(routing, true, authenticatedPoolId);
+        await input.service.recordRuntimeEvents(runtime, authenticatedPoolId);
+      }
+      if (body.runnerId && authenticatedPoolId === undefined) await input.service.recordTelemetryWatermark(body.runnerId);
       input.metrics.observeTelemetryBatch?.(
         "accepted", body.events.map((event) => event.occurredAt), body.events.length,
       );
@@ -1197,11 +1351,20 @@ export function createHttpApp(input: {
       );
       throw error;
     }
+    } catch (error) {
+      if (error instanceof ControllerError && [408, 413, 503].includes(error.status)) context.header("Retry-After", "1");
+      throw error;
+    } finally { upload.release(); }
   });
-  app.post("/api/internal/v1/model-credentials/resolve", runnerAuthentication(input.config.runnerToken), async (context) => {
+  app.post("/api/internal/v1/model-credentials/resolve", async (context) => {
+    const principal = authenticateRunnerPrincipal(context.req.header("authorization"), input.config);
+    if (!principal) return context.json({ error: { code: "runner_unauthenticated", message: "Runner authentication failed." } }, 401);
     if (!input.models) throw new ControllerError("Model configuration is unavailable.", 503, "model_configuration_unavailable");
     const body = modelCredentialRefsInput.parse(await context.req.json());
-    return context.json({ credentials: await input.models.resolveCredentials(body.refs, body.leaseId) });
+    const credentials = principal.poolId === null
+      ? await input.models.resolveCredentials(body.refs, body.leaseId)
+      : await input.models.resolveCredentials(body.refs, body.leaseId, principal.poolId);
+    return context.json({ credentials });
   });
 
   app.notFound((context) => {
@@ -1314,15 +1477,6 @@ function authentication(auth: ControllerAuth, tokens?: AccessTokenService): Midd
 
 function validTenantId(tenantId: string | null | undefined): tenantId is string {
   return typeof tenantId === "string" && tenantId.trim().length > 0 && tenantId === tenantId.trim();
-}
-
-function runnerAuthentication(token: string): MiddlewareHandler {
-  return async (context: Context, next) => {
-    if (context.req.header("authorization") !== `Bearer ${token}`) {
-      return context.json({ error: { code: "runner_unauthenticated", message: "Runner authentication failed." } }, 401);
-    }
-    await next();
-  };
 }
 
 function metricsAuthentication(token: string | null): MiddlewareHandler {

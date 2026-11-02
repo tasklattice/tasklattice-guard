@@ -84,12 +84,12 @@ describe("tenant share HTTP boundary", () => {
     expect(createShare).not.toHaveBeenCalled();
   });
 
-  it("preserves upstream tenant user access to deployment-wide Runner management", async () => {
+  it("prevents tenant users from changing deployment-wide Runner pools", async () => {
     const { app, service } = setup("tenantB");
     vi.mocked(service.updateRunnerPool).mockResolvedValue({ id: "default" } as Awaited<ReturnType<ControlPlaneService["updateRunnerPool"]>>);
     const targets = { desiredReplicas: 2, safeRpsPerRunner: 50, maxConcurrencyPerRunner: 64 };
     const response = await app.request("/api/v1/runner-pools/default", { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify(targets) });
-    expect(response.status).toBe(200);
-    expect(vi.mocked(service.updateRunnerPool)).toHaveBeenCalledExactlyOnceWith({ id: "default", actorId: "actor-b", ...targets });
+    expect(response.status).toBe(403);
+    expect(vi.mocked(service.updateRunnerPool)).not.toHaveBeenCalled();
   });
 });

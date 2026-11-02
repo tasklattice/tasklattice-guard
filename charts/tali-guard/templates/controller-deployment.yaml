@@ -66,6 +66,14 @@ spec:
               valueFrom: { secretKeyRef: { name: {{ include "tali-guard.databaseSecretName" . }}, key: {{ .Values.database.secretKey }} } }
             - name: CONTROLLER_RUNNER_TOKEN
               valueFrom: { secretKeyRef: { name: {{ include "tali-guard.controlSecretName" . }}, key: {{ .Values.security.controlSecret.runnerTokenKey }} } }
+            {{- if .Values.security.poolAuthentication.enabled }}
+            - name: CONTROLLER_RUNNER_POOL_TOKENS_JSON
+              valueFrom: { secretKeyRef: { name: {{ .Values.security.poolAuthentication.controllerSecret | quote }}, key: {{ .Values.security.poolAuthentication.controllerKey | quote }} } }
+            {{- end }}
+            {{- if .Values.security.runnerHttpAuthentication.enabled }}
+            - name: CONTROLLER_RUNNER_HTTP_TOKENS_JSON
+              valueFrom: { secretKeyRef: { name: {{ .Values.security.runnerHttpAuthentication.controllerSecret | quote }}, key: {{ .Values.security.runnerHttpAuthentication.controllerKey | quote }} } }
+            {{- end }}
             - name: CONTROLLER_METRICS_TOKEN
               valueFrom: { secretKeyRef: { name: {{ include "tali-guard.metricsSecretName" . }}, key: {{ .Values.security.metrics.tokenKey }} } }
             - name: BETTER_AUTH_SECRET

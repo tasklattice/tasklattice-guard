@@ -37,6 +37,7 @@ message RunnerMessage {
     ValidationProgress validation_progress = 17;
     ArtifactAdmissionResult artifact_admission_result = 18;
     GuardrailProtectionResult protection_result = 19;
+    ServingLeaseRequest serving_lease_request = 21;
   }
 }
 
@@ -59,6 +60,7 @@ message ControllerMessage {
     CapabilityValidationRequest capability_validation_request = 15;
     ArtifactAdmissionRequest artifact_admission_request = 16;
     GuardrailProtectionState protection_state = 17;
+    ServingLeaseResponse serving_lease_response = 19;
   }
 }
 
@@ -81,6 +83,8 @@ message RunnerRegistration {
   // Last atomically activated desired-state generation, or zero before first sync.
   int64 applied_generation = 9;
   int64 applied_protection_generation = 10;
+  // Stable disk WAL identity for the optional authenticated delivery protocol.
+  optional string telemetry_wal_id = 11;
 }
 
 // Registration acknowledgement and heartbeat contract returned by Controller.
@@ -89,6 +93,19 @@ message RegistrationAccepted {
   int64 desired_generation = 1;
   // Maximum interval in seconds between Runner heartbeats.
   int32 heartbeat_interval_seconds = 2;
+  // Secret dispatched only to this current pool-authenticated control stream.
+  TelemetryUploadAuthorization telemetry_upload_authorization = 3;
+}
+
+// Authenticates HTTP delivery from this registration, not physical workload
+// attestation. Never project the capability into public APIs, logs or metrics.
+message TelemetryUploadAuthorization {
+  string wal_id = 1;
+  string capability = 2;
+  int64 acknowledged_cursor = 3;
+  int64 produced_cursor = 4;
+  string last_batch_id = 5;
+  string last_batch_digest = 6;
 }
 
 // Monotonic liveness, convergence, and load observation for one Runner boot.
@@ -101,6 +118,8 @@ message RunnerHeartbeat {
   int64 applied_generation = 4;
   RunnerLoad load = 5;
   int64 applied_protection_generation = 6;
+  // Optional bounded process-local admission counters, not quota authority.
+  bytes tenant_admission_snapshot_json = 7;
 }
 
 // Independent operating overlay: applying an emergency mode must not wait for
@@ -166,6 +185,14 @@ message DesiredState {
   map<string, string> guardrail_logging_levels = 7;
   DataPlaneModelConfiguration model_configuration = 8;
   repeated RouterRevision router_revisions = 9;
+  // Optional per-dispatch challenge, understood only by capable Runners.
+  // An ACK is evidence of this snapshot on this stream, not a serving lease.
+  optional string snapshot_nonce = 10;
+  // Epoch persisted with this exact dispatch. Required by experimental lease
+  // consumers; never inferred from a Runner's cached state or defaulted to 0.
+  optional int64 allocation_epoch = 11;
+  // Controller-assigned group of this exact dispatched pool snapshot.
+  optional string allocation_group_id = 12;
 }
 
 // ACK/NACK for the complete atomic desired-state generation. A NACK keeps the
@@ -179,6 +206,30 @@ message DesiredStateResult {
   // Human-readable NACK detail; empty for an ACK.
   string reason = 4;
   string model_revision_id = 5;
+  // Echo the Controller's optional challenge for this exact dispatched snapshot.
+  optional string snapshot_nonce = 6;
+}
+
+// Optional experimental request. Its nonce must be unique within the boot and
+// locally timed from before sending. This message does not enable serving.
+message ServingLeaseRequest {
+  string runner_id = 1;
+  string boot_id = 2;
+  string nonce = 3;
+  int64 epoch = 4;
+  int64 generation = 5;
+  string snapshot_nonce = 6;
+}
+
+// An explicit rejection never authorizes serving. Even a grant is protocol
+// groundwork until Runner enforcement and move coordination are integrated.
+message ServingLeaseResponse {
+  string nonce = 1;
+  bool granted = 2;
+  int64 epoch = 3;
+  int64 generation = 4;
+  string snapshot_nonce = 5;
+  int32 duration_ms = 6;
 }
 
 // Runtime-only Endpoint projection; it contains no plaintext credential.
@@ -191,6 +242,12 @@ message EndpointRuntime {
   string router_id = 4;
   // F5 Scan default when the request omits flagOnly. Absence preserves true.
   optional bool scan_flag_only_default = 5;
+  // Controller-assigned owner; absent on legacy Controllers. Callers must
+  // authenticate the Endpoint against the same snapshot before using it.
+  optional string tenant_id = 6;
+  // Opaque Controller-persisted allocation/snapshot provenance. Internal only;
+  // public request headers and response assignments must never carry it.
+  optional string telemetry_context_id = 7;
 }
 
 // ACK/NACK for verifying, prewarming, and activating an artifact generation.

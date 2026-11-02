@@ -16,6 +16,7 @@ import { ensureMockSsoUsers } from "./mock-sso.js";
 import { OpenAICompatiblePlaygroundModel, RunnerPlaygroundClient } from "./playground/service.js";
 import { ModelConfigurationService } from "./model-config/service.js";
 import { TenantShareService } from "./services/tenant-shares.js";
+import { RunnerLeaseLedger } from "./services/runner-lease-ledger.js";
 
 const config = loadConfig();
 const { db, pool } = createDatabase(config);
@@ -28,6 +29,7 @@ await service.pricing.start();
 const prunedReports = await pruneTestingReportHistory(db);
 if (prunedReports) process.stdout.write(`Pruned ${prunedReports} expired Testing Reports (2 Passed + 1 Failed per immutable version; separate unversioned history).\n`);
 const models = new ModelConfigurationService(db, config.betterAuthSecret, config.policyCatalogDir);
+await models.groupRuntime.assertAuthenticationCompatibility(config.runnerPoolTokens !== null);
 await models.initialize();
 
 const auth = createAuth(config, db);
@@ -44,7 +46,7 @@ if (config.mockSsoEnabled) {
   process.stdout.write(`Mock SSO ready for ${identities.map((identity) => identity.tenantId).join(", ")}.\n`);
 }
 const metrics = new ControllerMetrics();
-const runnerControl = new RunnerControlServer(config, service, metrics, models);
+const runnerControl = new RunnerControlServer(config, service, metrics, models, new RunnerLeaseLedger(db));
 await runnerControl.start();
 
 const intentAnalyzer = config.controlPlaneAi
@@ -55,7 +57,9 @@ const playgroundModel = config.playgroundChat
   : null;
 const playgroundRunner = new RunnerPlaygroundClient({
   baseUrl: config.runtimeServiceUrl,
-  token: config.runnerToken,
+  // In scoped HTTP mode every actual dispatch selects its pool token. An
+  // unconfigured default must never preserve the shared bearer as a fallback.
+  token: config.runnerHttpTokens === null ? config.runnerToken : config.runnerHttpTokens.get("default") ?? "",
 });
 const app = createHttpApp({
   config,

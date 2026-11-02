@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any, Literal, Protocol, TYPE_CHECKING
 from collections.abc import AsyncIterator, Awaitable, Callable
 
@@ -146,6 +146,8 @@ class RequestContext:
     call_id: str | None = None
     jwt_claims: tuple[tuple[str, str], ...] = ()
     fields: tuple[tuple[str, str], ...] = ()
+    # Set only by an authenticated adapter entrypoint, never request fields.
+    endpoint_snapshot: Any | None = field(default=None, repr=False, compare=False)
 
     def value(self, kind: MatcherKind, key: str) -> str | None:
         source = {
@@ -676,6 +678,7 @@ class ProtectionDecision:
     protection_mode: Literal["enforce", "monitor", "bypass"] = "enforce"
     detection_decision: str | None = None
     detection_error: str | None = None
+    allocation_context_id: str | None = field(default=None, repr=False)
 
 
 @dataclass(frozen=True, slots=True)
@@ -687,6 +690,7 @@ class PlanResolution:
     effective_release_id: str | None = None
     model_revision_id: str | None = None
     route_assignment: dict[str, Any] | None = None
+    allocation_context_id: str | None = field(default=None, repr=False)
 
 
 @dataclass(frozen=True, slots=True)

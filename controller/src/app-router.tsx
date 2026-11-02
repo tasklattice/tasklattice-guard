@@ -24,6 +24,8 @@ import { AuditLogPage } from "@/routes/audit-log";
 import { VersionPage } from "@/routes/version";
 import { HealthPage } from "@/routes/status";
 import { RunnerPage } from "@/routes/runner";
+import { TenantLoadLabPage } from "@/routes/tenant-load-lab";
+import { TenantGroupsPage } from "@/routes/tenant-groups";
 import { GuardrailCatalogPage, ModelsPage, ProvidersPage } from "@/routes/models";
 import { policyLibrarySearch } from "@/lib/policy-library-search";
 import { isGuardrailVersionId } from "../shared/guardrail-version";
@@ -101,6 +103,8 @@ const settingsRoute = createRoute({ getParentRoute: () => rootRoute, path: "/set
 const versionRoute = createRoute({ getParentRoute: () => rootRoute, path: "/settings/version", component: VersionPage });
 const healthRoute = createRoute({ getParentRoute: () => rootRoute, path: "/settings/health", component: HealthPage });
 const runnerRoute = createRoute({ getParentRoute: () => rootRoute, path: "/settings/runner", component: RunnerPage });
+const tenantLoadLabRoute = createRoute({ getParentRoute: () => rootRoute, path: "/settings/tenant-load-lab", component: TenantLoadLabPage });
+const tenantGroupsRoute = createRoute({ getParentRoute: () => rootRoute, path: "/settings/tenant-groups", component: TenantGroupsPage });
 const providersRoute = createRoute({ getParentRoute: () => rootRoute, path: "/settings/providers", component: ProvidersPage });
 const tenantModelsRoute = createRoute({ getParentRoute: () => rootRoute, path: "/models", component: ModelsPage });
 const modelsRoute = createRoute({ getParentRoute: () => rootRoute, path: "/settings/models", validateSearch: (search: Record<string, unknown>) => ({ tab: search.tab === "pricing" ? "pricing" : undefined }), component: ModelsPage });
@@ -150,6 +154,8 @@ export const routeTree = rootRoute.addChildren([
   healthRoute,
   versionRoute,
   runnerRoute,
+  tenantLoadLabRoute,
+  tenantGroupsRoute,
   providersRoute,
   modelsRoute,
   tenantModelsRoute,

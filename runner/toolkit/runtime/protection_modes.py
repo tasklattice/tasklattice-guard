@@ -20,6 +20,7 @@ def allowed_decision(request: ProtectionRequest, resolution: PlanResolution, mod
         router_id=resolution.router_id, endpoint_id=resolution.endpoint_id,
         output_delivery=resolution.plan.output_delivery, effective_release_id=resolution.effective_release_id,
         model_revision_id=resolution.model_revision_id, route_assignment=resolution.route_assignment,
+        allocation_context_id=resolution.allocation_context_id,
         trace=resolution.trace, coverage=RuntimeCoverage(status="none"), usage=RuntimeUsage())
     observed = None
     if detected is not None:

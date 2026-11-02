@@ -54,17 +54,23 @@ export async function queryTestingReports(db: ControllerDatabase, input: z.input
 
 async function versionEvidence(db: ControllerDatabase, guardrailId: string) {
   const versions = await db.select({ version: guardrailVersions.version, runId: guardrailVersions.validationRunId })
-    .from(guardrailVersions).where(eq(guardrailVersions.guardrailId, guardrailId));
+    .from(guardrailVersions).innerJoin(guardrails, eq(guardrails.id, guardrailVersions.guardrailId))
+    .where(and(eq(guardrailVersions.guardrailId, guardrailId), resourceReadPredicate("guardrail", guardrails.id, guardrails.tenantId)));
   if (!versions.length) return [];
   const scope = and(eq(validationRuns.guardrailId, guardrailId), eq(validationRuns.subject, "version"),
-    inArray(validationRuns.guardrailVersion, versions.map(item => item.version)));
-  const latest = await db.selectDistinctOn([validationRuns.guardrailVersion], summary).from(validationRuns).where(scope)
+    inArray(validationRuns.guardrailVersion, versions.map(item => item.version)),
+    resourceReadPredicate("guardrail", guardrails.id, guardrails.tenantId));
+  const latest = await db.selectDistinctOn([validationRuns.guardrailVersion], summary).from(validationRuns)
+    .innerJoin(guardrails, eq(guardrails.id, validationRuns.guardrailId)).where(scope)
     .orderBy(validationRuns.guardrailVersion, desc(validationRuns.createdAt), desc(validationRuns.id));
   const completed = await db.selectDistinctOn([validationRuns.guardrailVersion], summary).from(validationRuns)
+    .innerJoin(guardrails, eq(guardrails.id, validationRuns.guardrailId))
     .where(and(scope, inArray(validationRuns.status, ["passed", "failed"])))
     .orderBy(validationRuns.guardrailVersion, desc(reportCompletionTime), desc(validationRuns.id));
   const releaseIds = versions.flatMap(item => item.runId ? [item.runId] : []);
   const released = releaseIds.length ? await db.select(summary).from(validationRuns)
-    .where(and(eq(validationRuns.guardrailId, guardrailId), inArray(validationRuns.id, releaseIds))) : [];
+    .innerJoin(guardrails, eq(guardrails.id, validationRuns.guardrailId))
+    .where(and(eq(validationRuns.guardrailId, guardrailId), inArray(validationRuns.id, releaseIds),
+      resourceReadPredicate("guardrail", guardrails.id, guardrails.tenantId))) : [];
   return [...new Map([...latest, ...completed, ...released].map(run => [run.id, run])).values()];
 }

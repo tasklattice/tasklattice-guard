@@ -351,6 +351,118 @@
       "when": 1792540800002,
       "tag": "0049_multi_tenant_resources",
       "breakpoints": true
+    },
+    {
+      "idx": 50,
+      "version": "7",
+      "when": 1793059200000,
+      "tag": "0050_tenant_groups",
+      "breakpoints": true
+    },
+    {
+      "idx": 51,
+      "version": "7",
+      "when": 1793059200001,
+      "tag": "0051_playground_invocation_attribution",
+      "breakpoints": true
+    },
+    {
+      "idx": 52,
+      "version": "7",
+      "when": 1793059200002,
+      "tag": "0052_quarantine_historical_telemetry",
+      "breakpoints": true
+    },
+    {
+      "idx": 53,
+      "version": "7",
+      "when": 1793059200003,
+      "tag": "0053_playground_invocation_pool",
+      "breakpoints": true
+    },
+    {
+      "idx": 54,
+      "version": "7",
+      "when": 1793059200004,
+      "tag": "0054_audit_attribution_quarantine",
+      "breakpoints": true
+    },
+    {
+      "idx": 55,
+      "version": "7",
+      "when": 1793059200005,
+      "tag": "0055_runner_lease_ledger",
+      "breakpoints": true
+    },
+    {
+      "idx": 56,
+      "version": "7",
+      "when": 1793059200006,
+      "tag": "0056_lease_snapshot_binding",
+      "breakpoints": true
+    },
+    {
+      "idx": 57,
+      "version": "7",
+      "when": 1793059200007,
+      "tag": "0057_runner_control_sessions",
+      "breakpoints": true
+    },
+    {
+      "idx": 58,
+      "version": "7",
+      "when": 1793059200008,
+      "tag": "0058_prepared_allocation_transitions",
+      "breakpoints": true
+    },
+    {
+      "idx": 59,
+      "version": "7",
+      "when": 1793059200009,
+      "tag": "0059_validation_credential_leases",
+      "breakpoints": true
+    },
+    {
+      "idx": 60,
+      "version": "7",
+      "when": 1793059200010,
+      "tag": "0060_fenced_allocation_completion",
+      "breakpoints": true
+    },
+    {
+      "idx": 61,
+      "version": "7",
+      "when": 1793059200011,
+      "tag": "0061_endpoint_telemetry_contexts",
+      "breakpoints": true
+    },
+    {
+      "idx": 62,
+      "version": "7",
+      "when": 1793059200012,
+      "tag": "0062_bounded_endpoint_context_storage",
+      "breakpoints": true
+    },
+    {
+      "idx": 63,
+      "version": "7",
+      "when": 1793059200013,
+      "tag": "0063_routing_telemetry_contexts",
+      "breakpoints": true
+    },
+    {
+      "idx": 64,
+      "version": "7",
+      "when": 1793059200014,
+      "tag": "0064_runner_telemetry_progress",
+      "breakpoints": true
+    },
+    {
+      "idx": 65,
+      "version": "7",
+      "when": 1793059200015,
+      "tag": "0065_group_model_configurations",
+      "breakpoints": true
     }
   ]
 }

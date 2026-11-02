@@ -98,6 +98,10 @@
         "type": "object",
         "x-runtime-validation": "Additional runtime refinements apply; JSON Schema validation alone does not guarantee acceptance."
       },
+      "deleteTenantGroupsByIdParamId": {
+        "pattern": "^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$",
+        "type": "string"
+      },
       "deleteTestRunsByRunIdRequest": {
         "properties": {
           "expectedPendingVersion": {
@@ -665,7 +669,14 @@
             "type": "string"
           },
           "tenantId": {
-            "type": "string"
+            "anyOf": [
+              {
+                "type": "null"
+              },
+              {
+                "type": "string"
+              }
+            ]
           }
         },
         "required": [
@@ -757,88 +768,6 @@
         },
         "required": [
           "available"
-        ],
-        "type": "object"
-      },
-      "getEndpointsByIdResponse": {
-        "properties": {
-          "adapter": {
-            "type": "string"
-          },
-          "createdAt": {
-            "format": "date-time",
-            "type": "string"
-          },
-          "credentials": {
-            "items": {
-              "$ref": "#/components/schemas/getEndpointsResponseItemsItemCredentialsItem"
-            },
-            "type": "array"
-          },
-          "desiredGeneration": {
-            "type": "number"
-          },
-          "distributionStatus": {
-            "enum": [
-              "ready",
-              "syncing"
-            ],
-            "type": "string"
-          },
-          "id": {
-            "type": "string"
-          },
-          "name": {
-            "type": "string"
-          },
-          "scanFlagOnlyDefault": {
-            "enum": [
-              false,
-              true
-            ],
-            "type": "boolean"
-          },
-          "setup": {
-            "$ref": "#/components/schemas/getEndpointsResponseItemsItemSetup"
-          },
-          "status": {
-            "enum": [
-              "active",
-              "disabled"
-            ],
-            "type": "string"
-          },
-          "tenantId": {
-            "type": "string"
-          },
-          "trafficRouterId": {
-            "anyOf": [
-              {
-                "type": "null"
-              },
-              {
-                "type": "string"
-              }
-            ]
-          },
-          "updatedAt": {
-            "format": "date-time",
-            "type": "string"
-          }
-        },
-        "required": [
-          "id",
-          "tenantId",
-          "trafficRouterId",
-          "name",
-          "adapter",
-          "status",
-          "createdAt",
-          "updatedAt",
-          "credentials",
-          "setup",
-          "desiredGeneration",
-          "distributionStatus"
         ],
         "type": "object"
       },
@@ -2342,6 +2271,7 @@
           "versionSummary",
           "copyOrigin",
           "draftConfig",
+          "excludedTestCaseIds",
           "latestValidationRun",
           "latestTestingReport",
           "testCaseCount",
@@ -2354,7 +2284,6 @@
           "deletedBy",
           "desiredGeneration",
           "draftRevision",
-          "excludedTestCaseIds",
           "id",
           "loggingLevel",
           "name",
@@ -2466,6 +2395,9 @@
               }
             ]
           },
+          "policyContentAccessible": {
+            "type": "boolean"
+          },
           "provenance": {
             "anyOf": [
               {
@@ -2571,21 +2503,22 @@
           "sourceDraftRevision",
           "status",
           "runtimeProfile",
-          "plan",
           "artifactId",
           "validationRunId",
           "platformRelease",
-          "testingEvidence",
           "sourceValidationRunId",
-          "testWaiver",
           "releasedAt",
           "releasedBy",
-          "inspection",
-          "policies",
           "origin",
-          "environmentCheck",
           "createdBy",
           "createdAt",
+          "plan",
+          "policies",
+          "inspection",
+          "environmentCheck",
+          "testingEvidence",
+          "testWaiver",
+          "policyContentAccessible",
           "hasSourceSnapshot",
           "testSuiteCount",
           "artifact",
@@ -3796,6 +3729,7 @@
           "versionSummary",
           "copyOrigin",
           "draftConfig",
+          "excludedTestCaseIds",
           "latestValidationRun",
           "latestTestingReport",
           "testCaseCount",
@@ -3808,7 +3742,6 @@
           "deletedBy",
           "desiredGeneration",
           "draftRevision",
-          "excludedTestCaseIds",
           "id",
           "loggingLevel",
           "name",
@@ -4714,6 +4647,9 @@
             },
             "type": "array"
           },
+          "runtimeFingerprint": {
+            "type": "string"
+          },
           "valid": {
             "type": "boolean"
           }
@@ -4749,6 +4685,9 @@
             "type": "number"
           },
           "message": {
+            "type": "string"
+          },
+          "runtimeFingerprint": {
             "type": "string"
           },
           "scope": {
@@ -8202,18 +8141,18 @@
         },
         "required": [
           "changeRequestId",
-          "context",
           "routerId",
           "revision",
           "sourceDraftRevision",
-          "snapshot",
           "requestDigest",
           "generation",
           "idempotencyKey",
           "requestDraftRevision",
           "rollbackRevision",
           "createdBy",
-          "createdAt"
+          "createdAt",
+          "snapshot",
+          "context"
         ],
         "type": "object"
       },
@@ -8727,15 +8666,15 @@
           "name",
           "description",
           "draftRevision",
-          "draft",
           "deletedAt",
-          "rolloutError",
           "activeRevision",
           "activeDraftRevision",
-          "activeSnapshot",
           "desiredGeneration",
           "createdAt",
           "updatedAt",
+          "draft",
+          "activeSnapshot",
+          "rolloutError",
           "endpointIds",
           "rolloutStatus",
           "pendingChangeRequest",
@@ -9381,6 +9320,9 @@
           "desiredReplicas": {
             "type": "number"
           },
+          "groupId": {
+            "type": "string"
+          },
           "id": {
             "type": "string"
           },
@@ -9399,6 +9341,26 @@
           "name": {
             "type": "string"
           },
+          "publicUrl": {
+            "anyOf": [
+              {
+                "type": "null"
+              },
+              {
+                "type": "string"
+              }
+            ]
+          },
+          "runtimeUrl": {
+            "anyOf": [
+              {
+                "type": "null"
+              },
+              {
+                "type": "string"
+              }
+            ]
+          },
           "safeRpsPerRunner": {
             "type": "number"
           },
@@ -9410,6 +9372,9 @@
         "required": [
           "id",
           "name",
+          "groupId",
+          "runtimeUrl",
+          "publicUrl",
           "isDefault",
           "desiredReplicas",
           "safeRpsPerRunner",
@@ -10525,7 +10490,14 @@
             "type": "string"
           },
           "tenantId": {
-            "type": "string"
+            "anyOf": [
+              {
+                "type": "null"
+              },
+              {
+                "type": "string"
+              }
+            ]
           }
         },
         "required": [
@@ -11547,6 +11519,1180 @@
         ],
         "type": "object"
       },
+      "getTenantAdmissionMonitorQuery": {
+        "additionalProperties": false,
+        "properties": {
+          "poolId": {
+            "maxLength": 256,
+            "minLength": 1,
+            "type": "string",
+            "x-runtime-validation": "Additional runtime refinements apply; JSON Schema validation alone does not guarantee acceptance."
+          }
+        },
+        "type": "object"
+      },
+      "getTenantAdmissionMonitorResponse": {
+        "properties": {
+          "available": {
+            "type": "boolean"
+          },
+          "controllerLocal": {
+            "const": true,
+            "type": "boolean"
+          },
+          "groups": {
+            "items": {
+              "$ref": "#/components/schemas/getTenantAdmissionMonitorResponseGroupsItem"
+            },
+            "type": "array"
+          },
+          "observedAt": {
+            "type": "number"
+          },
+          "pools": {
+            "items": {
+              "$ref": "#/components/schemas/getTenantAdmissionMonitorResponsePoolsItem"
+            },
+            "type": "array"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "null"
+              },
+              {
+                "type": "string"
+              }
+            ]
+          },
+          "selectedPoolId": {
+            "anyOf": [
+              {
+                "type": "null"
+              },
+              {
+                "type": "string"
+              }
+            ]
+          },
+          "source": {
+            "const": "authenticated_runner_heartbeat",
+            "type": "string"
+          },
+          "sources": {
+            "items": {
+              "$ref": "#/components/schemas/getTenantAdmissionMonitorResponseSourcesItem"
+            },
+            "type": "array"
+          },
+          "staleAfterMs": {
+            "type": "number"
+          },
+          "tenants": {
+            "items": {
+              "$ref": "#/components/schemas/getTenantAdmissionMonitorResponseGroupsItem"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "observedAt",
+          "source",
+          "controllerLocal",
+          "staleAfterMs",
+          "available",
+          "reason",
+          "selectedPoolId",
+          "pools",
+          "groups",
+          "tenants",
+          "sources"
+        ],
+        "type": "object"
+      },
+      "getTenantAdmissionMonitorResponseGroupsItem": {
+        "properties": {
+          "available": {
+            "type": "boolean"
+          },
+          "expectedSources": {
+            "type": "number"
+          },
+          "groupId": {
+            "type": "string"
+          },
+          "history": {
+            "items": {
+              "$ref": "#/components/schemas/getTenantAdmissionMonitorResponseGroupsItemHistoryItem"
+            },
+            "type": "array"
+          },
+          "id": {
+            "type": "string"
+          },
+          "intervalAvailable": {
+            "type": "boolean"
+          },
+          "name": {
+            "type": "string"
+          },
+          "poolIds": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "null"
+              },
+              {
+                "type": "string"
+              }
+            ]
+          },
+          "reportingSources": {
+            "type": "number"
+          },
+          "tenantIds": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "values": {
+            "$ref": "#/components/schemas/getTenantAdmissionMonitorResponseGroupsItemValues"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "groupId",
+          "tenantIds",
+          "poolIds",
+          "available",
+          "intervalAvailable",
+          "reason",
+          "reportingSources",
+          "expectedSources",
+          "values",
+          "history"
+        ],
+        "type": "object"
+      },
+      "getTenantAdmissionMonitorResponseGroupsItemHistoryItem": {
+        "properties": {
+          "at": {
+            "type": "number"
+          },
+          "values": {
+            "$ref": "#/components/schemas/getTenantAdmissionMonitorResponseGroupsItemValues"
+          }
+        },
+        "required": [
+          "at",
+          "values"
+        ],
+        "type": "object"
+      },
+      "getTenantAdmissionMonitorResponseGroupsItemValues": {
+        "properties": {
+          "active": {
+            "anyOf": [
+              {
+                "type": "null"
+              },
+              {
+                "type": "number"
+              }
+            ]
+          },
+          "admitted": {
+            "anyOf": [
+              {
+                "type": "null"
+              },
+              {
+                "type": "number"
+              }
+            ]
+          },
+          "admittedPerSecond": {
+            "anyOf": [
+              {
+                "type": "null"
+              },
+              {
+                "type": "number"
+              }
+            ]
+          },
+          "attempts": {
+            "anyOf": [
+              {
+                "type": "null"
+              },
+              {
+                "type": "number"
+              }
+            ]
+          },
+          "attemptsPerSecond": {
+            "anyOf": [
+              {
+                "type": "null"
+              },
+              {
+                "type": "number"
+              }
+            ]
+          },
+          "cancelled": {
+            "anyOf": [
+              {
+                "type": "null"
+              },
+              {
+                "type": "number"
+              }
+            ]
+          },
+          "capacity": {
+            "anyOf": [
+              {
+                "type": "null"
+              },
+              {
+                "type": "number"
+              }
+            ]
+          },
+          "heldP95Ms": {
+            "anyOf": [
+              {
+                "type": "null"
+              },
+              {
+                "type": "number"
+              }
+            ]
+          },
+          "occupancyPercent": {
+            "anyOf": [
+              {
+                "type": "null"
+              },
+              {
+                "type": "number"
+              }
+            ]
+          },
+          "queued": {
+            "anyOf": [
+              {
+                "type": "null"
+              },
+              {
+                "type": "number"
+              }
+            ]
+          },
+          "rejected": {
+            "anyOf": [
+              {
+                "type": "null"
+              },
+              {
+                "type": "number"
+              }
+            ]
+          },
+          "rejectedPerSecond": {
+            "anyOf": [
+              {
+                "type": "null"
+              },
+              {
+                "type": "number"
+              }
+            ]
+          },
+          "waitP95Ms": {
+            "anyOf": [
+              {
+                "type": "null"
+              },
+              {
+                "type": "number"
+              }
+            ]
+          }
+        },
+        "required": [
+          "active",
+          "queued",
+          "capacity",
+          "occupancyPercent",
+          "attempts",
+          "admitted",
+          "rejected",
+          "cancelled",
+          "attemptsPerSecond",
+          "admittedPerSecond",
+          "rejectedPerSecond",
+          "waitP95Ms",
+          "heldP95Ms"
+        ],
+        "type": "object"
+      },
+      "getTenantAdmissionMonitorResponsePoolsItem": {
+        "properties": {
+          "groupId": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "groupId"
+        ],
+        "type": "object"
+      },
+      "getTenantAdmissionMonitorResponseSourcesItem": {
+        "properties": {
+          "ageMs": {
+            "anyOf": [
+              {
+                "type": "null"
+              },
+              {
+                "type": "number"
+              }
+            ]
+          },
+          "available": {
+            "type": "boolean"
+          },
+          "poolId": {
+            "type": "string"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "null"
+              },
+              {
+                "type": "string"
+              }
+            ]
+          },
+          "runnerId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "runnerId",
+          "poolId",
+          "available",
+          "reason",
+          "ageMs"
+        ],
+        "type": "object"
+      },
+      "getTenantGroupsByIdModelConfigurationResponse": {
+        "properties": {
+          "generation": {
+            "anyOf": [
+              {
+                "type": "null"
+              },
+              {
+                "type": "number"
+              }
+            ]
+          },
+          "grantId": {
+            "anyOf": [
+              {
+                "type": "null"
+              },
+              {
+                "type": "string"
+              }
+            ]
+          },
+          "groupId": {
+            "type": "string"
+          },
+          "mode": {
+            "enum": [
+              "blocked",
+              "legacy",
+              "scoped"
+            ],
+            "type": "string"
+          },
+          "modelIds": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "providerIds": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "sourceFingerprint": {
+            "anyOf": [
+              {
+                "type": "null"
+              },
+              {
+                "type": "string"
+              }
+            ]
+          },
+          "sourceRevisionId": {
+            "anyOf": [
+              {
+                "type": "null"
+              },
+              {
+                "type": "string"
+              }
+            ]
+          },
+          "updatedAt": {
+            "anyOf": [
+              {
+                "type": "null"
+              },
+              {
+                "type": "string"
+              }
+            ]
+          },
+          "version": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "groupId",
+          "mode",
+          "version",
+          "grantId",
+          "sourceRevisionId",
+          "sourceFingerprint",
+          "generation",
+          "modelIds",
+          "providerIds",
+          "updatedAt"
+        ],
+        "type": "object"
+      },
+      "getTenantGroupsResponse": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/getTenantGroupsResponseItemsItem"
+            },
+            "type": "array"
+          },
+          "pools": {
+            "items": {
+              "$ref": "#/components/schemas/getTenantGroupsResponsePoolsItem"
+            },
+            "type": "array"
+          },
+          "tenants": {
+            "items": {
+              "$ref": "#/components/schemas/getTenantGroupsResponseTenantsItem"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "items",
+          "tenants",
+          "pools"
+        ],
+        "type": "object"
+      },
+      "getTenantGroupsResponseItemsItem": {
+        "properties": {
+          "createdAt": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "isDefault": {
+            "type": "boolean"
+          },
+          "name": {
+            "type": "string"
+          },
+          "poolIds": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "tenantIds": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "updatedAt": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "isDefault",
+          "createdAt",
+          "updatedAt",
+          "tenantIds",
+          "poolIds"
+        ],
+        "type": "object"
+      },
+      "getTenantGroupsResponsePoolsItem": {
+        "properties": {
+          "desiredReplicas": {
+            "type": "number"
+          },
+          "groupId": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "isDefault": {
+            "type": "boolean"
+          },
+          "maxConcurrencyPerRunner": {
+            "type": "number"
+          },
+          "name": {
+            "type": "string"
+          },
+          "publicUrl": {
+            "anyOf": [
+              {
+                "type": "null"
+              },
+              {
+                "type": "string"
+              }
+            ]
+          },
+          "runtimeUrl": {
+            "anyOf": [
+              {
+                "type": "null"
+              },
+              {
+                "type": "string"
+              }
+            ]
+          },
+          "safeRpsPerRunner": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "groupId",
+          "isDefault",
+          "runtimeUrl",
+          "publicUrl",
+          "desiredReplicas",
+          "safeRpsPerRunner",
+          "maxConcurrencyPerRunner"
+        ],
+        "type": "object"
+      },
+      "getTenantGroupsResponseTenantsItem": {
+        "properties": {
+          "groupId": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "groupId"
+        ],
+        "type": "object"
+      },
+      "getTenantLoadLabStateResponse": {
+        "properties": {
+          "events": {
+            "items": {
+              "$ref": "#/components/schemas/getTenantLoadLabStateResponseEventsItem"
+            },
+            "type": "array"
+          },
+          "fakeLlm": {
+            "$ref": "#/components/schemas/getTenantLoadLabStateResponseFakeLlm"
+          },
+          "groups": {
+            "items": {
+              "$ref": "#/components/schemas/getTenantLoadLabStateResponseGroupsItem"
+            },
+            "type": "array"
+          },
+          "history": {
+            "items": {
+              "$ref": "#/components/schemas/getTenantLoadLabStateResponseHistoryItem"
+            },
+            "type": "array"
+          },
+          "limits": {
+            "$ref": "#/components/schemas/getTenantLoadLabStateResponseLimits"
+          },
+          "measurement": {
+            "$ref": "#/components/schemas/getTenantLoadLabStateResponseMeasurement"
+          },
+          "mode": {
+            "enum": [
+              "quota",
+              "shared"
+            ],
+            "type": "string"
+          },
+          "runner": {
+            "$ref": "#/components/schemas/getTenantLoadLabStateResponseRunner"
+          },
+          "running": {
+            "type": "boolean"
+          },
+          "sampleIntervalMs": {
+            "type": "number"
+          },
+          "tenants": {
+            "items": {
+              "$ref": "#/components/schemas/getTenantLoadLabStateResponseTenantsItem"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "running",
+          "mode",
+          "sampleIntervalMs",
+          "fakeLlm",
+          "runner",
+          "groups",
+          "tenants",
+          "history",
+          "events",
+          "limits",
+          "measurement"
+        ],
+        "type": "object"
+      },
+      "getTenantLoadLabStateResponseEventsItem": {
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          },
+          "tenantId": {
+            "enum": [
+              "tenantA",
+              "tenantB",
+              "tenantC"
+            ],
+            "type": "string"
+          },
+          "time": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "id",
+          "time",
+          "kind",
+          "message"
+        ],
+        "type": "object"
+      },
+      "getTenantLoadLabStateResponseFakeLlm": {
+        "properties": {
+          "active": {
+            "type": "number"
+          },
+          "capacity": {
+            "type": "number"
+          },
+          "completed": {
+            "type": "number"
+          },
+          "fixedLatencyMs": {
+            "type": "number"
+          },
+          "p95Ms": {
+            "anyOf": [
+              {
+                "type": "null"
+              },
+              {
+                "type": "number"
+              }
+            ]
+          }
+        },
+        "required": [
+          "fixedLatencyMs",
+          "p95Ms",
+          "active",
+          "capacity",
+          "completed"
+        ],
+        "type": "object"
+      },
+      "getTenantLoadLabStateResponseGroupsItem": {
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "poolIds": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "runner": {
+            "$ref": "#/components/schemas/getTenantLoadLabStateResponseGroupsItemRunner"
+          },
+          "tenantIds": {
+            "items": {
+              "enum": [
+                "tenantA",
+                "tenantB",
+                "tenantC"
+              ],
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "tenantIds",
+          "poolIds",
+          "runner"
+        ],
+        "type": "object"
+      },
+      "getTenantLoadLabStateResponseGroupsItemRunner": {
+        "properties": {
+          "capacity": {
+            "type": "number"
+          },
+          "cpuPercent": {
+            "type": "number"
+          },
+          "inflight": {
+            "type": "number"
+          },
+          "memoryMiB": {
+            "type": "number"
+          },
+          "metricsAvailable": {
+            "type": "boolean"
+          },
+          "queue": {
+            "type": "number"
+          },
+          "ready": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "ready",
+          "metricsAvailable",
+          "inflight",
+          "queue",
+          "capacity"
+        ],
+        "type": "object"
+      },
+      "getTenantLoadLabStateResponseHistoryItem": {
+        "properties": {
+          "groups": {
+            "$ref": "#/components/schemas/getTenantLoadLabStateResponseHistoryItemGroups"
+          },
+          "tenantA": {
+            "$ref": "#/components/schemas/getTenantLoadLabStateResponseHistoryItemTenantA"
+          },
+          "tenantB": {
+            "$ref": "#/components/schemas/getTenantLoadLabStateResponseHistoryItemTenantA"
+          },
+          "tenantC": {
+            "$ref": "#/components/schemas/getTenantLoadLabStateResponseHistoryItemTenantA"
+          },
+          "time": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "time",
+          "tenantA",
+          "tenantB",
+          "tenantC",
+          "groups"
+        ],
+        "type": "object"
+      },
+      "getTenantLoadLabStateResponseHistoryItemGroups": {
+        "additionalProperties": {
+          "$ref": "#/components/schemas/getTenantLoadLabStateResponseGroupsItemRunner"
+        },
+        "type": "object"
+      },
+      "getTenantLoadLabStateResponseHistoryItemTenantA": {
+        "properties": {
+          "completedRps": {
+            "type": "number"
+          },
+          "guardP95Ms": {
+            "anyOf": [
+              {
+                "type": "null"
+              },
+              {
+                "type": "number"
+              }
+            ]
+          },
+          "modelP95Ms": {
+            "anyOf": [
+              {
+                "type": "null"
+              },
+              {
+                "type": "number"
+              }
+            ]
+          },
+          "occupancyPercent": {
+            "type": "number"
+          },
+          "p95Ms": {
+            "anyOf": [
+              {
+                "type": "null"
+              },
+              {
+                "type": "number"
+              }
+            ]
+          },
+          "queueP95Ms": {
+            "anyOf": [
+              {
+                "type": "null"
+              },
+              {
+                "type": "number"
+              }
+            ]
+          }
+        },
+        "required": [
+          "occupancyPercent",
+          "p95Ms",
+          "guardP95Ms",
+          "modelP95Ms",
+          "completedRps",
+          "queueP95Ms"
+        ],
+        "type": "object"
+      },
+      "getTenantLoadLabStateResponseLimits": {
+        "properties": {
+          "maxInflight": {
+            "type": "number"
+          },
+          "maxRps": {
+            "type": "number"
+          },
+          "queueLimit": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "maxRps",
+          "maxInflight",
+          "queueLimit"
+        ],
+        "type": "object"
+      },
+      "getTenantLoadLabStateResponseMeasurement": {
+        "properties": {
+          "occupancyDefinition": {
+            "type": "string"
+          },
+          "quotaSimulation": {
+            "type": "boolean"
+          },
+          "runnerMetricsAvailable": {
+            "type": "boolean"
+          },
+          "runnerMetricsDefinition": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "occupancyDefinition",
+          "quotaSimulation",
+          "runnerMetricsAvailable",
+          "runnerMetricsDefinition"
+        ],
+        "type": "object"
+      },
+      "getTenantLoadLabStateResponseRunner": {
+        "properties": {
+          "capacity": {
+            "type": "number"
+          },
+          "cpuPercent": {
+            "type": "number"
+          },
+          "inflight": {
+            "type": "number"
+          },
+          "memoryMiB": {
+            "type": "number"
+          },
+          "queue": {
+            "type": "number"
+          },
+          "ready": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "ready",
+          "inflight",
+          "queue",
+          "capacity"
+        ],
+        "type": "object"
+      },
+      "getTenantLoadLabStateResponseTenantsItem": {
+        "properties": {
+          "blocked": {
+            "type": "number"
+          },
+          "color": {
+            "type": "string"
+          },
+          "completed": {
+            "type": "number"
+          },
+          "completedRps": {
+            "type": "number"
+          },
+          "errors": {
+            "type": "number"
+          },
+          "groupId": {
+            "type": "string"
+          },
+          "groupName": {
+            "type": "string"
+          },
+          "guardP95Ms": {
+            "anyOf": [
+              {
+                "type": "null"
+              },
+              {
+                "type": "number"
+              }
+            ]
+          },
+          "id": {
+            "enum": [
+              "tenantA",
+              "tenantB",
+              "tenantC"
+            ],
+            "type": "string"
+          },
+          "inflight": {
+            "type": "number"
+          },
+          "inputBlocked": {
+            "type": "number"
+          },
+          "modelP95Ms": {
+            "anyOf": [
+              {
+                "type": "null"
+              },
+              {
+                "type": "number"
+              }
+            ]
+          },
+          "name": {
+            "type": "string"
+          },
+          "occupancyPercent": {
+            "type": "number"
+          },
+          "offeredRps": {
+            "type": "number"
+          },
+          "outputBlocked": {
+            "type": "number"
+          },
+          "p50Ms": {
+            "anyOf": [
+              {
+                "type": "null"
+              },
+              {
+                "type": "number"
+              }
+            ]
+          },
+          "p95Ms": {
+            "anyOf": [
+              {
+                "type": "null"
+              },
+              {
+                "type": "number"
+              }
+            ]
+          },
+          "peakUntil": {
+            "anyOf": [
+              {
+                "type": "null"
+              },
+              {
+                "type": "number"
+              }
+            ]
+          },
+          "poolId": {
+            "type": "string"
+          },
+          "queueP95Ms": {
+            "anyOf": [
+              {
+                "type": "null"
+              },
+              {
+                "type": "number"
+              }
+            ]
+          },
+          "queued": {
+            "type": "number"
+          },
+          "slotBudget": {
+            "type": "number"
+          },
+          "transformed": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "color",
+          "slotBudget",
+          "groupId",
+          "groupName",
+          "poolId",
+          "inflight",
+          "queued",
+          "offeredRps",
+          "completedRps",
+          "occupancyPercent",
+          "p50Ms",
+          "p95Ms",
+          "guardP95Ms",
+          "modelP95Ms",
+          "queueP95Ms",
+          "errors",
+          "completed",
+          "peakUntil",
+          "blocked",
+          "inputBlocked",
+          "outputBlocked",
+          "transformed"
+        ],
+        "type": "object"
+      },
+      "getTenantsResponse": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/getTenantsResponseItemsItem"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "type": "object"
+      },
+      "getTenantsResponseItemsItem": {
+        "properties": {
+          "groupId": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "groupId"
+        ],
+        "type": "object"
+      },
       "getTestRunsByRunIdDeletionImpactResponse": {
         "properties": {
           "blockers": {
@@ -11830,7 +12976,7 @@
           },
           "versionReports": {
             "items": {
-              "$ref": "#/components/schemas/getGuardrailsResponseItemsItemLatestValidationRun"
+              "$ref": "#/components/schemas/getTestRunsResponseVersionReportsItem"
             },
             "type": "array"
           }
@@ -11844,6 +12990,156 @@
         "type": "object"
       },
       "getTestRunsResponseItemsItem": {
+        "properties": {
+          "candidateDigest": {
+            "anyOf": [
+              {
+                "type": "null"
+              },
+              {
+                "type": "string"
+              }
+            ]
+          },
+          "completedAt": {
+            "anyOf": [
+              {
+                "type": "null"
+              },
+              {
+                "format": "date-time",
+                "type": "string"
+              }
+            ]
+          },
+          "createdAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "createdBy": {
+            "anyOf": [
+              {
+                "type": "null"
+              },
+              {
+                "type": "string"
+              }
+            ]
+          },
+          "excludedCaseIds": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "failureReason": {
+            "anyOf": [
+              {
+                "type": "null"
+              },
+              {
+                "type": "string"
+              }
+            ]
+          },
+          "guardrailId": {
+            "type": "string"
+          },
+          "guardrailVersion": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "metrics": {
+            "$ref": "#/components/schemas/getGuardrailsResponseItemsItemLatestValidationRunMetrics"
+          },
+          "progress": {
+            "anyOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/getGuardrailsResponseItemsItemLatestValidationRunProgress"
+              }
+            ]
+          },
+          "runtimeFingerprint": {
+            "anyOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/getGuardrailsResponseItemsItemLatestValidationRunRuntimeFingerprint"
+              }
+            ]
+          },
+          "sourceDraftRevision": {
+            "type": "number"
+          },
+          "status": {
+            "enum": [
+              "failed",
+              "passed",
+              "queued",
+              "running"
+            ],
+            "type": "string"
+          },
+          "subject": {
+            "enum": [
+              "draft",
+              "version"
+            ],
+            "type": "string"
+          },
+          "testModelRules": {
+            "type": "boolean"
+          },
+          "testScope": {
+            "anyOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/getGuardrailsResponseItemsItemLatestValidationRunTestScope"
+              }
+            ]
+          },
+          "testSuiteDigest": {
+            "anyOf": [
+              {
+                "type": "null"
+              },
+              {
+                "type": "string"
+              }
+            ]
+          }
+        },
+        "required": [
+          "testModelRules",
+          "testScope",
+          "id",
+          "guardrailId",
+          "guardrailVersion",
+          "sourceDraftRevision",
+          "status",
+          "progress",
+          "metrics",
+          "excludedCaseIds",
+          "failureReason",
+          "candidateDigest",
+          "subject",
+          "testSuiteDigest",
+          "runtimeFingerprint",
+          "createdBy",
+          "createdAt",
+          "completedAt"
+        ],
+        "type": "object"
+      },
+      "getTestRunsResponseVersionReportsItem": {
         "properties": {
           "candidateDigest": {
             "anyOf": [
@@ -13089,6 +14385,9 @@
           "desiredReplicas": {
             "type": "number"
           },
+          "groupId": {
+            "type": "string"
+          },
           "id": {
             "type": "string"
           },
@@ -13101,6 +14400,26 @@
           "name": {
             "type": "string"
           },
+          "publicUrl": {
+            "anyOf": [
+              {
+                "type": "null"
+              },
+              {
+                "type": "string"
+              }
+            ]
+          },
+          "runtimeUrl": {
+            "anyOf": [
+              {
+                "type": "null"
+              },
+              {
+                "type": "string"
+              }
+            ]
+          },
           "safeRpsPerRunner": {
             "type": "number"
           },
@@ -13112,12 +14431,33 @@
         "required": [
           "id",
           "name",
+          "groupId",
+          "runtimeUrl",
+          "publicUrl",
           "isDefault",
           "desiredReplicas",
           "safeRpsPerRunner",
           "maxConcurrencyPerRunner",
           "createdAt",
           "updatedAt"
+        ],
+        "type": "object"
+      },
+      "patchTenantGroupsByIdParamId": {
+        "pattern": "^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$",
+        "type": "string"
+      },
+      "patchTenantGroupsByIdRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "name": {
+            "maxLength": 160,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "name"
         ],
         "type": "object"
       },
@@ -16236,6 +17576,7 @@
           "versionSummary",
           "copyOrigin",
           "draftConfig",
+          "excludedTestCaseIds",
           "latestValidationRun",
           "latestTestingReport",
           "testCaseCount",
@@ -16248,7 +17589,6 @@
           "deletedBy",
           "desiredGeneration",
           "draftRevision",
-          "excludedTestCaseIds",
           "id",
           "loggingLevel",
           "name",
@@ -20430,15 +21770,15 @@
           "name",
           "description",
           "draftRevision",
-          "draft",
           "deletedAt",
-          "rolloutError",
           "activeRevision",
           "activeDraftRevision",
-          "activeSnapshot",
           "desiredGeneration",
           "createdAt",
           "updatedAt",
+          "draft",
+          "activeSnapshot",
+          "rolloutError",
           "endpointIds",
           "rolloutStatus",
           "pendingChangeRequest",
@@ -21850,6 +23190,251 @@
         ],
         "type": "object"
       },
+      "postTenantGroupsByIdPoolsParamId": {
+        "pattern": "^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$",
+        "type": "string"
+      },
+      "postTenantGroupsByIdPoolsRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "pattern": "^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$",
+            "type": "string"
+          },
+          "name": {
+            "maxLength": 160,
+            "minLength": 1,
+            "type": "string"
+          },
+          "publicUrl": {
+            "anyOf": [
+              {
+                "format": "uri",
+                "type": "string",
+                "x-runtime-validation": "Additional runtime refinements apply; JSON Schema validation alone does not guarantee acceptance."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "runtimeUrl": {
+            "format": "uri",
+            "type": "string",
+            "x-runtime-validation": "Additional runtime refinements apply; JSON Schema validation alone does not guarantee acceptance."
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "runtimeUrl"
+        ],
+        "type": "object"
+      },
+      "postTenantGroupsByIdPoolsResponse": {
+        "properties": {
+          "desiredReplicas": {
+            "type": "number"
+          },
+          "generation": {
+            "type": "number"
+          },
+          "groupId": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "isDefault": {
+            "type": "boolean"
+          },
+          "maxConcurrencyPerRunner": {
+            "type": "number"
+          },
+          "name": {
+            "type": "string"
+          },
+          "publicUrl": {
+            "anyOf": [
+              {
+                "type": "null"
+              },
+              {
+                "type": "string"
+              }
+            ]
+          },
+          "runtimeUrl": {
+            "anyOf": [
+              {
+                "type": "null"
+              },
+              {
+                "type": "string"
+              }
+            ]
+          },
+          "safeRpsPerRunner": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "groupId",
+          "isDefault",
+          "runtimeUrl",
+          "publicUrl",
+          "desiredReplicas",
+          "safeRpsPerRunner",
+          "maxConcurrencyPerRunner",
+          "generation"
+        ],
+        "type": "object"
+      },
+      "postTenantGroupsRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "pattern": "^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$",
+            "type": "string"
+          },
+          "name": {
+            "maxLength": 160,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "type": "object"
+      },
+      "postTenantLoadLabControlRequest": {
+        "oneOf": [
+          {
+            "additionalProperties": false,
+            "properties": {
+              "action": {
+                "const": "start",
+                "type": "string"
+              }
+            },
+            "required": [
+              "action"
+            ],
+            "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "properties": {
+              "action": {
+                "const": "stop",
+                "type": "string"
+              }
+            },
+            "required": [
+              "action"
+            ],
+            "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "properties": {
+              "action": {
+                "const": "reset",
+                "type": "string"
+              }
+            },
+            "required": [
+              "action"
+            ],
+            "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "properties": {
+              "action": {
+                "const": "peak",
+                "type": "string"
+              },
+              "durationSeconds": {
+                "anyOf": [
+                  {
+                    "const": 15,
+                    "type": "number"
+                  },
+                  {
+                    "const": 30,
+                    "type": "number"
+                  },
+                  {
+                    "const": 60,
+                    "type": "number"
+                  }
+                ],
+                "default": 30
+              },
+              "tenantId": {
+                "enum": [
+                  "tenantA",
+                  "tenantB",
+                  "tenantC"
+                ],
+                "type": "string"
+              }
+            },
+            "required": [
+              "action",
+              "tenantId"
+            ],
+            "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "properties": {
+              "action": {
+                "const": "release",
+                "type": "string"
+              },
+              "tenantId": {
+                "enum": [
+                  "tenantA",
+                  "tenantB",
+                  "tenantC"
+                ],
+                "type": "string"
+              }
+            },
+            "required": [
+              "action",
+              "tenantId"
+            ],
+            "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "properties": {
+              "action": {
+                "const": "mode",
+                "type": "string"
+              },
+              "mode": {
+                "enum": [
+                  "shared",
+                  "quota"
+                ],
+                "type": "string"
+              }
+            },
+            "required": [
+              "action",
+              "mode"
+            ],
+            "type": "object"
+          }
+        ]
+      },
       "putModelConfigurationDraftAssignmentsByTargetParamTarget": {
         "enum": [
           "control_plane",
@@ -23259,20 +24844,307 @@
           "name",
           "description",
           "draftRevision",
-          "draft",
           "deletedAt",
-          "rolloutError",
           "activeRevision",
           "activeDraftRevision",
-          "activeSnapshot",
           "desiredGeneration",
           "createdAt",
           "updatedAt",
+          "draft",
+          "activeSnapshot",
+          "rolloutError",
           "endpointIds",
           "rolloutStatus",
           "pendingChangeRequest",
           "revertibleChangeRequest",
           "changed"
+        ],
+        "type": "object"
+      },
+      "putRunnerPoolsByIdConnectivityRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "publicUrl": {
+            "anyOf": [
+              {
+                "format": "uri",
+                "type": "string",
+                "x-runtime-validation": "Additional runtime refinements apply; JSON Schema validation alone does not guarantee acceptance."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "runtimeUrl": {
+            "anyOf": [
+              {
+                "format": "uri",
+                "type": "string",
+                "x-runtime-validation": "Additional runtime refinements apply; JSON Schema validation alone does not guarantee acceptance."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "runtimeUrl",
+          "publicUrl"
+        ],
+        "type": "object"
+      },
+      "putRunnerPoolsByIdConnectivityResponse": {
+        "properties": {
+          "desiredReplicas": {
+            "type": "number"
+          },
+          "generation": {
+            "type": "number"
+          },
+          "groupId": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "isDefault": {
+            "type": "boolean"
+          },
+          "maxConcurrencyPerRunner": {
+            "type": "number"
+          },
+          "name": {
+            "type": "string"
+          },
+          "publicUrl": {
+            "anyOf": [
+              {
+                "type": "null"
+              },
+              {
+                "type": "string"
+              }
+            ]
+          },
+          "runtimeUrl": {
+            "anyOf": [
+              {
+                "type": "null"
+              },
+              {
+                "type": "string"
+              }
+            ]
+          },
+          "safeRpsPerRunner": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "groupId",
+          "isDefault",
+          "runtimeUrl",
+          "publicUrl",
+          "desiredReplicas",
+          "safeRpsPerRunner",
+          "maxConcurrencyPerRunner",
+          "generation"
+        ],
+        "type": "object"
+      },
+      "putRunnerPoolsByIdGroupRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "expectedGroupId": {
+            "pattern": "^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$",
+            "type": "string"
+          },
+          "groupId": {
+            "pattern": "^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$",
+            "type": "string"
+          }
+        },
+        "required": [
+          "groupId",
+          "expectedGroupId"
+        ],
+        "type": "object"
+      },
+      "putRunnerPoolsByIdGroupResponse": {
+        "properties": {
+          "desiredReplicas": {
+            "type": "number"
+          },
+          "generation": {
+            "type": "number"
+          },
+          "groupId": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "isDefault": {
+            "type": "boolean"
+          },
+          "maxConcurrencyPerRunner": {
+            "type": "number"
+          },
+          "name": {
+            "type": "string"
+          },
+          "publicUrl": {
+            "anyOf": [
+              {
+                "type": "null"
+              },
+              {
+                "type": "string"
+              }
+            ]
+          },
+          "runtimeUrl": {
+            "anyOf": [
+              {
+                "type": "null"
+              },
+              {
+                "type": "string"
+              }
+            ]
+          },
+          "safeRpsPerRunner": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "groupId",
+          "isDefault",
+          "runtimeUrl",
+          "publicUrl",
+          "desiredReplicas",
+          "safeRpsPerRunner",
+          "maxConcurrencyPerRunner",
+          "generation"
+        ],
+        "type": "object"
+      },
+      "putTenantGroupsByIdModelConfigurationRequest": {
+        "oneOf": [
+          {
+            "additionalProperties": false,
+            "properties": {
+              "expectedSourceFingerprint": {
+                "pattern": "^[a-f0-9]{64}$",
+                "type": "string"
+              },
+              "expectedVersion": {
+                "maximum": 9007199254740991,
+                "minimum": 0,
+                "type": "integer"
+              },
+              "mode": {
+                "const": "scoped",
+                "type": "string"
+              },
+              "sourceRevisionId": {
+                "format": "uuid",
+                "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                "type": "string"
+              }
+            },
+            "required": [
+              "mode",
+              "expectedVersion",
+              "sourceRevisionId",
+              "expectedSourceFingerprint"
+            ],
+            "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "properties": {
+              "expectedVersion": {
+                "maximum": 9007199254740991,
+                "minimum": 0,
+                "type": "integer"
+              },
+              "mode": {
+                "const": "blocked",
+                "type": "string"
+              }
+            },
+            "required": [
+              "mode",
+              "expectedVersion"
+            ],
+            "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "properties": {
+              "expectedVersion": {
+                "maximum": 9007199254740991,
+                "minimum": 0,
+                "type": "integer"
+              },
+              "mode": {
+                "const": "legacy",
+                "type": "string"
+              }
+            },
+            "required": [
+              "mode",
+              "expectedVersion"
+            ],
+            "type": "object"
+          }
+        ]
+      },
+      "putTenantsByIdGroupRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "expectedGroupId": {
+            "pattern": "^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$",
+            "type": "string"
+          },
+          "groupId": {
+            "pattern": "^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$",
+            "type": "string"
+          }
+        },
+        "required": [
+          "groupId",
+          "expectedGroupId"
+        ],
+        "type": "object"
+      },
+      "putTenantsByIdGroupResponse": {
+        "properties": {
+          "generation": {
+            "type": "number"
+          },
+          "groupId": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "groupId",
+          "generation"
         ],
         "type": "object"
       }
@@ -23443,7 +25315,7 @@
         },
         "x-product-area": "Account",
         "x-retry-policy": "Repeat the same request; the response may reflect newer state or absence.",
-        "x-source": "server/http/app.ts#366"
+        "x-source": "server/http/app.ts#400"
       },
       "post": {
         "description": "Creates a resource or executes the named operation. A network failure does not prove that execution failed. Browser session only. Revocation is a no-op when already revoked. Creation returns the secret once; it cannot be recovered or transparently replayed. Browser session only. Personal access tokens cannot manage credentials. Ownership is taken from the authenticated session.",
@@ -23598,7 +25470,7 @@
         },
         "x-product-area": "Account",
         "x-retry-policy": "Do not automatically retry an uncertain write. Read its result or current resource first.",
-        "x-source": "server/http/app.ts#368"
+        "x-source": "server/http/app.ts#402"
       }
     },
     "/api/v1/account/access-tokens/{id}": {
@@ -23748,7 +25620,7 @@
         },
         "x-product-area": "Account",
         "x-retry-policy": "Repeat the same request; the response may reflect newer state or absence.",
-        "x-source": "server/http/app.ts#373"
+        "x-source": "server/http/app.ts#407"
       }
     },
     "/api/v1/account/identity": {
@@ -23888,7 +25760,7 @@
         },
         "x-product-area": "Account",
         "x-retry-policy": "Repeat the same request; the response may reflect newer state or absence.",
-        "x-source": "server/http/app.ts#377"
+        "x-source": "server/http/app.ts#411"
       }
     },
     "/api/v1/account/shareable-resources": {
@@ -24034,7 +25906,7 @@
         },
         "x-product-area": "Account",
         "x-retry-policy": "Repeat the same request; the response may reflect newer state or absence.",
-        "x-source": "server/http/app.ts#391"
+        "x-source": "server/http/app.ts#425"
       }
     },
     "/api/v1/account/shares": {
@@ -24180,7 +26052,7 @@
         },
         "x-product-area": "Account",
         "x-retry-policy": "Repeat the same request; the response may reflect newer state or absence.",
-        "x-source": "server/http/app.ts#393"
+        "x-source": "server/http/app.ts#427"
       },
       "post": {
         "description": "Creates a resource or executes the named operation. A network failure does not prove that execution failed. Tenant user browser session only. Read-only sharing grants are scoped to the authenticated tenant; personal access tokens cannot manage shares.",
@@ -24334,7 +26206,7 @@
         },
         "x-product-area": "Account",
         "x-retry-policy": "Do not automatically retry an uncertain write. Read its result or current resource first.",
-        "x-source": "server/http/app.ts#395"
+        "x-source": "server/http/app.ts#429"
       }
     },
     "/api/v1/account/shares/{id}": {
@@ -24483,7 +26355,7 @@
         },
         "x-product-area": "Account",
         "x-retry-policy": "Repeat the same request; the response may reflect newer state or absence.",
-        "x-source": "server/http/app.ts#399"
+        "x-source": "server/http/app.ts#433"
       }
     },
     "/api/v1/account/tenants": {
@@ -24629,7 +26501,7 @@
         },
         "x-product-area": "Account",
         "x-retry-policy": "Repeat the same request; the response may reflect newer state or absence.",
-        "x-source": "server/http/app.ts#389"
+        "x-source": "server/http/app.ts#423"
       }
     },
     "/api/v1/audit-events": {
@@ -24852,7 +26724,7 @@
         },
         "x-product-area": "Access & audit",
         "x-retry-policy": "Repeat the same request; the response may reflect newer state or absence.",
-        "x-source": "server/http/app.ts#1177",
+        "x-source": "server/http/app.ts#1285",
         "x-token-account-role": "admin",
         "x-token-permission": {
           "access": "read",
@@ -24988,7 +26860,7 @@
         },
         "x-product-area": "Guardrail Design",
         "x-retry-policy": "Repeat the same request; the response may reflect newer state or absence.",
-        "x-source": "server/http/app.ts#604",
+        "x-source": "server/http/app.ts#647",
         "x-token-account-role": "user",
         "x-token-permission": {
           "access": "read",
@@ -25156,7 +27028,7 @@
         },
         "x-product-area": "Guardrail Design",
         "x-retry-policy": "Do not automatically retry an uncertain write. Read its result or current resource first.",
-        "x-source": "server/http/app.ts#625",
+        "x-source": "server/http/app.ts#668",
         "x-token-account-role": "user",
         "x-token-permission": {
           "access": "write",
@@ -25301,7 +27173,7 @@
         },
         "x-product-area": "Guardrail Design",
         "x-retry-policy": "Do not automatically retry an uncertain write. Read its result or current resource first.",
-        "x-source": "server/http/app.ts#613",
+        "x-source": "server/http/app.ts#656",
         "x-token-account-role": "user",
         "x-token-permission": {
           "access": "write",
@@ -25446,7 +27318,7 @@
         },
         "x-product-area": "Guardrail Design",
         "x-retry-policy": "Do not automatically retry an uncertain write. Read its result or current resource first.",
-        "x-source": "server/http/app.ts#752",
+        "x-source": "server/http/app.ts#807",
         "x-token-account-role": "user",
         "x-token-permission": {
           "access": "write",
@@ -25555,7 +27427,7 @@
         },
         "x-product-area": "Platform Settings",
         "x-retry-policy": "Repeat the same request; the response may reflect newer state or absence.",
-        "x-source": "server/http/app.ts#270"
+        "x-source": "server/http/app.ts#304"
       }
     },
     "/api/v1/endpoints": {
@@ -25686,7 +27558,7 @@
         },
         "x-product-area": "Integration",
         "x-retry-policy": "Repeat the same request; the response may reflect newer state or absence.",
-        "x-source": "server/http/app.ts#914",
+        "x-source": "server/http/app.ts#969",
         "x-token-account-role": "user",
         "x-token-permission": {
           "access": "read",
@@ -25829,7 +27701,7 @@
         },
         "x-product-area": "Integration",
         "x-retry-policy": "Do not automatically retry an uncertain write. Read its result or current resource first.",
-        "x-source": "server/http/app.ts#921",
+        "x-source": "server/http/app.ts#973",
         "x-token-account-role": "user",
         "x-token-permission": {
           "access": "write",
@@ -25977,7 +27849,7 @@
         },
         "x-product-area": "Integration",
         "x-retry-policy": "Repeat the same request; the response may reflect newer state or absence.",
-        "x-source": "server/http/app.ts#957",
+        "x-source": "server/http/app.ts#1010",
         "x-token-account-role": "user",
         "x-token-permission": {
           "access": "write",
@@ -26002,7 +27874,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/getEndpointsByIdResponse"
+                  "$ref": "#/components/schemas/getEndpointsResponseItemsItem"
                 }
               }
             },
@@ -26121,7 +27993,7 @@
         },
         "x-product-area": "Integration",
         "x-retry-policy": "Repeat the same request; the response may reflect newer state or absence.",
-        "x-source": "server/http/app.ts#926",
+        "x-source": "server/http/app.ts#978",
         "x-token-account-role": "user",
         "x-token-permission": {
           "access": "read",
@@ -26156,7 +28028,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/getEndpointsByIdResponse"
+                  "$ref": "#/components/schemas/getEndpointsResponseItemsItem"
                 }
               }
             },
@@ -26274,7 +28146,7 @@
         },
         "x-product-area": "Integration",
         "x-retry-policy": "Do not automatically retry an uncertain write. Read its result or current resource first.",
-        "x-source": "server/http/app.ts#929",
+        "x-source": "server/http/app.ts#981",
         "x-token-account-role": "user",
         "x-token-permission": {
           "access": "write",
@@ -26419,7 +28291,7 @@
         },
         "x-product-area": "Integration",
         "x-retry-policy": "Do not automatically retry an uncertain write. Read its result or current resource first.",
-        "x-source": "server/http/app.ts#938",
+        "x-source": "server/http/app.ts#990",
         "x-token-account-role": "user",
         "x-token-permission": {
           "access": "write",
@@ -26565,7 +28437,7 @@
         },
         "x-product-area": "Integration",
         "x-retry-policy": "Repeat the same request; the response may reflect newer state or absence.",
-        "x-source": "server/http/app.ts#945",
+        "x-source": "server/http/app.ts#997",
         "x-token-account-role": "user",
         "x-token-permission": {
           "access": "write",
@@ -26711,7 +28583,7 @@
         },
         "x-product-area": "Integration",
         "x-retry-policy": "Repeat the same request; the response may reflect newer state or absence.",
-        "x-source": "server/http/app.ts#954",
+        "x-source": "server/http/app.ts#1007",
         "x-token-account-role": "user",
         "x-token-permission": {
           "access": "read",
@@ -26847,7 +28719,7 @@
         },
         "x-product-area": "Guardrail Design",
         "x-retry-policy": "Repeat the same request; the response may reflect newer state or absence.",
-        "x-source": "server/http/app.ts#525",
+        "x-source": "server/http/app.ts#568",
         "x-token-account-role": "user",
         "x-token-permission": {
           "access": "read",
@@ -27002,7 +28874,7 @@
         },
         "x-product-area": "Guardrail Design",
         "x-retry-policy": "Uploading the same bytes again returns the same packageId.",
-        "x-source": "server/http/app.ts#771",
+        "x-source": "server/http/app.ts#826",
         "x-token-account-role": "user",
         "x-token-permission": {
           "access": "write",
@@ -27148,7 +29020,7 @@
         },
         "x-product-area": "Guardrail Design",
         "x-retry-policy": "Repeat the same request; the response may reflect newer state or absence.",
-        "x-source": "server/http/app.ts#777",
+        "x-source": "server/http/app.ts#832",
         "x-token-account-role": "user",
         "x-token-permission": {
           "access": "read",
@@ -27303,7 +29175,7 @@
         },
         "x-product-area": "Guardrail Design",
         "x-retry-policy": "Repeating the import reports already-imported versions as existing.",
-        "x-source": "server/http/app.ts#780",
+        "x-source": "server/http/app.ts#835",
         "x-token-account-role": "user",
         "x-token-permission": {
           "access": "write",
@@ -27439,7 +29311,7 @@
         },
         "x-product-area": "Guardrail Design",
         "x-retry-policy": "Repeat the same request; the response may reflect newer state or absence.",
-        "x-source": "server/http/app.ts#552",
+        "x-source": "server/http/app.ts#595",
         "x-token-account-role": "user",
         "x-token-permission": {
           "access": "read",
@@ -27575,7 +29447,7 @@
         },
         "x-product-area": "Guardrail Design",
         "x-retry-policy": "Repeat the same request; the response may reflect newer state or absence.",
-        "x-source": "server/http/app.ts#646",
+        "x-source": "server/http/app.ts#689",
         "x-token-account-role": "user",
         "x-token-permission": {
           "access": "read",
@@ -27718,7 +29590,7 @@
         },
         "x-product-area": "Guardrail Design",
         "x-retry-policy": "Do not automatically retry an uncertain write. Read its result or current resource first.",
-        "x-source": "server/http/app.ts#756",
+        "x-source": "server/http/app.ts#811",
         "x-token-account-role": "user",
         "x-token-permission": {
           "access": "write",
@@ -27864,7 +29736,7 @@
         },
         "x-product-area": "Guardrail Design",
         "x-retry-policy": "Repeat the same request; the response may reflect newer state or absence.",
-        "x-source": "server/http/app.ts#868",
+        "x-source": "server/http/app.ts#923",
         "x-token-account-role": "user",
         "x-token-permission": {
           "access": "read",
@@ -28017,7 +29889,7 @@
         },
         "x-product-area": "Guardrail Design",
         "x-retry-policy": "Do not automatically retry an uncertain write. Read its result or current resource first.",
-        "x-source": "server/http/app.ts#873",
+        "x-source": "server/http/app.ts#928",
         "x-token-account-role": "user",
         "x-token-permission": {
           "access": "write",
@@ -28163,7 +30035,7 @@
         },
         "x-product-area": "Guardrail Design",
         "x-retry-policy": "Repeat the same request; the response may reflect newer state or absence.",
-        "x-source": "server/http/app.ts#877",
+        "x-source": "server/http/app.ts#932",
         "x-token-account-role": "user",
         "x-token-permission": {
           "access": "write",
@@ -28319,7 +30191,7 @@
         },
         "x-product-area": "Guardrail Design",
         "x-retry-policy": "Do not automatically retry an uncertain write. Read its result or current resource first.",
-        "x-source": "server/http/app.ts#903",
+        "x-source": "server/http/app.ts#958",
         "x-token-account-role": "user",
         "x-token-permission": {
           "access": "write",
@@ -28467,7 +30339,7 @@
         },
         "x-product-area": "Guardrail Design",
         "x-retry-policy": "Repeat the same request; the response may reflect newer state or absence.",
-        "x-source": "server/http/app.ts#861",
+        "x-source": "server/http/app.ts#916",
         "x-token-account-role": "user",
         "x-token-permission": {
           "access": "write",
@@ -28475,7 +30347,7 @@
         }
       },
       "get": {
-        "description": "Reads current state without creating resources or advancing a lifecycle. Requires guardrails:read for personal access tokens. Allowed account roles: admin, user. Token access is capped by the authenticated account role and tenant ownership or explicit sharing.",
+        "description": "Reads current state without creating resources or advancing a lifecycle. A Guardrail share does not grant access to its referenced Policies. Version policyContentAccessible=false indicates that Policy-derived plans, compiled files, inspection and test evidence are withheld because an independent Policy read grant or matching frozen provenance is missing. Requires guardrails:read for personal access tokens. Allowed account roles: admin, user. Token access is capped by the authenticated account role and tenant ownership or explicit sharing.",
         "operationId": "getGuardrailsById",
         "parameters": [
           {
@@ -28611,7 +30483,7 @@
         },
         "x-product-area": "Guardrail Design",
         "x-retry-policy": "Repeat the same request; the response may reflect newer state or absence.",
-        "x-source": "server/http/app.ts#760",
+        "x-source": "server/http/app.ts#815",
         "x-token-account-role": "user",
         "x-token-permission": {
           "access": "read",
@@ -28764,7 +30636,7 @@
         },
         "x-product-area": "Guardrail Design",
         "x-retry-policy": "Do not automatically retry an uncertain write. Read its result or current resource first.",
-        "x-source": "server/http/app.ts#792",
+        "x-source": "server/http/app.ts#847",
         "x-token-account-role": "user",
         "x-token-permission": {
           "access": "write",
@@ -28910,7 +30782,7 @@
         },
         "x-product-area": "Guardrail Design",
         "x-retry-policy": "Repeat the same request; the response may reflect newer state or absence.",
-        "x-source": "server/http/app.ts#858",
+        "x-source": "server/http/app.ts#913",
         "x-token-account-role": "user",
         "x-token-permission": {
           "access": "read",
@@ -29065,7 +30937,7 @@
         },
         "x-product-area": "Guardrail Design",
         "x-retry-policy": "Do not automatically retry an uncertain write. Read its result or current resource first.",
-        "x-source": "server/http/app.ts#809",
+        "x-source": "server/http/app.ts#864",
         "x-token-account-role": "user",
         "x-token-permission": {
           "access": "write",
@@ -29211,7 +31083,7 @@
         },
         "x-product-area": "Guardrail Design",
         "x-retry-policy": "Repeat the same request; the response may reflect newer state or absence.",
-        "x-source": "server/http/app.ts#806",
+        "x-source": "server/http/app.ts#861",
         "x-token-account-role": "user",
         "x-token-permission": {
           "access": "read",
@@ -29373,7 +31245,7 @@
         },
         "x-product-area": "Guardrail Design",
         "x-retry-policy": "Repeat the original key and body; do not create a new key merely because the response was lost.",
-        "x-source": "server/http/app.ts#787",
+        "x-source": "server/http/app.ts#842",
         "x-token-account-role": "user",
         "x-token-permission": {
           "access": "write",
@@ -29519,7 +31391,7 @@
         },
         "x-product-area": "Guardrail Design",
         "x-retry-policy": "Repeat the same request; the response may reflect newer state or absence.",
-        "x-source": "server/http/app.ts#844",
+        "x-source": "server/http/app.ts#899",
         "x-token-account-role": "user",
         "x-token-permission": {
           "access": "read",
@@ -29672,7 +31544,7 @@
         },
         "x-product-area": "Guardrail Design",
         "x-retry-policy": "Do not automatically retry an uncertain write. Read its result or current resource first.",
-        "x-source": "server/http/app.ts#847",
+        "x-source": "server/http/app.ts#902",
         "x-token-account-role": "user",
         "x-token-permission": {
           "access": "write",
@@ -29827,7 +31699,7 @@
         },
         "x-product-area": "Guardrail Design",
         "x-retry-policy": "Repeat the same request; the response may reflect newer state or absence.",
-        "x-source": "server/http/app.ts#763",
+        "x-source": "server/http/app.ts#818",
         "x-token-account-role": "user",
         "x-token-permission": {
           "access": "read",
@@ -29973,7 +31845,7 @@
         },
         "x-product-area": "Guardrail Design",
         "x-retry-policy": "Repeat the same request; the response may reflect newer state or absence.",
-        "x-source": "server/http/app.ts#834",
+        "x-source": "server/http/app.ts#889",
         "x-token-account-role": "user",
         "x-token-permission": {
           "access": "read",
@@ -30126,7 +31998,7 @@
         },
         "x-product-area": "Guardrail Design",
         "x-retry-policy": "Do not automatically retry an uncertain write. Read its result or current resource first.",
-        "x-source": "server/http/app.ts#837",
+        "x-source": "server/http/app.ts#892",
         "x-token-account-role": "user",
         "x-token-permission": {
           "access": "write",
@@ -30289,7 +32161,7 @@
         },
         "x-product-area": "Guardrail Design",
         "x-retry-policy": "Do not automatically retry an uncertain write. Read its result or current resource first.",
-        "x-source": "server/http/app.ts#798",
+        "x-source": "server/http/app.ts#853",
         "x-token-account-role": "user",
         "x-token-permission": {
           "access": "write",
@@ -30444,7 +32316,7 @@
         },
         "x-product-area": "Guardrail Design",
         "x-retry-policy": "Do not automatically retry an uncertain write. Read its result or current resource first.",
-        "x-source": "server/http/app.ts#881",
+        "x-source": "server/http/app.ts#936",
         "x-token-account-role": "user",
         "x-token-permission": {
           "access": "write",
@@ -30618,7 +32490,7 @@
         },
         "x-product-area": "Guardrail Design",
         "x-retry-policy": "Repeat the same request; the response may reflect newer state or absence.",
-        "x-source": "server/http/app.ts#414",
+        "x-source": "server/http/app.ts#448",
         "x-token-account-role": "user",
         "x-token-permission": {
           "access": "read",
@@ -30764,7 +32636,7 @@
         },
         "x-product-area": "Guardrail Design",
         "x-retry-policy": "Repeat the same request; the response may reflect newer state or absence.",
-        "x-source": "server/http/app.ts#830",
+        "x-source": "server/http/app.ts#885",
         "x-token-account-role": "user",
         "x-token-permission": {
           "access": "write",
@@ -30918,7 +32790,7 @@
         },
         "x-product-area": "Guardrail Design",
         "x-retry-policy": "Repeat the same request; the response may reflect newer state or absence.",
-        "x-source": "server/http/app.ts#827",
+        "x-source": "server/http/app.ts#882",
         "x-token-account-role": "user",
         "x-token-permission": {
           "access": "read",
@@ -31072,7 +32944,7 @@
         },
         "x-product-area": "Guardrail Design",
         "x-retry-policy": "Do not automatically retry an uncertain write. Read its result or current resource first.",
-        "x-source": "server/http/app.ts#784",
+        "x-source": "server/http/app.ts#839",
         "x-token-account-role": "user",
         "x-token-permission": {
           "access": "write",
@@ -31226,7 +33098,7 @@
         },
         "x-product-area": "Guardrail Design",
         "x-retry-policy": "Do not automatically retry an uncertain write. Read its result or current resource first.",
-        "x-source": "server/http/app.ts#813",
+        "x-source": "server/http/app.ts#868",
         "x-token-account-role": "user",
         "x-token-permission": {
           "access": "write",
@@ -31390,7 +33262,7 @@
         },
         "x-product-area": "Guardrail Design",
         "x-retry-policy": "Do not automatically retry an uncertain write. Read its result or current resource first.",
-        "x-source": "server/http/app.ts#818",
+        "x-source": "server/http/app.ts#873",
         "x-token-account-role": "user",
         "x-token-permission": {
           "access": "write",
@@ -31400,7 +33272,7 @@
     },
     "/api/v1/guardrails/{id}/versions/{version}/test-suite": {
       "get": {
-        "description": "Reads current state without creating resources or advancing a lifecycle. A version is defined by its Policies and its Test Cases. These are the exact cases the passing test run executed, frozen when the version was published, with their expected decisions; they travel with the version and never change. recorded is false for a version published before suites were frozen. Requires guardrails:read for personal access tokens. Allowed account roles: admin, user. Token access is capped by the authenticated account role and tenant ownership or explicit sharing.",
+        "description": "Reads current state without creating resources or advancing a lifecycle. Frozen Policy-derived cases require independent read access to the exact Policy versions; unknown provenance or missing access returns 404. A version is defined by its Policies and its Test Cases. These are the exact cases the passing test run executed, frozen when the version was published, with their expected decisions; they travel with the version and never change. recorded is false for a version published before suites were frozen. Requires guardrails:read for personal access tokens. Allowed account roles: admin, user. Token access is capped by the authenticated account role and tenant ownership or explicit sharing.",
         "operationId": "getGuardrailsByIdVersionsByVersionTestSuite",
         "parameters": [
           {
@@ -31544,7 +33416,7 @@
         },
         "x-product-area": "Guardrail Design",
         "x-retry-policy": "Repeat the same request; the response may reflect newer state or absence.",
-        "x-source": "server/http/app.ts#824",
+        "x-source": "server/http/app.ts#879",
         "x-token-account-role": "user",
         "x-token-permission": {
           "access": "read",
@@ -31680,7 +33552,7 @@
         },
         "x-product-area": "Platform Settings",
         "x-retry-policy": "Repeat the same request; the response may reflect newer state or absence.",
-        "x-source": "server/http/app.ts#419",
+        "x-source": "server/http/app.ts#453",
         "x-token-account-role": "user",
         "x-token-permission": {
           "access": "read",
@@ -31835,7 +33707,7 @@
         },
         "x-product-area": "Platform Settings",
         "x-retry-policy": "Do not automatically retry an uncertain write. Read its result or current resource first.",
-        "x-source": "server/http/app.ts#512",
+        "x-source": "server/http/app.ts#546",
         "x-token-account-role": "admin",
         "x-token-permission": {
           "access": "write",
@@ -31980,7 +33852,7 @@
         },
         "x-product-area": "Platform Settings",
         "x-retry-policy": "Do not automatically retry an uncertain write. Read its result or current resource first.",
-        "x-source": "server/http/app.ts#482",
+        "x-source": "server/http/app.ts#516",
         "x-token-account-role": "admin",
         "x-token-permission": {
           "access": "write",
@@ -32135,7 +34007,7 @@
         },
         "x-product-area": "Platform Settings",
         "x-retry-policy": "Do not automatically retry an uncertain write. Read its result or current resource first.",
-        "x-source": "server/http/app.ts#486",
+        "x-source": "server/http/app.ts#520",
         "x-token-account-role": "admin",
         "x-token-permission": {
           "access": "write",
@@ -32290,7 +34162,7 @@
         },
         "x-product-area": "Platform Settings",
         "x-retry-policy": "Do not automatically retry an uncertain write. Read its result or current resource first.",
-        "x-source": "server/http/app.ts#497",
+        "x-source": "server/http/app.ts#531",
         "x-token-account-role": "admin",
         "x-token-permission": {
           "access": "write",
@@ -32443,7 +34315,7 @@
         },
         "x-product-area": "Platform Settings",
         "x-retry-policy": "Repeat the same request; the response may reflect newer state or absence.",
-        "x-source": "server/http/app.ts#503",
+        "x-source": "server/http/app.ts#537",
         "x-token-account-role": "admin",
         "x-token-permission": {
           "access": "read",
@@ -32588,7 +34460,7 @@
         },
         "x-product-area": "Platform Settings",
         "x-retry-policy": "Do not automatically retry an uncertain write. Read its result or current resource first.",
-        "x-source": "server/http/app.ts#492",
+        "x-source": "server/http/app.ts#526",
         "x-token-account-role": "admin",
         "x-token-permission": {
           "access": "write",
@@ -32723,7 +34595,7 @@
         },
         "x-product-area": "Platform Settings",
         "x-retry-policy": "Do not automatically retry an uncertain write. Read its result or current resource first.",
-        "x-source": "server/http/app.ts#508",
+        "x-source": "server/http/app.ts#542",
         "x-token-account-role": "admin",
         "x-token-permission": {
           "access": "write",
@@ -32858,7 +34730,7 @@
         },
         "x-product-area": "Platform Settings",
         "x-retry-policy": "Repeat the same request; the response may reflect newer state or absence.",
-        "x-source": "server/http/app.ts#405",
+        "x-source": "server/http/app.ts#439",
         "x-token-account-role": "admin",
         "x-token-permission": {
           "access": "read",
@@ -33005,7 +34877,7 @@
         },
         "x-product-area": "Platform Settings",
         "x-retry-policy": "Repeat the same request; the response may reflect newer state or absence.",
-        "x-source": "server/http/app.ts#406",
+        "x-source": "server/http/app.ts#440",
         "x-token-account-role": "admin",
         "x-token-permission": {
           "access": "read",
@@ -33150,7 +35022,7 @@
         },
         "x-product-area": "Platform Settings",
         "x-retry-policy": "Do not automatically retry an uncertain write. Read its result or current resource first.",
-        "x-source": "server/http/app.ts#431",
+        "x-source": "server/http/app.ts#465",
         "x-token-account-role": "admin",
         "x-token-permission": {
           "access": "write",
@@ -33295,7 +35167,7 @@
         },
         "x-product-area": "Platform Settings",
         "x-retry-policy": "Do not automatically retry an uncertain write. Read its result or current resource first.",
-        "x-source": "server/http/app.ts#435",
+        "x-source": "server/http/app.ts#469",
         "x-token-account-role": "admin",
         "x-token-permission": {
           "access": "write",
@@ -33434,7 +35306,7 @@
         },
         "x-product-area": "Platform Settings",
         "x-retry-policy": "Repeat the same request; the response may reflect newer state or absence.",
-        "x-source": "server/http/app.ts#452",
+        "x-source": "server/http/app.ts#486",
         "x-token-account-role": "user",
         "x-token-permission": {
           "access": "read",
@@ -33577,7 +35449,7 @@
         },
         "x-product-area": "Platform Settings",
         "x-retry-policy": "Do not automatically retry an uncertain write. Read its result or current resource first.",
-        "x-source": "server/http/app.ts#423",
+        "x-source": "server/http/app.ts#457",
         "x-token-account-role": "admin",
         "x-token-permission": {
           "access": "write",
@@ -33715,7 +35587,7 @@
         },
         "x-product-area": "Platform Settings",
         "x-retry-policy": "Repeat the same request; the response may reflect newer state or absence.",
-        "x-source": "server/http/app.ts#447",
+        "x-source": "server/http/app.ts#481",
         "x-token-account-role": "admin",
         "x-token-permission": {
           "access": "write",
@@ -33868,7 +35740,7 @@
         },
         "x-product-area": "Platform Settings",
         "x-retry-policy": "Do not automatically retry an uncertain write. Read its result or current resource first.",
-        "x-source": "server/http/app.ts#427",
+        "x-source": "server/http/app.ts#461",
         "x-token-account-role": "admin",
         "x-token-permission": {
           "access": "write",
@@ -34013,7 +35885,7 @@
         },
         "x-product-area": "Platform Settings",
         "x-retry-policy": "Do not automatically retry an uncertain write. Read its result or current resource first.",
-        "x-source": "server/http/app.ts#439",
+        "x-source": "server/http/app.ts#473",
         "x-token-account-role": "admin",
         "x-token-permission": {
           "access": "write",
@@ -34158,7 +36030,7 @@
         },
         "x-product-area": "Platform Settings",
         "x-retry-policy": "Do not automatically retry an uncertain write. Read its result or current resource first.",
-        "x-source": "server/http/app.ts#443",
+        "x-source": "server/http/app.ts#477",
         "x-token-account-role": "admin",
         "x-token-permission": {
           "access": "write",
@@ -34297,7 +36169,7 @@
         },
         "x-product-area": "Platform Settings",
         "x-retry-policy": "Repeat the same request; the response may reflect newer state or absence.",
-        "x-source": "server/http/app.ts#456",
+        "x-source": "server/http/app.ts#490",
         "x-token-account-role": "user",
         "x-token-permission": {
           "access": "read",
@@ -34441,7 +36313,7 @@
         },
         "x-product-area": "Platform Settings",
         "x-retry-policy": "Do not automatically retry an uncertain write. Read its result or current resource first.",
-        "x-source": "server/http/app.ts#461",
+        "x-source": "server/http/app.ts#495",
         "x-token-account-role": "user",
         "x-token-permission": {
           "access": "write",
@@ -34580,7 +36452,7 @@
         },
         "x-product-area": "Platform Settings",
         "x-retry-policy": "Repeat the same request; the response may reflect newer state or absence.",
-        "x-source": "server/http/app.ts#477",
+        "x-source": "server/http/app.ts#511",
         "x-token-account-role": "user",
         "x-token-permission": {
           "access": "write",
@@ -34726,7 +36598,7 @@
         },
         "x-product-area": "Platform Settings",
         "x-retry-policy": "Do not automatically retry an uncertain write. Read its result or current resource first.",
-        "x-source": "server/http/app.ts#465",
+        "x-source": "server/http/app.ts#499",
         "x-token-account-role": "user",
         "x-token-permission": {
           "access": "write",
@@ -34872,7 +36744,7 @@
         },
         "x-product-area": "Platform Settings",
         "x-retry-policy": "Do not automatically retry an uncertain write. Read its result or current resource first.",
-        "x-source": "server/http/app.ts#469",
+        "x-source": "server/http/app.ts#503",
         "x-token-account-role": "user",
         "x-token-permission": {
           "access": "write",
@@ -35027,7 +36899,7 @@
         },
         "x-product-area": "Platform Settings",
         "x-retry-policy": "Do not automatically retry an uncertain write. Read its result or current resource first.",
-        "x-source": "server/http/app.ts#410",
+        "x-source": "server/http/app.ts#444",
         "x-token-account-role": "admin",
         "x-token-permission": {
           "access": "write",
@@ -35183,7 +37055,7 @@
         },
         "x-product-area": "Platform Settings",
         "x-retry-policy": "Do not automatically retry an uncertain write. Read its result or current resource first.",
-        "x-source": "server/http/app.ts#473",
+        "x-source": "server/http/app.ts#507",
         "x-token-account-role": "user",
         "x-token-permission": {
           "access": "write",
@@ -35345,7 +37217,7 @@
         },
         "x-product-area": "Guardrail Design",
         "x-retry-policy": "Do not automatically retry an uncertain write. Read its result or current resource first.",
-        "x-source": "server/http/app.ts#686",
+        "x-source": "server/http/app.ts#731",
         "x-token-account-role": "user",
         "x-token-permission": {
           "access": "write",
@@ -35490,7 +37362,7 @@
         },
         "x-product-area": "Guardrail Design",
         "x-retry-policy": "Do not automatically retry an uncertain write. Read its result or current resource first.",
-        "x-source": "server/http/app.ts#652",
+        "x-source": "server/http/app.ts#695",
         "x-token-account-role": "user",
         "x-token-permission": {
           "access": "write",
@@ -35652,7 +37524,7 @@
         },
         "x-product-area": "Guardrail Design",
         "x-retry-policy": "Do not automatically retry an uncertain write. Read its result or current resource first.",
-        "x-source": "server/http/app.ts#721",
+        "x-source": "server/http/app.ts#773",
         "x-token-account-role": "user",
         "x-token-permission": {
           "access": "write",
@@ -35788,7 +37660,7 @@
         },
         "x-product-area": "Guardrail Design",
         "x-retry-policy": "Repeat the same request; the response may reflect newer state or absence.",
-        "x-source": "server/http/app.ts#647",
+        "x-source": "server/http/app.ts#690",
         "x-token-account-role": "user",
         "x-token-permission": {
           "access": "read",
@@ -35940,7 +37812,7 @@
         },
         "x-product-area": "Guardrail Design",
         "x-retry-policy": "Simulation may repeat. Execution can incur model work; inspect the result before retrying.",
-        "x-source": "server/http/app.ts#1092",
+        "x-source": "server/http/app.ts#1200",
         "x-token-account-role": "user",
         "x-token-permission": {
           "access": "write",
@@ -36076,7 +37948,7 @@
         },
         "x-product-area": "Guardrail Design",
         "x-retry-policy": "Repeat the same request; the response may reflect newer state or absence.",
-        "x-source": "server/http/app.ts#548",
+        "x-source": "server/http/app.ts#591",
         "x-token-account-role": "user",
         "x-token-permission": {
           "access": "read",
@@ -36219,7 +38091,7 @@
         },
         "x-product-area": "Guardrail Design",
         "x-retry-policy": "Do not automatically retry an uncertain write. Read its result or current resource first.",
-        "x-source": "server/http/app.ts#563",
+        "x-source": "server/http/app.ts#606",
         "x-token-account-role": "user",
         "x-token-permission": {
           "access": "write",
@@ -36357,7 +38229,7 @@
         },
         "x-product-area": "Guardrail Design",
         "x-retry-policy": "Repeat the same request; the response may reflect newer state or absence.",
-        "x-source": "server/http/app.ts#571",
+        "x-source": "server/http/app.ts#614",
         "x-token-account-role": "user",
         "x-token-permission": {
           "access": "write",
@@ -36508,7 +38380,7 @@
         },
         "x-product-area": "Guardrail Design",
         "x-retry-policy": "Repeat the same request; the response may reflect newer state or absence.",
-        "x-source": "server/http/app.ts#562",
+        "x-source": "server/http/app.ts#605",
         "x-token-account-role": "user",
         "x-token-permission": {
           "access": "read",
@@ -36661,7 +38533,7 @@
         },
         "x-product-area": "Guardrail Design",
         "x-retry-policy": "Do not automatically retry an uncertain write. Read its result or current resource first.",
-        "x-source": "server/http/app.ts#567",
+        "x-source": "server/http/app.ts#610",
         "x-token-account-role": "user",
         "x-token-permission": {
           "access": "write",
@@ -36807,7 +38679,7 @@
         },
         "x-product-area": "Guardrail Design",
         "x-retry-policy": "Repeat the same request; the response may reflect newer state or absence.",
-        "x-source": "server/http/app.ts#531",
+        "x-source": "server/http/app.ts#574",
         "x-token-account-role": "user",
         "x-token-permission": {
           "access": "read",
@@ -36960,7 +38832,7 @@
         },
         "x-product-area": "Guardrail Design",
         "x-retry-policy": "Do not automatically retry an uncertain write. Read its result or current resource first.",
-        "x-source": "server/http/app.ts#532",
+        "x-source": "server/http/app.ts#575",
         "x-token-account-role": "user",
         "x-token-permission": {
           "access": "write",
@@ -37115,7 +38987,7 @@
         },
         "x-product-area": "Guardrail Design",
         "x-retry-policy": "Do not automatically retry an uncertain write. Read its result or current resource first.",
-        "x-source": "server/http/app.ts#544",
+        "x-source": "server/http/app.ts#587",
         "x-token-account-role": "user",
         "x-token-permission": {
           "access": "write",
@@ -37260,7 +39132,7 @@
         },
         "x-product-area": "Guardrail Design",
         "x-retry-policy": "Do not automatically retry an uncertain write. Read its result or current resource first.",
-        "x-source": "server/http/app.ts#537",
+        "x-source": "server/http/app.ts#580",
         "x-token-account-role": "user",
         "x-token-permission": {
           "access": "write",
@@ -37413,7 +39285,7 @@
         },
         "x-product-area": "Guardrail Design",
         "x-retry-policy": "Repeat the same request; the response may reflect newer state or absence.",
-        "x-source": "server/http/app.ts#538",
+        "x-source": "server/http/app.ts#581",
         "x-token-account-role": "user",
         "x-token-permission": {
           "access": "read",
@@ -37567,7 +39439,7 @@
         },
         "x-product-area": "Guardrail Design",
         "x-retry-policy": "Repeat the same request; the response may reflect newer state or absence.",
-        "x-source": "server/http/app.ts#539",
+        "x-source": "server/http/app.ts#582",
         "x-token-account-role": "user",
         "x-token-permission": {
           "access": "read",
@@ -37713,7 +39585,7 @@
         },
         "x-product-area": "Guardrail Design",
         "x-retry-policy": "Repeat the same request; the response may reflect newer state or absence.",
-        "x-source": "server/http/app.ts#575",
+        "x-source": "server/http/app.ts#618",
         "x-token-account-role": "user",
         "x-token-permission": {
           "access": "read",
@@ -37868,7 +39740,7 @@
         },
         "x-product-area": "Guardrail Design",
         "x-retry-policy": "Repeat the same expectedDraftRevision; a different revision is a different publication.",
-        "x-source": "server/http/app.ts#592",
+        "x-source": "server/http/app.ts#635",
         "x-token-account-role": "user",
         "x-token-permission": {
           "access": "write",
@@ -38013,7 +39885,7 @@
         },
         "x-product-area": "Guardrail Design",
         "x-retry-policy": "Do not automatically retry an uncertain write. Read its result or current resource first.",
-        "x-source": "server/http/app.ts#583",
+        "x-source": "server/http/app.ts#626",
         "x-token-account-role": "user",
         "x-token-permission": {
           "access": "write",
@@ -38166,7 +40038,7 @@
         },
         "x-product-area": "Guardrail Design",
         "x-retry-policy": "Repeat the same request; the response may reflect newer state or absence.",
-        "x-source": "server/http/app.ts#578",
+        "x-source": "server/http/app.ts#621",
         "x-token-account-role": "user",
         "x-token-permission": {
           "access": "read",
@@ -38320,7 +40192,7 @@
         },
         "x-product-area": "Guardrail Design",
         "x-retry-policy": "Repeat the same request; the response may reflect newer state or absence.",
-        "x-source": "server/http/app.ts#581",
+        "x-source": "server/http/app.ts#624",
         "x-token-account-role": "user",
         "x-token-permission": {
           "access": "read",
@@ -38456,7 +40328,7 @@
         },
         "x-product-area": "Guardrail Design",
         "x-retry-policy": "Repeat the same request; the response may reflect newer state or absence.",
-        "x-source": "server/http/app.ts#599",
+        "x-source": "server/http/app.ts#642",
         "x-token-account-role": "user",
         "x-token-permission": {
           "access": "read",
@@ -38592,7 +40464,7 @@
         },
         "x-product-area": "Guardrail Design",
         "x-retry-policy": "Repeat the same request; the response may reflect newer state or absence.",
-        "x-source": "server/http/app.ts#530",
+        "x-source": "server/http/app.ts#573",
         "x-token-account-role": "user",
         "x-token-permission": {
           "access": "read",
@@ -38728,7 +40600,7 @@
         },
         "x-product-area": "Guardrail Design",
         "x-retry-policy": "Repeat the same request; the response may reflect newer state or absence.",
-        "x-source": "server/http/app.ts#557",
+        "x-source": "server/http/app.ts#600",
         "x-token-account-role": "user",
         "x-token-permission": {
           "access": "read",
@@ -38864,7 +40736,7 @@
         },
         "x-product-area": "Integration",
         "x-retry-policy": "Repeat the same request; the response may reflect newer state or absence.",
-        "x-source": "server/http/app.ts#1006",
+        "x-source": "server/http/app.ts#1114",
         "x-token-account-role": "user",
         "x-token-permission": {
           "access": "read",
@@ -39007,7 +40879,7 @@
         },
         "x-product-area": "Integration",
         "x-retry-policy": "Do not automatically retry an uncertain write. Read its result or current resource first.",
-        "x-source": "server/http/app.ts#1011",
+        "x-source": "server/http/app.ts#1119",
         "x-token-account-role": "user",
         "x-token-permission": {
           "access": "write",
@@ -39145,7 +41017,7 @@
         },
         "x-product-area": "Integration",
         "x-retry-policy": "Repeat the same request; the response may reflect newer state or absence.",
-        "x-source": "server/http/app.ts#1019",
+        "x-source": "server/http/app.ts#1127",
         "x-token-account-role": "user",
         "x-token-permission": {
           "access": "write",
@@ -39289,7 +41161,7 @@
         },
         "x-product-area": "Integration",
         "x-retry-policy": "Repeat the same request; the response may reflect newer state or absence.",
-        "x-source": "server/http/app.ts#1010",
+        "x-source": "server/http/app.ts#1118",
         "x-token-account-role": "user",
         "x-token-permission": {
           "access": "read",
@@ -39435,7 +41307,7 @@
         },
         "x-product-area": "Integration",
         "x-retry-policy": "Repeat the same request; the response may reflect newer state or absence.",
-        "x-source": "server/http/app.ts#1028",
+        "x-source": "server/http/app.ts#1136",
         "x-token-account-role": "user",
         "x-token-permission": {
           "access": "read",
@@ -39588,7 +41460,7 @@
         },
         "x-product-area": "Integration",
         "x-retry-policy": "After uncertainty, read GET /routers/{id}; pendingChangeRequest identifies a submission that succeeded.",
-        "x-source": "server/http/app.ts#1032",
+        "x-source": "server/http/app.ts#1140",
         "x-token-account-role": "user",
         "x-token-permission": {
           "access": "write",
@@ -39742,7 +41614,7 @@
         },
         "x-product-area": "Integration",
         "x-retry-policy": "Repeat the same request; the response may reflect newer state or absence.",
-        "x-source": "server/http/app.ts#1039",
+        "x-source": "server/http/app.ts#1147",
         "x-token-account-role": "user",
         "x-token-permission": {
           "access": "read",
@@ -39905,7 +41777,7 @@
         },
         "x-product-area": "Integration",
         "x-retry-policy": "The same approver may repeat the request; an applied request returns publication.replayed=true without another revision.",
-        "x-source": "server/http/app.ts#1040",
+        "x-source": "server/http/app.ts#1148",
         "x-token-account-role": "user",
         "x-token-permission": {
           "access": "write",
@@ -40068,7 +41940,7 @@
         },
         "x-product-area": "Integration",
         "x-retry-policy": "The same user may repeat the request; an applied request returns publication.replayed=true.",
-        "x-source": "server/http/app.ts#1047",
+        "x-source": "server/http/app.ts#1155",
         "x-token-account-role": "user",
         "x-token-permission": {
           "access": "write",
@@ -40231,7 +42103,7 @@
         },
         "x-product-area": "Integration",
         "x-retry-policy": "Do not automatically retry an uncertain write. Read its result or current resource first.",
-        "x-source": "server/http/app.ts#1054",
+        "x-source": "server/http/app.ts#1162",
         "x-token-account-role": "user",
         "x-token-permission": {
           "access": "write",
@@ -40394,7 +42266,7 @@
         },
         "x-product-area": "Integration",
         "x-retry-policy": "Do not repeat blindly: after success the change is no longer active and a repeat returns 409. Read GET /routers/{id} first.",
-        "x-source": "server/http/app.ts#1059",
+        "x-source": "server/http/app.ts#1167",
         "x-token-account-role": "user",
         "x-token-permission": {
           "access": "write",
@@ -40547,7 +42419,7 @@
         },
         "x-product-area": "Integration",
         "x-retry-policy": "Do not automatically retry an uncertain write. Read its result or current resource first.",
-        "x-source": "server/http/app.ts#1058",
+        "x-source": "server/http/app.ts#1166",
         "x-token-account-role": "user",
         "x-token-permission": {
           "access": "write",
@@ -40702,7 +42574,7 @@
         },
         "x-product-area": "Integration",
         "x-retry-policy": "GET the draft and compare contents after uncertainty; never substitute a newer expectedDraftRevision without review.",
-        "x-source": "server/http/app.ts#1015",
+        "x-source": "server/http/app.ts#1123",
         "x-token-account-role": "user",
         "x-token-permission": {
           "access": "write",
@@ -40857,7 +42729,7 @@
         },
         "x-product-area": "Integration",
         "x-retry-policy": "Do not automatically retry an uncertain write. Read its result or current resource first.",
-        "x-source": "server/http/app.ts#1069",
+        "x-source": "server/http/app.ts#1177",
         "x-token-account-role": "user",
         "x-token-permission": {
           "access": "write",
@@ -41012,7 +42884,7 @@
         },
         "x-product-area": "Integration",
         "x-retry-policy": "May repeat; referenced versions or Endpoint bindings may have changed. Review the new result.",
-        "x-source": "server/http/app.ts#1024",
+        "x-source": "server/http/app.ts#1132",
         "x-token-account-role": "user",
         "x-token-permission": {
           "access": "write",
@@ -41158,7 +43030,7 @@
         },
         "x-product-area": "Integration",
         "x-retry-policy": "Repeat the same request; the response may reflect newer state or absence.",
-        "x-source": "server/http/app.ts#1075",
+        "x-source": "server/http/app.ts#1183",
         "x-token-account-role": "user",
         "x-token-permission": {
           "access": "read",
@@ -41304,7 +43176,7 @@
         },
         "x-product-area": "Integration",
         "x-retry-policy": "Repeat the same request; the response may reflect newer state or absence.",
-        "x-source": "server/http/app.ts#1065",
+        "x-source": "server/http/app.ts#1173",
         "x-token-account-role": "user",
         "x-token-permission": {
           "access": "write",
@@ -41456,7 +43328,7 @@
         },
         "x-product-area": "Integration",
         "x-retry-policy": "Repeat the same request; the response may reflect newer state or absence.",
-        "x-source": "server/http/app.ts#1076",
+        "x-source": "server/http/app.ts#1184",
         "x-token-account-role": "user",
         "x-token-permission": {
           "access": "read",
@@ -41640,7 +43512,7 @@
         },
         "x-product-area": "Observability",
         "x-retry-policy": "Repeat the same request; the response may reflect newer state or absence.",
-        "x-source": "server/http/app.ts#1087",
+        "x-source": "server/http/app.ts#1195",
         "x-token-account-role": "user",
         "x-token-permission": {
           "access": "read",
@@ -41796,7 +43668,7 @@
         },
         "x-product-area": "Integration",
         "x-retry-policy": "May repeat with the same input.",
-        "x-source": "server/http/app.ts#1129",
+        "x-source": "server/http/app.ts#1237",
         "x-token-account-role": "user",
         "x-token-permission": {
           "access": "read",
@@ -41972,7 +43844,7 @@
         },
         "x-product-area": "Observability",
         "x-retry-policy": "Repeat the same request; the response may reflect newer state or absence.",
-        "x-source": "server/http/app.ts#1083",
+        "x-source": "server/http/app.ts#1191",
         "x-token-account-role": "user",
         "x-token-permission": {
           "access": "read",
@@ -42119,7 +43991,7 @@
         },
         "x-product-area": "Integration",
         "x-retry-policy": "Repeat the same request; the response may reflect newer state or absence.",
-        "x-source": "server/http/app.ts#1134",
+        "x-source": "server/http/app.ts#1242",
         "x-token-account-role": "user",
         "x-token-permission": {
           "access": "read",
@@ -42129,7 +44001,7 @@
     },
     "/api/v1/runner-instances/{runnerId}": {
       "delete": {
-        "description": "Removes only the resource identified by this path. An already absent resource may return 404. By default only offline registrations can be removed. force=true with the observed bootId also permits initializing/syncing registrations and closes the matching control connection. Serving Runners remain protected; changed state or boot identity returns 409. Does not stop the process or delete a Pod; a running Runner may register again. Requires runners:write for personal access tokens. Write includes read access; account role restrictions still apply. Allowed account roles: admin, user. Token access is capped by the authenticated account role and tenant ownership or explicit sharing.",
+        "description": "Removes only the resource identified by this path. An already absent resource may return 404. By default only offline registrations can be removed. force=true with the observed bootId also permits initializing/syncing registrations and closes the matching control connection. Serving Runners remain protected; changed state or boot identity returns 409. Does not stop the process or delete a Pod; a running Runner may register again. Requires runners:write for personal access tokens. Write includes read access; account role restrictions still apply. Allowed account roles: admin. Token access is capped by the authenticated account role and tenant ownership or explicit sharing.",
         "operationId": "deleteRunnerInstancesByRunnerId",
         "parameters": [
           {
@@ -42271,18 +44143,17 @@
         "tags": [
           "runners"
         ],
-        "x-account-role": "user",
+        "x-account-role": "admin",
         "x-account-roles": [
-          "admin",
-          "user"
+          "admin"
         ],
         "x-idempotency": {
           "mode": "idempotent-effect"
         },
         "x-product-area": "Platform Settings",
         "x-retry-policy": "Refresh Runner state after an uncertain response. A reconnect may create a new registration.",
-        "x-source": "server/http/app.ts#993",
-        "x-token-account-role": "user",
+        "x-source": "server/http/app.ts#1101",
+        "x-token-account-role": "admin",
         "x-token-permission": {
           "access": "write",
           "module": "runners"
@@ -42417,7 +44288,7 @@
         },
         "x-product-area": "Platform Settings",
         "x-retry-policy": "Repeat the same request; the response may reflect newer state or absence.",
-        "x-source": "server/http/app.ts#988",
+        "x-source": "server/http/app.ts#1096",
         "x-token-account-role": "user",
         "x-token-permission": {
           "access": "read",
@@ -42427,7 +44298,7 @@
     },
     "/api/v1/runner-pools/{id}": {
       "patch": {
-        "description": "Updates the supplied fields; omitted fields are retained. Validation or draft state may be invalidated. Requires runners:write for personal access tokens. Write includes read access; account role restrictions still apply. Allowed account roles: admin, user. Token access is capped by the authenticated account role and tenant ownership or explicit sharing.",
+        "description": "Updates the supplied fields; omitted fields are retained. Validation or draft state may be invalidated. Requires runners:write for personal access tokens. Write includes read access; account role restrictions still apply. Allowed account roles: admin. Token access is capped by the authenticated account role and tenant ownership or explicit sharing.",
         "operationId": "patchRunnerPoolsById",
         "parameters": [
           {
@@ -42563,21 +44434,330 @@
         "tags": [
           "runners"
         ],
-        "x-account-role": "user",
+        "x-account-role": "admin",
         "x-account-roles": [
-          "admin",
-          "user"
+          "admin"
         ],
         "x-idempotency": {
           "mode": "not-guaranteed"
         },
         "x-product-area": "Platform Settings",
         "x-retry-policy": "Do not automatically retry an uncertain write. Read its result or current resource first.",
-        "x-source": "server/http/app.ts#989",
-        "x-token-account-role": "user",
+        "x-source": "server/http/app.ts#1097",
+        "x-token-account-role": "admin",
         "x-token-permission": {
           "access": "write",
           "module": "runners"
+        }
+      }
+    },
+    "/api/v1/runner-pools/{id}/connectivity": {
+      "put": {
+        "description": "Replaces the addressed configuration. Review current state before overwriting concurrent changes. Platform administrators allocate each tenant and Runner pool to one group. Pools must be registered with an internal runtime origin before Runners connect. Moving a tenant or pool requires the relevant old Runners to be offline and an expectedGroupId to prevent stale updates. Group members share the allocated pool; this does not isolate shared Controller, database, Redis, or provider infrastructure. Requires settings:write for personal access tokens. Write includes read access; account role restrictions still apply. Allowed account roles: admin. Token access is capped by the authenticated account role and tenant ownership or explicit sharing.",
+        "operationId": "putRunnerPoolsByIdConnectivity",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/putRunnerPoolsByIdConnectivityRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/putRunnerPoolsByIdConnectivityResponse"
+                }
+              }
+            },
+            "description": "Successful response."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Request schema validation failed."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Missing, invalid, expired or revoked credential."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Insufficient token permission, account role, or session requirement."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Resource not found."
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "State conflict; reload and review before retrying."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Domain validation failed."
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Internal server error."
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Required service or runtime is unavailable."
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Other Controller or upstream failure. Inspect error.code and error.message before deciding whether to retry."
+          }
+        },
+        "security": [
+          {
+            "personalAccessToken": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
+        "summary": "Replace connectivity",
+        "tags": [
+          "tenant-groups"
+        ],
+        "x-account-role": "admin",
+        "x-account-roles": [
+          "admin"
+        ],
+        "x-idempotency": {
+          "mode": "idempotent-effect"
+        },
+        "x-product-area": "Platform Settings",
+        "x-retry-policy": "Do not automatically retry an uncertain write. Read its result or current resource first.",
+        "x-source": "server/http/app.ts#1067",
+        "x-token-account-role": "admin",
+        "x-token-permission": {
+          "access": "write",
+          "module": "settings"
+        }
+      }
+    },
+    "/api/v1/runner-pools/{id}/group": {
+      "put": {
+        "description": "Replaces the addressed configuration. Review current state before overwriting concurrent changes. Platform administrators allocate each tenant and Runner pool to one group. Pools must be registered with an internal runtime origin before Runners connect. Moving a tenant or pool requires the relevant old Runners to be offline and an expectedGroupId to prevent stale updates. Group members share the allocated pool; this does not isolate shared Controller, database, Redis, or provider infrastructure. Requires settings:write for personal access tokens. Write includes read access; account role restrictions still apply. Allowed account roles: admin. Token access is capped by the authenticated account role and tenant ownership or explicit sharing.",
+        "operationId": "putRunnerPoolsByIdGroup",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/putRunnerPoolsByIdGroupRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/putRunnerPoolsByIdGroupResponse"
+                }
+              }
+            },
+            "description": "Successful response."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Request schema validation failed."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Missing, invalid, expired or revoked credential."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Insufficient token permission, account role, or session requirement."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Resource not found."
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "State conflict; reload and review before retrying."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Domain validation failed."
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Internal server error."
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Required service or runtime is unavailable."
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Other Controller or upstream failure. Inspect error.code and error.message before deciding whether to retry."
+          }
+        },
+        "security": [
+          {
+            "personalAccessToken": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
+        "summary": "Replace group",
+        "tags": [
+          "tenant-groups"
+        ],
+        "x-account-role": "admin",
+        "x-account-roles": [
+          "admin"
+        ],
+        "x-idempotency": {
+          "mode": "idempotent-effect"
+        },
+        "x-product-area": "Platform Settings",
+        "x-retry-policy": "Do not automatically retry an uncertain write. Read its result or current resource first.",
+        "x-source": "server/http/app.ts#1065",
+        "x-token-account-role": "admin",
+        "x-token-permission": {
+          "access": "write",
+          "module": "settings"
         }
       }
     },
@@ -42709,7 +44889,7 @@
         },
         "x-product-area": "Platform Settings",
         "x-retry-policy": "Repeat the same request; the response may reflect newer state or absence.",
-        "x-source": "server/http/app.ts#964",
+        "x-source": "server/http/app.ts#1017",
         "x-token-account-role": "user",
         "x-token-permission": {
           "access": "read",
@@ -42818,7 +44998,7 @@
         },
         "x-product-area": "Platform Settings",
         "x-retry-policy": "Repeat the same request; the response may reflect newer state or absence.",
-        "x-source": "server/http/app.ts#274"
+        "x-source": "server/http/app.ts#308"
       }
     },
     "/api/v1/system/version": {
@@ -42949,7 +45129,7 @@
         },
         "x-product-area": "Platform Settings",
         "x-retry-policy": "Repeat the same request; the response may reflect newer state or absence.",
-        "x-source": "server/http/app.ts#976",
+        "x-source": "server/http/app.ts#1029",
         "x-token-account-role": "user",
         "x-token-permission": {
           "access": "read",
@@ -43091,7 +45271,7 @@
         },
         "x-product-area": "Observability",
         "x-retry-policy": "Repeat the same request; the response may reflect newer state or absence.",
-        "x-source": "server/http/app.ts#1172",
+        "x-source": "server/http/app.ts#1280",
         "x-token-account-role": "user",
         "x-token-permission": {
           "access": "read",
@@ -43397,7 +45577,7 @@
         },
         "x-product-area": "Observability",
         "x-retry-policy": "Repeat the same request; the response may reflect newer state or absence.",
-        "x-source": "server/http/app.ts#1146",
+        "x-source": "server/http/app.ts#1254",
         "x-token-account-role": "user",
         "x-token-permission": {
           "access": "read",
@@ -43555,7 +45735,7 @@
         },
         "x-product-area": "Observability",
         "x-retry-policy": "Repeat the same request; the response may reflect newer state or absence.",
-        "x-source": "server/http/app.ts#1168",
+        "x-source": "server/http/app.ts#1276",
         "x-token-account-role": "user",
         "x-token-permission": {
           "access": "read",
@@ -43726,7 +45906,7 @@
         },
         "x-product-area": "Observability",
         "x-retry-policy": "Repeat the same request; the response may reflect newer state or absence.",
-        "x-source": "server/http/app.ts#1173",
+        "x-source": "server/http/app.ts#1281",
         "x-token-account-role": "user",
         "x-token-permission": {
           "access": "read",
@@ -43926,11 +46106,1751 @@
         },
         "x-product-area": "Observability",
         "x-retry-policy": "Repeat the same request; the response may reflect newer state or absence.",
-        "x-source": "server/http/app.ts#1142",
+        "x-source": "server/http/app.ts#1250",
         "x-token-account-role": "user",
         "x-token-permission": {
           "access": "read",
           "module": "runtime"
+        }
+      }
+    },
+    "/api/v1/tenant-admission-monitor": {
+      "get": {
+        "description": "Reads current state without creating resources or advancing a lifecycle. Platform administrators only. Aggregates bounded snapshots from authenticated current Runner heartbeat sessions, with optional poolId source filtering and current database group/tenant membership checks. Occupancy is held local Endpoint permits. Rates and histogram-estimated admission/held p95 use valid counter deltas; missing, stale, offline, invalid or reset intervals remain unavailable. Controller-local bounded history resets after restart or allocation/session changes. No request content, credentials, browser metrics URLs, CPU attribution or whole-pipeline latency is supplied. Requires settings:read for personal access tokens. Allowed account roles: admin. Token access is capped by the authenticated account role and tenant ownership or explicit sharing.",
+        "operationId": "getTenantAdmissionMonitor",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "poolId",
+            "required": false,
+            "schema": {
+              "maxLength": 256,
+              "minLength": 1,
+              "type": "string",
+              "x-runtime-validation": "Additional runtime refinements apply; JSON Schema validation alone does not guarantee acceptance."
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/getTenantAdmissionMonitorResponse"
+                }
+              }
+            },
+            "description": "Successful response."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Request schema validation failed."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Missing, invalid, expired or revoked credential."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Insufficient token permission, account role, or session requirement."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Resource not found."
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "State conflict; reload and review before retrying."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Domain validation failed."
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Internal server error."
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Required service or runtime is unavailable."
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Other Controller or upstream failure. Inspect error.code and error.message before deciding whether to retry."
+          }
+        },
+        "security": [
+          {
+            "personalAccessToken": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
+        "summary": "Read measured tenant and group admission pressure",
+        "tags": [
+          "system"
+        ],
+        "x-account-role": "admin",
+        "x-account-roles": [
+          "admin"
+        ],
+        "x-idempotency": {
+          "mode": "safe-read"
+        },
+        "x-product-area": "Platform Settings",
+        "x-retry-policy": "Repeat the same request; the response may reflect newer state or absence.",
+        "x-source": "server/http/app.ts#1070",
+        "x-token-account-role": "admin",
+        "x-token-permission": {
+          "access": "read",
+          "module": "settings"
+        }
+      }
+    },
+    "/api/v1/tenant-groups": {
+      "get": {
+        "description": "Reads current state without creating resources or advancing a lifecycle. Platform administrators allocate each tenant and Runner pool to one group. Pools must be registered with an internal runtime origin before Runners connect. Moving a tenant or pool requires the relevant old Runners to be offline and an expectedGroupId to prevent stale updates. Group members share the allocated pool; this does not isolate shared Controller, database, Redis, or provider infrastructure. Requires settings:read for personal access tokens. Allowed account roles: admin. Token access is capped by the authenticated account role and tenant ownership or explicit sharing.",
+        "operationId": "getTenantGroups",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/getTenantGroupsResponse"
+                }
+              }
+            },
+            "description": "Successful response."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Request schema validation failed."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Missing, invalid, expired or revoked credential."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Insufficient token permission, account role, or session requirement."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Resource not found."
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "State conflict; reload and review before retrying."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Domain validation failed."
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Internal server error."
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Required service or runtime is unavailable."
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Other Controller or upstream failure. Inspect error.code and error.message before deciding whether to retry."
+          }
+        },
+        "security": [
+          {
+            "personalAccessToken": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
+        "summary": "Read tenant groups",
+        "tags": [
+          "tenant-groups"
+        ],
+        "x-account-role": "admin",
+        "x-account-roles": [
+          "admin"
+        ],
+        "x-idempotency": {
+          "mode": "safe-read"
+        },
+        "x-product-area": "Platform Settings",
+        "x-retry-policy": "Repeat the same request; the response may reflect newer state or absence.",
+        "x-source": "server/http/app.ts#1041",
+        "x-token-account-role": "admin",
+        "x-token-permission": {
+          "access": "read",
+          "module": "settings"
+        }
+      },
+      "post": {
+        "description": "Creates a resource or executes the named operation. A network failure does not prove that execution failed. Platform administrators allocate each tenant and Runner pool to one group. Pools must be registered with an internal runtime origin before Runners connect. Moving a tenant or pool requires the relevant old Runners to be offline and an expectedGroupId to prevent stale updates. Group members share the allocated pool; this does not isolate shared Controller, database, Redis, or provider infrastructure. Requires settings:write for personal access tokens. Write includes read access; account role restrictions still apply. Allowed account roles: admin. Token access is capped by the authenticated account role and tenant ownership or explicit sharing.",
+        "operationId": "postTenantGroups",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/postTenantGroupsRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/getTenantGroupsResponseItemsItem"
+                }
+              }
+            },
+            "description": "Resource created."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Request schema validation failed."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Missing, invalid, expired or revoked credential."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Insufficient token permission, account role, or session requirement."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Resource not found."
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "State conflict; reload and review before retrying."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Domain validation failed."
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Internal server error."
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Required service or runtime is unavailable."
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Other Controller or upstream failure. Inspect error.code and error.message before deciding whether to retry."
+          }
+        },
+        "security": [
+          {
+            "personalAccessToken": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
+        "summary": "Create tenant groups",
+        "tags": [
+          "tenant-groups"
+        ],
+        "x-account-role": "admin",
+        "x-account-roles": [
+          "admin"
+        ],
+        "x-idempotency": {
+          "mode": "not-guaranteed"
+        },
+        "x-product-area": "Platform Settings",
+        "x-retry-policy": "Do not automatically retry an uncertain write. Read its result or current resource first.",
+        "x-source": "server/http/app.ts#1052",
+        "x-token-account-role": "admin",
+        "x-token-permission": {
+          "access": "write",
+          "module": "settings"
+        }
+      }
+    },
+    "/api/v1/tenant-groups/{id}": {
+      "delete": {
+        "description": "Removes only the resource identified by this path. An already absent resource may return 404. Platform administrators allocate each tenant and Runner pool to one group. Pools must be registered with an internal runtime origin before Runners connect. Moving a tenant or pool requires the relevant old Runners to be offline and an expectedGroupId to prevent stale updates. Group members share the allocated pool; this does not isolate shared Controller, database, Redis, or provider infrastructure. Requires settings:write for personal access tokens. Write includes read access; account role restrictions still apply. Allowed account roles: admin. Token access is capped by the authenticated account role and tenant ownership or explicit sharing.",
+        "operationId": "deleteTenantGroupsById",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/deleteTenantGroupsByIdParamId"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful response with no body."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Request schema validation failed."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Missing, invalid, expired or revoked credential."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Insufficient token permission, account role, or session requirement."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Resource not found."
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "State conflict; reload and review before retrying."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Domain validation failed."
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Internal server error."
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Required service or runtime is unavailable."
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Other Controller or upstream failure. Inspect error.code and error.message before deciding whether to retry."
+          }
+        },
+        "security": [
+          {
+            "personalAccessToken": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
+        "summary": "Delete tenant groups",
+        "tags": [
+          "tenant-groups"
+        ],
+        "x-account-role": "admin",
+        "x-account-roles": [
+          "admin"
+        ],
+        "x-idempotency": {
+          "mode": "idempotent-effect"
+        },
+        "x-product-area": "Platform Settings",
+        "x-retry-policy": "Repeat the same request; the response may reflect newer state or absence.",
+        "x-source": "server/http/app.ts#1056",
+        "x-token-account-role": "admin",
+        "x-token-permission": {
+          "access": "write",
+          "module": "settings"
+        }
+      },
+      "patch": {
+        "description": "Updates the supplied fields; omitted fields are retained. Validation or draft state may be invalidated. Platform administrators allocate each tenant and Runner pool to one group. Pools must be registered with an internal runtime origin before Runners connect. Moving a tenant or pool requires the relevant old Runners to be offline and an expectedGroupId to prevent stale updates. Group members share the allocated pool; this does not isolate shared Controller, database, Redis, or provider infrastructure. Requires settings:write for personal access tokens. Write includes read access; account role restrictions still apply. Allowed account roles: admin. Token access is capped by the authenticated account role and tenant ownership or explicit sharing.",
+        "operationId": "patchTenantGroupsById",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/patchTenantGroupsByIdParamId"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/patchTenantGroupsByIdRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/getTenantGroupsResponseItemsItem"
+                }
+              }
+            },
+            "description": "Successful response."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Request schema validation failed."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Missing, invalid, expired or revoked credential."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Insufficient token permission, account role, or session requirement."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Resource not found."
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "State conflict; reload and review before retrying."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Domain validation failed."
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Internal server error."
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Required service or runtime is unavailable."
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Other Controller or upstream failure. Inspect error.code and error.message before deciding whether to retry."
+          }
+        },
+        "security": [
+          {
+            "personalAccessToken": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
+        "summary": "Update tenant groups",
+        "tags": [
+          "tenant-groups"
+        ],
+        "x-account-role": "admin",
+        "x-account-roles": [
+          "admin"
+        ],
+        "x-idempotency": {
+          "mode": "not-guaranteed"
+        },
+        "x-product-area": "Platform Settings",
+        "x-retry-policy": "Do not automatically retry an uncertain write. Read its result or current resource first.",
+        "x-source": "server/http/app.ts#1054",
+        "x-token-account-role": "admin",
+        "x-token-permission": {
+          "access": "write",
+          "module": "settings"
+        }
+      }
+    },
+    "/api/v1/tenant-groups/{id}/model-configuration": {
+      "get": {
+        "description": "Reads current state without creating resources or advancing a lifecycle. Platform administrators allocate each tenant and Runner pool to one group. Pools must be registered with an internal runtime origin before Runners connect. Moving a tenant or pool requires the relevant old Runners to be offline and an expectedGroupId to prevent stale updates. Group members share the allocated pool; this does not isolate shared Controller, database, Redis, or provider infrastructure. Administrator-only. Missing policy preserves legacy global runtime Models. Scoped mode freezes a validated platform draft or published revision and encrypted Provider credentials with a fresh grant identity; expectedVersion and expectedSourceFingerprint reject stale reviews. Blocked mode revokes new group credential retrieval without global fallback. Explicit legacy mode restores the global default. Replacing a grant changes desired generation; already-delivered credentials require workload/provider fencing. Public responses omit Provider secrets and frozen credential material. Requires settings:read for personal access tokens. Allowed account roles: admin. Token access is capped by the authenticated account role and tenant ownership or explicit sharing.",
+        "operationId": "getTenantGroupsByIdModelConfiguration",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/getTenantGroupsByIdModelConfigurationResponse"
+                }
+              }
+            },
+            "description": "Successful response."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Request schema validation failed."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Missing, invalid, expired or revoked credential."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Insufficient token permission, account role, or session requirement."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Resource not found."
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "State conflict; reload and review before retrying."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Domain validation failed."
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Internal server error."
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Required service or runtime is unavailable."
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Other Controller or upstream failure. Inspect error.code and error.message before deciding whether to retry."
+          }
+        },
+        "security": [
+          {
+            "personalAccessToken": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
+        "summary": "Read a group runtime Model policy",
+        "tags": [
+          "tenant-groups"
+        ],
+        "x-account-role": "admin",
+        "x-account-roles": [
+          "admin"
+        ],
+        "x-idempotency": {
+          "mode": "safe-read"
+        },
+        "x-product-area": "Platform Settings",
+        "x-retry-policy": "Repeat the same request; the response may reflect newer state or absence.",
+        "x-source": "server/http/app.ts#1042",
+        "x-token-account-role": "admin",
+        "x-token-permission": {
+          "access": "read",
+          "module": "settings"
+        }
+      },
+      "put": {
+        "description": "Replaces the addressed configuration. Review current state before overwriting concurrent changes. Platform administrators allocate each tenant and Runner pool to one group. Pools must be registered with an internal runtime origin before Runners connect. Moving a tenant or pool requires the relevant old Runners to be offline and an expectedGroupId to prevent stale updates. Group members share the allocated pool; this does not isolate shared Controller, database, Redis, or provider infrastructure. Administrator-only. Missing policy preserves legacy global runtime Models. Scoped mode freezes a validated platform draft or published revision and encrypted Provider credentials with a fresh grant identity; expectedVersion and expectedSourceFingerprint reject stale reviews. Blocked mode revokes new group credential retrieval without global fallback. Explicit legacy mode restores the global default. Replacing a grant changes desired generation; already-delivered credentials require workload/provider fencing. Public responses omit Provider secrets and frozen credential material. Requires settings:write for personal access tokens. Write includes read access; account role restrictions still apply. Allowed account roles: admin. Token access is capped by the authenticated account role and tenant ownership or explicit sharing.",
+        "operationId": "putTenantGroupsByIdModelConfiguration",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/putTenantGroupsByIdModelConfigurationRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/getTenantGroupsByIdModelConfigurationResponse"
+                }
+              }
+            },
+            "description": "Successful response."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Request schema validation failed."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Missing, invalid, expired or revoked credential."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Insufficient token permission, account role, or session requirement."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Resource not found."
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "State conflict; reload and review before retrying."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Domain validation failed."
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Internal server error."
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Required service or runtime is unavailable."
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Other Controller or upstream failure. Inspect error.code and error.message before deciding whether to retry."
+          }
+        },
+        "security": [
+          {
+            "personalAccessToken": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
+        "summary": "Replace a group runtime Model policy",
+        "tags": [
+          "tenant-groups"
+        ],
+        "x-account-role": "admin",
+        "x-account-roles": [
+          "admin"
+        ],
+        "x-idempotency": {
+          "mode": "idempotent-effect"
+        },
+        "x-product-area": "Platform Settings",
+        "x-retry-policy": "Do not automatically retry an uncertain write. Read its result or current resource first.",
+        "x-source": "server/http/app.ts#1046",
+        "x-token-account-role": "admin",
+        "x-token-permission": {
+          "access": "write",
+          "module": "settings"
+        }
+      }
+    },
+    "/api/v1/tenant-groups/{id}/pools": {
+      "post": {
+        "description": "Creates a resource or executes the named operation. A network failure does not prove that execution failed. Platform administrators allocate each tenant and Runner pool to one group. Pools must be registered with an internal runtime origin before Runners connect. Moving a tenant or pool requires the relevant old Runners to be offline and an expectedGroupId to prevent stale updates. Group members share the allocated pool; this does not isolate shared Controller, database, Redis, or provider infrastructure. Requires settings:write for personal access tokens. Write includes read access; account role restrictions still apply. Allowed account roles: admin. Token access is capped by the authenticated account role and tenant ownership or explicit sharing.",
+        "operationId": "postTenantGroupsByIdPools",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/postTenantGroupsByIdPoolsParamId"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/postTenantGroupsByIdPoolsRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/postTenantGroupsByIdPoolsResponse"
+                }
+              }
+            },
+            "description": "Resource created."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Request schema validation failed."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Missing, invalid, expired or revoked credential."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Insufficient token permission, account role, or session requirement."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Resource not found."
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "State conflict; reload and review before retrying."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Domain validation failed."
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Internal server error."
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Required service or runtime is unavailable."
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Other Controller or upstream failure. Inspect error.code and error.message before deciding whether to retry."
+          }
+        },
+        "security": [
+          {
+            "personalAccessToken": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
+        "summary": "Create pools",
+        "tags": [
+          "tenant-groups"
+        ],
+        "x-account-role": "admin",
+        "x-account-roles": [
+          "admin"
+        ],
+        "x-idempotency": {
+          "mode": "not-guaranteed"
+        },
+        "x-product-area": "Platform Settings",
+        "x-retry-policy": "Do not automatically retry an uncertain write. Read its result or current resource first.",
+        "x-source": "server/http/app.ts#1063",
+        "x-token-account-role": "admin",
+        "x-token-permission": {
+          "access": "write",
+          "module": "settings"
+        }
+      }
+    },
+    "/api/v1/tenant-load-lab/control": {
+      "post": {
+        "description": "Creates a resource or executes the named operation. A network failure does not prove that execution failed. Administrator-only, optional local experiment service. Uses real Runner traffic and a fixed-latency fake model. Quota mode simulates admission in the workload client; it does not enable production tenant quotas. Occupancy refers to client pipelines, not tenant CPU. No tenant credentials or captured business content are returned. Returns 503 when the experiment service is unconfigured or unavailable. Requires settings:write for personal access tokens. Write includes read access; account role restrictions still apply. Allowed account roles: admin. Token access is capped by the authenticated account role and tenant ownership or explicit sharing.",
+        "operationId": "postTenantLoadLabControl",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/postTenantLoadLabControlRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/getTenantLoadLabStateResponse"
+                }
+              }
+            },
+            "description": "Successful response."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Request schema validation failed."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Missing, invalid, expired or revoked credential."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Insufficient token permission, account role, or session requirement."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Resource not found."
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "State conflict; reload and review before retrying."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Domain validation failed."
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Internal server error."
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Required service or runtime is unavailable."
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Other Controller or upstream failure. Inspect error.code and error.message before deciding whether to retry."
+          }
+        },
+        "security": [
+          {
+            "personalAccessToken": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
+        "summary": "Control the synthetic tenant load experiment",
+        "tags": [
+          "system"
+        ],
+        "x-account-role": "admin",
+        "x-account-roles": [
+          "admin"
+        ],
+        "x-idempotency": {
+          "mode": "not-guaranteed"
+        },
+        "x-product-area": "Platform Settings",
+        "x-retry-policy": "Do not automatically retry an uncertain write. Read its result or current resource first.",
+        "x-source": "server/http/app.ts#1080",
+        "x-token-account-role": "admin",
+        "x-token-permission": {
+          "access": "write",
+          "module": "settings"
+        }
+      }
+    },
+    "/api/v1/tenant-load-lab/state": {
+      "get": {
+        "description": "Reads current state without creating resources or advancing a lifecycle. Administrator-only, optional local experiment service. Uses real Runner traffic and a fixed-latency fake model. Quota mode simulates admission in the workload client; it does not enable production tenant quotas. Occupancy refers to client pipelines, not tenant CPU. No tenant credentials or captured business content are returned. Returns 503 when the experiment service is unconfigured or unavailable. Requires settings:read for personal access tokens. Allowed account roles: admin. Token access is capped by the authenticated account role and tenant ownership or explicit sharing.",
+        "operationId": "getTenantLoadLabState",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/getTenantLoadLabStateResponse"
+                }
+              }
+            },
+            "description": "Successful response."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Request schema validation failed."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Missing, invalid, expired or revoked credential."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Insufficient token permission, account role, or session requirement."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Resource not found."
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "State conflict; reload and review before retrying."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Domain validation failed."
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Internal server error."
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Required service or runtime is unavailable."
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Other Controller or upstream failure. Inspect error.code and error.message before deciding whether to retry."
+          }
+        },
+        "security": [
+          {
+            "personalAccessToken": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
+        "summary": "Read the synthetic tenant load experiment",
+        "tags": [
+          "system"
+        ],
+        "x-account-role": "admin",
+        "x-account-roles": [
+          "admin"
+        ],
+        "x-idempotency": {
+          "mode": "safe-read"
+        },
+        "x-product-area": "Platform Settings",
+        "x-retry-policy": "Repeat the same request; the response may reflect newer state or absence.",
+        "x-source": "server/http/app.ts#1076",
+        "x-token-account-role": "admin",
+        "x-token-permission": {
+          "access": "read",
+          "module": "settings"
+        }
+      }
+    },
+    "/api/v1/tenants": {
+      "get": {
+        "description": "Reads current state without creating resources or advancing a lifecycle. Platform administrators allocate each tenant and Runner pool to one group. Pools must be registered with an internal runtime origin before Runners connect. Moving a tenant or pool requires the relevant old Runners to be offline and an expectedGroupId to prevent stale updates. Group members share the allocated pool; this does not isolate shared Controller, database, Redis, or provider infrastructure. Requires settings:read for personal access tokens. Allowed account roles: admin. Token access is capped by the authenticated account role and tenant ownership or explicit sharing.",
+        "operationId": "getTenants",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/getTenantsResponse"
+                }
+              }
+            },
+            "description": "Successful response."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Request schema validation failed."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Missing, invalid, expired or revoked credential."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Insufficient token permission, account role, or session requirement."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Resource not found."
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "State conflict; reload and review before retrying."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Domain validation failed."
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Internal server error."
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Required service or runtime is unavailable."
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Other Controller or upstream failure. Inspect error.code and error.message before deciding whether to retry."
+          }
+        },
+        "security": [
+          {
+            "personalAccessToken": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
+        "summary": "Read tenants",
+        "tags": [
+          "tenant-groups"
+        ],
+        "x-account-role": "admin",
+        "x-account-roles": [
+          "admin"
+        ],
+        "x-idempotency": {
+          "mode": "safe-read"
+        },
+        "x-product-area": "Platform Settings",
+        "x-retry-policy": "Repeat the same request; the response may reflect newer state or absence.",
+        "x-source": "server/http/app.ts#1060",
+        "x-token-account-role": "admin",
+        "x-token-permission": {
+          "access": "read",
+          "module": "settings"
+        }
+      }
+    },
+    "/api/v1/tenants/{id}/group": {
+      "put": {
+        "description": "Replaces the addressed configuration. Review current state before overwriting concurrent changes. Platform administrators allocate each tenant and Runner pool to one group. Pools must be registered with an internal runtime origin before Runners connect. Moving a tenant or pool requires the relevant old Runners to be offline and an expectedGroupId to prevent stale updates. Group members share the allocated pool; this does not isolate shared Controller, database, Redis, or provider infrastructure. Requires settings:write for personal access tokens. Write includes read access; account role restrictions still apply. Allowed account roles: admin. Token access is capped by the authenticated account role and tenant ownership or explicit sharing.",
+        "operationId": "putTenantsByIdGroup",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/putTenantsByIdGroupRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/putTenantsByIdGroupResponse"
+                }
+              }
+            },
+            "description": "Successful response."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Request schema validation failed."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Missing, invalid, expired or revoked credential."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Insufficient token permission, account role, or session requirement."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Resource not found."
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "State conflict; reload and review before retrying."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Domain validation failed."
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Internal server error."
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Required service or runtime is unavailable."
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Other Controller or upstream failure. Inspect error.code and error.message before deciding whether to retry."
+          }
+        },
+        "security": [
+          {
+            "personalAccessToken": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
+        "summary": "Replace group",
+        "tags": [
+          "tenant-groups"
+        ],
+        "x-account-role": "admin",
+        "x-account-roles": [
+          "admin"
+        ],
+        "x-idempotency": {
+          "mode": "idempotent-effect"
+        },
+        "x-product-area": "Platform Settings",
+        "x-retry-policy": "Do not automatically retry an uncertain write. Read its result or current resource first.",
+        "x-source": "server/http/app.ts#1061",
+        "x-token-account-role": "admin",
+        "x-token-permission": {
+          "access": "write",
+          "module": "settings"
         }
       }
     },
@@ -44118,7 +48038,7 @@
         },
         "x-product-area": "Guardrail Design",
         "x-retry-policy": "Repeat the same request; the response may reflect newer state or absence.",
-        "x-source": "server/http/app.ts#888",
+        "x-source": "server/http/app.ts#943",
         "x-token-account-role": "user",
         "x-token-permission": {
           "access": "read",
@@ -44266,7 +48186,7 @@
         },
         "x-product-area": "Guardrail Design",
         "x-retry-policy": "Repeat the same request; the response may reflect newer state or absence.",
-        "x-source": "server/http/app.ts#897",
+        "x-source": "server/http/app.ts#952",
         "x-token-account-role": "user",
         "x-token-permission": {
           "access": "write",
@@ -44418,7 +48338,7 @@
         },
         "x-product-area": "Guardrail Design",
         "x-retry-policy": "Repeat the same request; the response may reflect newer state or absence.",
-        "x-source": "server/http/app.ts#891",
+        "x-source": "server/http/app.ts#946",
         "x-token-account-role": "user",
         "x-token-permission": {
           "access": "read",
@@ -44564,7 +48484,7 @@
         },
         "x-product-area": "Guardrail Design",
         "x-retry-policy": "Repeat the same request; the response may reflect newer state or absence.",
-        "x-source": "server/http/app.ts#894",
+        "x-source": "server/http/app.ts#949",
         "x-token-account-role": "user",
         "x-token-permission": {
           "access": "read",
@@ -44653,6 +48573,11 @@
     {
       "description": "Runner capacity and instance lifecycle.",
       "name": "runners",
+      "x-product-area": "Platform Settings"
+    },
+    {
+      "description": "Administrator-managed tenant groups and their allocated Runner pools.",
+      "name": "tenant-groups",
       "x-product-area": "Platform Settings"
     },
     {

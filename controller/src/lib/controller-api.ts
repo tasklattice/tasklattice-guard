@@ -73,6 +73,7 @@ export type ModelDefinition = {
 export type ModelValidationReport = {
   valid: boolean;
   checkedAt: string;
+  runtimeFingerprint?: string;
   checks: Array<{
     id: string;
     scope: "configuration" | "provider" | "model" | "capability";
@@ -169,6 +170,8 @@ export type Guardrail = {
 };
 
 export type GuardrailVersion = {
+  /** False when independent Policy read access or frozen provenance is missing. */
+  policyContentAccessible?: boolean;
   testWaiver?: import("../../shared/default-release").DefaultTestWaiver | null;
   sourceValidationRunId?: string | null;
   testingEvidence?: import("../../shared/testing-report-retention").VersionTestingEvidence | null;

@@ -35,13 +35,13 @@ describe("ControlPlaneSidebar", () => {
     const expected = {
       Providers: "/settings/providers",
       Models: "/settings/models", "Guardrail Catalog": "/settings/guardrail-catalog",
-      Health: "/settings/health", Runner: "/settings/runner", Version: "/settings/version",
+      Health: "/settings/health", Runner: "/settings/runner", "Tenant groups": "/settings/tenant-groups", "Tenant load lab": "/settings/tenant-load-lab", Version: "/settings/version",
       "Users & access": "/access", "Audit log": "/audit-log",
     };
     for (const [label, path] of Object.entries(expected)) expect(screen.getByRole("link", { name: label }).getAttribute("href")).toBe(path);
     const groups = {
       "Models & detection": ["Providers", "Models", "Guardrail Catalog"],
-      "Platform operations": ["Health", "Runner", "Version"],
+      "Platform operations": ["Health", "Runner", "Tenant groups", "Tenant load lab", "Version"],
       "Access & audit": ["Users & access", "Audit log"],
     };
     for (const [label, links] of Object.entries(groups)) {
@@ -60,7 +60,7 @@ describe("ControlPlaneSidebar", () => {
     identity.role = "user";
     render(<SidebarProvider><TooltipProvider><ControlPlaneSidebar /></TooltipProvider></SidebarProvider>);
     for (const name of ["Guardrails", "Playground", "Policy Library", "Routers", "Endpoints", "Runtime logs", "Billing", "Settings", "Models", "Sharing", "Runner", "Documentation"]) expect(screen.getByRole("link", { name })).toBeTruthy();
-    for (const name of ["Health", "Providers", "Guardrail Catalog", "Version", "Users & access", "Audit log"]) expect(screen.queryByRole("link", { name })).toBeNull();
+    for (const name of ["Health", "Providers", "Guardrail Catalog", "Tenant groups", "Tenant load lab", "Version", "Users & access", "Audit log"]) expect(screen.queryByRole("link", { name })).toBeNull();
     expect(screen.getByRole("link", { name: "TaskLattice Guard" }).getAttribute("href")).toBe("/guardrails");
     expect(screen.getByRole("link", { name: "Runtime logs" }).getAttribute("href")).toBe("/logs");
     const observability = screen.getByText("Runtime observability").closest('[data-sidebar="group"]') as HTMLElement;

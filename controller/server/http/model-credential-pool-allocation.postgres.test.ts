@@ -1,0 +1,108 @@
+// @vitest-environment node
+import { randomUUID } from "node:crypto";
+import { resolve } from "node:path";
+import { Registry } from "prom-client";
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { createTestDatabase } from "../db/postgres-test-database.js";
+import { loadConfig } from "../config.js";
+import type { ControllerAuth } from "../auth.js";
+import type { RunnerControlServer } from "../control-channel/control-server.js";
+import type { ControllerMetrics } from "../metrics.js";
+import { ModelConfigurationService } from "../model-config/service.js";
+import { emptyModelAssignments } from "../model-config/domain.js";
+import { encryptModelCredential } from "../model-config/secret-crypto.js";
+import type { ControlPlaneService } from "../services/control-plane.js";
+import { createHttpApp } from "./app.js";
+
+const url = process.env.GUARD_TEST_POSTGRES_URL;
+const rootSecret = "pool-allocation-test-root-secret";
+const providerId = randomUUID(), candidateProviderId = randomUUID();
+const modelId = randomUUID(), candidateModelId = randomUUID();
+const poolToken = "pool-a-token-with-at-least-32-characters";
+const staleToken = "deleted-pool-token-with-at-least-32-characters";
+const legacyToken = "legacy-token-with-at-least-32-characters";
+
+describe.skipIf(!url)("model credential current pool allocation", () => {
+  let database: Awaited<ReturnType<typeof createTestDatabase>>;
+  let models: ModelConfigurationService;
+  const config = loadConfig({ NODE_ENV: "test", CONTROLLER_DATABASE_URL: "postgresql://unused:unused@localhost/unused",
+    CONTROLLER_RUNNER_TOKEN: legacyToken, BETTER_AUTH_SECRET: "better-auth-secret-with-at-least-32-characters",
+    CONTROLLER_RUNNER_POOL_TOKENS_JSON: JSON.stringify({ "pool-a": poolToken, "deleted-pool": staleToken }),
+    CONTROLLER_ARTIFACT_SIGNING_KEY_PATH: "/tmp/test-key.pem" });
+  beforeAll(async () => {
+    database = await createTestDatabase(url!, "credential_pool_allocation");
+    const assignments = emptyModelAssignments();
+    assignments.bindings["content_safety.input"] = modelId;
+    await database.pool.query("INSERT INTO auth_user(id,name,email,role) VALUES ('credential-admin','Admin','credential-admin@test.invalid','admin')");
+    await database.pool.query("INSERT INTO tenant_group(id,name) VALUES ('credential-group','Credential group')");
+    for (const [id, name, secret] of [[providerId, "Active provider", "active-secret"], [candidateProviderId, "Candidate provider", "candidate-secret"]]) {
+      await database.pool.query("INSERT INTO model_provider(id,name,kind,base_url,credential_ciphertext) VALUES ($1,$2,'custom-openai-compatible','https://provider.invalid',$3)",
+        [id, name, encryptModelCredential(secret!, rootSecret)]);
+    }
+    for (const [id, provider, name] of [[modelId, providerId, "Active model"], [candidateModelId, candidateProviderId, "Candidate model"]]) {
+      await database.pool.query("INSERT INTO model_definition(id,provider_id,name,model,profile) VALUES ($1,$2,$3,$3,'tali.qwen3guard.v1')", [id, provider, name]);
+    }
+    await database.pool.query("INSERT INTO model_configuration_revision(id,tenant_id,revision,state,generation,assignments) VALUES ('active-credential-revision','tenantA',1,'active',1,$1)", [JSON.stringify(assignments)]);
+  }, 30000);
+  afterAll(async () => { await database?.drop(); });
+  beforeEach(async () => {
+    await database.pool.query("INSERT INTO runner_pool(id,name,group_id) VALUES ('pool-a','Pool A','credential-group') ON CONFLICT(id) DO UPDATE SET group_id='credential-group'");
+    models = new ModelConfigurationService(database.db, rootSecret, resolve("../runner/toolkit/policy_library/assets"),
+      vi.fn(() => { throw new Error("No external calls allowed"); }));
+  });
+  const app = () => createHttpApp({ config, models, service: {} as ControlPlaneService,
+    auth: { api: { getSession: vi.fn() } } as unknown as ControllerAuth, runnerControl: {} as RunnerControlServer,
+    metrics: { registry: new Registry() } as ControllerMetrics });
+  const request = async (token: string, refs = [providerId]) => app().request("/api/internal/v1/model-credentials/resolve", {
+    method: "POST", headers: { authorization: `Bearer ${token}`, "content-type": "application/json" }, body: JSON.stringify({ refs }),
+  });
+  it("serves assigned platform credentials to an allocated pool and denies stale or unassigned identities", async () => {
+    expect(await (await request(poolToken)).json()).toEqual({ credentials: { [providerId]: "active-secret" } });
+    expect(await (await request(poolToken, [candidateProviderId])).json()).toEqual({ credentials: {} });
+    expect(await (await request(staleToken)).json()).toEqual({ credentials: {} });
+    expect((await request(legacyToken)).status).toBe(401);
+    expect((await request("unknown-token")).status).toBe(401);
+    await database.pool.query("DELETE FROM runner_pool WHERE id='pool-a'");
+    expect(await (await request(poolToken)).json()).toEqual({ credentials: {} });
+    // Compatibility mode remains explicitly platform-wide and unscoped.
+    expect(await models.resolveCredentials([providerId])).toEqual({ [providerId]: "active-secret" });
+  });
+  it("fails closed for an orphaned group allocation in a legacy/corrupt database", async () => {
+    // Only this disposable schema is changed to represent a legacy broken FK.
+    await database.pool.query("ALTER TABLE runner_pool DROP CONSTRAINT runner_pool_group_id_fkey");
+    try {
+      await database.pool.query("UPDATE runner_pool SET group_id='missing-group' WHERE id='pool-a'");
+      expect(await (await request(poolToken)).json()).toEqual({ credentials: {} });
+    } finally {
+      await database.pool.query("UPDATE runner_pool SET group_id='credential-group' WHERE id='pool-a'");
+      await database.pool.query("ALTER TABLE runner_pool ADD CONSTRAINT runner_pool_group_id_fkey FOREIGN KEY(group_id) REFERENCES tenant_group(id)");
+    }
+  });
+  it("rechecks allocation in the secret fetch after an earlier successful lookup", async () => {
+    const active = models.activeConfiguration.bind(models);
+    vi.spyOn(models, "activeConfiguration").mockImplementationOnce(async includeActivating => {
+      const configuration = await active(includeActivating);
+      await database.pool.query("DELETE FROM runner_pool WHERE id='pool-a'");
+      return configuration;
+    });
+    expect(await (await request(poolToken)).json()).toEqual({ credentials: {} });
+  });
+  it("does not fall back to active credentials for an unknown candidate lease", async () => {
+    const response = await app().request("/api/internal/v1/model-credentials/resolve", {
+      method: "POST", headers: { authorization: `Bearer ${poolToken}`, "content-type": "application/json" },
+      body: JSON.stringify({ refs: [providerId], leaseId: "04017d29-f14e-45c9-9b6b-978db32f8a29" }),
+    });
+    expect(await response.json()).toEqual({ credentials: {} });
+  });
+  it("denies a candidate validation credential once its bound pool is deprovisioned", async () => {
+    models.setRailValidator(async validation => {
+      expect(await models.bindValidationLease(validation.credentialLeaseId!, "pool-a")).toBe(true);
+      expect(await models.resolveCredentials([candidateProviderId], validation.credentialLeaseId, "pool-a"))
+        .toEqual({ [candidateProviderId]: "candidate-secret" });
+      await database.pool.query("DELETE FROM runner_pool WHERE id='pool-a'");
+      expect(await models.resolveCredentials([candidateProviderId], validation.credentialLeaseId, "pool-a")).toEqual({});
+      return { passed: true, message: "Synthetic validation", latencyMs: 1 };
+    });
+    await models.previewAssignment("content_safety.input", candidateModelId, "credential-admin");
+  });
+});

@@ -36,7 +36,7 @@ function setup(identity: TokenIdentity | null = { id: "owner", role: "admin", te
   return { request, accessTokens, getSession, createRouter, updateRunnerPool };
 }
 describe("Access token HTTP authority", () => {
-  it.each(["admin", "user"])("allows %s Runner writes only with the matching token grant", async role => {
+  it.each(["admin"])("allows %s Runner writes only with the matching token grant", async role => {
     const targets = { desiredReplicas: 2, safeRpsPerRunner: 50, maxConcurrencyPerRunner: 64 };
     const writable = setup({ id: "owner", role, tenantId: "tenantA", tokenId: "token", permissions: { runners: "write" } });
     expect((await writable.request("PATCH", "/runner-pools/pool", "Bearer test", targets)).status).toBe(200);
@@ -45,6 +45,11 @@ describe("Access token HTTP authority", () => {
     const readOnly = setup({ id: "owner", role, tenantId: "tenantA", tokenId: "token", permissions: { runners: "read" } });
     expect((await readOnly.request("PATCH", "/runner-pools/pool", "Bearer test", targets)).status).toBe(403);
     expect(readOnly.updateRunnerPool).not.toHaveBeenCalled();
+  });
+  it("does not let a tenant token mutate shared Runner pools", async () => {
+    const { request, updateRunnerPool } = setup({ id: "owner", role: "user", tenantId: "tenantA", tokenId: "token", permissions: { runners: "write" } });
+    expect((await request("PATCH", "/runner-pools/pool", "Bearer test", {})).status).toBe(403);
+    expect(updateRunnerPool).not.toHaveBeenCalled();
   });
   it.each([
     ["POST", "/guardrails/guardrail-default/test-runs"],

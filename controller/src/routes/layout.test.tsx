@@ -49,6 +49,8 @@ vi.mock("react-i18next", () => ({
       "nav.accessAudit": "Access & audit",
       "nav.runtimeObservations": "Observability",
       "nav.runner": "Runner",
+      "nav.tenantLoadLab": "Tenant load lab",
+      "nav.tenantGroups": "Tenant groups",
       "auth.sessionLoading": "Checking your session…",
     } as Record<string, string>)[key] ?? key,
   }),
@@ -84,7 +86,7 @@ describe("ControlPlaneLayout", () => {
     expect(screen.queryByText("Page content")).toBeNull();
   });
 
-  it.each(["/settings/models", "/settings/guardrail-catalog", "/access", "/audit-log"])("prevents a user from mounting %s", path => {
+  it.each(["/settings/models", "/settings/guardrail-catalog", "/settings/tenant-load-lab", "/settings/tenant-load-lab/", "/settings/tenant-groups", "/settings/tenant-groups/", "/access", "/audit-log"])("prevents a user from mounting %s", path => {
     role = "user"; pathname = path;
     render(<ControlPlaneLayout />);
     expect(screen.queryByText("Page content")).toBeNull();
@@ -107,6 +109,15 @@ describe("ControlPlaneLayout", () => {
 
     expect(screen.getByText(group)).toBeTruthy();
     expect(screen.getByText("Runner")).toBeTruthy();
+  });
+
+  it("labels Tenant load lab under Platform operations and mounts the administrator workspace", () => {
+    pathname = "/settings/tenant-load-lab";
+    render(<ControlPlaneLayout />);
+    expect(screen.getByText("Platform operations")).toBeTruthy();
+    expect(screen.getByText("Tenant load lab")).toBeTruthy();
+    expect(screen.queryByText("Dashboard")).toBeNull();
+    expect(screen.getByText("Page content")).toBeTruthy();
   });
 
   it.each(["/document", "/document/", "/document/overview/quickstart-protection", "/document/operator/operator-create-policy"])("renders %s without the management shell", (path) => {

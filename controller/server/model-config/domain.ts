@@ -224,6 +224,7 @@ export type ModelValidationCheck = {
   message: string;
   latencyMs?: number;
   evidenceKind?: "model-probe" | "nemo-rail-v1";
+  runtimeFingerprint?: string;
   cases?: Array<{ id: string; passed: boolean; inputContent: string; outputContent: string; expectedDecision: string; actualDecision: string; reason: string }>;
 };
 
@@ -238,6 +239,7 @@ export type PolicyCoverage = {
 export type ModelValidationReport = {
   valid: boolean;
   checkedAt: string;
+  runtimeFingerprint?: string;
   checks: ModelValidationCheck[];
   contractCoverage: Array<{
     contract: string;

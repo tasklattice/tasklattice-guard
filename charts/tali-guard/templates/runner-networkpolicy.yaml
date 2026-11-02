@@ -1,0 +1,64 @@
+{{- include "tali-guard.defaults" . -}}
+{{- include "tali-guard.validateValues" . -}}
+{{- if .Values.networkPolicy.runnerIsolation.enabled -}}
+{{- $root := . -}}
+{{- $isolation := .Values.networkPolicy.runnerIsolation -}}
+{{- $pools := concat (list (dict "name" "default")) .Values.runner.pools -}}
+{{- range $index, $pool := $pools }}
+{{- if gt $index 0 }}---{{ end }}
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ printf "%s-runner-%s" (include "tali-guard.fullname" $root) $pool.name | trunc 63 | trimSuffix "-" }}
+  labels:
+    {{- include "tali-guard.commonLabels" $root | nindent 4 }}
+    tasklattice.io/runner-pool: {{ $pool.name | quote }}
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/instance: {{ $root.Release.Name }}
+      app.kubernetes.io/component: runner
+      tasklattice.io/runner-pool: {{ $pool.name | quote }}
+  policyTypes: [Ingress, Egress]
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/instance: {{ $root.Release.Name }}
+              app.kubernetes.io/component: controller
+      ports:
+        - { protocol: TCP, port: 8091 }
+    {{- if $isolation.ingressPeers }}
+    - from: {{- toYaml $isolation.ingressPeers | nindent 8 }}
+      ports:
+        - { protocol: TCP, port: 8091 }
+    {{- end }}
+  egress:
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/instance: {{ $root.Release.Name }}
+              app.kubernetes.io/component: controller
+      ports:
+        - { protocol: TCP, port: 8080 }
+        - { protocol: TCP, port: 9090 }
+    {{- if $root.Values.redis.enabled }}
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/instance: {{ $root.Release.Name }}
+              app.kubernetes.io/component: redis
+      ports:
+        - { protocol: TCP, port: 6379 }
+    {{- end }}
+    {{- if $isolation.dnsPeers }}
+    - to: {{- toYaml $isolation.dnsPeers | nindent 8 }}
+      ports:
+        - { protocol: UDP, port: 53 }
+        - { protocol: TCP, port: 53 }
+    {{- end }}
+    {{- with get $isolation.poolEgress $pool.name }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+{{ end }}
+{{- end }}

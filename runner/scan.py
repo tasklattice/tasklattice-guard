@@ -13,6 +13,7 @@ from fastapi.security import HTTPBearer
 from pydantic import BaseModel, ConfigDict, ValidationError
 
 from .routing import RoutingError
+from .tenant_admission import AdmissionRejected, AdmissionUnavailable
 from .toolkit.runtime.contracts import GuardContentBlock, ProtectionDecision, ProtectionRequest, RequestContext
 
 SCAN_PATH = "/runtime/v1/endpoints/{endpoint_id}/backend/v1/scans"
@@ -137,17 +138,26 @@ def register_scan(api, *, max_body_bytes: int, timeout_seconds: float) -> None:
     async def scan(endpoint_id: str, request: Request):
         scan_id = str(uuid4())
         response_headers = {"X-Request-ID": scan_id, "X-TaskLattice-Scan-Compatibility": "v1"}
+        permit = None
         try:
             authorization = request.headers.getlist("authorization")
             parts = authorization[0].split() if len(authorization) == 1 else []
             token = parts[1] if len(parts) == 2 and parts[0].lower() == "bearer" else None
-            authenticated = api._store.authenticate_endpoint(endpoint_id, token)
+            authenticated, adapter, endpoint_snapshot = api._authenticate_endpoint(endpoint_id, token)
             api._metrics.observe_authentication("scan", authenticated)
             if not authenticated:
                 response_headers["WWW-Authenticate"] = "Bearer"
                 raise ScanFailure(401, "invalid_credential", "Endpoint credential is invalid.")
-            if api._store.endpoint_adapter(endpoint_id) != SCAN_ADAPTER:
+            if adapter != SCAN_ADAPTER:
                 raise ScanFailure(403, "adapter_mismatch", "Endpoint does not support Scan.")
+            try:
+                permit = await api._acquire_tenant_permit(endpoint_id, token)
+            except AdmissionRejected as error:
+                response_headers["Retry-After"] = str(error.retry_after)
+                raise ScanFailure(429, "tenant_admission_rejected", "Tenant admission capacity is unavailable. Retry shortly.") from error
+            except AdmissionUnavailable as error:
+                response_headers["Retry-After"] = "1"
+                raise ScanFailure(503, "tenant_admission_unavailable", "Endpoint admission allocation is unavailable.") from error
             if request.headers.get("content-type", "").split(";", 1)[0].strip().lower() != "application/json":
                 raise ScanFailure(415, "unsupported_media_type", "Use application/json.")
             body = bytearray()
@@ -170,13 +180,15 @@ def register_scan(api, *, max_body_bytes: int, timeout_seconds: float) -> None:
                     for item in error.errors(include_input=False, include_context=False, include_url=False)
                 ]})
             if "flagOnly" not in payload.model_fields_set:
-                payload = payload.model_copy(update={"flagOnly": api._store.endpoint_scan_flag_only_default(endpoint_id)})
+                payload = payload.model_copy(update={"flagOnly": endpoint_snapshot.scan_flag_only_default if endpoint_snapshot is not None
+                    else api._store.endpoint_scan_flag_only_default(endpoint_id)})
             phase = "input" if payload.scanDirection == "request" else "output"
             source = "user_input" if phase == "input" else "model_output"
             protection_request = ProtectionRequest(
                 phase=phase, texts=(payload.input,), mode="enforce", evidence_scope="full",
                 content_blocks=(GuardContentBlock(id=f"{phase}:0", text=payload.input, role=source, source=source, trust="untrusted"),),
                 context=RequestContext(protocol="scan", endpoint_id=endpoint_id, call_id=scan_id,
+                    endpoint_snapshot=endpoint_snapshot,
                     headers=tuple((k, v) for k, v in request.headers.items() if k.lower() not in SENSITIVE_HEADERS),
                     fields=(("protocol", "scan"), ("endpoint.id", endpoint_id), ("auth.principal", endpoint_id),
                             ("scan.direction", payload.scanDirection), ("http.method", request.method),
@@ -207,6 +219,7 @@ def register_scan(api, *, max_body_bytes: int, timeout_seconds: float) -> None:
                     raise
                 finally:
                     await api._emit_telemetry(request_id=scan_id, call_id=scan_id, endpoint_id=endpoint_id,
+                        endpoint_context_id=getattr(endpoint_snapshot, "telemetry_context_id", None),
                         phase=phase, protocol="scan", mode="enforce", started=started, decision=decision,
                         content_before=(payload.input,), http_request=request, observation=observation,
                         stream_metadata={"scanDirection": payload.scanDirection, "flagOnly": payload.flagOnly,
@@ -226,3 +239,5 @@ def register_scan(api, *, max_body_bytes: int, timeout_seconds: float) -> None:
                 status, code, message = 500, "scan_internal_error", "The scan could not be processed."
             return JSONResponse(status_code=status, headers=response_headers,
                 content={"detail": {"code": code, "message": message, "requestId": scan_id}})
+        finally:
+            await api._release_tenant_permit(permit)

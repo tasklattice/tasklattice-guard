@@ -67,6 +67,8 @@ describe("Integration navigation", () => {
     ["/billing", "/billing", {}],
     ["/settings/health", "/settings/health", {}],
     ["/settings/runner", "/settings/runner", {}],
+    ["/settings/tenant-load-lab", "/settings/tenant-load-lab", {}],
+    ["/settings/tenant-groups", "/settings/tenant-groups", {}],
     ["/settings/version", "/settings/version", {}],
     ["/account", "/account", {}],
     ["/account/security", "/account/security", {}],

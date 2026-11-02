@@ -19,6 +19,10 @@ export interface RunnerHeartbeat {
   'appliedGeneration'?: (number | string | Long);
   'load'?: (_tasklattice_guard_control_v1_RunnerLoad | null);
   'appliedProtectionGeneration'?: (number | string | Long);
+  /**
+   * Optional bounded process-local admission counters, not quota authority.
+   */
+  'tenantAdmissionSnapshotJson'?: (Buffer | Uint8Array | string);
 }
 
 /**
@@ -37,4 +41,8 @@ export interface RunnerHeartbeat__Output {
   'appliedGeneration': (string);
   'load': (_tasklattice_guard_control_v1_RunnerLoad__Output | null);
   'appliedProtectionGeneration': (string);
+  /**
+   * Optional bounded process-local admission counters, not quota authority.
+   */
+  'tenantAdmissionSnapshotJson': (Buffer);
 }

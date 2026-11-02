@@ -37,6 +37,11 @@ export interface RunnerRegistration {
    */
   'appliedGeneration'?: (number | string | Long);
   'appliedProtectionGeneration'?: (number | string | Long);
+  /**
+   * Stable disk WAL identity for the optional authenticated delivery protocol.
+   */
+  'telemetryWalId'?: (string);
+  '_telemetryWalId'?: "telemetryWalId";
 }
 
 /**
@@ -74,4 +79,9 @@ export interface RunnerRegistration__Output {
    */
   'appliedGeneration': (string);
   'appliedProtectionGeneration': (string);
+  /**
+   * Stable disk WAL identity for the optional authenticated delivery protocol.
+   */
+  'telemetryWalId'?: (string);
+  '_telemetryWalId'?: "telemetryWalId";
 }

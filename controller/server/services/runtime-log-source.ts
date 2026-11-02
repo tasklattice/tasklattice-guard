@@ -25,6 +25,7 @@ export function callFailureEvents(db: ControllerDatabase) {
     guardrailVersion: routeAssignments.guardrailVersion,
     endpointId: routeAssignments.endpointId,
     routerId: routeAssignments.routerId,
+    allocationContextId: routeAssignments.allocationContextId,
     direction: sql<string>`'completion'`.as("direction"),
     decision: sql<string>`${routeAssignments.outcome}`.as("decision"),
     durationMs: sql<number>`coalesce(${routeAssignments.durationMs}, 0)`.as("duration_ms"),

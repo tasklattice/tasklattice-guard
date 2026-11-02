@@ -38,6 +38,9 @@ describe.skipIf(!url)("multi-tenant mock SSO HTTP flow in PostgreSQL", () => {
     for (const { tag } of journal.entries) {
       await pool.query(migration(`${tag}.sql`).replaceAll('"public".', `"${namespace}".`));
     }
+    // Match a bootstrapped deployment: Endpoint responses resolve a tenant's
+    // Runner group against its registered pool before returning distribution.
+    await pool.query("INSERT INTO runner_pool (id, name) VALUES ('default', 'Default')");
 
     const db = drizzle(pool, { schema });
     const config = loadConfig({

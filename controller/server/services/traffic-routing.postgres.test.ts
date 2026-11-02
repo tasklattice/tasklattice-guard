@@ -31,6 +31,7 @@ const withHeader = (): RouterDraft => ({ routes: [{ ...draft().routes[0]!, id: "
 describe.skipIf(!url)("Traffic composition transactions in PostgreSQL", () => {
   const namespace = `guard_traffic_${randomUUID().replaceAll("-", "")}`;
   let admin: Pool; let pool: Pool; let service: ControlPlaneService;
+  const decisionTimes = new Map<string, Date>();
   const read = (name: string) => readFileSync(new URL(`../db/migrations/${name}`, import.meta.url), "utf8");
   beforeAll(async () => {
     expect(["127.0.0.1", "localhost", "[::1]"]).toContain(new URL(url!).hostname);
@@ -47,6 +48,7 @@ describe.skipIf(!url)("Traffic composition transactions in PostgreSQL", () => {
   });
   afterAll(async () => { await pool?.end(); await admin?.query(`DROP SCHEMA IF EXISTS "${namespace}" CASCADE`); await admin?.end(); });
   beforeEach(async () => {
+    decisionTimes.clear();
     await pool.query('TRUNCATE auth_user, guardrail, runner_pool, controller_state, traffic_router, route_assignment, telemetry_watermark, controller_outbox CASCADE');
     await pool.query(`INSERT INTO auth_user (id,name,email,role) VALUES ('admin','Admin','admin@example.test','admin'),('approver','Approver','approver@example.test','admin');
       INSERT INTO controller_state (id) VALUES ('singleton');
@@ -611,10 +613,13 @@ describe.skipIf(!url)("Traffic composition transactions in PostgreSQL", () => {
     await expect(service.trafficRouting.bind(unpublished.id, ["http"], actor)).rejects.toMatchObject({ code: "endpoint_router_conflict" });
   });
   function event(routerId: string, decisionId: string, overrides: Partial<RoutingEvent> = {}): RoutingEvent {
+    // Assignment and every completion carry the same decisionAt in the Runner.
+    const decisionAt = decisionTimes.get(decisionId) ?? new Date(Date.now() - 1000);
+    decisionTimes.set(decisionId, decisionAt);
     return routingEventSchema.parse({ id: `assignment-${decisionId}`, eventType: "route_assignment", decisionId, callId: `call-${decisionId}`, runnerId: "runner", endpointId: "http", routerId, routerRevision: 1,
-      routeId: "fallback", targetId: "target-a", guardrailId: "guard-a", guardrailVersion: "1", occurredAt: new Date(), decisionAt: new Date(Date.now() - 1000), assignmentStatus: "assigned", ...overrides });
+      routeId: "fallback", targetId: "target-a", guardrailId: "guard-a", guardrailVersion: "1", occurredAt: new Date(), decisionAt, assignmentStatus: "assigned", ...overrides });
   }
-  async function runner(id = "runner") { await pool.query("INSERT INTO runner_instance (runner_id,boot_id,pool_id,runner_version,nemo_version,max_concurrency) VALUES ($1,'boot','default','test','test',10)", [id]); }
+  async function runner(id = "runner") { await pool.query("INSERT INTO runner_instance (runner_id,boot_id,pool_id,runner_version,nemo_version,max_concurrency,status) VALUES ($1,'boot','default','test','test',10,'ready')", [id]); }
 
   it("deduplicates retries and completion-before-assignment while counting unique logical decisions", async () => {
     const router = await publish(); await runner();

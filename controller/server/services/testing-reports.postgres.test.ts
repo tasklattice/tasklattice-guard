@@ -4,6 +4,7 @@ import { eq } from "drizzle-orm";
 import { createTestDatabase } from "../db/postgres-test-database.js";
 import { validationRuns } from "../db/schema.js";
 import { queryTestingReports, validationDetailColumns } from "./testing-reports.js";
+import { runWithTenantContext } from "./tenant-context.js";
 
 const url = process.env.GUARD_TEST_POSTGRES_URL;
 describe.skipIf(!url)("Bounded testing report reads", () => {
@@ -50,4 +51,20 @@ describe.skipIf(!url)("Bounded testing report reads", () => {
     await expect(queryTestingReports(database.db, { limit: 10000 })).rejects.toThrow();
     await expect(queryTestingReports(database.db, { cursor: "invalid" })).rejects.toThrow("cursor");
   });
+
+  it("does not disclose version evidence for a guessed Guardrail ID without an active share", async () => {
+    await database.pool.query("INSERT INTO tenant_group(id,name) VALUES ('group-c','Group C'); UPDATE tenant SET group_id='group-c' WHERE id='tenantC'");
+    const asTenant = <T>(tenantId: string, work: () => T) => runWithTenantContext({ tenantId }, work);
+    const reports = (tenantId: string) => asTenant(tenantId, () => queryTestingReports(database.db, { guardrailId: "guard" }));
+    expect((await reports("tenantA")).versionReports.map(item => item.id).sort()).toEqual(["run-01", "run-29", "run-30"]);
+    for (const tenant of ["tenantB", "tenantC"]) {
+      expect(await reports(tenant)).toMatchObject({ items: [], count: 0, versionReports: [] });
+    }
+    await database.pool.query(`INSERT INTO resource_share(id,owner_tenant_id,recipient_tenant_id,resource_type,resource_id)
+      VALUES ('guard-share','tenantA','tenantB','guardrail','guard')`);
+    expect((await reports("tenantB")).versionReports.map(item => item.id).sort()).toEqual(["run-01", "run-29", "run-30"]);
+    expect(await reports("tenantC")).toMatchObject({ items: [], count: 0, versionReports: [] });
+    await database.pool.query("DELETE FROM resource_share WHERE id='guard-share'");
+    expect(await reports("tenantB")).toMatchObject({ items: [], count: 0, versionReports: [] });
+  }, 30000);
 });

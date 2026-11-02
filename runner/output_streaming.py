@@ -12,6 +12,7 @@ from fastapi import Request, WebSocket, WebSocketDisconnect
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from .routing import RoutingError
+from .tenant_admission import AdmissionRejected, AdmissionUnavailable
 from .toolkit.runtime.streaming import OutputStreamEvaluationError
 
 INPUT_CREDITS = 8
@@ -67,14 +68,22 @@ def register_output_stream(api) -> None:
 
     @api.router.websocket("/runtime/v1/endpoints/{endpoint_id}/guardrails/output-stream")
     async def output_stream(socket: WebSocket, endpoint_id: str):
-        authenticated = api._store.authenticate_endpoint(endpoint_id, socket.headers.get("x-api-key"))
-        adapter = api._store.endpoint_adapter(endpoint_id)
+        authenticated, adapter, endpoint_snapshot = api._authenticate_endpoint(endpoint_id, socket.headers.get("x-api-key"))
         protocol = "litellm" if adapter == LITELLM_ADAPTER_ID else None
         api._metrics.observe_authentication(protocol or "unknown", authenticated)
         if not authenticated or protocol is None:
             await socket.close(code=1008)
             return
-        await socket.accept()
+        try:
+            permit = await api._acquire_tenant_permit(endpoint_id, socket.headers.get("x-api-key"))
+        except (AdmissionRejected, AdmissionUnavailable):
+            await socket.close(code=1013, reason="Endpoint admission is unavailable. Retry shortly.")
+            return
+        try:
+            await socket.accept()
+        except BaseException:
+            await api._release_tenant_permit(permit)
+            raise
         stream_id = None
         output_sequence = 0
         checks = 0
@@ -145,6 +154,7 @@ def register_output_stream(api) -> None:
                     request_data=start.request_data, request_headers=start.request_headers,
                 ), endpoint_id, request)
                 protection = replace(protection, context=replace(protection.context,
+                    endpoint_snapshot=endpoint_snapshot,
                     fields=(*protection.context.fields, ("routing.stream", "true"))))
                 effective_mode = None
                 check_started = time.perf_counter()
@@ -163,6 +173,7 @@ def register_output_stream(api) -> None:
                     original_count = len(original_parts)
                     await api._emit_telemetry(
                         request_id=str(uuid.uuid4()), call_id=protection.call_id, endpoint_id=endpoint_id,
+                        endpoint_context_id=getattr(endpoint_snapshot, "telemetry_context_id", None),
                         phase="output", protocol=f"{protocol}-stream", mode=protection.mode,
                         started=check_started, decision=decision,
                         content_before=("".join(original_parts[:original_count]),),
@@ -210,3 +221,5 @@ def register_output_stream(api) -> None:
                     await socket.close(code=1000)
             except (RuntimeError, WebSocketDisconnect, OSError, TimeoutError):
                 pass
+            finally:
+                await api._release_tenant_permit(permit)

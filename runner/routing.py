@@ -135,6 +135,20 @@ def validate_router(router, artifacts: dict) -> None:
     if fallbacks != 1: raise ValueError("Router requires exactly one fallback.")
 
 
+_PUBLIC_ASSIGNMENT_FIELDS = frozenset({
+    "decisionId", "routerId", "routerRevision", "endpointId", "decisionAt",
+    "assignmentStatus", "routeId", "targetId", "guardrailId", "guardrailVersion",
+    "failureReason",
+})
+
+
+def public_route_assignment(assignment):
+    """Expose only the established routing fields, never internal capabilities."""
+    if assignment is None:
+        return None
+    return {key: value for key, value in assignment.items() if key in _PUBLIC_ASSIGNMENT_FIELDS}
+
+
 def select(router, context):
     assignment = {"decisionId": str(uuid.uuid4()), "routerId": router.router_id, "routerRevision": int(router.revision), "endpointId": context.endpoint_id, "decisionAt": datetime.now(UTC).isoformat(), "assignmentStatus": "unassigned"}
     try:

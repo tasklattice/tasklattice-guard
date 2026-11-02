@@ -4,7 +4,7 @@ import { allowsTokenPermission, effectiveTokenPermissions, tokenModules } from "
 
 describe("Account RBAC", () => {
   it("defines exactly admin and user", () => expect(accountRoles).toEqual(["admin", "user"]));
-  it.each(["guardrails", "policies", "playground", "routers", "endpoints", "models", "runners"] as const)("lets users read and write %s", resource => {
+  it.each(["guardrails", "policies", "playground", "routers", "endpoints", "models"] as const)("lets users read and write %s", resource => {
     expect(hasPermission("user", resource, "read")).toBe(true);
     expect(hasPermission("user", resource, "write")).toBe(true);
   });
@@ -21,9 +21,9 @@ describe("Account RBAC", () => {
     expect(hasPermission("admin", permission.resource, permission.action)).toBe(false);
     expect(hasPermission("user", permission.resource, permission.action)).toBe(true);
   });
-  it.each(["admin", "user"])("allows %s to manage Runners without changing platform authority", role => {
+  it.each(["admin", "user"])("allows %s to read Runners while reserving writes for administrators", role => {
     expect(hasPermission(role, "runners", "read")).toBe(true);
-    expect(hasPermission(role, "runners", "write")).toBe(true);
+    expect(hasPermission(role, "runners", "write")).toBe(role === "admin");
     expect(hasPermission(role, "settings", "write")).toBe(role === "admin");
     for (const path of ["/settings", "/settings/health", "/settings/runner", "/settings/version", "/settings/runner/"]) {
       expect(pagePermission(path)).toEqual({ resource: "runners", action: "read" });
@@ -32,6 +32,12 @@ describe("Account RBAC", () => {
   it("lands each role in its own workspace", () => {
     expect(roleHome("admin")).toBe("/settings/providers");
     expect(roleHome("user")).toBe("/guardrails");
+  });
+  it.each(["/settings/tenant-load-lab", "/settings/tenant-load-lab/", "/settings/tenant-groups", "/settings/tenant-groups/"])("reserves %s for platform administrators", path => {
+    const permission = pagePermission(path)!;
+    expect(permission).toEqual({ resource: "settings", action: "read" });
+    expect(hasPermission("admin", permission.resource, permission.action)).toBe(true);
+    expect(hasPermission("user", permission.resource, permission.action)).toBe(false);
   });
   it.each([undefined, null, "", "member", "viewer", "user,admin"])("denies unknown role %s", role => {
     for (const resource of permissionResources) expect(hasPermission(role, resource)).toBe(false);

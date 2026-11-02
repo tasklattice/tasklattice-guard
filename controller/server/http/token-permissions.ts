@@ -3,6 +3,20 @@ import type { AccessAction, PermissionResource } from "../../shared/rbac.js";
 
 // Shared route allowlist for session RBAC and token scopes. Unclassified APIs deny access.
 export const tokenRoutePermissions: ReadonlyArray<readonly [string, string, TokenModule, "read" | "write"]> = [
+  ["GET", "/api/v1/tenant-groups", "settings", "read"],
+  ["POST", "/api/v1/tenant-groups", "settings", "write"],
+  ["PATCH", "/api/v1/tenant-groups/:id", "settings", "write"],
+  ["DELETE", "/api/v1/tenant-groups/:id", "settings", "write"],
+  ["POST", "/api/v1/tenant-groups/:id/pools", "settings", "write"],
+  ["GET", "/api/v1/tenant-groups/:id/model-configuration", "settings", "read"],
+  ["PUT", "/api/v1/tenant-groups/:id/model-configuration", "settings", "write"],
+  ["GET", "/api/v1/tenants", "settings", "read"],
+  ["PUT", "/api/v1/tenants/:id/group", "settings", "write"],
+  ["PUT", "/api/v1/runner-pools/:id/group", "settings", "write"],
+  ["PUT", "/api/v1/runner-pools/:id/connectivity", "settings", "write"],
+  ["GET", "/api/v1/tenant-load-lab/state", "settings", "read"],
+  ["GET", "/api/v1/tenant-admission-monitor", "settings", "read"],
+  ["POST", "/api/v1/tenant-load-lab/control", "settings", "write"],
   ["GET", "/api/v1/guardrail-capabilities", "guardrails", "read"],
   ["GET", "/api/v1/policy-catalog/detectors", "policies", "read"],
   ["GET", "/api/v1/policies/:id/definition", "policies", "read"],

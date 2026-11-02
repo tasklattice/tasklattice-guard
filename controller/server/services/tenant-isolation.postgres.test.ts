@@ -7,7 +7,7 @@ import { loadConfig } from "../config.js";
 import { normalizeGuardrailDraft } from "../domain/guardrail-plan.js";
 import { createTestDatabase } from "../db/postgres-test-database.js";
 import { ControlPlaneService } from "./control-plane.js";
-import { runWithTenantContext } from "./tenant-context.js";
+import { assertResourceReadAccess, assertResourceWriteAccess, runWithTenantContext } from "./tenant-context.js";
 import { TenantShareService } from "./tenant-shares.js";
 
 const url = process.env.GUARD_TEST_POSTGRES_URL;
@@ -60,6 +60,21 @@ describe.skipIf(!url)("tenant authority across Policy, telemetry and package bou
     await database.pool.query("INSERT INTO policy_imported_version (policy_id,tenant_id,version,digest,definition,source_id) VALUES ($1,'tenantB','1','synthetic','{}','synthetic')", [definition.metadata.id]);
     await expect(asTenant("tenantA", () => service.policyResources.save({ definition, maintainer: "A", expectedRevision: 0, actorId: "actor-tenantA" }))).rejects.toMatchObject({ code: "not_found" });
     expect((await database.pool.query("SELECT id FROM policy_resource WHERE id=$1", [definition.metadata.id])).rows).toEqual([]);
+  });
+
+  it("does not authorize read, write or share for an ambiguously owned Policy ID", async () => {
+    const definition = emptyPolicyDefinition();
+    definition.metadata.id = "policy-ambiguous-ownership";
+    await database.pool.query("INSERT INTO policy_resource (id,tenant_id,definition,maintainer) VALUES ($1,'tenantA',$2,'A')", [definition.metadata.id, definition]);
+    await database.pool.query("INSERT INTO policy_imported_version (policy_id,tenant_id,version,digest,definition,source_id) VALUES ($1,'tenantB','v1','digest','{}','test')", [definition.metadata.id]);
+    for (const tenantId of ["tenantA", "tenantB", "tenantC"]) {
+      await expect(asTenant(tenantId, () => assertResourceReadAccess(database.db, "policy", definition.metadata.id))).rejects.toMatchObject({ code: "not_found" });
+      await expect(asTenant(tenantId, () => assertResourceWriteAccess(database.db, "policy", definition.metadata.id))).rejects.toMatchObject({ code: "not_found" });
+      await expect(asTenant(tenantId, () => shares.createShare({ resourceType: "policy", resourceId: definition.metadata.id, recipientTenantId: tenantId === "tenantC" ? "tenantA" : "tenantC" }, `actor-${tenantId}`))).rejects.toMatchObject({ code: "not_found" });
+    }
+    await expect(runWithTenantContext({ tenantId: "tenantA", role: "admin" }, () => assertResourceReadAccess(database.db, "policy", definition.metadata.id))).resolves.toBeUndefined();
+    await expect(runWithTenantContext({ tenantId: "tenantA", role: "admin" }, () => assertResourceWriteAccess(database.db, "policy", definition.metadata.id))).resolves.toBeUndefined();
+    expect((await database.pool.query("SELECT count(*)::int AS count FROM resource_share WHERE resource_type='policy' AND resource_id=$1", [definition.metadata.id])).rows).toEqual([{ count: 0 }]);
   });
 
   it("scopes security findings and pagination cursors to the invoking tenant", async () => {

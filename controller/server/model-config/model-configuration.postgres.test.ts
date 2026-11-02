@@ -26,10 +26,12 @@ describe.skipIf(!url)("Current model configuration PostgreSQL semantics", () => 
     admin = new Pool({ connectionString: url, max: 1 });
     await admin.query(`CREATE SCHEMA "${namespace}"`);
     pool = new Pool({ connectionString: url, max: 2, application_name: namespace, options: `-c search_path=${namespace}` });
-    for (const table of ['model_assignment_validation', 'model_configuration_revision', 'model_provider', 'model_definition', 'policy_version', 'resource_share', 'audit_event', 'controller_state', 'controller_outbox']) {
+    for (const table of ['tenant_group', 'auth_user', 'model_assignment_validation', 'model_configuration_revision', 'model_provider', 'model_definition', 'policy_version', 'resource_share', 'audit_event', 'controller_state', 'controller_outbox']) {
       // LIKE copies structure/indexes, not data or foreign keys to public rows.
       await pool.query(`CREATE TABLE "${table}" (LIKE public."${table}" INCLUDING ALL)`);
     }
+    await pool.query(readFileSync(new URL("../db/migrations/0059_validation_credential_leases.sql", import.meta.url), "utf8"));
+    await pool.query(readFileSync(new URL("../db/migrations/0065_group_model_configurations.sql", import.meta.url), "utf8"));
     await pool.query("INSERT INTO model_provider (id,name,kind,base_url,credential_ciphertext) VALUES ($1,'Synthetic','custom-openai-compatible','http://provider.invalid/v1','')", [providerId]);
     await pool.query("INSERT INTO model_definition (id,provider_id,name,model,profile) VALUES ($1,$2,'Synthetic','synthetic','tali.qwen3guard.v1')", [modelId, providerId]);
   });

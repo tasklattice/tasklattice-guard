@@ -91,6 +91,44 @@
         },
         "resources": {
           "type": "object"
+        },
+        "endpointContextStorage": {
+          "type": "object",
+          "required": [
+            "maxRowsPerPool",
+            "maxRowsGlobal",
+            "maxPayloadBytesPerContext",
+            "maxPayloadBytesPerPool",
+            "maxPayloadBytesGlobal"
+          ],
+          "properties": {
+            "maxRowsPerPool": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 1000000
+            },
+            "maxRowsGlobal": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 1000000
+            },
+            "maxPayloadBytesPerContext": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 2147483647
+            },
+            "maxPayloadBytesPerPool": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 2147483647
+            },
+            "maxPayloadBytesGlobal": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 2147483647
+            }
+          },
+          "additionalProperties": false
         }
       },
       "additionalProperties": false
@@ -129,6 +167,15 @@
             },
             "resources": {
               "type": "object"
+            },
+            "tenantAdmission": {
+              "$ref": "#/definitions/tenantAdmission"
+            },
+            "distributedRateAdmission": {
+              "$ref": "#/definitions/distributedRateAdmission"
+            },
+            "groupRateAdmission": {
+              "$ref": "#/definitions/groupRateAdmission"
             }
           },
           "additionalProperties": false
@@ -161,6 +208,15 @@
               },
               "resources": {
                 "type": "object"
+              },
+              "tenantAdmission": {
+                "$ref": "#/definitions/tenantAdmission"
+              },
+              "distributedRateAdmission": {
+                "$ref": "#/definitions/distributedRateAdmission"
+              },
+              "groupRateAdmission": {
+                "$ref": "#/definitions/groupRateAdmission"
               }
             },
             "additionalProperties": false
@@ -178,6 +234,37 @@
             "sizeLimit": {
               "type": "string",
               "minLength": 1
+            }
+          },
+          "additionalProperties": false
+        },
+        "telemetryProgress": {
+          "type": "object",
+          "required": [
+            "persistence"
+          ],
+          "properties": {
+            "persistence": {
+              "type": "object",
+              "required": [
+                "enabled",
+                "size",
+                "storageClass"
+              ],
+              "properties": {
+                "enabled": {
+                  "type": "boolean"
+                },
+                "size": {
+                  "type": "string",
+                  "description": "Per-replica telemetry progress PVC capacity, separate from the artifact cache.",
+                  "pattern": "^[1-9][0-9]{0,5}(Mi|Gi)$"
+                },
+                "storageClass": {
+                  "type": "string"
+                }
+              },
+              "additionalProperties": false
             }
           },
           "additionalProperties": false
@@ -413,10 +500,13 @@
               "pattern": "^[0-9]+(ms|s|m|h)$"
             },
             "labels": {
-              "description": "Extra metadata labels shared by Controller and Runner ServiceMonitors. Values must be strings; chart-generated label keys are reserved.",
+              "description": "Extra metadata labels shared by Controller and Runner ServiceMonitors. String values add labels; null removes a default label. Chart-generated label keys are reserved.",
               "type": "object",
               "additionalProperties": {
-                "type": "string"
+                "type": [
+                  "string",
+                  "null"
+                ]
               }
             }
           },
@@ -541,6 +631,86 @@
             "betterAuthSecretKey": {
               "type": "string",
               "minLength": 1
+            }
+          },
+          "additionalProperties": false
+        },
+        "poolAuthentication": {
+          "type": "object",
+          "properties": {
+            "enabled": {
+              "type": "boolean"
+            },
+            "scopedTelemetry": {
+              "type": "boolean"
+            },
+            "telemetryProgress": {
+              "type": "boolean"
+            },
+            "controllerSecret": {
+              "type": "string"
+            },
+            "controllerKey": {
+              "type": "string",
+              "minLength": 1
+            },
+            "runnerSecrets": {
+              "type": "object",
+              "additionalProperties": {
+                "type": "object",
+                "required": [
+                  "name",
+                  "key"
+                ],
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "key": {
+                    "type": "string",
+                    "minLength": 1
+                  }
+                },
+                "additionalProperties": false
+              }
+            }
+          },
+          "additionalProperties": false
+        },
+        "runnerHttpAuthentication": {
+          "type": "object",
+          "properties": {
+            "enabled": {
+              "type": "boolean"
+            },
+            "controllerSecret": {
+              "type": "string"
+            },
+            "controllerKey": {
+              "type": "string",
+              "minLength": 1
+            },
+            "runnerSecrets": {
+              "type": "object",
+              "additionalProperties": {
+                "type": "object",
+                "required": [
+                  "name",
+                  "key"
+                ],
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "key": {
+                    "type": "string",
+                    "minLength": 1
+                  }
+                },
+                "additionalProperties": false
+              }
             }
           },
           "additionalProperties": false
@@ -728,6 +898,86 @@
       "properties": {
         "enabled": {
           "type": "boolean"
+        },
+        "runnerIsolation": {
+          "type": "object",
+          "properties": {
+            "enabled": {
+              "type": "boolean"
+            },
+            "ingressPeers": {
+              "type": "array",
+              "items": {
+                "$ref": "#/definitions/networkPolicyPeer"
+              }
+            },
+            "dnsPeers": {
+              "type": "array",
+              "items": {
+                "$ref": "#/definitions/networkPolicyPeer"
+              }
+            },
+            "poolEgress": {
+              "type": "object",
+              "additionalProperties": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "required": [
+                    "to",
+                    "ports"
+                  ],
+                  "properties": {
+                    "to": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/definitions/networkPolicyPeer"
+                      },
+                      "minItems": 1
+                    },
+                    "ports": {
+                      "type": "array",
+                      "minItems": 1,
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "port",
+                          "protocol"
+                        ],
+                        "properties": {
+                          "port": {
+                            "oneOf": [
+                              {
+                                "type": "integer",
+                                "minimum": 1,
+                                "maximum": 65535
+                              },
+                              {
+                                "type": "string",
+                                "minLength": 1,
+                                "pattern": "^[a-z0-9][a-z0-9-]*$",
+                                "maxLength": 15
+                              }
+                            ]
+                          },
+                          "protocol": {
+                            "enum": [
+                              "TCP",
+                              "UDP",
+                              "SCTP"
+                            ]
+                          }
+                        },
+                        "additionalProperties": false
+                      }
+                    }
+                  },
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "additionalProperties": false
         }
       },
       "additionalProperties": false
@@ -800,6 +1050,339 @@
       "additionalProperties": {
         "type": "string"
       }
+    },
+    "networkPolicyPeer": {
+      "type": "object",
+      "properties": {
+        "podSelector": {
+          "type": "object",
+          "properties": {
+            "matchLabels": {
+              "type": "object",
+              "additionalProperties": {
+                "type": "string"
+              }
+            },
+            "matchExpressions": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "required": [
+                  "key",
+                  "operator"
+                ],
+                "properties": {
+                  "key": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "operator": {
+                    "enum": [
+                      "In",
+                      "NotIn",
+                      "Exists",
+                      "DoesNotExist"
+                    ]
+                  },
+                  "values": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "additionalProperties": false
+              }
+            }
+          },
+          "additionalProperties": false
+        },
+        "namespaceSelector": {
+          "type": "object",
+          "properties": {
+            "matchLabels": {
+              "type": "object",
+              "additionalProperties": {
+                "type": "string"
+              }
+            },
+            "matchExpressions": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "required": [
+                  "key",
+                  "operator"
+                ],
+                "properties": {
+                  "key": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "operator": {
+                    "enum": [
+                      "In",
+                      "NotIn",
+                      "Exists",
+                      "DoesNotExist"
+                    ]
+                  },
+                  "values": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "additionalProperties": false
+              }
+            }
+          },
+          "additionalProperties": false
+        },
+        "ipBlock": {
+          "type": "object",
+          "required": [
+            "cidr"
+          ],
+          "properties": {
+            "cidr": {
+              "type": "string",
+              "minLength": 1
+            },
+            "except": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 1
+              }
+            }
+          },
+          "additionalProperties": false
+        }
+      },
+      "oneOf": [
+        {
+          "required": [
+            "ipBlock"
+          ],
+          "not": {
+            "anyOf": [
+              {
+                "required": [
+                  "podSelector"
+                ]
+              },
+              {
+                "required": [
+                  "namespaceSelector"
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "anyOf": [
+            {
+              "required": [
+                "podSelector"
+              ]
+            },
+            {
+              "required": [
+                "namespaceSelector"
+              ]
+            }
+          ],
+          "not": {
+            "required": [
+              "ipBlock"
+            ]
+          }
+        }
+      ],
+      "additionalProperties": false
+    },
+    "tenantAdmission": {
+      "type": "object",
+      "required": [
+        "capacity",
+        "tenant_limits",
+        "max_queued",
+        "max_queued_per_tenant",
+        "queue_timeout_seconds"
+      ],
+      "properties": {
+        "capacity": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "tenant_limits": {
+          "type": "object",
+          "minProperties": 1,
+          "maxProperties": 1000,
+          "propertyNames": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256,
+            "pattern": "^\\S(?:[\\s\\S]*\\S)?$"
+          },
+          "additionalProperties": {
+            "type": "integer",
+            "minimum": 1
+          }
+        },
+        "max_queued": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "max_queued_per_tenant": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "queue_timeout_seconds": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 30
+        }
+      },
+      "additionalProperties": false
+    },
+    "distributedRateAdmission": {
+      "type": "object",
+      "required": [
+        "pool_id",
+        "revision",
+        "window_ms",
+        "pool_limit",
+        "tenant_limits"
+      ],
+      "properties": {
+        "pool_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256,
+          "pattern": "^\\S(?:[\\s\\S]*\\S)?$"
+        },
+        "revision": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256,
+          "pattern": "^\\S(?:[\\s\\S]*\\S)?$"
+        },
+        "window_ms": {
+          "type": "integer",
+          "minimum": 100,
+          "maximum": 86400000
+        },
+        "pool_limit": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 100000
+        },
+        "tenant_limits": {
+          "type": "object",
+          "minProperties": 1,
+          "propertyNames": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256,
+            "pattern": "^\\S(?:[\\s\\S]*\\S)?$"
+          },
+          "additionalProperties": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 100000
+          },
+          "maxProperties": 1000
+        }
+      },
+      "additionalProperties": false
+    },
+    "groupRateAdmission": {
+      "type": "object",
+      "required": [
+        "group_id",
+        "revision",
+        "window_ms",
+        "group_limit",
+        "tenant_limits",
+        "pool_limits",
+        "pool_epochs"
+      ],
+      "properties": {
+        "group_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256,
+          "pattern": "^\\S(?:[\\s\\S]*\\S)?$"
+        },
+        "revision": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256,
+          "pattern": "^\\S(?:[\\s\\S]*\\S)?$"
+        },
+        "window_ms": {
+          "type": "integer",
+          "minimum": 100,
+          "maximum": 86400000
+        },
+        "group_limit": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 100000
+        },
+        "tenant_limits": {
+          "type": "object",
+          "minProperties": 1,
+          "maxProperties": 1000,
+          "propertyNames": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256,
+            "pattern": "^\\S(?:[\\s\\S]*\\S)?$"
+          },
+          "additionalProperties": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 100000
+          }
+        },
+        "pool_limits": {
+          "type": "object",
+          "minProperties": 1,
+          "maxProperties": 1000,
+          "propertyNames": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256,
+            "pattern": "^\\S(?:[\\s\\S]*\\S)?$"
+          },
+          "additionalProperties": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 100000
+          }
+        },
+        "pool_epochs": {
+          "type": "object",
+          "minProperties": 1,
+          "maxProperties": 1000,
+          "propertyNames": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256,
+            "pattern": "^\\S(?:[\\s\\S]*\\S)?$"
+          },
+          "additionalProperties": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          }
+        }
+      },
+      "additionalProperties": false
     }
   },
   "additionalProperties": false

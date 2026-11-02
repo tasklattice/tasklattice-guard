@@ -47,6 +47,29 @@ const revision = {
 const view = { providers: [], models: [], draft: revision, active: null, activating: null, failed: null };
 
 describe("Model configuration HTTP routes", () => {
+  it("refuses platform apply before mutation when no pool consumes platform defaults", async () => {
+    const models = { groupRuntime: { platformActivationPoolId: vi.fn().mockResolvedValue(null) }, applyConfiguration: vi.fn() };
+    const runner = { distributeDesiredState: vi.fn() };
+    const response = await appWith("admin", models as unknown as Partial<ModelConfigurationService>, runner)
+      .request("/api/v1/model-configuration/apply", { method: "POST", headers: { "content-type": "application/json" },
+        body: JSON.stringify({ bindingIds: ["content_safety.input"], expectedDraftToken: "token", expectedActiveId: null }) });
+    expect(response.status).toBe(409);
+    expect(models.applyConfiguration).not.toHaveBeenCalled();
+    expect(runner.distributeDesiredState).not.toHaveBeenCalled();
+  });
+
+  it("pins the platform revision and reports pending if the pool policy changes before finalization", async () => {
+    const models = { groupRuntime: { platformActivationPoolId: vi.fn().mockResolvedValue("pool-c") },
+      applyConfiguration: vi.fn().mockResolvedValue(revision), finalizeActivation: vi.fn().mockResolvedValue(false), view: vi.fn().mockResolvedValue(view) };
+    const runner = { distributeDesiredState: vi.fn().mockResolvedValue({ desiredGeneration: 9, distributionStatus: "ready" }) };
+    const response = await appWith("admin", models as unknown as Partial<ModelConfigurationService>, runner)
+      .request("/api/v1/model-configuration/apply", { method: "POST", headers: { "content-type": "application/json" },
+        body: JSON.stringify({ bindingIds: ["content_safety.input"], expectedDraftToken: "token", expectedActiveId: null }) });
+    expect(response.status).toBe(202);
+    expect(runner.distributeDesiredState).toHaveBeenCalledWith("pool-c", 10000, revision.id);
+    expect(models.finalizeActivation).toHaveBeenCalledWith(revision.id, "pool-c");
+    expect((await response.json()).distribution.distributionStatus).toBe("syncing");
+  });
   it("keeps administrator GET read-only even when activation is ready", async () => {
     const models = { view: vi.fn().mockResolvedValue({ ...view, activating: { ...revision, state: "activating", generation: 9 } }), finalizeActivation: vi.fn() };
     const runner = { distributionStatus: vi.fn().mockResolvedValue({ distributionStatus: "ready", desiredGeneration: 9 }) };
@@ -232,7 +255,7 @@ describe("Model configuration HTTP routes", () => {
     });
     expect(response.status).toBe(200);
     expect(models.applyConfiguration).toHaveBeenCalledWith("admin-1", selection);
-    expect(models.finalizeActivation).toHaveBeenCalledWith("new-snapshot");
+    expect(models.finalizeActivation).toHaveBeenCalledWith("new-snapshot", "default");
   });
 
   it.each([[], ["control_plane"], ["content_safety.input", "content_safety.input"]])("rejects invalid activation selection %j", async bindingIds => {
@@ -258,7 +281,7 @@ describe("Model configuration HTTP routes", () => {
     const response = await app.request('/api/v1/model-configuration/apply', { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ bindingIds: ['content_safety.input'], expectedDraftToken: 'token', expectedActiveId: null }) });
 
     expect(response.status).toBe(200);
-    expect(models.finalizeActivation).toHaveBeenCalledWith(revision.id);
+    expect(models.finalizeActivation).toHaveBeenCalledWith(revision.id, "default");
   });
 
   it.each(['/api/v1/model-configuration/rollback', '/api/v1/model-configuration/revisions/old/activate'])("removes the historical operation %s", async path => {
@@ -293,19 +316,38 @@ describe("Model configuration HTTP routes", () => {
       "33dcc196-94f6-42ac-b104-0c975b3be5ef",
     ], undefined);
   });
+
+  it("requires pool credentials for model resolution when pool identities are enabled", async () => {
+    const poolA = "pool-a-token-with-at-least-32-characters";
+    const poolB = "pool-b-token-with-at-least-32-characters";
+    const scopedConfig = { ...config, runnerPoolTokens: new Map([["pool-a", poolA], ["pool-b", poolB]]) };
+    const models = { resolveCredentials: vi.fn().mockResolvedValue({}) };
+    const app = appWith("admin", models, {}, scopedConfig);
+    const body = JSON.stringify({ refs: ["2da89935-e001-4a43-a47b-95f419666bb0"], leaseId: "2da89935-e001-4a43-a47b-95f419666bb1" });
+    const request = (token: string) => app.request("/api/internal/v1/model-credentials/resolve", {
+      method: "POST", headers: { "content-type": "application/json", authorization: `Bearer ${token}` }, body,
+    });
+    expect((await request(config.runnerToken)).status).toBe(401);
+    expect(models.resolveCredentials).not.toHaveBeenCalled();
+    expect((await request(poolA)).status).toBe(200);
+    expect(models.resolveCredentials).toHaveBeenLastCalledWith(["2da89935-e001-4a43-a47b-95f419666bb0"], "2da89935-e001-4a43-a47b-95f419666bb1", "pool-a");
+    expect((await request(poolB)).status).toBe(200);
+    expect(models.resolveCredentials).toHaveBeenLastCalledWith(["2da89935-e001-4a43-a47b-95f419666bb0"], "2da89935-e001-4a43-a47b-95f419666bb1", "pool-b");
+  });
 });
 
 function appWith(
   role: "admin" | "user",
   models: Partial<ModelConfigurationService>,
   runnerControl: Partial<RunnerControlServer> = {},
+  appConfig = config,
 ) {
   const auth = {
     api: { getSession: vi.fn().mockResolvedValue({ user: { id: `${role}-1`, role, tenantId: "tenantA" } }) },
     handler: vi.fn(),
   } as unknown as ControllerAuth;
   return createHttpApp({
-    config,
+    config: appConfig,
     auth,
     service: {} as ControlPlaneService,
     runnerControl: {

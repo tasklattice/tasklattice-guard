@@ -6,6 +6,7 @@ import { and, asc, desc, eq, getTableColumns, inArray, isNull, max, ne, sql } fr
 import { z } from "zod";
 
 import type { ControllerDatabase } from "../db/client.js";
+import { advisoryTransactionLock } from "../db/postgres-locks.js";
 import type { CapabilityValidationRequest } from "../generated/control-protocol/tasklattice/guard/control/v1/CapabilityValidationRequest.js";
 import {
   auditEvents,
@@ -17,6 +18,8 @@ import {
   outboxEvents,
   policyRecords,
   policyVersions,
+  runnerPools,
+  tenantGroups,
 } from "../db/schema.js";
 import { ConflictError, NotFoundError, ValidationError } from "../domain/errors.js";
 import {
@@ -60,6 +63,10 @@ import {
 } from "./domain.js";
 import { credentialHint, decryptModelCredential, encryptModelCredential } from "./secret-crypto.js";
 import { providerFetch, providerTlsError } from "./provider-fetch.js";
+import { PostgresValidationCredentialLeaseStore, type ValidationCredentialLeaseStore } from "./validation-credential-leases.js";
+import type { ControlSessionIdentity } from "../services/runner-control-sessions.js";
+import { GroupRuntimeModelService, type GroupModelTransaction } from "./group-runtime.js";
+import { modelBindingValidationFingerprint, modelRuntimeValidationFingerprint } from "./runtime-fingerprint.js";
 import { isDedicatedJailbreakDetectEndpoint, isNvidiaModelCatalog, jailbreakDetectAttackInput, jailbreakDetectEndpoint, jailbreakDetectModel, jailbreakDetectProfile, jailbreakDetectResponse, jailbreakDetectSafeInput } from "./jailbreak-detect.js";
 
 const chatEnvelope = z.object({
@@ -89,16 +96,21 @@ export type RailValidationEvidence = { passed: boolean; message: string; latency
 export type RailValidator = (request: CapabilityValidationRequest) => Promise<RailValidationEvidence>;
 
 export class ModelConfigurationService {
+  readonly groupRuntime: GroupRuntimeModelService;
   private activeCache: { id: string; configuration: ActiveModelConfiguration } | null = null;
   private railValidator: RailValidator | null = null;
-  private readonly validationLeases = new Map<string, { provider: ProviderRow; expiresAt: number }>();
+  private readonly validationLeases: ValidationCredentialLeaseStore;
 
   constructor(
     private readonly db: ControllerDatabase,
     private readonly rootSecret: string,
     private readonly policyCatalogDirectory: string,
     private readonly fetcher: typeof globalThis.fetch = globalThis.fetch,
-  ) {}
+    validationLeases?: ValidationCredentialLeaseStore,
+  ) {
+    this.validationLeases = validationLeases ?? new PostgresValidationCredentialLeaseStore(db);
+    this.groupRuntime = new GroupRuntimeModelService(db, rootSecret);
+  }
 
   setRailValidator(validator: RailValidator): void { this.railValidator = validator; }
 
@@ -106,11 +118,11 @@ export class ModelConfigurationService {
     if (target === "control_plane") return this.probeModel(provider, model);
     if (!this.railValidator) return { passed: false, message: "Runner Rail validation is unavailable. A model connection check cannot validate an Input/Output Rail.", latencyMs: 0 };
     const binding = capabilityBindingDefinitions.find((item) => item.id === target)!;
-    for (const [id, lease] of this.validationLeases) if (lease.expiresAt <= Date.now()) this.validationLeases.delete(id);
-    if (this.validationLeases.size >= 64) return { passed: false, message: "Too many Rail validations are in progress. Retry shortly.", latencyMs: 0 };
     const leaseId = randomUUID();
-    this.validationLeases.set(leaseId, { provider, expiresAt: Date.now() + 95_000 });
+    let leased = false;
     try {
+      leased = await this.validationLeases.create(leaseId, provider);
+      if (!leased) return { passed: false, message: "Too many Rail validations are in progress. Retry shortly.", latencyMs: 0 };
       return await this.railValidator({ requestId: randomUUID(), bindingId: target, credentialLeaseId: leaseId, ...(formalValidation ? { formalValidation } : {}),
         configuration: { revisionId: `validation:${leaseId}`, revision: 0,
           runtimes: [{ id: model.id, providerId: provider.id, providerName: provider.name, baseUrl: provider.baseUrl,
@@ -124,7 +136,7 @@ export class ModelConfigurationService {
       });
     } catch {
       return { passed: false, message: "Runner Rail validation did not complete. Retry after checking Runner health.", latencyMs: 0 };
-    } finally { this.validationLeases.delete(leaseId); }
+    } finally { if (leased) await this.validationLeases.revoke(leaseId); }
   }
 
   async initialize(): Promise<void> {
@@ -254,6 +266,7 @@ export class ModelConfigurationService {
       ? await this.probeProviderCredential(baseUrl, apiKey, skipTlsVerify, target)
       : await this.probeProviderFromCatalog(baseUrl, apiKey, skipTlsVerify, targetKind);
     const updated = await this.db.transaction(async (tx) => {
+      await advisoryTransactionLock(tx, "traffic-router-bindings");
       const [saved] = await tx.update(modelProviders).set({
         ...(input.name === undefined ? {} : { name: input.name }),
         ...(input.kind === undefined ? {} : { kind: input.kind }),
@@ -399,17 +412,17 @@ export class ModelConfigurationService {
 
   async deleteProvider(id: string, actorId: string): Promise<void> {
     assertPlatformAuthority();
-    const dependencies = await this.db.select({ id: modelDefinitions.id, tenantId: modelDefinitions.tenantId }).from(modelDefinitions)
-      .where(eq(modelDefinitions.providerId, id));
-    if (dependencies.length) {
-      throw new ConflictError("Remove this Provider's Models before deleting it.", "model_provider_in_use", {
-        modelIds: dependencies.filter((item) => item.tenantId === null).map((item) => item.id),
+    await this.db.transaction(async tx => {
+      await advisoryTransactionLock(tx, "traffic-router-bindings");
+      const dependencies = await tx.select({ id: modelDefinitions.id, tenantId: modelDefinitions.tenantId }).from(modelDefinitions)
+        .where(eq(modelDefinitions.providerId, id));
+      if (dependencies.length) throw new ConflictError("Remove this Provider's Models before deleting it.", "model_provider_in_use", {
+        modelIds: dependencies.filter(item => item.tenantId === null).map(item => item.id),
       });
-    }
-    const deleted = await this.db.delete(modelProviders)
-      .where(eq(modelProviders.id, id))
-      .returning({ id: modelProviders.id });
-    if (!deleted[0]) throw new NotFoundError("Model Provider", id);
+      await this.groupRuntime.assertProviderUnused(id, tx);
+      const deleted = await tx.delete(modelProviders).where(eq(modelProviders.id, id)).returning({ id: modelProviders.id });
+      if (!deleted[0]) throw new NotFoundError("Model Provider", id);
+    });
     await this.audit(actorId, "model_provider.deleted", "model_provider", id, {});
   }
 
@@ -480,6 +493,7 @@ export class ModelConfigurationService {
       throw new ValidationError(`${provider.name} does not support the ${input.profile} protocol.`);
     }
     const updated = await this.db.transaction(async (tx) => {
+      await advisoryTransactionLock(tx, "traffic-router-bindings");
       // A model's protocol is part of every revision referencing it. Do not
       // rewrite historical/active behavior when configuring an unused model.
       await tx.execute(sql`LOCK TABLE ${modelConfigurationRevisions} IN SHARE ROW EXCLUSIVE MODE`);
@@ -487,6 +501,7 @@ export class ModelConfigurationService {
       if (revisions.some((revision) => assignedModelIds(normalizeModelAssignments(revision.assignments)).includes(id))) {
         throw new ConflictError("This Model's protocol is referenced by a configuration and cannot be changed. Register a separate Model definition to preserve active configurations and rollback.", "model_protocol_in_use");
       }
+      await this.groupRuntime.assertModelUnused(id, tx);
       const [model] = await tx.update(modelDefinitions).set({
         ...input, status: "pending", validationMessage: "Protocol configured. Validate it in the Guardrail Catalog.",
         validatedAt: null, validationLatencyMs: null, updatedAt: new Date(),
@@ -504,18 +519,18 @@ export class ModelConfigurationService {
 
   async deleteModel(id: string, actorId: string): Promise<void> {
     await this.assertModelOwner(id);
-    const revisions = await this.db.select().from(modelConfigurationRevisions)
-      .where(inArray(modelConfigurationRevisions.state, ["draft", "validated", "activating", "active"]));
-    const usedBy = revisions.filter((revision) => assignedModelIds(normalizeModelAssignments(revision.assignments)).includes(id));
-    if (usedBy.length) {
-      throw new ConflictError("Remove this Model from every active or draft assignment before deleting it.", "model_definition_in_use", {
-        revisionIds: usedBy.filter((item) => !currentTenantId() || item.tenantId === currentTenantId()).map((item) => item.id),
+    await this.db.transaction(async tx => {
+      await advisoryTransactionLock(tx, "traffic-router-bindings");
+      const revisions = await tx.select().from(modelConfigurationRevisions)
+        .where(inArray(modelConfigurationRevisions.state, ["draft", "validated", "activating", "active"]));
+      const usedBy = revisions.filter(revision => assignedModelIds(normalizeModelAssignments(revision.assignments)).includes(id));
+      if (usedBy.length) throw new ConflictError("Remove this Model from every active or draft assignment before deleting it.", "model_definition_in_use", {
+        revisionIds: usedBy.filter(item => !currentTenantId() || item.tenantId === currentTenantId()).map(item => item.id),
       });
-    }
-    const deleted = await this.db.delete(modelDefinitions)
-      .where(and(eq(modelDefinitions.id, id), modelOwnerPredicate()))
-      .returning({ id: modelDefinitions.id });
-    if (!deleted[0]) throw new NotFoundError("Model", id);
+      await this.groupRuntime.assertModelUnused(id, tx);
+      const deleted = await tx.delete(modelDefinitions).where(and(eq(modelDefinitions.id, id), modelOwnerPredicate())).returning({ id: modelDefinitions.id });
+      if (!deleted[0]) throw new NotFoundError("Model", id);
+    });
     await this.audit(actorId, "model_definition.deleted", "model_definition", id, {});
   }
 
@@ -581,6 +596,7 @@ export class ModelConfigurationService {
     const check: ModelValidationCheck = {
       id: `probe:${target}:${modelId}`, scope: target === "control_plane" ? "model" : "capability",
       evidenceKind: target === "control_plane" ? "model-probe" : "nemo-rail-v1",
+      runtimeFingerprint: modelBindingValidationFingerprint(target, model, provider),
       status: result.passed ? "passed" : "failed", message: result.message, latencyMs: result.latencyMs, cases: result.cases ?? [],
     };
     const validationId = randomUUID();
@@ -687,6 +703,7 @@ export class ModelConfigurationService {
           id: `probe:${target}:${model.id}`,
           scope: target === "control_plane" ? "model" : "capability",
           evidenceKind: target === "control_plane" ? "model-probe" : "nemo-rail-v1",
+          runtimeFingerprint: modelBindingValidationFingerprint(target, model, provider),
           status: result.passed ? "passed" : "failed",
           message: result.message,
           latencyMs: result.latencyMs, cases: result.cases ?? [],
@@ -792,9 +809,10 @@ export class ModelConfigurationService {
     return publicRevision(activated);
   }
 
-  async finalizeActivation(revisionId: string): Promise<void> {
+  async finalizeActivation(revisionId: string, sourcePoolId?: string): Promise<boolean> {
     assertPlatformAuthority();
-    await this.db.transaction(async (tx) => {
+    const completed = await this.db.transaction(async (tx) => {
+      await advisoryTransactionLock(tx, "traffic-router-bindings");
       // A unique synchronization ID prevents delayed ACKs from replacing a newer config.
       const [state] = await tx.select({ id: controllerState.id }).from(controllerState)
         .where(eq(controllerState.id, "singleton")).for("update");
@@ -802,7 +820,8 @@ export class ModelConfigurationService {
       const [revision] = await tx.select().from(modelConfigurationRevisions)
         .where(and(eq(modelConfigurationRevisions.id, revisionId),
           eq(modelConfigurationRevisions.tenantId, LEGACY_TENANT_ID))).for("update");
-      if (!revision || revision.state !== "activating") return;
+      if (sourcePoolId && !await this.platformRevisionSelected(tx, sourcePoolId, revisionId)) return false;
+      if (!revision || revision.state !== "activating") return revision?.state === "active";
       // Replace the current configuration; do not retain restorable historical versions.
       await tx.delete(modelConfigurationRevisions)
         .where(and(eq(modelConfigurationRevisions.tenantId, LEGACY_TENANT_ID), inArray(modelConfigurationRevisions.state, ["active", "superseded", "failed"]), ne(modelConfigurationRevisions.id, revisionId)));
@@ -813,39 +832,46 @@ export class ModelConfigurationService {
       }).where(and(eq(modelConfigurationRevisions.id, revisionId), eq(modelConfigurationRevisions.tenantId, LEGACY_TENANT_ID)));
       await tx.insert(auditEvents).values({ id: randomUUID(), kind: "model_configuration.applied", actorId: revision.createdBy,
         resourceType: "model_configuration", resourceId: revisionId, detail: { generation: revision.generation } });
+      return true;
+    });
+    this.activeCache = null;
+    return completed;
+  }
+
+  async failActivation(revisionId: string, reason: string, sourcePoolId?: string): Promise<void> {
+    assertPlatformAuthority();
+    await this.db.transaction(async tx => {
+      await advisoryTransactionLock(tx, "traffic-router-bindings");
+      await tx.select({ id: controllerState.id }).from(controllerState).where(eq(controllerState.id, "singleton")).for("update");
+      if (sourcePoolId && !await this.platformRevisionSelected(tx, sourcePoolId, revisionId)) return;
+      await tx.update(modelConfigurationRevisions).set({ state: "failed", failureReason: reason.slice(0, 2_000), updatedAt: new Date() })
+        .where(and(eq(modelConfigurationRevisions.id, revisionId), eq(modelConfigurationRevisions.tenantId, LEGACY_TENANT_ID), eq(modelConfigurationRevisions.state, "activating")));
     });
     this.activeCache = null;
   }
 
-  async failActivation(revisionId: string, reason: string): Promise<void> {
-    assertPlatformAuthority();
-    await this.db.update(modelConfigurationRevisions).set({
-      state: "failed",
-      failureReason: reason.slice(0, 2_000),
-      updatedAt: new Date(),
-    }).where(and(eq(modelConfigurationRevisions.id, revisionId),
-      eq(modelConfigurationRevisions.tenantId, LEGACY_TENANT_ID),
-      eq(modelConfigurationRevisions.state, "activating")));
-    this.activeCache = null;
+  private async platformRevisionSelected(tx: GroupModelTransaction, poolId: string, revisionId: string): Promise<boolean> {
+    const selected = await this.groupRuntime.selectionForPool(poolId, tx);
+    return selected?.mode === "legacy" && (await this.activeConfiguration(true, tx))?.revisionId === revisionId;
   }
 
-  async activeConfiguration(includeActivating = false): Promise<ActiveModelConfiguration | null> {
+  async activeConfiguration(includeActivating = false, database: Pick<ControllerDatabase, "select"> = this.db): Promise<ActiveModelConfiguration | null> {
     const states = includeActivating ? ["activating", "active"] as const : ["active"] as const;
-    const rows = await this.db.select().from(modelConfigurationRevisions)
+    const rows = await database.select().from(modelConfigurationRevisions)
       .where(and(eq(modelConfigurationRevisions.tenantId, LEGACY_TENANT_ID),
         inArray(modelConfigurationRevisions.state, [...states])))
       .orderBy(desc(modelConfigurationRevisions.generation), desc(modelConfigurationRevisions.revision));
     const revision = rows.find((item) => includeActivating && item.state === "activating") ?? rows[0];
     if (!revision) return null;
-    if (!includeActivating && this.activeCache?.id === revision.id) return this.activeCache.configuration;
+    if (database === this.db && !includeActivating && this.activeCache?.id === revision.id) return this.activeCache.configuration;
     const normalizedAssignments = normalizeModelAssignments(revision.assignments);
     const ids = [...new Set(assignedModelIds(normalizedAssignments))];
     const models = ids.length
-      ? await this.db.select().from(modelDefinitions).where(and(inArray(modelDefinitions.id, ids), isNull(modelDefinitions.tenantId)))
+      ? await database.select().from(modelDefinitions).where(and(inArray(modelDefinitions.id, ids), isNull(modelDefinitions.tenantId)))
       : [];
     const providerIds = [...new Set(models.map((model) => model.providerId))];
     const providers = providerIds.length
-      ? await this.db.select().from(modelProviders).where(inArray(modelProviders.id, providerIds))
+      ? await database.select().from(modelProviders).where(inArray(modelProviders.id, providerIds))
       : [];
     const byProvider = new Map(providers.map((provider) => [provider.id, provider]));
     for (const binding of capabilityBindingDefinitions) {
@@ -878,8 +904,22 @@ export class ModelConfigurationService {
         };
       }),
     };
-    if (!includeActivating) this.activeCache = { id: revision.id, configuration };
+    if (database === this.db && !includeActivating) this.activeCache = { id: revision.id, configuration };
     return configuration;
+  }
+
+  async configurationForPool(poolId: string, includeActivating = true, transaction?: GroupModelTransaction): Promise<ActiveModelConfiguration | null> {
+    const read = async (tx: GroupModelTransaction) => {
+      const selected = await this.groupRuntime.selectionForPool(poolId, tx);
+      if (!selected) return null;
+      return selected.mode === "legacy" ? this.activeConfiguration(includeActivating, tx) : selected.configuration;
+    };
+    if (transaction) return read(transaction);
+    return this.db.transaction(async tx => {
+      await advisoryTransactionLock(tx, "traffic-router-bindings");
+      await tx.select({ id: controllerState.id }).from(controllerState).where(eq(controllerState.id, "singleton")).for("share");
+      return read(tx);
+    });
   }
 
   async controlPlaneModel(_role: "policy_authoring" | "playground_chat") {
@@ -905,14 +945,41 @@ export class ModelConfigurationService {
     };
   }
 
-  async resolveCredentials(refs: string[], leaseId?: string): Promise<Record<string, string>> {
+  /** Bind before dispatch, and never allow a lease to be reassigned to another pool. */
+  async bindValidationLease(leaseId: string, poolId: string, session?: ControlSessionIdentity): Promise<boolean> {
+    return this.validationLeases.bind(leaseId, poolId, session);
+  }
+
+  async resolveCredentials(refs: string[], leaseId?: string, poolId?: string): Promise<Record<string, string>> {
     assertPlatformAuthority();
-    if (leaseId) {
-      const lease = this.validationLeases.get(leaseId);
-      if (!lease || lease.expiresAt <= Date.now() || refs.some((ref) => ref !== lease.provider.id)) return {};
-      return { [lease.provider.id]: decryptModelCredential(lease.provider.credentialCiphertext, this.rootSecret) };
+    if (poolId !== undefined) {
+      // A configured token is a pool identity, not proof that the allocation
+      // still exists. Stale token-map entries must not retain secret access
+      // after deprovisioning or an invalid group allocation.
+      const [pool] = await this.db.select({ id: runnerPools.id }).from(runnerPools)
+        .where(and(eq(runnerPools.id, poolId), validPoolAllocation(poolId))).limit(1);
+      if (!pool) return {};
     }
+    if (leaseId) {
+      const lease = await this.validationLeases.resolve(leaseId, refs, poolId);
+      if (!lease) return {};
+      return { [lease.providerId]: decryptModelCredential(lease.credentialCiphertext, this.rootSecret) };
+    }
+    if (poolId !== undefined) return this.db.transaction(async tx => {
+      await advisoryTransactionLock(tx, "traffic-router-bindings");
+      await tx.select({ id: controllerState.id }).from(controllerState).where(eq(controllerState.id, "singleton")).for("share");
+      const selected = await this.groupRuntime.selectionForPool(poolId, tx);
+      if (!selected) return {};
+      if (selected.mode !== "legacy") return this.groupRuntime.resolveSelectedCredentials(selected, refs);
+      const configuration = await this.activeConfiguration(true, tx);
+      return this.credentialsFromConfiguration(refs, configuration, tx, poolId, selected.groupId);
+    });
     const configuration = await this.activeConfiguration(true);
+    return this.credentialsFromConfiguration(refs, configuration, this.db);
+  }
+
+  private async credentialsFromConfiguration(refs: string[], configuration: ActiveModelConfiguration | null,
+    database: Pick<ControllerDatabase, "select">, poolId?: string, groupId?: string): Promise<Record<string, string>> {
     if (!configuration) return {};
     const dataModelIds = new Set(Object.values(configuration.assignments.bindings).filter((value): value is string => Boolean(value)));
     const allowed = new Set(
@@ -922,7 +989,10 @@ export class ModelConfigurationService {
     );
     const requested = [...new Set(refs)].filter((ref) => allowed.has(ref));
     if (!requested.length) return {};
-    const providers = await this.db.select().from(modelProviders).where(inArray(modelProviders.id, requested));
+    const providers = await database.select().from(modelProviders).where(and(inArray(modelProviders.id, requested),
+      poolId === undefined ? undefined : validPoolAllocation(poolId),
+      poolId === undefined ? undefined : sql`exists (select 1 from runner_pool p left join tenant_group_model_configuration c on c.group_id=p.group_id
+        where p.id=${poolId} and p.group_id=${groupId ?? null} and coalesce(c.mode,'legacy')='legacy')`));
     return Object.fromEntries(providers.map((provider) => [
       provider.id,
       decryptModelCredential(provider.credentialCiphertext, this.rootSecret),
@@ -1040,6 +1110,7 @@ export class ModelConfigurationService {
         id: `probe:${target.id}:${model.id}`,
         scope: target.id === "control_plane" ? "model" : "capability",
         evidenceKind: target.id === "control_plane" ? "model-probe" : "nemo-rail-v1",
+        runtimeFingerprint: modelBindingValidationFingerprint(target.id, model, provider),
         status: result.passed ? "passed" : "failed",
         message: result.message,
         latencyMs: result.latencyMs, cases: result.cases ?? [],
@@ -1063,6 +1134,7 @@ export class ModelConfigurationService {
     const configuredFailures = checks.some((check) => check.status === "failed" && !checkBelongsToTarget(check, "control_plane"));
     return {
       valid: !configuredFailures,
+      runtimeFingerprint: modelRuntimeValidationFingerprint(assignments, models, providers),
       checkedAt: new Date().toISOString(),
       checks,
       contractCoverage: uniqueContractCoverage(contractCoverage),
@@ -1111,8 +1183,15 @@ export class ModelConfigurationService {
       );
     });
     const availableContracts = new Set(contractCoverage.map((item) => contractRailKey(item.contract, item.railType)));
+    const coherentRuntimeEvidence = assignedTargets.every(([target, id]) => {
+      if (!id) return true;
+      const model = modelById.get(id), provider = model && providerById.get(model.providerId);
+      return model && provider && checks.some(check => check.id === `probe:${target}:${id}` && check.status === "passed"
+        && check.evidenceKind === "nemo-rail-v1" && check.runtimeFingerprint === modelBindingValidationFingerprint(target, model, provider));
+    });
     return {
       valid: allAssignedTargetsPassed && !checks.some((check) => check.status === "failed" && !checkBelongsToTarget(check, "control_plane")),
+      ...(coherentRuntimeEvidence ? { runtimeFingerprint: modelRuntimeValidationFingerprint(assignments, models, providers) } : {}),
       checkedAt: new Date().toISOString(),
       checks,
       contractCoverage: uniqueContractCoverage(contractCoverage),
@@ -1406,6 +1485,16 @@ export class ModelConfigurationService {
   private async audit(actorId: string, kind: string, resourceType: string, resourceId: string, detail: Record<string, unknown>) {
     await this.db.insert(auditEvents).values({ id: randomUUID(), tenantId: tenantOwnerForCreate(), kind, actorId, resourceType, resourceId, detail });
   }
+}
+
+/** Rechecked in the secret-fetch statement to avoid using only an earlier
+ * allocation lookup. Draining blocks future retrieval, but cannot recall keys
+ * already delivered or identify an individual workload within a pool. */
+function validPoolAllocation(poolId: string) {
+  return sql`exists (select 1 from ${runnerPools} as credential_pool
+    inner join ${tenantGroups} as credential_group on credential_group.id = credential_pool.group_id
+    where credential_pool.id = ${poolId}
+      and not exists (select 1 from runner_pool_lease_epoch e where e.pool_id=credential_pool.id and e.draining))`;
 }
 
 function modelOwnerPredicate() {

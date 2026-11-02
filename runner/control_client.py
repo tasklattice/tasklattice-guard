@@ -9,6 +9,7 @@ import time
 import uuid
 from dataclasses import asdict
 from datetime import UTC, datetime
+from contextvars import ContextVar
 from .telemetry import RuntimeTelemetryExporter
 from .toolkit.nemo.actions.model_call import begin_cost_collection, end_cost_collection
 from collections import OrderedDict
@@ -35,9 +36,15 @@ from .metrics import RunnerMetrics
 from .providers import dynamic_runtime_action_providers
 from .protocol_codec import validation_case_result_to_proto, validation_metrics_to_proto
 from .validator import DefaultRunnerValidator
+from .serving_lease import ServingLease, LeaseChallenge
 
 
 logger = logging.getLogger("tasklattice.guard.runner.control")
+_LEASE_RESPONSE_TIMEOUT_SECONDS = 5.0
+
+
+class _LeaseAuthorityLost(RuntimeError):
+    pass
 
 
 def _prepare_model_dependencies(
@@ -68,8 +75,23 @@ class RunnerControlClient:
         self._stop = asyncio.Event()
         self._connected = asyncio.Event()
         self._synchronized = asyncio.Event()
-        if store.generation > 0:
-            self._synchronized.set()
+        # Restored artifacts are a cache, not proof of the current pool/group
+        # allocation. Every control stream must synchronize before serving.
+        self._synchronization_lost = asyncio.Event()
+        self._synchronization_lost.set()
+        self._synchronization_epoch = 0
+        lease_enforcement = getattr(settings, "experimental_lease_enforcement", False)
+        if lease_enforcement and not settings.control_token:
+            raise ValueError("Experimental lease enforcement requires a Runner pool token.")
+        self._serving_lease = ServingLease(5.0) if lease_enforcement else None
+        self._lease_snapshot_nonce: str | None = None
+        self._lease_snapshot_ready = asyncio.Event()
+        self._lease_reply = asyncio.Event()
+        self._lease_reconnect = asyncio.Event()
+        self._pending_lease: tuple[LeaseChallenge, str] | None = None
+        self._work_period: ContextVar[asyncio.Event | None] = ContextVar("runner_private_work_period", default=None)
+        self._queued_work_periods: dict[int, asyncio.Event] = {}
+        self._safe_control_rejections: set[int] = set()
         self._metrics.set_control_state(connected=False, synchronized=self._synchronized.is_set())
         self._heartbeat_interval = 10
         self._sequence = 0
@@ -99,8 +121,32 @@ class RunnerControlClient:
 
     @property
     def synchronized(self) -> bool:
-        """Whether a verified last-known-good desired state can be served."""
-        return self._synchronized.is_set()
+        """Whether this control stream verified the current serving allocation."""
+        return self._synchronized.is_set() and (self._serving_lease is None or self._serving_lease.synchronized)
+
+    @property
+    def synchronization_lost(self) -> asyncio.Event:
+        """A per-serving-period fence; reconnect never clears an older fence."""
+        return self._serving_lease.synchronization_lost if self._serving_lease is not None else self._synchronization_lost
+
+    def _revoke_synchronization(self, *, clear_telemetry: bool = True) -> None:
+        if clear_telemetry and self._telemetry is not None:
+            self._telemetry.clear_progress_authorization()
+        self._synchronization_epoch += 1
+        self._synchronized.clear()
+        self._synchronization_lost.set()
+        if self._serving_lease is not None:
+            self._serving_lease.revoke()
+        self._lease_snapshot_nonce = None
+        self._lease_snapshot_ready.clear()
+        self._pending_lease = None
+        self._lease_reply.set()
+        self._metrics.set_control_state(synchronized=False)
+
+    def _allow_synchronized_serving(self) -> None:
+        self._synchronization_lost = asyncio.Event()
+        self._synchronized.set()
+        self._metrics.set_control_state(synchronized=self.synchronized)
 
     async def run(self) -> None:
         delay = 1.0
@@ -112,6 +158,7 @@ class RunnerControlClient:
                 raise
             except Exception:
                 self._connected.clear()
+                self._revoke_synchronization()
                 self._metrics.set_control_state(connected=False)
                 self._metrics.observe_control_reconnect("stream_error")
                 logger.exception("Runner control stream failed; reconnecting in %.1f seconds.", delay)
@@ -122,25 +169,39 @@ class RunnerControlClient:
                 delay = min(30.0, delay * 2)
 
     async def stop(self) -> None:
+        self._revoke_synchronization()
         self._stop.set()
 
     async def _connect_once(self) -> None:
+        self._revoke_synchronization()
+        self._lease_reconnect.clear()
         # Results from a failed stream are retried by Controller reconciliation.
         # A fresh queue guarantees that registration is the first message on
         # every new stream instead of sitting behind stale heartbeats.
         self._outgoing = asyncio.Queue(maxsize=1_000)
+        self._queued_work_periods.clear()
+        self._safe_control_rejections.clear()
         channel = self._channel()
         stub = services.RunnerControlStub(channel)
         heartbeat = asyncio.create_task(self._heartbeats())
-        metadata = (("authorization", f"Bearer {self._settings.controller_token}"),)
+        metadata = (("authorization", f"Bearer {self._settings.control_token or self._settings.controller_token}"),)
         # Own the sender task explicitly. gRPC's iterator consumer can remain
         # blocked on our empty queue after the server has closed the RPC.
         response_stream = stub.Connect(metadata=metadata)
+        lease_task = asyncio.create_task(self._lease_renewals(response_stream.cancel)) if self._serving_lease is not None else None
         sender = asyncio.create_task(
             self._write_messages(response_stream), name="guard-control-writer",
         )
         try:
             await self._receive_messages(response_stream)
+        except asyncio.CancelledError:
+            # gRPC reports cancellation when the lease watchdog intentionally
+            # closes this RPC. That is a reconnect, not cancellation of the
+            # long-lived control task. Preserve real caller cancellation.
+            task = asyncio.current_task()
+            if self._lease_reconnect.is_set() and not self._stop.is_set() and task is not None and not task.cancelling():
+                return
+            raise
         except ExceptionGroup as errors:
             # Preserve the transport error contract for callers and reconnect logic.
             if len(errors.exceptions) == 1:
@@ -150,13 +211,18 @@ class RunnerControlClient:
             response_stream.cancel()
             sender.cancel()
             self._connected.clear()
+            self._revoke_synchronization()
             self._metrics.set_control_state(connected=False)
             heartbeat.cancel()
+            if lease_task is not None:
+                lease_task.cancel()
             for task in self._capability_tasks:
                 task.cancel()
             await asyncio.gather(*self._capability_tasks, return_exceptions=True)
             self._capability_tasks.clear()
             await asyncio.gather(heartbeat, sender, return_exceptions=True)
+            if lease_task is not None:
+                await asyncio.gather(lease_task, return_exceptions=True)
             await channel.close()
 
     async def _receive_messages(self, stream) -> None:
@@ -182,7 +248,7 @@ class RunnerControlClient:
             async for message in stream:
                 self._connected.set()
                 self._metrics.set_control_state(connected=True)
-                if message.WhichOneof("body") == "protection_state":
+                if message.WhichOneof("body") in {"protection_state", "serving_lease_response"}:
                     await handle(message)
                 else:
                     # Reconnect on overflow instead of blocking mode delivery.
@@ -191,6 +257,9 @@ class RunnerControlClient:
 
     async def _write_messages(self, stream) -> None:
         async for message in self._messages(self._registration()):
+            period = self._queued_work_periods.get(id(message))
+            if period is not None and (period.is_set() or not self.synchronized):
+                continue
             await stream.write(message)
 
     async def _messages(self, registration: protocol.RunnerMessage):
@@ -198,9 +267,22 @@ class RunnerControlClient:
         yield registration
         while not self._stop.is_set():
             message = await self._outgoing.get()
+            # Work results belong to the serving period in which they were
+            # produced. Never release a queued result after authority is lost.
+            period = self._queued_work_periods.get(id(message))
+            if self._serving_lease is not None and id(message) not in self._safe_control_rejections and message.WhichOneof("body") in {
+                "validation_progress", "validation_result", "capability_validation_result", "artifact_admission_result",
+            } and (period is None or period.is_set() or not self.synchronized):
+                self._queued_work_periods.pop(id(message), None)
+                self._safe_control_rejections.discard(id(message))
+                continue
             self._metrics.set_control_queue_depth(self._outgoing.qsize())
             self._metrics.observe_control_message("sent", message.WhichOneof("body") or "unknown")
-            yield message
+            try:
+                yield message
+            finally:
+                self._queued_work_periods.pop(id(message), None)
+                self._safe_control_rejections.discard(id(message))
 
     async def _heartbeats(self) -> None:
         while not self._stop.is_set():
@@ -219,6 +301,8 @@ class RunnerControlClient:
                 applied_generation=self._store.generation,
                 applied_protection_generation=self._store.protection_generation,
                 load=self._metrics.heartbeat(),
+                tenant_admission_snapshot_json=(self._metrics.tenant_admission_snapshot_json()
+                    if callable(getattr(self._metrics, "tenant_admission_snapshot_json", None)) else b""),
             ),
         ))
         self._metrics.observe_heartbeat_sent()
@@ -226,6 +310,8 @@ class RunnerControlClient:
     async def _handle(self, message: protocol.ControllerMessage) -> None:
         body = message.WhichOneof("body")
         if body == "registration_accepted":
+            if self._telemetry is not None and self._telemetry.progress_wal_id is not None:
+                await self._telemetry.authorize_progress(message.registration_accepted.telemetry_upload_authorization)
             self._heartbeat_interval = max(2, message.registration_accepted.heartbeat_interval_seconds)
             self._metrics.set_desired_generation(message.registration_accepted.desired_generation)
         elif body == "protection_state":
@@ -240,6 +326,8 @@ class RunnerControlClient:
                     generation=state.generation, accepted=accepted, reason=reason)))
         elif body == "desired_state":
             await self._apply_desired_state(message.desired_state)
+        elif body == "serving_lease_response":
+            self._accept_lease_response(message.serving_lease_response)
         elif body == "validation_request":
             await self._validate(message.validation_request)
         elif body == "capability_validation_request":
@@ -264,6 +352,15 @@ class RunnerControlClient:
             logger.warning("Controller requested Runner drain: %s", message.drain_request.reason)
 
     async def _apply_desired_state(self, desired_state: protocol.DesiredState) -> None:
+        # A connected, already-authorized stream may retain its last good state
+        # through ordinary updates. A prior stream may never reopen serving.
+        group_rate = getattr(self._settings, "group_rate_admission", None)
+        if self._serving_lease is not None or group_rate is not None:
+            # Upload capability belongs to the current control session and
+            # must survive an ordinary allocation/snapshot refresh. The WAL
+            # can contain delayed events while serving itself is fenced.
+            self._revoke_synchronization(clear_telemetry=False)
+        synchronization_epoch = self._synchronization_epoch
         started = time.perf_counter()
         self._metrics.set_desired_generation(desired_state.generation)
         model_revision_id = (
@@ -272,6 +369,17 @@ class RunnerControlClient:
             else ""
         )
         try:
+            if group_rate is not None:
+                if (not desired_state.HasField("snapshot_nonce") or not desired_state.snapshot_nonce or
+                    not desired_state.HasField("allocation_group_id") or not desired_state.HasField("allocation_epoch") or
+                    desired_state.allocation_group_id != group_rate.group_id or
+                    desired_state.allocation_epoch != group_rate.pool_epochs.get(self._settings.pool_id)):
+                    raise ValueError("Group rate admission requires the matching challenged Controller group and epoch.")
+            if self._serving_lease is not None and (
+                not desired_state.HasField("snapshot_nonce") or not desired_state.snapshot_nonce or
+                not desired_state.HasField("allocation_epoch") or desired_state.allocation_epoch < 0
+            ):
+                raise ValueError("Lease enforcement requires a challenged Controller allocation epoch.")
             providers = None
             native_models = None
             if desired_state.HasField("model_configuration"):
@@ -292,8 +400,12 @@ class RunnerControlClient:
                     )
             else:
                 materialization_key = None
+            if synchronization_epoch != self._synchronization_epoch:
+                return
             await prepare(self._store.apply, desired_state, providers=providers, native_models=native_models,
                           materialization_key=materialization_key)
+            if synchronization_epoch != self._synchronization_epoch:
+                return
             self._materialization_key = materialization_key
             if providers is not None:
                 self._providers = providers
@@ -316,8 +428,13 @@ class RunnerControlClient:
                 routes=route_count,
                 endpoints=endpoint_count,
             )
-            self._synchronized.set()
-            self._metrics.set_control_state(synchronized=True)
+            if synchronization_epoch != self._synchronization_epoch:
+                return
+            if not self._synchronized.is_set():
+                if self._serving_lease is not None:
+                    self._serving_lease.activate_allocation(desired_state.allocation_epoch, desired_state.generation)
+                    self._lease_snapshot_nonce = desired_state.snapshot_nonce
+                self._allow_synchronized_serving()
             self._metrics.observe_desired_state_apply("success", time.perf_counter() - started)
         except Exception as error:
             self._metrics.observe_desired_state_apply("rejected", time.perf_counter() - started)
@@ -330,7 +447,13 @@ class RunnerControlClient:
                 False,
                 str(error),
                 model_revision_id,
+                desired_state.snapshot_nonce if desired_state.HasField("snapshot_nonce") else None,
             )
+            if self._serving_lease is not None:
+                # A rejected allocation cannot become a renewal source. Wake
+                # the supervisor even when no snapshot was ever ready, so it
+                # obtains fresh challenged state on a new stream.
+                self._fail_lease()
             return
         for artifact in desired_state.artifacts:
             await self._artifact_result(artifact, desired_state.generation, True, "")
@@ -339,7 +462,11 @@ class RunnerControlClient:
             True,
             "",
             model_revision_id,
+            desired_state.snapshot_nonce if desired_state.HasField("snapshot_nonce") else None,
         )
+        # Queue the exact snapshot ACK before allowing a renewal request.
+        if self._serving_lease is not None:
+            self._lease_snapshot_ready.set()
         # A desired state can contain only Endpoint or route changes and no
         # artifact acknowledgements. Report the applied generation immediately
         # so Controller mutations do not expose a Secret or route before the
@@ -366,7 +493,7 @@ class RunnerControlClient:
             response = await client.post(
                 f"{base_url}/api/internal/v1/model-credentials/resolve",
                 headers={
-                    "authorization": f"Bearer {self._settings.controller_token}",
+                    "authorization": f"Bearer {self._settings.control_token or self._settings.controller_token}",
                     "content-type": "application/json",
                 },
                 json={"refs": refs, **({"leaseId": lease_id} if lease_id else {})},
@@ -383,7 +510,117 @@ class RunnerControlClient:
             )
         return {ref: str(credentials[ref]) for ref in refs}
 
+    def _fail_lease(self) -> None:
+        self._lease_reconnect.set()
+        self._revoke_synchronization()
+
+    def _accept_lease_response(self, response: protocol.ServingLeaseResponse) -> None:
+        if self._serving_lease is None or self._pending_lease is None:
+            return
+        challenge, snapshot_nonce = self._pending_lease
+        if response.nonce != challenge.nonce:
+            return  # Late response from another challenge or stream.
+        self._pending_lease = None
+        if (not response.granted or response.snapshot_nonce != snapshot_nonce or
+            snapshot_nonce != self._lease_snapshot_nonce or
+            not self._serving_lease.accept(challenge, epoch=response.epoch, generation=response.generation,
+                nonce=response.nonce, duration_seconds=response.duration_ms / 1000)):
+            self._fail_lease()
+        else:
+            self._metrics.set_control_state(synchronized=self.synchronized)
+        self._lease_reply.set()
+
+    async def _lease_renewals(self, cancel_stream: Callable[[], object]) -> None:
+        """Renew while this stream owns a fully applied challenged snapshot.
+
+        Requests are timed before queueing, so transport/queue delay never
+        extends authorization. Expiry or rejection forces a fresh stream and
+        snapshot instead of reviving cached state on a late response.
+        """
+        assert self._serving_lease is not None
+        try:
+            while not self._stop.is_set():
+                ready = asyncio.create_task(self._lease_snapshot_ready.wait())
+                reconnect = asyncio.create_task(self._lease_reconnect.wait())
+                try:
+                    await asyncio.wait((ready, reconnect), return_when=asyncio.FIRST_COMPLETED)
+                finally:
+                    ready.cancel()
+                    reconnect.cancel()
+                    await asyncio.gather(ready, reconnect, return_exceptions=True)
+                if self._lease_reconnect.is_set():
+                    cancel_stream()
+                    return
+                synchronization_epoch = self._synchronization_epoch
+                snapshot_nonce = self._lease_snapshot_nonce
+                if not snapshot_nonce:
+                    continue
+                try:
+                    challenge = self._serving_lease.challenge()
+                except RuntimeError:
+                    self._fail_lease()
+                    cancel_stream()
+                    return
+                self._pending_lease = (challenge, snapshot_nonce)
+                self._lease_reply = asyncio.Event()
+                try:
+                    async with asyncio.timeout(_LEASE_RESPONSE_TIMEOUT_SECONDS):
+                        await self._send(protocol.RunnerMessage(message_id=str(uuid.uuid4()), sent_at_unix_ms=_now_ms(),
+                            serving_lease_request=protocol.ServingLeaseRequest(
+                                runner_id=self._settings.runner_id, boot_id=self._boot_id, nonce=challenge.nonce,
+                                epoch=challenge.epoch, generation=challenge.generation, snapshot_nonce=snapshot_nonce)))
+                        await self._lease_reply.wait()
+                except TimeoutError:
+                    self._fail_lease()
+                if self._lease_reconnect.is_set():
+                    cancel_stream()
+                    return
+                if synchronization_epoch != self._synchronization_epoch:
+                    continue  # An ordered new snapshot superseded this request.
+                if not self.synchronized:
+                    self._fail_lease()
+                    cancel_stream()
+                    return
+                await asyncio.sleep(1.0)
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            self._fail_lease()
+            cancel_stream()
+            logger.exception("Runner serving lease renewal failed.")
+
+    async def _lease_bound_work(self, work: Callable[[], Awaitable[None]]) -> None:
+        if self._serving_lease is None:
+            await work()
+            return
+        revoked = self.synchronization_lost
+        if not self.synchronized or revoked.is_set():
+            raise _LeaseAuthorityLost("Runner serving lease is unavailable.")
+        token = self._work_period.set(revoked)
+        try:
+            worker = asyncio.create_task(work())
+        finally:
+            self._work_period.reset(token)
+        lost = asyncio.create_task(revoked.wait())
+        try:
+            done, _ = await asyncio.wait((worker, lost), return_when=asyncio.FIRST_COMPLETED)
+            if lost in done or not self.synchronized or revoked.is_set():
+                raise _LeaseAuthorityLost("Runner serving lease was lost.")
+            await worker
+        finally:
+            worker.cancel()
+            lost.cancel()
+            await asyncio.gather(worker, lost, return_exceptions=True)
+
     async def _validate_capability(self, request: protocol.CapabilityValidationRequest) -> None:
+        try:
+            await self._lease_bound_work(lambda: self._validate_capability_work(request))
+        except _LeaseAuthorityLost:
+            await self._send_lease_rejection(protocol.RunnerMessage(message_id=str(uuid.uuid4()), sent_at_unix_ms=_now_ms(),
+                capability_validation_result=protocol.CapabilityValidationResult(request_id=request.request_id,
+                    message="Runner serving lease is unavailable. Retry after synchronization.")))
+
+    async def _validate_capability_work(self, request: protocol.CapabilityValidationRequest) -> None:
         try:
             if self._compiler is None:
                 raise ValueError("This Runner is not compiler-capable.")
@@ -400,6 +637,14 @@ class RunnerControlClient:
                                               capability_validation_result=result))
 
     async def _admit(self, request: protocol.ArtifactAdmissionRequest) -> None:
+        try:
+            await self._lease_bound_work(lambda: self._admit_work(request))
+        except _LeaseAuthorityLost:
+            await self._send_lease_rejection(protocol.RunnerMessage(message_id=str(uuid.uuid4()), sent_at_unix_ms=_now_ms(),
+                artifact_admission_result=protocol.ArtifactAdmissionResult(runner_id=self._settings.runner_id,
+                    request_id=request.request_id, admitted=False, reason="Runner serving lease is unavailable.")))
+
+    async def _admit_work(self, request: protocol.ArtifactAdmissionRequest) -> None:
         try:
             with diagnostic_phase("artifact.admission", request_id=request.request_id,
                                   guardrail_id=request.artifact.guardrail_id, version=request.artifact.guardrail_version):
@@ -421,6 +666,15 @@ class RunnerControlClient:
         ))
 
     async def _validate(self, request: protocol.ValidationRequest) -> None:
+        try:
+            await self._lease_bound_work(lambda: self._validate_work(request))
+        except _LeaseAuthorityLost:
+            await self._send_lease_rejection(protocol.RunnerMessage(message_id=str(uuid.uuid4()), sent_at_unix_ms=_now_ms(),
+                validation_result=protocol.ValidationResult(runner_id=self._settings.runner_id,
+                    run_id=request.run_id, accepted=False, reason="Runner serving lease is unavailable.",
+                    status=protocol.VALIDATION_STATUS_FAILED)))
+
+    async def _validate_work(self, request: protocol.ValidationRequest) -> None:
         async with self._validation_lock:
             cached = self._validation_results.get(request.run_id)
             if cached is not None:
@@ -538,6 +792,7 @@ class RunnerControlClient:
         accepted: bool,
         reason: str,
         model_revision_id: str,
+        snapshot_nonce: str | None = None,
     ) -> None:
         await self._send(protocol.RunnerMessage(
             message_id=str(uuid.uuid4()), sent_at_unix_ms=_now_ms(),
@@ -547,11 +802,34 @@ class RunnerControlClient:
                 accepted=accepted,
                 reason=reason,
                 model_revision_id=model_revision_id,
+                **({"snapshot_nonce": snapshot_nonce} if snapshot_nonce is not None else {}),
             ),
         ))
 
     async def _send(self, message: protocol.RunnerMessage) -> None:
-        await self._outgoing.put(message)
+        if self._serving_lease is not None and message.WhichOneof("body") in {
+            "validation_progress", "validation_result", "capability_validation_result", "artifact_admission_result",
+        }:
+            period = self._work_period.get() or self.synchronization_lost
+            if period.is_set() or not self.synchronized:
+                raise _LeaseAuthorityLost("Runner work belongs to a revoked serving period.")
+            self._queued_work_periods[id(message)] = period
+        try:
+            await self._outgoing.put(message)
+        except BaseException:
+            self._queued_work_periods.pop(id(message), None)
+            raise
+        self._metrics.set_control_queue_depth(self._outgoing.qsize())
+
+    async def _send_lease_rejection(self, message: protocol.RunnerMessage) -> None:
+        # Only the fixed, source-free rejection payloads above use this path.
+        # Private result/progress payloads must always carry their work period.
+        self._safe_control_rejections.add(id(message))
+        try:
+            await self._outgoing.put(message)
+        except BaseException:
+            self._safe_control_rejections.discard(id(message))
+            raise
         self._metrics.set_control_queue_depth(self._outgoing.qsize())
 
     def _registration(self) -> protocol.RunnerMessage:
@@ -563,12 +841,16 @@ class RunnerControlClient:
                 boot_id=self._boot_id,
                 pool_id=self._settings.pool_id,
                 runner_version=SOFTWARE_VERSION["version"],
-                labels={"tasklattice.build": json.dumps(SOFTWARE_VERSION), "tasklattice.protection-modes": "1"},
+                labels={"tasklattice.build": json.dumps(SOFTWARE_VERSION), "tasklattice.protection-modes": "1",
+                        "tasklattice.snapshot-ack": "1",
+                        **({"tasklattice.lease-probe": "1"} if self._serving_lease is not None else {})},
                 nemo_version=importlib.metadata.version("nemoguardrails"),
                 max_concurrency=self._settings.max_concurrency,
                 compiler_capable=self._settings.compiler_capable,
                 applied_generation=self._store.generation,
                 applied_protection_generation=self._store.protection_generation,
+                **({"telemetry_wal_id": self._telemetry.progress_wal_id}
+                   if self._telemetry is not None and self._telemetry.progress_wal_id is not None else {}),
             ),
         )
 

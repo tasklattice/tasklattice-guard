@@ -7,7 +7,7 @@ import { boundedRead } from "../db/read-budget.js";
 import { auditEvents, guardrails, modelDefinitions, modelProviders, modelPriceRevisions as prices, modelPriceSync as sync, modelUsageCosts as costs } from "../db/schema.js";
 import { NotFoundError, ValidationError } from "../domain/errors.js";
 import type { RuntimeEventInput } from "../domain/models.js";
-import { modelRatesSchema, pricingRuleSchema, type GuardrailMonthlyCost, type CostQuery, type GuardrailCostView, type ModelPricingView, type PricingSyncView } from "../../shared/model-pricing.js";
+import { modelRatesSchema, pricingRuleSchema, type CostGroup, type GuardrailMonthlyCost, type CostQuery, type GuardrailCostView, type ModelPricingView, type PricingSyncView } from "../../shared/model-pricing.js";
 import { automaticCatalogKeys, LITELLM_PRICE_URL, meteredCalls, priceCall } from "./model-pricing-domain.js";
 
 import bundledCatalog from "../catalog/model-prices.json" with { type: "json" };
@@ -36,7 +36,7 @@ async function resolvedPrice(db: ReadDb, model: PricingModel, at: Date) {
 }
 
 /** Called within the telemetry transaction; immutable IDs make WAL replay idempotent. */
-export async function recordModelUsageCosts(db: ReadDb, event: RuntimeEventInput): Promise<void> {
+export async function recordModelUsageCosts(db: ReadDb, event: RuntimeEventInput, authenticatedPoolId?: string): Promise<void> {
   if (!event.guardrailId) return;
   const calls = meteredCalls(event.metadata);
   if (!calls.length) return;
@@ -55,7 +55,7 @@ export async function recordModelUsageCosts(db: ReadDb, event: RuntimeEventInput
     }
     const calculated = priceCall(call, price?.rates ?? null);
     const id = createHash("sha256").update(JSON.stringify([event.runnerId, event.id, call.id])).digest("hex");
-    await db.insert(costs).values({ id, tenantId: runtimeEventTenantId(event), eventId: event.id, guardrailId: event.guardrailId,
+    await db.insert(costs).values({ id, tenantId: runtimeEventTenantId(event, authenticatedPoolId), eventId: event.id, allocationContextId: event.allocationContextId ?? null, guardrailId: event.guardrailId,
       guardrailVersion: event.guardrailVersion ?? null, modelId: model?.id ?? null, model: call.model,
       provider: model?.provider ?? call.provider, source: event.metadata.costSource === "testing" || event.metadata.protocol === "playground" ? "testing" : "runtime",
       occurredAt: event.occurredAt, calls: call.calls, inputTokens: call.inputTokens, outputTokens: call.outputTokens,
@@ -180,10 +180,35 @@ export class ModelPricingService {
       const readableModels = currentTenantId() && modelIds.length ? await execute(tx.select({ id: modelDefinitions.id }).from(modelDefinitions)
         .where(and(inArray(modelDefinitions.id, modelIds), resourceReadPredicate("model", modelDefinitions.id, modelDefinitions.tenantId)))) : [];
       const readableIds = new Set(readableModels.map(model => model.id));
-      // Sharing a Guardrail grants its cost summary, without granting inventory
-      // access to private Models that supplied global detector capabilities.
-      const visibleModels = currentTenantId() ? models.map(row => row.modelId && readableIds.has(row.modelId)
-        ? row : { ...row, modelId: null, model: "Configured detector" }) : models;
+      // Sharing a Guardrail grants the caller's cost summary, not inventory
+      // access to private Models or Providers. Combine hidden rows by currency
+      // so their number does not disclose the number of private Models.
+      const visibleModels: CostGroup[] = [];
+      const hiddenByCurrency = new Map<string | null, CostGroup>();
+      for (const row of models) {
+        if (!currentTenantId() || (row.modelId && readableIds.has(row.modelId))) {
+          visibleModels.push(row);
+          continue;
+        }
+        let hidden = hiddenByCurrency.get(row.currency);
+        if (!hidden) {
+          hidden = { ...row, modelId: null, model: "Configured detector", provider: "Configured provider" };
+          hiddenByCurrency.set(row.currency, hidden);
+          visibleModels.push(hidden);
+          continue;
+        }
+        hidden.calls += row.calls;
+        hidden.inputTokens += row.inputTokens;
+        hidden.outputTokens += row.outputTokens;
+        hidden.unknownUsage += row.unknownUsage;
+        hidden.unpriced += row.unpriced;
+        if (row.cost !== null) hidden.cost = (hidden.cost ?? 0) + row.cost;
+      }
+      // Sorting the original private rows before merging would leak how an
+      // individual hidden model ranks against a visible model. Sort only the
+      // final, authorized view so the order reflects the combined amount.
+      if (currentTenantId()) visibleModels.sort((a, b) =>
+        a.cost === null ? (b.cost === null ? 0 : 1) : b.cost === null ? -1 : b.cost - a.cost);
       const day = sql<string>`to_char(${costs.occurredAt} at time zone 'UTC', 'YYYY-MM-DD')`;
       const trend = await execute(tx.select({ day, currency: costs.currency, calls: sums.calls, cost: sums.cost, unpriced: sums.unpriced }).from(costs).where(predicate).groupBy(day, costs.currency).orderBy(day));
       const [latest] = await execute(tx.select({ at: sql<Date | string | null>`max(${costs.occurredAt})` }).from(costs).where(predicate));

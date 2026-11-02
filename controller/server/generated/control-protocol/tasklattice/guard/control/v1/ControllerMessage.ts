@@ -7,6 +7,7 @@ import type { ValidationRequest as _tasklattice_guard_control_v1_ValidationReque
 import type { CapabilityValidationRequest as _tasklattice_guard_control_v1_CapabilityValidationRequest, CapabilityValidationRequest__Output as _tasklattice_guard_control_v1_CapabilityValidationRequest__Output } from '../../../../tasklattice/guard/control/v1/CapabilityValidationRequest.js';
 import type { ArtifactAdmissionRequest as _tasklattice_guard_control_v1_ArtifactAdmissionRequest, ArtifactAdmissionRequest__Output as _tasklattice_guard_control_v1_ArtifactAdmissionRequest__Output } from '../../../../tasklattice/guard/control/v1/ArtifactAdmissionRequest.js';
 import type { GuardrailProtectionState as _tasklattice_guard_control_v1_GuardrailProtectionState, GuardrailProtectionState__Output as _tasklattice_guard_control_v1_GuardrailProtectionState__Output } from '../../../../tasklattice/guard/control/v1/GuardrailProtectionState.js';
+import type { ServingLeaseResponse as _tasklattice_guard_control_v1_ServingLeaseResponse, ServingLeaseResponse__Output as _tasklattice_guard_control_v1_ServingLeaseResponse__Output } from '../../../../tasklattice/guard/control/v1/ServingLeaseResponse.js';
 import type { Long } from '@grpc/proto-loader';
 
 /**
@@ -28,7 +29,8 @@ export interface ControllerMessage {
   'capabilityValidationRequest'?: (_tasklattice_guard_control_v1_CapabilityValidationRequest | null);
   'artifactAdmissionRequest'?: (_tasklattice_guard_control_v1_ArtifactAdmissionRequest | null);
   'protectionState'?: (_tasklattice_guard_control_v1_GuardrailProtectionState | null);
-  'body'?: "registrationAccepted"|"desiredState"|"drainRequest"|"validationRequest"|"capabilityValidationRequest"|"artifactAdmissionRequest"|"protectionState";
+  'servingLeaseResponse'?: (_tasklattice_guard_control_v1_ServingLeaseResponse | null);
+  'body'?: "registrationAccepted"|"desiredState"|"drainRequest"|"validationRequest"|"capabilityValidationRequest"|"artifactAdmissionRequest"|"protectionState"|"servingLeaseResponse";
 }
 
 /**
@@ -50,5 +52,6 @@ export interface ControllerMessage__Output {
   'capabilityValidationRequest'?: (_tasklattice_guard_control_v1_CapabilityValidationRequest__Output | null);
   'artifactAdmissionRequest'?: (_tasklattice_guard_control_v1_ArtifactAdmissionRequest__Output | null);
   'protectionState'?: (_tasklattice_guard_control_v1_GuardrailProtectionState__Output | null);
-  'body'?: "registrationAccepted"|"desiredState"|"drainRequest"|"validationRequest"|"capabilityValidationRequest"|"artifactAdmissionRequest"|"protectionState";
+  'servingLeaseResponse'?: (_tasklattice_guard_control_v1_ServingLeaseResponse__Output | null);
+  'body'?: "registrationAccepted"|"desiredState"|"drainRequest"|"validationRequest"|"capabilityValidationRequest"|"artifactAdmissionRequest"|"protectionState"|"servingLeaseResponse";
 }

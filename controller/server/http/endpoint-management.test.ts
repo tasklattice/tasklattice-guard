@@ -21,6 +21,7 @@ const config = loadConfig({
 
 const endpoint = {
   id: "endpoint-1",
+  tenantId: "tenantA",
   name: "Primary gateway",
   adapter: "litellm-generic-guardrail",
   status: "active",
@@ -161,9 +162,10 @@ describe("Endpoint management HTTP routes", () => {
     const updateEndpoint = vi.fn().mockResolvedValue({ ...endpoint, status: "disabled" });
     const rotateEndpointCredential = vi.fn().mockResolvedValue({ ...endpoint, credential: "tg_one_time" });
     const revokeEndpointCredential = vi.fn().mockResolvedValue(undefined);
+    const getEndpoint = vi.fn().mockResolvedValue(endpoint);
     const app = appWith(
       { user: { id: "admin-1", role, tenantId: "tenantA" } },
-      { updateEndpoint, rotateEndpointCredential, revokeEndpointCredential },
+      { updateEndpoint, rotateEndpointCredential, revokeEndpointCredential, getEndpoint },
     );
 
     const toggled = await app.request("/api/v1/endpoints/endpoint-1", {
@@ -177,6 +179,7 @@ describe("Endpoint management HTTP routes", () => {
     expect(toggled.status).toBe(200);
     expect(rotated.status).toBe(201);
     expect(revoked.status).toBe(204);
+    expect(getEndpoint).toHaveBeenCalledWith("endpoint-1");
     expect(updateEndpoint).toHaveBeenCalledWith({ id: "endpoint-1", enabled: false, actorId: "admin-1" });
     expect(rotateEndpointCredential).toHaveBeenCalledWith({ id: "endpoint-1", actorId: "admin-1" });
     expect(revokeEndpointCredential).toHaveBeenCalledWith({

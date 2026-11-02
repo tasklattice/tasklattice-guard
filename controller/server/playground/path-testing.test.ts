@@ -11,6 +11,14 @@ const base = {
   request: "POST /chat HTTP/1.1\nX-Channel: partner\n\nhello",
 };
 describe("Runner path test transport", () => {
+  it("sends tenant-group path tests to the selected pool without changing their credentials", async () => {
+    const fetcher = vi.fn().mockResolvedValue(Response.json({}));
+    const root = new RunnerPlaygroundClient({ baseUrl: "http://default:8091", token: "internal", fetcher });
+    await root.forBaseUrl("http://group-b:8091").testPath(pathTestSchema.parse({ ...base, target: "endpoint", targetId: "endpoint-1", credential: "group-b-key",
+      request: 'POST /runtime/v1/endpoints/endpoint-1/beta/litellm_basic_guardrail_api HTTP/1.1\n\n{"texts":["hello"]}' }), "litellm-generic-guardrail");
+    expect(fetcher.mock.calls[0]![0]).toBe("http://group-b:8091/runtime/v1/endpoints/endpoint-1/beta/litellm_basic_guardrail_api");
+    expect(fetcher.mock.calls[0]![1].headers["x-api-key"]).toBe("group-b-key");
+  });
   it.each(["f5-scan", "litellm-generic-guardrail"] as const)("keeps %s Playground traffic on Service DNS when an external address is advertised", async (adapter) => {
     const config = loadConfig({
       NODE_ENV: "test",

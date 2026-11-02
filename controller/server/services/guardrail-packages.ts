@@ -141,14 +141,62 @@ export class GuardrailPackageService {
     if (blockers.length) {
       throw new ConflictError("Some selected versions are missing content required for export.", "guardrail_package_incomplete", { versions: blockers });
     }
+    await this.assertExportablePolicies(included.flatMap(version => version.policies));
     const bytes = buildPackage({
       source: PACKAGE_SOURCE,
       guardrail: { id: guardrail.id, name: guardrail.name },
       versions: included,
       exportedAt: new Date(),
     });
+    // The compiled Artifact carries Policy source too. Validate its edges and
+    // frozen projections against the authorized leaves before releasing bytes;
+    // a missing/stale leaves list must not bypass the ownership check above.
+    try {
+      this.verify(bytes);
+    } catch (error) {
+      if (currentTenantId()) throw new ConflictError("This package contains Policy content that cannot be exported under your current ownership.", "guardrail_package_policy_export_forbidden");
+      throw error;
+    }
     const filename = `${guardrail.id}-${selected.length === 1 ? selected[0] : `${selected.length}-versions`}${PACKAGE_FILE_EXTENSION}`;
     return { filename, bytes, versions: [...selected].sort() };
+  }
+
+  /** A read-only share does not authorize redistributing another tenant's
+   * frozen Policy source and tests in a portable package. Verify both current
+   * ownership and the exact version content; an ID that was deleted/reused
+   * must not transfer an older owner's frozen source to its new owner. */
+  private async assertExportablePolicies(nodes: PolicyNode[]): Promise<void> {
+    const tenantId = currentTenantId();
+    if (!tenantId || !nodes.length) return;
+    const ids = [...new Set(nodes.map(node => node.id))];
+    const [records, resources, imported, versions, maintained] = await Promise.all([
+      this.db.select({ id: policyRecords.id, tenantId: policyRecords.tenantId }).from(policyRecords).where(inArray(policyRecords.id, ids)),
+      this.db.select({ id: policyResources.id, tenantId: policyResources.tenantId }).from(policyResources).where(inArray(policyResources.id, ids)),
+      this.db.select().from(policyImportedVersions).where(inArray(policyImportedVersions.policyId, ids)),
+      this.db.select().from(policyVersions).where(inArray(policyVersions.policyId, ids)),
+      this.db.select().from(policyResourceVersions).where(inArray(policyResourceVersions.policyId, ids)),
+    ]);
+    const shipped = this.catalog().flatMap(policy => [policy, ...(policy.published_versions ?? [])]);
+    for (const node of nodes) {
+      const digest = policyNodeDigest(node.definition);
+      // Shipped catalog entries are platform-public, but a matching ID alone
+      // is insufficient when frozen content differs from the shipped version.
+      if (node.kind === "catalog" && shipped.some(policy => policy.id === node.id && policy.version === node.version
+          && policyNodeDigest(frozenBuiltInDefinition(policy)) === digest)) continue;
+      const owners = new Set([
+        ...records.filter(row => row.id === node.id).map(row => row.tenantId),
+        ...resources.filter(row => row.id === node.id).map(row => row.tenantId),
+        ...imported.filter(row => row.policyId === node.id).map(row => row.tenantId),
+      ]);
+      const ownsIdentity = owners.size === 1 && owners.has(tenantId);
+      const exactVersion = node.kind === "programmable"
+        ? versions.some(row => row.policyId === node.id && String(row.version) === node.version && policyNodeDigest(row.snapshot as unknown as Record<string, unknown>) === digest)
+        : maintained.some(row => row.policyId === node.id && row.version === node.version && policyNodeDigest(frozenBuiltInDefinition(row.view)) === digest)
+          || imported.some(row => row.policyId === node.id && row.version === node.version && row.digest === digest);
+      if (!ownsIdentity || !exactVersion) {
+        throw new ConflictError("This package contains Policy content that cannot be exported under your current ownership.", "guardrail_package_policy_export_forbidden");
+      }
+    }
   }
 
   /** Verify an upload, keep its exact bytes, and preview what an import would do. */
@@ -199,6 +247,11 @@ export class GuardrailPackageService {
       // Leaves: every Policy version the selected Guardrail versions use.
       const needed = new Set(parsed.versions.filter(item => selected.includes(item.version)).flatMap(item => item.policies.map(ref => `${ref.id}@${ref.version}`)));
       const leaves = parsed.policies.filter(node => needed.has(`${node.id}@${node.version}`));
+      // The Policy editor and hard delete use the same per-ID lock. Take the
+      // locks in stable order before checking ownership and importing leaves.
+      for (const policyId of [...new Set(leaves.map(node => node.id))].sort()) {
+        await advisoryTransactionLock(tx, `policy-resource:${policyId}`);
+      }
       const policyStates = await this.policyStates(tx, leaves);
       const blocked = leaves.filter(node => policyStates.get(node)!.state === "conflict");
       if (blocked.length) {
@@ -301,12 +354,20 @@ export class GuardrailPackageService {
     const versions = ids.length ? await db.select({ policyId: policyVersions.policyId, version: policyVersions.version, checksum: policyVersions.checksum }).from(policyVersions).where(inArray(policyVersions.policyId, ids)) : [];
     const roots = ids.length ? await db.select({ id: policyRecords.id, tenantId: policyRecords.tenantId }).from(policyRecords).where(inArray(policyRecords.id, ids)) : [];
     const declarative = ids.length ? await db.select({ id: policyResources.id, tenantId: policyResources.tenantId }).from(policyResources).where(inArray(policyResources.id, ids)) : [];
-    const owners = new Map([...roots, ...declarative, ...imported.map(row => ({ id: row.policyId, tenantId: row.tenantId }))].map(row => [row.id, row.tenantId]));
+    const owners = new Map<string, Set<string>>();
+    for (const row of [...roots, ...declarative, ...imported.map(item => ({ id: item.policyId, tenantId: item.tenantId }))]) {
+      const existing = owners.get(row.id) ?? new Set<string>();
+      existing.add(row.tenantId);
+      owners.set(row.id, existing);
+    }
     const changed = (node: PackagePolicy): PolicyState => ({ state: "conflict", code: "policy_version_conflict",
       message: `Policy ${node.id} version ${node.version} already exists here with different content. Nothing was imported.` });
     return new Map(leaves.map((node): [PackagePolicy, PolicyState] => {
       const key = `${node.id}@${node.version}`;
-      if (currentTenantId() && owners.has(node.id) && owners.get(node.id) !== currentTenantId()) return [node, { state: "conflict", code: "policy_ownership_conflict", message: "A package cannot change a Policy owned by another tenant." }];
+      const policyOwners = owners.get(node.id);
+      if (policyOwners && (policyOwners.size > 1 || (currentTenantId() && !policyOwners.has(currentTenantId()!)))) {
+        return [node, { state: "conflict", code: "policy_ownership_conflict", message: "A package cannot change a Policy with conflicting or unauthorized ownership." }];
+      }
       if (node.kind === "catalog") {
         // Compared with what this installation's catalog would freeze for the same version.
         const shipped = catalog.get(key);

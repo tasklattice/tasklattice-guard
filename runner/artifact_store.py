@@ -49,6 +49,35 @@ class RuntimeArtifact:
     config: NeMoConfigSnapshot
 
 
+@dataclass(frozen=True, slots=True)
+class AuthenticatedEndpointAllocation:
+    tenant_id: str
+    group_id: str
+    epoch: int
+    generation: int
+
+
+@dataclass(frozen=True, slots=True)
+class AuthenticatedEndpointSnapshot:
+    """Private references into one immutable authenticated local snapshot."""
+    owner: object
+    endpoint_id: str
+    adapter: str
+    endpoint: dict[str, Any]
+    routers: dict[str, Any]
+    artifacts: dict[str, RuntimeArtifact]
+    release_id: str | None
+    model_revision_id: str | None
+
+    @property
+    def telemetry_context_id(self) -> str | None:
+        return self.endpoint.get("_telemetry_context_id")
+
+    @property
+    def scan_flag_only_default(self) -> bool:
+        return self.endpoint.get("_scan_flag_only_default", True)
+
+
 class ArtifactStore:
     """Atomic, last-known-good desired-state store owned only by the Runner."""
 
@@ -71,6 +100,8 @@ class ArtifactStore:
         self._apply_lock = threading.Lock()
         self._registry: NeMoRuntimeRegistry | None = None
         self._generation = 0
+        self._allocation_group_id: str | None = None
+        self._allocation_epoch: int | None = None
         self._release_id: str | None = None
         self._model_revision_id: str | None = None
         self._artifacts: dict[str, RuntimeArtifact] = {}
@@ -199,17 +230,30 @@ class ArtifactStore:
         with self._lock:
             # An Endpoint reaches Guardrails only through its bound Router
             # revision; an unbound or unknown Endpoint never inherits one.
-            endpoint = self._endpoints.get(context.endpoint_id, {})
-            router = self._router_revisions.get(endpoint.get("_router_id"))
+            snapshot = context.endpoint_snapshot
+            if snapshot is not None and (not isinstance(snapshot, AuthenticatedEndpointSnapshot)
+                    or snapshot.owner is not self or snapshot.endpoint_id != context.endpoint_id):
+                raise RoutingError("endpoint_snapshot_invalid")
+            endpoint = snapshot.endpoint if snapshot is not None else self._endpoints.get(context.endpoint_id, {})
+            routers = snapshot.routers if snapshot is not None else self._router_revisions
+            router = routers.get(endpoint.get("_router_id"))
             if router is None:
                 raise RoutingError("endpoint_router_unavailable")
-            target, assignment = select(router, context)
-            artifact = self._artifacts.get(target.artifact_id)
+            try:
+                target, assignment = select(router, context)
+            except RoutingError as error:
+                if snapshot is not None and snapshot.telemetry_context_id and error.assignment:
+                    error.assignment["allocationContextId"] = snapshot.telemetry_context_id
+                raise
+            if snapshot is not None and snapshot.telemetry_context_id:
+                assignment["allocationContextId"] = snapshot.telemetry_context_id
+            artifact = (snapshot.artifacts if snapshot is not None else self._artifacts).get(target.artifact_id)
             if artifact is None:
                 raise RoutingError("target_unavailable", assignment)
             return PlanResolution(plan=artifact.plan, router_id=router.router_id,
-                endpoint_id=context.endpoint_id, effective_release_id=self._release_id,
-                model_revision_id=self._model_revision_id, route_assignment=assignment)
+                endpoint_id=context.endpoint_id, effective_release_id=snapshot.release_id if snapshot is not None else self._release_id,
+                model_revision_id=snapshot.model_revision_id if snapshot is not None else self._model_revision_id,
+                route_assignment=assignment, allocation_context_id=snapshot.telemetry_context_id if snapshot is not None else None)
 
     def resolve_guardrail(self, guardrail_id: str, version: str) -> PlanResolution:
         """Resolve an explicit immutable version for Controller-owned tools such as Playground."""
@@ -273,6 +317,47 @@ class ArtifactStore:
             adapter = endpoint.get("_adapter") if endpoint else None
         return adapter if isinstance(adapter, str) else None
 
+    def authenticate_endpoint_snapshot(self, endpoint_id: str, credential: str | None) -> AuthenticatedEndpointSnapshot | None:
+        """Pin auth, adapter, routing and provenance in the same local snapshot.
+
+        Snapshot dictionaries are replaced atomically, never modified by apply.
+        Keeping their references prevents a concurrent update from relabeling a
+        request authenticated against the previous verifier.
+        """
+        with self._lock:
+            if not self.authenticate_endpoint(endpoint_id, credential):
+                return None
+            endpoint = self._endpoints[endpoint_id]
+            return AuthenticatedEndpointSnapshot(self, endpoint_id, endpoint.get("_adapter", ""), endpoint,
+                getattr(self, "_router_revisions", {}), getattr(self, "_artifacts", {}),
+                getattr(self, "_release_id", None), getattr(self, "_model_revision_id", None))
+
+    def authenticated_endpoint_tenant(self, endpoint_id: str, credential: str | None) -> str | None:
+        """Authenticate and read the owner from the same local state snapshot.
+
+        Legacy snapshots with no owner fail closed for optional tenant
+        admission. This read alone does not fence a subsequent allocation move.
+        """
+        with self._lock:
+            if not self.authenticate_endpoint(endpoint_id, credential):
+                return None
+            tenant = self._endpoints.get(endpoint_id, {}).get("_tenant_id")
+            return tenant if isinstance(tenant, str) and tenant and tenant.strip() == tenant else None
+
+    def authenticated_endpoint_allocation(self, endpoint_id: str, credential: str | None) -> AuthenticatedEndpointAllocation | None:
+        """Read auth, owner and Controller allocation from one atomic snapshot.
+
+        Restored metadata alone is not serving authority; callers must also
+        check current control synchronization/lease state before executing.
+        """
+        with self._lock:
+            tenant = self.authenticated_endpoint_tenant(endpoint_id, credential)
+            group = getattr(self, "_allocation_group_id", None)
+            epoch = getattr(self, "_allocation_epoch", None)
+            if tenant is None or group is None or epoch is None:
+                return None
+            return AuthenticatedEndpointAllocation(tenant, group, epoch, self._generation)
+
     def endpoint_scan_flag_only_default(self, endpoint_id: str) -> bool:
         with self._lock:
             return self._endpoints.get(endpoint_id, {}).get("_scan_flag_only_default", True)
@@ -312,6 +397,15 @@ class ArtifactStore:
         materialization_key: str | None,
     ) -> None:
         generation = int(desired_state.generation)
+        allocation_group_id = (desired_state.allocation_group_id if desired_state.HasField("allocation_group_id") else None)
+        allocation_epoch = (int(desired_state.allocation_epoch) if desired_state.HasField("allocation_epoch") else None)
+        if allocation_group_id is not None:
+            if (not allocation_group_id or allocation_group_id != allocation_group_id.strip() or len(allocation_group_id) > 256 or
+                allocation_epoch is None):
+                raise ValueError("Controller group allocation requires a valid group and epoch.")
+            allocation_group_id.encode("utf-8")
+        if allocation_epoch is not None and not 0 <= allocation_epoch <= 9_007_199_254_740_991:
+            raise ValueError("Controller allocation epoch must be a nonnegative safe integer.")
         with self._lock:
             if generation < self._generation:
                 raise ValueError("Desired generation is older than the applied generation.")
@@ -339,6 +433,8 @@ class ArtifactStore:
         for item in desired_state.endpoints:
             verification = endpoint_verification_from_proto(item.verification)
             endpoints[item.endpoint_id] = {**verification, "_adapter": item.adapter, "_router_id": item.router_id,
+                "_tenant_id": item.tenant_id if item.HasField("tenant_id") else None,
+                "_telemetry_context_id": item.telemetry_context_id if item.HasField("telemetry_context_id") else None,
                 "_scan_flag_only_default": item.scan_flag_only_default if item.HasField("scan_flag_only_default") else True}
         registry = self._registry
         if registry is None:
@@ -364,6 +460,8 @@ class ArtifactStore:
                 self._endpoints = endpoints
                 self._logging_levels = dict(desired_state.guardrail_logging_levels)
                 self._generation = generation
+                self._allocation_group_id = allocation_group_id
+                self._allocation_epoch = allocation_epoch
                 self._release_id = release_id
                 self._model_revision_id = desired_state.model_configuration.revision_id or None
                 self._materialization_key = model_key

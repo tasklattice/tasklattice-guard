@@ -61,7 +61,10 @@ describe("production Controller gRPC transport budget", () => {
     // Synthetic content tests transport integrity, not detector correctness.
     const evidence = "x".repeat(oversized ? CONTROL_MESSAGE_MAX_BYTES : 5 * 1024 * 1024) + "END";
     const desiredId = "disabled-" + "d".repeat(5 * 1024 * 1024);
+    const event = { id: "transport-job", createdAt: new Date(), payload: { runId: "large-validation", testCases: [],
+      plan: { guardrail_version: "20261012-030000.000Z", safety_level: "strict", output_delivery: "full_buffered" } } };
     const service = {
+      runnerControlSessions: { isCurrent: vi.fn().mockResolvedValue(true), dispatched: vi.fn().mockResolvedValue(true), dispatchedAllocation: vi.fn().mockResolvedValue({ epoch: 0, groupId: "default" }), acknowledged: vi.fn().mockResolvedValue(true) },
       registerRunner: vi.fn().mockResolvedValue(1),
       desiredStateForPool: vi.fn().mockResolvedValue({
         generation: 1, artifacts: [], routers: [], endpoints: [],
@@ -69,6 +72,8 @@ describe("production Controller gRPC transport budget", () => {
       }),
       disconnectRunner: vi.fn(),
       completeValidation: vi.fn(),
+      pendingOutbox: vi.fn(async (kind: string) => kind === "guardrail.validation_requested" ? [event] : []),
+      markValidationRunning: vi.fn(), deferOutbox: vi.fn(),
     };
     const metrics = {
       observeControlMessage: vi.fn(), controlConnection: vi.fn(),
@@ -100,16 +105,20 @@ describe("production Controller gRPC transport budget", () => {
     metadata.set("authorization", `Bearer ${config.runnerToken}`);
     const stream = client.Connect(metadata, { deadline: Date.now() + 10_000 });
     let receivedDesired: string | undefined;
+    let receivedValidation: string | undefined;
     let errorCode: number | undefined;
     stream.on("error", (error: { code: number }) => { errorCode = error.code; });
     stream.on("data", (message) => {
       if (message.desiredState) receivedDesired = message.desiredState.disabledGuardrailIds[0];
+      if (message.validationRequest) receivedValidation = message.validationRequest.runId;
     });
     try {
       stream.write({ registration: {
         runnerId: "transport-runner", bootId: "boot-1", poolId: "default", compilerCapable: true,
       } });
       await expect.poll(() => receivedDesired, { timeout: 5_000 }).toBe(desiredId);
+      await (server as unknown as { dispatchValidationRequests(): Promise<void> }).dispatchValidationRequests();
+      await expect.poll(() => receivedValidation, { timeout: 5_000 }).toBe("large-validation");
       stream.write({ validationResult: {
         runnerId: "transport-runner", runId: "large-validation", accepted: true,
         status: "VALIDATION_STATUS_PASSED", metrics: { total: 321, passed: 321 },

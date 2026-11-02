@@ -84,10 +84,10 @@ vi.mock("react-i18next", () => ({
         "endpoints.deleteEyebrow": "Endpoint / protected deletion",
         "endpoints.deleteDialogTitle": "Delete this Endpoint?",
         "endpoints.deleteDialogDescription": "{{name}} will be marked deleted.",
-        "endpoints.recentIncomingRequests": "Incoming requests · last {{minutes}} min",
-        "endpoints.activeRoutersAffected": "Active Routers affected",
+        "endpoints.recentIncomingRequests": "Visible incoming requests · last {{minutes}} min",
+        "endpoints.activeRoutersAffected": "Visible active Routers affected",
         "endpoints.activeCredentialsRetained": "Active credentials retained",
-        "endpoints.protectedDeleteWarning": "This Endpoint has protected activity.",
+        "endpoints.protectedDeleteWarning": "The safety check found recent traffic, which may include traffic outside your visible counts.",
         "endpoints.noProtectedActivity": "No protected activity.",
         "endpoints.deleteRetentionNote": "Audit and runtime history remain stored.",
         "endpoints.deleteReason": "Reason for deletion",
@@ -97,8 +97,8 @@ vi.mock("react-i18next", () => ({
         "endpoints.deleteConfirm": "Delete Endpoint",
         "endpoints.deleting": "Deleting…",
         "endpoints.deleteProtectedTitle": "Confirm protected Endpoint deletion",
-        "endpoints.deleteProtectedDescription": "{{requests}} requests and {{routers}} Routers remain.",
-        "endpoints.deleteStopsTraffic": "{{routers}} Routers stop and {{credentials}} credentials stop authenticating.",
+        "endpoints.deleteProtectedDescription": "The safety check considers all recent traffic, including activity outside your visible counts.",
+        "endpoints.deleteStopsTraffic": "Affected routes will stop receiving traffic, and the Endpoint's credentials will stop authenticating.",
         "endpoints.typeNameToConfirm": "Type {{name}} to confirm",
         "endpoints.deleteDespiteProtection": "Delete and stop traffic",
       };
@@ -394,6 +394,22 @@ describe("Endpoint onboarding", () => {
     fireEvent.click(finalDelete);
 
     expect(onConfirm).toHaveBeenCalledWith({ reason: "Gateway has been decommissioned", confirm_recent_traffic: true, confirmation_name: item.name });
+  });
+
+  it("requires a second confirmation when global safety detects traffic outside visible counts", () => {
+    const item = endpoint({ name: "Shared Gateway" });
+    const onConfirm = vi.fn();
+    renderWithProviders(<DeleteEndpointSheet endpoint={item} open impact={{ endpoint_id: item.id,
+      endpoint_name: item.name, window_minutes: 30, incoming_request_count: 0, active_router_count: 0,
+      active_credential_count: 1, last_request_at: null, telemetry_fresh: true, telemetry_watermark: null,
+      requires_second_confirmation: true, requires_confirmation: true }} loading={false} deleting={false}
+      error={null} locale="en" onOpenChange={vi.fn()} onRetry={vi.fn()} onConfirm={onConfirm} />);
+    expect(screen.getByText("Visible incoming requests · last 30 min")).toBeTruthy();
+    expect(screen.getByText(/may include traffic outside your visible counts/)).toBeTruthy();
+    fireEvent.change(screen.getByLabelText("Reason for deletion"), { target: { value: "Decommissioned" } });
+    fireEvent.click(screen.getByRole("button", { name: "Continue" }));
+    expect(screen.getByText(/safety check considers all recent traffic/)).toBeTruthy();
+    expect(onConfirm).not.toHaveBeenCalled();
   });
 
   it("blocks Endpoint deletion when Runner telemetry is stale", () => {

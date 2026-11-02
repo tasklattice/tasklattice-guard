@@ -22,6 +22,10 @@ describe.skipIf(!process.env.TEST_DATABASE_URL)('bounded runtime observability (
     for (const name of ['runtime_event','guardrail','traffic_router','endpoint','guardrail_validation_run','route_assignment']) {
       await db.execute(sql.raw(`CREATE TEMP TABLE ${name} (LIKE public.${name} INCLUDING DEFAULTS)`));
     }
+    // The running demo may predate provenance migrations; only update these
+    // session-local fixtures, never its public application tables.
+    await db.execute(sql`ALTER TABLE runtime_event ADD COLUMN IF NOT EXISTS allocation_context_id text`);
+    await db.execute(sql`ALTER TABLE route_assignment ADD COLUMN IF NOT EXISTS allocation_context_id text`);
     await db.execute(sql`INSERT INTO runtime_event(id,occurred_at,request_id,runner_id,guardrail_id,router_id,direction,decision,duration_ms,metadata)
       SELECT 'event-'||lpad(n::text,6,'0'),now()-interval '1 hour','request-'||n,'runner','guard','router','incoming',
         CASE WHEN n%2=0 THEN 'block' ELSE 'allow' END,n,

@@ -88,7 +88,7 @@ async def check():
     store = app.state.artifact_store
     state = protocol.DesiredState.FromString(base64.b64decode((fixture / "desired-state.pb.b64").read_bytes()))
     await prepare(store.apply, state)
-    app.state.runner_control._synchronized.set()
+    app.state.runner_control._allow_synchronized_serving()
     try:
         async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://runner") as client:
             assert (await client.get("/health/live")).status_code == 200

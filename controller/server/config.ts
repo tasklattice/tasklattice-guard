@@ -2,6 +2,7 @@ import { z } from "zod";
 
 import { bootstrapPasswordHashPattern } from "./bootstrap-password.js";
 import { clusterBootstrapEnvironment } from "./cluster-bootstrap.js";
+import { defaultEndpointContextStorageLimits, validateEndpointContextStorageLimits } from "./endpoint-context-storage-policy.js";
 
 const modelRuntime = z.object({
   id: z.string().trim().min(1),
@@ -127,12 +128,33 @@ const environmentSchema = z.object({
     .default("../proto/tasklattice/guard/control/v1/runner_control.proto"),
   CONTROLLER_MIGRATIONS_PATH: z.string().default("server/db/migrations"),
   CONTROLLER_RUNNER_TOKEN: z.string().min(32),
+  // Optional first step toward pool identities. When present the control
+  // channel accepts only these pool credentials, never the legacy token.
+  CONTROLLER_RUNNER_POOL_TOKENS_JSON: z.string().optional(),
+  // Separate Controller-to-Runner internal HTTP authority, one token per pool.
+  CONTROLLER_RUNNER_HTTP_TOKENS_JSON: z.string().optional(),
+  // Experimental: scope Playground telemetry by authenticated pool. Other
+  // origins are quarantined until their allocation provenance is available.
+  CONTROLLER_RUNNER_SCOPED_TELEMETRY: z.enum(["true", "false"]).default("false").transform(value => value === "true"),
+  CONTROLLER_RUNNER_TELEMETRY_PROGRESS: z.enum(["true", "false"]).default("false").transform(value => value === "true"),
+  CONTROLLER_ENDPOINT_CONTEXT_MAX_ROWS_PER_POOL: z.coerce.number().int().positive().max(1_000_000).default(defaultEndpointContextStorageLimits.maxRowsPerPool),
+  CONTROLLER_ENDPOINT_CONTEXT_MAX_ROWS_GLOBAL: z.coerce.number().int().positive().max(1_000_000).default(defaultEndpointContextStorageLimits.maxRowsGlobal),
+  CONTROLLER_ENDPOINT_CONTEXT_MAX_PAYLOAD_BYTES_PER_CONTEXT: z.coerce.number().int().positive().max(2_147_483_647).default(defaultEndpointContextStorageLimits.maxPayloadBytesPerContext),
+  CONTROLLER_ENDPOINT_CONTEXT_MAX_PAYLOAD_BYTES_PER_POOL: z.coerce.number().int().positive().max(2_147_483_647).default(defaultEndpointContextStorageLimits.maxPayloadBytesPerPool),
+  CONTROLLER_ENDPOINT_CONTEXT_MAX_PAYLOAD_BYTES_GLOBAL: z.coerce.number().int().positive().max(2_147_483_647).default(defaultEndpointContextStorageLimits.maxPayloadBytesGlobal),
+  // Experimental protocol probe only; no Runner serving or move uses grants.
+  CONTROLLER_EXPERIMENTAL_RUNNER_LEASE_GRANTS: z.enum(["true", "false"]).default("false").transform(value => value === "true"),
   CONTROLLER_METRICS_TOKEN: z.string().min(32).optional(),
   CONTROLLER_ARTIFACT_SIGNING_KEY_PATH: z.string().min(1),
   BETTER_AUTH_SECRET: z.string().min(32),
   BETTER_AUTH_TRUSTED_ORIGINS: z.string().default("http://localhost:8080,http://localhost:8092"),
   BETTER_AUTH_MIN_PASSWORD_LENGTH: z.coerce.number().int().min(5).max(128).default(12),
   CONTROLLER_MOCK_SSO_ENABLED: z.enum(["true", "false"]).default("false").transform((value) => value === "true"),
+  CONTROLLER_TENANT_LOAD_LAB_URL: z.string().url().refine(value => {
+    const url = new URL(value);
+    return ["http:", "https:"].includes(url.protocol) && !url.username && !url.password
+      && !url.search && !url.hash && ["", "/"].includes(url.pathname);
+  }, "Tenant load lab must be an HTTP(S) origin without credentials or a path.").optional(),
   CONTROLLER_BOOTSTRAP_ADMIN_EMAIL: z.string().email().optional(),
   CONTROLLER_BOOTSTRAP_ADMIN_PASSWORD: z.string().min(1).optional(),
   CONTROLLER_BOOTSTRAP_ADMIN_PASSWORD_HASH: z.string().regex(bootstrapPasswordHashPattern, "Expected a Better Auth scrypt password hash.").optional(),
@@ -218,9 +240,94 @@ const environmentSchema = z.object({
 
 export type ControllerConfig = ReturnType<typeof loadConfig>;
 
+/** Parse secret configuration without including credential values in errors. */
+function parseRunnerPoolTokens(raw: string | undefined, legacyToken: string,
+  setting = "CONTROLLER_RUNNER_POOL_TOKENS_JSON"): ReadonlyMap<string, string> | null {
+  if (raw === undefined) return null;
+  const invalid = () => new Error(`${setting} must be a non-empty object mapping unique pool IDs to distinct tokens of at least 32 printable ASCII characters without whitespace; tokens must differ from the legacy token.`);
+  const entries = parseFlatSecretMap(raw, invalid);
+  if (!entries.length) throw invalid();
+  const tokens = new Set<string>();
+  const poolTokens = new Map<string, string>();
+  for (const [poolId, token] of entries) {
+    if (!/^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/.test(poolId)
+      || typeof token !== "string" || token.length < 32 || /[^\x21-\x7e]/.test(token)
+      || token === legacyToken || tokens.has(token)) throw invalid();
+    tokens.add(token);
+    poolTokens.set(poolId, token);
+  }
+  return poolTokens;
+}
+
+/** JSON.parse overwrites duplicate properties. Parse this deliberately narrow
+ * object-of-strings format without losing duplicate (including escaped) keys. */
+function parseFlatSecretMap(raw: string, invalid: () => Error): Array<[string, string]> {
+  let cursor = 0;
+  const whitespace = () => { while (/[ \t\r\n]/.test(raw.charAt(cursor)) && cursor < raw.length) cursor++; };
+  const consume = (expected: string) => {
+    whitespace();
+    if (raw.charAt(cursor++) !== expected) throw invalid();
+  };
+  const string = (): string => {
+    whitespace();
+    const start = cursor;
+    if (raw.charAt(cursor++) !== '"') throw invalid();
+    while (cursor < raw.length) {
+      const character = raw.charAt(cursor++);
+      if (character === "\\") { cursor++; continue; }
+      if (character === '"') {
+        try { return JSON.parse(raw.slice(start, cursor)) as string; } catch { throw invalid(); }
+      }
+    }
+    throw invalid();
+  };
+  consume("{");
+  whitespace();
+  const entries: Array<[string, string]> = [];
+  const seen = new Set<string>();
+  if (raw.charAt(cursor) !== "}") {
+    while (true) {
+      const key = string();
+      if (seen.has(key)) throw invalid();
+      seen.add(key);
+      consume(":");
+      entries.push([key, string()]);
+      whitespace();
+      if (raw.charAt(cursor) !== ",") break;
+      cursor++;
+    }
+  }
+  consume("}");
+  whitespace();
+  if (cursor !== raw.length) throw invalid();
+  return entries;
+}
+
 export function loadConfig(environment: NodeJS.ProcessEnv = process.env) {
   environment = clusterBootstrapEnvironment(environment);
   const parsed = environmentSchema.parse(environment);
+  const runnerPoolTokens = parseRunnerPoolTokens(parsed.CONTROLLER_RUNNER_POOL_TOKENS_JSON, parsed.CONTROLLER_RUNNER_TOKEN);
+  const runnerHttpTokens = parseRunnerPoolTokens(parsed.CONTROLLER_RUNNER_HTTP_TOKENS_JSON, parsed.CONTROLLER_RUNNER_TOKEN,
+    "CONTROLLER_RUNNER_HTTP_TOKENS_JSON");
+  if (runnerHttpTokens) {
+    if (!runnerPoolTokens || runnerPoolTokens.size !== runnerHttpTokens.size ||
+        [...runnerPoolTokens.keys()].some(poolId => !runnerHttpTokens.has(poolId))) {
+      throw new Error("CONTROLLER_RUNNER_HTTP_TOKENS_JSON requires exactly the pool IDs configured in CONTROLLER_RUNNER_POOL_TOKENS_JSON.");
+    }
+    const controlTokens = new Set(runnerPoolTokens.values());
+    if ([...runnerHttpTokens.values()].some(token => controlTokens.has(token))) {
+      throw new Error("Controller-to-Runner HTTP tokens must differ from all Runner pool control tokens.");
+    }
+  }
+  if (parsed.CONTROLLER_RUNNER_SCOPED_TELEMETRY && !runnerPoolTokens) {
+    throw new Error("CONTROLLER_RUNNER_SCOPED_TELEMETRY requires CONTROLLER_RUNNER_POOL_TOKENS_JSON.");
+  }
+  if (parsed.CONTROLLER_RUNNER_TELEMETRY_PROGRESS && !parsed.CONTROLLER_RUNNER_SCOPED_TELEMETRY) {
+    throw new Error("CONTROLLER_RUNNER_TELEMETRY_PROGRESS requires scoped telemetry and pool authentication.");
+  }
+  if (parsed.CONTROLLER_EXPERIMENTAL_RUNNER_LEASE_GRANTS && !runnerPoolTokens) {
+    throw new Error("CONTROLLER_EXPERIMENTAL_RUNNER_LEASE_GRANTS requires CONTROLLER_RUNNER_POOL_TOKENS_JSON.");
+  }
   const modelRuntimes = parseLegacyConfiguration(
     parsed.MODEL_GUARDRAILS_MODEL_RUNTIMES_JSON,
     "MODEL_GUARDRAILS_MODEL_RUNTIMES_JSON",
@@ -284,12 +391,25 @@ export function loadConfig(environment: NodeJS.ProcessEnv = process.env) {
     protoPath: parsed.CONTROLLER_PROTO_PATH,
     migrationsPath: parsed.CONTROLLER_MIGRATIONS_PATH,
     runnerToken: parsed.CONTROLLER_RUNNER_TOKEN,
+    runnerPoolTokens,
+    runnerHttpTokens,
+    runnerScopedTelemetry: parsed.CONTROLLER_RUNNER_SCOPED_TELEMETRY,
+    runnerTelemetryProgress: parsed.CONTROLLER_RUNNER_TELEMETRY_PROGRESS,
+    endpointContextStorage: validateEndpointContextStorageLimits({
+      maxRowsPerPool: parsed.CONTROLLER_ENDPOINT_CONTEXT_MAX_ROWS_PER_POOL,
+      maxRowsGlobal: parsed.CONTROLLER_ENDPOINT_CONTEXT_MAX_ROWS_GLOBAL,
+      maxPayloadBytesPerContext: parsed.CONTROLLER_ENDPOINT_CONTEXT_MAX_PAYLOAD_BYTES_PER_CONTEXT,
+      maxPayloadBytesPerPool: parsed.CONTROLLER_ENDPOINT_CONTEXT_MAX_PAYLOAD_BYTES_PER_POOL,
+      maxPayloadBytesGlobal: parsed.CONTROLLER_ENDPOINT_CONTEXT_MAX_PAYLOAD_BYTES_GLOBAL,
+    }),
+    experimentalRunnerLeaseGrants: parsed.CONTROLLER_EXPERIMENTAL_RUNNER_LEASE_GRANTS,
     metricsToken: parsed.CONTROLLER_METRICS_TOKEN ?? null,
     artifactSigningKeyPath: parsed.CONTROLLER_ARTIFACT_SIGNING_KEY_PATH,
     betterAuthSecret: parsed.BETTER_AUTH_SECRET,
     trustedOrigins: parsed.BETTER_AUTH_TRUSTED_ORIGINS.split(",").map((item) => item.trim()).filter(Boolean),
     minPasswordLength: parsed.BETTER_AUTH_MIN_PASSWORD_LENGTH,
     mockSsoEnabled: parsed.CONTROLLER_MOCK_SSO_ENABLED,
+    tenantLoadLabUrl: parsed.CONTROLLER_TENANT_LOAD_LAB_URL ?? null,
     bootstrapAdmin: parsed.CONTROLLER_BOOTSTRAP_ADMIN_EMAIL && (parsed.CONTROLLER_BOOTSTRAP_ADMIN_PASSWORD || parsed.CONTROLLER_BOOTSTRAP_ADMIN_PASSWORD_HASH)
       ? {
           email: parsed.CONTROLLER_BOOTSTRAP_ADMIN_EMAIL,
