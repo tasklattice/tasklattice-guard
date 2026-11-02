@@ -188,6 +188,17 @@ export interface RuntimeTraceStep {
    * Versioned implementation profile used by a model-backed evaluator.
    */
   'profileRef'?: (string);
+  /**
+   * Fault boundary, independent of classification quality or test assertions.
+   */
+  'errorSource'?: (string);
+  'errorCategory'?: (string);
+  'httpStatus'?: (number);
+  'modelCallId'?: (string);
+  /**
+   * Whether this recorded failure invalidated the final Guardrail result.
+   */
+  'affectsResult'?: (boolean);
   '_parentId'?: "parentId";
   '_evidence'?: "evidence";
   '_contractRef'?: "contractRef";
@@ -221,6 +232,10 @@ export interface RuntimeTraceStep {
   '_finishedOffsetMs'?: "finishedOffsetMs";
   '_evaluatorId'?: "evaluatorId";
   '_profileRef'?: "profileRef";
+  '_errorSource'?: "errorSource";
+  '_errorCategory'?: "errorCategory";
+  '_httpStatus'?: "httpStatus";
+  '_modelCallId'?: "modelCallId";
 }
 
 /**
@@ -407,6 +422,17 @@ export interface RuntimeTraceStep__Output {
    * Versioned implementation profile used by a model-backed evaluator.
    */
   'profileRef'?: (string);
+  /**
+   * Fault boundary, independent of classification quality or test assertions.
+   */
+  'errorSource'?: (string);
+  'errorCategory'?: (string);
+  'httpStatus'?: (number);
+  'modelCallId'?: (string);
+  /**
+   * Whether this recorded failure invalidated the final Guardrail result.
+   */
+  'affectsResult': (boolean);
   '_parentId'?: "parentId";
   '_evidence'?: "evidence";
   '_contractRef'?: "contractRef";
@@ -440,4 +466,8 @@ export interface RuntimeTraceStep__Output {
   '_finishedOffsetMs'?: "finishedOffsetMs";
   '_evaluatorId'?: "evaluatorId";
   '_profileRef'?: "profileRef";
+  '_errorSource'?: "errorSource";
+  '_errorCategory'?: "errorCategory";
+  '_httpStatus'?: "httpStatus";
+  '_modelCallId'?: "modelCallId";
 }

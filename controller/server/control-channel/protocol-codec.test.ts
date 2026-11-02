@@ -64,6 +64,20 @@ const plan = {
 
 
 describe("Controller/Runner control protocol", () => {
+  it.each(["GUARD_FAILURE", "CONFIGURATION_FAILURE", "PROVIDER_FAILURE"])("preserves %s attribution and model health on the report wire", failure => {
+    const protoPath = resolve("../proto/tasklattice/guard/control/v1/runner_control.proto");
+    const definition = loadSync(protoPath, { includeDirs: [dirname(protoPath)], longs: String, enums: String, defaults: true, oneofs: true });
+    const codec = definition["tasklattice.guard.control.v1.ValidationResult"] as MessageTypeDefinition<ValidationResult, ValidationResult__Output>;
+    const raw = codec.serialize({ results: [{ caseId: "failure", expectedDecision: "VALIDATION_DECISION_ALLOW", actualDecision: "VALIDATION_DECISION_BLOCK",
+      phase: "GUARDRAIL_PHASE_OUTPUT", action: "ENFORCEMENT_ACTION_BLOCK", actualFailure: `VALIDATION_FAILURE_${failure}` as never,
+      modelStatus: "ok", executionStatus: "error", trace: [{ id: "model-call", errorSource: "model", errorCategory: "unavailable", httpStatus: 503, modelCallId: "call-503", affectsResult: true }],
+    }] });
+    expect(validationCaseFromWire(codec.deserialize(raw).results[0]!)).toMatchObject({
+      actualFailure: failure.toLowerCase(), modelStatus: "ok", executionStatus: "error",
+      trace: [{ id: "model-call", error_source: "model", error_category: "unavailable", http_status: 503, model_call_id: "call-503", affects_result: true }],
+    });
+  });
+
   it("preserves skipped cases without inventing an enforcement action on the real wire", () => {
     const protoPath = resolve("../proto/tasklattice/guard/control/v1/runner_control.proto");
     const definition = loadSync(protoPath, { includeDirs: [dirname(protoPath)], longs: String, enums: String, defaults: true, oneofs: true });

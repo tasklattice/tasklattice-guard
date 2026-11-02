@@ -4,6 +4,8 @@ from functools import wraps
 from inspect import signature
 from threading import Lock
 from typing import Any
+from ...runtime.failures import ModelResponseError
+from .model_call import record_native_response, record_native_failure
 
 from runner.model_validation_diagnostics import instrument_native_validation_http, record_validation_error
 
@@ -28,11 +30,11 @@ class _StrictTopicControlModel:
                 "on-topic",
                 "off-topic",
             }:
-                raise ValueError(
-                    "Topic Control model must return exactly 'on-topic' or 'off-topic'."
-                )
+                raise ModelResponseError("response_schema", "InvalidTopicLabel")
+            record_native_response(response)
             return response
         except BaseException as error:
+            record_native_failure(error)
             record_validation_error(error)
             raise
 

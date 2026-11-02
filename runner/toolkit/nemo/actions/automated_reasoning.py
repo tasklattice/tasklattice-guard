@@ -5,6 +5,7 @@ from collections.abc import Mapping
 from typing import Any, Protocol
 
 import httpx
+from ...runtime.failures import ModelConfigurationError, model_response
 
 from ...runtime.contracts import (
     AutomatedReasoningFinding,
@@ -79,7 +80,7 @@ class HTTPAutomatedReasoningProvider:
     ) -> tuple[tuple[AutomatedReasoningFinding, ...], ActionUsage]:
         credential = self._credential()
         if not credential:
-            raise RuntimeError("Automated Reasoning provider credential is not configured.")
+            raise ModelConfigurationError("Automated Reasoning provider credential is not configured.")
         raise RuntimeError(
             "HTTPAutomatedReasoningProvider.evaluate requires ActionRequest context."
         )
@@ -94,7 +95,7 @@ class HTTPAutomatedReasoningProvider:
     ) -> tuple[tuple[AutomatedReasoningFinding, ...], ActionUsage]:
         credential = self._credential()
         if not credential:
-            raise RuntimeError("Automated Reasoning provider credential is not configured.")
+            raise ModelConfigurationError("Automated Reasoning provider credential is not configured.")
         try:
             with observe_model_call(
                 request,
@@ -121,8 +122,9 @@ class HTTPAutomatedReasoningProvider:
                         },
                     )
                     response.raise_for_status()
-                    payload = response.json()
-                    findings = parse_reasoning_findings(payload)
+                    with model_response():
+                        payload = response.json()
+                        findings = parse_reasoning_findings(payload)
                     call.complete(payload=payload)
         except (httpx.HTTPError, KeyError, TypeError, ValueError) as error:
             raise ProofServiceError(action_usage(call, len(query_content) + len(guard_content))) from error
@@ -169,6 +171,7 @@ class ReasoningActionProvider:
                 "error",
                 request.content,
                 reason="Automated Reasoning plan step has no policy snapshot.",
+                error_source="configuration", error_category="configuration",
             )
         try:
             policy = request.plan.reasoning_policy(snapshot_id)
@@ -177,6 +180,7 @@ class ReasoningActionProvider:
                 "error",
                 request.content,
                 reason="Automated Reasoning policy snapshot is unavailable.",
+                error_source="configuration", error_category="configuration",
             )
 
         query_content = "\n".join(
@@ -203,6 +207,8 @@ class ReasoningActionProvider:
                 request.content,
                 reason=f"{self.name} evaluator failed: {type(error).__name__}.",
                 usage=error.usage if isinstance(error, ProofServiceError) else ActionUsage(),
+                error_source="configuration" if isinstance(error, ModelConfigurationError) else None,
+                error_category="configuration" if isinstance(error, ModelConfigurationError) else None,
             )
 
         if not findings:

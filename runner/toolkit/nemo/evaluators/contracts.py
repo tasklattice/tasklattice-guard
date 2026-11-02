@@ -85,6 +85,9 @@ class ModelCallUsage:
     retries: int = 0
     backoff_ms: int = 0
     error_type: str = "none"
+    error_source: str | None = None
+    error_category: str | None = None
+    http_status: int | None = None
     call_id: str = ""
     usage_known: bool = False
     cached_input_tokens: int = 0
@@ -154,9 +157,18 @@ def evaluation_result(
     trace: tuple[RuntimeTraceStep, ...] = (),
     usage: EvaluationUsage = EvaluationUsage(),
     unknown_reason: Literal["uncertain", "needs_context"] = "needs_context",
+    error_source: str | None = None,
+    error_category: str | None = None,
 ) -> EvaluationResult:
     """Build the normalized result returned by every Guard evaluator."""
 
+    if error_source and verdict == "error":
+        from dataclasses import replace
+        trace = tuple(replace(step, error_source=error_source, error_category=error_category) for step in trace) or (
+            RuntimeTraceStep(id=f"{request.binding.id}:preflight", kind="evaluation", name=request.binding.action_name or request.binding.id,
+                status="error", verdict="error", detail=reason or "Check configuration failed.",
+                error_source=error_source, error_category=error_category, policy_id=request.policy_id),
+        )
     confidence = next((item.confidence for item in findings), None)
     return EvaluationResult(
         verdict=verdict,

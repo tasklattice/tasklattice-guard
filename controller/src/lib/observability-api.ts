@@ -71,15 +71,19 @@ function runtimeLogEntry(event: controllerApi.RuntimeEvent): RuntimeLogInteracti
     protection_mode: event.metadata.protectionMode === "monitor" ? "monitor" : event.metadata.protectionMode === "bypass" ? "bypass" : "enforce",
     detection_decision: stringValue(event.metadata.detectionDecision),
     detection_error: stringValue(event.metadata.detectionError),
+    model_status: enumValue(event.metadata.modelStatus, ["ok", "error", "not_called", "unknown"] as const) ?? undefined,
     execution_status: hasRuntimeError(event) ? "error" : event.metadata.executionStatus === "complete" ? "complete" : event.metadata.executionStatus === "degraded" ? "degraded" : event.metadata.executionStatus === "bypassed" ? "bypassed" : "unknown",
     ...(event.metadata.logKind === "call_completion" ? { call_completion: {
       inferred: event.metadata.completionInferred === true, reason: stringValue(event.metadata.failureReason),
       completed_at: stringValue(event.metadata.completedAt), decision_id: stringValue(event.metadata.decisionId),
       route_id: stringValue(event.metadata.routeId), target_id: stringValue(event.metadata.targetId), router_revision: numberValue(event.metadata.routerRevision),
     } } : {}),
-    error_details: arrayOfRecords(event.metadata.diagnostics).filter(d => d.affectsResult === true).map(d => {
+    error_details: arrayOfRecords(event.metadata.diagnostics).map(d => {
       const step = trace.find(s => s.id === d.stepId);
       return {
+        source: enumValue(d.source, ["model", "configuration", "guard", "unknown", "mixed"] as const),
+        category: stringValue(d.category), http_status: numberValue(d.httpStatus),
+        model_call_id: stringValue(d.modelCallId), affects_result: d.affectsResult === true,
         span_id: stringValue(d.stepId) ?? "—",
         name: stringValue(step?.actionName) ?? stringValue(step?.name) ?? stringValue(d.message) ?? "Guardrail execution failed",
         error_type: stringValue(d.code), provider: stringValue(step?.providerName), model: stringValue(step?.modelName),

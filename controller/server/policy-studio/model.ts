@@ -50,7 +50,7 @@ const policyTestCaseSchema = z.object({
   covered_rule_ids: z.array(z.string().trim().min(1).max(256)).min(1).max(64),
   case_type: z.enum(["unit", "input_rail", "output_rail", "timeout", "provider_failure", "concurrency"]),
   required: z.boolean().default(true),
-  expected_failure: z.enum(["timeout", "provider_failure"]).nullable().default(null),
+  expected_failure: z.enum(["timeout", "provider_failure", "guard_failure", "configuration_failure"]).nullable().default(null),
   concurrency_group: z.string().trim().min(1).max(120).nullable().default(null),
   trusted_instruction: z.string().max(8_000).default(""),
   use_guardrail_instruction: z.boolean().default(false),

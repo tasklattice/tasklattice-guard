@@ -11,25 +11,25 @@ vi.mock("react-i18next", () => ({
 afterEach(cleanup);
 it("surfaces provider failure in the collapsed Trace and explains it before the raw error", () => {
   const detail = "All eligible Safety Providers failed: pii_semantic.input:9ec3a7b2-9532-4739-8c2d-db7c887697d5:0: HTTPStatusError";
-  render(<ExecutionTrace steps={[{ id: "provider", name: "Privacy check", kind: "action", outcome: "error", latency_ms: 100, detail }]} description={detail} />);
+  render(<ExecutionTrace steps={[{ id: "provider", name: "Privacy check", kind: "action", outcome: "error", latency_ms: 100, detail, error_source: "model", error_category: "unavailable", http_status: 503, model_call_id: "model-call", model_name: "judge", provider_name: "provider" }]} description={detail} />);
   expect(screen.getByText("logs.traceErrors")).toBeTruthy();
   expect(screen.queryByText(detail)).toBeNull();
   fireEvent.click(screen.getByRole("button", { name: /logs.executionTrace/ }));
-  expect(screen.getAllByText("logs.traceFailureTitles.model")).toHaveLength(1);
-  expect(screen.getByText("logs.traceFailures.http")).toBeTruthy();
+  expect(screen.getAllByText("logs.errorSources.model")).toHaveLength(1);
+  expect(screen.getByText("logs.errorCategories.unavailable")).toBeTruthy();
   expect(screen.getByText(/pii_semantic.input/, { selector: "p" })).toBeTruthy();
-  const technicalDetails = screen.getByText(detail).closest("details")!;
+  const technicalDetails = screen.getAllByText(detail).find(element => element.closest("details"))!.closest("details")!;
   expect(technicalDetails.open).toBe(false);
   fireEvent.click(screen.getByText("logs.technicalDetails"));
   expect(technicalDetails.open).toBe(true);
-  expect(screen.queryByText(/HTTP 401|HTTP 429|HTTP 500/)).toBeNull();
+  expect(screen.getByText("HTTP 503")).toBeTruthy();
 });
 
-it("explains provider failures in older reports without spans", () => {
+it("keeps unstructured explanations without inventing model attribution", () => {
   render(<ExecutionTrace steps={[]} description="All eligible Safety Providers failed: provider: HTTPStatusError" />);
   fireEvent.click(screen.getByRole("button", { name: /logs.executionTrace/ }));
-  expect(screen.getByText("logs.traceFailureTitles.model")).toBeTruthy();
-  expect(screen.getByText("logs.traceFailures.http")).toBeTruthy();
+  expect(screen.queryByText("logs.errorSources.model")).toBeNull();
+  expect(screen.getByText(/All eligible Safety Providers failed/)).toBeTruthy();
 });
 
 it("keeps the original case explanation available on demand even without recorded spans", () => {

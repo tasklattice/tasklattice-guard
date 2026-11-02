@@ -5,6 +5,7 @@ from dataclasses import replace
 import json
 import time
 
+from ...runtime.failures import ModelResponseError
 from ...runtime.contracts import ProviderEvidence, RiskFinding, RuntimeTraceStep
 from ...safety.mappings import ProviderCategoryMapping, provider_mapping
 from ...safety.providers import NativeSafetyAssessment, SafetyModelProvider
@@ -94,6 +95,7 @@ class SafetyModelEvaluator:
                 reason=reason,
                 usage=usage,
                 trace=(self._trace(request, assessment, "error", usage),),
+                error_source="configuration" if not guards else None, error_category="configuration" if not guards else None,
             )
 
         if assessment.verdict == "safe":
@@ -248,7 +250,7 @@ class SafetyModelEvaluator:
                     deadline=deadline, call=tracker,
                 )
                 if result.verdict not in {"safe", "unsafe", "uncertain", "controversial"}:
-                    raise ValueError("Safety Provider returned an invalid classification.")
+                    raise ModelResponseError("response_schema", "InvalidClassification")
                 tracker.complete(payload=result.payload)
                 return result
         except Exception as error:

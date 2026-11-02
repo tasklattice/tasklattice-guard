@@ -11,6 +11,7 @@ import json
 import time
 
 import httpx
+from ...runtime.failures import model_response
 
 from ...runtime.contracts import ProviderEvidence, RiskFinding, RuntimeTraceStep
 from ...safety.taxonomy import taxonomy_for_evaluator
@@ -73,7 +74,7 @@ def _trace(request, verdict, *, model=None, response_model=None, answers=None, e
 def unavailable_review(request: EvaluationRequest, first: EvaluationResult) -> EvaluationResult:
     return evaluation_result(request, "error", request.content,
         reason="Classifier review requires a validated classifier_review.input model binding.",
-        trace=(*first.trace, _trace(request,"error",error_type="ReviewConfigurationError")), usage=first.usage)
+        trace=(*first.trace, replace(_trace(request,"error",error_type="ReviewConfigurationError"), error_source="configuration", error_category="configuration")), usage=first.usage)
 
 
 class ClassifierReviewer:
@@ -143,15 +144,16 @@ class ClassifierReviewer:
                                 response.raise_for_status()
                                 return response
                             response = await with_connection_retry(send,deadline=attempt_deadline,call=call)
-                            payload = response.json()
-                            if not isinstance(payload,dict) or not isinstance(payload.get("model"),str) or not payload["model"].strip():
-                                raise ValueError("Review response model is missing.")
+                            with model_response():
+                                payload = response.json()
+                                if not isinstance(payload,dict) or not isinstance(payload.get("model"),str) or not payload["model"].strip():
+                                    raise ValueError("Review response model is missing.")
+                                actual_model = payload["model"]
+                                content = payload["choices"][0]["message"]["content"]
+                                if not isinstance(content,str):
+                                    raise ValueError("Review content must be JSON text.")
+                                answers = parse_review_answers(content,set(questions))
                             call.complete(payload=payload)
-                            actual_model = payload["model"]
-                            content = payload["choices"][0]["message"]["content"]
-                            if not isinstance(content,str):
-                                raise ValueError("Review content must be JSON text.")
-                            answers = parse_review_answers(content,set(questions))
                         break
                     except (httpx.ReadTimeout,TimeoutError):
                         if attempt or deadline-time.monotonic() <= .001:

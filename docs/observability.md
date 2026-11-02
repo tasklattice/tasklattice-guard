@@ -26,6 +26,50 @@ per page by default, or 50. Time/severity filters precede the SQL item limit. A
 cursor preserves the occurrence/ingestion boundary and the full filter scope;
 statistics load independently through `/api/v1/telemetry/metrics`.
 
+## Model health and fault attribution
+
+Guardrail runtime owns fault attribution. Traffic adapters serialize the recorded
+facts; they do not infer responsibility from HTTP status, exception messages or
+test pass rates. Keep three independent results:
+
+| Result | Meaning |
+| --- | --- |
+| `decision` | Enforcement: allow, block or transform |
+| `executionStatus` | Whether Guardrail execution completed, errored or timed out |
+| `modelStatus` | `ok`: every recorded model response passed its protocol/schema; `error`: a model service/response failed; `not_called`: no model RPC; `unknown`: no model-health conclusion, e.g. credentials rejected or cancellation |
+
+A format-valid classification that disagrees with a test expectation leaves
+`modelStatus=ok` and fails the test assertion. This is not a model service error.
+A Guard exception after an accepted model response keeps that call successful.
+A conclusive policy Block may also have an independent failed check: its
+diagnostic is retained with `affectsResult=false`, without turning Block into an
+execution error.
+
+Each failed Trace span records `errorSource`, `errorCategory`, `errorType`,
+`httpStatus` when present, `modelCallId`, and `affectsResult`. Report wire fields
+use snake_case; telemetry uses camelCase. Diagnostics retain the owning span and
+Policy; model spans retain Provider and Model. Child causes propagate to failed
+parent spans without matching free-form text.
+
+| Source | Boundary and examples |
+| --- | --- |
+| `model` | Unavailable/5xx, timeout, rate limit/429, connection failure, JSON decode, missing/wrong response fields or invalid protocol labels |
+| `configuration` | Missing model binding/credential/context; 401 authentication, 403 permission, 404 endpoint/model, other rejected 4xx requests |
+| `guard` | Local execution/programming failure or Guard deadline, outside explicit response decoding and schema validation |
+| `mixed` / `unknown` | Multiple recorded sources / insufficient evidence; the UI does not guess from exception text |
+
+These identify the failing boundary, not an unproven physical root cause: a
+connection failure still needs endpoint/network investigation. Within the model
+boundary, response parsers explicitly validate the configured protocol. Generic
+`TypeError`/`ValueError` elsewhere are Guard failures, not presumed bad responses.
+
+Test reports retain `provider_failure`, `configuration_failure`, `guard_failure`
+or `timeout` as execution failure expectations, separately from test assertions.
+For timeouts, use the structured source/category to distinguish a model timeout
+from a Guard deadline. Model failure logs and OpenTelemetry model spans carry
+the same source/category and model call ID; raw model content is not needed for
+attribution.
+
 ## OpenTelemetry Collector outages
 
 OTLP trace export runs on a background batch worker. The official exporter keeps

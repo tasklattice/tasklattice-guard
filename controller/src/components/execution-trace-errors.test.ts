@@ -1,56 +1,33 @@
-import { describe, expect, it } from "vitest";
-import { describeTraceFailure, traceDiagnostics } from "./execution-trace-errors";
+import { expect, it } from "vitest";
+import { traceDiagnostics } from "./execution-trace-errors";
 import type { ExecutionTraceStep } from "./execution-trace";
 
-const statuslessError = "All eligible Safety Providers failed: pii_semantic.input:9ec3a7b2-9532-4739-8c2d-db7c887697d5:0: HTTPStatusError";
-const step = { id: "provider", kind: "action", name: "PII check", outcome: "error", latency_ms: 401, detail: statuslessError } satisfies ExecutionTraceStep;
+const step: ExecutionTraceStep = { id: "provider", kind: "evaluator", name: "Judge", outcome: "server_error", latency_ms: 5,
+  error_source: "model", error_category: "unavailable", error_type: "http_503", http_status: 503,
+  model_call_id: "call-1", model_name: "judge-v1", provider_name: "provider-1", affects_result: true };
 
-it("explains provider errors without a status code without guessing an HTTP status from IDs or durations", () => {
-  expect(describeTraceFailure(statuslessError)).toEqual({ kind: "http", subject: "model" });
-  const diagnostics = traceDiagnostics([step, { ...step, id: "parent" }], statuslessError);
-  expect(diagnostics).toEqual([{ kind: "http", subject: "model", sources: ["pii_semantic.input"], details: [statuslessError] }]);
+it("uses structured model provenance even without descriptive text", () => {
+  expect(traceDiagnostics([step])).toEqual([{ source: "model", category: "unavailable", httpStatus: 503,
+    modelCallId: "call-1", model: "judge-v1", provider: "provider-1", affectsResult: true,
+    sources: ["Judge"], spanIds: ["provider"], details: ["http_503"] }]);
 });
-
-describe("uses only recorded error evidence", () => {
-  it.each([
-    ["HTTPStatusError: HTTP 401", "authentication", "401"],
-    ["HTTP status code 403", "permission", "403"],
-    ["Client error '404 Not Found'", "notFound", "404"],
-    ["http_429", "rateLimit", "429"],
-    ["HTTP 503", "server", "503"],
-    ["http_5xx", "server", "5xx"],
-    ["http_4xx", "request", "4xx"],
-    ["HTTP 504", "timeout", "504"],
-  ])("maps %s", (detail, kind, httpStatus) => {
-    expect(describeTraceFailure(detail, "Safety Provider")).toEqual({ kind, subject: "model", httpStatus });
-  });
-  it.each([
-    ["ReadTimeout", "timeout"], ["ConnectError", "connection"], ["invalid_response", "invalidResponse"],
-  ])("explains %s", (detail, kind) => {
-    expect(describeTraceFailure(detail, "Model safety check")).toEqual({ kind, subject: "model" });
-  });
+it("does not use model words or HTTP codes in descriptions to assign responsibility", () => {
+  const rows = traceDiagnostics([{ id: "guard", kind: "action", name: "Model processing", outcome: "error", latency_ms: 1,
+    error_source: "guard", error_category: "internal", detail: "Expected HTTP 503; got a different classification." }]);
+  expect(rows[0]).toMatchObject({ source: "guard", category: "internal", httpStatus: undefined });
 });
-
-it("does not turn a normal Block, a cancelled step or a recovered error into execution failures", () => {
-  expect(traceDiagnostics(["block", "cancelled", "completed"].map(outcome => ({ ...step, outcome })))).toEqual([]);
-  expect(describeTraceFailure("Safety Provider classified capability pii as unsafe; normalized to TALI-PRIVACY.")).toBeNull();
+it("keeps unrecorded provenance unknown", () => {
+  expect(traceDiagnostics([{ id: "unrecorded", kind: "action", name: "Safety Provider", outcome: "error", latency_ms: 0,
+    detail: "HTTPStatusError 401" }])[0]).toMatchObject({ source: "unknown", category: "unknown", httpStatus: undefined });
 });
-
-it("keeps different provider failures distinct in an aggregate error", () => {
-  const detail = `${statuslessError}; pii_semantic.output:backup:0: ReadTimeout; Expected allow; received block.`;
-  const diagnostics = traceDiagnostics([{ ...step, detail }], detail);
-  expect(diagnostics).toHaveLength(2);
-  expect(diagnostics[0]).toMatchObject({ kind: "http", sources: ["pii_semantic.input"], details: [detail] });
-  expect(diagnostics[1]).toMatchObject({ kind: "timeout", sources: ["pii_semantic.output"] });
+it("merges causal parent summaries by call ID without merging separate provider attempts", () => {
+  const rows = traceDiagnostics([step, { ...step, id: "action", name: "Action" }, { ...step, id: "retry", model_call_id: "call-2" }]);
+  expect(rows).toHaveLength(2);
+  expect(rows[0].spanIds).toEqual(["provider", "action"]);
 });
-
-it("keeps unknown failures inspectable without attributing them to a model", () => {
-  expect(traceDiagnostics([{ ...step, detail: "Custom action failed." }])).toEqual([
-    { kind: "unknown", subject: "step", sources: ["PII check"], details: ["Custom action failed."] },
-  ]);
+it("retains recovered model faults without marking the request as failed", () => {
+  expect(traceDiagnostics([{ ...step, affects_result: false }])[0].affectsResult).toBe(false);
 });
-
-it("shows the full case explanation once when it repeats a span's error", () => {
-  const description = `${statuslessError}; Expected allow; received block.`;
-  expect(traceDiagnostics([step], description)[0].details).toEqual([description]);
+it.each(["complete", "cancelled", "block", "matched", "not_matched"])("does not treat %s as a model error", outcome => {
+  expect(traceDiagnostics([{ id: "ok", kind: "evaluator", name: "Judge", outcome, latency_ms: 1, model_result: "success" }])).toEqual([]);
 });

@@ -326,6 +326,7 @@ export function validationCaseFromWire(value: ValidationCaseResult__Output): Val
     required: value.required,
     expectedFailure: optionalDomainEnum("VALIDATION_FAILURE", value.expectedFailure),
     actualFailure: optionalDomainEnum("VALIDATION_FAILURE", value.actualFailure),
+    modelStatus: value.modelStatus, executionStatus: value.executionStatus,
     concurrencyGroup: value.concurrencyGroup ?? null,
     sourcePolicyId: value.sourcePolicyId ?? null,
     sourcePolicyVersion: value.sourcePolicyVersion ?? null,

@@ -6,7 +6,7 @@ import type { ValidationCaseResult } from "../domain/models.js";
 import { ConflictError, ControllerError, NotFoundError, ValidationError } from "../domain/errors.js";
 import { REPORT_BATCH_CASES, REPORT_CASE_BYTES, REPORT_TOTAL_BYTES, REPORT_PAGE_BYTES, ReportBudget, reportDatabaseWork, type ReportTransaction } from "./report-budget.js";
 
-const strings = ["caseId", "name", "policyId", "expectedDecision", "actualDecision", "phase", "caseType", "actualFailure", "expectedFailure", "sourcePolicyId", "sourcePolicyVersion", "sourceCaseId", "reason", "skipReason"] as const;
+const strings = ["modelStatus", "executionStatus", "caseId", "name", "policyId", "expectedDecision", "actualDecision", "phase", "caseType", "actualFailure", "expectedFailure", "sourcePolicyId", "sourcePolicyVersion", "sourceCaseId", "reason", "skipReason"] as const;
 const scalars = ["passed", "skipped", "required", "latencyMs", "modelInvocations", "ruleContractSatisfied"] as const;
 export type CaseSummary = Pick<ValidationCaseResult, "caseId" | "passed" | "skipped" | "skipReason" | "modelInvocations"> & Record<string, unknown> & { traceCount: number };
 export function caseSummary(value: ValidationCaseResult): CaseSummary {

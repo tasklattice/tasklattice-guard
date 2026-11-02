@@ -126,6 +126,11 @@ class RuntimeTraceStep:
     model_operation: str | None = None
     model_result: str | None = None
     error_type: str | None = None
+    error_source: str | None = None
+    error_category: str | None = None
+    http_status: int | None = None
+    model_call_id: str | None = None
+    affects_result: bool = False
     model_time_to_first_token_ms: int | None = None
     model_input_tokens: int = 0
     model_output_tokens: int = 0
@@ -662,6 +667,10 @@ class ExecutionDiagnostic:
     step_id: str | None = None
     policy_id: str | None = None
     affects_result: bool = True
+    source: str = "guard"
+    category: str = "execution"
+    http_status: int | None = None
+    model_call_id: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -693,6 +702,7 @@ class ProtectionDecision:
     termination_reason: str | None = None
     diagnostics: tuple[ExecutionDiagnostic, ...] = ()
     flagged: bool = False
+    model_status: Literal["ok", "error", "not_called", "unknown"] = "not_called"
 
 
 @dataclass(frozen=True, slots=True)

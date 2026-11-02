@@ -180,6 +180,9 @@ message ValidationCaseResult {
   string evidence_detail = 44;
   // Effective Rule assertion, including an explicitly reviewed override.
   bool rule_contract_satisfied = 45;
+  // Model transport/response health is independent of case assertion quality.
+  string model_status = 47;
+  string execution_status = 48;
 }
 
 // Command to execute an immutable candidate plan against its test cases.

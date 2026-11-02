@@ -472,6 +472,9 @@ class _RuntimeBuilder:
         use_iorails = config.runtime_profile == "iorails_native"
         if use_iorails:
             from nemoguardrails.guardrails.iorails import IORails
+            from .queue_context import install_work_queue_context
+
+            install_work_queue_context()
 
             reason = IORails.unsupported_reason(rails_config)
             if reason is not None:

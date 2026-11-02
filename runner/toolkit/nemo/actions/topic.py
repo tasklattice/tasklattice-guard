@@ -5,6 +5,7 @@ import os
 from typing import Any
 
 import httpx
+from ...runtime.failures import model_response
 
 from runner.model_validation_diagnostics import record_validation_error, validation_http_hooks
 from ...runtime.contracts import RiskFinding
@@ -70,6 +71,7 @@ class ChatTopicEvaluator:
                 "error",
                 request.content,
                 reason="Topic Judge credential is not configured.",
+                error_source="configuration", error_category="authentication",
             )
 
         call = None
@@ -102,8 +104,9 @@ class ChatTopicEvaluator:
                         },
                     )
                     response.raise_for_status()
-                    raw_payload = response.json()
-                    payload = _response_payload(raw_payload)
+                    with model_response():
+                        raw_payload = response.json()
+                        payload = _response_payload(raw_payload)
                     call.complete(payload=raw_payload)
         except (
             httpx.HTTPError,

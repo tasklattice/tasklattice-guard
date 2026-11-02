@@ -275,8 +275,10 @@ class DefaultRunnerValidator:
         })
         expected_failure = _optional_string(case.get("expectedFailure"))
         timed_out = any(bool(item.get("timed_out")) for item in trace)
-        provider_failed = any(item.get("kind") == "action" and item.get("status") == "error" and not item.get("timed_out") for item in trace)
-        actual_failure = "timeout" if timed_out else "provider_failure" if provider_failed else None
+        failure_sources = {item.get("error_source") for item in trace if item.get("error_source")}
+        actual_failure = ("timeout" if timed_out else "guard_failure" if "guard" in failure_sources
+                          else "configuration_failure" if "configuration" in failure_sources
+                          else "provider_failure" if "model" in failure_sources else None)
         output_content = decision.texts[0] if decision.texts else "" if decision.decision == "block" else content
         assertion_failures = []
         runtime_failed = (
@@ -407,6 +409,8 @@ class DefaultRunnerValidator:
             "required": bool(case.get("required", True)),
             "expectedFailure": expected_failure,
             "actualFailure": actual_failure,
+            "modelStatus": decision.model_status,
+            "executionStatus": decision.execution_status,
             "concurrencyGroup": _optional_string(case.get("concurrencyGroup")),
             "sourcePolicyId": source_policy_id,
             "sourcePolicyVersion": _optional_string(case.get("sourcePolicyVersion")),

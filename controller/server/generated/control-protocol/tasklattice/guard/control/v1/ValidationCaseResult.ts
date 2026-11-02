@@ -117,6 +117,11 @@ export interface ValidationCaseResult {
    * Effective Rule assertion, including an explicitly reviewed override.
    */
   'ruleContractSatisfied'?: (boolean);
+  /**
+   * Model transport/response health is independent of case assertion quality.
+   */
+  'modelStatus'?: (string);
+  'executionStatus'?: (string);
   '_expectedReasoningResult'?: "expectedReasoningResult";
   '_actualReasoningResult'?: "actualReasoningResult";
   '_expectedFailure'?: "expectedFailure";
@@ -234,6 +239,11 @@ export interface ValidationCaseResult__Output {
    * Effective Rule assertion, including an explicitly reviewed override.
    */
   'ruleContractSatisfied': (boolean);
+  /**
+   * Model transport/response health is independent of case assertion quality.
+   */
+  'modelStatus': (string);
+  'executionStatus': (string);
   '_expectedReasoningResult'?: "expectedReasoningResult";
   '_actualReasoningResult'?: "actualReasoningResult";
   '_expectedFailure'?: "expectedFailure";

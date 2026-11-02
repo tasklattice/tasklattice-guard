@@ -70,6 +70,16 @@ describe("privacy-safe runtime observability", () => {
     expect(interaction.entries[0]).toMatchObject({ phase: "completion", outcome: null, execution_status: "error", call_completion: { inferred: true, decision_id: "decision-1", completed_at: "2026-08-20T10:05:00.000Z", router_revision: 2, reason: null } });
   });
 
+  it("retains nonfatal model faults and their recorded location on a conclusive block", () => {
+    const [interaction] = runtimeLogInteractions([{ ...event, metadata: { executionStatus: "complete", modelStatus: "error",
+      diagnostics: [{ code: "http_503", stepId: "model-span", source: "model", category: "unavailable", httpStatus: 503, modelCallId: "call-503", affectsResult: false }],
+      trace: [{ id: "model-span", name: "Judge", outcome: "error", errorType: "http_503", errorSource: "model", errorCategory: "unavailable", httpStatus: 503, modelCallId: "call-503", affectsResult: false, providerName: "provider", modelName: "judge" }],
+    } }], { includeUncaptured: true });
+    expect(interaction.entries[0]).toMatchObject({ outcome: "block", execution_status: "complete", model_status: "error",
+      error_details: [{ span_id: "model-span", source: "model", category: "unavailable", http_status: 503, model_call_id: "call-503", affects_result: false, provider: "provider", model: "judge" }],
+    });
+  });
+
   it("does not invent an allow outcome when no enforcement decision was reported", () => {
     const [interaction] = runtimeLogInteractions([{ ...event, guardrailId: null, decision: "timeout", metadata: { executionStatus: "timeout" } }], { includeUncaptured: true });
     expect(interaction.guardrail_id).toBeNull();

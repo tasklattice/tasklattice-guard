@@ -676,6 +676,8 @@ function mapValidationResult(value: Record<string, unknown>): TestCaseResult {
     required: value.required !== false,
     expected_failure: stringValue(value.expectedFailure),
     actual_failure: stringValue(value.actualFailure),
+    model_status: enumValue(value.modelStatus, ["ok", "error", "not_called", "unknown"] as const) ?? undefined,
+    execution_status: stringValue(value.executionStatus) ?? undefined,
     concurrency_group: stringValue(value.concurrencyGroup),
     source_policy_id: stringValue(value.sourcePolicyId),
     source_policy_version: stringValue(value.sourcePolicyVersion),

@@ -155,8 +155,9 @@ async def _admission(instance, request):
 class _ActionExecutionFailure(LLMCallException):
     """Safe diagnostic: never retain Action arguments or exception messages."""
 
-    def __init__(self, action_name: str, error_type: str, *, timed_out: bool = False):
+    def __init__(self, action_name: str, error_type: str, *, timed_out: bool = False, failure=None):
         self.action_name = action_name
+        self.failure = failure
         self.error_type = error_type
         self.timed_out = timed_out
         super().__init__(f"{action_name} failed with {error_type}.", detail="Guardrail Action")
@@ -198,8 +199,12 @@ class NeMoActionBridge:
                 try:
                     return await handler(*args, **kwargs)
                 except Exception as error:
+                    from .actions.model_call import model_failure
+                    _, failure = model_failure(error)
+                    if isinstance(error, TimeoutError) and failure:
+                        failure = replace(failure, source="guard", category="deadline")
                     scope.action_failure = _ActionExecutionFailure(
-                        name, type(error).__name__, timed_out=isinstance(error, TimeoutError)
+                        name, type(error).__name__, timed_out=isinstance(error, TimeoutError), failure=failure,
                     )
                     # NeMo's public dispatcher deliberately propagates this
                     # exception family instead of logging arguments or converting
@@ -1533,6 +1538,8 @@ def _model_call_usage_from_payload(
         retries=_non_negative_int(payload.get("retries", 0)),
         backoff_ms=_non_negative_int(payload.get("backoff_ms", 0)),
         error_type=str(payload.get("error_type", "none")),
+        error_source=payload.get("error_source"), error_category=payload.get("error_category"),
+        http_status=payload.get("http_status"),
     )
 
 
@@ -1814,6 +1821,8 @@ def _decision(
     active_concurrency: int,
     native_model_calls: tuple[ModelCallUsage, ...] = (),
 ) -> ProtectionDecision:
+    returned_calls = {call.call_id for item in runtime_results for call in item.result.usage.model_calls if call.call_id}
+    native_model_calls = tuple(call for call in native_model_calls if not call.call_id or call.call_id not in returned_calls)
     output_data = response.output_data or {}
     custom = (
         custom_decision
@@ -2312,7 +2321,6 @@ def _trace(
                     )
                 )
     for item in results:
-        trace.extend(item.result.trace)
         binding = item.binding
         module = next((
             candidate
@@ -2345,6 +2353,24 @@ def _trace(
         profile_refs = tuple(dict.fromkeys(
             call.profile_ref for call in model_calls if call.profile_ref
         ))
+        action_id = f"nemo:action:{binding.id}"
+        failed_calls = [call for call in model_calls if call.error_source]
+        for step in item.result.trace:
+            candidates = [call for call in failed_calls if not step.model_name or call.model == step.model_name]
+            failure = candidates[-1] if candidates and step.verdict == "error" else None
+            trace.append(replace(step, parent_id=step.parent_id or action_id,
+                module_id=step.module_id or (module.id if module else None),
+                error_source=step.error_source or (failure.error_source if failure else None),
+                error_category=step.error_category or (failure.error_category if failure else None),
+                http_status=step.http_status or (failure.http_status if failure else None),
+                model_call_id=step.model_call_id or (failure.call_id if failure else None),
+                provider_name=step.provider_name or (failure.provider if failure else None)))
+        trace.extend(replace(step, capability=binding.capability,
+            module_id=module.id if module else None, policy_id=binding.policy_id,
+            policy_version=binding.policy_version, action_name=binding.action_name,
+            timeout_ms=binding.timeout_ms,
+            route=(module.failure_mode if module else "fail_closed") if step.verdict == "error" else step.route)
+            for step in _native_model_trace_steps(request, model_calls, action_id))
         trace.append(
             RuntimeTraceStep(
                 id=f"nemo:action:{binding.id}",
@@ -2775,6 +2801,9 @@ def _failed_decision(
             route="fail_closed",
             timed_out=error.timed_out,
             error_type=error_type,
+            error_source=error.failure.source if error.failure else "guard",
+            error_category=error.failure.category if error.failure else "internal",
+            http_status=error.failure.http_status if error.failure else None,
             detail=reason,
             guardrail_id=request.plan.guardrail_id,
             guardrail_version=request.plan.guardrail_version,
@@ -3068,15 +3097,15 @@ def _native_model_trace_steps(
             module.failure_mode if module is not None else "fail_closed"
         )
         steps.append(RuntimeTraceStep(
-            id=f"nemo:model:{index}:{risk}",
+            id=f"{parent_id}:model:{call.call_id or index}",
             kind="evaluator",
             name=f"{call.provider}/{call.model}",
             status=call.result if failed or cancelled else "complete",
             detail=(
                 "Model call cancelled after another required check blocked; provider usage may be unavailable."
-                if cancelled else f"NeMo-native {risk.replace('_', ' ')} model call failed."
+                if cancelled else f"{risk.replace('_', ' ')} model call failed."
                 if failed
-                else f"NeMo-native {risk.replace('_', ' ')} model call completed."
+                else f"{risk.replace('_', ' ')} model call completed; response format accepted."
             ),
             duration_ms=call.duration_ms,
             parent_id=parent_id,
@@ -3106,6 +3135,8 @@ def _native_model_trace_steps(
             model_operation=call.operation,
             model_result=call.result,
             error_type=call.error_type if call.error_type != "none" else None,
+            error_source=call.error_source, error_category=call.error_category,
+            http_status=call.http_status, model_call_id=call.call_id or None,
             model_input_tokens=call.input_tokens,
             model_output_tokens=call.output_tokens,
             model_retries=call.retries,

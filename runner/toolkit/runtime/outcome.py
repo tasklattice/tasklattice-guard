@@ -1,7 +1,7 @@
 """Authoritative Guardrail outcomes. Wire adapters never adjudicate evidence."""
 from dataclasses import replace
 
-from .contracts import ExecutionDiagnostic, ExecutionPurpose, ProtectionDecision
+from .contracts import ExecutionDiagnostic, ExecutionPurpose, ProtectionDecision, RuntimeTraceStep
 
 class GuardrailExecutionError(RuntimeError):
     def __init__(self, decision: ProtectionDecision):
@@ -12,12 +12,45 @@ class GuardrailExecutionError(RuntimeError):
         super().__init__(cause.message if cause else "Guardrail execution failed.")
 
 
+def _failed(step: RuntimeTraceStep) -> bool:
+    return step.timed_out or step.verdict == "error" or step.status in {"error", "failed", "timeout"}
+
+
+def attribute_trace(trace: tuple[RuntimeTraceStep, ...]) -> tuple[RuntimeTraceStep, ...]:
+    """Propagate recorded child causes, never guess responsibility from text."""
+    children: dict[str, list[RuntimeTraceStep]] = {}
+    for step in trace:
+        if step.parent_id:
+            children.setdefault(step.parent_id, []).append(step)
+    resolved = {}
+    def resolve(step, visiting=frozenset()):
+        if step.id in resolved:
+            return resolved[step.id]
+        if step.id in visiting:
+            return step
+        causes = [resolve(child, visiting | {step.id}) for child in children.get(step.id, ()) if _failed(child)]
+        if _failed(step) and not step.error_source:
+            sources = {c.error_source for c in causes if c.error_source}
+            categories = {c.error_category for c in causes if c.error_category}
+            call_ids = {c.model_call_id for c in causes if c.model_call_id}
+            statuses = {c.http_status for c in causes if c.http_status}
+            step = replace(step,
+                error_source=next(iter(sources)) if len(sources) == 1 else "mixed" if sources else "guard",
+                error_category=next(iter(categories)) if len(categories) == 1 else "multiple" if categories else "deadline" if step.timed_out else "execution",
+                model_call_id=next(iter(call_ids)) if len(call_ids) == 1 else None,
+                http_status=next(iter(statuses)) if len(statuses) == 1 else None)
+        resolved[step.id] = step
+        return step
+    return tuple(resolve(step) for step in trace)
+
+
 def finalize_decision(decision: ProtectionDecision, *, purpose: ExecutionPurpose = "online", require_coverage: bool = False) -> ProtectionDecision:
     """Separate a conclusive disposition from independent detector failures.
 
     Only the engine can certify policy_block/policy_unknown, using terminal
     results and their effective actions. Raw findings cannot certify a Block.
     """
+    decision = replace(decision, trace=attribute_trace(decision.trace))
     terminal = decision.decision == "block" and decision.termination_reason in {"policy_block", "policy_unknown"}
     diagnostics = list(decision.diagnostics)
     module_status = {(a.module_id, a.content_block_id): a.status for a in decision.assessments}
@@ -31,22 +64,27 @@ def finalize_decision(decision: ProtectionDecision, *, purpose: ExecutionPurpose
                 "A required check timed out." if step.timed_out else "A Guardrail check failed.",
                 step.id, step.policy_id,
                 affects_result=(step.module_id, step.content_block_id) not in failed_open and
-                    module_status.get((step.module_id, step.content_block_id), "error") in {"error", "uncovered", "needs_context"}))
+                    module_status.get((step.module_id, step.content_block_id), "error") in {"error", "uncovered", "needs_context"},
+                source=step.error_source or "guard", category=step.error_category or "execution",
+                http_status=step.http_status, model_call_id=step.model_call_id))
     for item in decision.assessments:
+        if item.status == "error" and any(_failed(s) and s.module_id == item.module_id and s.content_block_id == item.content_block_id for s in decision.trace):
+            continue
         if item.status in {"error", "needs_context"} or item.status == "uncovered" and not terminal:
             diagnostics.append(ExecutionDiagnostic(item.status,
                 {"error": "A Guardrail module failed.", "needs_context": "A required check is missing context.",
                  "uncovered": "A required module was not evaluated."}[item.status], item.module_id,
-                affects_result=item.status != "error" or (item.module_id, item.content_block_id) not in failed_open))
+                affects_result=item.status != "error" or (item.module_id, item.content_block_id) not in failed_open,
+                source="configuration" if item.status == "needs_context" else "guard", category=item.status))
     coverage = decision.coverage
     all_incomplete_failed_open = any(a.status == "error" for a in decision.assessments) and all(
         a.status in {"pass", "allow", "intervene", "uncertain"} or
         a.status == "error" and (a.module_id, a.content_block_id) in failed_open for a in decision.assessments)
-    if not terminal and not all_incomplete_failed_open and (require_coverage and (coverage is None or coverage.required_modules_total < 1)
+    if not terminal and not all_incomplete_failed_open and not any(d.affects_result for d in diagnostics) and (require_coverage and (coverage is None or coverage.required_modules_total < 1)
                          or coverage is not None and (coverage.status != "complete"
                              or coverage.required_modules_completed != coverage.required_modules_total)):
         diagnostics.append(ExecutionDiagnostic("incomplete_coverage", "Required Guardrail coverage is incomplete."))
-    if decision.detection_error:
+    if decision.detection_error and not diagnostics:
         diagnostics.append(ExecutionDiagnostic("detection_failed", "Monitor detection did not complete."))
     fail_closed = bool(decision.usage and decision.usage.fail_closed)
     if fail_closed and not any(d.affects_result for d in diagnostics):
@@ -73,7 +111,12 @@ def finalize_decision(decision: ProtectionDecision, *, purpose: ExecutionPurpose
         status, reason = "complete", decision.termination_reason or decision.decision
     fatal = status in {"error", "timeout"}
     diagnostics = tuple(dict.fromkeys(replace(d, affects_result=d.affects_result and fatal) for d in diagnostics))
-    return replace(decision, execution_status=status, termination_reason=reason,
+    calls = decision.usage.model_calls if decision.usage else ()
+    model_status = ("not_called" if not calls else "error" if any(c.error_source == "model" for c in calls)
+                    else "ok" if all(c.result == "success" for c in calls) else "unknown")
+    affected_steps = {d.step_id for d in diagnostics if d.affects_result}
+    return replace(decision, execution_status=status, termination_reason=reason, model_status=model_status,
+        trace=tuple(replace(s, affects_result=s.id in affected_steps) for s in decision.trace),
         diagnostics=diagnostics,
         flagged=decision.protection_mode == "enforce" and (decision.decision in {"block", "transform"}
             or any(item.status == "intervene" for item in decision.assessments)))

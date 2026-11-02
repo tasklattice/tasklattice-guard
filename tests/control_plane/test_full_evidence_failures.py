@@ -67,11 +67,11 @@ async def test_terminal_block_and_rule_acceptance_survive_an_independent_failure
                    and item.verdict == "matched" for item in result.findings)
     finally:
         await previews.shutdown()
-    infrastructure = "timeout" if failure == "timeout" else "provider_failure"
+    infrastructure = "timeout" if failure == "timeout" else "guard_failure"
     cases = [case(plan, target_policy, "r-first", phase), case(plan, failed_policy, "r-second", phase, id="broken"),
              case(plan, target_policy, "r-first", phase, id="scenario", caseType="scenario"),
              case(plan, target_policy, "r-first", phase, id="expected", expectedFailure=infrastructure),
-             case(plan, target_policy, "r-first", phase, id="wrong-failure", expectedFailure="timeout" if infrastructure != "timeout" else "provider_failure")]
+             case(plan, target_policy, "r-first", phase, id="wrong-failure", expectedFailure="timeout" if infrastructure != "timeout" else "guard_failure")]
     outcome = await validate(plan, cases, Fault(failure=failure))
     target, broken, scenario, expected, wrong = outcome.results
     assert target["passed"] and target["ruleContractSatisfied"]
@@ -116,4 +116,4 @@ async def test_unproven_targets_and_composition_assertions_still_fail(plans, cha
             "expectedDecision": "block", "expectedMatches": [{"policyId": "p0", "ruleId": "r-first"}]}
     outcome = await validate(plan, [target], Fault())
     assert not outcome.results[0]["passed"]
-    assert outcome.results[0]["actualFailure"] == "provider_failure"
+    assert outcome.results[0]["actualFailure"] == "guard_failure"

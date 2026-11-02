@@ -114,6 +114,18 @@ function mockCases(rows:TestCaseResult[]) {
 }
 
 describe("Testing Report acceptance evidence", () => {
+  it("separates a valid model response from a failed policy expectation", () => {
+    render(<TestCaseResultRow result={{ ...result, model_status: "ok", execution_status: "complete", actual_decision: "allow" }} />);
+    expect(screen.getByText("logs.modelStatus.ok")).toBeTruthy();
+    expect(screen.getByText("logs.modelQualitySeparate")).toBeTruthy();
+  });
+
+  it("does not present a model transport failure as a quality mismatch", () => {
+    render(<TestCaseResultRow result={{ ...result, model_status: "error", execution_status: "error", actual_failure: "provider_failure" }} />);
+    expect(screen.getByText("logs.modelStatus.error")).toBeTruthy();
+    expect(screen.queryByText("logs.modelQualitySeparate")).toBeNull();
+  });
+
   beforeAll(() => {
     vi.stubGlobal("ResizeObserver", class {
       observe() {}

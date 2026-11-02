@@ -6,6 +6,7 @@ import math
 import time
 
 import httpx
+from ...runtime.failures import model_response
 
 from runner.model_validation_diagnostics import record_validation_error, validation_http_hooks
 from ...runtime.contracts import ProviderEvidence, RiskFinding, RuntimeTraceStep
@@ -106,7 +107,9 @@ class JevNoulEvaluator:
         # A failed call still proves the requested model and actual operating
         # point. No probability or response model is invented for a failed parse.
         return evaluation_result(request, "error", request.content, reason=reason, usage=usage,
-                                 trace=(self._trace(request, "error", reason, {}, error_type=error_type),))
+                                 trace=(self._trace(request, "error", reason, {}, error_type=error_type),),
+                                 error_source="configuration" if not usage.model_calls and error_type is None else None,
+                                 error_category="configuration" if not usage.model_calls and error_type is None else None)
 
     async def evaluate(self, request: EvaluationRequest) -> EvaluationResult:
         if (request.rail_type not in self.rails or request.capability not in self.capabilities
@@ -145,8 +148,9 @@ class JevNoulEvaluator:
                             return attempt
 
                         response = await with_connection_retry(guarded, deadline=deadline, call=call)
-                        payload = response.json()
-                        actual_model, probabilities = parse_answers(payload, set(questions))
+                        with model_response():
+                            payload = response.json()
+                            actual_model, probabilities = parse_answers(payload, set(questions))
                         call.complete(payload=payload)
         except (httpx.HTTPError, TimeoutError, ValueError, TypeError, KeyError) as error:
             record_validation_error(error)

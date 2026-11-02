@@ -1,3 +1,4 @@
+import { ModelCallStatus } from "@/components/model-call-status";
 import { TestModelRulesSwitch, ValidationScopeNotice } from "@/components/validation-model-scope";
 import { hasPermission } from "../../shared/rbac";
 import { EventPagination, useEventCursor } from "@/components/event-pagination";
@@ -269,6 +270,8 @@ export function TestCaseResultRow({ result: summary, runId, ordinal, excluded = 
       <ChevronDown aria-hidden className="size-4 text-muted-foreground transition-transform group-open/case:rotate-180 motion-reduce:transition-none" />
     </summary>
     {runId && !open ? null : runId && !detail.data ? <div className="border-t p-4">{detail.error ? <><ErrorNotice error={detail.error} /><Button variant="outline" onClick={() => void detail.refetch()}>{t("common.retry")}</Button></> : <Skeleton className="h-32" />}</div> : <div className="space-y-4 border-t bg-card p-4">
+      <ModelCallStatus status={result.model_status} />
+      {result.model_status === "ok" && failed && !isExecutionError(result) ? <p className="text-xs text-muted-foreground">{t("logs.modelQualitySeparate")}</p> : null}
       {failed ? <FailureDiagnosis result={result} /> : null}
       {executionWarning ? <Alert variant="warning">
         <AlertTitle>{t("validation.executionWarningTitle")}</AlertTitle>

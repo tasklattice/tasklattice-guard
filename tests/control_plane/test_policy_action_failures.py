@@ -40,7 +40,7 @@ async def test_action_dispatch_and_body_errors_fail_closed(phase, call, referenc
 
 
 @pytest.mark.parametrize("phase", ["input", "output"])
-@pytest.mark.parametrize("expected_failure", [None, "provider_failure", "timeout"])
+@pytest.mark.parametrize("expected_failure", [None, "guard_failure", "timeout"])
 async def test_validator_requires_explicit_matching_action_failure_expectation(phase, expected_failure):
     from runner import generated as protocol
     from runner.protocol_codec import plan_to_proto, validation_test_to_proto
@@ -55,8 +55,8 @@ async def test_validator_requires_explicit_matching_action_failure_expectation(p
         test_cases=[validation_test_to_proto({"id": "failure", "name": "Failure classification", "phase": phase,
             "content": "ordinary", "expectedDecision": "block", "required": True,
             "expectedFailure": expected_failure})]))
-    assert results[0]["actualFailure"] == "provider_failure"
-    assert (status == "passed") is (expected_failure == "provider_failure")
+    assert results[0]["actualFailure"] == "guard_failure"
+    assert (status == "passed") is (expected_failure == "guard_failure")
     assert results[0]["matchedRuleIds"] == []
 
 

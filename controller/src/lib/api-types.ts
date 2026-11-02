@@ -1,3 +1,4 @@
+import type { ExecutionDiagnostics, ErrorSource, ModelStatus } from "../../shared/execution-diagnostics";
 import type { RuntimeOutcome } from "../../shared/runtime-outcome";
 import type { RiskSeverity, EventSeverity } from "../../shared/security-severity";
 import type { EnforcementAction } from "../../shared/enforcement-action.generated";
@@ -102,7 +103,7 @@ export type RuntimeFinding = {
   }>;
 };
 
-export type RuntimeTraceStep = {
+export type RuntimeTraceStep = ExecutionDiagnostics & {
   parallel_group?: string | null;
   id: string;
   kind?: string;
@@ -127,6 +128,8 @@ export type RuntimeTraceStep = {
 };
 
 export type TestCaseResult = {
+  model_status?: ModelStatus;
+  execution_status?: string;
   evidence_status: string;
   evidence_detail: string;
   verified_rule_ids: string[];
@@ -215,6 +218,7 @@ export type PlaygroundCheckFinding = {
 };
 
 export type PlaygroundCheckResult = {
+  model_status?: ModelStatus;
   check_id: string;
   trace_id: string;
   evidence_id: string | null;
@@ -370,7 +374,7 @@ export type GuardrailFindingPage = {
   collection_status?: "collected" | "not_collected" | "no_events";
 };
 
-export type RouterTraceStep = {
+export type RouterTraceStep = ExecutionDiagnostics & {
   id: string;
   parent_id?: string | null;
   detail?: string | null;
@@ -694,7 +698,7 @@ export type PolicyDraftTestCase = {
   covered_rule_ids: string[];
   case_type: "unit" | "input_rail" | "output_rail" | "timeout" | "provider_failure" | "concurrency";
   required: boolean;
-  expected_failure: "timeout" | "provider_failure" | null;
+  expected_failure: "timeout" | "provider_failure" | "guard_failure" | "configuration_failure" | null;
   concurrency_group: string | null;
   trusted_instruction: string;
   use_guardrail_instruction: boolean;
@@ -894,9 +898,10 @@ export type RuntimeLogEntry = {
   protection_mode?: "enforce" | "monitor" | "bypass";
   detection_decision?: string | null;
   detection_error?: string | null;
+  model_status?: ModelStatus;
   execution_status?: "error" | "complete" | "degraded" | "bypassed" | "unknown";
   call_completion?: { inferred: boolean; reason: string | null; completed_at: string | null; decision_id: string | null; route_id: string | null; target_id: string | null; router_revision: number | null };
-  error_details?: Array<{ span_id: string; name: string; error_type: string | null; provider: string | null; model: string | null; policy: string | null; timed_out: boolean; timeout_ms: number | null }>;
+  error_details?: Array<{ source?: ErrorSource | null; category?: string | null; http_status?: number | null; model_call_id?: string | null; affects_result?: boolean; span_id: string; name: string; error_type: string | null; provider: string | null; model: string | null; policy: string | null; timed_out: boolean; timeout_ms: number | null }>;
   http_request?: RuntimeHttpRequest | null;
   id: string;
   trace_id: string;

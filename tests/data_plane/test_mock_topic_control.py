@@ -85,9 +85,19 @@ async def test_signed_native_topic_artifact_against_tcp_mock(tmp_path,scenario,t
             if expected=='failure':
                 assert result.decision=='block'
                 assert result.usage.fail_closed is True
+                source, category = {
+                    'normal': ('configuration', 'request_rejected'),
+                    'http-error': ('model', 'unavailable'),
+                    'invalid-response': ('model', 'response_schema'),
+                    'timeout': ('model', 'timeout'),
+                }[scenario]
+                assert result.model_status == ('error' if source == 'model' else 'unknown')
+                assert any(step.error_source == source and step.error_category == category for step in result.trace)
+                assert not any(step.error_source == 'guard' for step in result.trace)
             else:
                 assert result.decision==expected, result.reason
                 assert result.usage.fail_closed is False
+                assert result.model_status == 'ok'
                 if expected=='block': assert any(f.verdict=='matched' for f in result.findings)
         finally:
             await engine.shutdown()

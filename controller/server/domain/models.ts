@@ -64,6 +64,8 @@ export type ValidationMetrics = {
 };
 
 export type ValidationCaseResult = {
+  modelStatus?: string;
+  executionStatus?: string;
   evidenceStatus: string;
   evidenceDetail: string;
   verifiedRuleIds: string[];

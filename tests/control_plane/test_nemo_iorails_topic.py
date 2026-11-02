@@ -321,6 +321,11 @@ async def test_real_iorails_registry_uses_live_model_and_rejects_bad_label() -> 
         assert allowed.usage.model_invocations == 1
         assert blocked.usage.model_invocations == 1
         assert malformed.usage.model_invocations == 1
+        assert allowed.model_status == blocked.model_status == "ok"
+        assert malformed.model_status == "error"
+        assert any(step.error_source == "model" and step.error_category == "response_schema"
+                   for step in malformed.trace)
+        assert not any(step.error_source == "guard" for step in malformed.trace)
         assert state["requests"] == 3
         assert state["authorization"] == "Bearer leased-secret"
     finally:
@@ -463,7 +468,7 @@ async def test_official_topic_action_rejects_malformed_model_output() -> None:
             if False:
                 yield None
 
-    with pytest.raises(LLMCallException, match="exactly 'on-topic' or 'off-topic'"):
+    with pytest.raises(LLMCallException, match="response_schema.*InvalidTopicLabel"):
         await actions.topic_safety_check_input(
             llms={"topic_control": Model()},
             llm_task_manager=TaskManager(),

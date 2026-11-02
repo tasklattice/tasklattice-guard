@@ -197,4 +197,11 @@ message RuntimeTraceStep {
   optional string evaluator_id = 46;
   // Versioned implementation profile used by a model-backed evaluator.
   optional string profile_ref = 47;
+  // Fault boundary, independent of classification quality or test assertions.
+  optional string error_source = 48;
+  optional string error_category = 49;
+  optional int32 http_status = 50;
+  optional string model_call_id = 51;
+  // Whether this recorded failure invalidated the final Guardrail result.
+  bool affects_result = 52;
 }

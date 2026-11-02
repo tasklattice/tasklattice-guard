@@ -1,3 +1,4 @@
+import { ModelCallStatus } from "@/components/model-call-status";
 import { SecuritySeverityBadge } from "@/components/security-severity";
 import { ExecutionTrace, playgroundTraceSteps } from "@/components/execution-trace";
 import { CheckCircle2, CircleAlert, SearchCheck, ShieldAlert } from "lucide-react";
@@ -40,7 +41,7 @@ export function FindingsPanel({ result }: { result: PlaygroundCheckResult | null
 export function ExecutionTracePanel({ result }: { result: PlaygroundCheckResult | null }) {
   const { t } = useTranslation();
   return result
-    ? <ExecutionTrace key={result.trace_id} steps={playgroundTraceSteps(result.trace)} />
+    ? <div className="space-y-2"><ModelCallStatus status={result.model_status} /><ExecutionTrace key={result.trace_id} steps={playgroundTraceSteps(result.trace)} /></div>
     : <PanelEmpty text={t("playground.runToSeeTrace")} />;
 }
 
