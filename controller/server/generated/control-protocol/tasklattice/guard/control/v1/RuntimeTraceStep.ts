@@ -192,8 +192,17 @@ export interface RuntimeTraceStep {
    * Fault boundary, independent of classification quality or test assertions.
    */
   'errorSource'?: (string);
+  /**
+   * Stable category within error_source; absent when no failure was recorded.
+   */
   'errorCategory'?: (string);
+  /**
+   * Provider HTTP status for this attempt; absent when no status was observed.
+   */
   'httpStatus'?: (number);
+  /**
+   * Correlates this node with a model call and its diagnostics; absent when no call is attributed.
+   */
   'modelCallId'?: (string);
   /**
    * Whether this recorded failure invalidated the final Guardrail result.
@@ -426,8 +435,17 @@ export interface RuntimeTraceStep__Output {
    * Fault boundary, independent of classification quality or test assertions.
    */
   'errorSource'?: (string);
+  /**
+   * Stable category within error_source; absent when no failure was recorded.
+   */
   'errorCategory'?: (string);
+  /**
+   * Provider HTTP status for this attempt; absent when no status was observed.
+   */
   'httpStatus'?: (number);
+  /**
+   * Correlates this node with a model call and its diagnostics; absent when no call is attributed.
+   */
   'modelCallId'?: (string);
   /**
    * Whether this recorded failure invalidated the final Guardrail result.

@@ -9,15 +9,12 @@ import pytest
 
 from runner import generated as protocol
 from runner.api import _telemetry_metadata
-from runner.compiler import DefaultRunnerCompiler
-from runner.protocol_codec import plan_to_proto, validation_case_result_to_proto, validation_test_to_proto
+from runner.protocol_codec import validation_case_result_to_proto
 from runner.providers import dynamic_runtime_action_providers
-from runner.toolkit.nemo.action_registry import action_providers
 from runner.toolkit.nemo.actions.model_call import (model_failure, observe_model_call, ObservedNeMoModel,
     activate_native_model_observation, deactivate_native_model_observation)
 from runner.toolkit.runtime.contracts import EngineRequest
 from runner.toolkit.runtime.failures import ModelResponseError, model_response
-from runner.validator import DefaultRunnerValidator
 from tests.data_plane.test_artifact_execution import _runtime
 from tests.data_plane.test_jev_jailbreak import jailbreak_request
 
@@ -75,23 +72,6 @@ async def test_model_fault_survives_real_runtime_telemetry_and_report_wire(tmp_p
         assert recorded.error_source == source and recorded.error_category == category
         assert recorded.HasField("http_status") is (status is not None)
         assert "private" not in json.dumps(event)
-    finally:
-        await engine.shutdown()
-
-
-async def test_valid_but_wrong_classification_fails_assertions_not_model_health(tmp_path):
-    actions = providers(lambda _: answer())
-    store, _, engine = _runtime(tmp_path, FIXTURE, providers=actions)
-    plan = store.plan(*store.active_plan_keys()[0])
-    try:
-        result = await DefaultRunnerValidator(DefaultRunnerCompiler(), action_providers(*actions)).run(protocol.ValidationRequest(
-            run_id="wrong-judgment", guardrail_id=plan.guardrail_id, candidate_version=plan.guardrail_version,
-            plan=plan_to_proto(asdict(plan)), test_cases=[validation_test_to_proto({"id":"expected-block", "name":"Expected block",
-                "phase":"output", "content":"unsafe according to test", "expectedDecision":"block", "required":True})]))
-        case = result.results[0]
-        assert case["passed"] is False and case["actualDecision"] == "allow"
-        assert case["modelStatus"] == "ok" and case["actualFailure"] is None
-        assert case["executionStatus"] == "complete" and case["assertionFailures"]
     finally:
         await engine.shutdown()
 

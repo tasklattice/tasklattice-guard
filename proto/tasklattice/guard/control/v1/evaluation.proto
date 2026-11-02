@@ -199,8 +199,11 @@ message RuntimeTraceStep {
   optional string profile_ref = 47;
   // Fault boundary, independent of classification quality or test assertions.
   optional string error_source = 48;
+  // Stable category within error_source; absent when no failure was recorded.
   optional string error_category = 49;
+  // Provider HTTP status for this attempt; absent when no status was observed.
   optional int32 http_status = 50;
+  // Correlates this node with a model call and its diagnostics; absent when no call is attributed.
   optional string model_call_id = 51;
   // Whether this recorded failure invalidated the final Guardrail result.
   bool affects_result = 52;
