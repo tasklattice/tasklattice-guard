@@ -28,6 +28,7 @@ controller/vite.config.d.ts
 /unused.db
 output
 /.local-archives/
+/deploy/laya/
 
 controller/scripts/.openapi-inputs-*.ts
 /controller/openapi/controller.openapi.json
