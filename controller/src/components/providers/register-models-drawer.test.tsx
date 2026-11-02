@@ -94,6 +94,22 @@ describe("Relay registration workflow", () => {
     expect(onOpenChange).toHaveBeenCalledWith(false);
   });
 
+  it("offers Laya independently and registers its suggested decision model without catalog discovery", async () => {
+    mount("add-provider");
+    await chooseProvider("Laya");
+    expect((screen.getByLabelText("Base URL") as HTMLInputElement).value).toBe("");
+    fireEvent.change(screen.getByLabelText("Base URL"), { target: { value: "https://laya.test/v1" } });
+    fireEvent.change(screen.getByLabelText("API key"), { target: { value: "synthetic-laya-key" } });
+    fireEvent.click(screen.getByRole("button", { name: "Choose models" }));
+    await screen.findByText("Choose a Laya decision model");
+    expect(discoverProviderDraft).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: /^Register 1 model/ }));
+    await waitFor(() => expect(registerProviderModels).toHaveBeenCalledWith({
+      connection: { name: "Laya", kind: "laya", baseUrl: "https://laya.test/v1", apiKey: "synthetic-laya-key" },
+      models: [expect.objectContaining({ model: "laya", profile: "tali.laya.v1" })],
+    }));
+  });
+
   it("keeps the provider catalog grouped and supports search and keyboard selection", async () => {
     mount("add-provider");
     const picker = screen.getByRole("combobox", { name: "Select Provider" });
@@ -147,7 +163,7 @@ describe("Relay registration workflow", () => {
     await screen.findByText("Registration complete");
     expect(registerProviderModels).toHaveBeenCalledWith({
       connection: { name: "TypeSafe AI", kind: "typesafe", baseUrl: "https://api.typesafe.ai/v1", apiKey: "test-key" },
-      models: [expect.objectContaining({ model: "jev-1.13.0", profile: "tali.typesafe-jev-topic.v1" })],
+      models: [expect.objectContaining({ model: "jev-1.13.0", profile: "tali.typesafe-jev.v1" })],
     });
   });
 
@@ -167,9 +183,9 @@ describe("Relay registration workflow", () => {
     fireEvent.click(screen.getByRole("button", { name: "Register 3 models" }));
     await screen.findByText("Registration complete");
     expect(vi.mocked(registerProviderModels).mock.calls[0]?.[0].models).toEqual([
-      expect.objectContaining({ model: "jev-1.13.0", profile: "tali.typesafe-jev-topic.v1" }),
-      expect.objectContaining({ model: "jev-custom", profile: "tali.typesafe-jev-topic.v1" }),
-      expect.objectContaining({ model: "chat", profile: "tali.typesafe-jev-topic.v1" }),
+      expect.objectContaining({ model: "jev-1.13.0", profile: "tali.typesafe-jev.v1" }),
+      expect.objectContaining({ model: "jev-custom", profile: "tali.typesafe-jev.v1" }),
+      expect.objectContaining({ model: "chat", profile: "tali.typesafe-jev.v1" }),
     ]);
   });
 
@@ -188,7 +204,7 @@ describe("Relay registration workflow", () => {
     fireEvent.click(screen.getByRole("button", { name: "Register 1 model" }));
     await screen.findByText("Registration complete");
     expect(registerProviderModels).toHaveBeenCalledWith(expect.objectContaining({
-      models: [expect.objectContaining({ model: "jev-latest", profile: "tali.typesafe-jev-topic.v1" })],
+      models: [expect.objectContaining({ model: "jev-latest", profile: "tali.typesafe-jev.v1" })],
     }));
   });
 
@@ -202,7 +218,7 @@ describe("Relay registration workflow", () => {
     fireEvent.click(screen.getByRole("button", { name: "Register 1 model" }));
     await screen.findByText("Registration complete");
     expect(discoverModelProvider).not.toHaveBeenCalled();
-    expect(createModelDefinition).toHaveBeenCalledWith(expect.objectContaining({ model: "jev-latest", profile: "tali.typesafe-jev-topic.v1" }));
+    expect(createModelDefinition).toHaveBeenCalledWith(expect.objectContaining({ model: "jev-latest", profile: "tali.typesafe-jev.v1" }));
   });
 
   it("retains a registered model whose call failed and retries it without registering twice", async () => {

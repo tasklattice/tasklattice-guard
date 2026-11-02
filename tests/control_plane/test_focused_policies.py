@@ -45,7 +45,7 @@ def test_capability_cases_execute_the_selected_rules(policy, case) -> None:
     ("local-government-identifiers", "Tax file number 111111111.", "Tax file number [au_tfn_REDACTED]."),
     ("local-government-identifiers", "University of Toronto student number 1000000000.", "University of Toronto student number [au_medicare_REDACTED]."),
     ("local-passports", "Passport: E12345678", "Passport: [passport_china_REDACTED]"),
-    ("local-contact-data", "Phone: +65 8123 4567", "Phone: [sg_phone_REDACTED]"),
+    ("local-contact-data", "Phone: +65 8123 4567", "Phone: [international_phone_REDACTED]"),
     ("local-contact-data", "Phone: (11) 2345-6789", "Phone: [br_phone_landline_REDACTED]"),
     ("local-payment-data", "Bank account: 12345-001-1234567", "Bank account: [ca_bank_account_REDACTED]"),
     ("local-government-identifiers", "TFN: 123 456 789", "TFN: [au_tfn_REDACTED]"),

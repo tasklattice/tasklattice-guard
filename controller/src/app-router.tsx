@@ -18,7 +18,6 @@ import { PolicyLibraryPage } from "@/routes/policy-library";
 import { AccountPage } from "@/routes/account";
 import { HelpPage, DocumentNotFound } from "@/routes/help";
 import { getHelpContent } from "@/features/help-content";
-import { documentPath, resolveLegacyDocument } from "@/features/help-navigation";
 import { SharingPage } from "@/routes/sharing";
 import { AuditLogPage } from "@/routes/audit-log";
 import { VersionPage } from "@/routes/version";
@@ -36,8 +35,11 @@ const dashboardRoute = createRoute({ getParentRoute: () => rootRoute, path: "/da
 const mockSsoRoute = createRoute({ getParentRoute: () => rootRoute, path: "/mock-sso", component: () => null });
 const sharingRoute = createRoute({ getParentRoute: () => rootRoute, path: "/sharing", component: SharingPage });
 const guardrailsRoute = createRoute({ getParentRoute: () => rootRoute, path: "/guardrails", component: GuardrailsPage });
-const guardrailDetailRoute = createRoute({ getParentRoute: () => rootRoute, path: "/guardrails/$guardrailId", validateSearch: (search: Record<string, unknown>): { tab?: string; version?: string; window?: "1h" | "24h" | "7d" | "15d" | "30d"; severity?: string; pageSize?: 25 | 50; metric?: RuntimeMetricKey } => ({
-  version: typeof search.version === "string" ? search.version : undefined,
+const guardrailDetailRoute = createRoute({ getParentRoute: () => rootRoute, path: "/guardrails/$guardrailId", validateSearch: (search: Record<string, unknown>): { tab?: string; report?: string; version?: string; compare?: string; window?: "1h" | "24h" | "7d" | "15d" | "30d"; severity?: string; pageSize?: 25 | 50; metric?: RuntimeMetricKey } => ({
+  version: typeof search.version === "string" && search.version ? search.version : undefined,
+  compare: typeof search.compare === "string" && search.compare ? search.compare : undefined,
+  // The open Testing Report is addressable: refresh, deep link and Back all work.
+  report: typeof search.report === "string" && search.report ? search.report : undefined,
   tab: ["runtime", "event", "immutable", "testing", "draft", "usage"].includes(String(search.tab)) ? String(search.tab) : undefined,
   window: ["1h", "24h", "7d", "15d", "30d"].includes(String(search.window)) ? search.window as "1h" | "24h" | "7d" | "15d" | "30d" : undefined,
   metric: runtimeMetricKeys.includes(search.metric as RuntimeMetricKey) ? search.metric as RuntimeMetricKey : undefined,
@@ -113,12 +115,7 @@ const documentRoute = createRoute({ getParentRoute: () => rootRoute, path: "/doc
 const documentIndexRoute = createRoute({
   getParentRoute: () => documentRoute,
   path: "/",
-  beforeLoad: ({ location }) => {
-    // Article and section IDs are shared by both translations.
-    const target = resolveLegacyDocument(getHelpContent("en"), location.hash);
-    if (!target) throw notFound();
-    throw redirect({ to: documentPath(target.document), hash: target.anchor, replace: true });
-  },
+  beforeLoad: () => { throw redirect({ to: "/document/$categoryId/$articleId", params: { categoryId: "overview", articleId: "quickstart-protection" }, replace: true }); },
 });
 const documentArticleRoute = createRoute({
   getParentRoute: () => documentRoute,
@@ -128,11 +125,6 @@ const documentArticleRoute = createRoute({
   },
   component: HelpPage,
 });
-function LegacyHelpRedirect() {
-  const hash = useRouterState({ select: state => state.location.hash });
-  return <Navigate to="/document" hash={hash} replace />;
-}
-const helpRoute = createRoute({ getParentRoute: () => rootRoute, path: "/help", component: LegacyHelpRedirect });
 export const routeTree = rootRoute.addChildren([
   indexRoute,
   dashboardRoute,
@@ -161,7 +153,6 @@ export const routeTree = rootRoute.addChildren([
   tenantModelsRoute,
   guardrailCatalogRoute,
   documentRoute.addChildren([documentIndexRoute, documentArticleRoute]),
-  helpRoute,
 ]);
 export const router = createRouter({ routeTree, history: createBrowserHistory() });
 declare module "@tanstack/react-router" { interface Register { router: typeof router } }

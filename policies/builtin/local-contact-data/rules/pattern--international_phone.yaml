@@ -1,0 +1,22 @@
+id: pattern/international_phone
+name: International phone (grouped)
+description: Redact the entire plus-prefixed grouped phone candidate, including country prefix. Not a validator
+  of assigned telephone numbers.
+stages:
+- input
+- output
+detector:
+  ref: text/regex
+  version: 1.0.0
+  parameters:
+    expression: (?<![\w+])\+(?=(?:[ .()\-]*[0-9]){8,15}(?![ .()\-]*[0-9]))[1-9][0-9]{0,2}(?:[ .\-]+\(?[0-9]{1,4}\)?){2,5}(?![\w.\-])
+on_match:
+  action: transform
+  replacement: '[international_phone_REDACTED]'
+risk_level: medium
+metadata:
+  taxonomy_ids:
+  - TALI-PRIVACY-PII
+runtime_adapter:
+  binding_id: local-contact-data
+  implementation_rule_id: pattern/international_phone

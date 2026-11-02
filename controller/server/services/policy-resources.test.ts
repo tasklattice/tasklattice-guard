@@ -11,6 +11,7 @@ import { assertPolicyTest } from "./policy-resources.js";
 import { publicPolicy } from "../policy-catalog/public-policy.js";
 import { definitionTestCases } from "../policy-studio/definition-tests.js";
 import { generatedTestCases } from "../domain/validation.js";
+import { PolicyCatalog, type PolicyDto } from "../policy-catalog/catalog.js";
 
 const directory = resolve("../runner/toolkit/policy_library/assets");
 const compiler = new DeclarativeCompiler(directory);
@@ -25,6 +26,16 @@ function planFor(definition = fixture(), selected?: string[]) {
   return buildGuardrailPlan({ guardrailId: "test", guardrailVersion: "20261012-010000.001Z", policies: [policy], draft: normalizeGuardrailDraft({ policyBindings: [{ policyId: policy.id, policyVersion: policy.version, enabledRuleIds: selected ?? policy.rules.map(r => r.id), enabledRails: policy.rails, parameterValues: {} }] }) });
 }
 describe("portable Policy authoring", () => {
+  it("restores protection metadata for imported frozen catalog versions without changing their identity", () => {
+    const current = PolicyCatalog.load(directory).get("local-network-addresses")!;
+    const node = frozenBuiltInDefinition({ ...current, version: "0.9.0" });
+    const imported = { ...builtInPolicyView(node), origin: "imported", source_id: "another-installation" } as unknown as PolicyDto;
+    const view = compiler.catalogView({ ...current, published_versions: [imported] });
+    const historical = view.published_versions![0]!;
+    expect(historical.protection).toEqual(current.protection);
+    expect(historical).toMatchObject({ version: "0.9.0", origin: "imported", source_id: "another-installation" });
+    expect(policyNodeDigest(frozenBuiltInDefinition(historical))).toBe(policyNodeDigest(node));
+  });
   it("removes origin from public current and historical views without stripping provenance tags", () => {
     const policy = compiler.compile(fixture());
     const view = publicPolicy({ ...policy, published_versions: [policy] });
@@ -33,7 +44,7 @@ describe("portable Policy authoring", () => {
   });
   it("loads all existing definitions without source or runtime identity in the DSL", () => {
     const assets = JSON.parse(readFileSync(resolve(directory, "policy-definitions.generated.json"), "utf8"));
-    expect(Object.keys(assets)).toHaveLength(26);
+    expect(Object.keys(assets)).toHaveLength(27);
     for (const value of Object.values(assets)) {
       const definition = policyDefinitionSchema.parse(value);
       expect(definition.metadata).not.toHaveProperty("source");
@@ -77,9 +88,13 @@ describe("portable Policy authoring", () => {
   it("selects model contracts by detector profile for arbitrary Policy and Rule IDs", () => {
     const definition = fixture(); definition.rules[0]!.detector = { ref: "model/classifier", version: "1.0.0", parameters: { profile: "safety-classification" } };
     const steps = planFor(definition).steps as Array<{ contract_ref: string; parameters: Array<[string, string]> }>;
-    expect(steps[0]!.contract_ref).toBe("tali.guard.content-safety.v1");
-    expect(Object.fromEntries(steps[0]!.parameters)).toMatchObject({ policy_id: "independent-policy", rule_id: "first", declarative_rule: "true" });
-    expect(steps[1]!.contract_ref).toBe("tali.guard.content-filter.rules.v1");
+    expect(steps).toHaveLength(2);
+    // Local blocking checks run before model calls, retaining each Rule's contract.
+    expect(steps.map(step => step.contract_ref)).toEqual([
+      "tali.guard.content-filter.rules.v1", "tali.guard.content-safety.v1",
+    ]);
+    expect(JSON.parse(Object.fromEntries(steps[0]!.parameters).enabled_rules_json!)).toEqual({ "independent-policy": ["second"] });
+    expect(Object.fromEntries(steps[1]!.parameters)).toMatchObject({ policy_id: "independent-policy", rule_id: "first", declarative_rule: "true" });
   });
   it("preserves Topic Rule configuration when a shipped definition is renamed and exported", () => {
     const definition = compiler.shipped("builtin-topic-safety")!;

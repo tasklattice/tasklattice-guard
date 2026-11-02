@@ -9,6 +9,7 @@ import { frozenBuiltInDefinition, planPolicyVersion, snapshotChecksum } from "..
 import type { ProgrammablePolicySnapshot } from "../policy-studio/model.js";
 import { PolicyCatalog } from "../policy-catalog/catalog.js";
 import { mayReadFrozenPolicyContent } from "./guardrail-policy-visibility.js";
+import { storeValidationSnapshot } from "./testing-reports.js";
 
 const url = process.env.GUARD_TEST_POSTGRES_URL;
 describe.skipIf(!url)("Guardrail version Policy-content visibility", () => {
@@ -64,12 +65,13 @@ describe.skipIf(!url)("Guardrail version Policy-content visibility", () => {
   it("protects generated draft cases and validation results with the same independent Policy grant", async () => {
     await database.pool.query(`INSERT INTO guardrail_test_case(id,guardrail_id,name,policy_id,phase,content,expected_decision,origin,source_policy_id,source_policy_version)
       VALUES ('generated-private','shared-guard','Private case','private-policy','input','PRIVATE CASE','block','generated','private-policy','1')`);
-    await database.pool.query(`INSERT INTO guardrail_validation_run(id,guardrail_id,guardrail_version,source_draft_revision,subject,candidate_policies,results,failure_reason,excluded_case_ids,test_scope)
-      VALUES ('private-run','shared-guard',$1,1,'version',$2,$3,'PRIVATE FAILURE',$4,$5)`, [version, JSON.stringify(nodes), JSON.stringify([{ content: "PRIVATE CASE" }]),
+    const snapshotDigest = await storeValidationSnapshot(database.db, { candidateArtifact: null, candidatePolicies: nodes as never, candidateInspection: null, testSuite: null });
+    await database.pool.query(`INSERT INTO guardrail_validation_run(id,guardrail_id,guardrail_version,source_draft_revision,subject,snapshot_digest,failure_reason,excluded_case_ids,test_scope)
+      VALUES ('private-run','shared-guard',$1,1,'version',$2,'PRIVATE FAILURE',$3,$4)`, [version, snapshotDigest,
       JSON.stringify(["PRIVATE CASE ID"]), JSON.stringify({ skippedRules: [{ reason: "PRIVATE SKIP" }] })]);
     await expect(asTenant("tenantB", () => service.listTestCases("shared-guard"))).rejects.toMatchObject({ code: "not_found" });
     await expect(asTenant("tenantB", () => service.getValidationRun("private-run"))).rejects.toMatchObject({ code: "not_found" });
-    await expect(asTenant("tenantB", () => service.getValidationRun("private-run", true))).rejects.toMatchObject({ code: "not_found" });
+    await expect(asTenant("tenantB", () => service.authorizeReportRead("private-run"))).rejects.toMatchObject({ code: "not_found" });
     const reports = await asTenant("tenantB", () => service.queryValidationRuns({ guardrailId: "shared-guard" }));
     expect(reports.items[0]).toMatchObject({ id: "private-run", failureReason: null, excludedCaseIds: [], testScope: null });
     expect(JSON.stringify(reports)).not.toContain("PRIVATE");
@@ -77,7 +79,9 @@ describe.skipIf(!url)("Guardrail version Policy-content visibility", () => {
     expect((await asTenant("tenantA", () => service.listTestCases("shared-guard")))[0]?.content).toBe("PRIVATE CASE");
     await database.pool.query("INSERT INTO resource_share(id,owner_tenant_id,recipient_tenant_id,resource_type,resource_id) VALUES ('detail-policy-share','tenantA','tenantB','policy','private-policy')");
     expect((await asTenant("tenantB", () => service.listTestCases("shared-guard")))[0]?.content).toBe("PRIVATE CASE");
-    expect(JSON.stringify(await asTenant("tenantB", () => service.getValidationRun("private-run")))).toContain("PRIVATE CASE");
+    expect(JSON.stringify(await asTenant("tenantB", () => service.getValidationRun("private-run")))).toContain("PRIVATE FAILURE");
+    await expect(asTenant("tenantB", () => service.authorizeReportRead("private-run"))).resolves.toBeUndefined();
+    await expect(asTenant("tenantC", () => service.authorizeReportRead("private-run"))).rejects.toMatchObject({ code: "not_found" });
     expect((await asTenant("tenantB", () => service.queryValidationRuns({ guardrailId: "shared-guard" }))).items[0]?.failureReason).toBe("PRIVATE FAILURE");
     await database.pool.query("DELETE FROM resource_share WHERE id='detail-policy-share'");
     await expect(asTenant("tenantB", () => service.getValidationRun("private-run"))).rejects.toMatchObject({ code: "not_found" });

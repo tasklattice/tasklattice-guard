@@ -42,8 +42,8 @@ const transport=createServer(async(req,res)=>{
   const payload=body.length?JSON.parse(body):{};
   if(activeCase&&payload.input_type==='response'){
    // The live scenarios are all streaming. Never spend a model call on the
-   // legacy per-token response path, even if an image preflight is bypassed.
-   activeCase.legacyResponseRejected=true;
+   // per-token response path, even if an image preflight is bypassed.
+   activeCase.perTokenResponseRejected=true;
    res.writeHead(426,{'content-type':'application/json'}).end('{"error":"Protected SSE requires the output-stream API"}');return;
   }
   const r=await fetch('http://localhost:38382'+req.url,{method:req.method,headers:{'x-api-key':req.headers['x-api-key']??'','content-type':'application/json'},...(body.length?{body}:{}),signal:AbortSignal.timeout(60000)});
@@ -95,7 +95,7 @@ try{
  report.proxyImage=verified.image;report.proxyFiles=verified.files;
  credentials=JSON.parse((await exec('.venv/bin/python',['-c','import json; from pathlib import Path; from scripts.model_response_gateway import load_credentials; print(json.dumps(load_credentials(Path(".env"))))'])).stdout);
  assert(credentials.deepseek);
- await api('/api/auth/sign-in/email',await secret(ns+'-bootstrap-admin'));
+ await api('/api/auth/sign-in/username',await secret(ns+'-bootstrap-admin'));
  const active=await stage('configuration',async()=>{
   let v=await api('/api/v1/model-configuration');assert(v.providers.every(p=>p.baseUrl.includes('.tali-model-e2e.svc.cluster.local:8097/')));
   let m=v.models.find(m=>m.name==='Live stream Safety'+suffix);

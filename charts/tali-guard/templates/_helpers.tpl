@@ -19,7 +19,7 @@
 {{- end -}}
 {{- end }}
 
-{{/* Shared URL takes precedence over legacy Controller-only URLs. */}}
+{{/* Shared URL takes precedence over Controller UI/auth URLs. */}}
 {{- define "tali-guard.publicUrls" -}}
 {{- if .Values.publicUrl -}}
 {{- toJson (list (include "tali-guard.sharedPublicUrl" .)) -}}
@@ -34,7 +34,7 @@
 {{- first (include "tali-guard.publicUrls" . | fromJsonArray) -}}
 {{- end }}
 
-{{/* Always trust the shared UI origin; preserve legacy override semantics
+{{/* Always trust the shared UI origin; apply the Controller trusted-origin overrides
      when publicUrl is empty. Compute without caching derived values in .Values. */}}
 {{- define "tali-guard.trustedOrigins" -}}
 {{- $origins := list -}}
@@ -111,30 +111,30 @@
 {{- $base := include "tali-guard.fullname" . -}}
 {{- if .Values.security.bootstrap.enabled -}}
 {{- if .Values.postgresql.enabled -}}
-{{- $specs = append $specs (dict "name" (include "tali-guard.databaseSecretName" .) "legacyName" (include "tali-guard.postgresqlName" .) "kind" "database" "host" (include "tali-guard.postgresqlName" .) "username" .Values.postgresql.auth.username "database" .Values.postgresql.auth.database "urlKey" .Values.database.secretKey "credentialKey" (default "" .Values.postgresql.auth.credentialKey)) -}}
+{{- $specs = append $specs (dict "name" (include "tali-guard.databaseSecretName" .) "kind" "database" "host" (include "tali-guard.postgresqlName" .) "username" .Values.postgresql.auth.username "database" .Values.postgresql.auth.database "urlKey" .Values.database.secretKey "credentialKey" (default "" .Values.postgresql.auth.credentialKey)) -}}
 {{- end -}}
 {{- range $role, $account := dict "Admin" .Values.security.bootstrapAdmin "User" .Values.security.bootstrapUser -}}
 {{- if and (or (eq $role "Admin") $account.enabled) (not $account.existingSecret) -}}
-{{- $specs = append $specs (dict "name" (include (printf "tali-guard.bootstrap%sSecretName" $role) $) "legacyName" (printf "%s-bootstrap-%s" $base (lower $role)) "kind" "account" "email" $account.email "displayName" $account.name "minLength" $.Values.controller.auth.minLoginLength "localDefault" $account.localDefault "emailKey" $account.emailKey "nameKey" $account.nameKey "credentialKey" $account.credentialKey "digestKey" $account.digestKey) -}}
+{{- $specs = append $specs (dict "name" (include (printf "tali-guard.bootstrap%sSecretName" $role) $) "kind" "account" "username" $account.username "displayName" $account.name "usernameKey" $account.usernameKey "nameKey" $account.nameKey "credentialKey" $account.credentialKey) -}}
 {{- end -}}
 {{- end -}}
 {{- if not .Values.security.artifactSigning.existingSecret -}}
-{{- $specs = append $specs (dict "name" (include "tali-guard.artifactSigningSecretName" .) "legacyName" (printf "%s-artifact-signing" $base | trunc 63 | trimSuffix "-") "kind" "ed25519" "privateKey" .Values.security.artifactSigning.privateKeyKey "publicKey" .Values.security.artifactSigning.publicKeyKey) -}}
+{{- $specs = append $specs (dict "name" (include "tali-guard.artifactSigningSecretName" .) "kind" "ed25519" "privateKey" .Values.security.artifactSigning.privateKeyKey "publicKey" .Values.security.artifactSigning.publicKeyKey) -}}
 {{- end -}}
 {{- if not .Values.security.controlSecret.existingSecret -}}
-{{- $specs = append $specs (dict "name" (include "tali-guard.controlSecretName" .) "legacyName" (printf "%s-control" $base | trunc 63 | trimSuffix "-") "kind" "tokens" "keys" (list .Values.security.controlSecret.runnerTokenKey .Values.security.controlSecret.betterAuthSecretKey)) -}}
+{{- $specs = append $specs (dict "name" (include "tali-guard.controlSecretName" .) "kind" "tokens" "keys" (list .Values.security.controlSecret.runnerTokenKey .Values.security.controlSecret.betterAuthSecretKey)) -}}
 {{- end -}}
 {{- if not .Values.security.metrics.existingSecret -}}
-{{- $specs = append $specs (dict "name" (include "tali-guard.metricsSecretName" .) "legacyName" (printf "%s-metrics" $base | trunc 63 | trimSuffix "-") "kind" "tokens" "keys" (list .Values.security.metrics.tokenKey)) -}}
+{{- $specs = append $specs (dict "name" (include "tali-guard.metricsSecretName" .) "kind" "tokens" "keys" (list .Values.security.metrics.tokenKey)) -}}
 {{- end -}}
 {{- if not .Values.security.runtimeLogs.existingSecret -}}
-{{- $specs = append $specs (dict "name" (include "tali-guard.runtimeLogSecretName" .) "legacyName" (printf "%s-runtime-logs" $base | trunc 63 | trimSuffix "-") "kind" "encryption" "keys" (list .Values.security.runtimeLogs.encryptionKeyKey)) -}}
+{{- $specs = append $specs (dict "name" (include "tali-guard.runtimeLogSecretName" .) "kind" "encryption" "keys" (list .Values.security.runtimeLogs.encryptionKeyKey)) -}}
 {{- end -}}
 {{- end -}}
 {{- if and .Values.security.controlTls.enabled .Values.security.controlTls.autoGenerate (not .Values.security.controlTls.existingSecret) -}}
 {{- $controller := include "tali-guard.controllerName" . -}}
 {{- $dns := list $controller (printf "%s.%s" $controller .Release.Namespace) (printf "%s.%s.svc" $controller .Release.Namespace) (printf "%s.%s.svc.cluster.local" $controller .Release.Namespace) -}}
-{{- $specs = append $specs (dict "name" (include "tali-guard.controlTlsSecretName" .) "legacyName" (printf "%s-control-tls" $base | trunc 63 | trimSuffix "-") "kind" "mtls" "serverDnsNames" $dns "runnerName" (include "tali-guard.defaultRunnerName" .) "caKey" .Values.security.controlTls.caKey "caPrivateKeyKey" .Values.security.controlTls.caPrivateKeyKey "serverCertificateKey" .Values.security.controlTls.controllerCertificateKey "serverPrivateKeyKey" .Values.security.controlTls.controllerPrivateKeyKey "clientCertificateKey" .Values.security.controlTls.runnerCertificateKey "clientPrivateKeyKey" .Values.security.controlTls.runnerPrivateKeyKey) -}}
+{{- $specs = append $specs (dict "name" (include "tali-guard.controlTlsSecretName" .) "kind" "mtls" "serverDnsNames" $dns "runnerName" (include "tali-guard.defaultRunnerName" .) "caKey" .Values.security.controlTls.caKey "caPrivateKeyKey" .Values.security.controlTls.caPrivateKeyKey "serverCertificateKey" .Values.security.controlTls.controllerCertificateKey "serverPrivateKeyKey" .Values.security.controlTls.controllerPrivateKeyKey "clientCertificateKey" .Values.security.controlTls.runnerCertificateKey "clientPrivateKeyKey" .Values.security.controlTls.runnerPrivateKeyKey) -}}
 {{- end -}}
 {{- toJson $specs -}}
 {{- end -}}
@@ -254,13 +254,30 @@ app.kubernetes.io/part-of: tasklattice-guard
 {{- end }}
 
 {{- define "tali-guard.validateValues" -}}
-{{- with .Values.controller.endpointContextStorage -}}
+{{- if hasKey .Values.controller "endpointContextStorage" -}}
+{{- $storage := .Values.controller.endpointContextStorage -}}
+{{- include "tali-guard.featureObject" (dict "name" "controller.endpointContextStorage" "value" $storage "fields" (list "maxRowsPerPool" "maxRowsGlobal" "maxPayloadBytesPerContext" "maxPayloadBytesPerPool" "maxPayloadBytesGlobal")) -}}
+{{- range $name := list "maxRowsPerPool" "maxRowsGlobal" "maxPayloadBytesPerContext" "maxPayloadBytesPerPool" "maxPayloadBytesGlobal" -}}
+{{- $maximum := 2147483647 -}}{{- if has $name (list "maxRowsPerPool" "maxRowsGlobal") -}}{{- $maximum = 1000000 -}}{{- end -}}
+{{- include "tali-guard.featureNumber" (dict "name" (printf "controller.endpointContextStorage.%s" $name) "value" (get $storage $name) "minimum" 1 "maximum" $maximum "integer" true) -}}
+{{- end -}}
+{{- with $storage -}}
 {{- if or (gt (int64 .maxRowsPerPool) (int64 .maxRowsGlobal)) (gt (int64 .maxPayloadBytesPerContext) (int64 .maxPayloadBytesPerPool)) (gt (int64 .maxPayloadBytesPerPool) (int64 .maxPayloadBytesGlobal)) -}}
 {{- fail "controller.endpointContextStorage requires context <= pool <= global budgets" -}}
 {{- end -}}
 {{- end -}}
+{{- end -}}
 {{- include "tali-guard.validateAdmission" . -}}
 {{- $poolAuth := .Values.security.poolAuthentication -}}
+{{- range $name := list "enabled" "scopedTelemetry" "telemetryProgress" -}}
+{{- if not (kindIs "bool" (get $poolAuth $name)) -}}{{- fail (printf "security.poolAuthentication.%s must be a boolean" $name) -}}{{- end -}}
+{{- end -}}
+{{- $progress := .Values.runner.telemetryProgress.persistence -}}
+{{- if not (kindIs "map" $progress) -}}{{- fail "runner.telemetryProgress.persistence must be an object" -}}{{- end -}}
+{{- if not (kindIs "bool" $progress.enabled) -}}{{- fail "runner.telemetryProgress.persistence.enabled must be a boolean" -}}{{- end -}}
+{{- if not (kindIs "string" $progress.size) -}}{{- fail "runner.telemetryProgress.persistence.size must be a capacity string" -}}{{- end -}}
+{{- if not (regexMatch "^[1-9][0-9]{0,5}(Mi|Gi)$" $progress.size) -}}{{- fail "runner.telemetryProgress.persistence.size must be a positive Mi or Gi capacity" -}}{{- end -}}
+{{- if not (kindIs "string" $progress.storageClass) -}}{{- fail "runner.telemetryProgress.persistence.storageClass must be a string" -}}{{- end -}}
 {{- if and $poolAuth.scopedTelemetry (not $poolAuth.enabled) -}}
 {{- fail "security.poolAuthentication.scopedTelemetry requires enabled=true" -}}
 {{- end -}}
@@ -334,12 +351,25 @@ app.kubernetes.io/part-of: tasklattice-guard
 {{- fail "runner.default.replicaCount must be at least 1; GuardRails 0 is the mandatory baseline Runner pool" }}
 {{- end }}
 
+{{- if not (kindIs "bool" .Values.networkPolicy.runnerIsolation.enabled) -}}{{- fail "networkPolicy.runnerIsolation.enabled must be a boolean" -}}{{- end -}}
 {{- if .Values.networkPolicy.runnerIsolation.enabled -}}
 {{- if not .Values.networkPolicy.enabled -}}{{- fail "networkPolicy.runnerIsolation requires networkPolicy.enabled=true" -}}{{- end -}}
 {{- $names := list "default" -}}
 {{- range .Values.runner.pools -}}{{- $names = append $names .name -}}{{- end -}}
 {{- range $name, $_ := .Values.networkPolicy.runnerIsolation.poolEgress -}}
 {{- if not (has $name $names) -}}{{- fail (printf "networkPolicy.runnerIsolation.poolEgress contains unknown chart pool %s" $name) -}}{{- end -}}
+{{- end -}}
+{{- range $peers := list .Values.networkPolicy.runnerIsolation.ingressPeers .Values.networkPolicy.runnerIsolation.dnsPeers -}}
+{{- if not (kindIs "slice" $peers) -}}{{- fail "networkPolicy.runnerIsolation peer collections must be lists" -}}{{- end -}}
+{{- range $peer := $peers -}}{{- include "tali-guard.featureNetworkPeer" $peer -}}{{- end -}}
+{{- end -}}
+{{- range $pool, $rules := .Values.networkPolicy.runnerIsolation.poolEgress -}}
+{{- if not (kindIs "slice" $rules) -}}{{- fail "networkPolicy.runnerIsolation.poolEgress entries must be lists" -}}{{- end -}}
+{{- range $rule := $rules -}}
+{{- if not (kindIs "map" $rule) -}}{{- fail "networkPolicy.runnerIsolation egress rules must be objects" -}}{{- end -}}
+{{- if or (not (kindIs "slice" $rule.to)) (empty $rule.to) (not (kindIs "slice" $rule.ports)) (empty $rule.ports) -}}{{- fail "networkPolicy.runnerIsolation egress rules require nonempty to and ports lists" -}}{{- end -}}
+{{- range $peer := $rule.to -}}{{- include "tali-guard.featureNetworkPeer" $peer -}}{{- end -}}
+{{- end -}}
 {{- end -}}
 {{- end -}}
 {{- if and .Values.postgresql.enabled .Values.database.existingSecret -}}
@@ -355,29 +385,31 @@ app.kubernetes.io/part-of: tasklattice-guard
 {{- end -}}
 {{- range $role, $account := dict "Admin" .Values.security.bootstrapAdmin "User" .Values.security.bootstrapUser -}}
 {{- if or (eq $role "Admin") $account.enabled -}}
-{{- if and $account.existingSecret (or $account.email $account.localDefault) -}}
-{{- fail (printf "bootstrap%s existingSecret cannot be combined with account initialization" $role) -}}
+{{- if and (not $account.existingSecret) (gt (int $.Values.controller.auth.minLoginLength) 8) -}}
+{{- fail "managed account initialization uses an 8-character credential; provide external account Secrets for a larger minLoginLength" -}}
 {{- end -}}
-{{- if not (or $account.existingSecret $account.email) -}}
-{{- fail (printf "configure bootstrap%s existingSecret or email for in-cluster initialization" $role) -}}
-{{- end -}}
-{{- end -}}
-{{- end -}}
-{{- if and .Values.security.bootstrapUser.enabled .Values.security.bootstrapUser.email (eq (lower .Values.security.bootstrapUser.email) (lower .Values.security.bootstrapAdmin.email)) -}}
-{{- fail "bootstrapAdmin and bootstrapUser must have different email addresses" -}}
-{{- end -}}
-{{- if or .Values.security.bootstrapAdmin.localDefault (and .Values.security.bootstrapUser.enabled .Values.security.bootstrapUser.localDefault) -}}
-{{- range (include "tali-guard.publicUrls" . | fromJsonArray) -}}
-{{- if not (regexMatch "^http://(localhost|127\\.0\\.0\\.1|\\[::1\\])(:[0-9]+)?/?$" .) -}}
-{{- fail "bootstrap account localDefault requires loopback Controller publicUrl entries" -}}
+{{- if and (not $account.existingSecret) (not (regexMatch "^[a-z0-9_.-]{3,64}$" $account.username)) -}}
+{{- fail (printf "bootstrap%s requires a username of 3-64 lowercase letters, digits, dots, underscores or hyphens" $role) -}}
 {{- end -}}
 {{- end -}}
+{{- end -}}
+{{- if and .Values.security.bootstrapUser.enabled (eq .Values.security.bootstrapUser.username .Values.security.bootstrapAdmin.username) -}}
+{{- fail "bootstrapAdmin and bootstrapUser must have different usernames" -}}
 {{- end -}}
 {{- if and .Values.security.controlTls.enabled (not (or .Values.security.controlTls.existingSecret .Values.security.controlTls.autoGenerate)) }}
 {{- fail "configure controlTls existingSecret or set autoGenerate=true for in-cluster initialization" }}
 {{- end }}
 {{- if and .Values.redis.enabled .Values.runner.callContextRedisUrl }}
 {{- fail "set either redis.enabled=true or runner.callContextRedisUrl, not both" }}
+{{- end }}
+{{- if and .Values.redis.enabled (ne .Values.redis.maxmemoryPolicy "noeviction") }}
+{{- fail "shared call context Redis requires maxmemoryPolicy=noeviction" }}
+{{- end }}
+{{- if and .Values.redis.enabled (not (regexMatch "^[1-9][0-9]*(kb|mb|gb)?$" (toString .Values.redis.maxmemory))) }}
+{{- fail "redis.maxmemory must be a positive Redis memory size, for example 4gb" }}
+{{- end }}
+{{- if le (int .Values.runner.callContext.ttlSeconds) 0 }}
+{{- fail "runner.callContext.ttlSeconds must be positive" }}
 {{- end }}
 {{- if and (gt (int .Values.runner.default.replicaCount) 1) (not (or .Values.redis.enabled .Values.runner.callContextRedisUrl)) }}
 {{- fail "shared Redis is required when GuardRails 0 has more than one replica; enable redis or set runner.callContextRedisUrl" }}
@@ -403,6 +435,10 @@ metadata:
     {{- include "tali-guard.commonLabels" . | nindent 4 }}
 data:
   NODE_ENV: production
+  CONTROLLER_DATABASE_STATEMENT_TIMEOUT_MS: {{ .Values.controller.databaseTimeouts.statementMs | quote }}
+  CONTROLLER_DATABASE_LOCK_TIMEOUT_MS: {{ .Values.controller.databaseTimeouts.lockMs | quote }}
+  CONTROLLER_DATABASE_IDLE_TRANSACTION_TIMEOUT_MS: {{ .Values.controller.databaseTimeouts.idleTransactionMs | quote }}
+  CONTROLLER_RUNNER_SYNC_CONCURRENCY: {{ .Values.controller.runnerSyncConcurrency | quote }}
   CONTROLLER_GRPC_TRANSPORT: {{ ternary "mtls" "plaintext" .Values.security.controlTls.enabled | quote }}
   CONTROLLER_RUNNER_SCOPED_TELEMETRY: {{ .Values.security.poolAuthentication.scopedTelemetry | quote }}
   CONTROLLER_RUNNER_TELEMETRY_PROGRESS: {{ .Values.security.poolAuthentication.telemetryProgress | quote }}
@@ -418,7 +454,54 @@ data:
   CONTROLLER_RUNTIME_PUBLIC_URL: {{ include "tali-guard.runtimePublicUrl" . | quote }}
   BETTER_AUTH_TRUSTED_ORIGINS: {{ include "tali-guard.trustedOrigins" . | fromJsonArray | join "," | quote }}
   CONTROLLER_MIN_LOGIN_LENGTH: {{ .Values.controller.auth.minLoginLength | quote }}
+  {{- with .Values.controller.trustedProxyCidrs }}
+  CONTROLLER_TRUSTED_PROXY_CIDRS: {{ join "," . | quote }}
+  {{- end }}
 {{- end }}
+
+{{/* Validate only supported security feature objects; general platform metadata remains pass-through. */}}
+{{- define "tali-guard.featureObject" -}}
+{{- if not (kindIs "map" .value) -}}{{- fail (printf "%s must be an object" .name) -}}{{- end -}}
+{{- $name := .name -}}{{- $value := .value -}}
+{{- range .fields -}}{{- if not (hasKey $value .) -}}{{- fail (printf "%s requires %s" $name .) -}}{{- end -}}{{- end -}}
+{{- $fields := .fields -}}
+{{- range $key, $_ := $value -}}{{- if not (has $key $fields) -}}{{- fail (printf "%s contains unsupported field %s" $name $key) -}}{{- end -}}{{- end -}}
+{{- end -}}
+
+{{- define "tali-guard.featureNetworkPeer" -}}
+{{- if not (kindIs "map" .) -}}{{- fail "networkPolicy.runnerIsolation peers must be objects" -}}{{- end -}}
+{{- $ip := hasKey . "ipBlock" -}}
+{{- $selector := or (hasKey . "podSelector") (hasKey . "namespaceSelector") -}}
+{{- if or (and $ip $selector) (not (or $ip $selector)) -}}{{- fail "networkPolicy.runnerIsolation peers require ipBlock or pod/namespace selectors, without combining both" -}}{{- end -}}
+{{- if $ip -}}
+{{- if not (kindIs "map" .ipBlock) -}}{{- fail "networkPolicy.runnerIsolation.ipBlock must be an object" -}}{{- end -}}
+{{- if or (not (kindIs "string" .ipBlock.cidr)) (empty .ipBlock.cidr) -}}{{- fail "networkPolicy.runnerIsolation.ipBlock requires a CIDR" -}}{{- end -}}
+{{- end -}}
+{{- end -}}
+
+{{- define "tali-guard.featureNumber" -}}
+{{- $value := .value -}}
+{{- if not (or (kindIs "float64" $value) (kindIs "float32" $value) (kindIs "int" $value) (kindIs "int64" $value) (typeIs "json.Number" $value)) -}}
+{{- fail (printf "%s must be a number" .name) -}}{{- end -}}
+{{- $number := float64 $value -}}
+{{- if or (lt $number (float64 .minimum)) (gt $number (float64 .maximum)) (and .integer (ne $number (floor $number))) -}}
+{{- fail (printf "%s is outside its supported numeric bounds" .name) -}}{{- end -}}
+{{- end -}}
+
+{{- define "tali-guard.featureIdentity" -}}
+{{- if not (kindIs "string" .value) -}}{{- fail (printf "%s must be a string" .name) -}}{{- end -}}
+{{- if or (eq .value "") (ne .value (trim .value)) (gt (len .value) 256) -}}{{- fail (printf "%s must be nonempty, unpadded and at most 256 characters" .name) -}}{{- end -}}
+{{- end -}}
+
+{{- define "tali-guard.featureIntegerMap" -}}
+{{- if not (kindIs "map" .value) -}}{{- fail (printf "%s must be an object" .name) -}}{{- end -}}
+{{- if or (lt (len .value) 1) (gt (len .value) 1000) -}}{{- fail (printf "%s requires 1 to 1000 entries" .name) -}}{{- end -}}
+{{- $settings := . -}}
+{{- range $key, $value := .value -}}
+{{- include "tali-guard.featureIdentity" (dict "name" $settings.name "value" $key) -}}
+{{- include "tali-guard.featureNumber" (dict "name" $settings.name "value" $value "minimum" $settings.minimum "maximum" $settings.maximum "integer" true) -}}
+{{- end -}}
+{{- end -}}
 
 {{/* Admission is explicit per pool, with no inheritance or policy provisioning. */}}
 {{- define "tali-guard.validateAdmission" -}}
@@ -431,6 +514,28 @@ data:
 {{- $local := $pool.tenantAdmission -}}
 {{- $rate := $pool.distributedRateAdmission -}}
 {{- $group := $pool.groupRateAdmission -}}
+{{- if not (kindIs "invalid" $local) -}}
+{{- include "tali-guard.featureObject" (dict "name" "tenantAdmission" "value" $local "fields" (list "capacity" "tenant_limits" "max_queued" "max_queued_per_tenant" "queue_timeout_seconds")) -}}
+{{- include "tali-guard.featureNumber" (dict "name" "tenantAdmission.capacity" "value" $local.capacity "minimum" 1 "maximum" 9007199254740991 "integer" true) -}}
+{{- range $name := list "max_queued" "max_queued_per_tenant" -}}{{- include "tali-guard.featureNumber" (dict "name" (printf "tenantAdmission.%s" $name) "value" (get $local $name) "minimum" 0 "maximum" 9007199254740991 "integer" true) -}}{{- end -}}
+{{- include "tali-guard.featureNumber" (dict "name" "tenantAdmission.queue_timeout_seconds" "value" $local.queue_timeout_seconds "minimum" 0 "maximum" 30 "integer" false) -}}
+{{- include "tali-guard.featureIntegerMap" (dict "name" "tenantAdmission.tenant_limits" "value" $local.tenant_limits "minimum" 1 "maximum" 9007199254740991) -}}
+{{- end -}}
+{{- if not (kindIs "invalid" $rate) -}}
+{{- include "tali-guard.featureObject" (dict "name" "distributedRateAdmission" "value" $rate "fields" (list "pool_id" "revision" "window_ms" "pool_limit" "tenant_limits")) -}}
+{{- range $name := list "pool_id" "revision" -}}{{- include "tali-guard.featureIdentity" (dict "name" (printf "distributedRateAdmission.%s" $name) "value" (get $rate $name)) -}}{{- end -}}
+{{- include "tali-guard.featureNumber" (dict "name" "distributedRateAdmission.window_ms" "value" $rate.window_ms "minimum" 100 "maximum" 86400000 "integer" true) -}}
+{{- include "tali-guard.featureNumber" (dict "name" "distributedRateAdmission.pool_limit" "value" $rate.pool_limit "minimum" 1 "maximum" 100000 "integer" true) -}}
+{{- include "tali-guard.featureIntegerMap" (dict "name" "distributedRateAdmission.tenant_limits" "value" $rate.tenant_limits "minimum" 1 "maximum" 100000) -}}
+{{- end -}}
+{{- if not (kindIs "invalid" $group) -}}
+{{- include "tali-guard.featureObject" (dict "name" "groupRateAdmission" "value" $group "fields" (list "group_id" "revision" "window_ms" "group_limit" "tenant_limits" "pool_limits" "pool_epochs")) -}}
+{{- range $name := list "group_id" "revision" -}}{{- include "tali-guard.featureIdentity" (dict "name" (printf "groupRateAdmission.%s" $name) "value" (get $group $name)) -}}{{- end -}}
+{{- include "tali-guard.featureNumber" (dict "name" "groupRateAdmission.window_ms" "value" $group.window_ms "minimum" 100 "maximum" 86400000 "integer" true) -}}
+{{- include "tali-guard.featureNumber" (dict "name" "groupRateAdmission.group_limit" "value" $group.group_limit "minimum" 1 "maximum" 100000 "integer" true) -}}
+{{- range $name := list "tenant_limits" "pool_limits" -}}{{- include "tali-guard.featureIntegerMap" (dict "name" (printf "groupRateAdmission.%s" $name) "value" (get $group $name) "minimum" 1 "maximum" 100000) -}}{{- end -}}
+{{- include "tali-guard.featureIntegerMap" (dict "name" "groupRateAdmission.pool_epochs" "value" $group.pool_epochs "minimum" 0 "maximum" 9007199254740991) -}}
+{{- end -}}
 {{- if $local -}}
 {{- range $tenant, $_ := $local.tenant_limits -}}
 {{- if ne $tenant (trim $tenant) -}}{{- fail (printf "Runner pool %s tenantAdmission tenant IDs must be unpadded" $pool.name) -}}{{- end -}}

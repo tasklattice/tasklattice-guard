@@ -5,7 +5,7 @@ import { describe, expect, it, vi } from "vitest";
 import type { ControllerAuth } from "../auth.js";
 import { loadConfig } from "../config.js";
 import type { RunnerControlServer } from "../control-channel/control-server.js";
-import type { ControllerMetrics } from "../metrics.js";
+import { ControllerMetrics } from "../metrics.js";
 import type { ControlPlaneService } from "../services/control-plane.js";
 import { createHttpApp } from "./app.js";
 
@@ -20,6 +20,56 @@ const config = loadConfig({
 });
 
 describe("Runner telemetry channel", () => {
+  it("returns pool metrics during a database outage and rejects new work while draining", async () => {
+    const blocked = Promise.withResolvers<number>();
+    const service = { desiredGeneration: vi.fn(() => blocked.promise), listRunnerPoolsWithCapacity: vi.fn(async () => []),
+      observabilitySnapshot: vi.fn(async () => ({ watermarks: [], pendingOutbox: [], guardrails: [], endpoints: [], endpointBindings: [], routers: [] })),
+      databasePoolState: () => ({ max: 20, total: 20, busy: 20, idle: 0, waiting: 4 }), recordRuntimeEvents: vi.fn(),
+    } as unknown as ControlPlaneService;
+    const metrics = new ControllerMetrics();
+    let stopping = false;
+    const app = createHttpApp({ config, auth: { api: {} } as ControllerAuth, service,
+      runnerControl: {} as RunnerControlServer, metrics, isStopping: () => stopping });
+    const response = await app.request("/metrics");
+    expect(response.status).toBe(200);
+    expect(await response.text()).toContain("guard_controller_database_pool_waiting 4");
+    stopping = true;
+    expect((await app.request("/health/ready")).status).toBe(503);
+    expect((await app.request("/api/internal/v1/runtime-events", { method: "POST" })).status).toBe(503);
+    expect((await app.request("/health/live")).status).toBe(200);
+    expect(service.recordRuntimeEvents).not.toHaveBeenCalled();
+    expect(service.desiredGeneration).toHaveBeenCalledOnce();
+    blocked.resolve(3); await metrics.stop();
+  });
+
+  it("logs pool pressure and SQLSTATE without leaking SQL parameters, error detail or credentials", async () => {
+    const secret = "PRIVATE_REPORT_AND_DATABASE_PASSWORD";
+    const error = Object.assign(new Error(`Failed query: ${secret}`), {
+      params: [secret], cause: Object.assign(new Error(secret), { code: "53300", detail: secret, client: { password: secret } }),
+    });
+    const logged = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      const app = createHttpApp({ config, auth: { api: {} } as ControllerAuth,
+        service: { recordRuntimeEvents: vi.fn().mockRejectedValue(error),
+          databasePoolState: () => ({ max: 20, total: 20, busy: 20, idle: 0, waiting: 5 }),
+        } as unknown as ControlPlaneService,
+        runnerControl: {} as RunnerControlServer, metrics: {} as ControllerMetrics,
+      });
+      const response = await app.request("/api/internal/v1/runtime-events", { method: "POST",
+        headers: { authorization: `Bearer ${token}`, "content-type": "application/json" },
+        body: JSON.stringify({ events: [], runnerId: "runner-0" }),
+      });
+      expect(response.status).toBe(500);
+      expect(await response.text()).not.toContain(secret);
+      expect(JSON.stringify(logged.mock.calls)).not.toContain(secret);
+      expect(JSON.stringify(logged.mock.calls)).not.toContain(token);
+      expect(JSON.parse(logged.mock.calls[0]![0])).toMatchObject({ event: "controller.http_error",
+        method: "POST", route: "/api/internal/v1/runtime-events",
+        pool: { total: 20, busy: 20, waiting: 5 }, error: { code: "53300", sqlState: "53300", category: "too_many_connections" },
+      });
+    } finally { logged.mockRestore(); }
+  });
+
   it("accepts a zero-traffic watermark from an authenticated Runner", async () => {
     const recordRuntimeEvents = vi.fn().mockResolvedValue(undefined);
     const recordTelemetryWatermark = vi.fn().mockResolvedValue(undefined);

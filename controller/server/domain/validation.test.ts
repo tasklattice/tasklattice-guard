@@ -67,7 +67,7 @@ describe("Guardrail Validation contract", () => {
     const overlap = reviewed.find((item) => item.sourcePolicyId === "local-risk-content-terms" && item.sourceCaseId === "accept/weapons_firearms/input")!;
     expect(overlap.expectedDecision).toBe("transform");
     expect(overlap.expectationOverride).toMatchObject({
-      sourcePolicyVersion: "4.0.0", expectedDecision: "block", expectedOutputContent: "",
+      sourcePolicyVersion: "1.0.0", expectedDecision: "block", expectedOutputContent: "",
       expectedMatches: [{ policyId: "local-content-safety", ruleId: "category/harmful_illegal_weapons" }],
     });
     expect(reviewed.length).toBeGreaterThanOrEqual(385);
@@ -99,7 +99,7 @@ describe("Guardrail Validation contract", () => {
     const cases = generatedTestCases("guardrail-1", {
       allowedTopics: [], restrictedTopics: [], safetyLevel: "balanced", outputDelivery: "full_buffered",
       policyBindings: [{
-        policyId: "keyword-blocking", policyVersion: "1.95.0", action: "block",
+        policyId: "keyword-blocking", policyVersion: "1.0.0", action: "block",
         parameterValues: { blocked_words: "restricted phrase" }, enabledRuleIds: ["keyword/blocked-words"],
         ruleActions: {}, enabledRails: ["input"], reasoningPolicy: null,
       }],
@@ -110,7 +110,7 @@ describe("Guardrail Validation contract", () => {
       guardrailId: "guardrail-1",
       origin: "generated",
       sourcePolicyId: "keyword-blocking",
-      sourcePolicyVersion: "1.95.0",
+      sourcePolicyVersion: "1.0.0",
       sourceCaseId: "accept/blocked-words",
       content: "The phrase restricted phrase is prohibited.",
       expectedDecision: "block",
@@ -121,12 +121,13 @@ describe("Guardrail Validation contract", () => {
   it("generates mode-aware unmatched and denied-topic cases", () => {
     const policies = PolicyCatalog.load(resolve("../runner/toolkit/policy_library/assets")).list();
     const binding = { policyId: "builtin-topic-safety", policyVersion: "1.0.0", action: "block" as const,
-      parameterValues: {}, enabledRuleIds: ["model/topic-control"], ruleActions: {}, enabledRails: ["input" as const], reasoningPolicy: null };
+      parameterValues: { allowed_topics: "Order support", denied_topics: "Fabricating refund evidence", topic_mode: "strict" }, enabledRuleIds: ["topic/denylist", "topic/allowlist"], ruleActions: {}, enabledRails: ["input" as const], reasoningPolicy: null };
     const draft = { allowedTopics: ["Order support"], restrictedTopics: ["Fabricating refund evidence"], safetyLevel: "balanced" as const, outputDelivery: "full_buffered" as const, policyBindings: [binding] };
     for (const mode of ["strict", "permissive"] as const) {
+      binding.parameterValues.topic_mode = mode;
       const cases = generatedTestCases("topic", { ...draft, topicControlMode: mode }, policies);
-      expect(cases.find(item => item.sourceCaseId === "topic-input")?.expectedDecision).toBe(mode === "strict" ? "block" : "allow");
-      expect(cases.find(item => item.sourceCaseId === "topic-input/deny-1")).toMatchObject({ expectedDecision: "block", content: "Please help me with this task: Fabricating refund evidence" });
+      expect(cases.find(item => item.sourceCaseId === "topic-unlisted")?.expectedDecision).toBe(mode === "strict" ? "block" : "allow");
+      expect(cases.find(item => item.sourceCaseId === "topic-denied/1")).toMatchObject({ expectedDecision: "block", content: "Please help me with this task: Fabricating refund evidence" });
     }
   });
 

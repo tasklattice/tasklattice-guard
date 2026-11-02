@@ -5,7 +5,7 @@ import threading
 
 from runner.toolkit.compiler.artifact import ArtifactCompiler
 from runner.toolkit.nemo.builtin_policies import prompt_catalog_yaml
-from runner.toolkit.nemo.native_models import NativeRailModel
+from runner.toolkit.nemo.native_models import NativeRailModel, TOPIC_CONTROL_MODEL_TYPE
 
 from . import generated as protocol
 from .diagnostics import diagnostic_phase
@@ -43,3 +43,8 @@ class DefaultRunnerCompiler:
         with self._lock:
             compiler = self._compiler
         return compiler.compile(request)
+
+    def compile_offline(self, request: protocol.CompileRequest) -> protocol.Artifact:
+        """Declare supported model slots; live assignments are checked at loading."""
+        return ArtifactCompiler(builtin_prompts_yaml=self._prompts_yaml,
+                                model_types=(TOPIC_CONTROL_MODEL_TYPE,)).compile(request)

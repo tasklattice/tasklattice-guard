@@ -188,6 +188,26 @@ export interface RuntimeTraceStep {
    * Versioned implementation profile used by a model-backed evaluator.
    */
   'profileRef'?: (string);
+  /**
+   * Fault boundary, independent of classification quality or test assertions.
+   */
+  'errorSource'?: (string);
+  /**
+   * Stable category within error_source; absent when no failure was recorded.
+   */
+  'errorCategory'?: (string);
+  /**
+   * Provider HTTP status for this attempt; absent when no status was observed.
+   */
+  'httpStatus'?: (number);
+  /**
+   * Correlates this node with a model call and its diagnostics; absent when no call is attributed.
+   */
+  'modelCallId'?: (string);
+  /**
+   * Whether this recorded failure invalidated the final Guardrail result.
+   */
+  'affectsResult'?: (boolean);
   '_parentId'?: "parentId";
   '_evidence'?: "evidence";
   '_contractRef'?: "contractRef";
@@ -221,6 +241,10 @@ export interface RuntimeTraceStep {
   '_finishedOffsetMs'?: "finishedOffsetMs";
   '_evaluatorId'?: "evaluatorId";
   '_profileRef'?: "profileRef";
+  '_errorSource'?: "errorSource";
+  '_errorCategory'?: "errorCategory";
+  '_httpStatus'?: "httpStatus";
+  '_modelCallId'?: "modelCallId";
 }
 
 /**
@@ -407,6 +431,26 @@ export interface RuntimeTraceStep__Output {
    * Versioned implementation profile used by a model-backed evaluator.
    */
   'profileRef'?: (string);
+  /**
+   * Fault boundary, independent of classification quality or test assertions.
+   */
+  'errorSource'?: (string);
+  /**
+   * Stable category within error_source; absent when no failure was recorded.
+   */
+  'errorCategory'?: (string);
+  /**
+   * Provider HTTP status for this attempt; absent when no status was observed.
+   */
+  'httpStatus'?: (number);
+  /**
+   * Correlates this node with a model call and its diagnostics; absent when no call is attributed.
+   */
+  'modelCallId'?: (string);
+  /**
+   * Whether this recorded failure invalidated the final Guardrail result.
+   */
+  'affectsResult': (boolean);
   '_parentId'?: "parentId";
   '_evidence'?: "evidence";
   '_contractRef'?: "contractRef";
@@ -440,4 +484,8 @@ export interface RuntimeTraceStep__Output {
   '_finishedOffsetMs'?: "finishedOffsetMs";
   '_evaluatorId'?: "evaluatorId";
   '_profileRef'?: "profileRef";
+  '_errorSource'?: "errorSource";
+  '_errorCategory'?: "errorCategory";
+  '_httpStatus'?: "httpStatus";
+  '_modelCallId'?: "modelCallId";
 }

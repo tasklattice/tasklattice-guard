@@ -22,6 +22,7 @@ from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
 from runner import generated as protocol
 from runner.toolkit.compiler.artifact import ArtifactCompiler
+from runner.toolkit.compiler.semantics import PLAN_COMPILER_VERSION
 from runner.toolkit.nemo.builtin_policies import prompt_catalog_yaml
 from runner.protocol_codec import (
     endpoint_verification_to_proto,
@@ -48,8 +49,8 @@ STREAM_SAFETY_FIXTURES = {
 STREAM_SAFETY_FIXTURES['content-safety-inout-v1'] = 'window_buffered'
 PRESET_FIXTURES = {
     f"preset-{name}-v1": name for name in (
-        "common-baseline", "banking-assistant", "securities-assistant",
-        "internet-customer-support", "singapore-financial-assistant",
+        "banking-assistant", "securities-assistant",
+        "internet-customer-support",
     )
 }
 FIXTURE_NAMES = (FIXTURE_NAME, ORDERED_FIXTURE_NAME, DEFAULT_FIXTURE_NAME, JAILBREAK_FIXTURE_NAME, TOPIC_FIXTURE_NAME, PHRASE_FIXTURE_NAME, CUSTOM_SYMBOL_FIXTURE_NAME, CUSTOM_FLOW_EVENT_FIXTURE_NAME, CUSTOM_DYNAMIC_FLOW_FIXTURE_NAME, CUSTOM_PARAMETER_FIXTURE_NAME, *PRESET_FIXTURES, *STREAM_SAFETY_FIXTURES)
@@ -68,7 +69,7 @@ def _plan() -> dict[str, object]:
     return {
         "guardrail_id": "fixture-secrets",
         "guardrail_version": "20260904-010000.001Z",
-        "compiler_version": "tasklattice-controller-plan-v3",
+        "compiler_version": PLAN_COMPILER_VERSION,
         "safety_level": "balanced",
         "output_delivery": "full_buffered",
         "steps": [{
@@ -78,7 +79,7 @@ def _plan() -> dict[str, object]:
             "phases": ["input", "output"],
             "on_unsafe": "block",
             "trigger": {"type": "always", "verdicts": []},
-            "parameters": [],
+            "parameters": [["evaluation_view", "original"], ["precedence", "0"]],
         }],
         "modules": [
             {
@@ -122,14 +123,15 @@ def _ordered_plan() -> dict[str, object]:
         next(r for r in credentials.rules if r.id == "pattern/generic_api_key"),
     ))
     plan = _plan()
-    plan["compiler_version"] = "tasklattice-controller-plan-v4-ordered"
     redactions = {
         "id": "local:redactions", "capability": "builtin_content_filter",
         "contract_ref": "tali.guard.content-filter.rules.v1",
         "phases": ["input", "output"], "on_unsafe": "block",
         "trigger": {"type": "always", "verdicts": []},
         "parameters": [
-            ["policy_id", "fixture-redactions"], ["policy_version", "1.95.0"],
+            ["evaluation_view", "previous_output"],
+            ["precedence", "0"],
+            ["policy_id", "fixture-redactions"], ["policy_version", "1.0.0"],
             ["policy_ids", "fixture-redactions"],
             ["policy_versions_json", json.dumps({definition.id: definition.version})],
             ["policy_definitions_json", json.dumps({definition.id: asdict(definition)}, ensure_ascii=False)],
@@ -137,6 +139,7 @@ def _ordered_plan() -> dict[str, object]:
             ["rule_actions_json", json.dumps({"fixture-redactions": {"pattern/email": "transform", "pattern/generic_api_key": "transform"}})],
         ],
     }
+    plan["steps"][0]["parameters"] = [["evaluation_view", "previous_output"], ["precedence", "1"]]
     plan["steps"] = [redactions, *plan["steps"]]
     plan["modules"] = [
         {**module, "id": f"local-redactions:{module['phase']}", "step_ids": ["local:redactions"], "input_view": "previous_output"}
@@ -166,15 +169,13 @@ def _topic_plan() -> dict[str, object]:
     plan = _jailbreak_plan()
     plan['steps'][0].update(id='topic:semantic:input', capability='topic_control',
         contract_ref='tali.guard.topic-control.semantic.v1',
-        parameters=[['topic_mode', 'allowlist'], ['allowed_topics', 'Product support']])
+        parameters=[['evaluation_view', 'original'], ['precedence', '0'], ['topic_mode', 'strict'], ['allowed_topics', 'Product support']])
     plan['modules'][0].update(step_ids=['topic:semantic:input'])
     return plan
 
 
 def _default_plan() -> dict[str, object]:
-    # Historical default-local-v1 fixture: deliberately keep only local components.
-    # The production Default is also local; this fixture retains its historical identity.
-    # Control-plane generation only. Runner-only tests never import the builder.
+    # Compile current local Policies once; Runner tests use only signed bytes.
     source = """
       import {defaultGuardrailDraft} from './server/domain/defaults.ts';
       import {buildGuardrailPlan} from './server/domain/guardrail-plan.ts';
@@ -200,6 +201,7 @@ def _phrase_plan() -> dict[str, object]:
       const phrase_entries = JSON.stringify([
         {id:'mask', phrase:'internal-name', action:'transform', replacement:'public-name'},
         {id:'block-original', phrase:'internal-name', action:'block'},
+        {id:'mask-alias', phrase:'internal-alias', action:'transform', replacement:'public-name'},
         {id:'block', phrase:'confidential', action:'block'},
         {id:'mask-zh', phrase:'内部代号', action:'transform', replacement:'公开名称'},
       ]);
@@ -373,6 +375,7 @@ def generate(fixture_name: str = FIXTURE_NAME) -> FixtureFiles:
             )],
         )],
         endpoints=[protocol.EndpointRuntime(
+            credential_required=True,
             endpoint_id="fixture-endpoint",
             router_id="fixture-router",
             adapter="litellm-generic-guardrail",

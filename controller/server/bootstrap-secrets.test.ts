@@ -42,7 +42,7 @@ describe("in-cluster Secret bootstrap", () => {
   it("does not overwrite a concurrently created Secret", async () => {
     const request = vi.fn().mockResolvedValueOnce({ status: 404 })
       .mockResolvedValueOnce({ status: 409 })
-      .mockResolvedValueOnce({ status: 200, body: { metadata, data: encode(secretData(spec)) } });
+      .mockResolvedValueOnce({ status: 200, body: { metadata, data: encode(await secretData(spec)) } });
     expect(await ensureSecret(request, "namespace", "release", spec, owner)).toBe("reused");
     expect(request.mock.calls.map(([method]) => method)).toEqual(["GET", "POST", "GET"]);
   });
@@ -62,8 +62,8 @@ describe("in-cluster Secret bootstrap", () => {
     }
   });
 
-  it("attaches the stable owner to legacy release Secrets without changing credentials", async () => {
-    const secret = { metadata: { resourceVersion: "7", labels: { "app.kubernetes.io/managed-by": "tali-guard-bootstrap", "tasklattice.io/release": "release" } }, data: encode(secretData(spec)) };
+  it("attaches the stable owner to release-owned Secrets without an owner reference without changing credentials", async () => {
+    const secret = { metadata: { resourceVersion: "7", labels: { "app.kubernetes.io/managed-by": "tali-guard-bootstrap", "tasklattice.io/release": "release" } }, data: encode(await secretData(spec)) };
     const request = vi.fn().mockResolvedValueOnce({ status: 200, body: secret }).mockResolvedValueOnce({ status: 200 });
     expect(await ensureSecret(request, "namespace", "release", spec, owner)).toBe("reused");
     expect(request.mock.calls[1]).toEqual(["PATCH", "/api/v1/namespaces/namespace/secrets/signing", { metadata: { resourceVersion: "7", ownerReferences: [owner], annotations: { "helm.sh/resource-policy": "keep", "argocd.argoproj.io/compare-options": "IgnoreExtraneous", "argocd.argoproj.io/sync-options": "Prune=false,Delete=false" } } }]);
@@ -71,7 +71,7 @@ describe("in-cluster Secret bootstrap", () => {
 
   it("never takes over another owner's Secret", async () => {
     for (const metadata of [{}, { ownerReferences: [{ ...owner, uid: "another-uid" }] }]) {
-      const request = vi.fn().mockResolvedValue({ status: 200, body: { metadata, data: encode(secretData(spec)) } });
+      const request = vi.fn().mockResolvedValue({ status: 200, body: { metadata, data: encode(await secretData(spec)) } });
       await expect(ensureSecret(request, "namespace", "release", spec, owner)).rejects.toThrow("another owner");
       expect(request).toHaveBeenCalledOnce();
     }
@@ -86,14 +86,11 @@ describe("in-cluster Secret bootstrap", () => {
     }
   });
 
-  it("migrates this release's old ConfigMap ownership without touching data", async () => {
-    const secret = { metadata: { ...metadata, resourceVersion: "8", ownerReferences: [{ apiVersion: "v1", kind: "ConfigMap", name: "controller-config", uid: "old-owner" }] }, data: encode(secretData(spec)) };
-    const request = vi.fn().mockResolvedValueOnce({ status: 200, body: secret }).mockResolvedValueOnce({ status: 200 });
-    expect(await ensureSecret(request, "namespace", "release", spec, owner, "controller-config")).toBe("reused");
-    const patch = request.mock.calls[1][2];
-    expect(patch.metadata.ownerReferences).toEqual([owner]);
-    expect(patch).not.toHaveProperty("data");
-    expect(patch).not.toHaveProperty("stringData");
+  it("refuses Secrets owned by a ConfigMap without modifying credentials", async () => {
+    const secret = { metadata: { ...metadata, ownerReferences: [{ apiVersion: "v1", kind: "ConfigMap", name: "controller-config", uid: "config-owner" }] }, data: encode(await secretData(spec)) };
+    const request = vi.fn().mockResolvedValue({ status: 200, body: secret });
+    await expect(ensureSecret(request, "namespace", "release", spec, owner)).rejects.toThrow("another owner");
+    expect(request).toHaveBeenCalledOnce();
   });
 });
 
@@ -102,6 +99,13 @@ function clusterFixture(initial: Record<string, any> = {}) {
   const request = vi.fn(async (method: string, path: string, body?: any) => {
     const name = decodeURIComponent(path.split("/").at(-1)!);
     if (method === "GET") return stored.has(name) ? { status: 200, body: stored.get(name) } : { status: 404 };
+    if (method === "PATCH") {
+      const secret = stored.get(name);
+      const data = { ...secret.data, ...body.data };
+      for (const [key, value] of Object.entries(data)) if (value === null) delete data[key];
+      stored.set(name, { ...secret, metadata: { ...secret.metadata, ...body.metadata }, data });
+      return { status: 200 };
+    }
     if (method !== "POST") throw new Error(`Unexpected mutation ${method}`);
     if (stored.has(body.metadata.name)) return { status: 409 };
     stored.set(body.metadata.name, { metadata: body.metadata, data: encode(body.stringData) });
@@ -109,8 +113,7 @@ function clusterFixture(initial: Record<string, any> = {}) {
   });
   return { stored, request };
 }
-const dbSpec = { name: "db-init", legacyName: "db", kind: "database", host: "postgres", username: "guard", database: "guard" };
-const legacyMetadata = { annotations: { "meta.helm.sh/release-name": "release", "meta.helm.sh/release-namespace": "namespace" } };
+const dbSpec = { name: "db-init", kind: "database", host: "postgres", username: "guard", database: "guard" };
 
 describe("database, account and gateway bootstrap", () => {
   it("creates matching database fields once and preserves them on retry", async () => {
@@ -125,50 +128,18 @@ describe("database, account and gateway bootstrap", () => {
     expect(stored.get(dbSpec.name)).toBe(original);
     expect(request.mock.calls.filter(([method]) => method === "POST")).toHaveLength(1);
   });
-  it("copies legacy data to a distinct name without modifying the original", async () => {
-    const legacy = { metadata: legacyMetadata, data: encode({ "postgres-password": "legacy", "database-url": "postgresql://guard:legacy@postgres:5432/guard" }) };
-    const { stored, request } = clusterFixture({ db: legacy });
-    await ensureSecret(request, "namespace", "release", dbSpec, owner);
-    expect(stored.get("db")).toBe(legacy);
-    expect(stored.get("db-init").data["postgres-password"]).toBe(legacy.data["postgres-password"]);
-    expect(stored.get("db-init").data["database-url"]).toBe(legacy.data["database-url"]);
-    expect(stored.get("db-init").metadata.ownerReferences).toEqual([owner]);
-    expect(request.mock.calls.every(([method]) => ["GET", "POST"].includes(method))).toBe(true);
+  it("creates debuggable username/password account data without hash import", async () => {
+    const data = await secretData({ kind: "account", username: "admin", displayName: "Admin" });
+    expect(data).toMatchObject({ username: "admin", name: "Admin", password: "password" });
+    expect(data.revision).toMatch(/^[a-f0-9-]{36}$/);
   });
-  it("refuses foreign, incomplete and inconsistent legacy data without creating a replacement", async () => {
-    for (const legacy of [
-      { metadata: {}, data: encode({ "postgres-password": "key" }) },
-      { metadata: legacyMetadata, data: {} },
-      { metadata: legacyMetadata, data: encode({ "postgres-password": "key", "database-url": "postgresql://guard:other@postgres:5432/guard" }) },
-    ]) {
-      const { stored, request } = clusterFixture({ db: legacy });
-      await expect(ensureSecret(request, "namespace", "release", dbSpec, owner)).rejects.toThrow();
-      expect(stored.has("db-init")).toBe(false);
-      expect(request.mock.calls.every(([method]) => method === "GET")).toBe(true);
-    }
-  });
-  it("generates random production accounts and valid separately salted local digests", async () => {
-    const spec = { kind: "account", email: "admin@example.com", displayName: "Admin" };
-    const first = await secretData(spec), second = await secretData(spec);
-    expect(first.password).toHaveLength(64);
-    expect(first.password).not.toBe(second.password);
-    const local = await secretData({ ...spec, localDefault: true });
-    const another = await secretData({ ...spec, localDefault: true });
-    const { verifyPassword } = await import("better-auth/crypto");
-    expect(await verifyPassword({ hash: local["password-hash"], password: "password" })).toBe(true);
-    expect(local["password-hash"]).not.toBe(another["password-hash"]);
-    expect(local).not.toHaveProperty("password");
-  });
-  it("migrates the LiteLLM database and gateway together and retains their keys", async () => {
+  it("creates the LiteLLM database and gateway together and retains their keys", async () => {
     const database = { ...dbSpec, profile: "litellm" };
-    const url = "postgresql://guard:legacy@postgres:5432/guard";
-    const gateway = { name: "gateway-init", legacyName: "gateway", kind: "litellm", username: "admin", databaseSecret: "db-init" };
-    const data = { "master-key": "sk-legacy", "salt-key": "legacy-salt", "ui-username": "admin", "ui-password": "legacy-ui", "database-url": url };
-    const { stored, request } = clusterFixture({ db: { metadata: legacyMetadata, data: encode({ password: "legacy" }) }, gateway: { metadata: legacyMetadata, data: encode(data) } });
+    const gateway = { name: "gateway-init", kind: "litellm", username: "admin", databaseSecret: "db-init" };
+    const { stored, request } = clusterFixture();
     await ensureSecret(request, "namespace", "release", database, owner);
     await ensureSecret(request, "namespace", "release", gateway, owner);
     const original = stored.get(gateway.name);
-    for (const [key, value] of Object.entries(data)) expect(original.data[key]).toBe(Buffer.from(value).toString("base64"));
     expect(original.data.UI_PASSWORD).toBe(original.data["ui-password"]);
     expect(await ensureSecret(request, "namespace", "release", gateway, owner)).toBe("reused");
     expect(stored.get(gateway.name)).toBe(original);
@@ -184,13 +155,25 @@ describe("database, account and gateway bootstrap", () => {
   });
 });
 
-it("migrates an account digest without regenerating it", async () => {
-  const spec = { name: "account-init", legacyName: "account", kind: "account", email: "admin@example.com", displayName: "Admin" };
-  const data = await secretData({ ...spec, localDefault: true });
-  const { stored, request } = clusterFixture({ account: { metadata: legacyMetadata, data: encode(data) } });
-  await ensureSecret(request, "namespace", "release", spec, owner);
-  expect(stored.get("account-init").data).toEqual(encode(data));
-  expect(await ensureSecret(request, "namespace", "release", spec, owner)).toBe("reused");
+it("overwrites old account Secrets on every initialization and removes hash fields", async () => {
+  const spec = { name: "account-init", kind: "account", username: "admin", displayName: "Admin" };
+  const unmanaged = { metadata: {}, data: encode({ email: "old@example.com", "password-hash": "old-hash" }) };
+  const { stored, request } = clusterFixture({ account: unmanaged });
+  expect(await ensureSecret(request, "namespace", "release", spec, owner)).toBe("created");
+  expect(stored.get("account-init").data).toEqual({ ...encode({ username: "admin", name: "Admin", password: "password" }), revision: expect.any(String) });
+  const revision = stored.get("account-init").data.revision;
+  stored.get("account-init").data = encode({ email: "old@example.com", "password-hash": "old-hash", password: "different" });
+  expect(await ensureSecret(request, "namespace", "release", spec, owner)).toBe("updated");
+  expect(stored.get("account-init").data).toEqual({ ...encode({ username: "admin", name: "Admin", password: "password" }), revision: expect.any(String) });
+  expect(stored.get("account-init").data.revision).not.toBe(revision);
+  expect(stored.get("account")).toBe(unmanaged);
+});
+
+it("does not overwrite an account Secret belonging to another release", async () => {
+  const spec = { name: "account-init", kind: "account", username: "admin", displayName: "Admin" };
+  const { request } = clusterFixture({ "account-init": { metadata: {}, data: {} } });
+  await expect(ensureSecret(request, "namespace", "release", spec, owner)).rejects.toThrow("another owner");
+  expect(request.mock.calls.every(([method]) => method === "GET")).toBe(true);
 });
 
 it("refuses to reuse a gateway when its database credentials differ", async () => {

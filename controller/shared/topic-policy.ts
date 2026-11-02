@@ -1,9 +1,8 @@
-/** Topic lists belong to a versioned Policy binding. Guardrail-root fields are legacy only. */
+/** Topic lists belong to a versioned Policy binding. Each Rule owns its parameters. */
 export const TOPIC_POLICY_ID = "builtin-topic-safety";
-export const TOPIC_POLICY_VERSION = "2.0.0";
+export const TOPIC_POLICY_VERSION = "1.0.0";
 export const TOPIC_ALLOW_RULE = "topic/allowlist";
 export const TOPIC_DENY_RULE = "topic/denylist";
-export const TOPIC_LEGACY_RULE = "model/topic-control";
 export type TopicMode = "strict" | "permissive";
 export const isSplitTopicPolicy = (id: string, version: string) => id === TOPIC_POLICY_ID && version === TOPIC_POLICY_VERSION;
 export const topicLines = (value: string) => value.split("\n").map(item => item.trim()).filter(Boolean);

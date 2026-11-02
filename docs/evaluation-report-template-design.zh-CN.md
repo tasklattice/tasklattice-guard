@@ -67,7 +67,7 @@ Guard Controller：配置、版本、发布、证据管理（与同步检查路�
 | 应用可用性 | 防护依赖故障、排队、超载、错误路由 | 网关、Runner、客户端 | Goodput、超时、故障安全行为、版本与路由一致性 |
 | 下游工具和业务系统 | 未授权调用或执行 | 工具执行点 | 当前不能仅凭文本检查证明实际工具授权保护；需要独立执行控制与测试 |
 
-明确范围限制：当前 Input/Output 是实际执行方向；Retrieval、Dialog、Execution 不能因协议预留就显示为已保护。Grounding 需要真实 query/source，Automated Reasoning 需要兼容服务和版本化形式规则。文本过滤不能代替工具授权、数据访问控制或交易审批。依据：[架构](architecture.md)、[产品化边界](protection-productization.md)。
+明确范围限制：当前 Input/Output 是实际执行方向；Retrieval、Dialog、Execution 不能因协议预留就显示为已保护。Grounding 需要真实 query/source，Automated Reasoning 需要兼容服务和版本化形式规则。文本过滤不能代替工具授权、数据访问控制或交易审批。依据：[架构](architecture.md)。
 
 流式必须显示 requested/effective mode、回退原因、集成版本。仅交付 `delta.text`；实际取消上游由集成方负责。增量模式不能撤回已经交付的内容。完整缓冲模式必须把较长的首段等待呈现在报告中。
 
@@ -240,7 +240,6 @@ Guard Controller：配置、版本、发布、证据管理（与同步检查路�
 | [Validation 协议](../proto/tasklattice/guard/control/v1/validation.proto)与[组合规则](guardrail-policies.md) | 预期/实际 Decision、完整变换、Rule 命中、失败分类、Trace、冻结 override | 大规模独立盲测、生产分布、最终应用成功 |
 | [holdout 入口](../scripts/evaluate_model_holdout.py) | 版本/checksum/model evidence、分组 FP/FN、错误与缺失隔离 | 当前限定 allow/block 且要求模型调用证据；不能直接覆盖本地-only、transform、真实生成、流式和端到端 ASR |
 | [runtime profile benchmark](../benchmarks/nemo_runtime_profiles.py) | HTTP 时延分位数、吞吐、Action/provider 时间、语义比较 | 比较的是 NeMo runtime profiles；不是已有 Basic/Advanced 产品档位，也不是完整业务 LLM 延迟、流式体验或成本评测 |
-| [产品化验证记录](protection-productization.md) | 真实集成与故障用例设计、输出交付断言、历史失败分析 | 不能把录制/固定输出/Mock 故障验证当成语义质量泛化证据 |
 | [架构中的签名与 effective release](architecture.md) | 受测配置身份和运行版本对齐 | 已签名的运行 artifact 不自动说明评估 PDF 已签名或获得第三方认证 |
 
 适合逐步建立四层证据：

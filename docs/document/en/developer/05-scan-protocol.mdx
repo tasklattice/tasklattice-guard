@@ -19,8 +19,10 @@ Requests require these headers:
 
 | Header | Required / optional | Value |
 | --- | --- | --- |
-| `Authorization` | Required | `Bearer <Scan Endpoint credential>`. The credential must belong to the Endpoint in the path. |
+| `Authorization` | Required when credential checking is on | `Bearer <Scan Endpoint credential>`. The credential must belong to the Endpoint in the path. |
 | `Content-Type` | Required | `application/json`. Guard accepts parameters such as `charset=utf-8`. |
+
+The following examples assume **Require Credential** is on (the default). When off, omit `Authorization` and `CALYPSOAI_TOKEN`; supplied credentials are ignored and requests are anonymous. Inspection still runs.
 
 Minimal request:
 
@@ -35,7 +37,7 @@ Content-Type: application/json
 
 HTTP examples include the headers required for integration and the JSON body. A blank line separates headers from the body. Domains, IDs and credentials are examples. Examples omit automatic headers such as `Content-Length` and `Date`, and additional diagnostic headers.
 
-The path selects the Endpoint. Its published Router then selects a Guardrail Version. Guard returns `401` if the credential does not match the Endpoint. The root path `/backend/v1/scans` does not accept scans.
+The path selects the Endpoint. Its published Router then selects a Guardrail Version. When **Require Credential** is on, Guard returns `401` if the credential does not match the Endpoint. The root path `/backend/v1/scans` does not accept scans.
 
 When you use a URL library, preserve the Endpoint path. A path that starts with `/` can reset the address to the host root.
 

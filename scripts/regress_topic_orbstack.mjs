@@ -41,7 +41,7 @@ async function until(label, read, ready) {
   throw Error(`Timed out: ${label}. Inspect retained test resources; do not bypass validation.`);
 }
 const credentials = secret(`${release}-bootstrap-admin`);
-const auth = await call('/api/auth/sign-in/email', { body: { email: credentials.email, password: credentials.password } });
+const auth = await call('/api/auth/sign-in/username', { body: { username: credentials.username, password: credentials.password } });
 cookie = auth.response.headers.getSetCookie().map(x => x.split(';')[0]).join('; ');
 assert(cookie);
 const before = (await call('/api/v1/model-configuration')).data;

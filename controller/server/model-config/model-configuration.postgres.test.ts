@@ -30,8 +30,8 @@ describe.skipIf(!url)("Current model configuration PostgreSQL semantics", () => 
       // LIKE copies structure/indexes, not data or foreign keys to public rows.
       await pool.query(`CREATE TABLE "${table}" (LIKE public."${table}" INCLUDING ALL)`);
     }
-    await pool.query(readFileSync(new URL("../db/migrations/0059_validation_credential_leases.sql", import.meta.url), "utf8"));
-    await pool.query(readFileSync(new URL("../db/migrations/0065_group_model_configurations.sql", import.meta.url), "utf8"));
+    await pool.query(readFileSync(new URL("../db/migrations/0012_validation_credential_leases.sql", import.meta.url), "utf8"));
+    await pool.query(readFileSync(new URL("../db/migrations/0018_group_model_configurations.sql", import.meta.url), "utf8"));
     await pool.query("INSERT INTO model_provider (id,name,kind,base_url,credential_ciphertext) VALUES ($1,'Synthetic','custom-openai-compatible','http://provider.invalid/v1','')", [providerId]);
     await pool.query("INSERT INTO model_definition (id,provider_id,name,model,profile) VALUES ($1,$2,'Synthetic','synthetic','tali.qwen3guard.v1')", [modelId, providerId]);
   });
@@ -430,12 +430,5 @@ describe.skipIf(!url)("Current model configuration PostgreSQL semantics", () => 
     await rejected;
     expect((await service.view()).draft?.assignments.bindings['content_safety.input']).toBeNull();
   });
-  it('migrates away historical configurations while retaining latest editable/current state', async () => {
-    const { draftId, activeId } = await seedPartial();
-    await pool.query("INSERT INTO model_configuration_revision (id,revision,state,assignments) VALUES ($1,0,'superseded',$2),($3,3,'validated',$2)", [randomUUID(), emptyModelAssignments(), 'latest-draft']);
-    await pool.query(readFileSync(resolve('server/db/migrations/0014_current_model_configuration.sql'), 'utf8'));
-    const ids = (await pool.query('SELECT id FROM model_configuration_revision')).rows.map(row => row.id);
-    expect(ids.sort()).toEqual([activeId, 'latest-draft'].sort());
-    expect(ids).not.toContain(draftId);
-  });
+
 });

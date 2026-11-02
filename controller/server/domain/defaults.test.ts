@@ -1,6 +1,3 @@
-import { readFileSync } from "node:fs";
-import { createHash } from "node:crypto";
-import { canonicalJson } from "../../shared/canonical-json.js";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import { PolicyCatalog } from "../policy-catalog/catalog.js";
@@ -47,18 +44,6 @@ describe("Default Guardrail capability composition", () => {
     expect(policies).toEqual(original);
   });
 
-  it("preserves every pre-change local Rule, order, action, parameter and test expectation", () => {
-    const before = JSON.parse(readFileSync(resolve("../tests/fixtures/default-local-contract.json"), "utf8"));
-    const draft = defaultGuardrailDraft(policies);
-    const cases = applyValidationOverrides(generatedTestCases(DEFAULT_GUARDRAIL_ID, draft, policies), draft);
-    const hash = (value: unknown) => createHash("sha256").update(canonicalJson(value)).digest("hex");
-    expect(hash(draft)).toBe(before.draftSha256);
-    expect(hash(cases)).toBe(before.casesSha256);
-    expect(cases).toHaveLength(608);
-    for (const id of ["builtin-jailbreak", "builtin-content-safety"]) {
-      expect(policies.find(policy => policy.id === id)?.protection.execution).toBe("model");
-    }
-  });
 
   it("does not enable new catalog Rules or their acceptance cases implicitly", () => {
     const changed = structuredClone(policies);

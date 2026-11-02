@@ -3,12 +3,13 @@ import { createHmac } from "node:crypto";
 import { eq } from "drizzle-orm";
 
 import { isMockSsoIdentity, mockSsoIdentities, type MockSsoIdentity } from "../shared/mock-sso.js";
+import { internalAccountEmail } from "../shared/username.js";
 import type { ControllerAuth } from "./auth.js";
 import type { ControllerConfig } from "./config.js";
 import type { ControllerDatabase } from "./db/client.js";
 import { account, endpoints, user } from "./db/schema.js";
 
-const demoEmail = (identity: MockSsoIdentity) => `mock-${identity.toLowerCase()}@tasklattice.local`;
+const demoUsername = (identity: MockSsoIdentity) => `mock-${identity.toLowerCase()}`;
 
 function demoPassword(config: ControllerConfig, identity: MockSsoIdentity) {
   // This password never leaves the server. The selector signs in through
@@ -26,10 +27,10 @@ export async function ensureMockSsoUsers(input: {
   if (!input.config.mockSsoEnabled) return [];
   const provisioned: Array<{ tenantId: MockSsoIdentity; userId: string }> = [];
   for (const identity of mockSsoIdentities) {
-    const email = demoEmail(identity.id);
+    const username = demoUsername(identity.id);
     const [existing] = await input.db.select({
       id: user.id, role: user.role, tenantId: user.tenantId, banned: user.banned,
-    }).from(user).where(eq(user.email, email)).limit(1);
+    }).from(user).where(eq(user.username, username)).limit(1);
     if (existing) {
       const linked = await input.db.select({ providerId: account.providerId }).from(account).where(eq(account.userId, existing.id));
       if (existing.tenantId !== identity.tenantId || existing.role !== "user" || existing.banned
@@ -42,10 +43,11 @@ export async function ensureMockSsoUsers(input: {
     }
 
     const created = await input.auth.api.createUser({ body: {
-      email,
+      email: internalAccountEmail(username),
       password: demoPassword(input.config, identity.id),
       name: identity.displayName,
       role: "user",
+      data: { username },
     } });
     await input.db.update(user).set({ tenantId: identity.tenantId }).where(eq(user.id, created.user.id));
     provisioned.push({ tenantId: identity.tenantId, userId: created.user.id });
@@ -78,8 +80,8 @@ export async function signInMockSsoIdentity(
 ): Promise<Response> {
   if (!config.mockSsoEnabled) throw new Error("Mock SSO is disabled.");
   if (!isMockSsoIdentity(identity)) throw new Error("Unknown mock SSO identity.");
-  return auth.api.signInEmail({
-    body: { email: demoEmail(identity), password: demoPassword(config, identity) },
+  return auth.api.signInUsername({
+    body: { username: demoUsername(identity), password: demoPassword(config, identity) },
     asResponse: true,
   });
 }

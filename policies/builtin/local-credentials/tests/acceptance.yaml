@@ -28,7 +28,7 @@
   name: Trigger AWS Secret Key
   description: Proves that the published regex implementation for AWS Secret Key activates this Rule.
   phase: input
-  content: 'Acceptance sample: AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA'
+  content: aws_secret_access_key="AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
   expected_decision: block
   covered_rule_ids:
   - credentials-api-keys/aws_secret_key
@@ -41,7 +41,7 @@
   name: Trigger AWS Secret Key
   description: Proves that the published regex implementation for AWS Secret Key activates this Rule.
   phase: output
-  content: 'Acceptance sample: AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA'
+  content: aws_secret_access_key="AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
   expected_decision: block
   covered_rule_ids:
   - credentials-api-keys/aws_secret_key
@@ -576,46 +576,55 @@
   scope: rule
 - id: hex-short/input
   name: hex-short (input)
-  description: Synthetic credential fixture; no real credential or external action.
+  description: The value is outside the hex-only rule, but remains a labelled credential literal detected by the
+    generic assignment rule in 4.1.0.
   phase: input
   content: 'secret: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'
-  expected_decision: allow
+  expected_decision: block
   covered_rule_ids:
   - credential/hex-token
+  - credentials-api-keys/generic_api_key
   kind: scenario
   required: true
   parameter_names: []
   group: Credential patterns
-  expected_matched_rules: []
-  scope: rule
+  expected_matched_rules:
+  - credentials-api-keys/generic_api_key
+  scope: policy
 - id: hex-too-long/input
   name: hex-too-long (input)
-  description: Synthetic credential fixture; no real credential or external action.
+  description: The value is outside the hex-only rule, but remains a labelled credential literal detected by the
+    generic assignment rule in 4.1.0.
   phase: input
   content: 'secret: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'
-  expected_decision: allow
+  expected_decision: block
   covered_rule_ids:
   - credential/hex-token
+  - credentials-api-keys/generic_api_key
   kind: scenario
   required: true
   parameter_names: []
   group: Credential patterns
-  expected_matched_rules: []
-  scope: rule
+  expected_matched_rules:
+  - credentials-api-keys/generic_api_key
+  scope: policy
 - id: hex-nonhex/input
   name: hex-nonhex (input)
-  description: Synthetic credential fixture; no real credential or external action.
+  description: The value is outside the hex-only rule, but remains a labelled credential literal detected by the
+    generic assignment rule in 4.1.0.
   phase: input
   content: 'secret: gggggggggggggggggggggggggggggggg'
-  expected_decision: allow
+  expected_decision: block
   covered_rule_ids:
   - credential/hex-token
+  - credentials-api-keys/generic_api_key
   kind: scenario
   required: true
   parameter_names: []
   group: Credential patterns
-  expected_matched_rules: []
-  scope: rule
+  expected_matched_rules:
+  - credentials-api-keys/generic_api_key
+  scope: policy
 - id: hex-word-boundary/input
   name: hex-word-boundary (input)
   description: Synthetic credential fixture; no real credential or external action.
@@ -983,7 +992,7 @@
   name: Trigger AWS Secret Key
   description: Proves that the published regex implementation for AWS Secret Key activates this Rule.
   phase: input
-  content: 'Acceptance sample: AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA'
+  content: aws_secret_access_key="AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
   expected_decision: block
   covered_rule_ids:
   - credentials-api-keys/aws_secret_key
@@ -1048,7 +1057,7 @@
   name: Trigger AWS Secret Key
   description: Proves that the published regex implementation for AWS Secret Key activates this Rule.
   phase: input
-  content: 'Acceptance sample: AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA'
+  content: aws_secret_access_key="AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
   expected_decision: block
   covered_rule_ids:
   - credentials-api-keys/aws_secret_key
@@ -1100,7 +1109,7 @@
   name: Detect AWS Secret Key
   description: Required acceptance case for Credential Patterns.
   phase: input
-  content: 'Acceptance sample: AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA'
+  content: aws_secret_access_key="AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
   expected_decision: transform
   covered_rule_ids:
   - pattern/aws_secret_key
@@ -1152,7 +1161,7 @@
   name: Detect AWS Secret Key
   description: Required acceptance case for Credential Patterns.
   phase: output
-  content: 'Acceptance sample: AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA'
+  content: aws_secret_access_key="AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
   expected_decision: transform
   covered_rule_ids:
   - pattern/aws_secret_key

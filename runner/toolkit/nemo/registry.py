@@ -32,6 +32,7 @@ from .action_registry import (
     action_providers,
 )
 from .artifacts import config_checksum
+from .colang_logging import configure_user_action_logging
 from .actions.model_call import instrument_nemo_models
 from .actions.names import (
     ACTION_RECORD_OWNED_POLICY, ACTION_TOPIC_JUDGE, ACTION_GROUNDING,
@@ -467,9 +468,13 @@ class _RuntimeBuilder:
             yaml_content=materialized_yaml,
             colang_content=config.colang_content or None,
         )
+        configure_user_action_logging(rails_config)
         use_iorails = config.runtime_profile == "iorails_native"
         if use_iorails:
             from nemoguardrails.guardrails.iorails import IORails
+            from .queue_context import install_work_queue_context
+
+            install_work_queue_context()
 
             reason = IORails.unsupported_reason(rails_config)
             if reason is not None:
@@ -732,6 +737,12 @@ class _RuntimeBuilder:
         evaluation = self._providers.get((ACTION_EVALUATE, "1.0.0"))
         route_keys = frozenset(getattr(evaluation, "route_keys", ()))
         route_rail_keys = frozenset(getattr(evaluation, "route_rail_keys", ()))
+        for binding in config.action_bindings:
+            if "input" in binding.phases and binding.parameter("review_unknown") == "true":
+                provider = self._providers.get((binding.action_name, binding.action_version))
+                supported = getattr(provider, "supports_review", lambda *args: False)
+                if ("classifier_review", "tali.guard.classifier-review.v1", "input") not in route_rail_keys or not supported(binding.capability,binding.contract_ref,"input"):
+                    raise PlanCompilationError("Gray-area review requires a JEV or Laya input classifier and a validated classifier_review.input binding.")
         declared_phases: dict[str, set[str]] = {}
         for policy in plan.policy_versions if plan is not None else ():
             phases = {phase for binding in config.action_bindings
@@ -802,8 +813,21 @@ class _RuntimeBuilder:
                 f"{item.capability} -> {item.contract_ref} ({', '.join(item.phases)})"
                 for item in unmapped_contracts
             )
+            assignments = sorted({
+                f"{'pii_semantic' if item.capability == 'pii' else item.capability}.{phase}"
+                for item in unmapped_contracts
+                if item.contract_ref in MODEL_SAFETY_CAPABILITY_BY_CONTRACT
+                for phase in item.phases
+                if (item.capability, item.contract_ref, phase) not in route_rail_keys
+            })
+            guidance = (
+                " Required platform assignments: " + ", ".join(assignments)
+                + ". Assign compatible models in Model settings and apply the assignments to the Runner. "
+                "Each capability and direction needs its own binding; registering or testing a model alone is not enough."
+                if assignments else ""
+            )
             raise PlanCompilationError(
-                "No Evaluator Binding is available for: " + details + "."
+                "No Evaluator Binding is available for: " + details + "." + guidance
             )
 
     def _providers_for(self, config: NeMoConfigSnapshot) -> ActionProviders:

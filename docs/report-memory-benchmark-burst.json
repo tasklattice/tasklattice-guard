@@ -1,0 +1,59 @@
+{
+  "phase": "complete",
+  "reports": 2000,
+  "cases": 800,
+  "readers": 20,
+  "writers": 2,
+  "upload_delay_ms": 0,
+  "elapsed_ms": 45517,
+  "database_bytes": 7936898739,
+  "case_table_bytes": 7921188864,
+  "expanded_report_bytes": 32071780,
+  "stored_report_bytes": 3109659,
+  "statuses": {
+    "200": 25789
+  },
+  "read_p50_ms": 10,
+  "read_p95_ms": 40,
+  "response_max_bytes": 40112,
+  "saved": [
+    {
+      "kind": "guardrail",
+      "cases": 800,
+      "duration_ms": 3712
+    },
+    {
+      "kind": "policy",
+      "cases": 800,
+      "duration_ms": 13629
+    }
+  ],
+  "retained": {
+    "guardrail_reports": 2001,
+    "policy_reports": 1,
+    "physical_case_bodies": 1601600,
+    "case_index_rows": 1602400
+  },
+  "pool_waiting_peak": 7,
+  "pool_busy_peak": 20,
+  "memory": {
+    "controller": {
+      "samples": 75,
+      "peak_current_bytes": 314929152,
+      "peak_working_set_bytes": 296382464,
+      "peak_anon_bytes": 295149568,
+      "oom_kills": 0,
+      "baseline_working_set_bytes": 227278848
+    },
+    "postgresql": {
+      "samples": 75,
+      "peak_current_bytes": 954806272,
+      "peak_working_set_bytes": 208211968,
+      "peak_anon_bytes": 60084224,
+      "oom_kills": 0,
+      "baseline_working_set_bytes": 192712704
+    }
+  },
+  "sampling_errors": 0,
+  "controller_image_digest": "sha256:bdef62489cdeeb75e8acba5e6078ff17d27daef58362685d073c0519c55dbe40"
+}

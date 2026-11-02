@@ -100,6 +100,20 @@ message ValidationMetrics {
   int32 executed = 9;
 }
 
+// Rule evidence is independent of the final composed decision.
+enum ValidationEvidenceStatus {
+  VALIDATION_EVIDENCE_STATUS_UNSPECIFIED = 0;
+  VALIDATION_EVIDENCE_STATUS_NOT_REQUIRED = 1;
+  VALIDATION_EVIDENCE_STATUS_OBSERVED = 2;
+  VALIDATION_EVIDENCE_STATUS_ABSENT = 3;
+  VALIDATION_EVIDENCE_STATUS_NOT_MATCHED = 4;
+  VALIDATION_EVIDENCE_STATUS_NOT_REACHED = 5;
+  VALIDATION_EVIDENCE_STATUS_PREEMPTED_BY = 6;
+  VALIDATION_EVIDENCE_STATUS_SHADOWED_BY = 7;
+  VALIDATION_EVIDENCE_STATUS_MISSING = 8;
+  VALIDATION_EVIDENCE_STATUS_UNVERIFIABLE = 9;
+}
+
 // Observed decision, evidence, and trace for one validation case.
 message ValidationCaseResult {
   string case_id = 1;
@@ -153,11 +167,22 @@ message ValidationCaseResult {
   // Original unmodified source expectation, present when a local override was applied.
   optional ValidationDecision template_expected_decision = 36;
   repeated string assertion_failures = 37;
-  // Terminal Rule evidence preceding the source target in Policy/Rule execution order.
-  // The target is not claimed as matched; this satisfies only the ordered composition contract.
-  repeated ValidationExpectedMatch preempting_matches = 38;
+  reserved 38, 46;
   bool skipped = 39;
   string skip_reason = 40;
+  // Actual target Rule evidence, independent of the final decision.
+  ValidationEvidenceStatus evidence_status = 41;
+  // Related interventions explain missing evidence, never automatic acceptance.
+  repeated ValidationExpectedMatch superseded_by = 42;
+  // Only actually observed matches on the declared view, never counterfactuals.
+  repeated string verified_rule_ids = 43;
+  // Human-readable explanation of the recorded evidence status.
+  string evidence_detail = 44;
+  // Effective Rule assertion, including an explicitly reviewed override.
+  bool rule_contract_satisfied = 45;
+  // Model transport/response health is independent of case assertion quality.
+  string model_status = 47;
+  string execution_status = 48;
 }
 
 // Command to execute an immutable candidate plan against its test cases.

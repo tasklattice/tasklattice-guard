@@ -110,7 +110,7 @@ export function ControlPlaneSidebar() {
       <Sidebar collapsible="icon" className="border-r border-sidebar-border">
         <SidebarHeader className="h-16 justify-center border-b border-sidebar-border px-4 group-data-[collapsible=icon]:px-3">
           <Link
-            to={roleHome(user?.role)}
+            to={hasPermission(user?.role, "runtime") ? "/dashboard" : roleHome(user?.role)}
             aria-label="TaskLattice Guard"
             onClick={() => setOpenMobile(false)}
             className="flex min-h-11 items-center gap-2.5 rounded-lg px-1 outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring group-data-[collapsible=icon]:justify-center"

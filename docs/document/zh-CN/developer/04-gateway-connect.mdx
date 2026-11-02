@@ -48,11 +48,13 @@ Guard 以 **LiteLLM Generic Guardrail 技术规范**作为 AI 网关接入标准
 
 | 方法与路径 | 用途 |
 | --- | --- |
-| `POST {endpoint}/verify` | 验证 Endpoint 凭据和接口类型。请求体为 `{}`。 |
+| `POST {endpoint}/verify` | 按 Endpoint 的凭据要求验证访问权限和接口类型。请求体为 `{}`。 |
 | `POST {endpoint}/beta/litellm_basic_guardrail_api` | 检测输入或完整的 Output。请求体为 JSON。 |
 | `WebSocket {endpoint}/guardrails/output-stream` | [流式 Output 检测](#gateway-stream-protocol) |
 
-JSON 请求要带 `x-api-key: <Endpoint 凭据>` 和 `Content-Type: application/json`。凭据不能放在请求体中，也不能用控制台的个人 Access Token 或模型服务密钥代替。
+默认开启“要求 Credential”。关闭时，HTTP、`/verify` 和 WebSocket 可以省略 `x-api-key`；已携带的凭据会被忽略，请求以匿名身份执行检测。`ready` 此时表示访问和协议检查通过，不代表身份已认证。
+
+开启凭据要求时，JSON 请求要带 `x-api-key: <Endpoint 凭据>` 和 `Content-Type: application/json`。凭据不能放在请求体中，也不能用控制台的个人 Access Token 或模型服务密钥代替。
 
 以下 HTTP 示例展示请求行或状态行、接入所需的 Header 和 JSON Body。空行分隔 Header 与 Body。域名、Endpoint ID 和凭据均为示例值。示例省略 `Content-Length`、`Date` 等自动生成的 Header，也省略额外的诊断 Header。
 
@@ -93,7 +95,7 @@ Content-Type: application/json
 }
 ```
 
-`ready` 只证明凭据和接口类型匹配，不执行内容检测。之后还必须发送真实的检测请求，验证接入链路可用。
+`ready` 只证明访问权限和接口类型检查通过，不执行内容检测。之后还必须发送真实的检测请求，验证接入链路可用。
 
 <a id="gateway-call-correlation" />
 ### 输入与输出的调用关联（Call ID）
@@ -130,7 +132,7 @@ Guard 在首次请求时确定路由和版本。后续关联请求复用这次�
 
 | HTTP Header | 值 | 要求 |
 | --- | --- | --- |
-| `x-api-key` | `<Endpoint 凭据>` | 必填，用于 Endpoint 认证。 |
+| `x-api-key` | `<Endpoint 凭据>` | 开启“要求 Credential”时必填。 |
 | `Content-Type` | `application/json` | 必填，声明 JSON 请求体。 |
 
 `input_type: "request"` 表示检测 Input。`input_type: "response"` 表示检测完整的 Output。这两个值表示检测阶段。两种情况都是接入方向 Guard 发送 HTTP 请求。下面的请求示例均包含请求行、Header 和 JSON Body。
@@ -299,15 +301,15 @@ Router 选中的 Guardrail 的当前运行模式决定是否执行检测和拦�
 | **Monitor** | 执行检测并记录证据，但不阻断或替换。即使检测命中或检测器失败，也返回 `NONE`，允许原文继续。 |
 | **Bypass** | 跳过检测，返回 `NONE`，允许原文继续。 |
 
-`NONE` 表示允许原文继续，不能证明内容经过了检测。运行日志记录运行模式及 Monitor 的真实检测结果。Guard 仍会执行认证、字段校验、路由和调用关联。这些环节失败时，Guard 仍会返回错误。接入方不能通过请求 Body 切换运行模式。
+`NONE` 表示允许原文继续，不能证明内容经过了检测。运行日志记录运行模式及 Monitor 的真实检测结果。Guard 仍会按 Endpoint 设置执行认证，并执行字段校验、路由和调用关联。这些环节失败时，Guard 仍会返回错误。接入方不能通过请求 Body 切换运行模式。
 
 <a id="gateway-errors" />
 ### 错误处理与重试
 
 | 状态／返回 | 含义与处理 |
 | --- | --- |
-| `401` | Endpoint 不存在或已停用，或者凭据缺失或无效。请检查 URL 和 `x-api-key`。 |
-| `409` | 凭据所属 Endpoint 的接口类型不支持 LiteLLM。请检查 Endpoint 类型。修改请求体的 `protocol` 无法解决。 |
+| `401` | Endpoint 不存在或已停用，或者要求的凭据缺失或无效。请检查 URL 和 `x-api-key`。 |
+| `409` | Endpoint 的接口类型不支持 LiteLLM。请检查 Endpoint 类型。修改请求体的 `protocol` 无法解决。 |
 | `422` | JSON 或字段校验失败。修正 `input_type`、字段类型等后重新提交。 |
 | `503` | 路由上下文、调用关联或固定版本不可用，本次请求未得到有效检测结果。关联 Output 不能更换版本继续原调用。 |
 | `500`、其他非 2xx、超时或断线 | 接入方没有得到有效检测结果。Guard 或代理返回的错误不一定是 JSON。 |
@@ -541,7 +543,7 @@ Guard 在处理连接建立时确定运行模式。连接期间，运行模式�
 
 该 WebSocket 扩展只适用于 LiteLLM Endpoint。自研网关也可以实现这一扩展。Scan Endpoint 不支持此扩展。
 
-认证失败或 Endpoint 类型不匹配时，Guard 拒绝握手。连接建立后，Guard 通过 `type=error` 帧报告故障。Guard 不会在流中用 HTTP `502` 或 `504` 表示故障：
+要求认证但凭据缺失或无效、Endpoint 不存在或已停用、Endpoint 类型不匹配时，Guard 拒绝握手。连接建立后，Guard 通过 `type=error` 帧报告故障。Guard 不会在流中用 HTTP `502` 或 `504` 表示故障：
 
 | 帧的 `code` | 含义 |
 | --- | --- |

@@ -50,7 +50,7 @@ class DefaultGuard:
             context["memory"] = {"operation": stage.removeprefix("memory_"), "source_query": source_query or ""}
         blocks = _request_content("input", documents, GuardrailContext.model_validate(context))
         result = await self.runtime.evaluate(ProtectionRequest(phase="input", texts=tuple(documents),
-            content_blocks=blocks, context=RequestContext(protocol="playground"), evidence_scope="full"), **self.identity)
+            content_blocks=blocks, context=RequestContext(protocol="playground"), evidence_scope="full", execution_purpose="validation"), **self.identity)
         # Return per-document dispositions. An aggregate block must not erase
         # unrelated, independently inspected records. No partial document reuse.
         results = []

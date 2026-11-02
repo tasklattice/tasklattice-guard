@@ -7,9 +7,9 @@
   covered_rule_ids: []
   expected_matched_rules: []
 - id: combined-reply
-  name: 先遮盖编号，再阻断密钥
+  name: 密钥优先阻断，不再执行编号脱敏
   phase: output
   content: CUS-123456 INTERNAL_SECRET
   expected_decision: block
   covered_rule_ids: [customer-id, internal-secret]
-  expected_matched_rules: [customer-id, internal-secret]
+  expected_matched_rules: [internal-secret]

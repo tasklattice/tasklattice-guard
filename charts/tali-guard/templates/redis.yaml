@@ -48,7 +48,7 @@ spec:
         - name: redis
           image: "{{ .Values.redis.image.repository }}:{{ .Values.redis.image.tag }}"
           imagePullPolicy: {{ .Values.redis.image.pullPolicy }}
-          args: [redis-server, --save, "", --appendonly, "no"]
+          args: [redis-server, --save, "", --appendonly, "no", --maxmemory, {{ .Values.redis.maxmemory | quote }}, --maxmemory-policy, {{ .Values.redis.maxmemoryPolicy | quote }}]
           securityContext: {{- toYaml .Values.securityContext | nindent 12 }}
           ports:
             - { name: redis, containerPort: 6379, protocol: TCP }

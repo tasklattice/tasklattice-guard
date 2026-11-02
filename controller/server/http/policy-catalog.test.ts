@@ -71,7 +71,7 @@ describe("Policy catalog HTTP compatibility", () => {
     expect(listResponse.status).toBe(200);
     expect(collection.count).toBe(PolicyCatalog.load(config.policyCatalogDir).list().length);
     expect(collection.items).toHaveLength(collection.count);
-    expect(collection.items).toHaveLength(26);
+    expect(collection.items).toHaveLength(27);
     expect(collection.items.every(item => !("source" in item))).toBe(true);
     expect(collection.items.some((item) => ["mas-ai-risk-management", "singapore-financial-conduct"].includes(item.id))).toBe(false);
     expect(collection.items.find((item) => item.id === "local-contact-data")?.test_count).toBeGreaterThan(0);
@@ -89,7 +89,7 @@ describe("Policy catalog HTTP compatibility", () => {
     expect(response.status).toBe(200);
     const data = await response.json() as { directories: unknown[]; items: Array<{ id: string; policies: unknown[]; policyBindings: Array<{ policyId: string; policyVersion: string }> }> };
     expect(data.directories).toHaveLength(8);
-    expect(data.items).toHaveLength(14);
+    expect(data.items.map(profile => profile.id)).toEqual(defaultGuardrailProfiles.map(profile => profile.id));
     expect(data.items.some(preset => preset.id === "restricted-general-topics")).toBe(false);
     for (const preset of data.items) {
       expect(preset.policyBindings).toHaveLength(preset.policies.length);

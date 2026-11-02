@@ -184,13 +184,6 @@ test('lint covers default, UAT and debug settings without an additional Guard va
   assert.ok(guardCalls[3].args.includes('observability.performanceDebug.enabled=true'));
   assert.deepEqual(guardCalls.flatMap(call => call.args.filter((arg, i) => call.args[i - 1] === '--values')), Array(3).fill('charts/tali-guard/values-dev-uat.yaml'));
 });
-test('promotion regression requires explicit deployments before invoking any command', t => {
-  const f = fixture(t);
-  const result = f.run('promotion-test', [], { GUARD_PROMOTION_UAT_URL: '' });
-  assert.equal(result.status, 1);
-  assert.match(result.stderr, /Set GUARD_PROMOTION_UAT_URL/);
-  assert.throws(() => f.calls(), { code: 'ENOENT' });
-});
 test('developer env loading preserves explicit shell overrides', () => {
   const root = mkdtempSync(join(tmpdir(), 'guard-env-load-'));
   try {

@@ -12,8 +12,6 @@ import { ResourceList } from "@/components/resource-list";
 import { EventFilterToolbar } from "@/components/event-filter-toolbar";
 import { selectedSeverities, type EventSeverity } from "../../shared/security-severity";
 import { SecuritySeverityBadge } from "@/components/security-severity";
-import { isSplitTopicPolicy, TOPIC_POLICY_ID } from "../../shared/topic-policy";
-import { upgradeTopicBinding } from "@/lib/topic-policy-upgrade";
 import { GuardrailValidationReadiness, useGuardrailValidationReadiness } from "@/components/guardrail-validation-readiness";
 import { useCorrectnessAvailability } from "@/components/correctness-availability";
 import { TopicControlFields, type TopicControlMode } from "@/components/topic-control-fields";
@@ -76,6 +74,7 @@ import {
   getEndpoints,
   getPolicies,
   getTestCases,
+  getValidationRun,
   getValidationRuns,
   restoreGuardrailTestCase,
   updateGuardrail,
@@ -145,7 +144,8 @@ export function GuardrailDetailPage() {
   const policiesQuery = useQuery({ queryKey: queryKeys.policies, queryFn: getPolicies });
   const validationReadiness = useGuardrailValidationReadiness({ bindings: guardrailQuery.data?.policy_bindings ?? [], policies: policiesQuery.data?.items ?? EMPTY_POLICIES,
     enabled: Boolean(guardrailQuery.data), policiesReady: policiesQuery.isSuccess, policiesError: policiesQuery.isError });
-  const versionsQuery = useQuery({ queryKey: queryKeys.guardrailVersions(guardrailId), queryFn: () => getGuardrailVersions(guardrailId) });
+  const versionsQuery = useQuery({ queryKey: queryKeys.guardrailVersions(guardrailId), queryFn: () => getGuardrailVersions(guardrailId),
+    refetchInterval: query => query.state.data?.items.some(version => version.status === "ready" && version.environment_check?.status !== "compatible") ? 5000 : false });
   const reportPagination = useEventCursor(guardrailId);
   const validationRunsQuery = useQuery({ queryKey: [...queryKeys.validationRuns(guardrailId), reportPagination.cursor], queryFn: () => getValidationRuns(guardrailId, { cursor: reportPagination.cursor }) });
   const versionReports = validationRunsQuery.data?.versionReports ?? validationRunsQuery.data?.items ?? [];
@@ -167,16 +167,36 @@ export function GuardrailDetailPage() {
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [loggingOpen, setLoggingOpen] = useState(false);
   const [draftTestModelRules, setDraftTestModelRules] = useState(true);
-  const [selectedValidationRun, setSelectedValidationRun] = useState<ValidationRun | null>(null);
-  const currentValidationRun = versionReports.find(run => run.id === selectedValidationRun?.id) ?? validationRunsQuery.data?.items.find(run => run.id === selectedValidationRun?.id) ?? selectedValidationRun;
+  // The open Testing Report lives in the URL so refresh, Back and shared links
+  // restore the same report. Locally held runs cover the gap before the list or
+  // detail query catches up.
+  const selectedReportId = search.report ?? null;
+  const openedRuns = useRef(new Map<string, ValidationRun>());
+  const listedReport = selectedReportId
+    ? openedRuns.current.get(selectedReportId)
+      ?? versionReports.find(run => run.id === selectedReportId)
+      ?? validationRunsQuery.data?.items.find(run => run.id === selectedReportId)
+      ?? null
+    : null;
+  const reportQuery = useQuery({
+    queryKey: queryKeys.validationRun(selectedReportId ?? ""),
+    queryFn: () => getValidationRun(selectedReportId!),
+    enabled: Boolean(selectedReportId) && !listedReport,
+    staleTime: Infinity,
+  });
+  const currentValidationRun = listedReport ?? (selectedReportId ? reportQuery.data ?? null : null);
+  const openReport = (run: ValidationRun) => {
+    openedRuns.current.set(run.id, run);
+    void navigate({ to: "/guardrails/$guardrailId", params: { guardrailId }, search: previous => ({ ...previous, report: run.id }) });
+  };
+  const closeReport = () => void navigate({
+    to: "/guardrails/$guardrailId", params: { guardrailId },
+    search: previous => { const { report: _closed, ...rest } = previous; return rest; },
+  });
   const [versionDetailRequested, setVersionDetailRequested] = useState(false);
-  const [selectedVersionOverride, setSelectedVersionOverride] = useState<string | null>(null);
-  const [compareBaseVersionNumber, setCompareBaseVersionNumber] = useState<string | null>(null);
   useEffect(() => {
-    if (search.tab === "immutable" && search.version) {
-      setSelectedVersionOverride(search.version);
-      setVersionDetailRequested(true);
-    }
+    // A deep link that names a version opens its detail view once.
+    if (search.tab === "immutable" && search.version) setVersionDetailRequested(true);
   }, [search.tab, search.version, guardrailId]);
   useEffect(() => {
     if (search.tab === "draft") void navigate({ search: previous => ({ ...previous, tab: "runtime" }), replace: true });
@@ -194,7 +214,20 @@ export function GuardrailDetailPage() {
   }, [validationPending, versionTesting, guardrailQuery, versionsQuery, validationRunsQuery]);
   const publishedVersions = guardrailVersions.filter((item) => item.status === "ready");
   // Versions arrive newest first; that is only a default selection in this view.
-  const selectedVersionNumber = selectedVersionOverride && guardrailVersions.some((item) => item.version === selectedVersionOverride) ? selectedVersionOverride : guardrailVersions[0]?.version ?? "";
+  // Immutable version selection lives in the URL, like ?tab and ?report, so a
+  // version detail is shareable, refresh-safe and navigable with Back/Forward.
+  const selectedVersionNumber = search.version && guardrailVersions.some((item) => item.version === search.version)
+    ? search.version : guardrailVersions[0]?.version ?? "";
+  const compareBaseVersionNumber = search.compare && search.compare !== selectedVersionNumber
+    && guardrailVersions.some((item) => item.version === search.compare) ? search.compare : null;
+  const selectVersion = (version: string) => void navigate({
+    to: "/guardrails/$guardrailId", params: { guardrailId },
+    search: previous => ({ ...previous, tab: "immutable", version, compare: undefined }),
+  });
+  const selectCompareBase = (version: string | null) => void navigate({
+    to: "/guardrails/$guardrailId", params: { guardrailId },
+    search: previous => ({ ...previous, tab: "immutable", compare: version ?? undefined }),
+  });
   const selectedVersion = guardrailVersions.find((item) => item.version === selectedVersionNumber);
   const selectedValidation = [...versionReports].sort((a, b) => b.created_at.localeCompare(a.created_at)).find((run) => run.guardrail_version === selectedVersionNumber) ?? null;
   const compareOptions = guardrailVersions.filter((item) => item.version !== selectedVersionNumber);
@@ -262,7 +295,7 @@ export function GuardrailDetailPage() {
     },
     onSuccess: async (run) => {
       await refresh();
-      setSelectedValidationRun(run);
+      openReport(run);
       toast[run.status === "passed" ? "success" : "error"](t(
         run.status === "passed" ? "guardrails.validationPassed" : "guardrails.validationFailed",
         { rate: run.metrics.compliance_rate },
@@ -273,7 +306,7 @@ export function GuardrailDetailPage() {
   const versionTestMutation = useMutation({
     mutationFn: ({ version, testModelRules = true }: { version: string; testModelRules?: boolean }) => testGuardrailVersion(guardrailId, version, testModelRules),
     onSuccess: async (run, { version }) => {
-      setSelectedValidationRun(run);
+      openReport(run);
       await refresh();
       toast.success(t("immutableVersions.testStarted", { version }));
     },
@@ -297,12 +330,10 @@ export function GuardrailDetailPage() {
   );
 
   function openValidationTarget(run: ValidationRun) {
-    setSelectedValidationRun(null);
+    closeReport();
     if (guardrailVersions.some((version) => version.version === run.guardrail_version)) {
-      setSelectedVersionOverride(run.guardrail_version);
-      setCompareBaseVersionNumber(null);
+      selectVersion(run.guardrail_version);
       setVersionDetailRequested(true);
-      setSection("immutable");
       return;
     }
     setDraftJustSaved(false);
@@ -334,6 +365,7 @@ export function GuardrailDetailPage() {
             <TenantResourceBadge ownerTenantId={guardrail.tenant_id} activeTenantId={auth.user?.tenant_id} />
           </div>
           {guardrail.origin === "imported" ? <p className="mt-2 flex items-center gap-2 text-sm text-muted-foreground"><Download className="size-3.5" aria-hidden="true" />{t("guardrailPackage.importedFrom", { source: guardrail.source_id ?? "" })}</p> : null}
+          {guardrail.profile_origin ? <p className="mt-2 text-sm text-muted-foreground">{t("protection.profile.source", { id: guardrail.profile_origin.id, version: guardrail.profile_origin.version })}</p> : null}
           {guardrail.copy_origin && <p className="mt-2 text-sm text-muted-foreground">{uiText("uiCopy.copiedFrom")}{" "}{guardrail.copy_origin.sourceName} · {guardrail.copy_origin.sourceVersion ?? `draft r${guardrail.copy_origin.sourceDraftRevision}`} · {guardrail.copy_origin.sourceGuardrailId}</p>}
           {hasDraft ? <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm">
             <p role="status"><span className="font-medium">{t(publishedVersions.length ? "guardrails.unpublishedChanges" : "guardrails.newDraft")}</span> · {t(draftStateKey(guardrail))}{currentTest?.status === "failed" ? ` (${currentTest.metrics.total - currentTest.metrics.passed}/${currentTest.metrics.total})` : ""}</p>
@@ -343,7 +375,7 @@ export function GuardrailDetailPage() {
         </div>
         <div className="flex shrink-0 items-center gap-2">
           {canTestDraft && hasDraft ? <Button variant="testing" onClick={openDraftReview}>{testingDraft ? <LoaderCircle className="animate-spin" /> : <FlaskConical />}{t(testingDraft ? "guardrails.viewTestProgress" : "guardrails.testDraft")}</Button> : null}
-          {canTestDraft && guardrail.tested_current && !guardrail.published_current ? <Button onClick={() => { setDraftJustSaved(false); setDraftAction("publish"); }}><ShieldCheck />{t("guardrails.publishVersion")}</Button> : null}
+          {canTestDraft && !guardrail.published_current ? <Button onClick={() => { setDraftJustSaved(false); setDraftAction("publish"); }}><ShieldCheck />{t("guardrails.publishVersion")}</Button> : null}
           {canTest ? <MenuButton ref={protectionActions.menuRef} label={t("routing.actions")} kind="tertiary" size="md" menuAlignment="bottom-end" className="guard-actions-menu">
             {protectionActions.menuItems}
             {canManageDraft ? <MenuItem label={t("guardrails.editAction")} renderIcon={Pencil} onClick={() => setEditOpen(true)} /> : null}
@@ -410,11 +442,11 @@ export function GuardrailDetailPage() {
             validation={selectedValidation}
             onChanged={refresh}
             onOpenDraft={canManageDraft ? () => setEditOpen(true) : () => setSection("testing")}
-            onOpenValidation={setSelectedValidationRun}
-            onSelectVersion={(version) => { setSelectedVersionOverride(version); setCompareBaseVersionNumber(null); }}
-            onStartCompare={() => { const previous = compareOptions.find((item) => item.created_at < (selectedVersion?.created_at ?? "")) ?? compareOptions[0]; if (previous) setCompareBaseVersionNumber(previous.version); }}
-            onCompareBaseChange={setCompareBaseVersionNumber}
-            onCloseCompare={() => setCompareBaseVersionNumber(null)}
+            onOpenValidation={openReport}
+            onSelectVersion={selectVersion}
+            onStartCompare={() => { const previous = compareOptions.find((item) => item.created_at < (selectedVersion?.created_at ?? "")) ?? compareOptions[0]; if (previous) selectCompareBase(previous.version); }}
+            onCompareBaseChange={selectCompareBase}
+            onCloseCompare={() => selectCompareBase(null)}
           />
         </TabsContent>
         <TabsContent value="testing" className="pt-5">
@@ -427,7 +459,7 @@ export function GuardrailDetailPage() {
             blockedReason={validationReadiness.reason}
             running={validationMutation.isPending}
             onRun={openDraftReview}
-            onOpen={setSelectedValidationRun}
+            onOpen={openReport}
             onOpenTarget={openValidationTarget}
             description={t("immutableVersions.testingDescription")}
             emptyDescription={t(hasDraft && !publishedVersions.length ? "resourceList.draftNextStep" : "immutableVersions.localTestingEmpty")}
@@ -438,9 +470,9 @@ export function GuardrailDetailPage() {
 
       {canManageDraft && editOpen ? <EditGuardrailSheet guardrail={guardrail} policies={policies} open onOpenChange={setEditOpen} onSaved={async saved => { queryClient.setQueryData(queryKeys.guardrail(guardrailId), saved); setDraftJustSaved(true); setDraftAction(hasUnpublishedDraft(saved) ? "review" : null); await refresh(); }} /> : null}
       {draftAction === "changes" || draftAction === "discard" ? <GuardrailDraftChangesSheet guardrail={guardrail} initialDiscard={draftAction === "discard"} canManage={canManageDraft} onClose={() => setDraftAction(null)} onChanged={refresh} /> : null}
-      {draftAction === "review" || draftAction === "publish" ? <GuardrailDraftReviewSheet guardrail={guardrail} policies={policies} versions={guardrailVersions} policiesReady={policiesQuery.isSuccess} policiesError={policiesQuery.isError} onRetryPolicies={() => { void policiesQuery.refetch(); }} readOnly={!canTestDraft} justSaved={draftJustSaved} initialPublish={draftAction === "publish"} initialTestModelRules={draftTestModelRules} onClose={() => setDraftAction(null)} onEdit={canManageDraft ? () => setEditOpen(true) : undefined} onChanged={refresh} onPublished={version => { setDraftAction(null); setSelectedVersionOverride(version.version); setVersionDetailRequested(true); setSection("immutable"); }} /> : null}
+      {draftAction === "review" || draftAction === "publish" ? <GuardrailDraftReviewSheet guardrail={guardrail} policies={policies} versions={guardrailVersions} policiesReady={policiesQuery.isSuccess} policiesError={policiesQuery.isError} onRetryPolicies={() => { void policiesQuery.refetch(); }} readOnly={!canTestDraft} justSaved={draftJustSaved} initialPublish={draftAction === "publish"} initialTestModelRules={draftTestModelRules} onClose={() => setDraftAction(null)} onEdit={canManageDraft ? () => setEditOpen(true) : undefined} onChanged={refresh} onPublished={version => { setDraftAction(null); selectVersion(version.version); setVersionDetailRequested(true); setSection("immutable"); }} /> : null}
       {canManageDraft && testCasesOpen ? <EditGuardrailTestCasesSheet guardrail={guardrail} policies={policies} cases={testsQuery.data?.items ?? []} casesLoading={testsQuery.isLoading} casesError={testsQuery.error} onRetryCases={() => { void testsQuery.refetch(); }} onChanged={refresh} onClose={() => setTestCasesOpen(false)} /> : null}
-      <ValidationDetailSheet blockedReason={currentValidationRun?.subject === "version" ? null : validationReadiness.reason} run={currentValidationRun} guardrail={guardrail} canManage={canManageDraft} running={validationMutation.isPending || versionTestMutation.isPending} onRunAgain={(_, testModelRules) => validationMutation.mutate(testModelRules)} onRunVersionAgain={canTest && guardrailVersions.some(version => version.version === currentValidationRun?.guardrail_version && Boolean(version.test_suite_count)) ? run => versionTestMutation.mutate({ version: run.guardrail_version, testModelRules: run.test_model_rules ?? true }) : undefined} onOpenTarget={openValidationTarget} onClose={() => setSelectedValidationRun(null)} />
+      <ValidationDetailSheet blockedReason={currentValidationRun?.subject === "version" ? null : validationReadiness.reason} run={currentValidationRun} guardrail={guardrail} canManage={canManageDraft} running={validationMutation.isPending || versionTestMutation.isPending} onRunAgain={(_, testModelRules) => validationMutation.mutate(testModelRules)} onRunVersionAgain={canTest && guardrailVersions.some(version => version.version === currentValidationRun?.guardrail_version && Boolean(version.test_suite_count)) ? run => versionTestMutation.mutate({ version: run.guardrail_version, testModelRules: run.test_model_rules ?? true }) : undefined} onOpenTarget={openValidationTarget} onClose={closeReport} />
       {canTest && loggingOpen ? <EditGuardrailLoggingSheet guardrailId={guardrail.id} guardrailName={guardrail.name} onClose={() => setLoggingOpen(false)} /> : null}
       <DeleteGuardrailSheet
         guardrail={guardrail}
@@ -752,7 +784,6 @@ export function EditGuardrailSheet({ guardrail, policies, open, onOpenChange, on
   }, [guardrail, open]);
   const mutation = useMutation({
     mutationFn: () => {
-      if (editReadiness.blocked) throw new Error(editReadiness.reason ?? t("protection.validationReadiness.blockedTitle"));
       if (correctnessBlocker) throw new Error(correctnessBlocker);
       return updateGuardrail(guardrail.id, {
         ...(baseline.draft_revision !== undefined ? { expectedDraftRevision: baseline.draft_revision } : {}),
@@ -784,7 +815,7 @@ export function EditGuardrailSheet({ guardrail, policies, open, onOpenChange, on
     return missingRequiredParameters.length ? [t("guardrailWizard.nextBlocked.requiredFields", { name: policy.name, fields: missingRequiredParameters.map((parameter) => parameter.label).join(", ") })] : [];
   });
   const requestClose = () => { if (mutation.isPending) return; if (dirty) setDiscardRequested(true); else onOpenChange(false); };
-  return <EntitySheet open={open} closeDisabled={mutation.isPending} onOpenChange={next => { if (!next) requestClose(); }} eyebrow={t("guardrails.editEyebrow")} title={t("guardrails.editTitle", { name: guardrail.name })} description={t("guardrails.editDescription")} width="xl" footer={discardRequested ? <><span role="status" className="mr-auto text-xs text-muted-foreground">{t("guardrails.unsavedDraft")}</span><Button variant="outline" onClick={() => setDiscardRequested(false)}>{t("guardrails.continueEditing")}</Button><Button variant="destructive" onClick={() => onOpenChange(false)}>{t("guardrails.discardChanges")}</Button></> : <>{dirty ? <span role="status" className="mr-auto self-center text-xs text-muted-foreground">{t("guardrails.unsavedDraft")}</span> : null}<Button variant="outline" disabled={mutation.isPending} onClick={requestClose}>{t("common.cancel")}</Button><Button disabled={editReadiness.blocked || Boolean(correctnessBlocker) || !name.trim() || !bindings.length || allowedTopicsMissing || parameterErrors.length > 0 || mutation.isPending} onClick={() => mutation.mutate()}>{mutation.isPending ? <LoaderCircle className="animate-spin" /> : <Save />}{t(mutation.isPending ? "common.saving" : "guardrails.saveDraft")}</Button></>}>
+  return <EntitySheet open={open} closeDisabled={mutation.isPending} onOpenChange={next => { if (!next) requestClose(); }} eyebrow={t("guardrails.editEyebrow")} title={t("guardrails.editTitle", { name: guardrail.name })} description={t("guardrails.editDescription")} width="xl" footer={discardRequested ? <><span role="status" className="mr-auto text-xs text-muted-foreground">{t("guardrails.unsavedDraft")}</span><Button variant="outline" onClick={() => setDiscardRequested(false)}>{t("guardrails.continueEditing")}</Button><Button variant="destructive" onClick={() => onOpenChange(false)}>{t("guardrails.discardChanges")}</Button></> : <>{dirty ? <span role="status" className="mr-auto self-center text-xs text-muted-foreground">{t("guardrails.unsavedDraft")}</span> : null}<Button variant="outline" disabled={mutation.isPending} onClick={requestClose}>{t("common.cancel")}</Button><Button disabled={Boolean(correctnessBlocker) || !name.trim() || !bindings.length || allowedTopicsMissing || parameterErrors.length > 0 || mutation.isPending} onClick={() => mutation.mutate()}>{mutation.isPending ? <LoaderCircle className="animate-spin" /> : <Save />}{t(mutation.isPending ? "common.saving" : "guardrails.saveDraft")}</Button></>}>
     {mutation.error ? <div className="mb-4"><ErrorNotice error={mutation.error} /></div> : null}
     <div className="grid min-w-0 grid-cols-[minmax(0,1fr)] gap-5">
       <GuardrailValidationReadiness readiness={editReadiness} onRemoveTopic={() => setBindings(items => items.filter(binding => !policyRequiresTopicModel(boundPolicy(policies, binding))))} />
@@ -792,7 +823,6 @@ export function EditGuardrailSheet({ guardrail, policies, open, onOpenChange, on
       {topicControlEnabled ? <section className="rounded-xl border bg-card p-4">
         <h3 className="text-sm font-semibold">{t("guardrails.topicAllowlist")}</h3>
         <p className="mt-1 text-xs leading-5 text-muted-foreground">{t("guardrails.topicAllowlistDescription")}</p>
-        {policies.some(policy => isSplitTopicPolicy(policy.id, policy.version)) && bindings.some(binding => binding.policy_id === TOPIC_POLICY_ID && binding.policy_version === "1.0.0") ? <div className="mt-3 space-y-2"><p className="text-xs text-muted-foreground">{t("protection.topicRules.upgradeHint")}</p><Button variant="outline" onClick={() => setBindings(items => items.map(binding => upgradeTopicBinding(binding, allowed, denied, topicMode)))}>{t("protection.topicRules.upgrade")}</Button></div> : null}
         <div className="mt-4"><TopicControlFields allowed={allowed} denied={denied} mode={topicMode} onAllowedChange={setAllowed} onDeniedChange={setDenied} onModeChange={setTopicMode} allowedLabel={t("guardrails.allowedDomains")} /></div>
         {allowedTopicsMissing ? <p role="alert" className="mt-2 flex items-start gap-2 text-xs leading-5 text-destructive"><CircleAlert className="mt-0.5 size-4 shrink-0" />{t("guardrails.topicAllowlistRequired")}</p> : null}
       </section> : null}

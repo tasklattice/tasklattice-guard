@@ -137,6 +137,42 @@ describe("Administrator business boundary", () => {
   });
 });
 
+describe("Dashboard runtime authority", () => {
+  const paths = ["/telemetry/metrics?window=7d", "/telemetry/events?limit=50"];
+
+  it.each([null, "unknown-role", "admin"])("rejects role %s before reading dashboard data, despite spoofed headers", async role => {
+    const { app, unexpected } = setup(role);
+    for (const path of paths) {
+      const response = await app.request(`/api/v1${path}`, { headers: { "x-role": "user", "x-user-id": "tenant-user" } });
+      expect(response.status).toBe(role === null ? 401 : 403);
+      expect(unexpected).not.toHaveBeenCalled();
+    }
+  });
+
+  it("serves scoped metrics and events to the user and revokes both on a role change", async () => {
+    const getSession = vi.fn().mockResolvedValue({ user: { id: "tenant-user", role: "user", tenantId: "tenantA" } });
+    const metrics = { total_decisions: 7 };
+    const events = { items: [{ id: "tenant-event", guardrailId: "tenant-guardrail" }] };
+    const runtimeMetrics = vi.fn().mockResolvedValue(metrics);
+    const queryRuntimeEvents = vi.fn().mockResolvedValue(events);
+    const app = createHttpApp({ config,
+      auth: { api: { getSession } } as unknown as ControllerAuth,
+      service: { runtimeMetrics, queryRuntimeEvents } as unknown as ControlPlaneService,
+      runnerControl: {} as RunnerControlServer, metrics: {} as ControllerMetrics });
+    for (const [index, path] of paths.entries()) {
+      const response = await app.request(`/api/v1${path}&guardrailId=tenant-guardrail`);
+      expect(response.status).toBe(200);
+      expect(await response.json()).toEqual(index === 0 ? metrics : events);
+    }
+    expect(runtimeMetrics).toHaveBeenCalledExactlyOnceWith({ window: "7d", guardrailId: "tenant-guardrail" });
+    expect(queryRuntimeEvents).toHaveBeenCalledExactlyOnceWith({ limit: 50, guardrailId: "tenant-guardrail" });
+    getSession.mockResolvedValue({ user: { id: "tenant-user", role: "admin" } });
+    for (const path of paths) expect((await app.request(`/api/v1${path}`)).status).toBe(403);
+    expect(runtimeMetrics).toHaveBeenCalledOnce();
+    expect(queryRuntimeEvents).toHaveBeenCalledOnce();
+  });
+});
+
 describe("Role changes revoke business authority", () => {
   it("blocks a former user on the next request after becoming an administrator", async () => {
     const { app, getSession, unexpected } = setup("user");
@@ -162,7 +198,7 @@ describe("Session freshness and read-only access", () => {
       method: "POST", headers: { origin: "http://localhost:8093", "content-type": "application/json" },
       body: JSON.stringify({ name: "Visitor", email: "visitor@guard.test", password: "synthetic-auth-password-2026" }),
     });
-    expect(signup.status).toBe(400);
+    expect(signup.status).toBe(404);
     expect(data.user).toHaveLength(0);
     expect((await app.request("/api/v1/policies")).status).toBe(401);
     expect(unexpected).not.toHaveBeenCalled();
@@ -172,8 +208,8 @@ describe("Session freshness and read-only access", () => {
     const data: Record<string, Array<Record<string, unknown>>> = { user: [], session: [], account: [], verification: [] };
     const options = createAuth({ ...config, publicUrl: "http://localhost:8093", trustedOrigins: ["http://localhost:8093"] }, {} as ControllerDatabase).options;
     const auth = betterAuth({ ...options, database: memoryAdapter(data), databaseHooks: undefined });
-    await auth.api.createUser({ body: { name: "Tenant fixture", email: "tenant@guard.test", password: "synthetic-auth-password-2026" } });
-    const signedIn = await auth.api.signInEmail({ body: { email: "tenant@guard.test", password: "synthetic-auth-password-2026" }, asResponse: true });
+    await auth.api.createUser({ body: { name: "Tenant fixture", email: "tenant@users.guard.invalid", password: "synthetic-auth-password-2026", data: { username: "tenant" } } });
+    const signedIn = await auth.api.signInEmail({ body: { email: "tenant@users.guard.invalid", password: "synthetic-auth-password-2026", data: { username: "tenant" } }, asResponse: true });
     const cookie = signedIn.headers.getSetCookie().map(value => value.split(";")[0]).join("; ");
     await auth.handler(new Request("http://localhost:8093/api/auth/update-user", {
       method: "POST",
@@ -185,26 +221,26 @@ describe("Session freshness and read-only access", () => {
     expect(data.user![0]!.role).toBe("user");
   });
 
-  it.each(["active", "demoted", "revoked", "expired"])("uses current authority for a %s session despite a still-valid signed cookie cache", async (state) => {
+  it.each(["active", "demoted", "revoked", "expired"])("uses current authority for a %s session with database-backed sessions", async (state) => {
     const data: Record<string, Array<Record<string, unknown>>> = { user: [], session: [], account: [], verification: [] };
     const options = createAuth({ ...config, publicUrl: "http://localhost:8093", trustedOrigins: ["http://localhost:8093"] }, {} as ControllerDatabase).options;
-    // Real Better Auth signing, cookie cache and session lookup. Only the DB
+    // Real Better Auth signing and session lookup. Only the DB
     // adapter changes; its login timestamp hook is unrelated to authorization.
     const auth = betterAuth({ ...options, database: memoryAdapter(data), databaseHooks: undefined });
-    await auth.api.createUser({ body: { name: "Authorization fixture", email: "authorization@guard.test", password: "synthetic-auth-password-2026" } });
+    await auth.api.createUser({ body: { name: "Authorization fixture", email: "authorization@users.guard.invalid", password: "synthetic-auth-password-2026", data: { username: "authorization" } } });
     data.user![0]!.role = "admin";
-    const signedIn = await auth.api.signInEmail({ body: { email: "authorization@guard.test", password: "synthetic-auth-password-2026" }, asResponse: true });
+    const signedIn = await auth.api.signInUsername({ body: { username: "authorization", password: "synthetic-auth-password-2026" }, asResponse: true });
     expect(signedIn.status).toBe(200);
     const cookie = signedIn.headers.getSetCookie().map(value => value.split(";")[0]).join("; ");
-    expect(cookie).toContain("tali-guard.session_data=");
+    expect(cookie).toContain("tali-guard.session_token=");
+    expect(cookie).not.toContain("tali-guard.session_data=");
     const headers = new Headers({ cookie, "content-type": "application/json" });
     expect((await auth.api.getSession({ headers }))?.user.role).toBe("admin");
     expect((await auth.api.getSession({ headers }))?.user.tenantId).toBe("tenantA");
     if (state === "demoted") data.user![0]!.role = "user";
     else if (state === "revoked") data.session!.splice(0);
     else if (state === "expired") for (const session of data.session!) session.expiresAt = new Date(0);
-    // Establish the real stale-cache condition, rather than mocking a verdict.
-    expect((await auth.api.getSession({ headers }))?.user.role).toBe("admin");
+    expect((await auth.api.getSession({ headers }))?.user.role).toBe(state === "active" ? "admin" : state === "demoted" ? "user" : undefined);
     const unexpected = vi.fn().mockResolvedValue({ status: "queued" });
     const app = createHttpApp({ config, auth: auth as unknown as ControllerAuth,
       service: { pricing: { view: unexpected } } as unknown as ControlPlaneService,
@@ -217,7 +253,7 @@ describe("Session freshness and read-only access", () => {
     // boundary even when its signed cookie cache still claims admin authority.
     const users = await app.request("/api/auth/admin/list-users", { headers });
     expect(users.status).toBe(state === "active" ? 200 : 403);
-    if (state === "active") expect(await users.json()).toMatchObject({ users: [{ email: "authorization@guard.test" }] });
+    if (state === "active") expect(await users.json()).toMatchObject({ users: [{ email: "authorization@users.guard.invalid" }] });
   });
 
   it("rechecks session expiry and role revocation on the next request", async () => {
@@ -239,10 +275,10 @@ describe("Session freshness and read-only access", () => {
     const response = await app.request("/api/v1/policy-catalog/protection-presets");
     expect(response.status).toBe(200);
     const body = await response.json();
-    expect(body.items.map((item: { id: string }) => item.id)).toEqual(expect.arrayContaining([
-      "common-baseline", "banking-assistant", "securities-assistant", "internet-customer-support",
-      "china-mainland-runtime", "china-banking-assistant",
-    ]));
+    expect(body.items.map((item: { id: string }) => item.id)).toEqual([
+      "local-baseline", "full-feature-baseline", "banking-assistant",
+      "securities-assistant", "internet-customer-support",
+    ]);
     expect(unexpected).not.toHaveBeenCalled();
     expect((await setup(null).app.request("/api/v1/policy-catalog/protection-presets")).status).toBe(401);
   });

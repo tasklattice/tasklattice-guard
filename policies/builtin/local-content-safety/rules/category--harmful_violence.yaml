@@ -1,6 +1,7 @@
 id: category/harmful_violence
 name: Harmful Violence
-description: Detects content related to violence, criminal planning, and attacks
+description: Detects concrete violent instruction, planning and enabling phrases. Topic names alone require
+  semantic evaluation. Unrelated preventive or historical wording cannot exempt a concrete harmful request.
 stages:
 - input
 - output
@@ -10,38 +11,12 @@ detector:
   parameters:
     detector_options:
       match:
-        all:
-        - not:
-            contains:
-            - violence prevention
-            - crime statistics
-            - true crime
-            - documentary
-            - news report
-            - historical
-            - prevent violence
-            - combat violence
-            - fight violence
-            - violence against
-            - victims of violence
-            - domestic violence
-            - reporting violence
-            - violence awareness
+        any:
         - keywords:
           - how to kill someone
           - plan attack
           - commit murder
-          - school shooting
-          - mass shooting
-          - serial killer
-          - hired hitman
-          - assassinate
-          - terrorism
-          - terrorist attack
           - kidnapping plan
-          - human trafficking
-          - rape
-          - sexual assault
           - torture method
           - ways to murder
           - plan a shooting
@@ -78,7 +53,6 @@ detector:
           - find hitman
           - hire assassin
           - find assassin
-          - contract killer
           - how to assassinate
           - assassination plan
           - plan terrorist attack
@@ -86,8 +60,6 @@ detector:
           - commit terrorist attack
           - plan mass shooting
           - organize mass shooting
-          - school shooter
-          - mass shooter
           - how to kidnap
           - kidnapping instructions
           - kidnap someone
@@ -104,49 +76,16 @@ detector:
           - human trafficking operation
           - start human trafficking
           - organize human trafficking
-          - child trafficking
-          - sex trafficking
-          - domestic terrorism
-          - lone wolf attack
-          - active shooter
-          - mass casualty
-          - vehicular attack
-          - vehicle ramming
-          - knife attack
-          - stabbing spree
-          - murder spree
-          - killing spree
-          - rampage shooting
-          - workplace shooting
-          - public shooting
-          - mass murder
-          - mass killing
-          - massacre
-          - genocide
-          - ethnic cleansing
-          - war crimes
-          - crimes against humanity
-          - honor killing
-          - vigilante justice
-          - lynch mob
-          - mob violence
-          - gang violence
-          - organized crime
-          - mafia hit
-          - gang hit
-          - drive by shooting
-          - execution style
-          - murder
-          - kill
-          - assassin
-          - hitman
-          - kidnap
-          - attack
-          - violence
-          - weapon
-          - shooting
-          - terrorist
-          - crime
+          - promote a terrorist attack
+          - promoted a terrorist attack
+          - promoting a terrorist attack
+          - encourage a terrorist attack
+          - support terrorism
+          - justify genocide
+        - regex: \b(?:i|we)\s+(?:will|shall|intend to|plan to|want to|(?:am|are) going to)\s+(?:kill|murder|rape|kidnap|torture|shoot|attack|stab)\s+(?:you|him|her|them|people|someone|anyone|the
+            school|a school)\b
+        - regex: \b(?:kill|murder|rape|kidnap|torture|shoot|stab)\s+(?:you|him|her|them|people|someone|anyone)\b
+        - regex: \b(?:(?:instructions|steps|guide|tutorial)\s+(?:for|to|on)|how\s+to)\s+(?:build(?:ing)?|mak(?:e|ing)|construct(?:ing)?)\s+(?:an?\s+)?(?:indiscriminate|untraceable|illegal|improvised|explosive)\s+(?:weapon|device)\b
 on_match:
   action: block
 risk_level: high

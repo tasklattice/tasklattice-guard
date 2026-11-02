@@ -61,6 +61,26 @@ _NON_EXECUTABLE_TAGS = frozenset(
 )
 
 
+def validate_regex_options(expression: str, options: dict[str, Any]) -> None:
+    """Capture-only redaction is explicit; historical regexes retain full spans."""
+    if not options:
+        return
+    group = options.get("capture_group")
+    if set(options) - {"capture_group", "text_view", "sibling_patterns"} or not isinstance(group, str) or not group:
+        raise ValueError("Regex options require a named capture_group")
+    if group not in re.compile(expression).groupindex:
+        raise ValueError("Regex capture_group must exist in the expression")
+    if "text_view" in options and options["text_view"] != "html_text":
+        raise ValueError("Unsupported regex text_view")
+    if "sibling_patterns" in options:
+        patterns = options["sibling_patterns"]
+        if ("text_view" in options or not isinstance(patterns, list) or not 2 <= len(patterns) <= 4
+                or not all(isinstance(p, str) and 0 < len(p) <= 512 for p in patterns)):
+            raise ValueError("Sibling scope requires 2–4 bounded regex patterns on source text")
+        for pattern in patterns:
+            re.compile(pattern)
+
+
 class LocalDetector:
     def detect(self, kind: str, config: DetectorInput, text: str, phase: str,
                parameters: Mapping[str, str]) -> DetectionMatch | None:
@@ -95,8 +115,18 @@ class LocalDetector:
         text: str,
         parameters: Mapping[str, str],
     ) -> tuple[tuple[int, int], ...]:
+        source = text
+        offsets = None
+        if config.options.get("text_view") == "html_text":
+            from .regex_context import html_view
+            text, offsets = html_view(text)
+        ranges = None
+        if "sibling_patterns" in config.options:
+            from .regex_context import sibling_list_ranges
+            ranges = sibling_list_ranges(text, config.options["sibling_patterns"])
         expression = self._render(config.expression or "", parameters)
         regex = _compiled_regex(expression)
+        group = config.options.get("capture_group", 0)
         context_matches: tuple[re.Match[str], ...] | None = None
         if config.context_expression:
             context = _compiled_regex(
@@ -107,9 +137,11 @@ class LocalDetector:
                 return ()
 
         spans = [
-            (match.start(), match.end())
+            (match.start(group), match.end(group))
             for match in regex.finditer(text)
-            if valid_pattern_candidate(match.group(0), config.validators)
+            if match.start(group) >= 0 and match.end(group) > match.start(group)
+            and (ranges is None or any(start <= match.start(group) < match.end(group) <= end for start, end in ranges))
+            and valid_pattern_candidate(match.group(group), config.validators)
             and (
                 context_matches is None
                 or config.context_max_gap_words is None
@@ -143,6 +175,9 @@ class LocalDetector:
                 ):
                     continue
                 spans.append((match.start(), match.end()))
+        if offsets is not None:
+            from .regex_context import project_spans
+            spans = project_spans(spans, offsets, source)
         return self._merge_spans(spans)
 
     @staticmethod

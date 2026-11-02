@@ -4,7 +4,7 @@
     "name": "Block Code Execution",
     "description": "Detects executable fenced code and explicit execution requests while allowing explanation and review intent.",
     "source": "built_in",
-    "version": "1.95.0",
+    "version": "1.0.0",
     "tags": [
       {
         "namespace": "protection",
@@ -270,7 +270,7 @@
     "name": "Competitor Name Blocking",
     "description": "Detects reviewed competitor entities, aliases, obfuscation, recommendations, comparisons, and category-ranking intent while allowing destination and service questions.",
     "source": "built_in",
-    "version": "1.95.0",
+    "version": "1.0.0",
     "tags": [
       {
         "namespace": "protection",
@@ -917,7 +917,7 @@
     "name": "Keyword Blocking",
     "description": "Blocks or masks a reviewed, line-separated list of words and phrases without an external model call.",
     "source": "built_in",
-    "version": "1.95.0",
+    "version": "1.0.0",
     "tags": [
       {
         "namespace": "protection",

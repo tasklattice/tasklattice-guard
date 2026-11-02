@@ -14,6 +14,7 @@ from pydantic import BaseModel, ConfigDict, ValidationError
 
 from .routing import RoutingError
 from .tenant_admission import AdmissionRejected, AdmissionUnavailable
+from .toolkit.runtime.outcome import GuardrailExecutionError
 from .toolkit.runtime.contracts import GuardContentBlock, ProtectionDecision, ProtectionRequest, RequestContext
 
 SCAN_PATH = "/runtime/v1/endpoints/{endpoint_id}/backend/v1/scans"
@@ -78,34 +79,10 @@ class ScanFailure(Exception):
         self.status, self.code, self.message = status, code, message
 
 
-def validate_scan_decision(decision: ProtectionDecision) -> None:
-    """Never turn an unevaluated or failed check into a successful safe result."""
-    if decision.protection_mode in {"monitor", "bypass"}:
-        return
-    assessments = decision.assessments
-    matched = any(a.status == "intervene" for a in assessments)
-    short_circuit = decision.decision == "block" and matched
-    failed = (
-        (decision.usage is not None and decision.usage.fail_closed)
-        or any(a.status in {"error", "needs_context"} for a in assessments)
-        or any(a.status == "uncovered" for a in assessments) and not short_circuit
-    )
-    coverage = decision.coverage
-    if failed or coverage is None or coverage.required_modules_total < 1 or (
-        not short_circuit and (coverage.status != "complete" or
-            coverage.required_modules_completed != coverage.required_modules_total)
-    ):
-        raise ScanFailure(503, "scan_execution_failed", "The required scan could not be completed.")
-    if decision.decision == "transform" and not decision.texts:
-        raise ScanFailure(500, "invalid_scan_result", "The scan did not return its transformed text.")
-
-
 def scan_response(payload: ScanRequest, decision: ProtectionDecision, scan_id: str,
                   started: datetime, completed: datetime) -> ScanResponse:
-    validate_scan_decision(decision)
-    # Assessments reflect terminal evaluations; raw findings may include superseded retries.
     enforced = decision.protection_mode == "enforce"
-    matched = enforced and (decision.decision in {"block", "transform"} or any(a.status == "intervene" for a in decision.assessments))
+    matched = decision.flagged
     outcome = "cleared"
     if matched:
         outcome = "flagged" if payload.flagOnly else {"block": "blocked", "transform": "redacted"}.get(decision.decision, "flagged")
@@ -136,19 +113,25 @@ def register_scan(api, *, max_body_bytes: int, timeout_seconds: float) -> None:
         openapi_extra={"requestBody": {"required": True, "content": {"application/json": {"schema": ScanRequest.model_json_schema()}}},
                        "responses": {"422": {"description": "Invalid Scan request"}}})
     async def scan(endpoint_id: str, request: Request):
+        """Map Scan traffic to the Endpoint's Guardrail and map its final result.
+
+        The Guardrail owns short-circuiting and execution status. flagOnly and
+        verbose affect response shape only; they never change policy execution.
+        """
         scan_id = str(uuid4())
+        decision = None
         response_headers = {"X-Request-ID": scan_id, "X-TaskLattice-Scan-Compatibility": "v1"}
         permit = None
         try:
             authorization = request.headers.getlist("authorization")
             parts = authorization[0].split() if len(authorization) == 1 else []
             token = parts[1] if len(parts) == 2 and parts[0].lower() == "bearer" else None
-            authenticated, adapter, endpoint_snapshot = api._authenticate_endpoint(endpoint_id, token)
-            api._metrics.observe_authentication("scan", authenticated)
-            if not authenticated:
+            access, endpoint_snapshot = api._authenticate_endpoint(endpoint_id, token)
+            api._metrics.observe_authentication("scan", access.authenticated)
+            if not access.allowed:
                 response_headers["WWW-Authenticate"] = "Bearer"
                 raise ScanFailure(401, "invalid_credential", "Endpoint credential is invalid.")
-            if adapter != SCAN_ADAPTER:
+            if access.adapter != SCAN_ADAPTER:
                 raise ScanFailure(403, "adapter_mismatch", "Endpoint does not support Scan.")
             try:
                 permit = await api._acquire_tenant_permit(endpoint_id, token)
@@ -185,12 +168,14 @@ def register_scan(api, *, max_body_bytes: int, timeout_seconds: float) -> None:
             phase = "input" if payload.scanDirection == "request" else "output"
             source = "user_input" if phase == "input" else "model_output"
             protection_request = ProtectionRequest(
-                phase=phase, texts=(payload.input,), mode="enforce", evidence_scope="full",
+                phase=phase, texts=(payload.input,), mode="enforce",
                 content_blocks=(GuardContentBlock(id=f"{phase}:0", text=payload.input, role=source, source=source, trust="untrusted"),),
                 context=RequestContext(protocol="scan", endpoint_id=endpoint_id, call_id=scan_id,
                     endpoint_snapshot=endpoint_snapshot,
                     headers=tuple((k, v) for k, v in request.headers.items() if k.lower() not in SENSITIVE_HEADERS),
-                    fields=(("protocol", "scan"), ("endpoint.id", endpoint_id), ("auth.principal", endpoint_id),
+                    fields=(("protocol", "scan"), ("endpoint.id", endpoint_id),
+                            *((("auth.principal", endpoint_id),) if access.authenticated else ()),
+                            ("auth.mode", "credential" if access.authenticated else "anonymous"),
                             ("scan.direction", payload.scanDirection), ("http.method", request.method),
                             ("http.path", request.url.path), ("http.host", request.url.hostname or "")),
                     endpoint_request=_endpoint_source(request)),
@@ -204,39 +189,49 @@ def register_scan(api, *, max_body_bytes: int, timeout_seconds: float) -> None:
                     nonlocal execution_started
                     execution_started = datetime.now(UTC)
                     observation.resolve(resolution)
-                def checked(value):
-                    nonlocal decision
-                    decision = value
-                    validate_scan_decision(value)
                 try:
                     decision = await api._runtime.evaluate_standalone(protection_request,
-                        on_resolved=resolved, validate_decision=checked, timeout_seconds=timeout_seconds)
+                        on_resolved=resolved, timeout_seconds=timeout_seconds)
                     result = scan_response(payload, decision, scan_id, execution_started, datetime.now(UTC))
                     observation.complete(decision)
                     api._metrics.observe_route("scan", phase, True)
-                except BaseException:
-                    observation.fail("runtime", "scan_execution_failed")
+                except BaseException as error:
+                    if isinstance(error, GuardrailExecutionError):
+                        decision = error.decision
+                        observation.complete(decision)
+                    observation.fail("runtime", "timeout" if isinstance(error, TimeoutError)
+                        or isinstance(error, GuardrailExecutionError) and error.timed_out else "scan_execution_failed")
                     raise
                 finally:
                     await api._emit_telemetry(request_id=scan_id, call_id=scan_id, endpoint_id=endpoint_id,
                         endpoint_context_id=getattr(endpoint_snapshot, "telemetry_context_id", None),
                         phase=phase, protocol="scan", mode="enforce", started=started, decision=decision,
                         content_before=(payload.input,), http_request=request, observation=observation,
-                        stream_metadata={"scanDirection": payload.scanDirection, "flagOnly": payload.flagOnly,
+                        stream_metadata={"authentication": "credential" if access.authenticated else "anonymous", "scanDirection": payload.scanDirection, "flagOnly": payload.flagOnly,
                             "verbose": payload.verbose, "scanExecutionStatus": "completed" if result is not None else "error",
                             "scanOutcome": result.result.outcome if result is not None else None})
                 response = JSONResponse(result.model_dump(mode="json"), headers=response_headers)
                 api._path_response_headers(response, decision)
+                if request.headers.get("x-guard-evidence") == "evaluations-v1":
+                    from .evaluation_evidence import RESPONSE_HEADER, evaluation_evidence
+                    response.headers[RESPONSE_HEADER] = evaluation_evidence(decision)
                 return response
         except Exception as error:
             if isinstance(error, ScanFailure):
                 status, code, message = error.status, error.code, error.message
+            elif isinstance(error, GuardrailExecutionError):
+                status = 504 if error.timed_out else 503
+                code, message = error.code, str(error)
             elif isinstance(error, TimeoutError):
                 status, code, message = 504, "scan_timeout", "The scan timed out."
             elif isinstance(error, (RoutingError, LookupError)):
                 status, code, message = 503, "scan_unavailable", "The scan route or runtime is unavailable."
             else:
                 status, code, message = 500, "scan_internal_error", "The scan could not be processed."
+            if decision is not None:
+                if request.headers.get("x-guard-evidence") == "evaluations-v1":
+                    from .evaluation_evidence import RESPONSE_HEADER, evaluation_evidence
+                    response_headers[RESPONSE_HEADER] = evaluation_evidence(decision)
             return JSONResponse(status_code=status, headers=response_headers,
                 content={"detail": {"code": code, "message": message, "requestId": scan_id}})
         finally:

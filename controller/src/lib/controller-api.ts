@@ -20,8 +20,8 @@ export type Collection<T> = { items: T[]; count?: number; nextCursor?: string | 
 
 export type SystemStatus = PlatformStatusSnapshot;
 
-export type ModelProviderKind = "openai" | "qwen" | "typesafe" | "deepseek" | "vllm" | "ollama" | "custom-openai-compatible";
-export type ModelProfile = "generic-chat" | "tali.qwen3guard.v1" | "tali.llama-guard-3.v1" | "tali.nemotron-content-safety.v1" | "tali.nemotron-safety-guard-v3.v1" | "tali.nemoguard-topic-control.v1" | "tali.typesafe-jev-topic.v1" | "tali.openai-compatible-pii.v1" | "tali.openai-compatible-jailbreak.v1" | "tali.nemoguard-jailbreak-detect.v1" | "tali.taxonomy-judge.v1" | "tali.grounding-judge.v1" | "tali.automated-reasoning.v1";
+export type ModelProviderKind = "openai" | "qwen" | "typesafe" | "laya" | "deepseek" | "vllm" | "ollama" | "custom-openai-compatible";
+export type ModelProfile = "tali.classifier-review.v1" | "tali.laya.v1" | "tali.laya-topic.v1" | "generic-chat" | "tali.qwen3guard.v1" | "tali.llama-guard-3.v1" | "tali.nemotron-content-safety.v1" | "tali.nemotron-safety-guard-v3.v1" | "tali.nemoguard-topic-control.v1" | "tali.typesafe-jev-topic.v1" | "tali.typesafe-jev.v1" | "tali.openai-compatible-pii.v1" | "tali.openai-compatible-jailbreak.v1" | "tali.nemoguard-jailbreak-detect.v1" | "tali.taxonomy-judge.v1" | "tali.grounding-judge.v1" | "tali.automated-reasoning.v1";
 export type { CapabilityBindingId };
 export type ModelAssignments = {
   controlPlane: string | null;
@@ -90,7 +90,7 @@ export type ModelValidationReport = {
 export type ModelConfigurationRevision = {
   id: string;
   reviewToken?: string;
-  /** Legacy field; current API exposes configuration state, not version history. */
+  /** Previous field; current API exposes configuration state, not version history. */
   revision?: number;
   state: "draft" | "validated" | "activating" | "active" | "superseded" | "failed";
   generation: number | null;
@@ -113,6 +113,7 @@ export type ModelConfigurationView = {
 };
 
 export type GuardrailDraftConfig = {
+  profileOrigin?: import("../../shared/protection-map").ProfileOrigin;
   allowedTopics: string[];
   restrictedTopics: string[];
   topicControlMode?: "strict" | "permissive";
@@ -172,6 +173,7 @@ export type Guardrail = {
 export type GuardrailVersion = {
   /** False when independent Policy read access or frozen provenance is missing. */
   policyContentAccessible?: boolean;
+  publication?: import("../../shared/guardrail-publication").GuardrailPublication | null;
   testWaiver?: import("../../shared/default-release").DefaultTestWaiver | null;
   sourceValidationRunId?: string | null;
   testingEvidence?: import("../../shared/testing-report-retention").VersionTestingEvidence | null;
@@ -299,6 +301,7 @@ export type Endpoint = {
   id: string;
   name: string;
   adapter: EndpointAdapterId;
+  credentialRequired: boolean;
   scanFlagOnlyDefault?: boolean;
   status: EndpointLifecycleState;
   createdAt: string;
@@ -441,17 +444,21 @@ export class ControllerRequestError extends Error {
   }
 }
 
-export async function requestController<T>(path: string, init?: RequestInit): Promise<T> {
+export async function requestController<T>(path: string, options?: RequestInit & { timeoutMs?: number }): Promise<T> {
+  const { timeoutMs = 30_000, ...init } = options ?? {};
   const formData = typeof FormData !== "undefined" && init?.body instanceof FormData;
   const response = await fetch(path, {
     credentials: "same-origin",
     ...init,
-    ...(!init?.method || init.method === 'GET' ? { signal: init?.signal ? AbortSignal.any([init.signal, AbortSignal.timeout(30_000)]) : AbortSignal.timeout(30_000) } : {}),
+    ...(!init?.method || init.method === 'GET' ? { signal: init?.signal ? AbortSignal.any([init.signal, AbortSignal.timeout(timeoutMs)]) : AbortSignal.timeout(timeoutMs) } : {}),
     headers: init?.body && !formData ? { "content-type": "application/json", ...init.headers } : init?.headers,
   });
   if (response.status === 204) return undefined as T;
   const rawResponse = response.ok ? undefined : response.clone?.();
-  const payload = await response.json().catch(async () => ({ message: await rawResponse?.text().catch(() => "") })) as { error?: { code?: string; message?: string; detail?: unknown }; detail?: unknown; message?: string };
+  const payload = await response.json().catch(async error => {
+    if (response.ok) throw error; // Never treat an interrupted large report as an empty success.
+    return { message: await rawResponse?.text().catch(() => "") };
+  }) as { error?: { code?: string; message?: string; detail?: unknown }; detail?: unknown; message?: string };
   if (!response.ok) {
     // A forbidden write may mean the user's role changed. Recheck identity,
     // without treating every 403 as a logout or retrying the rejected write.
@@ -521,7 +528,7 @@ export const getModelReadiness = () => requestController<import("../../shared/mo
 export const getModelConfiguration = async () => {
   const view = await requestController<ModelConfigurationView>("/api/v1/model-configuration");
   if (!view.draft?.assignments?.bindings) {
-    throw new Error("The Controller is serving an incompatible legacy Model configuration. Deploy the matching Controller backend before using Guardrail Catalog.");
+    throw new Error("The Controller is serving a Model configuration with an unsupported schema. Deploy the matching Controller backend before using Guardrail Catalog.");
   }
   return view;
 };
@@ -588,7 +595,7 @@ export const getControllerGuardrailDeletionImpact = (id: string) => requestContr
 export const deleteControllerGuardrail = (id: string, input: { reason: string; confirmRecentTraffic: boolean; confirmationName?: string | undefined }) => requestController<void>(`/api/v1/guardrails/${encodeURIComponent(id)}`, json("DELETE", input));
 
 export const listControllerEndpoints = () => requestController<Collection<Endpoint>>("/api/v1/endpoints");
-export const createControllerEndpoint = (input: { name: string; adapter: EndpointAdapterId; scanFlagOnlyDefault?: boolean }) => requestController<Endpoint>("/api/v1/endpoints", json("POST", input));
+export const createControllerEndpoint = (input: { name: string; adapter: EndpointAdapterId; credentialRequired?: boolean; scanFlagOnlyDefault?: boolean }) => requestController<Endpoint>("/api/v1/endpoints", json("POST", input));
 export const getControllerEndpointDeletionImpact = (id: string) => requestController<DeletionImpact>(`/api/v1/endpoints/${encodeURIComponent(id)}/deletion-impact`);
 export const deleteControllerEndpoint = (id: string, input: { reason: string; confirmRecentTraffic: boolean; confirmationName?: string | undefined }) => requestController<void>(`/api/v1/endpoints/${encodeURIComponent(id)}`, json("DELETE", input));
 
@@ -624,4 +631,4 @@ export type SystemVersion = {
 export const getSystemVersion = () => requestController<SystemVersion>("/api/v1/system/version");
 
 export const getTestingReportDeletionImpact = (runId: string) => requestController<import("../../shared/testing-report-deletion").TestingReportDeletionImpact>(`/api/v1/test-runs/${encodeURIComponent(runId)}/deletion-impact`);
-export const deleteTestingReport = (runId: string, expectedPendingVersion: string | null) => requestController<void>(`/api/v1/test-runs/${encodeURIComponent(runId)}`, json("DELETE", { expectedPendingVersion }));
+export const deleteTestingReport = (runId: string) => requestController<void>(`/api/v1/test-runs/${encodeURIComponent(runId)}`, { method: "DELETE" });

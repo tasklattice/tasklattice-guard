@@ -46,7 +46,7 @@ describe.skipIf(!url)("durable Runner lease ledger (not live serving)", () => {
   it("preserves outstanding grants and drain state if migration is replayed", async () => {
     await first.issue(grant);
     await first.beginDrain("pool-a", 0);
-    const migration = readFileSync(new URL("../db/migrations/0055_runner_lease_ledger.sql", import.meta.url), "utf8");
+    const migration = readFileSync(new URL("../db/migrations/0008_runner_lease_ledger.sql", import.meta.url), "utf8");
     await database.pool.query(migration);
     expect(await second.outstanding("pool-a", 0)).toMatchObject({ count: 1 });
     await expect(second.issue({ ...grant, nonce: "replay-late" })).rejects.toMatchObject({ code: "runner_lease_epoch_unavailable" });

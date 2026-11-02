@@ -1,3 +1,6 @@
+import {gzipSync,gunzipSync} from "node:zlib";
+import type {MessageTypeDefinition} from "@grpc/proto-loader";
+import type {ValidationResult,ValidationResult__Output} from "../generated/control-protocol/tasklattice/guard/control/v1/ValidationResult.js";
 import { loadSync } from "@grpc/proto-loader";
 import { loadPackageDefinition } from "@grpc/grpc-js";
 import { describe, expect, it } from "vitest";
@@ -22,7 +25,7 @@ const versionId = "20260904-073000.123Z";
 const plan = {
   guardrail_id: "guardrail-1",
   guardrail_version: versionId,
-  compiler_version: "tasklattice-controller-plan-v3",
+  compiler_version: "tasklattice-controller-plan-v1",
   safety_level: "strict",
   output_delivery: "full_buffered",
   steps: [{
@@ -61,16 +64,32 @@ const plan = {
 
 
 describe("Controller/Runner control protocol", () => {
+  it.each(["GUARD_FAILURE", "CONFIGURATION_FAILURE", "PROVIDER_FAILURE"])("preserves %s attribution and model health on the report wire", failure => {
+    const protoPath = resolve("../proto/tasklattice/guard/control/v1/runner_control.proto");
+    const definition = loadSync(protoPath, { includeDirs: [dirname(protoPath)], longs: String, enums: String, defaults: true, oneofs: true });
+    const codec = definition["tasklattice.guard.control.v1.ValidationResult"] as MessageTypeDefinition<ValidationResult, ValidationResult__Output>;
+    const raw = codec.serialize({ results: [{ caseId: "failure", expectedDecision: "VALIDATION_DECISION_ALLOW", actualDecision: "VALIDATION_DECISION_BLOCK",
+      phase: "GUARDRAIL_PHASE_OUTPUT", action: "ENFORCEMENT_ACTION_BLOCK", actualFailure: `VALIDATION_FAILURE_${failure}` as never,
+      modelStatus: "ok", executionStatus: "error", trace: [{ id: "model-call", errorSource: "model", errorCategory: "unavailable", httpStatus: 503, modelCallId: "call-503", affectsResult: true }],
+    }] });
+    expect(validationCaseFromWire(codec.deserialize(raw).results[0]!)).toMatchObject({
+      actualFailure: failure.toLowerCase(), modelStatus: "ok", executionStatus: "error",
+      trace: [{ id: "model-call", error_source: "model", error_category: "unavailable", http_status: 503, model_call_id: "call-503", affects_result: true }],
+    });
+  });
+
   it("preserves skipped cases without inventing an enforcement action on the real wire", () => {
     const protoPath = resolve("../proto/tasklattice/guard/control/v1/runner_control.proto");
     const definition = loadSync(protoPath, { includeDirs: [dirname(protoPath)], longs: String, enums: String, defaults: true, oneofs: true });
     const descriptor = loadPackageDefinition(definition) as unknown as ProtoGrpcType;
     const connect = descriptor.tasklattice.guard.control.v1.RunnerControl.service.Connect;
-    const encoded = connect.requestSerialize({ validationResult: { results: [{
+    const codec=definition["tasklattice.guard.control.v1.ValidationResult"] as MessageTypeDefinition<ValidationResult,ValidationResult__Output>;
+    const raw=codec.serialize({ results: [{
       caseId: "model-case", skipped: true, skipReason: "Model-dependent tests skipped.",
       expectedDecision: "VALIDATION_DECISION_BLOCK", phase: "GUARDRAIL_PHASE_INPUT",
-    }] } });
-    const value = connect.requestDeserialize(encoded).validationResult!.results[0]!;
+    }] });
+    const encoded=connect.requestSerialize({validationReportChunk:{gzipResult:gzipSync(raw)}});
+    const value=codec.deserialize(gunzipSync(connect.requestDeserialize(encoded).validationReportChunk!.gzipResult)).results[0]!;
     expect(validationCaseFromWire(value)).toMatchObject({
       skipped: true, passed: false, actualDecision: "", action: "", modelInvocations: 0,
     });
@@ -104,7 +123,7 @@ describe("Controller/Runner control protocol", () => {
     },
   );
 
-  it("rejects legacy numeric Guardrail Versions instead of coercing them", () => {
+  it("rejects numeric Guardrail Versions instead of coercing them", () => {
     expect(() => planToWire({ ...plan, guardrail_version: 1 })).toThrow("canonical UTC timestamp");
   });
 
@@ -190,7 +209,7 @@ describe("Controller/Runner control protocol", () => {
   it("round-trips the canonical signed Artifact body", () => {
     const content = {
       guardrailId: "guardrail-1", guardrailVersion: versionId, generation: 11,
-      compilerVersion: "compiler-v2", nemoVersion: "0.24.0", runtimeProfile: "nemo-default",
+      compilerVersion: "compiler-v1", nemoVersion: "0.24.0", runtimeProfile: "nemo-default",
       plan, configYaml: "models: []", colangContent: "define flow passport",
       prompts: [{ task: "passport_check", content: "Check {{ user_input }}", output_parser: "json", max_tokens: 64 }],
       actionBindings: [{
@@ -231,4 +250,25 @@ describe("Controller/Runner control protocol", () => {
       id: "credential-1", sha256: "abc", keyHint: "tg_...1234", createdAt: "2026-08-31T00:00:00Z",
     }] });
   });
+});
+
+it("round-trips explicit successful and failed Rule evidence", () => {
+  const protoPath = resolve("../proto/tasklattice/guard/control/v1/runner_control.proto");
+  const definition = loadSync(protoPath, { includeDirs: [dirname(protoPath)], longs: String, enums: String, defaults: true, oneofs: true });
+  const descriptor = loadPackageDefinition(definition) as unknown as ProtoGrpcType;
+  const connect = descriptor.tasklattice.guard.control.v1.RunnerControl.service.Connect;
+  const base = { caseId: "target", expectedDecision: "VALIDATION_DECISION_TRANSFORM" as const,
+    actualDecision: "VALIDATION_DECISION_TRANSFORM" as const, action: "ENFORCEMENT_ACTION_TRANSFORM" as const,
+    phase: "GUARDRAIL_PHASE_INPUT" as const, passed: false };
+  const codec=definition["tasklattice.guard.control.v1.ValidationResult"] as MessageTypeDefinition<ValidationResult,ValidationResult__Output>;
+  const raw=codec.serialize({results: [
+    { ...base, evidenceStatus: "VALIDATION_EVIDENCE_STATUS_SHADOWED_BY", evidenceDetail: "Target did not match its transformed view.",
+      supersededBy: [{ policyId: "mask", ruleId: "first" }], verifiedRuleIds: [], ruleContractSatisfied: false },
+    { ...base, evidenceStatus: "VALIDATION_EVIDENCE_STATUS_OBSERVED", ruleContractSatisfied: true },
+  ]});
+  const envelope=connect.requestDeserialize(connect.requestSerialize({validationReportChunk:{gzipResult:gzipSync(raw)}}));
+  const wire=codec.deserialize(gunzipSync(envelope.validationReportChunk!.gzipResult)).results;
+  expect(validationCaseFromWire(wire[0]!)).toMatchObject({ evidenceStatus: "shadowed_by", verifiedRuleIds: [],
+    supersededBy: [{ policyId: "mask", ruleId: "first" }], ruleContractSatisfied: false });
+  expect(validationCaseFromWire(wire[1]!)).toMatchObject({ evidenceStatus: "observed", ruleContractSatisfied: true });
 });

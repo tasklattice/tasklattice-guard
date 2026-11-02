@@ -3,12 +3,12 @@ import { readFileSync } from "node:fs";
 import { canonicalJson } from "../../shared/canonical-json.js";
 
 /**
- * Version 2 digests exclude the local delivery envelope (`id`, `generation`)
+ * V1 digests exclude the local delivery envelope (`id`, `generation`)
  * and use the cross-language canonical JSON encoding. The same promoted
  * content therefore keeps one digest in UAT and production.
  */
-export const ARTIFACT_CONTENT_DIGEST_VERSION = 2;
-export const ARTIFACT_CONTENT_CONTRACT = "tasklattice.artifact-content.v2";
+export const ARTIFACT_CONTENT_DIGEST_VERSION = 1;
+export const ARTIFACT_CONTENT_CONTRACT = "tasklattice.artifact-content.v1";
 
 /** Signed, environment-independent Artifact content. */
 export type ArtifactContent = {

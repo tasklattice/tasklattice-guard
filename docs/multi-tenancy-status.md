@@ -1,6 +1,6 @@
 # Full multi-tenancy implementation status
 
-Status on 2 November 2026. “Implemented” means code exists with regression coverage; it does not mean deployed, production certified, or that every acceptance criterion is complete. Most enforcement modes are opt-in. The existing demo has not been upgraded with these changes. No commit or push was made.
+Status at the 2 November 2026 working-tree checkpoint. “Implemented” means code exists with regression coverage; it does not mean deployed, production certified, or that every acceptance criterion is complete. Most enforcement modes are opt-in. The existing demo has not been upgraded with these changes. Subsequent commit, upstream compatibility changes, and PR validation are recorded in the [upstream integration record](multi-tenancy-upstream-pr-2026-11-02.md).
 
 ## Implemented
 

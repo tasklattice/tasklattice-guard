@@ -50,18 +50,37 @@ detector:
           - regex: \b(?:list|show)\b.{0,10}\b(?:all|every)\b.{0,20}\b(?:member|patient|claimant)\b.{0,10}\bwho\b
           - within_sentence:
               all:
-              - contains:
-                - give me
-                - show me
-                - pull up
-                - pull
-                - export
-                - download
-                - dump
-                - extract
-                - list all
-                - list every
-                - access
+              - any:
+                - contains:
+                  - give me
+                  - show me
+                  - pull up
+                  - pull
+                  - export
+                  - download
+                  - dump
+                  - extract
+                  - list all
+                  - list every
+                # Access-process questions are not themselves PHI disclosure.
+                # Retain direct retrieval and explicit unauthorized-access intent.
+                - all:
+                  - regex: \b(?:access|retrieve)\b
+                  - any:
+                    - regex: ^\s*(?:please\s+)?(?:access|retrieve)\b
+                    - contains:
+                      - without consent
+                      - without their consent
+                      - without permission
+                      - without their permission
+                      - without authorization
+                      - without their authorization
+                      - without approval
+                      - without them knowing
+                      - without the patient knowing
+                      - unauthorized
+                      - secretly
+                      - bypass
               - keywords:
                 - medical records
                 - medical history

@@ -8,14 +8,14 @@ const exec = promisify(execFile);
 const env = process.env;
 const controller = new URL(env.GUARD_DEV_CONTROLLER_URL ?? "http://localhost:38081");
 const runtime = new URL(env.GUARD_DEV_RUNTIME_URL ?? "http://localhost:38082");
-const email = env.GUARD_DEV_USER_EMAIL ?? "user@tasklattice.local";
+const username = env.GUARD_DEV_USER_USERNAME ?? "user";
 const password = env.GUARD_DEV_USER_PASSWORD ?? "password";
 const namespace = env.HELM_NAMESPACE ?? "tali";
 const context = env.HELM_CONTEXT ?? "orbstack";
 const guardRelease = env.GUARD_DEV_RELEASE_NAME ?? "tali-guard";
 const secretName = env.LITELLM_GUARD_SECRET ?? "tali-litellm-dev-guard";
 const resourceName = env.LITELLM_GUARD_RESOURCE_NAME ?? "litellm-dev";
-const guardrailId = env.LITELLM_GUARD_GUARDRAIL_ID ?? "guardrail-default";
+let guardrailId = env.LITELLM_GUARD_GUARDRAIL_ID;
 let cookie = "";
 const log = (stage, value = {}) => console.error(JSON.stringify({ stage, ...value }));
 
@@ -30,7 +30,7 @@ async function api(path, body, expected = 200, method = body === undefined ? "GE
 }
 
 async function signIn() {
-  const auth = await api("/api/auth/sign-in/email", { email, password });
+  const auth = await api("/api/auth/sign-in/username", { username, password });
   cookie = auth.response.headers.getSetCookie().map((value) => value.split(";")[0]).join("; ");
 }
 
@@ -111,6 +111,11 @@ async function writeSecret(apiBase, apiKey) {
 
 try {
   await signIn();
+  if (!guardrailId) {
+    const candidates = (await api("/api/v1/guardrails")).result.items.filter(item => item.name === "Default");
+    if (candidates.length !== 1) throw new Error("Set LITELLM_GUARD_GUARDRAIL_ID to an existing Guardrail ID.");
+    guardrailId = candidates[0].id;
+  }
   const guardrail = (await api(`/api/v1/guardrails/${guardrailId}`)).result;
   // Pin the requested version, or the newest released version, in this Router.
   const version = env.LITELLM_GUARD_GUARDRAIL_VERSION

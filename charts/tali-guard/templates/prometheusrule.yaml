@@ -312,4 +312,41 @@ spec:
           annotations:
             summary: Runner rejected a signed desired-state artifact
             description: Check signature, checksum, dependency, prewarm, and runtime-profile compatibility.
+    - name: tasklattice-guard.context-capacity
+      rules:
+        - alert: TaskLatticeGuardRedisMemoryHigh
+          expr: max by (namespace, app_kubernetes_io_instance) (guard_runner_context_redis_used_memory_bytes{ {{ $selector }} } / (guard_runner_context_redis_maxmemory_bytes{ {{ $selector }} } > 0)) > 0.8
+          for: 5m
+          labels: { severity: warning, category: capacity }
+          annotations:
+            summary: Shared context Redis memory exceeds 80 percent
+            description: Increase capacity or reduce admitted traffic before call context allocation fails. Keep noeviction enabled.
+        - alert: TaskLatticeGuardRedisMemoryCritical
+          expr: max by (namespace, app_kubernetes_io_instance) (guard_runner_context_redis_used_memory_bytes{ {{ $selector }} } / (guard_runner_context_redis_maxmemory_bytes{ {{ $selector }} } > 0)) > 0.95
+          for: 1m
+          labels: { severity: critical, category: capacity }
+          annotations:
+            summary: Shared context Redis is close to its memory limit
+            description: Historical context and debug body correlation may become unavailable. Current-content checks continue when capacity fallback is enabled.
+        - alert: TaskLatticeGuardContextCapacityDegraded
+          expr: sum by (namespace, app_kubernetes_io_instance) (increase(guard_runner_context_degraded_total{ {{ $selector }} }[5m])) > 0
+          for: 0m
+          labels: { severity: warning, category: capacity }
+          annotations:
+            summary: Guard skipped context operations because Redis was full
+            description: Inspect context degraded evidence and callCaptureIncomplete. Detection still runs on current content; cross-call history and deduplication are reduced.
+        - alert: TaskLatticeGuardRedisCapacityUnobservable
+          expr: min by (namespace, app_kubernetes_io_instance) (guard_runner_context_redis_up{ {{ $selector }} }) == 0
+          for: 1m
+          labels: { severity: critical, category: capacity }
+          annotations:
+            summary: Runner cannot read Redis capacity metrics
+            description: Check Redis availability and INFO permissions. Connection and authorization errors are not capacity fallback conditions.
+        - alert: TaskLatticeGuardRedisMemoryUnbounded
+          expr: max by (namespace, app_kubernetes_io_instance) (guard_runner_context_redis_maxmemory_bytes{ {{ $selector }} }) == 0
+          for: 5m
+          labels: { severity: warning, category: configuration }
+          annotations:
+            summary: Shared context Redis has no memory limit
+            description: Set maxmemory below the container limit with runtime headroom and preserve noeviction.
 {{- end }}

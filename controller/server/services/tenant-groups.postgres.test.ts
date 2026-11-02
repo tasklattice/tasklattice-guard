@@ -181,10 +181,11 @@ describe.skipIf(!url)("Tenant Group persistence and safe allocation in PostgreSQ
       ('guard-a','tenantA','A Guardrail','{}','active','debug'), ('guard-b','tenantB','B Guardrail','{}','active','error'),
       ('disabled-a','tenantA','A disabled','{}','disabled','off'), ('disabled-b','tenantB','B disabled','{}','disabled','off');
       INSERT INTO guardrail_artifact(id,guardrail_id,guardrail_version,generation,compiler_version,nemo_version,runtime_profile,plan,config_yaml,checksum,signature) VALUES
-      ('artifact-a','guard-a','v1',1,'test','test','local','{}','','checksum-a','synthetic'),
-      ('artifact-b','guard-b','v1',2,'test','test','local','{}','','checksum-b','synthetic');
+      ('artifact-a','guard-a','v1',1,'tasklattice-nemo-config-v1','test','local','{"compiler_version":"tasklattice-controller-plan-v1"}','','checksum-a','synthetic'),
+      ('artifact-b','guard-b','v1',2,'tasklattice-nemo-config-v1','test','local','{"compiler_version":"tasklattice-controller-plan-v1"}','','checksum-b','synthetic');
       INSERT INTO guardrail_version(guardrail_id,version,generation,status,runtime_profile,plan,artifact_id,released_at) VALUES
-      ('guard-a','v1',1,'ready','local','{}','artifact-a',now()), ('guard-b','v1',2,'ready','local','{}','artifact-b',now());`);
+      ('guard-a','v1',1,'ready','local','{}','artifact-a',now()), ('guard-b','v1',2,'ready','local','{}','artifact-b',now());
+      UPDATE guardrail_version SET environment_check='{"status":"compatible"}';`);
     const snapshot = (guardrailId: string) => ({ routes: [{ id: "all", name: "All", kind: "fallback", enabled: true,
       selector: { expression: { combinator: "and", conditions: [] } },
       targets: [{ id: "target", guardrailId, guardrailVersion: "v1", weightBps: 10000 }] }] });

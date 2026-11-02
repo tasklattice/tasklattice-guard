@@ -8,8 +8,8 @@ import pytest
 
 
 RELEASES = ['default-local-v1', *[f'preset-{p}-v1' for p in (
-    'common-baseline', 'banking-assistant', 'securities-assistant',
-    'internet-customer-support', 'singapore-financial-assistant')]]
+    'banking-assistant', 'securities-assistant',
+    'internet-customer-support')]]
 CASES = [
     ('passport', '中文 Passport: E12345678', 'E12345678'),
     ('email', '中文 Email: alice@example.com', 'alice@example.com'),

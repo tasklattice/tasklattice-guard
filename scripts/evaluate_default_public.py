@@ -283,7 +283,7 @@ async def evaluate_cases(cases: list[Case], plan: dict, output: Path, concurrenc
                            "history_sha256": canonical_hash(case.messages), "status": "complete"}
                     try:
                         result = await runtime.evaluate(ProtectionRequest(phase=case.phase, texts=(case.text,),
-                            messages=case.messages, context=RequestContext(protocol="playground"), evidence_scope="full"), **identity)
+                            messages=case.messages, context=RequestContext(protocol="playground"), evidence_scope="full", execution_purpose="validation"), **identity)
                         usage = result.usage
                         row.update(decision=result.decision, action=result.action,
                             transformed_texts=list(result.texts), reason=result.reason,

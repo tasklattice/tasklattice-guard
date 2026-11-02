@@ -1,0 +1,2 @@
+runner/toolkit/policy_library/assets/*.generated.json linguist-generated=true
+controller/openapi/controller.openapi.json linguist-generated=true

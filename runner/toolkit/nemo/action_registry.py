@@ -70,7 +70,7 @@ ActionProviders = Mapping[tuple[str, str], ActionProvider]
 
 
 _BUILTIN_RUNTIME_ACTIONS = (
-    (ACTION_EVALUATE, ("pii", "content_safety", "jailbreak"), ("input", "output")),
+    (ACTION_EVALUATE, ("pii", "content_safety", "jailbreak", "classifier_review"), ("input", "output")),
     (ACTION_SECRETS, ("secrets",), ("input", "output")),
     (ACTION_CONTENT_FILTER, ("builtin_content_filter",), ("input", "output")),
     (ACTION_TOPIC_RULES, ("topic_control",), ("input", "output")),
@@ -102,7 +102,7 @@ def _dynamic_action_name(capability: str) -> str:
 
 def action_name_for(capability: str, contract_ref: str) -> str:
     """Return the stable NeMo Action name for one evaluation contract."""
-    if capability in {"pii", "content_safety", "jailbreak"}:
+    if capability in {"pii", "content_safety", "jailbreak", "classifier_review"}:
         return ACTION_EVALUATE
     if capability == "topic_control":
         return ACTION_TOPIC_RULES if contract_ref == CONTRACT_TOPIC_RULES else ACTION_TOPIC_JUDGE

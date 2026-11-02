@@ -1,0 +1,3421 @@
+- id: formats-4.2/camel-certificate/input
+  name: camel-certificate
+  description: Synthetic local credential format regression.
+  phase: input
+  content: CertificatePassword="synthetic-72"
+  expected_decision: block
+  covered_rule_ids:
+  - credential/password
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Credential format regression
+  scope: rule
+- id: formats-4.2/colon-assign/input
+  name: colon-assign
+  description: Synthetic local credential format regression.
+  phase: input
+  content: password := "synthetic-72"
+  expected_decision: block
+  covered_rule_ids:
+  - credential/password
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Credential format regression
+  scope: rule
+- id: formats-4.2/json-escaped/input
+  name: json-escaped
+  description: Synthetic local credential format regression.
+  phase: input
+  content: '{\"password\":\"synthetic-72\"}'
+  expected_decision: block
+  covered_rule_ids:
+  - credential/password
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Credential format regression
+  scope: rule
+- id: formats-4.2/bare-env/input
+  name: bare-env
+  description: Synthetic local credential format regression.
+  phase: input
+  content: DB_PASSWORD=synthetic-pass-72
+  expected_decision: block
+  covered_rule_ids:
+  - credential/password
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Credential format regression
+  scope: rule
+- id: formats-4.2/mysql-plugin/input
+  name: mysql-plugin
+  description: Synthetic local credential format regression.
+  phase: input
+  content: ALTER USER 'test'@'localhost' IDENTIFIED WITH mysql_native_password BY 'synthetic-72';
+  expected_decision: block
+  covered_rule_ids:
+  - credential/sql-password
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Credential format regression
+  scope: rule
+- id: formats-4.2/mysql-basic/input
+  name: mysql-basic
+  description: Synthetic local credential format regression.
+  phase: input
+  content: CREATE USER 'test' IDENTIFIED BY 'synthetic-72';
+  expected_decision: block
+  covered_rule_ids:
+  - credential/sql-password
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Credential format regression
+  scope: rule
+- id: formats-4.2/postgres-role/input
+  name: postgres-role
+  description: Synthetic local credential format regression.
+  phase: input
+  content: CREATE ROLE fixture LOGIN PASSWORD 'synthetic72';
+  expected_decision: block
+  covered_rule_ids:
+  - credential/sql-password
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Credential format regression
+  scope: rule
+- id: formats-4.2/postgres-bare/input
+  name: postgres-bare
+  description: Synthetic local credential format regression.
+  phase: input
+  content: CREATE ROLE fixture LOGIN PASSWORD synthetic72;
+  expected_decision: block
+  covered_rule_ids:
+  - credential/sql-password
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Credential format regression
+  scope: rule
+- id: formats-4.2/postgres-encrypted/input
+  name: postgres-encrypted
+  description: Synthetic local credential format regression.
+  phase: input
+  content: CREATE USER fixture WITH ENCRYPTED PASSWORD 'synthetic-72';
+  expected_decision: block
+  covered_rule_ids:
+  - credential/sql-password
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Credential format regression
+  scope: rule
+- id: formats-4.2/cli-array/input
+  name: cli-array
+  description: Synthetic local credential format regression.
+  phase: input
+  content: '["--password", "synthetic72"]'
+  expected_decision: block
+  covered_rule_ids:
+  - credential/command-password
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Credential format regression
+  scope: rule
+- id: formats-4.2/powershell-certificate/input
+  name: powershell-certificate
+  description: Synthetic local credential format regression.
+  phase: input
+  content: tool -CertificatePassword synthetic72
+  expected_decision: block
+  covered_rule_ids:
+  - credential/command-password
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Credential format regression
+  scope: rule
+- id: formats-4.2/sql-function/input
+  name: sql-function
+  description: Synthetic local credential format regression.
+  phase: input
+  content: INSERT INTO mysql.user VALUES (PASSWORD('synthetic72'));
+  expected_decision: block
+  covered_rule_ids:
+  - credential/sql-password
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Credential format regression
+  scope: rule
+- id: formats-4.2/sql-comment/input
+  name: sql-comment
+  description: Synthetic local credential format regression.
+  phase: input
+  content: CREATE ROLE fixture; -- PASSWORD 'synthetic72'
+  expected_decision: block
+  covered_rule_ids:
+  - credential/sql-password
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Credential format regression
+  scope: rule
+- id: formats-4.2/cli-long/input
+  name: cli-long
+  description: Synthetic local credential format regression.
+  phase: input
+  content: tool --password "synthetic-72"
+  expected_decision: block
+  covered_rule_ids:
+  - credential/command-password
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Credential format regression
+  scope: rule
+- id: formats-4.2/cli-equals/input
+  name: cli-equals
+  description: Synthetic local credential format regression.
+  phase: input
+  content: tool --password=synthetic72
+  expected_decision: block
+  covered_rule_ids:
+  - credential/command-password
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Credential format regression
+  scope: rule
+- id: formats-4.2/powershell/input
+  name: powershell
+  description: Synthetic local credential format regression.
+  phase: input
+  content: Get-NtToken -Password synthetic72 -User fixture
+  expected_decision: block
+  covered_rule_ids:
+  - credential/command-password
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Credential format regression
+  scope: rule
+- id: formats-4.2/mysql-attached/input
+  name: mysql-attached
+  description: Synthetic local credential format regression.
+  phase: input
+  content: mysql -u fixture -psynthetic72
+  expected_decision: block
+  covered_rule_ids:
+  - credential/command-password
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Credential format regression
+  scope: rule
+- id: formats-4.2/openssl-pass/input
+  name: openssl-pass
+  description: Synthetic local credential format regression.
+  phase: input
+  content: openssl pkcs12 -passin pass:synthetic72
+  expected_decision: block
+  covered_rule_ids:
+  - credential/command-password
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Credential format regression
+  scope: rule
+- id: formats-4.2/nkey-user/input
+  name: nkey-user
+  description: Synthetic local credential format regression.
+  phase: input
+  content: seed="SUAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+  expected_decision: block
+  covered_rule_ids:
+  - credential/nkey-seed
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Credential format regression
+  scope: rule
+- id: formats-4.2/nkey-operator/input
+  name: nkey-operator
+  description: Synthetic local credential format regression.
+  phase: input
+  content: SOAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+  expected_decision: block
+  covered_rule_ids:
+  - credential/nkey-seed
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Credential format regression
+  scope: rule
+- id: formats-4.2/base64-pem/input
+  name: base64-pem
+  description: Synthetic local credential format regression.
+  phase: input
+  content: LS0tLS1CRUdJTiBQUklWQVRFIEtFWS0tLS0tCmMzbHVkR2hsZEdsaklIQnlhWFpoZEdVZ2JXRjBaWEpwWVd4emVXNTBhR1YwYVdNZ2NISnBkbUYwWlNCdFlYUmxjbWxoYkhONWJuUm9aWFJwWXlCd2NtbDJZWFJsSUcxaGRHVnlhV0ZzYzNsdWRHaGxkR2xqSUhCeWFYWmhkR1VnYldGMFpYSnBZV3h6ZVc1MGFHVjBhV01nY0hKcGRtRjBaU0J0WVhSbGNtbGhiSE41Ym5Sb1pYUnBZeUJ3Y21sMllYUmxJRzFoZEdWeWFXRnNjM2x1ZEdobGRHbGpJSEJ5YVhaaGRHVWdiV0YwWlhKcFlXeHplVzUwYUdWMGFXTWdjSEpwZG1GMFpTQnRZWFJsY21saGJBPT0KLS0tLS1FTkQgUFJJVkFURSBLRVktLS0tLQ==
+  expected_decision: block
+  covered_rule_ids:
+  - credential/base64-private-key
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Credential format regression
+  scope: rule
+- id: formats-4.2/base64-prefixed/input
+  name: base64-prefixed
+  description: Synthetic local credential format regression.
+  phase: input
+  content: cHJlZml4LS0tLS1CRUdJTiBQUklWQVRFIEtFWS0tLS0tCmMzbHVkR2hsZEdsaklIQnlhWFpoZEdVZ2JXRjBaWEpwWVd4emVXNTBhR1YwYVdNZ2NISnBkbUYwWlNCdFlYUmxjbWxoYkhONWJuUm9aWFJwWXlCd2NtbDJZWFJsSUcxaGRHVnlhV0ZzYzNsdWRHaGxkR2xqSUhCeWFYWmhkR1VnYldGMFpYSnBZV3h6ZVc1MGFHVjBhV01nY0hKcGRtRjBaU0J0WVhSbGNtbGhiSE41Ym5Sb1pYUnBZeUJ3Y21sMllYUmxJRzFoZEdWeWFXRnNjM2x1ZEdobGRHbGpJSEJ5YVhaaGRHVWdiV0YwWlhKcFlXeHplVzUwYUdWMGFXTWdjSEpwZG1GMFpTQnRZWFJsY21saGJBPT0KLS0tLS1FTkQgUFJJVkFURSBLRVktLS0tLQ==
+  expected_decision: block
+  covered_rule_ids:
+  - credential/base64-private-key
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Credential format regression
+  scope: rule
+- id: formats-4.2/base64-prefixed-offset1/input
+  name: base64-prefixed-offset1
+  description: Synthetic local credential format regression.
+  phase: input
+  content: eC0tLS0tQkVHSU4gUFJJVkFURSBLRVktLS0tLQpjM2x1ZEdobGRHbGpJSEJ5YVhaaGRHVWdiV0YwWlhKcFlXeHplVzUwYUdWMGFXTWdjSEpwZG1GMFpTQnRZWFJsY21saGJITjViblJvWlhScFl5QndjbWwyWVhSbElHMWhkR1Z5YVdGc2MzbHVkR2hsZEdsaklIQnlhWFpoZEdVZ2JXRjBaWEpwWVd4emVXNTBhR1YwYVdNZ2NISnBkbUYwWlNCdFlYUmxjbWxoYkhONWJuUm9aWFJwWXlCd2NtbDJZWFJsSUcxaGRHVnlhV0ZzYzNsdWRHaGxkR2xqSUhCeWFYWmhkR1VnYldGMFpYSnBZV3h6ZVc1MGFHVjBhV01nY0hKcGRtRjBaU0J0WVhSbGNtbGhiQT09Ci0tLS0tRU5EIFBSSVZBVEUgS0VZLS0tLS0=
+  expected_decision: block
+  covered_rule_ids:
+  - credential/base64-private-key
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Credential format regression
+  scope: rule
+- id: formats-4.2/base64-prefixed-offset2/input
+  name: base64-prefixed-offset2
+  description: Synthetic local credential format regression.
+  phase: input
+  content: eHgtLS0tLUJFR0lOIFBSSVZBVEUgS0VZLS0tLS0KYzNsdWRHaGxkR2xqSUhCeWFYWmhkR1VnYldGMFpYSnBZV3h6ZVc1MGFHVjBhV01nY0hKcGRtRjBaU0J0WVhSbGNtbGhiSE41Ym5Sb1pYUnBZeUJ3Y21sMllYUmxJRzFoZEdWeWFXRnNjM2x1ZEdobGRHbGpJSEJ5YVhaaGRHVWdiV0YwWlhKcFlXeHplVzUwYUdWMGFXTWdjSEpwZG1GMFpTQnRZWFJsY21saGJITjViblJvWlhScFl5QndjbWwyWVhSbElHMWhkR1Z5YVdGc2MzbHVkR2hsZEdsaklIQnlhWFpoZEdVZ2JXRjBaWEpwWVd4emVXNTBhR1YwYVdNZ2NISnBkbUYwWlNCdFlYUmxjbWxoYkE9PQotLS0tLUVORCBQUklWQVRFIEtFWS0tLS0t
+  expected_decision: block
+  covered_rule_ids:
+  - credential/base64-private-key
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Credential format regression
+  scope: rule
+- id: formats-4.2/base64-wrapped/input
+  name: base64-wrapped
+  description: Synthetic local credential format regression.
+  phase: input
+  content: 'LS0tLS1CRUdJTiBQUklWQVRFIEtFWS0tLS0tCmMzbHVkR2hsZEdsaklIQnlh
+
+    WFpoZEdVZ2JXRjBaWEpwWVd4emVXNTBhR1YwYVdNZ2NISnBkbUYwWlNCdFlY
+
+    UmxjbWxoYkhONWJuUm9aWFJwWXlCd2NtbDJZWFJsSUcxaGRHVnlhV0ZzYzNs
+
+    dWRHaGxkR2xqSUhCeWFYWmhkR1VnYldGMFpYSnBZV3h6ZVc1MGFHVjBhV01n
+
+    Y0hKcGRtRjBaU0J0WVhSbGNtbGhiSE41Ym5Sb1pYUnBZeUJ3Y21sMllYUmxJ
+
+    RzFoZEdWeWFXRnNjM2x1ZEdobGRHbGpJSEJ5YVhaaGRHVWdiV0YwWlhKcFlX
+
+    eHplVzUwYUdWMGFXTWdjSEpwZG1GMFpTQnRZWFJsY21saGJBPT0KLS0tLS1F
+
+    TkQgUFJJVkFURSBLRVktLS0tLQ=='
+  expected_decision: block
+  covered_rule_ids:
+  - credential/base64-private-key
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Credential format regression
+  scope: rule
+- id: formats-4.2/reference-no-bypass/input
+  name: reference-no-bypass
+  description: Synthetic local credential format regression.
+  phase: input
+  content: 'password=user.password
+
+    password="synthetic-72"'
+  expected_decision: block
+  covered_rule_ids:
+  - credential/password
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Credential format regression
+  scope: rule
+- id: formats-4.2/label-no-bypass/input
+  name: label-no-bypass
+  description: Synthetic local credential format regression.
+  phase: input
+  content: '"LABEL_CURRENT_PASSWORD":"Current password"
+
+    password="synthetic-72"'
+  expected_decision: block
+  covered_rule_ids:
+  - credential/password
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Credential format regression
+  scope: rule
+- id: formats-4.2/public-no-bypass/input
+  name: public-no-bypass
+  description: Synthetic local credential format regression.
+  phase: input
+  content: 'public-key="0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+
+    key="0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"'
+  expected_decision: block
+  covered_rule_ids:
+  - credential/labelled-hex-key
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Credential format regression
+  scope: rule
+- id: formats-4.2/cli-variable-no-bypass/input
+  name: cli-variable-no-bypass
+  description: Synthetic local credential format regression.
+  phase: input
+  content: tool --password $PASS --password synthetic72
+  expected_decision: block
+  covered_rule_ids:
+  - credential/command-password
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Credential format regression
+  scope: rule
+- id: formats-4.2/member/input
+  name: member
+  description: Synthetic non-secret syntax regression; never a request-wide exemption.
+  phase: input
+  content: config.Password = test.password
+  expected_decision: allow
+  covered_rule_ids:
+  - credentials-api-keys/aws_access_key
+  - credentials-api-keys/aws_secret_key
+  - credentials-api-keys/github_token
+  - credentials-api-keys/slack_token
+  - credentials-api-keys/generic_api_key
+  - credential/bearer-token
+  - credential/private-key-header
+  - credential/hex-token
+  - credential/password
+  - advanced-au-pii-protection/credentials-api-keys/generic_api_key
+  - pattern/aws_secret_key
+  - pattern/github_token
+  - pattern/slack_token
+  - pattern/generic_api_key
+  - pattern/aws_access_key
+  - credential/url-password
+  - credential/basic-auth
+  - credential/jwt
+  - credential/labelled-hex-key
+  - credential/private-jwk
+  - credential/sql-password
+  - credential/command-password
+  - credential/nkey-seed
+  - credential/base64-private-key
+  kind: scenario
+  required: true
+  parameter_names: []
+  group: Credential false-positive regression
+  scope: policy
+- id: formats-4.2/field/input
+  name: field
+  description: Synthetic non-secret syntax regression; never a request-wide exemption.
+  phase: input
+  content: token.password = user.password;
+  expected_decision: allow
+  covered_rule_ids:
+  - credentials-api-keys/aws_access_key
+  - credentials-api-keys/aws_secret_key
+  - credentials-api-keys/github_token
+  - credentials-api-keys/slack_token
+  - credentials-api-keys/generic_api_key
+  - credential/bearer-token
+  - credential/private-key-header
+  - credential/hex-token
+  - credential/password
+  - advanced-au-pii-protection/credentials-api-keys/generic_api_key
+  - pattern/aws_secret_key
+  - pattern/github_token
+  - pattern/slack_token
+  - pattern/generic_api_key
+  - pattern/aws_access_key
+  - credential/url-password
+  - credential/basic-auth
+  - credential/jwt
+  - credential/labelled-hex-key
+  - credential/private-jwk
+  - credential/sql-password
+  - credential/command-password
+  - credential/nkey-seed
+  - credential/base64-private-key
+  kind: scenario
+  required: true
+  parameter_names: []
+  group: Credential false-positive regression
+  scope: policy
+- id: formats-4.2/arrow-ref/input
+  name: arrow-ref
+  description: Synthetic non-secret syntax regression; never a request-wide exemption.
+  phase: input
+  content: passwd = data->passwd;
+  expected_decision: allow
+  covered_rule_ids:
+  - credentials-api-keys/aws_access_key
+  - credentials-api-keys/aws_secret_key
+  - credentials-api-keys/github_token
+  - credentials-api-keys/slack_token
+  - credentials-api-keys/generic_api_key
+  - credential/bearer-token
+  - credential/private-key-header
+  - credential/hex-token
+  - credential/password
+  - advanced-au-pii-protection/credentials-api-keys/generic_api_key
+  - pattern/aws_secret_key
+  - pattern/github_token
+  - pattern/slack_token
+  - pattern/generic_api_key
+  - pattern/aws_access_key
+  - credential/url-password
+  - credential/basic-auth
+  - credential/jwt
+  - credential/labelled-hex-key
+  - credential/private-jwk
+  - credential/sql-password
+  - credential/command-password
+  - credential/nkey-seed
+  - credential/base64-private-key
+  kind: scenario
+  required: true
+  parameter_names: []
+  group: Credential false-positive regression
+  scope: policy
+- id: formats-4.2/comparison/input
+  name: comparison
+  description: Synthetic non-secret syntax regression; never a request-wide exemption.
+  phase: input
+  content: password == other_value
+  expected_decision: allow
+  covered_rule_ids:
+  - credentials-api-keys/aws_access_key
+  - credentials-api-keys/aws_secret_key
+  - credentials-api-keys/github_token
+  - credentials-api-keys/slack_token
+  - credentials-api-keys/generic_api_key
+  - credential/bearer-token
+  - credential/private-key-header
+  - credential/hex-token
+  - credential/password
+  - advanced-au-pii-protection/credentials-api-keys/generic_api_key
+  - pattern/aws_secret_key
+  - pattern/github_token
+  - pattern/slack_token
+  - pattern/generic_api_key
+  - pattern/aws_access_key
+  - credential/url-password
+  - credential/basic-auth
+  - credential/jwt
+  - credential/labelled-hex-key
+  - credential/private-jwk
+  - credential/sql-password
+  - credential/command-password
+  - credential/nkey-seed
+  - credential/base64-private-key
+  kind: scenario
+  required: true
+  parameter_names: []
+  group: Credential false-positive regression
+  scope: policy
+- id: formats-4.2/callback/input
+  name: callback
+  description: Synthetic non-secret syntax regression; never a request-wide exemption.
+  phase: input
+  content: main->pub.start_pass = start_pass_main;
+  expected_decision: allow
+  covered_rule_ids:
+  - credentials-api-keys/aws_access_key
+  - credentials-api-keys/aws_secret_key
+  - credentials-api-keys/github_token
+  - credentials-api-keys/slack_token
+  - credentials-api-keys/generic_api_key
+  - credential/bearer-token
+  - credential/private-key-header
+  - credential/hex-token
+  - credential/password
+  - advanced-au-pii-protection/credentials-api-keys/generic_api_key
+  - pattern/aws_secret_key
+  - pattern/github_token
+  - pattern/slack_token
+  - pattern/generic_api_key
+  - pattern/aws_access_key
+  - credential/url-password
+  - credential/basic-auth
+  - credential/jwt
+  - credential/labelled-hex-key
+  - credential/private-jwk
+  - credential/sql-password
+  - credential/command-password
+  - credential/nkey-seed
+  - credential/base64-private-key
+  kind: scenario
+  required: true
+  parameter_names: []
+  group: Credential false-positive regression
+  scope: policy
+- id: formats-4.2/callback-quant/input
+  name: callback-quant
+  description: Synthetic non-secret syntax regression; never a request-wide exemption.
+  phase: input
+  content: finish_pass = finish_pass_1_quant;
+  expected_decision: allow
+  covered_rule_ids:
+  - credentials-api-keys/aws_access_key
+  - credentials-api-keys/aws_secret_key
+  - credentials-api-keys/github_token
+  - credentials-api-keys/slack_token
+  - credentials-api-keys/generic_api_key
+  - credential/bearer-token
+  - credential/private-key-header
+  - credential/hex-token
+  - credential/password
+  - advanced-au-pii-protection/credentials-api-keys/generic_api_key
+  - pattern/aws_secret_key
+  - pattern/github_token
+  - pattern/slack_token
+  - pattern/generic_api_key
+  - pattern/aws_access_key
+  - credential/url-password
+  - credential/basic-auth
+  - credential/jwt
+  - credential/labelled-hex-key
+  - credential/private-jwk
+  - credential/sql-password
+  - credential/command-password
+  - credential/nkey-seed
+  - credential/base64-private-key
+  kind: scenario
+  required: true
+  parameter_names: []
+  group: Credential false-positive regression
+  scope: policy
+- id: formats-4.2/member-length/input
+  name: member-length
+  description: Synthetic non-secret syntax regression; never a request-wide exemption.
+  phase: input
+  content: password = BaseText.Length;
+  expected_decision: allow
+  covered_rule_ids:
+  - credentials-api-keys/aws_access_key
+  - credentials-api-keys/aws_secret_key
+  - credentials-api-keys/github_token
+  - credentials-api-keys/slack_token
+  - credentials-api-keys/generic_api_key
+  - credential/bearer-token
+  - credential/private-key-header
+  - credential/hex-token
+  - credential/password
+  - advanced-au-pii-protection/credentials-api-keys/generic_api_key
+  - pattern/aws_secret_key
+  - pattern/github_token
+  - pattern/slack_token
+  - pattern/generic_api_key
+  - pattern/aws_access_key
+  - credential/url-password
+  - credential/basic-auth
+  - credential/jwt
+  - credential/labelled-hex-key
+  - credential/private-jwk
+  - credential/sql-password
+  - credential/command-password
+  - credential/nkey-seed
+  - credential/base64-private-key
+  kind: scenario
+  required: true
+  parameter_names: []
+  group: Credential false-positive regression
+  scope: policy
+- id: formats-4.2/constant/input
+  name: constant
+  description: Synthetic non-secret syntax regression; never a request-wide exemption.
+  phase: input
+  content: password = DEFAULT_PASSWORD;
+  expected_decision: allow
+  covered_rule_ids:
+  - credentials-api-keys/aws_access_key
+  - credentials-api-keys/aws_secret_key
+  - credentials-api-keys/github_token
+  - credentials-api-keys/slack_token
+  - credentials-api-keys/generic_api_key
+  - credential/bearer-token
+  - credential/private-key-header
+  - credential/hex-token
+  - credential/password
+  - advanced-au-pii-protection/credentials-api-keys/generic_api_key
+  - pattern/aws_secret_key
+  - pattern/github_token
+  - pattern/slack_token
+  - pattern/generic_api_key
+  - pattern/aws_access_key
+  - credential/url-password
+  - credential/basic-auth
+  - credential/jwt
+  - credential/labelled-hex-key
+  - credential/private-jwk
+  - credential/sql-password
+  - credential/command-password
+  - credential/nkey-seed
+  - credential/base64-private-key
+  kind: scenario
+  required: true
+  parameter_names: []
+  group: Credential false-positive regression
+  scope: policy
+- id: formats-4.2/name-reference/input
+  name: name-reference
+  description: Synthetic non-secret syntax regression; never a request-wide exemption.
+  phase: input
+  content: password=sip_auth_password
+  expected_decision: allow
+  covered_rule_ids:
+  - credentials-api-keys/aws_access_key
+  - credentials-api-keys/aws_secret_key
+  - credentials-api-keys/github_token
+  - credentials-api-keys/slack_token
+  - credentials-api-keys/generic_api_key
+  - credential/bearer-token
+  - credential/private-key-header
+  - credential/hex-token
+  - credential/password
+  - advanced-au-pii-protection/credentials-api-keys/generic_api_key
+  - pattern/aws_secret_key
+  - pattern/github_token
+  - pattern/slack_token
+  - pattern/generic_api_key
+  - pattern/aws_access_key
+  - credential/url-password
+  - credential/basic-auth
+  - credential/jwt
+  - credential/labelled-hex-key
+  - credential/private-jwk
+  - credential/sql-password
+  - credential/command-password
+  - credential/nkey-seed
+  - credential/base64-private-key
+  kind: scenario
+  required: true
+  parameter_names: []
+  group: Credential false-positive regression
+  scope: policy
+- id: formats-4.2/function-whitespace/input
+  name: function-whitespace
+  description: Synthetic non-secret syntax regression; never a request-wide exemption.
+  phase: input
+  content: password = config.get_password ()
+  expected_decision: allow
+  covered_rule_ids:
+  - credentials-api-keys/aws_access_key
+  - credentials-api-keys/aws_secret_key
+  - credentials-api-keys/github_token
+  - credentials-api-keys/slack_token
+  - credentials-api-keys/generic_api_key
+  - credential/bearer-token
+  - credential/private-key-header
+  - credential/hex-token
+  - credential/password
+  - advanced-au-pii-protection/credentials-api-keys/generic_api_key
+  - pattern/aws_secret_key
+  - pattern/github_token
+  - pattern/slack_token
+  - pattern/generic_api_key
+  - pattern/aws_access_key
+  - credential/url-password
+  - credential/basic-auth
+  - credential/jwt
+  - credential/labelled-hex-key
+  - credential/private-jwk
+  - credential/sql-password
+  - credential/command-password
+  - credential/nkey-seed
+  - credential/base64-private-key
+  kind: scenario
+  required: true
+  parameter_names: []
+  group: Credential false-positive regression
+  scope: policy
+- id: formats-4.2/label-json/input
+  name: label-json
+  description: Synthetic non-secret syntax regression; never a request-wide exemption.
+  phase: input
+  content: '"LABEL_CURRENT_PASSWORD": "Current password"'
+  expected_decision: allow
+  covered_rule_ids:
+  - credentials-api-keys/aws_access_key
+  - credentials-api-keys/aws_secret_key
+  - credentials-api-keys/github_token
+  - credentials-api-keys/slack_token
+  - credentials-api-keys/generic_api_key
+  - credential/bearer-token
+  - credential/private-key-header
+  - credential/hex-token
+  - credential/password
+  - advanced-au-pii-protection/credentials-api-keys/generic_api_key
+  - pattern/aws_secret_key
+  - pattern/github_token
+  - pattern/slack_token
+  - pattern/generic_api_key
+  - pattern/aws_access_key
+  - credential/url-password
+  - credential/basic-auth
+  - credential/jwt
+  - credential/labelled-hex-key
+  - credential/private-jwk
+  - credential/sql-password
+  - credential/command-password
+  - credential/nkey-seed
+  - credential/base64-private-key
+  kind: scenario
+  required: true
+  parameter_names: []
+  group: Credential false-positive regression
+  scope: policy
+- id: formats-4.2/label-lower/input
+  name: label-lower
+  description: Synthetic non-secret syntax regression; never a request-wide exemption.
+  phase: input
+  content: '"label_current_password": "Password"'
+  expected_decision: allow
+  covered_rule_ids:
+  - credentials-api-keys/aws_access_key
+  - credentials-api-keys/aws_secret_key
+  - credentials-api-keys/github_token
+  - credentials-api-keys/slack_token
+  - credentials-api-keys/generic_api_key
+  - credential/bearer-token
+  - credential/private-key-header
+  - credential/hex-token
+  - credential/password
+  - advanced-au-pii-protection/credentials-api-keys/generic_api_key
+  - pattern/aws_secret_key
+  - pattern/github_token
+  - pattern/slack_token
+  - pattern/generic_api_key
+  - pattern/aws_access_key
+  - credential/url-password
+  - credential/basic-auth
+  - credential/jwt
+  - credential/labelled-hex-key
+  - credential/private-jwk
+  - credential/sql-password
+  - credential/command-password
+  - credential/nkey-seed
+  - credential/base64-private-key
+  kind: scenario
+  required: true
+  parameter_names: []
+  group: Credential false-positive regression
+  scope: policy
+- id: formats-4.2/label-camel/input
+  name: label-camel
+  description: Synthetic non-secret syntax regression; never a request-wide exemption.
+  phase: input
+  content: labelCurrentPassword="Current password"
+  expected_decision: allow
+  covered_rule_ids:
+  - credentials-api-keys/aws_access_key
+  - credentials-api-keys/aws_secret_key
+  - credentials-api-keys/github_token
+  - credentials-api-keys/slack_token
+  - credentials-api-keys/generic_api_key
+  - credential/bearer-token
+  - credential/private-key-header
+  - credential/hex-token
+  - credential/password
+  - advanced-au-pii-protection/credentials-api-keys/generic_api_key
+  - pattern/aws_secret_key
+  - pattern/github_token
+  - pattern/slack_token
+  - pattern/generic_api_key
+  - pattern/aws_access_key
+  - credential/url-password
+  - credential/basic-auth
+  - credential/jwt
+  - credential/labelled-hex-key
+  - credential/private-jwk
+  - credential/sql-password
+  - credential/command-password
+  - credential/nkey-seed
+  - credential/base64-private-key
+  kind: scenario
+  required: true
+  parameter_names: []
+  group: Credential false-positive regression
+  scope: policy
+- id: formats-4.2/label-prefixed/input
+  name: label-prefixed
+  description: Synthetic non-secret syntax regression; never a request-wide exemption.
+  phase: input
+  content: '"LOGIN_LABEL_PASSWORD": "Password"'
+  expected_decision: allow
+  covered_rule_ids:
+  - credentials-api-keys/aws_access_key
+  - credentials-api-keys/aws_secret_key
+  - credentials-api-keys/github_token
+  - credentials-api-keys/slack_token
+  - credentials-api-keys/generic_api_key
+  - credential/bearer-token
+  - credential/private-key-header
+  - credential/hex-token
+  - credential/password
+  - advanced-au-pii-protection/credentials-api-keys/generic_api_key
+  - pattern/aws_secret_key
+  - pattern/github_token
+  - pattern/slack_token
+  - pattern/generic_api_key
+  - pattern/aws_access_key
+  - credential/url-password
+  - credential/basic-auth
+  - credential/jwt
+  - credential/labelled-hex-key
+  - credential/private-jwk
+  - credential/sql-password
+  - credential/command-password
+  - credential/nkey-seed
+  - credential/base64-private-key
+  kind: scenario
+  required: true
+  parameter_names: []
+  group: Credential false-positive regression
+  scope: policy
+- id: formats-4.2/title/input
+  name: title
+  description: Synthetic non-secret syntax regression; never a request-wide exemption.
+  phase: input
+  content: '"TITLE_NEW_PASSWORD": "New password"'
+  expected_decision: allow
+  covered_rule_ids:
+  - credentials-api-keys/aws_access_key
+  - credentials-api-keys/aws_secret_key
+  - credentials-api-keys/github_token
+  - credentials-api-keys/slack_token
+  - credentials-api-keys/generic_api_key
+  - credential/bearer-token
+  - credential/private-key-header
+  - credential/hex-token
+  - credential/password
+  - advanced-au-pii-protection/credentials-api-keys/generic_api_key
+  - pattern/aws_secret_key
+  - pattern/github_token
+  - pattern/slack_token
+  - pattern/generic_api_key
+  - pattern/aws_access_key
+  - credential/url-password
+  - credential/basic-auth
+  - credential/jwt
+  - credential/labelled-hex-key
+  - credential/private-jwk
+  - credential/sql-password
+  - credential/command-password
+  - credential/nkey-seed
+  - credential/base64-private-key
+  kind: scenario
+  required: true
+  parameter_names: []
+  group: Credential false-positive regression
+  scope: policy
+- id: formats-4.2/public-hyphen/input
+  name: public-hyphen
+  description: Synthetic non-secret syntax regression; never a request-wide exemption.
+  phase: input
+  content: public-key="0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+  expected_decision: allow
+  covered_rule_ids:
+  - credentials-api-keys/aws_access_key
+  - credentials-api-keys/aws_secret_key
+  - credentials-api-keys/github_token
+  - credentials-api-keys/slack_token
+  - credentials-api-keys/generic_api_key
+  - credential/bearer-token
+  - credential/private-key-header
+  - credential/hex-token
+  - credential/password
+  - advanced-au-pii-protection/credentials-api-keys/generic_api_key
+  - pattern/aws_secret_key
+  - pattern/github_token
+  - pattern/slack_token
+  - pattern/generic_api_key
+  - pattern/aws_access_key
+  - credential/url-password
+  - credential/basic-auth
+  - credential/jwt
+  - credential/labelled-hex-key
+  - credential/private-jwk
+  - credential/sql-password
+  - credential/command-password
+  - credential/nkey-seed
+  - credential/base64-private-key
+  kind: scenario
+  required: true
+  parameter_names: []
+  group: Credential false-positive regression
+  scope: policy
+- id: formats-4.2/public-nested/input
+  name: public-nested
+  description: Synthetic non-secret syntax regression; never a request-wide exemption.
+  phase: input
+  content: sealing-public-key="0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+  expected_decision: allow
+  covered_rule_ids:
+  - credentials-api-keys/aws_access_key
+  - credentials-api-keys/aws_secret_key
+  - credentials-api-keys/github_token
+  - credentials-api-keys/slack_token
+  - credentials-api-keys/generic_api_key
+  - credential/bearer-token
+  - credential/private-key-header
+  - credential/hex-token
+  - credential/password
+  - advanced-au-pii-protection/credentials-api-keys/generic_api_key
+  - pattern/aws_secret_key
+  - pattern/github_token
+  - pattern/slack_token
+  - pattern/generic_api_key
+  - pattern/aws_access_key
+  - credential/url-password
+  - credential/basic-auth
+  - credential/jwt
+  - credential/labelled-hex-key
+  - credential/private-jwk
+  - credential/sql-password
+  - credential/command-password
+  - credential/nkey-seed
+  - credential/base64-private-key
+  kind: scenario
+  required: true
+  parameter_names: []
+  group: Credential false-positive regression
+  scope: policy
+- id: formats-4.2/public-underscore/input
+  name: public-underscore
+  description: Synthetic non-secret syntax regression; never a request-wide exemption.
+  phase: input
+  content: public_key="0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+  expected_decision: allow
+  covered_rule_ids:
+  - credentials-api-keys/aws_access_key
+  - credentials-api-keys/aws_secret_key
+  - credentials-api-keys/github_token
+  - credentials-api-keys/slack_token
+  - credentials-api-keys/generic_api_key
+  - credential/bearer-token
+  - credential/private-key-header
+  - credential/hex-token
+  - credential/password
+  - advanced-au-pii-protection/credentials-api-keys/generic_api_key
+  - pattern/aws_secret_key
+  - pattern/github_token
+  - pattern/slack_token
+  - pattern/generic_api_key
+  - pattern/aws_access_key
+  - credential/url-password
+  - credential/basic-auth
+  - credential/jwt
+  - credential/labelled-hex-key
+  - credential/private-jwk
+  - credential/sql-password
+  - credential/command-password
+  - credential/nkey-seed
+  - credential/base64-private-key
+  kind: scenario
+  required: true
+  parameter_names: []
+  group: Credential false-positive regression
+  scope: policy
+- id: formats-4.2/public-camel/input
+  name: public-camel
+  description: Synthetic non-secret syntax regression; never a request-wide exemption.
+  phase: input
+  content: publicKey="0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+  expected_decision: allow
+  covered_rule_ids:
+  - credentials-api-keys/aws_access_key
+  - credentials-api-keys/aws_secret_key
+  - credentials-api-keys/github_token
+  - credentials-api-keys/slack_token
+  - credentials-api-keys/generic_api_key
+  - credential/bearer-token
+  - credential/private-key-header
+  - credential/hex-token
+  - credential/password
+  - advanced-au-pii-protection/credentials-api-keys/generic_api_key
+  - pattern/aws_secret_key
+  - pattern/github_token
+  - pattern/slack_token
+  - pattern/generic_api_key
+  - pattern/aws_access_key
+  - credential/url-password
+  - credential/basic-auth
+  - credential/jwt
+  - credential/labelled-hex-key
+  - credential/private-jwk
+  - credential/sql-password
+  - credential/command-password
+  - credential/nkey-seed
+  - credential/base64-private-key
+  kind: scenario
+  required: true
+  parameter_names: []
+  group: Credential false-positive regression
+  scope: policy
+- id: formats-4.2/public-nkey/input
+  name: public-nkey
+  description: Synthetic non-secret syntax regression; never a request-wide exemption.
+  phase: input
+  content: UAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+  expected_decision: allow
+  covered_rule_ids:
+  - credentials-api-keys/aws_access_key
+  - credentials-api-keys/aws_secret_key
+  - credentials-api-keys/github_token
+  - credentials-api-keys/slack_token
+  - credentials-api-keys/generic_api_key
+  - credential/bearer-token
+  - credential/private-key-header
+  - credential/hex-token
+  - credential/password
+  - advanced-au-pii-protection/credentials-api-keys/generic_api_key
+  - pattern/aws_secret_key
+  - pattern/github_token
+  - pattern/slack_token
+  - pattern/generic_api_key
+  - pattern/aws_access_key
+  - credential/url-password
+  - credential/basic-auth
+  - credential/jwt
+  - credential/labelled-hex-key
+  - credential/private-jwk
+  - credential/sql-password
+  - credential/command-password
+  - credential/nkey-seed
+  - credential/base64-private-key
+  kind: scenario
+  required: true
+  parameter_names: []
+  group: Credential false-positive regression
+  scope: policy
+- id: formats-4.2/nkey-too-long/input
+  name: nkey-too-long
+  description: Synthetic non-secret syntax regression; never a request-wide exemption.
+  phase: input
+  content: SUAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+  expected_decision: allow
+  covered_rule_ids:
+  - credentials-api-keys/aws_access_key
+  - credentials-api-keys/aws_secret_key
+  - credentials-api-keys/github_token
+  - credentials-api-keys/slack_token
+  - credentials-api-keys/generic_api_key
+  - credential/bearer-token
+  - credential/private-key-header
+  - credential/hex-token
+  - credential/password
+  - advanced-au-pii-protection/credentials-api-keys/generic_api_key
+  - pattern/aws_secret_key
+  - pattern/github_token
+  - pattern/slack_token
+  - pattern/generic_api_key
+  - pattern/aws_access_key
+  - credential/url-password
+  - credential/basic-auth
+  - credential/jwt
+  - credential/labelled-hex-key
+  - credential/private-jwk
+  - credential/sql-password
+  - credential/command-password
+  - credential/nkey-seed
+  - credential/base64-private-key
+  kind: scenario
+  required: true
+  parameter_names: []
+  group: Credential false-positive regression
+  scope: policy
+- id: formats-4.2/nkey-lowercase/input
+  name: nkey-lowercase
+  description: Synthetic non-secret syntax regression; never a request-wide exemption.
+  phase: input
+  content: suaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+  expected_decision: allow
+  covered_rule_ids:
+  - credentials-api-keys/aws_access_key
+  - credentials-api-keys/aws_secret_key
+  - credentials-api-keys/github_token
+  - credentials-api-keys/slack_token
+  - credentials-api-keys/generic_api_key
+  - credential/bearer-token
+  - credential/private-key-header
+  - credential/hex-token
+  - credential/password
+  - advanced-au-pii-protection/credentials-api-keys/generic_api_key
+  - pattern/aws_secret_key
+  - pattern/github_token
+  - pattern/slack_token
+  - pattern/generic_api_key
+  - pattern/aws_access_key
+  - credential/url-password
+  - credential/basic-auth
+  - credential/jwt
+  - credential/labelled-hex-key
+  - credential/private-jwk
+  - credential/sql-password
+  - credential/command-password
+  - credential/nkey-seed
+  - credential/base64-private-key
+  kind: scenario
+  required: true
+  parameter_names: []
+  group: Credential false-positive regression
+  scope: policy
+- id: formats-4.2/public-base64/input
+  name: public-base64
+  description: Synthetic non-secret syntax regression; never a request-wide exemption.
+  phase: input
+  content: LS0tLS1CRUdJTiBQVUJMSUMgS0VZLS0tLS0KQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQQotLS0tLUVORCBQVUJMSUMgS0VZLS0tLS0=
+  expected_decision: allow
+  covered_rule_ids:
+  - credentials-api-keys/aws_access_key
+  - credentials-api-keys/aws_secret_key
+  - credentials-api-keys/github_token
+  - credentials-api-keys/slack_token
+  - credentials-api-keys/generic_api_key
+  - credential/bearer-token
+  - credential/private-key-header
+  - credential/hex-token
+  - credential/password
+  - advanced-au-pii-protection/credentials-api-keys/generic_api_key
+  - pattern/aws_secret_key
+  - pattern/github_token
+  - pattern/slack_token
+  - pattern/generic_api_key
+  - pattern/aws_access_key
+  - credential/url-password
+  - credential/basic-auth
+  - credential/jwt
+  - credential/labelled-hex-key
+  - credential/private-jwk
+  - credential/sql-password
+  - credential/command-password
+  - credential/nkey-seed
+  - credential/base64-private-key
+  kind: scenario
+  required: true
+  parameter_names: []
+  group: Credential false-positive regression
+  scope: policy
+- id: formats-4.2/cert-base64/input
+  name: cert-base64
+  description: Synthetic non-secret syntax regression; never a request-wide exemption.
+  phase: input
+  content: LS0tLS1CRUdJTiBDRVJUSUZJQ0FURS0tLS0tCkFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUE=
+  expected_decision: allow
+  covered_rule_ids:
+  - credentials-api-keys/aws_access_key
+  - credentials-api-keys/aws_secret_key
+  - credentials-api-keys/github_token
+  - credentials-api-keys/slack_token
+  - credentials-api-keys/generic_api_key
+  - credential/bearer-token
+  - credential/private-key-header
+  - credential/hex-token
+  - credential/password
+  - advanced-au-pii-protection/credentials-api-keys/generic_api_key
+  - pattern/aws_secret_key
+  - pattern/github_token
+  - pattern/slack_token
+  - pattern/generic_api_key
+  - pattern/aws_access_key
+  - credential/url-password
+  - credential/basic-auth
+  - credential/jwt
+  - credential/labelled-hex-key
+  - credential/private-jwk
+  - credential/sql-password
+  - credential/command-password
+  - credential/nkey-seed
+  - credential/base64-private-key
+  kind: scenario
+  required: true
+  parameter_names: []
+  group: Credential false-positive regression
+  scope: policy
+- id: formats-4.2/sql-param/input
+  name: sql-param
+  description: Synthetic non-secret syntax regression; never a request-wide exemption.
+  phase: input
+  content: CREATE ROLE fixture LOGIN PASSWORD '${PASSWORD}';
+  expected_decision: allow
+  covered_rule_ids:
+  - credentials-api-keys/aws_access_key
+  - credentials-api-keys/aws_secret_key
+  - credentials-api-keys/github_token
+  - credentials-api-keys/slack_token
+  - credentials-api-keys/generic_api_key
+  - credential/bearer-token
+  - credential/private-key-header
+  - credential/hex-token
+  - credential/password
+  - advanced-au-pii-protection/credentials-api-keys/generic_api_key
+  - pattern/aws_secret_key
+  - pattern/github_token
+  - pattern/slack_token
+  - pattern/generic_api_key
+  - pattern/aws_access_key
+  - credential/url-password
+  - credential/basic-auth
+  - credential/jwt
+  - credential/labelled-hex-key
+  - credential/private-jwk
+  - credential/sql-password
+  - credential/command-password
+  - credential/nkey-seed
+  - credential/base64-private-key
+  kind: scenario
+  required: true
+  parameter_names: []
+  group: Credential false-positive regression
+  scope: policy
+- id: formats-4.2/sql-placeholder/input
+  name: sql-placeholder
+  description: Synthetic non-secret syntax regression; never a request-wide exemption.
+  phase: input
+  content: CREATE USER test IDENTIFIED BY '<password>';
+  expected_decision: allow
+  covered_rule_ids:
+  - credentials-api-keys/aws_access_key
+  - credentials-api-keys/aws_secret_key
+  - credentials-api-keys/github_token
+  - credentials-api-keys/slack_token
+  - credentials-api-keys/generic_api_key
+  - credential/bearer-token
+  - credential/private-key-header
+  - credential/hex-token
+  - credential/password
+  - advanced-au-pii-protection/credentials-api-keys/generic_api_key
+  - pattern/aws_secret_key
+  - pattern/github_token
+  - pattern/slack_token
+  - pattern/generic_api_key
+  - pattern/aws_access_key
+  - credential/url-password
+  - credential/basic-auth
+  - credential/jwt
+  - credential/labelled-hex-key
+  - credential/private-jwk
+  - credential/sql-password
+  - credential/command-password
+  - credential/nkey-seed
+  - credential/base64-private-key
+  kind: scenario
+  required: true
+  parameter_names: []
+  group: Credential false-positive regression
+  scope: policy
+- id: formats-4.2/sql-null/input
+  name: sql-null
+  description: Synthetic non-secret syntax regression; never a request-wide exemption.
+  phase: input
+  content: ALTER USER fixture PASSWORD NULL;
+  expected_decision: allow
+  covered_rule_ids:
+  - credentials-api-keys/aws_access_key
+  - credentials-api-keys/aws_secret_key
+  - credentials-api-keys/github_token
+  - credentials-api-keys/slack_token
+  - credentials-api-keys/generic_api_key
+  - credential/bearer-token
+  - credential/private-key-header
+  - credential/hex-token
+  - credential/password
+  - advanced-au-pii-protection/credentials-api-keys/generic_api_key
+  - pattern/aws_secret_key
+  - pattern/github_token
+  - pattern/slack_token
+  - pattern/generic_api_key
+  - pattern/aws_access_key
+  - credential/url-password
+  - credential/basic-auth
+  - credential/jwt
+  - credential/labelled-hex-key
+  - credential/private-jwk
+  - credential/sql-password
+  - credential/command-password
+  - credential/nkey-seed
+  - credential/base64-private-key
+  kind: scenario
+  required: true
+  parameter_names: []
+  group: Credential false-positive regression
+  scope: policy
+- id: formats-4.2/cli-env/input
+  name: cli-env
+  description: Synthetic non-secret syntax regression; never a request-wide exemption.
+  phase: input
+  content: tool --password $PASSWORD
+  expected_decision: allow
+  covered_rule_ids:
+  - credentials-api-keys/aws_access_key
+  - credentials-api-keys/aws_secret_key
+  - credentials-api-keys/github_token
+  - credentials-api-keys/slack_token
+  - credentials-api-keys/generic_api_key
+  - credential/bearer-token
+  - credential/private-key-header
+  - credential/hex-token
+  - credential/password
+  - advanced-au-pii-protection/credentials-api-keys/generic_api_key
+  - pattern/aws_secret_key
+  - pattern/github_token
+  - pattern/slack_token
+  - pattern/generic_api_key
+  - pattern/aws_access_key
+  - credential/url-password
+  - credential/basic-auth
+  - credential/jwt
+  - credential/labelled-hex-key
+  - credential/private-jwk
+  - credential/sql-password
+  - credential/command-password
+  - credential/nkey-seed
+  - credential/base64-private-key
+  kind: scenario
+  required: true
+  parameter_names: []
+  group: Credential false-positive regression
+  scope: policy
+- id: formats-4.2/cli-env-quoted/input
+  name: cli-env-quoted
+  description: Synthetic non-secret syntax regression; never a request-wide exemption.
+  phase: input
+  content: tool --password "${PASSWORD}"
+  expected_decision: allow
+  covered_rule_ids:
+  - credentials-api-keys/aws_access_key
+  - credentials-api-keys/aws_secret_key
+  - credentials-api-keys/github_token
+  - credentials-api-keys/slack_token
+  - credentials-api-keys/generic_api_key
+  - credential/bearer-token
+  - credential/private-key-header
+  - credential/hex-token
+  - credential/password
+  - advanced-au-pii-protection/credentials-api-keys/generic_api_key
+  - pattern/aws_secret_key
+  - pattern/github_token
+  - pattern/slack_token
+  - pattern/generic_api_key
+  - pattern/aws_access_key
+  - credential/url-password
+  - credential/basic-auth
+  - credential/jwt
+  - credential/labelled-hex-key
+  - credential/private-jwk
+  - credential/sql-password
+  - credential/command-password
+  - credential/nkey-seed
+  - credential/base64-private-key
+  kind: scenario
+  required: true
+  parameter_names: []
+  group: Credential false-positive regression
+  scope: policy
+- id: formats-4.2/cli-placeholder/input
+  name: cli-placeholder
+  description: Synthetic non-secret syntax regression; never a request-wide exemption.
+  phase: input
+  content: tool --password "<password>"
+  expected_decision: allow
+  covered_rule_ids:
+  - credentials-api-keys/aws_access_key
+  - credentials-api-keys/aws_secret_key
+  - credentials-api-keys/github_token
+  - credentials-api-keys/slack_token
+  - credentials-api-keys/generic_api_key
+  - credential/bearer-token
+  - credential/private-key-header
+  - credential/hex-token
+  - credential/password
+  - advanced-au-pii-protection/credentials-api-keys/generic_api_key
+  - pattern/aws_secret_key
+  - pattern/github_token
+  - pattern/slack_token
+  - pattern/generic_api_key
+  - pattern/aws_access_key
+  - credential/url-password
+  - credential/basic-auth
+  - credential/jwt
+  - credential/labelled-hex-key
+  - credential/private-jwk
+  - credential/sql-password
+  - credential/command-password
+  - credential/nkey-seed
+  - credential/base64-private-key
+  kind: scenario
+  required: true
+  parameter_names: []
+  group: Credential false-positive regression
+  scope: policy
+- id: formats-4.2/cli-next-flag/input
+  name: cli-next-flag
+  description: Synthetic non-secret syntax regression; never a request-wide exemption.
+  phase: input
+  content: tool --password --help
+  expected_decision: allow
+  covered_rule_ids:
+  - credentials-api-keys/aws_access_key
+  - credentials-api-keys/aws_secret_key
+  - credentials-api-keys/github_token
+  - credentials-api-keys/slack_token
+  - credentials-api-keys/generic_api_key
+  - credential/bearer-token
+  - credential/private-key-header
+  - credential/hex-token
+  - credential/password
+  - advanced-au-pii-protection/credentials-api-keys/generic_api_key
+  - pattern/aws_secret_key
+  - pattern/github_token
+  - pattern/slack_token
+  - pattern/generic_api_key
+  - pattern/aws_access_key
+  - credential/url-password
+  - credential/basic-auth
+  - credential/jwt
+  - credential/labelled-hex-key
+  - credential/private-jwk
+  - credential/sql-password
+  - credential/command-password
+  - credential/nkey-seed
+  - credential/base64-private-key
+  kind: scenario
+  required: true
+  parameter_names: []
+  group: Credential false-positive regression
+  scope: policy
+- id: formats-4.2/cli-no-value/input
+  name: cli-no-value
+  description: Synthetic non-secret syntax regression; never a request-wide exemption.
+  phase: input
+  content: tool --password
+  expected_decision: allow
+  covered_rule_ids:
+  - credentials-api-keys/aws_access_key
+  - credentials-api-keys/aws_secret_key
+  - credentials-api-keys/github_token
+  - credentials-api-keys/slack_token
+  - credentials-api-keys/generic_api_key
+  - credential/bearer-token
+  - credential/private-key-header
+  - credential/hex-token
+  - credential/password
+  - advanced-au-pii-protection/credentials-api-keys/generic_api_key
+  - pattern/aws_secret_key
+  - pattern/github_token
+  - pattern/slack_token
+  - pattern/generic_api_key
+  - pattern/aws_access_key
+  - credential/url-password
+  - credential/basic-auth
+  - credential/jwt
+  - credential/labelled-hex-key
+  - credential/private-jwk
+  - credential/sql-password
+  - credential/command-password
+  - credential/nkey-seed
+  - credential/base64-private-key
+  kind: scenario
+  required: true
+  parameter_names: []
+  group: Credential false-positive regression
+  scope: policy
+- id: formats-4.2/mysql-interactive/input
+  name: mysql-interactive
+  description: Synthetic non-secret syntax regression; never a request-wide exemption.
+  phase: input
+  content: mysql -p database
+  expected_decision: allow
+  covered_rule_ids:
+  - credentials-api-keys/aws_access_key
+  - credentials-api-keys/aws_secret_key
+  - credentials-api-keys/github_token
+  - credentials-api-keys/slack_token
+  - credentials-api-keys/generic_api_key
+  - credential/bearer-token
+  - credential/private-key-header
+  - credential/hex-token
+  - credential/password
+  - advanced-au-pii-protection/credentials-api-keys/generic_api_key
+  - pattern/aws_secret_key
+  - pattern/github_token
+  - pattern/slack_token
+  - pattern/generic_api_key
+  - pattern/aws_access_key
+  - credential/url-password
+  - credential/basic-auth
+  - credential/jwt
+  - credential/labelled-hex-key
+  - credential/private-jwk
+  - credential/sql-password
+  - credential/command-password
+  - credential/nkey-seed
+  - credential/base64-private-key
+  kind: scenario
+  required: true
+  parameter_names: []
+  group: Credential false-positive regression
+  scope: policy
+- id: formats-4.2/other-port/input
+  name: other-port
+  description: Synthetic non-secret syntax regression; never a request-wide exemption.
+  phase: input
+  content: service -p8080
+  expected_decision: allow
+  covered_rule_ids:
+  - credentials-api-keys/aws_access_key
+  - credentials-api-keys/aws_secret_key
+  - credentials-api-keys/github_token
+  - credentials-api-keys/slack_token
+  - credentials-api-keys/generic_api_key
+  - credential/bearer-token
+  - credential/private-key-header
+  - credential/hex-token
+  - credential/password
+  - advanced-au-pii-protection/credentials-api-keys/generic_api_key
+  - pattern/aws_secret_key
+  - pattern/github_token
+  - pattern/slack_token
+  - pattern/generic_api_key
+  - pattern/aws_access_key
+  - credential/url-password
+  - credential/basic-auth
+  - credential/jwt
+  - credential/labelled-hex-key
+  - credential/private-jwk
+  - credential/sql-password
+  - credential/command-password
+  - credential/nkey-seed
+  - credential/base64-private-key
+  kind: scenario
+  required: true
+  parameter_names: []
+  group: Credential false-positive regression
+  scope: policy
+- id: formats-4.2/openssl-file/input
+  name: openssl-file
+  description: Synthetic non-secret syntax regression; never a request-wide exemption.
+  phase: input
+  content: openssl pkcs12 -passin file:secrets.txt
+  expected_decision: allow
+  covered_rule_ids:
+  - credentials-api-keys/aws_access_key
+  - credentials-api-keys/aws_secret_key
+  - credentials-api-keys/github_token
+  - credentials-api-keys/slack_token
+  - credentials-api-keys/generic_api_key
+  - credential/bearer-token
+  - credential/private-key-header
+  - credential/hex-token
+  - credential/password
+  - advanced-au-pii-protection/credentials-api-keys/generic_api_key
+  - pattern/aws_secret_key
+  - pattern/github_token
+  - pattern/slack_token
+  - pattern/generic_api_key
+  - pattern/aws_access_key
+  - credential/url-password
+  - credential/basic-auth
+  - credential/jwt
+  - credential/labelled-hex-key
+  - credential/private-jwk
+  - credential/sql-password
+  - credential/command-password
+  - credential/nkey-seed
+  - credential/base64-private-key
+  kind: scenario
+  required: true
+  parameter_names: []
+  group: Credential false-positive regression
+  scope: policy
+- id: formats-4.2/openssl-env/input
+  name: openssl-env
+  description: Synthetic non-secret syntax regression; never a request-wide exemption.
+  phase: input
+  content: openssl pkcs12 -passin env:PASSWORD
+  expected_decision: allow
+  covered_rule_ids:
+  - credentials-api-keys/aws_access_key
+  - credentials-api-keys/aws_secret_key
+  - credentials-api-keys/github_token
+  - credentials-api-keys/slack_token
+  - credentials-api-keys/generic_api_key
+  - credential/bearer-token
+  - credential/private-key-header
+  - credential/hex-token
+  - credential/password
+  - advanced-au-pii-protection/credentials-api-keys/generic_api_key
+  - pattern/aws_secret_key
+  - pattern/github_token
+  - pattern/slack_token
+  - pattern/generic_api_key
+  - pattern/aws_access_key
+  - credential/url-password
+  - credential/basic-auth
+  - credential/jwt
+  - credential/labelled-hex-key
+  - credential/private-jwk
+  - credential/sql-password
+  - credential/command-password
+  - credential/nkey-seed
+  - credential/base64-private-key
+  kind: scenario
+  required: true
+  parameter_names: []
+  group: Credential false-positive regression
+  scope: policy
+- id: formats-4.2/masked/input
+  name: masked
+  description: Synthetic non-secret syntax regression; never a request-wide exemption.
+  phase: input
+  content: password="***"
+  expected_decision: allow
+  covered_rule_ids:
+  - credentials-api-keys/aws_access_key
+  - credentials-api-keys/aws_secret_key
+  - credentials-api-keys/github_token
+  - credentials-api-keys/slack_token
+  - credentials-api-keys/generic_api_key
+  - credential/bearer-token
+  - credential/private-key-header
+  - credential/hex-token
+  - credential/password
+  - advanced-au-pii-protection/credentials-api-keys/generic_api_key
+  - pattern/aws_secret_key
+  - pattern/github_token
+  - pattern/slack_token
+  - pattern/generic_api_key
+  - pattern/aws_access_key
+  - credential/url-password
+  - credential/basic-auth
+  - credential/jwt
+  - credential/labelled-hex-key
+  - credential/private-jwk
+  - credential/sql-password
+  - credential/command-password
+  - credential/nkey-seed
+  - credential/base64-private-key
+  kind: scenario
+  required: true
+  parameter_names: []
+  group: Credential false-positive regression
+  scope: policy
+- id: formats-4.2/camel-certificate/output
+  name: camel-certificate
+  description: Synthetic local credential format regression.
+  phase: output
+  content: CertificatePassword="synthetic-72"
+  expected_decision: block
+  covered_rule_ids:
+  - credential/password
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Credential format regression
+  scope: rule
+- id: formats-4.2/colon-assign/output
+  name: colon-assign
+  description: Synthetic local credential format regression.
+  phase: output
+  content: password := "synthetic-72"
+  expected_decision: block
+  covered_rule_ids:
+  - credential/password
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Credential format regression
+  scope: rule
+- id: formats-4.2/json-escaped/output
+  name: json-escaped
+  description: Synthetic local credential format regression.
+  phase: output
+  content: '{\"password\":\"synthetic-72\"}'
+  expected_decision: block
+  covered_rule_ids:
+  - credential/password
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Credential format regression
+  scope: rule
+- id: formats-4.2/bare-env/output
+  name: bare-env
+  description: Synthetic local credential format regression.
+  phase: output
+  content: DB_PASSWORD=synthetic-pass-72
+  expected_decision: block
+  covered_rule_ids:
+  - credential/password
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Credential format regression
+  scope: rule
+- id: formats-4.2/mysql-plugin/output
+  name: mysql-plugin
+  description: Synthetic local credential format regression.
+  phase: output
+  content: ALTER USER 'test'@'localhost' IDENTIFIED WITH mysql_native_password BY 'synthetic-72';
+  expected_decision: block
+  covered_rule_ids:
+  - credential/sql-password
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Credential format regression
+  scope: rule
+- id: formats-4.2/mysql-basic/output
+  name: mysql-basic
+  description: Synthetic local credential format regression.
+  phase: output
+  content: CREATE USER 'test' IDENTIFIED BY 'synthetic-72';
+  expected_decision: block
+  covered_rule_ids:
+  - credential/sql-password
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Credential format regression
+  scope: rule
+- id: formats-4.2/postgres-role/output
+  name: postgres-role
+  description: Synthetic local credential format regression.
+  phase: output
+  content: CREATE ROLE fixture LOGIN PASSWORD 'synthetic72';
+  expected_decision: block
+  covered_rule_ids:
+  - credential/sql-password
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Credential format regression
+  scope: rule
+- id: formats-4.2/postgres-bare/output
+  name: postgres-bare
+  description: Synthetic local credential format regression.
+  phase: output
+  content: CREATE ROLE fixture LOGIN PASSWORD synthetic72;
+  expected_decision: block
+  covered_rule_ids:
+  - credential/sql-password
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Credential format regression
+  scope: rule
+- id: formats-4.2/postgres-encrypted/output
+  name: postgres-encrypted
+  description: Synthetic local credential format regression.
+  phase: output
+  content: CREATE USER fixture WITH ENCRYPTED PASSWORD 'synthetic-72';
+  expected_decision: block
+  covered_rule_ids:
+  - credential/sql-password
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Credential format regression
+  scope: rule
+- id: formats-4.2/cli-array/output
+  name: cli-array
+  description: Synthetic local credential format regression.
+  phase: output
+  content: '["--password", "synthetic72"]'
+  expected_decision: block
+  covered_rule_ids:
+  - credential/command-password
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Credential format regression
+  scope: rule
+- id: formats-4.2/powershell-certificate/output
+  name: powershell-certificate
+  description: Synthetic local credential format regression.
+  phase: output
+  content: tool -CertificatePassword synthetic72
+  expected_decision: block
+  covered_rule_ids:
+  - credential/command-password
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Credential format regression
+  scope: rule
+- id: formats-4.2/sql-function/output
+  name: sql-function
+  description: Synthetic local credential format regression.
+  phase: output
+  content: INSERT INTO mysql.user VALUES (PASSWORD('synthetic72'));
+  expected_decision: block
+  covered_rule_ids:
+  - credential/sql-password
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Credential format regression
+  scope: rule
+- id: formats-4.2/sql-comment/output
+  name: sql-comment
+  description: Synthetic local credential format regression.
+  phase: output
+  content: CREATE ROLE fixture; -- PASSWORD 'synthetic72'
+  expected_decision: block
+  covered_rule_ids:
+  - credential/sql-password
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Credential format regression
+  scope: rule
+- id: formats-4.2/cli-long/output
+  name: cli-long
+  description: Synthetic local credential format regression.
+  phase: output
+  content: tool --password "synthetic-72"
+  expected_decision: block
+  covered_rule_ids:
+  - credential/command-password
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Credential format regression
+  scope: rule
+- id: formats-4.2/cli-equals/output
+  name: cli-equals
+  description: Synthetic local credential format regression.
+  phase: output
+  content: tool --password=synthetic72
+  expected_decision: block
+  covered_rule_ids:
+  - credential/command-password
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Credential format regression
+  scope: rule
+- id: formats-4.2/powershell/output
+  name: powershell
+  description: Synthetic local credential format regression.
+  phase: output
+  content: Get-NtToken -Password synthetic72 -User fixture
+  expected_decision: block
+  covered_rule_ids:
+  - credential/command-password
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Credential format regression
+  scope: rule
+- id: formats-4.2/mysql-attached/output
+  name: mysql-attached
+  description: Synthetic local credential format regression.
+  phase: output
+  content: mysql -u fixture -psynthetic72
+  expected_decision: block
+  covered_rule_ids:
+  - credential/command-password
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Credential format regression
+  scope: rule
+- id: formats-4.2/openssl-pass/output
+  name: openssl-pass
+  description: Synthetic local credential format regression.
+  phase: output
+  content: openssl pkcs12 -passin pass:synthetic72
+  expected_decision: block
+  covered_rule_ids:
+  - credential/command-password
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Credential format regression
+  scope: rule
+- id: formats-4.2/nkey-user/output
+  name: nkey-user
+  description: Synthetic local credential format regression.
+  phase: output
+  content: seed="SUAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+  expected_decision: block
+  covered_rule_ids:
+  - credential/nkey-seed
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Credential format regression
+  scope: rule
+- id: formats-4.2/nkey-operator/output
+  name: nkey-operator
+  description: Synthetic local credential format regression.
+  phase: output
+  content: SOAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+  expected_decision: block
+  covered_rule_ids:
+  - credential/nkey-seed
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Credential format regression
+  scope: rule
+- id: formats-4.2/base64-pem/output
+  name: base64-pem
+  description: Synthetic local credential format regression.
+  phase: output
+  content: LS0tLS1CRUdJTiBQUklWQVRFIEtFWS0tLS0tCmMzbHVkR2hsZEdsaklIQnlhWFpoZEdVZ2JXRjBaWEpwWVd4emVXNTBhR1YwYVdNZ2NISnBkbUYwWlNCdFlYUmxjbWxoYkhONWJuUm9aWFJwWXlCd2NtbDJZWFJsSUcxaGRHVnlhV0ZzYzNsdWRHaGxkR2xqSUhCeWFYWmhkR1VnYldGMFpYSnBZV3h6ZVc1MGFHVjBhV01nY0hKcGRtRjBaU0J0WVhSbGNtbGhiSE41Ym5Sb1pYUnBZeUJ3Y21sMllYUmxJRzFoZEdWeWFXRnNjM2x1ZEdobGRHbGpJSEJ5YVhaaGRHVWdiV0YwWlhKcFlXeHplVzUwYUdWMGFXTWdjSEpwZG1GMFpTQnRZWFJsY21saGJBPT0KLS0tLS1FTkQgUFJJVkFURSBLRVktLS0tLQ==
+  expected_decision: block
+  covered_rule_ids:
+  - credential/base64-private-key
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Credential format regression
+  scope: rule
+- id: formats-4.2/base64-prefixed/output
+  name: base64-prefixed
+  description: Synthetic local credential format regression.
+  phase: output
+  content: cHJlZml4LS0tLS1CRUdJTiBQUklWQVRFIEtFWS0tLS0tCmMzbHVkR2hsZEdsaklIQnlhWFpoZEdVZ2JXRjBaWEpwWVd4emVXNTBhR1YwYVdNZ2NISnBkbUYwWlNCdFlYUmxjbWxoYkhONWJuUm9aWFJwWXlCd2NtbDJZWFJsSUcxaGRHVnlhV0ZzYzNsdWRHaGxkR2xqSUhCeWFYWmhkR1VnYldGMFpYSnBZV3h6ZVc1MGFHVjBhV01nY0hKcGRtRjBaU0J0WVhSbGNtbGhiSE41Ym5Sb1pYUnBZeUJ3Y21sMllYUmxJRzFoZEdWeWFXRnNjM2x1ZEdobGRHbGpJSEJ5YVhaaGRHVWdiV0YwWlhKcFlXeHplVzUwYUdWMGFXTWdjSEpwZG1GMFpTQnRZWFJsY21saGJBPT0KLS0tLS1FTkQgUFJJVkFURSBLRVktLS0tLQ==
+  expected_decision: block
+  covered_rule_ids:
+  - credential/base64-private-key
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Credential format regression
+  scope: rule
+- id: formats-4.2/base64-prefixed-offset1/output
+  name: base64-prefixed-offset1
+  description: Synthetic local credential format regression.
+  phase: output
+  content: eC0tLS0tQkVHSU4gUFJJVkFURSBLRVktLS0tLQpjM2x1ZEdobGRHbGpJSEJ5YVhaaGRHVWdiV0YwWlhKcFlXeHplVzUwYUdWMGFXTWdjSEpwZG1GMFpTQnRZWFJsY21saGJITjViblJvWlhScFl5QndjbWwyWVhSbElHMWhkR1Z5YVdGc2MzbHVkR2hsZEdsaklIQnlhWFpoZEdVZ2JXRjBaWEpwWVd4emVXNTBhR1YwYVdNZ2NISnBkbUYwWlNCdFlYUmxjbWxoYkhONWJuUm9aWFJwWXlCd2NtbDJZWFJsSUcxaGRHVnlhV0ZzYzNsdWRHaGxkR2xqSUhCeWFYWmhkR1VnYldGMFpYSnBZV3h6ZVc1MGFHVjBhV01nY0hKcGRtRjBaU0J0WVhSbGNtbGhiQT09Ci0tLS0tRU5EIFBSSVZBVEUgS0VZLS0tLS0=
+  expected_decision: block
+  covered_rule_ids:
+  - credential/base64-private-key
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Credential format regression
+  scope: rule
+- id: formats-4.2/base64-prefixed-offset2/output
+  name: base64-prefixed-offset2
+  description: Synthetic local credential format regression.
+  phase: output
+  content: eHgtLS0tLUJFR0lOIFBSSVZBVEUgS0VZLS0tLS0KYzNsdWRHaGxkR2xqSUhCeWFYWmhkR1VnYldGMFpYSnBZV3h6ZVc1MGFHVjBhV01nY0hKcGRtRjBaU0J0WVhSbGNtbGhiSE41Ym5Sb1pYUnBZeUJ3Y21sMllYUmxJRzFoZEdWeWFXRnNjM2x1ZEdobGRHbGpJSEJ5YVhaaGRHVWdiV0YwWlhKcFlXeHplVzUwYUdWMGFXTWdjSEpwZG1GMFpTQnRZWFJsY21saGJITjViblJvWlhScFl5QndjbWwyWVhSbElHMWhkR1Z5YVdGc2MzbHVkR2hsZEdsaklIQnlhWFpoZEdVZ2JXRjBaWEpwWVd4emVXNTBhR1YwYVdNZ2NISnBkbUYwWlNCdFlYUmxjbWxoYkE9PQotLS0tLUVORCBQUklWQVRFIEtFWS0tLS0t
+  expected_decision: block
+  covered_rule_ids:
+  - credential/base64-private-key
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Credential format regression
+  scope: rule
+- id: formats-4.2/base64-wrapped/output
+  name: base64-wrapped
+  description: Synthetic local credential format regression.
+  phase: output
+  content: 'LS0tLS1CRUdJTiBQUklWQVRFIEtFWS0tLS0tCmMzbHVkR2hsZEdsaklIQnlh
+
+    WFpoZEdVZ2JXRjBaWEpwWVd4emVXNTBhR1YwYVdNZ2NISnBkbUYwWlNCdFlY
+
+    UmxjbWxoYkhONWJuUm9aWFJwWXlCd2NtbDJZWFJsSUcxaGRHVnlhV0ZzYzNs
+
+    dWRHaGxkR2xqSUhCeWFYWmhkR1VnYldGMFpYSnBZV3h6ZVc1MGFHVjBhV01n
+
+    Y0hKcGRtRjBaU0J0WVhSbGNtbGhiSE41Ym5Sb1pYUnBZeUJ3Y21sMllYUmxJ
+
+    RzFoZEdWeWFXRnNjM2x1ZEdobGRHbGpJSEJ5YVhaaGRHVWdiV0YwWlhKcFlX
+
+    eHplVzUwYUdWMGFXTWdjSEpwZG1GMFpTQnRZWFJsY21saGJBPT0KLS0tLS1F
+
+    TkQgUFJJVkFURSBLRVktLS0tLQ=='
+  expected_decision: block
+  covered_rule_ids:
+  - credential/base64-private-key
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Credential format regression
+  scope: rule
+- id: formats-4.2/reference-no-bypass/output
+  name: reference-no-bypass
+  description: Synthetic local credential format regression.
+  phase: output
+  content: 'password=user.password
+
+    password="synthetic-72"'
+  expected_decision: block
+  covered_rule_ids:
+  - credential/password
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Credential format regression
+  scope: rule
+- id: formats-4.2/label-no-bypass/output
+  name: label-no-bypass
+  description: Synthetic local credential format regression.
+  phase: output
+  content: '"LABEL_CURRENT_PASSWORD":"Current password"
+
+    password="synthetic-72"'
+  expected_decision: block
+  covered_rule_ids:
+  - credential/password
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Credential format regression
+  scope: rule
+- id: formats-4.2/public-no-bypass/output
+  name: public-no-bypass
+  description: Synthetic local credential format regression.
+  phase: output
+  content: 'public-key="0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+
+    key="0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"'
+  expected_decision: block
+  covered_rule_ids:
+  - credential/labelled-hex-key
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Credential format regression
+  scope: rule
+- id: formats-4.2/cli-variable-no-bypass/output
+  name: cli-variable-no-bypass
+  description: Synthetic local credential format regression.
+  phase: output
+  content: tool --password $PASS --password synthetic72
+  expected_decision: block
+  covered_rule_ids:
+  - credential/command-password
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Credential format regression
+  scope: rule
+- id: formats-4.2/member/output
+  name: member
+  description: Synthetic non-secret syntax regression; never a request-wide exemption.
+  phase: output
+  content: config.Password = test.password
+  expected_decision: allow
+  covered_rule_ids:
+  - credentials-api-keys/aws_access_key
+  - credentials-api-keys/aws_secret_key
+  - credentials-api-keys/github_token
+  - credentials-api-keys/slack_token
+  - credentials-api-keys/generic_api_key
+  - credential/bearer-token
+  - credential/private-key-header
+  - credential/hex-token
+  - credential/password
+  - pattern/aws_secret_key
+  - pattern/github_token
+  - pattern/slack_token
+  - pattern/generic_api_key
+  - pattern/aws_access_key
+  - credential/url-password
+  - credential/basic-auth
+  - credential/jwt
+  - credential/labelled-hex-key
+  - credential/private-jwk
+  - credential/sql-password
+  - credential/command-password
+  - credential/nkey-seed
+  - credential/base64-private-key
+  kind: scenario
+  required: true
+  parameter_names: []
+  group: Credential false-positive regression
+  scope: policy
+- id: formats-4.2/field/output
+  name: field
+  description: Synthetic non-secret syntax regression; never a request-wide exemption.
+  phase: output
+  content: token.password = user.password;
+  expected_decision: allow
+  covered_rule_ids:
+  - credentials-api-keys/aws_access_key
+  - credentials-api-keys/aws_secret_key
+  - credentials-api-keys/github_token
+  - credentials-api-keys/slack_token
+  - credentials-api-keys/generic_api_key
+  - credential/bearer-token
+  - credential/private-key-header
+  - credential/hex-token
+  - credential/password
+  - pattern/aws_secret_key
+  - pattern/github_token
+  - pattern/slack_token
+  - pattern/generic_api_key
+  - pattern/aws_access_key
+  - credential/url-password
+  - credential/basic-auth
+  - credential/jwt
+  - credential/labelled-hex-key
+  - credential/private-jwk
+  - credential/sql-password
+  - credential/command-password
+  - credential/nkey-seed
+  - credential/base64-private-key
+  kind: scenario
+  required: true
+  parameter_names: []
+  group: Credential false-positive regression
+  scope: policy
+- id: formats-4.2/arrow-ref/output
+  name: arrow-ref
+  description: Synthetic non-secret syntax regression; never a request-wide exemption.
+  phase: output
+  content: passwd = data->passwd;
+  expected_decision: allow
+  covered_rule_ids:
+  - credentials-api-keys/aws_access_key
+  - credentials-api-keys/aws_secret_key
+  - credentials-api-keys/github_token
+  - credentials-api-keys/slack_token
+  - credentials-api-keys/generic_api_key
+  - credential/bearer-token
+  - credential/private-key-header
+  - credential/hex-token
+  - credential/password
+  - pattern/aws_secret_key
+  - pattern/github_token
+  - pattern/slack_token
+  - pattern/generic_api_key
+  - pattern/aws_access_key
+  - credential/url-password
+  - credential/basic-auth
+  - credential/jwt
+  - credential/labelled-hex-key
+  - credential/private-jwk
+  - credential/sql-password
+  - credential/command-password
+  - credential/nkey-seed
+  - credential/base64-private-key
+  kind: scenario
+  required: true
+  parameter_names: []
+  group: Credential false-positive regression
+  scope: policy
+- id: formats-4.2/comparison/output
+  name: comparison
+  description: Synthetic non-secret syntax regression; never a request-wide exemption.
+  phase: output
+  content: password == other_value
+  expected_decision: allow
+  covered_rule_ids:
+  - credentials-api-keys/aws_access_key
+  - credentials-api-keys/aws_secret_key
+  - credentials-api-keys/github_token
+  - credentials-api-keys/slack_token
+  - credentials-api-keys/generic_api_key
+  - credential/bearer-token
+  - credential/private-key-header
+  - credential/hex-token
+  - credential/password
+  - pattern/aws_secret_key
+  - pattern/github_token
+  - pattern/slack_token
+  - pattern/generic_api_key
+  - pattern/aws_access_key
+  - credential/url-password
+  - credential/basic-auth
+  - credential/jwt
+  - credential/labelled-hex-key
+  - credential/private-jwk
+  - credential/sql-password
+  - credential/command-password
+  - credential/nkey-seed
+  - credential/base64-private-key
+  kind: scenario
+  required: true
+  parameter_names: []
+  group: Credential false-positive regression
+  scope: policy
+- id: formats-4.2/callback/output
+  name: callback
+  description: Synthetic non-secret syntax regression; never a request-wide exemption.
+  phase: output
+  content: main->pub.start_pass = start_pass_main;
+  expected_decision: allow
+  covered_rule_ids:
+  - credentials-api-keys/aws_access_key
+  - credentials-api-keys/aws_secret_key
+  - credentials-api-keys/github_token
+  - credentials-api-keys/slack_token
+  - credentials-api-keys/generic_api_key
+  - credential/bearer-token
+  - credential/private-key-header
+  - credential/hex-token
+  - credential/password
+  - pattern/aws_secret_key
+  - pattern/github_token
+  - pattern/slack_token
+  - pattern/generic_api_key
+  - pattern/aws_access_key
+  - credential/url-password
+  - credential/basic-auth
+  - credential/jwt
+  - credential/labelled-hex-key
+  - credential/private-jwk
+  - credential/sql-password
+  - credential/command-password
+  - credential/nkey-seed
+  - credential/base64-private-key
+  kind: scenario
+  required: true
+  parameter_names: []
+  group: Credential false-positive regression
+  scope: policy
+- id: formats-4.2/callback-quant/output
+  name: callback-quant
+  description: Synthetic non-secret syntax regression; never a request-wide exemption.
+  phase: output
+  content: finish_pass = finish_pass_1_quant;
+  expected_decision: allow
+  covered_rule_ids:
+  - credentials-api-keys/aws_access_key
+  - credentials-api-keys/aws_secret_key
+  - credentials-api-keys/github_token
+  - credentials-api-keys/slack_token
+  - credentials-api-keys/generic_api_key
+  - credential/bearer-token
+  - credential/private-key-header
+  - credential/hex-token
+  - credential/password
+  - pattern/aws_secret_key
+  - pattern/github_token
+  - pattern/slack_token
+  - pattern/generic_api_key
+  - pattern/aws_access_key
+  - credential/url-password
+  - credential/basic-auth
+  - credential/jwt
+  - credential/labelled-hex-key
+  - credential/private-jwk
+  - credential/sql-password
+  - credential/command-password
+  - credential/nkey-seed
+  - credential/base64-private-key
+  kind: scenario
+  required: true
+  parameter_names: []
+  group: Credential false-positive regression
+  scope: policy
+- id: formats-4.2/member-length/output
+  name: member-length
+  description: Synthetic non-secret syntax regression; never a request-wide exemption.
+  phase: output
+  content: password = BaseText.Length;
+  expected_decision: allow
+  covered_rule_ids:
+  - credentials-api-keys/aws_access_key
+  - credentials-api-keys/aws_secret_key
+  - credentials-api-keys/github_token
+  - credentials-api-keys/slack_token
+  - credentials-api-keys/generic_api_key
+  - credential/bearer-token
+  - credential/private-key-header
+  - credential/hex-token
+  - credential/password
+  - pattern/aws_secret_key
+  - pattern/github_token
+  - pattern/slack_token
+  - pattern/generic_api_key
+  - pattern/aws_access_key
+  - credential/url-password
+  - credential/basic-auth
+  - credential/jwt
+  - credential/labelled-hex-key
+  - credential/private-jwk
+  - credential/sql-password
+  - credential/command-password
+  - credential/nkey-seed
+  - credential/base64-private-key
+  kind: scenario
+  required: true
+  parameter_names: []
+  group: Credential false-positive regression
+  scope: policy
+- id: formats-4.2/constant/output
+  name: constant
+  description: Synthetic non-secret syntax regression; never a request-wide exemption.
+  phase: output
+  content: password = DEFAULT_PASSWORD;
+  expected_decision: allow
+  covered_rule_ids:
+  - credentials-api-keys/aws_access_key
+  - credentials-api-keys/aws_secret_key
+  - credentials-api-keys/github_token
+  - credentials-api-keys/slack_token
+  - credentials-api-keys/generic_api_key
+  - credential/bearer-token
+  - credential/private-key-header
+  - credential/hex-token
+  - credential/password
+  - pattern/aws_secret_key
+  - pattern/github_token
+  - pattern/slack_token
+  - pattern/generic_api_key
+  - pattern/aws_access_key
+  - credential/url-password
+  - credential/basic-auth
+  - credential/jwt
+  - credential/labelled-hex-key
+  - credential/private-jwk
+  - credential/sql-password
+  - credential/command-password
+  - credential/nkey-seed
+  - credential/base64-private-key
+  kind: scenario
+  required: true
+  parameter_names: []
+  group: Credential false-positive regression
+  scope: policy
+- id: formats-4.2/name-reference/output
+  name: name-reference
+  description: Synthetic non-secret syntax regression; never a request-wide exemption.
+  phase: output
+  content: password=sip_auth_password
+  expected_decision: allow
+  covered_rule_ids:
+  - credentials-api-keys/aws_access_key
+  - credentials-api-keys/aws_secret_key
+  - credentials-api-keys/github_token
+  - credentials-api-keys/slack_token
+  - credentials-api-keys/generic_api_key
+  - credential/bearer-token
+  - credential/private-key-header
+  - credential/hex-token
+  - credential/password
+  - pattern/aws_secret_key
+  - pattern/github_token
+  - pattern/slack_token
+  - pattern/generic_api_key
+  - pattern/aws_access_key
+  - credential/url-password
+  - credential/basic-auth
+  - credential/jwt
+  - credential/labelled-hex-key
+  - credential/private-jwk
+  - credential/sql-password
+  - credential/command-password
+  - credential/nkey-seed
+  - credential/base64-private-key
+  kind: scenario
+  required: true
+  parameter_names: []
+  group: Credential false-positive regression
+  scope: policy
+- id: formats-4.2/function-whitespace/output
+  name: function-whitespace
+  description: Synthetic non-secret syntax regression; never a request-wide exemption.
+  phase: output
+  content: password = config.get_password ()
+  expected_decision: allow
+  covered_rule_ids:
+  - credentials-api-keys/aws_access_key
+  - credentials-api-keys/aws_secret_key
+  - credentials-api-keys/github_token
+  - credentials-api-keys/slack_token
+  - credentials-api-keys/generic_api_key
+  - credential/bearer-token
+  - credential/private-key-header
+  - credential/hex-token
+  - credential/password
+  - pattern/aws_secret_key
+  - pattern/github_token
+  - pattern/slack_token
+  - pattern/generic_api_key
+  - pattern/aws_access_key
+  - credential/url-password
+  - credential/basic-auth
+  - credential/jwt
+  - credential/labelled-hex-key
+  - credential/private-jwk
+  - credential/sql-password
+  - credential/command-password
+  - credential/nkey-seed
+  - credential/base64-private-key
+  kind: scenario
+  required: true
+  parameter_names: []
+  group: Credential false-positive regression
+  scope: policy
+- id: formats-4.2/label-json/output
+  name: label-json
+  description: Synthetic non-secret syntax regression; never a request-wide exemption.
+  phase: output
+  content: '"LABEL_CURRENT_PASSWORD": "Current password"'
+  expected_decision: allow
+  covered_rule_ids:
+  - credentials-api-keys/aws_access_key
+  - credentials-api-keys/aws_secret_key
+  - credentials-api-keys/github_token
+  - credentials-api-keys/slack_token
+  - credentials-api-keys/generic_api_key
+  - credential/bearer-token
+  - credential/private-key-header
+  - credential/hex-token
+  - credential/password
+  - pattern/aws_secret_key
+  - pattern/github_token
+  - pattern/slack_token
+  - pattern/generic_api_key
+  - pattern/aws_access_key
+  - credential/url-password
+  - credential/basic-auth
+  - credential/jwt
+  - credential/labelled-hex-key
+  - credential/private-jwk
+  - credential/sql-password
+  - credential/command-password
+  - credential/nkey-seed
+  - credential/base64-private-key
+  kind: scenario
+  required: true
+  parameter_names: []
+  group: Credential false-positive regression
+  scope: policy
+- id: formats-4.2/label-lower/output
+  name: label-lower
+  description: Synthetic non-secret syntax regression; never a request-wide exemption.
+  phase: output
+  content: '"label_current_password": "Password"'
+  expected_decision: allow
+  covered_rule_ids:
+  - credentials-api-keys/aws_access_key
+  - credentials-api-keys/aws_secret_key
+  - credentials-api-keys/github_token
+  - credentials-api-keys/slack_token
+  - credentials-api-keys/generic_api_key
+  - credential/bearer-token
+  - credential/private-key-header
+  - credential/hex-token
+  - credential/password
+  - pattern/aws_secret_key
+  - pattern/github_token
+  - pattern/slack_token
+  - pattern/generic_api_key
+  - pattern/aws_access_key
+  - credential/url-password
+  - credential/basic-auth
+  - credential/jwt
+  - credential/labelled-hex-key
+  - credential/private-jwk
+  - credential/sql-password
+  - credential/command-password
+  - credential/nkey-seed
+  - credential/base64-private-key
+  kind: scenario
+  required: true
+  parameter_names: []
+  group: Credential false-positive regression
+  scope: policy
+- id: formats-4.2/label-camel/output
+  name: label-camel
+  description: Synthetic non-secret syntax regression; never a request-wide exemption.
+  phase: output
+  content: labelCurrentPassword="Current password"
+  expected_decision: allow
+  covered_rule_ids:
+  - credentials-api-keys/aws_access_key
+  - credentials-api-keys/aws_secret_key
+  - credentials-api-keys/github_token
+  - credentials-api-keys/slack_token
+  - credentials-api-keys/generic_api_key
+  - credential/bearer-token
+  - credential/private-key-header
+  - credential/hex-token
+  - credential/password
+  - pattern/aws_secret_key
+  - pattern/github_token
+  - pattern/slack_token
+  - pattern/generic_api_key
+  - pattern/aws_access_key
+  - credential/url-password
+  - credential/basic-auth
+  - credential/jwt
+  - credential/labelled-hex-key
+  - credential/private-jwk
+  - credential/sql-password
+  - credential/command-password
+  - credential/nkey-seed
+  - credential/base64-private-key
+  kind: scenario
+  required: true
+  parameter_names: []
+  group: Credential false-positive regression
+  scope: policy
+- id: formats-4.2/label-prefixed/output
+  name: label-prefixed
+  description: Synthetic non-secret syntax regression; never a request-wide exemption.
+  phase: output
+  content: '"LOGIN_LABEL_PASSWORD": "Password"'
+  expected_decision: allow
+  covered_rule_ids:
+  - credentials-api-keys/aws_access_key
+  - credentials-api-keys/aws_secret_key
+  - credentials-api-keys/github_token
+  - credentials-api-keys/slack_token
+  - credentials-api-keys/generic_api_key
+  - credential/bearer-token
+  - credential/private-key-header
+  - credential/hex-token
+  - credential/password
+  - pattern/aws_secret_key
+  - pattern/github_token
+  - pattern/slack_token
+  - pattern/generic_api_key
+  - pattern/aws_access_key
+  - credential/url-password
+  - credential/basic-auth
+  - credential/jwt
+  - credential/labelled-hex-key
+  - credential/private-jwk
+  - credential/sql-password
+  - credential/command-password
+  - credential/nkey-seed
+  - credential/base64-private-key
+  kind: scenario
+  required: true
+  parameter_names: []
+  group: Credential false-positive regression
+  scope: policy
+- id: formats-4.2/title/output
+  name: title
+  description: Synthetic non-secret syntax regression; never a request-wide exemption.
+  phase: output
+  content: '"TITLE_NEW_PASSWORD": "New password"'
+  expected_decision: allow
+  covered_rule_ids:
+  - credentials-api-keys/aws_access_key
+  - credentials-api-keys/aws_secret_key
+  - credentials-api-keys/github_token
+  - credentials-api-keys/slack_token
+  - credentials-api-keys/generic_api_key
+  - credential/bearer-token
+  - credential/private-key-header
+  - credential/hex-token
+  - credential/password
+  - pattern/aws_secret_key
+  - pattern/github_token
+  - pattern/slack_token
+  - pattern/generic_api_key
+  - pattern/aws_access_key
+  - credential/url-password
+  - credential/basic-auth
+  - credential/jwt
+  - credential/labelled-hex-key
+  - credential/private-jwk
+  - credential/sql-password
+  - credential/command-password
+  - credential/nkey-seed
+  - credential/base64-private-key
+  kind: scenario
+  required: true
+  parameter_names: []
+  group: Credential false-positive regression
+  scope: policy
+- id: formats-4.2/public-hyphen/output
+  name: public-hyphen
+  description: Synthetic non-secret syntax regression; never a request-wide exemption.
+  phase: output
+  content: public-key="0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+  expected_decision: allow
+  covered_rule_ids:
+  - credentials-api-keys/aws_access_key
+  - credentials-api-keys/aws_secret_key
+  - credentials-api-keys/github_token
+  - credentials-api-keys/slack_token
+  - credentials-api-keys/generic_api_key
+  - credential/bearer-token
+  - credential/private-key-header
+  - credential/hex-token
+  - credential/password
+  - pattern/aws_secret_key
+  - pattern/github_token
+  - pattern/slack_token
+  - pattern/generic_api_key
+  - pattern/aws_access_key
+  - credential/url-password
+  - credential/basic-auth
+  - credential/jwt
+  - credential/labelled-hex-key
+  - credential/private-jwk
+  - credential/sql-password
+  - credential/command-password
+  - credential/nkey-seed
+  - credential/base64-private-key
+  kind: scenario
+  required: true
+  parameter_names: []
+  group: Credential false-positive regression
+  scope: policy
+- id: formats-4.2/public-nested/output
+  name: public-nested
+  description: Synthetic non-secret syntax regression; never a request-wide exemption.
+  phase: output
+  content: sealing-public-key="0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+  expected_decision: allow
+  covered_rule_ids:
+  - credentials-api-keys/aws_access_key
+  - credentials-api-keys/aws_secret_key
+  - credentials-api-keys/github_token
+  - credentials-api-keys/slack_token
+  - credentials-api-keys/generic_api_key
+  - credential/bearer-token
+  - credential/private-key-header
+  - credential/hex-token
+  - credential/password
+  - pattern/aws_secret_key
+  - pattern/github_token
+  - pattern/slack_token
+  - pattern/generic_api_key
+  - pattern/aws_access_key
+  - credential/url-password
+  - credential/basic-auth
+  - credential/jwt
+  - credential/labelled-hex-key
+  - credential/private-jwk
+  - credential/sql-password
+  - credential/command-password
+  - credential/nkey-seed
+  - credential/base64-private-key
+  kind: scenario
+  required: true
+  parameter_names: []
+  group: Credential false-positive regression
+  scope: policy
+- id: formats-4.2/public-underscore/output
+  name: public-underscore
+  description: Synthetic non-secret syntax regression; never a request-wide exemption.
+  phase: output
+  content: public_key="0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+  expected_decision: allow
+  covered_rule_ids:
+  - credentials-api-keys/aws_access_key
+  - credentials-api-keys/aws_secret_key
+  - credentials-api-keys/github_token
+  - credentials-api-keys/slack_token
+  - credentials-api-keys/generic_api_key
+  - credential/bearer-token
+  - credential/private-key-header
+  - credential/hex-token
+  - credential/password
+  - pattern/aws_secret_key
+  - pattern/github_token
+  - pattern/slack_token
+  - pattern/generic_api_key
+  - pattern/aws_access_key
+  - credential/url-password
+  - credential/basic-auth
+  - credential/jwt
+  - credential/labelled-hex-key
+  - credential/private-jwk
+  - credential/sql-password
+  - credential/command-password
+  - credential/nkey-seed
+  - credential/base64-private-key
+  kind: scenario
+  required: true
+  parameter_names: []
+  group: Credential false-positive regression
+  scope: policy
+- id: formats-4.2/public-camel/output
+  name: public-camel
+  description: Synthetic non-secret syntax regression; never a request-wide exemption.
+  phase: output
+  content: publicKey="0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+  expected_decision: allow
+  covered_rule_ids:
+  - credentials-api-keys/aws_access_key
+  - credentials-api-keys/aws_secret_key
+  - credentials-api-keys/github_token
+  - credentials-api-keys/slack_token
+  - credentials-api-keys/generic_api_key
+  - credential/bearer-token
+  - credential/private-key-header
+  - credential/hex-token
+  - credential/password
+  - pattern/aws_secret_key
+  - pattern/github_token
+  - pattern/slack_token
+  - pattern/generic_api_key
+  - pattern/aws_access_key
+  - credential/url-password
+  - credential/basic-auth
+  - credential/jwt
+  - credential/labelled-hex-key
+  - credential/private-jwk
+  - credential/sql-password
+  - credential/command-password
+  - credential/nkey-seed
+  - credential/base64-private-key
+  kind: scenario
+  required: true
+  parameter_names: []
+  group: Credential false-positive regression
+  scope: policy
+- id: formats-4.2/public-nkey/output
+  name: public-nkey
+  description: Synthetic non-secret syntax regression; never a request-wide exemption.
+  phase: output
+  content: UAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+  expected_decision: allow
+  covered_rule_ids:
+  - credentials-api-keys/aws_access_key
+  - credentials-api-keys/aws_secret_key
+  - credentials-api-keys/github_token
+  - credentials-api-keys/slack_token
+  - credentials-api-keys/generic_api_key
+  - credential/bearer-token
+  - credential/private-key-header
+  - credential/hex-token
+  - credential/password
+  - pattern/aws_secret_key
+  - pattern/github_token
+  - pattern/slack_token
+  - pattern/generic_api_key
+  - pattern/aws_access_key
+  - credential/url-password
+  - credential/basic-auth
+  - credential/jwt
+  - credential/labelled-hex-key
+  - credential/private-jwk
+  - credential/sql-password
+  - credential/command-password
+  - credential/nkey-seed
+  - credential/base64-private-key
+  kind: scenario
+  required: true
+  parameter_names: []
+  group: Credential false-positive regression
+  scope: policy
+- id: formats-4.2/nkey-too-long/output
+  name: nkey-too-long
+  description: Synthetic non-secret syntax regression; never a request-wide exemption.
+  phase: output
+  content: SUAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+  expected_decision: allow
+  covered_rule_ids:
+  - credentials-api-keys/aws_access_key
+  - credentials-api-keys/aws_secret_key
+  - credentials-api-keys/github_token
+  - credentials-api-keys/slack_token
+  - credentials-api-keys/generic_api_key
+  - credential/bearer-token
+  - credential/private-key-header
+  - credential/hex-token
+  - credential/password
+  - pattern/aws_secret_key
+  - pattern/github_token
+  - pattern/slack_token
+  - pattern/generic_api_key
+  - pattern/aws_access_key
+  - credential/url-password
+  - credential/basic-auth
+  - credential/jwt
+  - credential/labelled-hex-key
+  - credential/private-jwk
+  - credential/sql-password
+  - credential/command-password
+  - credential/nkey-seed
+  - credential/base64-private-key
+  kind: scenario
+  required: true
+  parameter_names: []
+  group: Credential false-positive regression
+  scope: policy
+- id: formats-4.2/nkey-lowercase/output
+  name: nkey-lowercase
+  description: Synthetic non-secret syntax regression; never a request-wide exemption.
+  phase: output
+  content: suaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+  expected_decision: allow
+  covered_rule_ids:
+  - credentials-api-keys/aws_access_key
+  - credentials-api-keys/aws_secret_key
+  - credentials-api-keys/github_token
+  - credentials-api-keys/slack_token
+  - credentials-api-keys/generic_api_key
+  - credential/bearer-token
+  - credential/private-key-header
+  - credential/hex-token
+  - credential/password
+  - pattern/aws_secret_key
+  - pattern/github_token
+  - pattern/slack_token
+  - pattern/generic_api_key
+  - pattern/aws_access_key
+  - credential/url-password
+  - credential/basic-auth
+  - credential/jwt
+  - credential/labelled-hex-key
+  - credential/private-jwk
+  - credential/sql-password
+  - credential/command-password
+  - credential/nkey-seed
+  - credential/base64-private-key
+  kind: scenario
+  required: true
+  parameter_names: []
+  group: Credential false-positive regression
+  scope: policy
+- id: formats-4.2/public-base64/output
+  name: public-base64
+  description: Synthetic non-secret syntax regression; never a request-wide exemption.
+  phase: output
+  content: LS0tLS1CRUdJTiBQVUJMSUMgS0VZLS0tLS0KQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQQotLS0tLUVORCBQVUJMSUMgS0VZLS0tLS0=
+  expected_decision: allow
+  covered_rule_ids:
+  - credentials-api-keys/aws_access_key
+  - credentials-api-keys/aws_secret_key
+  - credentials-api-keys/github_token
+  - credentials-api-keys/slack_token
+  - credentials-api-keys/generic_api_key
+  - credential/bearer-token
+  - credential/private-key-header
+  - credential/hex-token
+  - credential/password
+  - pattern/aws_secret_key
+  - pattern/github_token
+  - pattern/slack_token
+  - pattern/generic_api_key
+  - pattern/aws_access_key
+  - credential/url-password
+  - credential/basic-auth
+  - credential/jwt
+  - credential/labelled-hex-key
+  - credential/private-jwk
+  - credential/sql-password
+  - credential/command-password
+  - credential/nkey-seed
+  - credential/base64-private-key
+  kind: scenario
+  required: true
+  parameter_names: []
+  group: Credential false-positive regression
+  scope: policy
+- id: formats-4.2/cert-base64/output
+  name: cert-base64
+  description: Synthetic non-secret syntax regression; never a request-wide exemption.
+  phase: output
+  content: LS0tLS1CRUdJTiBDRVJUSUZJQ0FURS0tLS0tCkFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUE=
+  expected_decision: allow
+  covered_rule_ids:
+  - credentials-api-keys/aws_access_key
+  - credentials-api-keys/aws_secret_key
+  - credentials-api-keys/github_token
+  - credentials-api-keys/slack_token
+  - credentials-api-keys/generic_api_key
+  - credential/bearer-token
+  - credential/private-key-header
+  - credential/hex-token
+  - credential/password
+  - pattern/aws_secret_key
+  - pattern/github_token
+  - pattern/slack_token
+  - pattern/generic_api_key
+  - pattern/aws_access_key
+  - credential/url-password
+  - credential/basic-auth
+  - credential/jwt
+  - credential/labelled-hex-key
+  - credential/private-jwk
+  - credential/sql-password
+  - credential/command-password
+  - credential/nkey-seed
+  - credential/base64-private-key
+  kind: scenario
+  required: true
+  parameter_names: []
+  group: Credential false-positive regression
+  scope: policy
+- id: formats-4.2/sql-param/output
+  name: sql-param
+  description: Synthetic non-secret syntax regression; never a request-wide exemption.
+  phase: output
+  content: CREATE ROLE fixture LOGIN PASSWORD '${PASSWORD}';
+  expected_decision: allow
+  covered_rule_ids:
+  - credentials-api-keys/aws_access_key
+  - credentials-api-keys/aws_secret_key
+  - credentials-api-keys/github_token
+  - credentials-api-keys/slack_token
+  - credentials-api-keys/generic_api_key
+  - credential/bearer-token
+  - credential/private-key-header
+  - credential/hex-token
+  - credential/password
+  - pattern/aws_secret_key
+  - pattern/github_token
+  - pattern/slack_token
+  - pattern/generic_api_key
+  - pattern/aws_access_key
+  - credential/url-password
+  - credential/basic-auth
+  - credential/jwt
+  - credential/labelled-hex-key
+  - credential/private-jwk
+  - credential/sql-password
+  - credential/command-password
+  - credential/nkey-seed
+  - credential/base64-private-key
+  kind: scenario
+  required: true
+  parameter_names: []
+  group: Credential false-positive regression
+  scope: policy
+- id: formats-4.2/sql-placeholder/output
+  name: sql-placeholder
+  description: Synthetic non-secret syntax regression; never a request-wide exemption.
+  phase: output
+  content: CREATE USER test IDENTIFIED BY '<password>';
+  expected_decision: allow
+  covered_rule_ids:
+  - credentials-api-keys/aws_access_key
+  - credentials-api-keys/aws_secret_key
+  - credentials-api-keys/github_token
+  - credentials-api-keys/slack_token
+  - credentials-api-keys/generic_api_key
+  - credential/bearer-token
+  - credential/private-key-header
+  - credential/hex-token
+  - credential/password
+  - pattern/aws_secret_key
+  - pattern/github_token
+  - pattern/slack_token
+  - pattern/generic_api_key
+  - pattern/aws_access_key
+  - credential/url-password
+  - credential/basic-auth
+  - credential/jwt
+  - credential/labelled-hex-key
+  - credential/private-jwk
+  - credential/sql-password
+  - credential/command-password
+  - credential/nkey-seed
+  - credential/base64-private-key
+  kind: scenario
+  required: true
+  parameter_names: []
+  group: Credential false-positive regression
+  scope: policy
+- id: formats-4.2/sql-null/output
+  name: sql-null
+  description: Synthetic non-secret syntax regression; never a request-wide exemption.
+  phase: output
+  content: ALTER USER fixture PASSWORD NULL;
+  expected_decision: allow
+  covered_rule_ids:
+  - credentials-api-keys/aws_access_key
+  - credentials-api-keys/aws_secret_key
+  - credentials-api-keys/github_token
+  - credentials-api-keys/slack_token
+  - credentials-api-keys/generic_api_key
+  - credential/bearer-token
+  - credential/private-key-header
+  - credential/hex-token
+  - credential/password
+  - pattern/aws_secret_key
+  - pattern/github_token
+  - pattern/slack_token
+  - pattern/generic_api_key
+  - pattern/aws_access_key
+  - credential/url-password
+  - credential/basic-auth
+  - credential/jwt
+  - credential/labelled-hex-key
+  - credential/private-jwk
+  - credential/sql-password
+  - credential/command-password
+  - credential/nkey-seed
+  - credential/base64-private-key
+  kind: scenario
+  required: true
+  parameter_names: []
+  group: Credential false-positive regression
+  scope: policy
+- id: formats-4.2/cli-env/output
+  name: cli-env
+  description: Synthetic non-secret syntax regression; never a request-wide exemption.
+  phase: output
+  content: tool --password $PASSWORD
+  expected_decision: allow
+  covered_rule_ids:
+  - credentials-api-keys/aws_access_key
+  - credentials-api-keys/aws_secret_key
+  - credentials-api-keys/github_token
+  - credentials-api-keys/slack_token
+  - credentials-api-keys/generic_api_key
+  - credential/bearer-token
+  - credential/private-key-header
+  - credential/hex-token
+  - credential/password
+  - pattern/aws_secret_key
+  - pattern/github_token
+  - pattern/slack_token
+  - pattern/generic_api_key
+  - pattern/aws_access_key
+  - credential/url-password
+  - credential/basic-auth
+  - credential/jwt
+  - credential/labelled-hex-key
+  - credential/private-jwk
+  - credential/sql-password
+  - credential/command-password
+  - credential/nkey-seed
+  - credential/base64-private-key
+  kind: scenario
+  required: true
+  parameter_names: []
+  group: Credential false-positive regression
+  scope: policy
+- id: formats-4.2/cli-env-quoted/output
+  name: cli-env-quoted
+  description: Synthetic non-secret syntax regression; never a request-wide exemption.
+  phase: output
+  content: tool --password "${PASSWORD}"
+  expected_decision: allow
+  covered_rule_ids:
+  - credentials-api-keys/aws_access_key
+  - credentials-api-keys/aws_secret_key
+  - credentials-api-keys/github_token
+  - credentials-api-keys/slack_token
+  - credentials-api-keys/generic_api_key
+  - credential/bearer-token
+  - credential/private-key-header
+  - credential/hex-token
+  - credential/password
+  - pattern/aws_secret_key
+  - pattern/github_token
+  - pattern/slack_token
+  - pattern/generic_api_key
+  - pattern/aws_access_key
+  - credential/url-password
+  - credential/basic-auth
+  - credential/jwt
+  - credential/labelled-hex-key
+  - credential/private-jwk
+  - credential/sql-password
+  - credential/command-password
+  - credential/nkey-seed
+  - credential/base64-private-key
+  kind: scenario
+  required: true
+  parameter_names: []
+  group: Credential false-positive regression
+  scope: policy
+- id: formats-4.2/cli-placeholder/output
+  name: cli-placeholder
+  description: Synthetic non-secret syntax regression; never a request-wide exemption.
+  phase: output
+  content: tool --password "<password>"
+  expected_decision: allow
+  covered_rule_ids:
+  - credentials-api-keys/aws_access_key
+  - credentials-api-keys/aws_secret_key
+  - credentials-api-keys/github_token
+  - credentials-api-keys/slack_token
+  - credentials-api-keys/generic_api_key
+  - credential/bearer-token
+  - credential/private-key-header
+  - credential/hex-token
+  - credential/password
+  - pattern/aws_secret_key
+  - pattern/github_token
+  - pattern/slack_token
+  - pattern/generic_api_key
+  - pattern/aws_access_key
+  - credential/url-password
+  - credential/basic-auth
+  - credential/jwt
+  - credential/labelled-hex-key
+  - credential/private-jwk
+  - credential/sql-password
+  - credential/command-password
+  - credential/nkey-seed
+  - credential/base64-private-key
+  kind: scenario
+  required: true
+  parameter_names: []
+  group: Credential false-positive regression
+  scope: policy
+- id: formats-4.2/cli-next-flag/output
+  name: cli-next-flag
+  description: Synthetic non-secret syntax regression; never a request-wide exemption.
+  phase: output
+  content: tool --password --help
+  expected_decision: allow
+  covered_rule_ids:
+  - credentials-api-keys/aws_access_key
+  - credentials-api-keys/aws_secret_key
+  - credentials-api-keys/github_token
+  - credentials-api-keys/slack_token
+  - credentials-api-keys/generic_api_key
+  - credential/bearer-token
+  - credential/private-key-header
+  - credential/hex-token
+  - credential/password
+  - pattern/aws_secret_key
+  - pattern/github_token
+  - pattern/slack_token
+  - pattern/generic_api_key
+  - pattern/aws_access_key
+  - credential/url-password
+  - credential/basic-auth
+  - credential/jwt
+  - credential/labelled-hex-key
+  - credential/private-jwk
+  - credential/sql-password
+  - credential/command-password
+  - credential/nkey-seed
+  - credential/base64-private-key
+  kind: scenario
+  required: true
+  parameter_names: []
+  group: Credential false-positive regression
+  scope: policy
+- id: formats-4.2/cli-no-value/output
+  name: cli-no-value
+  description: Synthetic non-secret syntax regression; never a request-wide exemption.
+  phase: output
+  content: tool --password
+  expected_decision: allow
+  covered_rule_ids:
+  - credentials-api-keys/aws_access_key
+  - credentials-api-keys/aws_secret_key
+  - credentials-api-keys/github_token
+  - credentials-api-keys/slack_token
+  - credentials-api-keys/generic_api_key
+  - credential/bearer-token
+  - credential/private-key-header
+  - credential/hex-token
+  - credential/password
+  - pattern/aws_secret_key
+  - pattern/github_token
+  - pattern/slack_token
+  - pattern/generic_api_key
+  - pattern/aws_access_key
+  - credential/url-password
+  - credential/basic-auth
+  - credential/jwt
+  - credential/labelled-hex-key
+  - credential/private-jwk
+  - credential/sql-password
+  - credential/command-password
+  - credential/nkey-seed
+  - credential/base64-private-key
+  kind: scenario
+  required: true
+  parameter_names: []
+  group: Credential false-positive regression
+  scope: policy
+- id: formats-4.2/mysql-interactive/output
+  name: mysql-interactive
+  description: Synthetic non-secret syntax regression; never a request-wide exemption.
+  phase: output
+  content: mysql -p database
+  expected_decision: allow
+  covered_rule_ids:
+  - credentials-api-keys/aws_access_key
+  - credentials-api-keys/aws_secret_key
+  - credentials-api-keys/github_token
+  - credentials-api-keys/slack_token
+  - credentials-api-keys/generic_api_key
+  - credential/bearer-token
+  - credential/private-key-header
+  - credential/hex-token
+  - credential/password
+  - pattern/aws_secret_key
+  - pattern/github_token
+  - pattern/slack_token
+  - pattern/generic_api_key
+  - pattern/aws_access_key
+  - credential/url-password
+  - credential/basic-auth
+  - credential/jwt
+  - credential/labelled-hex-key
+  - credential/private-jwk
+  - credential/sql-password
+  - credential/command-password
+  - credential/nkey-seed
+  - credential/base64-private-key
+  kind: scenario
+  required: true
+  parameter_names: []
+  group: Credential false-positive regression
+  scope: policy
+- id: formats-4.2/other-port/output
+  name: other-port
+  description: Synthetic non-secret syntax regression; never a request-wide exemption.
+  phase: output
+  content: service -p8080
+  expected_decision: allow
+  covered_rule_ids:
+  - credentials-api-keys/aws_access_key
+  - credentials-api-keys/aws_secret_key
+  - credentials-api-keys/github_token
+  - credentials-api-keys/slack_token
+  - credentials-api-keys/generic_api_key
+  - credential/bearer-token
+  - credential/private-key-header
+  - credential/hex-token
+  - credential/password
+  - pattern/aws_secret_key
+  - pattern/github_token
+  - pattern/slack_token
+  - pattern/generic_api_key
+  - pattern/aws_access_key
+  - credential/url-password
+  - credential/basic-auth
+  - credential/jwt
+  - credential/labelled-hex-key
+  - credential/private-jwk
+  - credential/sql-password
+  - credential/command-password
+  - credential/nkey-seed
+  - credential/base64-private-key
+  kind: scenario
+  required: true
+  parameter_names: []
+  group: Credential false-positive regression
+  scope: policy
+- id: formats-4.2/openssl-file/output
+  name: openssl-file
+  description: Synthetic non-secret syntax regression; never a request-wide exemption.
+  phase: output
+  content: openssl pkcs12 -passin file:secrets.txt
+  expected_decision: allow
+  covered_rule_ids:
+  - credentials-api-keys/aws_access_key
+  - credentials-api-keys/aws_secret_key
+  - credentials-api-keys/github_token
+  - credentials-api-keys/slack_token
+  - credentials-api-keys/generic_api_key
+  - credential/bearer-token
+  - credential/private-key-header
+  - credential/hex-token
+  - credential/password
+  - pattern/aws_secret_key
+  - pattern/github_token
+  - pattern/slack_token
+  - pattern/generic_api_key
+  - pattern/aws_access_key
+  - credential/url-password
+  - credential/basic-auth
+  - credential/jwt
+  - credential/labelled-hex-key
+  - credential/private-jwk
+  - credential/sql-password
+  - credential/command-password
+  - credential/nkey-seed
+  - credential/base64-private-key
+  kind: scenario
+  required: true
+  parameter_names: []
+  group: Credential false-positive regression
+  scope: policy
+- id: formats-4.2/openssl-env/output
+  name: openssl-env
+  description: Synthetic non-secret syntax regression; never a request-wide exemption.
+  phase: output
+  content: openssl pkcs12 -passin env:PASSWORD
+  expected_decision: allow
+  covered_rule_ids:
+  - credentials-api-keys/aws_access_key
+  - credentials-api-keys/aws_secret_key
+  - credentials-api-keys/github_token
+  - credentials-api-keys/slack_token
+  - credentials-api-keys/generic_api_key
+  - credential/bearer-token
+  - credential/private-key-header
+  - credential/hex-token
+  - credential/password
+  - pattern/aws_secret_key
+  - pattern/github_token
+  - pattern/slack_token
+  - pattern/generic_api_key
+  - pattern/aws_access_key
+  - credential/url-password
+  - credential/basic-auth
+  - credential/jwt
+  - credential/labelled-hex-key
+  - credential/private-jwk
+  - credential/sql-password
+  - credential/command-password
+  - credential/nkey-seed
+  - credential/base64-private-key
+  kind: scenario
+  required: true
+  parameter_names: []
+  group: Credential false-positive regression
+  scope: policy
+- id: formats-4.2/masked/output
+  name: masked
+  description: Synthetic non-secret syntax regression; never a request-wide exemption.
+  phase: output
+  content: password="***"
+  expected_decision: allow
+  covered_rule_ids:
+  - credentials-api-keys/aws_access_key
+  - credentials-api-keys/aws_secret_key
+  - credentials-api-keys/github_token
+  - credentials-api-keys/slack_token
+  - credentials-api-keys/generic_api_key
+  - credential/bearer-token
+  - credential/private-key-header
+  - credential/hex-token
+  - credential/password
+  - pattern/aws_secret_key
+  - pattern/github_token
+  - pattern/slack_token
+  - pattern/generic_api_key
+  - pattern/aws_access_key
+  - credential/url-password
+  - credential/basic-auth
+  - credential/jwt
+  - credential/labelled-hex-key
+  - credential/private-jwk
+  - credential/sql-password
+  - credential/command-password
+  - credential/nkey-seed
+  - credential/base64-private-key
+  kind: scenario
+  required: true
+  parameter_names: []
+  group: Credential false-positive regression
+  scope: policy

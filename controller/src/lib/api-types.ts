@@ -1,3 +1,4 @@
+import type { ExecutionDiagnostics, ErrorSource, ModelStatus } from "../../shared/execution-diagnostics";
 import type { RuntimeOutcome } from "../../shared/runtime-outcome";
 import type { RiskSeverity, EventSeverity } from "../../shared/security-severity";
 import type { EnforcementAction } from "../../shared/enforcement-action.generated";
@@ -102,7 +103,7 @@ export type RuntimeFinding = {
   }>;
 };
 
-export type RuntimeTraceStep = {
+export type RuntimeTraceStep = ExecutionDiagnostics & {
   parallel_group?: string | null;
   id: string;
   kind?: string;
@@ -127,6 +128,13 @@ export type RuntimeTraceStep = {
 };
 
 export type TestCaseResult = {
+  model_status?: ModelStatus;
+  execution_status?: string;
+  evidence_status: string;
+  evidence_detail: string;
+  verified_rule_ids: string[];
+  superseded_by: Array<{ policyId: string; ruleId: string }>;
+  rule_contract_satisfied: boolean;
   skipped?: boolean;
   skip_reason?: string;
   expectation_override?: Record<string, unknown>;
@@ -163,7 +171,6 @@ export type TestCaseResult = {
   source_case_id: string | null;
   covered_rule_ids: string[];
   matched_rule_ids: string[];
-  preempting_matches: Array<{ policyId: string; ruleId: string }>;
   evaluation_contracts: string[];
   escalated: boolean;
   model_invocations: number;
@@ -179,13 +186,11 @@ export type ValidationRun = {
   subject: "draft" | "version";
   candidate_digest: string | null;
   test_suite_digest: string | null;
-  status: "passed" | "failed" | "incomplete";
-  execution_status?: "queued" | "running" | "passed" | "failed";
+  status: "passed" | "failed" | "cancelled" | "incomplete";
+  execution_status?: "queued" | "running" | "passed" | "failed" | "cancelled";
   progress?: import("../../shared/validation-progress").ValidationProgress | null;
   failure_reason?: string | null;
   metrics: ValidationMetrics;
-  results: TestCaseResult[];
-  details_loaded?: boolean;
   completed_at?: string | null;
   excluded_case_ids: string[];
   created_at: string;
@@ -213,6 +218,7 @@ export type PlaygroundCheckFinding = {
 };
 
 export type PlaygroundCheckResult = {
+  model_status?: ModelStatus;
   check_id: string;
   trace_id: string;
   evidence_id: string | null;
@@ -368,7 +374,7 @@ export type GuardrailFindingPage = {
   collection_status?: "collected" | "not_collected" | "no_events";
 };
 
-export type RouterTraceStep = {
+export type RouterTraceStep = ExecutionDiagnostics & {
   id: string;
   parent_id?: string | null;
   detail?: string | null;
@@ -420,7 +426,7 @@ export type RouterRuntimeTrace = {
   detail: string;
   findings: RouterTraceFinding[];
   steps: RouterTraceStep[];
-  evidence_status?: "collected" | "not_collected";
+  evidence_status: "collected" | "not_collected";
 };
 
 export type PolicyIntentDetails = {
@@ -439,6 +445,7 @@ export type Guardrail = {
   allowed_topics: string[];
   restricted_topics: string[];
   topic_control_mode?: "strict" | "permissive";
+  profile_origin?: import("../../shared/protection-map").ProfileOrigin;
   policy_bindings: GuardrailPolicyBinding[];
   safety_level: SafetyLevel;
   output_delivery: OutputDelivery;
@@ -485,6 +492,7 @@ export type DeleteConfirmation = {
 
 export type GuardrailVersion = {
   policy_content_accessible?: boolean;
+  publication?: import("../../shared/guardrail-publication").GuardrailPublication | null;
   test_waiver?: import("../../shared/default-release").DefaultTestWaiver | null;
   source_validation_run_id?: string | null;
   testing_evidence?: import("../../shared/testing-report-retention").VersionTestingEvidence | null;
@@ -693,7 +701,7 @@ export type PolicyDraftTestCase = {
   covered_rule_ids: string[];
   case_type: "unit" | "input_rail" | "output_rail" | "timeout" | "provider_failure" | "concurrency";
   required: boolean;
-  expected_failure: "timeout" | "provider_failure" | null;
+  expected_failure: "timeout" | "provider_failure" | "guard_failure" | "configuration_failure" | null;
   concurrency_group: string | null;
   trusted_instruction: string;
   use_guardrail_instruction: boolean;
@@ -768,23 +776,6 @@ export type PolicyDraftValidationRun = {
   policy_id?: string;
   draft_revision?: number;
   status: ValidationRunDisplayState;
-  results?: Array<{
-    name: string;
-    case_type: PolicyDraftTestCase["case_type"];
-    required: boolean;
-    rail_type: PolicyRailType;
-    concurrency_group: string | null;
-    expected_decision: string;
-    expected_failure: PolicyDraftTestCase["expected_failure"];
-    actual_decision: string;
-    actual_failure?: PolicyDraftTestCase["expected_failure"];
-    passed: boolean;
-    latency_ms: number;
-    reason: string;
-    covered_rule_ids: string[];
-    matched_rule_ids: string[];
-    trace: Array<Record<string, unknown>>;
-  }>;
   created_at?: string;
 };
 export type GuardrailCompilePreview = {
@@ -839,6 +830,7 @@ export type Endpoint = {
   name: string;
   description: string;
   enabled: boolean;
+  credential_required: boolean;
   key_hint: string;
   credentials: EndpointCredential[];
   setup_status: EndpointSetupStatus;
@@ -910,9 +902,10 @@ export type RuntimeLogEntry = {
   protection_mode?: "enforce" | "monitor" | "bypass";
   detection_decision?: string | null;
   detection_error?: string | null;
-  execution_status?: "error" | "complete" | "unknown";
+  model_status?: ModelStatus;
+  execution_status?: "error" | "complete" | "degraded" | "bypassed" | "unknown";
   call_completion?: { inferred: boolean; reason: string | null; completed_at: string | null; decision_id: string | null; route_id: string | null; target_id: string | null; router_revision: number | null };
-  error_details?: Array<{ span_id: string; name: string; error_type: string | null; provider: string | null; model: string | null; policy: string | null; timed_out: boolean; timeout_ms: number | null }>;
+  error_details?: Array<{ source?: ErrorSource | null; category?: string | null; http_status?: number | null; model_call_id?: string | null; affects_result?: boolean; span_id: string; name: string; error_type: string | null; provider: string | null; model: string | null; policy: string | null; timed_out: boolean; timeout_ms: number | null }>;
   http_request?: RuntimeHttpRequest | null;
   id: string;
   trace_id: string;
@@ -1160,19 +1153,7 @@ export type RuntimeComponentMetric = {
   provider_p99_ms: number;
 };
 
-export type IdentityRole = "admin" | "member";
-export type IdentityUser = {
-  id: string;
-  display_name: string;
-  email: string;
-  role: IdentityRole;
-  enabled: boolean;
-  preferred_language: "en" | "zh-CN";
-  last_login_at: string | null;
-  created_at: string;
-  updated_at: string;
-};
-export type AuthStatus = { authenticated: boolean; user: IdentityUser | null };
+export type { IdentityRole, IdentityUser, AuthStatus } from "./identity-api";
 export type IntentAnalysisStatus = {
   available: boolean;
   provider: string | null;

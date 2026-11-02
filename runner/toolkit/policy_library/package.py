@@ -28,7 +28,7 @@ class TestSettings(StrictModel):
 
 
 class PolicyManifest(StrictModel):
-    schema_version: Literal[2]
+    schema_version: Literal[1]
     kind: Literal["Policy"]
     metadata: PolicyMetadata
     parameters: list[ParameterDefinition] = Field(default_factory=list)
@@ -38,7 +38,6 @@ class PolicyManifest(StrictModel):
     resources: list[str] = Field(default_factory=list)
     documents: list[str] = Field(default_factory=list)
     testing: TestSettings = Field(default_factory=TestSettings)
-    history: list[str] = Field(default_factory=list)
 
     @model_validator(mode="after")
     def files_and_parameters(self) -> PolicyManifest:
@@ -49,12 +48,6 @@ class PolicyManifest(StrictModel):
             safe_path(path)
             if path in {"policy.yaml", "manifest.json"}:
                 raise ValueError(f"Reserved package path: {path}")
-        for path in self.history:
-            if not path.startswith("history/"):
-                raise ValueError("Historical versions must live under history/")
-            safe_path(path)
-        if self.metadata.source == "custom" and self.history:
-            raise ValueError("Imported packages contain exactly one Policy version")
         unknown = self.testing.parameters.keys() - {p.name for p in self.parameters}
         if unknown:
             raise ValueError(f"Unknown test parameters: {sorted(unknown)}")
@@ -109,8 +102,6 @@ def load_package(root: Path) -> PolicyPackage:
         relative = path.relative_to(root).as_posix()
         if path.is_symlink():
             raise ValueError(f"Package cannot contain symlinks: {relative}")
-        if any(relative == h or relative.startswith(h + "/") for h in manifest.history):
-            continue
         if path.is_file():
             actual.add(relative)
     if actual != files.keys():
@@ -151,7 +142,7 @@ def load_package(root: Path) -> PolicyPackage:
         TypeAdapter(list[TestDefinition]).validate_python(cases)
         tests.extend(cases)
     definition = PolicyDefinition.model_validate({
-        **manifest.model_dump(exclude_unset=True, exclude={"resources", "documents", "testing", "history"}),
+        **manifest.model_dump(exclude_unset=True, exclude={"resources", "documents", "testing"}),
         "schema_version": 1, "rules": rules, "tests": tests,
     })
     return PolicyPackage(root, manifest, definition, files)
@@ -178,7 +169,7 @@ def export_archive(package: PolicyPackage, output: Path, registry: dict, *, repl
     if output.resolve().is_relative_to(package.root):
         raise ValueError("Export destination must be outside the source package")
     index = {
-        "schema_version": 2, "id": package.definition.metadata.id, "version": package.definition.metadata.version,
+        "schema_version": 1, "id": package.definition.metadata.id, "version": package.definition.metadata.version,
         "files": {path: digest(value) for path, value in sorted(package.files.items())},
         "detectors": detector_dependencies(package, registry),
     }
@@ -217,7 +208,7 @@ def open_package(path: Path, registry: dict) -> Iterator[PolicyPackage]:
                 if entry.is_dir() or stat.S_ISLNK(mode) or (stat.S_IFMT(mode) and not stat.S_ISREG(mode)) or entry.file_size > MAX_FILE_BYTES:
                     raise ValueError("Archive must contain bounded regular files only")
             index = json.loads(bundle.read("manifest.json"))
-            if index.get("schema_version") != 2 or set(index.get("files", {})) != set(names) - {"manifest.json"}:
+            if index.get("schema_version") != 1 or set(index.get("files", {})) != set(names) - {"manifest.json"}:
                 raise ValueError("Invalid package manifest")
             for name, expected in index["files"].items():
                 value = bundle.read(name)

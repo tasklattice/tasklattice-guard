@@ -6,8 +6,10 @@ import httpx
 import pytest
 from fastapi import FastAPI
 
+from runner.artifact_store import EndpointAccess
 from runner.api import RunnerAPI
-from runner.scan import SCAN_PATH, IGNORED_FIELDS, ScanRequest, ScanFailure, scan_response, validate_scan_decision
+from runner.scan import SCAN_PATH, IGNORED_FIELDS, ScanRequest, ScanFailure, scan_response
+from runner.toolkit.runtime.outcome import finalize_decision, require_online_result, GuardrailExecutionError
 from runner.toolkit.runtime.context import CallContextStore
 from runner.toolkit.runtime.contracts import ModuleAssessment, ProtectionDecision, RuntimeCoverage, RuntimeUsage
 from runner.toolkit.runtime.service import GuardrailRuntimeService
@@ -24,18 +26,28 @@ COVERAGE = RuntimeCoverage(required_modules_total=1, required_modules_completed=
 
 
 def decision(action="allow", status="allow", **kwargs):
-    return ProtectionDecision(decision=action, action=action, coverage=COVERAGE,
+    return finalize_decision(ProtectionDecision(decision=action, action=action, coverage=COVERAGE,
+        termination_reason="policy_block" if action == "block" and status == "intervene" else None,
         assessments=(ModuleAssessment(module_id="m", module="interaction_safety", status=status,
-            fragments=(), coverage=COVERAGE),), **kwargs)
+            fragments=(), coverage=COVERAGE),), **kwargs))
 
 
 class Store:
     def __init__(self, flag_only_default=True):
         self.flag_only_default = flag_only_default
+    def authorize_endpoint(self, endpoint_id, credential):
+        adapter = self.endpoint_adapter(endpoint_id)
+        if not adapter:
+            return EndpointAccess(None, False, False)
+        if not getattr(self, "credential_required", True):
+            return EndpointAccess(adapter, True, None)
+        authenticated = self.authenticate_endpoint(endpoint_id, credential)
+        return EndpointAccess(adapter, authenticated, authenticated)
+
     def authenticate_endpoint(self, identity, value):
         return value is not None and {ENDPOINT_ID: "key", OTHER_ENDPOINT_ID: "other-key", LITELLM_ENDPOINT_ID: "lite-key"}.get(identity) == value
     def endpoint_adapter(self, identity):
-        return "f5-scan" if identity in {ENDPOINT_ID, OTHER_ENDPOINT_ID} else "litellm-generic-guardrail"
+        return "f5-scan" if identity in {ENDPOINT_ID, OTHER_ENDPOINT_ID} else "litellm-generic-guardrail" if identity == LITELLM_ENDPOINT_ID else None
     def endpoint_scan_flag_only_default(self, identity):
         return self.flag_only_default
     def logging_level(self, _):
@@ -45,11 +57,11 @@ class Store:
 class Runtime:
     def __init__(self, result=None, error=None):
         self.result, self.error, self.calls = result or decision(), error, []
-    async def evaluate_standalone(self, request, *, on_resolved, validate_decision, timeout_seconds):
+    async def evaluate_standalone(self, request, *, on_resolved, timeout_seconds):
         self.calls.append(request)
         if self.error:
             raise self.error
-        validate_decision(self.result)
+        require_online_result(self.result)
         return self.result
 
 
@@ -66,6 +78,8 @@ def app_for(runtime=None, *, store=None, **kwargs):
     ("allow", "intervene", True, "flagged"), ("allow", "intervene", False, "flagged"),
     ("transform", "intervene", True, "flagged"), ("transform", "intervene", False, "redacted"),
     ("block", "intervene", True, "flagged"), ("block", "intervene", False, "blocked"),
+    ("block", "uncertain", True, "flagged"), ("block", "uncertain", False, "blocked"),
+    ("allow", "uncertain", True, "cleared"), ("allow", "uncertain", False, "cleared"),
 ])
 @pytest.mark.parametrize("direction", ["request", "response"])
 def test_result_matrix(action, status, flag_only, expected, direction):
@@ -77,27 +91,6 @@ def test_result_matrix(action, status, flag_only, expected, direction):
     assert result.result.response == (result.redactedInput if direction == "response" and action != "block" else None)
     assert result.result.scannerResults[0].outcome == ("passed" if expected == "cleared" else "failed")
     assert result.result.scannerResults[0].scannerId is None
-
-
-@pytest.mark.parametrize("d", [
-    replace(decision(), coverage=None), replace(decision(), coverage=RuntimeCoverage()),
-    decision(status="needs_context"), decision(status="error"), decision(status="uncovered"),
-    decision("block", "error", usage=RuntimeUsage(fail_closed=True)),
-    replace(decision(), coverage=replace(COVERAGE, status="partial", required_modules_completed=0)),
-])
-def test_unknown_error_and_missing_coverage_are_not_safe(d):
-    with pytest.raises(ScanFailure) as caught:
-        validate_scan_decision(d)
-    assert caught.value.status == 503
-
-
-def test_short_circuit_does_not_fabricate_passes():
-    d = decision("block", "intervene")
-    d = replace(d, assessments=(*d.assessments, replace(d.assessments[0], status="uncovered")),
-        coverage=replace(COVERAGE, status="partial", required_modules_total=2))
-    validate_scan_decision(d)
-    with pytest.raises(ScanFailure):
-        validate_scan_decision(replace(d, assessments=(*d.assessments, replace(d.assessments[0], status="error"))))
 
 
 @pytest.mark.parametrize("value", [None, "anything", 123, True, [], {}, ["not-a-uuid"], {"threshold": 0}])
@@ -182,7 +175,8 @@ async def test_execution_error_stays_error_in_telemetry():
     async with httpx.AsyncClient(transport=httpx.ASGITransport(app), base_url="http://runner") as c:
         r = await c.post(SCAN_URL, headers={"Authorization":"Bearer key"}, json={"input":"x"})
     assert r.status_code == 503
-    assert telemetry.events[-1]["decision"] == "error"
+    assert telemetry.events[-1]["decision"] == "block"
+    assert telemetry.events[-1]["metadata"]["executionStatus"] == "error"
     assert telemetry.events[-1]["metadata"]["scanOutcome"] is None
 
 
@@ -190,6 +184,8 @@ def test_openapi_documents_ignored_fields_and_bearer():
     app, _, _ = app_for()
     spec = app.openapi()
     op = spec["paths"][SCAN_PATH]["post"]
+    assert "Guardrail owns short-circuiting" in op["description"]
+    assert "response shape only" in op["description"]
     assert spec["components"]["securitySchemes"]["ScanBearer"]["scheme"] == "bearer"
     assert op["security"] == [{"ScanBearer": []}]
     assert "/backend/v1/scans" not in spec["paths"]
@@ -316,6 +312,7 @@ async def test_scan_deadline_returns_504_and_completes_once():
     assert len(completions) == 1
     assert completions[0]["outcome"] == "timeout"
     assert telemetry.events[-1]["decision"] == "error"
+    assert telemetry.events[-1]["metadata"]["executionStatus"] == "timeout"
 
 
 @pytest.mark.parametrize("error,expected", [(LookupError("private"), 503), (ValueError("private"), 500)])
@@ -326,3 +323,17 @@ async def test_unavailable_route_and_internal_error_are_not_safe(error, expected
     assert response.status_code == expected
     assert "private" not in response.text and "cleared" not in response.text
     assert telemetry.events[-1]["decision"] == "error"
+
+
+async def test_anonymous_scan_has_no_authenticated_principal():
+    store = Store()
+    store.credential_required = False
+    app, runtime, telemetry = app_for(store=store)
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app), base_url="http://runner") as client:
+        response = await client.post(SCAN_URL, json={"input": "hello"}, headers={"Authorization": "Bearer ignored"})
+    assert response.status_code == 200
+    fields = dict(runtime.calls[0].context.fields)
+    assert "auth.principal" not in fields
+    assert fields["auth.mode"] == "anonymous"
+    assert runtime.calls[0].context.endpoint_id == ENDPOINT_ID
+    assert telemetry.events[-1]["metadata"]["authentication"] == "anonymous"

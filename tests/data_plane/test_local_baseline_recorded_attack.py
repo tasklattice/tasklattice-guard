@@ -16,8 +16,8 @@ from tests.data_plane.test_artifact_execution import _desired_state, _runtime
 FIXTURES = Path(__file__).resolve().parents[1] / 'fixtures'
 RECORDINGS = json.loads((FIXTURES / 'model_responses/20260907-nvidia-smoke.json').read_text())['cases']
 RELEASES = ['default-local-v1', *[f'preset-{name}-v1' for name in (
-    'common-baseline', 'banking-assistant', 'securities-assistant',
-    'internet-customer-support', 'singapore-financial-assistant')]]
+    'banking-assistant', 'securities-assistant',
+    'internet-customer-support')]]
 
 
 @pytest.mark.asyncio

@@ -32,8 +32,6 @@ Editable configuration is updated in place, including after validation. At Apply
 obsolete attempts and drafts are pruned; at acknowledgement, the prior current row
 is deleted rather than archived as superseded. Only current/editable/in-flight/error
 state is retained as needed, while audit and outbox events remain available.
-Migration `0014_current_model_configuration` removes legacy historical rows and
-keeps the newest record for each live state.
 
 ## API
 

@@ -11,14 +11,37 @@ vi.mock("./identity-api", () => ({
 }));
 vi.mock("@/i18n", () => ({ default: { language: "en" }, setApplicationLanguage: vi.fn() }));
 
-const user: IdentityUser = { id: "first", display_name: "First", email: "first@guard.test", role: "admin",
+const user: IdentityUser = { id: "first", display_name: "First", username: "first", role: "admin",
   tenant_id: "tenantA",
   enabled: true, preferred_language: "en", last_login_at: null, created_at: "2026-09-06", updated_at: "2026-09-06" };
+const dashboardKeys = [
+  queryKeys.metricsScope({ window: "7d" }),
+  queryKeys.metricsScope({ window: "1h", guardrailId: "private-guardrail" }),
+  queryKeys.runtimeEventsScope({ window: "7d", limit: 50 }),
+  queryKeys.runtimeEventsScope({ window: "1h", limit: 50, guardrailId: "private-guardrail" }),
+];
 function Probe() { const auth = useAuth(); return <><p>{auth.user ? `${auth.user.id}:${auth.user.role}` : "signed-out"}</p>
-  <button onClick={() => void auth.login({ email: "second@guard.test", password: "test-only" })}>Sign in</button><button onClick={() => void auth.loginMockSso("tenantB")}>Switch tenant</button><button onClick={() => void auth.logout()}>Sign out</button></>; }
+  <button onClick={() => void auth.login({ username: "second", password: "test-only" })}>Sign in</button><button onClick={() => void auth.loginMockSso("tenantB")}>Switch tenant</button><button onClick={() => void auth.logout()}>Sign out</button></>; }
 afterEach(() => { cleanup(); vi.clearAllMocks(); });
 
 describe("Authenticated cache boundaries", () => {
+  it.each([
+    { authenticated: false, user: null },
+    { authenticated: true, user: { ...user, role: "user" as const, id: "second" } },
+    { authenticated: true, user: { ...user, role: "admin" as const } },
+  ])("clears dashboard metrics and events when the tenant user's authority changes", async (next: AuthStatus) => {
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    client.setQueryData(queryKeys.auth, { authenticated: true, user: { ...user, role: "user" } });
+    for (const key of dashboardKeys) client.setQueryData(key, { private: "first-account-data" });
+    mocks.getAuthStatus.mockResolvedValue(next);
+    render(<QueryClientProvider client={client}><AuthProvider><Probe /></AuthProvider></QueryClientProvider>);
+    expect(screen.getByText("first:user")).toBeTruthy();
+    await act(async () => { await client.invalidateQueries({ queryKey: queryKeys.auth }); });
+    await waitFor(() => expect(screen.getByText(next.user ? `${next.user.id}:${next.user.role}` : "signed-out")).toBeTruthy());
+    for (const key of dashboardKeys) expect(client.getQueryData(key)).toBeUndefined();
+    client.clear();
+  });
+
   it.each([
     { authenticated: false, user: null },
     { authenticated: true, user: { ...user, id: "second" } },

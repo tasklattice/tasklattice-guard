@@ -30,10 +30,10 @@ from .diagnostics import diagnostic_phase
 from .protocol_codec import (
     artifact_content,
     canonical_json,
-    endpoint_verification_from_proto,
     traffic_scope_from_proto,
 )
 from .serialization import plan_from_dict
+from .toolkit.compiler.semantics import validate_artifact_execution_contract
 from .routing import RoutingError, select, validate_router, selector_matches, condition_matches
 
 
@@ -68,6 +68,7 @@ class AuthenticatedEndpointSnapshot:
     artifacts: dict[str, RuntimeArtifact]
     release_id: str | None
     model_revision_id: str | None
+    authenticated: bool | None
 
     @property
     def telemetry_context_id(self) -> str | None:
@@ -76,6 +77,14 @@ class AuthenticatedEndpointSnapshot:
     @property
     def scan_flag_only_default(self) -> bool:
         return self.endpoint.get("_scan_flag_only_default", True)
+
+
+@dataclass(frozen=True, slots=True)
+class EndpointAccess:
+    adapter: str | None
+    allowed: bool
+    # None means authentication was deliberately skipped for anonymous access.
+    authenticated: bool | None
 
 
 class ArtifactStore:
@@ -288,26 +297,29 @@ class ArtifactStore:
             )
 
     def authenticate_endpoint(self, endpoint_id: str, credential: str | None) -> bool:
-        if not credential:
-            return False
         with self._lock:
             endpoint = self._endpoints.get(endpoint_id)
-        if not endpoint:
+        return self._credential_matches(endpoint, credential)
+
+    def authorize_endpoint(self, endpoint_id: str, credential: str | None) -> EndpointAccess:
+        # Read the mode, adapter and verifier set from one immutable snapshot.
+        with self._lock:
+            endpoint = self._endpoints.get(endpoint_id)
+        if endpoint is None:
+            return EndpointAccess(None, False, False)
+        if not endpoint["_credential_required"]:
+            return EndpointAccess(endpoint["_adapter"], True, None)
+        authenticated = self._credential_matches(endpoint, credential)
+        return EndpointAccess(endpoint["_adapter"], authenticated, authenticated)
+
+    @staticmethod
+    def _credential_matches(endpoint: dict[str, Any] | None, credential: str | None) -> bool:
+        if not endpoint or not credential:
             return False
-        expected_digests: list[str] = []
-        credentials = endpoint.get("credentials")
-        if isinstance(credentials, list):
-            for item in credentials:
-                if not isinstance(item, dict):
-                    continue
-                if item.get("revokedAt") is not None:
-                    continue
-                digest = item.get("sha256")
-                if isinstance(digest, str):
-                    expected_digests.append(digest)
         actual = hashlib.sha256(credential.encode()).hexdigest()
         authenticated = False
-        for expected in expected_digests:
+        # Compare every active digest, including those after a match.
+        for expected in endpoint["_credential_digests"]:
             authenticated = hmac.compare_digest(actual, expected) or authenticated
         return authenticated
 
@@ -325,12 +337,13 @@ class ArtifactStore:
         request authenticated against the previous verifier.
         """
         with self._lock:
-            if not self.authenticate_endpoint(endpoint_id, credential):
+            access = self.authorize_endpoint(endpoint_id, credential)
+            if not access.allowed:
                 return None
             endpoint = self._endpoints[endpoint_id]
             return AuthenticatedEndpointSnapshot(self, endpoint_id, endpoint.get("_adapter", ""), endpoint,
                 getattr(self, "_router_revisions", {}), getattr(self, "_artifacts", {}),
-                getattr(self, "_release_id", None), getattr(self, "_model_revision_id", None))
+                getattr(self, "_release_id", None), getattr(self, "_model_revision_id", None), access.authenticated)
 
     def authenticated_endpoint_tenant(self, endpoint_id: str, credential: str | None) -> str | None:
         """Authenticate and read the owner from the same local state snapshot.
@@ -339,7 +352,7 @@ class ArtifactStore:
         admission. This read alone does not fence a subsequent allocation move.
         """
         with self._lock:
-            if not self.authenticate_endpoint(endpoint_id, credential):
+            if not self.authorize_endpoint(endpoint_id, credential).allowed:
                 return None
             tenant = self._endpoints.get(endpoint_id, {}).get("_tenant_id")
             return tenant if isinstance(tenant, str) and tenant and tenant.strip() == tenant else None
@@ -431,8 +444,12 @@ class ArtifactStore:
             router_revisions[item.router_id] = snapshot
         endpoints: dict[str, dict[str, Any]] = {}
         for item in desired_state.endpoints:
-            verification = endpoint_verification_from_proto(item.verification)
-            endpoints[item.endpoint_id] = {**verification, "_adapter": item.adapter, "_router_id": item.router_id,
+            # Prepare an immutable verifier set before publishing the snapshot.
+            # Revoked credential history is not needed on the request path.
+            endpoints[item.endpoint_id] = {"_adapter": item.adapter, "_router_id": item.router_id,
+                "_credential_digests": tuple(credential.sha256 for credential in item.verification.credentials
+                    if not credential.HasField("revoked_at")),
+                "_credential_required": item.credential_required,
                 "_tenant_id": item.tenant_id if item.HasField("tenant_id") else None,
                 "_telemetry_context_id": item.telemetry_context_id if item.HasField("telemetry_context_id") else None,
                 "_scan_flag_only_default": item.scan_flag_only_default if item.HasField("scan_flag_only_default") else True}
@@ -506,16 +523,15 @@ class ArtifactStore:
                 f"{message.nemo_version!r}; this Runner requires "
                 f"{self._nemo_version!r}. Recompile the Guardrail before router."
             )
-        plan_payload = content["plan"]
+        plan = plan_from_dict(content["plan"])
+        config = config_snapshot_from_artifact(message, verified_content=content)
+        validate_artifact_execution_contract(plan, config)
         return RuntimeArtifact(
             artifact_id=message.artifact_id,
             generation=int(message.generation),
             checksum=checksum,
-            plan=plan_from_dict(plan_payload),
-            config=config_snapshot_from_artifact(
-                message,
-                verified_content=content,
-            ),
+            plan=plan,
+            config=config,
         )
 
     def _persist_snapshot(self, desired_state: Any) -> None:

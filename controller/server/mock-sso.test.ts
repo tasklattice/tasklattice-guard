@@ -71,15 +71,15 @@ describe("Mock SSO", () => {
 
   it("signs in a fixed identity through Better Auth without accepting a tenant claim", async () => {
     const response = new Response("ok", { status: 200 });
-    const signInEmail = vi.fn().mockResolvedValue(response);
-    const auth = { api: { signInEmail } } as unknown as ControllerAuth;
+    const signInUsername = vi.fn().mockResolvedValue(response);
+    const auth = { api: { signInUsername } } as unknown as ControllerAuth;
     expect(await signInMockSsoIdentity(auth, config, "tenantB")).toBe(response);
-    expect(signInEmail).toHaveBeenCalledWith({
-      body: { email: "mock-tenantb@tasklattice.local", password: expect.any(String) },
+    expect(signInUsername).toHaveBeenCalledWith({
+      body: { username: "mock-tenantb", password: expect.any(String) },
       asResponse: true,
     });
     await expect(signInMockSsoIdentity(auth, config, "other-tenant")).rejects.toThrow("Unknown mock SSO identity");
     await expect(signInMockSsoIdentity(auth, { ...config, mockSsoEnabled: false }, "tenantA")).rejects.toThrow("Mock SSO is disabled");
-    expect(signInEmail).toHaveBeenCalledTimes(1);
+    expect(signInUsername).toHaveBeenCalledTimes(1);
   });
 });

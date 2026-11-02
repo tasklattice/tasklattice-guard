@@ -149,8 +149,10 @@ Generated bindings live in `runner/generated/` and
 protocol boundary codecs. Enforcement-action helpers are also generated from
 Proto. Contract comments document field semantics, absence, units, and ranges.
 Run `make proto-generate` after changes and `make proto-check` to detect stale
-outputs. Management OpenAPI has separate `openapi:generate` and `openapi:check`
-scripts in `controller/`.
+outputs. Management OpenAPI is an ignored build artifact generated before
+development, tests, typechecking, and server builds. Its `openapi:check` script
+generates the document and validates the API contract; production serves the
+generated JSON packaged with the compiled Controller.
 
 ## Publication and model execution
 
@@ -209,16 +211,13 @@ Grounding claim support and formal proof results retain their domain-specific
 values; inconclusive claims or proofs produce `unknown` unless a violation is
 established. A malformed response produces `error` rather than `unknown`.
 
-This is a breaking detector contract. Upgrade Controller and Runners together
-and recompile/republish existing Guardrail artifacts with compiler v25 or later.
-Stored JSON traces and external consumers using the old detector labels need
-migration; runtime parsing does not accept the old labels as aliases.
+Controller and Runner must use the same V1 detector and artifact contracts. Unsupported artifact contracts fail admission before activation.
 
 ## Effective releases and streaming
 
 ### Native output engine
 
-Compiler v26 enables NeMo 0.24's public `stream_async(generator=...)` for
+The V1 compiler enables NeMo 0.24's public `stream_async(generator=...)` for
 unconditional, non-transforming Content Safety output rules using required,
 fail-closed modules and an incremental delivery mode. It emits direct Action
 rails in Policy order, `parallel: false`, and `stream_first: false`. Actions
@@ -440,12 +439,9 @@ control-plane AI returns editable `allowed_topics` and `restricted_topics` lists
 the user-selected mode is preserved, and applying the proposal is explicit.
 Document analysis extracts both lists from source evidence. Draft editing,
 candidate previews, immutable plans and both NeMo topic execution paths preserve
-the same configuration. New modes always request semantic judgment; merely
-mentioning an allowed phrase cannot skip denied-topic evaluation. Existing
-immutable artifacts marked `topic_mode=allowlist` retain their legacy behavior
-until a new version is published. Semantic classification is probabilistic;
-Policy validation includes mode-aware unmatched-topic and denied-topic cases.
-
+the same configuration. Strict and permissive modes require semantic judgment;
+mentioning an allowed phrase cannot skip denied-topic evaluation. Semantic
+classification is probabilistic, so validation covers unmatched and denied topics.
 
 Intent and document authoring use at least a 60-second model timeout, or the
 configured model timeout when longer, because structured proposals take longer
@@ -487,22 +483,58 @@ formal policy and a compatible reasoning service, not a generic chat endpoint.
 A Profile is a preconfigured starting template, distinct from a Guardrail draft
 and from an evaluator/model profile. `guardrail_profile` stores its category,
 default flag, enabled state, display order, and versioned definition, including
-ordered Policy/version references, Rails and parameter values. Migration 0013
-seeds defaults for General, Banking, Securities, Internet support and Singapore
-finance. Its partial unique index allows one enabled default per category.
+ordered Policy/version references, Rails, parameter values, handling actions,
+reviewed test overlays, Rule order and optional complete draft settings.
+Migration 0052 narrows built-in discovery to Default, Full-feature baseline,
+Bank, Securities & brokerage and Internet platform support, in that order.
+Default retains `local-baseline@1.0.0`; Bank retains `banking-assistant@2.0.0`.
+The migration disables only the 11 retired built-in records and changes display
+metadata for retained choices. It leaves Policy pins, Guardrail drafts, test
+cases, source snapshots, signed Artifacts and the provisioning marker untouched.
+User-owned records and disabled state are preserved. The partial unique index
+allows one enabled default per category.
 Seeds run once through the migration journal; runtime startup never replaces
 operator changes. Add new defaults through a migration, not a request-time seed.
 
 `GET /api/v1/guardrail-profiles` reads enabled records from PostgreSQL on each
-request and expands their pinned Policy references. The legacy
+request and expands their pinned Policy references. The
 `/api/v1/policy-catalog/protection-presets` route remains a database-backed alias.
 Both require authenticated Policies read access. Profile application copies
-bindings into the draft; later Profile changes do not rewrite existing Guardrails.
-The UI initially loads the General default and lists all Profiles in one dropdown,
+bindings and draft settings into the draft; later Profile changes do not rewrite existing Guardrails.
+Each Profile response has an `availability` result. A missing pinned version
+disables only that Profile, and never substitutes another version.
+The UI initially selects Default (`local-baseline`) and lists enabled Profiles in one dropdown,
 with the name followed by industry/use-case and default tags. It preserves
 explicit append/replace/cancel/undo behavior.
-Choosing blank is respected. Runtime model availability gates still apply to
-all selected bindings, including those inherited from a Profile.
+Choosing blank is respected. Model readiness is checked for execution, including
+bindings inherited from a Profile. Topic model setup does not block manual
+draft creation or editing; AI-assisted authoring still requires it.
+
+Migration 0049 introduced the original eight-Policy benchmark Profile.
+Migration 0053 upgrades its untouched built-in definition to
+`full-feature-baseline@2.0.0`: 14 Policies and 127 Rules, including output
+content safety, semantic PII, direct/indirect injection, memory poisoning,
+data-use boundaries and a prefilled Topic denylist. Disabled state and custom
+definitions are preserved; existing Guardrail snapshots and test outcomes are
+unchanged. The six directional model requirements derive from the selected
+Rules and Rails and shrink when protections are removed.
+The Profile uses a bundled declarative
+`builtin-jailbreak-strict@1.0.0` instead of an installation-specific Policy.
+`profileOrigin` records the template ID and version in the editable draft;
+it does not introduce runtime inheritance or embed model credentials.
+Replacing a Profile applies all settings; appending preserves existing settings.
+Undo restores settings, bindings and provenance together. Model readiness is
+shown immediately; missing jailbreak/content-safety assignments do not prevent
+draft creation, editing or publication. Testing model behavior requires the
+corresponding platform assignments; failed tests do not block publication.
+
+Before saving or previewing a selection, unchanged inherited expectation
+overlays are reconciled against the exact source Profile (creation) or previous
+saved draft (editing). Deselected Policies, Rules or Rails remove only overlays
+whose source Case or expected Rule became unavailable. Remaining generated
+Cases retain the original Policy assertions; tests are not silently excluded.
+Edited, unknown and version-stale overlays still fail validation. Composition
+changes require a fresh validation run. See [the Profile guide](full-feature-baseline.md).
 
 ### Unified Rule detector contract
 

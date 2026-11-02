@@ -1,0 +1,27 @@
+id: pattern/titled_person
+name: Person with honorific
+description: Recognize an honorific followed by at least two capitalized name components in plain text or visible
+  HTML. Preserve tags and attributes; ignore code, scripts and document head. This is contextual format screening,
+  not general NER.
+stages:
+- input
+- output
+detector:
+  ref: text/regex
+  version: 1.0.0
+  parameters:
+    expression: (?<!\w)(?P<value>(?:Mr\.?|Mrs\.?|Ms\.?|Miss|Dr\.?|Doctor|Prof\.?|Professor|Sir|Dame|Lady|Lord|Madame|Monsieur|Reverend|Rev\.?|Father|Sister|Brother|Mother|Abbot|Abbess|Count|Countess|Duke|Duchess)[
+      \t]+(?-i:[A-ZÀ-ÖØ-Þ][^\W\d_]{1,39}(?:[-'’][A-ZÀ-ÖØ-Þ]?[^\W\d_]{1,39})*)(?:[ \t]+(?-i:[A-ZÀ-ÖØ-Þ][^\W\d_]{1,39}(?:[-'’][A-ZÀ-ÖØ-Þ]?[^\W\d_]{1,39})*)){1,5})(?![\w-])
+    detector_options:
+      capture_group: value
+      text_view: html_text
+on_match:
+  action: transform
+  replacement: '[titled_person_REDACTED]'
+risk_level: medium
+metadata:
+  taxonomy_ids:
+  - TALI-PRIVACY-PII
+runtime_adapter:
+  binding_id: local-contact-data
+  implementation_rule_id: pattern/titled_person

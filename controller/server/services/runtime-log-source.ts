@@ -10,8 +10,8 @@ const callFailure = and(
   inArray(routeAssignments.outcome, ["error", "timeout"]),
 );
 
-// Read failures from their authoritative call records, including historical
-// inferred timeouts. Do not manufacture Runner checkpoints or duplicate storage.
+// Read failures from their authoritative call records, including inferred
+// timeouts. Do not manufacture Runner checkpoints or duplicate storage.
 export function callFailureEvents(db: ControllerDatabase) {
   return db.select({
     id: sql<string>`'call:' || ${routeAssignments.decisionId}`.as("id"),
@@ -30,7 +30,7 @@ export function callFailureEvents(db: ControllerDatabase) {
     decision: sql<string>`${routeAssignments.outcome}`.as("decision"),
     durationMs: sql<number>`coalesce(${routeAssignments.durationMs}, 0)`.as("duration_ms"),
     metadata: sql<Record<string, unknown>>`jsonb_build_object(
-      'logKind', 'call_completion', 'executionStatus', 'error',
+      'logKind', 'call_completion', 'executionStatus', ${routeAssignments.outcome},
       'protocol', 'routing', 'completionInferred', ${routeAssignments.completionInferred},
       'failureReason', ${routeAssignments.failureReason}, 'completedAt', ${routeAssignments.completedAt},
       'decisionId', ${routeAssignments.decisionId}, 'routeId', ${routeAssignments.routeId},

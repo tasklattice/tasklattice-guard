@@ -58,7 +58,7 @@ function VersionDetails({ title, software, status, detail }: { title: string; so
         <Badge variant="outline" className={software.dirty === true ? "border-amber-300 bg-amber-50 text-amber-800" : ""}>{t(software.dirty === null ? "softwareVersion.unknown" : software.dirty ? "softwareVersion.dirty" : "softwareVersion.clean")}</Badge>
       </Field>
     </dl>
-    {software.source === "unknown" && <p className="border-t px-5 py-3 text-xs leading-5 text-muted-foreground">{t(status ? "softwareVersion.legacy" : "softwareVersion.unavailable")}</p>}
+    {software.source === "unknown" && <p className="border-t px-5 py-3 text-xs leading-5 text-muted-foreground">{t(status ? "softwareVersion.missingGitMetadata" : "softwareVersion.unavailable")}</p>}
   </article>;
 }
 function Field({ label, children }: { label: string; children: React.ReactNode }) {

@@ -61,7 +61,7 @@ export function UsersPage() {
               >
                 <span className="flex min-w-0 items-center gap-3">
                   <Avatar className="size-9"><AvatarFallback>{initials(item.display_name)}</AvatarFallback></Avatar>
-                  <span className="min-w-0"><span className="flex items-center gap-2"><strong className="truncate text-sm font-medium">{item.display_name}</strong>{item.id === currentUser?.id ? <Badge variant="secondary" className="text-[10px]">{t("users.currentUser")}</Badge> : null}</span><span className="mt-0.5 block truncate text-xs text-muted-foreground">{item.email}</span></span>
+                  <span className="min-w-0"><span className="flex items-center gap-2"><strong className="truncate text-sm font-medium">{item.display_name}</strong>{item.id === currentUser?.id ? <Badge variant="secondary" className="text-[10px]">{t("users.currentUser")}</Badge> : null}</span><span className="mt-0.5 block truncate text-xs text-muted-foreground">{item.username}</span></span>
                 </span>
                 <span><Badge variant="outline" className="gap-1.5 font-normal">{item.role === "admin" ? <ShieldCheck className="size-3.5 text-primary" /> : <UsersRound className="size-3.5 text-muted-foreground" />}{t(item.role === "admin" ? "common.admin" : "common.member")}</Badge></span>
                 <span><StateBadge state={item.enabled ? "enabled" : "disabled"} /></span>
@@ -82,13 +82,13 @@ export function UsersPage() {
 function CreateUserSheet({ open, onOpenChange, onCreated }: { open: boolean; onOpenChange: (open: boolean) => void; onCreated: () => void }) {
   const { t } = useTranslation();
   const [displayName, setDisplayName] = useState("");
-  const [email, setEmail] = useState("");
+  const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [role, setRole] = useState<IdentityRole>("user");
   const [language, setLanguage] = useState<"en" | "zh-CN">("en");
-  useEffect(() => { if (open) { setDisplayName(""); setEmail(""); setPassword(""); setRole("user"); setLanguage("en"); } }, [open]);
+  useEffect(() => { if (open) { setDisplayName(""); setUsername(""); setPassword(""); setRole("user"); setLanguage("en"); } }, [open]);
   const mutation = useMutation({
-    mutationFn: () => createUser({ display_name: displayName, email, password, role, preferred_language: language }),
+    mutationFn: () => createUser({ display_name: displayName, username, password, role, preferred_language: language }),
     onSuccess: () => { toast.success(t("users.added")); onCreated(); },
     onError: (error) => toast.error(error instanceof Error ? error.message : t("common.unknownError")),
   });
@@ -99,12 +99,12 @@ function CreateUserSheet({ open, onOpenChange, onCreated }: { open: boolean; onO
       eyebrow={t("users.eyebrow")}
       title={t("users.createTitle")}
       description={t("users.createDescription")}
-      footer={<><Button variant="outline" onClick={() => onOpenChange(false)}>{t("common.cancel")}</Button><Button disabled={!displayName.trim() || !email.trim() || password.length < 12 || mutation.isPending} onClick={() => mutation.mutate()}><Plus />{mutation.isPending ? t("common.creating") : t("common.create")}</Button></>}
+      footer={<><Button variant="outline" onClick={() => onOpenChange(false)}>{t("common.cancel")}</Button><Button disabled={!displayName.trim() || !username.trim() || password.length < 8 || mutation.isPending} onClick={() => mutation.mutate()}><Plus />{mutation.isPending ? t("common.creating") : t("common.create")}</Button></>}
     >
       <div className="grid gap-5">
         <Field label={t("auth.displayName")}><Input autoFocus autoComplete="name" value={displayName} onChange={(event) => setDisplayName(event.target.value)} /></Field>
-        <Field label={t("auth.workEmail")}><Input type="email" autoComplete="email" value={email} onChange={(event) => setEmail(event.target.value)} /></Field>
-        <Field label={t("common.password")} hint={t("auth.passwordHint")}><Input type="password" autoComplete="new-password" minLength={12} value={password} onChange={(event) => setPassword(event.target.value)} /></Field>
+        <Field label={t("auth.username")}><Input type="text" autoComplete="username" value={username} onChange={(event) => setUsername(event.target.value)} /></Field>
+        <Field label={t("common.password")} hint={t("auth.passwordHint")}><Input type="password" autoComplete="new-password" minLength={8} value={password} onChange={(event) => setPassword(event.target.value)} /></Field>
         <div className="grid gap-4 sm:grid-cols-2">
           <Field label={t("common.role")}><Select value={role} onValueChange={(value) => setRole(value as IdentityRole)}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="user">{t("common.member")}</SelectItem><SelectItem value="admin">{t("common.admin")}</SelectItem></SelectContent></Select></Field>
           <Field label={t("common.language")}><Select value={language} onValueChange={(value) => setLanguage(value as typeof language)}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="en">{t("common.english")}</SelectItem><SelectItem value="zh-CN">{t("common.chinese")}</SelectItem></SelectContent></Select></Field>
@@ -131,17 +131,17 @@ function EditUserSheet({ user, onOpenChange, onUpdated }: { user: IdentityUser |
     <EntitySheet
       open
       onOpenChange={onOpenChange}
-      eyebrow={`${t("users.user")} / ${user.email}`}
+      eyebrow={`${t("users.user")} / ${user.username}`}
       title={t("users.editTitle")}
       description={t("users.editDescription")}
-      footer={<><Button variant="outline" onClick={() => onOpenChange(false)}>{t("common.cancel")}</Button><Button disabled={!displayName.trim() || (password.length > 0 && password.length < 12) || mutation.isPending} onClick={() => mutation.mutate()}>{mutation.isPending ? t("common.saving") : t("common.save")}</Button></>}
+      footer={<><Button variant="outline" onClick={() => onOpenChange(false)}>{t("common.cancel")}</Button><Button disabled={!displayName.trim() || (password.length > 0 && password.length < 8) || mutation.isPending} onClick={() => mutation.mutate()}>{mutation.isPending ? t("common.saving") : t("common.save")}</Button></>}
     >
       <div className="grid gap-5">
-        <div className="flex items-center gap-3 rounded-xl border bg-muted/30 p-4"><Avatar className="size-10"><AvatarFallback>{initials(user.display_name)}</AvatarFallback></Avatar><div className="min-w-0"><p className="truncate text-sm font-medium">{user.display_name}</p><p className="truncate text-xs text-muted-foreground">{user.email}</p></div></div>
+        <div className="flex items-center gap-3 rounded-xl border bg-muted/30 p-4"><Avatar className="size-10"><AvatarFallback>{initials(user.display_name)}</AvatarFallback></Avatar><div className="min-w-0"><p className="truncate text-sm font-medium">{user.display_name}</p><p className="truncate text-xs text-muted-foreground">{user.username}</p></div></div>
         <Field label={t("auth.displayName")}><Input autoFocus value={displayName} onChange={(event) => setDisplayName(event.target.value)} /></Field>
         <Field label={t("common.role")}><Select value={role} onValueChange={(value) => setRole(value as IdentityRole)}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="user">{t("common.member")}</SelectItem><SelectItem value="admin">{t("common.admin")}</SelectItem></SelectContent></Select></Field>
         <div className="flex items-start justify-between gap-4 rounded-xl border p-4"><div><p className="text-sm font-medium">{t("users.activeAccount")}</p><p className="mt-1 text-xs leading-5 text-muted-foreground">{t("users.activeHint")}</p></div><Switch checked={enabled} onCheckedChange={setEnabled} aria-label={t("users.activeAccount")} /></div>
-        <Field label={t("users.newPasswordOptional")} hint={t("users.resetHint")}><Input type="password" autoComplete="new-password" minLength={12} value={password} onChange={(event) => setPassword(event.target.value)} /></Field>
+        <Field label={t("users.newPasswordOptional")} hint={t("users.resetHint")}><Input type="password" autoComplete="new-password" minLength={8} value={password} onChange={(event) => setPassword(event.target.value)} /></Field>
         <dl className="grid gap-2 rounded-xl bg-muted/35 p-4 text-xs"><div className="flex justify-between gap-4"><dt className="text-muted-foreground">{t("users.created")}</dt><dd>{formatDate(user.created_at, i18n.language)}</dd></div><div className="flex justify-between gap-4"><dt className="text-muted-foreground">{t("users.lastLogin")}</dt><dd>{user.last_login_at ? formatDate(user.last_login_at, i18n.language) : t("common.never")}</dd></div></dl>
       </div>
     </EntitySheet>

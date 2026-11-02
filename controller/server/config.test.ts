@@ -1,5 +1,4 @@
 import { describe, expect, it } from "vitest";
-import { hashPassword } from "better-auth/crypto";
 
 import { loadConfig } from "./config.js";
 
@@ -126,10 +125,16 @@ describe("Controller config", () => {
       expect(() => loadConfig({ ...requiredEnvironment, CONTROLLER_TENANT_LOAD_LAB_URL: value })).toThrow();
     }
   });
-  it("keeps the production password minimum at 12 by default", () => {
+  it("supplies finite database budgets and validates the Runner synchronization limit", () => {
+    expect(loadConfig(requiredEnvironment)).toMatchObject({ databaseTimeouts: { statementMs: 30000, lockMs: 5000, idleTransactionMs: 30000 }, runnerSyncConcurrency: 4 });
+    for (const key of ["CONTROLLER_DATABASE_STATEMENT_TIMEOUT_MS", "CONTROLLER_DATABASE_LOCK_TIMEOUT_MS", "CONTROLLER_DATABASE_IDLE_TRANSACTION_TIMEOUT_MS", "CONTROLLER_RUNNER_SYNC_CONCURRENCY"]) {
+      expect(() => loadConfig({ ...requiredEnvironment, [key]: "0" })).toThrow();
+    }
+    expect(() => loadConfig({ ...requiredEnvironment, CONTROLLER_RUNNER_SYNC_CONCURRENCY: "9" })).toThrow();
+  });
+  it("keeps the password minimum at 8 by default", () => {
     expect(loadConfig(requiredEnvironment)).toMatchObject({
-      minPasswordLength: 12,
-      mockSsoEnabled: false,
+      minPasswordLength: 8,
       metricsToken: null,
     });
   });
@@ -158,14 +163,14 @@ describe("Controller config", () => {
     );
   });
 
-  it.each(["admin@tasklattice.local", "another-admin@tasklattice.local"])("rejects short bootstrap passwords for %s on localhost", (email) => {
+  it.each(["admin", "another-admin"])("rejects short bootstrap passwords for %s", (username) => {
     expect(() => loadConfig({
       ...requiredEnvironment,
       NODE_ENV: "development",
       CONTROLLER_PUBLIC_URL: "http://localhost:38081",
-      CONTROLLER_BOOTSTRAP_ADMIN_EMAIL: email,
+      CONTROLLER_BOOTSTRAP_ADMIN_USERNAME: username,
       CONTROLLER_BOOTSTRAP_ADMIN_PASSWORD: "admin",
-    })).toThrow(/at least 12 characters/);
+    })).toThrow(/at least 8 characters/);
   });
 
   it("exposes a configurable Policy catalog directory", () => {
@@ -214,134 +219,26 @@ describe("Controller config", () => {
       .toThrow(/CONTROLLER_RUNTIME_PUBLIC_URL/);
   });
 
-  it("exposes the selected control-plane and data-plane models without credentials", () => {
-    expect(loadConfig(requiredEnvironment).modelConnections).toEqual({
-      controlPlane: {
-        provider: "Qwen",
-        model: "not-configured",
-      },
-      dataPlane: {
-        provider: "Runner",
-        models: [],
-      },
-    });
 
-    expect(loadConfig({
-      ...requiredEnvironment,
-      MODEL_GUARDRAILS_CONTROL_PLANE_AI_MODEL: "Qwen/Qwen3.5-9B",
-      MODEL_GUARDRAILS_MODEL_RUNTIMES_JSON: JSON.stringify([
-        { id: "qwen", client: "openai_chat", base_url: "http://qwen/v1", model: "Qwen/Qwen3Guard-Gen-8B" },
-        { id: "judge", client: "openai_chat", base_url: "http://judge/v1", model: "Qwen/Qwen3.5-9B" },
-      ]),
-    }).modelConnections).toMatchObject({
-      controlPlane: { provider: "Qwen", model: "Qwen/Qwen3.5-9B" },
-      dataPlane: {
-        provider: "Runner",
-        models: [
-          { id: "qwen", model: "Qwen/Qwen3Guard-Gen-8B" },
-          { id: "judge", model: "Qwen/Qwen3.5-9B" },
-        ],
-      },
-    });
-  });
-
-  it("restores the optional control-plane authoring model contract", () => {
-    expect(loadConfig(requiredEnvironment).controlPlaneAi).toBeNull();
-    expect(loadConfig({
-      ...requiredEnvironment,
-      MODEL_GUARDRAILS_CONTROL_PLANE_AI_BASE_URL: "https://api.deepseek.com/v1/",
-      MODEL_GUARDRAILS_CONTROL_PLANE_AI_MODEL: "deepseek-test",
-      MODEL_GUARDRAILS_CONTROL_PLANE_AI_API_KEY: "secret",
-    }).controlPlaneAi).toEqual({
-      provider: "Qwen",
-      baseUrl: "https://api.deepseek.com/v1",
-      model: "deepseek-test",
-      apiKey: "secret",
-      timeoutMs: 45_000,
-    });
-  });
-
-  it("ignores a partial legacy control-plane model so Settings remains available", () => {
-    expect(loadConfig({
-      ...requiredEnvironment,
-      MODEL_GUARDRAILS_CONTROL_PLANE_AI_BASE_URL: "https://api.deepseek.com/v1",
-    }).controlPlaneAi).toBeNull();
-    expect(loadConfig({
-      ...requiredEnvironment,
-      MODEL_GUARDRAILS_CONTROL_PLANE_AI_API_KEY: "secret",
-    }).controlPlaneAi).toBeNull();
-  });
-
-  it("ignores invalid legacy Evaluator Bindings before startup", () => {
-    const runtimes = JSON.stringify([{
-      id: "llama", client: "openai_chat", base_url: "http://llama/v1",
-      model: "meta-llama/Llama-Guard-3-8B",
-    }]);
-    expect(loadConfig({
-      ...requiredEnvironment,
-      MODEL_GUARDRAILS_MODEL_RUNTIMES_JSON: runtimes,
-      MODEL_GUARDRAILS_EVALUATOR_BINDINGS_JSON: JSON.stringify([{
-        id: "bad-jailbreak", contract_ref: "tali.guard.jailbreak.v1",
-        profile_ref: "tali.llama-guard-3.v1", model_ref: "llama", priority: 10,
-      }]),
-    }).modelConnections.dataPlane.models).toEqual([{ id: "llama", model: "meta-llama/Llama-Guard-3-8B" }]);
-    expect(loadConfig({
-      ...requiredEnvironment,
-      MODEL_GUARDRAILS_MODEL_RUNTIMES_JSON: runtimes,
-      MODEL_GUARDRAILS_EVALUATOR_BINDINGS_JSON: JSON.stringify([{
-        id: "unknown-runtime", contract_ref: "tali.guard.content-safety.v1",
-        profile_ref: "tali.llama-guard-3.v1", model_ref: "missing", priority: 10,
-      }]),
-    }).modelConnections.dataPlane.models).toEqual([{ id: "llama", model: "meta-llama/Llama-Guard-3-8B" }]);
-  });
 });
 
 
-describe("bootstrap passwordHash configuration", () => {
-  it("keeps the user bootstrap opt-in and accepts its separate credentials", async () => {
+describe("bootstrap username/password configuration", () => {
+  it("accepts separate username/password accounts", () => {
     expect(loadConfig(requiredEnvironment).bootstrapUser).toBeNull();
-    const passwordHash = await hashPassword("password");
-    expect(loadConfig({ ...requiredEnvironment, CONTROLLER_BOOTSTRAP_USER_EMAIL: "user@tasklattice.local", CONTROLLER_BOOTSTRAP_USER_PASSWORD_HASH: passwordHash }).bootstrapUser)
-      .toEqual({ email: "user@tasklattice.local", passwordHash, name: "User" });
+    expect(loadConfig({ ...requiredEnvironment, CONTROLLER_BOOTSTRAP_USER_USERNAME: " USER ", CONTROLLER_BOOTSTRAP_USER_PASSWORD: "password" }).bootstrapUser)
+      .toEqual({ username: "user", password: "password", name: "User" });
   });
   it.each([
-    { CONTROLLER_BOOTSTRAP_USER_EMAIL: "user@tasklattice.local" },
-    { CONTROLLER_BOOTSTRAP_USER_PASSWORD_HASH: "invalid" },
-    { CONTROLLER_BOOTSTRAP_USER_EMAIL: "user@tasklattice.local", CONTROLLER_BOOTSTRAP_USER_PASSWORD: "password" },
-    { CONTROLLER_BOOTSTRAP_USER_EMAIL: "user@tasklattice.local", CONTROLLER_BOOTSTRAP_USER_PASSWORD: "long-enough-password", CONTROLLER_BOOTSTRAP_USER_PASSWORD_HASH: "a".repeat(32) + ":" + "b".repeat(128) },
-    { CONTROLLER_BOOTSTRAP_USER_EMAIL: "ADMIN@tasklattice.local", CONTROLLER_BOOTSTRAP_USER_PASSWORD: "long-enough-password", CONTROLLER_BOOTSTRAP_ADMIN_EMAIL: "admin@tasklattice.local", CONTROLLER_BOOTSTRAP_ADMIN_PASSWORD: "long-enough-password" },
-  ])("rejects invalid or conflicting bootstrap user configuration: %j", environment => {
+    { CONTROLLER_BOOTSTRAP_USER_USERNAME: "user" },
+    { CONTROLLER_BOOTSTRAP_USER_PASSWORD: "password" },
+    { CONTROLLER_BOOTSTRAP_USER_USERNAME: "user@example.com", CONTROLLER_BOOTSTRAP_USER_PASSWORD: "password" },
+    { CONTROLLER_BOOTSTRAP_USER_USERNAME: "user", CONTROLLER_BOOTSTRAP_USER_PASSWORD: "short" },
+    { CONTROLLER_BOOTSTRAP_USER_USERNAME: "ADMIN", CONTROLLER_BOOTSTRAP_USER_PASSWORD: "password", CONTROLLER_BOOTSTRAP_ADMIN_USERNAME: "admin", CONTROLLER_BOOTSTRAP_ADMIN_PASSWORD: "password" },
+  ])("rejects invalid or conflicting accounts: %j", environment => {
     expect(() => loadConfig({ ...requiredEnvironment, ...environment })).toThrow();
   });
-  it("accepts a hash without a plaintext password", async () => {
-    const passwordHash = await hashPassword("Password");
-    const config = loadConfig({ ...requiredEnvironment,
-      CONTROLLER_BOOTSTRAP_ADMIN_EMAIL: "admin@example.test",
-      CONTROLLER_BOOTSTRAP_ADMIN_PASSWORD_HASH: passwordHash,
-    });
-    expect(config.bootstrapAdmin).toMatchObject({ email: "admin@example.test", passwordHash });
-    expect(config.bootstrapAdmin).not.toHaveProperty("password");
-    expect(() => loadConfig({ ...requiredEnvironment,
-      CONTROLLER_BOOTSTRAP_ADMIN_EMAIL: "admin@example.test",
-      CONTROLLER_BOOTSTRAP_ADMIN_PASSWORD_HASH: passwordHash,
-      CONTROLLER_BOOTSTRAP_ADMIN_PASSWORD: "another-password",
-    })).toThrow(/mutually exclusive/);
-    expect(() => loadConfig({ ...requiredEnvironment,
-      CONTROLLER_BOOTSTRAP_ADMIN_PASSWORD_HASH: passwordHash,
-    })).toThrow(/Bootstrap email/);
-  });
-
-  it("rejects malformed hashes and missing credentials", () => {
-    expect(() => loadConfig({ ...requiredEnvironment,
-      CONTROLLER_BOOTSTRAP_ADMIN_EMAIL: "admin@example.test",
-      CONTROLLER_BOOTSTRAP_ADMIN_PASSWORD_HASH: "not-a-password-hash",
-    })).toThrow(/scrypt/);
-    expect(() => loadConfig({ ...requiredEnvironment,
-      CONTROLLER_BOOTSTRAP_ADMIN_EMAIL: "admin@example.test",
-    })).toThrow(/Bootstrap email/);
-  });
 });
-
 
 describe("explicit control-channel transport", () => {
   it("defaults production to mTLS and allows an explicit plaintext choice", () => {

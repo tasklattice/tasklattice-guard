@@ -1,0 +1,25 @@
+id: pattern/labelled_person
+name: Explicitly labelled person
+description: Redact explicitly labelled values while retaining field names and delimiters. Does not infer unlabelled
+  entities.
+stages:
+- input
+- output
+detector:
+  ref: text/regex
+  version: 1.0.0
+  parameters:
+    expression: (?m)^[ \t]*(?:-[ \t]*)?(?:Teacher|Patient|Customer|Full name|Employee name|Account holder)[ \t]*:[
+      \t]*(?P<value>(?-i:[A-Z][^\W\d_]{1,40}(?:[-'][A-Z]?[^\W\d_]{1,40})?)(?:[ \t]+(?-i:[A-Z][^\W\d_]{1,40}(?:[-'][A-Z]?[^\W\d_]{1,40})?)){0,5})(?=\r?$)
+    detector_options:
+      capture_group: value
+on_match:
+  action: transform
+  replacement: '[labelled_person_REDACTED]'
+risk_level: medium
+metadata:
+  taxonomy_ids:
+  - TALI-PRIVACY-PII
+runtime_adapter:
+  binding_id: local-contact-data
+  implementation_rule_id: pattern/labelled_person

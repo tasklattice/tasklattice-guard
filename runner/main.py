@@ -24,7 +24,8 @@ from .diagnostics import EventLoopWatchdog, diagnostic_phase
 from .http_metrics import instrument_http_metrics
 from .metrics import RunnerMetrics
 from .observability import configure_observability
-from .providers import runtime_action_providers
+from .providers import dynamic_runtime_action_providers
+from .generated import DataPlaneModelConfiguration
 from .telemetry import RuntimeTelemetryExporter
 from .runtime_log_capture import RuntimeLogCapture
 from .synchronization import RuntimeSynchronizationMiddleware
@@ -48,7 +49,7 @@ def create_app(settings: RunnerSettings | None = None) -> FastAPI:
             raise ValueError("Distributed rate policy must match the trusted pool and local tenant configuration.")
     observability = configure_observability(configured)
     store = ArtifactStore(configured.artifact_public_key_path, configured.artifact_state_path)
-    providers = action_providers(*runtime_action_providers(configured))
+    providers = action_providers(*dynamic_runtime_action_providers(DataPlaneModelConfiguration(), {}))
     metrics = RunnerMetrics(configured.max_concurrency)
     registry = NeMoRuntimeRegistry(
         store,
@@ -60,9 +61,13 @@ def create_app(settings: RunnerSettings | None = None) -> FastAPI:
     watchdog = EventLoopWatchdog(metrics.registry, runner_id=configured.runner_id)
     engine = NeMoRuntime(registry, model_call_observer=metrics)
     contexts = (
-        RedisCallContextStore(configured.call_context_redis_url)
+        RedisCallContextStore(configured.call_context_redis_url,
+                              ttl_seconds=configured.call_context_ttl_seconds,
+                              compress_plans=configured.call_context_compress_plans,
+                              capacity_fallback=configured.call_context_capacity_fallback,
+                              metrics_registry=metrics.registry)
         if configured.call_context_redis_url
-        else CallContextStore()
+        else CallContextStore(ttl_seconds=configured.call_context_ttl_seconds)
     )
     runtime = GuardrailRuntimeService(engine, store, contexts=contexts)
     metrics.set_admission_load_provider(registry.admission_load)
@@ -103,7 +108,10 @@ def create_app(settings: RunnerSettings | None = None) -> FastAPI:
         telemetry=telemetry,
     )
     metrics.set_control_state(synchronized=control.synchronized)
-    log_capture = RuntimeLogCapture(configured.call_context_redis_url)
+    log_capture = RuntimeLogCapture(configured.call_context_redis_url,
+        ttl_seconds=configured.call_context_ttl_seconds,
+        on_capacity=(lambda: contexts.capacity.observe("log_capture"))
+        if isinstance(contexts, RedisCallContextStore) else None)
     rate = None
     group_rate = None
     admission_observer = (TenantAdmissionMetrics(metrics.registry, configured.tenant_admission.capacity,

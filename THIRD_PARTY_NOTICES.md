@@ -6,12 +6,10 @@ TaskLattice's canonical built-in Policy catalog includes 22 local content-filter
 modules derived from MIT-licensed source material published in LiteLLM 1.95.0
 at commit `ead62528e607b9d8e61273def638799c9c3a69ba`. The reviewed source data
 covers 18 content categories and 82 regex patterns, plus keyword, fenced-code,
-and competitor-intent behavior. The reproducible importer is stored at
-`scripts/import_litellm_content_filters.py`.
+and competitor-intent behavior. The original import has been consolidated into the maintained Policy source packages.
 
 The maintained definitions, Rule files, tests and resources now live in
-`policies/builtin/<policy-id>/`. The importer produces review material;
-`scripts/policy_sources.py` builds the executable catalog from those packages.
+`policies/builtin/<policy-id>/`. `scripts/policy_sources.py` builds the executable catalog from those packages.
 
 TaskLattice stores and executes the resulting Rules and Test Cases through its
 own Policy model and NeMo Guardrails runtime. It does not import LiteLLM at

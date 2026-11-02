@@ -120,13 +120,13 @@ const upstream = createServer(async (request, response) => {
 });
 
 try {
-  // A stale dev tag may use legacy per-token checks and violate full buffering.
+  // A stale dev tag may use per-token checks and violate full buffering.
   // Verify baked code before creating any Controller resources or credentials.
   const verifiedImage = JSON.parse((await exec(".venv/bin/python", ["scripts/verify_relay_stream_image.py", image])).stdout).image;
   // Port collisions fail without touching another user's process/container.
   await new Promise((resolve, reject) => { upstream.once("error", reject); upstream.listen(businessPort, "127.0.0.1", resolve); });
   await new Promise((resolve, reject) => { guardTransport.once("error", reject); guardTransport.listen(guardTransportPort, "127.0.0.1", resolve); });
-  const auth = await api("/api/auth/sign-in/email", { email: required("GUARD_REGRESSION_EMAIL"), password: required("GUARD_REGRESSION_PASSWORD") });
+  const auth = await api("/api/auth/sign-in/username", { username: required("GUARD_REGRESSION_USERNAME"), password: required("GUARD_REGRESSION_PASSWORD") });
   cookie = auth.response.headers.getSetCookie().map((value) => value.split(";")[0]).join("; ");
   const guardrail = (await api(`/api/v1/guardrails/${guardrailId}`)).result;
   const allowDefault = guardrailId === "guardrail-default" && process.env.GUARD_REGRESSION_ALLOW_DEFAULT === "1";

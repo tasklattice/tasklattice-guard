@@ -70,7 +70,7 @@ async def test_missing_or_mismatched_answers_are_errors(payload):
     assert result.verdict == "error"
 
 
-@pytest.mark.parametrize("status", [401, 422, 429, 500, 529])
+@pytest.mark.parametrize("status", [401, 422, 500, 529])
 async def test_http_failures_do_not_become_topic_matches_or_retry_without_budget(status):
     calls = []
     def respond(request):
@@ -79,6 +79,31 @@ async def test_http_failures_do_not_become_topic_matches_or_retry_without_budget
     result = await evaluator(respond).evaluate(_topic_request())
     assert result.verdict == "error" and not result.findings and len(calls) == 1
     assert "synthetic-key" not in result.reason
+
+
+async def test_explicit_rate_limiting_is_retried_up_to_the_configured_budget():
+    from runner.toolkit.nemo.actions.model_retry import rate_limit_retry_attempts
+    calls = []
+    def respond(request):
+        calls.append(request)
+        return httpx.Response(429, headers={"retry-after": "0"}, text="synthetic-key must not appear in evidence")
+    result = await evaluator(respond).evaluate(_topic_request())
+    assert result.verdict == "error" and not result.findings
+    assert len(calls) == rate_limit_retry_attempts()
+    assert result.usage.model_calls[0].retries == rate_limit_retry_attempts() - 1
+    assert "synthetic-key" not in result.reason
+
+
+async def test_a_rate_limit_that_clears_produces_a_real_classification():
+    calls = []
+    def respond(request):
+        calls.append(request)
+        if len(calls) == 1:
+            return httpx.Response(429, headers={"retry-after": "0"})
+        return response(denied_task=0, unlisted_task=0)
+    result = await evaluator(respond).evaluate(_topic_request())
+    assert len(calls) == 2 and result.usage.model_calls[0].result == "success"
+    assert result.verdict == "not_matched"
 
 
 async def test_timeouts_missing_credentials_and_unsupported_rails():
@@ -112,8 +137,6 @@ async def test_split_rule_questions_are_isolated_and_empty_permissive_rules_skip
     deny = (("topic_mode", "permissive"), ("allowed_topics", ""), ("restricted_topics", "Refund fraud"))
     assert set(topic_questions(allow)) == {"unlisted_task"}
     assert set(topic_questions(deny)) == {"denied_task"}
-    legacy = (("topic_mode", "allowlist"), ("allowed_topics", "Order support"), ("restricted_topics", "Ignored legacy deny"))
-    assert "Ignored legacy deny" not in json.dumps(topic_questions(legacy))
     result = await evaluator(lambda _: pytest.fail("No model call required")).evaluate(
         replace(_topic_request(), parameters=(("topic_mode", "permissive"),)))
     assert result.verdict == "not_matched" and result.usage.model_invocations == 0
@@ -134,3 +157,9 @@ async def test_offline_replay_excludes_labels_and_keeps_unknown_errors_separate(
     report = await replay(samples[:2], evaluator(respond), 5)
     assert report["outcomes"] == {"unknown": 1, "correct": 1}
     assert report["label_agreement"] == 0.5
+
+
+@pytest.mark.parametrize("mode", ["allowlist", "unsupported"])
+def test_topic_questions_reject_unsupported_modes(mode):
+    with pytest.raises(ValueError, match="Unsupported topic mode"):
+        topic_questions((("topic_mode", mode),))

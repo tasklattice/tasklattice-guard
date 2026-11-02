@@ -102,9 +102,9 @@ class GuardctlSmoke(unittest.TestCase):
                 path = urlsplit(self.path).path
                 status, payload = 200, owner.payload
                 cookie = None
-                if path == "/api/auth/sign-in/email":
-                    if body == {"email": "admin@example.test", "password": PASSWORD}:
-                        payload = {"user": {"email": "admin@example.test", "role": "admin"}}
+                if path == "/api/auth/sign-in/username":
+                    if body == {"username": "admin", "password": PASSWORD}:
+                        payload = {"user": {"username": "admin", "role": "admin"}}
                         cookie = COOKIE + "; HttpOnly; Path=/"
                     else:
                         status, payload = 401, {"message": "Invalid credentials"}
@@ -226,8 +226,8 @@ class GuardctlSmoke(unittest.TestCase):
     def test_enable_disable_and_connect_do_not_mix_credentials(self):
         terminal = self.start(token=PAT)
         terminal.send("enable")
-        terminal.read_until("Admin email .*: ")
-        terminal.send("admin@example.test")
+        terminal.read_until("Admin username .*: ")
+        terminal.send("admin")
         terminal.read_until("Admin password .*: ")
         terminal.send(PASSWORD)
         self.assertIn("Privileged mode enabled", terminal.read_until(PROMPT))
@@ -297,8 +297,8 @@ class GuardctlSmoke(unittest.TestCase):
     def test_failed_login_does_not_enable_privileged_mode(self):
         terminal = self.start(token=PAT)
         terminal.send("enable")
-        terminal.read_until("Admin email .*: ")
-        terminal.send("admin@example.test")
+        terminal.read_until("Admin username .*: ")
+        terminal.send("admin")
         terminal.read_until("Admin password .*: ")
         terminal.send("wrong-test-password")
         output = terminal.read_until(PROMPT)

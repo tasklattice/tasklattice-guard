@@ -1,3 +1,4 @@
+import { completeReport, getReport } from "../db/report-test-utils.js";
 // @vitest-environment node
 import { generateKeyPairSync } from "node:crypto";
 import { mkdtempSync, writeFileSync, rmSync } from "node:fs";
@@ -15,8 +16,8 @@ import { ControlPlaneService } from "./control-plane.js";
 import type { ValidationCaseResult } from "../domain/models.js";
 
 const url = process.env.GUARD_TEST_POSTGRES_URL;
-describe.skipIf(!url)("Historical model-enabled Default publication uses the standard gate", () => {
-  it("freezes scope, rejects a local failure, publishes full model protection for ordinary users", async () => {
+describe.skipIf(!url)("Historical model-enabled Default publication uses the ordinary publication rules", () => {
+  it("freezes scope, preserves a local failure, publishes full model protection for ordinary users", async () => {
     const database = await createTestDatabase(url!, "scope");
     const directory = mkdtempSync(join(tmpdir(), "guard-scope-"));
     const key = join(directory, "signing.pem");
@@ -52,21 +53,22 @@ describe.skipIf(!url)("Historical model-enabled Default publication uses the sta
           passed: !skipped && passes, skipped, skipReason: skipped ? "Model-dependent tests skipped" : "", evaluatorIds: [], latencyMs: 1, reason: "", phase: c.phase, inputContent: c.content,
           action: "", outputContent: "", findings: [], trace: [], trustedInstruction: "", targetSource: c.targetSource, query: "", groundingSources: [], expectedReasoningResult: null, actualReasoningResult: null,
           caseType: c.caseType, required: true, expectedFailure: null, actualFailure: null, concurrencyGroup: null, sourcePolicyId: c.sourcePolicyId, sourcePolicyVersion: c.sourcePolicyVersion, sourceCaseId: c.sourceCaseId,
-          coveredRuleIds: c.coveredRuleIds, matchedRuleIds: [], preemptingMatches: [], evaluationContracts: [], escalated: false, modelInvocations: 0 });
-        await service.completeValidation({ runId: run.id, status: passes ? "passed" : "failed",
+          evidenceStatus: skipped ? "not_reached" : "not_required", evidenceDetail: "", verifiedRuleIds: [], supersededBy: [], ruleContractSatisfied: !skipped,
+          coveredRuleIds: c.coveredRuleIds, matchedRuleIds: [], evaluationContracts: [], escalated: false, modelInvocations: 0 });
+        await completeReport(service, { runId: run.id, status: passes ? "passed" : "failed",
           metrics: { total: 2, executed: 1, skipped: 1, passed: Number(passes), complianceRate: passes ? 100 : 0, falsePositiveRate: 0, falseNegativeRate: 0, escalationRate: 0, p95LatencyMs: 1 },
           results: [result(local, false), result(model, true)],
           testScope: { testModelRules: false, skippedRules: model.coveredRuleIds.map(ruleId => ({ policyId: model.policyId, ruleId, reason: "model" })), modelInvocations: 0, executionDigest: "a".repeat(64), fullArtifactLoaded: true },
-          candidateArtifact: { guardrailId: DEFAULT_GUARDRAIL_ID, guardrailVersion: run.guardrailVersion, compilerVersion: "test", nemoVersion: "0.24.0", runtimeProfile: "llmrails_colang1_standard",
+          candidateArtifact: { guardrailId: DEFAULT_GUARDRAIL_ID, guardrailVersion: run.guardrailVersion, compilerVersion: "tasklattice-nemo-config-v1", nemoVersion: "0.24.0", runtimeProfile: "llmrails_colang1_standard",
             plan, configYaml: "", colangContent: "", prompts: [], actionBindings: [], dependencyManifest: [] } });
-        if (!passes) await expect(service.requestGuardrailPublish({ guardrailId: DEFAULT_GUARDRAIL_ID, actorId: "user" })).rejects.toMatchObject({ code: "guardrail_validation_required" });
-        else {
+        {
           const published = await service.requestGuardrailPublish({ guardrailId: DEFAULT_GUARDRAIL_ID, actorId: "user" });
           expect(published.status).toBe("ready");
+          expect(await getReport(service, run.id)).toMatchObject({ status: passes ? "passed" : "failed" });
           const detail = await service.getGuardrail(DEFAULT_GUARDRAIL_ID);
           expect(JSON.stringify(detail.versions[0]!.plan)).toContain("tali.guard.jailbreak.v1");
           expect(detail.versions[0]!.testWaiver).toBeNull();
-          expect((await service.getValidationRun(run.id)).testScope?.modelInvocations).toBe(0);
+          expect((await getReport(service, run.id)).testScope?.modelInvocations).toBe(0);
         }
       }
     } finally { await database.drop(); rmSync(directory, { recursive: true, force: true }); }

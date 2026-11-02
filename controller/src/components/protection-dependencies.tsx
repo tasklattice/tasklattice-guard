@@ -33,6 +33,7 @@ export function ProtectionDependencies({ bindings, policies }: { bindings: Guard
               <Badge variant={assignment.state === "failed" ? "destructive" : "outline"}>{t(`protection.dependencies.states.${assignment.state}`)}</Badge>
             </div>
             {assignment.modelName ? <p className="break-words">{assignment.modelName}</p> : null}
+            {assignment.state === "active" ? <p className="text-xs text-muted-foreground">{t(`protection.dependencies.validation.${assignment.validation}`)}</p> : null}
             <p className="text-xs text-muted-foreground">{item.policyNames.join(" · ")}</p>
             {assignment.checkedAt ? <p className="text-xs text-muted-foreground">{t("protection.dependencies.checked", { revision: assignment.revision, time: new Date(assignment.checkedAt).toLocaleString() })}</p> : null}
           </li>;

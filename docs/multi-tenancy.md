@@ -68,7 +68,7 @@ Hidden direct-ID resources and writes to a shared resource return not-found resp
 
 ## Migration
 
-The new branch preserves upstream migration history through `0048_remove_runtime_baseline` and appends [0049_multi_tenant_resources.sql](../controller/server/db/migrations/0049_multi_tenant_resources.sql). Upstream `0014_current_model_configuration.sql` and existing journal timestamps remain unchanged.
+The new branch preserves upstream migration history through `0048_remove_runtime_baseline` and appends [0002_multi_tenant_resources.sql](../controller/server/db/migrations/0002_multi_tenant_resources.sql). Upstream `0014_current_model_configuration.sql` and existing journal timestamps remain unchanged.
 
 `0049` creates fixed tenant rows and indexed grants, adds ownership to resource roots and package/import records, and adds tenant attribution to runtime events, model costs, and audit evidence. Existing upstream tenant-owned resources and users are backfilled to `tenantA`. Existing Model definitions receive a nullable tenant column and remain platform Models with `NULL` ownership; Providers receive no tenant column. Platform Model uniqueness and per-tenant Model uniqueness are enforced separately.
 

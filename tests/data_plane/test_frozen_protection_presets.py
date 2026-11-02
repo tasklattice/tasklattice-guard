@@ -19,8 +19,8 @@ from tests.data_plane.test_artifact_execution import Telemetry, _runtime
 
 FIXTURES = Path(__file__).resolve().parents[1] / "fixtures" / "artifacts"
 PRESETS = (
-    "common-baseline", "banking-assistant", "securities-assistant",
-    "internet-customer-support", "singapore-financial-assistant",
+    "banking-assistant", "securities-assistant",
+    "internet-customer-support",
 )
 
 # Reviewed against the pinned Policy expressions and replacement strings, not
@@ -35,9 +35,6 @@ EXACT_TRANSFORMS = {
     ("local-passports", "Passport number: 12AB12345"): "[REDACTED]",
     ("local-contact-data", "Acceptance sample: A@A.AA"): "Acceptance sample: [email_REDACTED]",
     ("local-contact-data", "Acceptance sample: +1 (000) 000 0000"): "Acceptance sample: +[us_phone_REDACTED]",
-    ("local-government-identifiers", "Acceptance sample: S1111111A"): "Acceptance sample: [sg_nric_REDACTED]",
-    ("local-contact-data", "Acceptance sample: +65 6111 1111"): "Acceptance sample: [sg_phone_REDACTED]",
-    ("local-payment-data", "Acceptance sample: bank account 111-11111-1"): "Acceptance sample: bank account [sg_bank_account_REDACTED]",
 }
 
 

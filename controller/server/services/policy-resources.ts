@@ -1,9 +1,10 @@
 import { currentTenantId, tenantOwnerForCreate, resourceReadPredicate, policyWritePredicate } from "./tenant-context.js";
+import { ReportResults, type ReportUploadIdentity } from "./report-results.js";
 import { randomUUID } from "node:crypto";
-import { and, desc, eq, getTableColumns, isNull } from "drizzle-orm";
+import { and, desc, eq, isNull, sql } from "drizzle-orm";
 import { canonicalJson } from "../../shared/canonical-json.js";
 import { guardrailVersionId } from "../../shared/guardrail-version.js";
-import { definitionIssues, policyDefinitionSchema, type PolicyDefinition, type PolicyResource, type ResourceValidation, type DefinitionTest } from "../../shared/policy-definition.js";
+import { definitionIssues, policyDefinitionSchema, type PolicyDefinition, type PolicyResource, type ResourceValidation, type DefinitionTest, type PolicyTestAssessment } from "../../shared/policy-definition.js";
 import type { ControllerDatabase } from "../db/client.js";
 import { advisoryTransactionLock } from "../db/postgres-locks.js";
 import { policyResources as resources, policyResourceVersions as versions, policyResourceValidations as runs, outboxEvents, auditEvents, policyRecords, policyImportedVersions } from "../db/schema.js";
@@ -15,11 +16,13 @@ import type { PolicyDto } from "../policy-catalog/catalog.js";
 import { DeclarativeCompiler } from "../policy-studio/declarative.js";
 import { definitionTestCases } from "../policy-studio/definition-tests.js";
 import { materializePolicyRules } from "../domain/policy-rules.js";
+import { limitValidationWrite } from "./validation-write-limits.js";
+import { reportSaveStage, withReportSaveDiagnostics } from "../db/diagnostics.js";
 
 /** Draft ownership, provenance and publication are independent of where a Policy was delivered. */
 export class PolicyResourceService {
   readonly compiler: DeclarativeCompiler;
-  constructor(private db: ControllerDatabase, directory: string, private catalog: () => PolicyDto[]) { this.compiler = new DeclarativeCompiler(directory); }
+  constructor(private db: ControllerDatabase, directory: string, private catalog: () => PolicyDto[], private reports = new ReportResults(db)) { this.compiler = new DeclarativeCompiler(directory); }
 
   async get(id: string): Promise<PolicyResource> {
     const [row] = await this.db.select().from(resources).where(and(eq(resources.id, id), resourceReadPredicate("policy", resources.id, resources.tenantId)));
@@ -45,7 +48,7 @@ export class PolicyResourceService {
       const importedVersions = await tx.select({ id: policyImportedVersions.policyId, tenantId: policyImportedVersions.tenantId }).from(policyImportedVersions).where(eq(policyImportedVersions.policyId, id));
       if (currentTenantId() && importedVersions.some(imported => imported.tenantId !== currentTenantId())) throw new NotFoundError("Policy draft", id);
       const imported = importedVersions[0];
-      if (legacy) throw new ConflictError("This ID belongs to a legacy programmable Policy.", "policy_identity_conflict");
+      if (legacy) throw new ConflictError("This ID belongs to a programmable Policy.", "policy_identity_conflict");
       if (input.create && (current || imported || this.catalog().some(p => p.id === id))) throw new ConflictError("Policy ID already exists.", "policy_identity_conflict");
       if ((current?.revision ?? 0) !== input.expectedRevision) throw new ConflictError("Policy changed. Reopen its current draft before saving.", "policy_draft_conflict");
       if (current && canonicalJson(current.definition) === canonicalJson(definition) && current.maintainer === input.maintainer) return;
@@ -60,7 +63,12 @@ export class PolicyResourceService {
   async views(base: PolicyDto[], db: Pick<ControllerDatabase, "select"> = this.db, id?: string): Promise<PolicyDto[]> {
     const rows = await db.select().from(resources).where(and(id ? eq(resources.id, id) : undefined, resourceReadPredicate("policy", resources.id, resources.tenantId)));
     const published = await db.select().from(versions).where(id ? eq(versions.policyId, id) : undefined).orderBy(desc(versions.createdAt));
-    const result = new Map(base.map(p => [p.id, p]));
+    const result = new Map(base.map(policy => {
+      // Plan bundled declarative model Policies from their authored definitions.
+      // Retain their definition so planning and dependency discovery use the
+      // authored detector, including runtime parameters such as on_unknown.
+      return [policy.id, this.compiler.catalogView(policy)];
+    }));
     for (const row of rows) {
       const history = published.filter(v => v.policyId === row.id).map(v => v.view);
       const existing = result.get(row.id);
@@ -119,35 +127,50 @@ export class PolicyResourceService {
     }
     // Recheck read/share scope in the statement that reads the child as well:
     // a grant may have been revoked after the existence check above.
-    const [run] = await this.db.select({ ...getTableColumns(runs) }).from(runs)
-      .innerJoin(resources, eq(resources.id, runs.policyId))
-      .where(and(eq(runs.policyId, id), isNull(runs.parentId), resourceReadPredicate("policy", resources.id, resources.tenantId), ...(runId ? [eq(runs.id, runId)] : [])))
-      .orderBy(desc(runs.createdAt)).limit(1);
+    const [run] = await this.db.select({ id: runs.id, policyId: runs.policyId, revision: runs.revision, status: runs.status, failureReason: runs.failureReason,
+      total: sql<number>`jsonb_array_length(${runs.tests})`, passed: sql<number>`(SELECT count(*)::int FROM validation_report_case WHERE run_id="policy_resource_validation"."id" AND status='passed')`,
+    }).from(runs).innerJoin(resources, eq(resources.id, runs.policyId)).where(and(resourceReadPredicate("policy", resources.id, resources.tenantId), eq(runs.policyId, id), isNull(runs.parentId), ...(runId ? [eq(runs.id, runId)] : []))).orderBy(desc(runs.createdAt)).limit(1);
     return run ?? null;
   }
   async running(id: string): Promise<boolean> {
-    const [job] = await this.db.update(runs).set({ status: "running" }).where(and(eq(runs.id, id), eq(runs.status, "queued"))).returning();
+    const [job] = await this.db.update(runs).set({ status: "running" }).where(and(eq(runs.id, id), eq(runs.status, "queued"))).returning({parentId:runs.parentId});
     if (job?.parentId) await this.db.update(runs).set({ status: "running" }).where(and(eq(runs.id, job.parentId), eq(runs.status, "queued")));
     return Boolean(job);
   }
-  async complete(input: { runId: string; status: string; results: ValidationCaseResult[]; reason?: string | undefined }): Promise<boolean> {
-    const [job] = await this.db.select().from(runs).where(eq(runs.id, input.runId));
+  async complete(input: { runId: string; upload?: ReportUploadIdentity; status: string; reason?: string | undefined; executionFailed?: boolean }): Promise<boolean> {
+    return withReportSaveDiagnostics(this.db, input.runId, () => this.persistResult(input));
+  }
+  private async persistResult(input: Parameters<PolicyResourceService["complete"]>[0]): Promise<boolean> {
+    const [job] = await reportSaveStage("lookup_policy_run", () => this.db.select().from(runs).where(eq(runs.id, input.runId)));
     if (!job?.parentId) return false;
+    if (!["queued", "running"].includes(job.status)) return true;
+    let requiredFailed = false;
+    if (!input.executionFailed) await reportSaveStage("assess_policy_cases", () => this.reports.assess(job.id, job.tests, (test, actual) => {
+      const result = assertPolicyTest(test, actual);
+      if (test.required && !result.passed) requiredFailed = true;
+      return { ...result, phase: test.phase, caseType: test.kind, required: test.required, expectedDecision: test.expected_decision,
+        coveredRuleIds: test.covered_rule_ids,
+        ruleContractSatisfied: test.kind !== "rule_acceptance" || test.covered_rule_ids.every(id => result.matchedRuleIds.includes(id)) };
+    }, input.upload));
     await this.db.transaction(async tx => {
-      const [parent] = await tx.select().from(runs).where(eq(runs.id, job.parentId!)).for("update");
+      await reportSaveStage("set_timeouts", () => limitValidationWrite(tx));
+      const [parent] = await reportSaveStage("lock_parent_run", () => tx.select({id:runs.id,status:runs.status}).from(runs).where(eq(runs.id, job.parentId!)).for("update"));
       if (!parent || ["passed", "failed"].includes(parent.status)) return;
-      const [current] = await tx.select().from(runs).where(eq(runs.id, job.id));
+      const [current] = await reportSaveStage("lookup_run", () => tx.select({id:runs.id,status:runs.status}).from(runs).where(eq(runs.id, job.id)));
       if (!current || ["passed", "failed"].includes(current.status)) return;
-      const results = current.tests.map(test => assertPolicyTest(test, input.results.find(r => r.caseId === test.id), input.status === "passed" || input.status === "failed" ? undefined : input.status));
-      const status = input.status === "passed" && results.filter(r => current.tests.find(t => t.id === r.caseId)?.required).every(r => r.passed) ? "passed" : "failed";
-      await tx.update(runs).set({ status, results, failureReason: input.reason ?? null }).where(eq(runs.id, current.id));
-      await tx.update(outboxEvents).set({ processedAt: new Date() }).where(eq(outboxEvents.id, current.id));
-      const children = await tx.select().from(runs).where(eq(runs.parentId, parent.id));
-      if (children.every(r => ["passed", "failed"].includes(r.status))) {
-        const success = children.every(r => r.status === "passed");
-        await tx.update(runs).set({ status: success ? "passed" : "failed", results: children.flatMap(r => r.results), failureReason: children.find(r => r.failureReason)?.failureReason ?? null }).where(eq(runs.id, parent.id));
-        await tx.insert(auditEvents).values({ id: randomUUID(), kind: "policy.validation_completed", resourceType: "policy", resourceId: job.policyId, detail: { runId: parent.id, status: success ? "passed" : "failed" } });
-      }
+      await this.reports.assertUpload(tx, job.id, input.upload);
+      const status = input.status === "passed" && !requiredFailed && !input.executionFailed ? "passed" : "failed";
+      await reportSaveStage("write_report", () => tx.update(runs).set({ status, failureReason: input.reason ?? null }).where(eq(runs.id, current.id)));
+      await reportSaveStage("complete_outbox", () => tx.update(outboxEvents).set({ processedAt: new Date() }).where(eq(outboxEvents.id, current.id)));
+      await reportSaveStage("aggregate_policy_results", async () => {
+        const children = await tx.select({ status: runs.status, failureReason: runs.failureReason }).from(runs).where(eq(runs.parentId, parent.id));
+        if (children.every(r => ["passed", "failed"].includes(r.status))) {
+          await this.reports.linkPolicyParent(tx, parent.id);
+          const success = children.every(r => r.status === "passed");
+          await tx.update(runs).set({ status: success ? "passed" : "failed", failureReason: children.find(r => r.failureReason)?.failureReason ?? null }).where(eq(runs.id, parent.id));
+          await reportSaveStage("write_audit", () => tx.insert(auditEvents).values({ id: randomUUID(), kind: "policy.validation_completed", resourceType: "policy", resourceId: job.policyId, detail: { runId: parent.id, status: success ? "passed" : "failed" } }));
+        }
+      });
     });
     return true;
   }
@@ -174,7 +197,7 @@ export class PolicyResourceService {
   }
 }
 
-export function assertPolicyTest(test: DefinitionTest, actual?: ValidationCaseResult, failure?: string): ResourceValidation["results"][number] {
+export function assertPolicyTest(test: DefinitionTest, actual?: ValidationCaseResult, failure?: string): PolicyTestAssessment {
   const reasons: string[] = [];
   if (!actual) reasons.push("Runner did not return this test.");
   if (failure) reasons.push(failure);

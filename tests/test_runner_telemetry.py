@@ -29,7 +29,7 @@ async def test_runtime_events_remain_in_wal_until_controller_accepts_them(tmp_pa
 
 
 @pytest.mark.asyncio
-async def test_legacy_null_optional_fields_are_omitted_when_draining_wal(tmp_path):
+async def test_null_optional_fields_are_omitted_when_draining_wal(tmp_path):
     exporter = RuntimeTelemetryExporter("http://controller/events", "token", tmp_path, 100, "runner-0")
     await exporter.emit({
         "id": "event-1",

@@ -1,0 +1,26 @@
+id: pattern/structured_address
+name: Structured address field
+description: Redact explicitly labelled values while retaining field names and delimiters. Does not infer unlabelled
+  entities.
+stages:
+- input
+- output
+detector:
+  ref: text/regex
+  version: 1.0.0
+  parameters:
+    expression: '["\x27](?:street|street_address|address_line[12]?|city|state|province|postcode|postal_code|zip_code|country|building)["\x27]\s*:\s*["\x27](?P<value>[^"\x27\r\n<>]{1,160})["\x27]'
+    detector_options:
+      capture_group: value
+    context_expression: '["''](?:street|street_address|address_line[12]?|postcode|postal_code|zip_code)["'']\s*:|["'']building["'']\s*:\s*["''][0-9]{1,5}["'']'
+    context_max_gap_words: 40
+on_match:
+  action: transform
+  replacement: '[structured_address_REDACTED]'
+risk_level: medium
+metadata:
+  taxonomy_ids:
+  - TALI-PRIVACY-PII
+runtime_adapter:
+  binding_id: local-contact-data
+  implementation_rule_id: pattern/structured_address

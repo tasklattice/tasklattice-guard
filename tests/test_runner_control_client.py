@@ -80,6 +80,7 @@ def test_both_controller_transports_use_finite_message_limits(monkeypatch, tmp_p
 
 
 class Store:
+    model_revision_id = ""
     generation = 0
     protection_generation = 0
     providers = None
@@ -93,8 +94,29 @@ class Store:
         self.materialization_key = materialization_key
         self.generation = desired_state.generation
 
+    def verify(self, _artifact):
+        return None
+
     def observability_counts(self):
         return 0, 0, 0
+
+
+async def test_runner_nacks_signed_unsupported_artifact_without_becoming_ready(tmp_path):
+    from runner.artifact_store import ArtifactStore
+    from tests.test_runner_artifact_store import FIXTURE, Registry, unsupported_state
+    store = ArtifactStore(FIXTURE / "public-key.pem", tmp_path)
+    registry = Registry()
+    store.attach_registry(registry)
+    client = RunnerControlClient(_settings(), store, Metrics())
+    await client._apply_desired_state(unsupported_state())
+    rejected = await client._outgoing.get()
+    assert not rejected.artifact_result.accepted
+    assert "artifact_recompile_required" in rejected.artifact_result.reason
+    rejected_state = await client._outgoing.get()
+    assert not rejected_state.desired_state_result.accepted
+    assert "artifact_recompile_required" in rejected_state.desired_state_result.reason
+    assert not client.synchronized
+    assert store.generation == registry.preparations == 0
 
 
 class Metrics:
@@ -221,6 +243,12 @@ def _settings():
     )
 
 
+def test_registration_advertises_explicit_views_support():
+    settings = _settings()
+    settings.max_concurrency = 4
+    client = RunnerControlClient(settings, Store(), Metrics())
+
+
 def _model_desired_state(*, generation: int) -> protocol.DesiredState:
     return protocol.DesiredState(
         generation=generation,
@@ -294,27 +322,26 @@ async def test_duplicate_validation_requests_share_execution_and_replay_terminal
     client._validator = SimpleNamespace(run=AsyncMock(side_effect=RuntimeError("synthetic test failure")))
     request = protocol.ValidationRequest(run_id="same-run")
     await asyncio.gather(client._validate(request), client._validate(request))
-    first = (await client._outgoing.get()).validation_result
-    second = (await client._outgoing.get()).validation_result
+    first = (await client._outgoing.get()).validation_status_notice
+    second = (await client._outgoing.get()).validation_status_notice
     client._validator.run.assert_awaited_once()
     assert first == second
-    assert not first.accepted
-    assert client._validation_result_bytes <= client._validation_result_budget
+    assert first.status == protocol.VALIDATION_STATUS_FAILED
+    assert len(client._validation_notices) <= 64
 
 
 @pytest.mark.asyncio
-async def test_validation_replay_cache_evicts_by_bytes():
+async def test_terminal_notice_replay_cache_is_bounded():
     from unittest.mock import Mock
     client = RunnerControlClient(_settings(), Store(), Metrics())
     client._metrics.job = Mock()
     client._validator = SimpleNamespace(run=AsyncMock(side_effect=RuntimeError("synthetic test failure")))
-    await client._validate(protocol.ValidationRequest(run_id="run-1"))
-    client._validation_result_budget = client._validation_result_bytes
-    await client._validate(protocol.ValidationRequest(run_id="run-2"))
-    assert list(client._validation_results) == ["run-2"]
-    assert client._validation_result_bytes <= client._validation_result_budget
-    await client._validate(protocol.ValidationRequest(run_id="run-2"))
-    assert client._validator.run.await_count == 2
+    for n in range(66):
+        await client._validate(protocol.ValidationRequest(run_id=f"run-{n}"))
+    assert len(client._validation_notices) == 64
+    assert "run-0" not in client._validation_notices
+    await client._validate(protocol.ValidationRequest(run_id="run-65"))
+    assert client._validator.run.await_count == 66
 
 
 @pytest.mark.asyncio
@@ -326,8 +353,11 @@ async def test_failed_test_returns_compiled_candidate_without_marking_passed():
     artifact = protocol.Artifact(guardrail_id="guardrail-default", guardrail_version="candidate")
     client._validator = SimpleNamespace(compiler_model_types=[], run=AsyncMock(return_value=SimpleNamespace(
         status="failed", metrics={}, results=[], artifact=artifact, test_scope=None)))
-    await client._execute_validation(protocol.ValidationRequest(run_id="failed"))
-    result = (await client._outgoing.get()).validation_result
+    import asyncio
+    from tests.control_plane.report_helpers import receive_report
+    task = asyncio.create_task(client._execute_validation(protocol.ValidationRequest(run_id="failed")))
+    result = await receive_report(client)
+    await task
     assert result.accepted and result.status == protocol.VALIDATION_STATUS_FAILED
     assert result.candidate_artifact == artifact
 
@@ -357,3 +387,25 @@ async def test_modes_overtake_model_preparation_and_report_nacks(tmp_path):
         assert store.protection_mode("g") == "bypass"
         finish.set()
     await asyncio.wait_for(client._receive_messages(incoming()), 3)
+
+
+@pytest.mark.asyncio
+async def test_offline_compilation_reports_failures_and_capacity_without_state_changes():
+    from unittest.mock import Mock
+
+    settings = _settings()
+    settings.compiler_capable = True
+    compiler = Mock()
+    compiler.compile_offline.side_effect = ValueError("Invalid plan")
+    client = RunnerControlClient(settings, Store(), Metrics(), compiler=compiler)
+    request = protocol.CompileRequest(compile_id="bad-plan")
+    await client._compile_artifact(request)
+    reply = await client._outgoing.get()
+    assert reply.artifact_compilation_result.error == "Invalid plan"
+    assert not reply.artifact_compilation_result.HasField("artifact")
+    client._capability_tasks = set(range(4))
+    await client._handle(protocol.ControllerMessage(artifact_compilation_request=request))
+    reply = await client._outgoing.get()
+    assert "capacity" in reply.artifact_compilation_result.error
+    assert compiler.compile_offline.call_count == 1
+    client._capability_tasks.clear()

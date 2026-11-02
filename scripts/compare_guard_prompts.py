@@ -80,7 +80,7 @@ def summarize_scenarios(scenarios, rows):
                 "judge_attack_conflicts": sum(c.get("judge_attack_disagreement", False) for c in checks)}
     return {"planned": len(scenarios) * 4, "completed": len(rows), "missing": len(scenarios) * 4 - len(rows),
         "errors": sum(r["status"] != "complete" for r in rows), "groups": groups,
-        "scoring": "unchanged semantic-output.v2; raw Judge and closed-answer checks remain separate"}
+        "scoring": "unchanged semantic-output.v1; raw Judge and closed-answer checks remain separate"}
 
 
 async def run(args):

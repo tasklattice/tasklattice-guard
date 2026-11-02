@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import type { ControllerConfig } from "../config.js";
 import type { ControllerDatabase } from "../db/client.js";
+import { NEMO_COMPILER_VERSION, PLAN_COMPILER_VERSION } from "../domain/artifact-execution-contract.js";
 import { ControlPlaneService } from "./control-plane.js";
 
 // Every query in these paths ends in an awaited builder, so one thenable
@@ -15,7 +16,11 @@ function scriptedSelect(results: unknown[][]) {
 }
 
 const config = { runnerToken: "runner-token-0123456789abcdef0123456789", deletionTrafficWindowMinutes: 5, offlineAfterSeconds: 60, telemetryStaleAfterSeconds: 120 } as unknown as ControllerConfig;
-const artifact = (id: string) => ({ artifact: { id, guardrailId: `guardrail-${id}`, guardrailVersion: "v1" } });
+const artifact = (id: string) => ({ artifact: {
+  id, guardrailId: `guardrail-${id}`, guardrailVersion: "v1",
+  compilerVersion: NEMO_COMPILER_VERSION,
+  plan: { compiler_version: PLAN_COMPILER_VERSION, steps: [] }, actionBindings: [],
+} });
 const revision = {
   routerId: "router-1", revision: 2, endpointIds: ["endpoint-1"],
   routes: [{ id: "all", name: "All", kind: "fallback", enabled: true, selector: { expression: { combinator: "and", conditions: [] } },
@@ -38,15 +43,15 @@ const desiredStateResults = () => [
   [{ id: "tenantA" }],
   [artifact("art-1"), artifact("art-2"), artifact("art-default")],
   [], [], [],
-  [{ id: "endpoint-1", tenantId: "tenantA", trafficRouterId: "router-1", adapter: "litellm-generic-guardrail", verification: { credentials: [] } }],
+  [{ id: "endpoint-1", tenantId: "tenantA", trafficRouterId: "router-1", adapter: "litellm-generic-guardrail", credentialRequired: true, verification: { credentials: [] } }],
 ] as unknown[][];
 
 describe("desired state per pool", () => {
   it("distributes an explicit false Scan default", async () => {
     const results = desiredStateResults();
-    results[7] = [{ id: "scan", adapter: "f5-scan", scanFlagOnlyDefault: false, verification: { credentials: [] } }];
+    results[7] = [{ id: "scan", adapter: "f5-scan", credentialRequired: false, scanFlagOnlyDefault: false, verification: { credentials: [] } }];
     const desired = await desiredStateService(results).desiredStateForPool("default");
-    expect(desired.endpoints[0]).toMatchObject({ endpointId: "scan", scanFlagOnlyDefault: false });
+    expect(desired.endpoints[0]).toMatchObject({ endpointId: "scan", credentialRequired: false, scanFlagOnlyDefault: false });
   });
   it("keeps visible ready versions for Playground in every pool of the assigned group", async () => {
     const service = desiredStateService(desiredStateResults());

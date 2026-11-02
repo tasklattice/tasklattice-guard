@@ -5,6 +5,7 @@ import os
 from typing import Any
 
 import httpx
+from ...runtime.failures import model_response
 
 from ...runtime.contracts import (
     GroundingClaimEvidence,
@@ -105,13 +106,13 @@ class GroundingActionProvider:
         source_text = "\n".join(block.text for block in sources)
         limit_error = _limit_error(query_text, source_text, request.content)
         if limit_error:
-            return action_result(request, "error", request.content, reason=limit_error)
+            return action_result(request, "error", request.content, reason=limit_error, error_source="configuration", error_category="configuration")
 
         try:
             grounding_threshold = _threshold(request, "grounding_threshold")
             relevance_threshold = _threshold(request, "relevance_threshold")
         except ValueError as error:
-            return action_result(request, "error", request.content, reason=str(error))
+            return action_result(request, "error", request.content, reason=str(error), error_source="configuration", error_category="configuration")
 
         credential = (self._api_key or "").strip() or (
             os.environ.get(self._api_key_env_var, "").strip()
@@ -123,6 +124,7 @@ class GroundingActionProvider:
                 "error",
                 request.content,
                 reason=f"{self.name} credential is not configured.",
+                error_source="configuration", error_category="configuration",
             )
 
         call = None
@@ -173,11 +175,12 @@ class GroundingActionProvider:
                         },
                     )
                     response.raise_for_status()
-                    raw_payload = response.json()
-                    payload = _response_payload(
-                        raw_payload,
-                        frozenset(block.id for block in sources),
-                    )
+                    with model_response():
+                        raw_payload = response.json()
+                        payload = _response_payload(
+                            raw_payload,
+                            frozenset(block.id for block in sources),
+                        )
                     call.complete(payload=raw_payload)
         except (httpx.HTTPError, KeyError, IndexError, TypeError, ValueError, json.JSONDecodeError) as error:
             return action_result(request,

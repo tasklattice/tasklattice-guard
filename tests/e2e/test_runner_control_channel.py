@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import base64
+import gzip
 import asyncio
 from pathlib import Path
 from types import SimpleNamespace
@@ -48,11 +49,21 @@ async def test_large_validation_round_trip_and_reconnect_sender_cleanup(tmp_path
         async def Connect(self, request_iterator, context):  # noqa: N802
             assert (await request_iterator.__anext__()).WhichOneof("body") == "registration"
             yield protocol.ControllerMessage(validation_request=request)
+            cases = []
             async for message in request_iterator:
-                if message.WhichOneof("body") == "validation_result":
-                    received.append(message.validation_result)
+                if message.WhichOneof("body") != "validation_report_chunk":
+                    continue
+                chunk = message.validation_report_chunk
+                result = protocol.ValidationResult.FromString(gzip.decompress(chunk.gzip_result))
+                cases.extend(result.results)
+                if chunk.final:
+                    result.results.extend(cases)
+                    received.append(result)
                     if server_abort:
                         await context.abort(grpc.StatusCode.UNAVAILABLE, "synthetic connection loss")
+                yield protocol.ControllerMessage(validation_report_chunk_ack=protocol.ValidationReportChunkAck(
+                    run_id=chunk.run_id,upload_id=chunk.upload_id,sequence=chunk.sequence))
+                if chunk.final:
                     return
 
     server = grpc.aio.server(options=CONTROL_CHANNEL_OPTIONS)

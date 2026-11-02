@@ -9,6 +9,7 @@ import textwrap
 import uuid
 
 import pytest
+import yaml
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -223,3 +224,65 @@ def test_real_cluster_install_upgrade_and_retained_secret_reinstall(tmp_path: Pa
             "kubectl", "--context", context, "--namespace", namespace,
             "delete", "secret", secret_name, "--ignore-not-found",
         )
+
+
+@pytest.mark.skipif(
+    not (os.environ.get("GUARD_HELM_TEST_CONTEXT") and os.environ.get("GUARD_HELM_TEST_NAMESPACE")),
+    reason="Set GUARD_HELM_TEST_CONTEXT and GUARD_HELM_TEST_NAMESPACE for Kubernetes lifecycle regression.",
+)
+def test_real_cluster_database_storage_survives_helm_upgrade_and_repeated_apply(tmp_path: Path):
+    """Exercise the product claim template without starting Pods or allocating PVCs."""
+    context = os.environ["GUARD_HELM_TEST_CONTEXT"]
+    namespace = os.environ["GUARD_HELM_TEST_NAMESPACE"]
+    release = f"guard-storage-{uuid.uuid4().hex[:12]}"
+    cluster_args = ["--kube-context", context, "--namespace", namespace]
+    kubectl = ["kubectl", "--context", context, "--namespace", namespace]
+
+    def run(*args: str, input: str | None = None) -> subprocess.CompletedProcess[str]:
+        return subprocess.run(args, input=input, check=True, capture_output=True, text=True, timeout=60)
+
+    run(*kubectl, "get", "namespace", namespace)
+    chart = ROOT / "charts" / "tali-guard"
+    rendered = run(
+        "helm", "template", release, str(chart), "--namespace", namespace,
+        "--values", str(chart / "values-dev-uat.yaml"), "--set-string", f"fullnameOverride={release}",
+    ).stdout
+    postgres = next(
+        item for item in yaml.safe_load_all(rendered)
+        if item and item["kind"] == "StatefulSet" and item["metadata"]["name"].endswith("-postgresql")
+    )
+    postgres["spec"]["replicas"] = 0
+    postgres["spec"]["template"]["metadata"]["annotations"]["test.tasklattice.io/marker"] = "{{ .Values.marker }}"
+    name = postgres["metadata"]["name"]
+    (tmp_path / "Chart.yaml").write_text("apiVersion: v2\nname: guard-storage-regression\nversion: 0.1.0\n")
+    (tmp_path / "templates").mkdir()
+    (tmp_path / "templates" / "postgresql.yaml").write_text(json.dumps(postgres))
+
+    def statefulset() -> dict:
+        return json.loads(run(*kubectl, "get", "statefulset", name, "-o", "json").stdout)
+
+    try:
+        for marker in ("install", "upgrade"):
+            run("bash", str(SCRIPT), release, str(tmp_path), context, namespace, "--set-string", f"marker={marker}", "--timeout", "30s")
+            live = statefulset()
+            if marker == "install":
+                original_uid = live["metadata"]["uid"]
+                original_claims = live["spec"]["volumeClaimTemplates"]
+            assert live["metadata"]["uid"] == original_uid
+            assert live["spec"]["volumeClaimTemplates"] == original_claims
+            assert live["spec"]["template"]["metadata"]["annotations"]["test.tasklattice.io/marker"] == marker
+
+        # Argo CD's default synchronization uses apply after Helm rendering.
+        manifest = run("helm", "template", release, str(tmp_path), "--namespace", namespace, "--set-string", "marker=git-sync").stdout
+        run(*kubectl, "apply", "-f", "-", input=manifest)
+        synchronized = statefulset()
+        run(*kubectl, "apply", "-f", "-", input=manifest)
+        live = statefulset()
+        assert live["spec"] == synchronized["spec"]
+        assert live["metadata"]["generation"] == synchronized["metadata"]["generation"]
+        assert live["metadata"]["uid"] == original_uid
+        assert live["spec"]["volumeClaimTemplates"] == original_claims
+        assert live["spec"]["template"]["metadata"]["annotations"]["test.tasklattice.io/marker"] == "git-sync"
+        assert not json.loads(run(*kubectl, "get", "pods,pvc", "-l", f"app.kubernetes.io/instance={release}", "-o", "json").stdout)["items"]
+    finally:
+        run("helm", "uninstall", release, *cluster_args, "--ignore-not-found", "--timeout", "30s")

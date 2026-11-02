@@ -1,4 +1,6 @@
-# Complete deployment reference and chart defaults; optional examples are commented.
+# Deployment defaults and common configuration reference; optional examples are commented.
+# For advanced Secret key-name overrides, see files/security-defaults.yaml and
+# ../../docs/operations.md#bootstrap-account-operations.
 # Copy only the settings you need into a private environment values file.
 # Before deploying: configure PostgreSQL, Redis (for multiple Runners), the initial
 # administrator and publicUrl. Empty credentials below are not usable defaults.
@@ -28,11 +30,11 @@ imagePullSecrets: []
 # Set once, e.g. https://guard-uat.example.com:8443 (scheme + hostname + port).
 # No path, credentials, query or fragment; an optional trailing slash is accepted.
 # Host casing and default ports (HTTP 80 / HTTPS 443) normalize to browser Origin.
-# Takes precedence over legacy controller.publicUrl, including local dev URLs.
+# Takes precedence over controller.publicUrl, including local dev URLs.
 # Ingress hosts are derived from it; VirtualService still needs matching routes.
 # Maps to CONTROLLER_PUBLIC_URL and, unless runner.publicUrl overrides it,
 # CONTROLLER_RUNTIME_PUBLIC_URL in the Controller ConfigMap.
-# Empty preserves legacy Controller URLs; without runner.publicUrl, Endpoint
+# Empty uses the Controller URL settings; without runner.publicUrl, Endpoint
 # addresses derive from the incoming Controller request origin. Local HTTP
 # loopback + Runtime LoadBalancer derives its separate public port instead.
 # Internal requests always use Service DNS, independently of this setting.
@@ -47,12 +49,17 @@ controller:
   #   maxPayloadBytesPerContext: 65536
   #   maxPayloadBytesPerPool: 16777216
   #   maxPayloadBytesGlobal: 67108864
+  databaseTimeouts:
+    statementMs: 30000
+    lockMs: 5000
+    idleTransactionMs: 30000
+  runnerSyncConcurrency: 4
   # Singleton UI/API service. Image tags default to Chart.appVersion.
   image:
     repository: ghcr.io/tasklattice/tali-guard-controller
     pullPolicy: IfNotPresent
     # tag: "0.2.0" # Omit to use Chart.appVersion; dev UAT uses locally built :dev.
-  # Optional legacy UI-only URLs, used only when top-level publicUrl is empty.
+  # Optional UI-only URLs, used only when top-level publicUrl is empty.
   # First is the auth base URL; all derive trusted origins and Ingress hosts.
   # publicUrl: [https://guard.example.com] # A single string is also supported.
   # Extra browser origins, e.g. a separate UI development server. Normally omit.
@@ -60,21 +67,26 @@ controller:
   # origins for compatibility. Remove stale entries when switching environments.
   # trustedOrigins: [http://localhost:8092]
   # Optional login policy; applies to account setup and future changes.
+  # Above 8 requires external Secrets for every enabled bootstrap account.
   # auth:
-  #   minLoginLength: 12
+  #   minLoginLength: 8
+  # Login throttling keys on the client address, not one shared bucket. Empty
+  # uses the connection peer and ignores client-supplied X-Forwarded-For. Behind
+  # an ingress/gateway, list its CIDRs, e.g. ["10.244.0.0/16"].
+  # trustedProxyCidrs: []
   # Internal HTTP/gRPC ports are fixed at 8080/9090. For direct local exposure:
   # service:
   #   type: ClusterIP
   #   public:
   #     enabled: true
   #     type: LoadBalancer # Or NodePort; exposes HTTP only, never gRPC.
-  #     port: 38081
+  #     port: 38081 # Service port; NodePort is allocated by Kubernetes.
   resources:
     requests:
       cpu: 100m
-      memory: 256Mi
+      memory: 512Mi
     limits:
-      memory: 1Gi
+      memory: 2Gi
 
 runner:
   # Optional different data-plane URL; normally inherits top-level publicUrl.
@@ -93,7 +105,7 @@ runner:
   #   public:
   #     enabled: true
   #     type: LoadBalancer
-  #     port: 38082
+  #     port: 38082 # Service port; NodePort is allocated by Kubernetes.
   default:
     # Two replicas provide rolling-update availability; shared Redis is required.
     replicaCount: 2
@@ -140,7 +152,30 @@ runner:
   # its own local tenantAdmission. Remote releases need coordinated validation.
   # Operator must provision the identical Redis policy separately; Helm never
   # creates/reset quotas. Bundled ephemeral Redis is rejected in distributed mode.
+  # Cannot be combined with redis.enabled=true.
   callContextRedisUrl: ""
+  # Test execution and provider recovery. Lower maxConcurrency for providers with
+  # small quotas; explicit HTTP 429 responses are retried with bounded backoff.
+  validation:
+    maxConcurrency: 8
+    providerRateLimitAttempts: 3
+  # Jev reports "unknown" strictly between these probabilities. Each classifier
+  # Rule's on_unknown determines its action; errors retain failure handling.
+  # Thresholds affect all JEV checks on this Runner. Test changes on an isolated
+  # Runner before adjusting a shared deployment.
+  jev:
+    lowerThreshold: 0.1
+    upperThreshold: 0.9
+  # Independent Laya operating point; JEV changes do not affect it.
+  laya:
+    lowerThreshold: 0.1
+    upperThreshold: 0.9
+  callContext:
+    ttlSeconds: 300
+    # Upgrade all readers before enabling compression on an older installation.
+    compressPlans: true
+    # Only Redis allocation failures degrade to checks of current content.
+    capacityFallback: true
   # Example: redis://redis.uat.svc.cluster.local:6379/0
   # Use rediss:// and the required authentication for a managed TLS Redis.
   state:
@@ -156,7 +191,7 @@ runner:
       storageClass: ""
 
 database:
-  # Choose an existing Secret or bundled PostgreSQL.
+  # Choose an existing Secret or bundled PostgreSQL; these are mutually exclusive.
   # Secret must already exist in the release namespace, containing secretKey.
   existingSecret: ""
   secretKey: database-url
@@ -174,19 +209,23 @@ postgresql:
   persistence:
     # false uses ephemeral storage; true requests a PVC from this StorageClass.
     enabled: true
-    size: 2Gi
+    # Creation-time settings: changing size or StorageClass requires recreating
+    # the StatefulSet. Existing PVCs must be resized separately when supported.
+    size: 20Gi
     storageClass: ""
   resources:
     requests:
-      cpu: 50m
-      memory: 128Mi
-    limits:
       cpu: 500m
-      memory: 512Mi
+      memory: 2Gi
+    limits:
+      cpu: "2"
+      memory: 4Gi
 
 # Development-only Redis; production uses runner.callContextRedisUrl.
 redis:
   enabled: false
+  maxmemory: 4gb
+  maxmemoryPolicy: noeviction
   image:
     repository: redis
     tag: "7.4-alpine"
@@ -197,7 +236,7 @@ redis:
       memory: 32Mi
     limits:
       cpu: 250m
-      memory: 128Mi
+      memory: 6Gi
 
 security:
   # Internal signing keys, tokens and mTLS certificates initialize automatically.
@@ -209,11 +248,13 @@ security:
     # Required keys: ca.crt, tls.crt, tls.key, runner.crt, runner.key.
     # existingSecret: guard-control-tls
   bootstrapAdmin:
-    # Supply an existing Secret, or email to initialize a random login in-cluster.
+    # Without existingSecret, every initialization Job run resets this account
+    # to the image-provided login; Controller reapplies mounted credentials at
+    # startup and after Secret revisions. Existing sessions are revoked.
     # existingSecret: guard-bootstrap-admin
-    email: ""
+    username: admin
     name: Administrator
-  # Optional second bootstrap account with the user role (disabled by default).
+  # The user account initializes by default; set enabled=false to omit it.
   # bootstrapUser:
   #   enabled: true
   #   existingSecret: guard-bootstrap-user
@@ -271,7 +312,8 @@ ingress:
   enabled: false
   className: ""
   annotations: {}
-  # Optional host override; otherwise hosts come from controller.publicUrl.
+  # Optional host override; otherwise hosts derive from publicUrl, falling back
+  # to controller.publicUrl when the shared URL is empty.
   # host: guard.example.com
   tls: []
   # Example TLS entry: { secretName: guard-ingress-tls, hosts: [guard.example.com] }

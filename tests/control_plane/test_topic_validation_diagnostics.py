@@ -149,11 +149,11 @@ async def test_llmrails_chat_adapter_captures_the_unparsed_response():
         client = OpenAICompatibleClient("https://model.test/v1", api_key=SECRET, http_client=http)
         model = _StrictTopicControlModel(OpenAIChatModel(client, "topic-model"))
         with capture_validation_case(enabled=True, secrets=(SECRET,), case_id="malformed") as diagnostics:
-            with pytest.raises(ValueError, match="exactly"):
+            with pytest.raises(ValueError, match="response_schema.*InvalidTopicLabel"):
                 await model.generate_async("cake", temperature=0.01, max_tokens=10)
         assert diagnostics.exchanges[0]["response"]["status"] == 200
         assert "maybe" in diagnostics.exchanges[0]["response"]["body"]
-        assert diagnostics.exchanges[0]["error"]["type"] == "ValueError"
+        assert diagnostics.exchanges[0]["error"]["type"] == "ModelResponseError"
 
 
 async def test_diagnostics_are_scoped_redacted_and_bounded(caplog):

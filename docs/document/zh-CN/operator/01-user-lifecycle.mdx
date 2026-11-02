@@ -33,7 +33,7 @@ order: 0
 <a id="guardrail-build-readiness" />
 ## 检查就绪状态并改进行为
 
-Guardrail 至少保留一个 Released 版本，且仍有匹配的本环境 Passed 依据时，才满足就绪条件。就绪不证明工作草稿已通过测试，也不证明流量正在使用该版本。
+Guardrail 至少保留一个 Released 版本，且仍有可执行 Artifact时，才满足就绪条件。就绪不证明工作草稿已通过测试，也不证明流量正在使用该版本。
 
 导入版本先为 Pending。请在本环境运行其冻结测试，通过后显式 Release。
 

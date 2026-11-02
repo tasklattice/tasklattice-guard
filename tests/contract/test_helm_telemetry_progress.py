@@ -131,7 +131,7 @@ def test_incomplete_or_ephemeral_rollout_fails_before_creating_a_runner(tmp_path
     (("runner", "telemetryProgress", "persistence", "size"), "64Mi\nvolume: injected"),
     (("runner", "telemetryProgress", "persistence", "storageClass"), []),
 ])
-def test_invalid_progress_values_are_rejected_by_schema(tmp_path: Path, path: tuple, value):
+def test_invalid_progress_values_are_rejected_by_template_validation(tmp_path: Path, path: tuple, value):
     values = copy.deepcopy(fixture())
     cursor = values
     for part in path[:-1]:
@@ -139,4 +139,4 @@ def test_invalid_progress_values_are_rejected_by_schema(tmp_path: Path, path: tu
     cursor[path[-1]] = value
     result = render(tmp_path, values)
     assert result.returncode != 0
-    assert "values don't meet the specifications" in result.stderr
+    assert "telemetryProgress" in result.stderr

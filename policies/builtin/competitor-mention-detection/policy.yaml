@@ -1,5 +1,5 @@
 # yaml-language-server: $schema=../../schemas/policy.schema.json
-schema_version: 2
+schema_version: 1
 kind: Policy
 metadata:
   id: competitor-mention-detection
@@ -8,7 +8,7 @@ metadata:
     comparisons, and category-ranking intent while allowing destination and service
     questions.
   source: built_in
-  version: 1.95.0
+  version: 1.0.0
   tags:
   - namespace: protection
     value: content_filters

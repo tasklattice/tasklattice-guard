@@ -1,0 +1,110 @@
+- id: regression/ordinary-add-0/input
+  name: Ordinary add 0
+  description: Behavior regression for reviewed policy 4.1.0; synthetic content, not a benchmark row.
+  phase: input
+  content: Please add credibility to the dialogue.
+  expected_decision: allow
+  covered_rule_ids: []
+  kind: scenario
+  required: true
+  scope: policy
+  expected_matched_rules: []
+- id: regression/ordinary-add-0/output
+  name: Ordinary add 0
+  description: Behavior regression for reviewed policy 4.1.0; synthetic content, not a benchmark row.
+  phase: output
+  content: Please add credibility to the dialogue.
+  expected_decision: allow
+  covered_rule_ids: []
+  kind: scenario
+  required: true
+  scope: policy
+  expected_matched_rules: []
+- id: regression/ordinary-add-1/input
+  name: Ordinary add 1
+  description: Behavior regression for reviewed policy 4.1.0; synthetic content, not a benchmark row.
+  phase: input
+  content: Add two numbers.
+  expected_decision: allow
+  covered_rule_ids: []
+  kind: scenario
+  required: true
+  scope: policy
+  expected_matched_rules: []
+- id: regression/ordinary-add-1/output
+  name: Ordinary add 1
+  description: Behavior regression for reviewed policy 4.1.0; synthetic content, not a benchmark row.
+  phase: output
+  content: Add two numbers.
+  expected_decision: allow
+  covered_rule_ids: []
+  kind: scenario
+  required: true
+  scope: policy
+  expected_matched_rules: []
+- id: regression/ordinary-add-2/input
+  name: Ordinary add 2
+  description: Behavior regression for reviewed policy 4.1.0; synthetic content, not a benchmark row.
+  phase: input
+  content: We add a new column.
+  expected_decision: allow
+  covered_rule_ids: []
+  kind: scenario
+  required: true
+  scope: policy
+  expected_matched_rules: []
+- id: regression/ordinary-add-2/output
+  name: Ordinary add 2
+  description: Behavior regression for reviewed policy 4.1.0; synthetic content, not a benchmark row.
+  phase: output
+  content: We add a new column.
+  expected_decision: allow
+  covered_rule_ids: []
+  kind: scenario
+  required: true
+  scope: policy
+  expected_matched_rules: []
+- id: regression/uppercase-medical-add/input
+  name: Uppercase medical add
+  description: Behavior regression for reviewed policy 4.1.0; synthetic content, not a benchmark row.
+  phase: input
+  content: The patient was diagnosed with ADD.
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/disability
+  kind: scenario
+  required: true
+  scope: policy
+- id: regression/uppercase-medical-add/output
+  name: Uppercase medical add
+  description: Behavior regression for reviewed policy 4.1.0; synthetic content, not a benchmark row.
+  phase: output
+  content: The patient was diagnosed with ADD.
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/disability
+  kind: scenario
+  required: true
+  scope: policy
+- id: regression/expanded-disability/input
+  name: Expanded disability
+  description: Behavior regression for reviewed policy 4.1.0; synthetic content, not a benchmark row.
+  phase: input
+  content: The patient has attention deficit disorder.
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/disability
+  kind: scenario
+  required: true
+  scope: policy
+- id: regression/expanded-disability/output
+  name: Expanded disability
+  description: Behavior regression for reviewed policy 4.1.0; synthetic content, not a benchmark row.
+  phase: output
+  content: The patient has attention deficit disorder.
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/disability
+  kind: scenario
+  required: true
+  scope: policy

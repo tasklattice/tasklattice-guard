@@ -1,5 +1,6 @@
+import { completeReport, getReport } from "../db/report-test-utils.js";
 // @vitest-environment node
-import { generateKeyPairSync, sign } from "node:crypto";
+import { generateKeyPairSync } from "node:crypto";
 import { cpSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
@@ -21,6 +22,13 @@ import { ControlPlaneService } from "./control-plane.js";
 import { routingEventSchema } from "./traffic-routing.js";
 import { emptyPolicyDefinition } from "../../shared/policy-definition.js";
 import type { ValidationCaseResult } from "../domain/models.js";
+
+// Compare resource paths and bytes directly; recursive Buffer comparison walks
+// millions of numeric properties and obscures the package invariant under test.
+function expectResourceFilesEqual(actual: Array<[string, Buffer]>, expected: Array<[string, Buffer]>) {
+  expect(actual.map(([path]) => path)).toEqual(expected.map(([path]) => path));
+  for (const [index, [path, bytes]] of actual.entries()) expect(bytes.equals(expected[index]![1]), path).toBe(true);
+}
 
 const url = process.env.GUARD_TEST_POSTGRES_URL;
 const catalogDir = resolve("../runner/toolkit/policy_library/assets");
@@ -76,11 +84,11 @@ describe.skipIf(!url)("Guardrail release packages between isolated environments"
     const run = await uat.requestValidation({ guardrailId: id, actorId: "admin", compilerAvailable: true });
     const { rows: [request] } = await uatDb.pool.query("SELECT payload FROM controller_outbox WHERE id = $1", [run.id]);
     const candidate: ArtifactContent = {
-      guardrailId: id, guardrailVersion: run.guardrailVersion, compilerVersion: "tasklattice-nemo-config-test", nemoVersion: "0.24.0",
+      guardrailId: id, guardrailVersion: run.guardrailVersion, compilerVersion: "tasklattice-nemo-config-v1", nemoVersion: "0.24.0",
       runtimeProfile: "llmrails_colang1_standard", plan: request.payload.plan, configYaml: "models: []\n", colangContent: "",
       prompts: [], actionBindings: [], dependencyManifest: [["action", "GuardContentFilterAction", "1.0.0"]],
     };
-    await uat.completeValidation({ runId: run.id, status: "passed", metrics: emptyValidationMetrics(run.metrics.total), results: [], candidateArtifact: candidate,
+    await completeReport(uat, { runId: run.id, status: "passed", metrics: emptyValidationMetrics(run.metrics.total), results: [], candidateArtifact: candidate,
       runtime: { runnerId: "uat-runner-0", runnerVersion: "1.0.0", nemoVersion: "0.24.0", modelRevisionId: "", compilerModelTypes: [] } });
     const version = await uat.requestGuardrailPublish({ guardrailId: id, actorId: "admin", expectedDraftRevision: revision });
     if (record) published.push(version.version);
@@ -113,18 +121,19 @@ describe.skipIf(!url)("Guardrail release packages between isolated environments"
 
   it("starts production with the same features as UAT: a complete bundled Default baseline without model configuration", async () => {
     await prod.initialize();
+    const defaultId = (await prodDb.pool.query("SELECT guardrail_id FROM deployment_preset")).rows[0].guardrail_id;
     // A platform release does not claim that installation tests have passed.
-    expect((await prodDb.pool.query("SELECT origin FROM guardrail WHERE id = $1", [DEFAULT_GUARDRAIL_ID])).rows).toEqual([{ origin: "local" }]);
-    expect((await prod.getGuardrail(DEFAULT_GUARDRAIL_ID)).readiness).toBe("ready");
-    expect((await prodDb.pool.query("SELECT validation_run_id, platform_release FROM guardrail_version WHERE guardrail_id=$1", [DEFAULT_GUARDRAIL_ID])).rows[0])
-      .toMatchObject({ validation_run_id: null, platform_release: { source: "bundled" } });
+    expect((await prodDb.pool.query("SELECT origin FROM guardrail WHERE id = $1", [defaultId])).rows).toEqual([{ origin: "local" }]);
+    expect((await prod.getGuardrail(defaultId)).readiness).toBe("ready");
+    expect((await prodDb.pool.query("SELECT validation_run_id, publication FROM guardrail_version WHERE guardrail_id=$1", [defaultId])).rows[0])
+      .toMatchObject({ validation_run_id: null, publication: { source: "deployment" } });
     await prod.initialize();
-    expect((await prodDb.pool.query("SELECT count(*)::int AS count FROM guardrail_version WHERE guardrail_id=$1", [DEFAULT_GUARDRAIL_ID])).rows[0].count).toBe(1);
+    expect((await prodDb.pool.query("SELECT count(*)::int AS count FROM guardrail_version WHERE guardrail_id=$1", [defaultId])).rows[0].count).toBe(1);
     expect((await prod.listPolicies()).map(p => p.id)).toEqual(expect.arrayContaining(["builtin-jailbreak", "builtin-content-safety"]));
     expect(await prod.requiredPlatformModelBindings()).toEqual([]);
-    const updated = await prod.getGuardrail(DEFAULT_GUARDRAIL_ID);
+    const updated = await prod.getGuardrail(defaultId);
     expect(updated.draftConfig.policyBindings).toHaveLength(12);
-    expect((await prodDb.pool.query("SELECT jsonb_array_length(test_suite) AS count FROM guardrail_version WHERE guardrail_id=$1", [DEFAULT_GUARDRAIL_ID])).rows[0].count).toBe(608);
+    expect((await prodDb.pool.query("SELECT jsonb_array_length(test_suite) AS count FROM guardrail_version WHERE guardrail_id=$1", [defaultId])).rows[0].count).toBe(748);
   });
 
   it("requires models only for enabled routed targets, not historical versions or disabled routes", async () => {
@@ -141,7 +150,7 @@ describe.skipIf(!url)("Guardrail release packages between isolated environments"
     await prodDb.pool.query("INSERT INTO traffic_router (id,name,draft,active_snapshot,active_revision) VALUES ('health-router','Health',$1,$1,1)", [{ routes: [route] }]);
     expect(await prod.requiredPlatformModelBindings()).toEqual(["content_safety.input", "content_safety.output"]);
     for (const changed of [{ ...route, enabled: false }, { ...route, targets: [{ ...route.targets[0]!, weightBps: 0 }] },
-      { ...route, targets: [{ ...route.targets[0]!, guardrailVersion: "v2" }] }]) {
+      { ...route, targets: [{ ...route.targets[0]!, guardrailVersion: "revision-b" }] }]) {
       await prodDb.pool.query("UPDATE traffic_router SET active_snapshot=$1 WHERE id='health-router'", [{ routes: [changed] }]);
       expect(await prod.requiredPlatformModelBindings()).toEqual([]);
     }
@@ -157,7 +166,7 @@ describe.skipIf(!url)("Guardrail release packages between isolated environments"
     const first = await uat.packages.exportPackage(guardrailId, published);
     const second = await uat.packages.exportPackage(guardrailId, published);
     const filesOf = (bytes: Buffer) => [...readZip(bytes, { maxEntries: 1024, maxEntryBytes: 1 << 24, maxTotalBytes: 1 << 26 })].filter(([path]) => path.startsWith("guardrails/") || path.startsWith("policies/"));
-    expect(filesOf(first.bytes)).toEqual(filesOf(second.bytes));
+    expectResourceFilesEqual(filesOf(first.bytes), filesOf(second.bytes));
     const paths = filesOf(first.bytes).map(([path]) => path);
     expect(paths.filter(path => path.startsWith("guardrails/")).sort()).toEqual([
       `guardrails/${guardrailId}/guardrail.json`,
@@ -171,7 +180,7 @@ describe.skipIf(!url)("Guardrail release packages between isolated environments"
     const { rows: [studio] } = await uatDb.pool.query("SELECT snapshot FROM policy_version WHERE policy_id = $1 AND version = 1", [STUDIO]);
     expect(parsed.policies.find(node => node.id === STUDIO)).toMatchObject({ kind: "programmable", version: "1", definition: studio.snapshot });
     expect(parsed.policies.filter(node => node.kind === "catalog").length).toBe(parsed.policies.length - 1);
-    // v1 binds one more catalog Policy than v2; each leaf appears once.
+    // The first revision binds one more catalog Policy; each leaf appears once.
     expect(parsed.versions[0]!.policies.length).toBe(parsed.versions[1]!.policies.length + 1);
     expect(parsed.policies.length).toBe(parsed.versions[0]!.policies.length);
     // Each version carries the suite it was published with; the UAT report stays in UAT.
@@ -249,7 +258,7 @@ describe.skipIf(!url)("Guardrail release packages between isolated environments"
     await uatDb.pool.query("INSERT INTO model_price_revision(id,key,source,rates) VALUES ('export-price','price-marker','manual',$1)", [JSON.stringify({ unit: "free", currency: "USD" })]);
     const after = readZip((await uat.packages.exportPackage(guardrailId, published)).bytes, { maxEntries: 1024, maxEntryBytes: 1 << 24, maxTotalBytes: 1 << 26 });
     const resources = (files: typeof before) => [...files].filter(([path]) => path.startsWith("guardrails/") || path.startsWith("policies/"));
-    expect(resources(after)).toEqual(resources(before));
+    expectResourceFilesEqual(resources(after), resources(before));
     expect([...after.values()].map(bytes => bytes.toString("utf8")).join("\n")).not.toMatch(/cost-model-marker|cost-provider-marker|price-marker/);
   });
 
@@ -258,8 +267,7 @@ describe.skipIf(!url)("Guardrail release packages between isolated environments"
     await uatDb.pool.query("UPDATE guardrail_version SET status='pending', validation_run_id=NULL, released_at=NULL WHERE guardrail_id=$1 AND version=$2", [guardrailId, published[0]]);
     try {
       const parsed = parsePackage((await uat.packages.exportPackage(guardrailId, [published[0]!])).bytes);
-      expect(parsed.manifest.schemaVersion).toBe(4);
-      expect(parsed.signatures).toEqual([]);
+      expect(parsed.manifest.schemaVersion).toBe(1);
       expect(parsed.versions).toHaveLength(1);
       const preview = await uat.packages.inspectUpload((await uat.packages.exportPackage(guardrailId, [published[0]!])).bytes, "admin");
       expect(preview.blockers).toEqual([]);
@@ -290,7 +298,7 @@ describe.skipIf(!url)("Guardrail release packages between isolated environments"
     for (const [index, row] of prodArtifacts.entries()) {
       expect(row.signature).not.toBe(uatArtifacts[index].signature);
       expect(verifyArtifactDigest(row.checksum, row.signature, prodArtifactKey.publicKeyPem)).toBe(true);
-      expect(row.content_digest_version).toBe(2);
+      expect(row.content_digest_version).toBe(1);
     }
     const { rows: [guardrail] } = await prodDb.pool.query("SELECT origin, source_id, status FROM guardrail WHERE id = $1", [guardrailId]);
     // Nothing imported is usable yet: each version waits to be tested and released here.
@@ -354,18 +362,14 @@ describe.skipIf(!url)("Guardrail release packages between isolated environments"
     await expect(prod.packages.inspectUpload(mutate(bytes), "admin")).rejects.toMatchObject({ code });
   });
 
-  it("accepts legacy signed packages without configuring keys, sources or Runner checks", async () => {
-    const parsed = parsePackage((await uat.packages.exportPackage(guardrailId, published)).bytes);
-    const pair = generateKeyPairSync("ed25519");
-    const bytes = buildPackage({ source: { id: "arbitrary-source", name: "Legacy exporter" }, guardrail: parsed.manifest.guardrail,
-      exportedAt: new Date(), versions: parsed.versions.map(item => rebuilt(parsed, item)),
-      sign: manifest => [{ keyId: "legacy-key", algorithm: "ed25519", signature: sign(null, manifest, pair.privateKey).toString("base64") }] });
-    expect(parsePackage(bytes).manifest.schemaVersion).toBe(3);
+  it("imports current packages without configuring source keys or Runner checks", async () => {
+    const { bytes } = await uat.packages.exportPackage(guardrailId, published);
+    expect(parsePackage(bytes).manifest.schemaVersion).toBe(1);
     let admissions = 0;
     prod.packages.setArtifactAdmission(async () => { admissions++; throw new Error("No Runner configured"); });
     const preview = await prod.packages.inspectUpload(bytes, "admin");
     expect(preview.blockers).toEqual([]);
-    expect(preview.keyId).toBeNull(); // No claim that legacy signatures were authenticated.
+    expect(preview.keyId).toBeNull();
     expect(await prod.packages.importPackage(preview.packageId, { actorId: "admin" })).toMatchObject({ imported: [], existing: published });
     expect(admissions).toBe(0);
     prod.packages.setArtifactAdmission(async () => []);
@@ -376,7 +380,7 @@ describe.skipIf(!url)("Guardrail release packages between isolated environments"
   });
 
   it("serializes concurrent imports of the same package", async () => {
-    const third = await uat.updateGuardrail({ id: guardrailId, actorId: "admin", name: "Bank assistant", expectedDraftRevision: 2 });
+    const third = await uat.updateGuardrail({ id: guardrailId, actorId: "admin", draftConfig: { ...(await uat.getGuardrail(guardrailId)).draftConfig, safetyLevel: "strict" }, expectedDraftRevision: 2 });
     await testAndPublish(guardrailId, third.draftRevision);
     const { bytes } = await uat.packages.exportPackage(guardrailId, [published.at(-1)!]);
     const preview = await prod.packages.inspectUpload(bytes, "admin");
@@ -388,26 +392,26 @@ describe.skipIf(!url)("Guardrail release packages between isolated environments"
   /** Run a version's own suite here and record the Runner's verdict, as the control channel would. */
   async function testHere(id: string, version: string, status: "passed" | "failed") {
     const run = await prod.requestVersionTestRun({ guardrailId: id, version, actorId: "admin" });
-    await prod.completeValidation({ runId: run.id, status, metrics: emptyValidationMetrics(run.metrics.total), results: [] });
+    await completeReport(prod, { runId: run.id, status, metrics: emptyValidationMetrics(run.metrics.total), results: [] });
     return run;
   }
 
-  it("releases an imported version only after its own suite passes here, against exactly that content", async () => {
+  it("publishes imported content independently of its untested, failed and passed outcomes", async () => {
     const version = published[1]!;
-    await expect(prod.releaseGuardrailVersion({ guardrailId, version, actorId: "admin" })).rejects.toMatchObject({ code: "guardrail_version_test_required" });
+    await expect(prod.releaseGuardrailVersion({ guardrailId, version, actorId: "admin" })).resolves.toMatchObject({ status: "ready", validationRunId: null });
     await testHere(guardrailId, version, "failed");
-    await expect(prod.releaseGuardrailVersion({ guardrailId, version, actorId: "admin" })).rejects.toMatchObject({ code: "guardrail_version_test_required", detail: { lastRun: { status: "failed" } } });
+    await expect(prod.releaseGuardrailVersion({ guardrailId, version, actorId: "admin" })).resolves.toMatchObject({ status: "ready", validationRunId: null });
     const passed = await testHere(guardrailId, version, "passed");
     const released = await prod.releaseGuardrailVersion({ guardrailId, version, actorId: "admin" });
-    // Same version number and content; the passing report is bound for good.
-    expect(released).toMatchObject({ version, status: "ready", validationRunId: passed.id, releasedBy: "admin" });
+    // Same version number and content; tests do not replace publication provenance.
+    expect(released).toMatchObject({ version, status: "ready", validationRunId: null, releasedBy: "admin" });
     // Testing a frozen version does not mark its independent working draft as tested.
     expect((await prod.getGuardrail(guardrailId)).latestValidationRun).toBeNull();
     expect((await prod.getGuardrail(guardrailId)).latestTestingReport).toMatchObject({ id: passed.id, status: "passed" });
     expect((await prod.getGuardrail(guardrailId)).hasUnpublishedChanges).toBe(false);
     expect((await prodDb.pool.query("SELECT status FROM guardrail WHERE id = $1", [guardrailId])).rows[0].status).toBe("active");
     const { rows: [audit] } = await prodDb.pool.query("SELECT detail FROM audit_event WHERE kind = 'guardrail.version_released'");
-    expect(audit.detail).toMatchObject({ version, validationRunId: passed.id, origin: "imported" });
+    expect(audit.detail).toMatchObject({ version, testsRequired: false, origin: "imported" });
     // A later failure does not revoke the release.
     await testHere(guardrailId, version, "failed");
     expect((await prodDb.pool.query("SELECT status FROM guardrail_version WHERE guardrail_id = $1 AND version = $2", [guardrailId, version])).rows[0].status).toBe("ready");
@@ -469,25 +473,26 @@ describe.skipIf(!url)("Guardrail release packages between isolated environments"
   });
 
   it("imports Default versions through the ordinary local test and release workflow", async () => {
+    const defaultId = (await prodDb.pool.query("SELECT guardrail_id FROM deployment_preset")).rows[0].guardrail_id;
     const parsed = parsePackage((await uat.packages.exportPackage(guardrailId, [published[0]!])).bytes);
-    const versions = parsed.versions.map(item => rebuilt(parsed, item, { ...item.content, guardrailId: DEFAULT_GUARDRAIL_ID, plan: { ...item.content.plan, guardrail_id: DEFAULT_GUARDRAIL_ID } }));
-    const bytes = buildPackage({ source: { id: "bank-uat-system", name: "UAT system baseline" }, guardrail: { id: DEFAULT_GUARDRAIL_ID, name: "Default Guardrail" },
+    const versions = parsed.versions.map(item => rebuilt(parsed, item, { ...item.content, guardrailId: defaultId, plan: { ...item.content.plan, guardrail_id: defaultId } }));
+    const bytes = buildPackage({ source: { id: "bank-uat-system", name: "UAT system baseline" }, guardrail: { id: defaultId, name: "Default Guardrail" },
       exportedAt: new Date(), versions });
     const preview = await prod.packages.inspectUpload(bytes, "admin");
     expect(preview.blockers).toEqual([]);
     await prod.packages.importPackage(preview.packageId, { actorId: "admin" });
     // An authorized source adds a version to the local Default; import alone never changes basic protection.
-    expect((await prodDb.pool.query("SELECT origin FROM guardrail WHERE id = $1", [DEFAULT_GUARDRAIL_ID])).rows).toEqual([{ origin: "local" }]);
-    expect((await prodDb.pool.query("SELECT origin FROM guardrail_version WHERE guardrail_id = $1 AND version = $2", [DEFAULT_GUARDRAIL_ID, published[0]])).rows).toEqual([{ origin: "imported" }]);
+    expect((await prodDb.pool.query("SELECT origin FROM guardrail WHERE id = $1", [defaultId])).rows).toEqual([{ origin: "local" }]);
+    expect((await prodDb.pool.query("SELECT origin FROM guardrail_version WHERE guardrail_id = $1 AND version = $2", [defaultId, published[0]])).rows).toEqual([{ origin: "imported" }]);
     const before = await prod.desiredStateForPool("default");
-    await testHere(DEFAULT_GUARDRAIL_ID, published[0]!, "passed");
-    await prod.releaseGuardrailVersion({ guardrailId: DEFAULT_GUARDRAIL_ID, version: published[0]!, actorId: "admin" });
+    await testHere(defaultId, published[0]!, "passed");
+    await prod.releaseGuardrailVersion({ guardrailId: defaultId, version: published[0]!, actorId: "admin" });
 
     expect((await prod.desiredStateForPool("default")).artifacts).toEqual(before.artifacts);
-    await prod.packages.checkVersionEnvironment(DEFAULT_GUARDRAIL_ID, published[0]!);
+    await prod.packages.checkVersionEnvironment(defaultId, published[0]!);
     const after = await prod.desiredStateForPool("default");
     expect(after.artifacts.length).toBe(before.artifacts.length + 1);
-    expect(after.artifacts.some(item => item.guardrailId === DEFAULT_GUARDRAIL_ID && item.guardrailVersion === published[0])).toBe(true);
+    expect(after.artifacts.some(item => item.guardrailId === defaultId && item.guardrailVersion === published[0])).toBe(true);
   });
 
   /** Another installation whose catalog differs in one Policy, with its own database. */
@@ -654,7 +659,7 @@ describe.skipIf(!url)("Guardrail release packages between isolated environments"
       expect(candidate.plan).toBeTruthy();
       await service.previewGuardrailPlan({ draftConfig: original.draftConfig, runtimeProfile: original.runtimeProfile });
       const run = await service.requestVersionTestRun({ guardrailId, version: chosen.version, actorId: "admin" });
-      await service.completeValidation({ runId: run.id, status: "passed", metrics: emptyValidationMetrics(run.metrics.total), results: [] });
+      await completeReport(service, { runId: run.id, status: "passed", metrics: emptyValidationMetrics(run.metrics.total), results: [] });
       await service.releaseGuardrailVersion({ guardrailId, version: chosen.version, actorId: "admin" });
       expect((await service.getGuardrail(guardrailId)).hasUnpublishedChanges).toBe(false);
       const copiedVersion = await service.duplicateGuardrail({ id: guardrailId, name: "Copy imported version", sourceVersion: chosen.version, idempotencyKey: "imported-version", actorId: "admin" });
@@ -679,7 +684,7 @@ describe.skipIf(!url)("Guardrail release packages between isolated environments"
       expect(copiedDraft.testCaseCount).toBe(editedDraft.testCaseCount);
       const draftRun = await service.requestValidation({ guardrailId, actorId: "admin", compilerAvailable: true });
       const { rows: [request] } = await database.pool.query("SELECT payload FROM controller_outbox WHERE id=$1", [draftRun.id]);
-      await service.completeValidation({ runId: draftRun.id, status: "passed", metrics: emptyValidationMetrics(draftRun.metrics.total), results: [],
+      await completeReport(service, { runId: draftRun.id, status: "passed", metrics: emptyValidationMetrics(draftRun.metrics.total), results: [],
         candidateArtifact: { ...chosen.content, guardrailVersion: draftRun.guardrailVersion, plan: request.payload.plan },
         runtime: { runnerId: "prod-runner", runnerVersion: "1.0.0", nemoVersion: "0.24.0", modelRevisionId: "", compilerModelTypes: [] } });
       const publishedHere = await service.requestGuardrailPublish({ guardrailId, expectedDraftRevision: editedDraft.draftRevision, actorId: "admin" });
@@ -694,41 +699,18 @@ describe.skipIf(!url)("Guardrail release packages between isolated environments"
     } finally { await next.cleanup(); }
   });
 
-  it("backfills legacy imported drafts without changing versions, reports, or a user's working draft", async () => {
-    const next = await installationWith("draft_migration", () => {});
-    const { database, service } = next;
-    try {
-      const bytes = (await uat.packages.exportPackage(guardrailId, published.slice(0, 2))).bytes;
-      const preview = await service.packages.inspectUpload(bytes, "admin");
-      await service.packages.importPackage(preview.packageId, { actorId: "admin" });
-      const original = await service.getGuardrail(guardrailId);
-      const before = (await database.pool.query("SELECT version, plan, test_suite, inspection FROM guardrail_version WHERE guardrail_id=$1 ORDER BY version", [guardrailId])).rows;
-      await database.pool.query("DELETE FROM guardrail_test_case WHERE guardrail_id=$1", [guardrailId]);
-      await database.pool.query("UPDATE guardrail_version SET source_snapshot=NULL WHERE guardrail_id=$1", [guardrailId]);
-      const migration = readFileSync(resolve("server/db/migrations/0033_imported_guardrail_drafts.sql"), "utf8");
-      await database.pool.query(migration);
-      expect(await service.getGuardrail(guardrailId)).toMatchObject({ draftConfig: original.draftConfig, draftRevision: 1, testCaseCount: original.testCaseCount });
-      expect((await service.getGuardrail(guardrailId)).versions.every(item => item.hasSourceSnapshot)).toBe(true);
-      expect((await database.pool.query("SELECT version, plan, test_suite, inspection FROM guardrail_version WHERE guardrail_id=$1 ORDER BY version", [guardrailId])).rows).toEqual(before);
-      const edited = await service.updateGuardrail({ id: guardrailId, expectedDraftRevision: 1, actorId: "admin", runtimeProfile: "llmrails_colang1_standard" });
-      await database.pool.query("DELETE FROM guardrail_test_case WHERE guardrail_id=$1", [guardrailId]);
-      await database.pool.query(migration);
-      expect(await service.getGuardrail(guardrailId)).toMatchObject({ runtimeProfile: edited.runtimeProfile, draftRevision: edited.draftRevision, testCaseCount: 0 });
-    } finally { await next.cleanup(); }
-  });
-
-  it("applies the same report deletion and pending lifecycle to an imported version", async () => {
+  it("applies the same independent report deletion lifecycle to an imported version", async () => {
     const next = await installationWith("report_delete", () => {});
     try {
       const { bytes } = await uat.packages.exportPackage(guardrailId, [published[0]!]);
       const preview = await next.service.packages.inspectUpload(bytes, "admin");
       await next.service.packages.importPackage(preview.packageId, { actorId: "admin" });
       const run = await next.service.requestVersionTestRun({ guardrailId, version: published[0]!, actorId: "admin" });
-      await next.service.completeValidation({ runId: run.id, status: "passed", metrics: emptyValidationMetrics(run.metrics.total), results: [] });
+      await completeReport(next.service, { runId: run.id, status: "passed", metrics: emptyValidationMetrics(run.metrics.total), results: [] });
       await next.service.releaseGuardrailVersion({ guardrailId, version: published[0]!, actorId: "admin" });
       expect(await next.service.getGuardrail(guardrailId)).toMatchObject({ latestTestingReport: { id: run.id }, latestValidationRun: null });
-      await next.service.deleteTestingReport({ runId: run.id, actorId: "admin", expectedPendingVersion: published[0]! });
-      expect((await next.service.getGuardrail(guardrailId)).versions[0]).toMatchObject({ status: "pending", origin: "imported", validationRunId: null });
+      await next.service.deleteTestingReport({ runId: run.id, actorId: "admin" });
+      expect((await next.service.getGuardrail(guardrailId)).versions[0]).toMatchObject({ status: "ready", origin: "imported", validationRunId: null });
       expect((await next.service.packages.previewPackage(preview.packageId)).versions[0]).toMatchObject({ state: "existing" });
       expect((await next.database.pool.query("SELECT count(*)::int AS n FROM guardrail_version_provenance WHERE guardrail_id=$1", [guardrailId])).rows[0].n).toBe(1);
     } finally { await next.cleanup(); }
@@ -743,7 +725,7 @@ describe.skipIf(!url)("Guardrail release packages between isolated environments"
     await service.packages.importPackage(preview.packageId, { actorId: "admin" });
     if (released) {
       const run = await service.requestVersionTestRun({ guardrailId, version: published[0]!, actorId: "admin" });
-      await service.completeValidation({ runId: run.id, status: "passed", metrics: emptyValidationMetrics(run.metrics.total), results: [] });
+      await completeReport(service, { runId: run.id, status: "passed", metrics: emptyValidationMetrics(run.metrics.total), results: [] });
       await service.releaseGuardrailVersion({ guardrailId, version: published[0]!, actorId: "admin" });
     }
     await beforeDelete?.(database, service);
@@ -772,8 +754,8 @@ describe.skipIf(!url)("Guardrail release packages between isolated environments"
       expect(versions.every(row => row.status === "pending" && row.validation_run_id === null && row.released_at === null && row.released_by === null)).toBe(true);
       expect(await service.listValidationRuns(guardrailId)).toEqual([]);
       await expect(service.releaseGuardrailVersion({ guardrailId, version: published[0]!, actorId: "admin" }))
-        .rejects.toMatchObject({ code: "guardrail_version_test_required" });
-      expect(await service.desiredGeneration()).toBe(generation + 1);
+        .resolves.toMatchObject({ status: "ready", validationRunId: null });
+      expect(await service.desiredGeneration()).toBe(generation + 2);
       expect((await database.pool.query("SELECT * FROM audit_event WHERE kind = 'guardrail.restored'")).rows).toHaveLength(1);
       expect((await database.pool.query("SELECT payload FROM controller_outbox WHERE payload->>'restored' = 'true'")).rows).toHaveLength(1);
       expect((await service.trafficRouting.list()).length).toBe(0);
@@ -841,7 +823,7 @@ describe.skipIf(!url)("Guardrail release packages between isolated environments"
       await service.trafficRouting.recordEvents([call("late-call", guardrailId, new Date())]);
       await expect(service.requestVersionTestRun({ guardrailId, version: published[0]!, actorId: "admin" })).rejects.toMatchObject({ status: 404 });
       await service.packages.importPackage(packageId, { actorId: "admin", restoreDeleted: true });
-      await service.completeValidation({ runId: runningId, status: "passed", metrics: emptyValidationMetrics(1), results: [] });
+      await completeReport(service, { runId: runningId, status: "passed", metrics: emptyValidationMetrics(1), results: [] });
       await service.updateValidationProgress(runningId, { phase: "executing", completedCases: 1, passedCases: 1 });
       await service.markValidationRunning(runningId);
       await service.recordRuntimeEvents([runtime("old-runtime")]);
@@ -849,12 +831,13 @@ describe.skipIf(!url)("Guardrail release packages between isolated environments"
       await service.trafficRouting.recordEvents([call("old-call")]);
       expect(await service.listValidationRuns(guardrailId)).toEqual([]);
       for (const table of ["runtime_event", "route_assignment"]) expect((await database.pool.query(`SELECT * FROM ${table} WHERE guardrail_id=$1`, [guardrailId])).rows).toEqual([]);
-      await expect(service.releaseGuardrailVersion({ guardrailId, version: published[0]!, actorId: "admin" })).rejects.toMatchObject({ code: "guardrail_version_test_required" });
+      await expect(service.releaseGuardrailVersion({ guardrailId, version: published[0]!, actorId: "admin" })).resolves.toMatchObject({ status: "ready", validationRunId: null });
       const fresh = await service.requestVersionTestRun({ guardrailId, version: published[0]!, actorId: "admin" });
       expect(fresh.id).not.toBe(runningId);
-      await service.completeValidation({ runId: fresh.id, status: "passed", metrics: emptyValidationMetrics(fresh.metrics.total), results: [] });
+      await completeReport(service, { runId: fresh.id, status: "passed", metrics: emptyValidationMetrics(fresh.metrics.total), results: [] });
       const released = await service.releaseGuardrailVersion({ guardrailId, version: published[0]!, actorId: "admin" });
-      expect(released.validationRunId).toBe(fresh.id);
+      expect(released.validationRunId).toBeNull();
+      expect(await getReport(service, fresh.id)).toMatchObject({ status: "passed" });
       await service.recordRuntimeEvents([runtime("fresh-runtime", guardrailId, new Date())]);
       await service.trafficRouting.recordEvents([call("fresh-call", guardrailId, new Date())]);
       expect((await database.pool.query("SELECT id FROM runtime_event WHERE guardrail_id=$1", [guardrailId])).rows).toEqual([{ id: "fresh-runtime" }]);
@@ -899,8 +882,8 @@ describe.skipIf(!url)("Guardrail release packages between isolated environments"
     const { database, service, packageId } = await deletedInstallation();
     try {
       await database.pool.query("UPDATE guardrail SET operational_reset_at=NULL WHERE id=$1", [guardrailId]);
-      await database.pool.query("INSERT INTO guardrail_validation_run (id,guardrail_id,guardrail_version,source_draft_revision,status) VALUES ('legacy-report',$1,$2,0,'passed')", [guardrailId, published[0]]);
-      await database.pool.query("UPDATE guardrail_version SET status='ready', validation_run_id='legacy-report', released_at=now(), released_by='admin' WHERE guardrail_id=$1", [guardrailId]);
+      await database.pool.query("INSERT INTO guardrail_validation_run (id,guardrail_id,guardrail_version,source_draft_revision,status) VALUES ('existing-report',$1,$2,0,'passed')", [guardrailId, published[0]]);
+      await database.pool.query("UPDATE guardrail_version SET status='ready', validation_run_id='existing-report', released_at=now(), released_by='admin' WHERE guardrail_id=$1", [guardrailId]);
       await service.packages.importPackage(packageId, { actorId: "admin", restoreDeleted: true });
       expect(await service.listValidationRuns(guardrailId)).toEqual([]);
       expect((await database.pool.query("SELECT status, validation_run_id, released_at FROM guardrail_version WHERE guardrail_id=$1", [guardrailId])).rows)
@@ -963,7 +946,7 @@ describe.skipIf(!url)("Guardrail release packages between isolated environments"
       // Existing content is idempotent even at capacity, and can still be tested/released.
       await expect(service.packages.importPackage(preview.packageId, { versions: [published[0]!], actorId: "admin" })).resolves.toBeTruthy();
       const run = await service.requestVersionTestRun({ guardrailId, version: published[0]!, actorId: "admin" });
-      await service.completeValidation({ runId: run.id, status: "passed", metrics: emptyValidationMetrics(run.metrics.total), results: [] });
+      await completeReport(service, { runId: run.id, status: "passed", metrics: emptyValidationMetrics(run.metrics.total), results: [] });
       await expect(service.releaseGuardrailVersion({ guardrailId, version: published[0]!, actorId: "admin" })).resolves.toBeTruthy();
       await service.deleteGuardrailVersion({ guardrailId, version: "retained-1", actorId: "admin" });
       expect((await service.packages.previewPackage(blockedId)).blockers).toEqual([]);
@@ -982,7 +965,7 @@ describe.skipIf(!url)("Guardrail release packages between isolated environments"
     const jobs = (await uatDb.pool.query("SELECT id, tests FROM policy_resource_validation WHERE parent_id=$1", [report.id])).rows;
     for (const job of jobs) {
       const test = job.tests[0];
-      await uat.policyResources.complete({ runId: job.id, status: "passed", results: [{ caseId: test.id, name: test.name, actualDecision: "block", passed: true, sourcePolicyId: id, outputContent: "", findings: [{ policy_id: id, rule_id: test.id, verdict: "matched" }] } as ValidationCaseResult] });
+      await completeReport(uat, { metrics: emptyValidationMetrics(1), runId: job.id, status: "passed", results: [{ caseId: test.id, name: test.name, actualDecision: "block", passed: true, sourcePolicyId: id, outputContent: "", findings: [{ policy_id: id, rule_id: test.id, verdict: "matched" }] } as ValidationCaseResult] });
     }
     const policy = await uat.policyResources.publish(id, 1, "admin");
     const guardrail = await uat.createGuardrail({ name: "Portable Guardrail", actorId: "admin", runtimeProfile: "auto", draftConfig: { policyBindings: [{ policyId: id, policyVersion: policy.version, enabledRuleIds: ["second"], enabledRails: ["input"] }] } });

@@ -1,13 +1,17 @@
 import * as api from "@/lib/api";
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render as testingRender, screen, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { TestCaseResult, ValidationRun } from "@/lib/api";
 import { TooltipProvider } from "@/components/ui/tooltip";
+import { queryKeys } from "@/features/query-keys";
 
 import { DetailFact, filterValidationRuns, GuardrailValidationHistory, TestCaseResultRow, ValidationCaseResults, ValidationDetailSheet } from "./validation";
 
+function render(ui: React.ReactNode) {
+  return testingRender(<QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>{ui}</QueryClientProvider>);
+}
 vi.mock("@/components/add-test-case-sheet", () => ({ AddTestCaseSheet: () => null }));
 vi.mock("react-i18next", () => ({
   useTranslation: () => ({
@@ -86,7 +90,9 @@ const result: TestCaseResult = {
   source_case_id: "competitor-comparison-002",
   covered_rule_ids: ["competitor-comparison-intent"],
   matched_rule_ids: ["competitor-comparison-intent"],
-  preempting_matches: [],
+  superseded_by: [],
+  evidence_status: "observed", evidence_detail: "Observed target Rule",
+  verified_rule_ids: [], rule_contract_satisfied: true,
 };
 
 const validationRun = {
@@ -101,7 +107,25 @@ const validationRun = {
   created_at: "2026-08-14T08:00:00Z",
 } satisfies ValidationRun;
 
+function mockCases(rows:TestCaseResult[]) {
+  const counts={all:rows.length,passed:rows.filter(r=>r.passed&&!r.skipped).length,failed:rows.filter(r=>!r.passed&&!r.skipped).length,skipped:rows.filter(r=>r.skipped).length,warnings:rows.filter(r=>r.passed&&r.actual_failure&&!r.expected_failure).length};
+  vi.spyOn(api,"getValidationCases").mockImplementation(async(_id,filter)=>({items:rows.map((r,ordinal)=>({...r,ordinal})).filter(r=>filter==="all"||(filter==="skipped"?r.skipped:!r.skipped&&(filter==="passed"?r.passed:!r.passed))),count:counts[filter],counts,nextCursor:null}));
+  vi.spyOn(api,"getValidationCase").mockImplementation(async(_id,ordinal)=>({result:rows[ordinal]!,traceCount:0,nextTraceOffset:null}));
+}
+
 describe("Testing Report acceptance evidence", () => {
+  it("separates a valid model response from a failed policy expectation", () => {
+    render(<TestCaseResultRow result={{ ...result, model_status: "ok", execution_status: "complete", actual_decision: "allow" }} />);
+    expect(screen.getByText("logs.modelStatus.ok")).toBeTruthy();
+    expect(screen.getByText("logs.modelQualitySeparate")).toBeTruthy();
+  });
+
+  it("does not present a model transport failure as a quality mismatch", () => {
+    render(<TestCaseResultRow result={{ ...result, model_status: "error", execution_status: "error", actual_failure: "provider_failure" }} />);
+    expect(screen.getByText("logs.modelStatus.error")).toBeTruthy();
+    expect(screen.queryByText("logs.modelQualitySeparate")).toBeNull();
+  });
+
   beforeAll(() => {
     vi.stubGlobal("ResizeObserver", class {
       observe() {}
@@ -110,7 +134,11 @@ describe("Testing Report acceptance evidence", () => {
     });
   });
   afterAll(() => vi.unstubAllGlobals());
-  afterEach(cleanup);
+  beforeEach(() => {
+    vi.spyOn(api, "getValidationCases").mockResolvedValue({ items: [{ ...result, ordinal: 0 }], count: 1, counts: { all: 1, passed: 0, failed: 1, skipped: 0, warnings: 0 }, nextCursor: null });
+    vi.spyOn(api, "getValidationCase").mockResolvedValue({ result, nextTraceOffset: null, traceCount: 0 });
+  });
+  afterEach(() => { cleanup(); vi.restoreAllMocks(); });
 
   it("loads case results only when a summary is opened", async () => {
     const getDetail = vi.spyOn(api, "getValidationRun").mockResolvedValue({ ...validationRun, details_loaded: true, results: [result] });
@@ -124,6 +152,36 @@ describe("Testing Report acceptance evidence", () => {
     view.unmount();
     client.clear();
     getDetail.mockRestore();
+  });
+
+  it("fetches a single case only after expansion and resets pagination when its filter changes", async () => {
+    const cases = vi.mocked(api.getValidationCases).mockResolvedValue({ items: [{ ...result, ordinal: 7 }], count: 80,
+      counts: { all: 80, failed: 1, passed: 79, skipped: 0, warnings: 0 }, nextCursor: "page-two" });
+    const detail = vi.mocked(api.getValidationCase);
+    render(<ValidationCaseResults runId="bounded" results={[]} />);
+    expect(await screen.findByText(result.name)).toBeTruthy();
+    expect(detail).not.toHaveBeenCalled();
+    const row = screen.getByText(result.name).closest("details")!;
+    row.open = true;
+    fireEvent(row, new Event("toggle", { bubbles: true }));
+    await waitFor(() => expect(detail).toHaveBeenCalledExactlyOnceWith("bounded", 7, 0, expect.any(AbortSignal)));
+    fireEvent.click(screen.getByRole("button", { name: "common.next" }));
+    await waitFor(() => expect(cases).toHaveBeenLastCalledWith("bounded", "all", "page-two", expect.any(AbortSignal)));
+    fireEvent.click(screen.getByRole("button", { name: /Failed/ }));
+    await waitFor(() => expect(cases).toHaveBeenLastCalledWith("bounded", "failed", undefined, expect.any(AbortSignal)));
+    fireEvent.click(screen.getByRole("button", { name: /All/ }));
+    await waitFor(() => expect(cases).toHaveBeenLastCalledWith("bounded", "all", undefined, expect.any(AbortSignal)));
+  });
+
+  it("keeps a failed case detail retry local without reloading every report result", async () => {
+    const detail = vi.mocked(api.getValidationCase).mockRejectedValueOnce(new Error("Case temporarily unavailable")).mockResolvedValueOnce({ result, nextTraceOffset: null, traceCount: 0 });
+    render(<ValidationCaseResults runId="bounded" results={[]} />);
+    const row = (await screen.findByText(result.name)).closest("details")!;
+    row.open = true; fireEvent(row, new Event("toggle", { bubbles: true }));
+    expect(await screen.findByText("Case temporarily unavailable")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "common.retry" }));
+    await waitFor(() => expect(detail).toHaveBeenCalledTimes(2));
+    expect(api.getValidationCases).toHaveBeenCalledTimes(1);
   });
 
   it.each(["validation", "testing-report"])("shows a Testing Report number for %s IDs and opens the original record", (prefix) => {
@@ -163,13 +221,88 @@ describe("Testing Report acceptance evidence", () => {
     expect(filterValidationRuns([validationRun, otherRun], names, "finance", "all", "passed")).toEqual([validationRun]);
   });
 
-  it("shows version test progress without draft wording or duplicate reruns", () => {
+  it("shows version test progress without draft wording or premature report actions", () => {
+    const getDetail = vi.spyOn(api, "getValidationRun").mockImplementation(() => new Promise(() => {}));
     const run = { ...validationRun, subject: "version", execution_status: "queued", status: "incomplete" } as ValidationRun;
-    render(<QueryClientProvider client={new QueryClient()}><TooltipProvider><ValidationDetailSheet run={run} canManage={false} running={false} onRunAgain={vi.fn()} onRunVersionAgain={vi.fn()} onClose={vi.fn()} /></TooltipProvider></QueryClientProvider>);
+    const client = new QueryClient();
+    const view = render(<QueryClientProvider client={client}><TooltipProvider><ValidationDetailSheet run={run} canManage={false} running={false} onRunAgain={vi.fn()} onRunVersionAgain={vi.fn()} onClose={vi.fn()} /></TooltipProvider></QueryClientProvider>);
     expect(screen.getByRole("region", { name: "guardrails.testProgress.title" })).toBeTruthy();
-    expect(screen.getByText("immutableVersions.testingInPlace")).toBeTruthy();
+    expect(screen.getByText("validation.processingHint")).toBeTruthy();
     expect(screen.queryByText("guardrails.testingInPlace")).toBeNull();
-    expect(screen.getByRole("button", { name: "validation.runAgain" }).hasAttribute("disabled")).toBe(true);
+    expect(screen.queryByRole("button", { name: "validation.runAgain" })).toBeNull();
+    view.unmount();
+    client.clear();
+    getDetail.mockRestore();
+  });
+
+  it.each(["queued", "preparing", "executing", "finalizing"] as const)("keeps Reporter content hidden during %s, even if provisional results exist", phase => {
+    const getDetail = vi.spyOn(api, "getValidationRun").mockImplementation(() => new Promise(() => {}));
+    const run = { ...validationRun, subject: "version", execution_status: phase === "queued" ? "queued" : "running",
+      progress: phase === "queued" ? null : { phase, completedCases: 1, passedCases: 1, updatedAt: new Date().toISOString() },
+      results: [result] } as ValidationRun;
+    const client = new QueryClient();
+    const onClose = vi.fn();
+    const view = render(<QueryClientProvider client={client}><TooltipProvider><ValidationDetailSheet run={run} canManage running={false} onRunAgain={vi.fn()} onClose={onClose} /></TooltipProvider></QueryClientProvider>);
+    expect(screen.getByRole("region", { name: "guardrails.testProgress.title" })).toBeTruthy();
+    expect(screen.getByText("Target")).toBeTruthy();
+    expect(screen.queryByText("Pass rate")).toBeNull();
+    expect(screen.queryByText("validation.reportScopeHelp")).toBeNull();
+    expect(screen.queryByText("Case results")).toBeNull();
+    expect(screen.queryByText(result.name)).toBeNull();
+    expect(screen.queryByRole("button", { name: "validation.deleteReport" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "validation.runAgain" })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "validation.closeWhileRunning" }));
+    expect(onClose).toHaveBeenCalledOnce();
+    view.unmount();
+    client.clear();
+    getDetail.mockRestore();
+  });
+
+  it.each(["passed", "failed"] as const)("switches the same run to the final report only after execution is %s", async status => {
+    const current = { ...validationRun, status: "incomplete", execution_status: "running", details_loaded: true,
+      progress: { phase: "finalizing", completedCases: 1, passedCases: 1, updatedAt: new Date().toISOString() } } as ValidationRun;
+    const getDetail = vi.spyOn(api, "getValidationRun").mockResolvedValue(current);
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const view = render(<QueryClientProvider client={client}><TooltipProvider><ValidationDetailSheet run={current} canManage running={false} onRunAgain={vi.fn()} onClose={vi.fn()} /></TooltipProvider></QueryClientProvider>);
+    await waitFor(() => expect(client.getQueryData(queryKeys.validationRun(current.id))).toBeTruthy());
+    expect(screen.queryByText("validation.reportScopeHelp")).toBeNull();
+    act(() => client.setQueryData(queryKeys.validationRun(current.id), { ...current, execution_status: status, status, results: [result] }));
+    expect(await screen.findByText(result.name)).toBeTruthy();
+    expect(screen.getByText("Pass rate")).toBeTruthy();
+    expect(screen.getByText("validation.reportScopeHelp")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "validation.runAgain" })).toBeTruthy();
+    expect(screen.queryByRole("region", { name: "guardrails.testProgress.title" })).toBeNull();
+    expect(screen.queryByText("validation.processingHint")).toBeNull();
+    view.unmount();
+    client.clear();
+    getDetail.mockRestore();
+  });
+
+  it("shows cancellation without presenting partial results as a final report", () => {
+    const client = new QueryClient();
+    const view = render(<QueryClientProvider client={client}><TooltipProvider><ValidationDetailSheet
+      run={{ ...validationRun, status: "cancelled", execution_status: "cancelled", results: [result] }} canManage running={false} onRunAgain={vi.fn()} onClose={vi.fn()}
+    /></TooltipProvider></QueryClientProvider>);
+    expect(screen.getByText("validation.cancelledWithoutReport")).toBeTruthy();
+    expect(screen.queryByText("Pass rate")).toBeNull();
+    expect(screen.queryByText(result.name)).toBeNull();
+    expect(screen.queryByText("validation.reportScopeHelp")).toBeNull();
+    expect(screen.getByRole("button", { name: "validation.runAgain" })).toBeTruthy();
+    view.unmount();
+    client.clear();
+  });
+
+  it("does not replace a missing failed report with zero metrics and empty result filters", () => {
+    const client = new QueryClient();
+    const view = render(<QueryClientProvider client={client}><TooltipProvider><ValidationDetailSheet
+      run={{ ...validationRun, status: "failed", execution_status: "failed", failure_reason: "Runner connection failed", metrics:{...validationRun.metrics,total:0} }} canManage running={false} onRunAgain={vi.fn()} onClose={vi.fn()}
+    /></TooltipProvider></QueryClientProvider>);
+    expect(screen.getByText("Runner connection failed")).toBeTruthy();
+    expect(screen.getByText("validation.noReportResults")).toBeTruthy();
+    expect(screen.queryByText("Pass rate")).toBeNull();
+    expect(screen.queryByRole("group", { name: "Filter Case results" })).toBeNull();
+    view.unmount();
+    client.clear();
   });
 
   it("keeps Testing Reports inside one Guardrail and opens records from the compact table", () => {
@@ -205,13 +338,30 @@ describe("Testing Report acceptance evidence", () => {
     expect(onOpen).not.toHaveBeenCalled();
   });
 
-  it("explains ordered preemption without claiming the target Rule matched", () => {
-    render(<TestCaseResultRow result={{ ...result, passed: true, expected_decision: "block", actual_decision: "block", matched_rule_ids: [],
-      preempting_matches: [{ policyId: "earlier-toxic-policy", ruleId: "toxic-rule" }] }} />);
+  it("explains superseding interventions without treating them as Rule acceptance", () => {
+    render(<TestCaseResultRow result={{ ...result, passed: false, expected_decision: "block", actual_decision: "block", matched_rule_ids: [],
+      evidence_status: "preempted_by", evidence_detail: "Target Rule was not reached", rule_contract_satisfied: false,
+      superseded_by: [{ policyId: "earlier-toxic-policy", ruleId: "toxic-rule" }] }} />);
     fireEvent.click(document.querySelector("summary")!);
-    expect(screen.getByText("validation.preemptedTitle")).toBeTruthy();
+    expect(screen.getByText("validation.supersededTitle")).toBeTruthy();
     expect(screen.getByText("earlier-toxic-policy / toxic-rule")).toBeTruthy();
-    expect(screen.getByText("validation.targetPreempted")).toBeTruthy();
+    expect(screen.getByText("Target Rule was not reached")).toBeTruthy();
+    expect(screen.getByText("Rule contract mismatch")).toBeTruthy();
+  });
+
+  it("uses the recorded evidence contract instead of inferring success from partial matches", () => {
+    render(<TestCaseResultRow result={{ ...result, passed: false,
+      covered_rule_ids: [...result.covered_rule_ids, "missing-rule"],
+      evidence_status: "missing", rule_contract_satisfied: false }} />);
+    fireEvent.click(document.querySelector("summary")!);
+    expect(screen.getByText("Rule contract mismatch")).toBeTruthy();
+  });
+
+  it("does not report a Rule mismatch when a reviewed composition contract was satisfied", () => {
+    render(<TestCaseResultRow result={{ ...result, passed: false, expected_decision: "transform", actual_decision: "block",
+      matched_rule_ids: [], evidence_status: "shadowed_by", rule_contract_satisfied: true }} />);
+    fireEvent.click(document.querySelector("summary")!);
+    expect(screen.getByText("Decision mismatch")).toBeTruthy();
     expect(screen.queryByText("Rule contract mismatch")).toBeNull();
   });
 
@@ -223,7 +373,8 @@ describe("Testing Report acceptance evidence", () => {
     expect(screen.getByText("Acceptance provenance")).toBeTruthy();
     expect(screen.getByText("competitor-comparison-input-filter@1.95.0")).toBeTruthy();
     expect(screen.getByText("competitor-comparison-002")).toBeTruthy();
-    expect(screen.getAllByText("competitor-comparison-intent")).toHaveLength(2);
+    expect(screen.getByText("validation.expectedAndMatchedRules")).toBeTruthy();
+    expect(screen.getAllByText("competitor-comparison-intent")).toHaveLength(1);
   });
 
   it("only expands execution errors automatically", () => {
@@ -232,25 +383,49 @@ describe("Testing Report acceptance evidence", () => {
     expect(container.querySelector("details")?.hasAttribute("open")).toBe(true);
   });
 
-  it("defaults a failed run to failed Cases and can reveal every result", () => {
-    const passed = { ...result, case_id: "validation-case-2", name: "Passing case", passed: true };
-    render(<ValidationCaseResults results={[result, passed]} defaultFilter="failed" />);
+  it("keeps successful Rule acceptance visible with a separate execution warning", async () => {
+    const warning = { ...result, passed: true, case_type: "rule_acceptance", actual_failure: "provider_failure", rule_contract_satisfied: true };
+    const { container } = (mockCases([warning]), render(<ValidationCaseResults runId="warning" defaultFilter="passed" />));
+    await screen.findByText(warning.name);
+    const row=container.querySelector("details")!;
+    expect(row.open).toBe(false);row.open=true;fireEvent(row,new Event("toggle",{bubbles:true}));
+    expect(await screen.findByText("validation.executionWarningTitle")).toBeTruthy();
+    expect(screen.getByText("validation.executionWarningBadge")).toBeTruthy();
+    expect(screen.getByText("validation.executionWarningCount")).toBeTruthy();
+    expect(screen.queryByText("Why this Case failed")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: /Failed/ }));
+    await waitFor(()=>expect(screen.queryByText(warning.name)).toBeNull());
+    fireEvent.click(screen.getByRole("button", { name: /Passed/ }));
+    expect(await screen.findByText(warning.name)).toBeTruthy();
+  });
 
-    expect(screen.getByText("Competitor comparison")).toBeTruthy();
+  it("does not label an explicitly expected infrastructure failure as an unrelated warning", () => {
+    render(<TestCaseResultRow result={{ ...result, passed: true, expected_failure: "timeout", actual_failure: "timeout" }} />);
+    expect(screen.queryByText("validation.executionWarningTitle")).toBeNull();
+  });
+
+  it("defaults a failed run to failed Cases and can reveal every result", async () => {
+    const passed = { ...result, case_id: "validation-case-2", name: "Passing case", passed: true };
+    mockCases([result,passed]);
+    render(<ValidationCaseResults runId="mixed" defaultFilter="failed" />);
+
+    expect(await screen.findByText("Competitor comparison")).toBeTruthy();
     expect(screen.queryByText("Passing case")).toBeNull();
 
     fireEvent.click(screen.getByRole("button", { name: /All/ }));
 
-    expect(screen.getByText("Passing case")).toBeTruthy();
+    expect(await screen.findByText("Passing case")).toBeTruthy();
   });
 
-  it("explains an empty result filter and lets reviewers return to all Cases", () => {
-    render(<ValidationCaseResults results={[{ ...result, passed: true }]} />);
+  it("explains an empty result filter and lets reviewers return to all Cases", async () => {
+    mockCases([{...result,passed:true}]);
+    render(<ValidationCaseResults runId="empty-filter" />);
+    await screen.findByText(result.name);
     fireEvent.click(screen.getByRole("button", { name: /Failed/ }));
-    expect(screen.getByRole("status").textContent).toBe("validation.emptyCaseResults.failed");
+    expect((await screen.findByRole("status")).textContent).toBe("validation.emptyCaseResults.failed");
     expect(screen.queryByText(result.name)).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: /All/ }));
-    expect(screen.getByText(result.name)).toBeTruthy();
+    expect(await screen.findByText(result.name)).toBeTruthy();
     expect(screen.queryByRole("status")).toBeNull();
   });
 
@@ -271,12 +446,19 @@ describe("Testing Report acceptance evidence", () => {
   });
 
   it("marks a failed Case and explains decision and Rule-contract mismatches", () => {
-    render(<TestCaseResultRow result={{ ...result, expected_decision: "block", actual_decision: "transform", covered_rule_ids: ["credentials/aws_access_key"], matched_rule_ids: ["contact/br_phone_landline"] }} />);
+    render(<TestCaseResultRow result={{ ...result, expected_decision: "block", actual_decision: "transform", covered_rule_ids: ["credentials/aws_access_key"], matched_rule_ids: ["contact/br_phone_landline"], rule_contract_satisfied: false }} />);
 
-    expect(screen.getByText("Competitor comparison").className).toContain("text-destructive");
+    expect(screen.getByText(/^failed$/i)).toBeTruthy();
     expect(screen.getByText("Why this Case failed")).toBeTruthy();
     expect(screen.getByText("Decision mismatch")).toBeTruthy();
     expect(screen.getByText("Rule contract mismatch")).toBeTruthy();
+    expect(screen.queryByText("Expected decision")).toBeNull();
+    expect(screen.queryByText("Actual decision")).toBeNull();
+    expect(screen.queryByText("Contract Rules")).toBeNull();
+    expect(screen.queryByText("Actually matched Rules")).toBeNull();
+    expect(screen.queryByText(result.reason)).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: /logs.executionTrace/ }));
+    expect(screen.getByText(result.reason)).toBeTruthy();
   });
 
   it("can exclude a failed inherited Case only from the current Guardrail", () => {
@@ -298,14 +480,16 @@ describe("Testing Report acceptance evidence", () => {
 
 
 describe("Explicit skipped model evidence", () => {
-  it("keeps skipped cases out of failed and passed filters", () => {
+  it("keeps skipped cases out of failed and passed filters", async () => {
     const skipped = { ...result, case_id: "skipped", name: "Model safety", skipped: true, skip_reason: "Model-dependent tests skipped", passed: false, actual_decision: "", trace: [] };
-    render(<ValidationCaseResults results={[{ ...result, name: "Local failure" }, skipped]} />);
+    mockCases([{...result,name:"Local failure"},skipped]);
+    render(<ValidationCaseResults runId="skipped" />);
+    await screen.findByText("Local failure");
     fireEvent.click(screen.getByRole("button", { name: /Failed\s*1/ }));
-    expect(screen.queryByText("Model safety")).toBeNull();
-    expect(screen.getByText("Local failure")).toBeTruthy();
+    await waitFor(()=>expect(screen.queryByText("Model safety")).toBeNull());
+    expect(await screen.findByText("Local failure")).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: /validationScope.skipped\s*1/ }));
-    expect(screen.getByText("Model safety")).toBeTruthy();
+    expect(await screen.findByText("Model safety")).toBeTruthy();
     expect(screen.queryByText("Why this Case failed")).toBeNull();
   });
 });

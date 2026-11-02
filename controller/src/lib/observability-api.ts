@@ -57,6 +57,7 @@ function runtimeLogEntry(event: controllerApi.RuntimeEvent): RuntimeLogInteracti
   const before = runtimeLogContent(event.metadata.contentBefore);
   const after = runtimeLogContent(event.metadata.contentAfter);
   const httpRequest = runtimeHttpRequest(event.metadata.httpRequest);
+  const trace = arrayOfRecords(event.metadata.trace);
   return {
     id: event.id,
     trace_id: event.requestId,
@@ -70,17 +71,25 @@ function runtimeLogEntry(event: controllerApi.RuntimeEvent): RuntimeLogInteracti
     protection_mode: event.metadata.protectionMode === "monitor" ? "monitor" : event.metadata.protectionMode === "bypass" ? "bypass" : "enforce",
     detection_decision: stringValue(event.metadata.detectionDecision),
     detection_error: stringValue(event.metadata.detectionError),
-    execution_status: hasRuntimeError(event) ? "error" : event.metadata.executionStatus === "complete" ? "complete" : "unknown",
+    model_status: enumValue(event.metadata.modelStatus, ["ok", "error", "not_called", "unknown"] as const) ?? undefined,
+    execution_status: hasRuntimeError(event) ? "error" : event.metadata.executionStatus === "complete" ? "complete" : event.metadata.executionStatus === "degraded" ? "degraded" : event.metadata.executionStatus === "bypassed" ? "bypassed" : "unknown",
     ...(event.metadata.logKind === "call_completion" ? { call_completion: {
       inferred: event.metadata.completionInferred === true, reason: stringValue(event.metadata.failureReason),
       completed_at: stringValue(event.metadata.completedAt), decision_id: stringValue(event.metadata.decisionId),
       route_id: stringValue(event.metadata.routeId), target_id: stringValue(event.metadata.targetId), router_revision: numberValue(event.metadata.routerRevision),
     } } : {}),
-    error_details: arrayOfRecords(event.metadata.trace).filter(step => hasRuntimeError({ decision: String(step.outcome ?? step.status ?? ""), metadata: { trace: [step] } })).map(step => ({
-      span_id: stringValue(step.id) ?? "—", name: stringValue(step.actionName) ?? stringValue(step.name) ?? "—",
-      error_type: stringValue(step.errorType), provider: stringValue(step.providerName), model: stringValue(step.modelName),
-      policy: stringValue(step.policyId), timed_out: step.timedOut === true || step.status === "timeout" || step.outcome === "timeout", timeout_ms: numberValue(step.timeoutMs),
-    })),
+    error_details: arrayOfRecords(event.metadata.diagnostics).map(d => {
+      const step = trace.find(s => s.id === d.stepId);
+      return {
+        source: enumValue(d.source, ["model", "configuration", "guard", "unknown", "mixed"] as const),
+        category: stringValue(d.category), http_status: numberValue(d.httpStatus),
+        model_call_id: stringValue(d.modelCallId), affects_result: d.affectsResult === true,
+        span_id: stringValue(d.stepId) ?? "—",
+        name: stringValue(step?.actionName) ?? stringValue(step?.name) ?? stringValue(d.message) ?? "Guardrail execution failed",
+        error_type: stringValue(d.code), provider: stringValue(step?.providerName), model: stringValue(step?.modelName),
+        policy: stringValue(d.policyId), timed_out: d.code === "timeout", timeout_ms: numberValue(step?.timeoutMs),
+      };
+    }),
     detail: `Runner ${event.runnerId} reported ${event.direction} decision “${event.decision}” in ${event.durationMs} ms.`,
     http_request: httpRequest,
     content_before: before,

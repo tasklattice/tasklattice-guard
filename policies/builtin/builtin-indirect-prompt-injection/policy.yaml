@@ -1,4 +1,4 @@
-schema_version: 2
+schema_version: 1
 kind: Policy
 metadata:
   id: builtin-indirect-prompt-injection
@@ -7,7 +7,7 @@ metadata:
     instruction and task overrides, forged roles and prompt extraction. Encoded inspection
     is bounded and reports unknown on overflow. Local patterns, not a semantic classifier.
   source: built_in
-  version: 1.0.1
+  version: 1.0.0
   tags:
   - namespace: protection
     value: attacks_and_abuse

@@ -46,12 +46,14 @@ class EvaluationActionProvider:
     def __init__(self, routes: tuple[EvaluationRoute, ...]) -> None:
         if not routes:
             raise ValueError("GuardEvaluateAction requires at least one route.")
-        keys = tuple((item.capability, item.contract_ref) for item in routes)
+        keyed_routes = tuple(((item.capability, item.contract_ref, rail), item.evaluator)
+            for item in routes
+            for rail in sorted(item.evaluator.supported_rails(item.capability, item.contract_ref)
+                if callable(getattr(item.evaluator, "supported_rails", None)) else item.evaluator.rails))
+        keys = tuple(key for key, _ in keyed_routes)
         if len(set(keys)) != len(keys):
-            raise ValueError("Evaluation route capability and contract must be unique.")
-        self._routes = MappingProxyType(
-            {key: route.evaluator for key, route in zip(keys, routes, strict=True)}
-        )
+            raise ValueError("Evaluation route capability, contract and rail must be unique.")
+        self._routes = MappingProxyType(dict(keyed_routes))
         self.capabilities = frozenset(item.capability for item in routes)
         self.rails = frozenset(
             rail
@@ -63,28 +65,25 @@ class EvaluationActionProvider:
     def route_keys(self) -> tuple[tuple[str, str], ...]:
         """Expose immutable route identities for readiness and contract tests."""
 
-        return tuple(self._routes)
+        return tuple(dict.fromkeys((capability, contract) for capability, contract, _ in self._routes))
 
     @property
     def route_rail_keys(self) -> tuple[tuple[str, str, str], ...]:
         """Exact directional readiness, not the union of unrelated routes."""
-        return tuple((capability, contract, rail)
-            for (capability, contract), evaluator in self._routes.items()
-            for rail in sorted(evaluator.supported_rails(capability, contract)
-                if callable(getattr(evaluator, "supported_rails", None)) else evaluator.rails))
+        return tuple(self._routes)
 
     @property
     def route_evaluators(self) -> tuple[tuple[str, str, str], ...]:
         """Expose capability, contract, and evaluator IDs for readiness evidence."""
 
-        return tuple(
+        return tuple(dict.fromkeys(
             (capability, contract_ref, evaluator.id)
-            for (capability, contract_ref), evaluator in self._routes.items()
-        )
+            for (capability, contract_ref, _rail), evaluator in self._routes.items()
+        ))
 
     async def execute(self, request: EvaluationRequest) -> EvaluationResult:
         evaluator = self._routes.get(
-            (request.capability, request.binding.contract_ref)
+            (request.capability, request.binding.contract_ref, request.rail_type)
         )
         if evaluator is None:
             return evaluation_result(
@@ -94,17 +93,11 @@ class EvaluationActionProvider:
                 reason=(
                     "No evaluator route is configured for capability "
                     f"{request.capability!r} and contract "
-                    f"{request.binding.contract_ref!r}."
-                ),
-            )
-        if (request.capability, request.binding.contract_ref, request.rail_type) not in self.route_rail_keys:
-            return evaluation_result(
-                request,
-                "error",
-                request.content,
-                reason=(
-                    f"Evaluator {evaluator.id}@{evaluator.version} does not support "
-                    f"the {request.rail_type!r} rail."
+                    f"{request.binding.contract_ref!r} on the {request.rail_type!r} rail."
                 ),
             )
         return await evaluator.evaluate(request)
+
+    def supports_review(self, capability: str, contract: str, phase: str) -> bool:
+        evaluator = self._routes.get((capability, contract, phase))
+        return phase == "input" and bool(getattr(evaluator, "review_ready", False))

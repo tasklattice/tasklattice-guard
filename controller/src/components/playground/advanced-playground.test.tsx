@@ -75,7 +75,7 @@ const success = {
   callId: "c",
   body: {
     simulation: true,
-    assignment: { guardrailId: "g1", guardrailVersion: "v3" },
+    assignment: { guardrailId: "g1", guardrailVersion: "revision-c" },
     runnerId: "r1",
   },
 };
@@ -107,7 +107,7 @@ describe("advanced request workbench", () => {
     choose("Header 2 value", "customer");
     fireEvent.click(screen.getByLabelText("Enable header 1"));
     fireEvent.click(screen.getByRole("button", { name: "Test routing" }));
-    await screen.findByText("Routed to g1 · v3");
+    await screen.findByText("Routed to g1 · revision-c");
     const sent = JSON.parse(api.request.mock.calls[0][1].body);
     expect(sent).toMatchObject({
       target: "router",

@@ -34,7 +34,7 @@ import type {
   ProgrammablePolicyDraft,
   ProgrammablePolicyVersion,
   SafetyLevel,
-  TestCase,
+  TestCase, TestCaseResult,
   ValidationRun,
 } from "@/lib/api-types";
 
@@ -124,6 +124,7 @@ function mapGuardrail(
     allowed_topics: value.draftConfig.allowedTopics,
     restricted_topics: value.draftConfig.restrictedTopics,
     topic_control_mode: value.draftConfig.topicControlMode ?? "strict",
+    ...(value.draftConfig.profileOrigin ? { profile_origin: value.draftConfig.profileOrigin } : {}),
     policy_bindings: value.draftConfig.policyBindings.map(fromCurrentBinding),
     safety_level: value.draftConfig.safetyLevel,
     output_delivery: value.draftConfig.outputDelivery,
@@ -190,6 +191,7 @@ export async function createGuardrail(input: {
   allowed_topics?: string[];
   restricted_topics?: string[];
   topic_control_mode?: "strict" | "permissive";
+  profile_origin?: import("../../shared/protection-map").ProfileOrigin;
   policy_bindings: GuardrailPolicyBinding[];
   safety_level?: SafetyLevel;
   output_delivery?: OutputDelivery;
@@ -197,6 +199,7 @@ export async function createGuardrail(input: {
   const created = await controllerApi.createControllerGuardrail({
     name: input.name,
     draftConfig: {
+      ...(input.profile_origin ? { profileOrigin: input.profile_origin } : {}),
       allowedTopics: input.allowed_topics ?? [],
       restrictedTopics: input.restricted_topics ?? [],
       topicControlMode: input.topic_control_mode ?? "permissive",
@@ -223,6 +226,7 @@ async function updateGuardrailDraft(
     expectedDraftRevision: input.expectedDraftRevision ?? current.draftRevision,
     ...(input.name !== undefined ? { name: input.name } : {}),
     draftConfig: {
+      ...(current.draftConfig.profileOrigin ? { profileOrigin: current.draftConfig.profileOrigin } : {}),
       allowedTopics: input.allowed_topics ?? current.draftConfig.allowedTopics,
       restrictedTopics: input.restricted_topics ?? current.draftConfig.restrictedTopics,
       topicControlMode: input.topic_control_mode ?? current.draftConfig.topicControlMode ?? "strict",
@@ -284,6 +288,7 @@ function mapVersion(value: controllerApi.GuardrailVersion, guardrail: controller
     release_run_id: value.validationRunId ?? null,
     testing_evidence: value.testingEvidence ?? null,
     test_waiver: value.testWaiver ?? null,
+    publication: value.publication ?? null,
     source_validation_run_id: value.sourceValidationRunId ?? null,
     origin: value.origin ?? "local",
     environment_check: value.environmentCheck ?? null,
@@ -407,6 +412,7 @@ export function previewGuardrailCandidate(input: {
   allowed_topics?: string[];
   restricted_topics?: string[];
   topic_control_mode?: "strict" | "permissive";
+  profile_origin?: import("../../shared/protection-map").ProfileOrigin;
   policy_bindings: GuardrailPolicyBinding[];
   safety_level?: SafetyLevel;
   output_delivery?: OutputDelivery;
@@ -414,6 +420,7 @@ export function previewGuardrailCandidate(input: {
   return controllerApi.previewControllerGuardrailPlan({
     name: input.name,
     draftConfig: {
+      ...(input.profile_origin ? { profileOrigin: input.profile_origin } : {}),
       allowedTopics: input.allowed_topics ?? [],
       restrictedTopics: input.restricted_topics ?? [],
       topicControlMode: input.topic_control_mode ?? "permissive",
@@ -434,6 +441,7 @@ export async function getGuardrailCompilePreview(id: string): Promise<GuardrailC
   const guardrail = await controllerApi.getControllerGuardrail(id);
   return previewGuardrailCandidate({
     name: guardrail.name,
+    ...(guardrail.draftConfig.profileOrigin ? { profile_origin: guardrail.draftConfig.profileOrigin } : {}),
     policy_bindings: guardrail.draftConfig.policyBindings.map(fromCurrentBinding),
     safety_level: guardrail.draftConfig.safetyLevel,
     output_delivery: guardrail.draftConfig.outputDelivery,
@@ -441,10 +449,10 @@ export async function getGuardrailCompilePreview(id: string): Promise<GuardrailC
 }
 
 export const getPolicies = () => controllerApi.requestController<Collection<Policy>>("/api/v1/policies");
-export type GuardrailProfilePreview = ProtectionPreset & Partial<Pick<GuardrailProfile, "category" | "categoryName" | "isDefault">> & { bindings: GuardrailPolicyBinding[] };
+export type GuardrailProfilePreview = ProtectionPreset & Partial<Pick<GuardrailProfile, "category" | "categoryName" | "isDefault">> & { bindings: GuardrailPolicyBinding[]; availability?: { available: boolean; reason: string | null } };
 export type ProtectionPresetPreview = GuardrailProfilePreview;
 export async function getGuardrailProfiles(): Promise<Collection<ProtectionPresetPreview>> {
-  const result = await controllerApi.requestController<Collection<GuardrailProfile & { policyBindings: CurrentPolicyBinding[] }>>("/api/v1/guardrail-profiles");
+  const result = await controllerApi.requestController<Collection<GuardrailProfile & { policyBindings: CurrentPolicyBinding[]; availability?: { available: boolean; reason: string | null } }>>("/api/v1/guardrail-profiles");
   return { ...result, items: result.items.map(({ policyBindings, ...preset }) => ({ ...preset, bindings: policyBindings.map(fromCurrentBinding) })) };
 }
 export const getPolicy = (id: string) => controllerApi.requestController<Policy>(`/api/v1/policies/${encodeURIComponent(id)}`);
@@ -510,7 +518,7 @@ export const updateGuardrailLoggingSettings = (id: string, level: LoggingLevel, 
 
 type ValidationObserver = { onProgress?: (run: ValidationRun) => void };
 export const createValidationRun = (guardrailId: string, observer?: ValidationObserver, testModelRules = true) => controllerApi.requestController<controllerApi.ValidationRun>(`/api/v1/guardrails/${encodeURIComponent(guardrailId)}/test-runs`, { method: "POST", body: JSON.stringify({ testModelRules }) }).then(run => waitForValidation(run, observer));
-export const resumeValidationRun = (runId: string, observer?: ValidationObserver) => controllerApi.requestController<controllerApi.ValidationRun>(`/api/v1/test-runs/${encodeURIComponent(runId)}?view=summary`).then(run => waitForValidation(run, observer));
+export const resumeValidationRun = (runId: string, observer?: ValidationObserver) => controllerApi.requestController<controllerApi.ValidationRun>(`/api/v1/test-runs/${encodeURIComponent(runId)}`).then(run => waitForValidation(run, observer));
 export async function getValidationRuns(guardrailId?: string, options: { cursor?: string | undefined; q?: string; status?: string } = {}): Promise<Collection<ValidationRun> & { nextCursor?: string | null; versionReports?: ValidationRun[] }> {
   const params = new URLSearchParams();
   if (guardrailId) params.set("guardrailId", guardrailId);
@@ -522,7 +530,20 @@ export async function getValidationRuns(guardrailId?: string, options: { cursor?
   return { items: response.items.map(mapValidationRun), count: response.count,
     nextCursor: response.nextCursor, versionReports: response.versionReports?.map(mapValidationRun) };
 }
-export const getValidationRun = (runId: string) => controllerApi.requestController<controllerApi.ValidationRun>(`/api/v1/test-runs/${encodeURIComponent(runId)}`).then(mapValidationRun);
+export const cancelValidationRun = (runId: string) => controllerApi.requestController<controllerApi.ValidationRun>(`/api/v1/test-runs/${encodeURIComponent(runId)}/cancel`, { method: "POST" }).then(mapValidationRun);
+export const getValidationRun = (runId: string) => controllerApi.requestController<controllerApi.ValidationRun>(`/api/v1/test-runs/${encodeURIComponent(runId)}`, { timeoutMs: 30_000 }).then(mapValidationRun);
+export type ValidationCaseFilter = "all" | "failed" | "passed" | "skipped";
+export async function getValidationCases(runId: string, filter: ValidationCaseFilter, cursor?: string, signal?: AbortSignal) {
+  const query = new URLSearchParams({ filter, limit: "50" });
+  if (cursor) query.set("cursor", cursor);
+  const page = await controllerApi.requestController<{ items: Array<Record<string, unknown> & { ordinal: number }>; count: number;
+    counts: Record<ValidationCaseFilter | "warnings", number>; nextCursor: string | null }>(`/api/v1/test-runs/${encodeURIComponent(runId)}/cases?${query}`, { ...(signal ? { signal } : {}) });
+  return { ...page, items: page.items.map(item => ({ ...mapValidationResult(item), ordinal: item.ordinal })) };
+}
+export async function getValidationCase(runId: string, ordinal: number, traceOffset = 0, signal?: AbortSignal) {
+  const value = await controllerApi.requestController<Record<string, unknown> & { nextTraceOffset: number | null; traceCount: number }>(`/api/v1/test-runs/${encodeURIComponent(runId)}/cases/${ordinal}?traceOffset=${traceOffset}`, { ...(signal ? { signal } : {}) });
+  return { result: mapValidationResult(value), nextTraceOffset: value.nextTraceOffset, traceCount: value.traceCount };
+}
 export const getPlaygroundModels = () => controllerApi.requestController<Collection<PlaygroundModel>>("/api/v1/playground/models");
 export const preparePlaygroundDraftPreview = (guardrailId: string) =>
   controllerApi.requestController<PlaygroundDraftPreview>(`/api/v1/playground/guardrails/${encodeURIComponent(guardrailId)}/draft-previews`, {
@@ -603,7 +624,7 @@ function mapValidationRun(value: controllerApi.ValidationRun): ValidationRun {
     subject: value.subject ?? "draft",
     candidate_digest: value.candidateDigest ?? null,
     test_suite_digest: value.testSuiteDigest ?? null,
-    status: value.status === "passed" ? "passed" : value.status === "failed" ? "failed" : "incomplete",
+    status: value.status === "passed" || value.status === "failed" || value.status === "cancelled" ? value.status : "incomplete",
     execution_status: value.status,
     progress: value.progress ?? null,
     failure_reason: value.failureReason,
@@ -618,15 +639,13 @@ function mapValidationRun(value: controllerApi.ValidationRun): ValidationRun {
       escalation_rate: value.metrics.escalationRate,
       p95_latency_ms: value.metrics.p95LatencyMs,
     },
-    results: (value.results ?? []).map(mapValidationResult),
-    details_loaded: value.results !== undefined,
     completed_at: value.completedAt,
     excluded_case_ids: value.excludedCaseIds,
     created_at: value.createdAt,
   };
 }
 
-function mapValidationResult(value: Record<string, unknown>): ValidationRun["results"][number] {
+function mapValidationResult(value: Record<string, unknown>): TestCaseResult {
   const phase = stringValue(value.phase) === "output" ? "output" : "input";
   return {
     ...(value.expectationOverride && typeof value.expectationOverride === "object" ? { expectation_override: value.expectationOverride as Record<string, unknown> } : {}),
@@ -647,25 +666,31 @@ function mapValidationResult(value: Record<string, unknown>): ValidationRun["res
     input_content: stringValue(value.inputContent) ?? "",
     action: stringValue(value.action) ?? "allow",
     output_content: stringValue(value.outputContent) ?? "",
-    findings: arrayOfRecords(value.findings) as ValidationRun["results"][number]["findings"],
-    trace: arrayOfRecords(value.trace) as ValidationRun["results"][number]["trace"],
+    findings: arrayOfRecords(value.findings) as TestCaseResult["findings"],
+    trace: arrayOfRecords(value.trace) as TestCaseResult["trace"],
     trusted_instruction: stringValue(value.trustedInstruction) ?? "",
     target_source: (stringValue(value.targetSource) ?? (phase === "output" ? "model_output" : "user_input")) as TestCase["target_source"],
     query: stringValue(value.query) ?? "",
     grounding_sources: arrayOfStrings(value.groundingSources),
-    expected_reasoning_result: stringValue(value.expectedReasoningResult) as ValidationRun["results"][number]["expected_reasoning_result"],
-    actual_reasoning_result: stringValue(value.actualReasoningResult) as ValidationRun["results"][number]["actual_reasoning_result"],
+    expected_reasoning_result: stringValue(value.expectedReasoningResult) as TestCaseResult["expected_reasoning_result"],
+    actual_reasoning_result: stringValue(value.actualReasoningResult) as TestCaseResult["actual_reasoning_result"],
     case_type: stringValue(value.caseType) ?? "scenario",
     required: value.required !== false,
     expected_failure: stringValue(value.expectedFailure),
     actual_failure: stringValue(value.actualFailure),
+    model_status: enumValue(value.modelStatus, ["ok", "error", "not_called", "unknown"] as const) ?? undefined,
+    execution_status: stringValue(value.executionStatus) ?? undefined,
     concurrency_group: stringValue(value.concurrencyGroup),
     source_policy_id: stringValue(value.sourcePolicyId),
     source_policy_version: stringValue(value.sourcePolicyVersion),
     source_case_id: stringValue(value.sourceCaseId),
     covered_rule_ids: arrayOfStrings(value.coveredRuleIds),
     matched_rule_ids: arrayOfStrings(value.matchedRuleIds),
-    preempting_matches: arrayOfRecords(value.preemptingMatches).map(item => ({ policyId: String(item.policyId), ruleId: String(item.ruleId) })),
+    evidence_status: stringValue(value.evidenceStatus) ?? "unverifiable",
+    evidence_detail: stringValue(value.evidenceDetail) ?? "",
+    verified_rule_ids: arrayOfStrings(value.verifiedRuleIds),
+    superseded_by: arrayOfRecords(value.supersededBy).map(item => ({ policyId: String(item.policyId), ruleId: String(item.ruleId) })),
+    rule_contract_satisfied: value.ruleContractSatisfied === true,
     evaluation_contracts: arrayOfStrings(value.evaluationContracts),
     escalated: Boolean(value.escalated),
     model_invocations: numberValue(value.modelInvocations) ?? 0,
@@ -675,14 +700,14 @@ function mapValidationResult(value: Record<string, unknown>): ValidationRun["res
 async function waitForValidation(initial: controllerApi.ValidationRun, observer?: ValidationObserver): Promise<ValidationRun> {
   let current = initial;
   if (!initial.id) throw new Error("Policy validation did not return a run ID.");
-  const deadline = Date.now() + 5 * 60_000;
+  // The server owns task deadlines. A long suite must not become a client-side
+  // report failure after five minutes; poll the same ID until a terminal state.
   observer?.onProgress?.(mapValidationRun(current));
-  while ((current.status === "queued" || current.status === "running") && Date.now() < deadline) {
+  while (current.status === "queued" || current.status === "running") {
     await new Promise((resolve) => setTimeout(resolve, 1_000));
-    current = await controllerApi.requestController<controllerApi.ValidationRun>(`/api/v1/test-runs/${encodeURIComponent(initial.id)}?view=summary`);
+    current = await controllerApi.requestController<controllerApi.ValidationRun>(`/api/v1/test-runs/${encodeURIComponent(initial.id)}`);
     observer?.onProgress?.(mapValidationRun(current));
   }
-  if (current.status === "queued" || current.status === "running") throw new Error("Timed out waiting for the test report. The test may still be running.");
   return mapValidationRun(current);
 }
 

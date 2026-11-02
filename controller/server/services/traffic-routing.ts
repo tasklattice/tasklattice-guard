@@ -18,6 +18,7 @@ import {
   resourceWritePredicate,
   tenantOwnerForCreate,
 } from "./tenant-context.js";
+import { telemetryBatches, telemetryWatermarkBatch } from "./telemetry-batches.js";
 
 /** How long a Runner load check of an imported version counts as current. */
 export const IMPORTED_VERSION_CHECK_TTL_MS = 10 * 60_000;
@@ -186,7 +187,7 @@ export class TrafficRoutingService {
       const version = versions.find(v => v.id === target.guardrailId && v.version === target.guardrailVersion);
       if (route.enabled && target.weightBps > 0 && version?.status === "pending") {
         // Same validation as "not ready", so a change that drifts here is superseded rather than applied.
-        throw new ValidationError(`${route.name}: ${target.guardrailId} ${target.guardrailVersion} has not been released in this environment. Run its test suite and release it first`,
+        throw new ValidationError(`${route.name}: ${target.guardrailId} ${target.guardrailVersion} has not been released in this environment. Publish it first`,
           { guardrailId: target.guardrailId, version: target.guardrailVersion, reason: "not_released" });
       }
       if (route.enabled && target.weightBps > 0 && (!version?.artifactId || version.status !== "ready" || version.deletedAt)) {
@@ -537,18 +538,19 @@ export class TrafficRoutingService {
       await (transaction ?? this.db).delete(routeAssignments).where(lt(routeAssignments.occurredAt, new Date(Date.now() - 30 * 86400000)));
       this.lastRetentionAt = Date.now();
     }
-    const writeEvents = async (tx: Tx) => {
-      const endpointIds = [...new Set(events.map(event => event.endpointId))];
-      const routerIds = [...new Set(events.map(event => event.routerId).filter(Boolean))];
+    const prepare = async (tx: Tx, batch: readonly RoutingEvent[]) => {
+      const endpointIds = [...new Set(batch.map(event => event.endpointId))];
+      const routerIds = [...new Set(batch.map(event => event.routerId).filter(Boolean))];
       const endpointOwners = new Map((!restricted && endpointIds.length ? await tx.select({ id: endpoints.id, tenantId: endpoints.tenantId })
         .from(endpoints).where(inArray(endpoints.id, endpointIds)) : []).map(row => [row.id, row.tenantId]));
       const routerOwners = new Map((!restricted && routerIds.length ? await tx.select({ id: trafficRouters.id, tenantId: trafficRouters.tenantId })
         .from(trafficRouters).where(inArray(trafficRouters.id, routerIds)) : []).map(row => [row.id, row.tenantId]));
-      const accepts = await guardrailTelemetryFilter(tx, events.map(event => event.guardrailId));
-      if (events.some(event => event.allocationContextId)) await lockEndpointTelemetryContextReaders(tx);
-      for (const event of events) {
-        if (!accepts(event.guardrailId, event.decisionAt)) continue;
-        if (event.decisionAt.getTime() < Date.now() - 30 * 86400000) continue;
+      const accepts = await guardrailTelemetryFilter(tx, batch.map(event => event.guardrailId));
+      if (batch.some(event => event.allocationContextId)) await lockEndpointTelemetryContextReaders(tx);
+      const watermarks = telemetryWatermarkBatch(tx);
+      return { write: async (event: RoutingEvent) => {
+        if (!accepts(event.guardrailId, event.decisionAt)) return;
+        if (event.decisionAt.getTime() < Date.now() - 30 * 86400000) return;
         const complete = event.eventType === "completion";
         // A Router alone cannot establish who invoked an Endpoint. Missing or
         // conflicting owners are platform-only rather than guessed as tenantA.
@@ -593,13 +595,14 @@ export class TrafficRoutingService {
           AND ${routeAssignments.guardrailVersion} = excluded.guardrail_version
           AND ${routeAssignments.assignmentStatus} = excluded.assignment_status
           AND ${routeAssignments.occurredAt} = excluded.occurred_at` });
-        if (restricted) continue;
-        await tx.insert(telemetryWatermarks).values({ runnerId: event.runnerId, lastEventOccurredAt: event.occurredAt, lastReceivedAt: new Date(), updatedAt: new Date() })
-          .onConflictDoUpdate({ target: telemetryWatermarks.runnerId, set: { lastEventOccurredAt: event.occurredAt, lastReceivedAt: new Date(), updatedAt: new Date() } });
-      }
+        if (!restricted) watermarks.add(event.runnerId, event.occurredAt);
+      }, finish: () => watermarks.flush() };
     };
-    if (transaction) await writeEvents(transaction);
-    else await this.db.transaction(writeEvents);
+    if (transaction) {
+      const writer = await prepare(transaction, events);
+      for (const event of events) await writer.write(event);
+      await writer.finish();
+    } else await telemetryBatches(this.db, events, prepare);
   }
 
   async runtimeSnapshots(tenantIds: readonly string[], tx: Tx | ControllerDatabase = this.db) {

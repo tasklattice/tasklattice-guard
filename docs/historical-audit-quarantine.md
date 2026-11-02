@@ -1,6 +1,6 @@
 # Historical audit attribution quarantine
 
-Migration `0054_audit_attribution_quarantine` preserves audit records while removing their tenant assignments. Earlier attribution selected the actor's tenant, even when a platform administrator acted on another tenant's resource; some background and platform activity also fell back to tenant A. Those assignments are not reliable proof of which tenant may read the details.
+Migration `0007_audit_attribution_quarantine` preserves audit records while removing their tenant assignments. Earlier attribution selected the actor's tenant, even when a platform administrator acted on another tenant's resource; some background and platform activity also fell back to tenant A. Those assignments are not reliable proof of which tenant may read the details.
 
 The former assignments are preserved in the internal `historical_audit_attribution` table for operator review. Ordinary tenant audit lists omit records with unknown ownership; platform-wide audit queries retain access to all records. Tenant audit history therefore decreases at upgrade. The former tenant ID alone is not sufficient evidence to restore a record: do not bulk-restore it to recover historical totals. A supported review, audited remediation, and retention workflow still needs to be built.
 

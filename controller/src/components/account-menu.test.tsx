@@ -13,7 +13,7 @@ vi.mock("@/lib/auth", () => ({
   useAuth: () => ({
     user: {
       display_name: "Local Administrator",
-      email: "admin@tasklattice.local",
+      username: "admin",
       role: identity.role,
       tenant_id: identity.tenant_id,
     },
@@ -51,7 +51,7 @@ describe("AccountMenu", () => {
     fireEvent.click(trigger, { button: 0, ctrlKey: false, pointerType: "mouse" });
 
     expect(screen.getByText("Local Administrator")).toBeTruthy();
-    expect(screen.getByText("admin@tasklattice.local")).toBeTruthy();
+    expect(screen.getByText("admin")).toBeTruthy();
     expect(screen.getByText("Platform administrator")).toBeTruthy();
     expect(screen.getByRole("menuitem", { name: "Account" })).toBeTruthy();
     expect(screen.getByRole("menuitem", { name: "Manage users" })).toBeTruthy();

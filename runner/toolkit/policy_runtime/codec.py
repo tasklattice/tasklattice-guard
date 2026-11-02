@@ -43,6 +43,9 @@ def _rule(policy_id: str, payload: dict[str, object]) -> PolicyRuleSpec:
     options = values.get("detector_options", {})
     if not isinstance(options, dict):
         raise ValueError("Detector options must be an object")
+    if values["implementation"].detector == "regex":
+        from .detectors import validate_regex_options
+        validate_regex_options(values.get("expression", ""), options)
     if values["implementation"].detector == "conditions":
         validate_conditions(options)
     if values["implementation"].detector == "keyword" and options:

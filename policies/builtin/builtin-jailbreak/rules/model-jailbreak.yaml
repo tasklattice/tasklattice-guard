@@ -8,6 +8,8 @@ detector:
   version: 1.0.0
   parameters:
     profile: jailbreak-classification
+    on_unknown: '{{on_unknown}}'
+    review_unknown: '{{review_unknown}}'
 on_match:
   action: block
 runtime_adapter:

@@ -15,7 +15,8 @@ from tests.data_plane.test_artifact_execution import _runtime
 
 @pytest.mark.parametrize("fixture,text,expected", [
     ("configured-phrases-v1", "normal reply", "normal reply"),
-    ("configured-phrases-v1", "internal-name", "public-name"),
+    ("configured-phrases-v1", "internal-alias", "public-name"),
+    ("configured-phrases-v1", "internal-name", None),
     ("configured-phrases-v1", "confidential", None),
     ("default-local-v1", "Email: alice@example.com", "Email: [email_REDACTED]"),
     ("custom-dynamic-flow-events-v1", "check", None),

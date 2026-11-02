@@ -6,7 +6,7 @@ import { ensureBootstrapAdmin, ensureBootstrapUser } from "./bootstrap.js";
 
 const config = loadConfig();
 if (!config.bootstrapAdmin && !config.bootstrapUser) {
-  throw new Error("Configure a bootstrap email and either password or passwordHash.");
+  throw new Error("Configure a bootstrap username and password.");
 }
 
 const { db, pool } = createDatabase(config);
@@ -19,8 +19,8 @@ try {
     ["user", config.bootstrapUser, ensureBootstrapUser],
   ] as const) {
     if (!account) continue;
-    const status = await ensure({ auth, db, ...account });
-    process.stdout.write(`${status === "created" ? "Created" : "Found existing"} Better Auth ${role} ${account.email}.\n`);
+    const status = await ensure({ auth, ...account });
+    process.stdout.write(`${status === "created" ? "Created" : "Updated"} Better Auth ${role} ${account.username}.\n`);
   }
 } finally {
   await pool.end();

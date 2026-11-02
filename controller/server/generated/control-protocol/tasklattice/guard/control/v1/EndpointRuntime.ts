@@ -21,6 +21,10 @@ export interface EndpointRuntime {
    */
   'scanFlagOnlyDefault'?: (boolean);
   /**
+   * Whether requests must authenticate with an Endpoint credential.
+   */
+  'credentialRequired'?: (boolean);
+  /**
    * Controller-assigned owner; absent on legacy Controllers. Callers must
    * authenticate the Endpoint against the same snapshot before using it.
    */
@@ -53,6 +57,10 @@ export interface EndpointRuntime__Output {
    * F5 Scan default when the request omits flagOnly. Absence preserves true.
    */
   'scanFlagOnlyDefault'?: (boolean);
+  /**
+   * Whether requests must authenticate with an Endpoint credential.
+   */
+  'credentialRequired': (boolean);
   /**
    * Controller-assigned owner; absent on legacy Controllers. Callers must
    * authenticate the Endpoint against the same snapshot before using it.

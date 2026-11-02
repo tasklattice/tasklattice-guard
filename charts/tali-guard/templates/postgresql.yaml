@@ -27,12 +27,19 @@ metadata:
 spec:
   serviceName: {{ include "tali-guard.postgresqlName" . }}
   replicas: 1
+  {{- if .Values.postgresql.persistence.enabled }}
+  persistentVolumeClaimRetentionPolicy:
+    whenDeleted: Retain
+    whenScaled: Retain
+  {{- end }}
   selector:
     matchLabels: &selector
       app.kubernetes.io/instance: {{ .Release.Name }}
       app.kubernetes.io/component: postgresql
   template:
     metadata:
+      annotations:
+        tasklattice.io/database-revision: {{ .Release.Revision | quote }}
       labels:
         <<: *selector
         app.kubernetes.io/name: {{ include "tali-guard.name" . }}
@@ -51,6 +58,48 @@ spec:
       {{- with .Values.imagePullSecrets }}
       imagePullSecrets: {{- toYaml . | nindent 8 }}
       {{- end }}
+      initContainers:
+        - name: prepare-postgresql
+          image: {{ include "tali-guard.controllerImage" . | quote }}
+          imagePullPolicy: {{ .Values.controller.image.pullPolicy }}
+          command: [cp, /opt/tasklattice/guard-controller/scripts/runtime/sync-postgresql.sh, /opt/tasklattice/postgresql/sync.sh]
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+          resources:
+            requests: { cpu: 10m, memory: 16Mi }
+            limits: { cpu: 100m, memory: 64Mi }
+          volumeMounts:
+            - name: bootstrap-scripts
+              mountPath: /opt/tasklattice/postgresql
+        - name: synchronize-postgresql
+          image: "{{ .Values.postgresql.image.repository }}:{{ .Values.postgresql.image.tag }}"
+          imagePullPolicy: {{ .Values.postgresql.image.pullPolicy }}
+          command: [bash, /opt/tasklattice/postgresql/sync.sh]
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+          env: &database-env
+            - name: PGDATA
+              value: /var/lib/postgresql/data/pgdata
+            - name: POSTGRES_DB
+              value: {{ .Values.postgresql.auth.database | quote }}
+            - name: POSTGRES_USER
+              value: {{ .Values.postgresql.auth.username | quote }}
+          envFrom: &database-env-from
+            - secretRef:
+                name: {{ include "tali-guard.databaseSecretName" . }}
+          resources: {{- toYaml .Values.postgresql.resources | nindent 12 }}
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/postgresql/data
+            - name: bootstrap-scripts
+              mountPath: /opt/tasklattice/postgresql
+              readOnly: true
+            - name: tmp
+              mountPath: /tmp
       containers:
         - name: postgresql
           image: "{{ .Values.postgresql.image.repository }}:{{ .Values.postgresql.image.tag }}"
@@ -63,16 +112,8 @@ spec:
             - name: postgresql
               containerPort: 5432
               protocol: TCP
-          env:
-            - name: PGDATA
-              value: /var/lib/postgresql/data/pgdata
-            - name: POSTGRES_DB
-              value: {{ .Values.postgresql.auth.database | quote }}
-            - name: POSTGRES_USER
-              value: {{ .Values.postgresql.auth.username | quote }}
-          envFrom:
-            - secretRef:
-                name: {{ include "tali-guard.databaseSecretName" . }}
+          env: *database-env
+          envFrom: *database-env-from
           readinessProbe:
             exec:
               command: [pg_isready, --username, {{ .Values.postgresql.auth.username | quote }}, --dbname, {{ .Values.postgresql.auth.database | quote }}]
@@ -96,6 +137,9 @@ spec:
             - name: tmp
               mountPath: /tmp
       volumes:
+        - name: bootstrap-scripts
+          emptyDir:
+            sizeLimit: 1Mi
         - name: runtime
           emptyDir: {}
         - name: tmp
@@ -106,10 +150,14 @@ spec:
         {{- end }}
   {{- if .Values.postgresql.persistence.enabled }}
   volumeClaimTemplates:
-    - metadata:
+    # Keep the PVC type and volume mode explicit for Argo CD's live-state comparison.
+    - apiVersion: v1
+      kind: PersistentVolumeClaim
+      metadata:
         name: data
       spec:
         accessModes: [ReadWriteOnce]
+        volumeMode: Filesystem
         {{- with .Values.postgresql.persistence.storageClass }}
         storageClassName: {{ . | quote }}
         {{- end }}

@@ -31,7 +31,7 @@ class ArtifactCompiler:
         payload.update({
             "guardrail_id": request.guardrail_id,
             "guardrail_version": request.guardrail_version,
-            "compiler_version": payload.get("compiler_version") or "tasklattice-controller-plan-v5-rule-order",
+            "compiler_version": payload.get("compiler_version") or "tasklattice-controller-plan-v1",
         })
         plan = plan_from_dict(payload)
         snapshot = self._compiler.compile(plan)

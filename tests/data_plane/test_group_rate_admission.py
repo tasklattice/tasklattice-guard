@@ -168,7 +168,7 @@ def test_store_persists_controller_group_epoch_atomically_and_failed_snapshot_re
     import hashlib
     verification = endpoint_verification_to_proto({"credentials": [{"id": "key", "sha256": hashlib.sha256(b"key").hexdigest(), "createdAt": "2026-01-01T00:00:00Z"}]})
     state = protocol.DesiredState(generation=1, allocation_group_id="group", allocation_epoch=7,
-        endpoints=[protocol.EndpointRuntime(endpoint_id="endpoint", tenant_id="tenantA", verification=verification)])
+        endpoints=[protocol.EndpointRuntime(endpoint_id="endpoint", tenant_id="tenantA", verification=verification, credential_required=True)])
     store.apply(state)
     expected = AuthenticatedEndpointAllocation("tenantA", "group", 7, 1)
     assert store.authenticated_endpoint_allocation("endpoint", "key") == expected

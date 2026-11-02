@@ -24,12 +24,14 @@ import { existsSync } from "node:fs";
 import { resolve } from "node:path";
 
 import { serveStatic } from "@hono/node-server/serve-static";
+import { getConnInfo } from "@hono/node-server/conninfo";
 import { prometheus } from "@hono/prometheus";
 import { securityEventsQuery } from "../../shared/security-events.js";
 import { Hono, type Context, type MiddlewareHandler } from "hono";
 import { logger } from "hono/logger";
 import { secureHeaders } from "hono/secure-headers";
 import { bodyLimit } from "hono/body-limit";
+import { compress } from "hono/compress";
 import { z } from "zod";
 import { policyDefinitionSchema } from "../../shared/policy-definition.js";
 import { publicPolicy } from "../policy-catalog/public-policy.js";
@@ -39,6 +41,8 @@ import type { ControllerConfig } from "../config.js";
 import { IntentAnalysisError, OpenAICompatibleIntentAnalyzer, type IntentAnalyzer } from "../control-plane-ai/intent-analyzer.js";
 import { recommendationCatalog } from "../control-plane-ai/recommendation-catalog.js";
 import { ConflictError, ControllerError, NotFoundError, ValidationError } from "../domain/errors.js";
+import { casePageQuery } from "../services/report-results.js";
+import { logDatabaseFailure } from "../db/diagnostics.js";
 import { enforcementActions } from "../domain/guardrail-plan.js";
 import { deriveRunnerFleetStatus } from "../domain/platform-status.js";
 import { deriveComponentHealth, withModelHealth } from "../domain/component-health.js";
@@ -109,6 +113,7 @@ const guardrailPolicyBindingInput = z.object({
   }).nullable().default(null),
 });
 const guardrailDraftInput = z.strictObject({
+  profileOrigin: z.object({ id: z.string().trim().min(1).max(256), version: z.string().trim().min(1).max(128) }).optional(),
   allowedTopics: z.array(z.string().trim().min(1).max(500)).max(256).default([]),
   restrictedTopics: z.array(z.string().trim().min(1).max(500)).max(256).default([]),
   topicControlMode: z.enum(["strict", "permissive"]).default("permissive"),
@@ -162,12 +167,14 @@ const playgroundDraftInteractionInput = playgroundInteractionInput.omit({ guardr
 const endpointInput = z.object({
   name: z.string().trim().min(1).max(160),
   adapter: z.enum(["litellm-generic-guardrail", "f5-scan"]),
+  credentialRequired: z.boolean().optional().describe("Require an Endpoint credential. Defaults to true. False permits anonymous runtime requests."),
   scanFlagOnlyDefault: z.boolean().optional().describe("F5 Scan only. Default for requests that omit flagOnly; new Endpoints default to true. Explicit request values take precedence."),
 });
 const endpointUpdateInput = z.object({
   enabled: z.boolean().optional(),
+  credentialRequired: z.boolean().optional(),
   scanFlagOnlyDefault: z.boolean().optional().describe("F5 Scan only. Default for requests that omit flagOnly. Explicit request values take precedence."),
-}).strict().refine(value => value.enabled !== undefined || value.scanFlagOnlyDefault !== undefined, "Provide enabled or scanFlagOnlyDefault.");
+}).strict().refine(value => value.enabled !== undefined || value.scanFlagOnlyDefault !== undefined || value.credentialRequired !== undefined, "Provide enabled, scanFlagOnlyDefault or credentialRequired.");
 const deletionInput = z.object({
   reason: z.string().trim().min(1).max(1_000),
   confirmRecentTraffic: z.boolean().default(false),
@@ -222,6 +229,7 @@ export function createHttpApp(input: {
   intentAnalyzer?: IntentAnalyzer | null;
   playgroundModel?: OpenAICompatiblePlaygroundModel | null;
   playgroundRunner?: RunnerPlaygroundClient | null;
+  isStopping?: () => boolean;
 }) {
   const app = new Hono<{ Variables: Variables }>();
   const telemetryUploads = new TelemetryUploadAdmission();
@@ -233,17 +241,17 @@ export function createHttpApp(input: {
   const controllerVersion = readSoftwareVersion();
   // Fail fast on a broken Library.
   PolicyCatalog.load(input.config.policyCatalogDir);
-  const legacyIntentAnalyzer = input.intentAnalyzer ?? null;
-  const legacyPlaygroundModel = input.playgroundModel ?? null;
+  const injectedIntentAnalyzer = input.intentAnalyzer ?? null;
+  const injectedPlaygroundModel = input.playgroundModel ?? null;
   const playgroundRunner = input.playgroundRunner ?? null;
   const currentIntentAnalyzer = async () => {
     const configured = await input.models?.controlPlaneModel("policy_authoring");
     // Authoring produces full structured proposals, unlike short model probes.
-    return configured ? new OpenAICompatibleIntentAnalyzer({ ...configured, timeoutMs: Math.max(configured.timeoutMs, 60_000) }) : legacyIntentAnalyzer;
+    return configured ? new OpenAICompatibleIntentAnalyzer({ ...configured, timeoutMs: Math.max(configured.timeoutMs, 60_000) }) : injectedIntentAnalyzer;
   };
   const currentPlaygroundModel = async () => {
     const configured = await input.models?.controlPlaneModel("playground_chat");
-    return configured ? new OpenAICompatiblePlaygroundModel(configured) : legacyPlaygroundModel;
+    return configured ? new OpenAICompatiblePlaygroundModel(configured) : injectedPlaygroundModel;
   };
   const playgroundDraftPreviews = new PlaygroundDraftPreviewStore();
   const tenantPool = async (tenantId: string) => input.service.groupRouting
@@ -267,15 +275,21 @@ export function createHttpApp(input: {
     const pools = await input.service.groupRouting.poolsForTenant(tenantId);
     return input.runnerControl.hasCompilerForPools(pools.map(pool => pool.id));
   };
-  const withDistribution = async <T extends { id: string; adapter: string; tenantId: string }>(resource: T, context: Context, wait = false) => {
+  const withDistribution = async <T extends { id: string; adapter: string; tenantId: string; credentialRequired: boolean }>(resource: T, context: Context, wait = false) => {
     const pool = await tenantPool(resource.tenantId);
     const distribution = wait
       ? await input.runnerControl.distributeDesiredState(pool.poolId)
       : await input.runnerControl.distributionStatus(pool.poolId);
-    return { ...resource, setup: endpointSetup(pool.publicUrl ?? endpointRequestOrigin(context.req.raw), resource.id, resource.adapter), ...distribution };
+    return { ...resource, setup: endpointSetup(pool.publicUrl ?? endpointRequestOrigin(context.req.raw), resource.id, resource.adapter, resource.credentialRequired), ...distribution };
   };
   app.use("*", logger());
   app.use("*", secureHeaders());
+  app.use("*", async (context, next) => {
+    if (input.isStopping?.() && context.req.path !== "/health/live" && context.req.path !== "/metrics") {
+      return context.json({ error: { code: "controller_stopping", message: "Controller is stopping. Retry on another instance." } }, 503);
+    }
+    return next();
+  });
   app.use("*", (context, next) => {
     if (context.req.path === "/metrics" || context.req.path.startsWith("/health/")) {
       return next();
@@ -314,15 +328,8 @@ export function createHttpApp(input: {
       observedAt, offlineAfterSeconds: input.config.offlineAfterSeconds, desiredGeneration,
     });
     const configuredModels = input.models ? await input.models.statusSummary() : {
-      controlPlane: {
-        status: input.config.modelConnections.controlPlane.model === "not-configured" ? "unconfigured" as const : "configured" as const,
-        provider: input.config.modelConnections.controlPlane.model === "not-configured" ? null : input.config.modelConnections.controlPlane.provider,
-        model: input.config.modelConnections.controlPlane.model === "not-configured" ? null : input.config.modelConnections.controlPlane.model,
-      },
-      dataPlane: {
-        status: input.config.modelConnections.dataPlane.models.length > 0 ? "configured" as const : "unconfigured" as const,
-        ...input.config.modelConnections.dataPlane,
-      },
+      controlPlane: { status: "unconfigured" as const, provider: null, model: null },
+      dataPlane: { status: "unconfigured" as const, provider: "Runner", models: [] },
     };
     const modelHealth = input.models ? await input.models.modelHealth(await input.service.requiredPlatformModelBindings()) : null;
     const status = modelHealth && modelHealth.status !== "healthy" ? "unavailable" as const : runnerFleet.status;
@@ -360,9 +367,9 @@ export function createHttpApp(input: {
     const session = await input.auth.api.getSession({ headers: context.req.raw.headers, query: { disableCookieCache: true } });
     if (!session || !hasPermission(session.user.role, "users", "write"))
       return context.json({ error: { code: "forbidden", message: "Platform user administration requires an administrator session." } }, 403);
-    return input.auth.handler(context.req.raw);
+    return input.auth.handler(authHandlerRequest(context, input.config.trustedProxyCidrs));
   });
-  app.on(["GET", "POST"], "/api/auth/*", (context) => input.auth.handler(context.req.raw));
+  app.on(["GET", "POST"], "/api/auth/*", (context) => input.auth.handler(authHandlerRequest(context, input.config.trustedProxyCidrs)));
 
   app.get("/api/mock-sso/config", context => context.json({ enabled: input.config.mockSsoEnabled }));
   app.post("/api/mock-sso/sign-in", async context => {
@@ -809,7 +816,7 @@ export function createHttpApp(input: {
     return context.json(await input.service.previewGuardrailPlan(body));
   });
   app.post("/api/v1/guardrails", authenticated, async (context) => {
-    const body = guardrailInput.parse(await context.req.json());
+    const body = guardrailInput.extend({ idempotencyKey: z.string().min(1).max(128).optional() }).parse(await context.req.json());
     return context.json(await input.service.createGuardrail({ ...body, actorId: context.get("actor").id }), 201);
   });
   app.get("/api/v1/guardrails/:id", authenticated, async (context) => {
@@ -943,16 +950,23 @@ export function createHttpApp(input: {
   app.get("/api/v1/test-runs", authenticated, async (context) => {
     return context.json(await input.service.queryValidationRuns(testingReportsQuery.parse(context.req.query())));
   });
-  app.get("/api/v1/test-runs/:runId", authenticated, async (context) => {
-    return context.json(await input.service.getValidationRun(context.req.param("runId"), context.req.query("view") === "summary"));
+  app.get("/api/v1/test-runs/:runId", authenticated, async context => context.json(await input.service.getValidationRun(context.req.param("runId"))));
+  app.get("/api/v1/test-runs/:runId/cases", authenticated, async context => {
+    await input.service.authorizeReportRead(context.req.param("runId"));
+    return context.json(await input.service.reportResults.page(context.req.param("runId"), casePageQuery.parse(context.req.query())));
+  });
+  app.get("/api/v1/test-runs/:runId/cases/:ordinal", authenticated, compress(), async context => {
+    await input.service.authorizeReportRead(context.req.param("runId"));
+    return context.json(await input.service.reportResults.detail(context.req.param("runId"), Number(context.req.param("ordinal")), Number(context.req.query("traceOffset") ?? 0)));
+  });
+  app.post("/api/v1/test-runs/:runId/cancel", authenticated, async context => {
+    return context.json(await input.service.cancelValidation({ runId: context.req.param("runId"), actorId: context.get("actor").id }), 202);
   });
   app.get("/api/v1/test-runs/:runId/deletion-impact", authenticated, async context => {
     return context.json(await input.service.testingReportDeletionImpact(context.req.param("runId")));
   });
   app.delete("/api/v1/test-runs/:runId", authenticated, async context => {
-    const body = z.object({ expectedPendingVersion: z.string().nullable() }).parse(await context.req.json());
-    await input.service.deleteTestingReport({ runId: context.req.param("runId"), actorId: context.get("actor").id, ...body });
-    await input.runnerControl.distributeDesiredState();
+    await input.service.deleteTestingReport({ runId: context.req.param("runId"), actorId: context.get("actor").id });
     return context.body(null, 204);
   });
   app.post("/api/v1/guardrails/:guardrailId/test-runs", authenticated, async (context) => {
@@ -1377,6 +1391,7 @@ export function createHttpApp(input: {
     if (error instanceof SyntaxError) return context.json({ error: { code: "invalid_json", message: "Request body must be valid JSON." } }, 400);
     if (error instanceof RoutingEvaluationError) return context.json({ error: { code: error.code, message: error.message } }, 422);
     if (error instanceof ControllerError) {
+      if (error.code === "report_busy") context.header("Retry-After", "2");
       if (error instanceof IntentAnalysisError) {
         const { diagnosticId, provider, model, stage, upstreamStatus, elapsedMs, timeoutMs } = error.detail;
         // Correlate failures without persisting user prompts, documents or provider response bodies.
@@ -1387,7 +1402,9 @@ export function createHttpApp(input: {
     if (error instanceof z.ZodError) {
       return context.json({ error: { code: "invalid_request", message: "Request validation failed.", detail: error.flatten() } }, 400);
     }
-    console.error(error);
+    logDatabaseFailure("controller.http_error", error, input.service.databasePoolState?.() ?? null, {
+      method: context.req.method, route: context.req.routePath,
+    });
     return context.json({ error: { code: "internal_error", message: "Internal Controller error." } }, 500);
   });
 
@@ -1427,6 +1444,33 @@ export function createHttpApp(input: {
     }, serveStatic({ root: uiRoot, path: "index.html" }));
   }
   return app;
+}
+
+/**
+ * Better Auth throttles sign-in by the client address it can resolve, and keys
+ * every request by `address|path`. With no trusted proxy it must ignore a
+ * client-supplied chain, otherwise the whole installation collapses into one
+ * shared bucket that a single operator (or attacker) can exhaust. When proxies
+ * are configured, Better Auth itself walks and validates the chain.
+ */
+function authHandlerRequest(context: Context, trustedProxyCidrs: readonly string[]): Request {
+  if (trustedProxyCidrs.length) return context.req.raw;
+  const address = peerAddress(context);
+  if (!address) return context.req.raw;
+  const headers = new Headers(context.req.raw.headers);
+  headers.set("x-forwarded-for", address);
+  return new Request(context.req.raw, { headers });
+}
+
+function peerAddress(context: Context): string | null {
+  try {
+    const address = getConnInfo(context).remote.address;
+    // Node reports IPv4 peers of dual-stack listeners in mapped form.
+    return address ? address.replace(/^::ffff:(\d+\.\d+\.\d+\.\d+)$/i, "$1") : null;
+  } catch {
+    // Non-Node runtimes (tests, app.request) keep the headers they were given.
+    return null;
+  }
 }
 
 function authentication(auth: ControllerAuth, tokens?: AccessTokenService): MiddlewareHandler<{ Variables: Variables }> {

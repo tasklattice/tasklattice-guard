@@ -25,7 +25,7 @@ export function latestVersionTestEvidence(version: GuardrailVersion, runs: reado
 /**
  * What a version's release looks like in this environment, derived for
  * display only. The persisted state is just pending or ready; whether a
- * pending version can be released follows from its test runs here.
+ * testing is informational and never gates publication.
  */
 export type VersionReleaseState =
   | "released_waiver"
@@ -42,8 +42,7 @@ export function versionReleaseState(version: GuardrailVersion, runs: readonly Va
   const completed = own.reduce<VersionTestEvidence | null>((latest, run) => latestTestEvidence(latest, evidenceOf(run)), version.testing_evidence?.latest ?? null);
   const retained = own.find(run => run.id === completed?.id) ?? null;
   if (version.status === "ready") {
-    if (version.test_waiver) return { state: "released_waiver", run: runs.find(run => run.id === version.test_waiver!.sourceRunId) ?? null };
-    // A later failed test never revokes a release; it is shown for people to act on.
+    // Historical waivers are audit metadata. All releases show the same test states.
     const retest = completed && version.released_at && Date.parse(completed.completedAt) > Date.parse(version.released_at) ? completed : null;
     const releasedWith = runs.find(run => run.id === version.release_run_id) ?? null;
     return retest?.status === "failed" ? { state: "released_retest_failed", run: retained } : { state: "released", run: releasedWith };

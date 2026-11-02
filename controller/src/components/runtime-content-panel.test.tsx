@@ -76,7 +76,7 @@ describe("HTTP log body and download", () => {
     render(<RuntimeContentPanel {...props} blocks={[{ id: "b", text: "retained text", role: "user_input", source: "user_input", truncated: true }]} />);
     expect(screen.queryByRole("button", { name: "logs.downloadHttpRequest" })).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "Original request" }));
-    expect(screen.getByText("logs.legacyBodyOnly")).toBeTruthy();
+    expect(screen.getByText("logs.textOnlyRecord")).toBeTruthy();
     expect(screen.getByText("logs.truncated")).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "logs.downloadBody" }));
     await waitFor(() => expect(download).toHaveBeenCalledTimes(1));

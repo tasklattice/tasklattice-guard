@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from typing import Any, Literal, Protocol, TypeAlias
 
 import httpx
+from ..runtime.failures import model_response, ModelConfigurationError
 
 from ..evaluation.contracts import (
     CONTRACT_CONTENT_SAFETY,
@@ -262,7 +263,7 @@ class OpenAIChatModelClient:
         if not credential and request.api_key_env_var:
             credential = os.environ.get(request.api_key_env_var, "").strip()
             if not credential:
-                raise ValueError(
+                raise ModelConfigurationError(
                     f"Model Client credential {request.api_key_env_var!r} is not configured."
                 )
         if credential:
@@ -290,10 +291,11 @@ class OpenAIChatModelClient:
                 json=body,
             )
             response.raise_for_status()
+        with model_response():
             payload = response.json()
-        content = payload["choices"][0]["message"]["content"]
-        if not isinstance(content, str):
-            raise TypeError("Model Client response content must be text.")
+            content = payload["choices"][0]["message"]["content"]
+            if not isinstance(content, str):
+                raise TypeError("Model Client response content must be text.")
         return ModelCompletionResponse(content, payload)
 
 
@@ -310,7 +312,7 @@ class NemoGuardJailbreakDetectClient:
         if not credential and request.api_key_env_var:
             credential = os.environ.get(request.api_key_env_var, "").strip()
             if not credential:
-                raise ValueError(f"Model Client credential {request.api_key_env_var!r} is not configured.")
+                raise ModelConfigurationError(f"Model Client credential {request.api_key_env_var!r} is not configured.")
         headers = {"content-type": "application/json", "accept": "application/json"}
         if credential:
             headers["authorization"] = f"Bearer {credential}"
@@ -325,8 +327,9 @@ class NemoGuardJailbreakDetectClient:
                 json={"input": request.messages[0]["content"]},
             )
             response.raise_for_status()
+        with model_response():
             payload = response.json()
-        parse_jailbreak_detect_response(payload)
+            parse_jailbreak_detect_response(payload)
         return ModelCompletionResponse(json.dumps(payload), payload)
 
 
@@ -541,6 +544,10 @@ class NemotronSafetyGuardV3Adapter:
             raise TypeError("Nemotron Safety Guard v3 response must be a JSON object.")
         label = "User Safety" if scope == "input" else "Response Safety"
         verdict = str(decoded.get(label, "")).strip().casefold()
+        # Hosted v3 sometimes echoes the schema's "safe or unsafe rating"
+        # wording. Accept only these complete, unambiguous aliases; substring
+        # matching could incorrectly allow "not safe" or "safe or unsafe".
+        verdict = {"safe rating": "safe", "unsafe rating": "unsafe"}.get(verdict, verdict)
         if verdict not in {"safe", "unsafe"}:
             raise ValueError(f"Nemotron Safety Guard v3 returned an invalid {label} value.")
         raw_categories = decoded.get("Safety Categories", "")
@@ -846,15 +853,16 @@ class ConfiguredSafetyModelProvider:
             skip_tls_verify=self.config.skip_tls_verify,
             disable_thinking=self.adapter.name == "openai_compatible_pii",
         ))
-        parser = getattr(self.adapter, "parse_scoped", None)
-        if parser is not None:
-            return parser(response.content, response.payload, self.config, candidate_taxonomy_ids, scope=scope)
-        return self.adapter.parse(
-            response.content,
-            response.payload,
-            self.config,
-            candidate_taxonomy_ids,
-        )
+        with model_response():
+            parser = getattr(self.adapter, "parse_scoped", None)
+            if parser is not None:
+                return parser(response.content, response.payload, self.config, candidate_taxonomy_ids, scope=scope)
+            return self.adapter.parse(
+                response.content,
+                response.payload,
+                self.config,
+                candidate_taxonomy_ids,
+            )
 
 
 class SafetyModelProvider(Protocol):

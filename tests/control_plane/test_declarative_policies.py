@@ -383,7 +383,51 @@ async def test_model_tests_are_explicitly_not_run_without_a_model_environment():
     assert all(case["status"] == "not_run" for case in report["policies"][0]["cases"])
 
 
-async def test_regression_uses_manifest_order_for_rule_and_policy_scopes(tmp_path):
+def test_bundled_strict_jailbreak_preserves_uncertainty_parameter():
+    package = load_package(ROOT / "policies/builtin/builtin-jailbreak-strict")
+    compiled = compile_policy(package.definition, sources.registry())
+    assert compiled["version"] == "1.0.0"
+    assert compiled["rules"][0]["detector_options"] == {
+        "profile": "jailbreak-classification", "on_unknown": "{{on_unknown}}", "review_unknown": "{{review_unknown}}",
+    }
+    assert compiled["parameters"][0]["default"] == "block"
+    candidate = package.definition.model_dump()
+    candidate["rules"][0]["detector"]["parameters"]["on_unknown"] = "{{missing}}"
+    with pytest.raises(ValueError, match="on_unknown must be"):
+        compile_policy(definition(candidate), sources.registry())
+    candidate["rules"][0]["detector"]["parameters"] = {
+        "profile": "pii-classification", "on_unknown": "block",
+    }
+    with pytest.raises(ValueError, match="unknown detector parameters"):
+        compile_policy(definition(candidate), sources.registry())
+
+
+@pytest.mark.parametrize("profile", ["safety-classification", "topic-classification"])
+def test_classifier_uncertainty_parameter_survives_package_compilation(profile):
+    package = load_package(ROOT / "policies/builtin/builtin-jailbreak-strict")
+    candidate = package.definition.model_dump()
+    candidate["rules"][0]["detector"]["parameters"]["profile"] = profile
+    compiled = compile_policy(definition(candidate), sources.registry())
+    assert compiled["rules"][0]["detector_options"]["on_unknown"] == "{{on_unknown}}"
+    assert compiled["rules"][0]["effect"] == "block"
+    candidate["rules"][0]["detector"]["parameters"]["on_unknown"] = "ignore"
+    with pytest.raises(ValueError, match="on_unknown must be"):
+        compile_policy(definition(candidate), sources.registry())
+
+
+@pytest.mark.parametrize("policy", ["builtin-content-safety", "builtin-jailbreak", "builtin-topic-safety"])
+def test_shipped_v1_classifiers_wire_unknown_and_review(policy):
+    current = load_package(ROOT / "policies/builtin" / policy)
+    compiled = compile_policy(current.definition, sources.registry())
+    assert compiled["version"] == "1.0.0"
+    assert next(p for p in compiled["parameters"] if p["name"] == "on_unknown")["default"] == "block"
+    assert all(r["detector_options"]["on_unknown"] == "{{on_unknown}}" for r in compiled["rules"])
+    assert next(p for p in compiled["parameters"] if p["name"] == "review_unknown")["default"] == "false"
+    assert all(r["detector_options"]["review_unknown"] == "{{review_unknown}}" for r in compiled["rules"])
+
+
+
+async def test_regression_uses_action_priority_in_rule_and_policy_scopes(tmp_path):
     root = tmp_path / "package"
     shutil.copytree(ROOT / "policies/examples/customer-information", root)
     file = root / "tests/regression.yaml"
@@ -393,16 +437,13 @@ async def test_regression_uses_manifest_order_for_rule_and_policy_scopes(tmp_pat
     file.write_text(yaml.safe_dump(cases, allow_unicode=True))
     report = await run_packages([load_package(root)], sources.registry(), sources.ASSETS)
     assert report["summary"] == {"passed": 4, "failed": 0, "not_run": 0}
-    # Manifest order changes actual behavior: reject now stops before redaction.
+    # Reversing source order cannot put a Transform before the Block stage.
     file = root / "policy.yaml"
     manifest = yaml.safe_load(file.read_text())
     manifest["rules"].reverse()
     file.write_text(yaml.safe_dump(manifest, allow_unicode=True))
     report = await run_packages([load_package(root)], sources.registry(), sources.ASSETS)
-    assert report["summary"]["failed"] == 1
-    failure = next(case for case in report["policies"][0]["cases"] if case["status"] == "failed")
-    assert failure["id"] == "combined-reply"
-    assert "Expected Rules" in failure["reason"]
+    assert report["summary"] == {"passed": 4, "failed": 0, "not_run": 0}
 
 
 def test_generated_outputs_are_restored_after_a_partial_write(tmp_path, monkeypatch):

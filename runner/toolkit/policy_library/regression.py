@@ -67,7 +67,7 @@ async def run_packages(packages: list[PolicyPackage], registry: dict, assets: Pa
         # One current definition per ID. Sources under test replace generated
         # catalog definitions; the package is the authority for this run.
         from .loader import _ASSET_PATHS
-        for path in (*_ASSET_PATHS, Path("legacy_topic_policies.json")):
+        for path in _ASSET_PATHS:
             (directory / path.name).write_text("[]")
         for name, origin in (("builtin_policies.json", "built_in"), ("custom_policies.json", "custom")):
             (directory / name).write_text(json.dumps(list({compiled["id"]: compiled for _, compiled, _, _, _, _ in jobs if compiled["source"] == origin}.values())))

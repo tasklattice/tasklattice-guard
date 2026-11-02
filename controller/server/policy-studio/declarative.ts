@@ -16,9 +16,19 @@ export class DeclarativeCompiler {
     this.detectors = JSON.parse(readFileSync(join(directory, "detectors.generated.json"), "utf8")).detectors;
     this.contracts = protectionContractsSchema.parse(JSON.parse(readFileSync(join(directory, "protection-contracts.json"), "utf8")));
   }
-  shipped(id: string): PolicyDefinition | null {
+  shipped(id: string, version?: string): PolicyDefinition | null {
     const definitions = JSON.parse(readFileSync(join(this.directory, "policy-definitions.generated.json"), "utf8"));
-    return definitions[id] ? policyDefinitionSchema.parse(definitions[id]) : null;
+    if (!version || definitions[id]?.metadata.version === version) return definitions[id] ? policyDefinitionSchema.parse(definitions[id]) : null;
+    return null;
+  }
+  catalogView(policy: PolicyDto): PolicyDto {
+    // Frozen release nodes omit derived Library metadata, including protection.
+    // Restore it from that version's own rules before projecting imported history.
+    const protection = policy.protection ?? policyProtection(policy, this.contracts);
+    const definition = policy.source === "built_in" && protection.execution === "custom" ? this.shipped(policy.id,policy.version) : null;
+    const compiled = definition ? this.compile(definition) : null;
+    return { ...policy, protection, ...(compiled ? {rules:compiled.rules,definition:compiled.definition!,protection:compiled.protection} : {}),
+      ...(policy.published_versions ? {published_versions:policy.published_versions.map(version=>this.catalogView(version))} : {}) };
   }
   fromSnapshot(snapshot: Record<string, unknown>): PolicyDefinition {
     if (snapshot.definition) return policyDefinitionSchema.parse(snapshot.definition);
@@ -43,7 +53,8 @@ export class DeclarativeCompiler {
       const detector = this.detectors[rule.detector.ref];
       if (!detector || detector.version !== rule.detector.version) throw new ValidationError(`Detector ${rule.detector.ref}@${rule.detector.version} is unavailable.`);
       const params = rule.detector.parameters;
-      const runtimeParameters = rule.detector.ref === "model/classifier" && params.profile === "topic-classification" ? ["topic_mode", "allowed_topics", "restricted_topics"]
+      const runtimeParameters = rule.detector.ref === "model/classifier" && params.profile === "topic-classification" ? ["topic_mode", "allowed_topics", "restricted_topics", "on_unknown", "review_unknown"]
+        : rule.detector.ref === "model/classifier" && ["jailbreak-classification", "safety-classification"].includes(String(params.profile)) ? ["on_unknown", "review_unknown"]
         : rule.detector.ref === "model/grounding" ? ["grounding_threshold", "relevance_threshold"] : rule.detector.ref === "service/formal-verification" ? ["policy_snapshot_id", "policy_id", "policy_version", "confidence_threshold"] : [];
       for (const key of Object.keys(params)) if (![...detector.parameters, ...runtimeParameters].includes(key)) throw new ValidationError(`Unsupported ${rule.detector.ref} parameter ${key}.`);
       for (const key of detector.required_parameters) if (params[key] == null) throw new ValidationError(`Detector ${rule.detector.ref} requires ${key}.`);
@@ -56,7 +67,7 @@ export class DeclarativeCompiler {
         implementation: { ...adapter, binding_id: definition.metadata.id, implementation_rule_id: rule.id },
         ...values, ...(params.profile ? { detector_options: { profile: params.profile } } : {}), redaction: rule.on_match.replacement ?? null, rule_expansion: rule.expand ?? null, taxonomy_ids: rule.metadata.taxonomy_ids };
     });
-    // Legacy executable catalog fields are confined to this adapter. The authoring contract has no origin or engine identity.
+    // Previous executable catalog fields are confined to this adapter. The authoring contract has no origin or engine identity.
     const asset = policyAssetSchema.parse({ ...definition.metadata, source: "custom", rules, parameters: definition.parameters, test_cases: definition.tests });
     const rails = [...new Set(asset.rules.flatMap(r => r.rails))];
     const protection = policyProtection({ ...asset, id: "", rails }, this.contracts);

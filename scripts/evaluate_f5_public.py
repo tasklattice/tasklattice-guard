@@ -168,7 +168,7 @@ def prepare_state(folder, plan, config, token, endpoint_id, router_id):
                 all_endpoints=True, traffic_scope=traffic_scope_to_proto({'combinator': 'and', 'conditions': []}),
                 targets=[protocol.WeightedTarget(target_id='default-100-percent', guardrail_id=artifact.guardrail_id,
                     guardrail_version=artifact.guardrail_version, artifact_id=artifact.artifact_id, weight_bps=10000)])])],
-        endpoints=[protocol.EndpointRuntime(endpoint_id=endpoint_id, router_id=router_id, adapter='f5-scan', scan_flag_only_default=True,
+        endpoints=[protocol.EndpointRuntime(credential_required=True, endpoint_id=endpoint_id, router_id=router_id, adapter='f5-scan', scan_flag_only_default=True,
             verification=endpoint_verification_to_proto({'credentials': [{'id': 'ephemeral-evaluation',
                 'sha256': hashlib.sha256(token.encode()).hexdigest(), 'keyHint': 'evaluation', 'createdAt': direct.utc_now()}]}))])
     (folder / 'desired-state.pb').write_bytes(state.SerializeToString(deterministic=True))

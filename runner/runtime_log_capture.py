@@ -13,13 +13,13 @@ from collections.abc import Callable
 from typing import Any
 
 from redis.asyncio import Redis
-from redis.exceptions import WatchError
+from redis.exceptions import WatchError, OutOfMemoryError
 
 
 class RuntimeLogCapture:
     def __init__(self, redis_url: str | None = None, *, ttl_seconds: int = 300,
                  max_entries: int = 10_000, max_call_bytes: int = 8 * 1024 * 1024,
-                 max_memory_bytes: int = 64 * 1024 * 1024):
+                 max_memory_bytes: int = 64 * 1024 * 1024, on_capacity: Callable[[], None] | None = None):
         self._redis = Redis.from_url(redis_url, decode_responses=True,
                                      socket_connect_timeout=1, socket_timeout=1) if redis_url else None
         self._ttl = ttl_seconds
@@ -30,6 +30,7 @@ class RuntimeLogCapture:
         self._sizes: dict[str, int] = {}
         self._memory_bytes = 0
         self._next_prune = 0.0
+        self._on_capacity = on_capacity
 
     @staticmethod
     def key(endpoint_id, guardrail_id, protocol, call_id) -> str:
@@ -80,6 +81,12 @@ class RuntimeLogCapture:
                         return result
                     except WatchError:
                         continue
+                    except OutOfMemoryError:
+                        if self._on_capacity is not None:
+                            self._on_capacity()
+                        # The API preserves the current audit event and marks
+                        # callCaptureIncomplete; never move buffering into RAM.
+                        raise
             raise RuntimeError("Runtime log capture contention exceeded its retry limit.")
 
         now = time.time()

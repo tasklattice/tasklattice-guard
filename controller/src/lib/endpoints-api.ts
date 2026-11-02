@@ -42,6 +42,26 @@ function endpointSetup(): Endpoint["setup"] {
   };
 }
 
+function browserEndpointSetup(setup: Endpoint["setup"]): Endpoint["setup"] {
+  // TLS may terminate before the Controller; the browser knows the public scheme.
+  const protocol = window.location.protocol;
+  if (protocol !== "http:" && protocol !== "https:") return setup;
+  const connectionUrl = (url: string) => url
+    .replace(/^https?:\/\//, `${protocol}//`)
+    .replace(/^wss?:\/\//, protocol === "https:" ? "wss://" : "ws://");
+  let template = setup.yaml_template;
+  for (const url of [setup.api_base_url, setup.callback_url, setup.stream_callback_url]) {
+    if (url) template = template.replaceAll(url, connectionUrl(url));
+  }
+  return {
+    ...setup,
+    api_base_url: connectionUrl(setup.api_base_url),
+    callback_url: connectionUrl(setup.callback_url),
+    ...(setup.stream_callback_url ? { stream_callback_url: connectionUrl(setup.stream_callback_url) } : {}),
+    yaml_template: template,
+  };
+}
+
 function mapCredential(value: CurrentCredential) {
   return { id: value.id, key_hint: value.keyHint, created_at: value.createdAt };
 }
@@ -70,6 +90,7 @@ function mapEndpoint(value: CurrentEndpoint, events: controllerApi.RuntimeEvent[
     name: value.name,
     description: "",
     enabled: value.status === "active",
+    credential_required: value.credentialRequired,
     key_hint: credentials[0]?.key_hint ?? "",
     credentials,
     setup_status: value.status === "disabled"
@@ -90,7 +111,7 @@ function mapEndpoint(value: CurrentEndpoint, events: controllerApi.RuntimeEvent[
     last_error_at: errors.map((event) => event.occurredAt).sort().at(-1) ?? null,
     request_count: new Set(matching.map((event) => event.requestId)).size,
     error_count: errors.length,
-    setup: value.setup ?? endpointSetup(),
+    setup: browserEndpointSetup(value.setup ?? endpointSetup()),
     created_at: value.createdAt,
     updated_at: value.updatedAt,
     ...(activity ? { ...activity, runtime_status: activity.error_count ? 'degraded' as const : activity.request_count > 0 ? 'healthy' as const : 'unknown' as const } : {}),
@@ -132,8 +153,9 @@ function oneTimeRegistration(value: CurrentEndpoint): EndpointRegistration {
   };
 }
 
-export async function createEndpoint(input: { name: string; adapter_id: EndpointAdapterId; scan_flag_only_default?: boolean }): Promise<EndpointRegistration> {
+export async function createEndpoint(input: { name: string; adapter_id: EndpointAdapterId; credential_required?: boolean; scan_flag_only_default?: boolean }): Promise<EndpointRegistration> {
   const created = await controllerApi.createControllerEndpoint({ name: input.name, adapter: input.adapter_id,
+    credentialRequired: input.credential_required ?? true,
     ...(input.scan_flag_only_default !== undefined ? { scanFlagOnlyDefault: input.scan_flag_only_default } : {}) }) as CurrentEndpoint;
   return oneTimeRegistration(created);
 }
@@ -146,7 +168,11 @@ export async function setEndpointScanFlagOnlyDefault(id: string, flagOnly: boole
   return updateEndpoint(id, { scanFlagOnlyDefault: flagOnly });
 }
 
-async function updateEndpoint(id: string, settings: { enabled?: boolean; scanFlagOnlyDefault?: boolean }): Promise<Endpoint> {
+export async function setEndpointCredentialRequired(id: string, credentialRequired: boolean): Promise<Endpoint> {
+  return updateEndpoint(id, { credentialRequired });
+}
+
+async function updateEndpoint(id: string, settings: { enabled?: boolean; credentialRequired?: boolean; scanFlagOnlyDefault?: boolean }): Promise<Endpoint> {
   const updated = await controllerApi.requestController<CurrentEndpoint>(`/api/v1/endpoints/${encodeURIComponent(id)}`, {
     method: "PATCH",
     body: JSON.stringify(settings),

@@ -1,6 +1,7 @@
 id: category/bias_gender
 name: Bias Gender
-description: Detects gender-based discriminatory language, stereotypes, and biased content
+description: Detects explicit gender inferiority and exclusion phrases. A gender word alone is not discrimination.
+  Benign wording elsewhere cannot exempt a discriminatory sentence.
 stages:
 - input
 - output
@@ -10,40 +11,13 @@ detector:
   parameters:
     detector_options:
       match:
-        all:
-        - not:
-            contains:
-            - gender equality
-            - gender diversity
-            - gender studies
-            - gender gap
-            - gender discrimination
-            - combat gender
-            - address gender
-            - research shows
-            - study found
-            - gender identity
-            - gender expression
-            - transgender
-            - gender neutral
-            - women's rights
-            - women's health
-            - men's health
-            - gender bias
-            - gender equity
-        - keywords:
-          - women
-          - woman
-          - men
-          - man
-          - female
-          - females
-          - male
-          - males
-          - girl
-          - girls
-          - boy
-          - boys
+        within_sentence:
+          any:
+          - regex: \b(?:women|woman|men|man|females?|males?|girls?|boys?)\s+(?:(?:are|is|were|was)\s+)?(?:inherently\s+|naturally\s+|intellectually\s+)?(?:inferior|less
+              intelligent|unfit to lead|the weaker sex)\b
+          - regex: \b(?:women|woman|men|man|females?|males?|girls?|boys?)\s+(?:should|must)\s+(?:never|not)\s+(?:vote|lead|work|study|be
+              hired|hold office|own property)\b
+          - regex: \b(?:never|do not|don't|refuse to)\s+(?:hire|employ|promote|educate)\s+(?:(?:any|all|qualified)\s+)?(?:women|men|females?|males?|girls?|boys?)\b
 on_match:
   action: block
 risk_level: medium

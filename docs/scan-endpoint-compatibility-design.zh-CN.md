@@ -90,7 +90,7 @@ Scan 与 LiteLLM 共用 `/runtime/v1/endpoints/{endpoint_id}` 基础路径。`CA
   "scanDirection": "request",
   "flagOnly": false,
   "verbose": true,
-  "project": "legacy-f5-project",
+  "project": "example-f5-project",
   "externalMetadata": {
     "dataset": "pii-regression",
     "case_id": "case-001"
@@ -240,7 +240,11 @@ HTTP 响应增加 `X-TaskLattice-Scan-Compatibility: v1` 和 `X-Request-ID: <sca
 
 `flagOnly` 仅改变上表中的汇总标签，**不等于内部 `mode=detect`，不关闭阻断规则，也不修改替换文本**。Scan 只报告检查结果；如何处理 `flagged` 由调用方决定。要据此执行实际业务放行/阻断，建议显式传 `flagOnly=false`。
 
-适配器需要取得最终 findings / assessments / rail verdict 以及最终动作。若现有 `evidence_scope=interventions` 会丢失“命中但允许”的证据，应使用 `full` 或补充等价的内部汇总字段；不能因 `verbose=false` 而漏判。
+Guardrails 统一决定执行范围、短路、覆盖要求和最终结果。Scan 与 LiteLLM 都执行 `online` 请求；Adapter 只归一化输入并映射结果。`evidence_scope` 仅控制报告，线上统一保留已执行检查的完整证据，包括命中但配置为 Allow 的观察；它不决定是否继续执行。
+
+Guardrails 确认策略 Block 后停止后续步骤、取消未完成的并行检查，并跳过同一请求的后续内容块。已完成的独立错误保留为诊断，不把正常策略阻断改成执行错误；取消和跳过也不伪造为 passed。内部 Validator 使用独立的 `execution_purpose=validation`，在支持的计划上收集全部可达证据。
+
+`verbose=false` 只减少响应详情，`flagOnly=true` 只改变总体标签；流量快照的 info/debug/trace 级别不改变执行语义。请求中的未知 `evidence_scope` 或 `execution_purpose` 字段仍被忽略，不能让外部调用切换内部验证目的。
 
 ### 5.3 文本字段：检测对象与可交付回答分开
 
@@ -351,9 +355,11 @@ HTTP 响应增加 `X-TaskLattice-Scan-Compatibility: v1` 和 `X-Request-ID: <sca
 
 ## 6. 执行失败与错误响应
 
-`cleared` 必须建立在该阶段所要求的检查有效完成且未命中的证据上。模型超时、调用错误、没有适用检查、缺少必需上下文，以及无法解释的未执行状态，均不能转换成 `cleared`。
+正常 `cleared` 表示 Guardrails 已按当前绑定和保护模式完成判定；明确配置的 fail-open、Monitor 和 Bypass 也可放行，但其执行或检测状态必须单独记录。Adapter 不增加自己的覆盖要求。
 
-本 Scan 兼容层选择严格的评测语义：即使底层允许 fail-open，只要必需检查失败、结果未知或覆盖不足，本次也报告执行错误。底层因基础设施错误而 fail-closed 的 block 同样属于执行错误，不包装成“检测命中”的 `blocked`。有明确策略短路证据的正常内容阻断不算执行失败，未到达的后续规则不得伪造为 passed。
+Guardrails 返回独立的 `decision`、`execution_status`、`termination_reason` 和结构化 `diagnostics`。正常策略 Block 为 `complete`；必需检查失败、缺少上下文、覆盖不足或无效 Transform 为 `error`，超时为 `timeout`。基础设施故障引发的 fail-closed 不能冒充正常策略命中。配置允许的 fail-open 为 `degraded`，两个 Adapter 遵守相同绑定语义。
+
+Adapter 仅把核心执行异常映射为 HTTP 503（`guardrail_execution_failed`）或 504（`guardrail_timeout`），不再检查 findings/assessments 来重新裁决。日志中的 decision 保留实际动作，执行状态用于错误筛选和请求错误率；已执行检测器的故障和快照失败分别保留诊断。缺少上下文即使没有异常 trace，也有可展示的错误原因。所有事件统一使用核心执行状态，不设置运行时契约版本或历史分类分支。快照缓存或加密采集失败只标记采集不完整；必须持久化的审计 WAL 写入失败仍按独立运维故障上报。
 
 | HTTP 状态 | 条件 |
 | --- | --- |
@@ -372,7 +378,7 @@ HTTP 响应增加 `X-TaskLattice-Scan-Compatibility: v1` 和 `X-Request-ID: <sca
 ```json
 {
   "detail": {
-    "code": "scan_execution_failed",
+    "code": "guardrail_execution_failed",
     "message": "The required scan could not be completed.",
     "requestId": "24d9f92b-d311-4c32-a78c-28a4a25905f0"
   }

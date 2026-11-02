@@ -1,5 +1,5 @@
 // @vitest-environment node
-import { createHash, generateKeyPairSync, sign } from "node:crypto";
+import { createHash } from "node:crypto";
 import { canonicalJson } from "../../shared/canonical-json.js";
 import { readFileSync, readdirSync } from "node:fs";
 import { resolve } from "node:path";
@@ -24,7 +24,6 @@ function fixture(name: string): { content: ArtifactContent; checksum: string } {
   const wire = state.artifacts[0] as Artifact__Output;
   return { content: artifactContent(artifactFromWire(wire) as unknown as ArtifactContent), checksum: wire.checksum };
 }
-const keys = generateKeyPairSync("ed25519");
 const suite: FrozenTestCase[] = freezeTestSuite(["a", "b"].map(id => ({
   id, name: `Case ${id}`, origin: "generated", policyId: "pii", phase: "input", content: `content ${id}`, expectedDecision: "block",
   trustedInstruction: "", targetSource: "user_input", query: "", groundingSources: [], expectedReasoningResult: null, caseType: "scenario",
@@ -40,7 +39,6 @@ function packageOf(content: ArtifactContent, testSuite: FrozenTestCase[] = suite
   return buildPackage({
     source: { id: "uat", name: "UAT" }, guardrail: { id: content.guardrailId, name: "Fixture" }, exportedAt: new Date("2026-10-08T00:00:00.000Z"),
     versions: [{ content, testSuite, config, policies }],
-    sign: manifest => [{ keyId: "uat", algorithm: "ed25519", signature: sign(null, manifest, keys.privateKey).toString("base64") }],
   });
 }
 /** A fixture whose plan carries a Policy Studio projection, rebuilt from a full snapshot with a valid checksum. */
@@ -82,6 +80,18 @@ describe("Guardrail release package", () => {
     expect(parsed.manifest.versions[0]!.policies.map(edge => edge.digest).sort()).toEqual(nodes.map(node => policyNodeDigest(node.definition)).sort());
   });
 
+  it("rejects old package formats and undeclared signature files", () => {
+    const { content } = fixture("configured-phrases-v1");
+    const files = readZip(packageOf(content), { maxEntries: 64, maxEntryBytes: 1 << 24, maxTotalBytes: 1 << 26 });
+    const originalManifest = files.get("manifest.json")!;
+    const manifest = JSON.parse(originalManifest.toString());
+    files.set("manifest.json", Buffer.from(canonicalJson({ ...manifest, schemaVersion: 99 }) + "\n"));
+    expect(() => parsePackage(writeZip(files))).toThrow(/manifest.json/);
+    files.set("manifest.json", originalManifest);
+    files.set("signatures.json", Buffer.from('{"signatures":[]}'));
+    expect(() => parsePackage(writeZip(files))).toThrow(/do not match its manifest/);
+  });
+
   it("lays out the resource tree: Policy leaves, the Guardrail, then its versions", () => {
     const { content } = fixture("configured-phrases-v1");
     const paths = [...readZip(packageOf(content), { maxEntries: 64, maxEntryBytes: 1 << 24, maxTotalBytes: 1 << 26 }).keys()].sort();
@@ -90,7 +100,6 @@ describe("Guardrail release package", () => {
       ...["artifact", "requirements", "test-suite", "version"].map(file => `guardrails/${content.guardrailId}/versions/${content.guardrailVersion}/${file}.json`),
       "manifest.json",
       "policies/configured-phrase-filter/1.0.0/policy.json",
-      "signatures.json",
     ]);
   });
 

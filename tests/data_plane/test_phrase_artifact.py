@@ -21,7 +21,9 @@ async def test_signed_phrase_policy_executes_both_directions_without_other_polic
         for phase in ("input", "output"):
             for source, expected, decision in [
                 ("normal reply", "normal reply", "allow"),
-                ("internal-name", "public-name", "transform"),
+                ("internal-alias", "public-name", "transform"),
+                # A matching Block wins before a Transform can rewrite it.
+                ("internal-name", None, "block"),
                 ("内部代号", "公开名称", "transform"),
                 ("confidential", None, "block"),
             ]:
@@ -33,7 +35,7 @@ async def test_signed_phrase_policy_executes_both_directions_without_other_polic
                 if decision != "allow":
                     assert any(f.policy_id == "configured-phrase-filter" and f.rule_id.startswith("configured/phrases/") and f.risk_severity == "low" for f in result.findings)
         request = ProtectionRequest(phase="output", texts=("",), call_id="split-phrase", context=context)
-        result, text, decisions, contract = await service_stream(runtime, request, ["internal-", "name"])
+        result, text, decisions, contract = await service_stream(runtime, request, ["internal-", "alias"])
         assert contract.effective_mode == "full_buffered"
         assert text == "public-name" and result.status == "completed" and result.transformed
     finally:

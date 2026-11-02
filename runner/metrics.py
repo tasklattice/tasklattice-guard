@@ -175,7 +175,7 @@ class RunnerMetrics:
             ["protocol", "phase", "result"], registry=self.registry,
         )
         self.authentication = Counter(
-            "guard_runner_authentication_total", "Runtime Endpoint authentication attempts.",
+            "guard_runner_authentication_total", "Runtime Endpoint access decisions, including anonymous access.",
             ["protocol", "result"], registry=self.registry,
         )
         self.failures = Counter(
@@ -491,7 +491,7 @@ class RunnerMetrics:
                 span.set_status(Status(StatusCode.ERROR, result))
                 raise
             except Exception as error:
-                result = "error"
+                result = "timeout" if observation.decision and observation.decision.execution_status == "timeout" else "error"
                 span.record_exception(error)
                 span.set_status(Status(StatusCode.ERROR, result))
                 raise
@@ -803,9 +803,9 @@ class RunnerMetrics:
     def reject_request(self, protocol_name: str, phase: str, result: str) -> None:
         self.request_rejections.labels(protocol=protocol_name, phase=phase, reason=result).inc()
 
-    def observe_authentication(self, protocol_name: str, accepted: bool) -> None:
+    def observe_authentication(self, protocol_name: str, accepted: bool | None) -> None:
         self.authentication.labels(
-            protocol=protocol_name, result="accepted" if accepted else "rejected",
+            protocol=protocol_name, result="anonymous" if accepted is None else "accepted" if accepted else "rejected",
         ).inc()
 
     def observe_route(self, protocol_name: str, phase: str, matched: bool) -> None:
@@ -957,12 +957,7 @@ def _disposition(decision: ProtectionDecision | None) -> str:
 def _failure_mode(decision: ProtectionDecision | None) -> str:
     if decision is None:
         return "normal"
-    routes = {step.route for step in decision.trace}
-    if (decision.usage is not None and decision.usage.fail_closed) or "fail_closed" in routes:
-        return "fail_closed"
-    if "fail_open" in routes:
-        return "fail_open"
-    return "normal"
+    return decision.termination_reason if decision.termination_reason in {"fail_open", "fail_closed"} else "normal"
 
 
 def _failure_labels(step) -> dict[str, str]:

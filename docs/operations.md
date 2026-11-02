@@ -12,16 +12,19 @@ installation, dependency settings, and production Secrets.
   expiry, and revocation. Effective permissions are limited by the owner's
   current role. These are separate from Runner tokens and Endpoint credentials;
   see [Access Tokens](account-access-tokens.md).
-- The OrbStack/local profiles initialize `admin` / `password` (admin role) and
-  `user` / `password` (user role). Controller maps these usernames to
-  `admin@tasklattice.local` and `user@tasklattice.local`. Their separate salted
-  hashes are imported only when each account is absent.
-- Production has no default credentials. Its bootstrap administrator is created
-  through Better Auth from a strong deployment Secret, with a default minimum
-  password length of 12.
-- Bootstrap is idempotent: it creates missing accounts but never resets
-  an existing account's password or role during Controller startup. Passwords
-  changed through Better Auth therefore survive restarts and upgrades.
+- Human login uses Better Auth's Username plugin. Email sign-in, public
+  registration and email recovery endpoints are disabled; admins create users
+  with a username and password. Database-backed sessions honor resets immediately.
+- Sign-in throttling is keyed by the client address, and every CLI command or
+  browser login consumes one attempt (`/sign-in/username`: 10 per 60 seconds per
+  client). Without `controller.trustedProxyCidrs`, the Controller ignores any
+  supplied `X-Forwarded-For` and uses the connection peer, so one client cannot
+  exhaust a bucket shared by every account. Behind an ingress or gateway, list
+  its pod CIDRs so the real client address is used; Better Auth then validates
+  the forwarding chain instead of trusting it. Automation should reuse a session
+  or a personal access token rather than signing in per command.
+- See [bootstrap account operations](#bootstrap-account-operations) for initial
+  credentials, reinitialization, and Secret inspection.
 - Runner control uses a Runner token plus mutual TLS by default. The shared
   initialization Job creates and retains its CA/credentials in Namespace-owned
   Secrets; removing workloads or the release does not remove those credentials.
@@ -33,6 +36,143 @@ installation, dependency settings, and production Secrets.
   qualifies for content capture and an encryption key is configured, Runner
   encrypts the request/model content before writing its WAL or sending it to
   Controller; PostgreSQL stores the resulting ciphertext rather than plaintext.
+
+## Bootstrap account operations
+
+Both bootstrap accounts initialize in every environment: `admin` / `password`
+with the admin role, and `user` / `password` with the user role. Configure their
+`username` and `name`, or use `existingSecret` with `username`, `name`, and
+`password` fields. Set `security.bootstrapUser.enabled=false` to omit the second
+account. A minimum above eight characters requires external account Secrets.
+There is no `localDefault` or precomputed password-hash setting.
+
+The Job overwrites managed account Secrets on every run. Kubernetes stores their
+`data.password` in ordinary Base64; mounted values are already decoded. For debug:
+
+```bash
+kubectl -n tali get secret tali-guard-bootstrap-admin-init \
+  -o jsonpath='{.data.password}' | base64 --decode
+```
+
+Controller initializes or overwrites these configured accounts at startup,
+retaining their IDs and resource ownership. It also checks mounted account
+Secrets every two seconds. A Job rerun writes a new `revision`, so the same initial
+password is reapplied after Kubernetes refreshes the mounted Secret, even if the
+user changed their password in the UI. Resetting restores the configured role and
+name, clears a ban, and revokes previous sessions. Other user accounts are retained.
+External Secret updates use the same synchronization path; the Job never modifies
+external Secrets. Allow for Kubernetes' projected-volume refresh delay.
+
+The only mounted account fields are `username`, `name`, `password` and optional
+`revision`. Optional `usernameKey`, `nameKey`, and `credentialKey` customize names.
+The Controller passes the decoded password to Better Auth. Better Auth alone
+hashes and verifies database credentials; no hash generation or import is needed
+in Helm, the Job, or development setup. Base64 is an encoding for inspecting
+initial credentials, not the database's password-verification algorithm.
+
+Login and account management accept usernames, not email addresses. Existing
+accounts migrate to normalized email local parts, preserving IDs and credentials;
+invalid or duplicate local parts receive deterministic `account_<digest>` names.
+Look up these migrated names in Users. Better Auth's required internal email
+column remains implementation metadata and cannot be used to sign in. Sessions
+are checked against the database, so resets and bans take effect immediately.
+
+## Test task lifecycle and cancellation
+
+Guardrail tests are optional evidence, independent of Publish. Each submitted
+run has an immutable run ID. In each Controller deployment, tests execute only
+on the default pool's StatefulSet ordinal `-0` Runner. If that Runner is absent,
+busy, or has not acknowledged the current model configuration, queued work waits;
+it does not move to ordinal `-1` or another pool. This is a deployment-level
+boundary, not a new per-user/tenant Runner assignment mechanism.
+
+Use GuardCtl with the tenant's normal API credentials:
+
+```bash
+bin/guardctl tenant test --guardrail-id <guardrail-id> --url=https://guard.example.com
+bin/guardctl tenant test-status --run-id <run-id> --url=https://guard.example.com
+bin/guardctl tenant test-cancel --run-id <run-id> --url=https://guard.example.com
+```
+
+These commands are equivalent to the UI's test actions. Submit once and use the
+returned run ID to inspect/cancel; do not submit another test to poll status.
+The UI also offers **Stop test** in its progress view. The cancellation API is:
+
+```text
+POST /api/v1/test-runs/<run-id>/cancel
+```
+
+The operation is idempotent. It records a `cancelled` report and a durable stop
+request, preventing queued dispatch and late progress/results from changing that
+terminal state. For a running task, the Controller retries the stop command until
+the Runner has cancelled and joined its local execution/cleanup and acknowledged
+it. The report's cancelled state records intent, not proof that an offline Runner
+has already stopped. Inspect the same run with `test-status`: its
+`cancellation.requestedAt` records the request and `cancellation.acknowledgedAt`
+is null until Runner cleanup is acknowledged. Further tests wait for outstanding
+stop acknowledgements.
+Already passed/failed reports are returned unchanged. Publication, versions and
+traffic are unaffected. Controller and Runner must both be upgraded for this
+protocol; do not use Runner restarts as an operator cancellation mechanism.
+Remote model providers may continue work already submitted even after the local
+request is cancelled.
+
+The Runner applies a 30-minute deadline to each execution attempt. A deadline or
+an unhandled execution error produces `failed`, not `cancelled`; ordinary case
+assertion failures remain case results and do not automatically cancel the suite.
+Model-call timeouts still apply independently. Stream loss interrupts local work;
+the same run ID can be retried on ordinal 0, using bounded in-process result replay
+when available. A process restart can re-execute an unfinished run.
+
+Runner container logs emit content-free JSON lifecycle events at INFO level:
+`validation.received`, `started`, `progress`, `case_started`, `case_completed`,
+`action_error`, `case_error`, `case_cancelled`, `error`, `interrupted`,
+`cancel_requested`, `cancelled`, `completed`, `replayed`, and `delivery_failed`
+(all prefixed with `validation.`). Correlate by `run_id`, with `case_id` and
+`policy_id` for case events. Failures include classifications, evaluator/model
+identifiers and timing rather than request bodies, credentials or raw provider
+responses. For example, in the local deployment:
+
+```bash
+kubectl -n tali logs tali-guard-runner-0 --since=30m | grep '<run-id>'
+```
+
+### Large test reports and the finalizing phase
+
+`finalizing` means the cases have finished, not that a model is writing a report.
+The Runner packs the exact case results and candidate Artifact in a worker thread,
+then queues delivery before waiting for runtime teardown or cost-WAL writes.
+Teardown and cost-record failures are logged independently; they cannot discard
+an already completed report. A following test waits on the local execution lock
+while teardown finishes instead of failing merely because teardown is still busy.
+
+Upgraded Controller/Runner pairs negotiate gzip-compressed **protobuf** reports.
+No cases, findings or traces are truncated. The 32 MiB gRPC frame budget remains
+unchanged; the Controller validates the decoded size (at most 128 MiB), SHA-256
+and both run/Runner identities before saving. It acknowledges only after the
+report transaction commits. Old peers continue to use the original small-report
+format; upgrade both planes for large reports.
+
+The client no longer treats a five-minute total wait as report failure. It polls
+the same ID until the server reports a terminal state; model/task execution
+deadlines remain server-owned. Detailed report GETs negotiate HTTP compression
+and use a separate two-minute client read budget. `guardctl tenant test-status`
+reads a lightweight summary by default; add `--detail` to download all evidence:
+
+```bash
+bin/guardctl tenant test-status --run-id <run-id> --detail --url=https://guard.example.com > report.json
+```
+
+For delivery diagnostics, follow `validation.report_packing` →
+`validation.report_queued` → `validation.report_saved` by run ID. The queued event
+includes raw and wire byte counts; `report_saved` confirms Controller persistence.
+`validation.cleanup_started`, `cleanup_slow`, `cleanup_completed`, `cleanup_error`
+and `cost_record_error` (all prefixed with `validation.`) describe independent
+post-execution work and do not by themselves mean the report failed.
+
+Completed cancelled reports retain one entry per immutable-version bucket (and
+one in unversioned history), separately from the Passed/Failed retention budget.
+The pending stop request survives report pruning until it is acknowledged.
 
 ## Capacity and observability
 

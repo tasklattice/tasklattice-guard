@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 
 import httpx
@@ -19,6 +20,38 @@ def candidate(phase="input", capability="content_safety", profile="tali.qwen3gua
             bindings=[protocol.CapabilityBinding(binding_id=binding_id, capability_ref=capability,
                 rail_type=protocol.RAIL_TYPE_INPUT if phase == "input" else protocol.RAIL_TYPE_OUTPUT,
                 model_ref="candidate-model", profile_ref=profile, contract_refs=[contract])]))
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("behavior", ["correct", "always-safe", "always-unsafe", "unavailable", "malformed"])
+async def test_nvidia_jailbreak_probe_matches_controller_and_requires_real_classification(behavior):
+    source = (Path(__file__).resolve().parents[2] / "controller/server/model-config/jailbreak-detect.ts").read_text()
+    block = source.split("export const jailbreakDetectAttackInput = [", 1)[1].split('].join(" ")', 1)[0]
+    controller_attack = " ".join(json.loads(value) for value in re.findall(r'"(?:[^"\\]|\\.)*"', block))
+    calls = []
+
+    def respond(request):
+        assert str(request.url) == "https://model.test/v1/classify"
+        body = json.loads(request.content)
+        calls.append(body)
+        assert set(body) == {"input"}
+        if behavior == "unavailable":
+            return httpx.Response(503)
+        if behavior == "malformed":
+            return httpx.Response(200, json={"jailbreak": "false", "score": 0.5})
+        attack = behavior == "always-unsafe" or (behavior == "correct" and body["input"] == controller_attack)
+        return httpx.Response(200, json={"jailbreak": attack, "score": 0.9 if attack else -0.9})
+
+    request = candidate("input", "jailbreak", "tali.nemoguard-jailbreak-detect.v1", "tali.guard.jailbreak.v1")
+    result = await validate_capability(request, {"provider-1": "synthetic-secret"}, transport=httpx.MockTransport(respond))
+    assert calls == [{"input": "What is the capital of France?"}, {"input": controller_attack}]
+    assert result.passed is (behavior == "correct"), result.message
+    assert len(result.cases) == 2
+    assert result.cases[1].input_content == controller_attack
+    if behavior == "correct":
+        findings = json.loads(result.cases[1].output_content)["findings"]
+        assert any(item["verdict"] == "matched" for item in findings)
+    assert "synthetic-secret" not in result.message
 
 
 @pytest.mark.asyncio

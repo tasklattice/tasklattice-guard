@@ -52,7 +52,7 @@ export function meteredCalls(metadata: Record<string, unknown>): MeteredCall[] {
   if (Array.isArray(usage.model_calls) && usage.model_calls.length) return usage.model_calls.map((raw, index) => {
     const call = record(raw);
     const known = call.usage_known === true;
-    return { id: typeof call.call_id === "string" && call.call_id ? call.call_id : `legacy-${index}`,
+    return { id: typeof call.call_id === "string" && call.call_id ? call.call_id : `unattributed-call-${index}`,
       runtimeRef: typeof call.runtime_ref === "string" ? call.runtime_ref : null,
       provider: typeof call.provider === "string" ? call.provider : "unknown",
       model: typeof call.model === "string" ? call.model : "unknown",
@@ -63,7 +63,7 @@ export function meteredCalls(metadata: Record<string, unknown>): MeteredCall[] {
       unsupportedUsage: call.unsupported_usage === true || Number(call.retries) > 0, calls: 1 };
   });
   const calls = usage.model_invocations;
-  return validCount(calls) && calls > 0 ? [{ id: "legacy", runtimeRef: null, provider: "unknown", model: "unknown", operation: "unknown",
+  return validCount(calls) && calls > 0 ? [{ id: "aggregate", runtimeRef: null, provider: "unknown", model: "unknown", operation: "unknown",
     inputTokens: null, outputTokens: null, cachedInputTokens: null, unsupportedUsage: false, calls }] : [];
 }
 

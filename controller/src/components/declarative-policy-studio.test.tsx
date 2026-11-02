@@ -1,12 +1,14 @@
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { cleanup, fireEvent, render as baseRender, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { DeclarativePolicyStudio } from "./declarative-policy-studio";
 import { emptyPolicyDefinition, type PolicyDefinition } from "../../shared/policy-definition";
 import { declarativePolicyEn } from "../declarative-policy-i18n";
 
+const render=(ui:React.ReactNode)=>baseRender(<QueryClientProvider client={new QueryClient({defaultOptions:{queries:{retry:false}}})}>{ui}</QueryClientProvider>);
 const api = vi.hoisted(() => vi.fn());
 const publishedNotice = vi.hoisted(() => vi.fn());
-vi.mock("@/lib/controller-api", () => ({ requestController: api }));
+vi.mock("@/lib/controller-api", () => ({ requestController: (...args:Parameters<typeof api>) => String(args[0]).includes("/cases") ? Promise.resolve({items:[],count:0,counts:{all:0,passed:0,failed:0,skipped:0,warnings:0},nextCursor:null}) : api(...args) }));
 vi.mock("./ui/notifications", () => ({ toast: { success: publishedNotice } }));
 vi.mock("@/hooks/use-mobile", () => ({ useIsMobile: () => false }));
 vi.mock("@/lib/auth", () => ({ useAuth: () => ({ user: { email: "admin@example.test", role: "admin" } }) }));
@@ -29,15 +31,15 @@ describe("Declarative Policy Studio stepper", () => {
     expect((screen.getByRole("button", { name: "Remove parameter denied_topics", exact: true }) as HTMLButtonElement).disabled).toBe(true);
     goStep(/3 Test Cases/); fill("Denied topics · test value", "Example topic");
     goStep(/2 Rules/);
-    fireEvent.change(screen.getAllByRole("textbox", { name: "Parameter name", exact: true })[2]!, { target: { value: "business_restrictions" } });
+    fireEvent.change(screen.getByDisplayValue("denied_topics"), { target: { value: "business_restrictions" } });
     expect((screen.getByRole("combobox", { name: "Denied topics", exact: true }) as HTMLSelectElement).value).toBe("business_restrictions");
     goStep(/3 Test Cases/);
     expect((screen.getByRole("textbox", { name: "Denied topics · test value" }) as HTMLTextAreaElement).value).toBe("Example topic");
     click("Save draft"); await waitFor(() => expect(api).toHaveBeenCalled());
-    const saved = JSON.parse(String(api.mock.calls[0]![1].body)).definition;
-    expect(saved.rules[0].detector.parameters.restricted_topics).toBe("{{business_restrictions}}");
-    expect(saved.testing.parameters).toEqual({ business_restrictions: "Example topic" });
-    expect(saved.parameters[2].default).toBeNull();
+    const saved = JSON.parse(String(api.mock.calls[0]![1].body)).definition as PolicyDefinition;
+    expect(saved.rules[0]!.detector.parameters.restricted_topics).toBe("{{business_restrictions}}");
+    expect(saved.testing!.parameters).toEqual({ business_restrictions: "Example topic" });
+    expect(saved.parameters.find(parameter => parameter.name === "business_restrictions")!.default).toBeNull();
   });
   it.each(["agent/indirect-injection", "agent/memory-poisoning"])("authors %s with an explicit external content source", async detector => {
     api.mockImplementation(async (_path: string, options?: RequestInit) => ({ id: "boundary", revision: 1, definition: options?.body ? JSON.parse(String(options.body)).definition : undefined }));
@@ -58,7 +60,7 @@ describe("Declarative Policy Studio stepper", () => {
     let persisted: PolicyDefinition | undefined;
     api.mockImplementation(async (path: string, options?: RequestInit) => {
       if (options?.method === "PUT") { persisted = JSON.parse(String(options.body)).definition; return { id: persisted!.metadata.id, definition: persisted, revision: 1 }; }
-      if (path.endsWith("/test-runs")) return { id: "run", revision: 1, status: "passed", results: [{ caseId: persisted!.tests[0]!.id, name: "Recipe", passed: true, reason: "Rule matched", actualDecision: "block", outputContent: "", matchedRuleIds: [persisted!.rules[0]!.id] }] };
+      if (path.endsWith("/test-runs")) return { id: "run", revision: 1, status: "passed",total:1,passed:1, results: [{ caseId: persisted!.tests[0]!.id, name: "Recipe", passed: true, reason: "Rule matched", actualDecision: "block", outputContent: "", matchedRuleIds: [persisted!.rules[0]!.id] }] };
       return {};
     });
     show(); toRules();
@@ -68,7 +70,7 @@ describe("Declarative Policy Studio stepper", () => {
     click("Run tests"); await screen.findByText("Passed", { exact: false });
     click("Review & publish");
     expect((screen.getByRole("button", { name: "Publish", exact: true }) as HTMLButtonElement).disabled).toBe(false);
-    expect(persisted!.rules[0]!.detector).toEqual({ ref: "model/classifier", version: "1.0.0", parameters: { profile: "topic-classification", topic_mode: "{{topic_mode}}", allowed_topics: "{{allowed_topics}}", restricted_topics: "{{denied_topics}}" } });
+    expect(persisted!.rules[0]!.detector).toEqual({ ref: "model/classifier", version: "1.0.0", parameters: { profile: "topic-classification", topic_mode: "{{topic_mode}}", allowed_topics: "{{allowed_topics}}", restricted_topics: "{{denied_topics}}", on_unknown: "{{on_unknown}}", review_unknown: "{{review_unknown}}" } });
     expect(persisted!.parameters.find(p => p.name === "denied_topics")!.default).toBeNull();
     expect(persisted!.testing!.parameters.denied_topics).toBe("Cooking recipes");
     goStep(/3 Test Cases/); fill("Denied topics · test value", "Cooking and financial advice"); goStep(/4 Review/);
@@ -81,7 +83,7 @@ describe("Declarative Policy Studio stepper", () => {
     definition.metadata.name = "Validated Policy";
     api.mockImplementation(async (_path: string, options?: RequestInit) => options?.method === "POST" ? {} : {
       definition, revision: 3, maintainer: "admin@example.test",
-      validation: { id: "run", revision: 3, status: "passed", results: [] },
+      validation: { id: "run", revision: 3, status: "passed",total:0,passed:0, results: [] },
     });
     render(<DeclarativePolicyStudio policyId={definition.metadata.id} onSaved={onSaved} onClose={onClose} returnFocusRef={{ current: null }} />);
     return definition.metadata.id;

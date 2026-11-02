@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import time
+from dataclasses import replace
 
 import pytest
 
@@ -124,6 +125,20 @@ def test_guard_capabilities_share_one_runtime_action() -> None:
         ("jailbreak", CONTRACT_JAILBREAK),
     ):
         assert action_name_for(capability, contract_ref) == ACTION_EVALUATE
+
+
+async def test_same_capability_can_use_different_evaluators_by_rail():
+    incoming = _Evaluator("jev-input", "content_safety")
+    outgoing = _Evaluator("nvidia-output", "content_safety")
+    incoming.rails = frozenset({"input"})
+    outgoing.rails = frozenset({"output"})
+    action = EvaluationActionProvider(tuple(EvaluationRoute("content_safety", CONTRACT_CONTENT_SAFETY, e) for e in (incoming, outgoing)))
+    request = _request("fixture", "content_safety", CONTRACT_CONTENT_SAFETY)
+    assert (await action.execute(request)).reason == "Evaluated by jev-input."
+    assert (await action.execute(replace(request, rail_type="output"))).reason == "Evaluated by nvidia-output."
+    assert len(incoming.calls) == len(outgoing.calls) == 1
+    assert action.route_keys == (("content_safety", CONTRACT_CONTENT_SAFETY),)
+    assert set(action.route_rail_keys) == {("content_safety", CONTRACT_CONTENT_SAFETY, "input"), ("content_safety", CONTRACT_CONTENT_SAFETY, "output")}
 
 
 def _request(content: str, capability: str, contract_ref: str) -> ActionRequest:

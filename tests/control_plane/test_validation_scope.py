@@ -41,8 +41,8 @@ async def test_opt_in_models_local_test_scope_preserves_publication_models():
         test_model_rules=False, test_cases=[validation_test_to_proto(c) for c in data["cases"]])
     outcome = await DefaultRunnerValidator(compiler, providers).run(request)
     assert outcome.status == "passed"
-    assert outcome.metrics["executed"] == outcome.metrics["passed"] == 608
-    assert outcome.metrics["total"] == 611
+    assert outcome.metrics["executed"] == outcome.metrics["passed"] == len(data["cases"]) - 3
+    assert outcome.metrics["total"] == len(data["cases"])
     assert outcome.metrics["skipped"] == 3
     assert model.calls == outcome.test_scope["modelInvocations"] == 0
     assert outcome.test_scope["fullArtifactLoaded"]
@@ -51,7 +51,10 @@ async def test_opt_in_models_local_test_scope_preserves_publication_models():
     assert {"tali.guard.jailbreak.v1", "tali.guard.content-safety.v1"} <= {s.contract_ref for s in outcome.artifact.plan.steps}
     skipped = [r for r in outcome.results if r.get("skipped")]
     assert all(not r["passed"] and not r["trace"] and r["skipReason"] for r in skipped)
-    assert all(validation_case_result_to_proto(r).skipped for r in skipped)
+    assert all(r["evidenceStatus"] == "not_reached" and not r["ruleContractSatisfied"]
+               and not r["verifiedRuleIds"] and r["evidenceDetail"] for r in skipped)
+    assert all(validation_case_result_to_proto(r).skipped
+               and not validation_case_result_to_proto(r).rule_contract_satisfied for r in skipped)
     # No all-skipped report can manufacture a pass rate.
     assert _metrics(skipped)["complianceRate"] == _metrics(skipped)["passed"] == 0
 

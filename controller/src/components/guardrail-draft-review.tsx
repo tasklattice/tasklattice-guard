@@ -1,15 +1,17 @@
 import { TestModelRulesSwitch, ValidationScopeNotice } from "./validation-model-scope";
 import { MAX_GUARDRAIL_VERSIONS } from "../../shared/guardrail-version-limit";
 import { useEffect, useRef, useState } from "react";
-import { useMutation } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import { FlaskConical, LoaderCircle, Pencil, ShieldCheck } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { EntitySheet } from "@/components/entity-sheet";
 import { ErrorNotice, StateBadge } from "@/components/product-shell";
 import { GuardrailValidationReadiness, useGuardrailValidationReadiness } from "@/components/guardrail-validation-readiness";
+import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
 import { toast } from "@/components/ui/notifications";
-import { createValidationRun, resumeValidationRun, publishGuardrail, type Guardrail, type GuardrailVersion, type Policy, type ValidationRun } from "@/lib/api";
+import { queryKeys } from "@/features/query-keys";
+import { createValidationRun, getValidationRun, resumeValidationRun, publishGuardrail, type Guardrail, type GuardrailVersion, type Policy, type ValidationRun } from "@/lib/api";
 import { isValidationRunning, ValidationRunProgress } from "@/components/validation-run-progress";
 import { ValidationCaseResults } from "@/routes/validation";
 
@@ -54,7 +56,7 @@ export function GuardrailDraftReviewSheet({ guardrail, policies, versions, polic
   const publish = useMutation({
     mutationFn: () => {
       if (versionLimitReached) throw new Error(t("immutableVersions.capacityReached", { limit: MAX_GUARDRAIL_VERSIONS }));
-      if (!guardrail.tested_current || publishRevision === null || publishRevision !== guardrail.draft_revision || guardrail.published_current) {
+      if (publishRevision === null || publishRevision !== guardrail.draft_revision || guardrail.published_current) {
         throw new Error(t("guardrails.draftChangedBeforePublish"));
       }
       return publishGuardrail(guardrail.id, publishRevision);
@@ -65,17 +67,22 @@ export function GuardrailDraftReviewSheet({ guardrail, policies, versions, polic
       onPublished(version);
     },
   });
-  const pending = run.isPending || publish.isPending;
+  const pending = publish.isPending;
   const reconnect = Boolean(run.error && isValidationRunning(observedRun));
   const result = run.data ?? guardrail.latest_validation_run;
-  const currentResult = result?.source_draft_version === guardrail.draft_revision ? result : null;
-  const canPublish = !readOnly && !isValidationRunning(observedRun) && guardrail.tested_current && !guardrail.published_current;
+  const currentSummary = result?.source_draft_version === guardrail.draft_revision ? result : null;
+  const detailQuery = useQuery({ queryKey: queryKeys.validationRun(currentSummary?.id ?? ""),
+    queryFn: () => getValidationRun(currentSummary!.id),
+    enabled: Boolean(currentSummary && !isValidationRunning(currentSummary) && !run.isPending && publishRevision === null),
+    staleTime: Infinity, gcTime: 0 });
+  const currentResult = detailQuery.data ?? currentSummary;
+  const canPublish = !readOnly && !guardrail.published_current;
   const reviewingPublish = !readOnly && publishRevision !== null;
 
   return <EntitySheet open width="xl" density="compact" closeDisabled={pending}
     onOpenChange={open => { if (!open && !pending) onClose(); }}
     eyebrow={guardrail.name}
-    title={readOnly ? t("guardrails.draftRevisionLabel", { revision: guardrail.draft_revision ?? "—" }) : t(reviewingPublish ? "guardrails.confirmPublishTitle" : justSaved ? "guardrails.draftSaved" : "guardrails.testDraft")}
+    title={readOnly ? t("guardrails.draftRevisionLabel", { revision: guardrail.draft_revision ?? "—" }) : t(reviewingPublish ? "guardrails.confirmPublishTitle" : justSaved ? "guardrails.draftSaved" : "guardrails.reviewDraft")}
     description={t(readOnly ? "guardrails.draftReviewReadOnly" : reviewingPublish ? "guardrails.confirmPublishImpact" : "guardrails.savedDraftNextStep")}
     footer={readOnly ? <Button variant="outline" onClick={onClose}>{t("common.close")}</Button> : reviewingPublish ? <>
       <Button variant="outline" disabled={pending} onClick={() => { setPublishRevision(null); publish.reset(); }}>{t("common.back")}</Button>
@@ -83,7 +90,7 @@ export function GuardrailDraftReviewSheet({ guardrail, policies, versions, polic
     </> : <>
       {onEdit ? <Button variant="ghost" className="mr-auto" disabled={pending} onClick={onEdit}><Pencil />{t("guardrails.continueEditing")}</Button> : null}
       <Button variant="outline" disabled={pending} onClick={onClose}>{t(currentResult ? "common.close" : "guardrails.skipTest")}</Button>
-      <Button variant="testing" disabled={pending || (!reconnect && readiness.blocked)} onClick={() => run.mutate(reconnect ? observedRun!.id : undefined)}>{run.isPending ? <LoaderCircle className="animate-spin" /> : <FlaskConical />}{t(run.isPending ? "guardrails.runningValidation" : reconnect ? "guardrails.testProgress.reconnect" : currentResult ? "validation.runAgain" : "guardrails.testNow")}</Button>
+      <Button variant="testing" disabled={pending || run.isPending || (!reconnect && readiness.blocked)} onClick={() => run.mutate(reconnect ? observedRun!.id : undefined)}>{run.isPending ? <LoaderCircle className="animate-spin" /> : <FlaskConical />}{t(run.isPending ? "guardrails.runningValidation" : reconnect ? "guardrails.testProgress.reconnect" : currentResult ? "validation.runAgain" : "guardrails.testNow")}</Button>
       {canPublish ? <Button disabled={pending} onClick={() => setPublishRevision(guardrail.draft_revision ?? null)}><ShieldCheck />{t("guardrails.publishVersion")}</Button> : null}
     </>}>
     <div className="space-y-5">
@@ -96,12 +103,12 @@ export function GuardrailDraftReviewSheet({ guardrail, policies, versions, polic
       {run.error || publish.error ? <ErrorNotice error={run.error ?? publish.error} /> : null}
       {reviewingPublish && publishRevision !== guardrail.draft_revision ? <p role="alert" className="text-sm text-destructive">{t("guardrails.draftChangedBeforePublish")}</p> : null}
       {!reviewingPublish ? <GuardrailValidationReadiness readiness={readiness} onRetry={() => { onRetryPolicies?.(); readiness.refresh(); }} /> : null}
-      {run.isPending || reconnect ? <ValidationRunProgress run={observedRun} startedAt={run.submittedAt} interrupted={reconnect} /> : currentResult ? <>
+      {run.isPending || reconnect ? <ValidationRunProgress run={observedRun} startedAt={run.submittedAt} interrupted={reconnect} canCancel={!readOnly} /> : currentResult ? <>
         <div className="flex items-center justify-between gap-4"><div><p className="text-sm font-medium">{t("guardrails.testReportsTab")}</p><p className="mt-1 font-mono text-xs text-muted-foreground">{currentResult.id}</p></div><StateBadge state={currentResult.status} /></div>
         <ValidationScopeNotice run={currentResult} />
         <p className="text-sm">{t("guardrails.testResultSummary", { passed: currentResult.metrics.passed, total: currentResult.metrics.executed ?? currentResult.metrics.total, rate: currentResult.metrics.compliance_rate })}</p>
         {currentResult.failure_reason ? <p role="alert" className="whitespace-pre-wrap text-sm text-destructive">{currentResult.failure_reason}</p> : null}
-        {!reviewingPublish ? <ValidationCaseResults key={currentResult.id} results={currentResult.results} defaultFilter={currentResult.status === "passed" ? "all" : "failed"} /> : null}
+        {!reviewingPublish ? detailQuery.error ? <div className="space-y-3"><ErrorNotice error={detailQuery.error} /><Button variant="outline" onClick={() => void detailQuery.refetch()}>{t("common.retry")}</Button></div> : detailQuery.isFetching && !detailQuery.data ? <Skeleton className="h-48" /> : <ValidationCaseResults key={currentResult.id} runId={currentResult.id} defaultFilter={currentResult.status === "passed" ? "all" : "failed"} /> : null}
       </> : <p className="text-sm text-muted-foreground">{t(result ? "guardrails.validationEvidenceStale" : "guardrails.savedDraftUntested")}</p>}
     </div>
   </EntitySheet>;

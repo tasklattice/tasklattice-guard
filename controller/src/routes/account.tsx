@@ -74,7 +74,7 @@ export function AccountPage({ section = "general" }: { section?: "general" | "se
                   <UserAvatar name={user.display_name} size="large" />
                   <div className="min-w-0 flex-1">
                     <p className="truncate text-sm font-semibold">{user.display_name}</p>
-                    <p className="mt-0.5 truncate text-xs text-muted-foreground">{user.email}</p>
+                    <p className="mt-0.5 truncate text-xs text-muted-foreground">{user.username}</p>
                   </div>
                   <Badge variant="outline" className="gap-1.5 font-normal">
                     <ShieldCheck className="text-primary" />
@@ -90,9 +90,9 @@ export function AccountPage({ section = "general" }: { section?: "general" | "se
                   </div>
 
                   <div className="grid gap-2">
-                    <Label htmlFor="account-email">{t("account.email")}</Label>
-                    <Input id="account-email" type="email" value={user.email} readOnly aria-readonly />
-                    <p className="text-xs leading-5 text-muted-foreground">{t("account.emailReadOnly")}</p>
+                    <Label htmlFor="account-username">{t("account.username")}</Label>
+                    <Input id="account-username" type="text" value={user.username} readOnly aria-readonly />
+                    <p className="text-xs leading-5 text-muted-foreground">{t("account.usernameReadOnly")}</p>
                   </div>
 
                   <div className="grid gap-2">

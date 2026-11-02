@@ -39,6 +39,7 @@ const traceStep = z.object({
 }).passthrough();
 
 const runnerDecision = z.object({
+  model_status: z.enum(["ok", "error", "not_called", "unknown"]).optional(),
   decision: z.enum(["allow", "transform", "block"]),
   action: z.string(),
   reason: z.string().nullable().optional(),
@@ -472,6 +473,7 @@ function checkResult(
     },
     phase,
     decision: result.decision.decision,
+    model_status: result.decision.model_status,
     action: result.decision.action,
     output_content: outputContent,
     latency_ms: result.latencyMs,

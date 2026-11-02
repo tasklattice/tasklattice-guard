@@ -1,12 +1,13 @@
-schema_version: 2
+schema_version: 1
 kind: Policy
 metadata:
   id: local-contact-data
   name: Contact information
-  description: Redact reviewed email, phone, street-address and postal-code formats, including regional formats.
-    This is bounded format screening, not worldwide address recognition.
+  description: Redact reviewed contact formats and opt-in person contexts. Structured fields, honorifics, identifier-list
+    context and truncated address records preserve source syntax. This is bounded local format screening, not worldwide
+    entity recognition; generic dates and times remain outside this profile.
   source: built_in
-  version: 4.0.0
+  version: 1.0.0
   tags:
   - namespace: protection
     value: privacy
@@ -56,6 +57,13 @@ execution:
   input: previous_output
   stop_on: block
 rules:
+- rules/pattern--titled_person.yaml
+- rules/pattern--contact_list_person.yaml
+- rules/pattern--truncated_address.yaml
+- rules/pattern--structured_username.yaml
+- rules/pattern--structured_address.yaml
+- rules/pattern--labelled_person.yaml
+- rules/pattern--international_phone.yaml
 - rules/pattern--sg_phone.yaml
 - rules/pattern--uae_phone.yaml
 - rules/pattern--fr_phone.yaml

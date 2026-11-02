@@ -9,7 +9,7 @@ function version(overrides: Partial<GuardrailVersionDetail> = {}): GuardrailVers
     guardrail_id: "guardrail-dev",
     version: "20260814-075544.381Z",
     source_draft_version: 1,
-    compiler_version: "tasklattice-nemo-config-v7",
+    compiler_version: "tasklattice-nemo-config-v1",
     plan_checksum: "plan-one",
     config_checksum: "config-one",
     created_at: "2026-08-14T07:55:44.381Z",

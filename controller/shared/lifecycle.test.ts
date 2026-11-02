@@ -52,10 +52,11 @@ describe("Controller lifecycle contract", () => {
 
   it("allows validation terminal shortcuts and reversible Endpoint toggles", () => {
     expect(validationRunTransitions).toEqual({
-      queued: ["running", "passed", "failed"],
-      running: ["passed", "failed"],
+      queued: ["running", "passed", "failed", "cancelled"],
+      running: ["passed", "failed", "cancelled"],
       passed: [],
       failed: [],
+      cancelled: [],
     });
     expect(endpointLifecycleTransitions).toEqual({
       active: ["disabled"],

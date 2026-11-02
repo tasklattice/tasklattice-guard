@@ -9,7 +9,7 @@ import aiohttp
 async def connection(base_url, *, credential="fixture-runtime-secret", protocol="litellm", endpoint="fixture-endpoint", **metadata):
     async with aiohttp.ClientSession() as client:
         async with client.ws_connect(f"{base_url}/runtime/v1/endpoints/{endpoint}/guardrails/output-stream",
-                                     headers={"x-api-key": credential}) as socket:
+                                     headers={"x-api-key": credential} if credential is not None else {}) as socket:
             await socket.send_json({"type": "start", "version": 1, "stream_id": str(uuid4()),
                                     "protocol": protocol, **metadata})
             ready = await socket.receive_json(timeout=5)

@@ -60,10 +60,13 @@ AutomatedReasoningResult = Literal[
     "no_translations",
 ]
 FailureMode = Literal["fail_open", "fail_closed"]
-FragmentStatus = Literal["pass", "intervene", "needs_context", "uncovered", "error"]
+FragmentStatus = Literal["pass", "intervene", "uncertain", "needs_context", "uncovered", "error"]
 CoverageStatus = Literal["complete", "partial", "none"]
 EnforcementMode = Literal["enforce", "detect"]
+# Reporting never changes execution. Only internal validation may request
+# execution beyond a terminal decision; online services pin the purpose.
 EvidenceScope = Literal["interventions", "full"]
+ExecutionPurpose = Literal["online", "validation"]
 SafetyLevel = Literal["balanced", "strict"]
 OutputDeliveryMode = Literal["interruptible", "window_buffered", "full_buffered"]
 EvaluationTriggerType = Literal["always", "on_result"]
@@ -123,6 +126,11 @@ class RuntimeTraceStep:
     model_operation: str | None = None
     model_result: str | None = None
     error_type: str | None = None
+    error_source: str | None = None
+    error_category: str | None = None
+    http_status: int | None = None
+    model_call_id: str | None = None
+    affects_result: bool = False
     model_time_to_first_token_ms: int | None = None
     model_input_tokens: int = 0
     model_output_tokens: int = 0
@@ -238,6 +246,7 @@ class ProtectionRequest:
     messages: tuple[dict[str, Any], ...] = ()
     mode: EnforcementMode = "enforce"
     evidence_scope: EvidenceScope = "interventions"
+    execution_purpose: ExecutionPurpose = "online"
 
 
 @dataclass(frozen=True, slots=True)
@@ -654,6 +663,19 @@ class ContentBlockResult:
 
 
 @dataclass(frozen=True, slots=True)
+class ExecutionDiagnostic:
+    code: str
+    message: str
+    step_id: str | None = None
+    policy_id: str | None = None
+    affects_result: bool = True
+    source: str = "guard"
+    category: str = "execution"
+    http_status: int | None = None
+    model_call_id: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
 class ProtectionDecision:
     decision: PolicyDecision
     action: EnforcementAction
@@ -679,6 +701,11 @@ class ProtectionDecision:
     detection_decision: str | None = None
     detection_error: str | None = None
     allocation_context_id: str | None = field(default=None, repr=False)
+    execution_status: Literal["complete", "degraded", "error", "timeout", "bypassed"] | None = None
+    termination_reason: str | None = None
+    diagnostics: tuple[ExecutionDiagnostic, ...] = ()
+    flagged: bool = False
+    model_status: Literal["ok", "error", "not_called", "unknown"] = "not_called"
 
 
 @dataclass(frozen=True, slots=True)
@@ -703,6 +730,7 @@ class EngineRequest:
     target_source: str = "user_input"
     mode: EnforcementMode = "enforce"
     evidence_scope: EvidenceScope = "interventions"
+    execution_purpose: ExecutionPurpose = "online"
     content_view: ContentViewSnapshot | None = None
     active_block_id: str | None = None
     request_context: RequestContext | None = None

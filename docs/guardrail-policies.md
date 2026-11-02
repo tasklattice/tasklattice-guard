@@ -18,8 +18,9 @@ Jailbreak profile; the baseline does not hard-code a vendor or credentials. The 
 credentials, payment data, tax/health/government identifiers, contact and
 network data, harmful phrases, and prompt/code injection. Selected Rules retain their matching behavior,
 actions, Rail scope, and inherited test cases; Default owns their composition
-order and reviewed test expectations. Local indirect-injection and memory-poisoning
-checks run first; `builtin-jailbreak` and `builtin-content-safety` follow on Input.
+order and reviewed test expectations. On newly compiled versions, local Block
+checks run first; independent `builtin-jailbreak` and `builtin-content-safety`
+checks can run together on Input.
 Content safety also runs on Output. Models see the
 original content before local redaction. A blocking verdict stops the chain.
 Missing required bindings reject runtime preparation; an unavailable or malformed
@@ -58,7 +59,7 @@ The current catalog has **26 Policies and 223 Rules**, consolidated from 64 Poli
 and 405 Rule declarations. Policies own detection capabilities: content safety,
 injection, credentials, payment data, government identifiers, passports, contact
 and network data, sensitive/risk terms, fraud, data use, advice, and high-risk
-practices. The 14 consolidated local packages use version `4.0.0`. Native model
+practices. The 14 consolidated local packages use version `1.0.0`. Native model
 Policies and configurable text/code filters keep their independent contracts.
 Child Safety is one Rule inside Local Content Safety, not a separate Policy.
 
@@ -109,14 +110,46 @@ Policy does not currently hot-update existing Guardrails.
 
 ## Policy and Rule execution order
 
-Guardrails execute Policy bindings in list order. A binding's optional `ruleOrder`
-lists stable Rule IDs to execute first; unlisted Rules retain their pinned template
-order afterward. Duplicate/unknown IDs are rejected. `enabledRuleIds` controls
-membership independently. Redaction changes the text seen by subsequent Rules;
-rejection stops subsequent execution. Rule action overrides take precedence over
-Policy overrides, then the template action. Compilation preserves that order
-across local, model-backed, and programmable Policies instead of sorting actions
-by severity or running independent copies of the original text in parallel.
+Newly compiled Guardrails prioritize effective Block actions, then serial
+Transform actions, then Allow observations. Effective handling resolves Rule
+overrides before Policy overrides and template actions. Mixed-action local
+Policies are split into execution groups without changing their resource identity.
+
+A binding's optional `ruleOrder` remains the stable tie-breaker within each
+action group; unlisted Rules retain template order. `enabledRuleIds` controls
+membership independently. Each Step and Action declares its evaluation view:
+independent read-only checks use the original stage input and can run concurrently;
+Transforms and their dependent checks use `previous_output`. Transforms run
+serially in author order. In LiteLLM's default `interventions` mode, Block can
+stop later execution and cancel pending siblings. Validation and the Scan API
+use `full`: supported full-buffered plans collect reachable evidence even after
+Block. Blocked scans can therefore incur further model calls, latency or errors;
+`flagOnly` and `verbose` do not enable early exit. Allow never exempts a request
+from another required check.
+
+Trigger prerequisites remain ordered, and arbitrary authored Colang flows form
+a conservative barrier. Published artifacts retain their frozen execution order
+only while their execution contract is supported. Only the V1 execution contract is accepted. Admission requires
+`tasklattice-controller-plan-v1` together with
+`tasklattice-nemo-config-v1`, and exactly one valid
+`evaluation_view` on every Step and Action. A valid signature does not imply a
+supported execution contract.
+
+Unsupported artifacts fail admission with `artifact_recompile_required` before
+runtime activation or test execution. A rejected update preserves the current
+valid release; a cold Runner with only an old persisted release stays unready
+and logs the reason. Old artifacts with cached successful environment checks
+are excluded from optional preloading; a Router referencing one causes explicit
+rollout rejection instead of silently omitting that protection.
+
+Deploy matching Controller and Runner versions, then publish the Guardrail draft
+again. Publication recompiles when its existing version or test candidate uses
+an unsupported contract, even if the draft did not change. Check the new version's
+environment and switch the Router to it. Keep the existing serving deployment
+until its replacement is ready when uninterrupted service is required. Old signed
+artifacts and reports are immutable; tests remain optional and failed tests do
+not prevent publication. See
+[composition semantics, PII conflicts and validation limits](policy-composition.md).
 
 ## Validation and composition expectations
 
@@ -131,17 +164,7 @@ Validation request/result; original expectations remain inspectable. No override
 is inferred from an observed runtime result. Editing the draft invalidates the
 previous Validation/release gate.
 
-The [Default tests](../tests/control_plane/test_default_guardrail.py) cover the
-local components and replay a frozen migration baseline of 140 cases from
-18 legacy Policies at version `1.95.0`. Those numbers describe the historical
-baseline, not the current Policy count or a current test-run result. Runner-only
-tests consume the signed `default-local-v1` artifact without compiling it; its
-generator explicitly selects local components. It is a historical fixture, not
-the current Default. [Model runtime tests](../tests/control_plane/test_default_model_runtime.py)
-exercise the actual Default through HTTP transport doubles to verify model ordering,
-Policy attribution, missing bindings and provider failures. These contract tests
-are not live model quality evidence. Full model acceptance and public-reference
-comparisons must run against real configured models before claiming improvements.
+The [Default tests](../tests/control_plane/test_default_guardrail.py) execute all 748 current composition cases through the Controller codec and Runner validator. Runner-only tests consume the signed `default-local-v1` artifact generated from current Policy sources. [Model runtime tests](../tests/control_plane/test_default_model_runtime.py) use HTTP transport doubles to verify model ordering, Policy attribution, missing bindings and provider failures. These contract tests are not live model quality evidence; acceptance against real configured models remains separate.
 
 ## Routing and output delivery
 
@@ -166,8 +189,7 @@ Policy binding. Policy test parameters are isolated examples, never binding defa
 Undeclared references are rejected during authoring/compilation. Binding validation
 checks required inputs, types, threshold ranges and strict-mode allowlists before
 generating a concrete immutable execution plan. Parameters used only by disabled
-model Rules do not block other Rules. The `0044_topic_binding_parameters` migration
-removes the retired general-topic Profile without rewriting Guardrails or Default.
+model Rules do not block other Rules. V1 seeds contain only the five current Profiles.
 
 ## Test scope and publication
 

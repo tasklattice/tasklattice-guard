@@ -13,7 +13,7 @@ async def test_default_runner_validates_cases_through_the_real_nemo_runtime() ->
     plan = {
         "guardrail_id": "guardrail-1",
         "guardrail_version": "20260904-010000.001Z",
-        "compiler_version": "tasklattice-controller-plan-v3",
+        "compiler_version": "tasklattice-controller-plan-v1",
         "safety_level": "balanced",
         "output_delivery": "full_buffered",
         "steps": [{
@@ -23,7 +23,7 @@ async def test_default_runner_validates_cases_through_the_real_nemo_runtime() ->
             "phases": ["input", "output"],
             "on_unsafe": "block",
             "trigger": {"type": "always", "verdicts": []},
-            "parameters": [],
+            "parameters": [["evaluation_view", "original"], ["precedence", "0"]],
         }],
         "modules": [{
             "id": "data_protection:input",
@@ -138,7 +138,7 @@ async def test_local_cases_allow_progress_to_flush_before_the_suite_finishes(mon
 
     monkeypatch.setattr(module, "NeMoRuntime", Runtime)
     monkeypatch.setattr(module, "prepare", prepared)
-    monkeypatch.setattr(module, "validation_test_from_proto", lambda item: item.id)
+    monkeypatch.setattr(module, "validation_test_from_proto", lambda item: {"id": item.id})
     monkeypatch.setattr(module, "_metrics", lambda results: {"total": len(results)})
     monkeypatch.setattr(module, "time", SimpleNamespace(monotonic=lambda: next(ticks)))
     ticks = itertools.count()
@@ -147,8 +147,8 @@ async def test_local_cases_allow_progress_to_flush_before_the_suite_finishes(mon
 
     async def local_case(_runtime, _plan, case):
         # Like local detectors, this asynchronous function need not yield.
-        finished.append(case)
-        return {"caseId": case, "required": True, "passed": int(case) % 2 == 0}
+        finished.append(case["id"])
+        return {"caseId": case["id"], "required": True, "passed": int(case["id"]) % 2 == 0}
 
     monkeypatch.setattr(validator, "_evaluate", local_case)
     outgoing = asyncio.Queue()

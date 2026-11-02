@@ -18,7 +18,7 @@ has not been migrated into or deployed to the existing A/B/C demonstration.
 | `scoped` | Frozen group grant | Provider references contained in that grant only |
 | `blocked` | Explicit empty runtime configuration | Denied; never falls back to platform bindings |
 
-Migration `0065_group_model_configurations.sql` does not grant or revoke any
+Migration `0018_group_model_configurations.sql` does not grant or revoke any
 existing group. An absent policy initially means legacy mode. Once saved, a
 policy cannot be deleted to regain implicit legacy access: an administrator must
 explicitly replace it with `legacy`. Every replacement receives a new grant

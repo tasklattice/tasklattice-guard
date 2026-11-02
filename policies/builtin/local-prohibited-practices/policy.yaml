@@ -1,4 +1,4 @@
-schema_version: 2
+schema_version: 1
 kind: Policy
 metadata:
   id: local-prohibited-practices
@@ -6,7 +6,7 @@ metadata:
   description: Local patterns for manipulation, exploitation, social scoring, biometric and other prohibited-practice
     requests. Profiles select the relevant scope.
   source: built_in
-  version: 4.0.0
+  version: 1.0.0
   tags:
   - namespace: protection
     value: business_rules

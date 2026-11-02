@@ -1,4 +1,4 @@
-schema_version: 2
+schema_version: 1
 kind: Policy
 metadata:
   id: local-injection-protection
@@ -6,7 +6,7 @@ metadata:
   description: Instruction manipulation, prompt extraction, SQL, code and rendered-content injection patterns
     in English and Chinese.
   source: built_in
-  version: 4.0.0
+  version: 1.0.0
   tags:
   - namespace: protection
     value: attacks_and_abuse

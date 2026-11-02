@@ -7,6 +7,11 @@ adapter, including protected WebSocket output streaming, against a locally
 deployed `tali-guard` release. It is **not** part of the product chart and is
 never installed by `npm run helm:deploy:dev`.
 
+Like `tali-guard`, this chart does not ship a `values.schema.json` file.
+Platform-injected Values are accepted; unused settings are ignored. Labels reach
+resources only when a template or the platform's rendering pipeline applies them.
+The template still requires either the mock model or a complete upstream setup.
+
 ## Commands
 
 | Command | Effect |
@@ -50,7 +55,7 @@ authoring account, then idempotently:
 `http://tali-guard-runtime.<namespace>.svc.cluster.local:8091/runtime/v1/endpoints/<id>`.
 
 Environment overrides: `GUARD_DEV_CONTROLLER_URL` (default `http://localhost:38081`),
-`GUARD_DEV_RUNTIME_URL` (default `http://localhost:38082`), `GUARD_DEV_USER_EMAIL`,
+`GUARD_DEV_RUNTIME_URL` (default `http://localhost:38082`), `GUARD_DEV_USER_USERNAME`,
 `HELM_NAMESPACE`, `HELM_CONTEXT`,
 `LITELLM_SKIP_SMOKE=1`.
 
@@ -101,15 +106,11 @@ console under the `litellm-dev` Endpoint and Router.
 Helm renders no Secret resources. A pre-install/pre-upgrade/pre-rollback Job
 uses the Guard Controller image to create random database, master, UI and salt
 keys. Repeated runs retain them. Its ServiceAccount may read only the configured
-managed and legacy names, create Secrets, and read this namespace UID.
+managed names, create Secrets, and read this namespace UID.
 
-Managed names end in `-init`; upgrades copy release-owned legacy data before Helm
-removes the old resources. The database login and connection URL are kept in sync.
-The proxy configuration is a ConfigMap and contains environment references only.
-Inline master, UI, salt and database keys in Values are no longer supported.
-The development profile requires a newly built Guard Controller `:dev` image for
-initialization, in addition to the LiteLLM proxy and Guard Runner images. The mock
-model reuses the Runner image.
+Managed names end in `-init`. The bootstrap Job creates missing managed Secrets
+and reuses validated infrastructure credentials. Managed account credentials
+are reset on each deployment.
 
 For a real upstream, set `model.upstream.apiBase`, `model.upstream.model` and
 `model.upstream.existingSecret`. The external Secret must contain `api-key`, or

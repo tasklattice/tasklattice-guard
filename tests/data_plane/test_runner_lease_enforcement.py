@@ -236,7 +236,9 @@ async def test_unleased_validation_never_executes_or_replays_cached_result(enfor
     await client._validate(protocol.ValidationRequest(run_id="run"))
     client._execute_validation.assert_not_called()
     result = await client._outgoing.get()
-    assert not result.validation_result.accepted
+    assert result.WhichOneof("body") == "validation_status_notice"
+    assert result.validation_status_notice.status == protocol.VALIDATION_STATUS_FAILED
+    assert result.validation_status_notice.reason == "Runner serving lease is unavailable."
 
 
 def test_programmatic_enforcement_requires_a_pool_credential():
@@ -323,7 +325,7 @@ async def test_queued_control_work_result_is_withheld_after_expiry(enforced):
         client._outgoing.get_nowait()
     request = challenge(client)
     client._accept_lease_response(response(request))
-    await client._send(protocol.RunnerMessage(validation_result=protocol.ValidationResult(run_id='stale', accepted=True)))
+    await client._send(protocol.RunnerMessage(validation_report_chunk=protocol.ValidationReportChunk(run_id='stale', gzip_result=b'private-report')))
     await client._send(protocol.RunnerMessage(heartbeat=protocol.RunnerHeartbeat(runner_id='runner')))
     now[0] += 5
     messages = client._messages(protocol.RunnerMessage(registration=protocol.RunnerRegistration(runner_id='runner')))
@@ -340,7 +342,7 @@ async def test_old_period_result_is_not_released_after_a_new_grant(enforced):
         client._outgoing.get_nowait()
     initial = challenge(client)
     client._accept_lease_response(response(initial))
-    await client._send(protocol.RunnerMessage(validation_result=protocol.ValidationResult(run_id='private-old', accepted=True)))
+    await client._send(protocol.RunnerMessage(validation_report_chunk=protocol.ValidationReportChunk(run_id='private-old', gzip_result=b'private-report')))
     old_period = client.synchronization_lost
     await apply(client, generation=12, nonce='snapshot-b')
     fresh = challenge(client)
@@ -369,7 +371,7 @@ async def test_old_task_context_cannot_enqueue_private_result_after_regrant(enfo
             # A slow/cooperative cleanup that reaches a result after a new
             # grant must still carry the old work period's permanent fence.
             await release.wait()
-        await client._send(protocol.RunnerMessage(validation_result=protocol.ValidationResult(run_id='private-old', accepted=True)))
+        await client._send(protocol.RunnerMessage(validation_report_chunk=protocol.ValidationReportChunk(run_id='private-old', gzip_result=b'private-report')))
     task = asyncio.create_task(client._lease_bound_work(work))
     await entered.wait()
     await apply(client, generation=12, nonce='snapshot-b')
@@ -382,5 +384,5 @@ async def test_old_task_context_cannot_enqueue_private_result_after_regrant(enfo
     queued = []
     while not client._outgoing.empty():
         queued.append(client._outgoing.get_nowait())
-    assert all(message.WhichOneof('body') != 'validation_result' for message in queued)
+    assert all(message.WhichOneof('body') != 'validation_report_chunk' for message in queued)
     client._revoke_synchronization()

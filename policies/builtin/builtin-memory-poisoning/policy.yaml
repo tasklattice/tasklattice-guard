@@ -1,4 +1,4 @@
-schema_version: 2
+schema_version: 1
 kind: Policy
 metadata:
   id: builtin-memory-poisoning
@@ -7,7 +7,7 @@ metadata:
     instructions. With memory source-query evidence, checks whether a forced answer
     reached the actual candidate. Does not verify factual truth or manage memory storage.
   source: built_in
-  version: 1.0.1
+  version: 1.0.0
   tags:
   - namespace: protection
     value: attacks_and_abuse

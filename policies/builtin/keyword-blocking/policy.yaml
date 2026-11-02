@@ -1,5 +1,5 @@
 # yaml-language-server: $schema=../../schemas/policy.schema.json
-schema_version: 2
+schema_version: 1
 kind: Policy
 metadata:
   id: keyword-blocking
@@ -7,7 +7,7 @@ metadata:
   description: Blocks or masks a reviewed, line-separated list of words and phrases without an external
     model call.
   source: built_in
-  version: 1.95.0
+  version: 1.0.0
   tags:
   - namespace: protection
     value: content_filters

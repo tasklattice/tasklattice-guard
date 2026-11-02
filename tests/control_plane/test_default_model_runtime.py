@@ -112,10 +112,11 @@ async def test_model_blocks_are_attributed_to_default_policy(model_default_plan,
         assert result.usage.model_invocations == len(calls)
         assert not result.usage.fail_closed
         action_policies = {t.policy_id for t in result.trace if t.kind == "action" and t.policy_id is not None}
-        assert action_policies <= {"builtin-jailbreak", "builtin-content-safety",
-                                  "builtin-indirect-prompt-injection", "builtin-memory-poisoning"}
-        if phase == "input":
-            assert {"builtin-indirect-prompt-injection", "builtin-memory-poisoning"} <= action_policies
+        # Cheap local Block checks precede the independent model checks; no
+        # mutating PII check can execute after a model veto.
+        transforms = {dict(step["parameters"]).get("policy_id") for step in model_default_plan["steps"]
+                      if step["on_unsafe"] == "transform"}
+        assert not (action_policies & transforms)
     finally:
         await runtime.shutdown()
 
@@ -126,8 +127,10 @@ async def test_opt_in_models_cannot_prepare_without_each_required_binding(model_
     runtime, identity = runtime_and_identity(model_default_plan,
         lambda _: pytest.fail("No inference before all model bindings are ready"), omit=missing)
     try:
-        with pytest.raises(PlanCompilationError, match="Evaluator Binding"):
+        with pytest.raises(PlanCompilationError, match="Evaluator Binding") as error:
             await runtime.prepare(**identity)
+        assert f"Required platform assignments: {missing}." in str(error.value)
+        assert "apply the assignments to the Runner" in str(error.value)
     finally:
         await runtime.shutdown()
 
@@ -175,9 +178,9 @@ async def test_public_evaluator_counts_real_model_calls_but_separates_provider_f
         for id in ("model block", "provider failure")]
     rows = await evaluate_cases(cases, model_default_plan, tmp_path, 1, providers=providers)
     assert [(row["status"], row["decision"], row["model_invocations"]) for row in rows] == [
-        ("complete", "block", 2), ("execution_error", "block", 1)]
+        ("complete", "block", 2), ("execution_error", "block", 2)]
     summary = summarize(rows)
-    assert summary["model_invocations"] == 3
+    assert summary["model_invocations"] == 4
     assert summary["blocked_reference"] == 1
     assert summary["execution_errors"] == 1
     assert CURRENT_CASE_ID.get() is None

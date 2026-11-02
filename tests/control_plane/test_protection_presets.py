@@ -32,20 +32,6 @@ def preset_requests() -> list[dict]:
       });
       const codec = loadPackageDefinition(definition).tasklattice.guard.control.v1.RunnerControl.service.Connect;
       const compositions = protectionPresets.map(preset => ({ id: preset.id, bindings: expandProtectionPreset(preset, policies) }));
-      const china = compositions.find(preset => preset.id === 'china-mainland-runtime');
-      const combined = expandProtectionPreset(
-        protectionPresets.find(preset => preset.id === 'singapore-data-protection'), policies, china.bindings);
-      // This composed draft preserves the existing generic labelled-passport check.
-      // Review its one overlapping acceptance case explicitly, as a user would
-      // before publishing a newly combined Profile; do not change either template.
-      combined.find(binding => binding.policyId === 'local-passports').testCaseOverrides[
-        'pdpa-singapore/rule-sg-pdpa-pii-identifiers/passport_singapore-acceptance'] = {
-          sourcePolicyVersion: '4.0.0',
-          reason: 'The existing labelled-passport Rule runs first and redacts the complete labelled Singapore passport.',
-          expectedDecision: 'transform', expectedOutputContent: 'Acceptance sample: [REDACTED]',
-          expectedMatches: [{ policyId: 'local-passports', ruleId: 'identity/passport' }],
-        };
-      compositions.push({ id: 'china-plus-singapore', bindings: combined });
       const output = compositions.map(preset => {
         const draft = { allowedTopics: [], restrictedTopics: [], policyBindings: preset.bindings, safetyLevel: 'balanced', outputDelivery: 'full_buffered' };
         const plan = buildGuardrailPlan({ guardrailId: preset.id, guardrailVersion: '20260906-010000.001Z', policies, draft });
@@ -60,12 +46,12 @@ def preset_requests() -> list[dict]:
     """
     result = subprocess.run(["node", "--import", "tsx", "--input-type=module", "-e", source], cwd=Path(__file__).resolve().parents[2] / "controller", text=True, capture_output=True, check=True, timeout=30)
     requests = json.loads(result.stdout)
-    assert len(requests) == 15  # 14 Profiles plus the combined China/Singapore draft.
+    assert len(requests) == 3  # Current industry Profiles; Default has its own suite.
     return requests
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("preset_index", range(15))
+@pytest.mark.parametrize("preset_index", range(3))
 async def test_profiles_pass_real_model_free_composition(preset_requests, preset_index) -> None:
     preset = preset_requests[preset_index]
     request = protocol.ControllerMessage.FromString(base64.b64decode(preset["wire"])).validation_request

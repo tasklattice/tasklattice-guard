@@ -69,12 +69,11 @@ Guardrail 管理员打开详情页即可知道当前草稿能否进行 Validatio
 - 网络错误用黄色未知状态，可重试恢复；全部本地规则无需模型查询。
 - 桌面和窄屏均无横向溢出，错误及按钮可见；类型检查、状态和修复路径测试通过。
 
-## Topic Control Policy v2：独立 Rule
+## Topic Control Policy V1：独立 Rule
 
-- `builtin-topic-safety@2.0.0` 是一个 Policy，包含 `topic/denylist` 和 `topic/allowlist` 两条 Rule。Guardrail 绑定 Policy，Rule 开关存放在 `enabled_rule_ids`。
-- 配置保存在该绑定的 `parameter_values`：`denied_topics`、`allowed_topics`（每行一项）、`topic_mode`（`strict` 或 `permissive`，默认宽松）。v2 不读取 Guardrail 根级名单。
+- `builtin-topic-safety@1.0.0` 是一个 Policy，包含 `topic/denylist` 和 `topic/allowlist` 两条 Rule。Guardrail 绑定 Policy，Rule 开关存放在 `enabled_rule_ids`。
+- 配置保存在该绑定的 `parameter_values`：`denied_topics`、`allowed_topics`（每行一项）、`topic_mode`（`strict` 或 `permissive`，默认宽松）。当前契约不读取 Guardrail 根级名单。
 - 黑名单启用时必须填写拒绝话题，命中始终 `block`，优先于白名单；白名单启用时，严格模式要求非空允许名单并拦截未匹配任务，宽松模式允许未匹配任务继续接受其他 Policy 检查。
 - Rule 可独立关闭，关闭后保留参数但不编译该 Rule，不调用其模型。至少启用一条 Rule；要关闭整个能力，移除 Policy。
 - 意图／上传文档分析仅是 Policy 内的配置 Helper。先展示建议，再由用户应用名单；不自动切换 Rule、不修改模式、不添加或移除其他 Policy。没有可用 Topic Control 模型时，意图输入和文档入口一起禁用。
-- NeMo 原生 Topic Flow 共享一份提示词，因此 v2 采用具有独立 binding 参数的 Action，避免两条 Rule 共用边界。执行顺序固定为黑名单、白名单，日志归属到对应 Rule ID。
-- v1 定义作为历史版本保留，已有绑定及已发布 Artifact 不改写。编辑旧草稿时可显式升级为 v2；保存前只修改编辑器状态。升级会把根级名单复制到 Policy 参数；有黑名单时启用黑名单 Rule，并采用绝对拒绝语义。
+- NeMo 原生 Topic Flow 共享一份提示词，因此采用具有独立 binding 参数的 Action，避免两条 Rule 共用边界。执行顺序固定为黑名单、白名单，日志归属到对应 Rule ID。

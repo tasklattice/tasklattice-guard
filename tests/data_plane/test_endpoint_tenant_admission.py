@@ -34,7 +34,8 @@ def store():
                                      ("legacy", None, "litellm-generic-guardrail"),
                                      ("unknown", "unconfigured", "litellm-generic-guardrail")]:
         result._endpoints[endpoint] = {"_tenant_id": tenant, "_adapter": adapter,
-            "credentials": [{"sha256": hashlib.sha256(f"key-{endpoint}".encode()).hexdigest()}]}
+            "_credential_required": True,
+            "_credential_digests": (hashlib.sha256(f"key-{endpoint}".encode()).hexdigest(),)}
     return result
 
 
@@ -56,10 +57,9 @@ class Runtime:
                 raise
         return ProtectionDecision(decision="allow", action="allow")
 
-    async def evaluate_standalone(self, request, *, validate_decision, **kwargs):
+    async def evaluate_standalone(self, request, **kwargs):
         await self.evaluate(request, **kwargs)
         value = scan_decision()
-        validate_decision(value)
         return value
 
     async def stream_output(self, _request, source, *, ready, **_kwargs):

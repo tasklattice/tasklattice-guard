@@ -13,9 +13,9 @@ vi.mock("./ui/notifications", () => ({ toast: { success: vi.fn(), error: vi.fn()
 vi.mock("react-i18next", () => ({ useTranslation: () => ({ t: (key: string, values?: Record<string, unknown>) => values ? `${key}:${JSON.stringify(values)}` : key, i18n: { language: "en", exists: () => false } }) }));
 afterEach(() => { cleanup(); vi.clearAllMocks(); });
 
-const V1 = "20261001-010000.000Z", V2 = "20261007-010000.000Z";
+const EXISTING = "20261001-010000.000Z", INCOMING = "20261007-010000.000Z";
 const testSuite = { total: 12, digest: "f".repeat(64) };
-const requirements = { contentContract: "tasklattice.artifact-content.v2", runtime: { nemoVersion: "0.24.0", runtimeProfile: "llmrails_colang1_standard", compilerVersion: "c", planCompilerVersion: "p" }, actions: [], models: [], evaluationContracts: [] };
+const requirements = { contentContract: "tasklattice.artifact-content.v1", runtime: { nemoVersion: "0.24.0", runtimeProfile: "llmrails_colang1_standard", compilerVersion: "c", planCompilerVersion: "p" }, actions: [], models: [], evaluationContracts: [] };
 const preview = (overrides: Partial<PackagePreview> = {}): PackagePreview => ({
   packageId: "a".repeat(64), source: { id: "bank-uat", name: "Bank UAT" }, keyId: "uat-2026", exportedAt: "2026-10-08T00:00:00.000Z",
   guardrail: { id: "bank-assistant", name: "Bank assistant", exists: true, deleted: false }, blockers: [],
@@ -24,8 +24,8 @@ const preview = (overrides: Partial<PackagePreview> = {}): PackagePreview => ({
     { id: "policy-studio", version: "1", kind: "programmable", name: "Studio marker", state: "new", digest: "4".repeat(64) },
   ],
   versions: [
-    { version: V1, state: "existing", contentDigest: "1".repeat(64), testSuite, requirements, environment: null },
-    { version: V2, state: "new", contentDigest: "2".repeat(64), testSuite, requirements, environment: { status: "missing", checkedAt: "2026-10-08T00:00:00.000Z",
+    { version: EXISTING, state: "existing", contentDigest: "1".repeat(64), testSuite, requirements, environment: null },
+    { version: INCOMING, state: "new", contentDigest: "2".repeat(64), testSuite, requirements, environment: { status: "missing", checkedAt: "2026-10-08T00:00:00.000Z",
       pools: [{ poolId: "default", runnerId: "runner-0", admitted: false, unavailable: false, reason: "NeMo Action providers are unavailable for: GuardTopicJudgeAction@1.0.0.", nemoVersion: "0.24.0", modelRevisionId: "" }] } },
   ],
   ...overrides,
@@ -42,11 +42,11 @@ function mount(client = new QueryClient()) {
 describe("Guardrail package import", () => {
   it("previews versions without environmental steps, then imports only what is new", async () => {
     vi.mocked(uploadGuardrailPackage).mockResolvedValue(preview());
-    vi.mocked(importGuardrailPackage).mockResolvedValue({ guardrailId: "bank-assistant", restored: false, imported: [V2], existing: [V1], policies: { imported: ["policy-studio@1"], existing: ["local-network-addresses@2.0.0"] } });
+    vi.mocked(importGuardrailPackage).mockResolvedValue({ guardrailId: "bank-assistant", restored: false, imported: [INCOMING], existing: [EXISTING], policies: { imported: ["policy-studio@1"], existing: ["local-network-addresses@2.0.0"] } });
     const { dialog, choose, onClose } = mount();
     expect(within(dialog).getByText("guardrailPackage.noProductionTesting")).toBeTruthy();
     choose();
-    expect(await within(dialog).findByText(V2)).toBeTruthy();
+    expect(await within(dialog).findByText(INCOMING)).toBeTruthy();
     expect(within(dialog).queryByText(/GuardTopicJudgeAction/)).toBeNull();
     expect(within(dialog).queryByText("guardrailPackage.stepEnvironment")).toBeNull();
     expect(within(dialog).getByText("guardrailPackage.stateExisting")).toBeTruthy();
@@ -77,14 +77,14 @@ describe("Guardrail package import", () => {
     vi.mocked(uploadGuardrailPackage).mockResolvedValue(preview({ versions: preview().versions.map(item => ({ ...item, state: "existing" as const })) }));
     const { dialog, choose } = mount();
     choose();
-    await within(dialog).findByText(V2);
+    await within(dialog).findByText(INCOMING);
     expect((within(dialog).getByRole("button", { name: "guardrailPackage.nothingToImport" }) as HTMLButtonElement).disabled).toBe(true);
   });
 
   it.each([false, true])("restores a deleted Guardrail with explicit confirmation (new versions: %s)", async hasNew => {
     const value = preview({ guardrail: { ...preview().guardrail, deleted: true }, versions: preview().versions.map(item => ({ ...item, state: hasNew ? item.state : "existing" })) });
     vi.mocked(uploadGuardrailPackage).mockResolvedValue(value);
-    vi.mocked(importGuardrailPackage).mockResolvedValue({ guardrailId: "bank-assistant", restored: true, imported: hasNew ? [V2] : [], existing: hasNew ? [V1] : [V1, V2], policies: { imported: [], existing: [] } });
+    vi.mocked(importGuardrailPackage).mockResolvedValue({ guardrailId: "bank-assistant", restored: true, imported: hasNew ? [INCOMING] : [], existing: hasNew ? [EXISTING] : [EXISTING, INCOMING], policies: { imported: [], existing: [] } });
     const client = new QueryClient({ defaultOptions: { queries: { staleTime: Infinity } } });
     client.setQueryData(queryKeys.validationRuns("bank-assistant"), [{ id: "old-report", status: "passed" }]);
     client.setQueryData(queryKeys.runtimeEvents, [{ id: "old-event" }]);

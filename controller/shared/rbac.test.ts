@@ -47,6 +47,14 @@ describe("Account RBAC", () => {
     expect(hasPermission("user", "runtime", "write")).toBe(false);
     expect(hasPermission("admin", "runtime")).toBe(false);
   });
+  it.each(["/dashboard", "/dashboard/"])("protects the dashboard at %s with runtime read permission", path => {
+    const permission = pagePermission(path)!;
+    expect(permission).toEqual({ resource: "runtime", action: "read" });
+    expect(hasPermission("user", permission.resource, permission.action)).toBe(true);
+    for (const role of ["admin", "unknown", null]) {
+      expect(hasPermission(role, permission.resource, permission.action)).toBe(false);
+    }
+  });
   it.each(["/settings/models", "/settings/models/", "/settings/guardrail-catalog", "/access", "/audit-log"])("protects direct page access to %s", path => {
     const permission = pagePermission(path)!;
     expect(hasPermission("user", permission.resource, permission.action)).toBe(false);

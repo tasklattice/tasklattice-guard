@@ -20,6 +20,7 @@ describe("observed test progress", () => {
     const set = vi.fn(() => ({ where: vi.fn(async () => {}) }));
     const row = { status, progress: null, metrics: { total: 10 } };
     const tx = {
+      execute: vi.fn().mockResolvedValue(undefined),
       select: () => ({ from: () => ({ where: () => ({ for: async () => status === "missing" ? [] : [row] }) }) }),
       update: () => ({ set }),
     };

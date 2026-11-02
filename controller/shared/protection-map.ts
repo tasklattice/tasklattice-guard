@@ -1,5 +1,15 @@
 /** Business navigation, deliberately independent of NeMo engines and providers. */
 import type { GuardrailCategoryId } from "./guardrail-catalog.js";
+import type { EnforcementAction } from "./enforcement-action.generated.js";
+
+export type ProfileOrigin = { id: string; version: string };
+export type ProfileDraftSettings = {
+  allowedTopics: string[];
+  restrictedTopics: string[];
+  topicControlMode: "strict" | "permissive";
+  safetyLevel: "balanced" | "strict";
+  outputDelivery: "interruptible" | "window_buffered" | "full_buffered";
+};
 
 export const protectionDirectoryIds = [
   "content_safety", "privacy", "business_topics", "content_filters",
@@ -59,6 +69,9 @@ export type ProtectionPreset = {
     policyVersion: string;
     enabledRails: Array<"input" | "output">;
     parameterValues: Record<string, string>;
+    action?: EnforcementAction | null;
+    ruleActions?: Record<string, EnforcementAction>;
+    reasoningPolicy?: { policyId: string; policyVersion: string; confidenceThreshold: number } | null;
     /** Omit to select the complete capability; built-in Profiles pin reviewed Rules. */
     enabledRuleIds?: string[];
     ruleOrder?: string[];
@@ -70,6 +83,7 @@ export type ProtectionPreset = {
       expectedMatches: Array<{ policyId: string; ruleId: string }>;
     }>;
   }>;
+  draftSettings?: ProfileDraftSettings;
   suggestedTopics: string[];
   optionalPolicyIds: string[];
   limitations: string[];

@@ -38,7 +38,7 @@ detector:
         - any:
           - within_sentence:
               all:
-              - contains:
+              - words:
                 - minor
                 - minors
                 - child

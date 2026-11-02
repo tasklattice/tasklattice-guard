@@ -15,14 +15,20 @@ const draft: GuardrailDraftConfig = { allowedTopics: [], restrictedTopics: [], s
 describe("Policy-owned phrase configuration", () => {
   it("compiles independently with stable ownership, directions, and no anonymous rules", () => {
     const plan = buildGuardrailPlan({ guardrailId: "phrases", guardrailVersion: "20260906-010000.001Z", draft, policies });
-    const steps = plan.steps as Array<{ parameters: Array<[string, string]>; phases: string[] }>;
-    expect(steps).toHaveLength(1);
-    expect(steps[0]!.phases).toEqual(["input", "output"]);
-    const params = Object.fromEntries(steps[0]!.parameters);
-    expect(params.policy_id).toBe(PHRASE_POLICY_ID);
-    expect(params).not.toHaveProperty("custom_rules_json");
-    expect(JSON.parse(params.rule_actions_json!)).toEqual({ [PHRASE_POLICY_ID]: { [`${PHRASE_RULE_ID}/mask`]: "transform", [`${PHRASE_RULE_ID}/block`]: "block" } });
-    expect(JSON.parse(params.policy_parameters_json!)[PHRASE_POLICY_ID]).toEqual(draft.policyBindings[0]!.parameterValues);
+    const steps = plan.steps as Array<{ parameters: Array<[string, string]>; phases: string[]; on_unsafe: string }>;
+    expect(steps).toHaveLength(2);
+    expect(steps.map(step => step.on_unsafe)).toEqual(["block", "transform"]);
+    for (const [index, entry] of [entries[1]!, entries[0]!].entries()) {
+      const step = steps[index]!;
+      expect(step.phases).toEqual(["input", "output"]);
+      const params = Object.fromEntries(step.parameters);
+      expect(params.policy_id).toBe(PHRASE_POLICY_ID);
+      expect(params).not.toHaveProperty("custom_rules_json");
+      const ruleId = `${PHRASE_RULE_ID}/${entry.id}`;
+      expect(JSON.parse(params.enabled_rules_json!)).toEqual({ [PHRASE_POLICY_ID]: [ruleId] });
+      expect(JSON.parse(params.rule_actions_json!)).toEqual({ [PHRASE_POLICY_ID]: { [ruleId]: entry.action } });
+      expect(JSON.parse(params.policy_parameters_json!)[PHRASE_POLICY_ID]).toEqual(draft.policyBindings[0]!.parameterValues);
+    }
     expect(plan.policy_bindings).toEqual([expect.objectContaining({ policy_id: PHRASE_POLICY_ID })]);
   });
   it("pins each expanded Rule risk independently from its directive", () => {

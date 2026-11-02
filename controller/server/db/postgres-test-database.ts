@@ -1,9 +1,8 @@
 import { randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
-import { drizzle } from "drizzle-orm/node-postgres";
+import { seedProfiles } from "./seed-profiles.js";
 import { Pool } from "pg";
-import * as schema from "./schema.js";
-import type { ControllerDatabase } from "./client.js";
+import { createPooledDatabase, type ControllerDatabase } from "./client.js";
 
 /**
  * An isolated schema with every migration replayed from nothing, for
@@ -19,9 +18,12 @@ export async function createTestDatabase(url: string, prefix: string): Promise<{
   const pool = new Pool({ connectionString: url, max: 8, connectionTimeoutMillis: 5000, options: `-c search_path=${namespace}`, application_name: namespace });
   const read = (name: string) => readFileSync(new URL(`./migrations/${name}`, import.meta.url), "utf8");
   const journal = JSON.parse(read("meta/_journal.json")) as { entries: { tag: string }[] };
-  for (const { tag } of journal.entries) await pool.query(read(`${tag}.sql`).replaceAll('"public".', `"${namespace}".`));
+  for (const { tag } of journal.entries) {
+    await pool.query(read(`${tag}.sql`).replaceAll('"public".', `"${namespace}".`));
+  }
+  await seedProfiles(createPooledDatabase(pool));
   return {
-    db: drizzle(pool, { schema }),
+    db: createPooledDatabase(pool),
     pool,
     drop: async () => {
       await pool.end();

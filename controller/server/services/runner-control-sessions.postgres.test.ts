@@ -121,7 +121,7 @@ describe.skipIf(!url)("durable Runner control stream identity", () => {
     await first.registerRunner(registration, "session-a");
     await acknowledge(first);
     await ledger.issueSnapshotBound(grant());
-    await database.pool.query(readFileSync(new URL("../db/migrations/0057_runner_control_sessions.sql", import.meta.url), "utf8"));
+    await database.pool.query(readFileSync(new URL("../db/migrations/0010_runner_control_sessions.sql", import.meta.url), "utf8"));
     expect(await first.runnerControlSessions.isCurrent(identity())).toBe(true);
     expect((await database.pool.query("SELECT snapshot_accepted FROM runner_control_session")).rows).toEqual([{ snapshot_accepted: true }]);
     expect((await database.pool.query("SELECT control_session_id FROM runner_serving_grant")).rows).toEqual([{ control_session_id: "session-a" }]);

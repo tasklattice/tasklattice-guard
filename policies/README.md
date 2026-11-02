@@ -52,7 +52,7 @@ customer-information/
 `policy.yaml` 组织包的内容。以下是入口的精简示意；可直接运行的完整定义见上面的文件链接。
 
 ```yaml
-schema_version: 2
+schema_version: 1
 kind: Policy
 metadata:
   id: customer-information
@@ -227,7 +227,7 @@ ZIP 保留元数据、Rule、测试、资源与说明，附带 `manifest.json`�
 | `detectors.yaml` | 平台管理的检测器名称、版本、底层适配器 |
 | `schemas/` | 从加载模型生成的 manifest、Rule、Test JSON Schema |
 
-当前内建包包含 **223 条 Rule、849 个用例**：本地回归执行 833 个，另 16 个依赖模型。历史 Topic Control 1.0.0 放在所属 Policy 的 `history/1.0.0/`，由该 Policy 的 manifest 声明，保留产品历史版本查询，不计入当前版本回归。相同 ID／版本的重复来源已去除。
+内置 Policy 只发布当前 V1 定义（`1.0.0`），不附带历史目录。当前 Rule／用例数量和执行结果以 `npm run policies:test` 的输出为准。
 
 不要直接编辑 `runner/toolkit/policy_library/assets/` 中的生成 Catalog。`runtime_adapter` 只允许内建策略维护现有运行身份，自建 Rule 的身份由 Policy ID 与 Rule ID 生成。当前自建包支持已注册的本地检测器，不开放任意代码上传或新的模型检测器注册。八种处理指令沿用现有协议；每个适配器支持的参数与替换方式都会校验，重新生成、澄清等仍需集成方执行相应处理。
 
@@ -240,32 +240,18 @@ Policy Library 在同一目录中展示具名的地区、合规与行业策略�
 合规资料只关联精确版本中的所选 Rule。底层复用不影响产品层级，分类仍只使用 Label。
 
 Policy 按检测能力组织；Rule 是可独立启用的判断。地区、语言和行业场景由
-`controller/shared/protection-presets.ts` 中的 14 个 Profile 组合，不再各复制一份检测器。
+`controller/shared/protection-presets.ts` 中的 5 个 Profile 组合，不再各复制一份检测器。
 Profile 明确选择 `enabledRuleIds`、`enabledRails`、`ruleOrder` 和参数，绑定当前能力版本。
 添加 Profile 会合并同版本下未选择的 Rule，保留现有参数、动作、方向和顺序。不同版本
 仍保留用户的版本选择；组合后的重叠检测结果须重新验证，不能直接沿用单个 Profile 的验收结论。
 例如 Child Safety 是 `local-content-safety` 中的一条 Rule；Singapore PDPA 和客户标识
 分别从标识、支付、联系方式及数据使用边界能力中选取规则，不再是重复 Policy。
 
-14 个本地能力包统一为 `4.0.0`。完全相同的检测条件、风险、动作和替换文本只保留
-一个 Rule；儿童保护、英语辱骂和种族歧视的旧词表是新词表的子集，统一到新 Rule。
-匹配上下文、校验算法、风险或脱敏结果不同的变体仍保留。通用话题限制合入 Topic Control
-黑名单的可选配置：只向当前 Guardrail 追加话题，不作为独立 Policy 或 Profile，不默认启用。
-新配置使用模型语义判断；既有短语配置和发布快照保持原行为，Phrase filters 仍可单独使用。
+所有内置能力包使用 `1.0.0`。检测条件、风险、动作和替换文本完全相同的规则只保留一个拥有者；匹配上下文或脱敏结果不同的变体仍独立保留。Topic Control 的话题配置使用当前模型 Rule 参数。
 
-Default 明确选择 **14 个 Policy、124 条 Rule**，不会因能力包新增 Rule 自动扩大范围。
-原来的 126 条声明中只有重复 ABN 和 Medicare 两条被去重；顺序、动作、Input/Output
-范围和 Insults 的观察行为保持不变。`jailbreak.input`、`content_safety.input`、
-`content_safety.output` 仍为必须的模型绑定，输出继续使用 `full_buffered`。
+Default 选择明确的 Policy／Rule 集合，不会随能力包新增 Rule 自动扩大范围。当前的 748 个组合用例通过真实 Controller 编译和 Runner 执行验证；单包用例由 Policy 回归检查。多 Rule 用例只在所有覆盖 Rule 均启用时继承，避免对未选择的检查作出验收承诺。
 
-数据库迁移 `0043_capability_profiles.sql` 更新平台内置 Profile 的选择，保留禁用状态及
-用户自有 Profile。运行请求仍从数据库读取 Profile；已发布 Guardrail 的不可变快照不会
-被来源整理改写。旧包不提供新选择或别名；已有历史目录仅用于历史版本和审计。
-
-回归依据保存在 `tests/fixtures/policy-capability-contracts.json`：逐一核对整理前 405 条
-Rule 的检测契约，词表合并另验子集关系；Default 还重放整理前的 382 个本地用例。
-单包用例按其覆盖的 Rule 验证，完整 Profile 和 Default 另做真实组合执行验证。
-多 Rule 用例只有在所有覆盖 Rule 均启用时才继承，避免对未选择的检查作出验收承诺。
+新库从 V1 schema 和当前种子初始化，内置 Profile 在数据库记录中管理。用户自建 Profile、Guardrail 发布快照和绑定版本仍是各自独立的业务数据。
 
 ### Rule handling contract
 
@@ -273,9 +259,9 @@ Rule 的检测契约，词表合并另验子集关系；Default 还重放整理�
 
 ### Correctness Policy 的真实验收
 
-`builtin-contextual-grounding@1.1.0` 的正反例均携带 `context.query` 和
+`builtin-contextual-grounding@1.0.0` 的正反例均携带 `context.query` 和
 `context.grounding_sources`，分别检查一年保修的有依据回答与十年保修的矛盾回答。
-`builtin-automated-reasoning@1.1.0` 默认使用 `block`，样例需要在 Guardrail 中
+`builtin-automated-reasoning@1.0.0` 默认使用 `block`，样例需要在 Guardrail 中
 绑定参考逻辑策略 `warranty-duration@1`，并通过 `context.expected_reasoning_result`
 分别断言 `valid` 与 `invalid`。换用其他领域的逻辑策略时，应提供相应正反例。
 测试上下文会随目录包、生成 Catalog 和 Guardrail 继承用例传递。
@@ -294,4 +280,3 @@ Policy Studio 的 Rules 步骤声明参数（名称、类型、必填、可选�
 测试页的参数只供该 Policy 的测试使用，不作为 Guardrail 默认值。保存／编译检查未声明引用，
 Guardrail 验证／发布检查必填项、类型、阈值范围和 strict 模式的白名单，生成包含实际值的
 不可变执行计划。只被关闭的模型 Rule 引用的参数不会阻塞其余 Rule。
-`0044_topic_binding_parameters` 只删除旧通用话题 Profile，不改动既有 Guardrail 和 Default。

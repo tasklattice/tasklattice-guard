@@ -87,6 +87,8 @@ class _ControlMetrics:
 
 
 def _plan(*steps: GuardrailPlanStep) -> GuardrailPlanSnapshot:
+    steps = tuple(replace(step, parameters=(*step.parameters, ("precedence", str(index))))
+                  for index, step in enumerate(steps))
     phases = tuple(dict.fromkeys(phase for step in steps for phase in step.phases))
     return GuardrailPlanSnapshot(
         guardrail_id="topic-guard",
@@ -120,7 +122,8 @@ def _semantic_input(
         on_unsafe="block",
         trigger=trigger,
         parameters=(
-            ("topic_mode", "allowlist"),
+            ("evaluation_view", "original"),
+            ("topic_mode", "strict"),
             ("allowed_topics", "Product support"),
         ),
     )
@@ -155,6 +158,7 @@ def test_pure_dedicated_topic_input_compiles_to_valid_iorails_manifest() -> None
 
 def test_mixed_topic_plan_uses_official_input_action_and_custom_output_action() -> None:
     rules = GuardrailPlanStep(
+        parameters=(("evaluation_view", "original"),),
         id="topic:rules:input",
         capability="topic_control",
         contract_ref="tali.guard.topic-control.rules.v1",
@@ -169,6 +173,7 @@ def test_mixed_topic_plan_uses_official_input_action_and_custom_output_action() 
         )
     )
     output = GuardrailPlanStep(
+        parameters=(("evaluation_view", "original"),),
         id="topic:semantic:output",
         capability="topic_control",
         contract_ref="tali.guard.topic-control.semantic.v1",
@@ -194,6 +199,7 @@ def test_mixed_topic_plan_uses_official_input_action_and_custom_output_action() 
 
 def test_content_safety_remains_on_the_evidence_preserving_custom_evaluator() -> None:
     content = GuardrailPlanStep(
+        parameters=(("evaluation_view", "original"),),
         id="content:input",
         capability="content_safety",
         contract_ref="tali.guard.content-safety.v1",
@@ -315,6 +321,11 @@ async def test_real_iorails_registry_uses_live_model_and_rejects_bad_label() -> 
         assert allowed.usage.model_invocations == 1
         assert blocked.usage.model_invocations == 1
         assert malformed.usage.model_invocations == 1
+        assert allowed.model_status == blocked.model_status == "ok"
+        assert malformed.model_status == "error"
+        assert any(step.error_source == "model" and step.error_category == "response_schema"
+                   for step in malformed.trace)
+        assert not any(step.error_source == "guard" for step in malformed.trace)
         assert state["requests"] == 3
         assert state["authorization"] == "Bearer leased-secret"
     finally:
@@ -457,7 +468,7 @@ async def test_official_topic_action_rejects_malformed_model_output() -> None:
             if False:
                 yield None
 
-    with pytest.raises(LLMCallException, match="exactly 'on-topic' or 'off-topic'"):
+    with pytest.raises(LLMCallException, match="response_schema.*InvalidTopicLabel"):
         await actions.topic_safety_check_input(
             llms={"topic_control": Model()},
             llm_task_manager=TaskManager(),
@@ -572,7 +583,7 @@ def _topic_model_desired_state(*, generation: int) -> protocol.DesiredState:
 @pytest.mark.parametrize("mode", ["strict", "permissive"])
 def test_topic_modes_compile_identical_boundaries_into_native_and_action_paths(mode: str) -> None:
     from runner.toolkit.nemo.actions.topic import topic_judge_prompt
-    step = replace(_semantic_input(), parameters=(("topic_mode", mode), ("allowed_topics", "Order support"), ("restricted_topics", "Fabricating refund evidence")))
+    step = replace(_semantic_input(), parameters=(("evaluation_view", "original"), ("topic_mode", mode), ("allowed_topics", "Order support"), ("restricted_topics", "Fabricating refund evidence")))
     snapshot = _compiler().compile(_plan(step))
     config = yaml.safe_load(snapshot.config_yaml)
     prompt = next(item for item in config["prompts"] if item["task"].startswith("topic_safety_check_input"))
@@ -586,11 +597,13 @@ def test_split_topic_rules_use_isolated_action_prompts_and_preserve_deny_first()
     from runner.toolkit.nemo.actions.topic import topic_judge_prompt
 
     deny = replace(_semantic_input(), id="topic:deny", parameters=(
+        ("evaluation_view", "original"),
         ("policy_id", "builtin-topic-safety"), ("policy_version", "2.0.0"),
         ("rule_id", "topic/denylist"), ("topic_mode", "permissive"),
         ("allowed_topics", ""), ("restricted_topics", "Refund fraud"),
     ))
     allow = replace(deny, id="topic:allow", on_unsafe="block", parameters=(
+        ("evaluation_view", "original"),
         ("policy_id", "builtin-topic-safety"), ("policy_version", "2.0.0"),
         ("rule_id", "topic/allowlist"), ("topic_mode", "strict"),
         ("allowed_topics", "Order support"), ("restricted_topics", ""),

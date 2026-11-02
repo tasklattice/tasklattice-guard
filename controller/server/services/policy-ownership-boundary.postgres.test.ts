@@ -17,8 +17,8 @@ describe.skipIf(!url)("Policy child ownership across representations", () => {
     const definition = emptyPolicyDefinition();
     definition.metadata.id = "policy-conflict";
     await database.pool.query("INSERT INTO policy_resource (id,tenant_id,definition,revision,maintainer) VALUES ($1,'tenantA',$2,1,'Owner')", [definition.metadata.id, JSON.stringify(definition)]);
-    await database.pool.query(`INSERT INTO policy_resource_validation (id,policy_id,revision,status,tests,results)
-      VALUES ('private-report','policy-conflict',1,'passed','[]','[]');
+    await database.pool.query(`INSERT INTO policy_resource_validation (id,policy_id,revision,status,tests)
+      VALUES ('private-report','policy-conflict',1,'passed','[]');
       INSERT INTO policy_resource_version (policy_id,version,revision,definition,view,digest)
       VALUES ('policy-conflict','v1',1,'{}','{"id":"policy-conflict","version":"v1"}','digest');
       INSERT INTO resource_share (id,owner_tenant_id,recipient_tenant_id,resource_type,resource_id)

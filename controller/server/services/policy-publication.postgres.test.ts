@@ -1,7 +1,6 @@
 // @vitest-environment node
 // Real transactions in an isolated schema on the explicitly selected local DB.
 import { randomUUID } from "node:crypto";
-import { readFileSync } from "node:fs";
 import { drizzle } from "drizzle-orm/node-postgres";
 import { Pool } from "pg";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
@@ -25,9 +24,6 @@ describe.skipIf(!url)("Policy publication identity in PostgreSQL", () => {
     for (const table of ["policy_record", "policy_version", "policy_validation_run", "audit_event"]) {
       await pool.query(`CREATE TABLE "${table}" (LIKE public."${table}" INCLUDING ALL)`);
     }
-    // Test this migration against the old shape, even after public has upgraded.
-    await pool.query("ALTER TABLE policy_version DROP COLUMN IF EXISTS source_draft_revision");
-    await pool.query(readFileSync(new URL("../db/migrations/0005_policy_publication_identity.sql", import.meta.url), "utf8"));
     service = new ControlPlaneService(drizzle(pool, { schema }), {} as ControllerConfig);
   });
   afterAll(async () => {
@@ -71,7 +67,7 @@ describe.skipIf(!url)("Policy publication identity in PostgreSQL", () => {
   it("enforces unique draft identity while preserving historical versions without one", async () => {
     await service.publishPolicy({ id: "fixture", actorId: "test", expectedDraftRevision: 1 });
     await expect(pool.query("INSERT INTO policy_version (policy_id,version,snapshot,checksum,source_draft_revision) SELECT policy_id,2,snapshot,'duplicate',source_draft_revision FROM policy_version WHERE version=1")).rejects.toMatchObject({ code: "23505" });
-    for (const version of [2, 3]) await pool.query("INSERT INTO policy_version (policy_id,version,snapshot,checksum) SELECT policy_id,$1,snapshot,$2 FROM policy_version WHERE version=1", [version, `legacy-${version}`]);
+    for (const version of [2, 3]) await pool.query("INSERT INTO policy_version (policy_id,version,snapshot,checksum) SELECT policy_id,$1,snapshot,$2 FROM policy_version WHERE version=1", [version, `published-${version}`]);
     expect((await pool.query("SELECT count(*)::int AS count FROM policy_version WHERE source_draft_revision IS NULL")).rows[0].count).toBe(2);
   });
 });

@@ -1,4 +1,4 @@
-import type { GuardrailPolicyBindingConfig } from "../domain/guardrail-plan.js";
+import { normalizeGuardrailDraft, type GuardrailDraftConfig, type GuardrailPolicyBindingConfig } from "../domain/guardrail-plan.js";
 import type { ProtectionPreset } from "../../shared/protection-map.js";
 import { appendProfileRules } from "../../shared/profile-rule-selection.js";
 type ProfilePolicy = { id: string; version: string; rails: readonly string[]; parameters: readonly { name: string; required?: boolean; default?: string | null | undefined }[]; rules: readonly { id: string }[]; published_versions?: readonly ProfilePolicy[] };
@@ -41,10 +41,29 @@ export function expandProtectionPreset(preset: ProtectionPreset, policies: reado
     }
     selected.add(policy.id);
     result.push({
-      policyId: policy.id, policyVersion: policy.version, action: null,
+      policyId: policy.id, policyVersion: policy.version, action: reference.action ?? null,
       parameterValues, enabledRuleIds: [...enabledRuleIds], ruleOrder: [...ruleOrder],
-      testCaseOverrides: structuredClone(reference.testCaseOverrides ?? {}), ruleActions: {}, enabledRails: [...reference.enabledRails], reasoningPolicy: null,
+      testCaseOverrides: structuredClone(reference.testCaseOverrides ?? {}), ruleActions: structuredClone(reference.ruleActions ?? {}), enabledRails: [...reference.enabledRails], reasoningPolicy: structuredClone(reference.reasoningPolicy ?? null),
     });
   }
   return result;
+}
+
+export function profileDraft(profile: ProtectionPreset, policies: readonly ProfilePolicy[]): GuardrailDraftConfig {
+  return normalizeGuardrailDraft({ ...profile.draftSettings,
+    policyBindings: expandProtectionPreset(profile, policies),
+    profileOrigin: { id: profile.id, version: profile.version },
+  });
+}
+
+/** One unavailable version must not hide all other starting configurations. */
+export function previewProtectionProfile<T extends ProtectionPreset>(profile: T, policies: readonly ProfilePolicy[]): T & {
+  policyBindings: GuardrailPolicyBindingConfig[];
+  availability: { available: boolean; reason: string | null };
+} {
+  try {
+    return { ...profile, policyBindings: expandProtectionPreset(profile, policies), availability: { available: true, reason: null } };
+  } catch (error) {
+    return { ...profile, policyBindings: [], availability: { available: false, reason: error instanceof Error ? error.message : "Profile is unavailable." } };
+  }
 }

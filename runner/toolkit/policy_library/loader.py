@@ -34,8 +34,8 @@ def load_builtin_policies() -> tuple[PolicySpec, ...]:
         for item in payload:
             if not isinstance(item, dict) or not item.get("id"):
                 raise RuntimeError(f"The built-in Policy catalog {path.name} contains an invalid Policy.")
-            # Later, focused asset collections may intentionally replace a legacy
-            # definition while keeping the public Policy ID stable.
+            if str(item["id"]) in merged:
+                raise RuntimeError(f"Duplicate bundled Policy ID: {item['id']}")
             merged[str(item["id"])] = item
     return tuple(_policy(item) for item in merged.values())
 

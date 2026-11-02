@@ -1,3 +1,4 @@
+import { executionError, executionTimeout } from "./runtime-execution.js";
 import {
   and,
   count,
@@ -12,7 +13,6 @@ import {
   lte,
   max,
   min,
-  or,
   sum,
   type SQL,
   type SQLWrapper,
@@ -41,7 +41,6 @@ import {
   jsonText,
   jsonValue,
   literal,
-  lowerText,
   numericJson,
   percentiles,
   timeBucket,
@@ -87,46 +86,7 @@ export async function queryRuntimeMetrics(
   const currentPredicate = and(predicate, gte(event.occurredAt, start));
 
   return boundedRead(db, async (tx, execute) => {
-    const decision = lowerText(event.decision);
-    const outcome = choose<string>(
-      inArray(decision, ["allow", "allowed", "pass", "passed"]),
-      literal("allow"),
-      choose(
-        inArray(decision, [
-          "transform",
-          "transformed",
-          "transform",
-          "redacted",
-          "transform",
-          "rewritten",
-          "intervene",
-          "intervened",
-        ]),
-        literal("transform"),
-        choose(
-          inArray(decision, [
-            "block",
-            "blocked",
-            "block",
-            "rejected",
-            "deny",
-            "denied",
-          ]),
-          literal("block"),
-          choose(
-            inArray(decision, [
-              "error",
-              "failed",
-              "failure",
-              "timeout",
-              "timed_out",
-            ]),
-            literal("error"),
-            event.decision,
-          ),
-        ),
-      ),
-    );
+    const outcome = choose(executionError(event.metadata), literal("error"), event.decision);
 
     // Referenced by multiple dimensions: PostgreSQL materializes this compact CTE.
     // Neither event contents nor individual traces are selected into the result.
@@ -140,11 +100,7 @@ export async function queryRuntimeMetrics(
           router_id: event.routerId,
           duration_ms: event.durationMs,
           current: gte(event.occurredAt, start).as("current"),
-          timed_out: or(
-            inArray(decision, ["timeout", "timed_out"]),
-            eq(jsonText(event.metadata, "timedOut"), "true"),
-            eq(jsonText(event.metadata, "timed_out"), "true"),
-          )!.as("timed_out"),
+          timed_out: executionTimeout(event.metadata).as("timed_out"),
           has_evidence: isNotNull(jsonText(event.metadata, "captureLevel")).as(
             "has_evidence",
           ),

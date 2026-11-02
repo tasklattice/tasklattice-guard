@@ -1,4 +1,4 @@
-schema_version: 2
+schema_version: 1
 kind: Policy
 metadata:
   id: local-government-identifiers
@@ -7,7 +7,7 @@ metadata:
     Australian tax and Medicare numbers. Broad numeric formats can overlap; this is format screening, not identity
     verification.
   source: built_in
-  version: 4.0.0
+  version: 1.0.0
   tags:
   - namespace: protection
     value: privacy

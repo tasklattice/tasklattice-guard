@@ -84,6 +84,21 @@ async def test_catalog_rule_action_reaches_real_nemo_and_preserves_later_policie
         assert not result.usage.fail_closed, result.reason
         assert result.usage.model_invocations == 0
         pii_findings = [finding for finding in result.findings if finding.policy_id == "builtin-pii"]
+        if action == "continue":
+            # The contact Rule consumes the email and the later PII observer still
+            # runs. A read-only observer declares the phase input as its view, so
+            # another Policy's redaction cannot silently erase its evidence.
+            assert result.decision == "transform"
+            assert [finding for finding in pii_findings if finding.recommended_action == "allow"]
+            assert all(finding.verdict == "matched" for finding in pii_findings)
+            assert result.texts == ("Contact [email_REDACTED]",)
+            assert any(f.policy_id == "local-contact-data" and f.rule_id == "pattern/email" for f in result.findings)
+            action_policies = [step.policy_id for step in result.trace if step.kind == "action"]
+            assert "builtin-pii" in action_policies
+            assert action_policies.index("local-contact-data") < action_policies.index("builtin-pii")
+            continue_steps = [step for step in catalog_plans[f"{phase}:continue"]["steps"] if dict(step["parameters"]).get("policy_id") == "builtin-pii"]
+            assert continue_steps and all(step["on_unsafe"] == "allow" for step in continue_steps)
+            return
         assert pii_findings
         # Confidence and reject/redact/pass overrides cannot change Rule risk.
         assert all(finding.risk_severity == "medium" for finding in pii_findings)
@@ -95,10 +110,8 @@ async def test_catalog_rule_action_reaches_real_nemo_and_preserves_later_policie
         if action == "allow":
             # Allow carries no replacement: endpoints forward the original.
             assert result.texts == ()
-        elif action in {"transform", "continue"}:
+        elif action == "transform":
             assert "alice@example.com" not in result.texts[0]
             assert result.texts[0].startswith("Contact ")
-        if action == "continue":
-            assert any(f.policy_id == "local-contact-data" for f in result.findings)
     finally:
         await preview.shutdown()

@@ -1,4 +1,4 @@
-schema_version: 2
+schema_version: 1
 detectors:
   agent/indirect-injection:
     version: 1.0.0
@@ -36,6 +36,7 @@ detectors:
     - context_max_gap_words
     - allow_word_numbers
     - validators
+    - detector_options
     required_parameters:
     - expression
     supports_replacement: true

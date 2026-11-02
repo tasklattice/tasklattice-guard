@@ -1,7 +1,7 @@
 - id: local-regional-contact-formats/accept/br_phone_landline/input
   name: Brazilian mobile / landline overlap
-  description: Required acceptance case for Brazilian PII Patterns. The source sample is a mobile number; the
-    complete mobile detector runs before the unprefixed landline detector.
+  description: Required acceptance case for Brazilian PII Patterns. The source sample is a mobile number; the complete
+    mobile detector runs before the unprefixed landline detector.
   phase: input
   content: 'Acceptance sample: (11) 91111-1111'
   expected_decision: transform
@@ -14,8 +14,8 @@
   scope: rule
 - id: local-regional-contact-formats/accept/br_phone_landline/output
   name: Brazilian mobile / landline overlap
-  description: Required acceptance case for Brazilian PII Patterns. The source sample is a mobile number; the
-    complete mobile detector runs before the unprefixed landline detector.
+  description: Required acceptance case for Brazilian PII Patterns. The source sample is a mobile number; the complete
+    mobile detector runs before the unprefixed landline detector.
   phase: output
   content: 'Acceptance sample: (11) 91111-1111'
   expected_decision: transform
@@ -558,8 +558,8 @@
   scope: rule
 - id: advanced-au-pii-protection/rule-contact-information-pii/br_phone_landline-acceptance
   name: Trigger Brazilian Phone Number (Landline)
-  description: Proves that the published regex implementation for Brazilian Phone Number (Landline) activates
-    this Rule.
+  description: Proves that the published regex implementation for Brazilian Phone Number (Landline) activates this
+    Rule.
   phase: input
   content: 'Acceptance sample: (11) 91111-1111'
   expected_decision: transform
@@ -572,8 +572,7 @@
   scope: rule
 - id: advanced-au-pii-protection/rule-contact-information-pii/br_phone_mobile-acceptance
   name: Trigger Brazilian Mobile Phone Number
-  description: Proves that the published regex implementation for Brazilian Mobile Phone Number activates this
-    Rule.
+  description: Proves that the published regex implementation for Brazilian Mobile Phone Number activates this Rule.
   phase: input
   content: 'Acceptance sample: +1 (11) 91111-1111'
   expected_decision: transform
@@ -599,8 +598,8 @@
   scope: rule
 - id: advanced-au-pii-protection/rule-contact-information-pii/br_cep-acceptance
   name: Trigger CEP - Brazilian Zip / Postal Code
-  description: Proves that the published regex implementation for CEP - Brazilian Zip / Postal Code activates
-    this Rule.
+  description: Proves that the published regex implementation for CEP - Brazilian Zip / Postal Code activates this
+    Rule.
   phase: input
   content: 'Acceptance sample: 11111-111'
   expected_decision: transform
@@ -1182,4 +1181,288 @@
   required: true
   parameter_names: []
   group: Rule acceptance
+  scope: rule
+- id: contact-boundaries/commit-hash/input
+  name: Preserve commit-hash
+  description: Alphanumeric identifiers are not standalone telephone numbers.
+  phase: input
+  content: commit ab23456789cd
+  expected_decision: allow
+  covered_rule_ids:
+  - pattern/br_phone_landline
+  - pattern/br_phone_mobile
+  kind: scenario
+  required: true
+  parameter_names: []
+  group: Protection contract
+  scope: rule
+- id: contact-boundaries/build-identifier/input
+  name: Preserve build-identifier
+  description: Alphanumeric identifiers are not standalone telephone numbers.
+  phase: input
+  content: build_923456789_suffix
+  expected_decision: allow
+  covered_rule_ids:
+  - pattern/br_phone_landline
+  - pattern/br_phone_mobile
+  kind: scenario
+  required: true
+  parameter_names: []
+  group: Protection contract
+  scope: rule
+- id: contact-boundaries/commit-hash/output
+  name: Preserve commit-hash
+  description: Alphanumeric identifiers are not standalone telephone numbers.
+  phase: output
+  content: commit ab23456789cd
+  expected_decision: allow
+  covered_rule_ids:
+  - pattern/br_phone_landline
+  - pattern/br_phone_mobile
+  kind: scenario
+  required: true
+  parameter_names: []
+  group: Protection contract
+  scope: rule
+- id: contact-boundaries/build-identifier/output
+  name: Preserve build-identifier
+  description: Alphanumeric identifiers are not standalone telephone numbers.
+  phase: output
+  content: build_923456789_suffix
+  expected_decision: allow
+  covered_rule_ids:
+  - pattern/br_phone_landline
+  - pattern/br_phone_mobile
+  kind: scenario
+  required: true
+  parameter_names: []
+  group: Protection contract
+  scope: rule
+- id: contact-structured/structured_username/input
+  name: Complete structured_username value redaction
+  description: Synthetic field/format regression; preserve surrounding structure.
+  phase: input
+  content: <Username>sample.user17</Username>
+  expected_decision: transform
+  expected_text: <Username>[structured_username_REDACTED]</Username>
+  covered_rule_ids:
+  - pattern/structured_username
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: contact-structured/structured_username/output
+  name: Complete structured_username value redaction
+  description: Synthetic field/format regression; preserve surrounding structure.
+  phase: output
+  content: <Username>sample.user17</Username>
+  expected_decision: transform
+  expected_text: <Username>[structured_username_REDACTED]</Username>
+  covered_rule_ids:
+  - pattern/structured_username
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: contact-structured/structured_address/input
+  name: Complete structured_address value redaction
+  description: Synthetic field/format regression; preserve surrounding structure.
+  phase: input
+  content: '{"street": "Example Road", "city": "Exampleville"}'
+  expected_decision: transform
+  expected_text: '{"street": "[structured_address_REDACTED]", "city": "[structured_address_REDACTED]"}'
+  covered_rule_ids:
+  - pattern/structured_address
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: contact-structured/structured_address/output
+  name: Complete structured_address value redaction
+  description: Synthetic field/format regression; preserve surrounding structure.
+  phase: output
+  content: '{"street": "Example Road", "city": "Exampleville"}'
+  expected_decision: transform
+  expected_text: '{"street": "[structured_address_REDACTED]", "city": "[structured_address_REDACTED]"}'
+  covered_rule_ids:
+  - pattern/structured_address
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: contact-structured/labelled_person/input
+  name: Complete labelled_person value redaction
+  description: Synthetic field/format regression; preserve surrounding structure.
+  phase: input
+  content: 'Teacher: Alex Example'
+  expected_decision: transform
+  expected_text: 'Teacher: [labelled_person_REDACTED]'
+  covered_rule_ids:
+  - pattern/labelled_person
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: contact-structured/labelled_person/output
+  name: Complete labelled_person value redaction
+  description: Synthetic field/format regression; preserve surrounding structure.
+  phase: output
+  content: 'Teacher: Alex Example'
+  expected_decision: transform
+  expected_text: 'Teacher: [labelled_person_REDACTED]'
+  covered_rule_ids:
+  - pattern/labelled_person
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: contact-structured/international_phone/input
+  name: Complete international_phone value redaction
+  description: Synthetic field/format regression; preserve surrounding structure.
+  phase: input
+  content: 'Phone: +345 67-123 4567'
+  expected_decision: transform
+  expected_text: 'Phone: [international_phone_REDACTED]'
+  covered_rule_ids:
+  - pattern/international_phone
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: contact-structured/international_phone/output
+  name: Complete international_phone value redaction
+  description: Synthetic field/format regression; preserve surrounding structure.
+  phase: output
+  content: 'Phone: +345 67-123 4567'
+  expected_decision: transform
+  expected_text: 'Phone: [international_phone_REDACTED]'
+  covered_rule_ids:
+  - pattern/international_phone
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: contact-structured/numeric-building-context/input
+  name: Address context across a numeric building field
+  description: Synthetic structured address; retain punctuation and redact country plus numeric building. Do not
+    treat boolean build state as an address.
+  phase: input
+  content: '{"country":"Example Republic","building":"123","street":"Example Road"}'
+  expected_decision: transform
+  expected_text: '{"country":"[structured_address_REDACTED]","building":"[structured_address_REDACTED]","street":"[structured_address_REDACTED]"}'
+  covered_rule_ids:
+  - pattern/structured_address
+  kind: scenario
+  required: true
+  scope: rule
+  parameter_names: []
+  group: Address context regression
+- id: contact-structured/numeric-building-context/output
+  name: Address context across a numeric building field
+  description: Synthetic structured address; retain punctuation and redact country plus numeric building. Do not
+    treat boolean build state as an address.
+  phase: output
+  content: '{"country":"Example Republic","building":"123","street":"Example Road"}'
+  expected_decision: transform
+  expected_text: '{"country":"[structured_address_REDACTED]","building":"[structured_address_REDACTED]","street":"[structured_address_REDACTED]"}'
+  covered_rule_ids:
+  - pattern/structured_address
+  kind: scenario
+  required: true
+  scope: rule
+  parameter_names: []
+  group: Address context regression
+- id: contact-context/titled_person/input
+  name: Contextual titled_person redaction
+  description: Synthetic context and source-offset regression.
+  phase: input
+  content: <p>Between <em>A<strong>Countess</strong> <strong>Elena Example</strong></em> and Dr. Morgan Sample.</p>
+  expected_decision: transform
+  expected_text: <p>Between <em>A<strong>[titled_person_REDACTED]</strong> <strong>[titled_person_REDACTED]</strong></em>
+    and [titled_person_REDACTED].</p>
+  covered_rule_ids:
+  - pattern/titled_person
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Context-aware contact formats
+  scope: rule
+- id: contact-context/titled_person/output
+  name: Contextual titled_person redaction
+  description: Synthetic context and source-offset regression.
+  phase: output
+  content: <p>Between <em>A<strong>Countess</strong> <strong>Elena Example</strong></em> and Dr. Morgan Sample.</p>
+  expected_decision: transform
+  expected_text: <p>Between <em>A<strong>[titled_person_REDACTED]</strong> <strong>[titled_person_REDACTED]</strong></em>
+    and [titled_person_REDACTED].</p>
+  covered_rule_ids:
+  - pattern/titled_person
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Context-aware contact formats
+  scope: rule
+- id: contact-context/contact_list_person/input
+  name: Contextual contact_list_person redaction
+  description: Synthetic context and source-offset regression.
+  phase: input
+  content: "contacts:\n  - +321 45-678 9012\n  - Alex\n  - 123-45-6789"
+  expected_decision: transform
+  expected_text: "contacts:\n  - +321 45-678 9012\n  - [contact_list_person_REDACTED]\n  - 123-45-6789"
+  covered_rule_ids:
+  - pattern/contact_list_person
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Context-aware contact formats
+  scope: rule
+- id: contact-context/contact_list_person/output
+  name: Contextual contact_list_person redaction
+  description: Synthetic context and source-offset regression.
+  phase: output
+  content: "contacts:\n  - +321 45-678 9012\n  - Alex\n  - 123-45-6789"
+  expected_decision: transform
+  expected_text: "contacts:\n  - +321 45-678 9012\n  - [contact_list_person_REDACTED]\n  - 123-45-6789"
+  covered_rule_ids:
+  - pattern/contact_list_person
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Context-aware contact formats
+  scope: rule
+- id: contact-context/truncated_address/input
+  name: Contextual truncated_address redaction
+  description: Synthetic context and source-offset regression.
+  phase: input
+  content: 'eet": "Example Road", "city":"Exampleville", "state":"WA", "postcode":"98101"}'
+  expected_decision: transform
+  expected_text: 'eet": "[truncated_address_REDACTED]", "city":"Exampleville", "state":"WA", "postcode":"98101"}'
+  covered_rule_ids:
+  - pattern/truncated_address
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Context-aware contact formats
+  scope: rule
+- id: contact-context/truncated_address/output
+  name: Contextual truncated_address redaction
+  description: Synthetic context and source-offset regression.
+  phase: output
+  content: 'eet": "Example Road", "city":"Exampleville", "state":"WA", "postcode":"98101"}'
+  expected_decision: transform
+  expected_text: 'eet": "[truncated_address_REDACTED]", "city":"Exampleville", "state":"WA", "postcode":"98101"}'
+  covered_rule_ids:
+  - pattern/truncated_address
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Context-aware contact formats
   scope: rule

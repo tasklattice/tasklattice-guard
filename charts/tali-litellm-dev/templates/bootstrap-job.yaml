@@ -34,9 +34,6 @@ rules:
     resourceNames:
       {{- range $spec := $specs }}
       - {{ $spec.name | quote }}
-      {{- with $spec.legacyName }}
-      - {{ . | quote }}
-      {{- end }}
       {{- end }}
   - apiGroups: [""]
     resources: [secrets]
@@ -128,8 +125,6 @@ spec:
               value: {{ .Release.Name | quote }}
             - name: BOOTSTRAP_SECRETS
               value: {{ toJson $specs | quote }}
-            - name: BOOTSTRAP_PREVIOUS_OWNER
-              value: {{ printf "%s-config" (include "tali-litellm-dev.fullname" .) | quote }}
           volumeMounts:
             - { name: tmp, mountPath: /tmp }
           resources:

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import base64
 import hashlib
+import hmac
 from pathlib import Path
 
 import pytest
@@ -19,6 +20,88 @@ from runner.protocol_codec import (
 
 
 FIXTURE = Path(__file__).parent / "fixtures" / "artifacts" / "local-secrets-v1"
+
+
+def unsupported_state():
+    state = protocol.DesiredState()
+    state.ParseFromString(base64.b64decode((FIXTURE / "desired-state.pb.b64").read_text()))
+    artifact = state.artifacts[0]
+    artifact.compiler_version = "unsupported-compiler"
+    from runner.protocol_codec import artifact_digest
+    artifact.checksum = artifact_digest(artifact)
+    artifact.signature = _signature(Ed25519PrivateKey.from_private_bytes(bytes(range(1, 33))), artifact.checksum)
+    return state
+
+
+@pytest.mark.parametrize("operation", ["verify", "admit", "apply"])
+def test_signed_unsupported_contract_is_rejected_before_runtime_preparation(tmp_path, operation):
+    from runner.protocol_codec import artifact_digest
+    state = unsupported_state()
+    artifact = state.artifacts[0]
+    assert artifact_digest(artifact) == artifact.checksum
+    key = serialization.load_pem_public_key((FIXTURE / "public-key.pem").read_bytes())
+    key.verify(base64.b64decode(artifact.signature), artifact.checksum.encode())
+    assert artifact.action_bindings[0].parameters
+    before = state.SerializeToString()
+    store = ArtifactStore(FIXTURE / "public-key.pem", tmp_path)
+    registry = Registry()
+    store.attach_registry(registry)
+    with pytest.raises(ValueError, match="artifact_recompile_required.*Recompile"):
+        getattr(store, operation)(state if operation == "apply" else artifact)
+    assert state.SerializeToString() == before
+    assert registry.preparations == store.generation == 0
+    assert not (tmp_path / "last-known-good.json").exists()
+
+
+def test_old_generation_cannot_replace_current_last_known_good_or_restore_after_upgrade(tmp_path, caplog):
+    import json
+    current = protocol.DesiredState()
+    current.ParseFromString(base64.b64decode((FIXTURE / "desired-state.pb.b64").read_text()))
+    store = ArtifactStore(FIXTURE / "public-key.pem", tmp_path)
+    registry = Registry()
+    store.attach_registry(registry)
+    store.apply(current)
+    saved = (tmp_path / "last-known-good.json").read_bytes()
+    old = unsupported_state()
+    old.generation = current.generation + 1
+    with pytest.raises(ValueError, match="artifact_recompile_required"):
+        store.apply(old)
+    assert store.generation == current.generation
+    assert registry.preparations == 1
+    assert (tmp_path / "last-known-good.json").read_bytes() == saved
+    # A cold upgrade has no accepted current runtime to retain. Old cache stays
+    # available for diagnosis, but cannot make the new Runner ready.
+    (tmp_path / "last-known-good.json").write_text(json.dumps({
+        "generation": old.generation,
+        "desired_state_b64": base64.b64encode(old.SerializeToString()).decode(),
+    }))
+    rejected_cache = (tmp_path / "last-known-good.json").read_bytes()
+    restarted = ArtifactStore(FIXTURE / "public-key.pem", tmp_path)
+    cold_registry = Registry()
+    restarted.attach_registry(cold_registry)
+    assert restarted.generation == cold_registry.preparations == 0
+    assert "artifact_recompile_required" in caplog.text
+    assert (tmp_path / "last-known-good.json").read_bytes() == rejected_cache
+
+
+@pytest.mark.parametrize("target,views", [("step", []), ("action", []), ("action", ["original", "previous_output"]), ("action", ["implicit"])])
+def test_current_version_labels_do_not_hide_invalid_views(tmp_path, target, views):
+    from runner.protocol_codec import artifact_digest
+    key = Ed25519PrivateKey.generate()
+    public = tmp_path / "public.pem"
+    public.write_bytes(key.public_key().public_bytes(serialization.Encoding.PEM, serialization.PublicFormat.SubjectPublicKeyInfo))
+    artifact = _artifact()
+    item = artifact.plan.steps[0] if target == "step" else artifact.action_bindings[0]
+    others = [entry for entry in item.parameters if entry.key != "evaluation_view"]
+    del item.parameters[:]
+    item.parameters.extend(others)
+    for view in views:
+        item.parameters.add(key="evaluation_view", value=view)
+    artifact.checksum = artifact_digest(artifact)
+    artifact.signature = _signature(key, artifact.checksum)
+    store = ArtifactStore(public, tmp_path / "state")
+    with pytest.raises(ValueError, match="artifact_recompile_required.*evaluation_view"):
+        store.verify(artifact)
 
 
 class Registry:
@@ -46,7 +129,7 @@ def test_authenticated_endpoint_owner_is_controller_assigned_and_legacy_fails_cl
     store = ArtifactStore(FIXTURE / "public-key.pem", tmp_path / "state")
     store.attach_registry(Registry())
     state = protocol.DesiredState(generation=1, endpoints=[
-        protocol.EndpointRuntime(endpoint_id="e", adapter="litellm-generic-guardrail", verification=verification),
+        protocol.EndpointRuntime(endpoint_id="e", adapter="litellm-generic-guardrail", verification=verification, credential_required=True),
     ])
     store.apply(state)
     assert store.authenticate_endpoint("e", secret)
@@ -73,7 +156,7 @@ def test_authenticated_endpoint_owner_is_controller_assigned_and_legacy_fails_cl
 def test_scan_default_is_backward_compatible_atomic_and_restored(tmp_path):
     store = ArtifactStore(FIXTURE / "public-key.pem", tmp_path / "state")
     store.attach_registry(Registry())
-    desired = protocol.DesiredState(generation=1, endpoints=[protocol.EndpointRuntime(endpoint_id="scan", adapter="f5-scan")])
+    desired = protocol.DesiredState(generation=1, endpoints=[protocol.EndpointRuntime(credential_required=True, endpoint_id="scan", adapter="f5-scan")])
     store.apply(desired)
     assert store.endpoint_scan_flag_only_default("scan") is True
     desired.generation = 2
@@ -117,6 +200,7 @@ def test_runner_verifies_and_restores_complete_last_known_good(tmp_path):
         generation=7,
         artifacts=[artifact],
         endpoints=[protocol.EndpointRuntime(
+            credential_required=True,
             endpoint_id="endpoint-1",
             adapter="litellm-generic-guardrail",
             verification=endpoint_verification_to_proto({"credentials": [{
@@ -179,6 +263,7 @@ def test_runner_accepts_active_multi_credentials_and_rejects_revoked_credentials
     store.apply(protocol.DesiredState(
         generation=1,
         endpoints=[protocol.EndpointRuntime(
+            credential_required=True,
             endpoint_id="endpoint-1",
             adapter="litellm-generic-guardrail",
             verification=endpoint_verification_to_proto({
@@ -217,6 +302,86 @@ def test_runner_accepts_active_multi_credentials_and_rejects_revoked_credentials
 def test_protocol_rejects_malformed_endpoint_credentials() -> None:
     with pytest.raises(TypeError):
         protocol.EndpointCredential(id="bad", sha256=42)  # type: ignore[arg-type]
+
+
+@pytest.mark.parametrize("credential", ["first", "last", "unknown", "", None])
+def test_endpoint_authentication_compares_every_active_digest(tmp_path, monkeypatch, credential):
+    store = ArtifactStore(FIXTURE / "public-key.pem", tmp_path / "state")
+    store.attach_registry(Registry())
+    digests = {value: hashlib.sha256(value.encode()).hexdigest() for value in ("first", "last", "revoked")}
+    store.apply(protocol.DesiredState(generation=1, endpoints=[protocol.EndpointRuntime(
+        endpoint_id="endpoint", credential_required=True, adapter="f5-scan",
+        verification=protocol.EndpointVerification(credentials=[
+            protocol.EndpointCredential(sha256=digests["first"]),
+            protocol.EndpointCredential(sha256=digests["revoked"], revoked_at="2026-11-02T00:00:00Z"),
+            # Presence, even an empty revocation timestamp, means revoked.
+            protocol.EndpointCredential(sha256=digests["revoked"], revoked_at=""),
+            protocol.EndpointCredential(sha256=digests["last"]),
+        ]),
+    )]))
+    compared = []
+    compare_digest = hmac.compare_digest
+
+    def observe_compare(actual, expected):
+        compared.append(expected)
+        return compare_digest(actual, expected)
+
+    monkeypatch.setattr("runner.artifact_store.hmac.compare_digest", observe_compare)
+    access = store.authorize_endpoint("endpoint", credential)
+    assert access.allowed is (credential in {"first", "last"})
+    assert access.authenticated is access.allowed
+    assert compared == ([digests["first"], digests["last"]] if credential else [])
+
+
+def test_endpoint_credential_snapshots_rotate_revoke_and_restore_atomically(tmp_path, monkeypatch):
+    state_path = tmp_path / "state"
+    store = ArtifactStore(FIXTURE / "public-key.pem", state_path)
+    registry = Registry()
+    store.attach_registry(registry)
+    desired = protocol.DesiredState(generation=1, endpoints=[protocol.EndpointRuntime(
+        endpoint_id="endpoint", credential_required=True, adapter="f5-scan",
+        verification=protocol.EndpointVerification(credentials=[
+            protocol.EndpointCredential(sha256=hashlib.sha256(b"old").hexdigest()),
+        ]),
+    )])
+    store.apply(desired)
+    credentials = desired.endpoints[0].verification.credentials
+    credentials.add(sha256=hashlib.sha256(b"new").hexdigest())
+    assert store.authenticate_endpoint("endpoint", "old")
+    assert not store.authenticate_endpoint("endpoint", "new")
+    desired.generation += 1
+    store.apply(desired)
+    assert store.authenticate_endpoint("endpoint", "old")
+    assert store.authenticate_endpoint("endpoint", "new")
+
+    desired.generation += 1
+    credentials[0].revoked_at = "2026-11-02T00:00:00Z"
+    saved = (state_path / "last-known-good.json").read_bytes()
+
+    def reject_preparation(*args, **kwargs):
+        raise RuntimeError("Cannot prepare runtime")
+
+    with monkeypatch.context() as patch:
+        patch.setattr(registry, "prepare_release", reject_preparation)
+        with pytest.raises(RuntimeError, match="Cannot prepare runtime"):
+            store.apply(desired)
+    assert store.generation == 2
+    assert store.authenticate_endpoint("endpoint", "old")
+    assert store.authenticate_endpoint("endpoint", "new")
+    assert (state_path / "last-known-good.json").read_bytes() == saved
+
+    store.apply(desired)
+    restored = ArtifactStore(FIXTURE / "public-key.pem", state_path)
+    restored.attach_registry(Registry())
+    for snapshot in (store, restored):
+        assert not snapshot.authenticate_endpoint("endpoint", "old")
+        assert snapshot.authenticate_endpoint("endpoint", "new")
+        assert not snapshot.authorize_endpoint("missing", "new").allowed
+
+    desired.generation += 1
+    credentials[1].revoked_at = "2026-11-02T00:00:00Z"
+    store.apply(desired)
+    assert not store.authorize_endpoint("endpoint", "new").allowed
 
 
 def test_runner_rejects_an_artifact_compiled_for_a_different_nemo_version(

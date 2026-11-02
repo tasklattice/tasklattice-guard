@@ -1,4 +1,4 @@
-import { createPrivateKey, createPublicKey, generateKeyPairSync, randomBytes } from "node:crypto";
+import { createPrivateKey, createPublicKey, generateKeyPairSync, randomBytes, randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
 import https from "node:https";
 import { generateTls, tlsFields, validateTls } from "./bootstrap-tls.mjs";
@@ -32,13 +32,10 @@ const databaseKey = spec => spec.credentialKey || (spec.profile === "litellm" ? 
 const databaseUrl = (spec, value) => `postgresql://${encodeURIComponent(spec.username)}:${encodeURIComponent(value)}@${spec.host}:5432/${encodeURIComponent(spec.database)}`;
 const decodeData = secret => Object.fromEntries(Object.entries(secret.data ?? {}).map(([key, value]) => [key, Buffer.from(value, "base64").toString("utf8")]));
 
-async function accountData(spec) {
-  const data = { [spec.emailKey || "email"]: spec.email, [spec.nameKey || "name"]: spec.displayName };
-  if (spec.localDefault) {
-    const { hashPassword } = await import("better-auth/crypto");
-    data[spec.digestKey || "password-hash"] = await hashPassword("password");
-  } else data[spec.credentialKey || "password"] = randomBytes(Math.max(32, Math.ceil((spec.minLength ?? 12) / 2))).toString("hex");
-  return data;
+function accountData(spec) {
+  return { [spec.usernameKey || "username"]: spec.username,
+    [spec.nameKey || "name"]: spec.displayName,
+    [spec.credentialKey || "password"]: "password", revision: randomUUID() };
 }
 
 function validateExisting(spec, secret) {
@@ -50,17 +47,15 @@ function validateExisting(spec, secret) {
       const url = new URL(data[spec.urlKey ?? "database-url"]);
       matches = url.protocol === "postgresql:" && decodeURIComponent(url.username) === spec.username && decodeURIComponent(url.password) === value &&
         url.hostname === spec.host && url.port === "5432" && decodeURIComponent(url.pathname.slice(1)) === spec.database && !url.search && !url.hash;
-    } catch { /* Invalid legacy URLs must never trigger credential replacement. */ }
+    } catch { /* Invalid database URLs must never trigger credential replacement. */ }
     if (!value || data.POSTGRES_PASSWORD !== value || !matches) {
       throw new Error(`Secret ${spec.name} has inconsistent database fields; refusing to replace it.`);
     }
     return;
   }
   if (spec.kind === "account") {
-    const plain = data[spec.credentialKey || "password"], digest = data[spec.digestKey || "password-hash"];
-    if (!data[spec.emailKey || "email"] || !data[spec.nameKey || "name"] || (!plain && !digest) || (plain && digest) ||
-        (digest && !/^[0-9a-f]{32}:[0-9a-f]{128}$/.test(digest))) {
-      throw new Error(`Secret ${spec.name} has invalid account fields; refusing to replace it.`);
+    if (!data[spec.usernameKey || "username"] || !data[spec.nameKey || "name"] || !data[spec.credentialKey || "password"]) {
+      throw new Error(`Secret ${spec.name} has invalid account fields.`);
     }
     return;
   }
@@ -101,8 +96,8 @@ export async function namespaceOwner(request, namespace) {
   return { apiVersion: "v1", kind: "Namespace", name: namespace, uid: response.body.metadata.uid, controller: false, blockOwnerDeletion: false };
 }
 
-async function reuseSecret(request, path, namespace, release, spec, secret, owner, previousOwnerName) {
-  validateExisting(spec, secret);
+async function reuseSecret(request, path, namespace, release, spec, secret, owner) {
+  if (spec.kind !== "account") validateExisting(spec, secret);
   if (spec.kind === "litellm") {
     const database = await request("GET", `/api/v1/namespaces/${encodeURIComponent(namespace)}/secrets/${encodeURIComponent(spec.databaseSecret)}`);
     if (database.status !== 200 || database.body.data?.["database-url"] !== secret.data["database-url"]) {
@@ -111,9 +106,20 @@ async function reuseSecret(request, path, namespace, release, spec, secret, owne
   }
   const references = secret.metadata?.ownerReferences ?? [];
   const owned = references.length === 1 && references[0].uid === owner.uid && references[0].name === owner.name && references[0].kind === owner.kind && references[0].apiVersion === owner.apiVersion;
-  const legacy = references.length === 1 && references[0].apiVersion === "v1" && references[0].kind === "ConfigMap" && references[0].name === previousOwnerName;
-  if (!belongsToRelease(secret.metadata, namespace, release) || (references.length && !owned && !legacy)) {
+  if (!belongsToRelease(secret.metadata, namespace, release) || (references.length && !owned)) {
     throw new Error(`Secret ${spec.name} belongs to another owner; use existingSecret instead of adopting it.`);
+  }
+  if (spec.kind === "account") {
+    const data = accountData(spec);
+    const patched = await request("PATCH", path, {
+      metadata: { resourceVersion: secret.metadata.resourceVersion, ownerReferences: [owner],
+        annotations: { "helm.sh/resource-policy": "keep", "argocd.argoproj.io/compare-options": "IgnoreExtraneous", "argocd.argoproj.io/sync-options": "Prune=false,Delete=false" } },
+      // JSON merge patch removes former email/hash fields as well as custom keys.
+      data: Object.fromEntries([...Object.keys(secret.data ?? {}).map(key => [key, null]),
+        ...Object.entries(data).map(([key, value]) => [key, Buffer.from(value).toString("base64")])]),
+    });
+    if (patched.status !== 200) throw new Error(`Cannot reset account Secret ${spec.name}: HTTP ${patched.status}. Retry initialization.`);
+    return "updated";
   }
   if (owned && secret.metadata.annotations?.["helm.sh/resource-policy"] === "keep") return "reused";
   const patched = await request("PATCH", path, { metadata: { resourceVersion: secret.metadata.resourceVersion, ownerReferences: [owner], annotations: { "helm.sh/resource-policy": "keep", "argocd.argoproj.io/compare-options": "IgnoreExtraneous", "argocd.argoproj.io/sync-options": "Prune=false,Delete=false" } } });
@@ -121,28 +127,16 @@ async function reuseSecret(request, path, namespace, release, spec, secret, owne
   return "reused";
 }
 
-export async function ensureSecret(request, namespace, release, spec, owner, previousOwnerName) {
+export async function ensureSecret(request, namespace, release, spec, owner) {
   if (!owner?.uid || owner.kind !== "Namespace" || owner.apiVersion !== "v1" || owner.name !== namespace) throw new Error("The installation Namespace owner is required.");
   const path = `/api/v1/namespaces/${encodeURIComponent(namespace)}/secrets`;
   const itemPath = `${path}/${encodeURIComponent(spec.name)}`;
   const existing = await request("GET", itemPath);
   if (existing.status === 200) {
-    return reuseSecret(request, itemPath, namespace, release, spec, existing.body, owner, previousOwnerName);
+    return reuseSecret(request, itemPath, namespace, release, spec, existing.body, owner);
   }
   if (existing.status !== 404) throw new Error(`Cannot read Secret ${spec.name}: HTTP ${existing.status}.`);
-  let data;
-  if (spec.legacyName) {
-    const legacy = await request("GET", `${path}/${encodeURIComponent(spec.legacyName)}`);
-    if (legacy.status === 200) {
-      if (!belongsToRelease(legacy.body.metadata, namespace, release)) throw new Error(`Legacy Secret ${spec.legacyName} belongs to another owner.`);
-      data = decodeData(legacy.body);
-      if (spec.kind === "database") {
-        data.POSTGRES_PASSWORD = data[databaseKey(spec)];
-        if (spec.profile === "litellm" && !data["database-url"] && data.POSTGRES_PASSWORD) data["database-url"] = databaseUrl(spec, data.POSTGRES_PASSWORD);
-      }
-    } else if (legacy.status !== 404) throw new Error(`Cannot read legacy Secret ${spec.legacyName}: HTTP ${legacy.status}.`);
-  }
-  data ??= await secretData(spec);
+  const data = await secretData(spec);
   if (spec.kind === "litellm") {
     const database = await request("GET", `${path}/${encodeURIComponent(spec.databaseSecret)}`);
     if (database.status !== 200) throw new Error(`Cannot read gateway database Secret: HTTP ${database.status}.`);
@@ -171,7 +165,7 @@ export async function ensureSecret(request, namespace, release, spec, owner, pre
     // Another bootstrap won the race. Validate its value, never overwrite it.
     const concurrent = await request("GET", `${path}/${encodeURIComponent(spec.name)}`);
     if (concurrent.status !== 200) throw new Error(`Cannot read concurrent Secret ${spec.name}: HTTP ${concurrent.status}.`);
-    return reuseSecret(request, itemPath, namespace, release, spec, concurrent.body, owner, previousOwnerName);
+    return reuseSecret(request, itemPath, namespace, release, spec, concurrent.body, owner);
   }
   if (created.status !== 201) throw new Error(`Cannot create Secret ${spec.name}: HTTP ${created.status}.`);
   return "created";
@@ -203,7 +197,7 @@ async function main() {
   });
   const owner = await namespaceOwner(request, process.env.BOOTSTRAP_NAMESPACE);
   for (const spec of JSON.parse(process.env.BOOTSTRAP_SECRETS)) {
-    const result = await ensureSecret(request, process.env.BOOTSTRAP_NAMESPACE, process.env.BOOTSTRAP_RELEASE, spec, owner, process.env.BOOTSTRAP_PREVIOUS_OWNER);
+    const result = await ensureSecret(request, process.env.BOOTSTRAP_NAMESPACE, process.env.BOOTSTRAP_RELEASE, spec, owner);
     console.log(`Secret ${spec.name}: ${result}`);
   }
 }

@@ -41,6 +41,8 @@ order: 0
 
 文章路径为 `/document/<category>/<id>`，其中 `category` 来自目录名，`id` 来自 frontmatter。例如快速开始的路径是 `/document/overview/quickstart-protection`，其中“六步完成保护链路”的链接是 `/document/overview/quickstart-protection#quickstart-steps`。`/document` 入口跳转到第一篇文章；不存在的文章显示找不到文档，不会自动回到第一篇。
 
+所有文档均可通过链接匿名访问，无需登录。`/document`、文章与章节深链接、旧 `/help` 链接，以及 `/api/docs`、`/api/openapi.json`、`/api/llms.txt` 均公开；文档阅读不等待登录状态查询。
+
 编译插件把小节锚点移到标题上，并从同一份 MDX 生成右侧“本页目录”和搜索索引。左侧按目录名分组展示文章，默认只展开当前分类。路径选择文章，`#` 只定位该文章内的章节；章节 ID 只需在文章内唯一。两种语言共用文章路径与章节 ID，由语言选择器切换正文。
 
 正文使用普通 Markdown 的段落、标题、列表、链接、引用、代码块和表格。结构化状态卡片、资源地图与流程图仍可使用 `controller/src/components/help/` 导出的 MDX 组件。同篇文章内使用 `[六步完成保护链路](#quickstart-steps)`；跨文章链接必须带目标文章路径，例如 `[Rule 检测器](/document/overview/glossary-definition#term-rule-implementation)`。其他站内链接使用绝对路径，例如 `[API 文档](/api/docs)`；代码块中的 `{controllerOrigin}` 在渲染时替换为当前站点地址。

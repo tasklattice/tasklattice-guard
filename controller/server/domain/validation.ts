@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { canonicalJson } from "../../shared/canonical-json.js";
 
 import type { PolicyDto } from "../policy-catalog/catalog.js";
 import type { ProgrammablePolicySnapshot } from "../policy-studio/model.js";
@@ -64,17 +65,11 @@ export function generatedTestCases(
       // A scenario covering several Rules is only valid when its complete
       // selection is enabled. Partial Profiles cannot promise disabled checks.
       if (!item.covered_rule_ids.every((id) => enabledRules.has(id))) return [];
-      const topicCase = policy.id === "builtin-topic-safety" && item.id === "topic-input";
-      const topicAction = binding.ruleActions["model/topic-control"] ?? binding.action ?? "block";
-      const topicBlockedDecision = topicAction;
       const topicValues = topicPolicyValues(binding.parameterValues);
       const expanded = isSplitTopicPolicy(binding.policyId, binding.policyVersion) ? item.covered_rule_ids.includes(TOPIC_DENY_RULE)
         ? topicLines(topicValues.denied).map((topic, index) => ({ ...item, id: `${item.id}/${index + 1}`, name: `Denied topic: ${topic}`, content: `Please help me with this task: ${topic}`, expected_decision: "block" as const }))
         : [{ ...item, expected_decision: topicValues.mode === "permissive" ? "allow" as const : (binding.ruleActions[TOPIC_ALLOW_RULE] ?? binding.action ?? "block") }]
-        : topicCase ? [
-        { ...item, expected_decision: draft.topicControlMode === "permissive" ? "allow" as const : topicBlockedDecision },
-        ...draft.restrictedTopics.map((topic, index) => ({ ...item, id: `${item.id}/deny-${index + 1}`, name: `Denied topic: ${topic}`, content: `Please help me with this task: ${topic}`, expected_decision: topicBlockedDecision })),
-      ] : policy.id === PHRASE_POLICY_ID
+        : policy.id === PHRASE_POLICY_ID
         ? parsePhraseEntries(binding.parameterValues[PHRASE_PARAMETER] ?? "").map((entry) => ({
             ...item, id: `${item.id}/${entry.id}`, name: `${item.name}: ${entry.phrase}`,
             content: entry.phrase,
@@ -157,6 +152,37 @@ export function generatedTestCases(
     });
   });
   return [...declarative, ...programmable];
+}
+
+/** Restore source assertions only when an unchanged inherited overlay loses a
+ * selected Rule, Policy or Rail. New/edited or stale overlays still need review.
+ * Mutates the candidate before it is persisted, never a published snapshot. */
+export function reconcileValidationOverrides(
+  draft: GuardrailDraftConfig,
+  reference: GuardrailDraftConfig,
+  referenceCases: readonly StoredTestCaseInput[],
+): void {
+  const before = new Map(reference.policyBindings.map(binding => [binding.policyId, binding]));
+  const after = new Map(draft.policyBindings.map(binding => [binding.policyId, binding]));
+  for (const binding of draft.policyBindings) {
+    const previous = before.get(binding.policyId);
+    if (!previous || previous.policyVersion !== binding.policyVersion) continue;
+    for (const [caseId, overlay] of Object.entries(binding.testCaseOverrides ?? {})) {
+      const inherited = previous.testCaseOverrides?.[caseId];
+      if (!inherited || overlay.sourcePolicyVersion !== binding.policyVersion || canonicalJson(overlay) !== canonicalJson(inherited)) continue;
+      const source = referenceCases.find(item => item.sourcePolicyId === binding.policyId && item.sourceCaseId === caseId);
+      if (!source || source.sourcePolicyVersion !== binding.policyVersion) continue;
+      const removed = !binding.enabledRails.includes(source.phase)
+        || source.coveredRuleIds.some(id => previous.enabledRuleIds.includes(id) && !binding.enabledRuleIds.includes(id))
+        || overlay.expectedMatches.some(match => {
+          const was = before.get(match.policyId);
+          const now = after.get(match.policyId);
+          return was?.enabledRuleIds.includes(match.ruleId) && was.enabledRails.includes(source.phase)
+            && (!now?.enabledRuleIds.includes(match.ruleId) || !now.enabledRails.includes(source.phase));
+        });
+      if (removed) delete binding.testCaseOverrides![caseId];
+    }
+  }
 }
 
 /** Preserve template assertions in storage; freeze reviewed local overlays into each run. */

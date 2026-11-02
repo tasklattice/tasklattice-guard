@@ -248,7 +248,7 @@ describe.skipIf(!url)("prepared allocation barriers (preparation path)", () => {
     const handle = await admin(() => service.beginWait(move.id));
     clock += 1500;
     await admin(() => service.observeElapsed(handle));
-    await database.pool.query(readFileSync(new URL("../db/migrations/0058_prepared_allocation_transitions.sql", import.meta.url), "utf8"));
+    await database.pool.query(readFileSync(new URL("../db/migrations/0011_prepared_allocation_transitions.sql", import.meta.url), "utf8"));
     expect(await admin(() => service.get(move.id))).toMatchObject({ barrierId: move.barrierId, state: "prepared", waitElapsedMs: 1500, requiresExternalFence: true });
     const changed = new TenantGroupMovePreparationService(database.db, { ...options(), timingPolicyId: "changed-policy" });
     await expect(admin(() => changed.beginWait(move.id))).rejects.toMatchObject({ code: "allocation_transition_timing_conflict" });

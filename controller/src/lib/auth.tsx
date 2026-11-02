@@ -14,7 +14,7 @@ import {
 import { queryKeys } from "@/features/query-keys";
 import type { MockSsoIdentity } from "../../shared/mock-sso";
 
-type LoginInput = { email: string; password: string };
+type LoginInput = { username: string; password: string };
 type ProfileInput = {
   display_name?: string;
   preferred_language?: SupportedLanguage;

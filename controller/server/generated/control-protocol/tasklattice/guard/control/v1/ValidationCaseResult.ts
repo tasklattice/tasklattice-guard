@@ -9,6 +9,7 @@ import type { TargetSource as _tasklattice_guard_control_v1_TargetSource, Target
 import type { AutomatedReasoningResult as _tasklattice_guard_control_v1_AutomatedReasoningResult, AutomatedReasoningResult__Output as _tasklattice_guard_control_v1_AutomatedReasoningResult__Output } from '../../../../tasklattice/guard/control/v1/AutomatedReasoningResult.js';
 import type { ValidationFailure as _tasklattice_guard_control_v1_ValidationFailure, ValidationFailure__Output as _tasklattice_guard_control_v1_ValidationFailure__Output } from '../../../../tasklattice/guard/control/v1/ValidationFailure.js';
 import type { ValidationExpectationOverride as _tasklattice_guard_control_v1_ValidationExpectationOverride, ValidationExpectationOverride__Output as _tasklattice_guard_control_v1_ValidationExpectationOverride__Output } from '../../../../tasklattice/guard/control/v1/ValidationExpectationOverride.js';
+import type { ValidationEvidenceStatus as _tasklattice_guard_control_v1_ValidationEvidenceStatus, ValidationEvidenceStatus__Output as _tasklattice_guard_control_v1_ValidationEvidenceStatus__Output } from '../../../../tasklattice/guard/control/v1/ValidationEvidenceStatus.js';
 import type { ValidationExpectedMatch as _tasklattice_guard_control_v1_ValidationExpectedMatch, ValidationExpectedMatch__Output as _tasklattice_guard_control_v1_ValidationExpectedMatch__Output } from '../../../../tasklattice/guard/control/v1/ValidationExpectedMatch.js';
 
 /**
@@ -94,13 +95,33 @@ export interface ValidationCaseResult {
    */
   'templateExpectedDecision'?: (_tasklattice_guard_control_v1_ValidationDecision);
   'assertionFailures'?: (string)[];
-  /**
-   * Terminal Rule evidence preceding the source target in Policy/Rule execution order.
-   * The target is not claimed as matched; this satisfies only the ordered composition contract.
-   */
-  'preemptingMatches'?: (_tasklattice_guard_control_v1_ValidationExpectedMatch)[];
   'skipped'?: (boolean);
   'skipReason'?: (string);
+  /**
+   * Actual target Rule evidence, independent of the final decision.
+   */
+  'evidenceStatus'?: (_tasklattice_guard_control_v1_ValidationEvidenceStatus);
+  /**
+   * Related interventions explain missing evidence, never automatic acceptance.
+   */
+  'supersededBy'?: (_tasklattice_guard_control_v1_ValidationExpectedMatch)[];
+  /**
+   * Only actually observed matches on the declared view, never counterfactuals.
+   */
+  'verifiedRuleIds'?: (string)[];
+  /**
+   * Human-readable explanation of the recorded evidence status.
+   */
+  'evidenceDetail'?: (string);
+  /**
+   * Effective Rule assertion, including an explicitly reviewed override.
+   */
+  'ruleContractSatisfied'?: (boolean);
+  /**
+   * Model transport/response health is independent of case assertion quality.
+   */
+  'modelStatus'?: (string);
+  'executionStatus'?: (string);
   '_expectedReasoningResult'?: "expectedReasoningResult";
   '_actualReasoningResult'?: "actualReasoningResult";
   '_expectedFailure'?: "expectedFailure";
@@ -196,13 +217,33 @@ export interface ValidationCaseResult__Output {
    */
   'templateExpectedDecision'?: (_tasklattice_guard_control_v1_ValidationDecision__Output);
   'assertionFailures': (string)[];
-  /**
-   * Terminal Rule evidence preceding the source target in Policy/Rule execution order.
-   * The target is not claimed as matched; this satisfies only the ordered composition contract.
-   */
-  'preemptingMatches': (_tasklattice_guard_control_v1_ValidationExpectedMatch__Output)[];
   'skipped': (boolean);
   'skipReason': (string);
+  /**
+   * Actual target Rule evidence, independent of the final decision.
+   */
+  'evidenceStatus': (_tasklattice_guard_control_v1_ValidationEvidenceStatus__Output);
+  /**
+   * Related interventions explain missing evidence, never automatic acceptance.
+   */
+  'supersededBy': (_tasklattice_guard_control_v1_ValidationExpectedMatch__Output)[];
+  /**
+   * Only actually observed matches on the declared view, never counterfactuals.
+   */
+  'verifiedRuleIds': (string)[];
+  /**
+   * Human-readable explanation of the recorded evidence status.
+   */
+  'evidenceDetail': (string);
+  /**
+   * Effective Rule assertion, including an explicitly reviewed override.
+   */
+  'ruleContractSatisfied': (boolean);
+  /**
+   * Model transport/response health is independent of case assertion quality.
+   */
+  'modelStatus': (string);
+  'executionStatus': (string);
   '_expectedReasoningResult'?: "expectedReasoningResult";
   '_actualReasoningResult'?: "actualReasoningResult";
   '_expectedFailure'?: "expectedFailure";

@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import json
 from dataclasses import replace
+from typing import Any
 
 from .contracts import (
     ContentQualifier,
@@ -106,6 +107,24 @@ def with_active_text(
         kind=kind or view.kind,
         source_digest=view.source_digest,
     )
+
+
+def current_context_messages(request: EngineRequest, text: str) -> tuple[dict[str, Any], ...]:
+    """Keep the current conversation message in sync with ordered transforms.
+
+    History may include a copy of the active input/output. Passing that original
+    alongside transformed content reintroduces redacted data to later models.
+    Only the trailing copy of the active conversation block is replaceable;
+    external content and earlier turns remain independent evidence.
+    """
+    messages = request.context_messages
+    block = request_view(request).active_block
+    role = {"user_input": "user", "model_output": "assistant"}.get(block.role)
+    if (text != block.text and messages and role is not None
+            and messages[-1].get("role") == role
+            and messages[-1].get("content") == block.text):
+        return (*messages[:-1], {**messages[-1], "content": text})
+    return messages
 
 
 def _default_qualifiers(role: ContentRole) -> tuple[ContentQualifier, ...]:

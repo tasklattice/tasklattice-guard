@@ -1,5 +1,7 @@
 import { resolve } from "node:path";
 import { EventEmitter } from "node:events";
+import { createHash } from "node:crypto";
+import { gzipSync } from "node:zlib";
 
 import { describe, expect, it, vi } from "vitest";
 
@@ -8,7 +10,9 @@ import type { ControllerMetrics } from "../metrics.js";
 import type { ModelConfigurationService } from "../model-config/service.js";
 import type { ControlPlaneService } from "../services/control-plane.js";
 import type { RunnerLeaseLedger } from "../services/runner-lease-ledger.js";
+import { ControllerError } from "../domain/errors.js";
 import { RunnerControlServer } from "./control-server.js";
+import { PLAN_COMPILER_VERSION, NEMO_COMPILER_VERSION } from "../domain/artifact-execution-contract.js";
 
 const config = loadConfig({
   NODE_ENV: "test",
@@ -166,13 +170,13 @@ describe("Runner model-configuration convergence", () => {
     const server = new RunnerControlServer(config, service as unknown as ControlPlaneService,
       metricsMock() as unknown as ControllerMetrics, { activeConfiguration: vi.fn().mockResolvedValue(null) } as unknown as ModelConfigurationService);
     const stale = streamMock(), current = streamMock();
-    for (const [id, stream] of [["stale", stale], ["current", current]] as const) {
+    for (const [id, stream] of [["stale-0", stale], ["current-0", current]] as const) {
       const hello = registration(id);
       hello.registration.compilerCapable = true;
       await handle(server, stream, hello, null);
       stream.write.mockClear();
     }
-    service.runnerControlSessions.isCurrent.mockImplementation(async identity => identity.runnerId === "current");
+    service.runnerControlSessions.isCurrent.mockImplementation(async identity => identity.runnerId === "current-0");
     service.deferOutbox.mockImplementation(async () => { service.runnerControlSessions.isCurrent.mockResolvedValue(false); });
     const dispatch = () => (server as unknown as { dispatchValidationRequests(): Promise<void> }).dispatchValidationRequests();
     await dispatch();
@@ -180,7 +184,7 @@ describe("Runner model-configuration convergence", () => {
     expect(current.write).not.toHaveBeenCalled();
     // A missed dispatch is retryable; it must not leave this run marked busy.
     service.deferOutbox.mockResolvedValue(undefined);
-    service.runnerControlSessions.isCurrent.mockImplementation(async identity => identity.runnerId === "current");
+    service.runnerControlSessions.isCurrent.mockImplementation(async identity => identity.runnerId === "current-0");
     await dispatch();
     expect(stale.write).not.toHaveBeenCalled();
     expect(current.write).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({
@@ -439,7 +443,7 @@ describe("Runner model-configuration convergence", () => {
       metricsMock() as unknown as ControllerMetrics, { activeConfiguration: vi.fn().mockResolvedValue(null) } as unknown as ModelConfigurationService);
     const streams = [streamMock(), streamMock()];
     for (const [index, stream] of streams.entries()) {
-      const hello = registration(`compiler-${index}`);
+      const hello = registration(`compiler-${index}-0`);
       hello.registration.poolId = index ? "pool-b" : "pool-a";
       hello.registration.compilerCapable = true;
       await handle(server, stream, hello, null);
@@ -452,15 +456,218 @@ describe("Runner model-configuration convergence", () => {
     expect(server.hasCompilerForPools(["pool-b"])).toBe(true);
     expect(server.hasCompilerForPools(["missing"])).toBe(false);
   });
+  it("retries durable cancellation before new work, even with stale models, until cleanup is acknowledged", async () => {
+    const cancel = { id: "cancel-stop", payload: { runId: "stop" }, createdAt: new Date() };
+    const service = { ...serviceMock(),
+      pendingOutbox: vi.fn(async (kind: string) => kind === "guardrail.validation_cancel_requested" ? [cancel] : []),
+      markOutboxProcessed: vi.fn(), completeValidation: vi.fn(), rejectValidation: vi.fn(), markValidationRunning: vi.fn().mockResolvedValue(true),
+    };
+    const server = new RunnerControlServer(config, service as unknown as ControlPlaneService,
+      metricsMock() as unknown as ControllerMetrics, { activeConfiguration: vi.fn().mockResolvedValue(activeConfiguration("revision-9", 9)) } as unknown as ModelConfigurationService);
+    const stream = streamMock(), hello = registration("compiler-0"); hello.registration.compilerCapable = true;
+    const connection = await handle(server, stream, hello, null);
+    stream.write.mockClear();
+    const dispatch = () => (server as unknown as { dispatchValidationRequests(): Promise<void> }).dispatchValidationRequests();
+    await dispatch(); await dispatch();
+    expect(stream.write).toHaveBeenCalledTimes(2);
+    expect(stream.write).toHaveBeenLastCalledWith(expect.objectContaining({ validationCancelRequest: { runId: "stop" } }));
+    expect(service.markValidationRunning).not.toHaveBeenCalled();
+    await handle(server, stream, { validationStatusNotice: { runnerId: "compiler-0", runId: "stop", reason: "cancelled",
+      status: "VALIDATION_STATUS_CANCELLED" } }, connection);
+    expect(service.markOutboxProcessed).toHaveBeenCalledWith("cancel-stop");
+    expect(service.completeValidation).not.toHaveBeenCalled();
+    expect(service.rejectValidation).not.toHaveBeenCalled();
+  });
+
+  it("does not dispatch a queued snapshot that was cancelled before the claim", async () => {
+    const event = { id: "stop", createdAt: new Date(), payload: { runId: "stop" } };
+    const service = { ...serviceMock(), pendingOutbox: vi.fn(async (kind: string) => kind === "guardrail.validation_requested" ? [event] : []),
+      markValidationRunning: vi.fn().mockResolvedValue(false), deferOutbox: vi.fn() };
+    const server = new RunnerControlServer(config, service as unknown as ControlPlaneService,
+      metricsMock() as unknown as ControllerMetrics, { activeConfiguration: vi.fn().mockResolvedValue(null) } as unknown as ModelConfigurationService);
+    const stream = streamMock(), hello = registration("compiler-0"); hello.registration.compilerCapable = true;
+    await handle(server, stream, hello, null); stream.write.mockClear();
+    await (server as unknown as { dispatchValidationRequests(): Promise<void> }).dispatchValidationRequests();
+    expect(stream.write).not.toHaveBeenCalled();
+    expect(service.deferOutbox).not.toHaveBeenCalled();
+  });
+
+  it("shares the synchronization ceiling across dispatches and reruns a Runner changed mid-flight", async () => {
+    const service = serviceMock();
+    const server = new RunnerControlServer({ ...config, runnerSyncConcurrency: 2 }, service as unknown as ControlPlaneService,
+      metricsMock() as unknown as ControllerMetrics, { activeConfiguration: vi.fn().mockResolvedValue(null) } as unknown as ModelConfigurationService);
+    const streams = Array.from({ length: 6 }, () => streamMock());
+    for (let i = 0; i < streams.length; i++) await handle(server, streams[i]!, registration(`r-${i}`), null);
+    const original = await service.desiredStateForPool();
+    const gate = Promise.withResolvers<void>();
+    let active = 0, peak = 0, generation = 9;
+    service.desiredStateForPool.mockImplementation(async () => {
+      const observed = generation;
+      active++; peak = Math.max(peak, active);
+      await gate.promise; active--;
+      return { ...original, generation: observed };
+    });
+    service.desiredStateForPool.mockClear();
+    const reconcile = () => (server as unknown as { reconcileAll(): Promise<boolean> }).reconcileAll();
+    const first = reconcile();
+    await vi.waitFor(() => expect(active).toBe(2));
+    generation = 10;
+    const second = reconcile();
+    expect(service.desiredStateForPool).toHaveBeenCalledTimes(2);
+    gate.resolve();
+    expect(await Promise.all([first, second])).toEqual([true, true]);
+    expect(peak).toBe(2);
+    for (const stream of streams) expect(stream.write).toHaveBeenLastCalledWith(expect.objectContaining({ desiredState: expect.objectContaining({ generation: "10" }) }));
+  });
+
+  it("releases a failed coherent synchronization before retrying the next Runner", async () => {
+    const service = serviceMock(), models = { activeConfiguration: vi.fn().mockResolvedValue(null) };
+    const server = new RunnerControlServer({ ...config, runnerSyncConcurrency: 1 }, service as unknown as ControlPlaneService,
+      metricsMock() as unknown as ControllerMetrics, models as unknown as ModelConfigurationService);
+    await handle(server, streamMock(), registration("first"), null);
+    await handle(server, streamMock(), registration("second"), null);
+    service.desiredStateForPool.mockClear();
+    service.desiredStateForPool.mockRejectedValueOnce(new Error("database failed"));
+    const logged = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      const work = (server as unknown as { reconcileAll(): Promise<boolean> }).reconcileAll();
+      expect(await work).toBe(false);
+      expect(service.desiredStateForPool).toHaveBeenCalledTimes(2);
+    } finally { logged.mockRestore(); }
+  });
+
+  it("drains a heartbeat and queued report before marking offline", async () => {
+    const heartbeat = Promise.withResolvers<boolean>(), report = Promise.withResolvers<void>(), offline = Promise.withResolvers<void>();
+    const order: string[] = [];
+    const service = { ...serviceMock(), recordHeartbeat: vi.fn(async () => { const result = await heartbeat.promise; order.push("heartbeat"); return result; }),
+      completeValidation: vi.fn(async () => { order.push("report"); await report.promise; }),
+      disconnectRunner: vi.fn(async () => { order.push("offline"); await offline.promise; }) };
+    const server = new RunnerControlServer(config, service as unknown as ControlPlaneService,
+      metricsMock() as unknown as ControllerMetrics, { activeConfiguration: vi.fn().mockResolvedValue(null) } as unknown as ModelConfigurationService);
+    const connect = (stream: ReturnType<typeof streamMock>) => (server as unknown as { connect(stream: unknown): void }).connect(stream);
+    const stream = streamMock(), hello = registration("runner-0"); hello.registration.compilerCapable = true;
+    connect(stream); stream.emit("data", hello);
+    await vi.waitFor(() => expect(stream.write).toHaveBeenCalledTimes(2));
+    const message = { heartbeat: { runnerId: "runner-0", bootId: "boot-runner-0", sequence: "1", appliedGeneration: "9", load: {} } };
+    stream.emit("data", message);
+    await vi.waitFor(() => expect(service.recordHeartbeat).toHaveBeenCalledOnce());
+    (server as any).activeValidations.set("queued-report", (server as any).connections.get("runner-0"));
+    const result = validationMessage(server, { runnerId: "runner-0", runId: "queued-report", accepted: true,
+      status: "VALIDATION_STATUS_PASSED", metrics: { total: 1, passed: 1 }, results: [] });
+    stream.emit("data", result);
+    let stopped = false;
+    const stop = server.stop().then(() => { stopped = true; });
+    stream.emit("data", message);
+    stream.emit("data", result);
+    expect(service.disconnectRunner).not.toHaveBeenCalled();
+    heartbeat.resolve(true);
+    await vi.waitFor(() => expect(service.completeValidation).toHaveBeenCalledOnce());
+    expect(service.disconnectRunner).not.toHaveBeenCalled(); expect(stopped).toBe(false);
+    report.resolve();
+    await vi.waitFor(() => expect(service.disconnectRunner).toHaveBeenCalledOnce());
+    expect(order).toEqual(["heartbeat", "report", "offline"]); expect(stopped).toBe(false);
+    const newcomer = streamMock(), rejected = vi.fn(); newcomer.on("error", rejected); connect(newcomer);
+    expect(rejected).toHaveBeenCalledWith(expect.objectContaining({ code: 14 }));
+    expect(service.recordHeartbeat).toHaveBeenCalledOnce();
+    offline.resolve(); await stop;
+    expect(stopped).toBe(true);
+  });
+
+  it("keeps a desired-state outbox event pending when a reconciliation DB read fails", async () => {
+    const service = { ...serviceMock(), pendingOutbox: vi.fn().mockResolvedValue([{ id: "event-1" }]), markOutboxProcessed: vi.fn() };
+    const server = new RunnerControlServer(config, service as unknown as ControlPlaneService,
+      metricsMock() as unknown as ControllerMetrics,
+      { activeConfiguration: vi.fn().mockResolvedValue(null) } as unknown as ModelConfigurationService);
+    const stream = streamMock();
+    await handle(server, stream, registration("runner"), null);
+    const secret = "PRIVATE_SQL_AND_CREDENTIAL";
+    service.desiredStateForPool.mockRejectedValueOnce(new Error(secret, { cause: Object.assign(new Error(secret), { code: "53300" }) }));
+    const logged = vi.spyOn(console, "error").mockImplementation(() => {});
+    const dispatch = () => (server as unknown as { dispatchDesiredStateChanges(): Promise<void> }).dispatchDesiredStateChanges();
+    try {
+      await dispatch();
+      expect(service.markOutboxProcessed).not.toHaveBeenCalled();
+      expect(logged).toHaveBeenCalledWith(expect.stringContaining('"event":"runner.reconcile_error"'));
+      expect(JSON.stringify(logged.mock.calls)).not.toContain(secret);
+      expect(JSON.parse(logged.mock.calls[0]![0])).toMatchObject({ runnerId: "runner", error: { sqlState: "53300" } });
+      await dispatch();
+      expect(service.markOutboxProcessed).toHaveBeenCalledExactlyOnceWith("event-1");
+    } finally { logged.mockRestore(); }
+  });
+
+  it.each(["guardrail.validation_requested", "policy.validation_requested"])("waits for applied model assignments before dispatching %s", async kind => {
+    const event = { id: "model-job", createdAt: new Date(), payload: { runId: "model-run", testCases: [],
+      plan: { guardrail_version: "20261026-030000.000Z", safety_level: "strict", output_delivery: "full_buffered" } } };
+    const service = { ...serviceMock(), pendingOutbox: vi.fn(async (type: string) => type === kind ? [event] : []),
+      markValidationRunning: vi.fn().mockResolvedValue(true), deferOutbox: vi.fn() };
+    const models = { activeConfiguration: vi.fn().mockResolvedValue(activeConfiguration("revision-9", 9)), finalizeActivation: vi.fn() };
+    const server = new RunnerControlServer(config, service as unknown as ControlPlaneService,
+      metricsMock() as unknown as ControllerMetrics, models as unknown as ModelConfigurationService);
+    const stream = streamMock(), hello = registration("compiler-0");
+    hello.registration.compilerCapable = true;
+    const connection = await handle(server, stream, hello, null);
+    const dispatch = () => (server as unknown as { dispatchValidationRequests(): Promise<void> }).dispatchValidationRequests();
+    stream.write.mockClear();
+    await dispatch();
+    expect(service.markValidationRunning).not.toHaveBeenCalled();
+    expect(stream.write).not.toHaveBeenCalled();
+    await handle(server, stream, desiredResult("compiler-0", true), connection);
+    // A delayed acknowledgement cannot roll back the dependency identity.
+    await handle(server, stream, { desiredStateResult: { runnerId: "compiler-0", accepted: true, generation: "8", modelRevisionId: "revision-8" } }, connection);
+    await dispatch();
+    expect(service.markValidationRunning).toHaveBeenCalledExactlyOnceWith("model-job");
+    expect(stream.write).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ validationRequest: expect.objectContaining({ runId: "model-run" }) }));
+  });
+
+  it("waits for ordinal 0 even while ordinal 1 has synchronized models", async () => {
+    const event = { id: "job", createdAt: new Date(), payload: { runId: "run", testCases: [], plan: { guardrail_version: "20261026-030000.000Z", safety_level: "strict", output_delivery: "full_buffered" } } };
+    const service = { ...serviceMock(), pendingOutbox: vi.fn(async (kind: string) => kind === "guardrail.validation_requested" ? [event] : []),
+      markValidationRunning: vi.fn().mockResolvedValue(true), deferOutbox: vi.fn() };
+    const models = { activeConfiguration: vi.fn().mockResolvedValue(activeConfiguration("revision-9", 9)), finalizeActivation: vi.fn() };
+    const server = new RunnerControlServer(config, service as unknown as ControlPlaneService,
+      metricsMock() as unknown as ControllerMetrics, models as unknown as ModelConfigurationService);
+    const streams = [streamMock(), streamMock()];
+    for (const [index, stream] of streams.entries()) {
+      const hello = registration(`compiler-${index}`); hello.registration.compilerCapable = true;
+      const connection = await handle(server, stream, hello, null);
+      if (index === 1) await handle(server, stream, desiredResult("compiler-1", true), connection);
+      stream.write.mockClear();
+    }
+    await (server as unknown as { dispatchValidationRequests(): Promise<void> }).dispatchValidationRequests();
+    expect(streams[0]!.write).not.toHaveBeenCalled();
+    expect(streams[1]!.write).not.toHaveBeenCalled();
+    expect(service.markValidationRunning).not.toHaveBeenCalled();
+  });
+
+  it("reports synchronization as pending and retries environment admission after the model ACK", async () => {
+    const models = { activeConfiguration: vi.fn().mockResolvedValue(activeConfiguration("revision-9", 9)), finalizeActivation: vi.fn() };
+    const server = new RunnerControlServer(config, serviceMock() as unknown as ControlPlaneService,
+      metricsMock() as unknown as ControllerMetrics, models as unknown as ModelConfigurationService);
+    const stream = streamMock();
+    const connection = await handle(server, stream, registration("runner"), null);
+    const artifact = { id: "artifact", generation: 1, checksum: "digest", signature: "signature", guardrailId: "guard", guardrailVersion: "20261026-030000.000Z",
+      compilerVersion: NEMO_COMPILER_VERSION, nemoVersion: "test", runtimeProfile: "auto", plan: { compiler_version: PLAN_COMPILER_VERSION, guardrail_version: "20261026-030000.000Z", safety_level: "strict", output_delivery: "full_buffered" }, configYaml: "", colangContent: "", prompts: [], actionBindings: [], dependencyManifest: [] };
+    stream.write.mockClear();
+    expect(await server.checkArtifactAdmission(artifact)).toEqual([expect.objectContaining({ unavailable: true, admitted: false, reason: expect.stringContaining("still applying") })]);
+    expect(stream.write).not.toHaveBeenCalled();
+    await handle(server, stream, desiredResult("runner", true), connection);
+    const checking = server.checkArtifactAdmission(artifact);
+    await vi.waitFor(() => expect(stream.write).toHaveBeenCalledOnce());
+    const { requestId } = stream.write.mock.calls[0]![0].artifactAdmissionRequest;
+    await handle(server, stream, { artifactAdmissionResult: { requestId, runnerId: "runner", admitted: true, reason: "", nemoVersion: "test", modelRevisionId: "revision-9" } }, connection);
+    expect(await checking).toEqual([expect.objectContaining({ unavailable: false, admitted: true, modelRevisionId: "revision-9" })]);
+    await server.stop();
+  });
+
   it("keeps a long test assigned across retry ticks, serializes dispatch and retries after disconnect", async () => {
     const event = { id: "job-1", createdAt: new Date(), payload: { runId: "run-1", testCases: [], plan: { guardrail_version: "20261012-030000.000Z", safety_level: "strict", output_delivery: "full_buffered" } } };
     const service = { ...serviceMock(), pendingOutbox: vi.fn(async (kind: string) => kind === "guardrail.validation_requested" ? [event] : []),
-      markValidationRunning: vi.fn(), deferOutbox: vi.fn(), rejectValidation: vi.fn() };
+      markValidationRunning: vi.fn().mockResolvedValue(true), deferOutbox: vi.fn(), rejectValidation: vi.fn() };
     const server = new RunnerControlServer(config, service as unknown as ControlPlaneService,
       metricsMock() as unknown as ControllerMetrics, { activeConfiguration: vi.fn().mockResolvedValue(null) } as unknown as ModelConfigurationService);
     const dispatch = () => (server as unknown as { dispatchValidationRequests(): Promise<void> }).dispatchValidationRequests();
     const stream = streamMock();
-    const hello = registration("compiler");
+    const hello = registration("compiler-0");
     hello.registration.compilerCapable = true;
     await handle(server, stream, hello, null);
     stream.write.mockClear();
@@ -469,20 +676,21 @@ describe("Runner model-configuration convergence", () => {
     await dispatch();
     expect(stream.write).toHaveBeenCalledOnce();
     expect(service.markValidationRunning).toHaveBeenCalledOnce();
-    server.removeRunnerConnection("compiler", "boot-compiler");
+    server.removeRunnerConnection("compiler-0", "boot-compiler-0");
     const replacement = streamMock();
     const connection = await handle(server, replacement, hello, null);
     replacement.write.mockClear();
     await dispatch();
     expect(replacement.write).toHaveBeenCalledOnce();
-    await handle(server, replacement, { validationResult: { runnerId: "compiler", runId: "run-1", accepted: false, reason: "test failed" } }, connection);
+    await handle(server, replacement, { validationStatusNotice: { runnerId: "compiler-0", runId: "run-1", status: "VALIDATION_STATUS_FAILED", reason: "test failed" } }, connection);
     event.id = "job-2";
     event.payload.runId = "run-2";
     await dispatch();
-    expect(replacement.write).toHaveBeenCalledTimes(2);
+    expect(replacement.write.mock.calls.filter(([message]) => message.validationRequest)).toHaveLength(2);
+    expect(replacement.write).toHaveBeenCalledWith(expect.objectContaining({ validationReportAck: { runId: "run-1" } }));
   });
 
-  it("dispatches the next queued job to an idle compiler while an older job is still running", async () => {
+  it("keeps subsequent tests queued instead of moving them to ordinal 1", async () => {
     const events = ["run-1", "run-2"].map((runId, index) => ({
       id: runId, createdAt: new Date(index), payload: { runId, testCases: [],
         plan: { guardrail_version: "20261012-030000.000Z", safety_level: "strict", output_delivery: "full_buffered" } },
@@ -491,7 +699,7 @@ describe("Runner model-configuration convergence", () => {
       pendingOutbox: vi.fn(async (kind: string, limit: number, excludedRunIds: string[] = []) =>
         kind === "guardrail.validation_requested"
           ? events.filter(event => !excludedRunIds.includes(event.payload.runId)).slice(0, limit) : []),
-      markValidationRunning: vi.fn(), deferOutbox: vi.fn(),
+      markValidationRunning: vi.fn().mockResolvedValue(true), deferOutbox: vi.fn(),
     };
     const server = new RunnerControlServer(config, service as unknown as ControlPlaneService,
       metricsMock() as unknown as ControllerMetrics, { activeConfiguration: vi.fn().mockResolvedValue(null) } as unknown as ModelConfigurationService);
@@ -509,9 +717,8 @@ describe("Runner model-configuration convergence", () => {
     expect(streams[0]!.write).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({
       validationRequest: expect.objectContaining({ runId: "run-1" }),
     }));
-    expect(streams[1]!.write).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({
-      validationRequest: expect.objectContaining({ runId: "run-2" }),
-    }));
+    expect(streams[1]!.write).not.toHaveBeenCalled();
+    expect(service.markValidationRunning).toHaveBeenCalledOnce();
   });
 
   it("accepts validation progress only from the registered compiler identity", async () => {
@@ -524,11 +731,11 @@ describe("Runner model-configuration convergence", () => {
     const server = new RunnerControlServer(config, service as unknown as ControlPlaneService,
       metricsMock() as unknown as ControllerMetrics, { activeConfiguration: vi.fn().mockResolvedValue(null) } as unknown as ModelConfigurationService);
     const stream = streamMock();
-    const hello = registration("compiler");
+    const hello = registration("compiler-0");
     hello.registration.compilerCapable = true;
     const connection = await handle(server, stream, hello, null);
     await (server as unknown as { dispatchValidationRequests(): Promise<void> }).dispatchValidationRequests();
-    const progress = { runnerId: "compiler", runId: "run-1", phase: "VALIDATION_EXECUTION_PHASE_EXECUTING", completedCases: 3, passedCases: 2 };
+    const progress = { runnerId: "compiler-0", runId: "run-1", phase: "VALIDATION_EXECUTION_PHASE_EXECUTING", completedCases: 3, passedCases: 2 };
     await handle(server, stream, { validationProgress: progress }, connection);
     expect(updateValidationProgress).toHaveBeenCalledWith("run-1", { phase: "executing", completedCases: 3, passedCases: 2 });
     await expect(handle(server, stream, { validationProgress: { ...progress, runnerId: "other" } }, connection)).rejects.toThrow("identity");
@@ -546,16 +753,16 @@ describe("Runner model-configuration convergence", () => {
     const server = new RunnerControlServer(config, service as unknown as ControlPlaneService,
       metrics as unknown as ControllerMetrics, { activeConfiguration: vi.fn().mockResolvedValue(null) } as unknown as ModelConfigurationService);
     const ownStream = streamMock(), foreignStream = streamMock();
-    const ownHello = registration("compiler-a"), foreignHello = registration("compiler-b");
+    const ownHello = registration("compiler-a-0"), foreignHello = registration("compiler-b-0");
     ownHello.registration.poolId = "pool-a"; foreignHello.registration.poolId = "pool-b";
     ownHello.registration.compilerCapable = foreignHello.registration.compilerCapable = true;
     const owner = await handle(server, ownStream, ownHello, null);
     const foreign = await handle(server, foreignStream, foreignHello, null);
-    const progress = (runId: string, runnerId = "compiler-a") => ({ validationProgress: {
+    const progress = (runId: string, runnerId = "compiler-a-0") => ({ validationProgress: {
       runnerId, runId, phase: "VALIDATION_EXECUTION_PHASE_EXECUTING", completedCases: 1, passedCases: 1,
     } });
-    const result = (runId: string, runnerId = "compiler-a") => ({ validationResult: {
-      runnerId, runId, accepted: false, reason: "failure",
+    const result = (runId: string, runnerId = "compiler-a-0") => ({ validationStatusNotice: {
+      runnerId, runId, status: "VALIDATION_STATUS_FAILED", reason: "failure",
     } });
     await handle(server, ownStream, progress("guessed-run"), owner);
     await handle(server, ownStream, result("guessed-run"), owner);
@@ -563,8 +770,8 @@ describe("Runner model-configuration convergence", () => {
     expect(service.rejectValidation).not.toHaveBeenCalled();
     expect(metrics.observeJob).not.toHaveBeenCalled();
     await (server as unknown as { dispatchValidationRequests(): Promise<void> }).dispatchValidationRequests();
-    await expect(handle(server, foreignStream, progress("run-owned", "compiler-b"), foreign)).rejects.toThrow("another Runner stream");
-    await expect(handle(server, foreignStream, result("run-owned", "compiler-b"), foreign)).rejects.toThrow("another Runner stream");
+    await expect(handle(server, foreignStream, progress("run-owned", "compiler-b-0"), foreign)).rejects.toThrow("another Runner stream");
+    await expect(handle(server, foreignStream, result("run-owned", "compiler-b-0"), foreign)).rejects.toThrow("another Runner stream");
     expect(service.updateValidationProgress).not.toHaveBeenCalled();
     expect(service.rejectValidation).not.toHaveBeenCalled();
     await handle(server, ownStream, progress("run-owned"), owner);
@@ -583,8 +790,8 @@ describe("Runner model-configuration convergence", () => {
     const stream = streamMock();
     const hello = registration("admission-runner");
     await handle(server, stream, hello, null);
-    const pending = server.checkArtifactAdmission({ guardrailVersion: "20261012-030000.000Z",
-      plan: { guardrail_version: "20261012-030000.000Z", safety_level: "strict", output_delivery: "full_buffered" } } as never);
+    const pending = server.checkArtifactAdmission({ compilerVersion: NEMO_COMPILER_VERSION, actionBindings: [], guardrailVersion: "20261012-030000.000Z",
+      plan: { compiler_version: PLAN_COMPILER_VERSION, guardrail_version: "20261012-030000.000Z", safety_level: "strict", output_delivery: "full_buffered" } } as never);
     await vi.waitFor(() => expect(stream.write.mock.calls.some(([message]) => message.artifactAdmissionRequest)).toBe(true));
     const request = stream.write.mock.calls.map(([message]) => message.artifactAdmissionRequest).find(Boolean);
     const replacement = streamMock();
@@ -605,13 +812,13 @@ describe("Runner model-configuration convergence", () => {
       markValidationRunning: vi.fn(), deferOutbox: vi.fn(() => bookkeeping), rejectValidation: vi.fn() };
     const server = new RunnerControlServer(config, service as unknown as ControlPlaneService,
       metricsMock() as unknown as ControllerMetrics, { activeConfiguration: vi.fn().mockResolvedValue(null) } as unknown as ModelConfigurationService);
-    const stream = streamMock(), hello = registration("compiler");
+    const stream = streamMock(), hello = registration("compiler-0");
     hello.registration.compilerCapable = true;
     const connection = await handle(server, stream, hello, null);
     stream.write.mockClear();
     const dispatching = (server as unknown as { dispatchValidationRequests(): Promise<void> }).dispatchValidationRequests();
     await vi.waitFor(() => expect(service.deferOutbox).toHaveBeenCalledOnce());
-    const result = { validationResult: { runnerId: "compiler", runId: "run-pending", accepted: false, reason: "guessed" } };
+    const result = { validationStatusNotice: { runnerId: "compiler-0", runId: "run-pending", status: "VALIDATION_STATUS_FAILED", reason: "guessed" } };
     await handle(server, stream, result, connection);
     expect(service.rejectValidation).not.toHaveBeenCalled();
     expect(stream.write).not.toHaveBeenCalled();
@@ -632,15 +839,15 @@ describe("Runner model-configuration convergence", () => {
     const connect = (stream: ReturnType<typeof streamMock>) => (server as unknown as { connect: (stream: unknown) => void }).connect(stream);
     const stream = streamMock();
     connect(stream);
-    const hello = registration("compiler");
+    const hello = registration("compiler-0");
     hello.registration.compilerCapable = true;
     stream.emit("data", hello);
     await vi.waitFor(() => expect(stream.write).toHaveBeenCalledTimes(2));
     expect(server.hasDefaultCompiler()).toBe(true);
 
-    server.removeRunnerConnection("compiler", "different-boot");
+    server.removeRunnerConnection("compiler-0", "different-boot");
     expect(stream.end).not.toHaveBeenCalled();
-    server.removeRunnerConnection("compiler", "boot-compiler");
+    server.removeRunnerConnection("compiler-0", "boot-compiler-0");
     expect(stream.end).toHaveBeenCalledOnce();
     expect(server.hasDefaultCompiler()).toBe(false);
 
@@ -650,7 +857,7 @@ describe("Runner model-configuration convergence", () => {
     await vi.waitFor(() => expect(replacement.write).toHaveBeenCalledTimes(2));
     stream.emit("close");
     stream.emit("end");
-    stream.emit("data", desiredResult("compiler", true));
+    stream.emit("data", desiredResult("compiler-0", true));
     await new Promise(resolve => setTimeout(resolve, 0));
     expect(service.disconnectRunner).not.toHaveBeenCalled();
     expect(models.finalizeActivation).not.toHaveBeenCalled();
@@ -658,14 +865,96 @@ describe("Runner model-configuration convergence", () => {
     expect(replacement.end).not.toHaveBeenCalled();
     replacement.emit("close");
     replacement.emit("end");
-    expect(service.disconnectRunner).toHaveBeenCalledOnce();
+    await vi.waitFor(() => expect(service.disconnectRunner).toHaveBeenCalledOnce());
+  });
+  it.each(["end", "close", "error"])("contains a database failure during Runner %s", async event => {
+    const failure = new Error("timeout exceeded when trying to connect");
+    const service = { ...serviceMock(), disconnectRunner: vi.fn().mockRejectedValue(failure) };
+    const metrics = metricsMock();
+    const server = new RunnerControlServer(config, service as unknown as ControlPlaneService,
+      metrics as unknown as ControllerMetrics, { activeConfiguration: vi.fn().mockResolvedValue(null) } as unknown as ModelConfigurationService);
+    const stream = streamMock(), hello = registration("compiler-0");
+    hello.registration.compilerCapable = true;
+    const logged = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      (server as unknown as { connect(stream: unknown): void }).connect(stream);
+      stream.emit("data", hello);
+      await vi.waitFor(() => expect(stream.write).toHaveBeenCalledTimes(2));
+      stream.emit(event, new Error("Runner transport closed"));
+      await vi.waitFor(() => expect(logged).toHaveBeenCalledWith(expect.stringContaining('"event":"runner.disconnect_error"')));
+      expect(JSON.parse(logged.mock.calls[0]![0])).toMatchObject({ runnerId: "compiler-0", bootId: "boot-compiler-0",
+        error: { category: "pool_acquire_timeout", code: null, sqlState: null } });
+      expect(server.hasDefaultCompiler()).toBe(false);
+      expect(metrics.controlConnection).toHaveBeenLastCalledWith("default", false);
+      stream.emit("close");
+      stream.emit("end");
+      expect(service.disconnectRunner).toHaveBeenCalledOnce();
+    } finally { logged.mockRestore(); }
+  });
+
+  it("redispatches a report after its database write fails", async () => {
+    const secret = "PRIVATE_REPORT_AND_CREDENTIAL";
+    const failure = Object.assign(new Error(`Failed query: ${secret}`), { params: [secret],
+      cause: Object.assign(new Error(secret), { code: "55P03", detail: secret }) });
+    const event = { id: "run", createdAt: new Date(), payload: { runId: "run", testCases: [],
+      plan: { guardrail_version: "20261026-030000.000Z", safety_level: "strict", output_delivery: "full_buffered" } } };
+    let processed = false;
+    const service = { ...serviceMock(),
+      pendingOutbox: vi.fn(async (kind: string) => kind === "guardrail.validation_requested" && !processed ? [event] : []),
+      markValidationRunning: vi.fn().mockResolvedValue(true), deferOutbox: vi.fn(), updateValidationProgress: vi.fn(),
+      completeValidation: vi.fn().mockRejectedValueOnce(failure).mockImplementation(async () => { processed = true; }),
+      disconnectRunner: vi.fn().mockRejectedValueOnce(failure).mockResolvedValue(undefined),
+    };
+    const server = new RunnerControlServer(config, service as unknown as ControlPlaneService,
+      metricsMock() as unknown as ControllerMetrics, { activeConfiguration: vi.fn().mockResolvedValue(null) } as unknown as ModelConfigurationService);
+    const control = server as unknown as { connect(stream: unknown): void; dispatchValidationRequests(): Promise<void> };
+    const hello = registration("compiler-0"); hello.registration.compilerCapable = true;
+    const result = validationMessage(server, { runnerId: "compiler-0", runId: "run", accepted: true,
+      status: "VALIDATION_STATUS_PASSED", metrics: { total: 1, passed: 1 }, results: [] });
+    const logged = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      const stream = streamMock();
+      const wireError = vi.fn();
+      stream.on("error", wireError);
+      control.connect(stream);
+      stream.emit("data", hello);
+      await vi.waitFor(() => expect(stream.write).toHaveBeenCalledTimes(2));
+      await control.dispatchValidationRequests();
+      stream.emit("data", { validationProgress: { runnerId: "compiler-0", runId: "run",
+        phase: "VALIDATION_EXECUTION_PHASE_FINALIZING", completedCases: 1, passedCases: 1 } });
+      stream.emit("data", result);
+      await vi.waitFor(() => expect(logged).toHaveBeenCalledWith(expect.stringContaining('"event":"runner.disconnect_error"')));
+      expect(JSON.stringify(logged.mock.calls)).not.toContain(secret);
+      expect(logged.mock.calls.map(([line]) => JSON.parse(line)).find(item => item.event === "runner.control_error"))
+        .toMatchObject({ runId: "run", error: { sqlState: "55P03" } });
+      expect(wireError).toHaveBeenCalledWith(expect.objectContaining({ message: "Runner control request failed (55P03)." }));
+      expect(processed).toBe(false);
+      expect(server.hasDefaultCompiler()).toBe(false);
+      expect(service.updateValidationProgress).toHaveBeenCalledWith("run", { phase: "finalizing", completedCases: 1, passedCases: 1 });
+
+      const replacement = streamMock();
+      control.connect(replacement);
+      replacement.emit("data", hello);
+      await vi.waitFor(() => expect(replacement.write).toHaveBeenCalledTimes(2));
+      await control.dispatchValidationRequests();
+      expect(replacement.write).toHaveBeenLastCalledWith(expect.objectContaining({
+        validationRequest: expect.objectContaining({ runId: "run" }),
+      }));
+      replacement.emit("data", result);
+      await vi.waitFor(() => expect(processed).toBe(true));
+      expect(service.completeValidation).toHaveBeenCalledTimes(2);
+      replacement.write.mockClear();
+      await control.dispatchValidationRequests();
+      expect(replacement.write).not.toHaveBeenCalled();
+      replacement.emit("end");
+    } finally { logged.mockRestore(); }
   });
   it.each([true, false])("accepts Rail evidence only from the assigned Runner with both verdicts (complete=%s)", async (complete) => {
     const models = { activeConfiguration: vi.fn().mockResolvedValue(null) };
     const server = new RunnerControlServer(config, serviceMock() as unknown as ControlPlaneService,
       metricsMock() as unknown as ControllerMetrics, models as unknown as ModelConfigurationService);
     const stream = streamMock();
-    const hello = registration("compiler");
+    const hello = registration("compiler-0");
     hello.registration.compilerCapable = true;
     const connection = await handle(server, stream, hello, null);
     const otherStream = streamMock();
@@ -798,6 +1087,7 @@ it.each([{ epoch: 0, groupId: "foreign" }, { epoch: 1, groupId: "default" }])("d
 function serviceMock() {
   return {
     runnerControlSessions: { isCurrent: vi.fn().mockResolvedValue(true), dispatched: vi.fn().mockResolvedValue(true), dispatchedAllocation: vi.fn().mockResolvedValue({ epoch: 0, groupId: "default" }), acknowledged: vi.fn().mockResolvedValue(true) },
+    reportResults: { stage: vi.fn().mockResolvedValue(true) },
     registerRunner: vi.fn().mockResolvedValue(9),
     desiredStateForPool: vi.fn().mockResolvedValue({
       generation: 9,
@@ -811,7 +1101,7 @@ function serviceMock() {
       guardrailLoggingLevels: {},
     }),
     desiredGeneration: vi.fn().mockResolvedValue(9),
-    disconnectRunner: vi.fn(),
+    disconnectRunner: vi.fn().mockResolvedValue(undefined),
   };
 }
 
@@ -898,4 +1188,128 @@ it("sends protection modes before a failing model rollout and rejects foreign ac
   for (const result of [{ runnerId: "other", generation: "9" }, { runnerId: "runner-mode", generation: "11" }]) {
     await expect(handle(server, stream, { protectionResult: { ...result, accepted: true } }, connection)).rejects.toThrow("does not match");
   }
+});
+
+it("compiles independently of tests, correlates the Runner boot, and recovers from disconnect", async () => {
+  const service = { ...serviceMock(), setArtifactCompiler: vi.fn() };
+  const server = new RunnerControlServer(config, service as unknown as ControlPlaneService,
+    metricsMock() as unknown as ControllerMetrics, { activeConfiguration: vi.fn().mockResolvedValue(null) } as unknown as ModelConfigurationService);
+  expect(service.setArtifactCompiler).toHaveBeenCalledOnce();
+  const request = { guardrailId: "guard", guardrailVersion: "20261026-010000.000Z", runtimeProfile: "auto", plan: { guardrail_id: "guard", guardrail_version: "20261026-010000.000Z", safety_level: "strict", output_delivery: "full_buffered" } };
+  await expect(server.compileArtifact(request)).rejects.toMatchObject({ code: "guardrail_compiler_unavailable" });
+  const stream = streamMock(), hello = registration("offline");
+  hello.registration.compilerCapable = true;
+  const oldConnection = await handle(server, stream, hello, null);
+  await expect(server.compileArtifact(request)).rejects.toMatchObject({ code: "guardrail_compiler_unavailable" });
+  server.removeRunnerConnection("offline", "boot-offline");
+  hello.registration.bootId = "upgraded";
+  hello.registration.labels = { "tasklattice.offline-compilation": "1" };
+  const connection = await handle(server, stream, hello, null);
+  const pending = server.compileArtifact(request);
+  await vi.waitFor(() => expect(stream.write.mock.calls.at(-1)![0].artifactCompilationRequest).toBeDefined());
+  const command = stream.write.mock.calls.at(-1)![0].artifactCompilationRequest;
+  expect(command).toMatchObject({ guardrailId: "guard", guardrailVersion: "20261026-010000.000Z" });
+  const failure = { artifactCompilationResult: { compileId: command.compileId, runnerId: "offline", error: "Invalid plan" } };
+  await handle(server, stream, failure, oldConnection);
+  await handle(server, stream, { artifactCompilationResult: { ...failure.artifactCompilationResult, runnerId: "foreign" } }, connection);
+  const rejected = expect(pending).rejects.toMatchObject({ code: "guardrail_compilation_failed", message: "Invalid plan" });
+  await handle(server, stream, failure, connection);
+  await rejected;
+  const interrupted = expect(server.compileArtifact(request)).rejects.toMatchObject({ code: "guardrail_compilation_failed" });
+  await vi.waitFor(() => expect((server as any).compilations.size).toBe(1));
+  server.removeRunnerConnection("offline", "upgraded");
+  await interrupted;
+  expect((server as any).compilations.size).toBe(0);
+});
+
+it("rejects old artifacts before load checks and desired-state dispatch without capability negotiation", async () => {
+  const artifact = { id: "old-artifact", generation: 10, checksum: "digest", signature: "signature", guardrailId: "guard", guardrailVersion: "20261026-010000.000Z",
+    compilerVersion: "unsupported-compiler", nemoVersion: "test", runtimeProfile: "auto",
+    plan: { compiler_version: "unsupported-plan" }, configYaml: "", colangContent: "", prompts: [], actionBindings: [], dependencyManifest: [] };
+  const service = { ...serviceMock(), desiredStateForPool: vi.fn().mockResolvedValue({ generation: 10, artifacts: [artifact],
+    disabledGuardrailIds: [], disabledEndpointIds: [], endpoints: [], guardrailLoggingLevels: {} }),
+    trafficRouting: { reportRolloutFailure: vi.fn() } };
+  const server = new RunnerControlServer(config, service as unknown as ControlPlaneService, metricsMock() as unknown as ControllerMetrics,
+    { activeConfiguration: vi.fn().mockResolvedValue(null) } as unknown as ModelConfigurationService);
+  const stream = streamMock();
+  await handle(server, stream, registration("runner"), null);
+  expect(stream.write.mock.calls.some(([message]) => message.desiredState)).toBe(false);
+  expect(service.trafficRouting.reportRolloutFailure).toHaveBeenCalledWith(10, "runner", expect.stringContaining("artifact_recompile_required"));
+  stream.write.mockClear();
+  expect(await server.checkArtifactAdmission(artifact)).toEqual([expect.objectContaining({ admitted: false, unavailable: false,
+    reason: expect.stringContaining("Recompile and publish a new Guardrail version") })]);
+  expect(stream.write).not.toHaveBeenCalled();
+  await server.stop();
+});
+
+it("dispatches compilation, tests, load checks and rollout without view capability negotiation", async () => {
+  const plan = { guardrail_version: "20261026-010000.000Z", compiler_version: "tasklattice-controller-plan-v1",
+    safety_level: "strict", output_delivery: "full_buffered" };
+  const artifact = { id: "new-artifact", generation: 10, checksum: "digest", signature: "signature", guardrailId: "guard", guardrailVersion: plan.guardrail_version,
+    compilerVersion: NEMO_COMPILER_VERSION, nemoVersion: "test", runtimeProfile: "auto", plan, configYaml: "", colangContent: "", prompts: [], actionBindings: [], dependencyManifest: [] };
+  const event = { id: "new-test", createdAt: new Date(), payload: { runId: "new-run", testCases: [], plan } };
+  const desired = { generation: 10, artifacts: [artifact], disabledGuardrailIds: [], disabledEndpointIds: [], routers: [], endpoints: [], guardrailLoggingLevels: {} };
+  const service = { ...serviceMock(), desiredStateForPool: vi.fn().mockResolvedValue(desired),
+    trafficRouting: { reportRolloutFailure: vi.fn() },
+    pendingOutbox: vi.fn(async (kind: string) => kind === "guardrail.validation_requested" ? [event] : []),
+    markValidationRunning: vi.fn().mockResolvedValue(true), deferOutbox: vi.fn() };
+  const server = new RunnerControlServer(config, service as unknown as ControlPlaneService,
+    metricsMock() as unknown as ControllerMetrics, { activeConfiguration: vi.fn().mockResolvedValue(null) } as unknown as ModelConfigurationService);
+  const stream = streamMock();
+  const hello = registration("runner-0"); hello.registration.compilerCapable = true;
+  hello.registration.labels = { "tasklattice.offline-compilation": "1" };
+  const connection = await handle(server, stream, hello, null);
+  expect(stream.write.mock.calls.some(([message]) => message.desiredState?.artifacts[0]?.artifactId === "new-artifact")).toBe(true);
+  stream.write.mockClear();
+  const dispatch = () => (server as unknown as { dispatchValidationRequests(): Promise<void> }).dispatchValidationRequests();
+  await dispatch();
+  expect(stream.write.mock.calls.some(([message]) => message.validationRequest?.runId === "new-run")).toBe(true);
+  const pending = server.compileArtifact({ guardrailId: "guard", guardrailVersion: plan.guardrail_version, runtimeProfile: "auto", plan });
+  await vi.waitFor(() => expect(stream.write.mock.calls.at(-1)![0].artifactCompilationRequest).toBeDefined());
+  const compile = stream.write.mock.calls.at(-1)![0].artifactCompilationRequest;
+  const failed = expect(pending).rejects.toMatchObject({ code: "guardrail_compilation_failed" });
+  await handle(server, stream, { artifactCompilationResult: { compileId: compile.compileId, runnerId: "runner-0", error: "Synthetic compile rejection" } }, connection);
+  await failed;
+  const checking = server.checkArtifactAdmission(artifact);
+  await vi.waitFor(() => expect(stream.write.mock.calls.at(-1)![0].artifactAdmissionRequest).toBeDefined());
+  const load = stream.write.mock.calls.at(-1)![0].artifactAdmissionRequest;
+  await handle(server, stream, { artifactAdmissionResult: { requestId: load.requestId, runnerId: "runner-0", admitted: true, reason: "", nemoVersion: "test", modelRevisionId: "" } }, connection);
+  expect(await checking).toEqual([expect.objectContaining({ admitted: true, runnerId: "runner-0" })]);
+  await server.stop();
+});
+
+function validationMessage(server: RunnerControlServer, result: { runnerId: string; runId: string; [key: string]: unknown }) {
+  const codec = (server as unknown as { validationResultCodec: { serialize(value: object): Buffer } }).validationResultCodec;
+  const bytes = codec.serialize({...result,metrics:{total:0,passed:0}}), digest=createHash("sha256").update(bytes).digest("hex");
+  return { body:"validationReportChunk", validationReportChunk:{runnerId:result.runnerId,runId:result.runId,uploadId:"fixture",
+    sequence:0,chunks:1,cases:0,caseOffset:0,final:true,manifestDigest:createHash("sha256").update(digest).digest("hex"),
+    gzipResult:gzipSync(bytes),rawSizeBytes:bytes.length,sha256:digest} };
+}
+
+
+it.each([413, 429])("only acknowledges permanent chunk rejection after its durable failure (%s)", async status => {
+  const persisted = Promise.withResolvers<void>();
+  const service = { ...serviceMock(), reportResults: { stage: vi.fn().mockRejectedValue(new ControllerError("budget", status, "report_busy")) },
+    rejectValidation: vi.fn(() => persisted.promise) };
+  const server = new RunnerControlServer(config, service as unknown as ControlPlaneService, metricsMock() as unknown as ControllerMetrics,
+    { activeConfiguration: vi.fn().mockResolvedValue(null) } as unknown as ModelConfigurationService);
+  const stream = streamMock(), hello = registration("runner-0"); hello.registration.compilerCapable = true;
+  const connection = await handle(server, stream, hello, null);
+  const codec = (server as unknown as { validationResultCodec: { serialize(value: unknown): Buffer } }).validationResultCodec;
+  const bytes = codec.serialize({ runnerId: "runner-0", runId: "run", accepted: true, results: [] });
+  stream.write.mockClear();
+  (server as any).activeValidations.set("run", connection);
+  const pending = handle(server, stream, { validationReportChunk: { runnerId: "runner-0", runId: "run", uploadId: "upload", sequence: 0,
+    rawSizeBytes: bytes.length, gzipResult: gzipSync(bytes), sha256: createHash("sha256").update(bytes).digest("hex"), final: false } }, connection);
+  if (status === 429) {
+    await expect(pending).rejects.toMatchObject({ status: 429 });
+    expect(service.rejectValidation).not.toHaveBeenCalled();
+    expect(stream.write).not.toHaveBeenCalled();
+  } else {
+    await vi.waitFor(() => expect(service.rejectValidation).toHaveBeenCalledOnce());
+    expect(stream.write).not.toHaveBeenCalled();
+    persisted.resolve(); await pending;
+    expect(stream.write).toHaveBeenCalledWith(expect.objectContaining({ validationReportChunkAck: expect.objectContaining({ rejectionCode: "report_rejected" }) }));
+  }
+  await server.stop();
 });

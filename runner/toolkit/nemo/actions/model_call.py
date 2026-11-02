@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 import time
 import uuid
 from contextlib import contextmanager
@@ -10,7 +11,10 @@ from dataclasses import dataclass, field
 from typing import Any, AsyncIterator, Iterator, Protocol
 
 import httpx
+from aiohttp import ClientConnectionError, ClientResponseError
+from ...runtime.failures import Failure, ModelConfigurationError, ModelResponseError
 from nemoguardrails import Guardrails
+from nemoguardrails.exceptions import LLMClientError, LLMConnectionError, LLMResponseValidationError, LLMTimeoutError
 from nemoguardrails.types import ChatMessage, LLMResponse, LLMResponseChunk
 from opentelemetry import trace
 from opentelemetry.trace import Status, StatusCode
@@ -19,6 +23,7 @@ from .contracts import ActionRequest, ModelCallResult, ModelCallUsage
 
 
 _COST_CALLS: ContextVar[list[ModelCallUsage] | None] = ContextVar("guard_cost_calls", default=None)
+SHORT_CIRCUIT_CANCEL = "guardrail_short_circuit"
 
 
 def begin_cost_collection():
@@ -37,10 +42,23 @@ def _collect_cost(usage: ModelCallUsage) -> None:
 
 
 _TRACER = trace.get_tracer("tasklattice.guard-runner.model")
+_LOGGER = logging.getLogger("uvicorn.error.tasklattice.model")
 _NATIVE_MODEL_SCOPE: ContextVar["NativeModelObservationScope | None"] = ContextVar(
     "tasklattice_native_model_observation_scope",
     default=None,
 )
+_ACTIVE_NATIVE_CALL: ContextVar["_NativeModelCall | None"] = ContextVar("guard_active_native_call", default=None)
+
+
+def record_native_response(response: LLMResponse) -> None:
+    """Record validated response evidence before IORails reduces it to a result."""
+    if call := _ACTIVE_NATIVE_CALL.get():
+        call.complete(response)
+
+
+def record_native_failure(error: BaseException) -> None:
+    if call := _ACTIVE_NATIVE_CALL.get():
+        call.fail(error)
 
 
 class ModelCallObserver(Protocol):
@@ -116,6 +134,10 @@ class ObservedNeMoModel:
             response = await self._delegate.generate_async(
                 prompt, stop=stop, **kwargs,
             )
+            if self._role == "topic_control" and (
+                not isinstance(response.content, str) or response.content.strip().casefold() not in {"on-topic", "off-topic"}
+            ):
+                raise ModelResponseError("response_schema", "InvalidTopicLabel")
             call.complete(response)
             return response
 
@@ -158,8 +180,9 @@ class _NativeModelCall:
     started: float
     profile_ref: str | None = None
     runtime_ref: str | None = None
-    result: ModelCallResult = "success"
+    result: ModelCallResult = "unknown_error"
     error_type: str = "none"
+    failure: Failure | None = None
     call_id: str = field(default_factory=lambda: str(uuid.uuid4()))
     usage_known: bool = False
     cached_input_tokens: int = 0
@@ -169,6 +192,7 @@ class _NativeModelCall:
     finished: float = 0.0
 
     def complete(self, response: LLMResponse | LLMResponseChunk) -> None:
+        self.result = "success"
         usage = response.usage
         self.unsupported_usage = self.unsupported_usage or (response.provider_metadata or {}).get("service_tier") not in (None, "default", "auto")
         if usage is not None:
@@ -178,7 +202,13 @@ class _NativeModelCall:
             self.output_tokens = max(0, usage.output_tokens)
 
     def fail(self, error: BaseException) -> None:
-        self.result, self.error_type = classify_model_error(error)
+        result, failure = model_failure(error)
+        if failure and failure.source == "guard" and (self.result == "success" or self.failure is not None):
+            return  # Retain the model evidence when IORails reduces a failure or Guard code fails later.
+        self.result, self.failure = result, failure
+        self.error_type = self.failure.error_type if self.failure else "none"
+        if self.result != "cancelled":
+            _log_model_failure(self.call_id, self.result, error)
 
     @property
     def usage(self) -> ModelCallUsage:
@@ -208,6 +238,9 @@ class _NativeModelCall:
             input_tokens=self.input_tokens,
             output_tokens=self.output_tokens,
             error_type=self.error_type,
+            error_source=self.failure.source if self.failure else None,
+            error_category=self.failure.category if self.failure else None,
+            http_status=self.failure.http_status if self.failure else None,
         )
 
 
@@ -272,23 +305,32 @@ def observe_native_model_call(
             "guardrail.model.source": "nemo_native",
         },
     ) as span:
+        token = _ACTIVE_NATIVE_CALL.set(call)
         try:
             yield call
         except BaseException as error:
             call.fail(error)
-            span.record_exception(error)
-            span.set_status(Status(StatusCode.ERROR, call.result))
+            if call.result not in {"success", "cancelled"}:
+                span.record_exception(error)
+                span.set_status(Status(StatusCode.ERROR, call.result))
             raise
         finally:
+            _ACTIVE_NATIVE_CALL.reset(token)
             call.finished = time.perf_counter()
             usage = call.usage
             _collect_cost(usage)
             span.set_attribute("guardrail.model.result", usage.result)
+            span.set_attribute("guardrail.model.call_id", usage.call_id)
             span.set_attribute("guardrail.model.duration_ms", usage.duration_ms)
             span.set_attribute("guardrail.model.error_type", usage.error_type)
+            if usage.error_source:
+                span.set_attribute("guardrail.error.source", usage.error_source)
+                span.set_attribute("guardrail.error.category", usage.error_category or "unknown")
+            if usage.http_status is not None:
+                span.set_attribute("http.response.status_code", usage.http_status)
             span.set_attribute("gen_ai.usage.input_tokens", usage.input_tokens)
             span.set_attribute("gen_ai.usage.output_tokens", usage.output_tokens)
-            if usage.result != "success":
+            if usage.result not in {"success", "cancelled"}:
                 span.set_status(Status(StatusCode.ERROR, usage.result))
             if scope is not None:
                 scope.calls.append(usage)
@@ -310,6 +352,7 @@ class ModelCallTracker:
     runtime_ref: str | None = None
     result: ModelCallResult = "unknown_error"
     error_type: str = "none"
+    failure: Failure | None = None
     call_id: str = field(default_factory=lambda: str(uuid.uuid4()))
     usage_known: bool = False
     cached_input_tokens: int = 0
@@ -327,14 +370,16 @@ class ModelCallTracker:
         payload: Any = None,
         result: ModelCallResult = "success",
         error_type: str = "none",
-        retries: int = 0,
-        backoff_ms: int = 0,
+        retries: int | None = None,
+        backoff_ms: int | None = None,
         time_to_first_token_ms: int | None = None,
     ) -> None:
         self.result = result
         self.error_type = error_type
-        self.retries = max(0, retries)
-        self.backoff_ms = max(0, backoff_ms)
+        if retries is not None:
+            self.retries = max(0, retries)
+        if backoff_ms is not None:
+            self.backoff_ms = max(0, backoff_ms)
         self.time_to_first_token_ms = time_to_first_token_ms
         self.input_tokens, self.output_tokens = _tokens(payload)
         usage = payload.get("usage") if isinstance(payload, dict) else None
@@ -353,7 +398,13 @@ class ModelCallTracker:
             )
 
     def fail(self, error: BaseException) -> None:
-        self.result, self.error_type = classify_model_error(error)
+        result, failure = model_failure(error)
+        if self.result == "success" and failure and failure.source == "guard":
+            return  # Validated response remains healthy when subsequent Guard code fails.
+        self.result, self.failure = result, failure
+        self.error_type = self.failure.error_type if self.failure else "none"
+        if self.result != "cancelled":
+            _log_model_failure(self.call_id, self.result, error)
 
     @property
     def usage(self) -> ModelCallUsage:
@@ -381,6 +432,9 @@ class ModelCallTracker:
             retries=self.retries,
             backoff_ms=self.backoff_ms,
             error_type=self.error_type,
+            error_source=self.failure.source if self.failure else None,
+            error_category=self.failure.category if self.failure else None,
+            http_status=self.failure.http_status if self.failure else None,
         )
 
 
@@ -440,16 +494,23 @@ def observe_model_call(
             yield tracker
         except BaseException as error:
             tracker.fail(error)
-            span.record_exception(error)
-            span.set_status(Status(StatusCode.ERROR, tracker.result))
+            if tracker.result not in {"success", "cancelled"}:
+                span.record_exception(error)
+                span.set_status(Status(StatusCode.ERROR, tracker.result))
             raise
         finally:
             tracker.finished = time.perf_counter()
             usage = tracker.usage
             _collect_cost(usage)
             span.set_attribute("guardrail.model.result", usage.result)
+            span.set_attribute("guardrail.model.call_id", usage.call_id)
             span.set_attribute("guardrail.model.duration_ms", usage.duration_ms)
             span.set_attribute("guardrail.model.error_type", usage.error_type)
+            if usage.error_source:
+                span.set_attribute("guardrail.error.source", usage.error_source)
+                span.set_attribute("guardrail.error.category", usage.error_category or "unknown")
+            if usage.http_status is not None:
+                span.set_attribute("http.response.status_code", usage.http_status)
             span.set_attribute("gen_ai.usage.input_tokens", usage.input_tokens)
             span.set_attribute("gen_ai.usage.output_tokens", usage.output_tokens)
             span.set_attribute("guardrail.model.retries", usage.retries)
@@ -459,12 +520,11 @@ def observe_model_call(
                     "guardrail.model.time_to_first_token_ms",
                     usage.time_to_first_token_ms,
                 )
-            if usage.result != "success":
+            if usage.result not in {"success", "cancelled"}:
                 span.set_status(Status(StatusCode.ERROR, usage.result))
-            # Cancellation prevents the Action from returning its usage. Keep
-            # that attempted call in the request scope without double-counting
-            # normal/error results that do return ActionUsage.
-            if scope is not None and usage.error_type == "action_deadline":
+            # Preserve calls even when Guard code fails before returning ActionUsage.
+            # The runtime deduplicates these against returned usage by call ID.
+            if scope is not None:
                 scope.calls.append(usage)
             if observer is not None:
                 observer.model_call_finished(
@@ -486,28 +546,78 @@ def action_usage(tracker: ModelCallTracker, input_characters: int) -> "ActionUsa
 
 
 def classify_model_error(error: BaseException) -> tuple[ModelCallResult, str]:
-    # NeMo wraps provider exceptions in LLMCallException. Preserve the bounded
-    # provider class instead of collapsing every native flow failure to unknown.
-    if error.__cause__ is not None and error.__cause__ is not error:
-        return classify_model_error(error.__cause__)
-    # An asyncio timeout cancels the inner provider call before translating the
-    # cancellation to TimeoutError at the Action boundary.
-    if isinstance(error, asyncio.CancelledError):
-        return "timeout", "action_deadline"
-    if isinstance(error, (httpx.TimeoutException, TimeoutError)):
-        return "timeout", type(error).__name__
-    if isinstance(error, httpx.HTTPStatusError):
-        status = error.response.status_code
-        if status == 429:
-            return "rate_limited", "http_429"
-        if status >= 500:
-            return "server_error", f"http_{status // 100}xx"
-        return "client_error", f"http_{status // 100}xx"
-    if isinstance(error, httpx.TransportError):
-        return "transport_error", type(error).__name__
-    if isinstance(error, (KeyError, TypeError, ValueError, json.JSONDecodeError)):
-        return "invalid_response", type(error).__name__
-    return "unknown_error", type(error).__name__
+    result, failure = model_failure(error)
+    return result, failure.error_type if failure else "none"
+
+
+def model_failure(error: BaseException) -> tuple[ModelCallResult, Failure | None]:
+    chain = model_error_chain(error)
+    for item in chain:
+        if isinstance(item, asyncio.CancelledError):
+            if item.args == (SHORT_CIRCUIT_CANCEL,):
+                return "cancelled", None
+            return "timeout", Failure("guard", "deadline", "action_deadline")
+        if isinstance(item, ModelConfigurationError):
+            return "configuration_error", Failure("configuration", "configuration", type(item).__name__)
+        if isinstance(item, ModelResponseError):
+            return "invalid_response", Failure("model", item.category, item.error_type)
+        if isinstance(item, LLMResponseValidationError):
+            decoder = next((cause for cause in chain if isinstance(cause, json.JSONDecodeError)), None)
+            return "invalid_response", Failure("model", "json_decode" if decoder else "response_schema",
+                                               type(decoder if decoder is not None else item).__name__)
+        if isinstance(item, json.JSONDecodeError):
+            return "invalid_response", Failure("model", "json_decode", type(item).__name__)
+        if isinstance(item, (httpx.TimeoutException, TimeoutError, LLMTimeoutError)):
+            return "timeout", Failure("model", "timeout", type(item).__name__)
+        if isinstance(item, LLMConnectionError):
+            if isinstance(item.__cause__, RuntimeError):
+                return "unknown_error", Failure("guard", "internal", type(item.__cause__).__name__)
+            return "transport_error", Failure("model", "connection", type(item).__name__)
+        if isinstance(item, (httpx.HTTPStatusError, ClientResponseError)) or isinstance(item, LLMClientError) and item.status_code >= 400:
+            status = (item.response.status_code if isinstance(item, httpx.HTTPStatusError)
+                      else item.status if isinstance(item, ClientResponseError) else item.status_code)
+            if status in {408, 504}:
+                result, source, category = "timeout", "model", "timeout"
+            elif status == 429:
+                result, source, category = "rate_limited", "model", "rate_limit"
+            elif status >= 500:
+                result, source, category = "server_error", "model", "unavailable"
+            else:
+                result, source = "client_error", "configuration"
+                category = {401: "authentication", 403: "permission", 404: "not_found"}.get(status, "request_rejected")
+            return result, Failure(source, category, f"http_{status}", status)
+        if isinstance(item, (httpx.TransportError, ClientConnectionError)):
+            return "transport_error", Failure("model", "connection", type(item).__name__)
+    # A local programming exception is not evidence of a malformed model reply.
+    return "unknown_error", Failure("guard", "internal", type(error).__name__)
+
+
+def model_error_chain(error: BaseException) -> tuple[BaseException, ...]:
+    chain: list[BaseException] = []
+    seen: set[int] = set()
+    while error is not None and id(error) not in seen and len(chain) < 8:
+        seen.add(id(error))
+        chain.append(error)
+        error = error.__cause__ or error.__context__
+    return tuple(chain)
+
+
+def model_error_diagnostics(error: BaseException) -> dict[str, Any]:
+    # No exception messages, request/response bodies, URLs or credentials.
+    chain = model_error_chain(error)
+    return {"error_type": type(error).__name__,
+            "cause_types": [type(item).__name__ for item in chain],
+            "os_error_numbers": [item.errno for item in chain
+                                 if isinstance(item, OSError) and type(item.errno) is int]}
+
+
+def _log_model_failure(call_id: str, result: ModelCallResult, error: BaseException) -> None:
+    _, failure = model_failure(error)
+    _LOGGER.warning("%s", json.dumps({"event": "model_call_failed", "call_id": call_id,
+        "result": result, **model_error_diagnostics(error),
+        "error_source": failure.source if failure else None,
+        "error_category": failure.category if failure else None,
+        "http_status": failure.http_status if failure else None}))
 
 
 def _tokens(payload: Any) -> tuple[int, int]:

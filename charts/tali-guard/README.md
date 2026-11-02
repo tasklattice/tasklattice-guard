@@ -124,7 +124,7 @@ headers. Route `/runtime/v1/endpoints` to Runtime on that same origin.
 Service calls without an HTTP request fall back to the origin of `CONTROLLER_PUBLIC_URL`.
 The endpoint contains no Runner Pod identity.
 The Controller's internal calls (including Playground) always use Service DNS,
-independently of the advertised URL. Legacy `controller.publicUrl` still configures
+independently of the advertised URL. `controller.publicUrl` configures
 UI/auth when the shared `publicUrl` is empty.
 
 LiteLLM stores that Endpoint base URL and appends its Basic Guardrail API
@@ -180,7 +180,7 @@ in that namespace:
 | Example Secret | Required keys |
 | --- | --- |
 | `tali-guard-uat-database` | `database-url`: PostgreSQL connection URL |
-| `tali-guard-uat-bootstrap-admin` | account fields understood by the Controller runtime |
+| `tali-guard-uat-bootstrap-admin` | `username`, `name`, login credential and optional `revision`; exact field names and overrides are in [account operations](../../docs/operations.md#bootstrap-account-operations) |
 
 Replace the Secret names and Redis URL with your environment's values. The
 example inherits ClusterIP Services, disabled Ingress, two Runner replicas,
@@ -236,21 +236,33 @@ It preserves the local `tali-guard` release in namespace `tali` on ports
 
 ## Everyday values and advanced overrides
 
-`values.yaml` is the complete deployment reference, including commented examples
+`values.yaml` contains deployment defaults and common configuration examples
 for external URLs, Secrets, local Services, monitoring/debugging, SLOs and Pod
-security. Internal defaults load automatically. Use `values-dev-uat.yaml` as the
+security. Internal defaults load automatically. Advanced Secret key-name overrides
+are listed in [`files/security-defaults.yaml`](files/security-defaults.yaml); see
+[account operations](../../docs/operations.md#bootstrap-account-operations) for the
+external account Secret contract. Use `values-dev-uat.yaml` as the
 only development override. There are no separate advanced, debug or migration
 profiles; copy just the settings your environment needs from `values.yaml`.
 
-Unknown or removed chart options fail Helm schema validation with the offending
-field name. Remove stale keys from custom values instead of relying on them
-being silently ignored. Kubernetes resource and security-context objects remain
-pass-through settings; label and annotation maps accept custom string values.
+This chart does not ship a `values.schema.json` file. Helm does not perform
+JSON schema checks on Values, so internal deployment platforms can inject
+metadata such as `global`, `labels` or `commonLabels` at any level.
+Unknown or removed options are ignored by the chart; accepting a value does not
+make it a supported setting. Extra metadata reaches Kubernetes resources only
+when a chart template or the platform's rendering pipeline applies it.
+Kubernetes resource and security-context objects remain pass-through settings.
+Kubernetes and the application validate their own configuration when deployed.
+
+Template checks cover deployment dependencies and conflicts: at least one
+default Runner, database and account initialization, required Secrets and TLS,
+shared Redis for multiple replicas, and destinations for enabled telemetry.
+ServiceMonitor labels also preserve chart-owned resource identity.
 
 The chart owns deployment, service exposure, infrastructure dependencies and
 platform observability. Adapter behavior uses application defaults. The old
-`runner.scan.maxBodyBytes` and `runner.scan.timeoutSeconds` values are rejected
-and must be removed from custom values; the chart no longer injects
+`runner.scan.maxBodyBytes` and `runner.scan.timeoutSeconds` values have no effect
+and should be removed from custom values; the chart no longer injects
 Scan environment variables. Runner currently defaults to a 1 MiB request body
 and a 25-second Scan timeout. UI controls for those limits are separate work.
 
@@ -278,14 +290,15 @@ runner:
   publicUrl: https://runtime.company.com
 ```
 
-Legacy UI-only/multi-URL configurations remain supported when top-level
+UI-only/multi-URL configurations use the Controller URL settings when top-level
 `publicUrl` is empty. `controller.publicUrl` accepts a non-empty string array or
 a single string; the first entry is Better Auth's canonical base URL. All entries
 derive trusted origins (scheme, host, port) and distinct Ingress hosts. Without
 a shared URL, an explicit `controller.trustedOrigins` continues to replace the
 derived list for compatibility. The local development profile uses this mode
-for `http://localhost:38081` and the UI dev server `http://localhost:8092`, while
-Endpoint setup defaults to internal Service DNS.
+for `http://localhost:38081` and the UI dev server `http://localhost:8092`.
+With its Runtime LoadBalancer enabled, Endpoint setup advertises
+`http://localhost:38082`; internal Controller calls still use Service DNS.
 
 Explicit `ingress.host` still replaces derived Ingress hostnames. Remove stale
 host/origin overrides when changing environments. Ingress TLS certificates must
@@ -299,19 +312,29 @@ explicit `controller.image.tag` / `runner.image.tag` still take precedence.
 Controller replicas are fixed at one. Internal ports are fixed at 8080/9090
 (Controller), 8091 (Runner), 5432 (bundled PostgreSQL), and 6379 (bundled Redis).
 The old `controller.replicaCount`, internal `service.*Port` / `service.port`,
-and `serviceAccount.automount` values are rejected and must be removed from
+and `serviceAccount.automount` values are silently ignored and must be removed from
 custom values. External database/Redis URLs and local public Service ports
-remain configurable. Ordinary Pods do not mount service-account tokens; the
+remain configurable. For public Services of type `NodePort`, `public.port` sets
+the Service port, not the node port; Kubernetes allocates the node port, and this
+chart does not expose a fixed `nodePort` override.
+
+`postgresql.enabled=true` and `database.existingSecret` are mutually exclusive,
+as are `redis.enabled=true` and `runner.callContextRedisUrl`. A login minimum
+above eight characters requires external account Secrets for every enabled
+bootstrap account (including the default user, unless disabled).
+
+Ordinary Pods do not mount service-account tokens; the
 credential initialization Job uses its own dedicated ServiceAccount.
 
 ## OrbStack/local installation
 
-The development profile contains explicitly marked local-only credentials,
+The development profile initializes the built-in accounts,
 enables single-node PostgreSQL plus Redis infrastructure, and inherits mTLS
 with Runner Token authentication. A Helm bootstrap Job generates signing
 keys and internal tokens directly in Kubernetes; rendering contains no private keys.
-Its baseline login uses the image-provided local `admin` account. Controller maps
-the username to the internal Better Auth email `admin@tasklattice.local`.
+Its `admin` and `user` accounts sign in through Better Auth's Username plugin;
+email login is disabled. See [account operations](../../docs/operations.md#bootstrap-account-operations)
+for their initial credentials.
 
 One command rebuilds the moving `:dev` images and installs or upgrades the
 whole Guard release on the `orbstack` context:
@@ -360,11 +383,35 @@ option and can fail when reusing retained Secrets with
 reused, not deleted. An uninstalled release with retained history is reinstalled
 with `--replace`; failed upgrades are reported without automatic reinstall.
 
+### Argo CD synchronization and database storage
+
+The bundled PostgreSQL claim template explicitly declares `apiVersion: v1`,
+`kind: PersistentVolumeClaim` and `volumeMode: Filesystem` so the desired type
+and volume mode match Kubernetes' live representation. Normal Helm upgrades
+and Argo CD full syncs leave this storage template unchanged when application
+images or configuration change. PVC retention is explicitly `Retain` on both
+StatefulSet deletion and scale-down.
+
+`postgresql.persistence.size` (default `20Gi`) and `storageClass` describe new
+claims. Kubernetes does not allow changing `volumeClaimTemplates` on an existing
+StatefulSet. If those settings change, recreate the StatefulSet once, retaining
+its Pods and PVCs with `kubectl delete statefulset <name> --cascade=orphan`, then
+recreate it from the desired manifest or run a full sync. Subsequent syncs use
+the new definition normally. The chart does not add force-recreation hooks or
+look up old storage settings during rendering.
+
+Recreating the StatefulSet does not resize an existing PVC. Resize that PVC
+separately with a StorageClass that supports volume expansion, or move the data
+to a new volume. OrbStack's `local-path` class does not enable expansion; an
+existing `2Gi` PVC stays `2Gi` even when the new claim template requests `20Gi`.
+
 Deployment-path regression tests run with
 `.venv/bin/python -m pytest -q tests/contract/test_helm_upgrade.py`. To also test
-install, upgrade, and reinstall with retained Secrets on a local cluster, prefix
-the command with `GUARD_HELM_TEST_CONTEXT=orbstack`. This creates and removes an
-isolated namespace containing only a test Secret and ConfigMap, not Guard data.
+install, upgrade, retained-Secret reinstall and repeated database apply on a local
+cluster, set `GUARD_HELM_TEST_CONTEXT=orbstack` and
+`GUARD_HELM_TEST_NAMESPACE=<existing-namespace>`. The tests use unique release names
+and clean up only their own Secret, ConfigMap and zero-replica StatefulSet. They
+do not create or delete namespaces, start application Pods or allocate PVCs.
 
 `npm run helm:deploy:dev` keeps both application tags fixed at `dev` and changes a
 Helm-managed rollout revision annotation on every run. Controller and all
@@ -378,16 +425,22 @@ Check the deployment and access Controller:
 npm run helm:status
 ```
 
-Open <http://localhost:38081> directly and sign in with the image-provided local `admin` login. The
-bootstrap operation only creates a missing Better Auth user; Controller restarts
-and Helm upgrades do not reset a login key that has subsequently been changed.
+Open <http://localhost:38081> directly and sign in with the image-provided local `admin` login.
+Every initialization Job run (including Helm installs, upgrades and rollbacks)
+overwrites managed account Secrets with the image-provided credentials and a new
+revision. Controller reapplies mounted credentials at startup and after Secret
+updates, retaining account IDs and resource ownership but revoking previous
+sessions. A login key changed in the UI is therefore reset by reinitialization or
+a Controller restart. External account Secrets are never modified by the Job;
+Controller synchronizes their mounted credentials through the same path. See
+[account operations](../../docs/operations.md#bootstrap-account-operations).
 No port-forward process is required. A development-only data-plane Service is
 exposed separately at <http://localhost:38082>;
 its root returns component metadata, while protected traffic uses `/runtime/v1`.
-The host-facing development endpoint remains `http://localhost:38082`, while
-Endpoint setup instructions use
-`http://tali-guard-runtime.tali.svc.cluster.local:8091` for callers
-inside the cluster.
+Endpoint setup advertises `http://localhost:38082` with this local profile.
+Callers inside the cluster can instead use
+`http://tali-guard-runtime.tali.svc.cluster.local:8091`; Controller's internal
+calls always use that Service address.
 
 ## Production installation
 
@@ -413,7 +466,7 @@ kubectl -n guard-system create secret generic guard-database \
 For an externally managed administrator, have the platform provision an account
 Secret and set `security.bootstrapAdmin.existingSecret`. Use the Controller
 runtime's account field contract, or configure its field-name overrides. Otherwise
-set only the administrator email/name and let the initialization Job create it.
+set only the administrator username/name and let the initialization Job create it.
 
 Create an asymmetric Ed25519 artifact-signing Secret:
 
@@ -473,7 +526,7 @@ Catalog** and persisted in the Controller database:
 Helm configures deployment infrastructure: images, resources, networking,
 databases, and platform Secrets. It does not configure model endpoints,
 model credentials, or evaluator bindings. The removed `controlPlaneAgent`,
-`models`, and `evaluators` values are rejected; remove them from private
+`models`, and `evaluators` values are silently ignored; remove them from private
 values files and do not reuse stale values from a previous Helm release.
 Existing model configurations saved in
 the Controller database are preserved across Helm upgrades.
@@ -504,7 +557,7 @@ File import and export work in every installation without package signing keys,
 source IDs, trusted-source ConfigMaps or environment checks. Export immutable
 versions, then choose the `.guardrail.zip` file in **Import Guardrail package**.
 Identical versions are skipped; conflicting immutable content is rejected.
-The retired `controller.promotion` configuration is rejected; remove it from
+The retired `controller.promotion` configuration is silently ignored; remove it from
 custom values. No promotion material is mounted into the Controller.
 
 Development uses only `values-dev-uat.yaml`; there is no separate migration
@@ -569,8 +622,8 @@ when `observability.performanceDebug.enabled` forces ServiceMonitors on.
 
 All label values must be strings. Quote numeric or boolean-looking YAML values
 (for example, `build: "123"` and `enabled: "true"`), and use `--set-string` for
-CLI overrides. Helm schema validation rejects non-string values.
-Helm's standard `null` override removes a label before schema validation; for
+CLI overrides. Kubernetes requires string values for resource labels.
+Helm's standard `null` override removes a label before rendering; for
 example, `--set observability.serviceMonitor.labels.team=null` removes `team`
 inherited from a values file.
 
@@ -649,24 +702,17 @@ label-cardinality budget and upstream bypass boundary are in the repository's
 
 ## In-cluster account initialization
 
-Set `security.bootstrapAdmin.email` and `name`. The initialization Job creates a
-random initial login in the cluster; no login material or digest is stored in the
-chart or Helm values. An optional `security.bootstrapUser.enabled: true` account
-uses a separate Secret and receives the user role. Account emails must differ.
-Read the generated account Secret through your authorized cluster tooling when
-setting up the first login. The account Secret name is listed in the Job specs.
+The image initializes `admin` and `user` with their corresponding roles.
+Configure `username` and `name`, or supply `existingSecret`.
+Set `security.bootstrapUser.enabled=false` to omit the second account.
 
-The local profile uses `localDefault: true` for its two development accounts.
-The image generates their Better Auth digests with separate random salts.
-This mode is restricted to loopback public URLs. Production uses random logins.
-Existing application accounts, including logins changed through the UI, are never
-reset by a Job rerun or Helm upgrade.
+Managed account Secrets are overwritten on every initialization Job run.
+Controller applies mounted account revisions while retaining account IDs and
+resource ownership; previous sessions are revoked.
 
-Externally managed account Secrets remain supported. Controller reads their
-mounted fields directly; optional `emailKey`, `nameKey`, `credentialKey` and
-`digestKey` override the image's legacy field defaults. Supply one login field,
-never both forms. Inline login material and offline digests in Values are no
-longer supported.
+See [account operations](../../docs/operations.md#bootstrap-account-operations)
+for initial credentials, Secret fields, Base64 inspection, reset behavior, and
+migration of existing users.
 
 ## Automatic credentials and persistent CA
 
@@ -677,7 +723,7 @@ security:
   controlTls:
     enabled: true
   bootstrapAdmin:
-    email: admin@example.com
+    username: admin
     name: Administrator
 ```
 
@@ -691,22 +737,23 @@ only their leaf keys/certificates and the CA certificate; **neither Controller n
 Runner receives the CA private key**. Key generation uses a memory-backed temporary
 volume. No private keys enter Values, the chart package, or Helm rendering.
 
-Subsequent installs/upgrades/rollbacks validate and reuse existing credentials.
+Subsequent installs/upgrades/rollbacks reset managed account credentials and
+validate/reuse infrastructure credentials.
 The CA signing routine can issue replacement certificates using the persisted CA
-without changing the trust root. The initialization Job does not silently rotate
-valid credentials. There is no background renewal controller: expired/incompatible
+without changing the trust root. The initialization Job retains valid infrastructure credentials. There is no background renewal controller: expired/incompatible
 bundles fail clearly and require coordinated certificate renewal and workload
-restart. A valid legacy bundle lacking a CA private key is preserved; its lost CA
+restart. A valid certificate bundle without a CA private key is preserved; its lost CA
 private key cannot be recovered, so renewal needs an explicit CA migration.
 
 All generated Secrets use the installation **Namespace** as their `ownerReference`,
 with `helm.sh/resource-policy: keep` and ArgoCD prune/delete protection. Deleting a
 Job, Deployment, Controller ConfigMap, or Helm release does not remove these
-credentials. Reinstalling with the same release name/namespace reuses them.
+credentials. Reinstalling with the same release name/namespace reuses infrastructure Secrets
+and resets managed accounts.
 Only explicit Secret deletion or deletion of the Namespace removes them.
-Secrets previously owned by this release's Controller ConfigMap are migrated to
-Namespace ownership without changing key data. External Secrets are not adopted.
-The Controller ConfigMap is once again an ordinary Helm-managed configuration
+Secrets owned by other resources are rejected without modifying key data.
+External Secrets are not adopted.
+The Controller ConfigMap is an ordinary Helm-managed configuration
 resource; changing it triggers a Controller rollout through its checksum.
 
 The initialization ServiceAccount can get/patch the named internal Secrets and
@@ -731,31 +778,43 @@ reuse the applicable application image without introducing a separate tools imag
 The local profile sets `Never` for all images and requires them to be preloaded.
 
 Internal Secret names/key fields are implementation defaults in
-`files/security-defaults.yaml`, rather than a checklist in public Values. Existing
-external Secret data remains compatible. Custom account field overrides now use
-`credentialKey` and `digestKey`; the login policy uses `controller.auth.minLoginLength`.
+`files/security-defaults.yaml`, rather than a checklist in public Values. See
+[account operations](../../docs/operations.md#bootstrap-account-operations) for
+external account Secret fields and their overrides. The login policy uses
+`controller.auth.minLoginLength`.
 External `controlTls.existingSecret` takes precedence over automatic issuance.
 To disable initialization, supply all required externally managed Secrets.
 New installations do not need `bootstrap.enabled` or `controlTls.autoGenerate` overrides.
 
 All chart-owned Secrets are created by the initialization Job; no Secret resource
 or generated data is rendered by Helm. Managed names use an `-init` suffix (with
-a hash for long names). On upgrade the Job copies a release-owned legacy Secret
-into its new name before Helm removes the old resource. Existing key data and
-database logins are preserved. Do not change the release name, namespace, database
-identity or field-name overrides during this migration. External Secrets are
-referenced as supplied and are not copied or modified.
+a hash for long names). The Job creates missing managed Secrets and validates
+existing ones. Infrastructure key data and database logins are retained; managed
+account logins are reset. External Secrets are referenced as supplied and are not
+copied or modified.
 
-Back up persistent database data and credentials together. Deleting a managed
-Secret while retaining its database volume requires restoring the original login;
-creating another random login cannot update an initialized database. Old GitOps
-installations must run the bootstrap hook before pruning their legacy Secrets.
+The bundled PostgreSQL uses its managed Secret as the source of truth for the
+configured database account. Before serving, an init container synchronizes that
+account through a private local connection, preserving existing database data.
+The serving database keeps its normal authentication configuration. Startup fails
+if synchronization cannot complete; it never recreates a missing database role.
+This uses the existing Controller and PostgreSQL images, with no extra image.
 
-Remove legacy inline credential fields from environment files when upgrading.
+If the managed database Secret is deleted, rerun initialization and restart both
+PostgreSQL and Controller to load the recreated credentials. Helm upgrades restart
+both automatically when the bundled database is enabled. Repeating initialization
+alone reuses an existing Secret. External databases are never modified.
+
+Back up persistent data and all Secrets together. Other lost signing or encryption
+keys cannot be recovered by synchronizing the database account. GitOps
+installations must run the bootstrap hook before starting workloads.
+
+Supply credentials through the referenced Secrets.
 Use current complete Values with `--reset-values` rather than retaining removed
-fields through `--reuse-values`. The schema rejects removed or unknown chart
-options. Rebuild and publish the Controller image before using this chart; its
-initialization protocol and mounted-account support must match the templates.
+fields through `--reuse-values`. Removed chart options are ignored and no longer
+configure the application. Rebuild and publish the Controller image before using
+this chart; its initialization protocol and mounted-account support must match
+the templates.
 
 ### Optional Runner pool network policies
 
@@ -787,7 +846,7 @@ runner:
 ```
 
 Each supplied object renders the corresponding enabled flag and JSON environment
-variable. Schema/helper validation checks fields, bounds and policy consistency.
+variable. Targeted template validation checks fields, bounds and policy consistency.
 Distributed rate additionally requires configured pool authentication and an
 explicit external `runner.callContextRedisUrl`; bundled ephemeral Redis is
 rejected. Operators must separately provision the identical policy in Redis;
@@ -811,3 +870,69 @@ Local admission also reports actual permit/queue/outcome/latency snapshots over
 authenticated Runner heartbeats. The admin load-lab monitor shows current group
 placement and gaps for unavailable sources without exposing metrics credentials
 to the browser. See [actual admission monitoring](../../docs/tenant-admission-monitor.md).
+
+## Redis capacity and context degradation
+
+Bundled Redis now starts with `redis.maxmemory: 4gb` (4 GiB),
+`redis.maxmemoryPolicy: noeviction`, and a 6 GiB container memory limit. Redis
+memory accounting is not identical to container RSS; the remaining headroom
+covers allocator overhead and transient operations. A memory limit reduces OOM
+risk but is not a guarantee against an unusually large allocation.
+
+All Runner pools receive these settings:
+
+```yaml
+runner:
+  callContext:
+    ttlSeconds: 300
+    compressPlans: true
+    capacityFallback: true
+redis:
+  maxmemory: 4gb
+  maxmemoryPolicy: noeviction
+  resources:
+    limits:
+      memory: 6Gi
+```
+
+An external Redis must be configured separately with an appropriate memory
+budget and `noeviction`; Helm does not change managed Redis configuration.
+Compression requires every shared-context reader to support the new encoding.
+For an upgrade from an older binary, deploy compatible readers with
+`compressPlans: false` first, then enable writes. TTL is not refreshed by
+outcome/completion updates.
+
+With capacity fallback enabled, Redis allocation errors stop context writes and
+history buffering for the current request. Existing readable context remains
+usable. If context is missing and Redis reports exhausted memory, the request
+is checked independently against the currently published route and current
+supplied content. This includes correlated output: it can no longer claim the
+original input's version pin, history, cumulative outcome, or completion
+idempotency. No local unbounded replacement cache is created. Detection is not
+bypassed; connection/authentication errors, corrupt plans, and normal context
+expiration still fail normally. A missing context after capacity recovers is
+not automatically treated as a capacity failure.
+
+Responses requested with `x-guard-evidence: evaluations-v1` include
+`context.status: degraded`, `reason: redis_capacity`, and `historyAvailable`.
+Controller traces contain `context:redis-capacity`. Debug body-correlation
+failures preserve the current audit event and set `callCaptureIncomplete` and
+`callCaptureUnavailableReason: redis_capacity`.
+
+The authenticated Runner `/metrics` endpoint exposes shared Redis used/max
+memory and availability, plus `guard_runner_context_degraded_total` by operation.
+Redis credentials need `INFO memory` permission; no keys or contents enter these
+metrics. The existing ServiceMonitor scrapes them. Helm's PrometheusRule adds:
+
+- memory above 80% for 5 minutes (warning);
+- memory above 95% for 1 minute (critical);
+- context allocation/history degradation within 5 minutes (warning);
+- capacity metrics unavailable for 1 minute (critical);
+- no configured memory limit for 5 minutes (warning).
+
+Enable `observability.serviceMonitor.enabled` and
+`observability.prometheusRule.enabled` when Prometheus Operator is installed.
+The self-contained development preset keeps them disabled. Alertmanager
+notification destinations remain an environment-level configuration. Recovery
+requires both memory headroom and successful new context writes; reducing TTL
+or evicting active assignments is not a recovery procedure.

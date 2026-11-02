@@ -5,7 +5,7 @@ import type { ValidationCaseResult, ValidationMetrics } from "./models.js";
 /** Scope is frozen when requested. Missing/contradictory local-only evidence fails closed. */
 export function validateTestScope(
   run: { testModelRules: boolean; testSuite: FrozenTestCase[] | null },
-  result: { status: string; metrics: ValidationMetrics; results: ValidationCaseResult[]; testScope?: ValidationTestScope },
+  result: { status: string; metrics: ValidationMetrics; results: Array<Pick<ValidationCaseResult, "caseId" | "passed" | "skipped" | "skipReason" | "modelInvocations"> & { trace?: unknown[]; traceCount?: number }>; testScope?: ValidationTestScope },
 ): string | null {
   const scope = result.testScope;
   const testModelRules = run.testModelRules !== false;
@@ -33,7 +33,7 @@ export function validateTestScope(
     const expectedSkipped = refs.some(ref => ref.policyId === (c.sourcePolicyId || c.policyId)
       && (!c.coveredRuleIds.length || c.coveredRuleIds.includes(ref.ruleId)))
       || c.expectationOverride?.expectedMatches.some(m => refs.some(ref => ref.policyId === m.policyId && ref.ruleId === m.ruleId));
-    if (Boolean(r.skipped) !== Boolean(expectedSkipped) || (r.skipped && (r.passed || !r.skipReason || r.trace.length || r.modelInvocations))) {
+    if (Boolean(r.skipped) !== Boolean(expectedSkipped) || (r.skipped && (r.passed || !r.skipReason || (r.trace?.length ?? r.traceCount ?? 0) || r.modelInvocations))) {
       return "Skipped cases must match the excluded Rules and cannot be reported as passed or executed.";
     }
   }

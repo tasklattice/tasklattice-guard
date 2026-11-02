@@ -14,7 +14,8 @@ from tests.stream_client import connection, exchange, released, runner
 
 @pytest.mark.parametrize("parts,expected", [
     (["normal ", "answer"], "normal answer"),
-    (["internal-", "name"], "public-name"),
+    (["internal-", "alias"], "public-name"),
+    (["internal-", "name"], None),
     (["内部", "代号"], "公开名称"),
     (["confi", "dential"], None),
 ])
@@ -167,8 +168,8 @@ async def test_stream_capture_retains_original_model_output_without_rewritten_co
     from tests.data_plane.test_runtime_log_capture import KEY, decode
     async with runner(tmp_path, "configured-phrases-v1", log_level="trace", log_key=KEY) as (url, _, _, telemetry, _):
         async with connection(url) as (socket, _):
-            events = await exchange(socket, ["internal-", "name"])
+            events = await exchange(socket, ["internal-", "alias"])
             assert released(events) == "public-name"
         payload = decode(telemetry.events[0])
-        assert payload["contentBefore"][0]["text"] == "internal-name"
+        assert payload["contentBefore"][0]["text"] == "internal-alias"
         assert "contentAfter" not in payload and "public-name" not in json.dumps(payload)

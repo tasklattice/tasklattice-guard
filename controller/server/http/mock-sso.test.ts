@@ -21,7 +21,7 @@ function setup(enabled: boolean) {
     BETTER_AUTH_SECRET: "better-auth-secret-that-is-at-least-32-characters",
     CONTROLLER_MOCK_SSO_ENABLED: enabled ? "true" : "false",
   });
-  const signInEmail = vi.fn().mockResolvedValue(new Response(JSON.stringify({ user: { id: "demo-user", tenantId: "tenantA" } }), {
+  const signInUsername = vi.fn().mockResolvedValue(new Response(JSON.stringify({ user: { id: "demo-user", tenantId: "tenantA" } }), {
     status: 200,
     headers: { "content-type": "application/json", "set-cookie": "tali-guard.session_token=demo; HttpOnly; SameSite=Lax" },
   }));
@@ -29,17 +29,17 @@ function setup(enabled: boolean) {
   const getSession = vi.fn().mockResolvedValue(null);
   const app = createHttpApp({
     config,
-    auth: { handler, api: { signInEmail, getSession } } as unknown as ControllerAuth,
+    auth: { handler, api: { signInUsername, getSession } } as unknown as ControllerAuth,
     service: {} as ControlPlaneService,
     runnerControl: {} as RunnerControlServer,
     metrics: { registry: new Registry() } as ControllerMetrics,
   });
-  return { app, handler, signInEmail, getSession };
+  return { app, handler, signInUsername, getSession };
 }
 
 describe("Mock SSO HTTP boundary", () => {
   it("exposes the opt-in state and passes the fixed identity through Better Auth with its session cookie", async () => {
-    const { app, signInEmail } = setup(true);
+    const { app, signInUsername } = setup(true);
     expect(await (await app.request("/api/mock-sso/config")).json()).toEqual({ enabled: true });
     const response = await app.request("/api/mock-sso/sign-in", {
       method: "POST",
@@ -48,14 +48,14 @@ describe("Mock SSO HTTP boundary", () => {
     });
     expect(response.status).toBe(200);
     expect(response.headers.get("set-cookie")).toContain("tali-guard.session_token=demo");
-    expect(signInEmail).toHaveBeenCalledWith({ body: { email: "mock-tenantb@tasklattice.local", password: expect.any(String) }, asResponse: true });
+    expect(signInUsername).toHaveBeenCalledWith({ body: { username: "mock-tenantb", password: expect.any(String) }, asResponse: true });
   });
 
   it("rejects disabled, unknown, and cross-origin sign-in attempts", async () => {
     const disabled = setup(false);
     expect(await (await disabled.app.request("/api/mock-sso/config")).json()).toEqual({ enabled: false });
     expect((await disabled.app.request("/api/mock-sso/sign-in", { method: "POST" })).status).toBe(404);
-    expect(disabled.signInEmail).not.toHaveBeenCalled();
+    expect(disabled.signInUsername).not.toHaveBeenCalled();
 
     const enabled = setup(true);
     const post = (identity: string, origin: string) => enabled.app.request("/api/mock-sso/sign-in", {
@@ -63,7 +63,7 @@ describe("Mock SSO HTTP boundary", () => {
     });
     expect((await post("tenantD", "http://localhost:8080")).status).toBe(400);
     expect((await post("tenantA", "https://attacker.example")).status).toBe(403);
-    expect(enabled.signInEmail).not.toHaveBeenCalled();
+    expect(enabled.signInUsername).not.toHaveBeenCalled();
   });
 
   it("preserves global user administration for a current platform session", async () => {

@@ -1,7 +1,7 @@
 id: category/bias_racial
 name: Bias Racial
-description: Detects racial and ethnic discrimination, hate speech, and biased content using identifier + block
-  word combinations
+description: Detects racial and ethnic discrimination, hate speech, and biased content using identifier
+  + block word combinations
 stages:
 - input
 - output
@@ -82,7 +82,7 @@ detector:
         - any:
           - within_sentence:
               all:
-              - contains:
+              - words:
                 - black
                 - blacks
                 - black people

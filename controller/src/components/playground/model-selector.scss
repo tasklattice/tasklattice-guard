@@ -6,6 +6,16 @@
 .playground-model-select .cds--list-box__label { display: block; min-inline-size: 0; width: 100%; }
 .playground-model-select .cds--list-box__label .playground-model-label > span,
 .playground-model-select .cds--list-box__label .playground-model-label strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.playground-composer-controls .guard-select,
+.playground-composer-controls .cds--list-box { min-inline-size: 0; }
+.playground-composer-controls .cds--list-box__label {
+  min-inline-size: 0;
+  font-size: var(--text-xs);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.playground-composer-controls .playground-model-label strong { font-size: var(--text-xs); }
 // Size Carbon's actual field and wrapper together, including single-line selections.
 .playground-composer-controls .guard-select,
 .playground-composer-controls .cds--list-box,

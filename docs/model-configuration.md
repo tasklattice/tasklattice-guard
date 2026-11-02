@@ -36,6 +36,27 @@ Execution are reserved manifest values for later expansion; adding them extends
 the shared binding manifest without changing Provider, Model, Policy, or
 Guardrail ownership.
 
+## NVIDIA Content Safety response compatibility
+
+The `tali.nemotron-safety-guard-v3.v1` profile uses the `User Safety` field for
+input and `Response Safety` for output. It accepts `safe` / `unsafe` and the
+observed, unambiguous aliases `safe rating` / `unsafe rating`, with outer
+whitespace and case normalized. The model's original output remains in native
+evidence. Ambiguous text such as `safe or unsafe rating`, a missing field, or
+invalid JSON remains an execution error and follows fail-closed handling.
+This compatibility rule does not change model prompts or probability thresholds.
+
+NVIDIA's `Manipulation` category maps to the existing `TALI-SOCIAL-HARM` parent
+with partial mapping quality. An explicit unsafe verdict in this category is
+a model match, not an abstention caused by a missing taxonomy mapping. Category
+mapping never turns a native safe verdict into a block.
+
+For benchmark comparison, human prompt-safety labels (for example Aegis test)
+belong to `content_safety.input`. They are not jailbreak-attempt labels, PII
+redaction spans, or proof of a successful multi-turn attack. Keep original
+labels, exclude unavailable text explicitly, and report uncertainty-based
+blocks separately from explicit matches.
+
 ## Dedicated JailbreakDetect or a chat-based judge
 
 `nvidia/nemoguard-jailbreak-detect` is an additional implementation of the existing
@@ -77,7 +98,7 @@ also test Provider-scoped self-signed TLS behavior.
 Protocol references: [NVIDIA hosted classification API](https://docs.api.nvidia.com/nim/reference/nvidia-nemoguard-jailbreak-detect-infer)
 and [self-hosted NIM request/response examples](https://docs.nvidia.com/nim/nemoguard-jailbreakdetect/latest/getting-started.html).
 
-## TypeSafe Jev for input Topic Control
+## TypeSafe Jev for input Content Safety, Jailbreak and Topic Control
 
 Business and company boundaries use the Topic Control Policy's independent
 Denylist and Allowlist Rules. Both use the single `topic_control.input` binding
@@ -96,7 +117,8 @@ selection. Pinned versions may be accepted even when absent from `/models`.
 You can select `jev-latest` to follow releases or enter another version/alias
 manually. Registration always checks the selected IDs with actual calls, including
 when discovery fails. TypeSafe registrations use the
-`tali.typesafe-jev-topic.v1` profile, including custom model aliases. The native
+`tali.typesafe-jev.v1` profile, including custom model aliases. The retained
+`tali.typesafe-jev-topic.v1` profile remains input-topic-only for existing configurations. The native
 transport is `typesafe_systemone`: discovery reads `/models` (`models[].name`),
 and evaluation posts `model`, `state`, and typed `questions` to `/systemone`.
 Chat generation settings such as `max_tokens` are not sent.
@@ -109,11 +131,18 @@ kind enum. Keep the Provider → Model → detector binding structure: credentia
 endpoint belong to the Provider, while the version and evaluator profile belong
 to the Model, preserving switching and rollback.
 
-Assign the model to **Guardrail Catalog → Input → Topic Control**, validate the
-candidate, save, then activate through the existing revision workflow. Registration
-checks callability; binding validation executes actual benign and off-topic samples
-through NeMo. The profile supports only `tali.guard.topic-control.semantic.v1`
-on input. It does not advertise output or content safety.
+Assign the same registered model independently to **Guardrail Catalog → Input → Topic Control**,
+**Jailbreak detection**, and **Content Safety**, validate each candidate, save, then activate through the existing revision workflow. Registration
+checks callability; each binding validation executes its own benign and off-topic
+or unsafe samples through NeMo. The multi-purpose profile supports `tali.guard.topic-control.semantic.v1`,
+`tali.guard.jailbreak.v1`, and `tali.guard.content-safety.v1` on input. It does not advertise output or PII.
+Content Safety uses its own `unsafe_content` question and the same 23-category taxonomy as the NVIDIA
+Safety Guard v3 adapter. Direct harmful requests do not need a jailbreak mechanism to match.
+The versioned question and native probability are retained in evidence. Probabilities between 0.1 and 0.9
+remain `unknown`; an enforced unknown block is not an explicit model match. These thresholds are
+operating points, not a calibrated quality guarantee. NVIDIA remains the default
+Content Safety preference. Replacing the input binding does not change output or
+other detector assignments.
 NVIDIA Topic Control and the chat taxonomy judge remain selectable. Switching a
 binding uses the existing revision/rollback mechanism. Old artifacts that explicitly
 pin a native NVIDIA `topic_control` model still require that native dependency;
@@ -127,17 +156,55 @@ substantive task falls outside the union of allowed topics. Split allowlist and
 denylist rules keep independent questions and their existing ordering. Context
 resolves follow-ups; labels and annotation metadata are never sent as model input.
 
+`JevJailbreakEvaluator` uses the versioned question set `jailbreak-input.v1`.
+It checks explicit instruction overrides and indirect attempts to bypass safety
+boundaries through fiction, roleplay, research or authority pretexts, translation,
+and obfuscation. The judge considers the actual requested output and whether the
+framing functions as a bypass. Harmful subject matter alone is not a jailbreak.
+Benign roleplay, defensive analysis, quotation/translation without executing an
+attack, and changes to the user's own formatting preferences are excluded.
+The independent `jailbreak_attempt` and `unsafe_pretext` questions share one native
+HTTP request. Either positive answer yields `matched`; both must be negative for
+`not_matched`; otherwise the result is `unknown`. Evidence retains both answers.
+Both evaluators reuse the same native transport, strict response parser and usage
+tracking; neither sends a Chat Completions request or generation parameters.
+The dedicated NVIDIA detector and existing chat-based jailbreak judges remain
+available on the same Jailbreak binding.
+
 The initial profile uses a lower threshold of **0.1** and an upper threshold of
 **0.9**. Any violation probability at or above the upper threshold yields
 `matched`; all required probabilities at or below the lower threshold yield
 `not_matched`; the remaining cases yield `unknown`. Invalid/missing answers,
 authentication failures, rate limits and timeouts yield `error`, never a safe
-classification. Calls are bounded by the evaluation deadline and have no automatic
-retry. These thresholds are starting points, not calibrated quality guarantees.
-The runtime retains its existing handling of `unknown` and failures. Trace evidence
+classification. Calls are bounded by the evaluation deadline; connection setup
+failures may retry once within that same deadline (see below). These thresholds
+are starting points, not calibrated quality guarantees.
+For blocking or transforming Rules, the runtime conservatively blocks a terminal
+`unknown` result in enforce mode. An explicitly configured `allow` (observation-only)
+Rule records the uncertainty and continues; it must not start blocking on abstention.
+Observation-only matches are traced as observations rather than blocked Rails.
+Infrastructure errors still follow the configured failure mode, independently of
+model uncertainty. Keep these uncertain interventions separate from positive model
+detections when interpreting Report recall; a blocked request is not necessarily
+a positive JEV classification. Existing failure handling remains unchanged. Trace evidence
 stores question revision, requested/returned model, thresholds and raw probabilities
 for all successful evaluations; Noul probabilities are not reported as confidence
 or severity scores.
+
+Testing clients may opt into structured JEV jailbreak evidence with the request
+header `X-Guard-Evidence: evaluations-v1`. LiteLLM and F5 Scan responses include
+`X-Guard-Evaluation-Evidence` with schema version 1, the native verdict, actual
+JEV intervention, question revision, thresholds and probabilities when available.
+The header is capped at 6,000 bytes, signals incomplete evidence, and excludes
+input text, free-form reasons and raw provider output. Default response bodies
+are unchanged. `unknown` plus an enforced block is a conservative intervention,
+not an explicit model match; a monitor verdict does not claim enforcement.
+The optional `execution` object reports the final runtime status (`complete`,
+`error`, or `bypassed`), `failClosed`, and bounded error types. A provider failure
+can produce an HTTP 200 block with `execution.status: error`; Testing clients
+must treat this as an execution failure rather than a safety detection. A failed
+provider attempt that recovered through fallback does not itself mark the whole
+execution failed. Previous responses without this object do not establish status.
 
 For online observation, use the Guardrail's existing **Monitor** mode: it records
 Jev findings and `detection_decision` while forwarding the original input, including
@@ -223,6 +290,41 @@ timeouts. Report sequential classification results separately from concurrent
 availability failures. A blocked request alone is not detection evidence: inspect
 the successful model call, detector verdict, and matched Policy/Rule together.
 
+## Model connection recovery and failure evidence
+
+The Safety Model evaluator (including NVIDIA JailbreakDetect) and native JEV
+evaluators retry `ConnectError` or `ConnectTimeout` at most once, with 100–200 ms
+of jittered backoff. Both attempts and the backoff share the smaller of the
+configured model timeout and the remaining Guard evaluation deadline. A retry
+never resets that budget, changes the input, or adjusts a model decision.
+Cancellation stops the operation and any pending retry.
+
+Certificate-validation failures and permanent DNS errors are not retried.
+Neither are read/write failures, HTTP errors (including authentication and rate
+limits), or invalid model responses: some of those requests may already have
+reached the provider. An exhausted call returns an execution error and follows
+the existing Guard failure policy. In enforce/fail-closed mode it blocks, but
+Veritas records an execution error rather than a successful attack detection.
+
+Telemetry keeps the logical call ID, final outcome, retries and elapsed backoff;
+physical connection attempts equal one plus `retries`. Usage remains unknown
+when the provider supplies no usage. Structured `model_connection_failure` and
+`model_call_failed` logs retain exception class chains and OS error numbers,
+without exception messages, prompts, credentials or request URLs. The shared
+error classifier preserves HTTPX's transport/timeout category before traversing
+wrapped causes. These changes do not alter prompts, thresholds or model bindings.
+
+Run the permanent connection-recovery regression tests locally:
+
+```sh
+.venv/bin/python -m pytest -q tests/data_plane/test_model_connection_recovery.py
+```
+
+These tests use simulated NVIDIA and JEV transports without external model calls.
+They cover successful recovery, exhausted retries, deadlines, cancellation,
+authentication failures, invalid responses, certificate and DNS errors, and
+sanitized failure logs. They verify reliability, not model accuracy.
+
 ## Global prices and Guardrail usage costs
 
 **Settings → Models → Model prices** manages estimated model costs globally for
@@ -300,3 +402,24 @@ Prices and cost records are separate operational tables. They are excluded from
 Guardrail version snapshots, release packages and exports, and are never sent to
 Runners as Guardrail configuration. Deletion/restoration clears Guardrail cost
 records alongside its other operational data; model price revisions remain global.
+
+## Jailbreak abstention handling
+
+A valid classifier `unknown` verdict is distinct from a positive match and from
+an execution error. Existing Jailbreak Policies conservatively block unknown
+results. A custom `model/classifier` Rule with profile `jailbreak-classification`
+can set `on_unknown` to `block` (default) or `allow`, as a literal or a declared
+Policy parameter. The Controller validates and freezes the value into each
+Guardrail's signed execution plan. Other model capabilities reject this setting.
+
+The portable [example Policy](examples/jailbreak-uncertainty-control.json) defaults
+to `block`. Set its Guardrail binding `parameterValues.on_unknown` to `allow`
+to observe valid abstentions while continuing to block explicit matches. This
+does not change model selection, prompts or probability thresholds. Authentication,
+timeout, malformed-response and other execution errors retain fail-closed behavior.
+Report evidence retains `unknown`; an observed abstention must never be relabeled
+as a model safe verdict or explicit match.
+
+This trades conservative abstention blocking for lower false-positive rates.
+Validate attack recall and benign discrimination together with the same frozen
+inputs before promoting a configuration beyond its tested scope.

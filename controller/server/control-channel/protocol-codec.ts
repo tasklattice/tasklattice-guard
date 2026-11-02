@@ -292,6 +292,11 @@ export function validationMetricsFromWire(value: ValidationMetrics__Output): Val
 
 export function validationCaseFromWire(value: ValidationCaseResult__Output): ValidationCaseResult {
   return {
+    evidenceStatus: domainEnum("VALIDATION_EVIDENCE_STATUS", value.evidenceStatus),
+    evidenceDetail: value.evidenceDetail,
+    verifiedRuleIds: [...value.verifiedRuleIds],
+    supersededBy: value.supersededBy.map(item => ({ policyId: item.policyId, ruleId: item.ruleId })),
+    ruleContractSatisfied: value.ruleContractSatisfied,
     skipped: value.skipped,
     skipReason: value.skipReason,
     caseId: value.caseId,
@@ -321,13 +326,13 @@ export function validationCaseFromWire(value: ValidationCaseResult__Output): Val
     required: value.required,
     expectedFailure: optionalDomainEnum("VALIDATION_FAILURE", value.expectedFailure),
     actualFailure: optionalDomainEnum("VALIDATION_FAILURE", value.actualFailure),
+    modelStatus: value.modelStatus, executionStatus: value.executionStatus,
     concurrencyGroup: value.concurrencyGroup ?? null,
     sourcePolicyId: value.sourcePolicyId ?? null,
     sourcePolicyVersion: value.sourcePolicyVersion ?? null,
     sourceCaseId: value.sourceCaseId ?? null,
     coveredRuleIds: [...value.coveredRuleIds],
     matchedRuleIds: [...value.matchedRuleIds],
-    preemptingMatches: value.preemptingMatches.map(item => ({ policyId: item.policyId, ruleId: item.ruleId })),
     evaluationContracts: [...value.evaluationContracts],
     escalated: value.escalated,
     modelInvocations: value.modelInvocations,
@@ -356,8 +361,9 @@ function expectationToWire(value: unknown): import("../generated/control-protoco
   };
 }
 
-export function validationStatusFromWire(value: unknown): "passed" | "failed" {
-  return domainEnum("VALIDATION_STATUS", value) === "passed" ? "passed" : "failed";
+export function validationStatusFromWire(value: unknown): "passed" | "failed" | "cancelled" {
+  const status = domainEnum("VALIDATION_STATUS", value);
+  return status === "passed" || status === "cancelled" ? status : "failed";
 }
 
 function promptToWire(prompt: Record<string, unknown>): PromptDefinition {

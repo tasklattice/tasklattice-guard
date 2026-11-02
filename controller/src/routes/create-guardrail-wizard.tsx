@@ -29,6 +29,8 @@ import { ProtectionOrderEditor } from "@/components/protection-workspace";
 import { GuardrailProtectionPicker, protectionSection, type ProtectionSection } from "@/components/guardrail-protection-picker";
 import { GuardrailProfilePicker } from "@/components/guardrail-profile-picker";
 import { ProtectionDependencies } from "@/components/protection-dependencies";
+import type { ProfileDraftSettings, ProfileOrigin } from "../../shared/protection-map";
+import { canonicalJson } from "../../shared/canonical-json";
 import { protectionDirectories } from "../../shared/protection-map";
 import { completeResponsePolicies, mergePresetBindings, policyDirectory } from "@/lib/protection-composition";
 import { ErrorNotice, InfoNotice } from "@/components/product-shell";
@@ -57,6 +59,7 @@ import {
 } from "@/lib/api";
 
 const EMPTY_POLICIES: Policy[] = [];
+const DEFAULT_SETTINGS: ProfileDraftSettings = { allowedTopics: [], restrictedTopics: [], topicControlMode: "permissive", safetyLevel: "balanced", outputDelivery: "window_buffered" };
 const PROTECTIONS_STEP = 1;
 const REVIEW_STEP = 2;
 type PolicyWorkspace = "main" | "intent" | "documents";
@@ -95,7 +98,7 @@ export function CreateGuardrailWizard({
   const [selectedPreset, setSelectedPreset] = useState("blank");
   const [presetFeedback, setPresetFeedback] = useState("");
   const [pendingPreset, setPendingPreset] = useState<string | null>(null);
-  const [presetUndo, setPresetUndo] = useState<{ selected: string; bindings: GuardrailPolicyBinding[] } | null>(null);
+  const [presetUndo, setPresetUndo] = useState<{ selected: string; bindings: GuardrailPolicyBinding[]; settings: ProfileDraftSettings; origin: ProfileOrigin | undefined } | null>(null);
   const [protectionTab, setProtectionTab] = useState<ProtectionSection>("safety");
   const [expandedPolicy, setExpandedPolicy] = useState<string | null>(null);
   const [intentText, setIntentText] = useState("");
@@ -105,6 +108,8 @@ export function CreateGuardrailWizard({
   const [allowed, setAllowed] = useState("");
   const [boundarySource, setBoundarySource] = useState<BoundarySource>(null);
   const [bindings, setBindings] = useState<GuardrailPolicyBinding[]>([]);
+  const [profileOrigin, setProfileOrigin] = useState<ProfileOrigin>();
+  const [safetyLevel, setSafetyLevel] = useState<"balanced" | "strict">("balanced");
   const [outputDelivery, setOutputDelivery] = useState<OutputDelivery>("window_buffered");
   const [showBoundaries, setShowBoundaries] = useState(false);
   const [documentImportReset, setDocumentImportReset] = useState(0);
@@ -113,7 +118,8 @@ export function CreateGuardrailWizard({
   const topicStatusRef = useRef<HTMLDivElement>(null);
   const topicAvailability = useTopicControlAvailability(open);
   const correctnessAvailability = useCorrectnessAvailability(open);
-  const unavailableReason = (policy: Policy | undefined) => policyRequiresTopicModel(policy) && !topicAvailability.ready ? topicAvailability.reason : correctnessAvailability.reason(policy);
+  // Topic model readiness gates execution and AI authoring, not draft editing.
+  const unavailableReason = (policy: Policy | undefined) => correctnessAvailability.reason(policy);
   const dependencyBlockedReason = bindings.map(binding => unavailableReason(boundPolicy(policies, binding))).find(Boolean) ?? null;
   const documentApplyBlocker = (analysis: ComplianceDocumentAnalysis) => analysis.recommended_policy_ids.map(id => unavailableReason(policies.find(policy => policy.id === id))).find(Boolean) ?? (!topicAvailability.ready
     && (analysis.allowed_topics.length > 0 || analysis.restricted_topics.length > 0
@@ -148,6 +154,8 @@ export function CreateGuardrailWizard({
     setBoundarySource(null);
     setBindings([]);
     setOutputDelivery("window_buffered");
+    setProfileOrigin(undefined);
+    setSafetyLevel("balanced");
     setDocumentImportReset((current) => current + 1);
   }, [open]);
 
@@ -155,10 +163,12 @@ export function CreateGuardrailWizard({
     if (!open || !catalogReady || !presetsQuery.isSuccess || initialProfileApplied.current) return;
     initialProfileApplied.current = true;
     const profile = initialProfileId ? presetsQuery.data.items.find(item => item.id === initialProfileId)
-      : presetsQuery.data.items.find(item => item.category === "general" && item.isDefault);
-    if (profile && !bindings.length && selectedPreset === "blank" && step === 0) {
+      : presetsQuery.data.items.find(item => item.id === "local-baseline" && item.isDefault);
+    if (profile && profile.availability?.available !== false && !bindings.length && selectedPreset === "blank" && step === 0) {
       setSelectedPreset(profile.id);
       setBindings(structuredClone(profile.bindings));
+      applySettings(profile.draftSettings ?? DEFAULT_SETTINGS);
+      setProfileOrigin(profile.version ? { id: profile.id, version: profile.version } : undefined);
       setPresetFeedback(t("protection.applied", { count: profile.bindings.length }));
     }
   }, [open, catalogReady, presetsQuery.isSuccess, presetsQuery.data, bindings.length, selectedPreset, step, t, initialProfileId]);
@@ -185,9 +195,10 @@ export function CreateGuardrailWizard({
     restricted_topics: lines(denied),
     topic_control_mode: topicMode,
     policy_bindings: bindings,
-    safety_level: "balanced" as const,
+    safety_level: safetyLevel,
+    ...(profileOrigin ? { profile_origin: profileOrigin } : {}),
     output_delivery: effectiveDelivery,
-  }), [allowed, denied, topicMode, bindings, name, effectiveDelivery]);
+  }), [allowed, denied, topicMode, bindings, name, effectiveDelivery, safetyLevel, profileOrigin]);
 
   const preview = useQuery({
     queryKey: ["guardrail-candidate-preview", payload],
@@ -273,10 +284,22 @@ export function CreateGuardrailWizard({
     return issue ? t(issue.key, issue.values) : null;
   }
   const incompleteBindings = catalogReady ? bindings.filter(binding => issueFor(binding)) : [];
+  function applySettings(settings: ProfileDraftSettings) {
+    setAllowed(settings.allowedTopics.join("\n")); setDenied(settings.restrictedTopics.join("\n"));
+    setTopicMode(settings.topicControlMode); setSafetyLevel(settings.safetyLevel); setOutputDelivery(settings.outputDelivery);
+  }
+  const currentSettings: ProfileDraftSettings = { allowedTopics: lines(allowed), restrictedTopics: lines(denied), topicControlMode: topicMode, safetyLevel, outputDelivery };
+  const sourceProfile = presetsQuery.data?.items.find(item => item.id === profileOrigin?.id && item.version === profileOrigin.version);
+  const profileCustomized = Boolean(sourceProfile && (canonicalJson(bindings) !== canonicalJson(sourceProfile.bindings)
+    || canonicalJson(currentSettings) !== canonicalJson(sourceProfile.draftSettings ?? DEFAULT_SETTINGS)));
   function applyPreset(id: string, mode: "replace" | "add") {
     const preset = presetsQuery.data?.items.find(item => item.id === id);
-    if (id !== "blank" && !preset) return;
-    setPresetUndo({ selected: selectedPreset, bindings: structuredClone(bindings) });
+    if (id !== "blank" && (!preset || preset.availability?.available === false)) return;
+    setPresetUndo({ selected: selectedPreset, bindings: structuredClone(bindings), settings: currentSettings, origin: profileOrigin });
+    if (mode === "replace") {
+      applySettings(preset?.draftSettings ?? DEFAULT_SETTINGS);
+      setProfileOrigin(preset?.version ? { id: preset.id, version: preset.version } : undefined);
+    }
     const next = mode === "add" ? mergePresetBindings(bindings, preset?.bindings ?? []) : structuredClone(preset?.bindings ?? []);
     setBindings(next);
     setSelectedPreset(id);
@@ -378,10 +401,11 @@ export function CreateGuardrailWizard({
                     else if (pendingPreset !== null) applyPreset(pendingPreset, mode);
                   }} />
               )}
+              {catalogReady && bindings.length > 0 ? <ProtectionDependencies bindings={bindings} policies={policies} /> : null}
               {presetFeedback ? <p role="status" className="text-sm font-medium text-primary">{presetFeedback}</p> : null}
               {initialProfileId && presetsQuery.isSuccess && !presetsQuery.data.items.some(item => item.id === initialProfileId) ? <p role="alert" className="text-sm text-destructive">{t("policyLibrary.collections.notFound")}</p> : null}
               {presetUndo && pendingPreset === null ? <Button variant="outline" className="min-h-11 justify-self-start" onClick={() => {
-                setBindings(presetUndo.bindings); setSelectedPreset(presetUndo.selected); setPresetUndo(null); setPresetFeedback(t("protection.wizard.undone"));
+                applySettings(presetUndo.settings); setProfileOrigin(presetUndo.origin); setBindings(presetUndo.bindings); setSelectedPreset(presetUndo.selected); setPresetUndo(null); setPresetFeedback(t("protection.wizard.undone"));
               }}>{t("protection.wizard.undoPreset")}</Button> : null}
             </div>
           </WizardSection>
@@ -422,7 +446,7 @@ export function CreateGuardrailWizard({
                 ) : null}
               </section>
                   </details> : null}
-                  {topicAvailability.ready && !splitTopicCatalog ? (hasTopicControlBinding(bindings, policies) || showBoundaries || boundarySource || allowed.trim() || denied.trim() ? (
+                  {!splitTopicCatalog ? (hasTopicControlBinding(bindings, policies) || showBoundaries || boundarySource || allowed.trim() || denied.trim() ? (
                   <TopicBoundaryEditor fieldRef={topicField} allowed={allowed} source={boundarySource} onAllowedChange={setAllowed} denied={denied} mode={topicMode} onDeniedChange={setDenied} onModeChange={setTopicMode} />
                 ) : <Button variant="outline" onClick={() => setShowBoundaries(true)}>{t("guardrailWizard.addBoundaries")}</Button>) : null}
                 </div>} />}
@@ -478,6 +502,7 @@ export function CreateGuardrailWizard({
           <WizardSection title={t("guardrailWizard.reviewTitle")} description={t("guardrailWizard.reviewDescription")}>
             <section className="mt-4 overflow-hidden rounded-xl border bg-card">
               <ReviewRow label={t("guardrailWizard.name")} value={name} />
+              {profileOrigin ? <ReviewRow label={t("uiCopy.profile")} value={`${sourceProfile?.name ?? profileOrigin.id} · ${profileOrigin.version}${profileCustomized ? ` · ${t("protection.profile.customized")}` : ""}`} /> : null}
               <ReviewRow label={t("guardrailWizard.policies")} value={t("protection.selected", { count: bindings.length })} />
               <ReviewRow label={t("guardrailWizard.policyRules")} value={String(bindings.reduce((total, binding) => total + binding.enabled_rule_ids.length, 0))} />
               {boundarySource || allowed.trim() || denied.trim() ? <ReviewRow label={t("guardrailWizard.topicControl")} value={t("topicControl.summary", { allowed: lines(allowed).length, denied: lines(denied).length, mode: t(`topicControl.${topicMode}`) })} /> : null}

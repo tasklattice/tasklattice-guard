@@ -1,7 +1,7 @@
 import { useState, type FormEvent } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
-import { ArrowRight, Building2, LockKeyhole } from "lucide-react";
+import { ArrowRight, Building2 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
 import { BrandLogo } from "@/components/brand-logo";
@@ -17,7 +17,7 @@ export function LoginPage() {
   const { t, i18n } = useTranslation();
   const { login, setLanguage, loginPending } = useAuth();
   const navigate = useNavigate();
-  const [email, setEmail] = useState("");
+  const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const mockSso = useQuery({ queryKey: ["mock-sso", "config"], queryFn: getMockSsoConfig, retry: false, staleTime: 60_000 });
@@ -26,7 +26,7 @@ export function LoginPage() {
     event.preventDefault();
     setError("");
     try {
-      await login({ email, password });
+      await login({ username, password });
       await navigate({ to: "/dashboard", replace: true });
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : t("common.unknownError"));
@@ -58,8 +58,7 @@ export function LoginPage() {
         <div className="flex flex-1 items-center justify-center py-10">
           <div className="w-full max-w-md">
             <div className="mb-8 lg:hidden"><BrandLogo /></div>
-            <span className="inline-flex size-11 items-center justify-center rounded-xl bg-primary/10 text-primary"><LockKeyhole className="size-5" /></span>
-            <p className="mt-6 text-sm font-medium text-primary">{t("auth.loginEyebrow")}</p>
+            <p className="text-sm font-medium text-primary">{t("auth.loginEyebrow")}</p>
             <h1 className="mt-2 font-sans text-3xl font-normal tracking-normal">{t("auth.loginTitle")}</h1>
             <p className="mt-3 text-sm leading-6 text-muted-foreground">{t("auth.loginDescription")}</p>
 
@@ -68,7 +67,7 @@ export function LoginPage() {
             </Button> : null}
 
             <form className="mt-8 grid gap-5" onSubmit={submit}>
-              <Field label={t("auth.loginIdentifier")}><Input className="field:min-h-[44px]" autoFocus type="text" autoComplete="username" placeholder="admin" value={email} onChange={(event) => setEmail(event.target.value)} required /></Field>
+              <Field label={t("auth.loginIdentifier")}><Input className="field:min-h-[44px]" autoFocus type="text" autoComplete="username" placeholder="admin" value={username} onChange={(event) => setUsername(event.target.value)} required /></Field>
               <Field label={t("common.password")}><Input className="field:min-h-[44px]" type="password" autoComplete="current-password" value={password} onChange={(event) => setPassword(event.target.value)} required /></Field>
               {error ? <Alert variant="destructive"><AlertDescription>{error}</AlertDescription></Alert> : null}
               <Button type="submit" size="lg" className="mt-1 min-h-[44px] w-full" disabled={loginPending}>{loginPending ? t("auth.loginSubmitting") : t("auth.loginSubmit")}</Button>

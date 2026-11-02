@@ -1,0 +1,283 @@
+# Policy 调度优化：第一阶段契约与验收
+
+更新：2026-10-27。
+
+## 1. 结论与范围
+
+方向可行：把检查的输入视图、Transform 顺序、测试证据要求固定下来，再优化独立检查的执行顺序。收益首先是可解释、可回归的组合行为；本地 Block 前置和模型检查并行的延迟收益需要另行测量。
+
+第一阶段现在实现了显式视图、完整证据测试、严格 Rule 证据判定、统一执行契约，并增加了多调度差分测试。**这不等于证明任意 Policy、任意模型和任意调度都语义等价。**
+
+当前验证范围是：当前编译器生成的内置 Policy、完整缓冲的 input/output、固定检测器响应，以及保持 Transform 顺序和 trigger 依赖的合法调度。自定义 Colang、窗口流式、模型随机性、有状态检测器和完整的故障时序空间不在这个保证范围内。
+
+测试失败仍可发布。报告如实记录失败，发布独立检查产物是否能够编译；签名、固定版本和执行环境有效性检查继续有效。
+
+### 1.1 收益与成本现状
+
+调度只节省"决策前的检查数"，不承诺本地墙钟时间：`scripts/benchmark_scheduling.py` 用真实 Controller 编译、真实 Runner 离线执行，报告每种场景在 `block-first` 与作者序下的检查执行数与 p50/p95。当前本地实测：命中 Block 的最坏场景由 2 个检查降到 1 个；纯只读计划不变（1 = 1）；内部 `validation` 模式把阻塞请求从 1 个检查升到 3 个。**模型级延迟、token 成本与并行收益仍未测量**，需要 provider 实测后才能对外声明。详见 [`policy-scheduling-benchmark.md`](./policy-scheduling-benchmark.md)。
+
+## 2. 原实现的缺口与修复
+
+| 缺口 | 修复 |
+| --- | --- |
+| 任意其他 Block 或 Transform 命中，就把目标 Rule 验收算通过 | 目标必须在计划中存在、启用、版本和阶段正确，并有自己的实际证据；取代关系只解释失败 |
+| 在原文上重跑目标 Rule，混同于它在实际变换视图上执行 | 本地复算仅用于诊断 `shadowed_by`，不进入 verified Rule，也不能使测试通过 |
+| Validator 请求完整验证，Runtime 仍因 Block 短路或取消并行成员 | 支持的计划在 validation 模式收集所有可达步骤；多 Rule content-filter Action 内部也不因 Block 丢弃后续 Rule，最后统一返回 Block；快速模式继续短路 |
+| 同一审阅约定要求 mask + block，作者序通过而 Block 前置失败 | 完整证据模式下两条 Rule 都真实运行，三种合法调度比对实际 findings 和断言 |
+| 精确/语义步骤共享参数数组，追加元数据相互污染 | 每个 step 分配独立参数数组，precedence 唯一且不重复 |
+| 缺少 evaluation_view 时静默使用线程化文本 | 编译和执行要求明确且唯一的视图；Controller 与 Runner 采用统一契约，不做新旧能力协商 |
+| 不变性测试只跑两个顺序，且有 `or True` 无效断言 | 三种不同合法顺序，严格比较决策、输出、证据和测试结论；无恒真断言 |
+| validation 中无关检查失败，否定已经明确命中的目标 Block | 分开 Rule 验收与组合可用性；保留执行错误，在通过的 Rule 用例上显示告警 |
+
+## 3. 计划、调度与视图
+
+Controller 在调度前为每个 step 写入：
+
+```json
+[["precedence", "0"], ["evaluation_view", "original"]]
+```
+
+- `precedence` 是作者顺序，调度不能改写它；它可以与执行顺序不同，不要求连续。
+- 两个参数的校验规则只在一个地方实现，本文件不复制其枚举：`NeMoConfigCompiler.compile()`（编译期）与 `NeMoActionBridge._declared_view()`（执行期），负向用例见 `tests/control_plane/test_ordered_execution.py`。
+- 每个 step 必须声明且只能声明一个 `evaluation_view`，值为 `original` 或 `previous_output`；缺失、重复或未知值直接报错。自定义 Flow 的绑定由编译器明确写为 `previous_output`。
+- 只读 Block / Allow 检查看本阶段输入 `original`。
+- Transform 和继承 Transform 前置依赖的步骤看 `previous_output`。
+- Transform 保持作者顺序，串行累积输出；trigger 的前置条件必须先完成。
+- 存在自定义 Colang 时，整个计划保守保序，步骤保留线程化文本语义。
+- 窗口输出仍检查实际收到的 pending 窗口，不能用完整输出替代它。
+
+显式视图由 `NeMoActionBridge._evaluation_text()` 在 Action、Evaluator、PII 和并行成员的入口统一兑现。`precedence` 当前不是独立仲裁器；最终决策仍由 Runtime 累积，Block 优先于 Transform，Allow 不覆盖其他步骤。
+
+只读检查看原文是一项明确的行为约定。若某个检查必须先看到归一化或脱敏文本，需要明确表达依赖；不能靠偶然的作者位置推断。外部模型是否能收到原文，也不能靠 action 优先级充当数据出站约定。
+
+## 4. 执行目的与证据范围
+
+| 执行目的 | 执行行为 | 可承诺内容 |
+| --- | --- | --- |
+| `online`（Scan、LiteLLM 等全部线上入口） | 策略 Block 后短路，取消未完成的并行检查，跳过后续内容块 | 保留实际执行的证据；未执行不冒充未命中 |
+| `validation`（内部 Validator） | 支持的计划继续收集可达步骤；仍遵循 trigger | 完整证据用于规则验收，独立执行错误继续影响组合可用性判定 |
+
+`evidence_scope` 只决定报告范围，不再参与是否短路的判断。线上核心统一保留已执行检查的完整证据。Adapter 只转换请求和响应形状，`flagOnly`、`verbose`、流量快照级别均不改变 Guardrails 的执行过程。外部请求不能指定内部 validation 目的。
+
+`complete_evidence_supported()` 判断计划是否支持验证时收集全部可达证据：`full_buffered` 且无自定义 Colang 的计划支持；窗口输出和自定义 Flow 保留各自的控制流。支持收集不代表 provider 一定可用，错误、超时和未知仍由实际结果判定。
+
+核心区分正常策略 Block 与基础设施故障引发的 fail-closed。前者完成线上请求，独立失败只保留诊断；后者仍是执行错误。配置的 fail-open 为 degraded，Monitor/Bypass 遵守资源保护模式。日志和指标读取核心执行状态，不从原始 trace 再裁决。Validation 在支持的计划中仍可能增加模型调用、延迟和成本，这与线上短路无关。
+
+## 5. Rule 证据判定
+
+先校验源 Policy 身份、固定版本、当前阶段、全部 covered Rule 的启用状态与实际编译步骤/flow。不能先看一条 finding 就绕过结构校验，也不能把 Rule acceptance 的“任意一个命中”当作“全部满足”。目录原生策略的唯一 Rule 通过固定 Policy/version 与真实 native step 关联，与 Runtime 的身份映射一致；缺少显式 `rule_id` 不等于缺少可执行目标。
+
+| 状态 | 含义 | 默认满足 Rule 验收 |
+| --- | --- | --- |
+| `not_required` | 用例没有 covered Rule | 是；仍需决策、输出和故障断言通过 |
+| `observed` | covered Rule 实际产生 matched finding | Rule acceptance 需全部目标命中；scenario 需覆盖集合内的实际命中；Allow 用例命中则失败 |
+| `absent` | 覆盖步骤有明确执行结果，目标均未命中 | 仅 Allow 用例通过 |
+| `not_matched` | 目标执行了，在声明视图上未命中 | 否 |
+| `not_reached` | 没有取得每个目标的明确执行结果 | 否 |
+| `preempted_by` | 缺少目标明确结果，同时有已声明的 Block 命中 | 否；只能解释最终 Block，不能证明目标能力 |
+| `shadowed_by` | 目标在变换视图未命中，本地冻结定义在原文匹配，且有实际 Transform | 否；这是反事实诊断，不是目标实际命中 |
+| `missing` | 版本、阶段、启用状态或可执行目标缺失 | 否，并保留具体原因 |
+| `unverifiable` | covered Rule 缺少固定来源身份 | 否 |
+
+`scenario` 的覆盖集合可以表达备选检测类型，例如“任一种凭据”，不能要求私钥样本同时命中 bearer token。它仍然需要固定源 Policy 覆盖范围内的实际命中，不能接受其他 Policy 的拦截代替。`rule_acceptance` 则逐目标验收。两者都先验证全部声明目标存在；`verifiedRuleIds` 只记录本次实际匹配的目标 Rule。没有模型执行证据时，报告不会声称“模型检测器不匹配”。本地复算与生产共用 `content_filter.evaluate_parameters()` 及冻结 step 参数，但复算仍不属于实际执行证据。
+
+证据状态经过 Protobuf、Controller 存储和前端 API 传递：
+
+- `evidence_status`：字段 41。
+- `superseded_by`：字段 42，解释关联 Rule，不自动认可取代。
+- `verified_rule_ids`：字段 43，仅实际匹配。
+- `evidence_detail`：字段 44，具体解释。
+- `rule_contract_satisfied`：字段 45，包括有效审阅约定的最终 Rule 断言结果。
+
+`preempting_matches` 和 `evidence_contract` 已删除，Proto 字段编号 38、46 保留为 reserved，防止未来误复用。报告统一携带证据状态和 Rule 断言结果；控制台直接显示后端判定，不从部分命中或取代关系重新推断通过。本地测试中跳过的模型用例明确记录 `not_reached`、`ruleContractSatisfied=false` 和跳过原因，不计入已执行用例。
+
+### 5.1 显式审阅组合期望
+
+如果业务接受其他策略承担保护，应配置已有的 expectation override，写明原因、对应源版本、预期决策和实际需要的 Policy/Rule matches。Transform 约定还必须明确完整输出。
+
+例如两条脱敏规则都处理同一 token，第一条先消耗 token，第二条无法匹配：
+
+1. 默认第二条的验收失败，状态 `shadowed_by`。
+2. 审阅后可以明确要求第一条匹配且输出精确等于 `[FIRST] beta`。
+3. 这个组合约定可以通过，但报告仍记录第二条未实际命中，verified 列表不会伪造第二条。
+
+override 不会使已删除、禁用、版本不符的目标变得有效。也不能根据实际结果自动生成期望值。
+
+### 5.2 Rule 验收与组合可用性
+
+对支持完整证据的计划，已有终态 `matched + block` 时，最终 Block 的原因是 Policy 命中，`usage.fail_closed=false`。其他检查的错误、超时仍保留在 trace 和 assessments，不再反写为该 Block 的原因。只有 unknown、未完成的 exact/semantic 链或 Runtime 本身失败时，不能使用这个规则。
+
+`rule_acceptance` 用例在全部固定目标均有效、使用 `original` 视图、目标终态匹配且依赖未失败时，可以通过 Rule 验收，即使独立检查失败。错误发生在目标之前或之后，结论相同；同一 Policy 的其他独立 Rule 也适用。用例仍携带 `actualFailure`，`evidenceDetail` 说明组合可用性未经认证，Dashboard 显示“Rule 验收通过，组合执行未完整成功”及执行告警数量。它不会显示成无错误的完整执行。
+
+目标自身、依赖步骤或 Runtime 错误，目标缺失、未匹配或版本不符，仍不能通过。`previous_output` 目标、`scenario`、未声明类型的自定义用例和 expectation override 继续采用严格的组合执行断言；显式 `expectedFailure` 按指定故障类型验收。原有决策、完整输出和 reasoning 断言仍然生效，不能靠执行告警绕过。组合场景可以同时记录 `ruleContractSatisfied=true` 和 `passed=false`，表示检测命中但组合执行失败。
+
+Scan 继续检查整个扫描的执行完整性；即便 Block 来自真实命中、`fail_closed=false`，其他检查错误仍返回执行错误。上述 Rule 验收范围不会改变 Scan 的 HTTP 契约，也不改变测试失败仍可发布的规则。
+
+## 6. 统一契约与产物标识
+
+Controller 与 Runner 按同一套契约部署，不支持混合旧版本。编译、测试、加载和 desired-state 分发不再协商显式视图能力标签；Runtime 不根据计划版本选择另一套执行语义。**加载前仍必须检查产物契约**：这是明确拒绝不支持的输入，不是新旧能力协商或语义兜底。完整证据支持范围仅由执行类型决定：完整缓冲且没有任意自定义流。
+
+| 对象 | 当前标识 |
+| --- | --- |
+| Controller plan | `tasklattice-controller-plan-v1` |
+| NeMo 编译器 | `tasklattice-nemo-config-v1` |
+
+只有上表两个当前标识组合可以加载；每个 Step 和 Action 还必须声明且仅声明一个合法 `evaluation_view`。即便标识改成当前值，缺失、重复或无效的视图仍会被拒绝。版本不用于切换旧行为。Policy 的固定版本仍用于核对真实目标；checksum、签名、依赖、模型配置同步和执行环境检查继续有效。签名正确只能证明产物完整、来源可信，不能证明升级后的 Runner 支持其执行契约。
+
+v16 之前的 Controller plan，以及不符合当前 NeMo 编译器契约的产物，都需要重新编译。拒绝理由统一带 `artifact_recompile_required`，明确要求使用当前 Controller / Runner 重新编译并发布新版本：
+
+- Controller 环境检查和 desired-state 分发先检查契约。历史 `compatible` 缓存不能授权旧产物预加载；未被 Router 引用的旧产物不阻塞其他发布，被引用的旧产物则使 rollout 明确失败，不能直接丢掉保护配置。
+- Runner 在 checksum、签名和 NeMo 版本验证后，进入 Registry 或激活前校验契约。批次中存在不支持的产物时发送 NACK，当前有效 release 和持久化状态保持不变，不会先加载后对每条请求 fail-closed。
+- 冷启动读取旧的 last-known-good 缓存时同样拒绝恢复，保留原文件用于排查，记录重编译原因并保持未就绪。这个 gate 不承诺旧产物在新 Runner 上继续服务。
+- 已发布版本的复测使用同一加载 gate；拒绝后不执行用例，也不偷偷重编译或改变被测内容。
+
+升级时部署配套 Controller / Runner，再对需要使用的 Guardrail 草稿重新请求发布。即使草稿没有改动，旧契约的已发布版本和测试候选也不会复用，会编译成新版本；通过环境检查后再切换 Router。若要求服务不中断，应在替换部署就绪前保留原服务部署，而不能直接用新 Runner 启动旧缓存。要取得当前证据则重新测试，但测试并非发布前置条件。旧签名 artifact 和旧报告保持不变，不会把原失败结果改成通过。
+
+## 7. 测试和发布独立
+
+- 未测试、排队中、测试失败的 Guardrail 都可以请求发布。
+- 已有可用候选产物时直接固定该产物；否则使用离线编译，不需要先通过测试。
+- 失败报告及其结构化证据保留，发布不会把 failed 改成 passed。
+- 缺失模型配置可以影响环境就绪或执行，但不是用测试通过率阻止创建发布版本。
+- 编译失败、产物损坏、签名错误、视图或执行依赖无效仍是执行有效性问题，需要修复；它们与测试不通过是不同的判定。
+
+Default、full-feature-baseline 和普通用户创建的 Guardrail 使用同一流程。PostgreSQL 回归把 `preempted_by + ruleContractSatisfied=false` 报告写入后，验证 full-feature Profile 仍能发布，原报告继续 failed。
+
+## 8. 验收证据
+
+### 8.1 调度不变性
+
+`tests/control_plane/test_schedule_invariance.py` 通过真实 Controller 生成计划，再经真实 NeMo 编译执行。对九种两动作组合加独立观察步骤，在单 Policy / 跨 Policy、input / output 上分别运行三个不同合法顺序：优化顺序、作者顺序、固定随机种子的合法拓扑排列；去重后不足三个则测试失败。
+
+比较 `actualDecision / outputContent / passed / assertionFailures / evidenceStatus / verifiedRuleIds / supersededBy / ruleContractSatisfied` 以及全部 finding 的 Policy/Rule、verdict、action 与 taxonomy 身份，不比较耗时、执行顺序和首个 veto 的描述文本。Transform 顺序、视图和 trigger 依赖保持不变。
+
+额外用例证明：
+
+- 审阅要求 mask + block 时，不同顺序都能看到两个实际 findings。
+- 目标从计划中省略，或冻结检测条件变得不匹配，不能被其他 Transform 掩盖。
+- 原文复算匹配不等于实际变换视图匹配。
+- 正常文本的 Allow 断言必须有明确执行证据。
+- 同一个多 Rule Action 内部，validation 收集全部命中；快速模式仍在第一个 Block 停止。
+- Scan/LiteLLM 的混合动作回归对照同一计划的线上短路与内部 validation；快照级别和协议开关不会改变具体 Block 归因。
+- 编译器拒绝缺失、重复键、非法或全计划重复的 precedence；反向但唯一、非连续的作者顺序保持原值，不根据实际调度重写。
+
+### 8.2 其他边界
+
+- 证据单测：缺失 Policy、过期版本、错误阶段、禁用/部分覆盖、未执行、实际未命中、未知/error verdict、失效 override 和完整输出断言；原生 Rule 的 exact/semantic 升级链使用已完成的终端结果，不能把中间 unknown 当作完成。
+- 并行回归：C1/C2、input/output、validation/online 目的与 full/interventions 报告范围正交；online 仍取消，validation 保留兄弟结果；模型 HTTP 成功、超时和 503 的确定性响应下，串行与并行的执行结果一致。
+- 协议和控制面：结构化字段真实 wire 往返、明确的 true/false Rule 判定、无需视图能力标签即可编译/测试/加载/分发，以及视图缺失或歧义时拒绝执行。
+- 发布：实际 PostgreSQL 写入失败证据后发布，测试与版本状态独立。
+- 升级加载：冻结提交 `1df5c899` 中真实的旧签名 Artifact（`tests/fixtures/unsupported-artifacts/pre-v16-local-secrets`），验证签名和 checksum 有效且缺少视图，再验证环境检查、apply/admit/verify、NACK、旧缓存重启和已发布版本复测均拒绝。夹具不经过当前编译器重建。另测当前标识下的视图缺失、重复、无效值，以及原有效 release 不被失败更新替换。
+- 升级恢复：PostgreSQL 覆盖过期 `compatible` 缓存、被 Router 引用的旧产物保留至分发 gate、未修改草稿重新发布生成新版本、原 Artifact/失败报告不被改写，以及新版本重复发布的幂等性。
+- Adapter 一致性：`test_scan_evidence_scope.py` 用真实 Controller 混合动作计划和 NeMo 执行，比较 Scan/LiteLLM 在策略 Block 后都只执行一个 Action。覆盖 request/response、`flagOnly`/`verbose`、快照级别和故障、缺少上下文、fail-open、Monitor/Bypass、多内容块短路。`tests/e2e/test_adapter_guardrail_contract.py` 进一步通过真实 TCP 验证两个公开 HTTP 契约。这不代替真实 F5/LiteLLM 产品部署验收。
+- 独立故障：`test_full_evidence_failures.py` 用真实 Controller / NeMo，在同一 Policy 和跨 Policy、input/output、目标前后分别注入异常、超时和 error verdict。明确 Block 不变成 fail-closed；目标 Rule 通过并保留执行告警，自身故障、缺失、依赖失败、未命中、组合场景和审阅约定仍失败；`expectedFailure` 必须匹配实际故障。
+- 前端：真实桌面页面展开报告，部分命中显示 Rule 不匹配；满足组合约定的决策失败不会再误报 Rule 不匹配。
+
+本次清理后的本机验证记录（2026-10-27）：
+
+| 验证 | 结果 |
+| --- | --- |
+| 动作组合矩阵 | 1008 passed |
+| Default、历史用例、Profile 组合与本地测试范围 | 33 passed |
+| 其余 Python 回归 | 3451 项通过，15 skipped，含修复后定向复测 |
+| Controller 全量，含本机临时 PostgreSQL | 2432 项通过，27 skipped，含数据库环境补齐后的复测 |
+| CLI 回归 | 23 passed |
+| 类型检查、Controller/CLI 构建 | 通过 |
+| Protobuf、OpenAPI、artifact/default baseline 生成一致性 | 通过 |
+| 真实桌面报告展开与失败诊断 | 通过 |
+
+Python 按组执行，避免重复运行已通过的动作矩阵。其余套件首次完成时为 3316 passed、135 failed、15 skipped；失败全部来自三个模型集成夹具在替换参数时丢弃 `evaluation_view`，修复后这三个文件的 161 项测试全部通过。上述 3451 不重复计算复测中的重叠用例。模型能力探测计划也已显式声明视图，其 24 项回归通过。
+
+Controller 初次运行有三个套件因临时 PostgreSQL 缺少 public schema 未执行；建立所需 schema 后，32 项定向复测通过。失败报告仍可发布的 PostgreSQL 测试通过。
+
+这些测试不是模型准确率评估。生产 p95、取消率、调用费用和随机模型的重复稳定性尚未测量，**Scan 同样在这一待测范围内**；不能用 Validation 或 LiteLLM 的测量代替 Scan。
+
+独立故障修复的补充验证（2026-10-27）：198 项定向 Python 回归通过（含新增边界及协议往返复测），数据面与端到端 1088 passed / 12 skipped，Controller 定向 61 passed，类型检查通过。真实桌面报告验证了通过筛选、执行告警和错误追踪；目标自身失败及组合场景仍显示失败。上一轮 CI 的两个 desired-state 测试夹具已补充当前编译契约字段，并通过定向回归。
+
+### 8.3 复现命令
+
+```sh
+.venv/bin/python -m pytest -q \
+  tests/control_plane/test_schedule_invariance.py \
+  tests/control_plane/test_full_evidence_failures.py \
+  tests/control_plane/test_validation_expectations.py \
+  tests/control_plane/test_parallel_checks.py \
+  tests/control_plane/test_evidence_capability_matrix.py \
+  tests/control_plane/test_schedule_replay_diff.py
+
+(cd controller && node node_modules/vitest/vitest.mjs run --environment jsdom \
+  server/domain/guardrail-plan.test.ts \
+  server/control-channel/control-server.test.ts \
+  server/control-channel/protocol-codec.test.ts \
+  src/routes/validation.test.tsx)
+
+# 使用本机临时 PostgreSQL URL；套件建立并销毁独立 schema。
+(cd controller && GUARD_TEST_POSTGRES_URL="$TEST_DATABASE_URL" \
+  node node_modules/vitest/vitest.mjs run \
+  server/services/guardrail-publication.postgres.test.ts)
+
+npm run proto:check
+.venv/bin/python scripts/generate_test_artifacts.py --check
+.venv/bin/python -m scripts.generate_default_baseline --check
+```
+
+## 9. 后续阶段与收益边界
+
+后续可以增加声明式 reads/mutates/cost 属性、纯函数仲裁器、稳定的阻断解释和流式证据契约。应先补相应依赖与证据测试，再扩大允许重排的范围。
+
+本阶段的确定收益是消除缺失证据导致的假通过、避免测试结论随合法调度变化、消除新旧契约分支，并保留失败后发布的顺畅流程。**不承诺生产延迟改善比例，也不宣称所有场景的语义保持已经完成。**
+
+### 9.1 编译期 DAG 自检（已实现）
+
+`validate_step_contract()` 在编译入口和**产物加载入口**都执行，拒绝"声明的元数据与可执行图矛盾"的计划：
+
+- 依赖到 Transform 的步骤必须声明 `previous_output`，否则它可能被排到它本应检查的文本之前；
+- `precedence` 必须大于它 trigger 的步骤，保证报告与未来仲裁读到的作者顺序是真实的；
+- 反向（声明更保守的 `previous_output`）仍允许——自定义 Colang 让整个计划保守线程化，这不是错误。
+
+负向用例见 `tests/control_plane/test_ordered_execution.py`。
+
+## 10. 影子/双跑（T5）：暂缓，附触发条件
+
+结论：**当前不做流量级双跑**。它原本要防的头号风险"同一个签名 artifact 被不同 Runner 重新解释"已由显式视图 + 加载期契约 gate 消除；计划形状由 Controller 生成、可枚举、已被多调度差分测试覆盖；坏调度会在发布前的真实产物 Validation 暴露。双跑还会引入假分歧（provider 非确定性）、2 倍成本、有状态检查器被双算，以及半个 fast path 的延迟优势。
+
+### 10.1 A 类（调度/仲裁回归）不需要留存原文
+
+显式视图契约的直接推论：每个 step 的输入视图与调度无关，因此**每个 step 的观测本身就是调度不变量**。内部 `validation` 执行所有可达步骤，于是"调度回归"可以从证据离线重算，不需要入站明文。
+
+`tests/control_plane/test_schedule_replay_diff.py` 固定了这个记录格式（也是将来 `captureMode=evidence` 的落库形状）：
+
+```jsonc
+{ "caseId", "phase", "inputDigest", "planDigest", "scheduleDigest",
+  "decision", "outputDigest",
+  "steps":    [{ "id", "status", "verdict" }],        // 按 id 排序，与执行顺序无关
+  "findings": [{ "policyId", "ruleId", "verdict", "action", "taxonomy" }] }
+```
+
+它验证三件事：同一计划的两种合法调度产生相同记录（仅 `scheduleDigest` 不同）；记录可以预测 fast path 的决策；计划语义变化时记录会变（不是同义反复）。**记录里没有任何请求或输出文本**。
+
+### 10.2 B 类（检测器/模型回归）才需要内容留存
+
+换分类器、调阈值、换模型时才需要原文，那是独立的"数据留存"决策，不应由调度优化驱动。若要做，按下面七条设计，**"整段加密"是必要条件而非充分条件**：
+
+1. 默认 `evidence`（无明文）；`content` 需逐 Guardrail 显式开启 + 审批记录；
+2. 当前只有一个全局 `MODEL_GUARDRAILS_RUNTIME_LOG_ENCRYPTION_KEY`，做语料要改为 per-tenant DEK + KMS 包裹、可轮换，密钥不与密文同库；
+3. TTL 上限与按 Guardrail 的配额（现有诊断候选 300s 不能直接当语料留存）；
+4. 租户隔离，导入/导出必脱敏；
+5. 每次解密写审计；
+6. 删除/导出通道（GDPR/PIPL：加密不等于匿名，留存与删除义务照样适用）；
+7. **重放不得再出站**：只能回放录制响应（现有 `scripts/model_response_gateway.py::ReplayFixtures`）或离线模型，否则重放本身成为绕过 Guardrail 的 PII 出站通道。
+
+现有可复用件：`guardrails.loggingLevel`（info/debug/trace）、`runner/runtime_log_capture.py`（短 TTL 候选）、`runtime-log-crypto.ts`（AES-256-GCM + 读取侧脱敏）、`runtime_events.source`（可加 `replay` 隔离指标）。
+
+### 10.3 触发条件（满足任一条再立项）
+
+| 触发条件 | 为什么那时必须做 |
+| --- | --- |
+| 引入运行时自适应调度（按请求成本/延迟动态选序或选检查集） | 语义不再是编译期纯函数，离线无法枚举 |
+| 放开同一 artifact 跨 Runner 的语义差异（版本协商或视图兜底） | 等于重新打开"artifact 被重新解释" |
+| 大规模启用自定义 Colang，且其计划无法离线复现 | 编译器不再掌控执行形状 |
+| 合规要求用生产证据证明优化无行为漂移 | 离线证据不被接受 |
+| 出现测试无法复现的线上行为差异工单 | 需要流量级观测 |
+
+延迟/成本类问题不要用双跑验证：用加权 Router（`weightBps`）canary 一个新版本更真实、更便宜。

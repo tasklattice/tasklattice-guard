@@ -27,7 +27,7 @@ const service = {
   async disconnectRunner() {},
   async desiredGeneration() { return 1; },
   async desiredStateForPool() {
-    return { generation: 1, artifacts: [input.artifact], routers: [], endpoints: [],
+    return { generation: 1, artifacts: [input.artifact], routers: [], endpoints: input.endpoints ?? [],
       disabledGuardrailIds: [], disabledEndpointIds: [], guardrailLoggingLevels: {} };
   },
 };

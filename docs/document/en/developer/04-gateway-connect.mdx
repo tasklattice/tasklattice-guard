@@ -44,15 +44,17 @@ To inspect output alone, use the corresponding output inspection interface. The 
 <a id="gateway-connection" />
 ### Endpoint address and authentication
 
+**Require Credential** defaults to on. When off, HTTP, `/verify` and WebSocket clients may omit `x-api-key`; Guard ignores supplied credentials and processes requests anonymously. `ready` then confirms access and adapter checks, without authenticating an identity.
+
 `{endpoint}` is the integration base URL containing the Endpoint ID, for example `https://guard-runtime.example.com/runtime/v1/endpoints/your-endpoint-id`. Append the operation paths below to this address.
 
 | Method and path | Purpose |
 | --- | --- |
-| `POST {endpoint}/verify` | Verify the credential and interface type. The body is `{}`. |
+| `POST {endpoint}/verify` | Verify access and interface type according to the Endpoint's credential requirement. The body is `{}`. |
 | `POST {endpoint}/beta/litellm_basic_guardrail_api` | Inspect the input or the complete output. The body is JSON. |
 | `WebSocket {endpoint}/guardrails/output-stream` | [Streaming output inspection](#gateway-stream-protocol) |
 
-For JSON requests, send `x-api-key: <Endpoint credential>` and `Content-Type: application/json`. Do not put the credential in the body. Do not substitute a console Personal Access Token or model-service key.
+When credentials are required, send `x-api-key: <Endpoint credential>` and `Content-Type: application/json`. Do not put the credential in the body. Do not substitute a console Personal Access Token or model-service key.
 
 The HTTP examples show the request or status line, integration headers and JSON body. A blank line separates headers from the body. The host, Endpoint ID and credential are illustrative. The examples omit automatic headers such as `Content-Length` and `Date`. They also omit additional diagnostic headers.
 
@@ -93,7 +95,7 @@ Content-Type: application/json
 }
 ```
 
-`ready` confirms only that the credential and interface type match. This operation does not inspect content. Send an actual inspection request next to verify the integration works.
+`ready` confirms only that access and interface checks passed. This operation does not inspect content. Send an actual inspection request next to verify the integration works.
 
 <a id="gateway-call-correlation" />
 ### Correlating input and output (Call ID)
@@ -130,7 +132,7 @@ Call `POST {endpoint}/beta/litellm_basic_guardrail_api` with a JSON request body
 
 | HTTP header | Value | Requirement |
 | --- | --- | --- |
-| `x-api-key` | `<Endpoint credential>` | Required to authenticate the Endpoint. |
+| `x-api-key` | `<Endpoint credential>` | Required when **Require Credential** is on. |
 | `Content-Type` | `application/json` | Required to declare the JSON body. |
 
 `input_type: "request"` selects input inspection. `input_type: "response"` selects complete-output inspection. These values identify inspection phases. Both are HTTP requests from the inspection client to Guard. The examples below include the request line, headers and JSON body.
@@ -299,15 +301,15 @@ The current operating mode of the Guardrail selected by the Router determines wh
 | **Monitor** | Runs detection and records evidence, but does not block or replace content. Even a detection match or detector failure returns `NONE`, allowing the original content. |
 | **Bypass** | Skips detection and returns `NONE`, allowing the original content. |
 
-`NONE` permits the original content to continue. It does not prove that detection ran. Runtime logs record the mode and the actual Monitor detection result. Guard still performs authentication, field validation, routing and call correlation. These operations can return errors. The inspection client cannot switch the operating mode through request-body fields.
+`NONE` permits the original content to continue. It does not prove that detection ran. Runtime logs record the mode and the actual Monitor detection result. Guard applies the Endpoint authentication setting and still performs field validation, routing and call correlation. These operations can return errors. The inspection client cannot switch the operating mode through request-body fields.
 
 <a id="gateway-errors" />
 ### Error handling and retries
 
 | Status / response | Meaning and action |
 | --- | --- |
-| `401` | The Endpoint is missing or disabled, or the credential is missing or invalid. Check the URL and `x-api-key`. |
-| `409` | The credential's Endpoint interface type does not support LiteLLM. Check the Endpoint type. Changing the body's `protocol` cannot resolve this. |
+| `401` | The Endpoint is missing or disabled, or a required credential is missing or invalid. Check the URL and `x-api-key`. |
+| `409` | The Endpoint interface type does not support LiteLLM. Check the Endpoint type. Changing the body's `protocol` cannot resolve this. |
 | `422` | JSON or field validation failed. Correct `input_type`, the types and the other fields. |
 | `503` | The routing context, call correlation or pinned version is unavailable. The request has no valid inspection result. Correlated output cannot continue the original call with a different version. |
 | `500`, other non-2xx, timeout or disconnect | The inspection client has no valid inspection result. Guard or proxy failures are not necessarily JSON. |
@@ -411,7 +413,7 @@ The streaming interface inspects model output only. It does not accept input ins
 ### Connection and authentication
 
 1. To correlate input and output, complete the input inspection first and retain its `litellm_call_id`.
-2. Open one authenticated WebSocket at `{endpoint}/guardrails/output-stream`. Put the Endpoint credential in the `x-api-key` header of the upgrade request.
+2. Open one WebSocket at `{endpoint}/guardrails/output-stream`. When **Require Credential** is on, put the Endpoint credential in the `x-api-key` header of the upgrade request.
 
 Use the same Endpoint address for WebSocket. In production, change `https://` to `wss://`. The gateway keeps its SSE interface for business clients. The proxy must allow WebSocket upgrades.
 
@@ -541,7 +543,7 @@ Limits:
 
 This WebSocket extension applies only to LiteLLM Endpoints. Custom gateways can also implement it. Scan Endpoints do not support it.
 
-Guard rejects the handshake if credentials are invalid or the Endpoint type is incompatible. After the connection opens, Guard reports failures through `type=error` frames. Guard does not report failures as HTTP `502` or `504` messages inside the stream:
+Guard rejects the handshake if required credentials are missing or invalid, the Endpoint is missing or disabled, or its type is incompatible. After the connection opens, Guard reports failures through `type=error` frames. Guard does not report failures as HTTP `502` or `504` messages inside the stream:
 
 | Frame `code` | Meaning |
 | --- | --- |

@@ -110,4 +110,4 @@ and valid Rule references. They verify industry mappings, intentional empty mapp
 custom provenance, unsafe links, missing/stale metadata, Chinese rendering, external
 link semantics, and the exclusion of software dependencies and the retired MAS URL.
 Browser QA is desktop-only under the
-[desktop design contract](protection-productization.md#platform-scope-desktop-only).
+[desktop development scope](development.md#ui-platform-scope).

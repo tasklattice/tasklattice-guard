@@ -1,6 +1,7 @@
 id: category/harm_toxic_abuse
 name: Toxic & Abusive Language
-description: Detects harmful, toxic, abusive, and hateful language.
+description: Detects explicit toxic and abusive phrases. Ambiguous topic, fiction, relationship and anatomy
+  terms alone are not a local toxicity match; semantic context belongs to model evaluation.
 stages:
 - input
 - output
@@ -29,8 +30,6 @@ detector:
         - giant cock
         - massive cock
         - throbbing cock
-        - adult content
-        - adult material
         - alabama hot pocket
         - alabama tuna melt
         - alaskan pipeline
@@ -46,9 +45,6 @@ detector:
         - ape shit
         - apotemnophilia
         - apotemnophile
-        - arousal
-        - aroused
-        - arousing
         - arse
         - arseho*le
         - ass*ho*le
@@ -115,8 +111,6 @@ detector:
         - bluewaffle
         - blumpkin
         - bondage
-        - bound
-        - tied up
         - rope play
         - bone smuggler
         - bone-smuggler
@@ -128,7 +122,6 @@ detector:
         - booty-buffer
         - booty call
         - boston george
-        - breasts
         - brown piper
         - brown-piper
         - brownpiper
@@ -332,12 +325,7 @@ detector:
         - emetophilia
         - emetophile
         - enby
-        - erotic
-        - escort
-        - escorts
-        - escorting
         - eskimo trebuchet
-        - explicit
         - eyetie
         - eye-tie
         - fa*g
@@ -346,10 +334,6 @@ detector:
         - fagbomb
         - fa*gg*o*t
         - fagot
-        - fantasize
-        - fantasizing
-        - fantasy
-        - fantasies
         - felch
         - felching
         - fellatio
@@ -510,7 +494,6 @@ detector:
         - kill yourself
         - go kill yourself
         - kinbaku
-        - kinky
         - kink
         - kitty puncher
         - kitty-puncher
@@ -537,9 +520,7 @@ detector:
         - limp-wristed
         - literotica
         - lovemaking
-        - lust
         - lusting
-        - lustful
         - lusty
         - male squirting
         - male-squirting
@@ -582,7 +563,6 @@ detector:
         - murderer
         - muscle mary
         - mvtube
-        - naked
         - nambla
         - necrophilia
         - necrophile
@@ -599,8 +579,6 @@ detector:
         - nipple clamps
         - nipple clamp
         - nsfw
-        - nude
-        - nudity
         - nudes
         - nude pic
         - nude pics
@@ -618,9 +596,6 @@ detector:
         - omorashi
         - onlyfans
         - only fans
-        - orgasm
-        - orgasms
-        - orgasmic
         - paedophilia
         - pedophilia
         - paedophile
@@ -726,9 +701,6 @@ detector:
         - rimming
         - ring raider
         - ringraider
-        - roleplay
-        - role play
-        - roleplaying
         - rusty trombone
         - sand ni*gg*e*r
         - sand-ni*gg*e*r
@@ -739,13 +711,6 @@ detector:
         - schlong
         - shlong
         - scissoring
-        - seduce
-        - seductive
-        - seduction
-        - seduce
-        - seducing
-        - sensual
-        - sensuality
         - seplophilia
         - seplophile
         - sex
@@ -754,8 +719,6 @@ detector:
         - sex worker
         - sex workers
         - sexworker
-        - sexual
-        - sexually
         - sexual favors
         - sexual favour
         - sexual favours
@@ -879,7 +842,6 @@ detector:
         - vorarephilia
         - vorarephile
         - voyeurweb
-        - vulva
         - vulvas
         - wagon burner
         - wagon-burner

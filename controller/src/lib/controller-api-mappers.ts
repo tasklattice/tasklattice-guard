@@ -35,8 +35,7 @@ export function normalizeOutcome(decision: string): "allow" | "transform" | "blo
 }
 
 export function isTimedOut(event: controllerApi.RuntimeEvent): boolean {
-  const decision = event.decision.toLowerCase();
-  return decision === "timeout" || decision === "timed_out" || event.metadata.timedOut === true || event.metadata.timed_out === true;
+  return event.metadata.executionStatus === "timeout";
 }
 
 export function runtimeFindings(event: Pick<controllerApi.RuntimeEvent, "id" | "requestId" | "occurredAt" | "guardrailId" | "guardrailVersion" | "routerId" | "endpointId" | "direction" | "decision" | "metadata">): RouterTraceFinding[] {
@@ -97,6 +96,11 @@ export function runtimeTraceSteps(event: controllerApi.RuntimeEvent): RouterRunt
     outcome: stringValue(step.outcome) ?? stringValue(step.status) ?? "unknown",
     latency_ms: numberValue(step.durationMs) ?? 0,
     timed_out: step.timedOut === true,
+    error_source: enumValue(step.errorSource, ["model", "configuration", "guard", "unknown", "mixed"] as const),
+    error_category: stringValue(step.errorCategory), error_type: stringValue(step.errorType),
+    http_status: numberValue(step.httpStatus), model_call_id: stringValue(step.modelCallId),
+    model_result: stringValue(step.modelResult), provider_name: stringValue(step.providerName),
+    model_name: stringValue(step.modelName), affects_result: step.affectsResult === true,
     runtime_engine: stringValue(step.engine) ?? "unknown",
     config_checksum: stringValue(step.configChecksum) ?? "",
     policy_id: stringValue(step.policyId),

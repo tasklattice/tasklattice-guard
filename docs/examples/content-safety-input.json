@@ -1,0 +1,22 @@
+{
+  "runtimeProfile": "auto",
+  "draftConfig": {
+    "allowedTopics": [],
+    "restrictedTopics": [],
+    "topicControlMode": "permissive",
+    "policyBindings": [
+      {
+        "policyId": "builtin-content-safety",
+        "policyVersion": "1.0.0",
+        "action": "block",
+        "parameterValues": {},
+        "enabledRuleIds": ["model/content-safety"],
+        "ruleOrder": ["model/content-safety"],
+        "testCaseOverrides": {},
+        "ruleActions": {},
+        "enabledRails": ["input"],
+        "reasoningPolicy": null
+      }
+    ]
+  }
+}

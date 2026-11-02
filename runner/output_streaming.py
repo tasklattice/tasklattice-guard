@@ -1,4 +1,4 @@
-"""One authenticated WebSocket owns one pinned, non-resumable output stream."""
+"""One authorized WebSocket owns one pinned, non-resumable output stream."""
 from __future__ import annotations
 
 import asyncio
@@ -68,10 +68,11 @@ def register_output_stream(api) -> None:
 
     @api.router.websocket("/runtime/v1/endpoints/{endpoint_id}/guardrails/output-stream")
     async def output_stream(socket: WebSocket, endpoint_id: str):
-        authenticated, adapter, endpoint_snapshot = api._authenticate_endpoint(endpoint_id, socket.headers.get("x-api-key"))
+        access, endpoint_snapshot = api._authenticate_endpoint(endpoint_id, socket.headers.get("x-api-key"))
+        adapter = access.adapter
         protocol = "litellm" if adapter == LITELLM_ADAPTER_ID else None
-        api._metrics.observe_authentication(protocol or "unknown", authenticated)
-        if not authenticated or protocol is None:
+        api._metrics.observe_authentication(protocol or "unknown", access.authenticated)
+        if not access.allowed or protocol is None:
             await socket.close(code=1008)
             return
         try:
@@ -152,7 +153,7 @@ def register_output_stream(api) -> None:
                     input_type="response", texts=[""], litellm_call_id=start.call_id or start.stream_id,
                     structured_messages=start.messages, model=start.model,
                     request_data=start.request_data, request_headers=start.request_headers,
-                ), endpoint_id, request)
+                ), endpoint_id, request, authenticated=access.authenticated is True)
                 protection = replace(protection, context=replace(protection.context,
                     endpoint_snapshot=endpoint_snapshot,
                     fields=(*protection.context.fields, ("routing.stream", "true"))))
@@ -177,7 +178,7 @@ def register_output_stream(api) -> None:
                         phase="output", protocol=f"{protocol}-stream", mode=protection.mode,
                         started=check_started, decision=decision,
                         content_before=("".join(original_parts[:original_count]),),
-                        stream_metadata={"streamId": stream_id, "streamCheck": checks,
+                        stream_metadata={"authentication": "credential" if access.authenticated else "anonymous", "streamId": stream_id, "streamCheck": checks,
                                          "streamFinalCheck": source_ended,
                                          "effectiveOutputDelivery": effective_mode},
                     )

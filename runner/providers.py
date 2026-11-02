@@ -13,7 +13,15 @@ from runner.toolkit.nemo.actions.topic import ChatTopicEvaluator, TopicJudgeActi
 from runner.toolkit.nemo.actions.grounding import GroundingActionProvider
 from runner.toolkit.nemo.actions.automated_reasoning import HTTPAutomatedReasoningProvider, ReasoningActionProvider
 from runner.toolkit.nemo.evaluators.pii import PiiEvaluator
-from runner.toolkit.nemo.evaluators.jev_topic import JEV_TOPIC_PROFILE, JevTopicEvaluator
+from runner.toolkit.nemo.evaluators.classifier_review import ClassifierReviewer, REVIEW_PROFILE, REVIEW_CONTRACT
+from runner.toolkit.nemo.evaluators.jev import JEV_PROFILE, JEV_PROFILES, JEV_TOPIC_PROFILE
+from runner.toolkit.nemo.evaluators.jev_topic import JevTopicEvaluator
+from runner.toolkit.nemo.evaluators.jev_jailbreak import JevJailbreakEvaluator
+from runner.toolkit.nemo.evaluators.jev_content_safety import JevContentSafetyEvaluator
+from runner.toolkit.nemo.evaluators.laya import LAYA_PROFILE, LAYA_PROFILES, LAYA_TOPIC_PROFILE
+from runner.toolkit.nemo.evaluators.laya_topic import LayaTopicEvaluator
+from runner.toolkit.nemo.evaluators.laya_jailbreak import LayaJailbreakEvaluator
+from runner.toolkit.nemo.evaluators.laya_content_safety import LayaContentSafetyEvaluator
 from runner.toolkit.evaluation.contracts import (
     CONTRACT_PII_EXACT,
     MODEL_SAFETY_CONTRACT_BY_CAPABILITY,
@@ -26,82 +34,47 @@ from runner.toolkit.safety.providers import (
     resolve_evaluator_model_providers,
 )
 
-from .config import RunnerSettings
-
-
-def runtime_action_providers(settings: RunnerSettings) -> tuple[ActionProvider, ...]:
-    local_providers = local_action_providers(PromptSecurityActionProvider())
-    pii_evaluator = PiiEvaluator()
-    provider_configs = resolve_evaluator_model_providers(
-        settings.model_runtimes,
-        settings.evaluator_bindings,
-    )
-    safety_evaluator = SafetyModelEvaluator(
-        tuple(
-            build_safety_model_provider(item)
-            for item in provider_configs
-        )
-    )
-    routes = [EvaluationRoute("pii", CONTRACT_PII_EXACT, pii_evaluator)]
-    routes.extend(
-        EvaluationRoute(
-            capability,
-            MODEL_SAFETY_CONTRACT_BY_CAPABILITY[capability],
-            safety_evaluator,
-        )
-        for capability in ("pii", "content_safety", "jailbreak")
-        if capability in safety_evaluator.capabilities
-    )
-    evaluation = EvaluationActionProvider(tuple(routes))
-    providers: list[ActionProvider] = [
-        *local_providers,
-        evaluation,
-    ]
-    taxonomy_judge = next(
-        (
-            item
-            for item in provider_configs
-            if item.role == "taxonomy_judge"
-            and item.contract_ref in {
-                "tali.guard.topic-control.semantic.v1",
-            }
-        ),
-        None,
-    )
-    if taxonomy_judge is not None:
-        providers.append(
-            TopicJudgeActionProvider(
-                base_url=taxonomy_judge.base_url,
-                model=taxonomy_judge.model,
-                api_key_env_var=taxonomy_judge.api_key_env_var,
-                provider_id=taxonomy_judge.id,
-                timeout_seconds=taxonomy_judge.timeout_seconds,
-                skip_tls_verify=taxonomy_judge.skip_tls_verify,
-            )
-        )
-    if settings.automated_reasoning_endpoint_url:
-        providers.append(ReasoningActionProvider(HTTPAutomatedReasoningProvider(
-            endpoint_url=settings.automated_reasoning_endpoint_url,
-            api_key_env_var=settings.automated_reasoning_api_key_env_var,
-        )))
-    return tuple(providers)
-
-
 def dynamic_runtime_action_providers(
     configuration: object,
     credentials: dict[str, str],
     *,
     transport: httpx.AsyncBaseTransport | None = None,
+    jev_thresholds: tuple[float, float] | None = None,
+    laya_thresholds: tuple[float, float] | None = None,
 ) -> tuple[ActionProvider, ...]:
-    """Build a complete provider registry from one Controller-owned revision."""
+    """Build a complete provider registry from one Controller-owned revision.
+
+    ``jev_thresholds`` and ``laya_thresholds`` set independent operating bands
+    (lower, upper) for each decision model. Probabilities
+    strictly inside it are reported as ``unknown``. Each classifier Rule's
+    ``on_unknown`` controls that result independently of other Policies. Errors
+    retain their failure handling. Deployments tune the band per Runner.
+    """
 
     source_profiles = {item.id: item.profile_ref for item in configuration.runtimes}
     for binding in configuration.bindings:
-        if JEV_TOPIC_PROFILE in {binding.profile_ref, source_profiles.get(binding.model_ref)}:
-            if (binding.profile_ref != JEV_TOPIC_PROFILE or source_profiles.get(binding.model_ref) != JEV_TOPIC_PROFILE
-                or binding.binding_id != "topic_control.input" or binding.capability_ref != "topic_control"
-                or _rail_name(binding.rail_type) != "input" or set(binding.contract_refs) != set(JevTopicEvaluator.contracts)):
-                raise ValueError("Jev supports only the input Topic Control semantic contract with a matching runtime profile.")
+        if JEV_PROFILES.intersection({binding.profile_ref, source_profiles.get(binding.model_ref)}):
+            allowed = {"topic_control": JevTopicEvaluator.contracts}
+            if binding.profile_ref == JEV_PROFILE:
+                allowed["jailbreak"] = JevJailbreakEvaluator.contracts
+                allowed["content_safety"] = JevContentSafetyEvaluator.contracts
+            if (binding.profile_ref not in JEV_PROFILES or source_profiles.get(binding.model_ref) != binding.profile_ref
+                or binding.capability_ref not in allowed or binding.binding_id != f"{binding.capability_ref}.input"
+                or _rail_name(binding.rail_type) != "input"
+                or tuple(binding.contract_refs) != tuple(allowed.get(binding.capability_ref, ()))):
+                scope = "input Topic Control" if binding.profile_ref == JEV_TOPIC_PROFILE else "input Topic Control, Jailbreak detection or Content Safety"
+                raise ValueError(f"Jev supports only {scope} with matching capability, contract and runtime profile.")
+        if LAYA_PROFILES.intersection({binding.profile_ref, source_profiles.get(binding.model_ref)}):
+            allowed = {"topic_control": LayaTopicEvaluator.contracts}
+            if binding.profile_ref == LAYA_PROFILE:
+                allowed["jailbreak"] = LayaJailbreakEvaluator.contracts
+                allowed["content_safety"] = LayaContentSafetyEvaluator.contracts
+            if (binding.profile_ref not in LAYA_PROFILES or source_profiles.get(binding.model_ref) != binding.profile_ref
+                or binding.capability_ref not in allowed or binding.binding_id != f"{binding.capability_ref}.input"
+                or _rail_name(binding.rail_type) != "input"
+                or tuple(binding.contract_refs) != tuple(allowed.get(binding.capability_ref, ()))):
+                scope = "input Topic Control" if binding.profile_ref == LAYA_TOPIC_PROFILE else "input Topic Control, Jailbreak detection or Content Safety"
+                raise ValueError(f"Laya supports only {scope} with matching capability, contract and runtime profile.")
     runtimes = {
         item.id: ModelRuntimeConfig(
             id=item.id,
@@ -115,6 +88,21 @@ def dynamic_runtime_action_providers(
         for item in configuration.runtimes
     }
     bindings = {item.binding_id: item for item in configuration.bindings}
+    reviewer = None
+    for item in configuration.bindings:
+        if REVIEW_PROFILE in {item.profile_ref,source_profiles.get(item.model_ref)}:
+            if (item.binding_id != "classifier_review.input" or item.capability_ref != "classifier_review"
+                or _rail_name(item.rail_type) != "input" or item.profile_ref != REVIEW_PROFILE
+                or source_profiles.get(item.model_ref) != REVIEW_PROFILE or tuple(item.contract_refs) != (REVIEW_CONTRACT,)):
+                raise ValueError("Classifier review requires its own matching input binding, runtime and contract.")
+            runtime = _assigned_runtime(item.model_ref,runtimes)
+            reviewer = ClassifierReviewer(base_url=runtime.base_url,model=runtime.model,api_key=runtime.api_key or "",
+                provider_id=runtime.id,timeout_seconds=runtime.timeout_seconds,max_tokens=runtime.max_tokens,
+                skip_tls_verify=runtime.skip_tls_verify,transport=transport)
+    jev_options = ({"lower_threshold": jev_thresholds[0], "upper_threshold": jev_thresholds[1]}
+                   if jev_thresholds is not None else {})
+    laya_options = ({"lower_threshold": laya_thresholds[0], "upper_threshold": laya_thresholds[1]}
+                    if laya_thresholds is not None else {})
     local_providers = local_action_providers(PromptSecurityActionProvider())
     pii_evaluator = PiiEvaluator()
 
@@ -122,6 +110,7 @@ def dynamic_runtime_action_providers(
         item
         for item in configuration.bindings
         if item.capability_ref in {"content_safety", "jailbreak", "pii_semantic"}
+        and item.profile_ref not in JEV_PROFILES and item.profile_ref not in LAYA_PROFILES
     ]
     evaluator_bindings = tuple(
         EvaluatorBindingConfig(
@@ -144,6 +133,8 @@ def dynamic_runtime_action_providers(
         for item in provider_configs
     ))
     routes = [EvaluationRoute("pii", CONTRACT_PII_EXACT, pii_evaluator)]
+    if reviewer is not None:
+        routes.append(EvaluationRoute("classifier_review",REVIEW_CONTRACT,reviewer))
     routes.extend(
         EvaluationRoute(
             capability,
@@ -153,6 +144,32 @@ def dynamic_runtime_action_providers(
         for capability in ("pii", "content_safety", "jailbreak")
         if capability in safety_evaluator.capabilities
     )
+    for capability, evaluator_type in (("jailbreak", JevJailbreakEvaluator), ("content_safety", JevContentSafetyEvaluator)):
+        binding = bindings.get(f"{capability}.input")
+        if binding is None or binding.profile_ref != JEV_PROFILE:
+            continue
+        runtime = _assigned_runtime(binding.model_ref, runtimes)
+        evaluator = evaluator_type(
+            base_url=runtime.base_url, model=runtime.model, api_key=runtime.api_key or "",
+            provider_id=runtime.id, timeout_seconds=runtime.timeout_seconds,
+            skip_tls_verify=runtime.skip_tls_verify, transport=transport,
+            reviewer=reviewer,
+            **jev_options,
+        )
+        routes.append(EvaluationRoute(capability, next(iter(evaluator.contracts)), evaluator))
+    for capability, evaluator_type in (("jailbreak", LayaJailbreakEvaluator), ("content_safety", LayaContentSafetyEvaluator)):
+        binding = bindings.get(f"{capability}.input")
+        if binding is None or binding.profile_ref != LAYA_PROFILE:
+            continue
+        runtime = _assigned_runtime(binding.model_ref, runtimes)
+        evaluator = evaluator_type(
+            base_url=runtime.base_url, model=runtime.model, api_key=runtime.api_key or "",
+            provider_id=runtime.id, timeout_seconds=runtime.timeout_seconds,
+            skip_tls_verify=runtime.skip_tls_verify, transport=transport,
+            reviewer=reviewer,
+            **laya_options,
+        )
+        routes.append(EvaluationRoute(capability, next(iter(evaluator.contracts)), evaluator))
     providers: list[ActionProvider] = [
         *local_providers,
         EvaluationActionProvider(tuple(routes)),
@@ -166,11 +183,21 @@ def dynamic_runtime_action_providers(
             or _rail_name(topic.rail_type) != "input"
             or tuple(topic.contract_refs) != ("tali.guard.topic-control.semantic.v1",)):
             raise ValueError("Topic Control binding must match its runtime, capability, contract and Rail.")
-        if topic.profile_ref == JEV_TOPIC_PROFILE:
+        if topic.profile_ref in JEV_PROFILES:
             evaluator = JevTopicEvaluator(
                 base_url=runtime.base_url, model=runtime.model, api_key=runtime.api_key or "",
                 provider_id=runtime.id, timeout_seconds=runtime.timeout_seconds,
-                skip_tls_verify=runtime.skip_tls_verify, transport=transport,
+                skip_tls_verify=runtime.skip_tls_verify, transport=transport, profile_ref=topic.profile_ref,
+                **jev_options,
+                reviewer=reviewer,
+            )
+        elif topic.profile_ref in LAYA_PROFILES:
+            evaluator = LayaTopicEvaluator(
+                base_url=runtime.base_url, model=runtime.model, api_key=runtime.api_key or "",
+                provider_id=runtime.id, timeout_seconds=runtime.timeout_seconds,
+                skip_tls_verify=runtime.skip_tls_verify, transport=transport, profile_ref=topic.profile_ref,
+                **laya_options,
+                reviewer=reviewer,
             )
         else:
             if topic.profile_ref not in {"tali.taxonomy-judge.v1", "tali.nemoguard-topic-control.v1"}:

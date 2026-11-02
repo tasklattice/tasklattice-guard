@@ -130,7 +130,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--versions", type=int, nargs="+", default=[1, 8, 32])
     parser.add_argument("--repeats", type=int, default=1)
-    parser.add_argument("--fixture", type=Path, default=ROOT / "tests/fixtures/artifacts/preset-common-baseline-v1")
+    parser.add_argument("--fixture", type=Path, default=ROOT / "tests/fixtures/artifacts/preset-banking-assistant-v1")
     parser.add_argument("--injected-prewarm-seconds", type=float, default=0,
                         help="Simulate a slow prewarm once per batch (diagnostic fault injection only).")
     args = parser.parse_args()

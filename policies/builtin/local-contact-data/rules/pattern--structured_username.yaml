@@ -1,0 +1,24 @@
+id: pattern/structured_username
+name: Structured username
+description: Redact explicitly labelled values while retaining field names and delimiters. Does not infer unlabelled
+  entities.
+stages:
+- input
+- output
+detector:
+  ref: text/regex
+  version: 1.0.0
+  parameters:
+    expression: (?:<(?:username|user_name|user-name|login_name|account_name)\b[^<>]*>\s*|["\x27](?:username|user_name|user-name|login_name|account_name)["\x27]\s*:\s*["\x27])(?P<value>[^<>"\x27\r\n]{1,128}?)(?=\s*</(?:username|user_name|user-name|login_name|account_name)\s*>|["\x27])
+    detector_options:
+      capture_group: value
+on_match:
+  action: transform
+  replacement: '[structured_username_REDACTED]'
+risk_level: medium
+metadata:
+  taxonomy_ids:
+  - TALI-PRIVACY-PII
+runtime_adapter:
+  binding_id: local-contact-data
+  implementation_rule_id: pattern/structured_username

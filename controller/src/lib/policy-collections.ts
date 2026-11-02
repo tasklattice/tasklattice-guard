@@ -35,7 +35,7 @@ export function policyCollections(profiles: readonly GuardrailProfilePreview[], 
       ...[...new Set(profile.jurisdictions.map(value => value === "singapore" ? "sg" : value))].map(value => ({ id: `jurisdiction:${value}`, namespace: "jurisdiction" as const, value, label: regionLabels[value] ?? value, source: "declared" as const })),
       ...(frameworks[profile.id] ?? []).map(([value, label]) => ({ id: `framework:${value}`, namespace: "framework" as const, value, label, source: "declared" as const })),
     ];
-    const unavailable: string[] = [];
+    const unavailable: string[] = profile.availability?.available === false ? [profile.availability.reason ?? profile.id] : [];
     const groups = profile.bindings.map(binding => {
       const policy = boundPolicy(policies, binding);
       if (!policy) unavailable.push(`${binding.policy_id}@${binding.policy_version}`);

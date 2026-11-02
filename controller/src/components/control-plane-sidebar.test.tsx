@@ -61,7 +61,7 @@ describe("ControlPlaneSidebar", () => {
     render(<SidebarProvider><TooltipProvider><ControlPlaneSidebar /></TooltipProvider></SidebarProvider>);
     for (const name of ["Guardrails", "Playground", "Policy Library", "Routers", "Endpoints", "Runtime logs", "Billing", "Settings", "Models", "Sharing", "Runner", "Documentation"]) expect(screen.getByRole("link", { name })).toBeTruthy();
     for (const name of ["Health", "Providers", "Guardrail Catalog", "Tenant groups", "Tenant load lab", "Version", "Users & access", "Audit log"]) expect(screen.queryByRole("link", { name })).toBeNull();
-    expect(screen.getByRole("link", { name: "TaskLattice Guard" }).getAttribute("href")).toBe("/guardrails");
+    expect(screen.getByRole("link", { name: "TaskLattice Guard" }).getAttribute("href")).toBe("/dashboard");
     expect(screen.getByRole("link", { name: "Runtime logs" }).getAttribute("href")).toBe("/logs");
     const observability = screen.getByText("Runtime observability").closest('[data-sidebar="group"]') as HTMLElement;
     expect(within(observability).getAllByRole("link").map(link => link.textContent)).toEqual(["Runtime logs", "Billing"]);
@@ -85,6 +85,13 @@ describe("ControlPlaneSidebar", () => {
     const calls = vi.mocked(useQuery).mock.calls;
     for (const [options] of calls.slice(-3)) expect(options.queryKey).toContain("tenantB");
     expect([...document.querySelectorAll('[data-sidebar="menu-badge"]')].map(badge => badge.textContent)).toEqual(["1", "1", "1"]);
+  });
+
+  it("keeps the dashboard reachable from the collapsed tenant sidebar", () => {
+    identity.role = "user";
+    render(<SidebarProvider defaultOpen={false}><TooltipProvider><ControlPlaneSidebar /></TooltipProvider></SidebarProvider>);
+    expect(screen.getByRole("link", { name: "TaskLattice Guard" }).getAttribute("href")).toBe("/dashboard");
+    expect(screen.getByRole("link", { name: "Guardrails" }).getAttribute("href")).toBe("/guardrails");
   });
 
   it("updates Chinese labels and collapsed accessible names when switching languages", async () => {

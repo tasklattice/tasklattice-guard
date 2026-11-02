@@ -1,3 +1,4 @@
+import { internalAccountEmail, parseUsername } from "../../shared/username";
 import { isAccountRole } from "../../shared/rbac";
 import { authClient } from "@/lib/better-auth";
 import type { MockSsoIdentity } from "../../shared/mock-sso";
@@ -6,7 +7,7 @@ export type IdentityRole = import("../../shared/rbac").AccountRole;
 export type IdentityUser = {
   id: string;
   display_name: string;
-  email: string;
+  username: string;
   role: IdentityRole;
   tenant_id: string | null;
   enabled: boolean;
@@ -25,10 +26,9 @@ export const getAuthStatus = async (): Promise<AuthStatus> => {
   return { authenticated: Boolean(result.data), user: result.data ? identityUser(result.data.user) : null };
 };
 
-export const login = async (input: { email: string; password: string }) => {
-  const identifier = input.email.trim().toLowerCase();
-  const email = identifier.includes("@") ? identifier : `${identifier}@tasklattice.local`;
-  const result = await authClient.signIn.email({ email, password: input.password });
+export const login = async (input: { username: string; password: string }) => {
+  const username = parseUsername(input.username);
+  const result = await authClient.signIn.username({ username, password: input.password });
   if (result.error) throw new Error(result.error.message || "Sign in failed.");
   if (!result.data?.user) throw new Error("Better Auth did not return the signed-in user.");
   return { user: identityUser(result.data.user) };
@@ -97,13 +97,13 @@ export const getUsers = async () => {
   return { users: users.map(identityUser) };
 };
 
-export const createUser = async (input: { display_name: string; email: string; password: string; role: IdentityRole; preferred_language: "en" | "zh-CN" }) => {
+export const createUser = async (input: { display_name: string; username: string; password: string; role: IdentityRole; preferred_language: "en" | "zh-CN" }) => {
   const result = await authClient.admin.createUser({
     name: input.display_name,
-    email: input.email,
+    email: internalAccountEmail(parseUsername(input.username)),
     password: input.password,
     role: input.role,
-    data: { preferredLanguage: input.preferred_language },
+    data: { username: parseUsername(input.username), preferredLanguage: input.preferred_language },
   });
   if (result.error) throw new Error(result.error.message || "User creation failed.");
   return identityUser(result.data.user);
@@ -136,7 +136,7 @@ export const updateUser = async (id: string, input: { display_name?: string; rol
 
 function identityUser(value: unknown): IdentityUser {
   const user = value as {
-    id: string; name: string; email: string; role?: string | null; banned?: boolean | null;
+    id: string; name: string; username: string; role?: string | null; banned?: boolean | null;
     tenantId?: string | null;
     preferredLanguage?: string | null; createdAt: Date | string; updatedAt?: Date | string;
     lastLoginAt?: Date | string | null;
@@ -150,7 +150,7 @@ function identityUser(value: unknown): IdentityUser {
   return {
     id: user.id,
     display_name: user.name,
-    email: user.email,
+    username: user.username,
     role,
     tenant_id: role === "user" ? user.tenantId! : null,
     enabled: !user.banned,

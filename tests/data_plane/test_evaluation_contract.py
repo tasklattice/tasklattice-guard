@@ -160,18 +160,3 @@ async def test_jailbreak_prepares_all_variants_before_first_sample(tmp_path, mon
         await jailbreak.evaluate([{"text": "fixture"}], {"first": plan(), "second": plan()}, tmp_path)
     assert seen[-1] == "shutdown"
     assert not (tmp_path / "results.jsonl").exists()
-
-
-def test_frozen_comparison_uses_json_sequence_semantics():
-    from scripts.verify_default_p0 import paired
-    before = [{**row("one"), "findings": [{"grounding": []}]}]
-    after = [{**row("one"), "findings": [{"grounding": ()}]}]
-    assert paired(before, after)["decision_or_evidence_differences"] == []
-
-
-def test_frozen_comparison_still_rejects_changed_findings():
-    from scripts.verify_default_p0 import paired
-    before = [{**row("one"), "findings": [{"policy_id": "original"}]}]
-    after = [{**row("one"), "findings": [{"policy_id": "changed"}]}]
-    with pytest.raises(AssertionError):
-        paired(before, after)

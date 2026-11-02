@@ -21,7 +21,7 @@ afterEach(cleanup);
 beforeEach(() => { catalog.items = []; catalog.search = {}; });
 
 describe("Policy Library actual Studio opener", () => {
-  it("keeps system-managed declarative definitions editable without delete or legacy export", async () => {
+  it("keeps system-managed declarative definitions editable without delete or native-package export", async () => {
     catalog.items = [{ id: "from-file", name: "Imported Rules", description: "File-owned definition", source: "custom", implementation: "rules",
       version: "1.0.0", tags: [], parameters: [], rails: ["output"], effects: [], detectors: [], rules: [], test_count: 0, test_cases: [],
       safety_level: "balanced", output_delivery: "full_buffered",

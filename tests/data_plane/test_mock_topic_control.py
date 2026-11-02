@@ -7,6 +7,7 @@ import pytest
 
 from runner.toolkit.nemo.native_models import NativeRailModel
 from runner.toolkit.runtime.contracts import ProtectionRequest, RequestContext
+from runner.toolkit.runtime.outcome import GuardrailExecutionError
 from runner.toolkit.runtime.service import GuardrailRuntimeService
 from scripts.mock_topic_control import MODEL, create_app
 from tests.data_plane.test_artifact_execution import _runtime
@@ -68,18 +69,35 @@ async def test_signed_native_topic_artifact_against_tcp_mock(tmp_path,scenario,t
         fixture = Path(__file__).resolve().parents[1]/'fixtures/artifacts/topic-control-native-v1'
         store,registry,engine = _runtime(tmp_path,fixture,native_models=(native,))
         try:
-            result = await asyncio.wait_for(GuardrailRuntimeService(engine,store).evaluate(ProtectionRequest(
-                phase='input',texts=(text,),call_id='topic-mock',
-                context=RequestContext(protocol='litellm',endpoint_id='fixture-endpoint'))), 8)
+            request = ProtectionRequest(phase='input',texts=(text,),call_id='topic-mock',
+                context=RequestContext(protocol='litellm',endpoint_id='fixture-endpoint'))
+            call = GuardrailRuntimeService(engine,store).evaluate(request)
+            if expected == 'failure':
+                with pytest.raises(GuardrailExecutionError) as failed:
+                    await asyncio.wait_for(call, 8)
+                result = failed.value.decision
+                assert result.execution_status in {'error', 'timeout'}
+            else:
+                result = await asyncio.wait_for(call, 8)
             assert registry.readiness()['ready']
             assert result.effective_release_id
             assert result.usage and result.usage.model_invocations >= 1
             if expected=='failure':
                 assert result.decision=='block'
                 assert result.usage.fail_closed is True
+                source, category = {
+                    'normal': ('configuration', 'request_rejected'),
+                    'http-error': ('model', 'unavailable'),
+                    'invalid-response': ('model', 'response_schema'),
+                    'timeout': ('model', 'timeout'),
+                }[scenario]
+                assert result.model_status == ('error' if source == 'model' else 'unknown')
+                assert any(step.error_source == source and step.error_category == category for step in result.trace)
+                assert not any(step.error_source == 'guard' for step in result.trace)
             else:
                 assert result.decision==expected, result.reason
                 assert result.usage.fail_closed is False
+                assert result.model_status == 'ok'
                 if expected=='block': assert any(f.verdict=='matched' for f in result.findings)
         finally:
             await engine.shutdown()

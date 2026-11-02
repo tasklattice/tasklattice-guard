@@ -77,7 +77,7 @@ async def run_native_output_stream(
     # These are our own runtime helpers, not NeMo implementation APIs.
     from .runtime import (
         _execution_context, _admission, _TRACER, _colang1_decision, _colang1_runtime_result,
-        _decision, _messages,
+        _decision, _failed_decision, _messages,
     )
 
     instance, cache_hit, registry_wait = acquisition
@@ -98,12 +98,14 @@ async def run_native_output_stream(
     source_iterator = source.__aiter__()
     evidence = _StreamEvidence(tuple(item.id for item in bindings))
     started = time.perf_counter()
-    with _execution_context(runtime, request, instance, started, native_stream=evidence) as (scope, _):
+    with _execution_context(runtime, request, instance, started, native_stream=evidence) as (scope, model_scope):
         stream = None
         pending = ""
         exhausted = False
         released = 0
         checks = 0
+        last_decision = None
+        observation_failed = False
         queue_wait = registry_wait
 
         async def inputs():
@@ -116,12 +118,11 @@ async def run_native_output_stream(
             exhausted = True
 
         async def observe_checks():
-            nonlocal checks
+            nonlocal checks, last_decision, observation_failed
             while evidence.completed:
                 payloads = evidence.completed.popleft()
                 results = tuple(_colang1_runtime_result(binding, payload)
                                 for binding, payload in zip(bindings, payloads))
-                last = payloads[-1]
                 candidate = payloads[0]["input_text"]
                 if not candidate.endswith(pending):
                     raise NativeStreamError("NeMo did not check all pending source text.")
@@ -141,10 +142,16 @@ async def run_native_output_stream(
                     active_concurrency=instance.active_requests,
                 )
                 checks += 1
+                last_decision = decision
                 if observe is not None:
-                    await observe(decision)
-                if last["verdict"] == "error" or decision.usage.fail_closed:
-                    raise NativeStreamError("Output protection failed; unchecked text was withheld.")
+                    try:
+                        await observe(decision)
+                    except BaseException:
+                        observation_failed = True
+                        raise
+                if decision.execution_status in {"error", "timeout"}:
+                    raise NativeStreamError("Output protection failed; unchecked text was withheld.",
+                        timed_out=decision.execution_status == "timeout")
 
         inputs_iterator = inputs()
         async with _admission(instance, request) as admission_wait:
@@ -187,6 +194,12 @@ async def run_native_output_stream(
                         return OutputStreamResult("completed", released, checks)
                     except BaseException as error:
                         span.set_status(Status(StatusCode.ERROR, type(error).__name__))
+                        if isinstance(error, Exception) and observe is not None and not observation_failed and (
+                            last_decision is None or last_decision.execution_status not in {"error", "timeout"}
+                        ):
+                            await observe(_failed_decision(request, scope.action_failure or error,
+                                max(0, round((time.perf_counter() - started) * 1000)), instance.config,
+                                native_model_calls=tuple(model_scope.calls)))
                         raise
             finally:
                 try:

@@ -2,12 +2,16 @@ from __future__ import annotations
 
 from collections.abc import Iterable
 from dataclasses import replace
+import json
+import time
 
-from ...runtime.contracts import ProviderEvidence, RiskFinding
+from ...runtime.failures import ModelResponseError
+from ...runtime.contracts import ProviderEvidence, RiskFinding, RuntimeTraceStep
 from ...safety.mappings import ProviderCategoryMapping, provider_mapping
 from ...safety.providers import NativeSafetyAssessment, SafetyModelProvider
 from ...safety.taxonomy import taxonomy, taxonomy_for_evaluator
 from ..actions.model_call import ModelCallTracker, observe_model_call
+from ..actions.model_retry import with_connection_retry
 from .contracts import (
     EvaluationRequest,
     EvaluationResult,
@@ -90,6 +94,8 @@ class SafetyModelEvaluator:
                 request.content,
                 reason=reason,
                 usage=usage,
+                trace=(self._trace(request, assessment, "error", usage),),
+                error_source="configuration" if not guards else None, error_category="configuration" if not guards else None,
             )
 
         if assessment.verdict == "safe":
@@ -102,6 +108,7 @@ class SafetyModelEvaluator:
                     f"capability {request.capability} as safe."
                 ),
                 usage=usage,
+                trace=(self._trace(request, assessment, "not_matched", usage),),
             )
 
         findings, unmapped, irrelevant = await self._canonical_findings(
@@ -123,6 +130,7 @@ class SafetyModelEvaluator:
                         f"category applicable to capability {request.capability}."
                     ),
                     usage=usage,
+                    trace=(self._trace(request, assessment, "not_matched", usage),),
                 )
             reason = (
                 f"Safety Provider {assessment.provider_id} returned "
@@ -137,6 +145,7 @@ class SafetyModelEvaluator:
                 request.content,
                 reason=reason,
                 usage=usage,
+                trace=(self._trace(request, assessment, "unknown", usage),),
             )
 
         verdict = "matched" if assessment.verdict == "unsafe" else "unknown"
@@ -171,6 +180,22 @@ class SafetyModelEvaluator:
             findings=findings,
             reason=reason,
             usage=usage,
+            trace=(self._trace(request, assessment, verdict, usage),),
+        )
+
+    def _trace(self, request, assessment, verdict, usage):
+        requested = assessment.model if assessment else next((call.model for call in usage.model_calls), None)
+        response = assessment.payload.get("model") if assessment and assessment.payload else None
+        if not isinstance(response, str):
+            response = None
+        return RuntimeTraceStep(
+            id=f"{request.binding.id}:native-safety", kind="evaluation", name="Native Safety classification",
+            status="error" if verdict == "error" else "completed", detail="Native Safety classifier returned a decision.",
+            verdict=verdict, evaluator_id=self.id, capability=request.capability,
+            model_name=response or requested, policy_id=request.policy_id, policy_version=request.policy_version,
+            rail_type=request.rail_type, content_block_id=request.active_block_id,
+            evidence=json.dumps({"requested_model": requested, "response_model": response,
+                                 "native_verdict": assessment.verdict if assessment else None}),
         )
 
     async def _first_success(
@@ -205,6 +230,9 @@ class SafetyModelEvaluator:
     ) -> NativeSafetyAssessment | None:
         tracker: ModelCallTracker | None = None
         try:
+            deadline = min(request.deadline, time.monotonic() + provider.config.timeout_seconds)
+            if deadline <= time.monotonic():
+                raise TimeoutError("Evaluation deadline exceeded")
             with observe_model_call(
                 request,
                 provider=provider.config.id,
@@ -216,13 +244,13 @@ class SafetyModelEvaluator:
                 profile_ref=provider.config.profile_ref or None,
                 runtime_ref=provider.config.runtime_ref or None,
             ) as tracker:
-                result = await provider.assess(
-                    messages,
-                    scope=request.rail_type,
-                    candidate_taxonomy_ids=candidates,
+                result = await with_connection_retry(
+                    lambda: provider.assess(messages, scope=request.rail_type,
+                                            candidate_taxonomy_ids=candidates),
+                    deadline=deadline, call=tracker,
                 )
                 if result.verdict not in {"safe", "unsafe", "uncertain", "controversial"}:
-                    raise ValueError("Safety Provider returned an invalid classification.")
+                    raise ModelResponseError("response_schema", "InvalidClassification")
                 tracker.complete(payload=result.payload)
                 return result
         except Exception as error:

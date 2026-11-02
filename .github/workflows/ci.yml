@@ -6,6 +6,12 @@ on:
       - main
   pull_request:
   workflow_call:
+  workflow_dispatch:
+    inputs:
+      runner_image:
+        description: Export the tested arm64 Runner image for local regression
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -42,8 +48,15 @@ jobs:
       - name: Install dependencies
         run: uv sync --all-extras --frozen && npm ci --no-audit --no-fund && npm ci --prefix controller --no-audit --no-fund
 
-      - name: Verify generated OpenAPI contract
+      - name: Generate and validate OpenAPI contract
         run: npm run openapi:check --prefix controller
+
+      - name: Upload generated OpenAPI contract
+        uses: actions/upload-artifact@v7
+        with:
+          name: controller-openapi-${{ github.sha }}
+          path: controller/openapi/controller.openapi.json
+          if-no-files-found: error
 
       - name: Test developer commands
         run: npm run test:cli
@@ -63,6 +76,17 @@ jobs:
         working-directory: controller
         run: npm run typecheck && npm run build
 
+      - name: Upload tested Controller build
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.runner_image }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: controller-build-${{ github.sha }}
+          path: |
+            controller/dist/
+            controller/dist-server/
+          retention-days: 1
+          if-no-files-found: error
+
   runner-cli:
     name: Runner guardctl (${{ matrix.architecture }})
     runs-on: ${{ matrix.runner }}
@@ -78,6 +102,16 @@ jobs:
     steps:
       - name: Check out repository
         uses: actions/checkout@v7
+
+      - name: Set up Node.js for contract generation
+        uses: actions/setup-node@v7
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: controller/package-lock.json
+
+      - name: Install contract generation dependencies
+        run: npm ci --prefix controller --no-audit --no-fund
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v4.2.0
@@ -106,6 +140,20 @@ jobs:
         with:
           name: guardctl-smoke-${{ matrix.architecture }}
           path: guardctl-smoke.log
+          if-no-files-found: error
+
+      - name: Export tested Runner image
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.runner_image && matrix.architecture == 'arm64' }}
+        run: docker save tali-guard-runner:guardctl-ci -o runner-image.tar
+
+      - name: Upload tested Runner image
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.runner_image && matrix.architecture == 'arm64' }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: runner-image-arm64-${{ github.sha }}
+          path: runner-image.tar
+          compression-level: 0
+          retention-days: 1
           if-no-files-found: error
 
   data-plane:

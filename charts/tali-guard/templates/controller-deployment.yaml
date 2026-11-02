@@ -9,6 +9,10 @@ metadata:
     app.kubernetes.io/component: controller
 spec:
   replicas: 1
+  # Schema contraction requires the previous Controller to stop writing first.
+  strategy:
+    type: Recreate
+    rollingUpdate: null
   selector:
     matchLabels: &selector
       app.kubernetes.io/instance: {{ .Release.Name }}
@@ -17,6 +21,9 @@ spec:
     metadata:
       annotations:
         checksum/controller-config: {{ include "tali-guard.controllerConfig" . | sha256sum }}
+      {{- if .Values.postgresql.enabled }}
+        tasklattice.io/database-revision: {{ .Release.Revision | quote }}
+      {{- end }}
       {{- with .Values.rolloutRevision }}
         tasklattice.io/rollout-revision: {{ . | quote }}
       {{- end }}
@@ -85,7 +92,7 @@ spec:
             - name: CONTROLLER_BOOTSTRAP_{{ upper $role }}_DIRECTORY
               value: /var/run/tasklattice/bootstrap-{{ lower $role }}
             - name: CONTROLLER_BOOTSTRAP_{{ upper $role }}_FIELDS
-              value: {{ dict "emailKey" $account.emailKey "nameKey" $account.nameKey "credentialKey" $account.credentialKey "digestKey" $account.digestKey | toJson | quote }}
+              value: {{ dict "usernameKey" $account.usernameKey "nameKey" $account.nameKey "credentialKey" $account.credentialKey | toJson | quote }}
             {{- end }}
             {{- end }}
             - { name: CONTROLLER_ARTIFACT_SIGNING_KEY_PATH, value: /var/run/tasklattice/artifact/private-key.pem }

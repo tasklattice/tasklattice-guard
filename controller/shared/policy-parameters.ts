@@ -16,6 +16,12 @@ export function modelParameterFields(rule: DefinitionRule): ModelParameterField[
     { key: "topic_mode", name: "topic_mode", kind: "text", default: "permissive", required: true },
     { key: "allowed_topics", name: "allowed_topics", kind: "textarea", default: null, required: false },
     { key: "restricted_topics", name: "denied_topics", kind: "textarea", default: null, required: false },
+    { key: "on_unknown", name: "on_unknown", kind: "text", default: "block", required: false },
+    { key: "review_unknown", name: "review_unknown", kind: "text", default: "false", required: false },
+  ];
+  if (rule.detector.ref === "model/classifier" && ["jailbreak-classification", "safety-classification"].includes(String(rule.detector.parameters.profile))) return [
+    { key: "on_unknown", name: "on_unknown", kind: "text", default: "block", required: false },
+    { key: "review_unknown", name: "review_unknown", kind: "text", default: "false", required: false },
   ];
   if (rule.detector.ref === "model/grounding") return ["grounding_threshold", "relevance_threshold"].map(key => ({ key, name: key, kind: "number", default: "0.7", required: true }));
   if (rule.detector.ref === "service/formal-verification") return [
@@ -34,6 +40,16 @@ export function modelParameterDeclarationIssues(definition: PolicyDefinition): s
   for (const rule of definition.rules) {
     if (!rule.detector.ref.startsWith("model/") && !rule.detector.ref.startsWith("service/")) continue;
     const fields = modelParameterFields(rule);
+    if (rule.detector.parameters.on_unknown !== undefined) {
+      const value = rule.detector.parameters.on_unknown;
+      if (!fields.some(field => field.key === "on_unknown")) issues.push(`Rule ${rule.name || rule.id}: on_unknown is supported only by the jailbreak, content safety and topic classifiers.`);
+      else if (!parameterReferences(value).length && !["allow", "block"].includes(String(value))) issues.push(`Rule ${rule.name || rule.id}: on_unknown must be allow or block.`);
+    }
+    if (rule.detector.parameters.review_unknown !== undefined) {
+      const value = rule.detector.parameters.review_unknown;
+      if (!fields.some(field => field.key === "review_unknown")) issues.push(`Rule ${rule.name || rule.id}: review_unknown is supported only by the jailbreak, content safety and topic classifiers.`);
+      else if (!parameterReferences(value).length && !["true", "false"].includes(String(value))) issues.push(`Rule ${rule.name || rule.id}: review_unknown must be true or false.`);
+    }
     for (const [key, value] of Object.entries(rule.detector.parameters)) {
       if (typeof value !== "string") continue;
       const refs = parameterReferences(value);
@@ -94,6 +110,12 @@ export function policyBindingParameterIssues(definition: PolicyDefinition, value
     for (const field of modelParameterFields(rule)) {
       const value = params[field.key] ?? field.default;
       if (field.kind === "number" && (value == null || !String(value).trim() || !Number.isFinite(Number(value)) || Number(value) < 0 || Number(value) > 1)) issues.push(`Rule ${rule.name || rule.id}: ${field.key} must be between 0 and 1.`);
+    }
+    if (modelParameterFields(rule).some(field => field.key === "on_unknown") && !["allow", "block"].includes(String(params.on_unknown ?? "block"))) {
+      issues.push(`Rule ${rule.name || rule.id}: on_unknown must be allow or block.`);
+    }
+    if (modelParameterFields(rule).some(field => field.key === "review_unknown") && !["true", "false"].includes(String(params.review_unknown ?? "false"))) {
+      issues.push(`Rule ${rule.name || rule.id}: review_unknown must be true or false.`);
     }
     if (rule.detector.parameters.profile === "topic-classification") {
       const mode = params.topic_mode ?? "permissive";

@@ -5,6 +5,7 @@ import os
 from typing import Any
 
 import httpx
+from ...runtime.failures import model_response
 
 from runner.model_validation_diagnostics import record_validation_error, validation_http_hooks
 from ...runtime.contracts import RiskFinding
@@ -70,6 +71,7 @@ class ChatTopicEvaluator:
                 "error",
                 request.content,
                 reason="Topic Judge credential is not configured.",
+                error_source="configuration", error_category="authentication",
             )
 
         call = None
@@ -102,8 +104,9 @@ class ChatTopicEvaluator:
                         },
                     )
                     response.raise_for_status()
-                    raw_payload = response.json()
-                    payload = _response_payload(raw_payload)
+                    with model_response():
+                        raw_payload = response.json()
+                        payload = _response_payload(raw_payload)
                     call.complete(payload=raw_payload)
         except (
             httpx.HTTPError,
@@ -167,6 +170,10 @@ class TopicJudgeActionProvider:
         return any(capability in item.capabilities and contract in item.contracts and phase in item.rails
                    for item in self.evaluators)
 
+    def supports_review(self, capability: str, contract: str, phase: str) -> bool:
+        return phase == "input" and any(capability in item.capabilities and contract in item.contracts
+            and phase in item.rails and getattr(item, "review_ready", False) for item in self.evaluators)
+
     async def execute(self, request: ActionRequest) -> ActionResult:
         for evaluator in self.evaluators:
             if (request.rail_type in evaluator.rails and request.capability in evaluator.capabilities
@@ -178,8 +185,9 @@ class TopicJudgeActionProvider:
 def topic_judge_prompt(parameters: tuple[tuple[str, str], ...]) -> str:
     configured = dict(parameters)
     mode = configured.get("topic_mode", "strict")
-    # Existing immutable allowlist artifacts predate denied-topic enforcement.
-    denied = "" if mode == "allowlist" else configured.get("restricted_topics", "")
+    if mode not in {"strict", "permissive"}:
+        raise ValueError("Unsupported topic mode.")
+    denied = configured.get("restricted_topics", "")
     return "\n".join(
         (
             "You enforce the configured Topic Control Policy.",

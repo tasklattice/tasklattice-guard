@@ -1,6 +1,7 @@
 id: pattern/generic_api_key
 name: API Key (Generic)
-description: Detects generic API key patterns
+description: Detect labelled API keys, client/shared secrets and access/auth tokens in assignments, JSON and query
+  strings. Require an explicit credential field and at least 16 value characters.
 stages:
 - input
 - output
@@ -8,7 +9,8 @@ detector:
   ref: text/regex
   version: 1.0.0
   parameters:
-    expression: \b([Aa][Pp][Ii][-_]?[Kk][Ee][Yy][\s:=]+['"]?[A-Za-z0-9_\-]{20,}['"]?)\b
+    expression: (?i)(?<![\w])(?:api[_-]?(?:key|token)|access[_-]?token|secret[_-]?key|shared[_-]?secret|client[_-]?secret|(?:_?oauth[_-](?:request[_-])?)?token(?:[_-]secret)?|bearer[_-]token|secret)(?:(?:\\?["'])?(?:\s*\])?\s*[:=：]\s*|["']?[
+      \t]+)["']?(?![A-Za-z_][\w.]*\s*[\[(])[A-Za-z0-9_./+%|=-]{16,512}(?![A-Za-z0-9_./+%|=-])
 on_match:
   action: transform
   replacement: '[generic_api_key_REDACTED]'

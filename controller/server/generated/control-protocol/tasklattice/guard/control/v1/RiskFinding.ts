@@ -44,7 +44,7 @@ export interface RiskFinding {
    */
   'riskSeverity'?: (string);
   /**
-   * Immutable Policy version used by the matched Rule; absent for legacy evidence.
+   * Immutable Policy version used by the matched Rule; absent when the finding has no Policy attribution.
    */
   'policyVersion'?: (string);
   '_confidence'?: "confidence";
@@ -92,7 +92,7 @@ export interface RiskFinding__Output {
    */
   'riskSeverity'?: (string);
   /**
-   * Immutable Policy version used by the matched Rule; absent for legacy evidence.
+   * Immutable Policy version used by the matched Rule; absent when the finding has no Policy attribution.
    */
   'policyVersion'?: (string);
   '_confidence'?: "confidence";

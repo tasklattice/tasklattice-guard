@@ -15,7 +15,7 @@ const detail: GuardrailVersionDetail = {
   guardrail_id: "guardrail-observed",
   version: "20260904-020000.002Z",
   source_draft_version: 3,
-  compiler_version: "tasklattice-nemo-config-v7",
+  compiler_version: "tasklattice-nemo-config-v1",
   plan_checksum: "plan-checksum",
   config_checksum: "config-checksum",
   created_at: "2026-08-13T08:00:00Z",

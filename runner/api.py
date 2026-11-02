@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+from .evaluation_evidence import execution_status
+from .toolkit.runtime.outcome import GuardrailExecutionError
+
 import hmac
 import asyncio
 import base64
@@ -16,12 +19,13 @@ from fastapi.encoders import jsonable_encoder
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 from opentelemetry import trace
+from redis.exceptions import OutOfMemoryError
 
 from runner.toolkit.runtime.contracts import GuardContentBlock, ProtectionDecision, ProtectionRequest, RequestContext
 from runner.toolkit.runtime.content_views import text_blocks
 from runner.toolkit.runtime.service import GuardrailRuntimeService
 
-from .artifact_store import ArtifactStore
+from .artifact_store import ArtifactStore, EndpointAccess
 from .routing import RoutingError, public_route_assignment
 from .draft_preview import DraftPreviewRuntime
 from .metrics import (
@@ -211,7 +215,7 @@ class RunnerAPI:
         register_scan(self, max_body_bytes=scan_max_body_bytes, timeout_seconds=scan_timeout_seconds)
 
     def _trace_request_id(self, fallback: str) -> str:
-        """Prefer the active trace id without requiring legacy metric fakes to expose one."""
+        """Prefer the active trace id when the metrics implementation exposes one."""
 
         trace_id = getattr(self._metrics, "current_trace_id", None)
         return (trace_id() if callable(trace_id) else None) or fallback
@@ -220,9 +224,15 @@ class RunnerAPI:
         factory = getattr(self._store, "authenticate_endpoint_snapshot", None)
         if factory is not None:
             snapshot = factory(endpoint_id, credential)
-            return snapshot is not None, snapshot.adapter if snapshot is not None else None, snapshot
-        # Custom/legacy stores may authenticate but cannot mint provenance.
-        return self._store.authenticate_endpoint(endpoint_id, credential), self._store.endpoint_adapter(endpoint_id), None
+            if snapshot is None:
+                return EndpointAccess(self._store.endpoint_adapter(endpoint_id), False, False), None
+            return EndpointAccess(snapshot.adapter, True, snapshot.authenticated), snapshot
+        # Custom/legacy stores may authorize but cannot mint provenance.
+        authorize = getattr(self._store, "authorize_endpoint", None)
+        if callable(authorize):
+            return authorize(endpoint_id, credential), None
+        authenticated = self._store.authenticate_endpoint(endpoint_id, credential)
+        return EndpointAccess(self._store.endpoint_adapter(endpoint_id), authenticated, authenticated), None
 
     async def _acquire_tenant_permit(self, endpoint_id: str, credential: str | None) -> AdmissionPermit | None:
         return await self._tenant_admission.acquire(self._store, endpoint_id, credential) if self._tenant_admission is not None else None
@@ -257,11 +267,11 @@ class RunnerAPI:
             endpoint_id: str,
             x_api_key: str | None = Header(default=None),
         ):
-            authenticated = self._store.authenticate_endpoint(endpoint_id, x_api_key)
-            self._metrics.observe_authentication("litellm", authenticated)
-            if not authenticated:
+            access = self._store.authorize_endpoint(endpoint_id, x_api_key)
+            self._metrics.observe_authentication("litellm", access.authenticated)
+            if not access.allowed:
                 raise HTTPException(status_code=401, detail="Endpoint credential is invalid.")
-            adapter = self._store.endpoint_adapter(endpoint_id)
+            adapter = access.adapter
             if adapter != LITELLM_ADAPTER_ID:
                 raise HTTPException(status_code=409, detail="Endpoint adapter is not compatible with LiteLLM.")
             return {
@@ -283,10 +293,10 @@ class RunnerAPI:
             x_api_key: str | None = Header(default=None),
         ) -> LiteLLMGuardrailResponse:
             phase = "input" if payload.input_type == "request" else "output"
-            authenticated, adapter, endpoint_snapshot = self._authenticate_endpoint(endpoint_id, x_api_key)
-            self._metrics.observe_authentication("litellm", authenticated)
-            adapter_matches = adapter == LITELLM_ADAPTER_ID
-            if not authenticated:
+            access, endpoint_snapshot = self._authenticate_endpoint(endpoint_id, x_api_key)
+            self._metrics.observe_authentication("litellm", access.authenticated)
+            adapter_matches = access.adapter == LITELLM_ADAPTER_ID
+            if not access.allowed:
                 self._metrics.reject_request("litellm", phase=phase, result="authentication_rejected")
                 raise HTTPException(status_code=401, detail="Endpoint credential is invalid.")
             if not adapter_matches:
@@ -304,7 +314,7 @@ class RunnerAPI:
                 request_id = str(uuid.uuid4())
                 started = time.perf_counter()
                 try:
-                    protection_request = _litellm_protection_request(payload, endpoint_id, request)
+                    protection_request = _litellm_protection_request(payload, endpoint_id, request, authenticated=access.authenticated is True)
                     protection_request = replace(protection_request, context=replace(protection_request.context, endpoint_snapshot=endpoint_snapshot))
                 except RoutingError as error:
                     raise HTTPException(status_code=503, detail=error.reason) from error
@@ -314,28 +324,32 @@ class RunnerAPI:
                 ) as observation:
                     request_id = self._trace_request_id(request_id)
                     try:
-                        route_matched = True
-                        try:
-                            decision = await self._runtime.evaluate(
-                                protection_request, on_resolved=observation.resolve,
-                            )
-                        except LookupError:
-                            route_matched = False
-                            observation.set_identity(
-                                guardrail_id=UNMATCHED_METRIC_ID,
-                                guardrail_version=UNMATCHED_METRIC_ID,
-                                router_id=UNMATCHED_METRIC_ID,
-                            )
-                            decision = ProtectionDecision(
-                                decision="block",
-                                action="block",
-                                reason="No Router matches this request.",
-                                mode=protection_request.mode,
-                            )
-                        self._metrics.observe_route("litellm", phase, route_matched)
+                        decision = await self._runtime.evaluate(
+                            protection_request, on_resolved=observation.resolve,
+                        )
+                        self._metrics.observe_route("litellm", phase, True)
                         observation.complete(decision)
                         self._path_response_headers(response, decision)
+                        if request.headers.get("x-guard-evidence") == "evaluations-v1":
+                            from .evaluation_evidence import RESPONSE_HEADER, evaluation_evidence
+                            response.headers[RESPONSE_HEADER] = evaluation_evidence(decision)
                         return _litellm_response(decision)
+                    except GuardrailExecutionError as error:
+                        decision = error.decision
+                        observation.complete(decision)
+                        observation.fail("runtime", "timeout" if error.timed_out else "runtime_exception")
+                        headers = {}
+                        if request.headers.get("x-guard-evidence") == "evaluations-v1":
+                            from .evaluation_evidence import RESPONSE_HEADER, evaluation_evidence
+                            headers[RESPONSE_HEADER] = evaluation_evidence(decision)
+                        raise HTTPException(status_code=504 if error.timed_out else 503,
+                            detail={"code": error.code, "message": str(error)}, headers=headers) from error
+                    except LookupError as error:
+                        self._metrics.observe_route("litellm", phase, False)
+                        observation.set_identity(guardrail_id=UNMATCHED_METRIC_ID,
+                            guardrail_version=UNMATCHED_METRIC_ID, router_id=UNMATCHED_METRIC_ID)
+                        observation.fail("runtime", "dependency_missing")
+                        raise HTTPException(status_code=503, detail="The Guardrail route or runtime is unavailable.") from error
                     except RoutingError as error:
                         observation.fail("runtime", error.reason)
                         raise HTTPException(status_code=503, detail=str(error)) from error
@@ -353,6 +367,7 @@ class RunnerAPI:
                             phase=phase,
                             protocol="litellm",
                             mode=protection_request.mode,
+                            stream_metadata={"authentication": "credential" if access.authenticated else "anonymous"},
                             started=started,
                             decision=decision,
                             content_before=protection_request.texts,
@@ -562,9 +577,12 @@ class RunnerAPI:
         capture_level = self._store.logging_level(guardrail_id)
         capture_key = self._runtime_log_capture.key(endpoint_id, guardrail_id, protocol, call_id) if call_id else None
         capture_failed = False
+        capture_capacity = False
         if capture_key:
             try:
                 capture_level = await self._runtime_log_capture.level(capture_key, capture_level)
+            except OutOfMemoryError:
+                capture_failed = capture_capacity = True
             except Exception:
                 capture_failed = True
                 logging.getLogger(__name__).exception("Runtime log correlation unavailable; preserving audit metadata.")
@@ -584,6 +602,8 @@ class RunnerAPI:
                 "runtimeLogCaptured": runtime_log_captured,
                 "contentAvailable": False,
                 "originalContentOnly": True,
+                **({"executionStatus": "timeout" if getattr(observation, "failure_reason_class", None) == "timeout" else "error"}
+                   if decision is None else {}),
                 **(stream_metadata or {}),
             },
         }
@@ -593,8 +613,6 @@ class RunnerAPI:
                 or getattr(observation, "allocation_context_id", None) or endpoint_context_id)
             if provenance:
                 event["allocationContextId"] = provenance
-        if protocol == "scan" and (stream_metadata or {}).get("scanExecutionStatus") == "error":
-            event["decision"] = "error"
         if decision is not None:
             event["metadata"].update(_telemetry_metadata(decision))
             if decision.guardrail_id:
@@ -615,10 +633,14 @@ class RunnerAPI:
         # DEBUG holds encrypted candidates briefly, so an output finding can
         # select the original input even when it ran on another replica.
         if capture_level in {"debug", "trace"} and self._runtime_log_encryption_key:
-            ciphertext = _encrypt_runtime_log_content(
-                self._runtime_log_encryption_key, phase, content_before,
-                await _runtime_http_request(http_request) if http_request is not None else None,
-            )
+            try:
+                ciphertext = _encrypt_runtime_log_content(
+                    self._runtime_log_encryption_key, phase, content_before,
+                    await _runtime_http_request(http_request) if http_request is not None else None,
+                )
+            except Exception:
+                capture_failed = True
+                logging.getLogger(__name__).warning("Runtime body capture unavailable; preserving audit metadata.")
         pending = []
         incomplete = capture_failed
         if capture_key and capture_level == "debug" and not capture_failed:
@@ -627,6 +649,8 @@ class RunnerAPI:
             try:
                 runtime_log_captured, pending, incomplete = await self._runtime_log_capture.record(
                     capture_key, capture_level, candidate, runtime_log_captured)
+            except OutOfMemoryError:
+                incomplete = capture_capacity = True
             except Exception:
                 incomplete = True
                 logging.getLogger(__name__).exception("Runtime log body buffering unavailable; preserving audit metadata.")
@@ -637,6 +661,8 @@ class RunnerAPI:
             "disabled" if capture_level == "info" else "not_selected")
         if incomplete:
             event["metadata"]["callCaptureIncomplete"] = True
+        if capture_capacity:
+            event["metadata"]["callCaptureUnavailableReason"] = "redis_capacity"
         if runtime_log_captured and ciphertext:
             event["metadata"]["contentCiphertext"] = ciphertext
         try:
@@ -742,6 +768,9 @@ def _telemetry_metadata(decision: ProtectionDecision) -> dict[str, Any]:
             "modelOperation": item.model_operation,
             "modelResult": item.model_result,
             "errorType": item.error_type,
+            "errorSource": item.error_source, "errorCategory": item.error_category,
+            "httpStatus": item.http_status, "modelCallId": item.model_call_id,
+            "affectsResult": item.affects_result,
             "modelTimeToFirstTokenMs": item.model_time_to_first_token_ms,
             "modelInputTokens": item.model_input_tokens,
             "modelOutputTokens": item.model_output_tokens,
@@ -763,7 +792,12 @@ def _telemetry_metadata(decision: ProtectionDecision) -> dict[str, Any]:
         "detectionError": decision.detection_error,
         "risks": risks,
         "findings": findings,
-        "executionStatus": "bypassed" if decision.protection_mode == "bypass" else "error" if decision.detection_error or any(item.verdict == "error" for item in decision.findings) or any(item.timed_out or item.verdict == "error" or item.status in {"error", "failed", "timeout"} for item in decision.trace) else "complete",
+        "executionStatus": execution_status(decision),
+        "modelStatus": decision.model_status,
+        "terminationReason": decision.termination_reason,
+        "diagnostics": [{"code": d.code, "message": d.message, "stepId": d.step_id,
+                         "policyId": d.policy_id, "affectsResult": d.affects_result,
+                         "source": d.source, "category": d.category, "httpStatus": d.http_status, "modelCallId": d.model_call_id} for d in decision.diagnostics],
         "trace": trace,
         "usage": usage,
         "coverage": coverage,
@@ -852,6 +886,7 @@ def _litellm_protection_request(
     payload: LiteLLMGuardrailRequest,
     endpoint_id: str,
     request: Request | None = None,
+    *, authenticated: bool = True,
 ) -> ProtectionRequest:
     headers = {
         str(key).lower(): str(value)
@@ -894,7 +929,8 @@ def _litellm_protection_request(
     fields.update({
         "protocol": "litellm",
         "endpoint.id": endpoint_id,
-        "auth.principal": principal,
+        **({"auth.principal": principal} if authenticated else {}),
+        "auth.mode": "credential" if authenticated else "anonymous",
         "model": str(payload.model or payload.request_data.get("model") or ""),
         "litellm.operation": payload.input_type,
         "http.method": headers.get("x-original-method", "POST").upper(),
@@ -914,7 +950,7 @@ def _litellm_protection_request(
             fields=tuple(sorted(fields.items())),
         ),
         call_id=(
-            _scoped_call_id(endpoint_id, payload.litellm_call_id)
+            ("" if authenticated else "anonymous:") + _scoped_call_id(endpoint_id, payload.litellm_call_id)
             if payload.litellm_call_id
             else None
         ),
