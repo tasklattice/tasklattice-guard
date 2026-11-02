@@ -10,24 +10,25 @@ import { ControlPlaneService } from "./control-plane.js";
 
 const url = process.env.GUARD_TEST_POSTGRES_URL;
 describe.skipIf(!url)("Preconfigured Guardrail lifecycle", () => {
-  if (!url) return;
-  const directory = mkdtempSync(join(tmpdir(), "guard-preconfigured-"));
+  let directory: string;
   const key = generateKeyPairSync("ed25519");
-  const keyPath = join(directory, "artifact.pem");
-  writeFileSync(keyPath, key.privateKey.export({ type: "pkcs8", format: "pem" }));
-  const config = loadConfig({ NODE_ENV: "test", CONTROLLER_DATABASE_URL: url,
-    CONTROLLER_RUNNER_TOKEN: "runner-token-that-is-at-least-32-characters",
-    CONTROLLER_ARTIFACT_SIGNING_KEY_PATH: keyPath,
-    CONTROLLER_POLICY_CATALOG_DIR: resolve("../runner/toolkit/policy_library/assets"),
-    CONTROLLER_PROTO_PATH: resolve("../proto/tasklattice/guard/control/v1/runner_control.proto"),
-    BETTER_AUTH_SECRET: "better-auth-secret-that-is-at-least-32-characters" });
+  let config: ReturnType<typeof loadConfig>;
   let database: Awaited<ReturnType<typeof createTestDatabase>>;
   let id: string;
   beforeAll(async () => {
-    database = await createTestDatabase(url, "preconfigured");
+    directory = mkdtempSync(join(tmpdir(), "guard-preconfigured-"));
+    const keyPath = join(directory, "artifact.pem");
+    writeFileSync(keyPath, key.privateKey.export({ type: "pkcs8", format: "pem" }));
+    config = loadConfig({ NODE_ENV: "test", CONTROLLER_DATABASE_URL: url!,
+      CONTROLLER_RUNNER_TOKEN: "runner-token-that-is-at-least-32-characters",
+      CONTROLLER_ARTIFACT_SIGNING_KEY_PATH: keyPath,
+      CONTROLLER_POLICY_CATALOG_DIR: resolve("../runner/toolkit/policy_library/assets"),
+      CONTROLLER_PROTO_PATH: resolve("../proto/tasklattice/guard/control/v1/runner_control.proto"),
+      BETTER_AUTH_SECRET: "better-auth-secret-that-is-at-least-32-characters" });
+    database = await createTestDatabase(url!, "preconfigured");
     await database.pool.query("INSERT INTO auth_user (id,name,email,role) VALUES ('user','User','user@example.test','user')");
   });
-  afterAll(async () => { await database?.drop(); rmSync(directory, { recursive: true, force: true }); });
+  afterAll(async () => { await database?.drop(); if (directory) rmSync(directory, { recursive: true, force: true }); });
 
   it("seeds once, preserves edits and mode across restarts, and never restores deletion", async () => {
     let service = new ControlPlaneService(database.db, config);

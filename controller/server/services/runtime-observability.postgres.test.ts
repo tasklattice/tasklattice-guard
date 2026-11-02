@@ -1,20 +1,22 @@
 // @vitest-environment node
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { Pool } from 'pg';
-import { drizzle } from 'drizzle-orm/node-postgres';
 import { sql } from 'drizzle-orm';
 import { queryRuntimeMetrics } from './runtime-metrics.js';
 import { ControlPlaneService } from './control-plane.js';
 import { boundedRead } from '../db/read-budget.js';
+import { createTestDatabase } from '../db/postgres-test-database.js';
 
 // Uses session-local temporary tables only; never inserts/deletes application records.
-describe.skipIf(!process.env.TEST_DATABASE_URL)('bounded runtime observability (PostgreSQL)', () => {
-  const pool = new Pool({ connectionString: process.env.TEST_DATABASE_URL, max: 1 });
-  const db = drizzle(pool);
-  const service = Object.assign(Object.create(ControlPlaneService.prototype), { db, runtimeLogEncryptionKey: null }) as ControlPlaneService;
+describe.skipIf(!process.env.GUARD_TEST_POSTGRES_URL)('bounded runtime observability (PostgreSQL)', () => {
+  let database: Awaited<ReturnType<typeof createTestDatabase>>;
+  let db: Awaited<ReturnType<typeof createTestDatabase>>['db'];
+  let service: ControlPlaneService;
   beforeAll(async () => {
+    database = await createTestDatabase(process.env.GUARD_TEST_POSTGRES_URL!, 'runtime_observability', { maxConnections: 1 });
+    db = database.db;
+    service = Object.assign(Object.create(ControlPlaneService.prototype), { db, runtimeLogEncryptionKey: null });
     for (const name of ['runtime_event','guardrail','traffic_router','endpoint','guardrail_validation_run','route_assignment']) {
-      await db.execute(sql.raw(`CREATE TEMP TABLE ${name} (LIKE public.${name} INCLUDING DEFAULTS)`));
+      await db.execute(sql`CREATE TEMP TABLE ${sql.identifier(name)} (LIKE ${sql.identifier(database.schema)}.${sql.identifier(name)} INCLUDING DEFAULTS)`);
     }
     await db.execute(sql`INSERT INTO runtime_event(id,occurred_at,request_id,runner_id,guardrail_id,router_id,direction,decision,duration_ms,metadata)
       SELECT 'event-'||lpad(n::text,6,'0'),now()-interval '1 hour','request-'||n,'runner','guard','router','incoming',
@@ -25,7 +27,7 @@ describe.skipIf(!process.env.TEST_DATABASE_URL)('bounded runtime observability (
           'usage',jsonb_build_object('model_invocations',1))
       FROM generate_series(1,10001) n`);
   }, 30_000);
-  afterAll(async () => { await pool.end(); });
+  afterAll(async () => { await database?.drop(); });
 
   it('aggregates more than 10000 events exactly without returning raw evidence', async () => {
     const result = await queryRuntimeMetrics(db as any, { window: '24h', routerId: 'router' });
@@ -184,13 +186,16 @@ describe.skipIf(!process.env.TEST_DATABASE_URL)('bounded runtime observability (
 
 // The shared predicate is also tested without a database by runtime-outcome.test.
 // Cases below exercise actual SQL filtering, projection and metric aggregation.
-describe.skipIf(!process.env.TEST_DATABASE_URL)('authoritative Guardrail status (PostgreSQL)', () => {
-  const pool = new Pool({ connectionString: process.env.TEST_DATABASE_URL, max: 1 });
-  const db = drizzle(pool);
-  const service = Object.assign(Object.create(ControlPlaneService.prototype), { db, runtimeLogEncryptionKey: null }) as ControlPlaneService;
+describe.skipIf(!process.env.GUARD_TEST_POSTGRES_URL)('authoritative Guardrail status (PostgreSQL)', () => {
+  let database: Awaited<ReturnType<typeof createTestDatabase>>;
+  let db: Awaited<ReturnType<typeof createTestDatabase>>['db'];
+  let service: ControlPlaneService;
   beforeAll(async () => {
+    database = await createTestDatabase(process.env.GUARD_TEST_POSTGRES_URL!, 'guardrail_status', { maxConnections: 1 });
+    db = database.db;
+    service = Object.assign(Object.create(ControlPlaneService.prototype), { db, runtimeLogEncryptionKey: null });
     for (const name of ['runtime_event','guardrail','traffic_router','endpoint','guardrail_validation_run','route_assignment']) {
-      await db.execute(sql.raw(`CREATE TEMP TABLE ${name} (LIKE public.${name} INCLUDING DEFAULTS)`));
+      await db.execute(sql`CREATE TEMP TABLE ${sql.identifier(name)} (LIKE ${sql.identifier(database.schema)}.${sql.identifier(name)} INCLUDING DEFAULTS)`);
     }
     const values = [
       ['blocked', 'block', 'complete', [{ status:'error', timedOut:true }]],
@@ -205,7 +210,7 @@ describe.skipIf(!process.env.TEST_DATABASE_URL)('authoritative Guardrail status 
         VALUES (${id},now(),${id},'runner','contract','incoming',${decision},10,${JSON.stringify(metadata)}::jsonb)`);
     }
   });
-  afterAll(async () => { await pool.end(); });
+  afterAll(async () => { await database?.drop(); });
   it('does not turn an independent diagnostic into a request error', async () => {
     const rows = await service.queryRuntimeEvents({ routerId:'contract', outcome:'error' });
     expect(rows.items.map(r => r.id).sort()).toEqual(['failed','timeout']);

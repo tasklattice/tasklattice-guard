@@ -1,20 +1,20 @@
 // @vitest-environment node
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { Pool } from "pg";
-import { drizzle } from "drizzle-orm/node-postgres";
 import { sql } from "drizzle-orm";
 import { securityEventsQuery } from "../../shared/security-events.js";
 import { querySecurityEvents } from "./security-events.js";
-import type { ControllerDatabase } from "../db/client.js";
+import { createTestDatabase } from "../db/postgres-test-database.js";
 
 // Session-local temporary table only; application records are never modified.
-describe.skipIf(!process.env.TEST_DATABASE_URL)("Security Event item pagination (PostgreSQL)", () => {
-  const pool = new Pool({ connectionString: process.env.TEST_DATABASE_URL, max: 1 });
-  const db = drizzle(pool) as ControllerDatabase;
+describe.skipIf(!process.env.GUARD_TEST_POSTGRES_URL)("Security Event item pagination (PostgreSQL)", () => {
+  let database: Awaited<ReturnType<typeof createTestDatabase>>;
+  let db: Awaited<ReturnType<typeof createTestDatabase>>["db"];
   const until = "2026-10-15T08:00:00.000Z";
   const query = (overrides: Record<string, unknown> = {}) => querySecurityEvents(db, securityEventsQuery.parse({ guardrailId: "pagination", until, ...overrides }));
   beforeAll(async () => {
-    await db.execute(sql`CREATE TEMP TABLE runtime_event (LIKE public.runtime_event INCLUDING DEFAULTS)`);
+    database = await createTestDatabase(process.env.GUARD_TEST_POSTGRES_URL!, "security_event_queries", { maxConnections: 1 });
+    db = database.db;
+    await db.execute(sql`CREATE TEMP TABLE runtime_event (LIKE ${sql.identifier(database.schema)}.runtime_event INCLUDING DEFAULTS)`);
     await db.execute(sql`INSERT INTO runtime_event(id,occurred_at,received_at,request_id,runner_id,guardrail_id,direction,decision,duration_ms,metadata)
       SELECT 'checkpoint-'||n, '2026-10-15T07:59:59.123456Z', '2026-10-15T07:59:59Z', 'call-'||n, 'runner', 'pagination', 'incoming', 'block', 1,
         jsonb_build_object('contentCiphertext','private content','trace',repeat('private trace',1000),'findings',
@@ -26,7 +26,7 @@ describe.skipIf(!process.env.TEST_DATABASE_URL)("Security Event item pagination 
       ('late','2026-10-15T07:00:00Z','2026-10-15T08:00:01Z','late','runner','pagination','incoming','block',1,'{"findings":[{"verdict":"matched"}]}'),
       ('future','2026-10-15T08:00:01Z','2026-10-15T07:00:00Z','future','runner','pagination','incoming','block',1,'{"findings":[{"verdict":"matched"}]}')`);
   });
-  afterAll(async () => { await pool.end(); });
+  afterAll(async () => { await database?.drop(); });
 
   it.each([25, 50])("limits each page to %i findings, including inside a single checkpoint", async limit => {
     const ids = new Set<string>();

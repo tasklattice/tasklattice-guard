@@ -20,6 +20,20 @@ jobs:
   control-plane:
     name: Control plane
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: guard_test
+          POSTGRES_PASSWORD: guard_test
+          POSTGRES_DB: guard_test
+        ports:
+          - 5432/tcp
+        options: >-
+          --health-cmd "pg_isready -U guard_test -d guard_test"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
     steps:
       - name: Check out repository
         uses: actions/checkout@v7
@@ -62,6 +76,8 @@ jobs:
         run: npm run test:cli
 
       - name: Test control-plane behavior and artifact production
+        env:
+          GUARD_TEST_POSTGRES_URL: postgresql://guard_test:guard_test@127.0.0.1:${{ job.services.postgres.ports[5432] }}/guard_test
         run: npm run test:control-plane
 
       - name: Upload Policy regression report

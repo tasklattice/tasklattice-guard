@@ -34,7 +34,9 @@ describe.skipIf(!url)("Current database schema baseline", () => {
     const ownedPool = pool, ownedAdmin = admin, databaseName = name;
     try {
       await ownedPool?.end();
-      if (databaseName) await ownedAdmin.query(`DROP DATABASE "${databaseName}" WITH (FORCE)`);
+      // Discarded migration checkouts may still be disconnecting after pool.end.
+      // Let them close normally instead of force-killing their backends.
+      if (databaseName) await ownedAdmin.query(`DROP DATABASE "${databaseName}"`);
     } finally { await ownedAdmin?.end(); }
   }, 30_000);
   it("serializes concurrent fresh installs and seeds only once", async () => {

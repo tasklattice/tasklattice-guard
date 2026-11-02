@@ -2,17 +2,15 @@
 // Opt-in real PostgreSQL semantics; never calls a Provider or changes public rows.
 import { randomUUID } from "node:crypto";
 import { resolve } from "node:path";
-import { drizzle } from "drizzle-orm/node-postgres";
-import { Pool } from "pg";
+import type { Pool } from "pg";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
-import * as schema from "../db/schema.js";
+import { createTestDatabase } from "../db/postgres-test-database.js";
 import { emptyModelAssignments } from "./domain.js";
 import { ModelConfigurationService } from "./service.js";
 
 const url = process.env.GUARD_TEST_POSTGRES_URL;
 describe.skipIf(!url)("Current model configuration PostgreSQL semantics", () => {
-  const namespace = `guard_model_apply_${randomUUID().replaceAll("-", "")}`;
-  let admin: Pool;
+  let database: Awaited<ReturnType<typeof createTestDatabase>>;
   let pool: Pool;
   let service: ModelConfigurationService;
   const modelId = randomUUID();
@@ -20,26 +18,20 @@ describe.skipIf(!url)("Current model configuration PostgreSQL semantics", () => 
   const directory = resolve('../runner/toolkit/policy_library/assets');
 
   beforeAll(async () => {
-    expect(["127.0.0.1", "localhost", "[::1]"]).toContain(new URL(url!).hostname);
-    admin = new Pool({ connectionString: url, max: 1 });
-    await admin.query(`CREATE SCHEMA "${namespace}"`);
-    pool = new Pool({ connectionString: url, max: 2, application_name: namespace, options: `-c search_path=${namespace}` });
-    for (const table of ['model_assignment_validation', 'model_configuration_revision', 'model_provider', 'model_definition', 'policy_version', 'audit_event', 'controller_state', 'controller_outbox']) {
-      await pool.query(`CREATE TABLE "${table}" (LIKE public."${table}" INCLUDING ALL)`);
-    }
+    database = await createTestDatabase(url!, "guard_model_apply", { maxConnections: 2 });
+    pool = database.pool;
+    await pool.query("INSERT INTO auth_user (id,name,email,role) SELECT id,id,id||'@example.test','admin' FROM unnest(ARRAY['admin','synthetic-admin','admin-a','admin-b','other']) AS id");
     await pool.query("INSERT INTO model_provider (id,name,kind,base_url,credential_ciphertext) VALUES ($1,'Synthetic','custom-openai-compatible','http://provider.invalid/v1','')", [providerId]);
     await pool.query("INSERT INTO model_definition (id,provider_id,name,model,profile) VALUES ($1,$2,'Synthetic','synthetic','tali.qwen3guard.v1')", [modelId, providerId]);
   });
   afterAll(async () => {
-    await pool?.end();
-    await admin?.query(`DROP SCHEMA IF EXISTS "${namespace}" CASCADE`);
-    await admin?.end();
+    await database?.drop();
   });
   beforeEach(async () => {
     for (const table of ['model_configuration_revision', 'model_assignment_validation', 'controller_outbox', 'audit_event']) await pool.query(`DELETE FROM ${table}`);
     await pool.query("INSERT INTO controller_state (id,desired_generation) VALUES ('singleton',0) ON CONFLICT (id) DO UPDATE SET desired_generation=0");
     await pool.query("UPDATE model_definition SET name='Synthetic',profile='tali.qwen3guard.v1' WHERE id=$1", [modelId]);
-    service = new ModelConfigurationService(drizzle(pool, { schema }), 'synthetic-root', directory,
+    service = new ModelConfigurationService(database.db, 'synthetic-root', directory,
       vi.fn(() => { throw new Error('No external calls allowed'); }));
     service.setRailValidator(async () => ({ passed: true, message: 'Synthetic Rail result', latencyMs: 1 }));
   });
@@ -201,7 +193,7 @@ describe.skipIf(!url)("Current model configuration PostgreSQL semantics", () => 
   it('shares receipts and enforces ownership, expiry and unchanged model settings', async () => {
     await seed();
     const receipt = await service.previewAssignment('content_safety.input', modelId, 'synthetic-admin');
-    const peer = new ModelConfigurationService(drizzle(pool, { schema }), 'synthetic-root', directory);
+    const peer = new ModelConfigurationService(database.db, 'synthetic-root', directory);
     await expect(peer.getAssignmentValidation('content_safety.input', receipt.validationId, 'other')).rejects.toMatchObject({ code: 'not_found' });
     await expect(peer.updateAssignment('content_safety.input', modelId, 'other', receipt.validationId)).rejects.toMatchObject({ code: 'model_assignment_not_validated' });
     await pool.query('UPDATE model_assignment_validation SET expires_at=now()-interval \'1 minute\' WHERE id=$1', [receipt.validationId]);
@@ -226,7 +218,7 @@ describe.skipIf(!url)("Current model configuration PostgreSQL semantics", () => 
     const { selection } = await seedPartial();
     const chatId = randomUUID();
     await pool.query("INSERT INTO model_definition (id,provider_id,name,model,profile) VALUES ($1,$2,'Chat','chat','generic-chat')", [chatId, providerId]);
-    const chat = new ModelConfigurationService(drizzle(pool, { schema }), 'synthetic-root', directory,
+    const chat = new ModelConfigurationService(database.db, 'synthetic-root', directory,
       vi.fn(async () => Response.json({ choices: [{ message: { content: 'Hello' } }] })));
     const receipt = await chat.previewAssignment('control_plane', chatId, 'synthetic-admin');
     await chat.updateAssignment('control_plane', chatId, 'synthetic-admin', receipt.validationId);

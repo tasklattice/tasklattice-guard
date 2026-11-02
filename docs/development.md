@@ -179,16 +179,20 @@ npm test
 ```
 
 In addition to development dependencies, the contract checks require Helm and
-jq. Database/Redis integration tests are opt-in and are skipped unless their
-environment variables are set to dedicated test services:
+jq. CI supplies disposable PostgreSQL 17 and Redis services and enables their
+integration tests. Local runs opt in by setting the following variables to
+dedicated loopback test services:
 
 | Variable | Tests |
 | --- | --- |
-| `GUARD_TEST_POSTGRES_URL` | PostgreSQL model configuration, tokens, Policy publication, routing, and migration tests |
-| `TEST_DATABASE_URL` | PostgreSQL runtime-observability tests |
+| `GUARD_TEST_POSTGRES_URL` | All PostgreSQL tests, including bootstrap, migrations, publication, routing, reporting, and runtime observability |
 | `GUARD_TEST_REDIS_URL` | Real Redis stream and replica tests; use an isolated loopback Redis |
 
 A successful run without these settings does not cover those integration tests.
+PostgreSQL suites create and remove isolated schemas or session-local temporary
+tables; they do not require an initialized application database. For example,
+`GUARD_TEST_POSTGRES_URL=postgresql://guard_test:guard_test@127.0.0.1:5432/guard_test npm run test:control-plane --prefix controller`
+includes all database suites.
 See [CI](../.github/workflows/ci.yml) for the automated job configuration.
 
 Controller/Runner gRPC messages are defined under

@@ -1,24 +1,24 @@
 // @vitest-environment node
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { Pool } from "pg";
-import { drizzle } from "drizzle-orm/node-postgres";
 import { sql } from "drizzle-orm";
-import type { ControllerDatabase } from "../db/client.js";
+import { createTestDatabase } from "../db/postgres-test-database.js";
 import { queryAuditEvents } from "./audit-events.js";
 
 // Session-local temporary table: never changes application records.
-describe.skipIf(!process.env.TEST_DATABASE_URL)("audit queries (PostgreSQL)", () => {
-  const pool = new Pool({ connectionString: process.env.TEST_DATABASE_URL, max: 1 });
-  const db = drizzle(pool) as unknown as ControllerDatabase;
+describe.skipIf(!process.env.GUARD_TEST_POSTGRES_URL)("audit queries (PostgreSQL)", () => {
+  let database: Awaited<ReturnType<typeof createTestDatabase>>;
+  let db: Awaited<ReturnType<typeof createTestDatabase>>["db"];
   const before = "2026-09-29T00:00:00.000Z";
   beforeAll(async () => {
-    await db.execute(sql`CREATE TEMP TABLE audit_event (LIKE public.audit_event INCLUDING DEFAULTS)`);
+    database = await createTestDatabase(process.env.GUARD_TEST_POSTGRES_URL!, "audit_queries", { maxConnections: 1 });
+    db = database.db;
+    await db.execute(sql`CREATE TEMP TABLE audit_event (LIKE ${sql.identifier(database.schema)}.audit_event INCLUDING DEFAULTS)`);
     await db.execute(sql`INSERT INTO audit_event(id,kind,actor_id,resource_type,resource_id,detail,occurred_at)
       SELECT 'audit-'||lpad(n::text,5,'0'),'guardrail.updated',CASE WHEN n%2=1 THEN 'human' ELSE NULL END,'guardrail','guard-'||n,'{}'::jsonb,${before}::timestamptz - interval '1 hour' FROM generate_series(1,1001) n`);
     await db.execute(sql`UPDATE audit_event SET occurred_at=${before}::timestamptz - interval '20 days',kind='policy.updated',resource_type='policy',detail='{"name":"Older needle %_ case"}'::jsonb WHERE id='audit-00001'`);
     await db.execute(sql`INSERT INTO audit_event(id,kind,resource_type,resource_id,occurred_at) VALUES ('outside','runner.connected','runner','runner',${before}::timestamptz - interval '40 days')`);
   });
-  afterAll(async () => { await pool.end(); });
+  afterAll(async () => { await database?.drop(); });
   it("searches older records beyond the latest 500 and counts the complete filtered result", async () => {
     const found = await queryAuditEvents(db, { q: "NEEDLE", window: "30d", before, limit: 1 });
     expect(found.total).toBe(1);

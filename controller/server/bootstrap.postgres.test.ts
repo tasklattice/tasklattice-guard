@@ -7,11 +7,11 @@ import { loadConfig } from "./config.js";
 import { createTestDatabase } from "./db/postgres-test-database.js";
 import * as schema from "./db/schema.js";
 
-describe.skipIf(!process.env.GUARD_BOOTSTRAP_TEST_DATABASE_URL)("username bootstrap (PostgreSQL)", () => {
+describe.skipIf(!process.env.GUARD_TEST_POSTGRES_URL)("username bootstrap (PostgreSQL)", () => {
   let database: Awaited<ReturnType<typeof createTestDatabase>>;
   let auth: ReturnType<typeof createAuth>;
   beforeAll(async () => {
-    const url = process.env.GUARD_BOOTSTRAP_TEST_DATABASE_URL!;
+    const url = process.env.GUARD_TEST_POSTGRES_URL!;
     database = await createTestDatabase(url, "username_bootstrap");
     const config = loadConfig({ NODE_ENV: "test", CONTROLLER_DATABASE_URL: url,
       CONTROLLER_RUNNER_TOKEN: "test-runner-token-at-least-32-characters",

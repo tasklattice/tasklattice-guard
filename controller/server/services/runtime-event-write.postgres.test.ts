@@ -7,11 +7,11 @@ import { runtimeEvents } from "../db/schema.js";
 import type { RuntimeEventInput } from "../domain/models.js";
 import { writeRuntimeEvent } from "./runtime-event-write.js";
 
-describe.skipIf(!process.env.TEST_DATABASE_URL)("correlated runtime body enrichment (PostgreSQL)", () => {
-  const pool = new Pool({ connectionString: process.env.TEST_DATABASE_URL, max: 1 });
+describe.skipIf(!process.env.GUARD_TEST_POSTGRES_URL)("correlated runtime body enrichment (PostgreSQL)", () => {
+  const pool = new Pool({ connectionString: process.env.GUARD_TEST_POSTGRES_URL, max: 1 });
   const db = drizzle(pool);
   beforeAll(async () => {
-    if (!["localhost", "127.0.0.1", "[::1]"].includes(new URL(process.env.TEST_DATABASE_URL!).hostname)) throw new Error("Loopback database required");
+    if (!["localhost", "127.0.0.1", "[::1]"].includes(new URL(process.env.GUARD_TEST_POSTGRES_URL!).hostname)) throw new Error("Loopback database required");
     await db.execute(sql`CREATE TEMP TABLE runtime_event (
       id text PRIMARY KEY, occurred_at timestamptz NOT NULL, received_at timestamptz DEFAULT now(),
       request_id text NOT NULL, runner_id text NOT NULL, guardrail_id text, guardrail_version text,
