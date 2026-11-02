@@ -1476,6 +1476,35 @@ def test_database_workload_uses_the_initialized_secret_and_job_runs_before_workl
     assert job["spec"]["activeDeadlineSeconds"] == 120
 
 
+@pytest.mark.parametrize("storage_class", ["", "database-storage"])
+def test_database_storage_template_is_stable_across_application_upgrades(storage_class):
+    values = ("--set", f"postgresql.persistence.storageClass={storage_class}")
+    installed = render_dev(*values)
+    upgraded = render_dev(*values, "--is-upgrade", "--set", "controller.image.tag=next", "--set", "rolloutRevision=next")
+
+    def database(documents):
+        return next(doc for doc in documents if doc["kind"] == "StatefulSet" and doc["metadata"]["name"].endswith("-postgresql"))
+
+    before, after = database(installed), database(upgraded)
+    claims = before["spec"]["volumeClaimTemplates"]
+    assert claims == after["spec"]["volumeClaimTemplates"]
+    assert claims[0]["apiVersion"] == "v1"
+    assert claims[0]["kind"] == "PersistentVolumeClaim"
+    assert claims[0]["spec"]["volumeMode"] == "Filesystem"
+    assert claims[0]["spec"]["resources"]["requests"]["storage"] == "20Gi"
+    assert claims[0]["spec"].get("storageClassName", "") == storage_class
+    assert before["spec"]["persistentVolumeClaimRetentionPolicy"] == {"whenDeleted": "Retain", "whenScaled": "Retain"}
+    assert before["spec"]["template"] != after["spec"]["template"]
+
+
+def test_ephemeral_database_has_no_persistent_claim_or_retention_policy():
+    documents = render_dev("--set", "postgresql.persistence.enabled=false")
+    postgres = next(doc for doc in documents if doc["kind"] == "StatefulSet" and doc["metadata"]["name"].endswith("-postgresql"))
+    assert "volumeClaimTemplates" not in postgres["spec"]
+    assert "persistentVolumeClaimRetentionPolicy" not in postgres["spec"]
+    assert next(volume for volume in postgres["spec"]["template"]["spec"]["volumes"] if volume["name"] == "data") == {"name": "data", "emptyDir": {}}
+
+
 def test_bundled_database_synchronizes_before_serving_using_existing_images():
     documents = render_dev("--set", "controller.image.repository=registry.example.test/controller", "--set", "controller.image.tag=sync-test")
     postgres = next(doc for doc in documents if doc["kind"] == "StatefulSet" and doc["metadata"]["name"].endswith("-postgresql"))

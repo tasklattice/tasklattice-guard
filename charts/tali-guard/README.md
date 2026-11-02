@@ -296,11 +296,35 @@ option and can fail when reusing retained Secrets with
 reused, not deleted. An uninstalled release with retained history is reinstalled
 with `--replace`; failed upgrades are reported without automatic reinstall.
 
+### Argo CD synchronization and database storage
+
+The bundled PostgreSQL claim template explicitly declares `apiVersion: v1`,
+`kind: PersistentVolumeClaim` and `volumeMode: Filesystem` so the desired type
+and volume mode match Kubernetes' live representation. Normal Helm upgrades
+and Argo CD full syncs leave this storage template unchanged when application
+images or configuration change. PVC retention is explicitly `Retain` on both
+StatefulSet deletion and scale-down.
+
+`postgresql.persistence.size` (default `20Gi`) and `storageClass` describe new
+claims. Kubernetes does not allow changing `volumeClaimTemplates` on an existing
+StatefulSet. If those settings change, recreate the StatefulSet once, retaining
+its Pods and PVCs with `kubectl delete statefulset <name> --cascade=orphan`, then
+recreate it from the desired manifest or run a full sync. Subsequent syncs use
+the new definition normally. The chart does not add force-recreation hooks or
+look up old storage settings during rendering.
+
+Recreating the StatefulSet does not resize an existing PVC. Resize that PVC
+separately with a StorageClass that supports volume expansion, or move the data
+to a new volume. OrbStack's `local-path` class does not enable expansion; an
+existing `2Gi` PVC stays `2Gi` even when the new claim template requests `20Gi`.
+
 Deployment-path regression tests run with
 `.venv/bin/python -m pytest -q tests/contract/test_helm_upgrade.py`. To also test
-install, upgrade, and reinstall with retained Secrets on a local cluster, prefix
-the command with `GUARD_HELM_TEST_CONTEXT=orbstack`. This creates and removes an
-isolated namespace containing only a test Secret and ConfigMap, not Guard data.
+install, upgrade, retained-Secret reinstall and repeated database apply on a local
+cluster, set `GUARD_HELM_TEST_CONTEXT=orbstack` and
+`GUARD_HELM_TEST_NAMESPACE=<existing-namespace>`. The tests use unique release names
+and clean up only their own Secret, ConfigMap and zero-replica StatefulSet. They
+do not create or delete namespaces, start application Pods or allocate PVCs.
 
 `npm run helm:deploy:dev` keeps both application tags fixed at `dev` and changes a
 Helm-managed rollout revision annotation on every run. Controller and all

@@ -167,6 +167,8 @@ postgresql:
   persistence:
     # false uses ephemeral storage; true requests a PVC from this StorageClass.
     enabled: true
+    # Creation-time settings: changing size or StorageClass requires recreating
+    # the StatefulSet. Existing PVCs must be resized separately when supported.
     size: 20Gi
     storageClass: ""
   resources:
