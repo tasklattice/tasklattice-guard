@@ -474,18 +474,22 @@ describe("Runner model-configuration convergence", () => {
     const models = { activeConfiguration: vi.fn().mockResolvedValue(null) };
     const server = new RunnerControlServer(config, serviceMock() as unknown as ControlPlaneService,
       metricsMock() as unknown as ControllerMetrics, models as unknown as ModelConfigurationService);
+    const otherStream = streamMock();
+    const experiment = registration("experimental-compiler");
+    experiment.registration.compilerCapable = true;
+    const other = await handle(server, otherStream, experiment, null);
     const stream = streamMock();
     const hello = registration("compiler-0");
     hello.registration.compilerCapable = true;
     const connection = await handle(server, stream, hello, null);
-    const otherStream = streamMock();
-    const other = await handle(server, otherStream, registration("other"), null);
+    otherStream.write.mockClear();
     const pending = server.validateRail({ requestId: "rail-test", bindingId: "content_safety.input" });
     const settled = vi.fn();
     void pending.then(settled);
     expect(stream.write).toHaveBeenCalledWith(expect.objectContaining({
       capabilityValidationRequest: expect.objectContaining({ requestId: "rail-test" }),
     }));
+    expect(otherStream.write).not.toHaveBeenCalled();
     const result = { capabilityValidationResult: {
       requestId: "rail-test", passed: true, runtimeProfile: "llmrails-v1", message: "samples", latencyMs: 10,
       cases: [{ expectedDecision: "allow", actualDecision: "allow", passed: true },
@@ -495,6 +499,20 @@ describe("Runner model-configuration convergence", () => {
     expect(settled).not.toHaveBeenCalled();
     await handle(server, stream, result, connection);
     expect(await pending).toMatchObject({ passed: complete, cases: result.capabilityValidationResult.cases });
+    await server.stop();
+  });
+
+  it("does not send Catalog validation to an experimental compiler while ordinal 0 is absent", async () => {
+    const server = new RunnerControlServer(config, serviceMock() as unknown as ControlPlaneService,
+      metricsMock() as unknown as ControllerMetrics,
+      { activeConfiguration: vi.fn().mockResolvedValue(null) } as unknown as ModelConfigurationService);
+    const stream = streamMock(), hello = registration("experimental-compiler");
+    hello.registration.compilerCapable = true;
+    await handle(server, stream, hello, null);
+    stream.write.mockClear();
+    const result = await server.validateRail({ requestId: "rail-test", bindingId: "content_safety.output" });
+    expect(result).toMatchObject({ passed: false, message: expect.stringContaining("ordinal 0") });
+    expect(stream.write).not.toHaveBeenCalled();
     await server.stop();
   });
 

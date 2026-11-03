@@ -89,6 +89,8 @@ class ModelCallUsage:
     error_category: str | None = None
     http_status: int | None = None
     call_id: str = ""
+    queue_duration_ms: int = 0
+    request_sent: bool | None = None
     usage_known: bool = False
     cached_input_tokens: int = 0
     unsupported_usage: bool = False

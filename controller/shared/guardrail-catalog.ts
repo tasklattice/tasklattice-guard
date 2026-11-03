@@ -4,12 +4,11 @@ export type GuardrailRailType = (typeof guardrailRailTypes)[number];
 export const implementedGuardrailRailTypes = ["input", "output"] as const satisfies readonly GuardrailRailType[];
 export type ImplementedGuardrailRailType = (typeof implementedGuardrailRailTypes)[number];
 
-// DeepSeek is reserved for control-plane authoring and intent understanding.
-// Runtime Rails must use bounded, purpose-built or low-parameter providers.
-export const controlPlaneOnlyProviderKinds = ["deepseek"] as const;
-
-export function isDataPlaneProviderKindAllowed(kind: string): boolean {
-  return !(controlPlaneOnlyProviderKinds as readonly string[]).includes(kind);
+// DeepSeek supports chat-based review and semantic PII classification. Other
+// detectors still require their own compatible protocols and provider support.
+export function isDataPlaneProviderKindAllowed(kind: string, bindingId?: CapabilityBindingId): boolean {
+  return kind !== "deepseek" || bindingId === "classifier_review.input" || bindingId === "classifier_review.output"
+    || bindingId === "pii_semantic.input" || bindingId === "pii_semantic.output";
 }
 
 export const guardrailCategoryIds = [
@@ -57,7 +56,7 @@ export const layaProfileRefs = ["tali.laya.v1", "tali.laya-topic.v1"] as const;
 export const isLayaProfile = (profile: string): profile is typeof layaProfileRefs[number] => (layaProfileRefs as readonly string[]).includes(profile);
 
 export const capabilityProfileRefs = {
-  classifier_review: ["tali.classifier-review.v1"],
+  classifier_review: ["tali.classifier-review.v1", "generic-chat"],
   content_safety: [
     "tali.typesafe-jev.v1",
     "tali.laya.v1",
@@ -83,7 +82,7 @@ export const capabilityProfileRefs = {
 // registered model can implement several bindings when its profile conforms to
 // every selected capability contract.
 export const capabilityProfilePreference = {
-  classifier_review: ["tali.classifier-review.v1"],
+  classifier_review: ["tali.classifier-review.v1", "generic-chat"],
   content_safety: [
     "tali.nemotron-safety-guard-v3.v1",
     "tali.nemotron-content-safety.v1",
@@ -107,6 +106,7 @@ export const capabilityProfilePreference = {
 
 export type CapabilityBindingId =
   | "classifier_review.input"
+  | "classifier_review.output"
   | "content_safety.input"
   | "content_safety.output"
   | "jailbreak.input"
@@ -141,6 +141,11 @@ export const capabilityBindingDefinitions = [
     profileRefs: capabilityProfileRefs.classifier_review, profilePreference: capabilityProfilePreference.classifier_review,
   }),
   binding({
+    id: "classifier_review.output", categoryId: "content_safety", capabilityRef: "classifier_review", railType: "output",
+    implementationRef: "tali.runtime.classifier-review.v1", contractRefs: ["tali.guard.classifier-review.v1"],
+    profileRefs: capabilityProfileRefs.classifier_review, profilePreference: capabilityProfilePreference.classifier_review,
+  }),
+  binding({
     id: "content_safety.input", categoryId: "content_safety", capabilityRef: "content_safety", railType: "input",
     implementationRef: "tali.runtime.safety-model.v1", contractRefs: ["tali.guard.content-safety.v1"],
     profileRefs: capabilityProfileRefs.content_safety, profilePreference: capabilityProfilePreference.content_safety,
@@ -148,8 +153,8 @@ export const capabilityBindingDefinitions = [
   binding({
     id: "content_safety.output", categoryId: "content_safety", capabilityRef: "content_safety", railType: "output",
     implementationRef: "tali.runtime.safety-model.v1", contractRefs: ["tali.guard.content-safety.v1"],
-    profileRefs: capabilityProfileRefs.content_safety.filter(profile => profile !== "tali.typesafe-jev.v1" && profile !== "tali.laya.v1"),
-    profilePreference: capabilityProfilePreference.content_safety.filter(profile => profile !== "tali.typesafe-jev.v1" && profile !== "tali.laya.v1"),
+    profileRefs: capabilityProfileRefs.content_safety.filter(profile => profile !== "tali.typesafe-jev.v1"),
+    profilePreference: capabilityProfilePreference.content_safety.filter(profile => profile !== "tali.typesafe-jev.v1"),
   }),
   binding({
     id: "jailbreak.input", categoryId: "jailbreak_protection", capabilityRef: "jailbreak", railType: "input",

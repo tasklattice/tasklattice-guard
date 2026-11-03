@@ -13,7 +13,7 @@ Default needs no detection model. It uses reviewed local Rules. Model-backed Pol
 
 1. Register the service address and credential under [Providers](/settings/providers).
 2. Check connectivity. Private-CA and TLS settings apply only to that Provider.
-3. Register the physical model under [Models](/settings/models).
+3. Register the physical model under [Models](/settings/models) and set its concurrency limit, which defaults to 2.
 4. Make a real test call. Model discovery alone does not prove callability.
 5. Assign the Model to a compatible capability under [Guardrail Catalog](/settings/guardrail-catalog).
 6. Validate its behavior examples. Save the binding and activate the configuration.
@@ -28,6 +28,10 @@ Administrators can activate untested or failed bindings. Activation preserves th
 <a id="platform-model-deadlines" />
 ### Execution deadlines
 
+Model concurrency accepts 1–64. Checks and requests that reference the same registered model share its allowance within a Runner; different models can execute concurrently. Queue time counts against the execution deadline. Short-circuited requests cancel their queued model calls.
+
+You can update concurrency for an assigned model in model settings. Saving distributes the change to Runners without repeating behavioral validation. The allowance is per Runner; it is not a fleet-wide Provider quota.
+
 Remote detector modules have a maximum execution budget of 30 seconds. Capability probes use the same upper bound. A longer Model timeout does not extend this budget. Timeouts cannot count as passing inspection evidence.
 
 For Grounding through NVIDIA's hosted `nvidia/nemotron-3.5-lightning-30b-a3b`, the adapter disables optional thinking. This setting applies to that adapter only. It does not modify portable Policy definitions.
@@ -37,6 +41,6 @@ For Grounding through NVIDIA's hosted `nvidia/nemotron-3.5-lightning-30b-a3b`, t
 
 A capability binding supplies a detector dependency. A Policy defines reusable protection behavior. A successful model connection does not establish that a particular Rule detects the intended content.
 
-DeepSeek Providers currently serve the control plane only. Data-plane Rails require supported specialized model contracts. Controller distributes the Models and credentials referenced by active data-plane bindings.
+An existing Generic chat Model, including DeepSeek, can also be selected for **Independent classifier review · Input Rail / Output Rail** while retaining its Control Plane assignment. The built-in prompt automatically includes the original criteria, evaluated input/output and context; enable `review_unknown=true` in a supported Guard Policy binding to review JEV/Laya input or Laya content-safety output gray-area results. Each Rail has its own binding. Primary detectors still require their supported specialized protocols. Controller distributes only the Models and credentials referenced by active data-plane bindings.
 
 For proof-service setup and known validation examples, see [formal verification](/document/operator/operator-create-policy#operator-policy-formal-service). Deployment and protocol details remain in `docs/model-configuration.md` in the repository.

@@ -1623,14 +1623,14 @@ export class ControlPlaneService {
       return event;
     }
     // Exclude large bodies in SQL, before the database driver allocates them in Node.
-    const metadata = includeContent ? runtimeEvents.metadata : sql<Record<string, unknown>>`(${runtimeEvents.metadata} - 'contentCiphertext' - 'contentBefore' - 'contentAfter' - 'httpRequest') || jsonb_build_object('contentAvailable',
+    const metadata = includeContent ? runtimeEvents.metadata : sql<Record<string, unknown>>`(${runtimeEvents.metadata} - 'contentCiphertext' - 'contentBefore' - 'contentAfter' - 'httpRequest' - 'modelExchanges') || jsonb_build_object('contentAvailable',
       (${this.runtimeLogEncryptionKey !== null} AND coalesce(${runtimeEvents.metadata}->>'contentCiphertext', '') <> '')
       OR ${runtimeEvents.metadata}->'contentBefore' IS NOT NULL AND ${runtimeEvents.metadata}->'contentBefore' <> 'null'::jsonb
       OR ${runtimeEvents.metadata}->'httpRequest' IS NOT NULL AND ${runtimeEvents.metadata}->'httpRequest' <> 'null'::jsonb
       OR ${runtimeEvents.metadata}->'contentAfter' IS NOT NULL AND ${runtimeEvents.metadata}->'contentAfter' <> 'null'::jsonb)`;
     const [item] = await boundedRead(this.db, tx => tx.select({ ...getTableColumns(runtimeEvents), metadata }).from(runtimeEvents).where(eq(runtimeEvents.id, id)).limit(1));
     if (!item) throw new NotFoundError("Runtime event", id);
-    const { contentCiphertext: _ciphertext, contentBefore: _before, contentAfter: _after, httpRequest: _httpRequest, ...safe } = item.metadata;
+    const { contentCiphertext: _ciphertext, contentBefore: _before, contentAfter: _after, httpRequest: _httpRequest, modelExchanges: _modelExchanges, ...safe } = item.metadata;
     return { ...item, metadata: includeContent ? decryptRuntimeEventMetadata(item.metadata, this.runtimeLogEncryptionKey) : safe };
   }
 
@@ -1738,7 +1738,7 @@ export class ControlPlaneService {
     return boundedRead(this.db, async tx => {
     const findingSummary = jsonObject(Object.fromEntries(['id','risk','verdict','confidence','taxonomyId','recommendedAction','policyId','ruleId','riskSeverity','policyVersion'].map(key => [key, jsonValue(findings.item, key)])));
     const metadata = jsonObject({
-      ...Object.fromEntries(['modelStatus','protectionMode','detectionDecision','detectionError','executionStatus','terminationReason','captureLevel','runtimeLogCaptured','protocol','action','timedOut','timed_out','streamFinalCheck','routeId','targetId','routerRevision','decisionId','logKind','completionInferred','failureReason','completedAt'].map(key => [key,jsonValue(runtimeEvents.metadata, key)])),
+      ...Object.fromEntries(['modelEvidenceStatus','modelEvidenceCount','modelStatus','protectionMode','detectionDecision','detectionError','executionStatus','terminationReason','captureLevel','runtimeLogCaptured','protocol','action','timedOut','timed_out','streamFinalCheck','routeId','targetId','routerRevision','decisionId','logKind','completionInferred','failureReason','completedAt'].map(key => [key,jsonValue(runtimeEvents.metadata, key)])),
       findings: scalar(tx.select({ value: jsonAggregate(findingSummary) }).from(findings.source)),
     });
     let itemsQuery = tx.select({
@@ -2970,6 +2970,7 @@ function decryptRuntimeEventMetadata(value: Record<string, unknown>, key: Buffer
     contentBefore: decrypted.contentBefore ?? null,
     contentAfter: decrypted.contentAfter ?? null,
     httpRequest: decrypted.httpRequest ?? null,
+    modelExchanges: decrypted.modelExchanges ?? null,
     contentAvailable: true,
   };
 }

@@ -112,11 +112,14 @@ async def test_model_blocks_are_attributed_to_default_policy(model_default_plan,
         assert result.usage.model_invocations == len(calls)
         assert not result.usage.fail_closed
         action_policies = {t.policy_id for t in result.trace if t.kind == "action" and t.policy_id is not None}
-        # Cheap local Block checks precede the independent model checks; no
-        # mutating PII check can execute after a model veto.
+        # Local checks now finish before the model stage, including local
+        # redactions. Model checks still inspect their declared original view.
         transforms = {dict(step["parameters"]).get("policy_id") for step in model_default_plan["steps"]
-                      if step["on_unsafe"] == "transform"}
-        assert not (action_policies & transforms)
+                      if step["on_unsafe"] == "transform" and dict(step["parameters"]).get("execution_dependency") == "local"}
+        assert transforms <= action_policies
+        actions = [t for t in result.trace if t.kind == "action"]
+        model_position = next(i for i, t in enumerate(actions) if t.policy_id == policy)
+        assert all(i < model_position for i, t in enumerate(actions) if t.policy_id in transforms)
     finally:
         await runtime.shutdown()
 

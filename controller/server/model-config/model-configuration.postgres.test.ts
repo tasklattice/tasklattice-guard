@@ -30,7 +30,7 @@ describe.skipIf(!url)("Current model configuration PostgreSQL semantics", () => 
   beforeEach(async () => {
     for (const table of ['model_configuration_revision', 'model_assignment_validation', 'controller_outbox', 'audit_event']) await pool.query(`DELETE FROM ${table}`);
     await pool.query("INSERT INTO controller_state (id,desired_generation) VALUES ('singleton',0) ON CONFLICT (id) DO UPDATE SET desired_generation=0");
-    await pool.query("UPDATE model_definition SET name='Synthetic',profile='tali.qwen3guard.v1' WHERE id=$1", [modelId]);
+    await pool.query("UPDATE model_definition SET name='Synthetic',profile='tali.qwen3guard.v1',max_concurrency=2 WHERE id=$1", [modelId]);
     service = new ModelConfigurationService(database.db, 'synthetic-root', directory,
       vi.fn(() => { throw new Error('No external calls allowed'); }));
     service.setRailValidator(async () => ({ passed: true, message: 'Synthetic Rail result', latencyMs: 1 }));
@@ -67,6 +67,21 @@ describe.skipIf(!url)("Current model configuration PostgreSQL semantics", () => 
     await pool.query("INSERT INTO model_configuration_revision (id,revision,state,assignments,validation_report) VALUES ($1,1,'active',$2,$3)", [activeId, assignments, report]);
     return { draftId, activeId, proposed, selection: await review() };
   }
+  it('defaults migrated models to two and distributes operational concurrency changes without rewriting active evidence', async () => {
+    const { activeId } = await seedPartial();
+    expect((await pool.query('SELECT max_concurrency FROM model_definition WHERE id=$1', [modelId])).rows[0].max_concurrency).toBe(2);
+    const before = (await pool.query('SELECT assignments,validation_report FROM model_configuration_revision WHERE id=$1', [activeId])).rows[0];
+    expect((await service.activeConfiguration())?.models[0]?.maxConcurrency).toBe(2);
+    expect((await service.configureConcurrency(modelId, { maxConcurrency: 4 }, 'admin')).maxConcurrency).toBe(4);
+    expect((await service.activeConfiguration())?.models[0]?.maxConcurrency).toBe(4);
+    expect((await pool.query('SELECT assignments,validation_report FROM model_configuration_revision WHERE id=$1', [activeId])).rows[0]).toEqual(before);
+    expect(Number((await pool.query('SELECT desired_generation FROM controller_state')).rows[0].desired_generation)).toBe(1);
+    expect((await pool.query('SELECT kind,payload FROM controller_outbox')).rows).toEqual([
+      { kind: 'runner.desired_state_changed', payload: { resourceType: 'model_definition', modelId, generation: 1 } },
+    ]);
+    expect((await pool.query("SELECT detail FROM audit_event WHERE kind='model_definition.concurrency_updated'")).rows[0].detail)
+      .toEqual({ previousMaxConcurrency: 2, maxConcurrency: 4 });
+  });
   it('requires formal policy examples and passes them to the scoped Runner validation', async () => {
     await seed();
     await pool.query("UPDATE model_definition SET profile='tali.automated-reasoning.v1' WHERE id=$1", [modelId]);

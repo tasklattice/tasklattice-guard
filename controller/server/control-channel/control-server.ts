@@ -176,8 +176,10 @@ export class RunnerControlServer {
 
   async validateRail(request: CapabilityValidationRequest): Promise<RailValidationEvidence> {
     if (this.stopping) throw new Error("Controller is stopping");
-    const runner = [...this.connections.values()].find((item) => item.poolId === "default" && item.compilerCapable);
-    if (!runner || !request.requestId) return { passed: false, message: "No connected Default Runner can validate this Rail.", latencyMs: 0 };
+    // Catalog probes and full Guard tests must use the same stable compiler.
+    // Connection order can otherwise select an older or experimental Runner.
+    const runner = [...this.connections.values()].find((item) => this.isTestingRunner(item));
+    if (!runner || !request.requestId) return { passed: false, message: "The Default testing Runner (ordinal 0) is unavailable. Retry after it reconnects.", latencyMs: 0 };
     const requestId = request.requestId;
     return new Promise((resolve) => {
       const timer = setTimeout(() => finish({ passed: false, message: "Runner Rail validation timed out. No configuration was activated.", latencyMs: 95_000 }), 95_000);
@@ -748,6 +750,7 @@ export class RunnerControlServer {
             profileRef: model.profile,
             timeoutSeconds: model.timeoutSeconds,
             maxTokens: model.maxTokens,
+            maxConcurrency: model.maxConcurrency ?? 2,
           })),
           bindings: dataBindings,
         } : null,

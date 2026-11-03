@@ -206,20 +206,22 @@ export function ProviderManagementSheet({
     >
       {view === "overview" ? (
         <div className="space-y-4">
-          <section className="border-b pb-4">
+          <section className="border-b pb-3">
             <div className="flex items-start gap-3">
               <ProviderMark provider={provider.name} kind={provider.kind} />
               <div className="min-w-0 flex-1">
-                <div className="flex flex-wrap items-center gap-2">
-                  <span className="text-sm font-medium">{provider.kind}</span>
-                  <StateBadge
-                    state={provider.status === "validated" ? "ready" : provider.status === "failed" ? "failed" : "not evaluated"}
-                    label={t(provider.status === "validated" ? "modelSettings.connected" : provider.status === "failed" ? "modelSettings.connectionFailed" : "modelSettings.notChecked")}
-                  />
+                <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="text-sm font-medium leading-5">{provider.kind}</span>
+                    <StateBadge
+                      state={provider.status === "validated" ? "ready" : provider.status === "failed" ? "failed" : "not evaluated"}
+                      label={t(provider.status === "validated" ? "modelSettings.connected" : provider.status === "failed" ? "modelSettings.connectionFailed" : "modelSettings.notChecked")}
+                    />
+                  </div>
+                  {checkedAt ? <time dateTime={provider.validatedAt!} className="text-xs leading-5 tabular-nums text-muted-foreground">{t("modelSettings.lastChecked", { time: checkedAt, latency: provider.validationLatencyMs ?? "—" })}</time> : null}
                 </div>
-                <code className="mt-3 block break-all rounded-md bg-muted/60 px-3 py-2 text-xs text-muted-foreground">{provider.baseUrl}</code>
-                {checkedAt ? <p className="mt-2 text-xs text-muted-foreground">{t("modelSettings.lastChecked", { time: checkedAt, latency: provider.validationLatencyMs ?? "—" })}</p> : null}
-                {provider.validationMessage && provider.status === "failed" ? <p role="alert" className="mt-3 break-words text-sm leading-5 text-destructive">{provider.validationMessage}</p> : null}
+                <p className="mt-1 break-all text-sm leading-5 text-muted-foreground">{provider.baseUrl}</p>
+                {provider.validationMessage && provider.status === "failed" ? <p role="alert" className="mt-2 break-words text-sm leading-5 text-destructive">{provider.validationMessage}</p> : null}
               </div>
             </div>
           </section>

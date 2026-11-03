@@ -2,7 +2,7 @@ import { resolve } from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import type { ControllerDatabase } from "../db/client.js";
 import { modelAssignmentValidations, controllerState, outboxEvents, modelConfigurationRevisions, modelDefinitions, modelProviders, policyVersions } from "../db/schema.js";
-import { emptyModelAssignments } from "./domain.js";
+import { emptyModelAssignments, modelInputSchema, modelConcurrencyInputSchema } from "./domain.js";
 import { ModelConfigurationService } from "./service.js";
 import { jailbreakDetectAttackInput, jailbreakDetectProfile, jailbreakDetectSafeInput } from "./jailbreak-detect.js";
 
@@ -45,6 +45,75 @@ function setup(state = "draft", assigned = false, failProbe = false) {
 }
 
 describe("Capability configuration after registration", () => {
+  it.each(["input", "output"] as const)("validates and saves an existing DeepSeek chat as a %s reviewer without changing its profile or Control Plane assignment", async (rail) => {
+    const target = `classifier_review.${rail}` as const;
+    const { service, rows, fetcher } = setup();
+    rows.get(modelProviders)![0]!.kind = "deepseek";
+    Object.assign(rows.get(modelDefinitions)![0]!, { profile: "generic-chat", model: "deepseek-chat" });
+    rows.get(modelConfigurationRevisions)![0]!.assignments = { ...emptyModelAssignments(), controlPlane: id };
+    const before = structuredClone(rows.get(modelConfigurationRevisions));
+    service.setRailValidator(async (request) => {
+      expect(request.bindingId).toBe(target);
+      expect(request.configuration?.runtimes).toEqual([expect.objectContaining({ id, model: "deepseek-chat", profileRef: "generic-chat" })]);
+      expect(request.configuration?.bindings).toEqual([expect.objectContaining({
+        bindingId: target, capabilityRef: "classifier_review", railType: rail === "input" ? "RAIL_TYPE_INPUT" : "RAIL_TYPE_OUTPUT",
+        modelRef: id, profileRef: "generic-chat", contractRefs: ["tali.guard.classifier-review.v1"],
+      })]);
+      return { passed: true, message: "Review Rail samples passed.", latencyMs: 12 };
+    });
+    const preview = await service.previewAssignment(target, id, "admin");
+    expect(rows.get(modelConfigurationRevisions)).toEqual(before);
+    const saved = await service.updateAssignment(target, id, "admin", preview.validationId);
+    expect(saved.assignments.controlPlane).toBe(id);
+    expect(saved.assignments.bindings).toEqual({ ...emptyModelAssignments().bindings, [target]: id });
+    expect(saved.validationReport?.checks).toContainEqual(expect.objectContaining({
+      id: `probe:${target}:${id}`, status: "passed", evidenceKind: "nemo-rail-v1",
+    }));
+    expect(rows.get(modelDefinitions)![0]!.profile).toBe("generic-chat");
+    rows.get(modelConfigurationRevisions)![0]!.state = "active";
+    expect((await service.activeConfiguration())?.models).toEqual([expect.objectContaining({ id, profile: "generic-chat" })]);
+    expect(fetcher).not.toHaveBeenCalled();
+  });
+
+  it.each(["pii_semantic.input", "pii_semantic.output"] as const)("validates and saves DeepSeek %s with the semantic PII contract", async (target) => {
+    const { service, rows, railValidator } = setup();
+    rows.get(modelProviders)![0]!.kind = "deepseek";
+    Object.assign(rows.get(modelDefinitions)![0]!, { profile: "tali.openai-compatible-pii.v1", model: "deepseek-chat" });
+    const before = structuredClone(rows.get(modelConfigurationRevisions));
+    const preview = await service.previewAssignment(target, id, "admin");
+    expect(rows.get(modelConfigurationRevisions)).toEqual(before);
+    expect(railValidator).toHaveBeenCalledWith(expect.objectContaining({
+      bindingId: target,
+      configuration: expect.objectContaining({ bindings: [expect.objectContaining({
+        bindingId: target, capabilityRef: "pii_semantic", modelRef: id,
+        profileRef: "tali.openai-compatible-pii.v1", contractRefs: ["tali.guard.pii.semantic.v1"],
+        railType: target.endsWith("input") ? "RAIL_TYPE_INPUT" : "RAIL_TYPE_OUTPUT",
+      })] }),
+    }));
+    const saved = await service.updateAssignment(target, id, "admin", preview.validationId);
+    expect(saved.assignments).toEqual({ ...emptyModelAssignments(), bindings: { ...emptyModelAssignments().bindings, [target]: id } });
+    expect(saved.validationReport?.checks).toContainEqual(expect.objectContaining({ id: `probe:${target}:${id}`, status: "passed" }));
+  });
+
+  it("updates an assigned model concurrency without invalidating its protocol evidence and refreshes active projection", async () => {
+    const { service, rows, tx, fetcher } = setup("active", true);
+    rows.set(controllerState, [{ id: "singleton", desiredGeneration: 1 }]);
+    expect((await service.activeConfiguration())?.models[0]?.maxConcurrency).toBe(2);
+    const before = { ...rows.get(modelDefinitions)![0] };
+    const result = await service.configureConcurrency(id, { maxConcurrency: 5 }, "admin");
+    expect(result.maxConcurrency).toBe(5);
+    expect(result.status).toBe(before.status);
+    expect(result.validatedAt).toBe(before.validatedAt);
+    expect((await service.activeConfiguration())?.models[0]?.maxConcurrency).toBe(5);
+    expect(tx.insert).toHaveBeenCalledWith(outboxEvents);
+    expect(tx.update).toHaveBeenCalledWith(controllerState);
+    expect(fetcher).not.toHaveBeenCalled();
+  });
+  it("defaults older registrations to two and rejects invalid concurrency values", () => {
+    expect(modelInputSchema.parse({ ...input, providerId: id, name: "Model", model: "model" }).maxConcurrency).toBe(2);
+    for (const maxConcurrency of [0, -1, 1.5, 65, "2"]) expect(() => modelConcurrencyInputSchema.parse({ maxConcurrency })).toThrow();
+  });
+
   it("validates a Laya assignment with its own profile and contract without changing active assignments", async () => {
     const { service, rows, railValidator, fetcher } = setup();
     rows.get(modelProviders)![0]!.kind = "laya";

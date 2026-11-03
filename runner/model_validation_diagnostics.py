@@ -1,4 +1,4 @@
-"""Capture model HTTP exchanges only inside a Topic Control validation case."""
+"""Capture model HTTP exchanges inside an explicit Catalog Rail validation case."""
 from __future__ import annotations
 
 import json
@@ -10,6 +10,7 @@ from typing import Any, Iterator
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 import httpx
+from .model_http_evidence import httpx_request, httpx_response, active_model_http_call
 
 
 logger = logging.getLogger("uvicorn.error.tasklattice.model_validation")
@@ -134,7 +135,27 @@ async def _httpx_response(response: httpx.Response) -> None:
 
 
 def validation_http_hooks() -> dict[str, list[Any]]:
-    return {"request": [_httpx_request], "response": [_httpx_response]} if _CURRENT.get() is not None else {}
+    return {"request": [httpx_request, _httpx_request], "response": [httpx_response, _httpx_response]} if _CURRENT.get() is not None or active_model_http_call() is not None else {}
+
+
+class _ObservedAiohttpSession:
+    """Capture every RetryClient attempt, not just its final response."""
+    def __init__(self, delegate):
+        self._delegate = delegate
+
+    def __getattr__(self, name):
+        return getattr(self._delegate, name)
+
+    async def request(self, method, url, **kwargs):
+        call = active_model_http_call()
+        exchange = call.request(method, url, kwargs.get("headers", {}), kwargs.get("json", kwargs.get("data", b""))) if call else None
+        response = await self._delegate.request(method, url, **kwargs)
+        if call:
+            exchange["request"]["headers"] = call.headers(response.request_info.headers)
+            call.response(exchange, response.status, response.headers, b"")
+            exchange["response"]["bodyComplete"] = False
+            call.response(exchange, response.status, response.headers, await response.read())
+        return response
 
 
 class _ObservedRetryClient:
@@ -165,8 +186,6 @@ class _ObservedRetryClient:
 
 def instrument_native_validation_http(model: Any) -> None:
     """Instrument this candidate instance, never global SDK clients or live traffic."""
-    if _CURRENT.get() is None:
-        return
     from nemoguardrails.guardrails.model_engine import ModelEngine
     from nemoguardrails.llm.models.openai_chat import OpenAIChatModel
 
@@ -175,9 +194,11 @@ def instrument_native_validation_http(model: Any) -> None:
         model = model._delegate
     if isinstance(model, ModelEngine):
         if model._client is not None and not isinstance(model._client, _ObservedRetryClient):
+            if not isinstance(model._client._client, _ObservedAiohttpSession):
+                model._client._client = _ObservedAiohttpSession(model._client._client)
             model._client = _ObservedRetryClient(model._client)
     elif isinstance(model, OpenAIChatModel):
         client = model._client._client
-        for event, hook in (("request", _httpx_request), ("response", _httpx_response)):
+        for event, hook in (("request", httpx_request), ("response", httpx_response), ("request", _httpx_request), ("response", _httpx_response)):
             if hook not in client.event_hooks[event]:
                 client.event_hooks[event].append(hook)

@@ -15,6 +15,13 @@
       "when": 1793586360199,
       "tag": "0001_endpoint_credential_required",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1793609440105,
+      "tag": "0002_model_concurrency",
+      "breakpoints": true
     }
   ]
 }

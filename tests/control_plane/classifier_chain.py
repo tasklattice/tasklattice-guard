@@ -23,19 +23,20 @@ CONTRACTS = {"jailbreak": "tali.guard.jailbreak.v1", "content_safety": "tali.gua
              "topic_control": "tali.guard.topic-control.semantic.v1"}
 
 
-def build_controller_plan(*, review=False):
+def build_controller_plan(*, review=False, phase="input"):
     source = """
       import { PolicyCatalog } from './server/policy-catalog/catalog.ts';
       import { DeclarativeCompiler } from './server/policy-studio/declarative.ts';
       import { buildGuardrailPlan } from './server/domain/guardrail-plan.ts';
       const compiler = new DeclarativeCompiler('../runner/toolkit/policy_library/assets');
       const policies = PolicyCatalog.load('../runner/toolkit/policy_library/assets').list().map(p => compiler.catalogView(p));
-      const ids = ['builtin-content-safety', 'builtin-jailbreak-strict', 'builtin-topic-safety',
+      const phase = process.env.GUARD_TEST_PHASE ?? 'input';
+      const ids = phase === 'output' ? ['builtin-content-safety'] : ['builtin-content-safety', 'builtin-jailbreak-strict', 'builtin-topic-safety',
                    'keyword-blocking', 'local-data-use-boundaries'];
       const bindings = ids.map(id => {
         const p = policies.find(p => p.id === id);
         const rules = id === 'builtin-topic-safety' ? ['topic/denylist'] : p.rules.map(r => r.id);
-        return { policyId: id, policyVersion: p.version, action: null, enabledRails: ['input'],
+        return { policyId: id, policyVersion: p.version, action: null, enabledRails: [phase],
           enabledRuleIds: rules, ruleOrder: rules, ruleActions: {}, reasoningPolicy: null,
           parameterValues: id === 'keyword-blocking' ? {blocked_words: 'CHAIN_BLOCK'} :
             {on_unknown: 'allow', review_unknown: process.env.GUARD_TEST_REVIEW ?? 'false', topic_mode: 'permissive', denied_topics: 'Synthetic forbidden task'} };
@@ -47,17 +48,20 @@ def build_controller_plan(*, review=False):
     """
     result = subprocess.run(["node", "--import", "tsx", "--input-type=module", "-e", source],
                             cwd=ROOT / "controller", capture_output=True, text=True, check=True, timeout=60,
-                            env={**os.environ,"GUARD_TEST_REVIEW":"true" if review else "false"})
+                            env={**os.environ,"GUARD_TEST_REVIEW":"true" if review else "false", "GUARD_TEST_PHASE":phase})
     return json.loads(result.stdout)
 
 
 async def scan(plan, probabilities, *, content="An ordinary synthetic request.", fault=None,
-               backend, topic_profile=None, scope="full", review=None, review_fault=None, reviewer_binding=True, require_evidence=True):
+               backend, topic_profile=None, scope="full", review=None, review_fault=None, reviewer_binding=True,
+               reviewer_profile="tali.classifier-review.v1", require_evidence=True, phase="input", reviewer_phase=None):
     topic_profile = topic_profile or backend.profile
     config = candidate("input", "jailbreak", backend.profile, CONTRACTS["jailbreak"]).configuration
     for capability in ("content_safety", "topic_control"):
         other = candidate("input", capability, backend.profile, CONTRACTS[capability]).configuration
         config.bindings.extend(other.bindings)
+    if phase == "output":
+        config = candidate("output", "content_safety", backend.profile, CONTRACTS["content_safety"]).configuration
     if topic_profile != backend.profile:
         topic = candidate("input", "topic_control", topic_profile, CONTRACTS["topic_control"]).configuration
         topic.runtimes[0].id = "topic-only"
@@ -69,8 +73,8 @@ async def scan(plan, probabilities, *, content="An ordinary synthetic request.",
         runtime.model = backend.model
     credentials = {"provider-1":"synthetic"}
     if review is not None and reviewer_binding:
-        from runner.toolkit.nemo.evaluators.classifier_review import REVIEW_PROFILE, REVIEW_CONTRACT
-        extra = candidate("input","classifier_review",REVIEW_PROFILE,REVIEW_CONTRACT).configuration
+        from runner.toolkit.nemo.evaluators.classifier_review import REVIEW_CONTRACT
+        extra = candidate(reviewer_phase or phase,"classifier_review",reviewer_profile,REVIEW_CONTRACT).configuration
         extra.runtimes[0].id = extra.bindings[0].model_ref = "review-runtime"
         extra.runtimes[0].model = "review-model-v1"
         extra.runtimes[0].credential_ref = "review-provider"
@@ -83,6 +87,7 @@ async def scan(plan, probabilities, *, content="An ordinary synthetic request.",
         if str(request.url).endswith('/chat/completions'):
             assert request.headers['authorization'] == 'Bearer review-synthetic'
             data=json.loads(body['messages'][-1]['content'])
+            assert f"current_{phase}" in data['state']
             keys=set(data['questions'])
             capability = ('jailbreak' if 'jailbreak_attempt' in keys else 'content_safety' if 'unsafe_content' in keys else 'topic_control')
             calls.append('review:'+capability)
@@ -128,7 +133,7 @@ async def scan(plan, probabilities, *, content="An ordinary synthetic request.",
     try:
         async with httpx.AsyncClient(transport=httpx.ASGITransport(app), base_url="http://runner") as client:
             response = await client.post(SCAN_URL, headers={"authorization": "Bearer key", "x-guard-evidence": "evaluations-v1"},
-                                         json={"input": content, "flagOnly": False})
+                                         json={"input": content, "flagOnly": False, "scanDirection": "response" if phase == "output" else "request"})
         if require_evidence:
             assert "x-guard-evaluation-evidence" in response.headers, (response.text, failures)
         return response, calls, json.loads(response.headers["x-guard-evaluation-evidence"]) if "x-guard-evaluation-evidence" in response.headers else None

@@ -1,5 +1,5 @@
 import { ArrowUpRight, Copy, X } from "lucide-react";
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import { toast } from "@/components/ui/notifications";
 
 import { StateBadge } from "@/components/product-shell";
@@ -20,7 +20,7 @@ export function ValidationFailureEvidence({
   copyFailedMessage,
   closeLabel,
 }: {
-  examples?: Array<{ id: string; fields: Array<{ label: string; value: string }> }>;
+  examples?: Array<{ id: string; evidence?: ReactNode; fields: Array<{ label: string; value: string; displayValue?: string }> }>;
   label: string;
   title: string;
   subject: string;
@@ -64,9 +64,10 @@ export function ValidationFailureEvidence({
         {badge}
         {examples?.map((example) => <section key={example.id} className="space-y-3 rounded-lg border p-4">
           <h3 className="text-sm font-semibold [overflow-wrap:anywhere]">{example.id}</h3>
+          {example.evidence}
           <dl className="space-y-3">{example.fields.map((field) => <div key={field.label}>
             <dt className="mb-1 text-xs font-medium text-muted-foreground">{field.label}</dt>
-            <dd className="rounded-md bg-muted/40 p-3 font-mono text-xs leading-6 whitespace-pre-wrap [overflow-wrap:anywhere]">{field.value}</dd>
+            <dd className="rounded-md bg-muted/40 p-3 font-mono text-xs leading-6 whitespace-pre-wrap [overflow-wrap:anywhere]">{field.displayValue ?? field.value}</dd>
           </div>)}</dl>
         </section>)}
         <section aria-label={detailLabel}>

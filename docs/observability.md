@@ -36,7 +36,7 @@ test pass rates. Keep three independent results:
 | --- | --- |
 | `decision` | Enforcement: allow, block or transform |
 | `executionStatus` | Whether Guardrail execution completed, errored or timed out |
-| `modelStatus` | `ok`: every recorded model response passed its protocol/schema; `error`: a model service/response failed; `not_called`: no model RPC; `unknown`: no model-health conclusion, e.g. credentials rejected or cancellation |
+| `modelStatus` | `ok`: every recorded model response passed its protocol/schema; `error`: a recorded model call failed, including rejected credentials; `not_called`: no model RPC; `unknown`: no model-health conclusion, e.g. cancellation |
 
 A format-valid classification that disagrees with a test expectation leaves
 `modelStatus=ok` and fails the test assertion. This is not a model service error.
@@ -50,6 +50,21 @@ Each failed Trace span records `errorSource`, `errorCategory`, `errorType`,
 use snake_case; telemetry uses camelCase. Diagnostics retain the owning span and
 Policy; model spans retain Provider and Model. Child causes propagate to failed
 parent spans without matching free-form text.
+
+Runtime Logs display an execution failure as the primary outcome and the recorded
+enforcement action separately. A fail-closed Block does not prove a policy
+violation. A completion-only error without an action does not prove either Block
+or Allow. Diagnostics show the recorded cause, suggested next checks, HTTP status,
+Provider/Model, and correlation IDs. Parent diagnostics for the same model call
+are grouped; uncovered checks are collapsed separately from the likely causes.
+
+An unspecified `needs_context` is not proof that a request field is missing.
+New records distinguish `model_uncertain`, `category_mapping`, and
+`review_inconclusive` from explicit grounding omissions (`missing_query`,
+`missing_grounding_sources`, `missing_grounding_context`). Older ambiguous
+records display an inconclusive result with unknown attribution. Diagnostic
+messages use product-owned descriptions, never raw exception or evaluator text
+that might contain credentials or request content.
 
 | Source | Boundary and examples |
 | --- | --- |
@@ -69,6 +84,37 @@ For timeouts, use the structured source/category to distinguish a model timeout
 from a Guard deadline. Model failure logs and OpenTelemetry model spans carry
 the same source/category and model call ID; raw model content is not needed for
 attribution.
+
+## Failed model HTTP evidence
+
+Failed model calls retain the outgoing method, URL, request headers and complete
+body, together with the response status, all response headers (including repeated
+headers), and complete response body. Bodies are stored as base64 so malformed
+JSON and non-text responses remain inspectable. Authentication credentials,
+cookies and echoed credential values are redacted. A missing response is distinct
+from an empty response; interrupted body reads are marked incomplete. Recovered
+failed HTTP attempts remain available even when a later attempt succeeds.
+
+This evidence is kept outside model usage, metrics, ordinary telemetry metadata
+and application logs. Runner encrypts it into the existing runtime content
+envelope, including for model failures at INFO capture level. Authorized detail
+requests with `includeContent=true` can decrypt it; list responses expose only
+availability and count. Existing runtime-log retention and content-access rules
+apply. The UI supports viewing and downloading the evidence and explicitly
+reports unavailable encryption, recording, or storage rather than presenting
+missing evidence as a successful call.
+
+Capability tests and Guardrail validation also retain failed model exchanges in
+their existing protected case/report evidence. These follow report permissions
+and report retention, rather than runtime-log ciphertext storage. Full evidence
+is available to authorized report readers without copying model bodies into the
+ordinary validation logger.
+
+Model queue duration and whether a request was actually sent are recorded
+separately. A cancelled or timed-out waiter is not evidence that the provider
+received the request. Parallel-group trace identity and execution-stage spans
+help distinguish local checks, model admission, remote work and short-circuit
+cancellation.
 
 ## OpenTelemetry Collector outages
 

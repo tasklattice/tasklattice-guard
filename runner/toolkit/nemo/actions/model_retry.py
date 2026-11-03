@@ -1,8 +1,8 @@
-"""Bounded provider recovery: connection setup and explicit rate limiting.
+"""Bounded provider recovery: connection setup and explicit admission rejection.
 
-Both are safe to retry because neither can duplicate a billed model response:
-a rate-limited request produced no completion. HTTP success, other statuses and
-invalid model output are never retried."""
+These cannot duplicate a completed inference. In addition to HTTP 429, a
+provider can recognize its own pre-inference capacity rejection. HTTP success,
+unrecognized server errors and invalid model output are never retried."""
 from __future__ import annotations
 
 import asyncio
@@ -57,13 +57,16 @@ def _transient_connection(error: BaseException) -> bool:
 
 
 async def with_connection_retry(operation: Callable[[], Awaitable[_T]], *,
-                                deadline: float, call: ModelCallTracker) -> _T:
+                                deadline: float, call: ModelCallTracker,
+                                retryable_rejection: Callable[[httpx.Response], bool] | None = None) -> _T:
     """Bounded recovery within one shared monotonic deadline.
 
     Connection establishment retries at most once. An explicit 429 is retried up
     to the configured provider attempts, honouring Retry-After when the provider
     supplies a usable value. The deadline includes connect, response and backoff
-    time; cancellation propagates immediately. Other statuses do not retry.
+    time; cancellation propagates immediately. A provider may additionally
+    identify an explicit pre-inference admission rejection. Other server
+    failures, malformed responses and uncertain classifications never retry.
     """
     remaining = deadline - time.monotonic()
     if remaining <= 0:
@@ -74,12 +77,14 @@ async def with_connection_retry(operation: Callable[[], Awaitable[_T]], *,
                 return await operation()
             except httpx.HTTPStatusError as error:
                 status = error.response.status_code if error.response is not None else None
-                if status != 429:
+                if status != 429 and not (error.response is not None and retryable_rejection
+                                         and retryable_rejection(error.response)):
                     raise
                 hinted = _retry_after_seconds(error.response)
                 delay = hinted if hinted is not None else min(8.0, 0.5 * 2 ** attempt) * random.uniform(0.8, 1.2)
                 retry = attempt < _rate_limit_attempts - 1 and deadline - time.monotonic() > delay + 0.05
                 _LOGGER.warning("%s", json.dumps({"event": "model_rate_limited",
+                    "http_status": status,
                     "call_id": call.call_id, "attempt": attempt + 1, "will_retry": retry,
                     "planned_backoff_ms": round(delay * 1000) if retry else 0,
                     "retry_after_hint": hinted is not None}))

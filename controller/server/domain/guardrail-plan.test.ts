@@ -359,7 +359,9 @@ describe("Controller Guardrail plan", () => {
       const ordered = modules.filter((item) => item.phase === phase);
       ordered.forEach((item, index) => {
         expect(item.input_view).toBe("previous_output");
-        expect(item.depends_on).toEqual(index ? [ordered[index - 1]!.id] : []);
+        // Independent local Blocks share the first group; the Transform waits
+        // for every member of that group, not just its last authored sibling.
+        expect(item.depends_on).toEqual(index === ordered.length - 1 ? ordered.slice(0, -1).map(m => m.id) : []);
       });
     }
     expect(pattern.rules.find((item) => item.id === "pattern/us_phone")?.effect).toBe("transform");
@@ -466,8 +468,8 @@ describe("Compiled evaluation views", () => {
     expect(plan.steps.map((step) => step.on_unsafe)).toEqual(["block", "transform"]);
     expect(parameters.mask).toMatchObject({ precedence: "0", evaluation_view: "previous_output" });
     expect(parameters.block).toMatchObject({ precedence: "1", evaluation_view: "original" });
-    expect(parameters.mask!.execution_schedule).toBe("block-first-v1");
-    expect(parameters.block!.execution_schedule).toBe("block-first-v1");
+    expect(parameters.mask!.execution_schedule).toBe("local-first-v2");
+    expect(parameters.block!.execution_schedule).toBe("local-first-v2");
   });
 });
 

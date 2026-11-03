@@ -1,186 +1,77 @@
-import { useMemo, useState } from "react";
+import { lazy, Suspense, useEffect, useMemo, useState } from "react";
 import { Link } from "@tanstack/react-router";
-import { Activity, ArrowRight, Info } from "lucide-react";
+import { Activity, ArrowRight, Check, Info } from "lucide-react";
 import { useTranslation } from "react-i18next";
-import {
-  CartesianGrid,
-  Line,
-  LineChart,
-  ResponsiveContainer,
-  Tooltip as RechartsTooltip,
-  XAxis,
-  YAxis,
-} from "recharts";
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
-import { getMetricInterval } from "@/features/dashboard";
-import type { Metrics, MetricTrendPoint, MetricTrendSeries } from "@/lib/api";
+import { additionalRuntimeMetrics, buildRuntimeChartData, coreRuntimeMetrics, defaultRuntimeMetrics, runtimeSeriesStyle } from "@/features/runtime-metric-chart-data";
+import type { RuntimeMetricKey } from "@/features/runtime-metrics";
+import type { Metrics } from "@/lib/api";
+import "./runtime-metrics.scss";
 
-import { runtimeMetricKeys, type RuntimeMetricKey } from "@/features/runtime-metrics";
-
-const colors = [
-  "var(--chart-1)",
-  "var(--chart-2)",
-  "var(--chart-3)",
-  "var(--chart-4)",
-  "var(--chart-5)",
-  "var(--chart-6)",
-];
+const RuntimeMetricPlot = lazy(() => import("./runtime-metric-plot"));
 
 export function RuntimeMetricChart({ metrics, metric: selectedMetric, onMetricChange }: { metrics: Metrics; metric?: RuntimeMetricKey; onMetricChange?: (metric: RuntimeMetricKey) => void }) {
   const { t, i18n } = useTranslation();
-  const [localMetric, setLocalMetric] = useState<RuntimeMetricKey>("p95_latency");
-  const metric = selectedMetric ?? localMetric;
-  const setMetric = onMetricChange ?? setLocalMetric;
-  const series = metrics.trend_series.none;
-  const visibleSeries = series.slice(0, colors.length);
-  const definition = t(`dashboard.metricDefinitions.${metric}`);
-  const chart = useMemo(
-    () => buildChartData(visibleSeries, metric),
-    [visibleSeries, metric],
-  );
-  const unit = metricUnit(metric, metrics.interval, t);
-  const locale = i18n.language;
+  const [visible, setVisible] = useState<RuntimeMetricKey[]>(() => [...new Set([...defaultRuntimeMetrics, ...(selectedMetric ? [selectedMetric] : [])])]);
+  // Preserve metric deep links while keeping the core correlation visible on entry.
+  useEffect(() => {
+    if (selectedMetric) setVisible(current => current.includes(selectedMetric) ? current : [...current, selectedMetric]);
+  }, [selectedMetric]);
+  const data = useMemo(() => buildRuntimeChartData(metrics), [metrics]);
+  const name = (key: RuntimeMetricKey) => key === "request_rate" ? t("runtimeMetrics.qps") : t(`dashboard.metrics.${key}`);
+  function toggle(key: RuntimeMetricKey) {
+    const active = visible.includes(key);
+    if (active && visible.length === 1) return;
+    setVisible(current => active ? current.filter(item => item !== key) : [...current, key]);
+    if (!active) onMetricChange?.(key);
+  }
+  const legend = (keys: RuntimeMetricKey[]) => keys.map(key => <button key={key} type="button" className="runtime-metric-toggle"
+    aria-pressed={visible.includes(key)} disabled={visible.length === 1 && visible.includes(key)} onClick={() => toggle(key)}>
+    <Check className="size-3" aria-hidden="true" style={{ visibility: visible.includes(key) ? "visible" : "hidden" }} />
+    <SeriesSwatch metric={key} /><span>{name(key)}</span>
+  </button>);
 
-  return (
-    <Card size="sm" className="min-w-0 gap-0 py-0 shadow-none">
-      <CardHeader className="flex min-h-16 flex-col items-stretch justify-between gap-3 border-b px-4 py-3 xl:flex-row xl:items-center">
-        <div className="flex min-w-0 items-center gap-1">
-          <div className="min-w-0">
-            <CardTitle className="text-sm">{t("dashboard.runtimeMetric")}</CardTitle>
-            <CardDescription className="mt-0.5 text-xs">{t("dashboard.runtimeMetricDescription")}</CardDescription>
-          </div>
-          <Tooltip><TooltipTrigger asChild><button type="button" className="grid size-8 shrink-0 place-items-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-2 focus-visible:outline-ring" aria-label={t("dashboard.metricDefinition")}><Info className="size-3.5" /></button></TooltipTrigger><TooltipContent className="max-w-72">{definition}</TooltipContent></Tooltip>
+  return <Card size="sm" className="min-w-0 gap-0 py-0 shadow-none">
+    <CardHeader className="flex flex-row items-center justify-between gap-4 border-b px-4 py-3">
+      <div className="flex min-w-0 items-center gap-1">
+        <div className="min-w-0">
+          <CardTitle className="text-sm">{t("runtimeMetrics.title")}</CardTitle>
+          <CardDescription className="mt-0.5 text-xs">{t("runtimeMetrics.description")}</CardDescription>
         </div>
-        <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-          <span className="hidden shrink-0 text-xs text-muted-foreground 2xl:block">{t("dashboard.autoResolution", { interval: getMetricInterval(metrics.window) })}</span>
-          <label className="flex min-w-0 items-center gap-2 text-xs font-medium text-muted-foreground">
-            {t("dashboard.metric")}
-            <Select value={metric} onValueChange={(value) => setMetric(value as RuntimeMetricKey)}>
-              <SelectTrigger className="field:h-9 min-w-0 flex-1 field:bg-card sm:w-40"><SelectValue /></SelectTrigger>
-              <SelectContent>
-                {runtimeMetricKeys.map((key) => <SelectItem key={key} value={key}>{t(`dashboard.metrics.${key}`)}</SelectItem>)}
-              </SelectContent>
-            </Select>
-          </label>
-        </div>
-      </CardHeader>
-      <CardContent className="px-2 pt-1 pb-2 sm:px-4">
-        {!metrics.total_decisions ? <RuntimeMetricEmpty /> : (
-          <div className="h-[220px] w-full" aria-label={t("dashboard.runtimeMetricChartLabel")}>
-            <ResponsiveContainer width="100%" height="100%">
-              <LineChart data={chart.data} margin={{ top: 8, right: 8, left: -16, bottom: 0 }}>
-                <CartesianGrid vertical={false} stroke="var(--chart-grid)" strokeDasharray="3 4" />
-                <XAxis
-                  dataKey="timestamp"
-                  axisLine={false}
-                  tickLine={false}
-                  minTickGap={30}
-                  tick={{ fill: "var(--muted-foreground)", fontSize: 11 }}
-                  tickFormatter={(value) => formatTick(String(value), metrics.window, locale)}
-                />
-                <YAxis
-                  axisLine={false}
-                  tickLine={false}
-                  width={48}
-                  tick={{ fill: "var(--muted-foreground)", fontSize: 11 }}
-                  tickFormatter={(value) => formatCompact(Number(value), locale)}
-                />
-                <RechartsTooltip
-                  cursor={{ stroke: "var(--input)", strokeDasharray: "3 3" }}
-                  contentStyle={{ borderColor: "var(--border)", borderRadius: "var(--radius-control)", background: "var(--card)", boxShadow: "var(--shadow-overlay)" }}
-                  labelFormatter={(value) => new Date(String(value)).toLocaleString(locale, { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}
-                  formatter={(value, name) => [`${formatMetricValue(Number(value), metric, locale)}${unit ? ` ${unit}` : ""}`, String(name)]}
-                />
-                {chart.lines.map((line, index) => (
-                  <Line
-                    key={line.key}
-                    type="monotone"
-                    dataKey={line.key}
-                    name={displaySeriesName(line.name, t)}
-                    stroke={colors[index]}
-                    strokeWidth={index === 0 ? 2 : 1.65}
-                    dot={false}
-                    activeDot={{ r: 3.5, strokeWidth: 2, fill: "var(--card)" }}
-                    connectNulls
-                    isAnimationActive={false}
-                  />
-                ))}
-              </LineChart>
-            </ResponsiveContainer>
-          </div>
-        )}
-      </CardContent>
-    </Card>
-  );
+        <Tooltip><TooltipTrigger asChild><button type="button" className="grid size-8 shrink-0 place-items-center text-muted-foreground hover:bg-muted focus-visible:outline-2 focus-visible:outline-ring" aria-label={t("dashboard.metricDefinition")}><Info className="size-3.5" /></button></TooltipTrigger><TooltipContent>{t("runtimeMetrics.definition")}</TooltipContent></Tooltip>
+      </div>
+      <span className="shrink-0 text-xs text-muted-foreground">{t("dashboard.autoResolution", { interval: metrics.interval })}</span>
+    </CardHeader>
+    <CardContent className="px-4 pt-2 pb-3">
+      <div className="runtime-metric-legend" role="group" aria-label={t("runtimeMetrics.series")}>{legend(coreRuntimeMetrics)}</div>
+      <details className="runtime-metric-more" open={additionalRuntimeMetrics.some(key => visible.includes(key)) || undefined}>
+        <summary>{t("runtimeMetrics.more")}</summary>
+        <div className="runtime-metric-legend">{legend(additionalRuntimeMetrics)}</div>
+      </details>
+      {!metrics.total_decisions ? <RuntimeMetricEmpty /> : <>
+        <Suspense fallback={<div className="runtime-metric-plot-loading" role="status">{t("runtimeMetrics.loading")}</div>}>
+          <RuntimeMetricPlot key={`${metrics.scope?.guardrail_id ?? "all"}:${metrics.window}`} data={data} visible={visible} window={metrics.window} locale={i18n.language} />
+        </Suspense>
+        <p className="mt-1 text-xs text-muted-foreground">{t("runtimeMetrics.axes")}</p>
+      </>}
+    </CardContent>
+  </Card>;
+}
+
+function SeriesSwatch({ metric }: { metric: RuntimeMetricKey }) {
+  const { color, dash } = runtimeSeriesStyle(metric);
+  return <svg className="runtime-metric-swatch" viewBox="0 0 24 8" aria-hidden="true"><line x1="0" y1="4" x2="24" y2="4" stroke={color} strokeWidth="2" strokeDasharray={dash} /></svg>;
 }
 
 function RuntimeMetricEmpty() {
   const { t } = useTranslation();
-  return (
-    <div className="flex min-h-[220px] flex-col items-center justify-center px-5 text-center">
-      <span className="grid size-8 place-items-center rounded-md bg-muted text-muted-foreground"><Activity className="size-4" /></span>
-      <h3 className="mt-3 text-sm font-semibold">{t("dashboard.noTrafficTitle")}</h3>
-      <p className="mt-1.5 max-w-md text-sm leading-6 text-muted-foreground">{t("dashboard.noTrafficDescription")}</p>
-      <Button className="mt-4" variant="outline" asChild><Link to="/integration/routers">{t("dashboard.manageRouters")}<ArrowRight /></Link></Button>
-    </div>
-  );
-}
-
-function buildChartData(series: MetricTrendSeries[], metric: RuntimeMetricKey) {
-  const lines = series.map((item, index) => ({ key: `series_${index}`, name: item.name }));
-  const timestamps = series[0]?.points.map((point) => point.timestamp) ?? [];
-  const data = timestamps.map((timestamp, pointIndex) => {
-    const row: Record<string, string | number | null> = { timestamp };
-    series.forEach((item, seriesIndex) => {
-      const point = item.points[pointIndex];
-      row[`series_${seriesIndex}`] = point ? metricValue(point, metric) : null;
-    });
-    return row;
-  });
-  return { data, lines };
-}
-
-function metricValue(point: MetricTrendPoint, metric: RuntimeMetricKey) {
-  if (metric === "p50_latency") return point.p50_latency_ms;
-  if (metric === "p95_latency") return point.p95_latency_ms;
-  if (metric === "p99_latency") return point.p99_latency_ms;
-  if (metric === "request_rate") return point.total;
-  if (!point.total) return 0;
-  if (metric === "intervention_rate") return (point.blocked + point.transformed) / point.total * 100;
-  if (metric === "block_rate") return point.blocked / point.total * 100;
-  if (metric === "transform_rate") return point.transformed / point.total * 100;
-  if (metric === "error_rate") return point.errored / point.total * 100;
-  return point.timed_out / point.total * 100;
-}
-
-function metricUnit(metric: RuntimeMetricKey, interval: Metrics["interval"], t: ReturnType<typeof useTranslation>["t"]) {
-  if (metric.endsWith("latency")) return "ms";
-  if (metric === "request_rate") return t("dashboard.perInterval", { interval });
-  return "%";
-}
-
-function formatMetricValue(value: number, metric: RuntimeMetricKey, locale: string) {
-  if (metric.endsWith("latency") || metric === "request_rate") return Math.round(value).toLocaleString(locale);
-  return value.toLocaleString(locale, { maximumFractionDigits: 2 });
-}
-
-function formatCompact(value: number, locale: string) {
-  return Intl.NumberFormat(locale, { notation: "compact", maximumFractionDigits: 1 }).format(value);
-}
-
-function formatTick(value: string, window: Metrics["window"], locale: string) {
-  const date = new Date(value);
-  return window === "1h" || window === "24h"
-    ? date.toLocaleTimeString(locale, { hour: "2-digit", minute: "2-digit" })
-    : date.toLocaleDateString(locale, { month: "short", day: "numeric" });
-}
-
-function displaySeriesName(name: string, t: ReturnType<typeof useTranslation>["t"]) {
-  if (name === "All traffic") return t("dashboard.allTraffic");
-  if (name === "Unassigned") return t("dashboard.unassigned");
-  return name[0]?.toUpperCase() + name.slice(1);
+  return <div className="flex min-h-[220px] flex-col items-center justify-center px-5 text-center">
+    <Activity className="size-5 text-muted-foreground" />
+    <h3 className="mt-3 text-sm font-semibold">{t("dashboard.noTrafficTitle")}</h3>
+    <p className="mt-1.5 max-w-md text-sm leading-6 text-muted-foreground">{t("dashboard.noTrafficDescription")}</p>
+    <Button className="mt-4" variant="outline" asChild><Link to="/integration/routers">{t("dashboard.manageRouters")}<ArrowRight /></Link></Button>
+  </div>;
 }

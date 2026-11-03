@@ -29,12 +29,13 @@ it.each(["builtin-content-safety", "builtin-jailbreak", "builtin-jailbreak-stric
 });
 
 
-it("keeps output protection and never borrows an output model binding for review",() => {
-  expect(publishedProtectionCoverage(plan("builtin-content-safety","true",["output"]))!.requiredModelBindings).toEqual(["content_safety.output"]);
+it("requires independent review bindings for the same Rail as each opted-in classifier",() => {
+  expect(publishedProtectionCoverage(plan("builtin-content-safety","true",["output"]))!.requiredModelBindings).toEqual(["content_safety.output","classifier_review.output"]);
   expect(publishedProtectionCoverage(plan("builtin-content-safety","true",["input","output"]))!.requiredModelBindings).toEqual([
-    "content_safety.input","classifier_review.input","content_safety.output",
+    "content_safety.input","classifier_review.input","content_safety.output","classifier_review.output",
   ]);
   expect(assignmentTargetAcceptsModel("classifier_review.input","tali.classifier-review.v1","custom-openai-compatible")).toBe(true);
+  expect(assignmentTargetAcceptsModel("classifier_review.output","generic-chat","deepseek")).toBe(true);
   expect(assignmentTargetAcceptsModel("classifier_review.input","tali.nemotron-safety-guard-v3.v1","custom-openai-compatible")).toBe(false);
   expect(assignmentTargetAcceptsModel("content_safety.output","tali.classifier-review.v1","custom-openai-compatible")).toBe(false);
   expect(assignmentTargetAcceptsModel("control_plane","tali.classifier-review.v1","custom-openai-compatible")).toBe(false);
@@ -42,6 +43,8 @@ it("keeps output protection and never borrows an output model binding for review
 
 it("accepts old assignment payloads without silently changing existing assignments",() => {
   const assignments=emptyModelAssignments();
-  const unassigned=structuredClone(assignments);delete (unassigned.bindings as Record<string,unknown>)["classifier_review.input"];
+  const unassigned=structuredClone(assignments);
+  delete (unassigned.bindings as Record<string,unknown>)["classifier_review.input"];
+  delete (unassigned.bindings as Record<string,unknown>)["classifier_review.output"];
   expect(assignmentInputSchema.parse(unassigned)).toEqual(assignments);
 });

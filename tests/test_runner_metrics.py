@@ -295,6 +295,26 @@ def test_parallel_model_work_is_not_misreported_as_wall_wait():
     assert _model_wait_wall_ms(results) == 3_000
 
 
+def test_provider_work_excludes_admission_wait_and_unsent_attempts():
+    queued = ModelCallUsage(
+        provider="nvidia", model="judge", operation="classify",
+        result="cancelled", duration_ms=3_000, queue_duration_ms=3_000,
+        request_sent=False, started_offset_ms=100, finished_offset_ms=3_100,
+    )
+    sent = ModelCallUsage(
+        provider="nvidia", model="judge", operation="classify",
+        result="success", duration_ms=2_000, queue_duration_ms=800,
+        request_sent=True, started_offset_ms=100, finished_offset_ms=2_100,
+    )
+    results = (SimpleNamespace(
+        result=ActionResult("not_matched", "content", usage=ActionUsage(model_calls=(sent,))),
+        provider_latency_ms=2_000,
+    ),)
+
+    assert _provider_work_ms(results, (queued,)) == 1_200
+    assert _model_wait_wall_ms(results, (queued,)) == 3_000
+
+
 def test_model_call_metrics_keep_provider_outcome_and_retry_evidence():
     metrics = RunnerMetrics(8)
     labels = {
@@ -368,8 +388,26 @@ async def test_nemo_native_model_calls_use_the_same_scoped_metrics_and_wall_time
     assert len(scope.calls) == 1
     assert scope.calls[0].operation == "content_safety_input"
     assert scope.calls[0].input_tokens == 40
-    assert _provider_work_ms((), tuple(scope.calls)) == scope.calls[0].duration_ms
+    assert _provider_work_ms((), tuple(scope.calls)) == max(
+        0, scope.calls[0].duration_ms - scope.calls[0].queue_duration_ms,
+    )
     assert _model_wait_wall_ms((), tuple(scope.calls)) == scope.calls[0].duration_ms
     rendered = generate_latest(metrics.registry).decode()
     assert 'guard_runner_model_calls_total{action="nemo_content_safety",endpoint_id="endpoint-native",error_type="none",guardrail_id="guardrail-native",model="content-safety-model",operation="content_safety_input",phase="input",provider="nvidia",result="success"} 1.0' in rendered
     assert 'guard_runner_model_tokens_total{action="nemo_content_safety",direction="input",endpoint_id="endpoint-native",guardrail_id="guardrail-native",model="content-safety-model",phase="input",provider="nvidia"} 40.0' in rendered
+
+
+def test_unsent_model_attempts_record_queue_time_without_incrementing_rpc_metrics():
+    metrics = RunnerMetrics(8)
+    labels = dict(guardrail_id="queued-guard", endpoint_id="endpoint", phase="input", action="classifier",
+                  provider="provider", model="model", operation="classify")
+    metrics.model_call_started(**labels)
+    metrics.model_call_finished(usage=ModelCallUsage(provider="provider", model="model", operation="classify",
+        result="cancelled", duration_ms=120, queue_duration_ms=120, request_sent=False), **labels)
+    rendered = generate_latest(metrics.registry).decode()
+    assert not any(line.startswith("guard_runner_model_calls_total{") for line in rendered.splitlines())
+    assert not any(line.startswith("guard_runner_model_call_duration_seconds_count{") for line in rendered.splitlines())
+    queue = next(line for line in rendered.splitlines() if line.startswith("guard_runner_model_admission_wait_seconds_sum{"))
+    assert queue.endswith(" 0.12")
+    active = next(line for line in rendered.splitlines() if line.startswith("guard_runner_model_in_flight{"))
+    assert active.endswith(" 0.0")

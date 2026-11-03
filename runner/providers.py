@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import httpx
 
+from runner.model_concurrency import ModelConcurrencyTransport, configure_model_limit
+
 from runner.toolkit.nemo.actions import (
     EvaluationActionProvider,
     EvaluationRoute,
@@ -65,15 +67,16 @@ def dynamic_runtime_action_providers(
                 scope = "input Topic Control" if binding.profile_ref == JEV_TOPIC_PROFILE else "input Topic Control, Jailbreak detection or Content Safety"
                 raise ValueError(f"Jev supports only {scope} with matching capability, contract and runtime profile.")
         if LAYA_PROFILES.intersection({binding.profile_ref, source_profiles.get(binding.model_ref)}):
+            phase = _rail_name(binding.rail_type)
             allowed = {"topic_control": LayaTopicEvaluator.contracts}
             if binding.profile_ref == LAYA_PROFILE:
                 allowed["jailbreak"] = LayaJailbreakEvaluator.contracts
                 allowed["content_safety"] = LayaContentSafetyEvaluator.contracts
             if (binding.profile_ref not in LAYA_PROFILES or source_profiles.get(binding.model_ref) != binding.profile_ref
-                or binding.capability_ref not in allowed or binding.binding_id != f"{binding.capability_ref}.input"
-                or _rail_name(binding.rail_type) != "input"
+                or binding.capability_ref not in allowed or binding.binding_id != f"{binding.capability_ref}.{phase}"
+                or (phase == "output" and binding.capability_ref != "content_safety")
                 or tuple(binding.contract_refs) != tuple(allowed.get(binding.capability_ref, ()))):
-                scope = "input Topic Control" if binding.profile_ref == LAYA_TOPIC_PROFILE else "input Topic Control, Jailbreak detection or Content Safety"
+                scope = "input Topic Control" if binding.profile_ref == LAYA_TOPIC_PROFILE else "input Topic Control, input Jailbreak detection or input/output Content Safety"
                 raise ValueError(f"Laya supports only {scope} with matching capability, contract and runtime profile.")
     runtimes = {
         item.id: ModelRuntimeConfig(
@@ -83,22 +86,29 @@ def dynamic_runtime_action_providers(
             api_key=credentials.get(item.credential_ref, ""),
             timeout_seconds=float(item.timeout_seconds or 20),
             max_tokens=int(item.max_tokens or 128),
+            max_concurrency=int(getattr(item, "max_concurrency", 0) or 2),
             skip_tls_verify=item.skip_tls_verify,
         )
         for item in configuration.runtimes
     }
+    for runtime in runtimes.values():
+        configure_model_limit(runtime.id, runtime.max_concurrency)
+    transports = {runtime.id: ModelConcurrencyTransport(runtime.id, timeout_seconds=runtime.timeout_seconds,
+        skip_tls_verify=runtime.skip_tls_verify, transport=transport) for runtime in runtimes.values()}
     bindings = {item.binding_id: item for item in configuration.bindings}
-    reviewer = None
+    reviewers = {}
     for item in configuration.bindings:
-        if REVIEW_PROFILE in {item.profile_ref,source_profiles.get(item.model_ref)}:
-            if (item.binding_id != "classifier_review.input" or item.capability_ref != "classifier_review"
-                or _rail_name(item.rail_type) != "input" or item.profile_ref != REVIEW_PROFILE
-                or source_profiles.get(item.model_ref) != REVIEW_PROFILE or tuple(item.contract_refs) != (REVIEW_CONTRACT,)):
-                raise ValueError("Classifier review requires its own matching input binding, runtime and contract.")
+        if (item.capability_ref == "classifier_review" or item.binding_id.startswith("classifier_review.")
+            or REVIEW_PROFILE in {item.profile_ref, source_profiles.get(item.model_ref)}):
+            phase = _rail_name(item.rail_type)
+            if (item.binding_id != f"classifier_review.{phase}" or item.capability_ref != "classifier_review"
+                or item.profile_ref not in {REVIEW_PROFILE, "generic-chat"}
+                or source_profiles.get(item.model_ref) != item.profile_ref or tuple(item.contract_refs) != (REVIEW_CONTRACT,)):
+                raise ValueError("Classifier review requires its own matching Rail binding, runtime and contract.")
             runtime = _assigned_runtime(item.model_ref,runtimes)
-            reviewer = ClassifierReviewer(base_url=runtime.base_url,model=runtime.model,api_key=runtime.api_key or "",
+            reviewers[phase] = ClassifierReviewer(base_url=runtime.base_url,model=runtime.model,api_key=runtime.api_key or "",
                 provider_id=runtime.id,timeout_seconds=runtime.timeout_seconds,max_tokens=runtime.max_tokens,
-                skip_tls_verify=runtime.skip_tls_verify,transport=transport)
+                skip_tls_verify=runtime.skip_tls_verify,transport=transports[runtime.id],rail_type=phase)
     jev_options = ({"lower_threshold": jev_thresholds[0], "upper_threshold": jev_thresholds[1]}
                    if jev_thresholds is not None else {})
     laya_options = ({"lower_threshold": laya_thresholds[0], "upper_threshold": laya_thresholds[1]}
@@ -129,11 +139,11 @@ def dynamic_runtime_action_providers(
         evaluator_bindings,
     )
     safety_evaluator = SafetyModelEvaluator(tuple(
-        build_safety_model_provider(item, transport=transport)
+        build_safety_model_provider(item, transport=transports[item.runtime_ref])
         for item in provider_configs
     ))
     routes = [EvaluationRoute("pii", CONTRACT_PII_EXACT, pii_evaluator)]
-    if reviewer is not None:
+    for reviewer in reviewers.values():
         routes.append(EvaluationRoute("classifier_review",REVIEW_CONTRACT,reviewer))
     routes.extend(
         EvaluationRoute(
@@ -152,21 +162,22 @@ def dynamic_runtime_action_providers(
         evaluator = evaluator_type(
             base_url=runtime.base_url, model=runtime.model, api_key=runtime.api_key or "",
             provider_id=runtime.id, timeout_seconds=runtime.timeout_seconds,
-            skip_tls_verify=runtime.skip_tls_verify, transport=transport,
-            reviewer=reviewer,
+            skip_tls_verify=runtime.skip_tls_verify, transport=transports[runtime.id],
+            reviewer=reviewers.get("input"),
             **jev_options,
         )
         routes.append(EvaluationRoute(capability, next(iter(evaluator.contracts)), evaluator))
-    for capability, evaluator_type in (("jailbreak", LayaJailbreakEvaluator), ("content_safety", LayaContentSafetyEvaluator)):
-        binding = bindings.get(f"{capability}.input")
+    for capability, phase, evaluator_type in (("jailbreak", "input", LayaJailbreakEvaluator),
+            ("content_safety", "input", LayaContentSafetyEvaluator), ("content_safety", "output", LayaContentSafetyEvaluator)):
+        binding = bindings.get(f"{capability}.{phase}")
         if binding is None or binding.profile_ref != LAYA_PROFILE:
             continue
         runtime = _assigned_runtime(binding.model_ref, runtimes)
         evaluator = evaluator_type(
             base_url=runtime.base_url, model=runtime.model, api_key=runtime.api_key or "",
             provider_id=runtime.id, timeout_seconds=runtime.timeout_seconds,
-            skip_tls_verify=runtime.skip_tls_verify, transport=transport,
-            reviewer=reviewer,
+            skip_tls_verify=runtime.skip_tls_verify, transport=transports[runtime.id],
+            reviewer=reviewers.get(phase), rail_type=phase,
             **laya_options,
         )
         routes.append(EvaluationRoute(capability, next(iter(evaluator.contracts)), evaluator))
@@ -187,17 +198,17 @@ def dynamic_runtime_action_providers(
             evaluator = JevTopicEvaluator(
                 base_url=runtime.base_url, model=runtime.model, api_key=runtime.api_key or "",
                 provider_id=runtime.id, timeout_seconds=runtime.timeout_seconds,
-                skip_tls_verify=runtime.skip_tls_verify, transport=transport, profile_ref=topic.profile_ref,
+                skip_tls_verify=runtime.skip_tls_verify, transport=transports[runtime.id], profile_ref=topic.profile_ref,
                 **jev_options,
-                reviewer=reviewer,
+                reviewer=reviewers.get("input"),
             )
         elif topic.profile_ref in LAYA_PROFILES:
             evaluator = LayaTopicEvaluator(
                 base_url=runtime.base_url, model=runtime.model, api_key=runtime.api_key or "",
                 provider_id=runtime.id, timeout_seconds=runtime.timeout_seconds,
-                skip_tls_verify=runtime.skip_tls_verify, transport=transport, profile_ref=topic.profile_ref,
+                skip_tls_verify=runtime.skip_tls_verify, transport=transports[runtime.id], profile_ref=topic.profile_ref,
                 **laya_options,
-                reviewer=reviewer,
+                reviewer=reviewers.get("input"),
             )
         else:
             if topic.profile_ref not in {"tali.taxonomy-judge.v1", "tali.nemoguard-topic-control.v1"}:
@@ -206,7 +217,7 @@ def dynamic_runtime_action_providers(
                 capability="topic_control", base_url=runtime.base_url, model=runtime.model,
                 api_key_env_var=None, api_key=runtime.api_key, provider_id=runtime.id,
                 skip_tls_verify=runtime.skip_tls_verify, timeout_seconds=runtime.timeout_seconds,
-                request_options={"max_tokens": runtime.max_tokens}, transport=transport,
+                request_options={"max_tokens": runtime.max_tokens}, transport=transports[runtime.id],
             )
         providers.append(TopicJudgeActionProvider(evaluator=evaluator))
 
@@ -220,7 +231,7 @@ def dynamic_runtime_action_providers(
             skip_tls_verify=runtime.skip_tls_verify,
             timeout_seconds=runtime.timeout_seconds,
             request_options={"max_tokens": runtime.max_tokens},
-            transport=transport,
+            transport=transports[runtime.id],
         ))
 
     reasoning = bindings.get("automated_reasoning.output")
@@ -231,7 +242,7 @@ def dynamic_runtime_action_providers(
             api_key=runtime.api_key,
             skip_tls_verify=runtime.skip_tls_verify,
             timeout_seconds=runtime.timeout_seconds,
-            transport=transport,
+            transport=transports[runtime.id],
         )))
     return tuple(providers)
 

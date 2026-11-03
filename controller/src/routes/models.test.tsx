@@ -56,6 +56,8 @@ vi.mock("@/components/ui/notifications", () => ({ toast: { success: vi.fn(), err
 const assignments: ModelAssignments = {
   controlPlane: "chat-model",
   bindings: {
+    "classifier_review.input": null,
+    "classifier_review.output": null,
     "content_safety.input": "safety-model",
     "content_safety.output": "safety-model",
     "jailbreak.input": null,
@@ -118,6 +120,24 @@ function renderPage(node: ReactNode) {
   return render(<QueryClientProvider client={client}>{node}</QueryClientProvider>);
 }
 
+async function actionItem(trigger: HTMLElement, name: string) {
+  await waitFor(() => expect(trigger).toHaveProperty("disabled", false));
+  if (trigger.getAttribute("aria-expanded") !== "true") {
+    const openMenu = screen.queryByRole("menu");
+    if (openMenu) fireEvent.keyDown(openMenu, { key: "Escape" });
+    fireEvent.click(trigger);
+  }
+  return screen.findByRole("menuitem", { name });
+}
+
+async function catalogAction(row: HTMLElement, name: string) {
+  return actionItem(within(row).getAllByRole("button", { name: /^modelSettings.actionsColumn / })[0]!, name);
+}
+
+async function modelAction(modelName: string, name: string) {
+  return actionItem(await screen.findByRole("button", { name: `modelSettings.actions ${modelName}` }), name);
+}
+
 describe("Models and Guardrail Catalog", () => {
   beforeEach(() => {
     Element.prototype.scrollIntoView = vi.fn();
@@ -160,13 +180,75 @@ describe("Models and Guardrail Catalog", () => {
     const jailbreak = await screen.findByRole("row", { name: "modelSettings.detectors.jailbreak_detection.title · modelSettings.inputRail" });
     fireEvent.keyDown(within(jailbreak).getByRole("combobox", { name: "modelSettings.modelColumn" }), { key: "ArrowDown" });
     fireEvent.click(await screen.findByRole("option", { name: /Qwen Guard · Mock provider/ }));
-    const save = within(jailbreak).getAllByRole("button", { name: "modelSettings.saveAssignment" })[0]!;
+    const save = await catalogAction(jailbreak, "modelSettings.saveAssignment");
     expect(save.hasAttribute("disabled")).toBe(false);
-    fireEvent.click(within(jailbreak).getAllByRole("button", { name: "modelSettings.validateAssignment" })[0]!);
-    await waitFor(() => expect(save.hasAttribute("disabled")).toBe(false));
+    fireEvent.click(await catalogAction(jailbreak, "modelSettings.validateAssignment"));
+    const testedSave = await catalogAction(jailbreak, "modelSettings.saveAssignment");
+    expect(testedSave).toHaveProperty("disabled", false);
     expect(saveModelAssignment).not.toHaveBeenCalled();
-    fireEvent.click(save);
+    fireEvent.click(testedSave);
     await waitFor(() => expect(saveModelAssignment).toHaveBeenCalledWith("jailbreak.input", "safety-model", "candidate-validation"));
+  });
+
+  it.each(["input", "output"] as const)("offers the existing DeepSeek chat for independent %s review and validates that explicit binding", async (rail) => {
+    vi.mocked(getModelConfiguration).mockResolvedValue({ ...view, models: [
+      { ...chatModel, name: "DeepSeek Chat", providerKind: "deepseek", providerName: "DeepSeek" }, safetyModel,
+    ] });
+    renderPage(<GuardrailCatalogPage />);
+    fireEvent.click(await screen.findByRole("tab", { name: `modelSettings.${rail}Rail` }));
+    const reviewer = await screen.findByRole("row", { name: `modelSettings.detectors.classifier_review.title · modelSettings.${rail}Rail` });
+    expect(within(reviewer).getByText("modelSettings.detectors.classifier_review.description")).toBeTruthy();
+    fireEvent.keyDown(within(reviewer).getByRole("combobox"), { key: "ArrowDown" });
+    expect(screen.queryByRole("option", { name: /Qwen Guard/ })).toBeNull();
+    fireEvent.click(await screen.findByRole("option", { name: /DeepSeek Chat · DeepSeek/ }));
+    fireEvent.click(await catalogAction(reviewer, "modelSettings.validateAssignment"));
+    await waitFor(() => expect(validateModelAssignment).toHaveBeenCalledWith(`classifier_review.${rail}`, "chat-model"));
+    fireEvent.click(await catalogAction(reviewer, "modelSettings.saveAssignment"));
+    await waitFor(() => expect(saveModelAssignment).toHaveBeenCalledWith(`classifier_review.${rail}`, "chat-model", "candidate-validation"));
+    expect(saveModelAssignment).toHaveBeenCalledTimes(1);
+    const primary = screen.getByRole("row", { name: `modelSettings.detectors.content_safety.title · modelSettings.${rail}Rail` });
+    fireEvent.keyDown(within(primary).getByRole("combobox"), { key: "ArrowDown" });
+    expect(screen.queryByRole("option", { name: /DeepSeek Chat/ })).toBeNull();
+    expect(screen.getByRole("option", { name: /Qwen Guard/ })).toBeTruthy();
+  });
+
+  it.each(["input", "output"] as const)("offers Laya content safety on the %s Rail without exposing it as PII", async (rail) => {
+    vi.mocked(getModelConfiguration).mockResolvedValue({ ...view, models: [
+      ...view.models, { ...chatModel, id: "laya-model", name: "Laya Auto", providerKind: "laya", providerName: "Laya", profile: "tali.laya.v1" },
+    ] });
+    renderPage(<GuardrailCatalogPage />);
+    fireEvent.click(await screen.findByRole("tab", { name: `modelSettings.${rail}Rail` }));
+    const primary = await screen.findByRole("row", { name: `modelSettings.detectors.content_safety.title · modelSettings.${rail}Rail` });
+    fireEvent.keyDown(within(primary).getByRole("combobox"), { key: "ArrowDown" });
+    fireEvent.click(await screen.findByRole("option", { name: /Laya Auto · Laya/ }));
+    fireEvent.click(await catalogAction(primary, "modelSettings.validateAssignment"));
+    await waitFor(() => expect(validateModelAssignment).toHaveBeenCalledWith(`content_safety.${rail}`, "laya-model"));
+    const pii = screen.getByRole("row", { name: `modelSettings.detectors.pii_detection.title · modelSettings.${rail}Rail` });
+    fireEvent.keyDown(within(pii).getByRole("combobox"), { key: "ArrowDown" });
+    expect(screen.queryByRole("option", { name: /Laya Auto/ })).toBeNull();
+  });
+
+  it.each(["input", "output"] as const)("offers DeepSeek with the explicit PII protocol on the %s Rail", async (rail) => {
+    const binding = `pii_semantic.${rail}` as const;
+    vi.mocked(getModelConfiguration).mockResolvedValue({ ...view, models: [
+      { ...chatModel, name: "DeepSeek Chat", providerKind: "deepseek", providerName: "DeepSeek" },
+      { ...chatModel, id: "pii-model", name: "DeepSeek PII", providerKind: "deepseek", providerName: "DeepSeek", profile: "tali.openai-compatible-pii.v1" },
+    ] });
+    vi.mocked(validateModelAssignment).mockResolvedValue({ ...view.draft!, validationId: "pii-validation", validationReport: {
+      ...view.draft!.validationReport!, checks: [
+        { id: `probe:${binding}:pii-model`, scope: "capability", status: "passed", evidenceKind: "nemo-rail-v1", message: "Passed" },
+      ],
+    } });
+    renderPage(<GuardrailCatalogPage />);
+    fireEvent.click(await screen.findByRole("tab", { name: `modelSettings.${rail}Rail` }));
+    const pii = await screen.findByRole("row", { name: `modelSettings.detectors.pii_detection.title · modelSettings.${rail}Rail` });
+    fireEvent.keyDown(within(pii).getByRole("combobox"), { key: "ArrowDown" });
+    expect(screen.queryByRole("option", { name: /DeepSeek Chat/ })).toBeNull();
+    fireEvent.click(await screen.findByRole("option", { name: /DeepSeek PII · DeepSeek/ }));
+    fireEvent.click(await catalogAction(pii, "modelSettings.validateAssignment"));
+    await waitFor(() => expect(validateModelAssignment).toHaveBeenCalledWith(binding, "pii-model"));
+    fireEvent.click(await catalogAction(pii, "modelSettings.saveAssignment"));
+    await waitFor(() => expect(saveModelAssignment).toHaveBeenCalledWith(binding, "pii-model", "pii-validation"));
   });
 
   it("previews the saved Runner configuration before activating its revision", async () => {
@@ -294,9 +376,8 @@ describe("Models and Guardrail Catalog", () => {
     const pii = await screen.findByRole("row", { name: "modelSettings.detectors.pii_detection.title · modelSettings.inputRail" });
     fireEvent.keyDown(within(pii).getByRole("combobox"), { key: "ArrowDown" });
     fireEvent.click(await screen.findByRole("option", { name: /Qwen Guard · Mock provider/ }));
-    fireEvent.click(within(pii).getAllByRole("button", { name: "modelSettings.validateAssignment" })[0]!);
-    const save = within(pii).getAllByRole("button", { name: "modelSettings.saveAssignment" })[0]!;
-    await waitFor(() => expect(save.hasAttribute("disabled")).toBe(false));
+    fireEvent.click(await catalogAction(pii, "modelSettings.validateAssignment"));
+    expect(await catalogAction(pii, "modelSettings.saveAssignment")).toHaveProperty("disabled", false);
 
     const refreshed = structuredClone(view);
     refreshed.draft!.updatedAt = "2026-09-01T00:01:00Z";
@@ -307,9 +388,9 @@ describe("Models and Guardrail Catalog", () => {
     // Saving another row also refreshes the draft and must preserve PII edits.
     vi.mocked(saveModelAssignment).mockResolvedValue(refreshed.draft!);
     const safety = screen.getByRole("row", { name: "modelSettings.detectors.content_safety.title · modelSettings.inputRail" });
-    fireEvent.click(within(safety).getAllByRole("button", { name: "modelSettings.saveAssignment" })[0]!);
+    fireEvent.click(await catalogAction(safety, "modelSettings.saveAssignment"));
     await waitFor(() => expect(saveModelAssignment).toHaveBeenCalledWith("content_safety.input", "safety-model", undefined));
-    await waitFor(() => expect(save.hasAttribute("disabled")).toBe(false));
+    expect(await catalogAction(pii, "modelSettings.saveAssignment")).toHaveProperty("disabled", false);
     expect(within(pii).getByRole("combobox").textContent).toContain("Qwen Guard");
 
     const saved = structuredClone(refreshed);
@@ -319,7 +400,7 @@ describe("Models and Guardrail Catalog", () => {
       vi.mocked(getModelConfiguration).mockResolvedValue(saved);
       return saved.draft!;
     });
-    fireEvent.click(save);
+    fireEvent.click(await catalogAction(pii, "modelSettings.saveAssignment"));
     await waitFor(() => expect(saveModelAssignment).toHaveBeenCalledWith("pii_semantic.input", "safety-model", "pii-validation"));
     await waitFor(() => expect(screen.queryByText("modelSettings.unsaved")).toBeNull());
     cleanup();
@@ -327,7 +408,7 @@ describe("Models and Guardrail Catalog", () => {
     renderPage(<GuardrailCatalogPage />);
     const reloaded = await screen.findByRole("row", { name: "modelSettings.detectors.pii_detection.title · modelSettings.inputRail" });
     expect(within(reloaded).getByRole("combobox").textContent).toContain("Qwen Guard");
-  });
+  }, 10_000);
 
   it("keeps failed saves visible and preserves the selected PII model for retry", async () => {
     const configured = structuredClone(view);
@@ -337,7 +418,7 @@ describe("Models and Guardrail Catalog", () => {
     vi.mocked(saveModelAssignment).mockRejectedValue(new Error("Validation receipt expired; validate this model again."));
     renderPage(<GuardrailCatalogPage />);
     const pii = await screen.findByRole("row", { name: "modelSettings.detectors.pii_detection.title · modelSettings.inputRail" });
-    fireEvent.click(within(pii).getAllByRole("button", { name: "modelSettings.saveAssignment" })[0]!);
+    fireEvent.click(await catalogAction(pii, "modelSettings.saveAssignment"));
     expect(await screen.findByText("Validation receipt expired; validate this model again.")).toBeTruthy();
     expect(within(pii).getByRole("combobox").textContent).toContain("Qwen Guard");
     expect(toast.success).not.toHaveBeenCalled();
@@ -360,7 +441,7 @@ describe("Models and Guardrail Catalog", () => {
   it("validates only the selected detector without a global Catalog action", async () => {
     renderPage(<GuardrailCatalogPage />);
     const contentSafety = await screen.findByRole("row", { name: "modelSettings.detectors.content_safety.title · modelSettings.inputRail" });
-    fireEvent.click(within(contentSafety).getAllByRole("button", { name: "modelSettings.validateAssignment" })[0]!);
+    fireEvent.click(await catalogAction(contentSafety, "modelSettings.validateAssignment"));
     await waitFor(() => expect(validateModelAssignment).toHaveBeenCalledWith("content_safety.input", expect.anything()));
     expect(screen.queryByRole("button", { name: "modelSettings.validateCatalog" })).toBeNull();
   });
@@ -433,7 +514,7 @@ describe("Models and Guardrail Catalog", () => {
       draft: { ...view.draft, assignments: { ...assignments, bindings: { ...assignments.bindings, "topic_control.input": "safety-model" } } },
     });
     renderPage(<ModelsPage />);
-    fireEvent.click(await screen.findByRole("button", { name: "common.remove Qwen Guard" }));
+    fireEvent.click(await modelAction("Qwen Guard", "common.remove"));
     const drawer = screen.getByRole("dialog", { name: "modelSettings.removeResourceTitle" });
     expect(within(drawer).getByText("modelSettings.topicControlRemovalTitle")).toBeTruthy();
     expect(within(drawer).getByText("modelSettings.detectors.topic_control.title · modelSettings.inputRail")).toBeTruthy();
@@ -493,7 +574,7 @@ describe("Models and Guardrail Catalog", () => {
     const unused = { ...safetyModel, id: "unused-model", name: "Unused model", model: "mock/unused" };
     vi.mocked(getModelConfiguration).mockResolvedValue({ ...view, models: [...view.models, unused] });
     renderPage(<ModelsPage />);
-    fireEvent.click(await screen.findByRole("button", { name: "common.remove Unused model" }));
+    fireEvent.click(await modelAction("Unused model", "common.remove"));
     const drawer = screen.getByRole("dialog", { name: "modelSettings.removeResourceTitle" });
     fireEvent.click(within(drawer).getByRole("button", { name: "common.remove" }));
     await waitFor(() => expect(deleteModelDefinition).toHaveBeenCalledWith("unused-model"));
@@ -501,7 +582,7 @@ describe("Models and Guardrail Catalog", () => {
 
   it("tests Model callability directly without confirmation or changing catalog assignments", async () => {
     renderPage(<ModelsPage />);
-    fireEvent.click(await screen.findByRole("button", { name: "modelSettings.testCall Qwen Guard" }));
+    fireEvent.click(await modelAction("Qwen Guard", "modelSettings.testCall"));
     expect(screen.queryByRole("dialog")).toBeNull();
     await waitFor(() => expect(testModelConnection).toHaveBeenCalledWith("safety-model"));
     await waitFor(() => expect(toast.error).toHaveBeenCalledWith(safetyModel.connectionMessage));
@@ -514,12 +595,12 @@ describe("Models and Guardrail Catalog", () => {
     let rejectProbe!: (error: Error) => void;
     vi.mocked(testModelConnection).mockImplementationOnce(() => new Promise((_, reject) => { rejectProbe = reject; }));
     renderPage(<ModelsPage />);
-    fireEvent.click(await screen.findByRole("button", { name: "modelSettings.testCall Qwen Guard" }));
-    await waitFor(() => expect(screen.getByRole("button", { name: "modelSettings.testCall Qwen Guard" })).toHaveProperty("disabled", true));
+    fireEvent.click(await modelAction("Qwen Guard", "modelSettings.testCall"));
+    await waitFor(() => expect(screen.getByRole("button", { name: "modelSettings.actions Qwen Guard" })).toHaveProperty("disabled", true));
     expect(screen.queryByRole("dialog")).toBeNull();
     rejectProbe(new Error("Network unavailable"));
     await waitFor(() => expect(toast.error).toHaveBeenCalledWith("Network unavailable"));
-    const retry = await screen.findByRole("button", { name: "modelSettings.testCall Qwen Guard" });
+    const retry = await modelAction("Qwen Guard", "modelSettings.testCall");
     expect(retry).toHaveProperty("disabled", false);
     vi.mocked(testModelConnection).mockResolvedValueOnce({ ...safetyModel, connectionStatus: "validated" });
     fireEvent.click(retry);

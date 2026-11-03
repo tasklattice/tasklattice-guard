@@ -27,6 +27,7 @@ from nemoguardrails.rails.llm.options import (
 from opentelemetry import context as otel_context, trace
 from opentelemetry.trace import Status, StatusCode
 
+from ...model_concurrency import model_slot
 from ..runtime.content_views import current_context_messages, request_view, with_active_text
 from ..compiler.semantics import collects_complete_evidence
 from ..runtime.outcome import finalize_decision
@@ -297,26 +298,40 @@ class NeMoActionBridge:
                    and b.parameter(f"parallel_group_{phase}") == group]
         if not members or any(b.on_unsafe not in {"allow", "block"} or b.trigger.type != "always" for b in members):
             raise ValueError("Parallel group requires independent read-only checks.")
-        semaphore = asyncio.Semaphore(4)
         started = set()
         async def check(binding):
-            async with semaphore:
-                started.add(binding.id)
-                payload = await self.execute_action(binding.action_name, binding.action_version, text, binding.id, context)
-                if payload["modified"]:
-                    raise ValueError("A parallel check attempted to transform content.")
-                return payload
+            # Admission belongs to the actual model RPC, shared across requests.
+            # A group-wide gate lets one busy model starve unrelated models.
+            started.add(binding.id)
+            payload = await self.execute_action(binding.action_name, binding.action_version, text, binding.id, context)
+            if payload["modified"]:
+                raise ValueError("A parallel check attempted to transform content.")
+            return payload
         tasks = {asyncio.create_task(check(b)): b for b in members}
         pending = set(tasks)
         completed = {}
+        failures = {}
         cancelled = []
         try:
             while pending:
                 done, pending = await asyncio.wait(pending, return_when=asyncio.FIRST_COMPLETED)
-                for task in done:
-                    completed[tasks[task].id] = task.result()
+                # Harvest the entire ready batch before acting on exceptions:
+                # set iteration order must not erase a simultaneous Block.
+                for task in tasks:
+                    if task not in done:
+                        continue
+                    if task.cancelled():
+                        continue
+                    if error := task.exception():
+                        failures[tasks[task].id] = error
+                    else:
+                        completed[tasks[task].id] = task.result()
                 if not self._full_evidence() and any(p["blocked"] for p in completed.values()):
                     break
+                if failures:
+                    raise next(iter(failures.values()))
+                if any(task.cancelled() for task in done):
+                    raise asyncio.CancelledError()
         finally:
             for task in tasks:
                 if not task.done():
@@ -326,6 +341,7 @@ class NeMoActionBridge:
         # its verdict and usage instead of calling a completed request cancelled.
         for task, binding in tasks.items():
             if task.cancelled(): cancelled.append(binding)
+            elif error := task.exception(): failures[binding.id] = error
             else: completed[binding.id] = task.result()
         results = [completed[b.id] for b in members if b.id in completed]
         winner = next((p for p in results if p["blocked"]), results[0])
@@ -337,7 +353,16 @@ class NeMoActionBridge:
             policy_id=b.policy_id, policy_version=b.policy_version, capability=b.capability,
             module_id=self._module(b).id if self._module(b) else None,
             rail_type=phase, contract_ref=b.contract_ref, content_block_id=self._request().active_block_id,
-        ) for b in cancelled)
+            parallel_group=group,
+        ) for b in cancelled) + tuple(RuntimeTraceStep(
+            id=f"nemo:action:{b.id}:failed", kind="action", name=b.action_name,
+            status="error", verdict="error", error_source="guard", error_category="internal",
+            error_type=type(failures[b.id]).__name__, detail="An independent check failed during group execution.",
+            policy_id=b.policy_id, policy_version=b.policy_version, capability=b.capability,
+            module_id=self._module(b).id if self._module(b) else None,
+            rail_type=phase, contract_ref=b.contract_ref, content_block_id=self._request().active_block_id,
+            parallel_group=group,
+        ) for b in members if b.id in failures)
         winner["trace"].extend(asdict(t) for t in cancellation_trace)
         scope = _execution_scope()
         if scope.profile == "llmrails_colang2_programmable":
@@ -398,6 +423,8 @@ class NeMoActionBridge:
                 "guardrail.action": action_name,
                 "guardrail.action.version": action_version,
                 "guardrail.action.binding_id": binding.id,
+                "guardrail.execution.stage": binding.parameter(f"execution_stage_{request.phase}") or "authored",
+                "guardrail.execution.group": binding.parameter(f"parallel_group_{request.phase}") or "serial",
                 "guardrail.module.id": module.id if module is not None else "__unmapped__",
                 "guardrail.evaluation.contract": binding.contract_ref,
                 "guardrail.capability": binding.capability,
@@ -462,7 +489,7 @@ class NeMoActionBridge:
                 "guardrail.action.result": action_result_name,
                 "guardrail.action.duration_ms": latency,
                 "guardrail.action.provider_work_ms": sum(
-                    call.duration_ms for call in model_calls
+                    _model_call_work_ms(call) for call in model_calls
                 ),
                 "guardrail.action.model_wait_ms": _model_calls_wall_ms(model_calls),
                 "guardrail.action.failure_mode": (
@@ -1088,20 +1115,23 @@ class NeMoRuntime:
                                 if native_model is not None and request.text
                                 else nullcontext()
                             )
+                            # Queueing stays inside the request deadline and the
+                            # observation records queue time and unsent cancellation.
                             with observation:
-                                rails_result = await instance.rails.check_async(
-                                    messages=_messages(request),
-                                    rail_types=[NeMoRailType(request.phase)],
-                                )
-                                _raise_if_cancelled()
-                                if (
-                                    rails_result.status == RailStatus.BLOCKED
-                                    and rails_result.content == INTERNAL_ERROR_MESSAGE
-                                ):
-                                    raise ValueError(
-                                        f"NeMo rail {rails_result.rail or 'unknown'} "
-                                        "returned an invalid result."
+                                async with model_slot(native_model.runtime_id) if native_model is not None and request.text else nullcontext():
+                                    rails_result = await instance.rails.check_async(
+                                        messages=_messages(request),
+                                        rail_types=[NeMoRailType(request.phase)],
                                     )
+                                    _raise_if_cancelled()
+                                    if (
+                                        rails_result.status == RailStatus.BLOCKED
+                                        and rails_result.content == INTERNAL_ERROR_MESSAGE
+                                    ):
+                                        raise ValueError(
+                                            f"NeMo rail {rails_result.rail or 'unknown'} "
+                                            "returned an invalid result."
+                                        )
                             response, custom_decision = _iorails_response(
                                 request,
                                 instance.config,
@@ -1515,12 +1545,17 @@ def _model_call_usage_from_payload(
         "transport_error", "invalid_response", "configuration_error", "unknown_error",
     }:
         raise RuntimeError(f"NeMo Action {binding.id!r} returned an invalid model-call result.")
+    request_sent = payload.get("request_sent")
+    if request_sent is not None and type(request_sent) is not bool:
+        raise RuntimeError(f"NeMo Action {binding.id!r} returned invalid model-call dispatch evidence.")
     return ModelCallUsage(
         provider=required[0],
         model=required[1],
         operation=required[2],
         result=required[3],  # type: ignore[arg-type]
         duration_ms=_non_negative_int(payload.get("duration_ms", 0)),
+        queue_duration_ms=_non_negative_int(payload.get("queue_duration_ms", 0)),
+        request_sent=request_sent,
         profile_ref=(str(payload["profile_ref"]) if payload.get("profile_ref") is not None else None),
         runtime_ref=(str(payload["runtime_ref"]) if payload.get("runtime_ref") is not None else None),
         started_offset_ms=_non_negative_int(payload.get("started_offset_ms", 0)),
@@ -2180,6 +2215,7 @@ def _trace(
                     ),
                     parallel_group=(
                         selected_binding.parallel_group
+                        or selected_binding.parameter(f"parallel_group_{request.phase}")
                         or (
                             policy_rail.parallel_group
                             if policy_rail is not None
@@ -2244,7 +2280,7 @@ def _trace(
             flow_name = binding.flow_name or (
                 policy_rail.flow_name if policy_rail is not None else None
             )
-            parallel_group = binding.parallel_group or (
+            parallel_group = binding.parallel_group or binding.parameter(f"parallel_group_{request.phase}") or (
                 policy_rail.parallel_group if policy_rail is not None else None
             )
             error = terminal.result.verdict == "error"
@@ -2335,7 +2371,7 @@ def _trace(
         flow_name = binding.flow_name or (
             policy_rail.flow_name if policy_rail is not None else None
         )
-        parallel_group = binding.parallel_group or (
+        parallel_group = binding.parallel_group or binding.parameter(f"parallel_group_{request.phase}") or (
             policy_rail.parallel_group if policy_rail is not None else None
         )
         timed_out = (
@@ -2426,7 +2462,7 @@ def _trace(
                 timed_out=timed_out,
                 parallel_group=parallel_group,
                 provider_latency_ms=item.provider_latency_ms,
-                provider_work_ms=sum(call.duration_ms for call in model_calls),
+                provider_work_ms=sum(_model_call_work_ms(call) for call in model_calls),
                 model_wait_ms=_model_calls_wall_ms(model_calls),
                 provider_name=_one_or_mixed(providers),
                 model_name=_one_or_mixed(models),
@@ -2869,10 +2905,10 @@ def _failed_decision(
             model_calls=native_model_calls,
             model_invocations=len(native_model_calls),
             provider_latency_ms=sum(
-                call.duration_ms for call in native_model_calls
+                _model_call_work_ms(call) for call in native_model_calls
             ),
             provider_work_latency_ms=sum(
-                call.duration_ms for call in native_model_calls
+                _model_call_work_ms(call) for call in native_model_calls
             ),
             model_wait_latency_ms=_model_calls_wall_ms(native_model_calls),
         ),
@@ -3128,7 +3164,7 @@ def _native_model_trace_steps(
             timeout_ms=module.timeout_ms if module is not None else None,
             timed_out=call.result == "timeout",
             provider_latency_ms=call.duration_ms,
-            provider_work_ms=call.duration_ms,
+            provider_work_ms=_model_call_work_ms(call),
             model_wait_ms=call.duration_ms,
             provider_name=call.provider,
             model_name=call.model,
@@ -3147,6 +3183,13 @@ def _native_model_trace_steps(
     return tuple(steps)
 
 
+def _model_call_work_ms(call: ModelCallUsage) -> int:
+    """Time spent after admission; queued attempts are not provider work."""
+    if call.request_sent is False:
+        return 0
+    return max(0, call.duration_ms - call.queue_duration_ms)
+
+
 def _provider_work_ms(
     results: tuple[_RuntimeResult, ...],
     extra_calls: tuple[ModelCallUsage, ...] = (),
@@ -3155,11 +3198,11 @@ def _provider_work_ms(
     for item in results:
         calls = item.result.usage.model_calls
         total += (
-            sum(call.duration_ms for call in calls)
+            sum(_model_call_work_ms(call) for call in calls)
             if calls
             else max(0, item.provider_latency_ms)
         )
-    return total + sum(call.duration_ms for call in extra_calls)
+    return total + sum(_model_call_work_ms(call) for call in extra_calls)
 
 
 def _model_wait_wall_ms(

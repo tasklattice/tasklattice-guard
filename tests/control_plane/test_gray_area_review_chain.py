@@ -5,6 +5,7 @@ import httpx
 import pytest
 
 from runner.capability_validation import validate_capability
+from runner.providers import dynamic_runtime_action_providers
 from runner.toolkit.nemo.evaluators.classifier_review import REVIEW_CONTRACT, REVIEW_PROFILE
 from tests.control_plane.test_capability_validation import candidate
 from tests.control_plane.classifier_chain import CONTRACTS, build_controller_plan, scan
@@ -18,9 +19,10 @@ def plan():
 
 
 @pytest.mark.parametrize('capability',CONTRACTS)
+@pytest.mark.parametrize('reviewer_profile', [REVIEW_PROFILE, 'generic-chat'])
 @pytest.mark.parametrize('answer,outcome,verdict,action',[('yes','blocked','matched','block'),('no','cleared','not_matched','allow')])
-async def test_only_gray_item_is_reviewed_and_original_scores_remain(classifier_backend, plan,capability,answer,outcome,verdict,action):
-    response,calls,evidence=await scan(plan,{capability:.5},review={capability:answer}, backend=classifier_backend)
+async def test_only_gray_item_is_reviewed_and_original_scores_remain(classifier_backend, plan,capability,reviewer_profile,answer,outcome,verdict,action):
+    response,calls,evidence=await scan(plan,{capability:.5},review={capability:answer}, reviewer_profile=reviewer_profile, backend=classifier_backend)
     assert response.status_code==200,response.text
     assert response.json()['result']['outcome']==outcome
     assert calls.count('review:'+capability)==1 and len(calls)==4
@@ -32,7 +34,7 @@ async def test_only_gray_item_is_reviewed_and_original_scores_remain(classifier_
     assert row['decisionSource']=='review' and row['finalPolicyAction']==action
     assert row['review']['verdict']==verdict and row['review']['policyAction']==action
     assert row['review']['model']==row['review']['responseModel']=='review-model-v1'
-    assert row['review']['revision']=='classifier-review.v1'
+    assert row['review']['revision']=='classifier-review.v2'
     assert row['review']['enforcedAction']==('block' if action=='block' else None)
 
 
@@ -97,13 +99,72 @@ async def test_disabling_review_preserves_configured_unknown_handling_even_with_
 
 
 @pytest.mark.parametrize('behavior',['correct','always-safe','always-unsafe','malformed'])
-async def test_review_model_binding_requires_actual_two_sided_runtime_probes(behavior):
-    request=candidate('input','classifier_review',REVIEW_PROFILE,REVIEW_CONTRACT)
+@pytest.mark.parametrize('profile', [REVIEW_PROFILE, 'generic-chat'])
+@pytest.mark.parametrize('rail', ['input', 'output'])
+async def test_review_model_binding_requires_actual_two_sided_runtime_probes(behavior, profile, rail):
+    request=candidate(rail,'classifier_review',profile,REVIEW_CONTRACT)
     def respond(req):
         data=json.loads(json.loads(req.content)['messages'][-1]['content'])
-        unsafe=behavior=='always-unsafe' or behavior=='correct' and 'build a bomb' in data['state']['current_input']
+        unsafe=behavior=='always-unsafe' or behavior=='correct' and 'build a bomb' in data['state'][f'current_{rail}']
         body={'answers':{'unsafe_content':'yes' if unsafe else 'no'}} if behavior!='malformed' else {'answers':{}}
         return httpx.Response(200,json={'model':'review-model-v1','choices':[{'message':{'content':json.dumps(body)}}]})
     result=await validate_capability(request,{'provider-1':'synthetic'},transport=httpx.MockTransport(respond))
     assert result.passed is (behavior=='correct'),result.message
     assert len(result.cases)==2
+
+
+@pytest.mark.parametrize('invalid', ['output', 'capability', 'binding', 'contract', 'profile', 'runtime-profile'])
+def test_generic_chat_review_still_requires_matching_rail_binding_and_contract(invalid):
+    configuration = candidate('input', 'classifier_review', 'generic-chat', REVIEW_CONTRACT).configuration
+    binding = configuration.bindings[0]
+    if invalid == 'output': binding.rail_type = 2
+    elif invalid == 'capability': binding.capability_ref = 'content_safety'
+    elif invalid == 'binding': binding.binding_id = 'content_safety.input'
+    elif invalid == 'contract': binding.contract_refs[:] = ['tali.guard.content-safety.v1']
+    elif invalid == 'profile': binding.profile_ref = 'tali.qwen3guard.v1'
+    else: configuration.runtimes[0].profile_ref = REVIEW_PROFILE
+    with pytest.raises(ValueError, match='matching Rail binding'):
+        dynamic_runtime_action_providers(configuration, {'provider-1': 'synthetic'})
+
+
+@pytest.fixture(scope="module")
+def output_plan():
+    return build_controller_plan(review=True, phase="output")
+
+
+@pytest.mark.parametrize("score,answer,outcome,expected_calls", [
+    (.01, "yes", "cleared", 1), (.9, "no", "blocked", 1),
+    (.5, "yes", "blocked", 2), (.5, "no", "cleared", 2),
+])
+async def test_output_laya_uses_its_own_review_binding_and_preserves_evidence(output_plan, score, answer, outcome, expected_calls):
+    from tests.classifier_cases import LAYA
+    response, calls, evidence = await scan(output_plan, {"content_safety": score},
+        backend=LAYA, phase="output", review={"content_safety": answer})
+    assert response.status_code == 200, response.text
+    assert response.json()["result"]["outcome"] == outcome
+    assert len(calls) == expected_calls
+    row = evidence["layaEvaluations"][0]
+    assert row["questionRevision"] == "laya-content-safety-output.v3"
+    if expected_calls == 2:
+        assert row["verdict"] == "unknown" and row["decisionSource"] == "review"
+        assert row["review"]["revision"] == "classifier-review-output.v2"
+    else:
+        assert "review" not in row
+
+
+async def test_output_cannot_borrow_an_input_reviewer(output_plan):
+    from tests.classifier_cases import LAYA
+    response, calls, _ = await scan(output_plan, {"content_safety": .5}, backend=LAYA,
+        phase="output", review={}, reviewer_phase="input", require_evidence=False)
+    assert response.status_code >= 400 and not calls
+
+
+@pytest.mark.parametrize("fault", ["http", "malformed", "timeout"])
+async def test_output_review_errors_retain_unknown_primary_evidence(output_plan, fault):
+    from tests.classifier_cases import LAYA
+    response, _, evidence = await scan(output_plan, {"content_safety": .5}, backend=LAYA,
+        phase="output", review={}, review_fault=("content_safety", fault))
+    assert response.status_code >= 400
+    assert evidence["execution"]["status"] in {"error", "timeout"}
+    assert evidence["layaEvaluations"][0]["verdict"] == "unknown"
+    assert evidence["layaEvaluations"][0]["review"]["verdict"] == "error"

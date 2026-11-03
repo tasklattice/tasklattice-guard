@@ -1,0 +1,1 @@
+ALTER TABLE "model_definition" ADD COLUMN "max_concurrency" integer DEFAULT 2 NOT NULL;

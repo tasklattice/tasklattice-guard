@@ -33,6 +33,7 @@ import {
   capabilityBindingContracts,
   isRetiredModel,
   modelConfigurationInputSchema,
+  modelConcurrencyInputSchema,
   modelInputSchema,
   normalizeModelAssignments,
   providerInputSchema,
@@ -105,7 +106,7 @@ export class ModelConfigurationService {
         configuration: { revisionId: `validation:${leaseId}`, revision: 0,
           runtimes: [{ id: model.id, providerId: provider.id, providerName: provider.name, baseUrl: provider.baseUrl,
             credentialRef: provider.id, model: model.model, profileRef: model.profile,
-            timeoutSeconds: model.timeoutSeconds, maxTokens: model.maxTokens, skipTlsVerify: provider.skipTlsVerify }],
+            timeoutSeconds: model.timeoutSeconds, maxTokens: model.maxTokens, maxConcurrency: model.maxConcurrency ?? 2, skipTlsVerify: provider.skipTlsVerify }],
           bindings: [{ bindingId: target, capabilityRef: binding.capabilityRef,
             railType: binding.railType === "input" ? "RAIL_TYPE_INPUT" : "RAIL_TYPE_OUTPUT",
             implementationRef: binding.implementationRef, modelRef: model.id, profileRef: model.profile,
@@ -400,6 +401,27 @@ export class ModelConfigurationService {
     }).where(eq(modelDefinitions.id, id)).returning();
     if (!updated) throw new NotFoundError("Model", id);
     await this.audit(actorId, "model_definition.validated", "model_definition", id, { status: updated.status });
+    this.activeCache = null;
+    return publicModel(updated, provider);
+  }
+
+  async configureConcurrency(id: string, raw: unknown, actorId: string) {
+    const { maxConcurrency } = modelConcurrencyInputSchema.parse(raw);
+    const current = await this.model(id);
+    const provider = await this.provider(current.providerId);
+    const updated = await this.db.transaction(async (tx) => {
+      const [saved] = await tx.update(modelDefinitions).set({ maxConcurrency, updatedAt: new Date() })
+        .where(eq(modelDefinitions.id, id)).returning();
+      if (!saved) throw new NotFoundError("Model", id);
+      const [state] = await tx.update(controllerState).set({ desiredGeneration: sql`${controllerState.desiredGeneration} + 1`, updatedAt: new Date() })
+        .where(eq(controllerState.id, "singleton")).returning();
+      if (!state) throw new Error("Controller desired state is unavailable.");
+      await tx.insert(outboxEvents).values({ id: randomUUID(), kind: "runner.desired_state_changed", aggregateId: id,
+        payload: { resourceType: "model_definition", modelId: id, generation: state.desiredGeneration } });
+      await tx.insert(auditEvents).values({ id: randomUUID(), actorId, kind: "model_definition.concurrency_updated", resourceType: "model_definition", resourceId: id,
+        detail: { previousMaxConcurrency: current.maxConcurrency ?? 2, maxConcurrency } });
+      return saved;
+    });
     this.activeCache = null;
     return publicModel(updated, provider);
   }
@@ -761,7 +783,7 @@ export class ModelConfigurationService {
       const model = modelId ? models.find((candidate) => candidate.id === modelId) : undefined;
       const provider = model ? byProvider.get(model.providerId) : undefined;
       if (model && provider && !assignmentTargetAcceptsModel(binding.id, model.profile, provider.kind)) {
-        throw new Error(`${provider.name} is reserved for the Control Plane and cannot be distributed to ${binding.id}.`);
+        throw new Error(`${model.name} (${provider.name}, ${model.profile}) is not compatible with ${binding.id}.`);
       }
     }
     const configuration: ActiveModelConfiguration = {
@@ -783,6 +805,7 @@ export class ModelConfigurationService {
           profile: model.profile,
           timeoutSeconds: model.timeoutSeconds,
           maxTokens: model.maxTokens,
+          maxConcurrency: model.maxConcurrency ?? 2,
         };
       }),
     };

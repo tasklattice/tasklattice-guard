@@ -472,6 +472,13 @@ svg.lucide {
     max-inline-size: none;
     min-block-size: 2.75rem;
   }
+  .guard-testing-menu-item:not(:disabled) {
+    background-color: var(--button-testing);
+    color: var(--button-testing-text);
+    &:hover, &:focus { background-color: var(--button-testing-hover); color: var(--button-testing-text); }
+    &:active { background-color: var(--button-testing-active); }
+    svg { fill: none; }
+  }
   // Destructive actions are red before hover, as required by the action spec.
   .cds--overflow-menu-options__option--danger:not(.cds--overflow-menu-options__option--disabled) .cds--overflow-menu-options__btn {
     color: var(--cds-text-error);

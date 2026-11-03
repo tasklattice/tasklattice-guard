@@ -48,9 +48,9 @@ async def test_mixed_models_use_distinct_credentials_models_thresholds_and_verdi
 
 
 def test_laya_prompts_do_not_follow_later_jev_prompt_changes(monkeypatch):
-    original = laya_jailbreak.jailbreak_questions()
-    monkeypatch.setattr(jev_jailbreak, "jailbreak_questions", lambda: {"changed_jev_question": {}})
     evaluator = laya_jailbreak.LayaJailbreakEvaluator(base_url="https://laya.test/v1", model="laya", api_key="synthetic")
+    original = evaluator.questions(jailbreak_request())
+    monkeypatch.setattr(jev_jailbreak, "jailbreak_questions", lambda: {"changed_jev_question": {}})
     assert evaluator.questions(jailbreak_request()) == original
 
 
@@ -62,23 +62,26 @@ def test_cross_family_binding_cannot_silently_select_a_different_protocol(bindin
         dynamic_runtime_action_providers(config, {"provider-1": "synthetic"})
 
 
-@pytest.mark.parametrize("capability,contract,attack_marker", [
-    ("content_safety", "tali.guard.content-safety.v1", "build a bomb"),
-    ("jailbreak", "tali.guard.jailbreak.v1", "Ignore all previous instructions"),
-    ("topic_control", "tali.guard.topic-control.semantic.v1", "chocolate cake"),
+@pytest.mark.parametrize("phase,capability,contract,attack_marker", [
+    ("input", "content_safety", "tali.guard.content-safety.v1", "build a bomb"),
+    ("output", "content_safety", "tali.guard.content-safety.v1", "build a bomb"),
+    ("input", "jailbreak", "tali.guard.jailbreak.v1", "Ignore all previous instructions"),
+    ("input", "topic_control", "tali.guard.topic-control.semantic.v1", "chocolate cake"),
 ])
 @pytest.mark.parametrize("behavior", ["correct", "always-safe", "always-unsafe", "malformed"])
-async def test_laya_binding_validation_requires_both_real_rail_outcomes(capability, contract, attack_marker, behavior):
+async def test_laya_binding_validation_requires_both_real_rail_outcomes(phase, capability, contract, attack_marker, behavior):
     from runner.capability_validation import validate_capability
 
-    request = candidate("input", capability, LAYA_PROFILE, contract)
+    request = candidate(phase, capability, LAYA_PROFILE, contract)
     request.configuration.runtimes[0].model = "laya"
     calls = []
 
     def respond(wire):
         body = json.loads(wire.content)
         calls.append(body)
-        unsafe = behavior == "always-unsafe" or behavior == "correct" and attack_marker in body["state"]["current_input"]
+        state = body["state"]
+        text = state if isinstance(state, str) else state["request"]
+        unsafe = behavior == "always-unsafe" or behavior == "correct" and attack_marker in text
         answers = {} if behavior == "malformed" else {q: {"type": "noul", "noul": .99 if unsafe else .01} for q in body["questions"]}
         return httpx.Response(200, json={"model": "laya", "answers": answers})
 

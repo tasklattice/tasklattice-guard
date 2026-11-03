@@ -1,8 +1,8 @@
 # Model Configuration
 
-The Default Guardrail requires validated `jailbreak.input`, `content_safety.input`,
-and `content_safety.output` model bindings, followed by its local checks. Missing
-bindings prevent preparation; model failures fail closed. Provider connectivity,
+The Default Guardrail uses local Rules and requires no detection model. Other
+Guardrails can add model-backed Policies; missing required bindings prevent
+preparation and model failures follow the configured failure policy. Provider connectivity,
 model callability, assignment to a protection check, and full Default validation
 are separate steps. See [Default requirements](guardrail-policies.md).
 
@@ -25,16 +25,66 @@ Catalog revision maps a stable binding such as `content_safety.input`,
 may serve multiple bindings when its explicit protocol profile supports each
 contract. Input and Output assignments remain independent.
 
-DeepSeek Providers are control-plane-only. Controller rejects DeepSeek as a
-Data Plane assignment and projects only models referenced by active Data Plane
-bindings—and only their credentials—to Runner. Data Plane Rails must use a
-purpose-built or bounded low-parameter model. This boundary is enforced by the
-API and desired-state protocol, not only by filtering a browser dropdown.
+An existing `generic-chat` model, including DeepSeek, can also be explicitly
+assigned to `classifier_review.input` or `classifier_review.output` without changing its profile or Control
+Plane assignment. The dedicated `tali.classifier-review.v1` profile remains
+supported. DeepSeek also supports input and output semantic PII through the
+explicit `tali.openai-compatible-pii.v1` profile; other primary detectors retain
+their specialized protocol requirements. Controller projects
+only models referenced by active Data Plane bindings—and only their
+credentials—to Runner. The API and Runner enforce this compatibility as well
+as the browser dropdown.
+
+Review uses a built-in prompt that automatically includes the original
+classifier questions, evaluated input/output and conversation context. No custom Guard prompt
+is needed. Enable `review_unknown=true` in a supported Guard Policy binding
+to review valid JEV/Laya gray-area input results or Laya content-safety output results.
+Each enabled Rail requires its own review binding. Errors and missing context do
+not trigger review; see [gray-area review](classifier-gray-review.md).
+
+Laya's `tali.laya.v1` profile supports both content-safety Rails, plus input
+jailbreak and topic checks. Output classification uses only the current assistant
+response; its independent reviewer also receives conversation context and explicit
+safe-refusal criteria. It does not implement semantic PII. A single-model Validate
+can report an uncertain result even when a separately configured review resolves
+it; validate the complete Guardrail as well as each individual binding.
 
 The current executable Rail surface is Input and Output. Retrieval, Dialog, and
 Execution are reserved manifest values for later expansion; adding them extends
 the shared binding manifest without changing Provider, Model, Policy, or
 Guardrail ownership.
+
+## Data-plane scheduling and model concurrency
+
+Newly compiled Guardrails run independent local checks before model-dependent
+checks. Within each stage, Block checks take priority. Independent read-only
+checks execute in parallel groups; transforming steps retain their required
+order. Conditional exact-to-semantic chains stay together in the model stage,
+and custom authored flows retain their dependencies. Online Block short-circuits
+the request and cancels unfinished siblings. Formal validation can continue to
+collect the complete evidence required by the test.
+
+Model registration and model settings expose `maxConcurrency`, an integer from
+1 to 64 with a default of 2. Each Runner shares a model's quota across requests,
+capabilities and bindings that reference that registered model. Different models
+have independent quotas. Queueing consumes the existing execution deadline.
+Custom HTTP transports also include queueing in the model-call timeout. Native
+NeMo clients start their provider timeout after admission; their queue remains
+bounded by the enclosing Guard execution deadline.
+Cancelling a queued call removes it without sending a provider request; cancelling
+an admitted call closes the local operation. A provider may already have accepted
+and billed work before cancellation reaches it.
+
+Concurrency is an operational setting: an administrator can update it for an
+already assigned model without changing its protocol or repeating behavioral
+validation. The Controller distributes the change through desired state. Lowering
+the limit lets existing calls finish and applies the lower allowance to new calls.
+The limit is per Runner, not a fleet-wide provider quota.
+
+Existing signed Guardrail versions retain their frozen execution plan. Publish a
+new version to adopt the `local-first-v2` schedule; changing a model's concurrency
+does not require republishing Guardrails. Older model configurations without the
+new field use the default of 2 after the Runner is upgraded.
 
 ## NVIDIA Content Safety response compatibility
 
@@ -269,6 +319,11 @@ for `pii_semantic.input` and `pii_semantic.output`. The adapter asks for one JSO
 field, `verdict`, with `pii`, `safe`, or `unknown`. It evaluates the current target
 block, treats embedded instructions as data, and validates the response strictly.
 Unknown judgments and invalid/provider responses never become positive findings.
+
+DeepSeek is supported on both PII bindings with this explicit profile. If an
+existing DeepSeek registration uses `generic-chat` for review or Control Plane
+work, register the same provider model separately with the PII profile so those
+assignments retain their original protocol.
 
 PII Protection 1.1.0 first redacts exact identifiers and then checks the remaining
 text semantically, including text without identifier keywords. Chinese document

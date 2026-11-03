@@ -1263,8 +1263,9 @@ def _estimated_critical_path_ms(
             group = dict(steps[0].parameters).get(f"parallel_group_{phase}") if len(steps) == 1 else None
             key = group or module.id
             groups.setdefault(key, []).append(module.timeout_ms)
-        # The Runner admits at most four checks per group at a time.
-        budgets.append(sum(max(values) * ((len(values) + 3) // 4) for values in groups.values())
+        # Group members start together; each Action deadline includes waiting
+        # for its model's admission slot. The old group-wide limit is gone.
+        budgets.append(sum(max(values) for values in groups.values())
                        + sum(item.timeout_ms for item in custom_bindings if phase in item.phases))
     return max(budgets, default=0)
 

@@ -2,7 +2,12 @@ import type { ExecutionTraceStep } from "./execution-trace";
 import type { ErrorSource } from "../../shared/execution-diagnostics";
 
 export function isFailedTraceStep(step: ExecutionTraceStep): boolean {
-  return Boolean(step.error_source) || /^(error|failed|failure|timeout|timed_out|rate_limited|server_error|client_error|transport_error|invalid_response|unknown_error)$/i.test(step.outcome);
+  return /^(error|failed|failure|timeout|timed_out|rate_limited|server_error|client_error|transport_error|invalid_response|unknown_error)$/i.test(step.outcome)
+    || Boolean(step.error_source) && !isModelClassificationDiagnostic(step.error_category);
+}
+
+export function isModelClassificationDiagnostic(category?: string | null): boolean {
+  return ["model_uncertain", "category_mapping", "review_inconclusive"].includes(category ?? "");
 }
 
 export type TraceDiagnostic = {
@@ -22,7 +27,7 @@ export type TraceDiagnostic = {
 export function traceDiagnostics(steps: ExecutionTraceStep[]): TraceDiagnostic[] {
   const groups = new Map<string, TraceDiagnostic>();
   for (const step of steps) {
-    if (!isFailedTraceStep(step)) continue;
+    if (!isFailedTraceStep(step) && !step.error_source) continue;
     const source = step.error_source ?? "unknown";
     const category = step.error_category ?? "unknown";
     const key = `${step.model_call_id ?? step.id}:${source}:${category}`;

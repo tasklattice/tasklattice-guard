@@ -100,4 +100,4 @@ class EvaluationActionProvider:
 
     def supports_review(self, capability: str, contract: str, phase: str) -> bool:
         evaluator = self._routes.get((capability, contract, phase))
-        return phase == "input" and bool(getattr(evaluator, "review_ready", False))
+        return bool(getattr(evaluator, "review_ready", False))

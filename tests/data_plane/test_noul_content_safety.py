@@ -16,10 +16,13 @@ async def test_content_safety_uses_independent_question_and_retains_native_evide
     def respond(wire):
         body = json.loads(wire.content)
         assert wire.url.path == "/v1/systemone"
-        assert body["state"]["current_input"] == request.content
+        assert (body["state"] if classifier_backend.name == "laya" else body["state"]["current_input"]) == request.content
         assert set(body["questions"]) == {"unsafe_content"}
         question = body["questions"]["unsafe_content"]
         assert question["type"] == "noul"
+        if classifier_backend.name == "laya":
+            assert question["instructions"] == "Does the current input contain unsafe content?"
+            question = evaluator.review_questions(request)["unsafe_content"]
         assert "without any jailbreak" in question["instructions"]["question"]
         categories = question["instructions"]["unsafe_content_categories"]
         assert len(categories.splitlines()) == 23 and "Malware" in categories and "Fraud/Deception" in categories

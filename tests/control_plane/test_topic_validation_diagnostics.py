@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import base64
 import json
 import logging
 import threading
@@ -134,6 +135,12 @@ async def test_native_nvidia_validation_captures_wire_parameters_and_raw_error_b
         assert "CUDA illegal memory access" in exchanges[-1]["response"]["body"]
     if behavior == "non-json":
         assert exchanges[-1]["response"]["body"] == "not a chat response"
+    if behavior in {"http-error", "non-json", "malformed"}:
+        full = [item for case in result.cases for item in json.loads(case.output_content).get("model_http_evidence", [])]
+        assert full, "Failed native requests must also reach the full protected evidence channel"
+        assert json.loads(base64.b64decode(full[-1]["request"]["bodyBase64"])) == requests[-1]
+        assert full[-1]["response"]["status"] == (500 if behavior == "http-error" else 200)
+        assert SECRET.encode() not in base64.b64decode(full[-1]["response"]["bodyBase64"])
     assert SECRET not in json.dumps(events(caplog))
     assert SECRET not in "".join(case.output_content for case in result.cases)
 

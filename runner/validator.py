@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from .model_http_evidence import capture_model_http_evidence, attach_validation_http_evidence
+
 import asyncio
 import json
 import math
@@ -243,20 +245,22 @@ class DefaultRunnerValidator:
         content = _string(case.get("content"))
         view = _test_content_view(case, phase, content)
         started = time.perf_counter()
-        decision = await runtime.evaluate(
-            EngineRequest(
-                phase=phase,
-                text=content,
-                plan=plan,
-                context_messages=_test_context_messages(case, phase, content),
-                trusted_instruction=_string(case.get("trustedInstruction")),
-                target_source=(view.active_block.source if view else _string(case.get("targetSource")) or ("model_output" if phase == "output" else "user_input")),
-                content_view=view,
-                active_block_id=view.active_block_id if view else None,
-                evidence_scope="full", execution_purpose="validation",
-                request_context=RequestContext(protocol="validation"),
+        with capture_model_http_evidence():
+            decision = await runtime.evaluate(
+                EngineRequest(
+                    phase=phase,
+                    text=content,
+                    plan=plan,
+                    context_messages=_test_context_messages(case, phase, content),
+                    trusted_instruction=_string(case.get("trustedInstruction")),
+                    target_source=(view.active_block.source if view else _string(case.get("targetSource")) or ("model_output" if phase == "output" else "user_input")),
+                    content_view=view,
+                    active_block_id=view.active_block_id if view else None,
+                    evidence_scope="full", execution_purpose="validation",
+                    request_context=RequestContext(protocol="validation"),
+                )
             )
-        )
+            decision = attach_validation_http_evidence(decision)
         latency = max(0, round((time.perf_counter() - started) * 1_000))
         findings = [asdict(item) for item in decision.findings]
         trace = [asdict(item) for item in decision.trace]

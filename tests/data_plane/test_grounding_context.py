@@ -47,6 +47,8 @@ async def test_absent_or_blank_grounding_context_does_not_call_or_pass(field, mi
     assert "requires" in result.reason
     assert result.findings[0].recommended_action == "block"
     assert result.usage.model_invocations == 0
+    assert result.trace[0].error_source == "configuration"
+    assert result.trace[0].error_category == ("missing_query" if field == "query" else "missing_grounding_sources")
     assert calls == []
 
 

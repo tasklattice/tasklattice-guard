@@ -20,6 +20,10 @@ export interface ModelRuntime {
    * Explicit Provider-scoped opt-in. False retains HTTPS certificate checks.
    */
   'skipTlsVerify'?: (boolean);
+  /**
+   * Concurrent active model RPCs per Runner process. Zero from older controllers means 2.
+   */
+  'maxConcurrency'?: (number);
 }
 
 /**
@@ -41,4 +45,8 @@ export interface ModelRuntime__Output {
    * Explicit Provider-scoped opt-in. False retains HTTPS certificate checks.
    */
   'skipTlsVerify': (boolean);
+  /**
+   * Concurrent active model RPCs per Runner process. Zero from older controllers means 2.
+   */
+  'maxConcurrency': (number);
 }

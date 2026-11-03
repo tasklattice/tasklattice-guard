@@ -5,6 +5,7 @@ from collections.abc import Mapping
 from typing import Any, Protocol
 
 import httpx
+from runner.model_validation_diagnostics import validation_http_hooks
 from ...runtime.failures import ModelConfigurationError, model_response
 
 from ...runtime.contracts import (
@@ -106,7 +107,7 @@ class HTTPAutomatedReasoningProvider:
                 async with httpx.AsyncClient(
                     timeout=self._timeout_seconds,
                     transport=self._transport,
-                    verify=not self._skip_tls_verify,
+                    verify=not self._skip_tls_verify, event_hooks=validation_http_hooks(),
                 ) as client:
                     response = await client.post(
                         self._endpoint_url,

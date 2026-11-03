@@ -23,8 +23,13 @@ async def test_typed_answers_preserve_probabilities_without_inventing_confidence
         assert str(http_request.url) == classifier_backend.base_url + "/systemone"
         assert http_request.headers["authorization"] == "Bearer synthetic-key"
         body = json.loads(http_request.content)
-        assert set(body) == {"model", "state", "questions"}
-        assert body["state"] == {"current_input": request.content, "context_messages": list(request.context_messages)}
+        if classifier_backend.name == "laya":
+            assert body["max_len"] == 1024 and body["head_max_len"] == 512
+            assert body["state"] == {"request": request.content, "topic": dict(request.parameters)["allowed_topics"],
+                "restricted_topics": dict(request.parameters)["restricted_topics"], "context_messages": list(request.context_messages)}
+        else:
+            assert set(body) == {"model", "state", "questions"}
+            assert body["state"] == {"current_input": request.content, "context_messages": list(request.context_messages)}
         assert set(body["questions"]) == {"denied_task", "unlisted_task"}
         return classifier_backend.response(denied_task=denied, unlisted_task=unlisted)
     result = await TopicJudgeActionProvider(evaluator=classifier_backend.evaluator("topic_control", respond)).execute(request)
@@ -138,7 +143,10 @@ async def test_offline_replay_excludes_labels_and_keeps_unknown_errors_separate(
     responses = iter([0.5, 0.99])
     def respond(request):
         body = json.loads(request.content)
-        assert set(body["state"]) == {"current_input", "context_messages"}
+        if classifier_backend.name == "laya":
+            assert set(body["state"]) <= {"request", "topic", "restricted_topics", "context_messages"}
+        else:
+            assert set(body["state"]) == {"current_input", "context_messages"}
         assert "review_status" not in request.content.decode() and "off-topic" not in request.content.decode()
         value = next(responses)
         return classifier_backend.response(**{key: value for key in body["questions"]})

@@ -104,6 +104,7 @@ export type RuntimeFinding = {
 };
 
 export type RuntimeTraceStep = ExecutionDiagnostics & {
+  evidence?: string | null;
   parallel_group?: string | null;
   id: string;
   kind?: string;
@@ -894,6 +895,31 @@ export type RuntimeHttpRequest = {
   redactedHeaders: string[];
 };
 
+export type ModelHttpExchange = {
+  modelCallId: string; provider: string; model: string; result: string; errorType: string;
+  request: { method: string; url: string; headers: string[][]; bodyBase64: string; bodyBytes: number; sent?: boolean | null };
+  response: { status: number; headers: string[][]; bodyBase64: string; bodyBytes: number; bodyComplete?: boolean } | null;
+};
+
+export type RuntimeLogDiagnostic = {
+  source?: ErrorSource | null;
+  category?: string | null;
+  http_status?: number | null;
+  model_call_id?: string | null;
+  model_result?: string | null;
+  affects_result?: boolean;
+  span_id: string;
+  related_spans?: string[];
+  name: string;
+  message?: string | null;
+  error_type: string | null;
+  provider: string | null;
+  model: string | null;
+  policy: string | null;
+  timed_out: boolean;
+  timeout_ms: number | null;
+};
+
 export type RuntimeLogEntry = {
   protection_mode?: "enforce" | "monitor" | "bypass";
   detection_decision?: string | null;
@@ -901,7 +927,12 @@ export type RuntimeLogEntry = {
   model_status?: ModelStatus;
   execution_status?: "error" | "complete" | "degraded" | "bypassed" | "unknown";
   call_completion?: { inferred: boolean; reason: string | null; completed_at: string | null; decision_id: string | null; route_id: string | null; target_id: string | null; router_revision: number | null };
-  error_details?: Array<{ source?: ErrorSource | null; category?: string | null; http_status?: number | null; model_call_id?: string | null; affects_result?: boolean; span_id: string; name: string; error_type: string | null; provider: string | null; model: string | null; policy: string | null; timed_out: boolean; timeout_ms: number | null }>;
+  model_exchanges?: ModelHttpExchange[] | null;
+  model_evidence_status?: string | null;
+  model_evidence_count?: number;
+  termination_reason?: string | null;
+  fail_closed?: boolean;
+  error_details?: RuntimeLogDiagnostic[];
   http_request?: RuntimeHttpRequest | null;
   id: string;
   trace_id: string;
