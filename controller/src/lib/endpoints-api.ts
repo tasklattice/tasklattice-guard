@@ -83,6 +83,7 @@ function mapEndpoint(value: CurrentEndpoint, events: controllerApi.RuntimeEvent[
   const credentials = (value.credentials ?? []).map(mapCredential);
   return {
     id: value.id,
+    tenant_id: value.tenantId,
     adapter_id: adapter.id,
     protocol: adapter.protocol,
     ...(adapter.protocol === "scan" ? { scan_flag_only_default: value.scanFlagOnlyDefault ?? true } : {}),

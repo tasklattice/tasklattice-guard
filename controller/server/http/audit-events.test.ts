@@ -10,7 +10,7 @@ import type { ControllerMetrics } from "../metrics.js";
 const config = loadConfig({ NODE_ENV: "test", CONTROLLER_DATABASE_URL: "postgresql://controller:controller@localhost/controller", CONTROLLER_RUNNER_TOKEN: "runner-token-that-is-at-least-32-characters", CONTROLLER_ARTIFACT_SIGNING_KEY_PATH: "/tmp/controller-signing-key.pem", CONTROLLER_POLICY_CATALOG_DIR: resolve("../runner/toolkit/policy_library/assets"), BETTER_AUTH_SECRET: "better-auth-secret-that-is-at-least-32-characters" });
 function setup(authenticated = true) {
   const listAuditEvents = vi.fn().mockResolvedValue({ items: [], total: 0, page: 1, limit: 25, before: "2026-09-29T00:00:00.000Z", facets: { kinds: [], resourceTypes: [] } });
-  const app = createHttpApp({ config, auth: { api: { getSession: vi.fn().mockResolvedValue(authenticated ? { user: { id: "admin", role: "admin" } } : null) }, handler: vi.fn() } as unknown as ControllerAuth, service: { listAuditEvents } as unknown as ControlPlaneService, runnerControl: {} as RunnerControlServer, metrics: {} as ControllerMetrics });
+  const app = createHttpApp({ config, auth: { api: { getSession: vi.fn().mockResolvedValue(authenticated ? { user: { id: "admin", role: "admin", tenantId: "tenantA" } } : null) }, handler: vi.fn() } as unknown as ControllerAuth, service: { listAuditEvents } as unknown as ControlPlaneService, runnerControl: {} as RunnerControlServer, metrics: {} as ControllerMetrics });
   return { app, listAuditEvents };
 }
 describe("audit query HTTP contract", () => {

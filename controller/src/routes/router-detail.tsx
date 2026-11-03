@@ -1,3 +1,4 @@
+import { TenantResourceBadge } from "@/components/tenant-resource-badge";
 import { hasPermission } from "../../shared/rbac";
 import { useTranslation } from "react-i18next";
 import { discardRouterDraft } from "@/components/traffic-routing/discard-router-draft";
@@ -17,8 +18,8 @@ import * as api from "@/lib/traffic-routing-api";
 import { PageHeader, ErrorNotice } from "@/components/product-shell";
 import { RouterRolloutBadge } from "@/components/traffic-routing/router-rollout-badge";
 import { EntitySheet } from "@/components/entity-sheet";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 
 import { RouterEndpoints } from "@/components/traffic-routing/router-endpoints";
@@ -70,7 +71,7 @@ export function RouterDetailPage() {
 export function RouterWorkspace({ router }: { router: api.TrafficRouter }) {
   const { t: localize } = useTranslation();
   const auth = useAuth(),
-    canEdit = hasPermission(auth.user?.role, "routers", "write");
+    canEdit = hasPermission(auth.user?.role, "routers", "write") && (!router.tenantId || router.tenantId === auth.user?.tenant_id);
   const awaiting = router.pendingChangeRequest;
   const client = useQueryClient();
   const search = useSearch({ strict: false }) as { routeId?: string; tab?: string };
@@ -238,6 +239,7 @@ export function RouterWorkspace({ router }: { router: api.TrafficRouter }) {
 
         </div>}
       />
+      <TenantResourceBadge ownerTenantId={router.tenantId} activeTenantId={auth.user?.tenant_id} />
       <div className="router-workspace-status">
         <RouterRolloutBadge router={router} revision={revisions.data?.items.find(revision => revision.revision === router.activeRevision)} />
         <p className="text-muted-foreground">

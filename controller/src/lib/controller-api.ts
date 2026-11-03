@@ -49,6 +49,7 @@ export type DiscoveredProviderModels = {
 };
 
 export type ModelDefinition = {
+  tenantId?: string | null;
   protocolEditable?: boolean;
   connectionStatus?: "pending" | "validated" | "failed";
   connectionMessage?: string | null;
@@ -73,6 +74,7 @@ export type ModelDefinition = {
 export type ModelValidationReport = {
   valid: boolean;
   checkedAt: string;
+  runtimeFingerprint?: string;
   checks: Array<{
     id: string;
     scope: "configuration" | "provider" | "model" | "capability";
@@ -138,6 +140,7 @@ export type GuardrailDraftConfig = {
 };
 
 export type Guardrail = {
+  tenantId?: string;
   monthlyCost?: import("../../shared/model-pricing").GuardrailMonthlyCost;
   protection?: import("../../shared/protection-mode").ProtectionModeSettings;
   copyOrigin?: { sourceGuardrailId: string; sourceName: string; sourceVersion: string | null; sourceDraftRevision: number | null; copiedAt: string; contentDigest: string } | null;
@@ -169,6 +172,8 @@ export type Guardrail = {
 };
 
 export type GuardrailVersion = {
+  /** False when independent Policy read access or frozen provenance is missing. */
+  policyContentAccessible?: boolean;
   publication?: import("../../shared/guardrail-publication").GuardrailPublication | null;
   testWaiver?: import("../../shared/default-release").DefaultTestWaiver | null;
   sourceValidationRunId?: string | null;
@@ -293,6 +298,7 @@ export type GuardrailPlanPreview = {
 };
 
 export type Endpoint = {
+  tenantId?: string;
   id: string;
   name: string;
   adapter: EndpointAdapterId;

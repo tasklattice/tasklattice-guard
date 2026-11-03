@@ -16,6 +16,7 @@ import { ControlPlaneService } from "./control-plane.js";
 import { emptyValidationMetrics } from "../domain/validation.js";
 import { defaultGuardrailDraft } from "../domain/defaults.js";
 import { PolicyCatalog } from "../policy-catalog/catalog.js";
+import { storeValidationSnapshot } from "./testing-reports.js";
 
 const url = process.env.GUARD_TEST_POSTGRES_URL;
 describe.skipIf(!url)("durable test cancellation", () => {
@@ -30,8 +31,9 @@ describe.skipIf(!url)("durable test cancellation", () => {
 
   async function fixture(id: string, status: string) {
     await database.pool.query(`INSERT INTO guardrail (id, name, draft_config) VALUES ($1, 'Cancellation fixture', '{}')`, [id]);
+    const snapshotDigest = await storeValidationSnapshot(database.db, { candidateArtifact: null, candidatePolicies: [], candidateInspection: { draftConfig: { policyBindings: [] } } as never, testSuite: [] });
     await database.pool.query(`INSERT INTO guardrail_validation_run
-      (id, guardrail_id, guardrail_version, source_draft_revision, status) VALUES ($1, $1, 'v1', 1, $2)`, [id, status]);
+      (id, guardrail_id, guardrail_version, source_draft_revision, status, snapshot_digest) VALUES ($1, $1, 'v1', 1, $2, $3)`, [id, status, snapshotDigest]);
     await database.pool.query(`INSERT INTO controller_outbox (id, kind, aggregate_id, payload)
       VALUES ($1, 'guardrail.validation_requested', $1, jsonb_build_object('runId', $1::text))`, [id]);
   }
@@ -73,7 +75,7 @@ describe.skipIf(!url)("durable test cancellation", () => {
     const app = createHttpApp({ config, service: new ControlPlaneService(database.db, config),
       auth: { handler: async () => Response.json({}, { headers: { "set-cookie": "test-session=fixture; HttpOnly; Path=/" } }),
         api: { getSession: async ({ headers }: { headers: Headers }) => headers.get("cookie") === "test-session=fixture"
-          ? { user: { id: "actor", role: "user" } } : null } } as unknown as ControllerAuth,
+          ? { user: { id: "actor", role: "user", tenantId: "tenantA" } } : null } } as unknown as ControllerAuth,
       runnerControl: { hasDefaultCompiler: () => true } as RunnerControlServer, metrics: {} as ControllerMetrics });
     const server = serve({ fetch: app.fetch, hostname: "127.0.0.1", port: 0 });
     await new Promise<void>(resolve => server.listening ? resolve() : server.once("listening", resolve));

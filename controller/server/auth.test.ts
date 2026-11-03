@@ -34,6 +34,10 @@ describe("Guard Better Auth", () => {
     expect(GUARD_AUTH_COOKIE_PREFIX).toBe("tali-guard");
     expect(betterAuth).toHaveBeenCalledWith(expect.objectContaining({
       advanced: { cookiePrefix: "tali-guard" },
+      emailAndPassword: expect.objectContaining({ disableSignUp: true }),
+      user: expect.objectContaining({ additionalFields: expect.objectContaining({
+        tenantId: { type: "string", required: false, defaultValue: "tenantA", input: false },
+      }) }),
     }));
   });
 });

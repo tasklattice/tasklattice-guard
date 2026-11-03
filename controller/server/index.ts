@@ -13,7 +13,10 @@ import { ControlPlaneService } from "./services/control-plane.js";
 import { ControllerMetrics } from "./metrics.js";
 import { BootstrapAccountSynchronizer } from "./bootstrap.js";
 import { RunnerPlaygroundClient } from "./playground/service.js";
+import { ensureMockSsoUsers } from "./mock-sso.js";
 import { ModelConfigurationService } from "./model-config/service.js";
+import { TenantShareService } from "./services/tenant-shares.js";
+import { RunnerLeaseLedger } from "./services/runner-lease-ledger.js";
 
 const config = loadConfig();
 const { db, pool } = createDatabase(config);
@@ -22,6 +25,7 @@ const service = new ControlPlaneService(db, config);
 await service.initialize();
 await service.pricing.start();
 const models = new ModelConfigurationService(db, config.betterAuthSecret, config.policyCatalogDir);
+await models.groupRuntime.assertAuthenticationCompatibility(config.runnerPoolTokens !== null);
 await models.initialize();
 
 const auth = createAuth(config, db);
@@ -40,13 +44,19 @@ const accountSyncTimer = setInterval(() => {
   }).finally(() => { pendingAccountSync = null; });
 }, 2_000);
 accountSyncTimer.unref();
+if (config.mockSsoEnabled) {
+  const identities = await ensureMockSsoUsers({ auth, db, config });
+  process.stdout.write(`Mock SSO ready for ${identities.map((identity) => identity.tenantId).join(", ")}.\n`);
+}
 const metrics = new ControllerMetrics();
-const runnerControl = new RunnerControlServer(config, service, metrics, models);
+const runnerControl = new RunnerControlServer(config, service, metrics, models, new RunnerLeaseLedger(db));
 await runnerControl.start();
 
 const playgroundRunner = new RunnerPlaygroundClient({
   baseUrl: config.runtimeServiceUrl,
-  token: config.runnerToken,
+  // In scoped HTTP mode every actual dispatch selects its pool token. An
+  // unconfigured default must never preserve the shared bearer as a fallback.
+  token: config.runnerHttpTokens === null ? config.runnerToken : config.runnerHttpTokens.get("default") ?? "",
 });
 let shuttingDown = false;
 const app = createHttpApp({
@@ -54,6 +64,7 @@ const app = createHttpApp({
   config,
   auth,
   accessTokens: new AccessTokenService(db),
+  tenantShares: new TenantShareService(db),
   service,
   runnerControl,
   metrics,

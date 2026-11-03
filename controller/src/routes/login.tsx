@@ -1,6 +1,7 @@
 import { useState, type FormEvent } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
-import { Building2 } from "lucide-react";
+import { ArrowRight, Building2 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
 import { BrandLogo } from "@/components/brand-logo";
@@ -9,6 +10,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useAuth } from "@/lib/auth";
+import { getMockSsoConfig } from "@/lib/identity-api";
 import type { SupportedLanguage } from "@/i18n";
 
 export function LoginPage() {
@@ -18,6 +20,7 @@ export function LoginPage() {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
+  const mockSso = useQuery({ queryKey: ["mock-sso", "config"], queryFn: getMockSsoConfig, retry: false, staleTime: 60_000 });
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -58,6 +61,10 @@ export function LoginPage() {
             <p className="text-sm font-medium text-primary">{t("auth.loginEyebrow")}</p>
             <h1 className="mt-2 font-sans text-3xl font-normal tracking-normal">{t("auth.loginTitle")}</h1>
             <p className="mt-3 text-sm leading-6 text-muted-foreground">{t("auth.loginDescription")}</p>
+
+            {mockSso.data?.enabled ? <Button type="button" size="lg" variant="outline" className="mt-8 min-h-[44px] w-full justify-between" onClick={() => void navigate({ to: "/mock-sso" })}>
+              {t("auth.mockSsoContinue")}<ArrowRight className="size-4" />
+            </Button> : null}
 
             <form className="mt-8 grid gap-5" onSubmit={submit}>
               <Field label={t("auth.loginIdentifier")}><Input className="field:min-h-[44px]" autoFocus type="text" autoComplete="username" placeholder="admin" value={username} onChange={(event) => setUsername(event.target.value)} required /></Field>

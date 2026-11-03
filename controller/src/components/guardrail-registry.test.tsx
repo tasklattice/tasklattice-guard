@@ -17,7 +17,8 @@ vi.mock("@tanstack/react-router", () => ({
   ),
 }));
 
-vi.mock("@/lib/auth", () => ({ useAuth: () => ({ user: { role: "viewer" } }) }));
+const identity = vi.hoisted(() => ({ role: "viewer", tenant_id: "tenantB" }));
+vi.mock("@/lib/auth", () => ({ useAuth: () => ({ user: identity }) }));
 
 vi.mock("react-i18next", () => ({
   useTranslation: () => ({
@@ -39,6 +40,8 @@ vi.mock("react-i18next", () => ({
         "guardrails.registry": "Guardrail registry · {{count}}",
         "guardrails.updated": "Updated",
         "guardrails.validation": "Testing Report",
+        "sharing.ownedBy": "Owned by {{tenant}}",
+        "sharing.sharedFrom": "Shared from {{tenant}} · Read-only",
       };
       return Object.entries(values ?? {}).reduce(
         (label, [name, value]) => label.replace(`{{${name}}}`, String(value)),
@@ -71,7 +74,19 @@ const guardrail = {
 } satisfies Guardrail;
 
 describe("GuardrailRegistry", () => {
-  afterEach(cleanup);
+  afterEach(() => { cleanup(); identity.role = "viewer"; });
+
+  it("shows ownership and actions for owned Guardrails while shared Guardrails stay read-only", () => {
+    identity.role = "user";
+    const owned = { ...guardrail, id: "owned", name: "Owned Guardrail", tenant_id: "tenantB" };
+    const shared = { ...guardrail, id: "shared", name: "Shared Guardrail", tenant_id: "tenantA" };
+    render(<QueryClientProvider client={new QueryClient()}><GuardrailRegistry guardrails={[owned, shared]} onOpen={vi.fn()} /></QueryClientProvider>);
+    expect(screen.getByText("Owned by tenantB")).toBeTruthy();
+    expect(screen.getByText("Shared from tenantA · Read-only")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "routing.actions: Owned Guardrail" })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "routing.actions: Shared Guardrail" })).toBeNull();
+    expect(screen.getByRole("link", { name: "Open Shared Guardrail" })).toBeTruthy();
+  });
 
   it("shows resource readiness and traffic without cost or version columns", () => {
     renderRegistry();

@@ -46,6 +46,24 @@ beforeEach(() => {
 afterEach(() => { cleanup(); vi.clearAllMocks(); auth.user.role = "user"; });
 
 describe("Immutable version list and detail drawer", () => {
+  it("shows an access notice without exposing compiled or Policy tabs for a restricted version", () => {
+    const restricted = { ...version(3), policy_content_accessible: false, test_suite_count: null };
+    mount({ versions: [restricted], selectedVersion: restricted, detail: restricted });
+    const dialog = open();
+    expect(within(dialog).getByText("immutableVersions.policyContentUnavailable")).toBeTruthy();
+    expect(within(dialog).queryByRole("tab")).toBeNull();
+    expect(within(dialog).queryByText("version: 3")).toBeNull();
+  });
+
+  it("does not render a restricted comparison base", () => {
+    const restricted = { ...version(1), policy_content_accessible: false };
+    mount({ comparisonActive: true, comparisonDetail: restricted });
+    const dialog = open();
+    expect(within(dialog).getByText("immutableVersions.policyContentUnavailable")).toBeTruthy();
+    expect(within(dialog).queryByText("version: 1")).toBeNull();
+    expect(within(dialog).getByRole("button", { name: "guardrails.backToVersionDetail" })).toBeTruthy();
+  });
+
   it("shows a waiver and its reason without claiming a passed test", () => {
     const waived = { ...version(3), test_waiver: { id: "waiver", actorId: "platform-admin", reason: "Provider quota", createdAt: "2026-10-09T09:00:00Z", sourceRunId: "failed",
       sourceTestStatus: "failed" as const, sourceTestMetrics: { total: 611, passed: 265 }, contentDigest: "checksum", testSuiteDigest: "suite", latestVersionRunId: null, latestVersionTestStatus: null } };

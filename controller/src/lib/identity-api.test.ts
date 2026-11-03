@@ -21,6 +21,7 @@ const signedInUser = {
   name: "Administrator",
   username: "admin",
   role: "admin",
+  tenantId: null,
   banned: false,
   preferredLanguage: "zh-CN",
   createdAt: "2026-08-20T00:00:00.000Z",
@@ -41,8 +42,16 @@ describe("identity login", () => {
   });
 
   it("uses the canonical user role instead of the retired member alias", async () => {
-    getSession.mockResolvedValue({ data: { user: { ...signedInUser, role: "user" } }, error: null });
-    expect((await getAuthStatus()).user?.role).toBe("user");
+    getSession.mockResolvedValue({ data: { user: { ...signedInUser, role: "user", tenantId: "tenantB" } }, error: null });
+    expect((await getAuthStatus()).user).toMatchObject({ role: "user", tenant_id: "tenantB" });
+  });
+  it.each([undefined, null, "", "   ", 42])("rejects a tenant user with malformed assignment %s", async (tenantId) => {
+    getSession.mockResolvedValue({ data: { user: { ...signedInUser, role: "user", tenantId } }, error: null });
+    await expect(getAuthStatus()).rejects.toThrow("no tenant assignment");
+  });
+  it("keeps platform administrators outside tenant scope", async () => {
+    getSession.mockResolvedValue({ data: { user: { ...signedInUser, tenantId: "tenantA" } }, error: null });
+    expect((await getAuthStatus()).user).toMatchObject({ role: "admin", tenant_id: null });
   });
   it("rejects an unsupported role instead of granting user authority", async () => {
     getSession.mockResolvedValue({ data: { user: { ...signedInUser, role: "unknown" } }, error: null });

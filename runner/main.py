@@ -28,10 +28,25 @@ from .providers import dynamic_runtime_action_providers
 from .generated import DataPlaneModelConfiguration
 from .telemetry import RuntimeTelemetryExporter
 from .runtime_log_capture import RuntimeLogCapture
+from .synchronization import RuntimeSynchronizationMiddleware
+from .distributed_rate_admission import RedisRateAdmission
+from .group_rate_admission import RedisGroupRateAdmission
+from .admission_metrics import TenantAdmissionMetrics
 
 
 def create_app(settings: RunnerSettings | None = None) -> FastAPI:
     configured = settings or RunnerSettings.from_env()
+    if configured.group_rate_admission is not None:
+        if (configured.distributed_rate_admission is not None or configured.tenant_admission is None or
+            not configured.call_context_redis_url or not configured.control_token):
+            raise ValueError("Group v2 rate requires local admission, Redis, pool control and v1 disabled.")
+        configured.group_rate_admission.validate_runner(configured.pool_id, configured.tenant_admission.tenant_limits)
+    if configured.distributed_rate_admission is not None:
+        if configured.tenant_admission is None or not configured.call_context_redis_url or not configured.control_token:
+            raise ValueError("Distributed rate admission requires local admission, Redis and pool control authentication.")
+        if (configured.distributed_rate_admission.pool_id != configured.pool_id or
+            set(configured.distributed_rate_admission.tenant_limits) != set(configured.tenant_admission.tenant_limits)):
+            raise ValueError("Distributed rate policy must match the trusted pool and local tenant configuration.")
     observability = configure_observability(configured)
     store = ArtifactStore(configured.artifact_public_key_path, configured.artifact_state_path)
     providers = action_providers(*dynamic_runtime_action_providers(DataPlaneModelConfiguration(), {}))
@@ -65,11 +80,13 @@ def create_app(settings: RunnerSettings | None = None) -> FastAPI:
     )
     telemetry = RuntimeTelemetryExporter(
         configured.telemetry_endpoint,
-        configured.controller_token,
+        configured.telemetry_token,
         configured.artifact_state_path,
         configured.telemetry_batch_size,
         configured.runner_id,
         metrics,
+        progress_enabled=configured.telemetry_progress_enabled,
+        progress_state_path=configured.telemetry_progress_state_path,
     )
     compiler = DefaultRunnerCompiler() if configured.compiler_capable else None
     draft_previews = DraftPreviewRuntime(
@@ -95,18 +112,30 @@ def create_app(settings: RunnerSettings | None = None) -> FastAPI:
         ttl_seconds=configured.call_context_ttl_seconds,
         on_capacity=(lambda: contexts.capacity.observe("log_capture"))
         if isinstance(contexts, RedisCallContextStore) else None)
+    rate = None
+    group_rate = None
+    admission_observer = (TenantAdmissionMetrics(metrics.registry, configured.tenant_admission.capacity,
+                          configured.tenant_admission.tenant_limits) if configured.tenant_admission is not None else None)
+    if admission_observer is not None:
+        metrics.set_tenant_admission_snapshot_provider(admission_observer.snapshot)
+    if configured.distributed_rate_admission is not None:
+        rate = RedisRateAdmission.connect(configured.call_context_redis_url, configured.distributed_rate_admission)
+    if configured.group_rate_admission is not None:
+        group_rate = RedisGroupRateAdmission.connect(configured.call_context_redis_url, configured.group_rate_admission, configured.pool_id)
     runtime_api = RunnerAPI(
         runtime,
         store,
         metrics,
         telemetry,
         configured.runner_id,
-        configured.controller_token,
+        configured.controller_http_token or configured.controller_token,
         configured.runtime_log_encryption_key,
         draft_previews,
         scan_max_body_bytes=configured.scan_max_body_bytes,
         scan_timeout_seconds=configured.scan_timeout_seconds,
         runtime_log_capture=log_capture,
+        tenant_admission=(configured.tenant_admission.build(lambda: control.synchronized, rate=rate, group_rate=group_rate, observer=admission_observer)
+                          if configured.tenant_admission is not None else None),
     )
 
     @asynccontextmanager
@@ -132,6 +161,10 @@ def create_app(settings: RunnerSettings | None = None) -> FastAPI:
             retirement_task.cancel()
             await asyncio.gather(control_task, telemetry_task, retirement_task, return_exceptions=True)
             await log_capture.close()
+            if rate is not None:
+                await rate.aclose()
+            if group_rate is not None:
+                await group_rate.aclose()
             if draft_previews is not None:
                 await draft_previews.shutdown()
             try:
@@ -147,6 +180,7 @@ def create_app(settings: RunnerSettings | None = None) -> FastAPI:
         lifespan=lifespan,
     )
     app.include_router(runtime_api.router)
+    app.add_middleware(RuntimeSynchronizationMiddleware, control=control)
 
     @app.get("/health/live")
     async def live():
@@ -155,9 +189,10 @@ def create_app(settings: RunnerSettings | None = None) -> FastAPI:
     @app.get("/health/ready")
     async def ready():
         detail = registry.readiness()
-        # A temporary Controller outage must not remove a Runner that already
-        # holds a verified last-known-good generation from the runtime Service.
-        # Fresh Pods still stay unready until their first successful sync.
+        # A cached generation cannot attest that this pool still owns its
+        # Endpoints after a group allocation change. Disconnect fences serving
+        # until the new control stream verifies current desired state. The
+        # opt-in lease consumer additionally requires an unexpired grant.
         ready_now = control.synchronized and bool(detail["ready"])
         response = {
             **detail,

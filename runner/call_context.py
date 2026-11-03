@@ -99,6 +99,7 @@ class RedisCallContextStore:
                 "effective_release_id": resolution.effective_release_id,
                 "model_revision_id": resolution.model_revision_id,
                 "route_assignment": resolution.route_assignment,
+                "allocation_context_id": resolution.allocation_context_id,
                 "trace": [asdict(item) for item in resolution.trace],
             },
         }
@@ -127,6 +128,7 @@ class RedisCallContextStore:
                 effective_release_id=resolution.get("effective_release_id"),
                 model_revision_id=resolution.get("model_revision_id"),
                 route_assignment=resolution.get("route_assignment"),
+                allocation_context_id=resolution.get("allocation_context_id"),
                 # Resolution trace is informational. The immutable router
                 # and plan pin are the consistency contract across replicas.
                 trace=(),

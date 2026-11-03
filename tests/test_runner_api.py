@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from contextlib import contextmanager
+from dataclasses import replace
 import base64
 import json
 from types import SimpleNamespace
@@ -367,6 +368,26 @@ async def test_controller_can_evaluate_an_explicit_guardrail_version_without_an_
         prefix.encode(),
     )
     assert json.loads(plaintext)["contentBefore"][0]["text"] == "secret prompt"
+
+
+@pytest.mark.asyncio
+async def test_guardrail_evaluation_does_not_return_internal_routing_capabilities():
+    class CapabilityRuntime(Runtime):
+        async def evaluate_guardrail(self, request, guardrail_id, version, *, on_resolved=None):
+            decision = await super().evaluate_guardrail(request, guardrail_id, version, on_resolved=on_resolved)
+            return replace(decision, route_assignment={"routeId": "route-1", "internalCapability": "private-token"})
+
+    app = FastAPI()
+    app.include_router(RunnerAPI(CapabilityRuntime(), Store(), Metrics(), Telemetry(), "runner-1", "controller-token").router)
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://runner") as client:
+        response = await client.post(
+            "/internal/v1/guardrails/guardrail-1/evaluate",
+            headers={"authorization": "Bearer controller-token"},
+            json={"phase": "input", "texts": ["hello"], "guardrail_version": "20260904-020000.002Z"},
+        )
+    assert response.status_code == 200
+    assert response.json()["route_assignment"] == {"routeId": "route-1"}
+    assert "private-token" not in response.text
 
 
 @pytest.mark.asyncio

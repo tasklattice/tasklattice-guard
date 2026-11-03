@@ -1,13 +1,17 @@
 import { GuardrailRequestRate } from "./guardrail-request-rate";
 import type { GuardrailRequestRates } from "@/lib/observability-api";
+import { TenantResourceBadge } from "@/components/tenant-resource-badge";
+import { hasPermission } from "../../shared/rbac";
 import { GuardrailRowActions } from "./guardrail-row-actions";
 import { Link } from "@tanstack/react-router";
 import { Info, ShieldCheck } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
 import { StateBadge } from "@/components/product-shell";
+import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Tooltip, TooltipContent, TooltipTrigger } from "./ui/tooltip";
+import { useAuth } from "@/lib/auth";
 import type { Guardrail } from "@/lib/api";
 
 export function GuardrailRegistry({
@@ -22,6 +26,8 @@ export function GuardrailRegistry({
   onOpen: (guardrailId: string) => void;
 }) {
   const { t, i18n } = useTranslation();
+  const user = useAuth().user;
+  const canEdit = hasPermission(user?.role, "guardrails", "write");
 
   return (
     <Table className="resource-table resource-guardrail-table table-fixed" aria-label={t("pages.guardrails.title")}>
@@ -51,6 +57,7 @@ export function GuardrailRegistry({
                 >
                   <ShieldCheck aria-hidden="true" />
                   <span>{guardrail.name}</span>
+                  <TenantResourceBadge ownerTenantId={guardrail.tenant_id} activeTenantId={user?.tenant_id} />
                 </Link>
               </TableCell>
               <TableCell><StateBadge state={guardrail.status} />
@@ -62,7 +69,7 @@ export function GuardrailRegistry({
               <TableCell className="text-xs text-muted-foreground">
                 {new Date(guardrail.updated_at).toLocaleString(i18n.language)}
               </TableCell>
-              <TableCell className="resource-actions-column" onClick={event => event.stopPropagation()}><GuardrailRowActions guardrail={guardrail} /></TableCell>
+              <TableCell className="resource-actions-column" onClick={event => event.stopPropagation()}>{canEdit && (!guardrail.tenant_id || guardrail.tenant_id === user?.tenant_id) ? <GuardrailRowActions guardrail={guardrail} /> : null}</TableCell>
             </TableRow>
           ))}
         </TableBody>

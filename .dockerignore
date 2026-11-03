@@ -11,7 +11,7 @@ tests
 data
 output
 .local-archives
-web/node_modules
+**/node_modules
 web/dist
 controller/openapi/controller.openapi.json
 controller/openapi/.controller.openapi-*.tmp

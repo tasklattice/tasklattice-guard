@@ -81,6 +81,7 @@ export const accessTokensEn = {
       "name": "Runtime logs",
       "description": "Runtime events, traffic metrics and captured content (read only)"
     },
+    "settings": { "name": "Platform settings", "description": "Provider management, model assignments and platform configuration" },
     "audit": {
       "name": "Audit log",
       "description": "System activity records (read only)"
@@ -167,6 +168,7 @@ export const accessTokensZh: typeof accessTokensEn = {
       "name": "运行日志",
       "description": "运行事件、流量指标与调用内容（只读）"
     },
+    "settings": { "name": "平台设置", "description": "提供商管理、模型分配和平台配置" },
     "audit": {
       "name": "审计日志",
       "description": "系统操作记录（只读）"

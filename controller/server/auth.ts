@@ -74,6 +74,12 @@ export function createAuth(config: ControllerConfig, db: ControllerDatabase) {
           required: false,
           input: false,
         },
+        tenantId: {
+          type: "string",
+          required: false,
+          defaultValue: "tenantA",
+          input: false,
+        },
       },
     },
     databaseHooks: {

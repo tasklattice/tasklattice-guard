@@ -24,6 +24,18 @@ controlSecret:
   existingSecret: ''
   runnerTokenKey: runner-token
   betterAuthSecretKey: better-auth-secret
+poolAuthentication:
+  enabled: false
+  scopedTelemetry: false
+  telemetryProgress: false
+  controllerSecret: ''
+  controllerKey: pool-tokens.json
+  runnerSecrets: {}
+runnerHttpAuthentication:
+  enabled: false
+  controllerSecret: ''
+  controllerKey: pool-http-tokens.json
+  runnerSecrets: {}
 runtimeLogs:
   existingSecret: ''
   encryptionKeyKey: encryption-key

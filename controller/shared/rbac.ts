@@ -14,7 +14,7 @@ export const rolePermissions: Readonly<Record<AccountRole, Readonly<Partial<Reco
   },
   user: {
     guardrails: "write", policies: "write", playground: "write", routers: "write", endpoints: "write",
-    runtime: "read", runners: "write",
+    models: "write", runtime: "read", runners: "read",
   },
 };
 
@@ -41,6 +41,9 @@ export function roleHome(role: string | null | undefined): "/settings/providers"
 
 export function pagePermission(pathname: string): { resource: PermissionResource; action: AccessAction } | null {
   const path = pathname.replace(/\/$/, "");
+  if (["/settings/tenant-load-lab", "/settings/tenant-groups"].some(prefix => path === prefix || path.startsWith(`${prefix}/`))) {
+    return { resource: "settings", action: "read" };
+  }
   if (["/settings", "/settings/health", "/settings/runner", "/settings/version"].includes(path)) {
     return { resource: "runners", action: "read" };
   }
@@ -52,6 +55,7 @@ export function pagePermission(pathname: string): { resource: PermissionResource
     ["/guardrails", "guardrails", "write"], ["/policy-library", "policies", "write"],
     ["/playground", "playground", "write"], ["/integration/routers", "routers", "write"],
     ["/integration/endpoints", "endpoints", "write"],
+    ["/models", "models", "write"], ["/sharing", "guardrails", "write"],
   ];
   const route = routes.find(([path]) => pathname === path || pathname.startsWith(`${path}/`));
   return route ? { resource: route[1], action: route[2] } : null;

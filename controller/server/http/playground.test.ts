@@ -22,9 +22,11 @@ const config = loadConfig({
 describe("Guardrail Playground HTTP capability", () => {
   it("prepares and runs an administrator-only draft preview without an immutable version", async () => {
     const versionId = "20260904-073000.123Z";
+    let registered = false;
     const modelFetch = vi.fn(async () => Response.json({ choices: [{ message: { content: "draft answer" } }] })) as typeof fetch;
     const runnerFetch = vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
       const path = String(url);
+      expect(path.startsWith("https://group-a.test/")).toBe(true);
       const request = JSON.parse(String(init?.body)) as Record<string, unknown>;
       expect(init?.headers).toMatchObject({ authorization: `Bearer ${config.runnerToken}` });
       if (!path.endsWith("/evaluate")) {
@@ -41,6 +43,7 @@ describe("Guardrail Playground HTTP capability", () => {
           ttl_seconds: 900,
         });
       }
+      expect(registered).toBe(true);
       expect(request).toMatchObject({
         draft_revision: 7,
         candidate_version: versionId,
@@ -59,7 +62,9 @@ describe("Guardrail Playground HTTP capability", () => {
         usage: { runtime_engine: "llmrails", runtime_profile: "llmrails_colang1_standard" },
       });
     }) as typeof fetch;
+    const poolForTenant = vi.fn().mockResolvedValue({ poolId: "pool-a", groupId: "group-a", runtimeUrl: "https://group-a.test", publicUrl: "https://group-a.test" });
     const service = {
+      groupRouting: { poolForTenant },
       playgroundDraftCandidate: vi.fn().mockResolvedValue({
         guardrailId: "guardrail-draft",
         guardrailName: "Draft Guardrail",
@@ -70,11 +75,12 @@ describe("Guardrail Playground HTTP capability", () => {
         plan: { guardrail_id: "guardrail-draft", guardrail_version: versionId, compiler_version: "controller-plan-v1", steps: [], modules: [] },
       }),
       getGuardrail: vi.fn().mockResolvedValue({ id: "guardrail-draft", draftRevision: 7 }),
+      registerPlaygroundInvocation: vi.fn(async () => { registered = true; }),
     } as unknown as ControlPlaneService;
     const app = createHttpApp({
       config,
       auth: {
-        api: { getSession: vi.fn().mockResolvedValue({ user: { id: "admin-1", role: "user" } }) },
+        api: { getSession: vi.fn().mockResolvedValue({ user: { id: "admin-1", role: "user", tenantId: "tenantA" } }) },
         handler: vi.fn(),
       } as unknown as ControllerAuth,
       service,
@@ -107,7 +113,17 @@ describe("Guardrail Playground HTTP capability", () => {
       },
     });
     expect(runnerFetch).toHaveBeenCalledTimes(3);
+    expect(service.registerPlaygroundInvocation).toHaveBeenCalledWith(expect.objectContaining({ tenantId: "tenantA", guardrailId: "guardrail-draft", guardrailVersion: versionId, poolId: "pool-a", groupId: "group-a" }));
     expect(modelFetch).toHaveBeenCalledTimes(1);
+    poolForTenant.mockResolvedValue({ poolId: "pool-b", groupId: "group-b", runtimeUrl: "https://group-b.test", publicUrl: "https://group-b.test" });
+    const moved = await app.request("/api/v1/playground/guardrails/guardrail-draft/draft-interactions", {
+      method: "POST", headers: { "content-type": "application/json" },
+      body: JSON.stringify({ preview_id: preview.preview_id, model_id: "deepseek-test", message: "after move", history: [] }),
+    });
+    expect(moved.status).toBe(409);
+    await expect(moved.json()).resolves.toMatchObject({ error: { code: "playground_draft_allocation_changed" } });
+    expect(runnerFetch).toHaveBeenCalledTimes(3);
+    expect(service.registerPlaygroundInvocation).toHaveBeenCalledTimes(1);
   });
 
   it("rejects draft preview preparation for unknown roles", async () => {
@@ -115,7 +131,7 @@ describe("Guardrail Playground HTTP capability", () => {
     const app = createHttpApp({
       config,
       auth: {
-        api: { getSession: vi.fn().mockResolvedValue({ user: { id: "member-1", role: "unknown" } }) },
+        api: { getSession: vi.fn().mockResolvedValue({ user: { id: "member-1", role: "unknown", tenantId: "tenantA" } }) },
         handler: vi.fn(),
       } as unknown as ControllerAuth,
       service: { playgroundDraftCandidate: prepare } as unknown as ControlPlaneService,
@@ -132,8 +148,18 @@ describe("Guardrail Playground HTTP capability", () => {
 
   it("lists the configured model and runs real input-model-output checkpoints on an immutable version", async () => {
     const versionId = "20260904-074000.456Z";
+    let registered = false;
+    const poolForTenant = vi.fn().mockResolvedValue({ poolId: "pool-b", groupId: "group-b", runtimeUrl: "https://group-b.test", publicUrl: "https://group-b.test" });
+    const registerInvocation = vi.fn(async () => {
+      registered = true;
+      // Reassignment after selection must not make the recorded pool differ
+      // from the already-selected client used for the second checkpoint.
+      poolForTenant.mockResolvedValue({ poolId: "pool-c", groupId: "group-c", runtimeUrl: "https://group-c.test", publicUrl: "https://group-c.test" });
+    });
     const modelFetch = vi.fn(async () => Response.json({ choices: [{ message: { content: "model answer" } }] })) as typeof fetch;
-    const runnerFetch = vi.fn(async (_url: string | URL | Request, init?: RequestInit) => {
+    const runnerFetch = vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
+      expect(String(url).startsWith("https://group-b.test/")).toBe(true);
+      expect(registered).toBe(true);
       const request = JSON.parse(String(init?.body)) as { phase: string; guardrail_version: string };
       expect(init?.headers).toMatchObject({ authorization: `Bearer ${config.runnerToken}` });
       expect(request.guardrail_version).toBe(versionId);
@@ -152,10 +178,12 @@ describe("Guardrail Playground HTTP capability", () => {
     const app = createHttpApp({
       config,
       auth: {
-        api: { getSession: vi.fn().mockResolvedValue({ user: { id: "member-1", role: "user" } }) },
+        api: { getSession: vi.fn().mockResolvedValue({ user: { id: "member-1", role: "user", tenantId: "tenantA" } }) },
         handler: vi.fn(),
       } as unknown as ControllerAuth,
       service: {
+        groupRouting: { poolForTenant },
+        registerPlaygroundInvocation: registerInvocation,
         getGuardrail: vi.fn().mockResolvedValue({
           id: "guardrail-default",
           name: "Default Guardrail",
@@ -206,6 +234,16 @@ describe("Guardrail Playground HTTP capability", () => {
       output_check: { phase: "output", guardrail: { id: "guardrail-default", version: versionId } },
     });
     expect(runnerFetch).toHaveBeenCalledTimes(2);
+    expect(registerInvocation).toHaveBeenCalledWith(expect.objectContaining({ tenantId: "tenantA", poolId: "pool-b", groupId: "group-b", guardrailId: "guardrail-default", guardrailVersion: versionId }));
+    expect(poolForTenant).toHaveBeenCalledTimes(1);
+    expect(modelFetch).toHaveBeenCalledTimes(1);
+    registerInvocation.mockRejectedValueOnce(new Error("database unavailable"));
+    const failedRegistration = await app.request("/api/v1/playground/guardrails/guardrail-default/interactions", {
+      method: "POST", headers: { "content-type": "application/json" },
+      body: JSON.stringify({ guardrail_version: versionId, model_id: "deepseek-test", message: "retry", history: [] }),
+    });
+    expect(failedRegistration.status).toBe(500);
+    expect(runnerFetch).toHaveBeenCalledTimes(2);
     expect(modelFetch).toHaveBeenCalledTimes(1);
   });
 
@@ -236,11 +274,11 @@ describe("Guardrail Playground HTTP capability", () => {
     });
     const playgroundRunner = new RunnerPlaygroundClient({ baseUrl: "https://runtime.test", token: config.runnerToken, fetcher: runnerFetch });
     const auth = {
-      api: { getSession: vi.fn().mockResolvedValue({ user: { id: "member-1", role: "user" } }) }, handler: vi.fn(),
+      api: { getSession: vi.fn().mockResolvedValue({ user: { id: "member-1", role: "user", tenantId: "tenantA" } }) }, handler: vi.fn(),
     } as unknown as ControllerAuth;
     const app = createHttpApp({
       config, auth,
-      service: { getGuardrail: vi.fn().mockResolvedValue({
+      service: { registerPlaygroundInvocation: vi.fn().mockResolvedValue(undefined), getGuardrail: vi.fn().mockResolvedValue({
         id: "guardrail-default", name: "Default Guardrail",
         versions: [{ version: versionId, status: "ready", artifactId: "artifact-1", createdAt: new Date(), plan: {} }],
       }) } as unknown as ControlPlaneService,

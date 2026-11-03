@@ -18,6 +18,11 @@ controller:
       type: LoadBalancer
       port: 38081
 runner:
+  telemetryProgress:
+    persistence:
+      enabled: false
+      size: 64Mi
+      storageClass: ""
   # Test execution and provider-recovery budgets.
   validation:
     # Cases executed in parallel. Lower this for providers with small quotas;
@@ -69,3 +74,14 @@ observability:
   serviceMonitor:
     interval: 15s
     scrapeTimeout: 10s
+networkPolicy:
+  enabled: true
+  runnerIsolation:
+    enabled: false
+    ingressPeers: []
+    dnsPeers:
+      - namespaceSelector:
+          matchLabels: { kubernetes.io/metadata.name: kube-system }
+        podSelector:
+          matchLabels: { k8s-app: kube-dns }
+    poolEgress: {}

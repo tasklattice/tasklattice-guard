@@ -11,6 +11,7 @@ import type { GuardrailProtectionResult as _tasklattice_guard_control_v1_Guardra
 import type { ArtifactCompilationResult as _tasklattice_guard_control_v1_ArtifactCompilationResult, ArtifactCompilationResult__Output as _tasklattice_guard_control_v1_ArtifactCompilationResult__Output } from '../../../../tasklattice/guard/control/v1/ArtifactCompilationResult.js';
 import type { ValidationReportChunk as _tasklattice_guard_control_v1_ValidationReportChunk, ValidationReportChunk__Output as _tasklattice_guard_control_v1_ValidationReportChunk__Output } from '../../../../tasklattice/guard/control/v1/ValidationReportChunk.js';
 import type { ValidationStatusNotice as _tasklattice_guard_control_v1_ValidationStatusNotice, ValidationStatusNotice__Output as _tasklattice_guard_control_v1_ValidationStatusNotice__Output } from '../../../../tasklattice/guard/control/v1/ValidationStatusNotice.js';
+import type { ServingLeaseRequest as _tasklattice_guard_control_v1_ServingLeaseRequest, ServingLeaseRequest__Output as _tasklattice_guard_control_v1_ServingLeaseRequest__Output } from '../../../../tasklattice/guard/control/v1/ServingLeaseRequest.js';
 import type { Long } from '@grpc/proto-loader';
 
 /**
@@ -37,7 +38,8 @@ export interface RunnerMessage {
   'artifactCompilationResult'?: (_tasklattice_guard_control_v1_ArtifactCompilationResult | null);
   'validationReportChunk'?: (_tasklattice_guard_control_v1_ValidationReportChunk | null);
   'validationStatusNotice'?: (_tasklattice_guard_control_v1_ValidationStatusNotice | null);
-  'body'?: "registration"|"heartbeat"|"artifactResult"|"desiredStateResult"|"capabilityValidationResult"|"validationProgress"|"artifactAdmissionResult"|"protectionResult"|"artifactCompilationResult"|"validationReportChunk"|"validationStatusNotice";
+  'servingLeaseRequest'?: (_tasklattice_guard_control_v1_ServingLeaseRequest | null);
+  'body'?: "registration"|"heartbeat"|"artifactResult"|"desiredStateResult"|"capabilityValidationResult"|"validationProgress"|"artifactAdmissionResult"|"protectionResult"|"artifactCompilationResult"|"validationReportChunk"|"validationStatusNotice"|"servingLeaseRequest";
 }
 
 /**
@@ -64,5 +66,6 @@ export interface RunnerMessage__Output {
   'artifactCompilationResult'?: (_tasklattice_guard_control_v1_ArtifactCompilationResult__Output | null);
   'validationReportChunk'?: (_tasklattice_guard_control_v1_ValidationReportChunk__Output | null);
   'validationStatusNotice'?: (_tasklattice_guard_control_v1_ValidationStatusNotice__Output | null);
-  'body'?: "registration"|"heartbeat"|"artifactResult"|"desiredStateResult"|"capabilityValidationResult"|"validationProgress"|"artifactAdmissionResult"|"protectionResult"|"artifactCompilationResult"|"validationReportChunk"|"validationStatusNotice";
+  'servingLeaseRequest'?: (_tasklattice_guard_control_v1_ServingLeaseRequest__Output | null);
+  'body'?: "registration"|"heartbeat"|"artifactResult"|"desiredStateResult"|"capabilityValidationResult"|"validationProgress"|"artifactAdmissionResult"|"protectionResult"|"artifactCompilationResult"|"validationReportChunk"|"validationStatusNotice"|"servingLeaseRequest";
 }

@@ -24,7 +24,19 @@ export interface EndpointRuntime {
    * Whether requests must authenticate with an Endpoint credential.
    */
   'credentialRequired'?: (boolean);
+  /**
+   * Controller-assigned owner; absent on legacy Controllers. Callers must
+   * authenticate the Endpoint against the same snapshot before using it.
+   */
+  'tenantId'?: (string);
+  /**
+   * Opaque Controller-persisted allocation/snapshot provenance. Internal only;
+   * public request headers and response assignments must never carry it.
+   */
+  'telemetryContextId'?: (string);
   '_scanFlagOnlyDefault'?: "scanFlagOnlyDefault";
+  '_tenantId'?: "tenantId";
+  '_telemetryContextId'?: "telemetryContextId";
 }
 
 /**
@@ -49,5 +61,17 @@ export interface EndpointRuntime__Output {
    * Whether requests must authenticate with an Endpoint credential.
    */
   'credentialRequired': (boolean);
+  /**
+   * Controller-assigned owner; absent on legacy Controllers. Callers must
+   * authenticate the Endpoint against the same snapshot before using it.
+   */
+  'tenantId'?: (string);
+  /**
+   * Opaque Controller-persisted allocation/snapshot provenance. Internal only;
+   * public request headers and response assignments must never carry it.
+   */
+  'telemetryContextId'?: (string);
   '_scanFlagOnlyDefault'?: "scanFlagOnlyDefault";
+  '_tenantId'?: "tenantId";
+  '_telemetryContextId'?: "telemetryContextId";
 }

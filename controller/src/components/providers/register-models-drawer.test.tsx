@@ -48,6 +48,22 @@ describe("Relay registration workflow", () => {
     expect(suggestedProfile("Qwen/Qwen3Guard-Gen-8B")).toBe("tali.qwen3guard.v1");
   });
 
+  it("restricts tenant registration to existing platform providers and never offers credential creation", async () => {
+    client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(<QueryClientProvider client={client}><RegisterModelsDrawer open allowProviderCreation={false} intent="register-models" providers={[provider]} registeredModels={[]} onChanged={onChanged} onOpenChange={onOpenChange} /></QueryClientProvider>);
+    expect(screen.queryByRole("radio")).toBeNull();
+    expect(screen.queryByLabelText("API key")).toBeNull();
+    expect(screen.queryByLabelText("Base URL")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Discover models" }));
+    await screen.findByRole("heading", { name: "Discovered models" });
+    fireEvent.click(screen.getByRole("button", { name: "Chat chat" }));
+    fireEvent.click(screen.getByRole("button", { name: "Register 1 model" }));
+    await screen.findByText("Registration complete");
+    expect(createModelDefinition).toHaveBeenCalledWith(expect.objectContaining({ providerId: provider.id, model: "chat" }));
+    expect(discoverProviderDraft).not.toHaveBeenCalled();
+    expect(registerProviderModels).not.toHaveBeenCalled();
+  });
+
   it("discovers first, selects multiple models, and registers only on confirmation", async () => {
     mount();
     expect(discoverModelProvider).not.toHaveBeenCalled();

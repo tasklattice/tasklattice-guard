@@ -31,12 +31,12 @@ describe("Policy catalog HTTP compatibility", () => {
     const overrides = { policyResources: { save, publish } as unknown as ControlPlaneService["policyResources"] };
     const body = { definition, maintainer: "Platform administrators", expectedRevision: 0 };
     const path = `/api/v1/policies/${definition.metadata.id}/definition`;
-    const member = appWithSession({ user: { id: "member", role: "unknown" } }, overrides);
+    const member = appWithSession({ user: { id: "member", role: "unknown", tenantId: "tenantA" } }, overrides);
     for (const [url, method, payload] of [[path, "PUT", body], [`${path}/test-runs`, "POST", {}], [`${path}/publish`, "POST", { expectedRevision: 1 }]] as const) {
       expect((await member.request(url, { method, body: JSON.stringify(payload) })).status).toBe(403);
     }
     expect(save).not.toHaveBeenCalled(); expect(publish).not.toHaveBeenCalled();
-    const admin = appWithSession({ user: { id: "admin", role } }, overrides);
+    const admin = appWithSession({ user: { id: "admin", role, tenantId: "tenantA" } }, overrides);
     expect((await admin.request(path, { method: "PUT", body: JSON.stringify(body) })).status).toBe(200);
     expect(save).toHaveBeenCalledWith({ ...body, actorId: "admin" });
     expect((await admin.request("/api/v1/policies/another/definition", { method: "PUT", body: JSON.stringify(body) })).status).toBe(422);
@@ -46,7 +46,7 @@ describe("Policy catalog HTTP compatibility", () => {
   });
   it("validates and forwards the requested publication revision", async () => {
     const publishPolicy = vi.fn().mockResolvedValue({ version: "1" });
-    const app = appWithSession({ user: { id: "author", role: "user" } }, { publishPolicy });
+    const app = appWithSession({ user: { id: "author", role: "user", tenantId: "tenantA" } }, { publishPolicy });
     const response = await app.request("/api/v1/policies/example/publish", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ expectedDraftRevision: 7 }) });
     expect(response.status).toBe(201);
     expect(publishPolicy).toHaveBeenCalledWith({ id: "example", actorId: "author", expectedDraftRevision: 7 });
@@ -64,7 +64,7 @@ describe("Policy catalog HTTP compatibility", () => {
   });
 
   it("serves the normalized collection and a Policy detail", async () => {
-    const app = appWithSession({ user: { id: "member-1", role: "user" } });
+    const app = appWithSession({ user: { id: "member-1", role: "user", tenantId: "tenantA" } });
     const listResponse = await app.request("/api/v1/policies");
     const collection = await listResponse.json() as { count: number; items: Array<{ id: string; source: string; test_count: number }> };
 
@@ -85,7 +85,7 @@ describe("Policy catalog HTTP compatibility", () => {
 
   it.each(["/api/v1/guardrail-profiles", "/api/v1/policy-catalog/protection-presets"])("provides authenticated Profile previews via %s", async route => {
     expect((await appWithSession(null).request(route)).status).toBe(401);
-    const response = await appWithSession({ user: { id: "member-1", role: "user" } }).request(route);
+    const response = await appWithSession({ user: { id: "member-1", role: "user", tenantId: "tenantA" } }).request(route);
     expect(response.status).toBe(200);
     const data = await response.json() as { directories: unknown[]; items: Array<{ id: string; policies: unknown[]; policyBindings: Array<{ policyId: string; policyVersion: string }> }> };
     expect(data.directories).toHaveLength(8);
@@ -99,14 +99,14 @@ describe("Policy catalog HTTP compatibility", () => {
 
   it("returns database profiles rather than a hard-coded catalogue", async () => {
     const listGuardrailProfiles = vi.fn().mockResolvedValue([{ id: "custom-profile", category: "custom", categoryName: "Custom use case", isDefault: true, policyBindings: [] }]);
-    const response = await appWithSession({ user: { id: "member", role: "user" } }, { listGuardrailProfiles }).request("/api/v1/guardrail-profiles");
+    const response = await appWithSession({ user: { id: "member", role: "user", tenantId: "tenantA" } }, { listGuardrailProfiles }).request("/api/v1/guardrail-profiles");
     expect(response.status).toBe(200);
     expect((await response.json()).items).toEqual([{ id: "custom-profile", category: "custom", categoryName: "Custom use case", isDefault: true, policyBindings: [] }]);
     expect(listGuardrailProfiles).toHaveBeenCalledOnce();
   });
 
   it("returns the standard not-found envelope and the Runner action catalog", async () => {
-    const app = appWithSession({ user: { id: "member-1", role: "user" } });
+    const app = appWithSession({ user: { id: "member-1", role: "user", tenantId: "tenantA" } });
     const missing = await app.request("/api/v1/policies/not-a-policy");
     const retired = await app.request("/api/v1/policies/singapore-financial-conduct");
     const actions = await app.request("/api/v1/policy-catalog/actions");
@@ -127,7 +127,7 @@ describe("Policy catalog HTTP compatibility", () => {
   });
 });
 
-function appWithSession(session: { user: { id: string; role: string } } | null, overrides: Partial<ControlPlaneService> = {}) {
+function appWithSession(session: { user: { id: string; role: string; tenantId?: string } } | null, overrides: Partial<ControlPlaneService> = {}) {
   const auth = {
     api: { getSession: vi.fn().mockResolvedValue(session) },
     handler: vi.fn(),

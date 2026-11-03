@@ -4,6 +4,7 @@ import { auditEvents, modelDefinitions, modelProviders } from "../db/schema.js";
 import { decryptModelCredential } from "./secret-crypto.js";
 import { ModelConfigurationService } from "./service.js";
 import { providerRegistrationSchema } from "./domain.js";
+import { runWithTenantContext } from "../services/tenant-context.js";
 
 const connection = { name: "Test NVIDIA", kind: "custom-openai-compatible", baseUrl: "https://provider.test/v1/", apiKey: "test-registration-credential" };
 const model = (id: string) => ({ name: id, model: id, profile: "generic-chat", timeoutSeconds: 20, maxTokens: 128 });
@@ -20,7 +21,7 @@ function setup(failCatalog = false) {
   })) };
   const db = {
     ...tx,
-    select: () => ({ from: (table: unknown) => ({ where: async () => rows.get(table) ?? [] }) }),
+    select: () => ({ from: (table: unknown) => ({ where: async () => rows.get(table) ?? [], orderBy: async () => rows.get(table) ?? [] }) }),
     transaction: vi.fn(async (run: (value: typeof tx) => unknown) => run(tx)),
   };
   const fetcher = vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
@@ -35,6 +36,21 @@ function setup(failCatalog = false) {
 }
 
 describe("Relay-style Provider registration", () => {
+  it("returns Provider selection metadata without credentials or credential hints to tenant users", async () => {
+    const { service, rows } = setup();
+    await service.registerProviderModels({ connection, models: [model("chat")] }, "admin");
+    const metadata = await runWithTenantContext({ tenantId: "tenantB", role: "user" }, () => service.listProviders());
+    expect(metadata).toHaveLength(1);
+    expect(metadata[0]).toMatchObject({ name: connection.name, kind: connection.kind, status: "validated" });
+    for (const field of ["credentialCiphertext", "credentialHint", "credentialConfigured", "validationMessage", "createdBy"]) {
+      expect(metadata[0]).not.toHaveProperty(field);
+    }
+    expect(JSON.stringify(metadata)).not.toContain(connection.apiKey);
+    expect(rows.get(modelProviders)?.[0]).not.toHaveProperty("tenantId");
+    const platform = await service.listProviders();
+    expect(platform[0]).toHaveProperty("credentialConfigured", true);
+  });
+
   it.each(["tali.laya.v1", "tali.laya-topic.v1"] as const)("registers Laya through its own System One profile %s", async profile => {
     const { service, fetcher } = setup();
     fetcher.mockImplementation(async (_url, init) => {
@@ -115,6 +131,7 @@ describe("Relay-style Provider registration", () => {
     const result = await service.registerProviderModels({ connection, models: [model("chat"), model("bad")] }, "admin");
     expect(db.transaction).toHaveBeenCalledOnce();
     expect(result.models.map((item) => item.model)).toEqual(["chat", "bad"]);
+    expect(result.models.every((item) => item.tenantId === null)).toBe(true);
     expect(result.models.every((item) => item.status === "pending" && item.validatedAt === null)).toBe(true);
     expect(result.failures).toEqual([]);
     expect(fetcher).toHaveBeenCalledTimes(2);
@@ -131,6 +148,25 @@ describe("Relay-style Provider registration", () => {
     expect(decryptModelCredential(encrypted, secret)).toBe(connection.apiKey);
     expect(JSON.stringify(result)).not.toContain(connection.apiKey);
     expect(result.provider).not.toHaveProperty("credentialCiphertext");
+  });
+
+  it.each(["tenantA", "tenantB"])("prevents tenant %s users from changing or discovering global Providers", async (tenantId) => {
+    const { service, rows, fetcher } = setup();
+    const operations = [
+      () => service.createProvider(connection, "group_b"),
+      () => service.updateProvider("provider-1", { name: "Modified" }, "group_b"),
+      () => service.revalidateProvider("provider-1", "group_b"),
+      () => service.discoverProviderModels("provider-1"),
+      () => service.discoverProviderDraft(connection),
+      () => service.registerProviderModels({ connection, models: [model("chat")] }, "group_b"),
+      () => service.deleteProvider("provider-1", "group_b"),
+    ];
+    for (const operation of operations) {
+      await expect(runWithTenantContext({ tenantId, actorId: "group_b", role: "user" }, operation))
+        .rejects.toMatchObject({ code: "forbidden" });
+    }
+    expect(rows.get(modelProviders)).toBeUndefined();
+    expect(fetcher).not.toHaveBeenCalled();
   });
 
   it("can prove a manual model is callable even when the Provider catalog is unavailable", async () => {
@@ -177,11 +213,22 @@ describe("Relay-style Provider registration", () => {
     const providerId = "fe3671e8-a707-4d9b-a6a4-ea804ae76ec4";
     rows.set(modelProviders, [{ id: providerId, name: "Saved provider", kind: "custom-openai-compatible", baseUrl: connection.baseUrl, credentialCiphertext: "", skipTlsVerify: false }]);
     const result = await service.createModel({ providerId, ...model("bad") }, "admin");
-    expect(result).toMatchObject({ model: "bad", status: "pending", validatedAt: null, validationLatencyMs: null });
+    expect(result).toMatchObject({ tenantId: null, model: "bad", status: "pending", validatedAt: null, validationLatencyMs: null });
     expect(result.connectionStatus).toBe("failed");
     expect(fetcher).toHaveBeenCalledOnce();
     expect(String(fetcher.mock.calls[0]?.[0])).toContain("/chat/completions");
     expect(rows.get(modelDefinitions)).toHaveLength(1);
+  });
+
+  it("creates tenant-owned Models on a global platform Provider", async () => {
+    const { service, rows } = setup();
+    const providerId = "a2b3c4d5-1111-4444-8888-123456789012";
+    rows.set(modelProviders, [{ id: providerId, name: "Platform provider", kind: "custom-openai-compatible", baseUrl: connection.baseUrl, credentialCiphertext: "", skipTlsVerify: false }]);
+    const created = await runWithTenantContext({ tenantId: "tenantB", actorId: "group_b", role: "user" }, () =>
+      service.createModel({ ...model("chat"), providerId }, "group_b"));
+    expect(created).toMatchObject({ tenantId: "tenantB", providerId, model: "chat", connectionStatus: "validated" });
+    expect(rows.get(modelProviders)?.[0]).not.toHaveProperty("tenantId");
+    expect(rows.get(modelDefinitions)?.[0]?.tenantId).toBe("tenantB");
   });
 
   it("rejects empty and duplicate selections before making external requests", async () => {

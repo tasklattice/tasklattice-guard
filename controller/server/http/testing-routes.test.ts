@@ -8,6 +8,7 @@ import type { RunnerControlServer } from "../control-channel/control-server.js";
 import type { ControllerMetrics } from "../metrics.js";
 import type { ControlPlaneService } from "../services/control-plane.js";
 import { createHttpApp } from "./app.js";
+import { NotFoundError } from "../domain/errors.js";
 
 function setup(role = "user") {
   const run = { id: "run-1", status: "queued" };
@@ -16,6 +17,7 @@ function setup(role = "user") {
     cancelValidation: vi.fn().mockResolvedValue({ ...run, status: "cancelled" }),
     queryValidationRuns: vi.fn().mockResolvedValue({ items: [run], count: 1 }),
     getValidationRun: vi.fn().mockResolvedValue(run),
+    authorizeReportRead: vi.fn().mockResolvedValue(undefined),
     reportResults: { page: vi.fn(), detail: vi.fn() },
     testingReportDeletionImpact: vi.fn().mockResolvedValue({ runId: "run-1", running: false, deletable: true }),
     deleteTestingReport: vi.fn().mockResolvedValue(undefined),
@@ -29,7 +31,7 @@ function setup(role = "user") {
     CONTROLLER_POLICY_CATALOG_DIR: resolve("../runner/toolkit/policy_library/assets"), BETTER_AUTH_SECRET: "better-auth-secret-that-is-at-least-32-characters" });
   const distributeDesiredState = vi.fn().mockResolvedValue(undefined);
   const app = createHttpApp({ config,
-    auth: { api: { getSession: vi.fn().mockResolvedValue({ user: { id: "admin-1", role } }) } } as unknown as ControllerAuth,
+    auth: { api: { getSession: vi.fn().mockResolvedValue({ user: { id: "admin-1", role, tenantId: "tenantA" } }) } } as unknown as ControllerAuth,
     service: service as unknown as ControlPlaneService,
     runnerControl: { hasDefaultCompiler: () => true, distributeDesiredState } as RunnerControlServer, metrics: {} as ControllerMetrics,
   });
@@ -62,6 +64,16 @@ describe("Testing HTTP paths", () => {
     expect(JSON.parse(gunzipSync(Buffer.from(await response.arrayBuffer())).toString())).toEqual(detail);
     expect(service.reportResults.detail).toHaveBeenCalledWith("run-1",7,0);
     expect(await (await app.request("/api/v1/test-runs/run-1")).json()).not.toHaveProperty("results");
+  });
+
+  it.each(["/cases", "/cases/7"])("rejects a hidden report before reading bounded evidence at %s", async suffix => {
+    const { app, service } = setup();
+    service.authorizeReportRead.mockRejectedValue(new NotFoundError("Testing Report", "private-run"));
+    const response = await app.request(`/api/v1/test-runs/private-run${suffix}`);
+    expect(response.status).toBe(404);
+    expect(service.authorizeReportRead).toHaveBeenCalledExactlyOnceWith("private-run");
+    expect(service.reportResults.page).not.toHaveBeenCalled();
+    expect(service.reportResults.detail).not.toHaveBeenCalled();
   });
 
   it("cancels an exact test ID without deleting its report", async () => {

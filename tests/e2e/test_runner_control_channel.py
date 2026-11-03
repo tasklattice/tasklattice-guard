@@ -73,7 +73,7 @@ async def test_large_validation_round_trip_and_reconnect_sender_cleanup(tmp_path
     settings = SimpleNamespace(
         runner_id="e2e-runner", pool_id="default", compiler_capable=False,
         max_concurrency=4, controller_ca_path=None,
-        controller_target=f"127.0.0.1:{port}", controller_token="e2e-runner-token",
+        controller_target=f"127.0.0.1:{port}", controller_token="e2e-runner-token", control_token=None,
     )
     client = RunnerControlClient(settings, ArtifactStore(FIXTURE / "public-key.pem", tmp_path), RunnerMetrics(4))
     client._validator = SimpleNamespace(compiler_model_types=(), run=AsyncMock(return_value=ValidationOutcome(
@@ -108,6 +108,8 @@ class MockController(services.RunnerControlServicer):
     def __init__(self, desired_state: protocol.DesiredState) -> None:
         self.desired_state = desired_state
         self.received: list[protocol.RunnerMessage] = []
+        self.applied = asyncio.Event()
+        self.release_stream = asyncio.Event()
 
     async def Connect(self, request_iterator, context):  # noqa: N802
         metadata = dict(context.invocation_metadata())
@@ -137,7 +139,29 @@ class MockController(services.RunnerControlServicer):
             # Closing after the ACK races that required heartbeat write in gRPC.
             if (accepted and message.WhichOneof("body") == "heartbeat"
                     and message.heartbeat.applied_generation == self.desired_state.generation):
+                self.applied.set()
+                await self.release_stream.wait()
                 return
+
+
+async def _apply_then_disconnect(client: RunnerControlClient, controller: MockController) -> None:
+    connection = asyncio.create_task(client._connect_once())
+    applied = asyncio.create_task(controller.applied.wait())
+    try:
+        done, _ = await asyncio.wait({connection, applied}, timeout=10, return_when=asyncio.FIRST_COMPLETED)
+        if connection in done:
+            await connection
+            raise AssertionError("Runner disconnected before acknowledging the desired state.")
+        assert applied in done, "Runner did not acknowledge the desired state."
+        assert client.synchronized is True
+        controller.release_stream.set()
+        await asyncio.wait_for(connection, 10)
+    finally:
+        controller.release_stream.set()
+        for task in (connection, applied):
+            if not task.done():
+                task.cancel()
+        await asyncio.gather(connection, applied, return_exceptions=True)
 
 
 @pytest.mark.asyncio
@@ -167,7 +191,7 @@ async def test_mock_controller_and_real_runner_exchange_and_apply_desired_state(
         client_key_path=None,
         client_certificate_path=None,
         controller_target=f"127.0.0.1:{port}",
-        controller_token="e2e-runner-token",
+        controller_token="e2e-runner-token", control_token=None,
     )
     client = RunnerControlClient(
         settings,  # type: ignore[arg-type]
@@ -175,7 +199,7 @@ async def test_mock_controller_and_real_runner_exchange_and_apply_desired_state(
         RunnerMetrics(4),
     )
     try:
-        await client._connect_once()
+        await _apply_then_disconnect(client, controller)
     finally:
         await server.stop(grace=0)
 
@@ -191,7 +215,7 @@ async def test_mock_controller_and_real_runner_exchange_and_apply_desired_state(
     assert result.accepted is True
     assert controller.received[-1].heartbeat.applied_generation == 1
     assert store.generation == 1
-    assert client.synchronized is True
+    assert client.synchronized is False
     assert registry.readiness()["ready"] is True
 
 
@@ -246,7 +270,7 @@ async def test_runner_accepts_replaceable_model_configuration_in_desired_state(
         client_key_path=None,
         client_certificate_path=None,
         controller_target=f"127.0.0.1:{port}",
-        controller_token="e2e-runner-token",
+        controller_token="e2e-runner-token", control_token=None,
     )
     client = RunnerControlClient(
         settings,  # type: ignore[arg-type]
@@ -254,7 +278,7 @@ async def test_runner_accepts_replaceable_model_configuration_in_desired_state(
         RunnerMetrics(4),
     )
     try:
-        await client._connect_once()
+        await _apply_then_disconnect(client, controller)
     finally:
         await server.stop(grace=0)
 
@@ -266,7 +290,7 @@ async def test_runner_accepts_replaceable_model_configuration_in_desired_state(
     assert result.accepted is True
     assert result.model_revision_id == model_configuration.revision_id
     assert controller.received[-1].heartbeat.applied_generation == desired_state.generation
-    assert client.synchronized is True
+    assert client.synchronized is False
     assert client._providers is not None
     assert registry.readiness()["ready"] is True
 

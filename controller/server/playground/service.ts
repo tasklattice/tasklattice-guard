@@ -88,6 +88,7 @@ export type PlaygroundTarget = PublishedPlaygroundTarget | DraftPlaygroundTarget
 
 export type PlaygroundDraftPreview = DraftPlaygroundTarget & {
   actorId: string;
+  allocation: { poolId: string; groupId: string; runtimeUrl: string };
   guardrailId: string;
   guardrailName: string;
   compilerVersion: string;
@@ -214,6 +215,11 @@ export class RunnerPlaygroundClient {
     this.#baseUrl = input.baseUrl.replace(/\/+$/, "");
     this.#token = input.token;
     this.#fetch = input.fetcher ?? globalThis.fetch;
+  }
+
+  /** Retain the transport while selecting the allocated pool's HTTP authority. */
+  forBaseUrl(baseUrl: string, token = this.#token): RunnerPlaygroundClient {
+    return new RunnerPlaygroundClient({ baseUrl, token, fetcher: this.#fetch });
   }
 
   async testPath(input: PathTestInput, endpointAdapter?: string): Promise<PathTestResult> {
@@ -372,9 +378,13 @@ export async function runPlaygroundInteraction(input: {
   modelId: string;
   message: string;
   history: Array<{ role: "user" | "assistant"; content: string }>;
+  registerInvocation: (callId: string) => Promise<void>;
 }) {
   const interactionId = randomUUID();
   const callId = `playground:${interactionId}`;
+  // Persist before the first Runner call; its telemetry can arrive before the
+  // HTTP response and may be replayed asynchronously after an interruption.
+  await input.registerInvocation(callId);
   const inputResult = await input.runner.evaluate({
     guardrailId: input.guardrail.id,
     target: input.target,

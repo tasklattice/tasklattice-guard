@@ -25,7 +25,10 @@ const url = process.env.GUARD_TEST_POSTGRES_URL;
 const catalogDir = resolve("../runner/toolkit/policy_library/assets");
 const protoPath = resolve("../proto/tasklattice/guard/control/v1/runner_control.proto");
 
-describe.skipIf(!url)("Publishing the tested candidate in PostgreSQL", () => {
+// These cases exercise complete test/publish/retest and version-retention
+// lifecycles against PostgreSQL. Bound that integration work separately from
+// the unit-test default, without widening unrelated suites or hook budgets.
+describe.skipIf(!url)("Publishing the tested candidate in PostgreSQL", { timeout: 30_000 }, () => {
   const keys = mkdtempSync(join(tmpdir(), "guard-publication-"));
   const pair = generateKeyPairSync("ed25519");
   writeFileSync(join(keys, "private.pem"), pair.privateKey.export({ type: "pkcs8", format: "pem" }));
@@ -43,6 +46,7 @@ describe.skipIf(!url)("Publishing the tested candidate in PostgreSQL", () => {
     }));
     await database.pool.query("INSERT INTO auth_user (id, name, email, role) VALUES ('admin', 'Admin', 'admin@example.test', 'admin')");
     await database.pool.query("INSERT INTO controller_state (id, desired_generation) VALUES ('singleton', 3)");
+    await database.pool.query("INSERT INTO runner_pool(id,name,is_default) VALUES ('default','Default',true)");
   });
   afterAll(async () => { await service?.stopReportWork(); await database?.drop(); rmSync(keys, { recursive: true, force: true }); });
 

@@ -109,6 +109,7 @@ describe.skipIf(!url)("Test report persistence under connection pressure", () =>
       await completed;
     }
     await completeReport(service, report);
+    await service.drainReportWork();
     expect((await database.pool.query("SELECT status FROM guardrail_validation_run WHERE id = $1", [report.runId])).rows[0].status).toBe("passed");
     expect(database.pool.waitingCount).toBe(0);
   }, 10_000);

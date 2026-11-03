@@ -19,7 +19,6 @@ function database(overrides: Record<string, string> = {}) {
     ...overrides,
   }));
   connection.pool.options.max = 1;
-  connection.pool.options.connectionTimeoutMillis = 200;
   return connection;
 }
 
@@ -115,6 +114,9 @@ describe.skipIf(!url)("Controller transaction connection ownership (PostgreSQL)"
   it("distinguishes pool acquisition failure from BEGIN failure", async () => {
     const { db, pool } = database();
     const occupied = await pool.connect();
+    // Only this case needs a short queue budget. Other fixtures must allow
+    // normal connection establishment when the integration worker is busy.
+    pool.options.connectionTimeoutMillis = 200;
     const body = vi.fn();
     try {
       await expect(withReportSaveDiagnostics(db, "pool-timeout", () => db.transaction(body))).rejects.toThrow("timeout exceeded when trying to connect");

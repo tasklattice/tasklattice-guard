@@ -66,7 +66,7 @@ describe.skipIf(!url)("950-case full-feature report delivery", () => {
       const app = createHttpApp({ config, service, runnerControl: control, metrics,
         auth: { handler: async () => Response.json({}, { headers: { "set-cookie": "test-session=fixture; HttpOnly; Path=/" } }),
           api: { getSession: async ({ headers }: { headers: Headers }) => headers.get("cookie") === "test-session=fixture"
-            ? { user: { id: "report-user", role: "user" } } : null } } as unknown as ControllerAuth });
+            ? { user: { id: "report-user", role: "user", tenantId: "tenantA" } } : null } } as unknown as ControllerAuth });
       http = serve({ fetch: app.fetch, hostname: "127.0.0.1", port: 0 });
       await new Promise<void>(resolve => http!.listening ? resolve() : http!.once("listening", resolve));
       const address = http.address();
@@ -91,7 +91,7 @@ describe.skipIf(!url)("950-case full-feature report delivery", () => {
       expect(delivery.wireBytes).toBeLessThan(delivery.rawBytes / 5);
       const definition = loadSync(config.protoPath, { includeDirs: [dirname(config.protoPath)], longs: String, enums: String, defaults: true, oneofs: true });
       const codec = definition["tasklattice.guard.control.v1.RunnerMessage"] as MessageTypeDefinition<object, RunnerMessage__Output>;
-      await service.markValidationRunning(run.id);
+      await (control as unknown as { dispatchValidationRequests(): Promise<void> }).dispatchValidationRequests();
       const wire = await readFile(wirePath);
       {
         expect(delivery.parts).toBeGreaterThan(10);

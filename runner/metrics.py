@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import math
+import json
 import threading
 import time
 from contextlib import contextmanager
@@ -68,8 +69,12 @@ class GuardrailRequestObservation:
     decision: ProtectionDecision | None = None
     failure_stage: str | None = None
     failure_reason_class: str | None = None
+    allocation_context_id: str | None = None
+    route_assignment: dict | None = None
 
     def resolve(self, resolution: PlanResolution) -> None:
+        self.allocation_context_id = getattr(resolution, "allocation_context_id", None)
+        self.route_assignment = getattr(resolution, "route_assignment", None)
         self.set_identity(
             guardrail_id=resolution.plan.guardrail_id,
             guardrail_version=resolution.plan.guardrail_version,
@@ -120,6 +125,7 @@ class RunnerMetrics:
         self._active_jobs: dict[str, int] = {"compile": 0, "validation": 0}
         self._loaded_artifact_count = 0
         self._admission_load: Callable[[], tuple[int, int, int]] = lambda: (0, 0, max_concurrency)
+        self._tenant_admission_snapshot: Callable[[], dict] = lambda: {"version": 1, "available": False, "reason": "disabled"}
         self._process = psutil.Process()
         self.registry = CollectorRegistry()
         ProcessCollector(registry=self.registry)
@@ -823,6 +829,19 @@ class RunnerMetrics:
 
     def set_admission_load_provider(self, provider: Callable[[], tuple[int, int, int]]) -> None:
         self._admission_load = provider
+
+    def set_tenant_admission_snapshot_provider(self, provider: Callable[[], dict]) -> None:
+        self._tenant_admission_snapshot = provider
+
+    def tenant_admission_snapshot_json(self) -> bytes:
+        try:
+            encoded = json.dumps(self._tenant_admission_snapshot(), allow_nan=False, separators=(",", ":")).encode("utf-8")
+            if len(encoded) <= 65_536:
+                return encoded
+            reason = "payload_limit"
+        except Exception:
+            reason = "instrumentation_unavailable"
+        return json.dumps({"version": 1, "available": False, "reason": reason}).encode("utf-8")
 
     def set_desired_generation(self, generation: int) -> None:
         self.desired_generation.set(max(0, generation))

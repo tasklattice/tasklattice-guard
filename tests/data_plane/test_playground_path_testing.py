@@ -4,6 +4,7 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
 from fastapi import FastAPI
+from fastapi import Response
 import httpx
 import pytest
 
@@ -63,6 +64,55 @@ async def test_internal_probe_requires_auth_and_does_not_execute_for_simulation(
         verify = runtime.evaluate.call_args.kwargs['on_resolved']
         with pytest.raises(RoutingError):
             verify(SimpleNamespace(router_id='router', route_assignment={'routerRevision': 2}))
+
+
+@pytest.mark.asyncio
+async def test_internal_routing_capability_is_not_exposed_in_user_responses():
+    from runner.api import RunnerAPI
+    from tests.test_runner_api import Metrics
+
+    secret = 'private-allocation-capability'
+    s = store()
+    original_preview = s.preview_router
+
+    def preview(*args):
+        result = original_preview(*args)
+        result['assignment']['internalCapability'] = secret
+        return result
+
+    s.preview_router = preview
+    runtime = SimpleNamespace(evaluate=AsyncMock(return_value=ProtectionDecision(
+        decision='allow', action='allow', route_assignment={'routeId': 'first', 'internalCapability': secret},
+    )))
+    api = SimpleNamespace(router=FastAPI(), _metrics=Metrics(), _emit_telemetry=AsyncMock(), _runtime=runtime,
+                          _store=s, _runner_id='runner-1', _controller_token='secret')
+    register_path_testing(api)
+    body = dict(revision=1, endpoint_id='endpoint', action='execute', call_id='call', fields={},
+                business_request={'x-channel': ['partner']}, text='hello')
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=api.router), base_url='http://runner') as client:
+        result = await client.post('/internal/v1/playground/routers/router/test', json=body,
+                                   headers={'authorization': 'Bearer secret'})
+        def reject(*args):
+            raise RoutingError('no_match', {'routeId': 'first', 'internalCapability': secret})
+        s.preview_router = reject
+        rejected = await client.post('/internal/v1/playground/routers/router/test', json=body,
+                                     headers={'authorization': 'Bearer secret'})
+    assert result.status_code == 200
+    assert secret not in result.text
+    assert result.json()['assignment']['routeId'] == 'first'
+    assert result.json()['decision']['route_assignment']['routeId'] == 'first'
+    assert rejected.status_code == 409
+    assert secret not in rejected.text
+    assert rejected.json()['detail']['assignment'] == {'routeId': 'first'}
+
+    runner = object.__new__(RunnerAPI)
+    runner._runner_id = 'runner-1'
+    response = Response()
+    runner._path_response_headers(response, ProtectionDecision(
+        decision='allow', action='allow', route_assignment={'routeId': 'first', 'internalCapability': secret},
+    ))
+    assert secret not in response.headers['x-guard-route-assignment']
+    assert 'first' in response.headers['x-guard-route-assignment']
 
 @pytest.mark.asyncio
 async def test_router_execution_runs_signed_artifact_in_real_nemo_runtime(tmp_path):

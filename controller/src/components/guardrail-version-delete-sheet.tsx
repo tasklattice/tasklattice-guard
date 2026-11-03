@@ -82,7 +82,7 @@ function ReferenceLine({ reference }: { reference: Reference }) {
   const { t } = useTranslation();
   return (
     <span>
-      <Link className="font-medium text-primary" to="/integration/routers/$routerId" params={{ routerId: reference.routerId }}>{reference.routerName}</Link>
+      {reference.routerId ? <Link className="font-medium text-primary" to="/integration/routers/$routerId" params={{ routerId: reference.routerId }}>{reference.routerName}</Link> : <span className="font-medium">{reference.routerName}</span>}
       {" · "}{t(`guardrails.versionReference.${reference.kind}`, { ticket: reference.ticket || "—" })}
     </span>
   );

@@ -28,7 +28,8 @@ const config = loadConfig({
 
 describe("production Controller gRPC transport budget", () => {
   it.each([undefined, "Bearer wrong-token"])("rejects unauthenticated plaintext connections (%s)", async (authorization) => {
-    const service = { registerRunner: vi.fn() };
+    const service = {
+      runnerControlSessions: { isCurrent: vi.fn().mockResolvedValue(true), dispatched: vi.fn().mockResolvedValue(true), dispatchedAllocation: vi.fn().mockResolvedValue({ epoch: 0, groupId: "default" }), acknowledged: vi.fn().mockResolvedValue(true) }, registerRunner: vi.fn() };
     const metrics = { observeControlMessage: vi.fn() };
     const server = new RunnerControlServer(config, service as unknown as ControlPlaneService,
       metrics as unknown as ControllerMetrics,
@@ -61,7 +62,7 @@ describe("production Controller gRPC transport budget", () => {
   });
 
   it("rejects chunks with invalid identity, size or digest before persistence",async()=>{
-    const service={reportResults:{stage:vi.fn().mockResolvedValue(true)},completeValidation:vi.fn()};
+    const service={runnerControlSessions:{isCurrent:vi.fn().mockResolvedValue(true),dispatched:vi.fn().mockResolvedValue(true),dispatchedAllocation:vi.fn().mockResolvedValue({epoch:0,groupId:"default"}),acknowledged:vi.fn().mockResolvedValue(true)},reportResults:{stage:vi.fn().mockResolvedValue(true)},completeValidation:vi.fn()};
     const server=new RunnerControlServer(config,service as unknown as ControlPlaneService,{observeControlMessage:vi.fn()} as unknown as ControllerMetrics,{} as ModelConfigurationService);
     const internal=server as unknown as {connections:Map<string,unknown>;handleMessage(stream:unknown,message:unknown,current:unknown):Promise<unknown>};
     const stream={write:vi.fn()},current={runnerId:"runner-0",bootId:"boot",poolId:"default",compilerCapable:true,stream};
@@ -72,7 +73,7 @@ describe("production Controller gRPC transport budget", () => {
     const digest=createHash("sha256").update(bytes).digest("hex");
     const valid={runnerId:"runner-0",runId:"report",uploadId:"fixture",sequence:0,chunks:1,cases:0,caseOffset:0,final:true,
       manifestDigest:createHash("sha256").update(digest).digest("hex"),gzipResult:gzipSync(bytes),rawSizeBytes:bytes.length,sha256:digest};
-    const handle=(part:unknown)=>internal.handleMessage(stream,{validationReportChunk:part},current);
+    const handle=(part:unknown)=>{ (server as any).activeValidations.set((part as {runId:string}).runId,current); return internal.handleMessage(stream,{validationReportChunk:part},current); };
     try {
       await handle(valid);expect(service.completeValidation).toHaveBeenCalledOnce();
       await expect(handle({...valid,sha256:"bad"})).rejects.toThrow("digest");
@@ -85,7 +86,7 @@ describe("production Controller gRPC transport budget", () => {
   it.each([false,true])("preserves bounded chunks and enforces the wire ceiling (oversized=%s)",async oversized=>{
     const evidence="synthetic evidence ".repeat(2200),count=950,received:Array<{caseId:string;outputContent:string}>=[];
     const desiredId="disabled-"+"d".repeat(5*1024*1024);
-    const service={registerRunner:vi.fn().mockResolvedValue(1),disconnectRunner:vi.fn(),completeValidation:vi.fn(),
+    const service={runnerControlSessions:{isCurrent:vi.fn().mockResolvedValue(true),dispatched:vi.fn().mockResolvedValue(true),dispatchedAllocation:vi.fn().mockResolvedValue({epoch:0,groupId:"default"}),acknowledged:vi.fn().mockResolvedValue(true)},registerRunner:vi.fn().mockResolvedValue(1),disconnectRunner:vi.fn(),completeValidation:vi.fn(),
       reportResults:{stage:vi.fn(async(chunk:{results:typeof received;final:boolean})=>{received.push(...chunk.results);return chunk.final;})},
       desiredStateForPool:vi.fn().mockResolvedValue({generation:1,artifacts:[],routers:[],endpoints:[],disabledGuardrailIds:[desiredId],disabledEndpointIds:[],guardrailLoggingLevels:{}})};
     const metrics={observeControlMessage:vi.fn(),controlConnection:vi.fn(),observeReconcile:vi.fn(),observeJob:vi.fn()};
@@ -103,6 +104,7 @@ describe("production Controller gRPC transport budget", () => {
     try {
       stream.write({registration:{runnerId:"transport-runner-0",bootId:"boot-1",poolId:"default",compilerCapable:true}});
       await expect.poll(()=>desired).toBe(desiredId);
+      (server as any).activeValidations.set("large-validation", (server as any).connections.get("transport-runner-0"));
       if(oversized){
         stream.write({validationReportChunk:{runnerId:"transport-runner-0",runId:"large-validation",gzipResult:Buffer.alloc(CONTROL_MESSAGE_MAX_BYTES),rawSizeBytes:1}});
         await expect.poll(()=>errorCode).toBe(status.RESOURCE_EXHAUSTED);expect(service.completeValidation).not.toHaveBeenCalled();
@@ -135,6 +137,7 @@ describe("Controller background work", () => {
     const pending = Promise.withResolvers<[]>();
     const failure = new Error("timeout exceeded when trying to connect");
     const service = {
+      runnerControlSessions: { isCurrent: vi.fn().mockResolvedValue(true), dispatched: vi.fn().mockResolvedValue(true), dispatchedAllocation: vi.fn().mockResolvedValue({ epoch: 0, groupId: "default" }), acknowledged: vi.fn().mockResolvedValue(true) },
       pendingOutbox: vi.fn().mockReturnValueOnce(pending.promise).mockResolvedValue([]),
       markStaleRunnersOffline: vi.fn().mockResolvedValue(undefined),
     };
@@ -162,7 +165,8 @@ describe("Controller background work", () => {
   it("logs a failed periodic tick and keeps running instead of crashing the process", async () => {
     vi.useFakeTimers({ toFake: ["setInterval", "clearInterval"] });
     const failure = new Error("Connection terminated due to connection timeout");
-    const service = { pendingOutbox: vi.fn().mockRejectedValue(failure), markStaleRunnersOffline: vi.fn().mockResolvedValue(undefined) };
+    const service = {
+      runnerControlSessions: { isCurrent: vi.fn().mockResolvedValue(true), dispatched: vi.fn().mockResolvedValue(true), dispatchedAllocation: vi.fn().mockResolvedValue({ epoch: 0, groupId: "default" }), acknowledged: vi.fn().mockResolvedValue(true) }, pendingOutbox: vi.fn().mockRejectedValue(failure), markStaleRunnersOffline: vi.fn().mockResolvedValue(undefined) };
     const logged = vi.spyOn(console, "error").mockImplementation(() => {});
     const server = new RunnerControlServer({ ...config, grpc: { host: "127.0.0.1", port: 0 } }, service as unknown as ControlPlaneService,
       { observeControlMessage: vi.fn() } as unknown as ControllerMetrics, {} as ModelConfigurationService);

@@ -1,7 +1,8 @@
+import { currentTenantId, resourceReadPredicate, resourceWritePredicate } from "./tenant-context.js";
 import { randomUUID } from "node:crypto";
-import { and, eq, gt, isNull, lte, ne } from "drizzle-orm";
+import { and, eq, gt, inArray, isNull, lte, ne, or, sql } from "drizzle-orm";
 import type { ControllerDatabase } from "../db/client.js";
-import { artifacts, auditEvents, controllerState, guardrails, guardrailVersions, outboxEvents, runnerInstances, runnerPools, user } from "../db/schema.js";
+import { artifacts, auditEvents, controllerState, guardrails, guardrailVersions, outboxEvents, resourceShares, runnerInstances, runnerPools, tenants, user } from "../db/schema.js";
 import { increment } from "../db/postgres-expressions.js";
 import { ConflictError, NotFoundError } from "../domain/errors.js";
 import { PROTECTION_MODE_CAPABILITY, type ProtectionMode, type ProtectionModeSettings } from "../../shared/protection-mode.js";
@@ -39,26 +40,39 @@ export function protectionModeSnapshot(row: Guardrail, runners: Runner[], ready:
 export class ProtectionModeService {
   constructor(private readonly db: ControllerDatabase, private readonly offlineAfterSeconds: number) {}
 
-  private async runners(db: Pick<ControllerDatabase, "select"> = this.db) {
-    return (await db.select({ runner: runnerInstances }).from(runnerInstances)
-      .innerJoin(runnerPools, eq(runnerPools.id, runnerInstances.poolId))).map(r => r.runner);
+  private async runners(db: Pick<ControllerDatabase, "select"> = this.db, guardrail?: Guardrail, tenantScoped = false) {
+    const rows = await db.select({ runner: runnerInstances, groupId: runnerPools.groupId }).from(runnerInstances)
+      .innerJoin(runnerPools, eq(runnerPools.id, runnerInstances.poolId));
+    if (!guardrail) return rows.map(r => r.runner);
+    const shares = await db.select({ recipientTenantId: resourceShares.recipientTenantId }).from(resourceShares)
+      .where(and(eq(resourceShares.resourceType, "guardrail"), eq(resourceShares.resourceId, guardrail.id),
+        eq(resourceShares.ownerTenantId, guardrail.tenantId)));
+    const ids = [guardrail.tenantId, ...shares.map(share => share.recipientTenantId)];
+    const groups = await db.select({ groupId: tenants.groupId }).from(tenants).where(inArray(tenants.id, ids));
+    const allowed = new Set(groups.map(group => group.groupId));
+    if (tenantScoped && currentTenantId()) {
+      const [caller] = await db.select({ groupId: tenants.groupId }).from(tenants).where(eq(tenants.id, currentTenantId()!)).limit(1);
+      if (!caller) return [];
+      return rows.filter(row => row.groupId === caller.groupId && allowed.has(row.groupId)).map(row => row.runner);
+    }
+    return rows.filter(row => allowed.has(row.groupId)).map(row => row.runner);
   }
 
   async summary(row: Guardrail, ready: boolean) {
-    const snapshot = protectionModeSnapshot(row, await this.runners(), ready, Date.now() - this.offlineAfterSeconds * 1000);
+    const snapshot = protectionModeSnapshot(row, await this.runners(this.db, row, true), ready, Date.now() - this.offlineAfterSeconds * 1000);
     const [actor] = row.protectionModeUpdatedBy ? await this.db.select({ name: user.name }).from(user).where(eq(user.id, row.protectionModeUpdatedBy)) : [];
     return { ...snapshot, updatedBy: actor?.name ?? snapshot.updatedBy };
   }
 
   async get(id: string) {
-    const [row] = await this.db.select().from(guardrails).where(and(eq(guardrails.id, id), isNull(guardrails.deletedAt)));
+    const [row] = await this.db.select().from(guardrails).where(and(eq(guardrails.id, id), isNull(guardrails.deletedAt), resourceReadPredicate("guardrail", guardrails.id, guardrails.tenantId)));
     if (!row) throw new NotFoundError("Guardrail", id);
     return this.summary(row, row.status !== "disabled" && await hasReleasedGuardrail(this.db, id));
   }
 
   async update(input: { id: string; mode: ProtectionMode; expectedGeneration: number; reason: string; actorId: string }) {
     await this.db.transaction(async tx => {
-      const [row] = await tx.select().from(guardrails).where(and(eq(guardrails.id, input.id), isNull(guardrails.deletedAt))).for("update");
+      const [row] = await tx.select().from(guardrails).where(and(eq(guardrails.id, input.id), isNull(guardrails.deletedAt), resourceWritePredicate(guardrails.tenantId))).for("update");
       if (!row) throw new NotFoundError("Guardrail", input.id);
       if (row.protectionModeGeneration !== input.expectedGeneration) {
         throw new ConflictError("The protection mode changed. Reload before applying another change.", "protection_mode_conflict");
@@ -82,13 +96,23 @@ export class ProtectionModeService {
     return this.get(input.id);
   }
 
-  async desiredState() {
+  async desiredState(poolId?: string) {
     return this.db.transaction(async tx => {
       // Lock the generation first so its map is a coherent snapshot of commits.
       const [state] = await tx.select({ generation: controllerState.desiredGeneration }).from(controllerState)
         .where(eq(controllerState.id, "singleton")).for("share");
+      const [pool] = poolId ? await tx.select({ groupId: runnerPools.groupId }).from(runnerPools).where(eq(runnerPools.id, poolId)).limit(1) : [];
+      if (poolId && !pool) throw new NotFoundError("Runner pool", poolId);
+      const members = pool ? await tx.select({ id: tenants.id }).from(tenants).where(eq(tenants.groupId, pool.groupId)) : [];
+      const memberIds = members.map(member => member.id);
+      const visible = pool ? (memberIds.length ? or(
+        inArray(guardrails.tenantId, memberIds),
+        sql`exists (select 1 from ${resourceShares} where ${resourceShares.resourceType} = 'guardrail'
+          and ${resourceShares.resourceId} = ${guardrails.id} and ${resourceShares.ownerTenantId} = ${guardrails.tenantId}
+          and ${resourceShares.recipientTenantId} in (${sql.join(memberIds.map(id => sql`${id}`), sql`, `)}))`,
+      ) : sql`false`) : undefined;
       const rows = await tx.select({ id: guardrails.id, mode: guardrails.protectionMode }).from(guardrails)
-        .where(and(isNull(guardrails.deletedAt), eq(guardrails.status, "active")));
+        .where(and(isNull(guardrails.deletedAt), eq(guardrails.status, "active"), visible));
       return { generation: state?.generation ?? 0, modes: Object.fromEntries(rows.map(r => [r.id, r.mode])) };
     });
   }
@@ -106,8 +130,8 @@ export class ProtectionModeService {
       if (!runner || !input.accepted) return;
       const rows = await tx.select().from(guardrails).where(and(isNull(guardrails.deletedAt), gt(guardrails.protectionModeGeneration, 0),
         ne(guardrails.protectionModeApplied, guardrails.protectionMode)));
-      const runners = await this.runners(tx);
       for (const row of rows) {
+        const runners = await this.runners(tx, row);
         if (protectionModeSnapshot(row, runners, true, Date.now() - this.offlineAfterSeconds * 1000).status !== "applied") continue;
         await tx.update(guardrails).set({ protectionModeApplied: row.protectionMode })
           .where(and(eq(guardrails.id, row.id), eq(guardrails.protectionModeGeneration, row.protectionModeGeneration)));

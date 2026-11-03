@@ -35,7 +35,7 @@ async def serving(monkeypatch, tmp_path):
     store = app.state.artifact_store
     registry = store._registry
     await prepare(store.apply, _desired_state())
-    app.state.runner_control._synchronized.set()
+    app.state.runner_control._allow_synchronized_serving()
     try:
         yield app, store, registry
     finally:

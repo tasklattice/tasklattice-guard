@@ -28,18 +28,19 @@ type Discovery = Omit<DiscoveredProviderModels, "providerId">;
 // Port of Relay's RegisterModelsDrawer: source -> review models -> complete.
 // Registration checks actual model calls. Scenario assignments and semantic
 // detection validation belong to Capabilities rather than this selection step.
-export function RegisterModelsDrawer({ providers, registeredModels, initialProviderId, intent, open, onOpenChange, onChanged }: {
+export function RegisterModelsDrawer({ providers, registeredModels, initialProviderId, intent, allowProviderCreation = true, open, onOpenChange, onChanged }: {
   providers: ModelProvider[];
   registeredModels: ModelDefinition[];
   initialProviderId?: string;
   intent: "add-provider" | "register-models";
+  allowProviderCreation?: boolean;
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onChanged: () => Promise<void>;
 }) {
   const { t } = useTranslation();
   const [step, setStep] = useState<Step>("source");
-  const [credentialMode, setCredentialMode] = useState<"existing" | "new">(intent === "add-provider" || !providers.length ? "new" : "existing");
+  const [credentialMode, setCredentialMode] = useState<"existing" | "new">(allowProviderCreation && (intent === "add-provider" || !providers.length) ? "new" : "existing");
   const [providerId, setProviderId] = useState(initialProviderId ?? providers[0]?.id ?? "");
   const [presetId, setPresetId] = useState<ProviderPresetId>();
   const [draft, setDraft] = useState(() => createProviderDraft("openai"));
@@ -180,7 +181,7 @@ export function RegisterModelsDrawer({ providers, registeredModels, initialProvi
             {step === "source" ? (
               <form ref={formRef} onSubmit={(event) => { event.preventDefault(); continueFromSource(); }}>
                 <fieldset disabled={pending} className="min-w-0 space-y-6">
-                  {intent !== "add-provider" && !initialProviderId && providers.length ? (
+                  {allowProviderCreation && intent !== "add-provider" && !initialProviderId && providers.length ? (
                     <div role="radiogroup" aria-label={t("providerRegistration.credentialSource")} className="grid gap-2 sm:grid-cols-2">
                       {(["existing", "new"] as const).map((mode) => <button key={mode} type="button" role="radio" aria-checked={credentialMode === mode}
                         className={cn("min-h-24 border p-3 text-left transition-colors focus-visible:ring-3 focus-visible:ring-ring/20", credentialMode === mode ? "border-primary bg-primary/5" : "hover:bg-muted/40")}

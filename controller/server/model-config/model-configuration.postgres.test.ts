@@ -7,6 +7,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vites
 import { createTestDatabase } from "../db/postgres-test-database.js";
 import { emptyModelAssignments } from "./domain.js";
 import { ModelConfigurationService } from "./service.js";
+import { runWithTenantContext } from "../services/tenant-context.js";
 
 const url = process.env.GUARD_TEST_POSTGRES_URL;
 describe.skipIf(!url)("Current model configuration PostgreSQL semantics", () => {
@@ -20,7 +21,8 @@ describe.skipIf(!url)("Current model configuration PostgreSQL semantics", () => 
   beforeAll(async () => {
     database = await createTestDatabase(url!, "guard_model_apply", { maxConnections: 2 });
     pool = database.pool;
-    await pool.query("INSERT INTO auth_user (id,name,email,role) SELECT id,id,id||'@example.test','admin' FROM unnest(ARRAY['admin','synthetic-admin','admin-a','admin-b','other']) AS id");
+    await pool.query("INSERT INTO auth_user (id,name,email,role,tenant_id) SELECT id,id,id||'@example.test','admin','tenantA' FROM unnest(ARRAY['admin','synthetic-admin','admin-a','admin-b','other']) AS id");
+    await pool.query("INSERT INTO auth_user (id,name,email,role,tenant_id) VALUES ('group_b','B','group_b@example.test','user','tenantB'),('group_c','C','group_c@example.test','user','tenantC')");
     await pool.query("INSERT INTO model_provider (id,name,kind,base_url,credential_ciphertext) VALUES ($1,'Synthetic','custom-openai-compatible','http://provider.invalid/v1','')", [providerId]);
     await pool.query("INSERT INTO model_definition (id,provider_id,name,model,profile) VALUES ($1,$2,'Synthetic','synthetic','tali.qwen3guard.v1')", [modelId, providerId]);
   });
@@ -28,9 +30,15 @@ describe.skipIf(!url)("Current model configuration PostgreSQL semantics", () => 
     await database?.drop();
   });
   beforeEach(async () => {
-    for (const table of ['model_configuration_revision', 'model_assignment_validation', 'controller_outbox', 'audit_event']) await pool.query(`DELETE FROM ${table}`);
+    await pool.query('DELETE FROM resource_share');
+    await pool.query('DELETE FROM model_definition WHERE id <> $1', [modelId]);
+    await pool.query('DELETE FROM model_provider WHERE id <> $1', [providerId]);
+    await pool.query('DELETE FROM model_configuration_revision');
+    await pool.query('DELETE FROM model_assignment_validation');
+    await pool.query('DELETE FROM controller_outbox');
+    await pool.query('DELETE FROM audit_event');
     await pool.query("INSERT INTO controller_state (id,desired_generation) VALUES ('singleton',0) ON CONFLICT (id) DO UPDATE SET desired_generation=0");
-    await pool.query("UPDATE model_definition SET name='Synthetic',profile='tali.qwen3guard.v1',max_concurrency=2 WHERE id=$1", [modelId]);
+    await pool.query("UPDATE model_definition SET tenant_id=NULL,name='Synthetic',profile='tali.qwen3guard.v1',max_concurrency=2 WHERE id=$1", [modelId]);
     service = new ModelConfigurationService(database.db, 'synthetic-root', directory,
       vi.fn(() => { throw new Error('No external calls allowed'); }));
     service.setRailValidator(async () => ({ passed: true, message: 'Synthetic Rail result', latencyMs: 1 }));
@@ -42,6 +50,157 @@ describe.skipIf(!url)("Current model configuration PostgreSQL semantics", () => 
     await seedPartial();
     expect(await service.modelHealth([])).toEqual({ status: "healthy", reason: "not_required", bindings: [] });
   });
+
+  it('isolates tenant Models, exposes global Provider metadata, and makes shared Models read-only', async () => {
+    const tenantBModelId = randomUUID();
+    await pool.query("UPDATE model_definition SET tenant_id='tenantA' WHERE id=$1", [modelId]);
+    await pool.query("UPDATE model_provider SET credential_hint='private-key-hint',validation_message='internal connection details' WHERE id=$1", [providerId]);
+    await pool.query("INSERT INTO model_definition (id,tenant_id,provider_id,name,model,profile) VALUES ($1,'tenantB',$2,'B Model','b-model','generic-chat')", [tenantBModelId, providerId]);
+
+    const tenantAView = await runWithTenantContext({ tenantId: 'tenantA', role: 'user' }, () => service.view());
+    const tenantBView = await runWithTenantContext({ tenantId: 'tenantB', role: 'user' }, () => service.view());
+    expect(tenantAView.providers.map((item) => item.id)).toEqual([providerId]);
+    expect(tenantAView.models.map((item) => item.id)).toEqual([modelId]);
+    expect(tenantBView.providers.map((item) => item.id)).toEqual([providerId]);
+    expect(tenantBView.models.map((item) => item.id)).toEqual([tenantBModelId]);
+    expect(tenantBView.providers[0]).toMatchObject({ name: 'Synthetic', kind: 'custom-openai-compatible' });
+    for (const field of ['credentialCiphertext', 'credentialHint', 'credentialConfigured', 'validationMessage', 'createdBy']) {
+      expect(tenantBView.providers[0]).not.toHaveProperty(field);
+    }
+    expect(tenantBView).toMatchObject({ draft: null, active: null, activating: null, failed: null });
+    for (const tenantId of ['tenantA', 'tenantB']) {
+      await expect(runWithTenantContext({ tenantId, role: 'user' }, () =>
+        service.updateProvider(providerId, { name: 'Changed' }, 'group_b'))).rejects.toMatchObject({ code: 'forbidden' });
+      await expect(runWithTenantContext({ tenantId, role: 'user' }, () =>
+        service.validateDraft('group_b'))).rejects.toMatchObject({ code: 'forbidden' });
+    }
+    await expect(runWithTenantContext({ tenantId: 'tenantB', role: 'user' }, () =>
+      service.revalidateModel(modelId, 'group_b'))).rejects.toMatchObject({ code: 'not_found' });
+
+    await pool.query("INSERT INTO resource_share (id,owner_tenant_id,recipient_tenant_id,resource_type,resource_id) VALUES ($1,'tenantA','tenantB','model',$2)",
+      [randomUUID(), modelId]);
+    const sharedView = await runWithTenantContext({ tenantId: 'tenantB', role: 'user' }, () => service.view());
+    expect(new Set(sharedView.models.map((item) => item.id))).toEqual(new Set([modelId, tenantBModelId]));
+    for (const mutate of [() => service.revalidateModel(modelId, 'group_b'),
+      () => service.testModelConnection(modelId, 'group_b'),
+      () => service.configureModel(modelId, { profile: 'generic-chat', timeoutSeconds: 20, maxTokens: 128 }, 'group_b'),
+      () => service.configureConcurrency(modelId, { maxConcurrency: 4 }, 'group_b'),
+      () => service.deleteModel(modelId, 'group_b')]) {
+      await expect(runWithTenantContext({ tenantId: 'tenantB', role: 'user' }, mutate)).rejects.toMatchObject({ code: 'not_found' });
+    }
+    const owned = await runWithTenantContext({ tenantId: 'tenantB', role: 'user' }, () =>
+      service.configureModel(tenantBModelId, { profile: 'generic-chat', timeoutSeconds: 45, maxTokens: 256 }, 'group_b'));
+    expect(owned).toMatchObject({ tenantId: 'tenantB', timeoutSeconds: 45, maxTokens: 256 });
+    expect(await runWithTenantContext({ tenantId: 'tenantB', role: 'user' }, () =>
+      service.configureConcurrency(tenantBModelId, { maxConcurrency: 4 }, 'group_b')))
+      .toMatchObject({ tenantId: 'tenantB', maxConcurrency: 4 });
+    expect((await pool.query('SELECT max_concurrency FROM model_definition WHERE id=$1', [modelId])).rows[0].max_concurrency).toBe(2);
+    await runWithTenantContext({ tenantId: 'tenantB', role: 'user' }, () => service.deleteModel(tenantBModelId, 'group_b'));
+    expect((await pool.query('SELECT id FROM model_definition WHERE id=$1', [tenantBModelId])).rows).toHaveLength(0);
+
+    await pool.query("DELETE FROM resource_share WHERE recipient_tenant_id='tenantB'");
+    const revokedView = await runWithTenantContext({ tenantId: 'tenantB', role: 'user' }, () => service.view());
+    expect(revokedView.providers.map((item) => item.id)).toEqual([providerId]);
+    expect(revokedView.models).toEqual([]);
+  });
+
+  it('preserves global detector readiness without exposing private Model identifiers or names', async () => {
+    const revisionId = await seed(true);
+    const checkedAt = new Date().toISOString();
+    await pool.query("UPDATE model_configuration_revision SET state='active',validation_report=$2 WHERE id=$1", [revisionId,
+      { valid: true, checkedAt, checks: [{ id: `probe:content_safety.input:${modelId}`, status: 'passed', scope: 'capability', evidenceKind: 'nemo-rail-v1', message: 'Passed' }], contractCoverage: [], policies: [] }]);
+    const privateReadiness = await runWithTenantContext({ tenantId: 'tenantB', role: 'user' }, () => service.readinessView());
+    const privateJson = JSON.stringify(privateReadiness);
+    expect(privateJson).not.toContain(modelId);
+    expect(privateJson).not.toContain('Synthetic');
+    const hiddenId = privateReadiness.active!.assignments.bindings['content_safety.input'];
+    expect(privateReadiness.models).toContainEqual({ id: hiddenId, name: 'Configured detector' });
+    expect(privateReadiness.active!.validationReport!.checks).toContainEqual({ id: `probe:content_safety.input:${hiddenId}`, status: 'passed', evidenceKind: 'nemo-rail-v1' });
+    expect((await runWithTenantContext({ tenantId: 'tenantB', role: 'user' }, () => service.activeConfiguration()))!.revisionId).toBe(revisionId);
+
+    await pool.query("INSERT INTO resource_share (id,owner_tenant_id,recipient_tenant_id,resource_type,resource_id) VALUES ($1,'tenantA','tenantB','model',$2)", [randomUUID(), modelId]);
+    const sharedReadiness = await runWithTenantContext({ tenantId: 'tenantB', role: 'user' }, () => service.readinessView());
+    // A stale tenant-owned grant cannot make a platform-owned Model readable.
+    expect(sharedReadiness.active!.assignments.bindings['content_safety.input']).not.toBe(modelId);
+    expect(JSON.stringify(sharedReadiness)).not.toContain('Synthetic');
+  });
+
+  it('lets tenants independently register and configure the same platform Model', async () => {
+    const fetcher = vi.fn(async () => Response.json({ choices: [{ message: { content: 'Safe' } }] }));
+    const registration = new ModelConfigurationService(database.db, 'synthetic-root', directory, fetcher);
+    const input = { providerId, name: 'My detector', model: 'synthetic', profile: 'tali.qwen3guard.v1', timeoutSeconds: 20, maxTokens: 128 };
+    const ownedB = await runWithTenantContext({ tenantId: 'tenantB', role: 'user' }, () => registration.createModel(input, 'group_b'));
+    const ownedC = await runWithTenantContext({ tenantId: 'tenantC', role: 'user' }, () => registration.createModel(input, 'group_c'));
+    expect(ownedB).toMatchObject({ tenantId: 'tenantB', model: 'synthetic', providerId, connectionStatus: 'validated' });
+    expect(ownedC).toMatchObject({ tenantId: 'tenantC', model: 'synthetic', providerId, connectionStatus: 'validated' });
+    expect(new Set([modelId, ownedB.id, ownedC.id]).size).toBe(3);
+    expect(fetcher).toHaveBeenCalledTimes(2);
+    expect((await pool.query('SELECT id FROM model_provider')).rows).toHaveLength(1);
+
+    await runWithTenantContext({ tenantId: 'tenantB', role: 'user' }, () => registration.configureModel(ownedB.id,
+      { profile: 'generic-chat', timeoutSeconds: 45, maxTokens: 256 }, 'group_b'));
+    const other = await runWithTenantContext({ tenantId: 'tenantC', role: 'user' }, () => registration.view());
+    expect(other.models).toHaveLength(1);
+    expect(other.models[0]).toMatchObject({ id: ownedC.id, tenantId: 'tenantC', profile: input.profile, timeoutSeconds: 20 });
+    expect((await pool.query('SELECT DISTINCT tenant_id FROM audit_event WHERE resource_id=$1', [ownedB.id])).rows)
+      .toEqual([{ tenant_id: 'tenantB' }]);
+    await expect(runWithTenantContext({ tenantId: 'tenantB', role: 'user' }, () => registration.deleteModel(ownedC.id, 'group_b')))
+      .rejects.toMatchObject({ code: 'not_found' });
+    await runWithTenantContext({ tenantId: 'tenantB', role: 'user' }, () => registration.deleteModel(ownedB.id, 'group_b'));
+    expect((await pool.query('SELECT id FROM model_definition ORDER BY id')).rows.map(row => row.id).sort()).toEqual([modelId, ownedC.id].sort());
+  });
+
+  it('keeps platform Model administration and binding selection separate from tenant inventories', async () => {
+    const privateId = randomUUID();
+    await pool.query("INSERT INTO model_definition(id,tenant_id,provider_id,name,model,profile) VALUES ($1,'tenantB',$2,'Private B','private-b','generic-chat')", [privateId, providerId]);
+    const platformView = await runWithTenantContext({ tenantId: 'tenantB', role: 'admin' }, () => service.view());
+    expect(platformView.models.map(model => model.id)).toEqual([modelId]);
+    expect(platformView.models[0]).toMatchObject({ tenantId: null, protocolEditable: true });
+    const tenantView = await runWithTenantContext({ tenantId: 'tenantB', role: 'user' }, () => service.view());
+    expect(tenantView.models.map(model => model.id)).toEqual([privateId]);
+    for (const mutate of [() => service.revalidateModel(privateId, 'admin'),
+      () => service.testModelConnection(privateId, 'admin'),
+      () => service.configureModel(privateId, { profile: 'generic-chat', timeoutSeconds: 20, maxTokens: 128 }, 'admin'),
+      () => service.configureConcurrency(privateId, { maxConcurrency: 4 }, 'admin'),
+      () => service.deleteModel(privateId, 'admin')]) {
+      await expect(runWithTenantContext({ tenantId: 'tenantB', role: 'admin' }, mutate)).rejects.toMatchObject({ code: 'not_found' });
+    }
+    await seed();
+    await expect(service.previewAssignment('control_plane', privateId, 'admin')).rejects.toMatchObject({ code: 'not_found' });
+    const assignments = { ...emptyModelAssignments(), controlPlane: privateId };
+    await expect(service.updateDraft(assignments, 'admin')).rejects.toThrow('Assigned Models were not found');
+    expect((await pool.query('SELECT tenant_id,model FROM model_definition WHERE id=$1', [privateId])).rows[0])
+      .toMatchObject({ tenant_id: 'tenantB', model: 'private-b' });
+  });
+
+  it('uses global detector and chat configurations independently of tenant revision rows', async () => {
+    const activeId = await seed(true);
+    await pool.query("UPDATE model_configuration_revision SET state='active',generation=1 WHERE id=$1", [activeId]);
+    const tenantAssignments = emptyModelAssignments();
+    const tenantModelId = randomUUID();
+    tenantAssignments.bindings['content_safety.input'] = tenantModelId;
+    await pool.query("INSERT INTO model_definition(id,tenant_id,provider_id,name,model,profile) VALUES ($1,'tenantB',$2,'Private B','private-b','generic-chat')", [tenantModelId, providerId]);
+    await pool.query("INSERT INTO model_configuration_revision(id,tenant_id,revision,generation,state,assignments) VALUES ($1,'tenantB',99,99,'active',$2)", [randomUUID(), tenantAssignments]);
+    const active = await runWithTenantContext({ tenantId: 'tenantB', role: 'user' }, () => service.activeConfiguration());
+    expect(active!.revisionId).toBe(activeId);
+    expect(active!.assignments.bindings['content_safety.input']).toBe(modelId);
+    const readiness = await runWithTenantContext({ tenantId: 'tenantB', role: 'user' }, () => service.readinessView());
+    expect(JSON.stringify(readiness)).not.toContain(tenantModelId);
+    expect(JSON.stringify(readiness)).not.toContain('private-b');
+
+    await pool.query("UPDATE model_definition SET profile='generic-chat' WHERE id=$1", [modelId]);
+    const globalChat = { ...emptyModelAssignments(), controlPlane: modelId };
+    const report = { valid: true, checkedAt: new Date().toISOString(), checks: [{ id: `probe:control_plane:${modelId}`, status: 'passed', scope: 'control_plane', message: 'Passed' }], contractCoverage: [], policies: [] };
+    await pool.query("INSERT INTO model_configuration_revision(id,tenant_id,revision,state,assignments,validation_report) VALUES ($1,'tenantA',2,'validated',$2,$3)", [randomUUID(), globalChat, report]);
+    await pool.query("INSERT INTO model_configuration_revision(id,tenant_id,revision,state,assignments,validation_report) VALUES ($1,'tenantB',100,'validated',$2,$3)", [randomUUID(), { ...emptyModelAssignments(), controlPlane: tenantModelId },
+      { ...report, checks: [{ ...report.checks[0], id: `probe:control_plane:${tenantModelId}` }] }]);
+    expect(await runWithTenantContext({ tenantId: 'tenantB', role: 'user' }, () => service.controlPlaneModel('playground_chat')))
+      .toMatchObject({ model: 'synthetic', provider: 'Synthetic' });
+    expect(await runWithTenantContext({ tenantId: 'tenantB', role: 'user' }, () => service.statusSummary()))
+      .toMatchObject({ controlPlane: { status: 'configured', model: 'Configured control-plane model' },
+        dataPlane: { models: [expect.objectContaining({ model: 'Configured detector' })] } });
+  });
+
   async function seed(assigned = false) {
     const assignments = emptyModelAssignments();
     if (assigned) assignments.bindings['content_safety.input'] = modelId;

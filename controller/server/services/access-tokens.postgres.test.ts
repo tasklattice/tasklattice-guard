@@ -5,6 +5,7 @@ import { drizzle } from "drizzle-orm/node-postgres";
 import { Pool } from "pg";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import * as schema from "../db/schema.js";
+import type { ControllerDatabase } from "../db/client.js";
 import { AccessTokenService } from "./access-tokens.js";
 const url = process.env.GUARD_TEST_POSTGRES_URL;
 describe.skipIf(!url)("Personal access tokens in PostgreSQL", () => {
@@ -36,7 +37,7 @@ describe.skipIf(!url)("Personal access tokens in PostgreSQL", () => {
     expect(JSON.stringify(await service.list("owner"))).not.toContain(first.secret);
     expect(await service.list("other")).toEqual([]);
     expect(JSON.stringify((await pool.query("SELECT * FROM audit_event")).rows)).not.toContain(first.secret);
-    expect(await service.authenticate(first.secret)).toMatchObject({ id: "owner", role: "admin", tokenId: first.token.id, permissions: input.permissions });
+    expect(await service.authenticate(first.secret)).toMatchObject({ id: "owner", role: "admin", tenantId: "tenantA", tokenId: first.token.id, permissions: input.permissions });
     expect((await service.list("owner")).find(t => t.id === first.token.id)?.lastUsedAt).not.toBeNull();
   });
   it("rejects tampered, expired and revoked tokens immediately, with owner-only idempotent revocation", async () => {
@@ -52,8 +53,8 @@ describe.skipIf(!url)("Personal access tokens in PostgreSQL", () => {
   });
   it("reads current owner status and role on every authentication", async () => {
     const issued = await service.create("owner", input);
-    await pool.query("UPDATE auth_user SET role='user' WHERE id='owner'");
-    expect(await service.authenticate(issued.secret)).toMatchObject({ role: "user" });
+    await pool.query("UPDATE auth_user SET role='user', tenant_id='tenantB' WHERE id='owner'");
+    expect(await service.authenticate(issued.secret)).toMatchObject({ role: "user", tenantId: "tenantB" });
     await pool.query("UPDATE auth_user SET banned=true WHERE id='owner'");
     expect(await service.authenticate(issued.secret)).toBeNull();
     await expect(service.create("owner", input)).rejects.toMatchObject({ status: 403 });
@@ -62,10 +63,47 @@ describe.skipIf(!url)("Personal access tokens in PostgreSQL", () => {
     expect(await service.authenticate(issued.secret)).toBeNull();
     expect(await service.list("owner")).toEqual([]);
   });
+  it.each([
+    ["role demotion", "UPDATE auth_user SET role='user' WHERE id='owner'"],
+    ["tenant reassignment", "UPDATE auth_user SET tenant_id='tenantB' WHERE id='owner'"],
+    ["account ban", "UPDATE auth_user SET banned=true WHERE id='owner'"],
+    ["token expiry", "UPDATE personal_access_token SET expires_at=clock_timestamp()+interval '100 milliseconds' WHERE user_id='owner'; SELECT pg_sleep(0.2)"],
+  ])("rejects a token when %s occurs between lookup and touch", async (_change, changeOwner) => {
+    const issued = await service.create("owner", input);
+    const db = drizzle(pool, { schema });
+    // Perform the real lookup, mutate the owner on another query, then allow
+    // authenticate() to run its real conditional UPDATE. This deterministically
+    // exercises the window between the two database statements.
+    const racingDb = {
+      select: (...args: Parameters<typeof db.select>) => {
+        const selected = db.select(...args);
+        return { from: (table: typeof schema.personalAccessTokens) => {
+          const from = selected.from(table);
+          return { innerJoin: (joined: typeof schema.user, condition: Parameters<typeof from.innerJoin>[1]) => {
+            const joinedQuery = from.innerJoin(joined, condition);
+            return { where: async (condition: Parameters<typeof joinedQuery.where>[0]) => {
+              const rows = await joinedQuery.where(condition);
+              await pool.query(changeOwner);
+              return rows;
+            } };
+          } };
+        } };
+      },
+      update: db.update.bind(db),
+    } as unknown as ControllerDatabase;
+    expect(await new AccessTokenService(racingDb).authenticate(issued.secret)).toBeNull();
+    expect((await pool.query("SELECT last_used_at FROM personal_access_token WHERE id=$1", [issued.token.id])).rows[0].last_used_at).toBeNull();
+  }, 30000);
+  it("fails closed when the persisted owner has an unsupported role", async () => {
+    const issued = await service.create("owner", input);
+    await pool.query("UPDATE auth_user SET role='viewer' WHERE id='owner'");
+    expect(await service.authenticate(issued.secret)).toBeNull();
+    await expect(service.create("owner", input)).rejects.toMatchObject({ status: 403 });
+  });
   it("allows user workflow grants and rejects platform grants", async () => {
     const workflowInput = { ...input, permissions: { guardrails: "write", routers: "read" } };
     expect((await service.create("other", workflowInput)).token.permissions).toEqual(workflowInput.permissions);
-    await expect(service.create("other", { ...input, permissions: { models: "read" } })).rejects.toMatchObject({ status: 403 });
+    await expect(service.create("other", { ...input, permissions: { settings: "read" } })).rejects.toMatchObject({ status: 403 });
     const issued = await service.create("other", { ...input, permissions: { routers: "read" } });
     expect(await service.authenticate(issued.secret)).toMatchObject({ id: "other", role: "user", permissions: { routers: "read" } });
   });

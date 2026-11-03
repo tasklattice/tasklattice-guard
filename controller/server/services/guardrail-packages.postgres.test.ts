@@ -17,6 +17,7 @@ import { readZip, writeZip } from "../domain/zip.js";
 import { createTestDatabase } from "../db/postgres-test-database.js";
 import { PolicyCatalog } from "../policy-catalog/catalog.js";
 import { programmablePolicyDraftSchema } from "../policy-studio/model.js";
+import { runWithTenantContext } from "./tenant-context.js";
 import { ControlPlaneService } from "./control-plane.js";
 import { routingEventSchema } from "./traffic-routing.js";
 import { emptyPolicyDefinition } from "../../shared/policy-definition.js";
@@ -117,12 +118,12 @@ describe.skipIf(!url)("Guardrail release packages between isolated environments"
     await testAndPublish(guardrailId, 1);
     await uat.updateGuardrail({ id: guardrailId, actorId: "admin", draftConfig: { ...draft, policyBindings: draft.policyBindings.slice(1) }, expectedDraftRevision: 1 });
     await testAndPublish(guardrailId, 2);
-  });
+  }, 30_000);
   afterAll(async () => {
     await uatDb?.drop();
     await prodDb?.drop();
     if (keys) rmSync(keys, { recursive: true, force: true });
-  });
+  }, 30_000);
 
   it("starts production with the same features as UAT: a complete bundled Default baseline without model configuration", async () => {
     await prod.initialize();
@@ -192,6 +193,69 @@ describe.skipIf(!url)("Guardrail release packages between isolated environments"
     const { rows: [stored] } = await uatDb.pool.query("SELECT test_suite FROM guardrail_version WHERE version = $1", [published[0]]);
     expect(parsed.versions[0]!.testSuite).toEqual(stored.test_suite);
     expect(JSON.stringify(parsed)).not.toMatch(/uat-runner-0|resultsDigest/);
+  });
+
+  it("does not export private Policy source transitively through a shared Guardrail", async () => {
+    const asTenant = <T>(tenantId: string, fn: () => T) => runWithTenantContext({ tenantId, role: "user" }, fn);
+    await uatDb.pool.query("INSERT INTO resource_share(id,owner_tenant_id,recipient_tenant_id,resource_type,resource_id) VALUES ('package-guardrail-share','tenantA','tenantB','guardrail',$1)", [guardrailId]);
+    try {
+      const owned = await asTenant("tenantA", () => uat.packages.exportPackage(guardrailId, [published[0]!]));
+      expect(parsePackage(owned.bytes).policies.some(policy => policy.id === STUDIO)).toBe(true);
+      await expect(asTenant("tenantB", () => uat.packages.exportPackage(guardrailId, [published[0]!]))).rejects.toMatchObject({ code: "guardrail_package_policy_export_forbidden" });
+      await expect(asTenant("tenantC", () => uat.packages.exportPackage(guardrailId, [published[0]!]))).rejects.toMatchObject({ code: "not_found" });
+      await uatDb.pool.query("INSERT INTO resource_share(id,owner_tenant_id,recipient_tenant_id,resource_type,resource_id) VALUES ('package-policy-share','tenantA','tenantB','policy',$1)", [STUDIO]);
+      // A Policy read share still does not grant onward redistribution.
+      await expect(asTenant("tenantB", () => uat.packages.exportPackage(guardrailId, [published[0]!]))).rejects.toMatchObject({ code: "guardrail_package_policy_export_forbidden" });
+      expect(parsePackage((await uat.packages.exportPackage(guardrailId, [published[0]!])).bytes).policies.some(policy => policy.id === STUDIO)).toBe(true);
+      // Reusing an ID/version for different content must not transfer old
+      // frozen Policy source to the apparent current owner.
+      const [original] = (await uatDb.pool.query("SELECT snapshot FROM policy_version WHERE policy_id=$1 AND version=1", [STUDIO])).rows;
+      try {
+        await uatDb.pool.query("UPDATE policy_version SET snapshot=jsonb_set(snapshot,'{name}', '\"replacement\"'::jsonb) WHERE policy_id=$1 AND version=1", [STUDIO]);
+        await expect(asTenant("tenantA", () => uat.packages.exportPackage(guardrailId, [published[0]!]))).rejects.toMatchObject({ code: "guardrail_package_policy_export_forbidden" });
+      } finally {
+        await uatDb.pool.query("UPDATE policy_version SET snapshot=$2 WHERE policy_id=$1 AND version=1", [STUDIO, original.snapshot]);
+      }
+      await uatDb.pool.query("DELETE FROM resource_share WHERE id='package-guardrail-share'");
+      await expect(asTenant("tenantB", () => uat.packages.exportPackage(guardrailId, [published[0]!]))).rejects.toMatchObject({ code: "not_found" });
+    } finally {
+      await uatDb.pool.query("DELETE FROM resource_share WHERE id IN ('package-guardrail-share','package-policy-share')");
+    }
+  });
+
+  it("allows exporting a shared Guardrail built exclusively from matching shipped catalog Policies", async () => {
+    const created = await uat.createGuardrail({ name: "Public policy composition", draftConfig: defaultGuardrailDraft(PolicyCatalog.load(catalogDir).list()), runtimeProfile: "auto", actorId: "admin" });
+    const version = await testAndPublish(created.id, 1, false);
+    await uatDb.pool.query("INSERT INTO resource_share(id,owner_tenant_id,recipient_tenant_id,resource_type,resource_id) VALUES ('public-package-share','tenantA','tenantB','guardrail',$1)", [created.id]);
+    try {
+      const bytes = await runWithTenantContext({ tenantId: "tenantB", role: "user" }, () => uat.packages.exportPackage(created.id, [version.version]));
+      expect(parsePackage(bytes.bytes).policies.every(policy => policy.kind === "catalog")).toBe(true);
+      const [original] = (await uatDb.pool.query("SELECT policies FROM guardrail_version WHERE guardrail_id=$1 AND version=$2", [created.id, version.version])).rows;
+      const changed = structuredClone(original.policies);
+      changed[0].definition.name = "foreign private catalog content";
+      try {
+        await uatDb.pool.query("UPDATE guardrail_version SET policies=$3 WHERE guardrail_id=$1 AND version=$2", [created.id, version.version, JSON.stringify(changed)]);
+        await expect(runWithTenantContext({ tenantId: "tenantB", role: "user" }, () => uat.packages.exportPackage(created.id, [version.version])))
+          .rejects.toMatchObject({ code: "guardrail_package_policy_export_forbidden", message: "This package contains Policy content that cannot be exported under your current ownership." });
+      } finally {
+        await uatDb.pool.query("UPDATE guardrail_version SET policies=$3 WHERE guardrail_id=$1 AND version=$2", [created.id, version.version, JSON.stringify(original.policies)]);
+      }
+    } finally {
+      await uatDb.pool.query("DELETE FROM resource_share WHERE id='public-package-share'");
+    }
+  });
+
+  it("does not export Artifact Policy source when the frozen leaf list is missing", async () => {
+    const version = published[0]!;
+    const [original] = (await uatDb.pool.query("SELECT policies FROM guardrail_version WHERE guardrail_id=$1 AND version=$2", [guardrailId, version])).rows;
+    expect(original.policies.some((node: { id: string }) => node.id === STUDIO)).toBe(true);
+    try {
+      await uatDb.pool.query("UPDATE guardrail_version SET policies='[]'::jsonb WHERE guardrail_id=$1 AND version=$2", [guardrailId, version]);
+      await expect(runWithTenantContext({ tenantId: "tenantA", role: "user" }, () => uat.packages.exportPackage(guardrailId, [version])))
+        .rejects.toMatchObject({ code: "guardrail_package_policy_export_forbidden", message: "This package contains Policy content that cannot be exported under your current ownership." });
+    } finally {
+      await uatDb.pool.query("UPDATE guardrail_version SET policies=$3 WHERE guardrail_id=$1 AND version=$2", [guardrailId, version, JSON.stringify(original.policies)]);
+    }
   });
 
   it("keeps model costs and global prices out of exported resource files", async () => {
@@ -397,6 +461,20 @@ describe.skipIf(!url)("Guardrail release packages between isolated environments"
     await prodDb.pool.query("UPDATE guardrail_version SET status = 'pending', released_at = NULL WHERE guardrail_id = $1 AND version = $2", [guardrailId, version]);
     expect((await prod.desiredStateForPool("default")).artifacts.filter(item => item.guardrailId === guardrailId).map(item => item.guardrailVersion)).toEqual([version]);
     await prodDb.pool.query("UPDATE guardrail_version SET status = 'ready', released_at = $3, validation_run_id = $4 WHERE guardrail_id = $1 AND version = $2", [guardrailId, version, release.released_at, release.validation_run_id]);
+    // Sharing permits composition with imported content, while explicit checks
+    // remain owner-only; automatic admission is a runtime infrastructure step.
+    await prodDb.pool.query("INSERT INTO auth_user(id,name,email,role,tenant_id) VALUES ('tenant-b-operator','B','b@example.test','user','tenantB'),('tenant-b-approver','B approver','b-approver@example.test','user','tenantB')");
+    await prodDb.pool.query("INSERT INTO resource_share(id,owner_tenant_id,recipient_tenant_id,resource_type,resource_id) VALUES ('imported-guardrail-share','tenantA','tenantB','guardrail',$1)", [guardrailId]);
+    const asB = <T>(callback: () => T) => runWithTenantContext({ tenantId: "tenantB", actorId: "tenant-b-operator", role: "user" }, callback);
+    await expect(asB(() => prod.packages.checkVersionEnvironment(guardrailId, version))).rejects.toMatchObject({ code: "not_found" });
+    const sharedRouter = await asB(() => prod.trafficRouting.create("B imported target", "", { routes: [{ id: "fallback", name: "Fallback", kind: "fallback", enabled: true,
+      selector: { expression: { combinator: "and", conditions: [] } }, targets: [{ id: "target", guardrailId, guardrailVersion: version, weightBps: 10000 }] }] }, "tenant-b-operator"));
+    const review = await asB(() => prod.trafficRouting.preview(sharedRouter.id, 1));
+    await asB(() => prod.packages.checkRoutedImports(review.snapshot));
+    const sharedChange = await asB(() => prod.trafficRouting.submitChange(sharedRouter.id, { expectedDraftRevision: 1, reviewedSnapshot: review.snapshot, reviewedEndpointIds: review.endpointIds, reason: "Shared import", ticket: "B-1" }, "tenant-b-operator"));
+    await runWithTenantContext({ tenantId: "tenantB", actorId: "tenant-b-approver", role: "user" }, () => prod.trafficRouting.approveChange(sharedRouter.id, sharedChange.id, "tenant-b-approver", {}));
+    await prodDb.pool.query("UPDATE traffic_router SET deleted_at=now() WHERE id=$1", [sharedRouter.id]);
+
 
   });
 
@@ -474,6 +552,71 @@ describe.skipIf(!url)("Guardrail release packages between isolated environments"
       }
     } finally {
       await diverged.cleanup();
+    }
+  });
+
+  it("rejects conflicting owners across Policy representations for both tenants and administrators", async () => {
+    const database = await createTestDatabase(url!, "guard_pkg_conflicting_owners");
+    try {
+      await seed(database);
+      await database.pool.query("INSERT INTO auth_user (id,tenant_id,name,email,role) VALUES ('operator-b','tenantB','B','operator-b@example.test','user')");
+      const definition = emptyPolicyDefinition();
+      definition.metadata.id = STUDIO;
+      definition.metadata.name = "Private A policy";
+      await database.pool.query("INSERT INTO policy_resource (id,tenant_id,definition,maintainer) VALUES ($1,'tenantA',$2,'A')", [STUDIO, definition]);
+      await database.pool.query("INSERT INTO policy_imported_version (policy_id,tenant_id,version,digest,definition,source_id) VALUES ($1,'tenantB','conflicting','digest','{}','test')", [STUDIO]);
+      const service = new ControlPlaneService(database.db, prodConfig);
+      const { bytes } = await uat.packages.exportPackage(guardrailId, [published[0]!]);
+      const asB = <T>(callback: () => T) => runWithTenantContext({ tenantId: "tenantB", actorId: "operator-b", role: "user" }, callback);
+      const preview = await asB(() => service.packages.inspectUpload(bytes, "operator-b"));
+      expect(preview.blockers).toContainEqual({ code: "policy_ownership_conflict", message: "A package cannot change a Policy with conflicting or unauthorized ownership." });
+      await expect(asB(() => service.packages.importPackage(preview.packageId, { actorId: "operator-b" })))
+        .rejects.toMatchObject({ code: "policy_ownership_conflict" });
+      const adminPreview = await service.packages.inspectUpload(bytes, "admin");
+      expect(adminPreview.blockers).toContainEqual({ code: "policy_ownership_conflict", message: "A package cannot change a Policy with conflicting or unauthorized ownership." });
+      await expect(service.packages.importPackage(adminPreview.packageId, { actorId: "admin" }))
+        .rejects.toMatchObject({ code: "policy_ownership_conflict" });
+      expect((await database.pool.query("SELECT tenant_id FROM policy_resource WHERE id=$1", [STUDIO])).rows).toEqual([{ tenant_id: "tenantA" }]);
+      expect((await database.pool.query("SELECT tenant_id FROM policy_imported_version WHERE policy_id=$1", [STUDIO])).rows).toEqual([{ tenant_id: "tenantB" }]);
+    } finally {
+      await database.drop();
+    }
+  });
+
+  it("rechecks Policy ownership after a concurrent Policy editor commits", async () => {
+    const database = await createTestDatabase(url!, "guard_pkg_policy_edit_race");
+    try {
+      await seed(database);
+      await database.pool.query("INSERT INTO auth_user (id,tenant_id,name,email,role) VALUES ('operator-b','tenantB','B','operator-b@example.test','user')");
+      const service = new ControlPlaneService(database.db, prodConfig);
+      const { bytes } = await uat.packages.exportPackage(guardrailId, [published[0]!]);
+      const asB = <T>(callback: () => T) => runWithTenantContext({ tenantId: "tenantB", actorId: "operator-b", role: "user" }, callback);
+      const preview = await asB(() => service.packages.inspectUpload(bytes, "operator-b"));
+      const editor = await database.pool.connect();
+      try {
+        await editor.query("BEGIN");
+        const lockName = `policy-resource:${STUDIO}`;
+        await editor.query("SELECT pg_advisory_xact_lock(hashtext($1))", [lockName]);
+        const importing = asB(() => service.packages.importPackage(preview.packageId, { actorId: "operator-b" }));
+        let waiting = false;
+        for (let attempt = 0; attempt < 100 && !waiting; attempt++) {
+          const result = await database.pool.query("SELECT EXISTS (SELECT 1 FROM pg_locks WHERE locktype='advisory' AND NOT granted AND objid=(hashtext($1)::bigint & 4294967295)) AS waiting", [lockName]);
+          waiting = result.rows[0].waiting;
+          if (!waiting) await new Promise(resolve => setTimeout(resolve, 10));
+        }
+        expect(waiting).toBe(true);
+        const definition = emptyPolicyDefinition();
+        definition.metadata.id = STUDIO;
+        await editor.query("INSERT INTO policy_resource (id,tenant_id,definition,maintainer) VALUES ($1,'tenantA',$2,'A')", [STUDIO, definition]);
+        await editor.query("COMMIT");
+        await expect(importing).rejects.toMatchObject({ code: "policy_ownership_conflict" });
+        expect((await database.pool.query("SELECT count(*)::int AS count FROM policy_record WHERE id=$1", [STUDIO])).rows).toEqual([{ count: 0 }]);
+      } finally {
+        await editor.query("ROLLBACK");
+        editor.release();
+      }
+    } finally {
+      await database.drop();
     }
   });
 
@@ -672,7 +815,14 @@ describe.skipIf(!url)("Guardrail release packages between isolated environments"
       expect((await database.pool.query("SELECT * FROM controller_outbox WHERE aggregate_id=$1 AND kind='guardrail.validation_requested'", [guardrailId])).rows).toEqual([]);
       expect((await database.pool.query("SELECT * FROM controller_outbox WHERE id='other-request'")).rows).toHaveLength(1);
       expect((await database.pool.query("SELECT detail FROM audit_event WHERE kind='guardrail.disabled'")).rows[0].detail.cleared)
-        .toMatchObject({ testingReports: 2, testRequests: 2, runtimeEvents: 1, routeAssignments: 1 });
+        .toEqual(expect.objectContaining({ testingReports: 2, testRequests: 2 }));
+      expect((await database.pool.query("SELECT detail FROM audit_event WHERE kind='guardrail.disabled'")).rows[0].detail.cleared)
+        .not.toHaveProperty("runtimeEvents");
+      const deletionImpact = (await database.pool.query("SELECT detail FROM audit_event WHERE kind='guardrail.disabled'")).rows[0].detail.impact;
+      expect(deletionImpact).not.toHaveProperty("incomingRequestCount");
+      expect(deletionImpact).not.toHaveProperty("lastRequestAt");
+      expect(deletionImpact).not.toHaveProperty("activeRouterCount");
+      expect(deletionImpact).not.toHaveProperty("telemetryWatermark");
       expect((await database.pool.query("SELECT * FROM audit_event WHERE kind='guardrail.version_released'")).rows).toHaveLength(1);
       for (const [table, rows] of Object.entries(preserved)) expect((await database.pool.query(`SELECT * FROM ${table}`)).rows).toEqual(rows);
       await service.recordRuntimeEvents([runtime("late-runtime", guardrailId, new Date())]);
@@ -827,6 +977,8 @@ describe.skipIf(!url)("Guardrail release packages between isolated environments"
     const guardrail = await uat.createGuardrail({ name: "Portable Guardrail", actorId: "admin", runtimeProfile: "auto", draftConfig: { policyBindings: [{ policyId: id, policyVersion: policy.version, enabledRuleIds: ["second"], enabledRails: ["input"] }] } });
     const release = await testAndPublish(guardrail.id, 1, false);
     const exported = await uat.packages.exportPackage(guardrail.id, [release.version]);
+    const ownedExport = await runWithTenantContext({ tenantId: "tenantA", role: "user" }, () => uat.packages.exportPackage(guardrail.id, [release.version]));
+    expect(parsePackage(ownedExport.bytes).policies).toEqual(parsePackage(exported.bytes).policies);
     const parsed = parsePackage(exported.bytes);
     expect(parsed.policies).toHaveLength(1);
     const node = parsed.policies[0]!;

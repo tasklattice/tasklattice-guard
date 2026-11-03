@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { accountPermission } from "./rbac.js";
 
-export const tokenModules = ["guardrails", "routers", "endpoints", "policies", "playground", "models", "runners", "runtime", "audit"] as const;
+export const tokenModules = ["guardrails", "routers", "endpoints", "policies", "playground", "models", "runners", "runtime", "audit", "settings"] as const;
 export type TokenModule = typeof tokenModules[number];
 export type TokenPermissions = Partial<Record<TokenModule, "read" | "write" | undefined>>;
 export const readOnlyTokenModules: readonly TokenModule[] = ["runtime", "audit"];
@@ -9,7 +9,7 @@ const access = z.enum(["read", "write"]).optional();
 export const tokenPermissionsSchema = z.strictObject({
   guardrails: access, routers: access, endpoints: access, policies: access,
   playground: access, models: access, runners: access,
-  runtime: z.literal("read").optional(), audit: z.literal("read").optional(),
+  runtime: z.literal("read").optional(), audit: z.literal("read").optional(), settings: access,
 }).refine(value => Object.values(value).some(Boolean), "Select at least one module permission.");
 export const createAccessTokenSchema = z.strictObject({
   name: z.string().trim().min(1).max(100),

@@ -6,6 +6,8 @@ import { createTestDatabase } from "../db/postgres-test-database.js";
 import { normalizeGuardrailDraft } from "../domain/guardrail-plan.js";
 import { emptyPolicyDefinition } from "../../shared/policy-definition.js";
 import { ControlPlaneService } from "./control-plane.js";
+import { queryAuditEvents } from "./audit-events.js";
+import { runWithTenantContext } from "./tenant-context.js";
 
 const url = process.env.GUARD_TEST_POSTGRES_URL;
 describe.skipIf(!url)("Policy deletion in PostgreSQL", () => {
@@ -74,5 +76,58 @@ describe.skipIf(!url)("Policy deletion in PostgreSQL", () => {
     expect(builtin.deletable).toBe(false);
     await expect(remove(builtin.id)).rejects.toThrow("system managed");
     await expect(remove("no-such-policy")).rejects.toMatchObject({ code: "not_found" });
+  });
+
+  it("records the locked Policy owner, not the platform administrator's tenant, after hard deletion", async () => {
+    const definition = emptyPolicyDefinition();
+    definition.metadata.id = "policy-owned-c"; definition.metadata.name = "Private C policy";
+    await database.pool.query("INSERT INTO auth_user (id,tenant_id,name,email,role) VALUES ('admin-a','tenantA','Admin','admin-a@example.test','admin')");
+    await database.pool.query("INSERT INTO policy_resource (id,tenant_id,definition,maintainer) VALUES ('policy-owned-c','tenantC',$1,'C')", [definition]);
+    await runWithTenantContext({ tenantId: "tenantA", role: "admin" }, () => service.deletePolicy({ id: "policy-owned-c", actorId: "admin-a" }));
+    const audit = (await database.pool.query("SELECT tenant_id FROM audit_event WHERE kind='policy.deleted' AND resource_id='policy-owned-c'")).rows;
+    expect(audit).toEqual([{ tenant_id: "tenantC" }]);
+    const query = { window: "all" as const, q: "policy-owned-c" };
+    expect((await runWithTenantContext({ tenantId: "tenantA", role: "user" }, () => queryAuditEvents(database.db, query))).total).toBe(0);
+    expect((await runWithTenantContext({ tenantId: "tenantC", role: "user" }, () => queryAuditEvents(database.db, query))).total).toBe(1);
+  });
+
+  it("does not delete Policy records when a matching ID has conflicting owners", async () => {
+    const definition = emptyPolicyDefinition();
+    definition.metadata.id = "policy-conflicting-owner"; definition.metadata.name = "A policy";
+    await database.pool.query("INSERT INTO policy_resource (id,tenant_id,definition,maintainer) VALUES ($1,'tenantA',$2,'A')", [definition.metadata.id, definition]);
+    await database.pool.query("INSERT INTO policy_imported_version (policy_id,tenant_id,version,digest,definition,source_id) VALUES ($1,'tenantC','v1','digest','{}','test')", [definition.metadata.id]);
+    await expect(runWithTenantContext({ tenantId: "tenantA", role: "user" }, () => remove(definition.metadata.id)))
+      .rejects.toMatchObject({ code: "not_found" });
+    await expect(runWithTenantContext({ tenantId: "tenantA", role: "admin" }, () => remove(definition.metadata.id)))
+      .rejects.toMatchObject({ code: "policy_owner_conflict", message: "Policy ownership is inconsistent. Contact a platform administrator before deleting it." });
+    expect((await database.pool.query("SELECT tenant_id FROM policy_resource WHERE id=$1", [definition.metadata.id])).rows).toEqual([{ tenant_id: "tenantA" }]);
+    expect((await database.pool.query("SELECT tenant_id FROM policy_imported_version WHERE policy_id=$1", [definition.metadata.id])).rows).toEqual([{ tenant_id: "tenantC" }]);
+    expect((await database.pool.query("SELECT count(*)::int AS count FROM audit_event WHERE kind='policy.deleted' AND resource_id=$1", [definition.metadata.id])).rows).toEqual([{ count: 0 }]);
+  });
+
+  it("waits for a concurrent package import before checking Policy ownership", async () => {
+    const definition = emptyPolicyDefinition();
+    definition.metadata.id = "policy-concurrent-import"; definition.metadata.name = "A policy";
+    await database.pool.query("INSERT INTO policy_resource (id,tenant_id,definition,maintainer) VALUES ($1,'tenantA',$2,'A')", [definition.metadata.id, definition]);
+    const importer = await database.pool.connect();
+    try {
+      await importer.query("BEGIN");
+      await importer.query("SELECT pg_advisory_xact_lock(hashtext('guardrail-package-import'))");
+      const deletion = runWithTenantContext({ tenantId: "tenantA", role: "user" }, () => remove(definition.metadata.id));
+      let waiting = false;
+      for (let attempt = 0; attempt < 100 && !waiting; attempt++) {
+        const result = await database.pool.query("SELECT EXISTS (SELECT 1 FROM pg_locks WHERE locktype='advisory' AND NOT granted AND objid=(hashtext('guardrail-package-import')::bigint & 4294967295)) AS waiting");
+        waiting = result.rows[0].waiting;
+        if (!waiting) await new Promise(resolve => setTimeout(resolve, 10));
+      }
+      expect(waiting).toBe(true);
+      await importer.query("INSERT INTO policy_imported_version (policy_id,tenant_id,version,digest,definition,source_id) VALUES ($1,'tenantC','v1','digest','{}','test')", [definition.metadata.id]);
+      await importer.query("COMMIT");
+      await expect(deletion).rejects.toMatchObject({ code: "policy_owner_conflict" });
+      expect((await database.pool.query("SELECT tenant_id FROM policy_imported_version WHERE policy_id=$1", [definition.metadata.id])).rows).toEqual([{ tenant_id: "tenantC" }]);
+    } finally {
+      await importer.query("ROLLBACK");
+      importer.release();
+    }
   });
 });

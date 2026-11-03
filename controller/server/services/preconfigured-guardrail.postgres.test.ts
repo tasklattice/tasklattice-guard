@@ -43,6 +43,10 @@ describe.skipIf(!url)("Preconfigured Guardrail lifecycle", () => {
     const artifact = initial.versions[0]!.artifact!;
     expect(verify(null, Buffer.from(artifact.checksum, "utf8"), key.publicKey, Buffer.from(artifact.signature, "base64"))).toBe(true);
     // No global baseline is delivered to unrelated pools.
+    await service.tenantGroups.create({ id: "secondary", name: "Secondary" }, "user");
+    await service.tenantGroups.createPool("secondary", {
+      id: "secondary", name: "Secondary", runtimeUrl: "http://secondary:8091", publicUrl: null,
+    }, "user");
     expect((await service.desiredStateForPool("secondary")).artifacts).toEqual([]);
     expect(await service.requiredPlatformModelBindings()).toEqual([]);
 

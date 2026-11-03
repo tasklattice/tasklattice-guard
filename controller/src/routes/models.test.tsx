@@ -22,7 +22,8 @@ import {
 import { GuardrailCatalogPage, ModelsPage, ProvidersPage } from "./models";
 
 vi.mock("@/hooks/use-mobile", () => ({ useIsMobile: () => false }));
-vi.mock("@/lib/auth", () => ({ useAuth: () => ({ user: { id: "admin-1", role: "admin" } }) }));
+const identity = vi.hoisted(() => ({ role: "admin", tenant_id: "tenantA" }));
+vi.mock("@/lib/auth", () => ({ useAuth: () => ({ user: { id: "identity-1", role: identity.role, tenant_id: identity.tenant_id } }) }));
 vi.mock("@tanstack/react-router", () => ({
   useSearch: () => ({}),
   useNavigate: () => vi.fn(),
@@ -145,6 +146,7 @@ async function modelAction(modelName: string, name: string) {
 // worker. Keep a bounded integration budget for interactions and save/reload.
 describe("Models and Guardrail Catalog", { timeout: 30_000 }, () => {
   beforeEach(() => {
+    identity.role = "admin"; identity.tenant_id = "tenantA";
     Element.prototype.scrollIntoView = vi.fn();
     vi.mocked(getModelConfiguration).mockReset().mockResolvedValue(view);
     vi.mocked(activateModelConfiguration).mockReset().mockResolvedValue({ ...view, distribution: { desiredGeneration: 7, distributionStatus: "ready" } });
@@ -161,6 +163,60 @@ describe("Models and Guardrail Catalog", { timeout: 30_000 }, () => {
   });
 
   afterEach(() => { cleanup(); client?.clear(); client = null; });
+
+  it("lets tenant users manage their models while shared models and platform configuration stay read-only", async () => {
+    identity.role = "user";
+    identity.tenant_id = "tenantB";
+    vi.mocked(getModelConfiguration).mockResolvedValue({ ...view, draft: null, models: [
+      { ...chatModel, id: "own-model", name: "Own tenant model", tenantId: "tenantB" },
+      { ...safetyModel, id: "shared-model", name: "Shared tenant model", tenantId: "tenantA" },
+      { ...chatModel, id: "platform-model", name: "Global platform model", tenantId: null },
+    ] });
+    renderPage(<ModelsPage />);
+    expect(await screen.findByText("Own tenant model")).toBeTruthy();
+    expect(await modelAction("Own tenant model", "common.remove")).toBeTruthy();
+    fireEvent.keyDown(screen.getByRole("menu"), { key: "Escape" });
+    expect(screen.queryByRole("button", { name: "modelSettings.actions Shared tenant model" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "modelSettings.testCall Shared tenant model" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "modelSettings.actions Global platform model" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "modelSettings.testCall Global platform model" })).toBeNull();
+    expect(screen.queryByRole("tab", { name: "modelPricing.prices" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "modelSettings.addProvider" })).toBeNull();
+    expect(screen.queryByRole("button", { name: /modelSettings.manageProvider/ })).toBeNull();
+    expect(screen.queryByRole("button", { name: "modelSettings.reviewActivation" })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "providerRegistration.configureModel" }));
+    fireEvent.click(screen.getByRole("combobox", { name: "modelSettings.model" }));
+    expect(await screen.findByRole("option", { name: /Own tenant model/ })).toBeTruthy();
+    expect(screen.queryByRole("option", { name: /Shared tenant model/ })).toBeNull();
+    expect(screen.queryByRole("option", { name: /Global platform model/ })).toBeNull();
+  });
+
+  it("lets platform administrators manage global models without mutating tenant models", async () => {
+    vi.mocked(getModelConfiguration).mockResolvedValue({ ...view, models: [
+      { ...chatModel, tenantId: null },
+      { ...safetyModel, name: "Tenant A model", tenantId: "tenantA" },
+    ] });
+    renderPage(<ModelsPage />);
+    expect(await modelAction("Authoring model", "common.remove")).toBeTruthy();
+    fireEvent.keyDown(screen.getByRole("menu"), { key: "Escape" });
+    expect(screen.queryByRole("button", { name: "modelSettings.actions Tenant A model" })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "providerRegistration.configureModel" }));
+    fireEvent.click(screen.getByRole("combobox", { name: "modelSettings.model" }));
+    expect(await screen.findByRole("option", { name: /Authoring model/ })).toBeTruthy();
+    expect(screen.queryByRole("option", { name: /Tenant A model/ })).toBeNull();
+  });
+
+  it("offers only platform models in global Guardrail Catalog bindings", async () => {
+    vi.mocked(getModelConfiguration).mockResolvedValue({ ...view, models: [
+      ...view.models,
+      { ...safetyModel, id: "tenant-model", name: "Tenant A private model", tenantId: "tenantA" },
+    ] });
+    renderPage(<GuardrailCatalogPage />);
+    const jailbreak = await screen.findByLabelText("modelSettings.detectors.jailbreak_detection.title · modelSettings.inputRail", { selector: "tr" });
+    fireEvent.keyDown(within(jailbreak).getByRole("combobox", { name: "modelSettings.modelColumn" }), { key: "ArrowDown" });
+    expect(await screen.findByRole("option", { name: /Qwen Guard · Mock provider/ })).toBeTruthy();
+    expect(screen.queryByRole("option", { name: /Tenant A private model/ })).toBeNull();
+  });
 
   it("shows model-backed capabilities grouped into Input and Output Rail tabs", async () => {
     renderPage(<GuardrailCatalogPage />);

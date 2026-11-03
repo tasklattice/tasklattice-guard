@@ -1,3 +1,4 @@
+import { assertPlatformAuthority, currentTenantId, resourceReadPredicate, resourceWritePredicate, runtimeEventTenantId } from "./tenant-context.js";
 import { isDeepStrictEqual } from "node:util";
 import { createHash, randomUUID } from "node:crypto";
 import { and, desc, eq, gte, ilike, isNotNull, isNull, lte, inArray, sql } from "drizzle-orm";
@@ -6,7 +7,7 @@ import { boundedRead } from "../db/read-budget.js";
 import { auditEvents, guardrails, modelDefinitions, modelProviders, modelPriceRevisions as prices, modelPriceSync as sync, modelUsageCosts as costs } from "../db/schema.js";
 import { NotFoundError, ValidationError } from "../domain/errors.js";
 import type { RuntimeEventInput } from "../domain/models.js";
-import { modelRatesSchema, pricingRuleSchema, type GuardrailMonthlyCost, type CostQuery, type GuardrailCostView, type ModelPricingView, type PricingSyncView } from "../../shared/model-pricing.js";
+import { modelRatesSchema, pricingRuleSchema, type CostGroup, type GuardrailMonthlyCost, type CostQuery, type GuardrailCostView, type ModelPricingView, type PricingSyncView } from "../../shared/model-pricing.js";
 import { automaticCatalogKeys, LITELLM_PRICE_URL, meteredCalls, priceCall } from "./model-pricing-domain.js";
 
 import bundledCatalog from "../catalog/model-prices.json" with { type: "json" };
@@ -35,7 +36,7 @@ async function resolvedPrice(db: ReadDb, model: PricingModel, at: Date) {
 }
 
 /** Called within the telemetry transaction; immutable IDs make WAL replay idempotent. */
-export function modelUsageCostRecorder(db: ReadDb) {
+export function modelUsageCostRecorder(db: ReadDb, authenticatedPoolId?: string) {
   let catalog: Promise<PricingModel[]> | undefined;
   return async (event: RuntimeEventInput): Promise<void> => {
     if (!event.guardrailId) return;
@@ -58,7 +59,7 @@ export function modelUsageCostRecorder(db: ReadDb) {
       }
       const calculated = priceCall(call, price?.rates ?? null);
       const id = createHash("sha256").update(JSON.stringify([event.runnerId, event.id, call.id])).digest("hex");
-      await db.insert(costs).values({ id, eventId: event.id, guardrailId: event.guardrailId,
+      await db.insert(costs).values({ id, tenantId: runtimeEventTenantId(event, authenticatedPoolId), allocationContextId: event.allocationContextId ?? null, eventId: event.id, guardrailId: event.guardrailId,
         guardrailVersion: event.guardrailVersion ?? null, modelId: model?.id ?? null, model: call.model,
         provider: model?.provider ?? call.provider, source: event.metadata.costSource === "testing" || event.metadata.protocol === "playground" ? "testing" : "runtime",
         occurredAt: event.occurredAt, calls: call.calls, inputTokens: call.inputTokens, outputTokens: call.outputTokens,
@@ -67,6 +68,10 @@ export function modelUsageCostRecorder(db: ReadDb) {
       }).onConflictDoNothing();
     }
   };
+}
+
+export async function recordModelUsageCosts(db: ReadDb, event: RuntimeEventInput, authenticatedPoolId?: string): Promise<void> {
+  await modelUsageCostRecorder(db, authenticatedPoolId)(event);
 }
 
 export class ModelPricingService {
@@ -84,6 +89,7 @@ export class ModelPricingService {
   }
 
   synchronize(): Promise<PricingSyncView> {
+    assertPlatformAuthority();
     if (this.running) return this.running;
     this.running = this.syncOnce().finally(() => { this.running = null; });
     return this.running;
@@ -122,7 +128,7 @@ export class ModelPricingService {
     const rows = await boundedRead(this.db, (tx, execute) => execute(tx.select({ id: costs.guardrailId,
       calls: sql<number>`sum(${costs.calls})::float8`, cost: sql<number | null>`sum(${costs.amount})::float8`,
       unpriced: sql<number>`coalesce(sum(${costs.calls}) filter (where ${costs.amount} is null),0)::float8`,
-    }).from(costs).where(and(inArray(costs.guardrailId, guardrailIds), gte(costs.occurredAt, since), lte(costs.occurredAt, until))).groupBy(costs.guardrailId)));
+    }).from(costs).where(and(inArray(costs.guardrailId, guardrailIds), resourceWritePredicate(costs.tenantId), gte(costs.occurredAt, since), lte(costs.occurredAt, until))).groupBy(costs.guardrailId)));
     const totals = new Map(rows.map(row => [row.id, row]));
     return new Map(guardrailIds.map(id => { const row = totals.get(id); return [id, {
       currency: "USD", cost: row ? row.cost : 0, calls: row?.calls ?? 0, unpriced: row?.unpriced ?? 0,
@@ -131,7 +137,7 @@ export class ModelPricingService {
   }
 
   async view(): Promise<{ sync: PricingSyncView; models: ModelPricingView[] }> {
-    const now = new Date(); const models = await modelsQuery(this.db);
+    const now = new Date(); const models = await modelsQuery(this.db).where(currentTenantId() ? resourceReadPredicate("model", modelDefinitions.id, modelDefinitions.tenantId) : isNull(modelDefinitions.tenantId));
     const result: ModelPricingView[] = [];
     for (const model of models) {
       const resolved = await resolvedPrice(this.db, model, now);
@@ -151,8 +157,9 @@ export class ModelPricingService {
   }
 
   async configure(modelId: string, raw: unknown, actorId: string): Promise<ModelPricingView> {
+    assertPlatformAuthority();
     const input = pricingRuleSchema.parse(raw);
-    const model = (await modelsQuery(this.db).where(eq(modelDefinitions.id, modelId)))[0];
+    const model = (await modelsQuery(this.db).where(and(eq(modelDefinitions.id, modelId), isNull(modelDefinitions.tenantId))))[0];
     if (!model) throw new NotFoundError("Model", modelId);
     if (input.mode === "automatic" && input.catalogKey && !(await revision(this.db, catalogKey(input.catalogKey), new Date()))?.rates) throw new ValidationError("Select an existing LiteLLM price entry.");
     await this.db.transaction(async tx => {
@@ -165,19 +172,52 @@ export class ModelPricingService {
   }
 
   async guardrailUsage(guardrailId: string, query: CostQuery): Promise<GuardrailCostView> {
-    const [guardrail] = await this.db.select({ id: guardrails.id }).from(guardrails).where(and(eq(guardrails.id, guardrailId), isNull(guardrails.deletedAt)));
+    const [guardrail] = await this.db.select({ id: guardrails.id }).from(guardrails).where(and(eq(guardrails.id, guardrailId), isNull(guardrails.deletedAt), resourceReadPredicate("guardrail", guardrails.id, guardrails.tenantId)));
     if (!guardrail) throw new NotFoundError("Guardrail", guardrailId);
     const until = new Date();
     // Fixed UTC periods make totals independent of the browser/server timezone.
     const since = query.window === "month" ? new Date(Date.UTC(until.getUTCFullYear(), until.getUTCMonth(), 1)) : new Date(until.getTime() - (query.window === "7d" ? 7 : 30) * 86_400_000);
     const status = await this.status();
     return boundedRead(this.db, async (tx, execute) => {
-      const predicate = and(eq(costs.guardrailId, guardrailId), gte(costs.occurredAt, since), lte(costs.occurredAt, until), query.source === "all" ? undefined : eq(costs.source, query.source));
+      const predicate = and(eq(costs.guardrailId, guardrailId), resourceWritePredicate(costs.tenantId), gte(costs.occurredAt, since), lte(costs.occurredAt, until), query.source === "all" ? undefined : eq(costs.source, query.source));
       const sums = { calls: sql<number>`sum(${costs.calls})::float8`, inputTokens: sql<number>`coalesce(sum(${costs.inputTokens}),0)::float8`, outputTokens: sql<number>`coalesce(sum(${costs.outputTokens}),0)::float8`,
         unknownUsage: sql<number>`coalesce(sum(${costs.calls}) filter (where ${costs.inputTokens} is null or ${costs.outputTokens} is null),0)::float8`,
         cost: sql<number | null>`sum(${costs.amount})::float8`, unpriced: sql<number>`coalesce(sum(${costs.calls}) filter (where ${costs.amount} is null),0)::float8` };
       const models = await execute(tx.select({ modelId: costs.modelId, model: costs.model, provider: costs.provider, currency: costs.currency, ...sums }).from(costs).where(predicate)
         .groupBy(costs.modelId, costs.model, costs.provider, costs.currency).orderBy(sql`sum(${costs.amount}) desc nulls last`));
+      const modelIds = [...new Set(models.flatMap(row => row.modelId ? [row.modelId] : []))];
+      const readableModels = currentTenantId() && modelIds.length ? await execute(tx.select({ id: modelDefinitions.id }).from(modelDefinitions)
+        .where(and(inArray(modelDefinitions.id, modelIds), resourceReadPredicate("model", modelDefinitions.id, modelDefinitions.tenantId)))) : [];
+      const readableIds = new Set(readableModels.map(model => model.id));
+      // Sharing a Guardrail grants the caller's cost summary, not inventory
+      // access to private Models or Providers. Combine hidden rows by currency
+      // so their number does not disclose the number of private Models.
+      const visibleModels: CostGroup[] = [];
+      const hiddenByCurrency = new Map<string | null, CostGroup>();
+      for (const row of models) {
+        if (!currentTenantId() || (row.modelId && readableIds.has(row.modelId))) {
+          visibleModels.push(row);
+          continue;
+        }
+        let hidden = hiddenByCurrency.get(row.currency);
+        if (!hidden) {
+          hidden = { ...row, modelId: null, model: "Configured detector", provider: "Configured provider" };
+          hiddenByCurrency.set(row.currency, hidden);
+          visibleModels.push(hidden);
+          continue;
+        }
+        hidden.calls += row.calls;
+        hidden.inputTokens += row.inputTokens;
+        hidden.outputTokens += row.outputTokens;
+        hidden.unknownUsage += row.unknownUsage;
+        hidden.unpriced += row.unpriced;
+        if (row.cost !== null) hidden.cost = (hidden.cost ?? 0) + row.cost;
+      }
+      // Sorting the original private rows before merging would leak how an
+      // individual hidden model ranks against a visible model. Sort only the
+      // final, authorized view so the order reflects the combined amount.
+      if (currentTenantId()) visibleModels.sort((a, b) =>
+        a.cost === null ? (b.cost === null ? 0 : 1) : b.cost === null ? -1 : b.cost - a.cost);
       const day = sql<string>`to_char(${costs.occurredAt} at time zone 'UTC', 'YYYY-MM-DD')`;
       const trend = await execute(tx.select({ day, currency: costs.currency, calls: sums.calls, cost: sums.cost, unpriced: sums.unpriced }).from(costs).where(predicate).groupBy(day, costs.currency).orderBy(day));
       const [latest] = await execute(tx.select({ at: sql<Date | string | null>`max(${costs.occurredAt})` }).from(costs).where(predicate));
@@ -186,7 +226,7 @@ export class ModelPricingService {
       return { since: since.toISOString(), until: until.toISOString(), meteringSince: status.meteringSince, updatedAt: latest?.at ? new Date(latest.at).toISOString() : null,
         calls: models.reduce((sum, row) => sum + row.calls, 0), inputTokens: models.reduce((sum, row) => sum + row.inputTokens, 0), outputTokens: models.reduce((sum, row) => sum + row.outputTokens, 0),
         unknownUsage: models.reduce((sum, row) => sum + row.unknownUsage, 0), unpriced: models.reduce((sum, row) => sum + row.unpriced, 0),
-        totals: [...totals].map(([currency, cost]) => ({ currency, cost })), models, trend };
+        totals: [...totals].map(([currency, cost]) => ({ currency, cost })), models: visibleModels, trend };
     });
   }
 }

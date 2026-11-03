@@ -21,6 +21,11 @@ export interface DesiredStateResult {
    */
   'reason'?: (string);
   'modelRevisionId'?: (string);
+  /**
+   * Echo the Controller's optional challenge for this exact dispatched snapshot.
+   */
+  'snapshotNonce'?: (string);
+  '_snapshotNonce'?: "snapshotNonce";
 }
 
 /**
@@ -42,4 +47,9 @@ export interface DesiredStateResult__Output {
    */
   'reason': (string);
   'modelRevisionId': (string);
+  /**
+   * Echo the Controller's optional challenge for this exact dispatched snapshot.
+   */
+  'snapshotNonce'?: (string);
+  '_snapshotNonce'?: "snapshotNonce";
 }

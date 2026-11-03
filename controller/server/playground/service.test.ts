@@ -4,6 +4,7 @@ import { PlaygroundDraftPreviewStore } from "./service.js";
 
 const candidate = {
   actorId: "admin-1",
+  allocation: { poolId: "pool-1", groupId: "group-1", runtimeUrl: "http://pool-1" },
   guardrailId: "guardrail-1",
   guardrailName: "Guardrail 1",
   draftRevision: 7,

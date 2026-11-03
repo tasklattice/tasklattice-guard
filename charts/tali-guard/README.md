@@ -16,6 +16,93 @@ This chart deploys exactly two Guard application component types:
 PostgreSQL and optional Redis are infrastructure dependencies, not additional
 Guard application components.
 
+## Optional pool-bound Runner credentials
+
+The chart can inject pre-provisioned pool credentials without putting token
+values in Helm values or rendered manifests. Create Kubernetes Secrets in the
+release namespace through your secret manager. One Controller Secret key must
+contain the JSON map from each pool ID to its distinct high-entropy token. Each
+Runner pool needs a separate Secret key containing only that pool's matching
+token. For example, with an extra pool named `batch`:
+
+```yaml
+security:
+  poolAuthentication:
+    enabled: true
+    controllerSecret: guard-pool-map
+    controllerKey: pool-tokens.json
+    runnerSecrets:
+      default: { name: guard-default-token, key: token }
+      batch: { name: guard-batch-token, key: token }
+```
+
+Every chart-defined pool, including `default`, needs a reference. The chart
+rejects missing, duplicate and unknown pool references and a Runner reference
+to the Controller map key. It cannot inspect Secret contents or verify they
+match: Kubernetes must find every referenced Secret and key, and Controller
+startup validates the JSON and distinct token values. An externally managed
+pool needs a corresponding entry in the Controller's map and independent
+provisioning for that workload.
+
+Enabling the map immediately makes the Controller reject legacy credentials
+for the control stream and model-credential endpoint. Upgrade and restart all
+participating Controller and Runner workloads together in a maintenance window
+after provisioning matching Secrets. Kubernetes Secret environment variables
+do not update in running containers; rotate the map and pool Secrets as one
+coordinated change and restart the affected workloads. Existing control streams
+are not revoked merely by editing a Secret. Maintain a recovery plan for an
+inconsistent rollout.
+
+Pool control authentication alone leaves the legacy inbound HTTP and telemetry
+bearer on Runners. To use a separate inbound Controller-to-Runner credential
+for each pool, provision a second map and distinct per-pool Secret keys:
+
+```yaml
+security:
+  runnerHttpAuthentication:
+    enabled: true
+    controllerSecret: guard-http-map
+    controllerKey: pool-http-tokens.json
+    runnerSecrets:
+      default: { name: guard-default-http, key: token }
+      batch: { name: guard-batch-http, key: token }
+```
+
+This requires `poolAuthentication.enabled: true` and the same pool IDs in both
+maps. The chart rejects inbound HTTP Secret references that overlap control or
+legacy roles. Controller startup rejects duplicate decoded pool keys, incomplete
+maps, non-printable/non-ASCII token values and token-value reuse across roles.
+New pool-role tokens require at least 32 printable ASCII characters without
+whitespace. Selected pools without an HTTP token
+fail closed; a Runtime URL pointing at a foreign pool receives the selected
+pool's token and is rejected by that destination.
+
+Setting `security.poolAuthentication.scopedTelemetry: true` sets the scoped
+telemetry flags on both component types. When combined with separate HTTP
+authentication, it also omits `GUARD_CONTROLLER_TOKEN` from Runner containers.
+That mode currently quarantines Endpoint and routing telemetry without verified
+snapshot context, suppresses scoped
+Runner watermarks and makes freshness-based distribution/deletion actions
+unavailable. It is not a production-complete monitoring or load-lab mode.
+
+Active model configuration remains platform-wide, and safe reassignment has
+additional requirements. Read the [credential mode matrix and rollout
+procedure](../../docs/runner-http-pool-credentials.md),
+[tenant groups](../../docs/tenant-groups.md) and
+[scoped HTTP plan](../../docs/runner-scoped-http-plan.md) before enabling these
+options. Separate credential references do not change any defaults.
+
+Authenticated telemetry progress is a further opt-in:
+`security.poolAuthentication.telemetryProgress: true` requires pool credentials,
+`scopedTelemetry: true` and `runner.telemetryProgress.persistence.enabled: true`.
+Each Runner replica then receives a separate 64Mi PVC by default, mounted at
+`/var/lib/tasklattice/telemetry-progress`; artifact cache storage is unchanged.
+The size and StorageClass are configurable under that persistence map. Adding
+the claim template to an existing StatefulSet requires controlled drain and
+recreation, and lost WAL identity requires reviewed recovery. Follow the
+[persistent telemetry rollout procedure](../../docs/runner-telemetry-progress-rollout.md)
+before enabling it. Progress remains separate from freshness-based deletion.
+
 ## Images and dependencies
 
 | Purpose | Default image/configuration | Required |
@@ -430,6 +517,11 @@ Catalog** and persisted in the Controller database:
   and Playground generation. Runner activation is not required.
 - Validate and save Input / Output Rail capability bindings, then use
   **Activate on Runner** to distribute them to Runners.
+- With pool authentication enabled, use **Tenant groups → Runtime Models** to
+  grant a validated runtime configuration to one group or block its future
+  credential retrieval. Groups remain on platform defaults until explicitly
+  changed. See [group Model grants](../../docs/group-model-configurations.md),
+  including coordinated Provider rotation and migration requirements.
 
 Helm configures deployment infrastructure: images, resources, networking,
 databases, and platform Secrets. It does not configure model endpoints,
@@ -723,6 +815,61 @@ fields through `--reuse-values`. Removed chart options are ignored and no longer
 configure the application. Rebuild and publish the Controller image before using
 this chart; its initialization protocol and mounted-account support must match
 the templates.
+
+### Optional Runner pool network policies
+
+`networkPolicy.runnerIsolation.enabled=true` adds per-pool ingress/egress default-deny policies. Configure trusted gateway/scraper `ingressPeers`, DNS peers and pool-specific external Provider/Redis/collector destinations under `poolEgress` before enabling. Controller and bundled Redis are explicit shared destinations; other Runner pools and PostgreSQL are not default exceptions. Requires an enforcing CNI and a packet-level rollout test. Other policies can add permissions; rendering does not prove network isolation. See [Runner network isolation](../../docs/runner-network-isolation.md).
+
+### Optional per-pool tenant admission
+
+Admission is absent/off by default. Supply a complete `tenantAdmission` object on
+`runner.default` or an individual `runner.pools[]` entry to enable local process
+concurrency caps and bounded queues. Named pools do not inherit default settings.
+Use the exact Runner JSON field names inside these objects:
+
+```yaml
+runner:
+  default:
+    tenantAdmission:
+      capacity: 4
+      tenant_limits: { tenantA: 2, tenantB: 2 }
+      max_queued: 8
+      max_queued_per_tenant: 4
+      queue_timeout_seconds: 0.25
+    # Optional additional distributed rate, requiring pool auth/external Redis:
+    distributedRateAdmission:
+      pool_id: default
+      revision: v1
+      window_ms: 1000
+      pool_limit: 20
+      tenant_limits: { tenantA: 12, tenantB: 12 }
+```
+
+Each supplied object renders the corresponding enabled flag and JSON environment
+variable. Targeted template validation checks fields, bounds and policy consistency.
+Distributed rate additionally requires configured pool authentication and an
+explicit external `runner.callContextRedisUrl`; bundled ephemeral Redis is
+rejected. Operators must separately provision the identical policy in Redis;
+the chart supplies no initialization/reset Job. An external URL does not prove
+durability or failover safety. Rates are pool/tenant **admission starts** across
+replicas, separate from local simultaneous work; this v1 policy supplies no
+distributed concurrency/reservation guarantee or group-wide total. Read the exact scopes,
+provisioning procedure, Redis clock/data-loss/ACL assumptions and tests in
+[distributed tenant admission](../../docs/distributed-tenant-admission.md) and
+[local admission](../../docs/tenant-admission.md) before enabling.
+
+For a group-wide rate total across several pools, configure optional
+`groupRateAdmission` instead of `distributedRateAdmission`. Every participating
+pool uses the identical complete group/tenant/pool policy and exact Controller
+allocation epochs; named pools do not inherit it. The chart validates known
+member-pool consistency but does not provision Redis or verify remote releases.
+See [group rate admission](../../docs/group-rate-admission.md) for the policy,
+resource bounds, explicit provisioning and mixed-version rollout constraints.
+
+Local admission also reports actual permit/queue/outcome/latency snapshots over
+authenticated Runner heartbeats. The admin load-lab monitor shows current group
+placement and gaps for unavailable sources without exposing metrics credentials
+to the browser. See [actual admission monitoring](../../docs/tenant-admission-monitor.md).
 
 ## Redis capacity and context degradation
 

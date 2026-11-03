@@ -101,6 +101,25 @@ describe("Policy Library jurisdiction translations", () => {
 });
 
 describe("Controller operations translations", () => {
+  it("registers every load-lab label in both supported languages", async () => {
+    const { default: i18n } = await import("./i18n");
+    const { tenantLoadLabEn, tenantLoadLabZh } = await import("./tenant-load-lab-i18n");
+    expect(Object.keys(tenantLoadLabZh).sort()).toEqual(Object.keys(tenantLoadLabEn).sort());
+    for (const lng of ["en", "zh-CN"]) for (const key of Object.keys(tenantLoadLabEn))
+      expect(i18n.exists(`tenantLoadLab.${key}`, { lng, fallbackLng: false }), `${lng}: ${key}`).toBe(true);
+  });
+  it("explains tenant and administrator Guardrail deletion scope in both languages", async () => {
+    const { default: i18n } = await import("./i18n");
+    const en = i18n.getFixedT("en")("guardrails.deleteRetentionNote");
+    const zh = i18n.getFixedT("zh-CN")("guardrails.deleteRetentionNote");
+    expect(en).toContain("other tenants' and unattributed runtime history are retained");
+    expect(en).toContain("platform administrator");
+    expect(en).toContain("runtime history for all tenants and unattributed records is deleted");
+    expect(zh).toContain("其他租户及归属不明的运行历史会保留");
+    expect(zh).toContain("平台管理员删除时");
+    expect(zh).toContain("将删除所有租户及归属不明的运行历史");
+  });
+
   it("provides Playground mode copy for the page and Endpoint shortcut in both languages", async () => {
     const { default: i18n } = await import("./i18n");
     const en = i18n.getFixedT("en");

@@ -1,5 +1,6 @@
 // Original file: runner_control.proto
 
+import type { TelemetryUploadAuthorization as _tasklattice_guard_control_v1_TelemetryUploadAuthorization, TelemetryUploadAuthorization__Output as _tasklattice_guard_control_v1_TelemetryUploadAuthorization__Output } from '../../../../tasklattice/guard/control/v1/TelemetryUploadAuthorization.js';
 import type { Long } from '@grpc/proto-loader';
 
 /**
@@ -14,6 +15,10 @@ export interface RegistrationAccepted {
    * Maximum interval in seconds between Runner heartbeats.
    */
   'heartbeatIntervalSeconds'?: (number);
+  /**
+   * Secret dispatched only to this current pool-authenticated control stream.
+   */
+  'telemetryUploadAuthorization'?: (_tasklattice_guard_control_v1_TelemetryUploadAuthorization | null);
 }
 
 /**
@@ -28,4 +33,8 @@ export interface RegistrationAccepted__Output {
    * Maximum interval in seconds between Runner heartbeats.
    */
   'heartbeatIntervalSeconds': (number);
+  /**
+   * Secret dispatched only to this current pool-authenticated control stream.
+   */
+  'telemetryUploadAuthorization': (_tasklattice_guard_control_v1_TelemetryUploadAuthorization__Output | null);
 }

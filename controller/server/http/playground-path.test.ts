@@ -56,7 +56,7 @@ function setup(authenticated = true, scan = false) {
         getSession: vi
           .fn()
           .mockResolvedValue(
-            authenticated ? { user: { id: "user", role: "user" } } : null,
+            authenticated ? { user: { id: "user", role: "user", tenantId: "tenantA" } } : null,
           ),
       },
       handler: vi.fn(),

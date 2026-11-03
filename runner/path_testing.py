@@ -9,7 +9,7 @@ from fastapi import Header, HTTPException, Request
 from fastapi.encoders import jsonable_encoder
 from pydantic import BaseModel, ConfigDict, Field
 
-from .routing import RoutingError
+from .routing import RoutingError, public_route_assignment
 from .toolkit.runtime.contracts import ProtectionRequest, RequestContext
 
 
@@ -64,8 +64,15 @@ def register_path_testing(api):
                         await api._emit_telemetry(request_id=str(uuid.uuid4()), call_id=call_id,
                             endpoint_id=payload.endpoint_id, phase="input", protocol="playground", mode="enforce",
                             started=started, decision=decision, content_before=(payload.text,), http_request=request, observation=observation)
+            # The Controller forwards these results to users. Internal
+            # provenance tokens must never be copied into that response.
+            preview["assignment"] = public_route_assignment(preview.get("assignment"))
+            decision_payload = asdict(decision) if decision is not None else None
+            if decision_payload is not None:
+                decision_payload.pop("allocation_context_id", None)
+                decision_payload["route_assignment"] = public_route_assignment(decision_payload.get("route_assignment"))
             return jsonable_encoder({**preview, "runnerId": api._runner_id, "simulation": payload.action == "simulate",
-                                     "decision": asdict(decision) if decision is not None else None})
+                                     "decision": decision_payload})
         except RoutingError as error:
-            raise HTTPException(status_code=409, detail={"reason": error.reason, "assignment": getattr(error, "assignment", None),
+            raise HTTPException(status_code=409, detail={"reason": error.reason, "assignment": public_route_assignment(getattr(error, "assignment", None)),
                                                        "runnerId": api._runner_id}) from error

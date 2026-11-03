@@ -38,6 +38,16 @@ describe("Guardrail version deletion", () => {
     await waitFor(() => expect(confirm().hasAttribute("disabled")).toBe(false));
   });
 
+  it("shows a private tenant dependency without a Router link", async () => {
+    mount({ ...base, deletable: false, references: [
+      { kind: "router_active", routerId: "", routerName: "Another tenant’s Router" },
+    ] });
+    const list = await screen.findByRole("region", { name: "guardrails.versionReferences" });
+    expect(within(list).getByText("Another tenant’s Router")).toBeTruthy();
+    expect(within(list).queryByRole("link")).toBeNull();
+    expect(confirm().hasAttribute("disabled")).toBe(true);
+  });
+
   it("deletes an unreferenced version and names the history that becomes unrestorable", async () => {
     vi.mocked(deleteControllerGuardrailVersion).mockResolvedValue(undefined);
     const onDeleted = mount({ ...base, unrestorableRevisions: [{ routerId: "r1", routerName: "Payments", revision: 1, createdAt: "2026-10-01T08:00:00.000Z" }] });

@@ -49,6 +49,9 @@ class GuardrailRuntimeService:
         stored = self._contexts.get(request.call_id)
         composed = getattr(self._resolver, "composed_endpoint", lambda _: False)(request.context.endpoint_id)
         if stored is not None:
+            if stored.resolution.allocation_context_id and request.context.endpoint_snapshot is None:
+                from runner.routing import RoutingError
+                raise RoutingError("call_endpoint_authentication_required")
             if stored.resolution.endpoint_id != request.context.endpoint_id:
                 from runner.routing import RoutingError
                 raise RoutingError("call_endpoint_mismatch")
@@ -162,6 +165,7 @@ class GuardrailRuntimeService:
             decision = replace(decision, router_id=resolution.router_id, endpoint_id=resolution.endpoint_id,
                 effective_release_id=resolution.effective_release_id, model_revision_id=resolution.model_revision_id,
                 route_assignment=resolution.route_assignment,
+                allocation_context_id=resolution.allocation_context_id,
                 trace=decision.trace if decision.router_id else (*resolution.trace, *decision.trace))
             self._contexts.record_outcome(request.call_id, call_outcome(decision))
             await observe(self._context_evidence(decision))
@@ -281,6 +285,7 @@ class GuardrailRuntimeService:
                 effective_release_id=resolution.effective_release_id,
                 model_revision_id=resolution.model_revision_id,
                 route_assignment=resolution.route_assignment,
+                allocation_context_id=resolution.allocation_context_id,
                 trace=resolution.trace,
                 mode=request.mode,
             ))
@@ -406,6 +411,7 @@ class GuardrailRuntimeService:
             effective_release_id=resolution.effective_release_id,
             model_revision_id=resolution.model_revision_id,
             route_assignment=resolution.route_assignment,
+            allocation_context_id=resolution.allocation_context_id,
             diagnostics=tuple(diagnostics),
             findings=tuple(findings),
             trace=tuple(trace),

@@ -1,5 +1,5 @@
 import { CreateEndpointSheet } from "@/routes/endpoints";
-import { queryKeys } from "@/features/query-keys";
+import { endpointListQueryFilters } from "@/features/endpoints-query";
 import { toast } from "@/components/ui/notifications";
 import i18n from "@/i18n";
 import { useTranslation } from "react-i18next";
@@ -254,7 +254,7 @@ export function CreateRouterSheet({ open, onOpenChange, onCreated }: {
     </EntitySheet>
     {createEndpointOpen && <CreateEndpointSheet open onOpenChange={setCreateEndpointOpen} completionLabel={t("resourceList.useEndpoint")}
       onCreated={async endpoint => {
-        await Promise.all([endpoints.refetch(), client.invalidateQueries({ queryKey: queryKeys.endpoints, exact: true })]);
+        await Promise.all([endpoints.refetch(), client.invalidateQueries(endpointListQueryFilters)]);
         setEndpointIds(current => [...new Set([...current, endpoint.id])]);
         setCreateEndpointOpen(false);
         toast.success(t("resourceList.endpointAdded"));

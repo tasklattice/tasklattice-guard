@@ -45,6 +45,7 @@ export type RuntimeEventInput = {
   guardrailVersion?: string | undefined;
   endpointId?: string | undefined;
   routerId?: string | undefined;
+  allocationContextId?: string | undefined;
   direction: "incoming" | "outgoing";
   decision: string;
   durationMs: number;

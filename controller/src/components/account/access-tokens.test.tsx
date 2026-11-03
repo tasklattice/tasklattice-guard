@@ -72,12 +72,13 @@ describe("Access token management", () => {
     fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Create token" }));
     await screen.findByText("Token created");
   });
-  it("offers users workflow write scopes while hiding platform scopes", async () => {
+  it("offers users workflow write scopes and read-only Runner access while hiding platform scopes", async () => {
     state.role = "user"; mount();
     fireEvent.click(screen.getByRole("button", { name: "Create token" }));
     expect(within(screen.getByLabelText("Routers", { exact: true })).getByRole("option", { name: "Read and write" })).toBeTruthy();
-    expect(within(screen.getByLabelText("Runners", { exact: true })).getAllByRole("option").map(option => option.getAttribute("value"))).toEqual(["none", "read", "write"]);
-    for (const label of ["Models", "Audit log"]) expect(screen.queryByLabelText(label, { exact: true })).toBeNull();
+    expect(within(screen.getByLabelText("Model configuration", { exact: true })).getByRole("option", { name: "Read and write" })).toBeTruthy();
+    expect(within(screen.getByLabelText("Runners", { exact: true })).getAllByRole("option").map(option => option.getAttribute("value"))).toEqual(["none", "read"]);
+    for (const label of ["Platform settings", "Audit log"]) expect(screen.queryByLabelText(label, { exact: true })).toBeNull();
   });
   it("confirms revocation, shows errors, then updates the list after success", async () => {
     state.list.mockResolvedValue({ items: [token] }); state.revoke.mockRejectedValueOnce(new Error("Revoke failed")); mount();

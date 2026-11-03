@@ -5,13 +5,14 @@ import { AuthProvider, useAuth } from "./auth";
 import { queryKeys } from "@/features/query-keys";
 import type { AuthStatus, IdentityUser } from "./identity-api";
 
-const mocks = vi.hoisted(() => ({ getAuthStatus: vi.fn(), login: vi.fn() }));
+const mocks = vi.hoisted(() => ({ getAuthStatus: vi.fn(), login: vi.fn(), loginMockSso: vi.fn(), logout: vi.fn() }));
 vi.mock("./identity-api", () => ({
-  getAuthStatus: mocks.getAuthStatus, login: mocks.login, logout: vi.fn(), updateMe: vi.fn(),
+  getAuthStatus: mocks.getAuthStatus, login: mocks.login, loginMockSso: mocks.loginMockSso, logout: mocks.logout, updateMe: vi.fn(),
 }));
 vi.mock("@/i18n", () => ({ default: { language: "en" }, setApplicationLanguage: vi.fn() }));
 
 const user: IdentityUser = { id: "first", display_name: "First", username: "first", role: "admin",
+  tenant_id: "tenantA",
   enabled: true, preferred_language: "en", last_login_at: null, created_at: "2026-09-06", updated_at: "2026-09-06" };
 const dashboardKeys = [
   queryKeys.metricsScope({ window: "7d" }),
@@ -20,7 +21,7 @@ const dashboardKeys = [
   queryKeys.runtimeEventsScope({ window: "1h", limit: 50, guardrailId: "private-guardrail" }),
 ];
 function Probe() { const auth = useAuth(); return <><p>{auth.user ? `${auth.user.id}:${auth.user.role}` : "signed-out"}</p>
-  <button onClick={() => void auth.login({ username: "second", password: "test-only" })}>Sign in</button></>; }
+  <button onClick={() => void auth.login({ username: "second", password: "test-only" })}>Sign in</button><button onClick={() => void auth.loginMockSso("tenantB")}>Switch tenant</button><button onClick={() => void auth.logout()}>Sign out</button></>; }
 afterEach(() => { cleanup(); vi.clearAllMocks(); });
 
 describe("Authenticated cache boundaries", () => {
@@ -45,6 +46,8 @@ describe("Authenticated cache boundaries", () => {
     { authenticated: false, user: null },
     { authenticated: true, user: { ...user, id: "second" } },
     { authenticated: true, user: { ...user, role: "user" as const } },
+    { authenticated: true, user: { ...user, tenant_id: "tenantB" } },
+    { authenticated: true, user: { ...user, enabled: false } },
   ])("clears prior resource data before exposing changed identity $user.id", async (next: AuthStatus) => {
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     client.setQueryData(queryKeys.auth, { authenticated: true, user });
@@ -58,6 +61,21 @@ describe("Authenticated cache boundaries", () => {
     expect(client.getQueryData(queryKeys.guardrails)).toBeUndefined();
     expect(client.getQueryData(queryKeys.users)).toBeUndefined();
     expect(client.getQueryData(queryKeys.auth)).toEqual(next);
+    client.clear();
+  });
+
+  it.each(["mock-sso", "logout"])("clears every identity-scoped cache and mutation on %s", async (action) => {
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    client.setQueryData(queryKeys.auth, { authenticated: true, user });
+    for (const key of [["sharing", "owned-resources"], ["mock-sso", "config"], ["resources", "model-configuration"], ["provider-discovery"]]) client.setQueryData(key, { private: "tenantA" });
+    client.getMutationCache().build(client, { mutationKey: ["old-tenant-operation"], mutationFn: async () => ({ private: "tenantA" }) });
+    mocks.loginMockSso.mockResolvedValue({ user: { ...user, id: "second", role: "user", tenant_id: "tenantB" } });
+    mocks.logout.mockResolvedValue(undefined);
+    render(<QueryClientProvider client={client}><AuthProvider><Probe /></AuthProvider></QueryClientProvider>);
+    fireEvent.click(screen.getByRole("button", { name: action === "mock-sso" ? "Switch tenant" : "Sign out" }));
+    await waitFor(() => expect(screen.getByText(action === "mock-sso" ? "second:user" : "signed-out")).toBeTruthy());
+    expect(client.getQueryCache().getAll().map(query => query.queryKey)).toEqual([queryKeys.auth]);
+    expect(client.getMutationCache().getAll()).toHaveLength(0);
     client.clear();
   });
 

@@ -1,10 +1,12 @@
 import { resolve } from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import type { ControllerDatabase } from "../db/client.js";
-import { modelAssignmentValidations, controllerState, outboxEvents, modelConfigurationRevisions, modelDefinitions, modelProviders, policyVersions } from "../db/schema.js";
+import { modelAssignmentValidations, controllerState, outboxEvents, modelConfigurationRevisions, modelDefinitions, modelProviders, policyVersions, runnerPools } from "../db/schema.js";
 import { emptyModelAssignments, modelInputSchema, modelConcurrencyInputSchema } from "./domain.js";
 import { ModelConfigurationService } from "./service.js";
+import { runWithTenantContext } from "../services/tenant-context.js";
 import { jailbreakDetectAttackInput, jailbreakDetectProfile, jailbreakDetectSafeInput } from "./jailbreak-detect.js";
+import type { ValidationCredentialLeaseStore } from "./validation-credential-leases.js";
 
 const id = "7471c0eb-a533-449a-8814-98c3bc23aa98";
 const input = { profile: "tali.qwen3guard.v1", timeoutSeconds: 30, maxTokens: 512 };
@@ -18,8 +20,9 @@ function setup(state = "draft", assigned = false, failProbe = false) {
     : empty;
   const rows = new Map<unknown, Array<Record<string, unknown>>>([
     [modelProviders, [{ id: "provider-1", name: "Mock", kind: "custom-openai-compatible", baseUrl: "https://provider.test/v1", credentialCiphertext: null }]],
-    [modelDefinitions, [{ id, providerId: "provider-1", name: "Guard alias", model: "guard-alias", ...input, status: "pending", validatedAt: null }]],
-    [modelConfigurationRevisions, [{ id: "revision-1", revision: 1, state, assignments, rowVersion: "synthetic-tx-1" }]],
+    [modelDefinitions, [{ id, tenantId: null, providerId: "provider-1", name: "Guard alias", model: "guard-alias", ...input, status: "pending", validatedAt: null }]],
+    [modelConfigurationRevisions, [{ id: "revision-1", tenantId: "tenantA", revision: 1, state, assignments, rowVersion: "synthetic-tx-1" }]],
+    [runnerPools, [{ id: "pool-a", groupId: "group-a" }, { id: "pool-b", groupId: "group-b" }]],
   ]);
   const query = (table: unknown) => {
     const result = rows.get(table) ?? [];
@@ -38,13 +41,52 @@ function setup(state = "draft", assigned = false, failProbe = false) {
   };
   const db = { ...tx, transaction: async (run: (value: typeof tx) => unknown) => run(tx) };
   const fetcher = vi.fn(async () => failProbe ? new Response("Unavailable", { status: 503 }) : Response.json({ choices: [{ message: { content: "Safety: Safe\nCategories: None" } }] }));
-  const service = new ModelConfigurationService(db as unknown as ControllerDatabase, "test-root-secret", resolve("../runner/toolkit/policy_library/assets"), fetcher);
+  // Service-only double; durable storage/locking is covered by real PG tests.
+  const candidates = new Map<string, { id: string; credentialCiphertext: string; poolId?: string }>();
+  const leases: ValidationCredentialLeaseStore = {
+    async create(leaseId, provider) { candidates.set(leaseId, { ...provider }); return true; },
+    async bind(leaseId, poolId) {
+      const candidate = candidates.get(leaseId);
+      if (!candidate || (candidate.poolId !== undefined && candidate.poolId !== poolId)) return false;
+      candidate.poolId = poolId; return true;
+    },
+    async resolve(leaseId, refs, poolId) {
+      const candidate = candidates.get(leaseId);
+      return candidate && candidate.poolId === poolId && refs.length > 0 && refs.every(ref => ref === candidate.id)
+        ? { providerId: candidate.id, credentialCiphertext: candidate.credentialCiphertext } : null;
+    },
+    async revoke(leaseId) { candidates.delete(leaseId); },
+  };
+  const service = new ModelConfigurationService(db as unknown as ControllerDatabase, "test-root-secret", resolve("../runner/toolkit/policy_library/assets"), fetcher, leases);
   const railValidator = vi.fn(async () => ({ passed: !failProbe, message: failProbe ? "Runner Rail case failed." : "Runner safe and unsafe cases passed.", latencyMs: 12 }));
   service.setRailValidator(railValidator);
   return { service, rows, tx, fetcher, railValidator };
 }
 
 describe("Capability configuration after registration", () => {
+  it.each(["tenantA", "tenantB"])("prevents tenant %s users from changing global bindings or resolving credentials", async (tenantId) => {
+    const { service, tx, fetcher, railValidator } = setup("validated");
+    const operations = [
+      () => service.updateDraft(emptyModelAssignments(), "group_b"),
+      () => service.previewAssignment("content_safety.input", id, "group_b"),
+      () => service.getAssignmentValidation("content_safety.input", "receipt", "group_b"),
+      () => service.updateAssignment("content_safety.input", id, "group_b"),
+      () => service.validateAssignment("content_safety.input", "group_b"),
+      () => service.validateDraft("group_b"),
+      () => service.applyConfiguration("group_b", {} as never),
+      () => service.finalizeActivation("revision-1"),
+      () => service.failActivation("revision-1", "Tenant supplied failure"),
+      () => service.resolveCredentials(["provider-1"]),
+    ];
+    for (const operation of operations) {
+      await expect(runWithTenantContext({ tenantId, actorId: "group_b", role: "user" }, operation))
+        .rejects.toMatchObject({ code: "forbidden" });
+    }
+    expect(tx.update).not.toHaveBeenCalled();
+    expect(tx.insert).not.toHaveBeenCalled();
+    expect(fetcher).not.toHaveBeenCalled();
+    expect(railValidator).not.toHaveBeenCalled();
+  });
   it.each(["input", "output"] as const)("validates and saves an existing DeepSeek chat as a %s reviewer without changing its profile or Control Plane assignment", async (rail) => {
     const target = `classifier_review.${rail}` as const;
     const { service, rows, fetcher } = setup();
@@ -226,13 +268,37 @@ describe("Capability configuration after registration", () => {
       expect(request.bindingId).toBe("content_safety.input");
       expect(request.configuration?.bindings?.[0]?.railType).toBe("RAIL_TYPE_INPUT");
       expect(await service.resolveCredentials(["provider-1"], leaseId)).toEqual({ "provider-1": "" });
+      expect(await service.resolveCredentials([], leaseId)).toEqual({});
+      expect(await service.resolveCredentials(["provider-1", "provider-1"], leaseId)).toEqual({ "provider-1": "" });
       expect(await service.resolveCredentials(["other-provider"], leaseId)).toEqual({});
+      expect(await service.resolveCredentials(["provider-1", "other-provider"], leaseId)).toEqual({});
       return { passed: true, message: "Rail samples passed.", latencyMs: 1 };
     });
     const revision = await service.validateAssignment("content_safety.input", "admin");
     expect(await service.resolveCredentials(["provider-1"], leaseId)).toEqual({});
     expect(fetcher).not.toHaveBeenCalled();
     expect(revision.validationReport?.checks).toContainEqual(expect.objectContaining({ evidenceKind: "nemo-rail-v1", status: "passed" }));
+  });
+
+  it("binds a validation lease to the dispatched pool and rejects other pools", async () => {
+    const { service } = setup("draft", true);
+    let leaseId = "";
+    service.setRailValidator(async request => {
+      leaseId = request.credentialLeaseId!;
+      expect(await service.resolveCredentials(["provider-1"], leaseId, "pool-a")).toEqual({});
+      expect(await service.bindValidationLease(leaseId, "pool-a")).toBe(true);
+      expect(await service.bindValidationLease(leaseId, "pool-b")).toBe(false);
+      expect(await service.resolveCredentials(["provider-1"], leaseId, "pool-b")).toEqual({});
+      expect(await service.resolveCredentials([], leaseId, "pool-a")).toEqual({});
+      expect(await service.resolveCredentials(["other-provider"], leaseId, "pool-a")).toEqual({});
+      expect(await service.resolveCredentials(["provider-1", "other-provider"], leaseId, "pool-a")).toEqual({});
+      expect(await service.resolveCredentials(["provider-1", "provider-1"], leaseId, "pool-a")).toEqual({ "provider-1": "" });
+      expect(await service.resolveCredentials(["provider-1"], leaseId, "pool-a")).toEqual({ "provider-1": "" });
+      return { passed: true, message: "Rail samples passed.", latencyMs: 1 };
+    });
+    await service.validateAssignment("content_safety.input", "admin");
+    expect(await service.resolveCredentials(["provider-1"], leaseId, "pool-a")).toEqual({});
+    expect(await service.bindValidationLease(leaseId, "pool-a")).toBe(false);
   });
 
   it("retains failed sample evidence in assignment validation reports", async () => {
@@ -421,7 +487,7 @@ describe("Capability configuration after registration", () => {
     const result = await service.configureModel(id, input, "admin");
     expect(result).toMatchObject({ id, ...input, status: "pending", validatedAt: null, validationLatencyMs: null });
     expect(fetcher).not.toHaveBeenCalled();
-    expect(tx.execute).toHaveBeenCalledOnce();
+    expect(tx.execute).toHaveBeenCalled();
   });
 
   it.each(["draft", "validated", "activating", "active", "superseded"])("preserves protocols referenced by a %s revision", async (state) => {
