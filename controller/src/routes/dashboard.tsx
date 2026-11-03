@@ -16,6 +16,8 @@ import {
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
+import { RuntimeMetricValue } from "@/components/dashboard/runtime-metric-value";
+import { RuntimeInvestigationSheet } from "@/components/dashboard/runtime-investigation-sheet";
 import { RuntimeMetricChart } from "@/components/dashboard/runtime-metric-chart";
 import { RuntimeHealthAlert } from "@/components/dashboard/runtime-health-alert";
 import { RuntimeEventStream } from "@/components/dashboard/runtime-event-stream";
@@ -25,12 +27,16 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { runtimeMetricStatus, type RuntimeStatusMetric } from "@/features/runtime-metric-status";
+import { runtimeInvestigation, runtimeInvestigationLogs, type InvestigationMetric } from "@/features/runtime-investigation";
+import "./dashboard.scss";
 import { useGuardrailsDashboard } from "@/features/dashboard";
 import { cn } from "@/lib/utils";
 import type { MetricWindow, Metrics } from "@/lib/api";
 
 export function DashboardPage() {
   const { t } = useTranslation();
+  const [investigation, setInvestigation] = useState<{ metric: InvestigationMetric; metrics: Metrics } | null>(null);
   const [guardrailId, setGuardrailId] = useState("all");
   const [window, setWindow] = useState<MetricWindow>("7d");
   const filters = {
@@ -39,6 +45,9 @@ export function DashboardPage() {
   };
   const dashboard = useGuardrailsDashboard(filters);
   const guardrails = dashboard.guardrails.data?.items ?? [];
+  const openInvestigation = (metric: InvestigationMetric) => {
+    if (dashboard.metrics.data) setInvestigation({ metric, metrics: dashboard.metrics.data });
+  };
 
   return (
     <section className="py-6 sm:py-8">
@@ -76,10 +85,12 @@ export function DashboardPage() {
               exactValue={dashboard.metrics.data.total_decisions.toLocaleString()}
               delta={dashboard.metrics.data.comparison.request_delta_pct}
               deltaKind="percent"
-              semantic="higher-is-better"
+              semantic="neutral"
               definition={t("dashboard.metricDefinitions.protectedTraffic")}
             />
             <OverviewMetricCard
+              metric="intervention_rate"
+              numericValue={dashboard.metrics.data.total_decisions ? dashboard.metrics.data.intervention_rate : null}
               label={t("dashboard.interventionRate")}
               value={dashboard.metrics.data.total_decisions ? formatPercent(dashboard.metrics.data.intervention_rate) : "—"}
               delta={dashboard.metrics.data.comparison.intervention_rate_delta_pp}
@@ -88,6 +99,10 @@ export function DashboardPage() {
               definition={t("dashboard.metricDefinitions.interventionRate")}
             />
             <OverviewMetricCard
+              metric="p95_latency"
+              numericValue={dashboard.metrics.data.total_decisions ? dashboard.metrics.data.runtime_p95_ms : null}
+              investigation={runtimeInvestigation(dashboard.metrics.data, "p95_latency")}
+              onInvestigate={() => openInvestigation("p95_latency")}
               label={t("dashboard.p95Latency")}
               value={dashboard.metrics.data.total_decisions ? `${dashboard.metrics.data.runtime_p95_ms.toLocaleString()} ms` : "—"}
               delta={dashboard.metrics.data.comparison.runtime_p95_delta_ms}
@@ -96,6 +111,10 @@ export function DashboardPage() {
               definition={t("dashboard.metricDefinitions.p95Latency")}
             />
             <OverviewMetricCard
+              metric="error_rate"
+              numericValue={dashboard.metrics.data.total_decisions ? dashboard.metrics.data.error_rate : null}
+              investigation={runtimeInvestigation(dashboard.metrics.data, "error_rate")}
+              onInvestigate={() => openInvestigation("error_rate")}
               label={t("dashboard.errorRate")}
               value={dashboard.metrics.data.total_decisions ? formatPercent(dashboard.metrics.data.error_rate) : "—"}
               delta={dashboard.metrics.data.comparison.error_rate_delta_pp}
@@ -106,9 +125,9 @@ export function DashboardPage() {
             />
           </div>
 
-          <div className="grid min-w-0 gap-4 xl:grid-cols-[minmax(0,1fr)_20rem]">
+          <div className="dashboard-runtime-grid">
             <RuntimeMetricChart metrics={dashboard.metrics.data} />
-            <AttentionPanel metrics={dashboard.metrics.data} />
+            <AttentionPanel metrics={dashboard.metrics.data} onInvestigate={openInvestigation} />
           </div>
 
           <ProtectionOutcome metrics={dashboard.metrics.data} />
@@ -119,6 +138,7 @@ export function DashboardPage() {
           />
         </div>
       ) : null}
+      {investigation ? <RuntimeInvestigationSheet metrics={investigation.metrics} metric={investigation.metric} onClose={() => setInvestigation(null)} /> : null}
     </section>
   );
 }
@@ -151,7 +171,7 @@ function DashboardFilters({ guardrailId, window, guardrails, onGuardrailChange, 
 type DeltaSemantic = "higher-is-better" | "lower-is-better" | "neutral";
 type DeltaKind = "percent" | "points" | "milliseconds";
 
-function OverviewMetricCard({ label, value, exactValue, delta, deltaKind, semantic, definition, supporting }: {
+function OverviewMetricCard({ label, value, exactValue, delta, deltaKind, semantic, definition, supporting, metric, numericValue = null, investigation, onInvestigate }: {
   label: string;
   value: string;
   exactValue?: string;
@@ -160,6 +180,10 @@ function OverviewMetricCard({ label, value, exactValue, delta, deltaKind, semant
   semantic: DeltaSemantic;
   definition: string;
   supporting?: string;
+  metric?: RuntimeStatusMetric;
+  numericValue?: number | null;
+  investigation?: ReturnType<typeof runtimeInvestigation>;
+  onInvestigate?: () => void;
 }) {
   const { t } = useTranslation();
   const positive = semantic === "higher-is-better" ? (delta ?? 0) > 0 : semantic === "lower-is-better" ? (delta ?? 0) < 0 : false;
@@ -169,7 +193,7 @@ function OverviewMetricCard({ label, value, exactValue, delta, deltaKind, semant
     ? t("dashboard.noPreviousData")
     : t(`dashboard.delta.${deltaKind}`, { value: Math.abs(delta).toLocaleString(undefined, { maximumFractionDigits: 2 }) });
   return (
-    <Card className="gap-4 py-4 shadow-none">
+    <Card className="dashboard-metric-card gap-3 py-4 shadow-none" role="region" aria-label={label} data-attention={investigation?.status}>
       <CardHeader className="flex grid-cols-none flex-row items-center justify-between gap-3">
         <CardDescription className="text-xs font-medium text-foreground/70">{label}</CardDescription>
         <Tooltip>
@@ -177,60 +201,67 @@ function OverviewMetricCard({ label, value, exactValue, delta, deltaKind, semant
           <TooltipContent className="max-w-72">{definition}</TooltipContent>
         </Tooltip>
       </CardHeader>
-      <CardContent>
-        <Tooltip>
-          <TooltipTrigger asChild><p className="w-fit text-2xl font-semibold tracking-[-0.035em] tabular-nums">{value}</p></TooltipTrigger>
-          {exactValue ? <TooltipContent>{exactValue}</TooltipContent> : null}
-        </Tooltip>
+      <CardContent className="dashboard-metric-card__content">
+        <div className="w-fit text-2xl font-semibold tabular-nums">
+          {metric ? <RuntimeMetricValue metric={metric} value={numericValue} showStatus>{value}</RuntimeMetricValue>
+            : <span title={exactValue}>{value}</span>}
+        </div>
+        {investigation ? <p className="mt-2 text-xs leading-5 text-muted-foreground">{t(investigation.reason === "slo" ? "dashboardInvestigation.sloExceeded" : metric === "p95_latency" ? "dashboardInvestigation.latencyImpact" : "dashboardInvestigation.errorImpact")}</p> : null}
         <p className={cn("mt-2 flex min-h-5 items-center gap-1.5 text-xs", positive && "text-emerald-700", negative && "text-amber-700", !positive && !negative && "text-muted-foreground")}>
           <Icon className="size-3.5" />
           <span>{deltaText} {delta !== null ? t("dashboard.vsPrevious") : ""}</span>
         </p>
-        {supporting ? <p className="mt-1 truncate text-[11px] text-muted-foreground" title={supporting}>{supporting}</p> : null}
+        {supporting ? <p className="mt-1 text-xs leading-5 text-muted-foreground">{supporting}</p> : null}
+        {metric === "intervention_rate" && ["warning", "critical"].includes(runtimeMetricStatus(metric, numericValue)) ? <p className="mt-2 text-xs leading-5 text-muted-foreground">{t("dashboardInvestigation.reviewTraffic")}</p> : null}
+        {investigation && onInvestigate ? <div className="dashboard-metric-card__actions">
+          <button type="button" className="dashboard-contact-action" onClick={onInvestigate} aria-label={t("dashboardInvestigation.contactAbout", { metric: label })}>
+            {t("dashboardInvestigation.contact")}<ArrowUpRight className="size-4" aria-hidden="true" />
+          </button>
+        </div> : null}
       </CardContent>
     </Card>
   );
 }
 
-function AttentionPanel({ metrics }: { metrics: Metrics }) {
+function AttentionPanel({ metrics, onInvestigate }: { metrics: Metrics; onInvestigate: (metric: InvestigationMetric) => void }) {
   const { t } = useTranslation();
   if (!metrics.total_decisions) return <GettingStarted metrics={metrics} />;
+  const investigations = (["p95_latency", "error_rate"] as const).flatMap(metric => {
+    const issue = runtimeInvestigation(metrics, metric);
+    return issue ? [{ metric, ...issue }] : [];
+  }).sort((a, b) => Number(b.status === "critical") - Number(a.status === "critical"));
   const items = [
-    metrics.latency_slo.p95_status === "breached" ? { icon: TriangleAlert, title: t("dashboard.attentionLatency"), detail: t("dashboard.attentionLatencyDetail", { value: metrics.runtime_p95_ms }), to: "/logs" as const } : null,
     metrics.degraded_endpoints ? { icon: CircleAlert, title: t("dashboard.attentionEndpoint"), detail: t("dashboard.attentionEndpointDetail", { count: metrics.degraded_endpoints }), to: "/integration/endpoints" as const } : null,
     metrics.fail_closed_count ? { icon: ShieldCheck, title: t("dashboard.attentionFailClosed"), detail: t("dashboard.attentionFailClosedDetail", { count: metrics.fail_closed_count }), to: "/logs" as const } : null,
     metrics.guardrails_needing_test ? { icon: CircleAlert, title: t("dashboard.attentionTesting"), detail: t("dashboard.attentionTestingDetail", { count: metrics.guardrails_needing_test }), to: "/guardrails" as const } : null,
-  ].filter(Boolean).slice(0, 3) as Array<{ icon: ComponentType<{ className?: string }>; title: string; detail: string; to: "/logs" | "/integration/endpoints" | "/guardrails" }>;
+  ].filter(Boolean) as Array<{ icon: ComponentType<{ className?: string }>; title: string; detail: string; to: "/logs" | "/integration/endpoints" | "/guardrails" }>;
 
-  return (
-    <Card className="shadow-none">
-      <CardHeader><CardTitle>{t("dashboard.attention")}</CardTitle><CardDescription>{t("dashboard.attentionDescription")}</CardDescription></CardHeader>
-      <CardContent className="flex min-h-[310px] flex-col">
-        {items.length ? (
-          <div className="space-y-1">
-            {items.map((item) => <AttentionItem key={item.title} {...item} />)}
-          </div>
-        ) : (
-          <div className="flex flex-1 flex-col items-center justify-center text-center">
-            <span className="grid size-10 place-items-center rounded-full bg-emerald-50 text-emerald-700"><CheckCircle2 className="size-5" /></span>
-            <p className="mt-4 text-sm font-semibold">{t("dashboard.noErrors")}</p>
-            <p className="mt-1.5 max-w-56 text-xs leading-5 text-muted-foreground">{t("dashboard.noErrorsDescription")}</p>
-          </div>
-        )}
-        <Button className="mt-auto w-full justify-between" variant="ghost" asChild><Link to="/logs">{t("common.viewAll")}<ArrowRight /></Link></Button>
-      </CardContent>
-    </Card>
-  );
-}
-
-function AttentionItem({ icon: Icon, title, detail, to }: { icon: ComponentType<{ className?: string }>; title: string; detail: string; to: "/logs" | "/integration/endpoints" | "/guardrails" }) {
-  return (
-    <Link to={to} className="group flex min-h-16 items-start gap-3 rounded-lg px-2 py-3 transition-colors hover:bg-muted/60 focus-visible:outline-2 focus-visible:outline-ring">
-      <span className="mt-0.5 grid size-7 shrink-0 place-items-center rounded-md bg-amber-50 text-amber-700"><Icon className="size-4" /></span>
-      <span className="min-w-0 flex-1"><span className="block text-sm font-medium">{title}</span><span className="mt-0.5 block text-xs leading-5 text-muted-foreground">{detail}</span></span>
-      <ArrowRight className="mt-2 size-4 shrink-0 text-muted-foreground transition-transform group-hover:translate-x-0.5" />
-    </Link>
-  );
+  return <Card className="dashboard-attention gap-0 py-0 shadow-none">
+    <CardHeader className="border-b py-3">
+      <CardTitle>{t("dashboard.attention")}</CardTitle>
+      <CardDescription className="text-xs leading-5">{t(investigations.length ? "dashboardInvestigation.attentionDescription" : "dashboard.attentionDescription")}</CardDescription>
+    </CardHeader>
+    <CardContent className="py-2">
+      {investigations.map(issue => <button key={issue.metric} type="button" className="dashboard-attention-issue" data-status={issue.status} onClick={() => onInvestigate(issue.metric)}>
+        <TriangleAlert className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
+        <span className="min-w-0 flex-1">
+          <span className="block text-sm font-medium">{t(issue.metric === "p95_latency" ? "dashboardInvestigation.latencyTitle" : "dashboardInvestigation.errorTitle")}</span>
+          <span className="mt-1 block text-xs text-muted-foreground">{issue.metric === "p95_latency" ? `${metrics.runtime_p95_ms.toLocaleString()} ms` : formatPercent(metrics.error_rate)} · {t(issue.reason === "slo" ? "dashboardInvestigation.sloExceeded" : `runtimeMetrics.${issue.status}`)}</span>
+          <span className="mt-2 flex items-center gap-1 text-xs font-medium text-primary">{t("dashboardInvestigation.contact")}<ArrowUpRight className="size-3.5" /></span>
+        </span>
+      </button>)}
+      {items.map(item => <Link key={item.title} to={item.to} search={item.to === "/logs" ? runtimeInvestigationLogs(metrics) : {}} className="dashboard-attention-link">
+        <item.icon className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
+        <span className="min-w-0 flex-1"><span className="block text-xs font-medium">{item.title}</span><span className="mt-0.5 block text-xs leading-5 text-muted-foreground">{item.detail}</span></span>
+        <ArrowRight className="mt-1 size-3.5 shrink-0 text-muted-foreground" />
+      </Link>)}
+      {!investigations.length && !items.length ? <div className="flex flex-col items-center px-3 py-8 text-center">
+        <CheckCircle2 className="size-5 text-[var(--success)]" />
+        <p className="mt-3 text-sm font-semibold">{t("dashboardInvestigation.noAttention")}</p>
+        <p className="mt-1.5 text-xs leading-5 text-muted-foreground">{t("dashboardInvestigation.noAttentionDescription")}</p>
+      </div> : null}
+    </CardContent>
+  </Card>;
 }
 
 function GettingStarted({ metrics }: { metrics: Metrics }) {

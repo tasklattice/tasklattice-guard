@@ -1,6 +1,7 @@
 import { hasRuntimeError, runtimeOutcome, type RuntimeLogOutcome, type RuntimeOutcome } from "../../shared/runtime-outcome";
 import { selectedSeverities, type EventSeverity } from "../../shared/security-severity";
 import * as controllerApi from "@/lib/controller-api";
+import { runtimeLogDiagnostics } from "./runtime-log-diagnostics";
 import {
   arrayOfRecords,
   arrayOfStrings,
@@ -73,23 +74,17 @@ function runtimeLogEntry(event: controllerApi.RuntimeEvent): RuntimeLogInteracti
     detection_error: stringValue(event.metadata.detectionError),
     model_status: enumValue(event.metadata.modelStatus, ["ok", "error", "not_called", "unknown"] as const) ?? undefined,
     execution_status: hasRuntimeError(event) ? "error" : event.metadata.executionStatus === "complete" ? "complete" : event.metadata.executionStatus === "degraded" ? "degraded" : event.metadata.executionStatus === "bypassed" ? "bypassed" : "unknown",
+    model_exchanges: Array.isArray(event.metadata.modelExchanges) ? event.metadata.modelExchanges as import("./api-types").ModelHttpExchange[] : null,
+    model_evidence_status: stringValue(event.metadata.modelEvidenceStatus),
+    model_evidence_count: numberValue(event.metadata.modelEvidenceCount) ?? 0,
+    termination_reason: stringValue(event.metadata.terminationReason),
+    fail_closed: event.metadata.terminationReason === "fail_closed" || (event.metadata.usage as Record<string, unknown> | null)?.fail_closed === true,
     ...(event.metadata.logKind === "call_completion" ? { call_completion: {
       inferred: event.metadata.completionInferred === true, reason: stringValue(event.metadata.failureReason),
       completed_at: stringValue(event.metadata.completedAt), decision_id: stringValue(event.metadata.decisionId),
       route_id: stringValue(event.metadata.routeId), target_id: stringValue(event.metadata.targetId), router_revision: numberValue(event.metadata.routerRevision),
     } } : {}),
-    error_details: arrayOfRecords(event.metadata.diagnostics).map(d => {
-      const step = trace.find(s => s.id === d.stepId);
-      return {
-        source: enumValue(d.source, ["model", "configuration", "guard", "unknown", "mixed"] as const),
-        category: stringValue(d.category), http_status: numberValue(d.httpStatus),
-        model_call_id: stringValue(d.modelCallId), affects_result: d.affectsResult === true,
-        span_id: stringValue(d.stepId) ?? "—",
-        name: stringValue(step?.actionName) ?? stringValue(step?.name) ?? stringValue(d.message) ?? "Guardrail execution failed",
-        error_type: stringValue(d.code), provider: stringValue(step?.providerName), model: stringValue(step?.modelName),
-        policy: stringValue(d.policyId), timed_out: d.code === "timeout", timeout_ms: numberValue(step?.timeoutMs),
-      };
-    }),
+    error_details: runtimeLogDiagnostics(arrayOfRecords(event.metadata.diagnostics), trace),
     detail: `Runner ${event.runnerId} reported ${event.direction} decision “${event.decision}” in ${event.durationMs} ms.`,
     http_request: httpRequest,
     content_before: before,

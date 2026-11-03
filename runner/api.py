@@ -14,7 +14,7 @@ import uuid
 from dataclasses import asdict, replace
 from typing import Any, Literal
 
-from fastapi import APIRouter, Header, HTTPException, Request, Response
+from fastapi import Depends, APIRouter, Header, HTTPException, Request, Response
 from fastapi.encoders import jsonable_encoder
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
@@ -39,6 +39,7 @@ from .output_streaming import register_output_stream
 from .telemetry import RuntimeTelemetryExporter
 from .runtime_log_capture import RuntimeLogCapture
 from .tenant_admission import AdmissionRejected, AdmissionUnavailable, AdmissionPermit, EndpointAdmission
+from .model_http_evidence import capture_model_http_evidence, failed_model_http_evidence
 
 
 LITELLM_ADAPTER_ID = "litellm-generic-guardrail"
@@ -192,7 +193,7 @@ class RunnerAPI:
         runtime_log_capture: RuntimeLogCapture | None = None,
         tenant_admission: EndpointAdmission | None = None,
     ) -> None:
-        self.router = APIRouter()
+        self.router = APIRouter(dependencies=[Depends(self._model_evidence_scope)])
         self._runtime = runtime
         self._store = store
         self._metrics = metrics
@@ -213,6 +214,10 @@ class RunnerAPI:
         register_path_testing(self)
         from .scan import register_scan
         register_scan(self, max_body_bytes=scan_max_body_bytes, timeout_seconds=scan_timeout_seconds)
+
+    async def _model_evidence_scope(self):
+        with capture_model_http_evidence(enabled=bool(self._runtime_log_encryption_key)):
+            yield
 
     def _trace_request_id(self, fallback: str) -> str:
         """Prefer the active trace id when the metrics implementation exposes one."""
@@ -629,17 +634,28 @@ class RunnerAPI:
                 event["routerId"] = observed_router
             event["metadata"].update(_telemetry_route_metadata(getattr(observation, "route_assignment", None)))
 
+        failed_calls = {c.call_id for c in decision.usage.model_calls if c.result not in {"success", "cancelled"}} if decision and decision.usage else None
+        model_exchanges = failed_model_http_evidence({c.call_id for c in decision.usage.model_calls} if decision and decision.usage else None)
+        has_model_failure = bool(failed_calls or model_exchanges)
+        if has_model_failure:
+            runtime_log_captured = True
+            event["metadata"]["modelEvidenceCount"] = len(model_exchanges)
+            event["metadata"]["modelEvidenceStatus"] = ("captured" if model_exchanges else
+                "encryption_unavailable" if not self._runtime_log_encryption_key else "not_recorded")
         ciphertext = None
         # DEBUG holds encrypted candidates briefly, so an output finding can
         # select the original input even when it ran on another replica.
-        if capture_level in {"debug", "trace"} and self._runtime_log_encryption_key:
+        if (capture_level in {"debug", "trace"} or model_exchanges) and self._runtime_log_encryption_key:
             try:
                 ciphertext = _encrypt_runtime_log_content(
-                    self._runtime_log_encryption_key, phase, content_before,
-                    await _runtime_http_request(http_request) if http_request is not None else None,
+                    self._runtime_log_encryption_key, phase, content_before if capture_level != "info" else (),
+                    await _runtime_http_request(http_request) if http_request is not None and capture_level != "info" else None,
+                    model_exchanges=model_exchanges,
                 )
             except Exception:
                 capture_failed = True
+                if has_model_failure:
+                    event["metadata"]["modelEvidenceStatus"] = "storage_unavailable"
                 logging.getLogger(__name__).warning("Runtime body capture unavailable; preserving audit metadata.")
         pending = []
         incomplete = capture_failed
@@ -824,11 +840,13 @@ def _encrypt_runtime_log_content(
     phase: Literal["input", "output"],
     before: tuple[str, ...],
     http_request: dict[str, Any] | None = None,
+    *, model_exchanges: list[dict[str, Any]] | None = None,
 ) -> str:
     role = "user_input" if phase == "input" else "model_output"
     payload = {
         "contentBefore": _runtime_log_blocks(before, role),
         **({"httpRequest": http_request} if http_request is not None else {}),
+        **({"modelExchanges": model_exchanges} if model_exchanges else {}),
     }
     nonce = os.urandom(12)
     encrypted = AESGCM(key).encrypt(

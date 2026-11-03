@@ -9,6 +9,17 @@ vi.mock("react-i18next", () => ({
   useTranslation: () => ({ t: (key: string, values?: { name?: string }) => values?.name ? `${key} ${values.name}` : key, i18n: { exists: () => false } }),
 }));
 afterEach(cleanup);
+it("shows an uncertain classification as a diagnostic without calling it a model service error", () => {
+  render(<ExecutionTrace steps={[{ id: "classification", name: "Safety classifier", kind: "evaluation", outcome: "unknown", latency_ms: 10,
+    error_source: "model", error_category: "model_uncertain", affects_result: false }]} />);
+  expect(screen.getByText("logs.diagnostics.title")).toBeTruthy();
+  expect(screen.queryByText("logs.traceErrors")).toBeNull();
+  fireEvent.click(screen.getByRole("button", { name: /logs.executionTrace/ }));
+  expect(screen.getByText("logs.diagnostics.modelEvaluation")).toBeTruthy();
+  expect(screen.getByText("logs.diagnostics.causes.model_uncertain")).toBeTruthy();
+  expect(screen.queryByText("logs.errorSources.model")).toBeNull();
+});
+
 it("surfaces provider failure in the collapsed Trace and explains it before the raw error", () => {
   const detail = "All eligible Safety Providers failed: pii_semantic.input:9ec3a7b2-9532-4739-8c2d-db7c887697d5:0: HTTPStatusError";
   render(<ExecutionTrace steps={[{ id: "provider", name: "Privacy check", kind: "action", outcome: "error", latency_ms: 100, detail, error_source: "model", error_category: "unavailable", http_status: 503, model_call_id: "model-call", model_name: "judge", provider_name: "provider" }]} description={detail} />);

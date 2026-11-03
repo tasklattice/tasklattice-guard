@@ -1,20 +1,17 @@
 // @vitest-environment node
 // Opt-in real PostgreSQL semantics; never calls a Provider or changes public rows.
 import { randomUUID } from "node:crypto";
-import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { drizzle } from "drizzle-orm/node-postgres";
-import { Pool } from "pg";
+import type { Pool } from "pg";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
-import * as schema from "../db/schema.js";
+import { createTestDatabase } from "../db/postgres-test-database.js";
 import { emptyModelAssignments } from "./domain.js";
 import { ModelConfigurationService } from "./service.js";
 import { runWithTenantContext } from "../services/tenant-context.js";
 
 const url = process.env.GUARD_TEST_POSTGRES_URL;
 describe.skipIf(!url)("Current model configuration PostgreSQL semantics", () => {
-  const namespace = `guard_model_apply_${randomUUID().replaceAll("-", "")}`;
-  let admin: Pool;
+  let database: Awaited<ReturnType<typeof createTestDatabase>>;
   let pool: Pool;
   let service: ModelConfigurationService;
   const modelId = randomUUID();
@@ -22,23 +19,15 @@ describe.skipIf(!url)("Current model configuration PostgreSQL semantics", () => 
   const directory = resolve('../runner/toolkit/policy_library/assets');
 
   beforeAll(async () => {
-    expect(["127.0.0.1", "localhost", "[::1]"]).toContain(new URL(url!).hostname);
-    admin = new Pool({ connectionString: url, max: 1 });
-    await admin.query(`CREATE SCHEMA "${namespace}"`);
-    pool = new Pool({ connectionString: url, max: 2, application_name: namespace, options: `-c search_path=${namespace}` });
-    for (const table of ['tenant_group', 'auth_user', 'model_assignment_validation', 'model_configuration_revision', 'model_provider', 'model_definition', 'policy_version', 'resource_share', 'audit_event', 'controller_state', 'controller_outbox']) {
-      // LIKE copies structure/indexes, not data or foreign keys to public rows.
-      await pool.query(`CREATE TABLE "${table}" (LIKE public."${table}" INCLUDING ALL)`);
-    }
-    await pool.query(readFileSync(new URL("../db/migrations/0012_validation_credential_leases.sql", import.meta.url), "utf8"));
-    await pool.query(readFileSync(new URL("../db/migrations/0018_group_model_configurations.sql", import.meta.url), "utf8"));
+    database = await createTestDatabase(url!, "guard_model_apply", { maxConnections: 2 });
+    pool = database.pool;
+    await pool.query("INSERT INTO auth_user (id,name,email,role,tenant_id) SELECT id,id,id||'@example.test','admin','tenantA' FROM unnest(ARRAY['admin','synthetic-admin','admin-a','admin-b','other']) AS id");
+    await pool.query("INSERT INTO auth_user (id,name,email,role,tenant_id) VALUES ('group_b','B','group_b@example.test','user','tenantB'),('group_c','C','group_c@example.test','user','tenantC')");
     await pool.query("INSERT INTO model_provider (id,name,kind,base_url,credential_ciphertext) VALUES ($1,'Synthetic','custom-openai-compatible','http://provider.invalid/v1','')", [providerId]);
     await pool.query("INSERT INTO model_definition (id,provider_id,name,model,profile) VALUES ($1,$2,'Synthetic','synthetic','tali.qwen3guard.v1')", [modelId, providerId]);
   });
   afterAll(async () => {
-    await pool?.end();
-    await admin?.query(`DROP SCHEMA IF EXISTS "${namespace}" CASCADE`);
-    await admin?.end();
+    await database?.drop();
   });
   beforeEach(async () => {
     await pool.query('DELETE FROM resource_share');
@@ -49,8 +38,8 @@ describe.skipIf(!url)("Current model configuration PostgreSQL semantics", () => 
     await pool.query('DELETE FROM controller_outbox');
     await pool.query('DELETE FROM audit_event');
     await pool.query("INSERT INTO controller_state (id,desired_generation) VALUES ('singleton',0) ON CONFLICT (id) DO UPDATE SET desired_generation=0");
-    await pool.query("UPDATE model_definition SET tenant_id=NULL,name='Synthetic',profile='tali.qwen3guard.v1' WHERE id=$1", [modelId]);
-    service = new ModelConfigurationService(drizzle(pool, { schema }), 'synthetic-root', directory,
+    await pool.query("UPDATE model_definition SET tenant_id=NULL,name='Synthetic',profile='tali.qwen3guard.v1',max_concurrency=2 WHERE id=$1", [modelId]);
+    service = new ModelConfigurationService(database.db, 'synthetic-root', directory,
       vi.fn(() => { throw new Error('No external calls allowed'); }));
     service.setRailValidator(async () => ({ passed: true, message: 'Synthetic Rail result', latencyMs: 1 }));
   });
@@ -95,12 +84,17 @@ describe.skipIf(!url)("Current model configuration PostgreSQL semantics", () => 
     for (const mutate of [() => service.revalidateModel(modelId, 'group_b'),
       () => service.testModelConnection(modelId, 'group_b'),
       () => service.configureModel(modelId, { profile: 'generic-chat', timeoutSeconds: 20, maxTokens: 128 }, 'group_b'),
+      () => service.configureConcurrency(modelId, { maxConcurrency: 4 }, 'group_b'),
       () => service.deleteModel(modelId, 'group_b')]) {
       await expect(runWithTenantContext({ tenantId: 'tenantB', role: 'user' }, mutate)).rejects.toMatchObject({ code: 'not_found' });
     }
     const owned = await runWithTenantContext({ tenantId: 'tenantB', role: 'user' }, () =>
       service.configureModel(tenantBModelId, { profile: 'generic-chat', timeoutSeconds: 45, maxTokens: 256 }, 'group_b'));
     expect(owned).toMatchObject({ tenantId: 'tenantB', timeoutSeconds: 45, maxTokens: 256 });
+    expect(await runWithTenantContext({ tenantId: 'tenantB', role: 'user' }, () =>
+      service.configureConcurrency(tenantBModelId, { maxConcurrency: 4 }, 'group_b')))
+      .toMatchObject({ tenantId: 'tenantB', maxConcurrency: 4 });
+    expect((await pool.query('SELECT max_concurrency FROM model_definition WHERE id=$1', [modelId])).rows[0].max_concurrency).toBe(2);
     await runWithTenantContext({ tenantId: 'tenantB', role: 'user' }, () => service.deleteModel(tenantBModelId, 'group_b'));
     expect((await pool.query('SELECT id FROM model_definition WHERE id=$1', [tenantBModelId])).rows).toHaveLength(0);
 
@@ -133,7 +127,7 @@ describe.skipIf(!url)("Current model configuration PostgreSQL semantics", () => 
 
   it('lets tenants independently register and configure the same platform Model', async () => {
     const fetcher = vi.fn(async () => Response.json({ choices: [{ message: { content: 'Safe' } }] }));
-    const registration = new ModelConfigurationService(drizzle(pool, { schema }), 'synthetic-root', directory, fetcher);
+    const registration = new ModelConfigurationService(database.db, 'synthetic-root', directory, fetcher);
     const input = { providerId, name: 'My detector', model: 'synthetic', profile: 'tali.qwen3guard.v1', timeoutSeconds: 20, maxTokens: 128 };
     const ownedB = await runWithTenantContext({ tenantId: 'tenantB', role: 'user' }, () => registration.createModel(input, 'group_b'));
     const ownedC = await runWithTenantContext({ tenantId: 'tenantC', role: 'user' }, () => registration.createModel(input, 'group_c'));
@@ -167,6 +161,7 @@ describe.skipIf(!url)("Current model configuration PostgreSQL semantics", () => 
     for (const mutate of [() => service.revalidateModel(privateId, 'admin'),
       () => service.testModelConnection(privateId, 'admin'),
       () => service.configureModel(privateId, { profile: 'generic-chat', timeoutSeconds: 20, maxTokens: 128 }, 'admin'),
+      () => service.configureConcurrency(privateId, { maxConcurrency: 4 }, 'admin'),
       () => service.deleteModel(privateId, 'admin')]) {
       await expect(runWithTenantContext({ tenantId: 'tenantB', role: 'admin' }, mutate)).rejects.toMatchObject({ code: 'not_found' });
     }
@@ -231,6 +226,21 @@ describe.skipIf(!url)("Current model configuration PostgreSQL semantics", () => 
     await pool.query("INSERT INTO model_configuration_revision (id,revision,state,assignments,validation_report) VALUES ($1,1,'active',$2,$3)", [activeId, assignments, report]);
     return { draftId, activeId, proposed, selection: await review() };
   }
+  it('defaults migrated models to two and distributes operational concurrency changes without rewriting active evidence', async () => {
+    const { activeId } = await seedPartial();
+    expect((await pool.query('SELECT max_concurrency FROM model_definition WHERE id=$1', [modelId])).rows[0].max_concurrency).toBe(2);
+    const before = (await pool.query('SELECT assignments,validation_report FROM model_configuration_revision WHERE id=$1', [activeId])).rows[0];
+    expect((await service.activeConfiguration())?.models[0]?.maxConcurrency).toBe(2);
+    expect((await service.configureConcurrency(modelId, { maxConcurrency: 4 }, 'admin')).maxConcurrency).toBe(4);
+    expect((await service.activeConfiguration())?.models[0]?.maxConcurrency).toBe(4);
+    expect((await pool.query('SELECT assignments,validation_report FROM model_configuration_revision WHERE id=$1', [activeId])).rows[0]).toEqual(before);
+    expect(Number((await pool.query('SELECT desired_generation FROM controller_state')).rows[0].desired_generation)).toBe(1);
+    expect((await pool.query('SELECT kind,payload FROM controller_outbox')).rows).toEqual([
+      { kind: 'runner.desired_state_changed', payload: { resourceType: 'model_definition', modelId, generation: 1 } },
+    ]);
+    expect((await pool.query("SELECT detail FROM audit_event WHERE kind='model_definition.concurrency_updated'")).rows[0].detail)
+      .toEqual({ previousMaxConcurrency: 2, maxConcurrency: 4 });
+  });
   it('requires formal policy examples and passes them to the scoped Runner validation', async () => {
     await seed();
     await pool.query("UPDATE model_definition SET profile='tali.automated-reasoning.v1' WHERE id=$1", [modelId]);
@@ -357,7 +367,7 @@ describe.skipIf(!url)("Current model configuration PostgreSQL semantics", () => 
   it('shares receipts and enforces ownership, expiry and unchanged model settings', async () => {
     await seed();
     const receipt = await service.previewAssignment('content_safety.input', modelId, 'synthetic-admin');
-    const peer = new ModelConfigurationService(drizzle(pool, { schema }), 'synthetic-root', directory);
+    const peer = new ModelConfigurationService(database.db, 'synthetic-root', directory);
     await expect(peer.getAssignmentValidation('content_safety.input', receipt.validationId, 'other')).rejects.toMatchObject({ code: 'not_found' });
     await expect(peer.updateAssignment('content_safety.input', modelId, 'other', receipt.validationId)).rejects.toMatchObject({ code: 'model_assignment_not_validated' });
     await pool.query('UPDATE model_assignment_validation SET expires_at=now()-interval \'1 minute\' WHERE id=$1', [receipt.validationId]);
@@ -382,7 +392,7 @@ describe.skipIf(!url)("Current model configuration PostgreSQL semantics", () => 
     const { selection } = await seedPartial();
     const chatId = randomUUID();
     await pool.query("INSERT INTO model_definition (id,provider_id,name,model,profile) VALUES ($1,$2,'Chat','chat','generic-chat')", [chatId, providerId]);
-    const chat = new ModelConfigurationService(drizzle(pool, { schema }), 'synthetic-root', directory,
+    const chat = new ModelConfigurationService(database.db, 'synthetic-root', directory,
       vi.fn(async () => Response.json({ choices: [{ message: { content: 'Hello' } }] })));
     const receipt = await chat.previewAssignment('control_plane', chatId, 'synthetic-admin');
     await chat.updateAssignment('control_plane', chatId, 'synthetic-admin', receipt.validationId);

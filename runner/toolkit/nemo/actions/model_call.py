@@ -11,6 +11,8 @@ from dataclasses import dataclass, field
 from typing import Any, AsyncIterator, Iterator, Protocol
 
 import httpx
+from runner.model_http_evidence import begin_model_http_call, finish_model_http_call, mark_model_request_sent
+from runner.model_concurrency import model_slot
 from aiohttp import ClientConnectionError, ClientResponseError
 from ...runtime.failures import Failure, ModelConfigurationError, ModelResponseError
 from nemoguardrails import Guardrails
@@ -47,7 +49,16 @@ _NATIVE_MODEL_SCOPE: ContextVar["NativeModelObservationScope | None"] = ContextV
     "tasklattice_native_model_observation_scope",
     default=None,
 )
+_ACTIVE_MODEL_CALL: ContextVar["ModelCallTracker | None"] = ContextVar("guard_active_model_call", default=None)
 _ACTIVE_NATIVE_CALL: ContextVar["_NativeModelCall | None"] = ContextVar("guard_active_native_call", default=None)
+
+
+def record_model_queue(queue_ms: int, request_sent: bool) -> None:
+    mark_model_request_sent(request_sent)
+    call = _ACTIVE_MODEL_CALL.get() or _ACTIVE_NATIVE_CALL.get()
+    if call is not None:
+        call.queue_duration_ms += queue_ms
+        call.request_sent = bool(call.request_sent or request_sent)
 
 
 def record_native_response(response: LLMResponse) -> None:
@@ -131,9 +142,10 @@ class ObservedNeMoModel:
         **kwargs: Any,
     ) -> LLMResponse:
         with _observe_native_model_call(self, self._role) as call:
-            response = await self._delegate.generate_async(
-                prompt, stop=stop, **kwargs,
-            )
+            async with model_slot(self.runtime_ref):
+                response = await self._delegate.generate_async(
+                    prompt, stop=stop, **kwargs,
+                )
             if self._role == "topic_control" and (
                 not isinstance(response.content, str) or response.content.strip().casefold() not in {"on-topic", "off-topic"}
             ):
@@ -149,11 +161,12 @@ class ObservedNeMoModel:
         **kwargs: Any,
     ) -> AsyncIterator[LLMResponseChunk]:
         with _observe_native_model_call(self, self._role) as call:
-            async for chunk in self._delegate.stream_async(
-                prompt, stop=stop, **kwargs,
-            ):
-                call.complete(chunk)
-                yield chunk
+            async with model_slot(self.runtime_ref):
+                async for chunk in self._delegate.stream_async(
+                    prompt, stop=stop, **kwargs,
+                ):
+                    call.complete(chunk)
+                    yield chunk
 
 
 def instrument_nemo_models(
@@ -168,6 +181,8 @@ def instrument_nemo_models(
         model = params.get(parameter)
         if model is None or isinstance(model, ObservedNeMoModel):
             continue
+        from runner.model_validation_diagnostics import instrument_native_validation_http
+        instrument_native_validation_http(model)
         rails.register_action_param(parameter, ObservedNeMoModel(model, role, (runtime_refs or {}).get(role)))
 
 
@@ -190,6 +205,8 @@ class _NativeModelCall:
     input_tokens: int = 0
     output_tokens: int = 0
     finished: float = 0.0
+    queue_duration_ms: int = 0
+    request_sent: bool | None = None
 
     def complete(self, response: LLMResponse | LLMResponseChunk) -> None:
         self.result = "success"
@@ -227,6 +244,7 @@ class _NativeModelCall:
             operation=f"{self.role}_{phase}",
             result=self.result,
             duration_ms=duration_ms,
+            queue_duration_ms=self.queue_duration_ms, request_sent=self.request_sent,
             profile_ref=self.profile_ref,
             runtime_ref=self.runtime_ref,
             started_offset_ms=started_offset_ms,
@@ -306,6 +324,7 @@ def observe_native_model_call(
         },
     ) as span:
         token = _ACTIVE_NATIVE_CALL.set(call)
+        evidence_token = begin_model_http_call(call.call_id, provider, model)
         try:
             yield call
         except BaseException as error:
@@ -315,6 +334,7 @@ def observe_native_model_call(
                 span.set_status(Status(StatusCode.ERROR, call.result))
             raise
         finally:
+            finish_model_http_call(evidence_token, call.result, call.error_type)
             _ACTIVE_NATIVE_CALL.reset(token)
             call.finished = time.perf_counter()
             usage = call.usage
@@ -322,6 +342,9 @@ def observe_native_model_call(
             span.set_attribute("guardrail.model.result", usage.result)
             span.set_attribute("guardrail.model.call_id", usage.call_id)
             span.set_attribute("guardrail.model.duration_ms", usage.duration_ms)
+            span.set_attribute("guardrail.model.queue_duration_ms", usage.queue_duration_ms)
+            if usage.request_sent is not None:
+                span.set_attribute("guardrail.model.request_sent", usage.request_sent)
             span.set_attribute("guardrail.model.error_type", usage.error_type)
             if usage.error_source:
                 span.set_attribute("guardrail.error.source", usage.error_source)
@@ -363,6 +386,8 @@ class ModelCallTracker:
     backoff_ms: int = 0
     time_to_first_token_ms: int | None = None
     finished: float = 0.0
+    queue_duration_ms: int = 0
+    request_sent: bool | None = None
 
     def complete(
         self,
@@ -418,6 +443,7 @@ class ModelCallTracker:
             operation=self.operation,
             result=self.result,
             duration_ms=duration_ms,
+            queue_duration_ms=self.queue_duration_ms, request_sent=self.request_sent,
             profile_ref=self.profile_ref,
             runtime_ref=self.runtime_ref,
             started_offset_ms=started_offset_ms,
@@ -490,6 +516,8 @@ def observe_model_call(
         "guardrail.model.request",
         attributes=attributes,
     ) as span:
+        evidence_token = begin_model_http_call(tracker.call_id, provider, model)
+        active_token = _ACTIVE_MODEL_CALL.set(tracker)
         try:
             yield tracker
         except BaseException as error:
@@ -499,12 +527,17 @@ def observe_model_call(
                 span.set_status(Status(StatusCode.ERROR, tracker.result))
             raise
         finally:
+            finish_model_http_call(evidence_token, tracker.result, tracker.error_type)
+            _ACTIVE_MODEL_CALL.reset(active_token)
             tracker.finished = time.perf_counter()
             usage = tracker.usage
             _collect_cost(usage)
             span.set_attribute("guardrail.model.result", usage.result)
             span.set_attribute("guardrail.model.call_id", usage.call_id)
             span.set_attribute("guardrail.model.duration_ms", usage.duration_ms)
+            span.set_attribute("guardrail.model.queue_duration_ms", usage.queue_duration_ms)
+            if usage.request_sent is not None:
+                span.set_attribute("guardrail.model.request_sent", usage.request_sent)
             span.set_attribute("guardrail.model.error_type", usage.error_type)
             if usage.error_source:
                 span.set_attribute("guardrail.error.source", usage.error_source)

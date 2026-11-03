@@ -41,7 +41,7 @@ function connect(server: RunnerControlServer, token: string, poolId: string, com
   });
   stream.on("error", error => errors.push(error));
   (server as unknown as { connect(stream: unknown): void }).connect(stream);
-  stream.emit("data", { registration: { runnerId: `runner-${poolId}`, bootId: "boot", poolId, runnerVersion: "test", nemoVersion: "test", maxConcurrency: 4,
+  stream.emit("data", { registration: { runnerId: `runner-${poolId}-0`, bootId: "boot", poolId, runnerVersion: "test", nemoVersion: "test", maxConcurrency: 4,
     compilerCapable, labels: {}, appliedGeneration: "0" } });
   return { errors, writes };
 }
@@ -80,6 +80,16 @@ describe("pool-bound Runner control channel", () => {
     await vi.waitFor(() => expect(service.registerRunner).toHaveBeenCalledOnce());
     expect(attempt.errors).toHaveLength(0);
   });
+  it("does not send Catalog validation to ordinal 0 in another pool", async () => {
+    const { server, service, models } = setup();
+    const runner = connect(server, tokens["pool-a"], "pool-a", true);
+    await vi.waitFor(() => expect(service.desiredStateForPool).toHaveBeenCalledOnce());
+    expect(await server.validateRail({ requestId: "private-rail", credentialLeaseId: "lease-1" }))
+      .toMatchObject({ passed: false, message: expect.stringContaining("ordinal 0") });
+    expect(models.bindValidationLease).not.toHaveBeenCalled();
+    expect(runner.writes.some(message => message.capabilityValidationRequest)).toBe(false);
+    await server.stop();
+  });
   it("binds a candidate lease to the selected pool before dispatch and fails closed if binding fails", async () => {
     const { server, service, models } = setup();
     const runner = connect(server, tokens.default, "default", true);
@@ -89,7 +99,7 @@ describe("pool-bound Runner control channel", () => {
       .toMatchObject({ passed: false });
     expect(runner.writes.some(message => message.capabilityValidationRequest?.requestId === "refused")).toBe(false);
     const pending = server.validateRail({ requestId: "sent", credentialLeaseId: "lease-2" });
-    await vi.waitFor(() => expect(models.bindValidationLease).toHaveBeenLastCalledWith("lease-2", "default", expect.objectContaining({ poolId: "default", runnerId: "runner-default", bootId: "boot", sessionId: expect.any(String) })));
+    await vi.waitFor(() => expect(models.bindValidationLease).toHaveBeenLastCalledWith("lease-2", "default", expect.objectContaining({ poolId: "default", runnerId: "runner-default-0", bootId: "boot", sessionId: expect.any(String) })));
     await vi.waitFor(() => expect(runner.writes.some(message => message.capabilityValidationRequest?.requestId === "sent")).toBe(true));
     await server.stop();
     expect(await pending).toMatchObject({ passed: false });

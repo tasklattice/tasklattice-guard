@@ -12,7 +12,7 @@ import { GUARD_AUTH_COOKIE_PREFIX } from '../server/auth.ts';
 import { requiredAccountPermission, tokenRoutePermissions } from '../server/http/token-permissions.ts';
 import { accountRoles, hasPermission } from '../shared/rbac.ts';
 import { createAccessTokenSchema } from '../shared/access-tokens.ts';
-import { assignmentInputSchema, modelConfigurationInputSchema } from '../server/model-config/domain.ts';
+import { assignmentInputSchema, modelConfigurationInputSchema, modelConcurrencyInputSchema } from '../server/model-config/domain.ts';
 import { MAX_DOCUMENTS, MAX_DOCUMENT_BYTES, MAX_TOTAL_BYTES } from '../server/control-plane-ai/document-ingestion.ts';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
@@ -130,6 +130,7 @@ try {
   const bodyOverrides = new Map([
     ['POST /api/v1/account/access-tokens',createAccessTokenSchema],
     ['PUT /api/v1/models/:id/protocol',modelConfigurationInputSchema],
+    ['PUT /api/v1/models/:id/concurrency',modelConcurrencyInputSchema],
     ['PUT /api/v1/model-configuration/draft',assignmentInputSchema],
   ]);
   for (const route of entries) {

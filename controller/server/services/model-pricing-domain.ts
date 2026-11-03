@@ -49,7 +49,7 @@ export type MeteredCall = {
 
 export function meteredCalls(metadata: Record<string, unknown>): MeteredCall[] {
   const usage = record(metadata.usage);
-  if (Array.isArray(usage.model_calls) && usage.model_calls.length) return usage.model_calls.map((raw, index) => {
+  if (Array.isArray(usage.model_calls) && usage.model_calls.length) return usage.model_calls.filter(raw => record(raw).request_sent !== false).map((raw, index) => {
     const call = record(raw);
     const known = call.usage_known === true;
     return { id: typeof call.call_id === "string" && call.call_id ? call.call_id : `unattributed-call-${index}`,

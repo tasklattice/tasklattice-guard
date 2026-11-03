@@ -15,15 +15,15 @@ import {
 } from "./domain.js";
 
 describe("Guardrail Catalog capability binding profiles", () => {
-  it("keeps Laya decision classifiers independent from TypeSafe and output models", () => {
+  it("supports Laya output content safety while keeping its other contracts scoped", () => {
     expect(profileTransports["tali.laya.v1"]).toBe("laya_systemone");
-    for (const target of ["content_safety.input", "jailbreak.input", "topic_control.input"] as const) {
+    for (const target of ["content_safety.input", "content_safety.output", "jailbreak.input", "topic_control.input"] as const) {
       expect(assignmentTargetAcceptsModel(target, "tali.laya.v1", "laya")).toBe(true);
       expect(capabilityBindingContracts(target, "tali.laya.v1")).toHaveLength(1);
       expect(assignmentTargetAcceptsModel(target, "tali.laya.v1", "typesafe")).toBe(false);
       expect(assignmentTargetAcceptsModel(target, "tali.typesafe-jev.v1", "laya")).toBe(false);
     }
-    for (const target of ["control_plane", "content_safety.output", "pii_semantic.input", "classifier_review.input"] as const) {
+    for (const target of ["control_plane", "pii_semantic.input", "pii_semantic.output", "classifier_review.input", "classifier_review.output"] as const) {
       expect(assignmentTargetAcceptsModel(target, "tali.laya.v1", "laya")).toBe(false);
     }
     expect(providerAcceptsProfile("laya", "generic-chat")).toBe(false);
@@ -88,12 +88,38 @@ describe("Guardrail Catalog capability binding profiles", () => {
     expect(assignmentTargetProfiles("jailbreak.input")).toContain("tali.openai-compatible-jailbreak.v1");
   });
 
-  it("reserves DeepSeek for the Control Plane even when a Data Plane profile is supplied", () => {
+  it("reuses DeepSeek chat for explicit input review while preserving primary detector contracts", () => {
     expect(assignmentTargetAcceptsModel("control_plane", "generic-chat", "deepseek")).toBe(true);
+    for (const profile of ["generic-chat", "tali.classifier-review.v1"] as const) {
+      expect(assignmentTargetAcceptsModel("classifier_review.input", profile, "deepseek")).toBe(true);
+      expect(assignmentTargetAcceptsModel("classifier_review.input", profile, "custom-openai-compatible")).toBe(true);
+      expect(capabilityBindingContracts("classifier_review.input", profile)).toEqual(["tali.guard.classifier-review.v1"]);
+      expect(providerAcceptsProfile("deepseek", profile)).toBe(true);
+      expect(assignmentTargetAcceptsModel("classifier_review.output", profile, "deepseek")).toBe(true);
+      for (const target of Object.keys(emptyModelAssignments().bindings).filter(id => !id.startsWith("classifier_review."))) {
+        expect(assignmentTargetAcceptsModel(target as Parameters<typeof assignmentTargetAcceptsModel>[0], profile, "deepseek")).toBe(false);
+      }
+    }
+    expect(assignmentTargetAcceptsModel("classifier_review.input", "tali.qwen3guard.v1", "qwen")).toBe(false);
+    expect(assignmentTargetAcceptsModel("classifier_review.input", "tali.typesafe-jev.v1", "typesafe")).toBe(false);
     expect(assignmentTargetAcceptsModel("topic_control.input", "tali.taxonomy-judge.v1", "deepseek")).toBe(false);
     expect(assignmentTargetAcceptsModel("content_safety.output", "tali.qwen3guard.v1", "qwen")).toBe(true);
     expect(providerAcceptsProfile("deepseek", "generic-chat")).toBe(true);
     expect(providerAcceptsProfile("deepseek", "tali.grounding-judge.v1")).toBe(false);
+  });
+
+  it("allows DeepSeek PII on both rails only with the explicit PII protocol", () => {
+    const profile = "tali.openai-compatible-pii.v1";
+    expect(providerAcceptsProfile("deepseek", profile)).toBe(true);
+    expect(profileTransports[profile]).toBe("openai_chat");
+    for (const target of ["pii_semantic.input", "pii_semantic.output"] as const) {
+      expect(assignmentTargetAcceptsModel(target, profile, "deepseek")).toBe(true);
+      expect(capabilityBindingContracts(target, profile)).toEqual(["tali.guard.pii.semantic.v1"]);
+      expect(assignmentTargetAcceptsModel(target, "generic-chat", "deepseek")).toBe(false);
+    }
+    for (const target of ["classifier_review.input", "content_safety.input", "jailbreak.input", "topic_control.input", "control_plane"] as const) {
+      expect(assignmentTargetAcceptsModel(target, profile, "deepseek")).toBe(false);
+    }
   });
 
   it("rejects the retired Nano model while allowing another OpenAI-compatible judge", () => {

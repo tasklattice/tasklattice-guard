@@ -46,6 +46,7 @@ export const tokenRoutePermissions: ReadonlyArray<readonly [string, string, Toke
   ["POST", "/api/v1/models", "models", "write"],
   ["POST", "/api/v1/models/:id/capability-tests", "models", "write"],
   ["POST", "/api/v1/models/:id/connection-tests", "models", "write"],
+  ["PUT", "/api/v1/models/:id/concurrency", "models", "write"],
   ["PUT", "/api/v1/models/:id/protocol", "models", "write"],
   ["DELETE", "/api/v1/models/:id", "models", "write"],
   ["PUT", "/api/v1/model-configuration/draft", "settings", "write"],

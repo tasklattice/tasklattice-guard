@@ -178,17 +178,38 @@ and builds Controller:
 npm test
 ```
 
+CI runs Control plane as two parallel jobs. Each executes half the Python cases
+and half the Controller test files. Policy/artifact and CLI checks run in the
+first job; typechecking and the Controller build run in the second. To reproduce
+one shard locally, use `npm run test:control-plane:python -- --control-plane-shard=1/2`
+and `npm run test:control-plane --prefix controller -- --shard=1/2` (or `2/2`).
+The ordinary `npm run test:control-plane` still runs the complete suite.
+
+Jev and Laya share parameterized contract suites for topic control, jailbreak,
+content safety, external context, decision composition, and gray-area review.
+Each vendor still runs against its own evaluator, profile, thresholds, prompt
+revision, and evidence collection. Vendor isolation tests remain separate.
+Provider-independent checks run once rather than once per vendor.
+
+Generated Runner fixture freshness belongs to the Python control-plane suite;
+generated protobuf freshness belongs to the Python contract suite. CLI helper
+tests belong to `test:cli`. Aggregate commands and CI invoke each check once.
+
 In addition to development dependencies, the contract checks require Helm and
-jq. Database/Redis integration tests are opt-in and are skipped unless their
-environment variables are set to dedicated test services:
+jq. CI supplies disposable PostgreSQL 17 and Redis services and enables their
+integration tests. Local runs opt in by setting the following variables to
+dedicated loopback test services:
 
 | Variable | Tests |
 | --- | --- |
-| `GUARD_TEST_POSTGRES_URL` | PostgreSQL model configuration, tokens, Policy publication, routing, and migration tests |
-| `TEST_DATABASE_URL` | PostgreSQL runtime-observability tests |
+| `GUARD_TEST_POSTGRES_URL` | All PostgreSQL tests, including bootstrap, migrations, publication, routing, reporting, and runtime observability |
 | `GUARD_TEST_REDIS_URL` | Real Redis stream and replica tests; use an isolated loopback Redis |
 
 A successful run without these settings does not cover those integration tests.
+PostgreSQL suites create and remove isolated schemas or session-local temporary
+tables; they do not require an initialized application database. For example,
+`GUARD_TEST_POSTGRES_URL=postgresql://guard_test:guard_test@127.0.0.1:5432/guard_test npm run test:control-plane --prefix controller`
+includes all database suites.
 See [CI](../.github/workflows/ci.yml) for the automated job configuration.
 
 Controller/Runner gRPC messages are defined under
@@ -299,8 +320,9 @@ Controller development startup and watch restarts, Vitest (including direct
 source automatically. No database or running Controller is required to generate it.
 Use `npm run openapi:generate --prefix controller` to generate it on its own.
 
-CI runs `npm run openapi:check --prefix controller` to generate the contract and
-test schema validity, mounted-route coverage, permissions, and filtered references.
+The Controller suite includes the OpenAPI contract tests for schema validity,
+mounted-route coverage, permissions, and filtered references. CI runs these in
+one of the two shards; `npm run openapi:check --prefix controller` runs them alone.
 It uploads the JSON as `controller-openapi-<commit SHA>` for inspection. Server
 builds package the generated JSON in `dist-server/openapi/`; production serves
 that artifact without running the generator. The Runner CLI image smoke script

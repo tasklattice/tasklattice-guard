@@ -70,6 +70,15 @@ describe("Model configuration HTTP routes", () => {
     expect(models.finalizeActivation).toHaveBeenCalledWith(revision.id, "pool-c");
     expect((await response.json()).distribution.distributionStatus).toBe("syncing");
   });
+  it("routes operational concurrency updates through the tenant Model service boundary", async () => {
+    const models = { configureConcurrency: vi.fn().mockResolvedValue({ id: "model-1", maxConcurrency: 3 }) };
+    const options = { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify({ maxConcurrency: 3 }) };
+    expect((await appWith("user", models).request("/api/v1/models/model-1/concurrency", options)).status).toBe(200);
+    expect(models.configureConcurrency).toHaveBeenCalledWith("model-1", { maxConcurrency: 3 }, "user-1");
+    expect((await appWith("admin", models).request("/api/v1/models/model-1/concurrency", options)).status).toBe(200);
+    expect(models.configureConcurrency).toHaveBeenCalledWith("model-1", { maxConcurrency: 3 }, "admin-1");
+  });
+
   it("keeps administrator GET read-only even when activation is ready", async () => {
     const models = { view: vi.fn().mockResolvedValue({ ...view, activating: { ...revision, state: "activating", generation: 9 } }), finalizeActivation: vi.fn() };
     const runner = { distributionStatus: vi.fn().mockResolvedValue({ distributionStatus: "ready", desiredGeneration: 9 }) };
@@ -107,7 +116,7 @@ describe("Model configuration HTTP routes", () => {
     expect(models.discoverProviderDraft).toHaveBeenCalledWith({ ...connection, skipTlsVerify: false });
     const result = await app.request("/api/v1/model-provider-registrations", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ connection, models: [selection] }) });
     expect(result.status).toBe(201);
-    expect(models.registerProviderModels).toHaveBeenCalledWith({ connection: { ...connection, skipTlsVerify: false }, models: [selection] }, "admin-1");
+    expect(models.registerProviderModels).toHaveBeenCalledWith({ connection: { ...connection, skipTlsVerify: false }, models: [{ ...selection, maxConcurrency: 2 }] }, "admin-1");
   });
   it("lets users read the sanitized tenant Model configuration projection", async () => {
     const tenantView = { ...view, draft: null };

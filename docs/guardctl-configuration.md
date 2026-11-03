@@ -71,16 +71,17 @@ applies only `content_safety.input`, and waits for activation. The API still
 enforces validation and optimistic concurrency. Output and unrelated bindings
 remain unchanged. Bindings are **platform-wide**: every Guardrail using this
 capability and direction uses the selected model. JEV Content Safety currently
-supports input; keep NVIDIA on output.
+supports input; output content safety can use NVIDIA or the separately adapted Laya profile.
 
 The state records the original assignments before any write. The JSON result
 includes `previousModelId`. After comparison, bind that ID with a **new** state
 file (for example `restore-nvidia.json`); this validates and restores only the
 selected binding. Do not run tests during activation.
 
-The optional input gray-area reviewer uses the same bind command with
-`--binding classifier_review.input`. Its model profile must be
-`tali.classifier-review.v1`; the three JEV Policy bindings must explicitly enable
+The optional gray-area reviewer uses the same bind command with
+`--binding classifier_review.input` for JEV/Laya input or `--binding classifier_review.output`
+for Laya content-safety output. Its model profile is `generic-chat` or
+`tali.classifier-review.v1`; the corresponding Policy binding must explicitly enable
 `review_unknown` in a supporting Policy version. See
 [JEV 灰区复核](classifier-gray-review.md) for versions, evidence and failure behavior.
 

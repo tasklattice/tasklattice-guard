@@ -13,7 +13,7 @@ Default 无需检测模型，使用已审查的本地 Rule。模型 Policy 仍�
 
 1. 在[模型提供商](/settings/providers)注册服务地址和凭据。
 2. 检查连接。私有 CA 与 TLS 设置仅作用于该 Provider。
-3. 在[模型](/settings/models)注册物理模型。
+3. 在[模型](/settings/models)注册物理模型，并设置并发度，默认 2。
 4. 执行真实调用测试。发现模型不代表它可调用。
 5. 在[检测器目录](/settings/guardrail-catalog)为兼容能力绑定 Model。
 6. 验证行为样例。保存绑定，再激活配置。
@@ -28,6 +28,10 @@ Input 与 Output 的绑定独立。例如 `content_safety.input` 与 `content_sa
 <a id="platform-model-deadlines" />
 ### 执行时限
 
+模型并发度可设为 1–64。同一 Runner 中，引用同一注册模型的多个检查和请求共享这个额度，不同模型可并行执行。排队时间计入执行时限；请求短路后，排队中的模型调用会取消。
+
+已绑定模型的并发度也可以在模型配置中单独修改。保存后通过配置下发到 Runner，无需重新做模型行为测试。该额度按 Runner 计算，多 Runner 的额度不会合并成 Provider 全局配额。
+
 远程检测器模块的执行预算上限为 30 秒，能力探测使用相同上限。Model 配置中的更长超时不会延长该预算。超时不能计为通过的检测依据。
 
 在 NVIDIA 托管的 `nvidia/nemotron-3.5-lightning-30b-a3b` 上执行 Grounding 时，适配器关闭可选 thinking。此设置仅适用于该适配器，不改变可迁移的 Policy 定义。
@@ -37,6 +41,6 @@ Input 与 Output 的绑定独立。例如 `content_safety.input` 与 `content_sa
 
 能力绑定提供检测器依赖，Policy 定义可复用的保护行为。模型连接成功不能证明某条 Rule 能识别目标内容。
 
-DeepSeek Provider 当前仅用于控制面。数据面 Rail 需要受支持的专用模型契约。Controller 只下发生效数据面绑定引用的 Model 和凭据。
+已注册的 Generic chat Model（包括 DeepSeek）也可绑定到**分类灰区复核 · Input Rail / Output Rail**，并保留原有 Control Plane 用途。内置提示词自动带上原判定标准、待检查的输入/输出和上下文；在支持复核的 Guard Policy 绑定中开启 `review_unknown=true`，即可复核 JEV/Laya 输入或 Laya 内容安全输出的灰区结果。每个 Rail 单独绑定。第一阶段检测仍需对应的专用协议。Controller 只下发生效数据面绑定引用的 Model 和凭据。
 
 证明服务配置及已知结果的验证样例见[形式验证](/document/operator/operator-create-policy#operator-policy-formal-service)。部署与协议细节保留在仓库的 `docs/model-configuration.md`。

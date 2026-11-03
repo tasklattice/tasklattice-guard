@@ -91,7 +91,7 @@ async def test_signed_native_topic_artifact_against_tcp_mock(tmp_path,scenario,t
                     'invalid-response': ('model', 'response_schema'),
                     'timeout': ('model', 'timeout'),
                 }[scenario]
-                assert result.model_status == ('error' if source == 'model' else 'unknown')
+                assert result.model_status == 'error'
                 assert any(step.error_source == source and step.error_category == category for step in result.trace)
                 assert not any(step.error_source == 'guard' for step in result.trace)
             else:

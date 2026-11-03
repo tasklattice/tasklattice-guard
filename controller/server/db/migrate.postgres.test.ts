@@ -34,7 +34,9 @@ describe.skipIf(!url)("Current database schema baseline", () => {
     const ownedPool = pool, ownedAdmin = admin, databaseName = name;
     try {
       await ownedPool?.end();
-      if (databaseName) await ownedAdmin.query(`DROP DATABASE "${databaseName}" WITH (FORCE)`);
+      // Discarded migration checkouts may still be disconnecting after pool.end.
+      // Let them close normally instead of force-killing their backends.
+      if (databaseName) await ownedAdmin.query(`DROP DATABASE "${databaseName}"`);
     } finally { await ownedAdmin?.end(); }
   }, 30_000);
   it("serializes concurrent fresh installs and seeds only once", async () => {
@@ -54,6 +56,28 @@ describe.skipIf(!url)("Current database schema baseline", () => {
     await migrate();
     expect((await pool.query("SELECT * FROM guardrail_profile ORDER BY id")).rows).toEqual(before);
     expect((await pool.query("SELECT hash FROM drizzle.__drizzle_migrations")).rows).toEqual(Array.from({ length: migrationCount }, () => ({ hash: "current-v1-baseline" })));
+  });
+  it("upgrades the current upstream schema without skipping tenant migrations or resetting model concurrency", async () => {
+    const directory = mkdtempSync(join(tmpdir(), "guard-upstream-migration-"));
+    try {
+      cpSync(config.migrationsPath, directory, { recursive: true });
+      const journalPath = join(directory, "meta/_journal.json");
+      const journal = JSON.parse(readFileSync(journalPath, "utf8"));
+      journal.entries = journal.entries.slice(0, 3);
+      expect(journal.entries.at(-1).tag).toBe("0002_model_concurrency");
+      writeFileSync(journalPath, JSON.stringify(journal));
+      await runMigrations({ ...config, migrationsPath: directory }, createPooledDatabase(pool));
+      await pool.query("INSERT INTO model_provider(id,name,kind,base_url,credential_ciphertext) VALUES ('upstream-provider','Provider','custom-openai-compatible','http://provider.invalid/v1','')");
+      await pool.query("INSERT INTO model_definition(id,provider_id,name,model,max_concurrency) VALUES ('upstream-model','upstream-provider','Model','synthetic',7)");
+      await migrate();
+      expect((await pool.query("SELECT tenant_id,max_concurrency FROM model_definition WHERE id='upstream-model'")).rows)
+        .toEqual([{ tenant_id: null, max_concurrency: 7 }]);
+      expect((await pool.query("SELECT id FROM tenant ORDER BY id")).rows)
+        .toEqual([{ id: "tenantA" }, { id: "tenantB" }, { id: "tenantC" }]);
+      expect((await pool.query("SELECT count(*)::int AS n FROM drizzle.__drizzle_migrations")).rows[0].n).toBe(migrationCount);
+      await migrate();
+      expect((await pool.query("SELECT count(*)::int AS n FROM drizzle.__drizzle_migrations")).rows[0].n).toBe(migrationCount);
+    } finally { rmSync(directory, { recursive: true, force: true }); }
   });
   it("refuses an incomplete historical upgrade without applying schema changes", async () => {
     await pool.query("CREATE SCHEMA drizzle; CREATE TABLE drizzle.__drizzle_migrations(id serial PRIMARY KEY, hash text NOT NULL,created_at bigint)");

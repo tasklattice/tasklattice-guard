@@ -12,7 +12,6 @@ spec:
   # Schema contraction requires the previous Controller to stop writing first.
   strategy:
     type: Recreate
-    rollingUpdate: null
   selector:
     matchLabels: &selector
       app.kubernetes.io/instance: {{ .Release.Name }}

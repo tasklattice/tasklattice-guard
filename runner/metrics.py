@@ -218,16 +218,22 @@ class RunnerMetrics:
         )
         self.model_in_flight = Gauge(
             "guard_runner_model_in_flight",
-            "Currently executing external model/provider RPCs.",
+            "Model call attempts executing or waiting for admission.",
             list(_MODEL_SCOPE_LABELS),
             registry=self.registry,
         )
         self.model_call_duration = Histogram(
             "guard_runner_model_call_duration_seconds",
-            "Wall duration of one external model/provider RPC.",
+            "Wall duration of a dispatched model/provider RPC, including admission wait.",
             [*_MODEL_SCOPE_LABELS, "result"],
             buckets=_DURATION_BUCKETS,
             registry=self.registry,
+        )
+        self.model_admission_wait = Histogram(
+            "guard_runner_model_admission_wait_seconds",
+            "Time waiting for a model concurrency permit, including unsent attempts.",
+            [*_MODEL_SCOPE_LABELS, "result"],
+            buckets=_DURATION_BUCKETS, registry=self.registry,
         )
         self.model_time_to_first_token = Histogram(
             "guard_runner_model_time_to_first_token_seconds",
@@ -772,6 +778,11 @@ class RunnerMetrics:
     def model_call_finished(self, *, usage, **labels: str) -> None:
         scope = _select_labels(labels, _MODEL_SCOPE_LABELS)
         self.model_in_flight.labels(**scope).dec()
+        if usage.request_sent is not None:
+            self.model_admission_wait.labels(**scope, result=usage.result).observe(
+                max(0, usage.queue_duration_ms) / 1_000, exemplar=current_exemplar())
+        if usage.request_sent is False:
+            return
         self.model_calls.labels(
             **scope,
             operation=labels["operation"],

@@ -93,6 +93,7 @@ const modelInputObjectSchema = z.object({
   profile: z.enum(modelProfiles).default("generic-chat"),
   timeoutSeconds: z.number().int().min(1).max(120).default(20),
   maxTokens: z.number().int().min(1).max(32_768).default(512),
+  maxConcurrency: z.number().int().min(1).max(64).default(2),
 });
 
 export const modelInputSchema = modelInputObjectSchema.refine((input) => !isRetiredModel(input.model), {
@@ -101,7 +102,9 @@ export const modelInputSchema = modelInputObjectSchema.refine((input) => !isReti
 
 export const modelConfigurationInputSchema = modelInputObjectSchema.pick({
   profile: true, timeoutSeconds: true, maxTokens: true,
-});
+}).extend({ maxConcurrency: modelInputObjectSchema.shape.maxConcurrency.optional() });
+
+export const modelConcurrencyInputSchema = z.object({ maxConcurrency: z.number().int().min(1).max(64) });
 
 export const providerRegistrationSchema = z.object({
   connection: providerInputSchema,
@@ -115,7 +118,7 @@ export const providerRegistrationSchema = z.object({
 export const assignmentInputSchema = z.object({
   controlPlane: z.string().uuid().nullable(),
   bindings: z.object(
-    Object.fromEntries(capabilityBindingIds.map((id) => [id, id === "classifier_review.input" ? z.string().uuid().nullable().default(null) : z.string().uuid().nullable()])) as unknown as {
+    Object.fromEntries(capabilityBindingIds.map((id) => [id, id.startsWith("classifier_review.") ? z.string().uuid().nullable().default(null) : z.string().uuid().nullable()])) as unknown as {
       [Id in CapabilityBindingId]: z.ZodType<string | null>;
     },
   ),
@@ -123,7 +126,7 @@ export const assignmentInputSchema = z.object({
 
 export const profileContracts: Record<ModelProfile, readonly string[]> = {
   "tali.classifier-review.v1": ["tali.guard.classifier-review.v1"],
-  "generic-chat": [],
+  "generic-chat": ["tali.guard.classifier-review.v1"],
   "tali.qwen3guard.v1": [
     "tali.guard.content-safety.v1",
     "tali.guard.jailbreak.v1",
@@ -220,7 +223,7 @@ export function assignmentTargetAcceptsModel(
 ): boolean {
   return providerAcceptsProfile(providerKind, profile)
     && assignmentTargetProfiles(target).includes(profile)
-    && (target === "control_plane" || isDataPlaneProviderKindAllowed(providerKind));
+    && (target === "control_plane" || isDataPlaneProviderKindAllowed(providerKind, target));
 }
 
 export function providerAcceptsProfile(providerKind: ModelProviderKind, profile: ModelProfile): boolean {
@@ -230,7 +233,9 @@ export function providerAcceptsProfile(providerKind: ModelProviderKind, profile:
   if (providerKind === "typesafe" || isTypeSafeProfile(profile)) {
     return providerKind === "typesafe" && isTypeSafeProfile(profile);
   }
-  return isDataPlaneProviderKindAllowed(providerKind) || profile === "generic-chat";
+  return isDataPlaneProviderKindAllowed(providerKind)
+    || profile === "generic-chat" || profile === "tali.classifier-review.v1"
+    || profile === "tali.openai-compatible-pii.v1";
 }
 
 export { localGuardrailContracts } from "../../shared/protection-dependencies.js";
@@ -280,6 +285,7 @@ export type ActiveModelRuntime = {
   profile: ModelProfile;
   timeoutSeconds: number;
   maxTokens: number;
+  maxConcurrency?: number;
 };
 
 export type ActiveModelConfiguration = {

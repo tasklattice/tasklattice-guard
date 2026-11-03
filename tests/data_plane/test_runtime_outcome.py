@@ -92,3 +92,38 @@ def test_fail_closed_always_keeps_a_fatal_diagnostic_with_mixed_fallbacks():
         check(value)
     assert failed.value.decision.termination_reason == "fail_closed"
     assert any(d.code == "fail_closed" and d.affects_result for d in failed.value.decision.diagnostics)
+
+
+@pytest.mark.parametrize("category,source", [("model_uncertain", "model"), ("category_mapping", "model"),
+    ("missing_grounding_sources", "configuration")])
+def test_incomplete_module_keeps_one_specific_diagnostic_at_the_actual_step(category, source):
+    from runner.toolkit.runtime.contracts import RuntimeTraceStep
+    value = decision(status="needs_context", trace=(RuntimeTraceStep(id="classification", kind="evaluation",
+        name="classifier", status="completed", detail="private evaluator content", verdict="unknown",
+        module_id="m", error_category=category, error_source=source),))
+    result = finalize_decision(value)
+    assert result.execution_status == "error"
+    assert len(result.diagnostics) == 1
+    diagnostic = result.diagnostics[0]
+    assert (diagnostic.category, diagnostic.source, diagnostic.step_id, diagnostic.affects_result) == (category, source, "classification", True)
+    assert "private" not in diagnostic.message
+
+
+def test_unspecified_unknown_has_no_evidence_of_a_missing_field():
+    result = finalize_decision(decision(status="needs_context"))
+    assert result.execution_status == "error"
+    assert result.diagnostics[0].category == "inconclusive"
+    assert result.diagnostics[0].source == "unknown"
+
+
+def test_queued_unsent_calls_keep_evidence_without_fabricating_model_invocations():
+    from runner.toolkit.nemo.evaluators.contracts import ModelCallUsage
+    queued = ModelCallUsage(provider="provider", model="judge", operation="classify", result="timeout", duration_ms=100,
+        request_sent=False, queue_duration_ms=100)
+    result = finalize_decision(decision(status="error", usage=RuntimeUsage(model_invocations=1, model_calls=(queued,))))
+    assert result.execution_status == "error"
+    assert result.model_status == "not_called" and result.usage.model_invocations == 0
+    assert result.usage.model_calls == (queued,)
+    legacy = replace(queued, request_sent=None, result="success")
+    mixed = finalize_decision(decision(usage=RuntimeUsage(model_invocations=2, model_calls=(queued, legacy))))
+    assert mixed.model_status == "ok" and mixed.usage.model_invocations == 1

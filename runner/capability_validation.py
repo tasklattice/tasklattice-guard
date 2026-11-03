@@ -9,6 +9,7 @@ import time
 import httpx
 
 from . import generated as protocol
+from .model_http_evidence import capture_model_http_evidence, failed_model_http_evidence
 from .model_validation_diagnostics import ValidationDiagnostics, capture_validation_case
 from .providers import dynamic_runtime_action_providers
 from .toolkit.compiler.nemo_compiler import NeMoConfigCompiler
@@ -122,33 +123,42 @@ async def validate_capability(
                         GuardContentBlock(id="question", text=formal.query, role="query", trust="untrusted", source="request", qualifiers=("query",)),
                     ), "answer")
                 case_id = f"{contract}:{phase}:{name}"
-                with capture_validation_case(enabled=binding.capability_ref == "topic_control", secrets=tuple(credentials.values()), session=diagnostic_session,
-                                             validation_id=request.request_id, binding_id=binding.binding_id, case_id=case_id,
-                                             model=model.model, profile=model.profile_ref, provider_id=model.provider_id, expected_decision=expected) as diagnostics:
-                    decision = await runtime.evaluate(EngineRequest(phase=phase, text=text, plan=plan,
-                                                  content_view=view, execution_purpose="validation", evidence_scope="full" if formal else "interventions",
-                                                  target_source="assistant_output" if phase == "output" else "user_input",
-                                                  context_messages=({"role": "user", "content": "Please answer my question."},) if phase == "output" else ()))
+                with capture_model_http_evidence():
+                    with capture_validation_case(enabled=True, secrets=tuple(credentials.values()), session=diagnostic_session,
+                                                 validation_id=request.request_id, binding_id=binding.binding_id, case_id=case_id,
+                                                 model=model.model, profile=model.profile_ref, provider_id=model.provider_id, expected_decision=expected) as diagnostics:
+                        decision = await runtime.evaluate(EngineRequest(phase=phase, text=text, plan=plan,
+                                                      content_view=view, execution_purpose="validation", evidence_scope="full" if formal else "interventions",
+                                                      target_source="assistant_output" if phase == "output" else "user_input",
+                                                      context_messages=({"role": "user", "content": "Please answer my question."},) if phase == "output" else ()))
+                    model_http_evidence = failed_model_http_evidence()
                 passed = decision.decision == expected
+                matched = any(item.verdict == "matched" for item in decision.findings)
+                case_reason = decision.reason or ""
                 if expected == "block":
-                    passed = passed and any(item.verdict == "matched" for item in decision.findings)
+                    passed = passed and matched
+                    if decision.decision == "block" and not matched:
+                        case_reason = ("The unsafe sample was blocked without a matched finding. "
+                                       "Validation requires a confirmed detection. " + case_reason)
                 if formal:
                     proof = [finding.result for item in decision.findings for finding in item.reasoning]
                     passed = passed and bool(proof) and all(value == ("valid" if expected == "allow" else "invalid") for value in proof)
                 if not passed and diagnostics is not None:
-                    diagnostics.failure(expected=expected, actual=decision.decision, reason=decision.reason or "")
+                    diagnostics.failure(expected=expected, actual=decision.decision, reason=case_reason)
                 result.cases.add(id=case_id, expected_decision=expected,
                                  actual_decision=decision.decision, passed=passed,
                                  input_content=text, output_content=json.dumps({
                                      "decision": decision.decision, "action": decision.action,
                                      "texts": decision.texts, "reason": decision.reason,
                                      "findings": [asdict(item) for item in decision.findings],
+                                     "evaluation_evidence": [asdict(item) for item in decision.trace if item.kind == "evaluation"],
+                                     **({"model_http_evidence": model_http_evidence} if model_http_evidence else {}),
                                      **({"model_exchanges": diagnostics.exchanges, "dropped_model_exchanges": diagnostics.dropped_exchanges} if not passed and diagnostics is not None else {}),
                                      **({"formal_policy": asdict(plan.reasoning_policies[0]), "query": formal.query} if formal else {}),
                                  }, ensure_ascii=False, indent=2),
-                                 reason=decision.reason or "")
+                                 reason=case_reason)
                 if not passed:
-                    result.message += f"{phase}/{name}: expected {expected}, received {decision.decision}. {decision.reason or ''}\n"
+                    result.message += f"{phase}/{name}: expected {expected}, received {decision.decision}. {case_reason}\n"
             await runtime.shutdown()
             runtime = None
         result.passed = bool(result.cases) and all(item.passed for item in result.cases)

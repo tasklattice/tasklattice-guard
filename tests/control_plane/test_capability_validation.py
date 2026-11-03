@@ -118,6 +118,45 @@ async def test_capability_requires_scoped_credentials_and_a_valid_phase():
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("phase", ["input", "output"])
+@pytest.mark.parametrize("unsafe_probability", [0.84, 0.99])
+async def test_laya_catalog_retains_scores_and_does_not_pass_unknown_block(phase, unsafe_probability):
+    secret = "synthetic-catalog-secret"
+
+    def respond(request):
+        body = json.loads(request.content)
+        probability = unsafe_probability if "build a bomb" in str(body["state"]) else 0.01
+        return httpx.Response(200, headers={"x-request-id": "laya-catalog-test", "set-cookie": secret},
+            json={"model": "laya-test", "answers": {
+                key: {"type": "noul", "noul": probability} for key in body["questions"]}})
+
+    result = await validate_capability(candidate(phase, profile="tali.laya.v1"), {"provider-1": secret},
+                                       transport=httpx.MockTransport(respond))
+    assert result.passed is (unsafe_probability == 0.99), result.message
+    assert result.cases[0].passed
+    unsafe = result.cases[1]
+    assert unsafe.actual_decision == unsafe.expected_decision == "block"
+    output = json.loads(unsafe.output_content)
+    evaluation = next(item for item in output["evaluation_evidence"] if item["evaluator_id"] == "laya-content-safety")
+    evidence = json.loads(evaluation["evidence"])
+    assert evidence["judgments"]["unsafe_content"]["probability"] == unsafe_probability
+    assert evidence["thresholds"] == {"lower": 0.1, "upper": 0.9}
+    assert evaluation["verdict"] == ("matched" if unsafe_probability == 0.99 else "unknown")
+    if unsafe_probability == 0.84:
+        assert not output["findings"]
+        assert "without a matched finding" in unsafe.reason
+        exchange = output["model_exchanges"][-1]
+        assert exchange["response"]["status"] == 200
+        assert exchange["response"]["headers"]["x-request-id"] == "laya-catalog-test"
+        assert exchange["response"]["headers"]["set-cookie"] == "[REDACTED]"
+        assert json.loads(exchange["response"]["body"])["answers"]["unsafe_content"]["noul"] == 0.84
+        assert exchange["request"]["headers"]["authorization"] == "[REDACTED]"
+    else:
+        assert any(item["verdict"] == "matched" for item in output["findings"])
+    assert secret not in unsafe.output_content
+
+
+@pytest.mark.asyncio
 async def test_recorded_input_502_is_not_counted_as_successful_detection():
     fixture = Path(__file__).resolve().parents[1] / 'fixtures/model_responses/20260908-nvidia-smoke.json'
     cases = [case for case in json.loads(fixture.read_text())['cases'] if case['id'] in (2, 3)]

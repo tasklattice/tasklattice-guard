@@ -120,6 +120,7 @@ export function RegisterModelsDrawer({ providers, registeredModels, initialProvi
   const needsAttention = Boolean(summary?.failures.length || summary?.models.some((model) => model.connectionStatus !== "validated"));
   const invalidSelection = models.some((model) => model.name.trim().length < 2
     || !Number.isInteger(model.timeoutSeconds) || model.timeoutSeconds < 1 || model.timeoutSeconds > 120
+    || !Number.isInteger(model.maxConcurrency ?? 2) || (model.maxConcurrency ?? 2) < 1 || (model.maxConcurrency ?? 2) > 64
     || !Number.isInteger(model.maxTokens) || model.maxTokens < 1 || model.maxTokens > 32768);
   const sourceChanged = () => { discover.reset(); register.reset(); setFormError(""); setDiscovery(undefined); setModels([]); setSearch(""); setManualModelId(""); setManualDiscoveryError(""); };
   const steps = [
@@ -236,6 +237,7 @@ export function RegisterModelsDrawer({ providers, registeredModels, initialProvi
                     <li key={model.model} className="flex min-h-11 items-center gap-2 py-1">
                       <CheckCircle2 className="size-4 shrink-0 text-primary" aria-hidden="true" />
                       <code className="min-w-0 flex-1 break-all text-xs">{model.model}</code>
+                      <div className="w-28 shrink-0"><Label htmlFor={`concurrency-${model.model}`} className="text-xs">{t("modelSettings.maxConcurrency")}</Label><Input id={`concurrency-${model.model}`} type="number" required min={1} max={64} disabled={pending} value={model.maxConcurrency ?? 2} onChange={(event) => setModels((current) => current.map((item) => item.model === model.model ? { ...item, maxConcurrency: Number(event.target.value) } : item))} /></div>
                       {!availableModels.some((item) => item.id === model.model) ? <span className="text-xs text-muted-foreground">{t("providerRegistration.manual")}</span> : null}
                       <Button type="button" size="icon" variant="ghost" className="size-11 shrink-0" disabled={pending} aria-label={t("providerRegistration.deselectModel", { model: model.model })} onClick={() => toggle(model.model)}><X /></Button>
                     </li>
@@ -288,7 +290,7 @@ export function RegisterModelsDrawer({ providers, registeredModels, initialProvi
 
 function selection(id: string, kind?: ModelProviderKind): ProviderModelSelection {
   const name = displayNameForModel(id).slice(0, 120);
-  return { name: name.length >= 2 ? name : `Model ${id}`, model: id, profile: kind === "laya" ? "tali.laya.v1" : kind === "typesafe" ? "tali.typesafe-jev.v1" : suggestedProfile(id), timeoutSeconds: 20, maxTokens: 512 };
+  return { name: name.length >= 2 ? name : `Model ${id}`, model: id, profile: kind === "laya" ? "tali.laya.v1" : kind === "typesafe" ? "tali.typesafe-jev.v1" : suggestedProfile(id), timeoutSeconds: 20, maxTokens: 512, maxConcurrency: 2 };
 }
 function Field({ id, label, children }: { id: string; label: string; children: ReactNode }) {
   return <div className="space-y-2"><Label htmlFor={id}>{label}</Label>{children}</div>;

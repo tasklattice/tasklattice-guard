@@ -64,6 +64,7 @@ export type ModelDefinition = {
   profile: ModelProfile;
   timeoutSeconds: number;
   maxTokens: number;
+  maxConcurrency?: number;
   status: "pending" | "validated" | "failed";
   validationMessage: string | null;
   validationLatencyMs: number | null;
@@ -533,7 +534,7 @@ export const getModelConfiguration = async () => {
   return view;
 };
 export type ProviderConnectionDraft = { name: string; kind: ModelProviderKind; baseUrl: string; apiKey: string; skipTlsVerify?: boolean };
-export type ProviderModelSelection = { name: string; model: string; profile: ModelProfile; timeoutSeconds: number; maxTokens: number };
+export type ProviderModelSelection = { name: string; model: string; profile: ModelProfile; timeoutSeconds: number; maxTokens: number; maxConcurrency?: number };
 export type ProviderRegistrationResult = { provider: ModelProvider; models: ModelDefinition[]; failures: Array<{ model: ProviderModelSelection; message: string }> };
 export const discoverProviderDraft = (input: ProviderConnectionDraft) => requestController<Omit<DiscoveredProviderModels, "providerId">>("/api/v1/model-provider-discoveries", json("POST", input));
 export const registerProviderModels = (input: { connection: ProviderConnectionDraft; models: ProviderModelSelection[] }) => requestController<ProviderRegistrationResult>("/api/v1/model-provider-registrations", json("POST", input));
@@ -543,8 +544,9 @@ export const updateProviderTls = (id: string, skipTlsVerify: boolean) => request
 export const revalidateModelProvider = (id: string) => requestController<ModelProvider>(`/api/v1/model-providers/${encodeURIComponent(id)}/connection-tests`, json("POST"));
 export const discoverModelProvider = (id: string) => requestController<DiscoveredProviderModels>(`/api/v1/model-providers/${encodeURIComponent(id)}/model-discoveries`, json("POST"));
 export const deleteModelProvider = (id: string) => requestController<void>(`/api/v1/model-providers/${encodeURIComponent(id)}`, json("DELETE"));
-export const createModelDefinition = (input: { providerId: string; name: string; model: string; profile: ModelProfile; timeoutSeconds: number; maxTokens: number }) => requestController<ModelDefinition>("/api/v1/models", json("POST", input));
-export const configureModelDefinition = (id: string, input: Pick<ModelDefinition, "profile" | "timeoutSeconds" | "maxTokens">) => requestController<ModelDefinition>(`/api/v1/models/${encodeURIComponent(id)}/protocol`, json("PUT", input));
+export const createModelDefinition = (input: { providerId: string; name: string; model: string; profile: ModelProfile; timeoutSeconds: number; maxTokens: number; maxConcurrency?: number }) => requestController<ModelDefinition>("/api/v1/models", json("POST", input));
+export const configureModelConcurrency = (id: string, maxConcurrency: number) => requestController<ModelDefinition>(`/api/v1/models/${encodeURIComponent(id)}/concurrency`, json("PUT", { maxConcurrency }));
+export const configureModelDefinition = (id: string, input: Pick<ModelDefinition, "profile" | "timeoutSeconds" | "maxTokens" | "maxConcurrency">) => requestController<ModelDefinition>(`/api/v1/models/${encodeURIComponent(id)}/protocol`, json("PUT", input));
 export const revalidateModelDefinition = (id: string) => requestController<ModelDefinition>(`/api/v1/models/${encodeURIComponent(id)}/capability-tests`, json("POST"));
 export const testModelConnection = (id: string) => requestController<ModelDefinition>(`/api/v1/models/${encodeURIComponent(id)}/connection-tests`, json("POST"));
 export const deleteModelDefinition = (id: string) => requestController<void>(`/api/v1/models/${encodeURIComponent(id)}`, json("DELETE"));

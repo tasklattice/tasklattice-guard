@@ -165,7 +165,7 @@ describe.skipIf(!url)("permanently fenced allocation completion (test-only infra
     const restarted = new TenantGroupMoveService(database.db, options());
     expect(await admin(() => restarted.finalize(move.id, undefined, actorId))).toEqual(completed);
     expect(await state()).toEqual(before); expect(calls).toHaveLength(count);
-    await database.pool.query(readFileSync(new URL("../db/migrations/0013_fenced_allocation_completion.sql", import.meta.url), "utf8"));
+    await database.pool.query(readFileSync(new URL("../db/migrations/0014_fenced_allocation_completion.sql", import.meta.url), "utf8"));
     expect(await admin(() => restarted.finalize(move.id, undefined, actorId))).toEqual(completed);
   });
 

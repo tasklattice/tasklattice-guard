@@ -4,6 +4,16 @@ import { pricingRuleSchema } from "../../shared/model-pricing.js";
 const call: MeteredCall = { id: "one", runtimeRef: "registered", provider: "provider", model: "small", operation: "judge", inputTokens: 1_000, outputTokens: 100, cachedInputTokens: 200, calls: 1, unsupportedUsage: false };
 export const catalogFixture = (price = 2e-7) => Object.fromEntries(Array.from({ length: 12 }, (_, index) => [index === 0 ? "groq/llama-guard-3-8b" : `model-${index}`, { mode: "chat", input_cost_per_token: price, output_cost_per_token: 6e-7 }]));
 describe("model cost accounting", () => {
+  it("never prices attempts cancelled or timed out before model admission", () => {
+    const usage = { model_invocations: 3, model_calls: [
+      { call_id: "queued", request_sent: false, result: "timeout" },
+      { call_id: "sent", request_sent: true }, { call_id: "legacy" },
+    ] };
+    const calls = meteredCalls({ usage });
+    expect(calls.map(call => call.id)).toEqual(["sent", "legacy"]);
+    expect(calls.reduce((sum, call) => sum + priceCall(call, { unit: "request", currency: "USD", request: 3 }).amount!, 0)).toBe(0.006);
+    expect(meteredCalls({ usage: { model_invocations: 1, model_calls: [{ request_sent: false }] } })).toEqual([]);
+  });
   it("reads standard rates without confusing batch prices with synchronous text prices", () => {
     const prices = parseLiteLLMPrices({ ...catalogFixture(), standard: { mode: "chat", input_cost_per_token: 0.15e-6, output_cost_per_token: 0.6e-6, cache_read_input_token_cost: 0.075e-6, input_cost_per_token_batches: 0.075e-6 }, invalid: { mode: "chat", input_cost_per_token: -1, output_cost_per_token: 0 }, tiered: { mode: "chat", input_cost_per_token: 1e-6, output_cost_per_token: 1e-6, input_cost_per_token_above_128k_tokens: 2e-6 } });
     expect(prices.get("standard")).toEqual({ unit: "token", currency: "USD", input: 0.15, output: 0.6, cachedInput: 0.075 });

@@ -7,7 +7,7 @@ import { runtimeEvents } from "../db/schema.js";
 import type { RuntimeEventInput } from "../domain/models.js";
 import { writeRuntimeEvent } from "./runtime-event-write.js";
 
-const url = process.env.TEST_DATABASE_URL;
+const url = process.env.GUARD_TEST_POSTGRES_URL;
 describe.skipIf(!url)("correlated runtime body enrichment (PostgreSQL)", () => {
   let database: Awaited<ReturnType<typeof createTestDatabase>>;
   let db: ControllerDatabase;

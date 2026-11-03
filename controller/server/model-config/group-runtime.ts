@@ -20,7 +20,8 @@ const snapshotSchema = z.object({ revisionId: z.string().min(1).max(256), revisi
   generation: z.number().int().nonnegative().nullable(), assignments: assignmentInputSchema,
   models: z.array(z.object({ id: z.string().uuid(), providerId: z.string().uuid(), providerName: z.string(),
     baseUrl: z.string().url(), credentialRef: z.string().uuid(), skipTlsVerify: z.boolean().default(false),
-    model: z.string().min(1), profile: z.enum(modelProfiles), timeoutSeconds: z.number().positive(), maxTokens: z.number().int().positive() })).max(64),
+    model: z.string().min(1), profile: z.enum(modelProfiles), timeoutSeconds: z.number().positive(), maxTokens: z.number().int().positive(),
+    maxConcurrency: z.number().int().min(1).max(64).default(2) })).max(64),
 });
 const ciphertextsSchema = z.record(z.string().uuid(), z.string().max(20_000));
 type Policy = typeof policies.$inferSelect;
@@ -161,7 +162,7 @@ export class GroupRuntimeModelService {
     const configuration: ActiveModelConfiguration = { revisionId: prefix + id, revision: version, generation, assignments,
       models: models.map(model => { const provider = byProvider.get(model.providerId)!; return {
         id: model.id, providerId: provider.id, providerName: provider.name, baseUrl: provider.baseUrl, credentialRef: provider.id,
-        skipTlsVerify: provider.skipTlsVerify, model: model.model, profile: model.profile, timeoutSeconds: model.timeoutSeconds, maxTokens: model.maxTokens,
+        skipTlsVerify: provider.skipTlsVerify, model: model.model, profile: model.profile, timeoutSeconds: model.timeoutSeconds, maxTokens: model.maxTokens, maxConcurrency: model.maxConcurrency ?? 2,
       }; }) };
     const credentials = Object.fromEntries(providers.map(provider => [provider.id, provider.credentialCiphertext]));
     const size = await tx.execute<{ bytes: number }>(sql`select octet_length(${JSON.stringify(configuration)}::jsonb::text) + octet_length(${JSON.stringify(credentials)}::jsonb::text) as bytes`);

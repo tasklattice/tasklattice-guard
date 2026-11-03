@@ -145,7 +145,7 @@ class SafetyModelEvaluator:
                 request.content,
                 reason=reason,
                 usage=usage,
-                trace=(self._trace(request, assessment, "unknown", usage),),
+                trace=(self._trace(request, assessment, "unknown", usage, category="category_mapping"),),
             )
 
         verdict = "matched" if assessment.verdict == "unsafe" else "unknown"
@@ -180,11 +180,15 @@ class SafetyModelEvaluator:
             findings=findings,
             reason=reason,
             usage=usage,
-            trace=(self._trace(request, assessment, verdict, usage),),
+            trace=(self._trace(request, assessment, verdict, usage,
+                               category="model_uncertain" if verdict == "unknown" else None),),
         )
 
-    def _trace(self, request, assessment, verdict, usage):
+    def _trace(self, request, assessment, verdict, usage, *, category=None):
         requested = assessment.model if assessment else next((call.model for call in usage.model_calls), None)
+        classification_call = next((call for call in reversed(usage.model_calls)
+            if assessment and call.provider == assessment.provider_id and call.model == assessment.model
+            and call.result == "success"), None)
         response = assessment.payload.get("model") if assessment and assessment.payload else None
         if not isinstance(response, str):
             response = None
@@ -194,6 +198,9 @@ class SafetyModelEvaluator:
             verdict=verdict, evaluator_id=self.id, capability=request.capability,
             model_name=response or requested, policy_id=request.policy_id, policy_version=request.policy_version,
             rail_type=request.rail_type, content_block_id=request.active_block_id,
+            error_source="model" if category else None, error_category=category,
+            provider_name=assessment.provider_id if assessment else None,
+            model_call_id=classification_call.call_id if category and classification_call else None,
             evidence=json.dumps({"requested_model": requested, "response_model": response,
                                  "native_verdict": assessment.verdict if assessment else None}),
         )

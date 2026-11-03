@@ -337,6 +337,7 @@ export const modelDefinitions = pgTable("model_definition", {
   profile: text("profile").$type<ModelProfile>().notNull().default("generic-chat"),
   timeoutSeconds: integer("timeout_seconds").notNull().default(20),
   maxTokens: integer("max_tokens").notNull().default(512),
+  maxConcurrency: integer("max_concurrency").notNull().default(2),
   // Transport health is independent of scenario/capability validation below.
   connectionStatus: text("connection_status").$type<ModelResourceStatus>().notNull().default("pending"),
   connectionMessage: text("connection_message").notNull().default("Not checked."),

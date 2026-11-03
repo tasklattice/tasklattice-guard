@@ -25,7 +25,7 @@ describe.skipIf(!url)("tenant migration of populated upstream Controller tables"
     await admin.query(`CREATE SCHEMA "${namespace}"`);
     pool = new Pool({ connectionString: url, max: 2, options: `-c search_path=${namespace}`, application_name: namespace });
     const journal = JSON.parse(read("meta/_journal.json")) as { entries: { tag: string }[] };
-    const multiTenantIndex = journal.entries.findIndex(entry => entry.tag === "0002_multi_tenant_resources");
+    const multiTenantIndex = journal.entries.findIndex(entry => entry.tag === "0003_multi_tenant_resources");
     expect(multiTenantIndex).toBeGreaterThanOrEqual(0);
     for (const { tag } of journal.entries.slice(0, multiTenantIndex)) {
       await pool.query(read(`${tag}.sql`).replaceAll('"public".', `"${namespace}".`));
@@ -46,14 +46,14 @@ describe.skipIf(!url)("tenant migration of populated upstream Controller tables"
         VALUES ('legacy-route','request','assigned','legacy-router',1,'route','target','legacy-guardrail','v1','legacy-endpoint',date_trunc('milliseconds', now()));
       INSERT INTO audit_event (id,kind,actor_id,resource_type,resource_id) VALUES ('legacy-audit','created','legacy-user','guardrail','legacy-guardrail');
     `);
-    await pool.query(read("0002_multi_tenant_resources.sql"));
+    await pool.query(read("0003_multi_tenant_resources.sql"));
     // Continue the real migration order after testing an upgrade of populated legacy tables.
     for (const { tag } of journal.entries.slice(multiTenantIndex + 1)) {
-      if (tag === "0005_quarantine_historical_telemetry") await pool.query(`
+      if (tag === "0006_quarantine_historical_telemetry") await pool.query(`
         INSERT INTO runtime_event (id,tenant_id,occurred_at,request_id,runner_id,direction,decision,duration_ms)
           VALUES ('legacy-c','tenantC',now(),'playground:old','runner','incoming','allow',1)
       `);
-      if (tag === "0006_playground_invocation_pool") await pool.query(`
+      if (tag === "0007_playground_invocation_pool") await pool.query(`
         INSERT INTO playground_invocation (call_id,tenant_id,guardrail_id,guardrail_version,expires_at)
           VALUES ('playground:old','tenantA','legacy-guardrail','v1',now() + interval '1 day')
       `);
@@ -85,7 +85,7 @@ describe.skipIf(!url)("tenant migration of populated upstream Controller tables"
     expect((await pool.query("SELECT previous_tenant_id FROM historical_audit_attribution WHERE audit_id='legacy-audit'")).rows)
       .toEqual([{ previous_tenant_id: "tenantA" }]);
     await pool.query("INSERT INTO audit_event (id,kind,resource_type,resource_id) VALUES ('new-audit','updated','guardrail','legacy-guardrail')");
-    await pool.query(read("0007_audit_attribution_quarantine.sql"));
+    await pool.query(read("0008_audit_attribution_quarantine.sql"));
     expect((await pool.query("SELECT tenant_id FROM audit_event WHERE id='new-audit'")).rows).toEqual([{ tenant_id: "tenantA" }]);
     expect((await pool.query("SELECT count(*)::int AS count FROM historical_audit_attribution WHERE audit_id='new-audit'")).rows).toEqual([{ count: 0 }]);
   });
@@ -128,7 +128,7 @@ describe.skipIf(!url)("tenant migration of populated upstream Controller tables"
     await expect(pool.query("INSERT INTO playground_invocation (call_id,tenant_id,guardrail_id,guardrail_version,pool_id,expires_at) VALUES ('invalid','tenantA','legacy-guardrail','v1','pool-a',now())"))
       .rejects.toMatchObject({ code: "23514" });
     await pool.query("INSERT INTO playground_invocation (call_id,tenant_id,guardrail_id,guardrail_version,pool_id,group_id,expires_at) VALUES ('playground:new','tenantA','legacy-guardrail','v1','pool-a','group-a',now())");
-    await pool.query(read("0006_playground_invocation_pool.sql"));
+    await pool.query(read("0007_playground_invocation_pool.sql"));
     expect((await pool.query("SELECT call_id, pool_id, group_id FROM playground_invocation ORDER BY call_id")).rows).toEqual([
       { call_id: "playground:new", pool_id: "pool-a", group_id: "group-a" },
       { call_id: "playground:old", pool_id: null, group_id: null },
@@ -137,7 +137,7 @@ describe.skipIf(!url)("tenant migration of populated upstream Controller tables"
 
   it("does not quarantine new records if the historical migration is replayed", async () => {
     await pool.query("INSERT INTO runtime_event (id,tenant_id,occurred_at,request_id,runner_id,direction,decision,duration_ms) VALUES ('new-event','tenantB',now(),'new','runner','incoming','allow',1)");
-    await pool.query(read("0005_quarantine_historical_telemetry.sql"));
+    await pool.query(read("0006_quarantine_historical_telemetry.sql"));
     expect((await pool.query("SELECT tenant_id FROM runtime_event WHERE id='new-event'")).rows).toEqual([{ tenant_id: "tenantB" }]);
     expect((await pool.query("SELECT count(*)::int AS count FROM historical_telemetry_attribution WHERE resource_id='new-event'")).rows).toEqual([{ count: 0 }]);
   });
@@ -170,14 +170,14 @@ describe.skipIf(!url)("tenant migration of populated upstream Controller tables"
       CREATE FUNCTION reject_route_quarantine() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'test failure'; END $$;
       UPDATE route_assignment SET tenant_id='tenantB' WHERE decision_id='legacy-route';
       CREATE TRIGGER reject_route_quarantine BEFORE UPDATE ON route_assignment FOR EACH ROW EXECUTE FUNCTION reject_route_quarantine()`);
-    await expect(pool.query(read("0005_quarantine_historical_telemetry.sql"))).rejects.toThrow("test failure");
+    await expect(pool.query(read("0006_quarantine_historical_telemetry.sql"))).rejects.toThrow("test failure");
     expect((await pool.query("SELECT tenant_id FROM runtime_event WHERE id='new-event'")).rows).toEqual([{ tenant_id: "tenantB" }]);
     expect((await pool.query("SELECT count(*)::int AS count FROM historical_telemetry_attribution WHERE resource_id='new-event'")).rows).toEqual([{ count: 0 }]);
     expect((await pool.query("SELECT count(*)::int AS count FROM historical_telemetry_quarantine_checkpoint WHERE id='0052'")).rows).toEqual([{ count: 0 }]);
   });
 
   it("can be replayed without changing existing tenant ownership", async () => {
-    await pool.query(read("0002_multi_tenant_resources.sql"));
+    await pool.query(read("0003_multi_tenant_resources.sql"));
     expect((await pool.query("SELECT tenant_id FROM model_definition WHERE id='model-b'")).rows).toEqual([{ tenant_id: "tenantB" }]);
     expect((await pool.query("SELECT indexname FROM pg_indexes WHERE schemaname=$1 AND indexname='runtime_event_guardrail_time_id_idx'", [namespace])).rows).toHaveLength(1);
   });

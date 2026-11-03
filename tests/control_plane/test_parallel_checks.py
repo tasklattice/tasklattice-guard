@@ -222,3 +222,56 @@ async def test_simultaneous_policy_block_and_independent_failure_preserve_block(
         assert result.diagnostics and not any(d.affects_result for d in result.diagnostics)
     finally:
         await preview.shutdown()
+
+
+async def test_independent_checks_do_not_wait_behind_a_global_four_check_gate():
+    entered = set()
+    all_entered = asyncio.Event()
+    class Checks(RecordingSecrets):
+        async def execute(self, request):
+            entered.add(request.binding.id)
+            if len(entered) == 6: all_entered.set()
+            await asyncio.wait_for(all_entered.wait(), .5)
+            return await super().execute(request)
+    plan = chain_plan([(f"check-{i}", "missing", "unused", "block") for i in range(6)], "input")
+    for i, step in enumerate(plan["steps"]):
+        step["parameters"] += [["parallel_group_input", "independent"], ["parallel_leader_input", str(i == 0).lower()]]
+    preview = DraftPreviewRuntime(DefaultRunnerCompiler(), action_providers(Checks()))
+    try:
+        result = await preview.evaluate(ProtectionRequest(phase="input", texts=("synthetic",), context=RequestContext(protocol="test")),
+            preview_id="six-checks", guardrail_id="ordered", draft_revision=1,
+            candidate_version=plan["guardrail_version"], plan=plan, runtime_profile="auto")
+        assert len(entered) == 6
+        assert result.decision == "allow" and result.execution_status == "complete"
+    finally:
+        await preview.shutdown()
+
+
+async def test_group_harvests_block_before_a_simultaneous_postprocessing_exception(monkeypatch):
+    from runner.toolkit.nemo.runtime import NeMoActionBridge
+    original = NeMoActionBridge.execute_action
+    entered = set()
+    both = asyncio.Event()
+    async def execute(self, action_name, action_version, text, binding_id, context=None):
+        entered.add(binding_id)
+        if len(entered) == 2: both.set()
+        await both.wait()
+        if binding_id == "fault":
+            raise TypeError("private postprocessing failure")
+        return await original(self, action_name, action_version, text, binding_id, context)
+    monkeypatch.setattr(NeMoActionBridge, "execute_action", execute)
+    plan = chain_plan([("fault", "missing", "unused", "block"), ("block", "alpha", "unused", "block")], "input")
+    for i, step in enumerate(plan["steps"]):
+        step["parameters"] += [["parallel_group_input", "race"], ["parallel_leader_input", str(i == 0).lower()]]
+    preview = DraftPreviewRuntime(DefaultRunnerCompiler(), action_providers(RecordingSecrets()))
+    try:
+        result = await preview.evaluate(ProtectionRequest(phase="input", texts=("alpha",), context=RequestContext(protocol="test")),
+            preview_id="postprocessing-race", guardrail_id="ordered", draft_revision=1,
+            candidate_version=plan["guardrail_version"], plan=plan, runtime_profile="auto")
+        assert result.decision == "block" and result.execution_status == "complete"
+        assert result.termination_reason == "policy_block" and not result.usage.fail_closed
+        failure = next(step for step in result.trace if step.error_type == "TypeError")
+        assert failure.policy_id == "fault" and failure.error_source == "guard"
+        assert "private" not in failure.detail
+    finally:
+        await preview.shutdown()

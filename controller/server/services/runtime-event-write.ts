@@ -24,7 +24,7 @@ export async function writeRuntimeEvent(db: Writer, event: RuntimeEventInput, au
     return;
   }
   const enrichment = Object.fromEntries([
-    "runtimeLogCaptured", "contentCiphertext", "contentCaptureStatus", "callCaptureIncomplete",
+    "runtimeLogCaptured", "contentCiphertext", "contentCaptureStatus", "callCaptureIncomplete", "modelEvidenceStatus", "modelEvidenceCount",
   ].filter(key => event.metadata[key] !== undefined).map(key => [key, event.metadata[key]]));
   await insert.onConflictDoUpdate({
     target: runtimeEvents.id,

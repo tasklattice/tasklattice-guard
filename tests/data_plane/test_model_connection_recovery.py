@@ -16,7 +16,7 @@ from runner.toolkit.nemo.actions.model_call import (
 from runner.toolkit.nemo.evaluators.safety_model import SafetyModelEvaluator
 from runner.toolkit.safety.providers import build_safety_model_provider
 from tests.data_plane.test_jailbreak_detect import config
-from tests.data_plane.test_jev_jailbreak import evaluator, jailbreak_request
+from tests.classifier_cases import JEV, jailbreak_request
 
 
 @pytest.fixture(autouse=True)
@@ -39,7 +39,7 @@ def capture_model_logs(caplog):
 
 def service(kind, handler, timeout=20):
     if kind == 'jev':
-        return evaluator(handler, timeout_seconds=timeout)
+        return JEV.evaluator("jailbreak", handler, timeout_seconds=timeout)
     provider = build_safety_model_provider(replace(config(), timeout_seconds=timeout),
                                           transport=httpx.MockTransport(handler))
     return SafetyModelEvaluator((provider,))

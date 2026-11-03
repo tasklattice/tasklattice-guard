@@ -210,14 +210,16 @@ export class RunnerControlServer {
 
   async validateRail(request: CapabilityValidationRequest): Promise<RailValidationEvidence> {
     if (this.stopping) throw new Error("Controller is stopping");
+    // Catalog probes and full Guard tests must use the same stable compiler.
+    // Connection order can otherwise select an older or experimental Runner.
     let runner: Connection | undefined;
     for (const candidate of this.connections.values()) {
-      if (candidate.poolId === "default" && candidate.compilerCapable && await this.isCurrentConnection(candidate)) {
+      if (candidate.poolId === "default" && this.isTestingRunner(candidate) && await this.isCurrentConnection(candidate)) {
         runner = candidate;
         break;
       }
     }
-    if (!runner || !request.requestId) return { passed: false, message: "No connected Default Runner can validate this Rail.", latencyMs: 0 };
+    if (!runner || !request.requestId) return { passed: false, message: "The Default testing Runner (ordinal 0) is unavailable. Retry after it reconnects.", latencyMs: 0 };
     if (this.config.runnerPoolTokens != null && (!request.credentialLeaseId ||
       !await this.models.bindValidationLease(request.credentialLeaseId, runner.poolId, {
         poolId: runner.poolId, runnerId: runner.runnerId, bootId: runner.bootId, sessionId: runner.sessionId,
@@ -952,6 +954,7 @@ export class RunnerControlServer {
             profileRef: model.profile,
             timeoutSeconds: model.timeoutSeconds,
             maxTokens: model.maxTokens,
+            maxConcurrency: model.maxConcurrency ?? 2,
           })),
           bindings: dataBindings,
         } : null,

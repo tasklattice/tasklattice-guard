@@ -1,4 +1,5 @@
 import { guardrailRequestRatesQuery } from "@/features/guardrail-request-rates";
+import type { RuntimeStatusMetric } from "@/features/runtime-metric-status";
 import type { RuntimeMetricKey } from "@/features/runtime-metrics";
 import { isPlatformAdministrator, hasPermission } from "../../shared/rbac";
 import { TenantResourceBadge } from "@/components/tenant-resource-badge";
@@ -27,6 +28,7 @@ import { useTranslation } from "react-i18next";
 import { toast } from "@/components/ui/notifications";
 
 import { RuntimeHealthAlert } from "@/components/dashboard/runtime-health-alert";
+import { RuntimeMetricValue } from "@/components/dashboard/runtime-metric-value";
 import { RuntimeMetricChart } from "@/components/dashboard/runtime-metric-chart";
 import { formatEventTimestamp } from "@/components/dashboard/event-time";
 import { AddTestCaseSheet } from "@/components/add-test-case-sheet";
@@ -503,9 +505,9 @@ export function GuardrailRuntimeView({ guardrailId, metrics, loading, error, rou
       <RuntimeHealthAlert metrics={metrics} />
       <dl className="grid overflow-hidden rounded-lg border border-border/65 bg-card sm:grid-cols-2 xl:grid-cols-4">
         <RuntimeStat label={t("dashboard.protectedTraffic")} value={metrics.total_decisions.toLocaleString(i18n.language)} detail={t("guardrails.callsInWindow")} />
-        <RuntimeStat label={t("dashboard.interventionRate")} value={metrics.total_decisions ? `${metrics.intervention_rate}%` : "—"} detail={t("guardrails.blockedTransformed", { blocked: metrics.blocked, transformed: metrics.intervened })} />
-        <RuntimeStat label={t("dashboard.p95Latency")} value={metrics.total_decisions ? `${metrics.runtime_p95_ms} ms` : "—"} detail={t("guardrails.runtimeLatencyDetail")} />
-        <RuntimeStat label={t("dashboard.errorRate")} value={metrics.total_decisions ? `${metrics.error_rate}%` : "—"} detail={t("guardrails.errorsInWindow", { count: metrics.errors })} />
+        <RuntimeStat metric="intervention_rate" numericValue={metrics.total_decisions ? metrics.intervention_rate : null} label={t("dashboard.interventionRate")} value={metrics.total_decisions ? `${metrics.intervention_rate}%` : "—"} detail={t("guardrails.blockedTransformed", { blocked: metrics.blocked, transformed: metrics.intervened })} />
+        <RuntimeStat metric="p95_latency" numericValue={metrics.total_decisions ? metrics.runtime_p95_ms : null} label={t("dashboard.p95Latency")} value={metrics.total_decisions ? `${metrics.runtime_p95_ms} ms` : "—"} detail={t("guardrails.runtimeLatencyDetail")} />
+        <RuntimeStat metric="error_rate" numericValue={metrics.total_decisions ? metrics.error_rate : null} label={t("dashboard.errorRate")} value={metrics.total_decisions ? `${metrics.error_rate}%` : "—"} detail={t("guardrails.errorsInWindow", { count: metrics.errors })} />
       </dl>
       <div id="runtime-metrics" className="scroll-mt-20"><RuntimeMetricChart metrics={metrics} metric={metric} onMetricChange={onMetricChange} /></div>
       <CallerDistribution metrics={metrics} routers={routers} versions={versions} />
@@ -562,8 +564,8 @@ export function GuardrailFindingsView({ guardrailId, data, summary: scopeSummary
 
 function guardrailFindingTitle(finding: RouterTraceFinding, policies: Policy[]) { const policy = policies.find((item) => item.id === finding.policy_id); const rule = policy?.rules.find((item) => item.id === finding.rule_id); return rule?.name ?? policy?.name ?? finding.rule_id ?? finding.risk.replaceAll("_", " "); }
 
-function RuntimeStat({ label, value, detail }: { label: string; value: string; detail: string }) {
-  return <div className="min-h-20 border-b px-4 py-3 last:border-b-0 sm:odd:border-r sm:[&:nth-child(3)]:border-b-0 xl:border-b-0 xl:border-r xl:odd:border-r xl:last:border-r-0"><dt className="text-xs font-medium text-muted-foreground">{label}</dt><dd className="mt-1 text-xl font-semibold tabular-nums">{value}</dd><p className="mt-1 text-xs text-muted-foreground">{detail}</p></div>;
+function RuntimeStat({ label, value, detail, metric, numericValue = null }: { label: string; value: string; detail: string; metric?: RuntimeStatusMetric; numericValue?: number | null }) {
+  return <div className="min-h-20 border-b px-4 py-3 last:border-b-0 sm:odd:border-r sm:[&:nth-child(3)]:border-b-0 xl:border-b-0 xl:border-r xl:odd:border-r xl:last:border-r-0"><dt className="text-xs font-medium text-muted-foreground">{label}</dt><dd className="mt-1 text-xl font-semibold tabular-nums">{metric ? <RuntimeMetricValue metric={metric} value={numericValue} showStatus>{value}</RuntimeMetricValue> : value}</dd><p className="mt-1 text-xs text-muted-foreground">{detail}</p></div>;
 }
 
 function CallerDistribution({ metrics, routers, versions }: { metrics: Metrics; routers: Awaited<ReturnType<typeof getRouters>>["items"]; versions: GuardrailVersion[] }) {
@@ -620,10 +622,10 @@ function CallerDistribution({ metrics, routers, versions }: { metrics: Metrics; 
                     </div>
                   </TableCell>
                   <TableCell className="py-2.5 align-top">
-                    <p className="text-xs">{t("guardrails.interventionSummary", { rate: item.intervention_rate })}</p>
-                    <p className="mt-0.5 text-xs text-muted-foreground">{t("guardrails.errorSummary", { rate: item.error_rate })}</p>
+                    <div className="text-xs"><RuntimeMetricValue metric="intervention_rate" value={item.requests ? item.intervention_rate : null}>{t("guardrails.interventionSummary", { rate: item.intervention_rate })}</RuntimeMetricValue></div>
+                    <div className="mt-0.5 text-xs text-muted-foreground"><RuntimeMetricValue metric="error_rate" value={item.requests ? item.error_rate : null}>{t("guardrails.errorSummary", { rate: item.error_rate })}</RuntimeMetricValue></div>
                   </TableCell>
-                  <TableCell className="py-2.5 align-top font-mono text-xs">{item.p95_latency_ms} ms</TableCell>
+                  <TableCell className="py-2.5 align-top font-mono text-xs"><RuntimeMetricValue metric="p95_latency" value={item.requests ? item.p95_latency_ms : null}>{`${item.p95_latency_ms} ms`}</RuntimeMetricValue></TableCell>
                 </TableRow>
               );
             })}

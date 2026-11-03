@@ -92,10 +92,10 @@ change, rather than attributed to a JEV threshold or Policy repair.
 ## Verification
 
 `tests/control_plane/test_classifier_decision_chain.py` executes actual shipped
-Policies through Controller planning, Runner compilation, mocked JEV transport,
+Policies through Controller planning, Runner compilation, mocked Jev and Laya transports,
 decision composition and the F5 HTTP adapter. It covers 0.1/0.85 boundaries,
 each classifier's Block against unknown siblings, local Blocks, all-unknown
-continuation, timeouts, HTTP/parse errors, both JEV topic profiles and the PHI
+continuation, timeouts, HTTP/parse errors, both vendors' full/topic-only profiles and the PHI
 repair. Additional uncertainty tests cover standard/programmed execution and
 Enforce/Monitor modes.
 

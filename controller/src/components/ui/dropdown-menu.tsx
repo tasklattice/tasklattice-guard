@@ -81,7 +81,7 @@ export function DropdownMenuItem({
 }: Omit<ComponentProps<typeof OverflowMenuItem>, "onSelect"> & {
   children?: ReactNode;
   asChild?: boolean;
-  variant?: "default" | "edit" | "destructive";
+  variant?: "default" | "edit" | "testing" | "destructive";
   onSelect?: (event: Event) => void;
 }) {
   const child =
@@ -99,7 +99,7 @@ export function DropdownMenuItem({
     <OverflowMenuItem
       {...props}
       data-slot="dropdown-menu-item"
-      className={className}
+      className={cn(variant === "testing" && "guard-testing-menu-item", className)}
       disabled={disabled}
       isDelete={variant === "destructive"}
       href={href}

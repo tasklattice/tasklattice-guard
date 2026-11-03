@@ -171,7 +171,10 @@ Provider connectivity, model callability, and Rail validation are separate
 checks. Guardrail Catalog revisions assign models to stable bindings such as
 `content_safety.input` and `content_safety.output`. Input and Output execute
 today; Retrieval, Dialog, and Execution are reserved Rail types. DeepSeek
-Providers are control-plane-only. The active data-plane projection includes
+Providers support Control Plane work and explicit `classifier_review.input` / `classifier_review.output`
+bindings using a Generic chat or dedicated review profile. Laya content safety supports
+both Rails with direction-specific questions; its reviewer binding is scoped to the same Rail. Primary detector
+contracts remain specialized. The active data-plane projection includes
 only models referenced by its bindings; credentials are resolved separately and
 are not embedded in artifacts or desired-state snapshots.
 

@@ -6,8 +6,7 @@ import pytest
 
 from runner.api import GuardrailContext, _request_content
 from runner.toolkit.runtime.content_views import content_view
-from runner.toolkit.nemo.evaluators.laya_jailbreak import EXTERNAL_QUESTION_REVISION
-from tests.data_plane.test_laya_jailbreak import evaluator, jailbreak_request
+from tests.classifier_cases import jailbreak_request
 
 
 def external_request(operation=None):
@@ -21,7 +20,7 @@ def external_request(operation=None):
 
 @pytest.mark.parametrize("operation", [None, "read", "write"])
 @pytest.mark.parametrize("probability,verdict", [(0.05, "not_matched"), (0.5, "unknown"), (0.95, "matched")])
-async def test_external_boundary_is_preserved_and_native_judgments_are_distinct(operation, probability, verdict):
+async def test_external_boundary_is_preserved_and_native_judgments_are_distinct(classifier_backend, operation, probability, verdict):
     request = external_request(operation)
 
     def respond(http_request):
@@ -37,25 +36,25 @@ async def test_external_boundary_is_preserved_and_native_judgments_are_distinct(
         else:
             assert "source_query" not in state and "memory_operation" not in state
         assert "expected_memory" not in state and "adversarial_goal" not in state
-        return httpx.Response(200, json={"model": "laya", "answers": {
+        return httpx.Response(200, json={"model": classifier_backend.model, "answers": {
             key: {"type": "noul", "noul": probability} for key in body["questions"]}})
 
-    result = await evaluator(respond).evaluate(request)
+    result = await classifier_backend.evaluator("jailbreak", respond).evaluate(request)
     assert result.verdict == verdict
     assert result.usage.model_invocations == 1
-    assert json.loads(result.trace[0].evidence)["question_revision"] == EXTERNAL_QUESTION_REVISION
+    assert json.loads(result.trace[0].evidence)["question_revision"] == classifier_backend.external_revision
 
 
-async def test_external_scope_does_not_mutate_later_direct_input_evidence():
+async def test_external_scope_does_not_mutate_later_direct_input_evidence(classifier_backend):
     def respond(request):
         body = json.loads(request.content)
-        return httpx.Response(200, json={"model": "laya", "answers": {
+        return httpx.Response(200, json={"model": classifier_backend.model, "answers": {
             key: {"type": "noul", "noul": 0.05} for key in body["questions"]}})
-    service = evaluator(respond)
+    service = classifier_backend.evaluator("jailbreak", respond)
     await service.evaluate(external_request())
     direct = await service.evaluate(jailbreak_request())
     evidence = json.loads(direct.trace[0].evidence)
-    assert evidence["question_revision"] == "laya-jailbreak-input.v1"
+    assert evidence["question_revision"] == classifier_backend.jailbreak_revision
     assert set(evidence["judgments"]) == {"jailbreak_attempt", "unsafe_pretext"}
 
 

@@ -107,6 +107,17 @@ describe.skipIf(!url)("explicit group runtime Model grants", () => {
     expect(JSON.stringify(saved)).not.toContain("rotated-c-key");
   });
 
+  it("freezes operational model concurrency until the group grant is explicitly refreshed", async () => {
+    await models.configureConcurrency(modelC, { maxConcurrency: 5 }, "group-model-admin");
+    const first = await grant();
+    expect((await models.configurationForPool("pool-c"))?.models[0]?.maxConcurrency).toBe(5);
+    await models.configureConcurrency(modelC, { maxConcurrency: 7 }, "group-model-admin");
+    expect((await models.configurationForPool("pool-c"))?.models[0]?.maxConcurrency).toBe(5);
+    const second = await grant("group-c", 1);
+    expect(second.grantId).not.toBe(first.grantId);
+    expect((await models.configurationForPool("pool-c"))?.models[0]?.maxConcurrency).toBe(7);
+  });
+
   it("revokes into blocked mode without fallback and requires explicit legacy restoration", async () => {
     await grant();
     const blocked = await models.groupRuntime.update("group-c", { mode: "blocked", expectedVersion: 1 }, "group-model-admin", true);

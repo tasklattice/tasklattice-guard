@@ -11,6 +11,7 @@ import {
   ChevronRight,
   CircleAlert,
   CloudCog,
+  EllipsisVertical,
   LoaderCircle,
   Play,
   Plus,
@@ -27,9 +28,11 @@ import { toast } from "@/components/ui/notifications";
 import { ConfirmationSheet } from "@/components/confirmation-sheet";
 import { ErrorNotice, PageHeader, StateBadge } from "@/components/product-shell";
 import { ValidationFailureEvidence } from "@/components/validation-failure-evidence";
+import { ModelValidationEvidence, validationOutputPreview } from "@/components/runtime-model-evidence";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { RegisterModelsDrawer } from "@/components/providers/register-models-drawer";
@@ -439,7 +442,7 @@ function GuardrailCatalogSection({ action, assignments, savedAssignments, models
     const modelId = assignments.bindings[binding.id];
     const selectedModel = models.find((model) => model.id === modelId);
     const compatibleModels = models
-      .filter((model) => isDataPlaneProviderKindAllowed(model.providerKind) && binding.profileRefs.includes(model.profile))
+      .filter((model) => isDataPlaneProviderKindAllowed(model.providerKind, binding.id) && binding.profileRefs.includes(model.profile))
       .sort((left, right) => binding.profilePreference.indexOf(left.profile) - binding.profilePreference.indexOf(right.profile) || left.name.localeCompare(right.name));
     const selectableModels = selectedModel && !compatibleModels.some((model) => model.id === selectedModel.id)
       ? [selectedModel, ...compatibleModels]
@@ -463,7 +466,7 @@ function GuardrailCatalogSection({ action, assignments, savedAssignments, models
             rows={railType === rail ? rows : catalogBindings.filter((binding) => binding.railType === railType).map((binding) => {
               const modelId = assignments.bindings[binding.id];
               const selectedModel = models.find((model) => model.id === modelId);
-              const compatibleModels = models.filter((model) => isDataPlaneProviderKindAllowed(model.providerKind) && binding.profileRefs.includes(model.profile)).sort((left, right) => binding.profilePreference.indexOf(left.profile) - binding.profilePreference.indexOf(right.profile) || left.name.localeCompare(right.name));
+              const compatibleModels = models.filter((model) => isDataPlaneProviderKindAllowed(model.providerKind, binding.id) && binding.profileRefs.includes(model.profile)).sort((left, right) => binding.profilePreference.indexOf(left.profile) - binding.profilePreference.indexOf(right.profile) || left.name.localeCompare(right.name));
               return { binding, modelId, selectedModel, compatibleModels, selectableModels: selectedModel && !compatibleModels.some((model) => model.id === selectedModel.id) ? [selectedModel, ...compatibleModels] : compatibleModels };
             })}
             savedAssignments={savedAssignments} report={report} disabled={disabled} savingTarget={savingTarget} validatingTarget={validatingTarget}
@@ -500,14 +503,14 @@ function CapabilityBindingTable({ rows, savedAssignments, report, disabled, savi
     <TableHeader><TableRow>
       <TableHead className="w-[38%] pl-5 md:w-[34%]">{t("modelSettings.capabilityColumn")}</TableHead>
       <TableHead className="w-[62%] md:w-[34%]">{t("modelSettings.modelColumn")}</TableHead>
-      <TableHead className="hidden w-[16%] md:table-cell">{t("modelSettings.validationColumn")}</TableHead>
-      <TableHead className="hidden w-[16%] pr-5 text-right md:table-cell">{t("modelSettings.actionsColumn")}</TableHead>
+      <TableHead className="hidden md:table-cell">{t("modelSettings.validationColumn")}</TableHead>
+      <TableHead className="hidden w-24 pr-5 text-right md:table-cell">{t("modelSettings.actionsColumn")}</TableHead>
     </TableRow></TableHeader>
     <TableBody>{rows.map(({ binding, modelId, selectedModel, compatibleModels, selectableModels }) => {
       const rowDirty = modelId !== savedAssignments.bindings[binding.id];
       const preferred = compatibleModels[0];
       return <TableRow key={binding.id} aria-label={capabilityTitle(t, binding)}>
-        <TableCell className="whitespace-normal pl-5"><p className="font-medium">{capabilityTitle(t, binding)}</p><p className="mt-1 text-xs text-muted-foreground">{t(`modelSettings.categories.${binding.categoryId}.description`)}</p>{binding.railType === "output" ? <p className="mt-2 text-xs text-muted-foreground">{t(binding.capabilityRef === "content_safety" ? "modelSettings.streamWindow" : "modelSettings.streamFull")}</p> : null}</TableCell>
+        <TableCell className="whitespace-normal pl-5"><p className="font-medium">{capabilityTitle(t, binding)}</p><p className="mt-1 text-xs text-muted-foreground">{t(binding.capabilityRef === "classifier_review" ? "modelSettings.detectors.classifier_review.description" : `modelSettings.categories.${binding.categoryId}.description`)}</p>{binding.railType === "output" ? <p className="mt-2 text-xs text-muted-foreground">{t(["content_safety", "classifier_review"].includes(binding.capabilityRef) ? "modelSettings.streamWindow" : "modelSettings.streamFull")}</p> : null}</TableCell>
         <TableCell className="whitespace-normal">
           <Label className="sr-only" htmlFor={`binding-model-${binding.id}`}>{t("modelSettings.modelColumn")}</Label>
           <Select value={modelId ?? noneValue} disabled={disabled || !selectableModels.length} onValueChange={(value) => onChange(binding.id, value === noneValue ? null : value)}>
@@ -556,9 +559,10 @@ function AssignmentValidationStatus({ target, model, report, dirty, binding }: {
     message={result.message}
     examples={result.cases?.filter((item) => !item.passed).map((item) => ({
       id: item.id,
+      evidence: <ModelValidationEvidence id={item.id} outputContent={item.outputContent} />,
       fields: [
         { label: t("modelSettings.exampleInput"), value: item.inputContent },
-        { label: t("modelSettings.exampleOutput"), value: item.outputContent || t("modelSettings.noExampleOutput") },
+        { label: t("modelSettings.exampleOutput"), value: item.outputContent || t("modelSettings.noExampleOutput"), displayValue: item.outputContent ? validationOutputPreview(item.outputContent) : undefined },
         { label: t("modelSettings.actualDecision"), value: item.actualDecision },
         { label: t("modelSettings.expectedDecision"), value: item.expectedDecision },
         ...(item.reason ? [{ label: t("modelSettings.validationErrorDetail"), value: item.reason }] : []),
@@ -574,7 +578,7 @@ function AssignmentValidationStatus({ target, model, report, dirty, binding }: {
   return <StateBadge state="needs_validation" label={t("modelSettings.notChecked")} />;
 }
 
-function AssignmentActions({ report, target, modelId, dirty, disabled, saving, validating, onSave, onValidate }: {
+function AssignmentActions({ target, modelId, dirty, disabled, saving, validating, onSave, onValidate }: {
   report: NonNullable<ModelConfigurationView["draft"]>["validationReport"];
   target: CapabilityBindingId;
   modelId: string | null;
@@ -586,10 +590,11 @@ function AssignmentActions({ report, target, modelId, dirty, disabled, saving, v
   onValidate: (target: CapabilityBindingId) => void;
 }) {
   const { t } = useTranslation();
-  return <div className="flex flex-col items-stretch justify-end gap-2 2xl:flex-row">
-    <Button type="button" variant="testing" className="h-11" disabled={disabled || !modelId || saving || validating} onClick={() => onValidate(target)}>{validating ? <LoaderCircle className="animate-spin" /> : <TestTube2 />}{t("modelSettings.validateAssignment")}</Button>
-    <Button type="button" className="h-11" disabled={disabled || saving || validating || (!modelId && !dirty)} onClick={() => onSave(target, modelId)}>{saving ? <LoaderCircle className="animate-spin" /> : <Save />}{t("modelSettings.saveAssignment")}</Button>
-  </div>;
+  const binding = capabilityBindingDefinitions.find((binding) => binding.id === target)!;
+  return <ModelRowActions label={`${t("modelSettings.actionsColumn")} ${capabilityTitle(t, binding)}`} busy={saving || validating} disabled={disabled || saving || validating}>
+    <DropdownMenuItem variant="testing" disabled={disabled || saving || validating || !modelId} onSelect={() => onValidate(target)}><TestTube2 />{t("modelSettings.validateAssignment")}</DropdownMenuItem>
+    <DropdownMenuItem disabled={disabled || saving || validating || (!modelId && !dirty)} onSelect={() => onSave(target, modelId)}><Save />{t("modelSettings.saveAssignment")}</DropdownMenuItem>
+  </ModelRowActions>;
 }
 
 function ModelOption({ model }: { model: ModelDefinition }) {
@@ -696,8 +701,8 @@ function ResourceManagement({ resource, view, administrator, onChanged }: { reso
       >
         {view.models.length ? (
           <Table className="min-w-[56rem] table-fixed">
-            <colgroup><col className="w-[32%]" /><col className="w-[24%]" /><col /><col className="w-48" /></colgroup>
-            <TableHeader><TableRow><TableHead className="pl-5">{t("modelSettings.model")}</TableHead><TableHead>{t("modelSettings.providerConnection")}</TableHead><TableHead>{t("modelSettings.modelCall")}</TableHead><TableHead className="pr-5 text-right">{t("modelSettings.actions")}</TableHead></TableRow></TableHeader>
+            <colgroup><col className="w-[28%]" /><col className="w-[23%]" /><col /><col className="w-24" /><col className="w-24" /></colgroup>
+            <TableHeader><TableRow><TableHead className="pl-5">{t("modelSettings.model")}</TableHead><TableHead>{t("modelSettings.providerConnection")}</TableHead><TableHead>{t("modelSettings.modelCall")}</TableHead><TableHead className="text-right">{t("modelSettings.maxConcurrency")}</TableHead><TableHead className="pr-5 text-right">{t("modelSettings.actions")}</TableHead></TableRow></TableHeader>
             <TableBody>{view.models.map((model) => {
               const provider = view.providers.find((item) => item.id === model.providerId);
               return (
@@ -705,6 +710,7 @@ function ResourceManagement({ resource, view, administrator, onChanged }: { reso
                   <TableCell className="pl-5"><div><p className="font-medium">{model.name}</p><code className="mt-1 block max-w-80 truncate text-xs text-muted-foreground" title={model.model}>{model.model}</code><TenantResourceBadge ownerTenantId={model.tenantId} activeTenantId={tenantId} /></div></TableCell>
                   <TableCell><div className="flex items-start gap-3"><ProviderMark provider={model.providerName} kind={model.providerKind} model={model.model} /><div><p className="mb-1.5 font-medium">{model.providerName}</p>{provider ? <ValidationEvidence kind="provider" status={provider.status} checkedAt={provider.validatedAt} latencyMs={provider.validationLatencyMs} message={provider.validationMessage} /> : <StateBadge state="unavailable" label={t("modelSettings.providerUnavailable")} />}</div></div></TableCell>
                   <TableCell><ModelCallEvidence model={model} checking={probeMutation.isPending && probeMutation.variables?.id === model.id} /></TableCell>
+                  <TableCell className="text-right tabular-nums">{model.maxConcurrency ?? 2}</TableCell>
                   <TableCell className="pr-5">{ownsModel(model) ? <ResourceActions kind="model" name={model.name} checking={probeMutation.isPending && probeMutation.variables?.id === model.id} pending={pending || !administrator} onRetest={() => probeMutation.mutate({ id: model.id })} onRemove={() => setRemoveTarget({ id: model.id, name: model.name })} /> : null}</TableCell>
                 </TableRow>
               );
@@ -807,14 +813,22 @@ function ValidationEvidence({ kind, status, checkedAt, latencyMs, message }: {
 
 function ResourceActions({ kind, name, pending, checking = false, onRetest, onRemove }: { kind: "provider" | "model"; name: string; pending: boolean; checking?: boolean; onRetest: () => void; onRemove: () => void }) {
   const { t } = useTranslation();
-  return (
-    <div className="flex justify-end gap-1">
-      <Button type="button" variant="testing" className="h-11 min-w-11" aria-label={`${t(kind === "model" ? "modelSettings.testCall" : "modelSettings.retest")} ${name}`} disabled={pending} onClick={onRetest}>{checking ? <LoaderCircle className="animate-spin" /> : <TestTube2 />}{kind === "model" ? t("modelSettings.testCall") : null}</Button>
-      <Button type="button" size="icon-sm" className="size-11" variant="destructive" aria-label={`${t("common.remove")} ${name}`} disabled={pending} onClick={onRemove}><Trash2 /></Button>
-    </div>
-  );
+  return <ModelRowActions label={`${t("modelSettings.actions")} ${name}`} disabled={pending} busy={checking}>
+    <DropdownMenuItem variant="testing" disabled={pending} onSelect={onRetest}><TestTube2 />{t(kind === "model" ? "modelSettings.testCall" : "modelSettings.retest")}</DropdownMenuItem>
+    <DropdownMenuItem variant="destructive" disabled={pending} onSelect={onRemove}><Trash2 />{t("common.remove")}</DropdownMenuItem>
+  </ModelRowActions>;
 }
 
+function ModelRowActions({ label, disabled, busy, children }: { label: string; disabled: boolean; busy?: boolean; children: ReactNode }) {
+  return <div className="flex justify-end">
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild><button type="button" aria-label={label} disabled={disabled} className="size-10">
+        {busy ? <LoaderCircle className="size-4 animate-spin" /> : <EllipsisVertical className="size-4" />}
+      </button></DropdownMenuTrigger>
+      <DropdownMenuContent align="end">{children}</DropdownMenuContent>
+    </DropdownMenu>
+  </div>;
+}
 
 function ModelsSkeleton() {
   return <section className="py-8"><Skeleton className="h-10 w-72" /><Skeleton className="mt-3 h-5 w-full max-w-2xl" /><div className="mt-7 space-y-5">{Array.from({ length: 4 }).map((_, index) => <Skeleton key={index} className="h-36" />)}</div></section>;

@@ -1,4 +1,7 @@
 import { tenantLoadLabEn, tenantLoadLabZh } from "./tenant-load-lab-i18n";
+import { dashboardInvestigationEn, dashboardInvestigationZh } from "./dashboard-investigation-i18n";
+import { runtimeMetricsEn, runtimeMetricsZh } from "./runtime-metrics-i18n";
+import { runtimeDiagnosticsEn, runtimeDiagnosticsZh } from "./runtime-diagnostics-i18n";
 import { validationScopeEn, validationScopeZh } from "./validation-scope-i18n";
 import { modelPricingEn, modelPricingZh } from "./model-pricing-i18n";
 import { protectionModeEn, protectionModeZh } from "./protection-mode-i18n";
@@ -23,6 +26,8 @@ const resources = {
     translation: {
       tenantLoadLab: tenantLoadLabEn,
       validationScope: validationScopeEn,
+      runtimeMetrics: runtimeMetricsEn,
+      dashboardInvestigation: dashboardInvestigationEn,
       validationControl: { stop: "Stop test", stopping: "Stopping…", stopped: "Test cancelled", hint: "Stops this test only. Published versions and traffic are unchanged." },
       modelPricing: modelPricingEn,
       protectionMode: protectionModeEn,
@@ -525,7 +530,7 @@ const resources = {
         detectors: {
           content_safety: { title: "Content safety classifier", description: "Classify unsafe content using the selected safety-model contract." },
           jailbreak_detection: { title: "Jailbreak detector", description: "Run a detector specialized for jailbreak and prompt-bypass attempts." },
-          classifier_review: { title: "Independent classifier review", description: "Review uncertain JEV or Laya input results using a separately validated model." },
+          classifier_review: { title: "Independent classifier review", description: "Recheck uncertain JEV input or Laya input/output using a chat model assigned to this Rail. The built-in prompt includes the original criteria, evaluated text and context. Enable review_unknown in the Guard's Policy binding." },
           topic_control: { title: "Topic boundary judge", description: "Evaluate allowed and denied business topics against the configured taxonomy." },
           pii_detection: { title: "Semantic PII detector", description: "Find contextual PII beyond deterministic local patterns." },
           contextual_grounding: { title: "Contextual grounding", description: "Score whether a response is supported by the supplied source context." },
@@ -723,6 +728,8 @@ const resources = {
         profileHint: "Choose the contract implemented by this Model, not just its vendor family.",
         timeout: "Timeout (seconds)",
         maxTokens: "Max tokens",
+        maxConcurrency: "Concurrency",
+        maxConcurrencyHint: "Maximum active calls to this model per Runner process (1–64, default 2). Shared by all requests and checks using this model. Saving updates the active Runners.",
         addAndTestModel: "Add & test Model",
         providerCreated: "Provider created and connection probe completed.",
         providerValidationFailed: "Provider was created, but its connection probe failed.",
@@ -798,7 +805,7 @@ const resources = {
           "tali.nemoguard-topic-control.v1": "NVIDIA NemoGuard Topic Control",
           "tali.typesafe-jev-topic.v1": "TypeSafe Jev · Input Topic Control",
           "tali.typesafe-jev.v1": "TypeSafe Jev · Input safety classifiers",
-          "tali.laya.v1": "Laya · Input decision classifiers",
+          "tali.laya.v1": "Laya · Input and output decision classifiers",
           "tali.laya-topic.v1": "Laya · Input Topic Control",
           "tali.openai-compatible-jailbreak.v1": "OpenAI-compatible jailbreak judge",
           "tali.nemoguard-jailbreak-detect.v1": "NVIDIA NemoGuard JailbreakDetect",
@@ -1805,7 +1812,8 @@ const resources = {
         createFirstRouter: "Create first Router",
       },
       logs: {
-        executionErrorOutcome: "Error",
+        diagnostics: runtimeDiagnosticsEn,
+        executionErrorOutcome: "Execution failed",
         viewErrors: "View errors",
         callCompletion: "Call completion",
         inferredTimeout: "Completion not reported · inferred timeout",
@@ -1901,7 +1909,7 @@ const resources = {
         modelQualitySeparate: "Model calls and response formats were valid. This case failed its policy or expectation assertions.",
         modelStatus: { ok: "Model calls: OK", error: "Model calls: error", not_called: "Model: not called", unknown: "Model health: unconfirmed" },
         errorSources: { model: "Model service / response error", configuration: "Integration configuration error", guard: "Guard execution error", unknown: "Fault boundary unconfirmed", mixed: "Multiple fault boundaries" },
-        errorCategories: { json_decode: "The model response is not valid JSON.", response_schema: "The model response does not match the configured protocol.", unavailable: "The model service is unavailable.", timeout: "The model call timed out.", connection: "The model service could not be reached. Check the network and endpoint.", authentication: "Credentials were rejected. Check the integration configuration.", permission: "Access was denied. Check model permissions.", not_found: "The endpoint or model was not found.", request_rejected: "The service rejected the request. Check the request contract and configuration.", rate_limit: "The model service rate limit or quota was reached.", internal: "Guard code raised an internal exception.", execution: "Guard execution failed.", deadline: "The Guard execution deadline expired.", configuration: "Required configuration is missing or invalid.", needs_context: "The check requires context that was not supplied.", uncovered: "A required check was not executed.", multiple: "Multiple recorded causes; inspect the child spans.", unknown: "No structured cause was recorded." },
+        errorCategories: { json_decode: "The model response is not valid JSON.", response_schema: "The model response does not match the configured protocol.", unavailable: "The model service is unavailable.", timeout: "The model call timed out.", connection: "The model service could not be reached. Check the network and endpoint.", authentication: "Credentials were rejected. Check the integration configuration.", permission: "Access was denied. Check model permissions.", not_found: "The endpoint or model was not found.", request_rejected: "The service rejected the request. Check the request contract and configuration.", rate_limit: "The model service rate limit or quota was reached.", internal: "Guard code raised an internal exception.", execution: "Guard execution failed.", deadline: "The Guard execution deadline expired.", configuration: "Required configuration is missing or invalid.", needs_context: "The check requires context that was not supplied.", uncovered: "A required check was not executed.", multiple: "Multiple recorded causes; inspect the child spans.", unknown: "No structured cause was recorded.", ...runtimeDiagnosticsEn.causes },
         traceFailureTitles: {
           model: "Safety model call failed",
           service: "Service call failed",
@@ -3144,6 +3152,8 @@ const resources = {
     translation: {
       tenantLoadLab: tenantLoadLabZh,
       validationScope: validationScopeZh,
+      runtimeMetrics: runtimeMetricsZh,
+      dashboardInvestigation: dashboardInvestigationZh,
       validationControl: { stop: "停止测试", stopping: "正在停止…", stopped: "测试已取消", hint: "仅停止本次测试，不影响已发布版本和线上流量。" },
       modelPricing: modelPricingZh,
       protectionMode: protectionModeZh,
@@ -3645,7 +3655,7 @@ const resources = {
         detectors: {
           content_safety: { title: "内容安全分类器", description: "使用所选安全模型契约识别不安全内容。" },
           jailbreak_detection: { title: "越狱检测器", description: "使用专门模型检测越狱与绕过指令的尝试。" },
-          classifier_review: { title: "分类灰区复核", description: "使用独立验证的输入模型复核 JEV 或 Laya 不确定结果。" },
+          classifier_review: { title: "分类灰区复核", description: "使用当前 Rail 绑定的对话模型，复核 JEV 输入或 Laya 输入／输出的不确定结果。内置提示词自动带上原判定标准、待检查文本和上下文；在 Guard 的 Policy 绑定中开启 review_unknown 后生效。" },
           topic_control: { title: "主题边界判定", description: "根据配置的分类体系判断允许与禁止的业务主题。" },
           pii_detection: { title: "语义 PII 检测", description: "在本地确定性规则之外识别上下文中的 PII。" },
           contextual_grounding: { title: "上下文依据性", description: "评估回复是否得到给定来源上下文的支持。" },
@@ -3843,6 +3853,8 @@ const resources = {
         profileHint: "请选择模型真正实现的契约，而不只是厂商或模型家族。",
         timeout: "超时（秒）",
         maxTokens: "最大 Token",
+        maxConcurrency: "并发度",
+        maxConcurrencyHint: "每个 Runner 进程对该模型的最大同时调用数（1–64，默认 2）。所有使用该模型的请求与检查共享额度；保存后会下发至已启用的 Runner。",
         addAndTestModel: "添加并测试模型",
         providerCreated: "模型提供商已创建，连接探测已完成。",
         providerValidationFailed: "模型提供商已创建，但连接探测失败。",
@@ -3918,7 +3930,7 @@ const resources = {
           "tali.nemoguard-topic-control.v1": "NVIDIA NemoGuard 主题控制",
           "tali.typesafe-jev-topic.v1": "TypeSafe Jev · 输入主题控制（兼容）",
           "tali.typesafe-jev.v1": "TypeSafe Jev · 输入安全分类",
-          "tali.laya.v1": "Laya · 输入 Decision 分类",
+          "tali.laya.v1": "Laya · 输入与输出 Decision 分类",
           "tali.laya-topic.v1": "Laya · 输入话题控制",
           "tali.openai-compatible-jailbreak.v1": "OpenAI 兼容越狱判定",
           "tali.nemoguard-jailbreak-detect.v1": "NVIDIA NemoGuard 专用越狱检测",
@@ -4922,7 +4934,8 @@ const resources = {
         createFirstRouter: "创建第一个 Router",
       },
       logs: {
-        executionErrorOutcome: "Error · 执行异常",
+        diagnostics: runtimeDiagnosticsZh,
+        executionErrorOutcome: "执行失败",
         viewErrors: "查看错误",
         callCompletion: "调用完成状态",
         inferredTimeout: "未收到完成事件 · 推断超时",
@@ -5018,7 +5031,7 @@ const resources = {
         modelQualitySeparate: "模型调用与响应格式正常；该用例未通过策略或预期断言。",
         modelStatus: { ok: "模型调用正常", error: "模型调用异常", not_called: "未调用模型", unknown: "模型状态未确认" },
         errorSources: { model: "模型服务／响应错误", configuration: "接入配置错误", guard: "Guard 执行错误", unknown: "故障边界未确认", mixed: "涉及多个故障边界" },
-        errorCategories: { json_decode: "模型返回的内容不是有效 JSON。", response_schema: "模型响应字段或格式不符合当前协议。", unavailable: "模型服务不可用。", timeout: "模型调用超时。", connection: "无法连接模型服务，请检查网络和服务地址。", authentication: "凭据被拒绝，请检查接入鉴权配置。", permission: "访问被拒绝，请检查模型访问权限。", not_found: "接口地址或模型不存在。", request_rejected: "服务拒绝了请求，请检查请求协议与配置。", rate_limit: "模型服务触发限流或配额限制。", internal: "Guard 代码发生内部异常。", execution: "Guard 执行失败。", deadline: "Guard 执行时限已耗尽。", configuration: "缺少必要配置或配置无效。", needs_context: "检查所需的上下文未提供。", uncovered: "必要检查未执行。", multiple: "存在多个原因，请查看子调用节点。", unknown: "未记录结构化故障原因。" },
+        errorCategories: { json_decode: "模型返回的内容不是有效 JSON。", response_schema: "模型响应字段或格式不符合当前协议。", unavailable: "模型服务不可用。", timeout: "模型调用超时。", connection: "无法连接模型服务，请检查网络和服务地址。", authentication: "凭据被拒绝，请检查接入鉴权配置。", permission: "访问被拒绝，请检查模型访问权限。", not_found: "接口地址或模型不存在。", request_rejected: "服务拒绝了请求，请检查请求协议与配置。", rate_limit: "模型服务触发限流或配额限制。", internal: "Guard 代码发生内部异常。", execution: "Guard 执行失败。", deadline: "Guard 执行时限已耗尽。", configuration: "缺少必要配置或配置无效。", needs_context: "检查所需的上下文未提供。", uncovered: "必要检查未执行。", multiple: "存在多个原因，请查看子调用节点。", unknown: "未记录结构化故障原因。", ...runtimeDiagnosticsZh.causes },
         traceFailureTitles: {
           model: "安全模型调用失败",
           service: "服务调用失败",

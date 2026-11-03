@@ -54,18 +54,19 @@ function keyPair(directory: string, name: string) {
   return { path, publicKeyPem: pair.publicKey.export({ type: "spki", format: "pem" }).toString() };
 }
 
-describe.skipIf(!url)("Guardrail release packages between isolated environments", () => {
-  const keys = mkdtempSync(join(tmpdir(), "guard-packages-"));
-  const uatArtifactKey = keyPair(keys, "uat-artifact");
-  const prodArtifactKey = keyPair(keys, "prod-artifact");
+// These cases exercise complete import/restore/release lifecycles against two
+// migrated installations. Give them a bounded integration budget on CI workers.
+describe.skipIf(!url)("Guardrail release packages between isolated environments", { timeout: 30_000 }, () => {
+  let keys: string;
+  let uatArtifactKey: ReturnType<typeof keyPair>;
+  let prodArtifactKey: ReturnType<typeof keyPair>;
   const environment = (artifactKey: string, extra: Record<string, string>) => loadConfig({
     NODE_ENV: "test", CONTROLLER_DATABASE_URL: url!, CONTROLLER_RUNNER_TOKEN: "runner-token-that-is-at-least-32-characters",
     CONTROLLER_ARTIFACT_SIGNING_KEY_PATH: artifactKey, CONTROLLER_POLICY_CATALOG_DIR: catalogDir, CONTROLLER_PROTO_PATH: protoPath,
     BETTER_AUTH_SECRET: "better-auth-secret-that-is-at-least-32-characters", ...extra,
   });
-  if (!url) return;
-  const uatConfig = environment(uatArtifactKey.path, {});
-  const prodConfig = environment(prodArtifactKey.path, {});
+  let uatConfig: ReturnType<typeof loadConfig>;
+  let prodConfig: ReturnType<typeof loadConfig>;
   let uatDb: Awaited<ReturnType<typeof createTestDatabase>>;
   let prodDb: Awaited<ReturnType<typeof createTestDatabase>>;
   let uat: ControlPlaneService;
@@ -96,6 +97,11 @@ describe.skipIf(!url)("Guardrail release packages between isolated environments"
   }
 
   beforeAll(async () => {
+    keys = mkdtempSync(join(tmpdir(), "guard-packages-"));
+    uatArtifactKey = keyPair(keys, "uat-artifact");
+    prodArtifactKey = keyPair(keys, "prod-artifact");
+    uatConfig = environment(uatArtifactKey.path, {});
+    prodConfig = environment(prodArtifactKey.path, {});
     [uatDb, prodDb] = await Promise.all([createTestDatabase(url!, "guard_pkg_uat"), createTestDatabase(url!, "guard_pkg_prod")]);
     await Promise.all([seed(uatDb), seed(prodDb)]);
     uat = new ControlPlaneService(uatDb.db, uatConfig);
@@ -112,12 +118,12 @@ describe.skipIf(!url)("Guardrail release packages between isolated environments"
     await testAndPublish(guardrailId, 1);
     await uat.updateGuardrail({ id: guardrailId, actorId: "admin", draftConfig: { ...draft, policyBindings: draft.policyBindings.slice(1) }, expectedDraftRevision: 1 });
     await testAndPublish(guardrailId, 2);
-  });
+  }, 30_000);
   afterAll(async () => {
     await uatDb?.drop();
     await prodDb?.drop();
-    rmSync(keys, { recursive: true, force: true });
-  });
+    if (keys) rmSync(keys, { recursive: true, force: true });
+  }, 30_000);
 
   it("starts production with the same features as UAT: a complete bundled Default baseline without model configuration", async () => {
     await prod.initialize();

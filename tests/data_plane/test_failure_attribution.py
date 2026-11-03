@@ -16,7 +16,7 @@ from runner.toolkit.nemo.actions.model_call import (model_failure, observe_model
 from runner.toolkit.runtime.contracts import EngineRequest
 from runner.toolkit.runtime.failures import ModelResponseError, model_response
 from tests.data_plane.test_artifact_execution import _runtime
-from tests.data_plane.test_jev_jailbreak import jailbreak_request
+from tests.classifier_cases import jailbreak_request
 
 FIXTURE = Path(__file__).resolve().parents[1] / "fixtures/artifacts/stream-safety-window_buffered-v1"
 
@@ -55,7 +55,7 @@ async def test_model_fault_survives_real_runtime_telemetry_and_report_wire(tmp_p
     try:
         result = await engine.evaluate(EngineRequest(phase="output", text="synthetic input", plan=plan))
         assert result.execution_status in {"error", "timeout"}
-        assert result.model_status == ("error" if source == "model" else "unknown")
+        assert result.model_status == "error"
         calls = [s for s in result.trace if s.kind == "evaluator" and s.model_call_id and s.model_result]
         assert len(calls) == 1
         failed = calls[0]
@@ -85,6 +85,33 @@ def test_internal_type_error_is_not_a_model_schema_error():
     _, failure = model_failure(caught.value)
     assert (failure.source, failure.category) == ("model", "json_decode")
     assert "private" not in str(caught.value)
+
+
+@pytest.mark.parametrize("raw,category", [
+    ("Safety: Controversial\nCategories: Violent", "model_uncertain"),
+    ("Safety: Unsafe\nCategories: private unmapped category", "category_mapping"),
+])
+async def test_inconclusive_model_result_retains_specific_cause_without_claiming_missing_context(tmp_path, raw, category):
+    actions = providers(lambda _: httpx.Response(200, json={"choices": [{"message": {"content": raw}}]}))
+    store, _, engine = _runtime(tmp_path, FIXTURE, providers=actions)
+    try:
+        decision = await engine.evaluate(EngineRequest(phase="output", text="private request content",
+            plan=store.plan(*store.active_plan_keys()[0])))
+        # This artifact's existing unknown policy blocks conclusively. Retain
+        # the classification cause without turning that policy action into an error.
+        assert decision.execution_status == "complete"
+        assert decision.decision == "block"
+        assert decision.model_status == "ok"
+        cause = next(d for d in decision.diagnostics if d.category == category)
+        assert not cause.affects_result and cause.source == "model"
+        assert cause.step_id in {step.id for step in decision.trace}
+        assert cause.model_call_id == decision.usage.model_calls[-1].call_id
+        assert not any(d.source == "configuration" or d.code == "needs_context" for d in decision.diagnostics)
+        event = _telemetry_metadata(decision)
+        assert any(d["category"] == category for d in event["diagnostics"])
+        assert "private" not in json.dumps(event)
+    finally:
+        await engine.shutdown()
 
 
 def test_guard_failure_after_valid_response_keeps_model_call_successful():

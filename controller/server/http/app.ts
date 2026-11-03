@@ -511,6 +511,10 @@ export function createHttpApp(input: {
     if (!input.models) throw new ControllerError("Model configuration is unavailable.", 503, "model_configuration_unavailable");
     return context.json(await input.models.testModelConnection(context.req.param("id"), context.get("actor").id));
   });
+  app.put("/api/v1/models/:id/concurrency", authenticated, async (context) => {
+    if (!input.models) throw new ControllerError("Model configuration is unavailable.", 503, "model_configuration_unavailable");
+    return context.json(await input.models.configureConcurrency(context.req.param("id"), await context.req.json(), context.get("actor").id));
+  });
   app.put("/api/v1/models/:id/protocol", authenticated, async (context) => {
     if (!input.models) throw new ControllerError("Model configuration is unavailable.", 503, "model_configuration_unavailable");
     return context.json(await input.models.configureModel(context.req.param("id"), await context.req.json(), context.get("actor").id));

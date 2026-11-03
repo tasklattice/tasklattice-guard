@@ -5,12 +5,14 @@ import os
 from typing import Any
 
 import httpx
+from runner.model_validation_diagnostics import validation_http_hooks
 from ...runtime.failures import model_response
 
 from ...runtime.contracts import (
     GroundingClaimEvidence,
     GroundingFilterAssessment,
     RiskFinding,
+    RuntimeTraceStep,
 )
 from ...safety.taxonomy import taxonomy_for_evaluator
 from .contracts import ActionRequest, ActionResult, action_result, action_view
@@ -100,6 +102,11 @@ class GroundingActionProvider:
                     ),
                 ),
                 reason=reason,
+                trace=(RuntimeTraceStep(id=f"{request.binding.id}:context", kind="evaluation",
+                    name="Grounding context", status="unknown", verdict="unknown", detail=reason,
+                    policy_id=request.policy_id, content_block_id=request.active_block_id,
+                    error_source="configuration", error_category=("missing_grounding_sources" if queries
+                        else "missing_query" if sources else "missing_grounding_context")),),
             )
 
         query_text = "\n".join(block.text for block in queries)
@@ -138,7 +145,7 @@ class GroundingActionProvider:
                 async with httpx.AsyncClient(
                     timeout=self._timeout_seconds,
                     transport=self._transport,
-                    verify=not self._skip_tls_verify,
+                    verify=not self._skip_tls_verify, event_hooks=validation_http_hooks(),
                 ) as client:
                     response = await client.post(
                         f"{self._base_url}/chat/completions",

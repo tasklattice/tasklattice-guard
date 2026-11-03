@@ -340,7 +340,8 @@ export function buildGuardrailPlan(input: {
                 : evaluation.after.verdicts,
             }
           : { type: "always" },
-        parameters: group.parameters ?? parameters,
+        parameters: [...(group.parameters ?? parameters),
+          ["execution_dependency", evaluation.potentiallyRemote ? "model" : "local"]],
       });
     }
     steps.push(...policySteps);

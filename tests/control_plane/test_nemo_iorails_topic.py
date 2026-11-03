@@ -278,6 +278,7 @@ async def test_real_iorails_registry_uses_live_model_and_rejects_bad_label() -> 
     model = replace(
         _native_model(),
         base_url=f"http://127.0.0.1:{server.server_port}/v1",
+        max_concurrency=1,
     )
     plan = _plan(_semantic_input())
     config = NeMoConfigCompiler(models=(model.compiler_config(),)).compile(plan)
@@ -302,9 +303,10 @@ async def test_real_iorails_registry_uses_live_model_and_rejects_bad_label() -> 
     )
     runtime = NeMoRuntime(registry)
     try:
-        allowed = await runtime.evaluate(
+        # A single permit exposes accidental nested admission immediately.
+        allowed = await asyncio.wait_for(runtime.evaluate(
             EngineRequest(phase="input", text="product help", plan=plan)
-        )
+        ), 3)
         state["label"] = "off-topic"
         blocked = await runtime.evaluate(
             EngineRequest(phase="input", text="politics", plan=plan)

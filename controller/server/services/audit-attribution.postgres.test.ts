@@ -74,7 +74,7 @@ describe.skipIf(!url)("audit tenant attribution", () => {
       CREATE TRIGGER reject_audit_quarantine BEFORE UPDATE ON audit_event
         FOR EACH ROW EXECUTE FUNCTION reject_audit_quarantine();
     `);
-    const migration = readFileSync(new URL("../db/migrations/0007_audit_attribution_quarantine.sql", import.meta.url), "utf8");
+    const migration = readFileSync(new URL("../db/migrations/0008_audit_attribution_quarantine.sql", import.meta.url), "utf8");
     await expect(database.pool.query(migration)).rejects.toThrow("test audit quarantine failure");
     expect((await database.pool.query("SELECT tenant_id FROM audit_event WHERE id='admin-on-c'")).rows)
       .toEqual([{ tenant_id: "tenantC" }]);
