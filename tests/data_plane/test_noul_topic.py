@@ -151,8 +151,14 @@ async def test_offline_replay_excludes_labels_and_keeps_unknown_errors_separate(
         value = next(responses)
         return classifier_backend.response(**{key: value for key in body["questions"]})
     report = await replay(samples[:2], classifier_backend.evaluator("topic_control", respond), 5)
-    assert report["outcomes"] == {"unknown": 1, "correct": 1}
-    assert report["label_agreement"] == 0.5
+    # These examples contain multiple allowed topics. Laya abstains until an
+    # independent review establishes coverage, even with a confident native score.
+    if classifier_backend.name == "laya":
+        assert report["outcomes"] == {"unknown": 2}
+        assert report["label_agreement"] == 0
+    else:
+        assert report["outcomes"] == {"unknown": 1, "correct": 1}
+        assert report["label_agreement"] == 0.5
 
 
 @pytest.mark.parametrize("mode", ["allowlist", "unsupported"])

@@ -33,6 +33,10 @@
             "1.0.0"
           ],
           [
+            "execution_dependency",
+            "local"
+          ],
+          [
             "precedence",
             "0"
           ],
@@ -42,7 +46,19 @@
           ],
           [
             "execution_schedule",
-            "block-first-v1"
+            "local-first-v2"
+          ],
+          [
+            "execution_stage_input",
+            "local"
+          ],
+          [
+            "parallel_group_input",
+            "checks:input:0"
+          ],
+          [
+            "parallel_leader_input",
+            "true"
           ]
         ]
       },
@@ -68,6 +84,10 @@
             "1.0.0"
           ],
           [
+            "execution_dependency",
+            "local"
+          ],
+          [
             "precedence",
             "1"
           ],
@@ -77,7 +97,19 @@
           ],
           [
             "execution_schedule",
-            "block-first-v1"
+            "local-first-v2"
+          ],
+          [
+            "execution_stage_input",
+            "local"
+          ],
+          [
+            "parallel_group_input",
+            "checks:input:0"
+          ],
+          [
+            "parallel_leader_input",
+            "false"
           ]
         ]
       },
@@ -132,6 +164,10 @@
             "{}"
           ],
           [
+            "execution_dependency",
+            "local"
+          ],
+          [
             "precedence",
             "3"
           ],
@@ -141,7 +177,31 @@
           ],
           [
             "execution_schedule",
-            "block-first-v1"
+            "local-first-v2"
+          ],
+          [
+            "execution_stage_input",
+            "local"
+          ],
+          [
+            "parallel_group_input",
+            "checks:input:0"
+          ],
+          [
+            "parallel_leader_input",
+            "false"
+          ],
+          [
+            "execution_stage_output",
+            "local"
+          ],
+          [
+            "parallel_group_output",
+            "checks:output:0"
+          ],
+          [
+            "parallel_leader_output",
+            "true"
           ]
         ]
       },
@@ -196,6 +256,10 @@
             "{}"
           ],
           [
+            "execution_dependency",
+            "local"
+          ],
+          [
             "precedence",
             "4"
           ],
@@ -205,7 +269,31 @@
           ],
           [
             "execution_schedule",
-            "block-first-v1"
+            "local-first-v2"
+          ],
+          [
+            "execution_stage_input",
+            "local"
+          ],
+          [
+            "parallel_group_input",
+            "checks:input:0"
+          ],
+          [
+            "parallel_leader_input",
+            "false"
+          ],
+          [
+            "execution_stage_output",
+            "local"
+          ],
+          [
+            "parallel_group_output",
+            "checks:output:0"
+          ],
+          [
+            "parallel_leader_output",
+            "false"
           ]
         ]
       },
@@ -260,6 +348,10 @@
             "{}"
           ],
           [
+            "execution_dependency",
+            "local"
+          ],
+          [
             "precedence",
             "5"
           ],
@@ -269,7 +361,31 @@
           ],
           [
             "execution_schedule",
-            "block-first-v1"
+            "local-first-v2"
+          ],
+          [
+            "execution_stage_input",
+            "local"
+          ],
+          [
+            "parallel_group_input",
+            "checks:input:0"
+          ],
+          [
+            "parallel_leader_input",
+            "false"
+          ],
+          [
+            "execution_stage_output",
+            "local"
+          ],
+          [
+            "parallel_group_output",
+            "checks:output:0"
+          ],
+          [
+            "parallel_leader_output",
+            "false"
           ]
         ]
       },
@@ -324,6 +440,10 @@
             "{}"
           ],
           [
+            "execution_dependency",
+            "local"
+          ],
+          [
             "precedence",
             "6"
           ],
@@ -333,7 +453,15 @@
           ],
           [
             "execution_schedule",
-            "block-first-v1"
+            "local-first-v2"
+          ],
+          [
+            "execution_stage_input",
+            "local"
+          ],
+          [
+            "execution_stage_output",
+            "local"
           ]
         ]
       },
@@ -388,6 +516,10 @@
             "{}"
           ],
           [
+            "execution_dependency",
+            "local"
+          ],
+          [
             "precedence",
             "7"
           ],
@@ -397,7 +529,15 @@
           ],
           [
             "execution_schedule",
-            "block-first-v1"
+            "local-first-v2"
+          ],
+          [
+            "execution_stage_input",
+            "local"
+          ],
+          [
+            "execution_stage_output",
+            "local"
           ]
         ]
       },
@@ -452,6 +592,10 @@
             "{}"
           ],
           [
+            "execution_dependency",
+            "local"
+          ],
+          [
             "precedence",
             "8"
           ],
@@ -461,7 +605,15 @@
           ],
           [
             "execution_schedule",
-            "block-first-v1"
+            "local-first-v2"
+          ],
+          [
+            "execution_stage_input",
+            "local"
+          ],
+          [
+            "execution_stage_output",
+            "local"
           ]
         ]
       },
@@ -516,6 +668,10 @@
             "{}"
           ],
           [
+            "execution_dependency",
+            "local"
+          ],
+          [
             "precedence",
             "9"
           ],
@@ -525,7 +681,15 @@
           ],
           [
             "execution_schedule",
-            "block-first-v1"
+            "local-first-v2"
+          ],
+          [
+            "execution_stage_input",
+            "local"
+          ],
+          [
+            "execution_stage_output",
+            "local"
           ]
         ]
       },
@@ -580,6 +744,10 @@
             "{}"
           ],
           [
+            "execution_dependency",
+            "local"
+          ],
+          [
             "precedence",
             "10"
           ],
@@ -589,7 +757,15 @@
           ],
           [
             "execution_schedule",
-            "block-first-v1"
+            "local-first-v2"
+          ],
+          [
+            "execution_stage_input",
+            "local"
+          ],
+          [
+            "execution_stage_output",
+            "local"
           ]
         ]
       },
@@ -644,6 +820,10 @@
             "{}"
           ],
           [
+            "execution_dependency",
+            "local"
+          ],
+          [
             "precedence",
             "11"
           ],
@@ -653,7 +833,15 @@
           ],
           [
             "execution_schedule",
-            "block-first-v1"
+            "local-first-v2"
+          ],
+          [
+            "execution_stage_input",
+            "local"
+          ],
+          [
+            "execution_stage_output",
+            "local"
           ]
         ]
       },
@@ -708,6 +896,10 @@
             "{}"
           ],
           [
+            "execution_dependency",
+            "local"
+          ],
+          [
             "precedence",
             "12"
           ],
@@ -717,7 +909,15 @@
           ],
           [
             "execution_schedule",
-            "block-first-v1"
+            "local-first-v2"
+          ],
+          [
+            "execution_stage_input",
+            "local"
+          ],
+          [
+            "execution_stage_output",
+            "local"
           ]
         ]
       },
@@ -772,6 +972,10 @@
             "{}"
           ],
           [
+            "execution_dependency",
+            "local"
+          ],
+          [
             "precedence",
             "2"
           ],
@@ -781,7 +985,15 @@
           ],
           [
             "execution_schedule",
-            "block-first-v1"
+            "local-first-v2"
+          ],
+          [
+            "execution_stage_input",
+            "local"
+          ],
+          [
+            "execution_stage_output",
+            "local"
           ]
         ]
       }
@@ -807,9 +1019,7 @@
         "step_ids": [
           "memory_poisoning:builtin-memory-poisoning:exact"
         ],
-        "depends_on": [
-          "interaction_safety:builtin-indirect-prompt-injection:input"
-        ],
+        "depends_on": [],
         "input_view": "previous_output",
         "required_for_release": true,
         "timeout_ms": 30000,
@@ -822,9 +1032,7 @@
         "step_ids": [
           "builtin_content_filter:local-content-safety:block:rules"
         ],
-        "depends_on": [
-          "interaction_safety:builtin-memory-poisoning:input"
-        ],
+        "depends_on": [],
         "input_view": "previous_output",
         "required_for_release": true,
         "timeout_ms": 30000,
@@ -850,9 +1058,7 @@
         "step_ids": [
           "builtin_content_filter:local-injection-protection:rules"
         ],
-        "depends_on": [
-          "interaction_safety:local-content-safety:block:input"
-        ],
+        "depends_on": [],
         "input_view": "previous_output",
         "required_for_release": true,
         "timeout_ms": 30000,
@@ -865,9 +1071,7 @@
         "step_ids": [
           "builtin_content_filter:local-injection-protection:rules"
         ],
-        "depends_on": [
-          "interaction_safety:local-content-safety:block:output"
-        ],
+        "depends_on": [],
         "input_view": "previous_output",
         "required_for_release": true,
         "timeout_ms": 30000,
@@ -880,9 +1084,7 @@
         "step_ids": [
           "builtin_content_filter:local-credentials:rules"
         ],
-        "depends_on": [
-          "interaction_safety:local-injection-protection:input"
-        ],
+        "depends_on": [],
         "input_view": "previous_output",
         "required_for_release": true,
         "timeout_ms": 30000,
@@ -895,9 +1097,7 @@
         "step_ids": [
           "builtin_content_filter:local-credentials:rules"
         ],
-        "depends_on": [
-          "interaction_safety:local-injection-protection:output"
-        ],
+        "depends_on": [],
         "input_view": "previous_output",
         "required_for_release": true,
         "timeout_ms": 30000,
@@ -911,6 +1111,10 @@
           "builtin_content_filter:local-payment-data:rules"
         ],
         "depends_on": [
+          "interaction_safety:builtin-indirect-prompt-injection:input",
+          "interaction_safety:builtin-memory-poisoning:input",
+          "interaction_safety:local-content-safety:block:input",
+          "interaction_safety:local-injection-protection:input",
           "interaction_safety:local-credentials:input"
         ],
         "input_view": "previous_output",
@@ -926,6 +1130,8 @@
           "builtin_content_filter:local-payment-data:rules"
         ],
         "depends_on": [
+          "interaction_safety:local-content-safety:block:output",
+          "interaction_safety:local-injection-protection:output",
           "interaction_safety:local-credentials:output"
         ],
         "input_view": "previous_output",
@@ -2077,7 +2283,7 @@
     ]
   },
   "configYaml": "colang_version: 2.x\nenable_rails_exceptions: false\nrails: {}\ntracing:\n  enabled: false\n  enable_content_capture: false\nmetrics:\n  enabled: false\n",
-  "colangContent": "import core\n\nflow main\n  user said something as $message\n  global $tasklattice_phase\n  if $tasklattice_phase == \"output\"\n    await tasklattice output rails $message.transcript\n  else\n    await tasklattice input rails $message.transcript\n\nflow tasklattice input rails $text\n  global $user_message\n  $user_message = $text\n  $blocked = False\n  $tl_result_5688451a = {\"verdict\": \"skipped\"}\n  $tl_result_1abcdab2 = {\"verdict\": \"skipped\"}\n  $tl_result_d2819925 = {\"verdict\": \"skipped\"}\n  $tl_result_f05d14c8 = {\"verdict\": \"skipped\"}\n  $tl_result_8a68dd52 = {\"verdict\": \"skipped\"}\n  $tl_result_a156bdc5 = {\"verdict\": \"skipped\"}\n  $tl_result_6ed9ecfd = {\"verdict\": \"skipped\"}\n  $tl_result_829631a5 = {\"verdict\": \"skipped\"}\n  $tl_result_f9ab3404 = {\"verdict\": \"skipped\"}\n  $tl_result_3227137e = {\"verdict\": \"skipped\"}\n  $tl_result_375abed1 = {\"verdict\": \"skipped\"}\n  $tl_result_c7d176f4 = {\"verdict\": \"skipped\"}\n  $tl_result_a6de19c4 = {\"verdict\": \"skipped\"}\n  if not $blocked\n    $tl_result_5688451a = await GuardIndirectPromptAction(text=$text, binding_id=\"indirect_prompt_injection:builtin-indirect-prompt-injection:exact\")\n    $decision = await GuardResolveAction(text=$text)\n    $text = $decision[\"content\"]\n    $blocked = $decision[\"stop\"]\n    $user_message = $text\n  if not $blocked\n    $tl_result_1abcdab2 = await GuardMemoryPoisoningAction(text=$text, binding_id=\"memory_poisoning:builtin-memory-poisoning:exact\")\n    $decision = await GuardResolveAction(text=$text)\n    $text = $decision[\"content\"]\n    $blocked = $decision[\"stop\"]\n    $user_message = $text\n  if not $blocked\n    $tl_result_d2819925 = await GuardContentFilterAction(text=$text, binding_id=\"builtin_content_filter:local-content-safety:block:rules\")\n    $decision = await GuardResolveAction(text=$text)\n    $text = $decision[\"content\"]\n    $blocked = $decision[\"stop\"]\n    $user_message = $text\n  if not $blocked\n    $tl_result_f05d14c8 = await GuardContentFilterAction(text=$text, binding_id=\"builtin_content_filter:local-injection-protection:rules\")\n    $decision = await GuardResolveAction(text=$text)\n    $text = $decision[\"content\"]\n    $blocked = $decision[\"stop\"]\n    $user_message = $text\n  if not $blocked\n    $tl_result_8a68dd52 = await GuardContentFilterAction(text=$text, binding_id=\"builtin_content_filter:local-credentials:rules\")\n    $decision = await GuardResolveAction(text=$text)\n    $text = $decision[\"content\"]\n    $blocked = $decision[\"stop\"]\n    $user_message = $text\n  if not $blocked\n    $tl_result_a156bdc5 = await GuardContentFilterAction(text=$text, binding_id=\"builtin_content_filter:local-payment-data:rules\")\n    $decision = await GuardResolveAction(text=$text)\n    $text = $decision[\"content\"]\n    $blocked = $decision[\"stop\"]\n    $user_message = $text\n  if not $blocked\n    $tl_result_6ed9ecfd = await GuardContentFilterAction(text=$text, binding_id=\"builtin_content_filter:local-government-identifiers:rules\")\n    $decision = await GuardResolveAction(text=$text)\n    $text = $decision[\"content\"]\n    $blocked = $decision[\"stop\"]\n    $user_message = $text\n  if not $blocked\n    $tl_result_829631a5 = await GuardContentFilterAction(text=$text, binding_id=\"builtin_content_filter:local-passports:rules\")\n    $decision = await GuardResolveAction(text=$text)\n    $text = $decision[\"content\"]\n    $blocked = $decision[\"stop\"]\n    $user_message = $text\n  if not $blocked\n    $tl_result_f9ab3404 = await GuardContentFilterAction(text=$text, binding_id=\"builtin_content_filter:local-contact-data:rules\")\n    $decision = await GuardResolveAction(text=$text)\n    $text = $decision[\"content\"]\n    $blocked = $decision[\"stop\"]\n    $user_message = $text\n  if not $blocked\n    $tl_result_3227137e = await GuardContentFilterAction(text=$text, binding_id=\"builtin_content_filter:local-network-addresses:rules\")\n    $decision = await GuardResolveAction(text=$text)\n    $text = $decision[\"content\"]\n    $blocked = $decision[\"stop\"]\n    $user_message = $text\n  if not $blocked\n    $tl_result_375abed1 = await GuardContentFilterAction(text=$text, binding_id=\"builtin_content_filter:local-sensitive-attribute-terms:rules\")\n    $decision = await GuardResolveAction(text=$text)\n    $text = $decision[\"content\"]\n    $blocked = $decision[\"stop\"]\n    $user_message = $text\n  if not $blocked\n    $tl_result_c7d176f4 = await GuardContentFilterAction(text=$text, binding_id=\"builtin_content_filter:local-risk-content-terms:rules\")\n    $decision = await GuardResolveAction(text=$text)\n    $text = $decision[\"content\"]\n    $blocked = $decision[\"stop\"]\n    $user_message = $text\n  if not $blocked\n    $tl_result_a6de19c4 = await GuardContentFilterAction(text=$text, binding_id=\"builtin_content_filter:local-content-safety:allow:rules\")\n    $decision = await GuardResolveAction(text=$text)\n    $text = $decision[\"content\"]\n    $blocked = $decision[\"stop\"]\n    $user_message = $text\n  $decision = await GuardResolveAction(text=$text)\n\nflow tasklattice output rails $text\n  global $bot_message\n  $bot_message = $text\n  $blocked = False\n  $tl_result_d2819925 = {\"verdict\": \"skipped\"}\n  $tl_result_f05d14c8 = {\"verdict\": \"skipped\"}\n  $tl_result_8a68dd52 = {\"verdict\": \"skipped\"}\n  $tl_result_a156bdc5 = {\"verdict\": \"skipped\"}\n  $tl_result_6ed9ecfd = {\"verdict\": \"skipped\"}\n  $tl_result_829631a5 = {\"verdict\": \"skipped\"}\n  $tl_result_f9ab3404 = {\"verdict\": \"skipped\"}\n  $tl_result_3227137e = {\"verdict\": \"skipped\"}\n  $tl_result_375abed1 = {\"verdict\": \"skipped\"}\n  $tl_result_c7d176f4 = {\"verdict\": \"skipped\"}\n  $tl_result_a6de19c4 = {\"verdict\": \"skipped\"}\n  if not $blocked\n    $tl_result_d2819925 = await GuardContentFilterAction(text=$text, binding_id=\"builtin_content_filter:local-content-safety:block:rules\")\n    $decision = await GuardResolveAction(text=$text)\n    $text = $decision[\"content\"]\n    $blocked = $decision[\"stop\"]\n    $bot_message = $text\n  if not $blocked\n    $tl_result_f05d14c8 = await GuardContentFilterAction(text=$text, binding_id=\"builtin_content_filter:local-injection-protection:rules\")\n    $decision = await GuardResolveAction(text=$text)\n    $text = $decision[\"content\"]\n    $blocked = $decision[\"stop\"]\n    $bot_message = $text\n  if not $blocked\n    $tl_result_8a68dd52 = await GuardContentFilterAction(text=$text, binding_id=\"builtin_content_filter:local-credentials:rules\")\n    $decision = await GuardResolveAction(text=$text)\n    $text = $decision[\"content\"]\n    $blocked = $decision[\"stop\"]\n    $bot_message = $text\n  if not $blocked\n    $tl_result_a156bdc5 = await GuardContentFilterAction(text=$text, binding_id=\"builtin_content_filter:local-payment-data:rules\")\n    $decision = await GuardResolveAction(text=$text)\n    $text = $decision[\"content\"]\n    $blocked = $decision[\"stop\"]\n    $bot_message = $text\n  if not $blocked\n    $tl_result_6ed9ecfd = await GuardContentFilterAction(text=$text, binding_id=\"builtin_content_filter:local-government-identifiers:rules\")\n    $decision = await GuardResolveAction(text=$text)\n    $text = $decision[\"content\"]\n    $blocked = $decision[\"stop\"]\n    $bot_message = $text\n  if not $blocked\n    $tl_result_829631a5 = await GuardContentFilterAction(text=$text, binding_id=\"builtin_content_filter:local-passports:rules\")\n    $decision = await GuardResolveAction(text=$text)\n    $text = $decision[\"content\"]\n    $blocked = $decision[\"stop\"]\n    $bot_message = $text\n  if not $blocked\n    $tl_result_f9ab3404 = await GuardContentFilterAction(text=$text, binding_id=\"builtin_content_filter:local-contact-data:rules\")\n    $decision = await GuardResolveAction(text=$text)\n    $text = $decision[\"content\"]\n    $blocked = $decision[\"stop\"]\n    $bot_message = $text\n  if not $blocked\n    $tl_result_3227137e = await GuardContentFilterAction(text=$text, binding_id=\"builtin_content_filter:local-network-addresses:rules\")\n    $decision = await GuardResolveAction(text=$text)\n    $text = $decision[\"content\"]\n    $blocked = $decision[\"stop\"]\n    $bot_message = $text\n  if not $blocked\n    $tl_result_375abed1 = await GuardContentFilterAction(text=$text, binding_id=\"builtin_content_filter:local-sensitive-attribute-terms:rules\")\n    $decision = await GuardResolveAction(text=$text)\n    $text = $decision[\"content\"]\n    $blocked = $decision[\"stop\"]\n    $bot_message = $text\n  if not $blocked\n    $tl_result_c7d176f4 = await GuardContentFilterAction(text=$text, binding_id=\"builtin_content_filter:local-risk-content-terms:rules\")\n    $decision = await GuardResolveAction(text=$text)\n    $text = $decision[\"content\"]\n    $blocked = $decision[\"stop\"]\n    $bot_message = $text\n  if not $blocked\n    $tl_result_a6de19c4 = await GuardContentFilterAction(text=$text, binding_id=\"builtin_content_filter:local-content-safety:allow:rules\")\n    $decision = await GuardResolveAction(text=$text)\n    $text = $decision[\"content\"]\n    $blocked = $decision[\"stop\"]\n    $bot_message = $text\n  $decision = await GuardResolveAction(text=$text)\n",
+  "colangContent": "import core\n\nflow main\n  user said something as $message\n  global $tasklattice_phase\n  if $tasklattice_phase == \"output\"\n    await tasklattice output rails $message.transcript\n  else\n    await tasklattice input rails $message.transcript\n\nflow tasklattice input rails $text\n  global $user_message\n  $user_message = $text\n  $blocked = False\n  $tl_result_5688451a = {\"verdict\": \"skipped\"}\n  $tl_result_1abcdab2 = {\"verdict\": \"skipped\"}\n  $tl_result_d2819925 = {\"verdict\": \"skipped\"}\n  $tl_result_f05d14c8 = {\"verdict\": \"skipped\"}\n  $tl_result_8a68dd52 = {\"verdict\": \"skipped\"}\n  $tl_result_a156bdc5 = {\"verdict\": \"skipped\"}\n  $tl_result_6ed9ecfd = {\"verdict\": \"skipped\"}\n  $tl_result_829631a5 = {\"verdict\": \"skipped\"}\n  $tl_result_f9ab3404 = {\"verdict\": \"skipped\"}\n  $tl_result_3227137e = {\"verdict\": \"skipped\"}\n  $tl_result_375abed1 = {\"verdict\": \"skipped\"}\n  $tl_result_c7d176f4 = {\"verdict\": \"skipped\"}\n  $tl_result_a6de19c4 = {\"verdict\": \"skipped\"}\n  if not $blocked\n    $tl_result_5688451a = await GuardIndirectPromptAction(text=$text, binding_id=\"indirect_prompt_injection:builtin-indirect-prompt-injection:exact\")\n    $tl_result_5688451a_group = $tl_result_5688451a\n    $tl_result_5688451a = $tl_result_5688451a_group[\"parallel_by_id\"][\"indirect_prompt_injection:builtin-indirect-prompt-injection:exact\"]\n    $tl_result_1abcdab2 = $tl_result_5688451a_group[\"parallel_by_id\"][\"memory_poisoning:builtin-memory-poisoning:exact\"]\n    $tl_result_d2819925 = $tl_result_5688451a_group[\"parallel_by_id\"][\"builtin_content_filter:local-content-safety:block:rules\"]\n    $tl_result_f05d14c8 = $tl_result_5688451a_group[\"parallel_by_id\"][\"builtin_content_filter:local-injection-protection:rules\"]\n    $tl_result_8a68dd52 = $tl_result_5688451a_group[\"parallel_by_id\"][\"builtin_content_filter:local-credentials:rules\"]\n    $decision = await GuardResolveAction(text=$text)\n    $text = $decision[\"content\"]\n    $blocked = $decision[\"stop\"]\n    $user_message = $text\n  if not $blocked\n    $tl_result_a156bdc5 = await GuardContentFilterAction(text=$text, binding_id=\"builtin_content_filter:local-payment-data:rules\")\n    $decision = await GuardResolveAction(text=$text)\n    $text = $decision[\"content\"]\n    $blocked = $decision[\"stop\"]\n    $user_message = $text\n  if not $blocked\n    $tl_result_6ed9ecfd = await GuardContentFilterAction(text=$text, binding_id=\"builtin_content_filter:local-government-identifiers:rules\")\n    $decision = await GuardResolveAction(text=$text)\n    $text = $decision[\"content\"]\n    $blocked = $decision[\"stop\"]\n    $user_message = $text\n  if not $blocked\n    $tl_result_829631a5 = await GuardContentFilterAction(text=$text, binding_id=\"builtin_content_filter:local-passports:rules\")\n    $decision = await GuardResolveAction(text=$text)\n    $text = $decision[\"content\"]\n    $blocked = $decision[\"stop\"]\n    $user_message = $text\n  if not $blocked\n    $tl_result_f9ab3404 = await GuardContentFilterAction(text=$text, binding_id=\"builtin_content_filter:local-contact-data:rules\")\n    $decision = await GuardResolveAction(text=$text)\n    $text = $decision[\"content\"]\n    $blocked = $decision[\"stop\"]\n    $user_message = $text\n  if not $blocked\n    $tl_result_3227137e = await GuardContentFilterAction(text=$text, binding_id=\"builtin_content_filter:local-network-addresses:rules\")\n    $decision = await GuardResolveAction(text=$text)\n    $text = $decision[\"content\"]\n    $blocked = $decision[\"stop\"]\n    $user_message = $text\n  if not $blocked\n    $tl_result_375abed1 = await GuardContentFilterAction(text=$text, binding_id=\"builtin_content_filter:local-sensitive-attribute-terms:rules\")\n    $decision = await GuardResolveAction(text=$text)\n    $text = $decision[\"content\"]\n    $blocked = $decision[\"stop\"]\n    $user_message = $text\n  if not $blocked\n    $tl_result_c7d176f4 = await GuardContentFilterAction(text=$text, binding_id=\"builtin_content_filter:local-risk-content-terms:rules\")\n    $decision = await GuardResolveAction(text=$text)\n    $text = $decision[\"content\"]\n    $blocked = $decision[\"stop\"]\n    $user_message = $text\n  if not $blocked\n    $tl_result_a6de19c4 = await GuardContentFilterAction(text=$text, binding_id=\"builtin_content_filter:local-content-safety:allow:rules\")\n    $decision = await GuardResolveAction(text=$text)\n    $text = $decision[\"content\"]\n    $blocked = $decision[\"stop\"]\n    $user_message = $text\n  $decision = await GuardResolveAction(text=$text)\n\nflow tasklattice output rails $text\n  global $bot_message\n  $bot_message = $text\n  $blocked = False\n  $tl_result_d2819925 = {\"verdict\": \"skipped\"}\n  $tl_result_f05d14c8 = {\"verdict\": \"skipped\"}\n  $tl_result_8a68dd52 = {\"verdict\": \"skipped\"}\n  $tl_result_a156bdc5 = {\"verdict\": \"skipped\"}\n  $tl_result_6ed9ecfd = {\"verdict\": \"skipped\"}\n  $tl_result_829631a5 = {\"verdict\": \"skipped\"}\n  $tl_result_f9ab3404 = {\"verdict\": \"skipped\"}\n  $tl_result_3227137e = {\"verdict\": \"skipped\"}\n  $tl_result_375abed1 = {\"verdict\": \"skipped\"}\n  $tl_result_c7d176f4 = {\"verdict\": \"skipped\"}\n  $tl_result_a6de19c4 = {\"verdict\": \"skipped\"}\n  if not $blocked\n    $tl_result_d2819925 = await GuardContentFilterAction(text=$text, binding_id=\"builtin_content_filter:local-content-safety:block:rules\")\n    $tl_result_d2819925_group = $tl_result_d2819925\n    $tl_result_d2819925 = $tl_result_d2819925_group[\"parallel_by_id\"][\"builtin_content_filter:local-content-safety:block:rules\"]\n    $tl_result_f05d14c8 = $tl_result_d2819925_group[\"parallel_by_id\"][\"builtin_content_filter:local-injection-protection:rules\"]\n    $tl_result_8a68dd52 = $tl_result_d2819925_group[\"parallel_by_id\"][\"builtin_content_filter:local-credentials:rules\"]\n    $decision = await GuardResolveAction(text=$text)\n    $text = $decision[\"content\"]\n    $blocked = $decision[\"stop\"]\n    $bot_message = $text\n  if not $blocked\n    $tl_result_a156bdc5 = await GuardContentFilterAction(text=$text, binding_id=\"builtin_content_filter:local-payment-data:rules\")\n    $decision = await GuardResolveAction(text=$text)\n    $text = $decision[\"content\"]\n    $blocked = $decision[\"stop\"]\n    $bot_message = $text\n  if not $blocked\n    $tl_result_6ed9ecfd = await GuardContentFilterAction(text=$text, binding_id=\"builtin_content_filter:local-government-identifiers:rules\")\n    $decision = await GuardResolveAction(text=$text)\n    $text = $decision[\"content\"]\n    $blocked = $decision[\"stop\"]\n    $bot_message = $text\n  if not $blocked\n    $tl_result_829631a5 = await GuardContentFilterAction(text=$text, binding_id=\"builtin_content_filter:local-passports:rules\")\n    $decision = await GuardResolveAction(text=$text)\n    $text = $decision[\"content\"]\n    $blocked = $decision[\"stop\"]\n    $bot_message = $text\n  if not $blocked\n    $tl_result_f9ab3404 = await GuardContentFilterAction(text=$text, binding_id=\"builtin_content_filter:local-contact-data:rules\")\n    $decision = await GuardResolveAction(text=$text)\n    $text = $decision[\"content\"]\n    $blocked = $decision[\"stop\"]\n    $bot_message = $text\n  if not $blocked\n    $tl_result_3227137e = await GuardContentFilterAction(text=$text, binding_id=\"builtin_content_filter:local-network-addresses:rules\")\n    $decision = await GuardResolveAction(text=$text)\n    $text = $decision[\"content\"]\n    $blocked = $decision[\"stop\"]\n    $bot_message = $text\n  if not $blocked\n    $tl_result_375abed1 = await GuardContentFilterAction(text=$text, binding_id=\"builtin_content_filter:local-sensitive-attribute-terms:rules\")\n    $decision = await GuardResolveAction(text=$text)\n    $text = $decision[\"content\"]\n    $blocked = $decision[\"stop\"]\n    $bot_message = $text\n  if not $blocked\n    $tl_result_c7d176f4 = await GuardContentFilterAction(text=$text, binding_id=\"builtin_content_filter:local-risk-content-terms:rules\")\n    $decision = await GuardResolveAction(text=$text)\n    $text = $decision[\"content\"]\n    $blocked = $decision[\"stop\"]\n    $bot_message = $text\n  if not $blocked\n    $tl_result_a6de19c4 = await GuardContentFilterAction(text=$text, binding_id=\"builtin_content_filter:local-content-safety:allow:rules\")\n    $decision = await GuardResolveAction(text=$text)\n    $text = $decision[\"content\"]\n    $blocked = $decision[\"stop\"]\n    $bot_message = $text\n  $decision = await GuardResolveAction(text=$text)\n",
   "prompts": [],
   "actionBindings": [
     {
@@ -2103,6 +2309,10 @@
           "1.0.0"
         ],
         [
+          "execution_dependency",
+          "local"
+        ],
+        [
           "precedence",
           "0"
         ],
@@ -2112,7 +2322,19 @@
         ],
         [
           "execution_schedule",
-          "block-first-v1"
+          "local-first-v2"
+        ],
+        [
+          "execution_stage_input",
+          "local"
+        ],
+        [
+          "parallel_group_input",
+          "checks:input:0"
+        ],
+        [
+          "parallel_leader_input",
+          "true"
         ]
       ],
       "policy_id": "builtin-indirect-prompt-injection",
@@ -2146,6 +2368,10 @@
           "1.0.0"
         ],
         [
+          "execution_dependency",
+          "local"
+        ],
+        [
           "precedence",
           "1"
         ],
@@ -2155,7 +2381,19 @@
         ],
         [
           "execution_schedule",
-          "block-first-v1"
+          "local-first-v2"
+        ],
+        [
+          "execution_stage_input",
+          "local"
+        ],
+        [
+          "parallel_group_input",
+          "checks:input:0"
+        ],
+        [
+          "parallel_leader_input",
+          "false"
         ]
       ],
       "policy_id": "builtin-memory-poisoning",
@@ -2218,6 +2456,10 @@
           "{}"
         ],
         [
+          "execution_dependency",
+          "local"
+        ],
+        [
           "precedence",
           "3"
         ],
@@ -2227,7 +2469,31 @@
         ],
         [
           "execution_schedule",
-          "block-first-v1"
+          "local-first-v2"
+        ],
+        [
+          "execution_stage_input",
+          "local"
+        ],
+        [
+          "parallel_group_input",
+          "checks:input:0"
+        ],
+        [
+          "parallel_leader_input",
+          "false"
+        ],
+        [
+          "execution_stage_output",
+          "local"
+        ],
+        [
+          "parallel_group_output",
+          "checks:output:0"
+        ],
+        [
+          "parallel_leader_output",
+          "true"
         ]
       ],
       "policy_id": "local-content-safety",
@@ -2290,6 +2556,10 @@
           "{}"
         ],
         [
+          "execution_dependency",
+          "local"
+        ],
+        [
           "precedence",
           "4"
         ],
@@ -2299,7 +2569,31 @@
         ],
         [
           "execution_schedule",
-          "block-first-v1"
+          "local-first-v2"
+        ],
+        [
+          "execution_stage_input",
+          "local"
+        ],
+        [
+          "parallel_group_input",
+          "checks:input:0"
+        ],
+        [
+          "parallel_leader_input",
+          "false"
+        ],
+        [
+          "execution_stage_output",
+          "local"
+        ],
+        [
+          "parallel_group_output",
+          "checks:output:0"
+        ],
+        [
+          "parallel_leader_output",
+          "false"
         ]
       ],
       "policy_id": "local-injection-protection",
@@ -2362,6 +2656,10 @@
           "{}"
         ],
         [
+          "execution_dependency",
+          "local"
+        ],
+        [
           "precedence",
           "5"
         ],
@@ -2371,7 +2669,31 @@
         ],
         [
           "execution_schedule",
-          "block-first-v1"
+          "local-first-v2"
+        ],
+        [
+          "execution_stage_input",
+          "local"
+        ],
+        [
+          "parallel_group_input",
+          "checks:input:0"
+        ],
+        [
+          "parallel_leader_input",
+          "false"
+        ],
+        [
+          "execution_stage_output",
+          "local"
+        ],
+        [
+          "parallel_group_output",
+          "checks:output:0"
+        ],
+        [
+          "parallel_leader_output",
+          "false"
         ]
       ],
       "policy_id": "local-credentials",
@@ -2434,6 +2756,10 @@
           "{}"
         ],
         [
+          "execution_dependency",
+          "local"
+        ],
+        [
           "precedence",
           "6"
         ],
@@ -2443,7 +2769,15 @@
         ],
         [
           "execution_schedule",
-          "block-first-v1"
+          "local-first-v2"
+        ],
+        [
+          "execution_stage_input",
+          "local"
+        ],
+        [
+          "execution_stage_output",
+          "local"
         ]
       ],
       "policy_id": "local-payment-data",
@@ -2506,6 +2840,10 @@
           "{}"
         ],
         [
+          "execution_dependency",
+          "local"
+        ],
+        [
           "precedence",
           "7"
         ],
@@ -2515,7 +2853,15 @@
         ],
         [
           "execution_schedule",
-          "block-first-v1"
+          "local-first-v2"
+        ],
+        [
+          "execution_stage_input",
+          "local"
+        ],
+        [
+          "execution_stage_output",
+          "local"
         ]
       ],
       "policy_id": "local-government-identifiers",
@@ -2578,6 +2924,10 @@
           "{}"
         ],
         [
+          "execution_dependency",
+          "local"
+        ],
+        [
           "precedence",
           "8"
         ],
@@ -2587,7 +2937,15 @@
         ],
         [
           "execution_schedule",
-          "block-first-v1"
+          "local-first-v2"
+        ],
+        [
+          "execution_stage_input",
+          "local"
+        ],
+        [
+          "execution_stage_output",
+          "local"
         ]
       ],
       "policy_id": "local-passports",
@@ -2650,6 +3008,10 @@
           "{}"
         ],
         [
+          "execution_dependency",
+          "local"
+        ],
+        [
           "precedence",
           "9"
         ],
@@ -2659,7 +3021,15 @@
         ],
         [
           "execution_schedule",
-          "block-first-v1"
+          "local-first-v2"
+        ],
+        [
+          "execution_stage_input",
+          "local"
+        ],
+        [
+          "execution_stage_output",
+          "local"
         ]
       ],
       "policy_id": "local-contact-data",
@@ -2722,6 +3092,10 @@
           "{}"
         ],
         [
+          "execution_dependency",
+          "local"
+        ],
+        [
           "precedence",
           "10"
         ],
@@ -2731,7 +3105,15 @@
         ],
         [
           "execution_schedule",
-          "block-first-v1"
+          "local-first-v2"
+        ],
+        [
+          "execution_stage_input",
+          "local"
+        ],
+        [
+          "execution_stage_output",
+          "local"
         ]
       ],
       "policy_id": "local-network-addresses",
@@ -2794,6 +3176,10 @@
           "{}"
         ],
         [
+          "execution_dependency",
+          "local"
+        ],
+        [
           "precedence",
           "11"
         ],
@@ -2803,7 +3189,15 @@
         ],
         [
           "execution_schedule",
-          "block-first-v1"
+          "local-first-v2"
+        ],
+        [
+          "execution_stage_input",
+          "local"
+        ],
+        [
+          "execution_stage_output",
+          "local"
         ]
       ],
       "policy_id": "local-sensitive-attribute-terms",
@@ -2866,6 +3260,10 @@
           "{}"
         ],
         [
+          "execution_dependency",
+          "local"
+        ],
+        [
           "precedence",
           "12"
         ],
@@ -2875,7 +3273,15 @@
         ],
         [
           "execution_schedule",
-          "block-first-v1"
+          "local-first-v2"
+        ],
+        [
+          "execution_stage_input",
+          "local"
+        ],
+        [
+          "execution_stage_output",
+          "local"
         ]
       ],
       "policy_id": "local-risk-content-terms",
@@ -2938,6 +3344,10 @@
           "{}"
         ],
         [
+          "execution_dependency",
+          "local"
+        ],
+        [
           "precedence",
           "2"
         ],
@@ -2947,7 +3357,15 @@
         ],
         [
           "execution_schedule",
-          "block-first-v1"
+          "local-first-v2"
+        ],
+        [
+          "execution_stage_input",
+          "local"
+        ],
+        [
+          "execution_stage_output",
+          "local"
         ]
       ],
       "policy_id": "local-content-safety",

@@ -66,7 +66,7 @@ LAYA = ClassifierBackend(
     topic_type=laya_topic.LayaTopicEvaluator,
     jailbreak_revision="laya-jailbreak-input.v2",
     external_revision="laya-external-instruction-input.v2",
-    content_safety_revision="laya-content-safety-input.v2",
+    content_safety_revision="laya-content-safety-input.v4",
     topic_questions=laya_topic.topic_questions,
 )
 CLASSIFIER_BACKENDS = (JEV, LAYA)

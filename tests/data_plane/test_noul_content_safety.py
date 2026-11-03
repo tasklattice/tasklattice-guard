@@ -17,19 +17,25 @@ async def test_content_safety_uses_independent_question_and_retains_native_evide
         body = json.loads(wire.content)
         assert wire.url.path == "/v1/systemone"
         assert (body["state"] if classifier_backend.name == "laya" else body["state"]["current_input"]) == request.content
-        assert set(body["questions"]) == {"unsafe_content"}
+        expected_questions = {"unsafe_content", "harmful_assistance"} if classifier_backend.name == "laya" else {"unsafe_content"}
+        assert set(body["questions"]) == expected_questions
         question = body["questions"]["unsafe_content"]
         assert question["type"] == "noul"
         if classifier_backend.name == "laya":
             assert question["instructions"] == "Does the current input contain unsafe content?"
+            assert body["questions"]["harmful_assistance"] == {
+                "type": "noul", "instructions": "Does this message help someone do something harmful?",
+            }
             question = evaluator.review_questions(request)["unsafe_content"]
         assert "without any jailbreak" in question["instructions"]["question"]
         categories = question["instructions"]["unsafe_content_categories"]
         assert len(categories.splitlines()) == 23 and "Malware" in categories and "Fraud/Deception" in categories
-        return httpx.Response(200, json={"model": classifier_backend.model, "answers": {"unsafe_content": {"type": "noul", "noul": p}}})
+        return classifier_backend.response(**{key: p for key in expected_questions})
 
+    # Laya supports both rails; bind this input contract explicitly.
+    rail_options = {"rail_type": "input"} if classifier_backend.name == "laya" else {}
     evaluator = classifier_backend.content_safety_type(base_url=classifier_backend.base_url, model=classifier_backend.model, api_key="synthetic",
-                                        transport=httpx.MockTransport(respond))
+                                        transport=httpx.MockTransport(respond), **rail_options)
     result = await evaluator.evaluate(request)
     assert result.verdict == verdict and result.usage.model_invocations == 1
     evidence = json.loads(result.trace[0].evidence)
@@ -64,7 +70,7 @@ async def test_classifier_input_and_nvidia_output_are_routed_independently(class
     def respond(wire):
         paths.append(wire.url.path)
         if wire.url.path == "/v1/systemone":
-            return httpx.Response(200, json={"model": classifier_backend.model, "answers": {"unsafe_content": {"type": "noul", "noul": .01}}})
+            return classifier_backend.response(**{key: .01 for key in json.loads(wire.content)["questions"]})
         assert wire.url.path == "/v1/chat/completions"
         return httpx.Response(200, json={"choices": [{"message": {"content": '{"User Safety":"unsafe","Response Safety":"safe"}'}}]})
 
@@ -85,7 +91,7 @@ async def test_uncertainty_band_is_configurable_so_blocking_policies_stop_failin
     from tests.control_plane.test_capability_validation import candidate
 
     def respond(wire):
-        return httpx.Response(200, json={"model": classifier_backend.model, "answers": {"unsafe_content": {"type": "noul", "noul": .5}}})
+        return classifier_backend.response(**{key: .5 for key in json.loads(wire.content)["questions"]})
 
     config = candidate("input", "content_safety", classifier_backend.profile).configuration
     original = jailbreak_request()

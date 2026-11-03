@@ -100,6 +100,9 @@ async def test_action_composition_matrix(composition_plans, actions, hits, layou
     expected_calls, expected_findings = [], []
     expected_decision = "allow"
     # Stable action partitions: all Block checks, then serial Transform, then Allow.
+    # Input and full-buffered Output admit independent read-only checks together.
+    # These non-yielding local detectors finish the entire Block partition before
+    # cancellation can run; only unfinished checks can be short-circuited.
     # Read-only checks declare the phase input as their view, so scheduling them
     # ahead of a Transform step for latency cannot change what they inspect.
     # Only a Transform step consumes the text produced by the preceding one.
@@ -113,7 +116,6 @@ async def test_action_composition_matrix(composition_plans, actions, hits, layou
             expected_findings.append((f"r{index}", action))
             if action == "block":
                 expected_decision = "block"
-                break
             if action == "transform":
                 current = current.replace(WORDS[index], f"[MASK_{index}]")
                 expected_decision = "transform"
@@ -131,7 +133,7 @@ async def test_action_composition_matrix(composition_plans, actions, hits, layou
         assert not result.usage.fail_closed, result.reason
         assert result.usage.model_invocations == 0
         assert result.decision == expected_decision
-        assert provider.calls == expected_calls  # Includes non-matches and terminal short-circuit.
+        assert provider.calls == expected_calls  # No Transform or Allow runs after a Block partition rejects.
         assert [(f.rule_id, f.recommended_action) for f in result.findings] == expected_findings
         if expected_decision == "transform":
             assert result.texts == (current,)

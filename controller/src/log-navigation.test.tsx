@@ -10,7 +10,10 @@ vi.mock("@/routes/layout", () => ({ ControlPlaneLayout: () => <Outlet /> }));
 vi.mock("@/lib/auth", () => ({ useAuth: () => ({ user: { role: "admin" } }) }));
 vi.mock("react-i18next", () => ({
   initReactI18next: { type: "3rdParty", init: () => undefined },
-  useTranslation: () => ({ t: (key: string) => key, i18n: { language: "en-US", exists: () => false } }),
+  useTranslation: () => ({
+    t: (key: string, values?: Record<string, unknown>) => key === "logs.diagnostics.action" ? `${key}: ${values?.action}` : key,
+    i18n: { language: "en-US", exists: () => false },
+  }),
 }));
 const event = (id = "checkpoint-1"): controllerApi.RuntimeEvent => ({
   id, requestId: "request:1", guardrailId: "guardrail-1", guardrailVersion: "20260919-111605.962Z",
@@ -101,7 +104,9 @@ describe("URL-driven log inspection", () => {
     expect(router.state.location.search.outcome).toBe("error");
     expect(screen.getByRole("button", { name: "logs.windowFilter" }).hasAttribute("disabled")).toBe(false);
     expect(screen.getByRole("button", { name: "logs.windowFilter" }).textContent).toContain("09/19");
-    expect(screen.getByText("logs.outcomes.block")).toBeTruthy();
+    const row = screen.getByRole("cell", { name: /request:1/ }).closest("tr")!;
+    expect(within(row).getByText("logs.executionErrorOutcome")).toBeTruthy();
+    expect(within(row).getByText("logs.diagnostics.action: logs.outcomes.block")).toBeTruthy();
   });
 
   it("keeps metadata-only and unassigned records in the same inspectable list", async () => {
