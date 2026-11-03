@@ -28,6 +28,23 @@ ROOT = Path(__file__).resolve().parents[2]
 FIXTURE = ROOT / "tests/fixtures/artifacts/local-secrets-v1"
 
 
+async def _controller_observation(process, client_task):
+    reading = asyncio.create_task(process.stdout.readline())
+    try:
+        done, _ = await asyncio.wait({reading, client_task}, timeout=15, return_when=asyncio.FIRST_COMPLETED)
+        if client_task in done:
+            await client_task
+            raise AssertionError("Runner disconnected before the Controller observed its acknowledgement.")
+        assert reading in done, "Controller did not observe the Runner acknowledgement."
+        line = await reading
+        assert line, "TypeScript Controller stopped before emitting the acknowledgement."
+        return json.loads(line)
+    finally:
+        if not reading.done():
+            reading.cancel()
+        await asyncio.gather(reading, return_exceptions=True)
+
+
 @pytest.mark.parametrize("invalid_action,credential_required", [
     (None, True), (None, False),
     *[(action, True) for action in ["reject", "pass", "unspecified", "typo", "PRIVATE_REPORT_CREDENTIAL_SENTINEL"]],
@@ -61,7 +78,7 @@ async def test_typescript_controller_distributes_signed_artifact_or_rejects_inva
             store.attach_registry(registry)
             settings = SimpleNamespace(runner_id="cross-language", pool_id="default", compiler_capable=False,
                 max_concurrency=4, controller_ca_path=None, client_key_path=None, client_certificate_path=None,
-                controller_target=f"127.0.0.1:{ready['port']}", controller_token="fixture-runner-token-at-least-32-characters")
+                controller_target=f"127.0.0.1:{ready['port']}", controller_token="fixture-runner-token-at-least-32-characters", control_token=None)
             client = RunnerControlClient(settings, store, RunnerMetrics(4))
             client_task = asyncio.create_task(client._connect_once())
             if invalid_action is not None:
@@ -79,7 +96,7 @@ async def test_typescript_controller_distributes_signed_artifact_or_rejects_inva
                 assert "PRIVATE_REPORT_CREDENTIAL_SENTINEL" not in controller_log
                 assert store.generation == 0 and not client.synchronized
             else:
-                result = json.loads(await asyncio.wait_for(process.stdout.readline(), 15))
+                result = await _controller_observation(process, client_task)
                 assert result == {"type": "ack", "desiredGeneration": 1, "distributionStatus": "ready"}
                 assert store.generation == 1 and client.synchronized
                 assert store.protection_generation == 1

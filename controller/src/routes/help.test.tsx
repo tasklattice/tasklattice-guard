@@ -11,7 +11,7 @@ import { AuthProvider } from "@/lib/auth";
 // service is stubbed so these navigation tests run as an anonymous reader.
 const mocks = vi.hoisted(() => ({ getAuthStatus: vi.fn() }));
 vi.mock("@/lib/identity-api", () => ({
-  getAuthStatus: mocks.getAuthStatus, login: vi.fn(), logout: vi.fn(), updateMe: vi.fn(),
+  getAuthStatus: mocks.getAuthStatus, login: vi.fn(), loginMockSso: vi.fn(), logout: vi.fn(), updateMe: vi.fn(),
 }));
 
 const startPath = "/document/overview/quickstart-protection";

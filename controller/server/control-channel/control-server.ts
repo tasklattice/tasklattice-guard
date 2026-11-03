@@ -43,6 +43,7 @@ import { tenantOwnerForCreate } from "../services/tenant-context.js";
 import type { PoolAdmission, SignedArtifact } from "../domain/environment-check.js";
 import { controlChannelOptions } from "./transport.js";
 import { authenticateRunnerPrincipal } from "./runner-authentication.js";
+import { admissionSnapshotBytesFromWire } from "./admission-snapshot-codec.js";
 import type { RunnerLeaseLedger } from "../services/runner-lease-ledger.js";
 import {
   artifactFromWire,
@@ -578,6 +579,7 @@ export class RunnerControlServer {
         throw new Error("Heartbeat identity does not match the registered stream.");
       }
       try {
+        const admissionSnapshot = admissionSnapshotBytesFromWire(heartbeat.tenantAdmissionSnapshot);
         const accepted = await this.service.recordHeartbeat({
           runnerId: heartbeat.runnerId,
           bootId: heartbeat.bootId,
@@ -585,7 +587,7 @@ export class RunnerControlServer {
           sequence: number(heartbeat.sequence),
           appliedGeneration: number(heartbeat.appliedGeneration),
           load: normalizeLoad(heartbeat.load),
-          admissionSnapshot: heartbeat.tenantAdmissionSnapshotJson,
+          ...(admissionSnapshot === undefined ? {} : { admissionSnapshot }),
         });
         this.metrics.observeHeartbeat(current.poolId, accepted ? "accepted" : "stale_or_unknown");
         if (!accepted) return null;

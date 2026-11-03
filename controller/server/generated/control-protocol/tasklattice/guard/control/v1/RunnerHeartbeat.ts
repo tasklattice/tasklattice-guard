@@ -1,6 +1,7 @@
 // Original file: runner_control.proto
 
 import type { RunnerLoad as _tasklattice_guard_control_v1_RunnerLoad, RunnerLoad__Output as _tasklattice_guard_control_v1_RunnerLoad__Output } from '../../../../tasklattice/guard/control/v1/RunnerLoad.js';
+import type { TenantAdmissionSnapshot as _tasklattice_guard_control_v1_TenantAdmissionSnapshot, TenantAdmissionSnapshot__Output as _tasklattice_guard_control_v1_TenantAdmissionSnapshot__Output } from '../../../../tasklattice/guard/control/v1/TenantAdmissionSnapshot.js';
 import type { Long } from '@grpc/proto-loader';
 
 /**
@@ -20,9 +21,9 @@ export interface RunnerHeartbeat {
   'load'?: (_tasklattice_guard_control_v1_RunnerLoad | null);
   'appliedProtectionGeneration'?: (number | string | Long);
   /**
-   * Optional bounded process-local admission counters, not quota authority.
+   * Optional bounded process-local admission measurements, not quota authority.
    */
-  'tenantAdmissionSnapshotJson'?: (Buffer | Uint8Array | string);
+  'tenantAdmissionSnapshot'?: (_tasklattice_guard_control_v1_TenantAdmissionSnapshot | null);
 }
 
 /**
@@ -42,7 +43,7 @@ export interface RunnerHeartbeat__Output {
   'load': (_tasklattice_guard_control_v1_RunnerLoad__Output | null);
   'appliedProtectionGeneration': (string);
   /**
-   * Optional bounded process-local admission counters, not quota authority.
+   * Optional bounded process-local admission measurements, not quota authority.
    */
-  'tenantAdmissionSnapshotJson': (Buffer);
+  'tenantAdmissionSnapshot': (_tasklattice_guard_control_v1_TenantAdmissionSnapshot__Output | null);
 }

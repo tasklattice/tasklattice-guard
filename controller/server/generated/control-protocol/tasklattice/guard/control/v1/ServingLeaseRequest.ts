@@ -11,6 +11,9 @@ export interface ServingLeaseRequest {
   'bootId'?: (string);
   'nonce'?: (string);
   'epoch'?: (number | string | Long);
+  /**
+   * Exact applied desired-state generation challenged by this request.
+   */
   'generation'?: (number | string | Long);
   'snapshotNonce'?: (string);
 }
@@ -24,6 +27,9 @@ export interface ServingLeaseRequest__Output {
   'bootId': (string);
   'nonce': (string);
   'epoch': (string);
+  /**
+   * Exact applied desired-state generation challenged by this request.
+   */
   'generation': (string);
   'snapshotNonce': (string);
 }

@@ -10,8 +10,14 @@ export interface ServingLeaseResponse {
   'nonce'?: (string);
   'granted'?: (boolean);
   'epoch'?: (number | string | Long);
+  /**
+   * Exact challenged desired-state generation; a different value grants nothing.
+   */
   'generation'?: (number | string | Long);
   'snapshotNonce'?: (string);
+  /**
+   * Positive bounded lease duration in milliseconds, measured from the local challenge start.
+   */
   'durationMs'?: (number);
 }
 
@@ -23,7 +29,13 @@ export interface ServingLeaseResponse__Output {
   'nonce': (string);
   'granted': (boolean);
   'epoch': (string);
+  /**
+   * Exact challenged desired-state generation; a different value grants nothing.
+   */
   'generation': (string);
   'snapshotNonce': (string);
+  /**
+   * Positive bounded lease duration in milliseconds, measured from the local challenge start.
+   */
   'durationMs': (number);
 }

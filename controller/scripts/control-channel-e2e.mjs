@@ -18,16 +18,50 @@ const config = loadConfig({
   CONTROLLER_PROTO_PATH: resolve("../proto/tasklattice/guard/control/v1/runner_control.proto"),
   BETTER_AUTH_SECRET: "fixture-auth-secret-at-least-32-characters",
 });
+// Persist only the currently registered identity and dispatched challenge in
+// this no-database harness. The production transport still verifies both on
+// every message and ACK, just as it does through the real session repository.
+const sessions = new Map();
+const current = identity => {
+  const session = sessions.get(identity.runnerId);
+  return session?.sessionId === identity.sessionId && session.bootId === identity.bootId
+    && session.poolId === identity.poolId;
+};
 const service = {
+  runnerControlSessions: {
+    async isCurrent(identity) { return current(identity); },
+    async dispatchedAllocation(identity) {
+      if (!current(identity)) return null;
+      sessions.get(identity.runnerId).snapshot = identity;
+      return { groupId: "default", epoch: 0 };
+    },
+    async acknowledged(identity) {
+      if (!current(identity)) return false;
+      const snapshot = sessions.get(identity.runnerId).snapshot;
+      return snapshot?.nonce === identity.nonce && snapshot.generation === identity.generation
+        && snapshot.modelRevisionId === identity.modelRevisionId;
+    },
+  },
   protectionModes: {
     async desiredState() { return { generation: 1, modes: { [input.artifact.guardrailId]: "bypass" } }; },
     async recordResult(result) { if (!result.accepted) throw new Error(result.reason); },
   },
-  async registerRunner() { return 1; },
-  async disconnectRunner() {},
+  async registerRunner(registration, sessionId) {
+    sessions.set(registration.runnerId, { ...registration, sessionId });
+    return 1;
+  },
+  async disconnectRunner(runnerId, bootId, sessionId) {
+    const session = sessions.get(runnerId);
+    if (session?.bootId === bootId && session.sessionId === sessionId) sessions.delete(runnerId);
+  },
+  async recordHeartbeat(heartbeat) {
+    const session = sessions.get(heartbeat.runnerId);
+    return session?.bootId === heartbeat.bootId && session.sessionId === heartbeat.controlSessionId;
+  },
   async desiredGeneration() { return 1; },
   async desiredStateForPool() {
-    return { generation: 1, artifacts: [input.artifact], routers: [], endpoints: input.endpoints ?? [],
+    return { generation: 1, groupId: "default", allocationEpoch: 0,
+      artifacts: [input.artifact], routers: [], endpoints: input.endpoints ?? [],
       disabledGuardrailIds: [], disabledEndpointIds: [], guardrailLoggingLevels: {} };
   },
 };
@@ -38,7 +72,7 @@ const metrics = {
       void server.distributionStatus().then(value => emit({ type: "ack", ...value }));
     }
   },
-  controlConnection() {}, observeReconcile() {}, observeArtifactResult() {},
+  controlConnection() {}, observeReconcile() {}, observeArtifactResult() {}, observeHeartbeat() {},
 };
 const server = new RunnerControlServer(config, service, metrics, { async activeConfiguration() { return null; } });
 // OS-assigned port; avoid production reconciliation timers and database jobs.

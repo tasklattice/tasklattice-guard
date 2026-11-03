@@ -34,6 +34,7 @@ from .control_transport import CONTROL_CHANNEL_OPTIONS
 from . import generated as protocol
 from .generated import runner_control_pb2_grpc as services
 from .metrics import RunnerMetrics
+from .admission_snapshot_codec import admission_snapshot_to_proto
 from .providers import dynamic_runtime_action_providers
 from .protocol_codec import validation_case_result_to_proto, validation_metrics_to_proto
 from .validator import DefaultRunnerValidator
@@ -333,8 +334,8 @@ class RunnerControlClient:
                 applied_generation=self._store.generation,
                 applied_protection_generation=self._store.protection_generation,
                 load=self._metrics.heartbeat(),
-                tenant_admission_snapshot_json=(self._metrics.tenant_admission_snapshot_json()
-                    if callable(getattr(self._metrics, "tenant_admission_snapshot_json", None)) else b""),
+                tenant_admission_snapshot=(admission_snapshot_to_proto(self._metrics.tenant_admission_snapshot_json())
+                    if callable(getattr(self._metrics, "tenant_admission_snapshot_json", None)) else None),
             ),
         ))
         self._metrics.observe_heartbeat_sent()

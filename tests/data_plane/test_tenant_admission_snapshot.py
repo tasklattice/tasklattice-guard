@@ -1,9 +1,13 @@
 import json
+from types import SimpleNamespace
 
 import pytest
 from prometheus_client import CollectorRegistry
 
 from runner.admission_metrics import TenantAdmissionMetrics
+from runner.admission_snapshot_codec import admission_snapshot_to_proto
+from runner.control_client import RunnerControlClient
+from runner import generated as protocol
 from runner.metrics import RunnerMetrics
 from runner.tenant_admission import TenantAdmissionConfiguration
 
@@ -51,3 +55,37 @@ def test_heartbeat_snapshot_bytes_are_bounded_and_failures_do_not_leak_private_d
     snapshot = metrics.tenant_admission_snapshot_json()
     assert json.loads(snapshot)["reason"] == "instrumentation_unavailable"
     assert b"private endpoint" not in snapshot
+
+
+@pytest.mark.asyncio
+async def test_typed_heartbeat_round_trip_preserves_actual_measurements_and_zero_presence():
+    metrics = RunnerMetrics(1)
+    observer = TenantAdmissionMetrics(CollectorRegistry(), 1, {"tenantA": 1})
+    metrics.set_tenant_admission_snapshot_provider(observer.snapshot)
+    observer.outcome("tenantA", "admitted", 0.025)
+    observer.state("tenantA", 1, 0)
+    client = RunnerControlClient(SimpleNamespace(runner_id="runner-test", compiler_capable=False),
+                                 SimpleNamespace(generation=4, protection_generation=0), metrics)
+    await client._send_heartbeat()
+    sent = await client._outgoing.get()
+    heartbeat = protocol.RunnerMessage.FromString(sent.SerializeToString()).heartbeat
+    assert heartbeat.HasField("tenant_admission_snapshot")
+    snapshot = heartbeat.tenant_admission_snapshot
+    assert snapshot.available is True and snapshot.HasField("available")
+    assert snapshot.capacity == 1 and snapshot.monotonic_seconds > 0
+    tenant = snapshot.tenants[0]
+    assert tenant.tenant_id == "tenantA" and tenant.active == 1
+    assert tenant.queued == 0 and tenant.HasField("queued")
+    assert tenant.outcomes.admitted == tenant.wait.count == tenant.wait.buckets[-1] == 1
+    assert tenant.outcomes.queue_full == 0 and tenant.outcomes.HasField("queue_full")
+    assert tenant.held.HasField("count") and tenant.held.count == 0
+    assert heartbeat.DESCRIPTOR.fields_by_name["tenant_admission_snapshot"].number == 8
+    assert 7 not in heartbeat.DESCRIPTOR.fields_by_number
+
+
+def test_typed_snapshot_refuses_oversized_or_invalid_instrumentation_without_private_details():
+    oversized = admission_snapshot_to_proto(b"x" * 65_537)
+    assert oversized.available is False and oversized.reason == "payload_limit"
+    invalid = admission_snapshot_to_proto(b'{"private":"credential sentinel"}')
+    assert invalid.available is False and invalid.reason == "instrumentation_unavailable"
+    assert b"credential sentinel" not in invalid.SerializeToString()

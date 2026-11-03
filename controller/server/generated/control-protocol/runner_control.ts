@@ -57,6 +57,10 @@ import type { ServingLeaseRequest as _tasklattice_guard_control_v1_ServingLeaseR
 import type { ServingLeaseResponse as _tasklattice_guard_control_v1_ServingLeaseResponse, ServingLeaseResponse__Output as _tasklattice_guard_control_v1_ServingLeaseResponse__Output } from './tasklattice/guard/control/v1/ServingLeaseResponse.js';
 import type { StringPair as _tasklattice_guard_control_v1_StringPair, StringPair__Output as _tasklattice_guard_control_v1_StringPair__Output } from './tasklattice/guard/control/v1/StringPair.js';
 import type { TelemetryUploadAuthorization as _tasklattice_guard_control_v1_TelemetryUploadAuthorization, TelemetryUploadAuthorization__Output as _tasklattice_guard_control_v1_TelemetryUploadAuthorization__Output } from './tasklattice/guard/control/v1/TelemetryUploadAuthorization.js';
+import type { TenantAdmissionHistogram as _tasklattice_guard_control_v1_TenantAdmissionHistogram, TenantAdmissionHistogram__Output as _tasklattice_guard_control_v1_TenantAdmissionHistogram__Output } from './tasklattice/guard/control/v1/TenantAdmissionHistogram.js';
+import type { TenantAdmissionObservation as _tasklattice_guard_control_v1_TenantAdmissionObservation, TenantAdmissionObservation__Output as _tasklattice_guard_control_v1_TenantAdmissionObservation__Output } from './tasklattice/guard/control/v1/TenantAdmissionObservation.js';
+import type { TenantAdmissionOutcomes as _tasklattice_guard_control_v1_TenantAdmissionOutcomes, TenantAdmissionOutcomes__Output as _tasklattice_guard_control_v1_TenantAdmissionOutcomes__Output } from './tasklattice/guard/control/v1/TenantAdmissionOutcomes.js';
+import type { TenantAdmissionSnapshot as _tasklattice_guard_control_v1_TenantAdmissionSnapshot, TenantAdmissionSnapshot__Output as _tasklattice_guard_control_v1_TenantAdmissionSnapshot__Output } from './tasklattice/guard/control/v1/TenantAdmissionSnapshot.js';
 import type { TrafficCondition as _tasklattice_guard_control_v1_TrafficCondition, TrafficCondition__Output as _tasklattice_guard_control_v1_TrafficCondition__Output } from './tasklattice/guard/control/v1/TrafficCondition.js';
 import type { TrafficScope as _tasklattice_guard_control_v1_TrafficScope, TrafficScope__Output as _tasklattice_guard_control_v1_TrafficScope__Output } from './tasklattice/guard/control/v1/TrafficScope.js';
 import type { ValidationCancelRequest as _tasklattice_guard_control_v1_ValidationCancelRequest, ValidationCancelRequest__Output as _tasklattice_guard_control_v1_ValidationCancelRequest__Output } from './tasklattice/guard/control/v1/ValidationCancelRequest.js';
@@ -163,6 +167,10 @@ export interface ProtoGrpcType {
           StringPair: MessageTypeDefinition<_tasklattice_guard_control_v1_StringPair, _tasklattice_guard_control_v1_StringPair__Output>
           TargetSource: EnumTypeDefinition
           TelemetryUploadAuthorization: MessageTypeDefinition<_tasklattice_guard_control_v1_TelemetryUploadAuthorization, _tasklattice_guard_control_v1_TelemetryUploadAuthorization__Output>
+          TenantAdmissionHistogram: MessageTypeDefinition<_tasklattice_guard_control_v1_TenantAdmissionHistogram, _tasklattice_guard_control_v1_TenantAdmissionHistogram__Output>
+          TenantAdmissionObservation: MessageTypeDefinition<_tasklattice_guard_control_v1_TenantAdmissionObservation, _tasklattice_guard_control_v1_TenantAdmissionObservation__Output>
+          TenantAdmissionOutcomes: MessageTypeDefinition<_tasklattice_guard_control_v1_TenantAdmissionOutcomes, _tasklattice_guard_control_v1_TenantAdmissionOutcomes__Output>
+          TenantAdmissionSnapshot: MessageTypeDefinition<_tasklattice_guard_control_v1_TenantAdmissionSnapshot, _tasklattice_guard_control_v1_TenantAdmissionSnapshot__Output>
           TrafficCombinator: EnumTypeDefinition
           TrafficCondition: MessageTypeDefinition<_tasklattice_guard_control_v1_TrafficCondition, _tasklattice_guard_control_v1_TrafficCondition__Output>
           TrafficOperator: EnumTypeDefinition

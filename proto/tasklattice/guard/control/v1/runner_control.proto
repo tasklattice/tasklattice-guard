@@ -192,8 +192,65 @@ message RunnerHeartbeat {
   int64 applied_generation = 4;
   RunnerLoad load = 5;
   int64 applied_protection_generation = 6;
-  // Optional bounded process-local admission counters, not quota authority.
-  bytes tenant_admission_snapshot_json = 7;
+  // Retired opaque diagnostic payload. Mixed-version peers omit monitoring.
+  reserved 7;
+  // Optional bounded process-local admission measurements, not quota authority.
+  TenantAdmissionSnapshot tenant_admission_snapshot = 8;
+}
+
+// Cumulative fixed-bucket histogram; its final bucket must equal count.
+message TenantAdmissionHistogram {
+  // Ordered cumulative counts for the fourteen documented finite bounds and infinity.
+  repeated uint64 buckets = 1;
+  // Nonnegative cumulative observations; absence is invalid rather than zero.
+  optional uint64 count = 2;
+  // Nonnegative finite cumulative elapsed seconds; absence is invalid.
+  optional double total_seconds = 3;
+}
+
+// Cumulative process-local admission outcomes; no counter grants authority.
+message TenantAdmissionOutcomes {
+  // Accepted admission starts; absence is invalid rather than zero.
+  optional uint64 admitted = 1;
+  // Rejected because the bounded local queue was full; absence is invalid.
+  optional uint64 queue_full = 2;
+  // Rejected after the bounded local wait expired; absence is invalid.
+  optional uint64 queue_timeout = 3;
+  // Rejected by a start-rate budget; absence is invalid.
+  optional uint64 rate_limited = 4;
+  // Cancelled before admission completed; absence is invalid.
+  optional uint64 cancelled = 5;
+  // Rejected because admission authority was unavailable; absence is invalid.
+  optional uint64 unavailable = 6;
+}
+
+// One configured tenant's local gauges and cumulative observations.
+message TenantAdmissionObservation {
+  string tenant_id = 1;
+  // Currently held local permits; absence is invalid rather than zero.
+  optional uint32 active = 2;
+  // Requests currently in the local admission queue; absence is invalid.
+  optional uint32 queued = 3;
+  // Positive local permit limit; this is not reserved distributed capacity.
+  uint32 limit = 4;
+  TenantAdmissionOutcomes outcomes = 5;
+  TenantAdmissionHistogram wait = 6;
+  TenantAdmissionHistogram held = 7;
+}
+
+// Bounded diagnostic snapshot for at most64 configured tenants and65536 bytes.
+// Missing, invalid or oversized observations remain unavailable to monitoring.
+message TenantAdmissionSnapshot {
+  uint32 version = 1;
+  // Explicit availability; absence is invalid and must never become false/zero data.
+  optional bool available = 2;
+  // Present only when unavailable; a bounded diagnostic reason, never private content.
+  optional string reason = 3;
+  // Present only when available; positive total local permit capacity.
+  optional uint32 capacity = 4;
+  // Process-local monotonic seconds at observation; absence is invalid.
+  optional double monotonic_seconds = 5;
+  repeated TenantAdmissionObservation tenants = 6;
 }
 
 // Independent operating overlay: applying an emergency mode must not wait for
@@ -291,6 +348,7 @@ message ServingLeaseRequest {
   string boot_id = 2;
   string nonce = 3;
   int64 epoch = 4;
+  // Exact applied desired-state generation challenged by this request.
   int64 generation = 5;
   string snapshot_nonce = 6;
 }
@@ -301,8 +359,10 @@ message ServingLeaseResponse {
   string nonce = 1;
   bool granted = 2;
   int64 epoch = 3;
+  // Exact challenged desired-state generation; a different value grants nothing.
   int64 generation = 4;
   string snapshot_nonce = 5;
+  // Positive bounded lease duration in milliseconds, measured from the local challenge start.
   int32 duration_ms = 6;
 }
 
