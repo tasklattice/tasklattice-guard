@@ -1358,7 +1358,7 @@ export class ModelConfigurationService {
           } }),
           signal: AbortSignal.timeout(model.timeoutSeconds * 1_000),
         });
-        if (!response.ok) throw new Error(`returned HTTP ${response.status}`);
+        if (!response.ok) throw new Error(`returned HTTP ${response.status}${await layaResponseErrorDetail(response, credential)}`);
         z.object({ model: z.string().trim().min(1), answers: z.object({
           greeting: z.object({ type: z.literal("noul"), noul: z.number().min(0).max(1) }),
         }).strict() }).parse(await response.json());
@@ -1768,6 +1768,50 @@ function stripFence(value: string): string {
 async function responseErrorDetail(response: Response): Promise<string> {
   try {
     const detail = (await response.text()).replace(/\s+/g, " ").trim().slice(0, 320);
+    return detail ? `: ${detail}` : "";
+  } catch {
+    return "";
+  }
+}
+
+async function layaResponseErrorDetail(response: Response, credential: string): Promise<string> {
+  try {
+    let detail = await response.text();
+    try {
+      const payload: unknown = JSON.parse(detail);
+      const upstream = z.object({ detail: z.unknown() }).safeParse(payload);
+      const value = upstream.success ? upstream.data.detail : undefined;
+      if (typeof value === "string") {
+        detail = value;
+      } else {
+        const envelope = z.object({
+          code: z.string().optional(), message: z.string().optional(), errors: z.array(z.unknown()).optional(),
+        }).safeParse(value);
+        const errors = Array.isArray(value) ? value : envelope.success ? envelope.data.errors : undefined;
+        // FastAPI errors may echo the entire submitted body in `input` or
+        // exception objects in `ctx`. Surface the rejected field and reason only.
+        const fieldError = z.object({
+          loc: z.array(z.union([z.string(), z.number()])),
+          msg: z.string().optional(),
+          message: z.string().optional(),
+          type: z.string().optional(),
+        });
+        detail = (errors ?? []).slice(0, 8).flatMap(item => {
+          const parsed = fieldError.safeParse(item);
+          if (!parsed.success) return [];
+          const { loc, msg, message, type } = parsed.data;
+          const reason = msg ?? message;
+          return reason ? [`${loc.join(".")}: ${reason}${type ? ` (${type})` : ""}`] : [];
+        }).join("; ");
+        if (!detail && envelope.success) {
+          detail = [envelope.data.code, envelope.data.message].filter(Boolean).join(": ");
+        }
+      }
+    } catch {
+      // Some model gateways return plain text rather than a JSON error envelope.
+    }
+    if (credential) detail = detail.split(credential).join("[REDACTED]");
+    detail = detail.replace(/\s+/g, " ").trim().slice(0, 320);
     return detail ? `: ${detail}` : "";
   } catch {
     return "";

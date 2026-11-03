@@ -106,7 +106,7 @@ describe("Relay registration workflow", () => {
     fireEvent.click(screen.getByRole("button", { name: /^Register 1 model/ }));
     await waitFor(() => expect(registerProviderModels).toHaveBeenCalledWith({
       connection: { name: "Laya", kind: "laya", baseUrl: "https://laya.test/v1", apiKey: "synthetic-laya-key" },
-      models: [expect.objectContaining({ model: "laya", profile: "tali.laya.v1" })],
+      models: [expect.objectContaining({ model: "auto", profile: "tali.laya.v1" })],
     }));
   });
 

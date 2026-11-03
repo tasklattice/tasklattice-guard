@@ -10,7 +10,7 @@ Laya 是独立的 Decision Model 适配，覆盖输入/输出内容安全、输�
 | 通用判定协议 | `tali.typesafe-jev.v1`（输入） | `tali.laya.v1`（输入及内容安全输出） |
 | 仅话题协议 | `tali.typesafe-jev-topic.v1` | `tali.laya-topic.v1` |
 | Transport | `typesafe_systemone` | `laya_systemone` |
-| 模型 ID | 用户注册的 JEV 版本 | 初始建议为 `laya`，可填写实际版本 ID |
+| 模型 ID | 用户注册的 JEV 版本 | 初始建议为 `auto`，可填写服务支持的模型 ID |
 | 阈值环境变量 | `GUARD_JEV_LOWER_THRESHOLD` / `GUARD_JEV_UPPER_THRESHOLD` | `GUARD_LAYA_LOWER_THRESHOLD` / `GUARD_LAYA_UPPER_THRESHOLD` |
 | Helm 配置 | `runner.jev` | `runner.laya` |
 | 响应评估证据 | `evaluations` | `layaEvaluations`，含 `decisionModel: "laya"` |
@@ -82,7 +82,7 @@ Laya 服务的 `usage.truncated` 只报告状态截断，不报告问题截断�
 
 ## 注册、验证与启用
 
-UI 中选择 **Laya**，填写实际 API 根地址及凭据，再选择 `laya` 或实际服务提供的模型版本。模型发现为可选；目录使用与 JEV 相同的 `{"models":[{"name":"laya"}]}` 形状。
+UI 中选择 **Laya**，填写实际 API 根地址及凭据，再选择 `auto` 或实际服务支持的模型 ID。`auto` 由服务选择已安装模型；不同服务的选择可能不同。已有注册的模型 ID 保持原值，不会将原生 `laya` 别名自动改成 `auto`。模型发现为可选；目录使用与 JEV 相同的 `{"models":[{"name":"auto"}]}` 形状，不提供目录的服务可以手动注册。
 
 先部署包含该适配的 Controller 与 Runner，再执行注册与绑定。升级只增加可配置的 Provider 与协议，不会自动注册 Laya、替换现有 JEV 绑定或修改已发布的 Guard 与 Router。
 
@@ -93,7 +93,7 @@ bin/guardctl platform register-model \
   --url http://localhost:38081 --env-file /private/path/guard.env \
   --provider-name Laya --provider-kind laya \
   --provider-url "$LAYA_BASE_URL" \
-  --model laya --profile tali.laya.v1 --key-env LAYA_API_KEY
+  --model auto --profile tali.laya.v1 --key-env LAYA_API_KEY
 
 bin/guardctl platform bind \
   --url http://localhost:38081 --env-file /private/path/guard.env \
@@ -102,6 +102,67 @@ bin/guardctl platform bind \
 ```
 
 `LAYA_BASE_URL` 与 `LAYA_API_KEY` 由实际服务提供。注册返回的 Model ID 替换 `LAYA_MODEL_ID`。越狱及话题检测分别使用 `jailbreak.input`、`topic_control.input` 和不同的私有 state 文件。每项绑定都通过实际 Runner 的安全/违规双侧探针后再启用；模型连通性不等于检测能力通过。
+
+### 其他平台返回 HTTP 422
+
+访问日志中的 `POST /v1/systemone ... 422` 不能确定被拒绝的字段。排查时保留响应
+JSON 的 `detail`、实际请求体及服务版本/镜像名，移除密钥。健康检查 200 不证明
+决策接口接受当前协议。模型连接测试会保留上游字符串错误、FastAPI 校验数组及
+封装服务的 `detail: {code, message, errors}`。字段错误同时识别 `msg` 与 `message`，
+展示字段路径、原因和类型，省略校验对象的 `input` / `ctx` 并遮蔽调用密钥。
+这项诊断改动需要更新 Controller 后生效。
+
+连接探针只发送 `model`、文本 `state` 和包含 `greeting` Noul 问题的 `questions`；
+实际 Runner 首次还会发送 `max_len=1024`、`head_max_len=512`，话题等检测也会使用
+结构化状态。当前连接探针不发送 `head_max_len`；如果注册期间出现该字段的错误，
+需核对实际发布版本和发起调用的阶段，不能只依据页面名称判断请求来源。
+
+### 原生与封装服务的兼容
+
+与已观察到的错误格式一致的 [1Panel-dev/laya-server 请求定义](https://github.com/1Panel-dev/laya-server/blob/main/backend/server/schemas.py)
+只允许 `auto`、`english`、`multilingual`、`typed-decisions`，不接受 `head_max_len`；
+其 [适配器](https://github.com/1Panel-dev/laya-server/blob/main/backend/server/laya_adapter.py)
+仍调用官方 `laya.Router`。这说明 API 封装可以不同于原生 `laya-serve`，不代表权重需要转换。
+实际可用模型仍取决于镜像安装的 checkpoint；接受某个枚举值不保证对应模型已安装。
+
+Runner 只在 HTTP 422 的全部字段错误均为 `loc=["body","head_max_len"]`、
+`type=extra_forbidden` 时，省略该参数重试一次。支持 FastAPI `detail` 数组和
+`code=VALIDATION_ERROR` 的嵌套 `errors` 数组；混合模型错误、其他字段错误、
+普通文本 422 或推理异常均不触发这项兼容。模型 ID、状态、问题、`max_len` 保持原样。
+重试共享原截止时间，取消立即向上传播，并计入调用重试次数。
+
+不支持该字段的能力仅记在当前配置对应的 evaluator 实例，后续调用省略该字段，
+不同实例互不影响，实例重建后重新探测。若服务升级后支持了该参数，可重建运行时或
+重启 Runner 以重新探测。原生服务继续收到 `head_max_len=512`。
+兼容调用的证据只列出实际发送的 `request_budget`，并标记
+`model_metadata.head_max_len_source=server_default`，不把服务默认值记作 512。
+
+注册默认值及错误展示需更新 Controller，运行时兼容需更新 Runner，无数据库迁移。
+严格 Noul 解析、输入截断检查和阈值保持原有行为；服务默认问题预算及实际路由模型
+仍需用目标服务验证。模拟 HTTP 契约通过不等于真实模型检测质量通过。
+
+2026-11-03 本地兼容验证：相关 Runner 测试 190 项、Controller 测试 82 项、
+注册界面测试 21 项通过，前后端 TypeScript 检查通过。桌面实际操作确认 `auto`
+预选及手动模型入口，仅使用未保存的示例连接。Z790 原生服务以 `laya` 和 `auto`
+各执行一次真实 Runner 调用，均返回有效 Noul 响应，保留 1024/512 预算且无重试；
+问候样本均为 `unknown`，仅证明调用与解析正常。这是部署前验证记录。
+
+同日已将兼容版 Controller/Runner 部署到本地开发栈，将 Z790 18080 替换为固定源码的
+`1Panel-dev/laya-server`，复用原多语言权重并更新现有 Provider 密钥。真实接口已复现
+截图中的两项 422，兼容后成功；长输入截断仍产生错误。新服务采用默认多语言模式，
+实际路由与原生自动路由不同。34 条纯模型对照中新服务为 18 正确、15 灰区、1 误判，
+原生为 22 正确、12 灰区。Catalog 越狱探针通过，输入/输出内容安全和话题探针未通过。
+完整部署版本、证据位置和回滚步骤见 [Z790 Laya Server 部署](../deploy/laya-server/README.md)。
+
+随后按兼容目标切换为固定 `v0.1.2`（Server `434e9b3`、SDK `0.3.22`）的双模型构建，
+复用同一份英语和多语言权重。仅新增部署 profile，保留原版 API schema 和 Router
+自动路由；现有地址、密钥和绑定未变。53 项契约测试及正式服务重启后的 13 项接口检查
+通过，四项 Laya Catalog 探针均通过。原生与新双模型重新运行同一组 34 条纯模型样本，
+分别为 22 正确/12 灰区与 21 正确/13 灰区，均无误判和推理执行错误。
+唯一判定差异来自一条未识别语言的短英文：原生回退多语言，目标 Router 回退英语。
+未更改默认路由或阈值来消除差异，也未重跑全量 696 项测试。
+报告保存在 `output/laya-v012-dual/`；平台总健康仍有输出绑定 `not_tested`，
+不能将本轮候选探针通过等同于所有绑定完成验收。
 
 ## 证据与验收范围
 

@@ -1,0 +1,62 @@
+name: laya-server
+
+services:
+  laya:
+    image: "${LAYA_SERVER_IMAGE:?Set the verified image reference in .env}"
+    init: true
+    restart: unless-stopped
+    user: "10001:10001"
+    cpus: 4.0
+    mem_limit: 8g
+    memswap_limit: 8g
+    pids_limit: 256
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    tmpfs:
+      - /tmp:size=256m,mode=1777
+    ports:
+      - "${LAYA_BIND_ADDRESS:-127.0.0.1}:${LAYA_PORT:-18081}:8080"
+    environment:
+      LAYA_ADMIN_USERNAME: admin
+      LAYA_ADMIN_PASSWORD_FILE: /run/secrets/admin_password
+      LAYA_DATABASE_PATH: /data/laya.sqlite3
+      LAYA_MODEL_DIR: /models
+      LAYA_MODEL_PROFILE: "${LAYA_MODEL_PROFILE:-dual}"
+      LAYA_DEVICE: cpu
+      LAYA_MAX_LOADED_MODELS: "${LAYA_MAX_LOADED_MODELS:-2}"
+      OMP_NUM_THREADS: "4"
+      MKL_NUM_THREADS: "4"
+      HF_HUB_OFFLINE: "1"
+      TRANSFORMERS_OFFLINE: "1"
+      HF_HUB_DISABLE_TELEMETRY: "1"
+      HF_HOME: /data/hf-cache
+      TOKENIZERS_PARALLELISM: "false"
+    entrypoint: [python, /opt/secret-entrypoint.py]
+    command: [uvicorn, "server.main:app", --host, 0.0.0.0, --port, "8080", --workers, "1", --proxy-headers]
+    volumes:
+      - ./secret-entrypoint.py:/opt/secret-entrypoint.py:ro
+      - ./model-layout:/models:ro
+      - native-cache:/native-cache:ro
+      - ./data:/data
+    secrets:
+      - admin_password
+    healthcheck:
+      test: [CMD, python, -c, "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/health/ready', timeout=3)"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+      start_interval: 3s
+    logging:
+      driver: json-file
+      options: {max-size: 10m, max-file: "3"}
+
+secrets:
+  admin_password:
+    file: ./secrets/admin_password
+
+volumes:
+  native-cache:
+    external: true
+    name: "${LAYA_CACHE_VOLUME:-laya-decision_model-cache}"

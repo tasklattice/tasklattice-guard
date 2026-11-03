@@ -1,0 +1,12 @@
+.env
+secrets/
+data/
+backups/
+model-layout/
+verification*.json
+requirements.resolved.txt
+upstream/
+upstream-laya/
+*.tar.gz
+build.log
+contract-tests.log

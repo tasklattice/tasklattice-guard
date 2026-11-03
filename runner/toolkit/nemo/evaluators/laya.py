@@ -45,6 +45,29 @@ def admission_rejected(response: httpx.Response) -> bool:
     return isinstance(payload, dict) and payload.get("detail") == "server busy, try again later"
 
 
+def head_max_len_rejected(response: httpx.Response) -> bool:
+    """Accept only an explicit schema rejection of the optional head budget.
+
+    Native FastAPI and wrappers use different error envelopes. Mixed errors
+    (especially an unsupported model) must remain visible to the operator.
+    """
+    if response.status_code != 422:
+        return False
+    try:
+        payload = response.json()
+    except ValueError:
+        return False
+    errors = payload.get("detail") if isinstance(payload, dict) else None
+    if isinstance(errors, dict):
+        if errors.get("code") != "VALIDATION_ERROR":
+            return False
+        errors = errors.get("errors")
+    return isinstance(errors, list) and bool(errors) and all(
+        isinstance(error, dict) and error.get("loc") == ["body", "head_max_len"]
+        and error.get("type") == "extra_forbidden" for error in errors
+    )
+
+
 class LayaInputTruncatedError(ModelResponseError):
     """The classifier did not see the entire input/policy/context."""
 
@@ -103,6 +126,9 @@ class LayaNoulEvaluator:
         self._lower, self._upper = lower_threshold, upper_threshold
         self._profile_ref = profile_ref
         self._reviewer = reviewer
+        # Capability belongs to this configured evaluator, never to other
+        # providers/models. Recreating it probes support again after upgrades.
+        self._head_max_len_supported = True
         if rail_type is not None:
             if rail_type not in self.rails:
                 raise ValueError(f"Laya {self.id} does not support {rail_type}.")
@@ -140,14 +166,16 @@ class LayaNoulEvaluator:
 
     def _trace(self, request: EvaluationRequest, verdict: str, reason: str,
                probabilities: dict[str, float], actual_model: str | None = None,
-               error_type: str | None = None, model_metadata: dict | None = None) -> RuntimeTraceStep:
+               error_type: str | None = None, model_metadata: dict | None = None,
+               request_budget: dict[str, int] | None = None) -> RuntimeTraceStep:
         judgments = {key: {"probability": p, "answer": "yes" if p >= self._upper else "no" if p <= self._lower else "uncertain"}
                      for key, p in probabilities.items()}
         evidence = json.dumps({"decision_model": "laya", "profile": self._profile_ref, "question_revision": self.revision(request),
                                "decision_rule": self.decision_rule,
                                "requested_model": self._model, "response_model": actual_model,
                                "thresholds": {"lower": self._lower, "upper": self._upper},
-                               "request_budget": {"max_len": MODEL_MAX_LEN, "head_max_len": MODEL_HEAD_MAX_LEN},
+                               "request_budget": request_budget if request_budget is not None else {
+                                   "max_len": MODEL_MAX_LEN, "head_max_len": MODEL_HEAD_MAX_LEN},
                                "model_metadata": model_metadata or {},
                                "judgments": judgments}, sort_keys=True)
         return RuntimeTraceStep(id=f"{request.binding.id}:laya", kind="evaluation", name=self.display_name,
@@ -161,12 +189,14 @@ class LayaNoulEvaluator:
 
     def _error(self, request: EvaluationRequest, reason: str, *,
                usage: EvaluationUsage = EvaluationUsage(), error_type: str | None = None,
-               actual_model: str | None = None, model_metadata: dict | None = None) -> EvaluationResult:
+               actual_model: str | None = None, model_metadata: dict | None = None,
+               request_budget: dict[str, int] | None = None) -> EvaluationResult:
         # A failed call still proves the requested model and actual operating
         # point. No probability or response model is invented for a failed parse.
         return evaluation_result(request, "error", request.content, reason=reason, usage=usage,
                                  trace=(self._trace(request, "error", reason, {}, actual_model,
-                                     error_type=error_type, model_metadata=model_metadata),),
+                                     error_type=error_type, model_metadata=model_metadata,
+                                     request_budget=request_budget),),
                                  error_source="configuration" if not usage.model_calls and error_type is None else None,
                                  error_category="configuration" if not usage.model_calls and error_type is None else None)
 
@@ -187,6 +217,11 @@ class LayaNoulEvaluator:
         probabilities: dict[str, float] = {}
         actual_model: str | None = None
         model_metadata = {}
+        request_budget = {"max_len": MODEL_MAX_LEN}
+        if self._head_max_len_supported:
+            request_budget["head_max_len"] = MODEL_HEAD_MAX_LEN
+        else:
+            model_metadata["head_max_len_source"] = "server_default"
         try:
             questions = self.questions(request)
             if questions:
@@ -204,17 +239,25 @@ class LayaNoulEvaluator:
                             "model": self._model,
                             "state": self.model_state(request),
                             "questions": questions,
-                            "max_len": MODEL_MAX_LEN,
-                            "head_max_len": MODEL_HEAD_MAX_LEN,
+                            **request_budget,
                         }
-                        def send() -> httpx.Response:
-                            # Raise inside the retried operation so an explicit
-                            # 429 is recovered instead of failing the case.
-                            attempt = client.post(self._url, headers={"authorization": f"Bearer {self._api_key}"}, json=body)
-                            return attempt
+                        async def send() -> httpx.Response:
+                            return await client.post(self._url, headers={"authorization": f"Bearer {self._api_key}"}, json=body)
 
                         async def guarded() -> httpx.Response:
                             attempt = await send()
+                            if "head_max_len" in body and head_max_len_rejected(attempt):
+                                # Validation rejected the request before inference.
+                                # Mutating this call's body bounds negotiation to
+                                # once, including any later admission retries.
+                                self._head_max_len_supported = False
+                                body.pop("head_max_len")
+                                request_budget.pop("head_max_len")
+                                model_metadata["head_max_len_source"] = "server_default"
+                                if time.monotonic() >= deadline:
+                                    raise TimeoutError("Model call deadline exceeded")
+                                call.retries += 1
+                                attempt = await send()
                             attempt.raise_for_status()
                             return attempt
 
@@ -225,10 +268,10 @@ class LayaNoulEvaluator:
                             actual_model, probabilities = parse_answers(payload, set(questions))
                             usage = payload.get("usage", {})
                             routing = payload.get("routing", {})
-                            model_metadata = {
+                            model_metadata.update({
                                 "usage": {k: usage[k] for k in ("input_tokens", "state_tokens", "state_tokens_dropped", "truncated") if isinstance(usage, dict) and k in usage},
                                 "routing": {k: routing[k] for k in ("model", "repo") if isinstance(routing, dict) and k in routing},
-                            }
+                            })
                             check_input_coverage(payload)
                         call.complete(payload=payload)
         except (httpx.HTTPError, TimeoutError, ValueError, TypeError, KeyError) as error:
@@ -237,11 +280,13 @@ class LayaNoulEvaluator:
             return self._error(request, f"Laya {self.scope_label} evaluation failed: {type(error).__name__}.{detail}",
                                error_type=type(error).__name__,
                                actual_model=actual_model, model_metadata=model_metadata,
+                               request_budget=request_budget,
                                usage=action_usage(call, len(request.content)) if call is not None else EvaluationUsage())
         verdict = self.classify(probabilities)
         reason = self.reasons[verdict]
         # Machine-readable evidence for all outcomes; Noul is not a confidence or severity score.
-        trace = self._trace(request, verdict, reason, probabilities, actual_model, model_metadata=model_metadata)
+        trace = self._trace(request, verdict, reason, probabilities, actual_model,
+                            model_metadata=model_metadata, request_budget=request_budget)
         findings = () if verdict != "matched" else (RiskFinding(
             risk=request.capability, taxonomy_id=taxonomy_for_evaluator(request.capability), verdict="matched",
             confidence=None, evidence=reason, recommended_action=request.proposed_action,

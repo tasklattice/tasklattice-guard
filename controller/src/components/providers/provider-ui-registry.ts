@@ -24,8 +24,8 @@ export const providerModelSuggestions: Partial<Record<ModelProviderKind, {
   models: Array<{ id: string; name: string }>;
 }>> = {
   laya: {
-    defaultModel: "laya",
-    models: [{ id: "laya", name: "Laya" }],
+    defaultModel: "auto",
+    models: [{ id: "auto", name: "Laya" }],
   },
   typesafe: {
     defaultModel: "jev-1.13.0",

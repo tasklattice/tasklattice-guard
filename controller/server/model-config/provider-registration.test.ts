@@ -78,6 +78,85 @@ describe("Relay-style Provider registration", () => {
     expect(fetcher.mock.calls[0]?.[0]).toBe("https://laya.test/v1/models");
     expect(db.transaction).not.toHaveBeenCalled();
   });
+
+  it.each(["tali.laya.v1", "tali.laya-topic.v1"] as const)("preserves Laya's rejected field for %s without echoing input or credentials", async profile => {
+    const { service, fetcher } = setup();
+    const privateInput = "private-upstream-input";
+    fetcher.mockResolvedValue(Response.json({ detail: [{
+      type: "dict_type", loc: ["body", "questions", "greeting", "instructions"],
+      msg: "Input should be a valid dictionary", input: privateInput,
+      ctx: { authorization: connection.apiKey },
+    }] }, { status: 422 }));
+    const result = await service.registerProviderModels({
+      connection: { ...connection, kind: "laya" }, models: [{ ...model("auto"), profile }],
+    }, "admin");
+    expect(result.models[0]).toMatchObject({ connectionStatus: "failed", status: "pending", validatedAt: null });
+    expect(result.models[0]?.connectionMessage).toContain("HTTP 422");
+    expect(result.models[0]?.connectionMessage).toContain("body.questions.greeting.instructions");
+    expect(result.models[0]?.connectionMessage).toContain("Input should be a valid dictionary");
+    expect(JSON.stringify(result)).not.toContain(privateInput);
+    expect(JSON.stringify(result)).not.toContain(connection.apiKey);
+    expect(result.provider.status).toBe("failed");
+  });
+
+  it.each([true, false])("preserves Laya error text and redacts the submitted credential (JSON=%s)", async json => {
+    const { service, fetcher } = setup();
+    const message = `max_len exceeds server limit (1024 > 512); credential=${connection.apiKey}`;
+    fetcher.mockResolvedValue(json ? Response.json({ detail: message }, { status: 422 }) : new Response(message, { status: 422 }));
+    const result = await service.registerProviderModels({
+      connection: { ...connection, kind: "laya" }, models: [{ ...model("auto"), profile: "tali.laya.v1" }],
+    }, "admin");
+    expect(result.models[0]?.connectionMessage).toContain("max_len exceeds server limit (1024 > 512)");
+    expect(JSON.stringify(result)).not.toContain(connection.apiKey);
+  });
+
+  it.each(["tali.laya.v1", "tali.laya-topic.v1"] as const)("registers auto against a strict Laya server using %s", async profile => {
+    const { service, fetcher } = setup();
+    fetcher.mockImplementation(async (_url, init) => {
+      const body = JSON.parse(String(init?.body));
+      expect(Object.keys(body).sort()).toEqual(["model", "questions", "state"]);
+      expect(body.model).toBe("auto");
+      expect(body.questions.greeting.instructions).toEqual(expect.any(String));
+      return Response.json({ model: "multilingual", answers: { greeting: { type: "noul", noul: 0.95 } } });
+    });
+    const result = await service.registerProviderModels({
+      connection: { ...connection, kind: "laya" }, models: [{ ...model("auto"), profile }],
+    }, "admin");
+    expect(result.models[0]).toMatchObject({ model: "auto", connectionStatus: "validated", status: "pending" });
+    expect(fetcher).toHaveBeenCalledOnce();
+  });
+
+  it("shows nested Laya server validation errors without silently remapping the model", async () => {
+    const { service, fetcher } = setup();
+    fetcher.mockResolvedValue(Response.json({ detail: {
+      code: "VALIDATION_ERROR", message: "Request validation failed", errors: [
+        { loc: ["body", "model"], type: "literal_error", message: "Input should be 'auto', 'english', 'multilingual' or 'typed-decisions'", input: "private-input" },
+        { loc: ["body", "head_max_len"], type: "extra_forbidden", message: "Extra inputs are not permitted", ctx: { key: connection.apiKey } },
+      ],
+    } }, { status: 422 }));
+    const result = await service.registerProviderModels({
+      connection: { ...connection, kind: "laya" }, models: [{ ...model("laya"), profile: "tali.laya.v1" }],
+    }, "admin");
+    expect(result.models[0]).toMatchObject({ model: "laya", connectionStatus: "failed" });
+    expect(result.models[0]?.connectionMessage).toContain("body.model: Input should be 'auto'");
+    expect(result.models[0]?.connectionMessage).toContain("body.head_max_len: Extra inputs are not permitted");
+    expect(JSON.stringify(result)).not.toContain("private-input");
+    expect(JSON.stringify(result)).not.toContain(connection.apiKey);
+    expect(fetcher).toHaveBeenCalledOnce();
+  });
+
+  it("preserves nested model-unavailable errors and redacts their message", async () => {
+    const { service, fetcher } = setup();
+    fetcher.mockResolvedValue(Response.json({ detail: {
+      code: "MODEL_NOT_AVAILABLE", message: `Only multilingual is installed; credential=${connection.apiKey}`,
+    } }, { status: 422 }));
+    const result = await service.registerProviderModels({
+      connection: { ...connection, kind: "laya" }, models: [{ ...model("english"), profile: "tali.laya.v1" }],
+    }, "admin");
+    expect(result.models[0]?.connectionMessage).toContain("MODEL_NOT_AVAILABLE: Only multilingual is installed");
+    expect(JSON.stringify(result)).not.toContain(connection.apiKey);
+  });
+
   it("includes NVIDIA's dedicated security endpoint as a candidate without claiming a successful call", async () => {
     const { service, db, fetcher } = setup();
     const result = await service.discoverProviderDraft({ ...connection, baseUrl: "https://integrate.api.nvidia.com/v1" });

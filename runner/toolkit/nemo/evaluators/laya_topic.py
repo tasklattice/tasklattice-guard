@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from dataclasses import replace
+import json
 import re
 
 from .contracts import EvaluationRequest
@@ -108,6 +109,9 @@ class LayaTopicEvaluator(LayaNoulEvaluator):
         if result.verdict == "error" or not self.questions(request):
             return result
         configured = dict(request.parameters)
+        # Coverage decisions describe the same inference, including any
+        # negotiated server budget, rather than a new native request.
+        request_budget = json.loads(result.trace[0].evidence)["request_budget"]
         # The native encoder does not reliably evaluate the union of a list:
         # both confident false positives and false negatives were observed.
         # Preserve its scores, but require full-policy review in either direction.
@@ -116,7 +120,7 @@ class LayaTopicEvaluator(LayaNoulEvaluator):
         if any(count > 1 for count in counts.values()):
             reason = "Laya cannot establish complete coverage of a multi-topic policy; independent review is required."
             trace = self._trace(request, "unknown", reason, {}, model_metadata={
-                "topic_counts": counts, "coverage": "multi_topic_scope_unverified"})
+                "topic_counts": counts, "coverage": "multi_topic_scope_unverified"}, request_budget=request_budget)
             return replace(result, verdict="unknown", findings=(), reason=reason, evidence=reason,
                            trace=(*result.trace, replace(trace, id=trace.id + ":coverage")), unknown_reason="uncertain")
         if result.verdict == "matched":
@@ -125,7 +129,7 @@ class LayaTopicEvaluator(LayaNoulEvaluator):
         if compound_request(request.content):
             reason = "Laya cannot establish that every task in a compound request is in scope; independent review is required."
             trace = self._trace(request, "unknown", reason, {}, model_metadata={"sentence_count": len(parts),
-                "coverage": "compound_scope_unverified"})
+                "coverage": "compound_scope_unverified"}, request_budget=request_budget)
             return replace(result, verdict="unknown", reason=reason, evidence=reason,
                            trace=(*result.trace, replace(trace, id=trace.id + ":coverage")), unknown_reason="uncertain")
         return result

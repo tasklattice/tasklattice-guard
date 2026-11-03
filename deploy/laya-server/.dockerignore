@@ -1,0 +1,12 @@
+.env*
+secrets
+data
+backups
+model-layout
+*.tar.gz
+build.log
+contract-tests.log
+verification*.json
+requirements.resolved.txt
+.git
+._*
