@@ -138,7 +138,9 @@ async function modelAction(modelName: string, name: string) {
   return actionItem(await screen.findByRole("button", { name: `modelSettings.actions ${modelName}` }), name);
 }
 
-describe("Models and Guardrail Catalog", () => {
+// Multi-step Carbon workflows can exceed the 5s unit-test default on shared CI
+// runners. Keep a bounded per-test budget, including save/reload flows.
+describe("Models and Guardrail Catalog", { timeout: 10_000 }, () => {
   beforeEach(() => {
     Element.prototype.scrollIntoView = vi.fn();
     vi.mocked(getModelConfiguration).mockReset().mockResolvedValue(view);
@@ -408,7 +410,7 @@ describe("Models and Guardrail Catalog", () => {
     renderPage(<GuardrailCatalogPage />);
     const reloaded = await screen.findByRole("row", { name: "modelSettings.detectors.pii_detection.title · modelSettings.inputRail" });
     expect(within(reloaded).getByRole("combobox").textContent).toContain("Qwen Guard");
-  }, 10_000);
+  });
 
   it("keeps failed saves visible and preserves the selected PII model for retry", async () => {
     const configured = structuredClone(view);
