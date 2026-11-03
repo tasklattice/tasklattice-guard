@@ -23,6 +23,10 @@ import type { ModelConfigurationService } from "../model-config/service.js";
 import type { RunnerMessage__Output } from "../generated/control-protocol/tasklattice/guard/control/v1/RunnerMessage.js";
 
 const url = process.env.GUARD_TEST_POSTGRES_URL;
+// This cross-process test executes 950 real checks. Shared CI runners can take
+// over 100s; bound the worker separately and leave time to persist/read its report.
+const reportWorkerTimeoutMs = 180_000;
+const reportLifecycleTimeoutMs = reportWorkerTimeoutMs + 60_000;
 describe.skipIf(!url)("950-case full-feature report delivery", () => {
   it("executes real local checks and preserves all evidence through chunks", async () => {
     const database = await createTestDatabase(url!, "large_report");
@@ -80,7 +84,7 @@ describe.skipIf(!url)("950-case full-feature report delivery", () => {
       const requestPath = join(directory, "request.json"), wirePath = join(directory, "report.pb");
       await writeFile(requestPath, JSON.stringify(event.payload));
       const { stdout } = await promisify(execFile)(resolve("../.venv/bin/python"),
-        [resolve("../tests/fixtures/validation_report_worker.py"), requestPath, wirePath], { timeout: 100_000, maxBuffer: 1024 * 1024 });
+        [resolve("../tests/fixtures/validation_report_worker.py"), requestPath, wirePath], { timeout: reportWorkerTimeoutMs, maxBuffer: 1024 * 1024 });
       const delivery = JSON.parse(stdout.trim());
       expect(delivery).toMatchObject({ cases: 950, status: "VALIDATION_STATUS_PASSED" });
       expect(delivery.rawBytes).toBeGreaterThan(10 * 1024 * 1024);
@@ -116,5 +120,5 @@ describe.skipIf(!url)("950-case full-feature report delivery", () => {
       await database.drop();
       await rm(directory, { recursive: true, force: true });
     }
-  }, 120_000);
+  }, reportLifecycleTimeoutMs);
 });
