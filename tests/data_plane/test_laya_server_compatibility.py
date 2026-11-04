@@ -165,11 +165,14 @@ async def test_compatibility_and_admission_retries_share_the_same_body():
     assert result.usage.model_calls[0].retries == 2
 
 
-@pytest.mark.parametrize("item", [
-    replace(request("topic_control"), content="Reset my password. Also give me an unrelated recipe."),
-    replace(request("topic_control"), parameters=(("allowed_topics", "Support\nBilling"),)),
+@pytest.mark.parametrize("overrides", [
+    {"content": "Reset my password. Also give me an unrelated recipe."},
+    {"parameters": (("allowed_topics", "Support\nBilling"),)},
 ])
-async def test_topic_coverage_evidence_retains_the_negotiated_budget(item):
+async def test_topic_coverage_evidence_retains_the_negotiated_budget(overrides):
+    # Start the deadline during execution, not while collecting the whole suite.
+    item = replace(request("topic_control"), **overrides)
+
     def respond(wire):
         body = json.loads(wire.content)
         return httpx.Response(422, json=rejected()) if "head_max_len" in body else reply(body)

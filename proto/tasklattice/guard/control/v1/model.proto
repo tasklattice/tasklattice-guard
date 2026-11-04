@@ -23,8 +23,11 @@ message ModelRuntime {
   int32 max_concurrency = 11;
   // Total attempts on explicit rate-limit rejection, including the initial call.
   int32 rate_limit_attempts = 12;
-  // Decision-model operating band; unset uses 0.1 and 0.9. Zero is valid.
+  // Inclusive negative decision boundary; unset uses 0.1. Zero is valid.
+  // Must be nonnegative and less than upper_threshold.
   optional double lower_threshold = 13;
+  // Inclusive positive decision boundary; unset uses 0.9.
+  // Must exceed lower_threshold and be at most 1.
   optional double upper_threshold = 14;
 }
 
