@@ -136,6 +136,11 @@ export class ProjectService {
     return this.accessStatus(userId, projectId);
   }
 
+  async requireExists(projectId: string): Promise<void> {
+    const [project] = await this.db.select({ id: projects.id }).from(projects).where(eq(projects.id, projectId)).limit(1);
+    if (!project) throw new NotFoundError("Project", projectId);
+  }
+
   async list(
     query: DirectoryQuery & {
       groupId?: string | undefined;

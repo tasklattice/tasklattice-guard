@@ -112,7 +112,7 @@ const projectRunnerRoute = createRoute({ getParentRoute: () => projectRoute, pat
 const projectVersionRoute = createRoute({ getParentRoute: () => projectRoute, path: "settings/version", component: VersionPage });
 const providersRoute = createRoute({ getParentRoute: () => rootRoute, path: "/settings/providers", component: ProvidersPage });
 const modelsRoute = createRoute({ getParentRoute: () => rootRoute, path: "/settings/models", validateSearch: (search: Record<string, unknown>) => ({ tab: search.tab === "pricing" ? "pricing" : undefined }), component: ModelsPage });
-const guardrailCatalogRoute = createRoute({ getParentRoute: () => rootRoute, path: "/settings/guardrail-catalog", component: GuardrailCatalogPage });
+const protectionCapabilitiesRoute = createRoute({ getParentRoute: () => rootRoute, path: "/settings/protection-capabilities", component: GuardrailCatalogPage });
 const documentRoute = createRoute({ getParentRoute: () => rootRoute, path: "/document", notFoundComponent: DocumentNotFound });
 const documentIndexRoute = createRoute({
   getParentRoute: () => documentRoute,
@@ -153,7 +153,7 @@ export const routeTree = rootRoute.addChildren([
   runnerRoute,
   providersRoute,
   modelsRoute,
-  guardrailCatalogRoute,
+  protectionCapabilitiesRoute,
   documentRoute.addChildren([documentIndexRoute, documentArticleRoute]),
 ]);
 export const router = createRouter({ routeTree, history: createBrowserHistory(), trailingSlash: "never" });

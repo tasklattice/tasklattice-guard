@@ -8,7 +8,7 @@ describe("Account RBAC", () => {
     expect(hasPermission("user", resource, "read")).toBe(true);
     expect(hasPermission("user", resource, "write")).toBe(true);
   });
-  it.each(["audit", "settings", "users"] as const)("reserves %s for administrators", resource => {
+  it.each(["audit", "projects", "projectGroups", "modelPricing", "users"] as const)("reserves %s for administrators", resource => {
     expect(hasPermission("user", resource)).toBe(false);
     expect(hasPermission("user", resource, "write")).toBe(false);
     expect(hasPermission("admin", resource)).toBe(true);
@@ -24,7 +24,7 @@ describe("Account RBAC", () => {
   it.each(["admin", "user"])("allows %s to read Runners while reserving writes for administrators", role => {
     expect(hasPermission(role, "runners", "read")).toBe(true);
     expect(hasPermission(role, "runners", "write")).toBe(role === "admin");
-    expect(hasPermission(role, "settings", "write")).toBe(role === "admin");
+    expect(hasPermission(role, "providers", "write")).toBe(role === "admin");
     for (const path of ["/settings", "/settings/", "/settings/health", "/settings/runner", "/settings/runner/", "/settings/version"]) {
       expect(pagePermission(path)).toEqual({ resource: "runners", action: "read" });
     }
@@ -35,7 +35,7 @@ describe("Account RBAC", () => {
   });
   it.each(["/settings/project-groups", "/settings/project-groups/"])("reserves %s for platform administrators", path => {
     const permission = pagePermission(path)!;
-    expect(permission).toEqual({ resource: "settings", action: "read" });
+    expect(permission).toEqual({ resource: "projectGroups", action: "read" });
     expect(hasPermission("admin", permission.resource, permission.action)).toBe(true);
     expect(hasPermission("user", permission.resource, permission.action)).toBe(false);
   });
@@ -55,7 +55,7 @@ describe("Account RBAC", () => {
       expect(hasPermission(role, permission.resource, permission.action)).toBe(false);
     }
   });
-  it.each(["/settings/models", "/settings/models/", "/settings/guardrail-catalog", "/access", "/audit-log"])("protects direct page access to %s", path => {
+  it.each(["/settings/models", "/settings/models/", "/settings/protection-capabilities", "/access", "/audit-log"])("protects direct page access to %s", path => {
     const permission = pagePermission(path)!;
     expect(hasPermission("user", permission.resource, permission.action)).toBe(false);
   });

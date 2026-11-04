@@ -1,7 +1,6 @@
 import { hasPermission } from "../../shared/rbac";
-import { useEffect, useState } from "react";
+import { useRef, useState } from "react";
 import {
-  keepPreviousData,
   useMutation,
   useQuery,
   useQueryClient,
@@ -17,6 +16,11 @@ import {
   PageHeader,
   StateBadge,
 } from "@/components/product-shell";
+import { usernameSchema } from "../../shared/username";
+import { passwordMeetsPolicy } from "../../shared/password-policy";
+import { AccountPasswordField, PasswordPolicyNotice, usePasswordPolicy } from "@/components/account-password-field";
+import { DirectorySelect, type DirectorySelection } from "@/components/directory-select";
+import { listProjects, setProjectMember } from "@/lib/projects-api";
 import type { UserDetail } from "../../shared/identity";
 import {
   DirectoryPagination,
@@ -58,6 +62,8 @@ export function UsersPage() {
   });
   const [createOpen, setCreateOpen] = useState(false);
   const [selected, setSelected] = useState<string | null>(null);
+  const createTrigger = useRef<HTMLButtonElement>(null);
+  const detailTrigger = useRef<HTMLButtonElement>(null);
   const refresh = () => client.invalidateQueries({ queryKey: queryKeys.users });
   if (!hasPermission(currentUser?.role, "users"))
     return (
@@ -72,7 +78,7 @@ export function UsersPage() {
         title={t("users.title")}
         description={t("users.description")}
         action={
-          <Button onClick={() => setCreateOpen(true)}>
+          <Button ref={createTrigger} onClick={() => setCreateOpen(true)}>
             <Plus />
             {t("users.add")}
           </Button>
@@ -104,7 +110,7 @@ export function UsersPage() {
             <button
               key={item.id}
               className="user-directory-columns user-directory-row"
-              onClick={() => setSelected(item.id)}
+              onClick={event => { detailTrigger.current = event.currentTarget; setSelected(item.id); }}
               aria-label={`${t("users.editTitle")} · ${item.username}`}
             >
               <span className="flex min-w-0 items-center gap-3">
@@ -155,18 +161,19 @@ export function UsersPage() {
           busy={query.isFetching}
         />
       </section>
-      <CreateUserSheet
-        open={createOpen}
-        onOpenChange={setCreateOpen}
+      {createOpen && <CreateUserSheet
+        returnFocusRef={createTrigger}
+        onClose={() => setCreateOpen(false)}
         onCreated={() => {
           setCreateOpen(false);
           void refresh();
         }}
-      />
+      />}
       {selected && (
         <UserDetailPanel
           key={selected}
           id={selected}
+          returnFocusRef={detailTrigger}
           onClose={() => setSelected(null)}
           onUpdated={() => {
             setSelected(null);
@@ -181,21 +188,34 @@ function UserDetailPanel({
   id,
   onClose,
   onUpdated,
+  returnFocusRef,
 }: {
   id: string;
   onClose: () => void;
   onUpdated: () => void;
+  returnFocusRef: React.RefObject<HTMLButtonElement | null>;
 }) {
   const { t } = useTranslation();
-  const control = useDirectoryPage(`user-projects:${id}`);
   const query = useQuery({
-    queryKey: ["user-detail", id, control.query],
-    queryFn: ({ signal }) => getUser(id, control.query, signal),
-    placeholderData: keepPreviousData,
+    queryKey: ["user-detail", id],
+    queryFn: async ({ signal }) => {
+      const detail = await getUser(id, { limit: 100 }, signal);
+      // Fetch every assigned project before editing; a partial page must never
+      // become the baseline for removing memberships.
+      let cursor = detail.projects.nextCursor;
+      const assigned = [...detail.projects.items];
+      while (cursor) {
+        const page = await getUser(id, { limit: 100, cursor }, signal);
+        assigned.push(...page.projects.items);
+        cursor = page.projects.nextCursor;
+      }
+      return { ...detail, projects: { items: assigned, nextCursor: null } };
+    },
   });
   if (!query.data)
     return (
       <EntitySheet
+        returnFocusRef={returnFocusRef}
         footer={null}
         open
         onOpenChange={(open) => {
@@ -214,9 +234,8 @@ function UserDetailPanel({
     );
   return (
     <EditUserSheet
+      returnFocusRef={returnFocusRef}
       detail={query.data}
-      control={control}
-      busy={query.isFetching}
       onOpenChange={(open) => {
         if (!open) onClose();
       }}
@@ -225,288 +244,179 @@ function UserDetailPanel({
   );
 }
 
-function CreateUserSheet({
-  open,
-  onOpenChange,
-  onCreated,
-}: {
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
-  onCreated: () => void;
+function useRefreshPeople() {
+  const client = useQueryClient();
+  return () => Promise.all([
+    client.invalidateQueries({ queryKey: queryKeys.users }),
+    client.invalidateQueries({ queryKey: ["projects"] }),
+    client.invalidateQueries({ queryKey: ["project-members"] }),
+    client.invalidateQueries({ queryKey: ["user-detail"] }),
+    client.invalidateQueries({ queryKey: ["directory-select"] }),
+  ]);
+}
+
+function ProjectSelection({ value, onChange, disabled }: {
+  value: DirectorySelection[]; onChange: (value: DirectorySelection[]) => void; disabled: boolean;
 }) {
   const { t } = useTranslation();
+  return <section className="grid gap-2">
+    <h3 className="text-sm font-medium">{t("users.projects")}</h3>
+    <DirectorySelect scope="user-projects" label={t("accountForm.selectProjects")} value={value}
+      onChange={onChange} load={listProjects} disabled={disabled} />
+    <p className="text-xs text-muted-foreground">{t(value.length ? "accountForm.projectHint" : "accountForm.noProjectsHint")}</p>
+  </section>;
+}
+
+function CreateUserSheet({ onClose, onCreated, returnFocusRef }: { onClose: () => void; onCreated: () => void; returnFocusRef: React.RefObject<HTMLButtonElement | null> }) {
+  const { t } = useTranslation();
+  const refresh = useRefreshPeople();
+  const policy = usePasswordPolicy();
   const [username, setUsername] = useState("");
+  const [usernameTouched, setUsernameTouched] = useState(false);
   const [password, setPassword] = useState("");
   const [role, setRole] = useState<IdentityRole>("user");
   const [language, setLanguage] = useState<"en" | "zh-CN">("en");
-  useEffect(() => {
-    if (open) {
-      setUsername("");
-      setPassword("");
-      setRole("user");
-      setLanguage("en");
-    }
-  }, [open]);
+  const [projects, setProjects] = useState<DirectorySelection[]>([]);
+  const [created, setCreated] = useState<IdentityUser | null>(null);
+  const assigned = useRef(new Set<string>());
+  const validUsername = usernameSchema.safeParse(username).success;
   const mutation = useMutation({
-    mutationFn: () =>
-      createUser({
-        username,
-        password,
-        role,
-        preferred_language: language,
-      }),
-    onSuccess: () => {
-      toast.success(t("users.added"));
-      onCreated();
-    },
-    onError: (error) =>
-      toast.error(
-        error instanceof Error ? error.message : t("common.unknownError"),
-      ),
-  });
-  return (
-    <EntitySheet
-      open={open}
-      onOpenChange={onOpenChange}
-      eyebrow={t("users.eyebrow")}
-      title={t("users.createTitle")}
-      description={t("users.createDescription")}
-      footer={
-        <>
-          <Button variant="outline" onClick={() => onOpenChange(false)}>
-            {t("common.cancel")}
-          </Button>
-          <Button
-            disabled={
-              !username.trim() ||
-              password.length < 8 ||
-              mutation.isPending
-            }
-            onClick={() => mutation.mutate()}
-          >
-            <Plus />
-            {mutation.isPending ? t("common.creating") : t("common.create")}
-          </Button>
-        </>
+    mutationFn: async () => {
+      const account = created ?? await createUser({ username, password, role, preferred_language: language });
+      setCreated(account);
+      setPassword("");
+      if (role === "user") for (const project of projects) {
+        if (assigned.current.has(project.id)) continue;
+        await setProjectMember(project.id, account.id, true);
+        assigned.current.add(project.id);
       }
-    >
-      <div className="grid gap-5">
-        <Field label={t("auth.username")}>
-          <Input
-            type="text"
-            autoFocus
-            autoComplete="username"
-            value={username}
-            onChange={(event) => setUsername(event.target.value)}
-          />
-        </Field>
-        <Field label={t("common.password")} hint={t("auth.passwordHint")}>
-          <Input
-            type="password"
-            autoComplete="new-password"
-            minLength={8}
-            value={password}
-            onChange={(event) => setPassword(event.target.value)}
-          />
-        </Field>
-        <div className="grid gap-4 sm:grid-cols-2">
-          <Field label={t("common.role")}>
-            <Select
-              value={role}
-              onValueChange={(value) => setRole(value as IdentityRole)}
-            >
-              <SelectTrigger>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="user">{t("common.member")}</SelectItem>
-                <SelectItem value="admin">{t("common.admin")}</SelectItem>
-              </SelectContent>
-            </Select>
-          </Field>
-          <Field label={t("common.language")}>
-            <Select
-              value={language}
-              onValueChange={(value) => setLanguage(value as typeof language)}
-            >
-              <SelectTrigger>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="en">{t("common.english")}</SelectItem>
-                <SelectItem value="zh-CN">{t("common.chinese")}</SelectItem>
-              </SelectContent>
-            </Select>
-          </Field>
-        </div>
+    },
+    onSuccess: () => { toast.success(t("users.added")); onCreated(); },
+    onSettled: refresh,
+  });
+  const locked = mutation.isPending || Boolean(created);
+  const valid = Boolean(created) || (validUsername && policy.data && passwordMeetsPolicy(password, policy.data));
+  return <EntitySheet open width="md" returnFocusRef={returnFocusRef} title={t("users.createTitle")} eyebrow={t("users.eyebrow")}
+    description={t("users.createDescription")} closeDisabled={mutation.isPending}
+    onOpenChange={open => { if (!open && !mutation.isPending) onClose(); }}
+    footer={<><Button variant="outline" disabled={mutation.isPending} onClick={onClose}>{t("common.cancel")}</Button>
+      <Button type="submit" form="create-user" disabled={!valid || mutation.isPending}>
+        {mutation.isPending ? t("common.saving") : created ? t("accountForm.finishAssignment") : t("common.create")}
+      </Button></>}>
+    <form id="create-user" className="grid gap-5" onSubmit={event => { event.preventDefault(); if (valid && !mutation.isPending) mutation.mutate(); }}>
+      {mutation.error && <div className="grid gap-2">
+        {created && <p role="status" className="text-sm">{t("accountForm.createdPending")}</p>}
+        <ErrorNotice error={mutation.error} />
+      </div>}
+      <div className="grid gap-2 text-sm">
+        <label htmlFor="create-user-username" className="font-medium">{t("auth.username")}</label>
+        <Input id="create-user-username" autoFocus autoComplete="off" value={username} disabled={locked} required maxLength={64}
+          aria-describedby="create-user-username-hint" aria-invalid={usernameTouched && !validUsername}
+          onBlur={() => setUsernameTouched(true)} onChange={event => setUsername(event.target.value)} />
+        <span id="create-user-username-hint" className={usernameTouched && !validUsername ? "text-xs text-destructive" : "text-xs font-normal text-muted-foreground"}>
+          {t("accountForm.usernameHint")}
+        </span>
       </div>
-    </EntitySheet>
-  );
+      <PasswordPolicyNotice query={policy} />
+      <AccountPasswordField label={t("common.password")} value={password} onChange={setPassword} policy={policy.data} disabled={locked} />
+      <div className="people-projects-fields">
+        <Field label={t("common.role")}><Select disabled={locked} value={role} onValueChange={value => { setRole(value as IdentityRole); setProjects([]); }}>
+          <SelectTrigger><SelectValue /></SelectTrigger><SelectContent>
+            <SelectItem value="user">{t("common.member")}</SelectItem><SelectItem value="admin">{t("common.admin")}</SelectItem>
+          </SelectContent></Select></Field>
+        <Field label={t("common.language")}><Select disabled={locked} value={language} onValueChange={value => setLanguage(value as typeof language)}>
+          <SelectTrigger><SelectValue /></SelectTrigger><SelectContent>
+            <SelectItem value="en">{t("common.english")}</SelectItem><SelectItem value="zh-CN">{t("common.chinese")}</SelectItem>
+          </SelectContent></Select></Field>
+      </div>
+      {role === "user" ? <ProjectSelection value={projects} onChange={setProjects} disabled={locked} /> : <p className="text-sm text-muted-foreground">{t("accountForm.adminHint")}</p>}
+    </form>
+  </EntitySheet>;
 }
 
-function EditUserSheet({
-  detail,
-  control,
-  busy,
-  onOpenChange,
-  onUpdated,
-}: {
-  detail: UserDetail;
-  control: ReturnType<typeof useDirectoryPage>;
-  busy: boolean;
-  onOpenChange: (open: boolean) => void;
-  onUpdated: (user: IdentityUser) => void;
+function EditUserSheet({ detail, onOpenChange, onUpdated, returnFocusRef }: {
+  detail: UserDetail; onOpenChange: (open: boolean) => void; onUpdated: (user: IdentityUser) => void;
+  returnFocusRef: React.RefObject<HTMLButtonElement | null>;
 }) {
   const user = detail.user;
+  const local = detail.source === "local";
   const { t, i18n } = useTranslation();
-  const [role, setRole] = useState<IdentityRole>("user");
-  const [enabled, setEnabled] = useState(true);
+  const refresh = useRefreshPeople();
+  const policy = usePasswordPolicy(local);
+  const [role, setRole] = useState(user.role);
+  const [enabled, setEnabled] = useState(user.enabled);
   const [password, setPassword] = useState("");
-  useEffect(() => {
-    if (user) {
-      setRole(user.role);
-      setEnabled(user.enabled);
-      setPassword("");
-    }
-  }, [user.id]);
+  const [projects, setProjects] = useState(detail.projects.items);
+  const savedProjects = useRef(new Set(detail.projects.items.map(project => project.id)));
+  const savedAccount = useRef(user);
+  const [partial, setPartial] = useState(false);
+  const changed = role !== savedAccount.current.role || enabled !== savedAccount.current.enabled || Boolean(password)
+    || (local && (projects.length !== savedProjects.current.size || projects.some(project => !savedProjects.current.has(project.id))));
+  const valid = !password || Boolean(policy.data && passwordMeetsPolicy(password, policy.data));
   const mutation = useMutation({
-    mutationFn: () =>
-      updateUser(user!.id, {
-        enabled,
-        ...(detail.source === "local"
-          ? { role, password: password || undefined }
-          : {}),
-      }),
-    onSuccess: (updated) => {
-      toast.success(t("users.updated"));
-      onUpdated(updated);
-      setPassword("");
-    },
-    onError: (error) =>
-      toast.error(
-        error instanceof Error ? error.message : t("common.unknownError"),
-      ),
-  });
-  if (!user) return null;
-  return (
-    <EntitySheet
-      open
-      onOpenChange={onOpenChange}
-      eyebrow={`${t("users.user")} / ${user.username || user.email}`}
-      title={t("users.editTitle")}
-      description={t("users.editDescription")}
-      footer={
-        <>
-          <Button variant="outline" onClick={() => onOpenChange(false)}>
-            {t("common.cancel")}
-          </Button>
-          <Button
-            disabled={
-              (password.length > 0 && password.length < 8) ||
-              mutation.isPending
-            }
-            onClick={() => mutation.mutate()}
-          >
-            {mutation.isPending ? t("common.saving") : t("common.save")}
-          </Button>
-        </>
+    mutationFn: async () => {
+      setPartial(false);
+      // Track successful steps so a retry does not reissue a password or redo
+      // memberships that already saved before a later request failed.
+      if (role !== savedAccount.current.role || enabled !== savedAccount.current.enabled || password) {
+        savedAccount.current = await updateUser(user.id, {
+          ...(enabled !== savedAccount.current.enabled ? { enabled } : {}),
+          ...(local && role !== savedAccount.current.role ? { role } : {}),
+          ...(local && password ? { password } : {}),
+        });
+        setPassword("");
+        setPartial(true);
       }
-    >
-      <div className="grid gap-5">
-        <div className="flex items-center gap-3 rounded-xl border bg-muted/30 p-4">
-          <Avatar className="size-10">
-            <AvatarFallback>{initials(user.username)}</AvatarFallback>
-          </Avatar>
-          <div className="min-w-0">
-            <p className="truncate text-sm font-medium">{user.username}</p>
-          </div>
-        </div>
-        <Field label={t("common.role")}>
-          <Select
-            disabled={detail.source !== "local"}
-            value={role}
-            onValueChange={(value) => setRole(value as IdentityRole)}
-          >
-            <SelectTrigger>
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="user">{t("common.member")}</SelectItem>
-              <SelectItem value="admin">{t("common.admin")}</SelectItem>
-            </SelectContent>
-          </Select>
-        </Field>
-        <div className="flex items-start justify-between gap-4 rounded-xl border p-4">
-          <div>
-            <p className="text-sm font-medium">{t("users.activeAccount")}</p>
-            <p className="mt-1 text-xs leading-5 text-muted-foreground">
-              {t("users.activeHint")}
-            </p>
-          </div>
-          <Switch
-            checked={enabled}
-            onCheckedChange={setEnabled}
-            aria-label={t("users.activeAccount")}
-          />
-        </div>
-        {detail.source === "sso" && (
-          <p className="text-sm leading-6 text-muted-foreground">
-            {t("users.ssoHint")}
-          </p>
-        )}
-        {detail.source === "local" && (
-          <Field
-            label={t("users.newPasswordOptional")}
-            hint={t("users.resetHint")}
-          >
-            <Input
-              type="password"
-              autoComplete="new-password"
-              minLength={8}
-              value={password}
-              onChange={(event) => setPassword(event.target.value)}
-            />
-          </Field>
-        )}
-        <section>
-          <h3 className="mb-3 text-sm font-medium">{t("users.projects")}</h3>
-          <Input
-            aria-label={t("projects.search")}
-            placeholder={t("projects.search")}
-            value={control.search}
-            onChange={(e) => control.setSearch(e.target.value)}
-          />
-          <ul className="divide-y">
-            {detail.projects.items.map((project) => (
-              <li key={project.id} className="py-3 text-sm">
-                {project.name}
-              </li>
-            ))}
-          </ul>
-          <DirectoryPagination
-            control={control}
-            count={detail.projects.items.length}
-            nextCursor={detail.projects.nextCursor}
-            busy={busy}
-          />
-        </section>
-        <dl className="grid gap-2 rounded-xl bg-muted/35 p-4 text-xs">
-          <div className="flex justify-between gap-4">
-            <dt className="text-muted-foreground">{t("users.created")}</dt>
-            <dd>{formatDate(user.created_at, i18n.language)}</dd>
-          </div>
-          <div className="flex justify-between gap-4">
-            <dt className="text-muted-foreground">{t("users.lastLogin")}</dt>
-            <dd>
-              {user.last_login_at
-                ? formatDate(user.last_login_at, i18n.language)
-                : t("common.never")}
-            </dd>
-          </div>
-        </dl>
+      if (local) {
+        const desired = new Set(projects.map(project => project.id));
+        for (const id of [...savedProjects.current]) if (!desired.has(id)) {
+          await setProjectMember(id, user.id, false);
+          savedProjects.current.delete(id);
+          setPartial(true);
+        }
+        for (const id of desired) if (!savedProjects.current.has(id)) {
+          await setProjectMember(id, user.id, true);
+          savedProjects.current.add(id);
+          setPartial(true);
+        }
+      }
+      return savedAccount.current;
+    },
+    onSuccess: updated => { toast.success(t("users.updated")); onUpdated(updated); },
+    onError: () => setPartial(true),
+    onSettled: refresh,
+  });
+  return <EntitySheet open width="md" returnFocusRef={returnFocusRef} title={t("users.editTitle")} eyebrow={`${t("users.user")} / ${user.username}`}
+    description={t("users.editDescription")} closeDisabled={mutation.isPending}
+    onOpenChange={open => { if (!mutation.isPending) onOpenChange(open); }}
+    footer={<><Button variant="outline" disabled={mutation.isPending} onClick={() => onOpenChange(false)}>{t("common.cancel")}</Button>
+      <Button type="submit" form="edit-user" disabled={!changed || !valid || mutation.isPending}>{mutation.isPending ? t("common.saving") : t("common.save")}</Button></>}>
+    <form id="edit-user" className="grid gap-5" onSubmit={event => { event.preventDefault(); if (changed && valid && !mutation.isPending) mutation.mutate(); }}>
+      {mutation.error && <div className="grid gap-2">{partial && <p role="status" className="text-sm">{t("accountForm.partialSave")}</p>}<ErrorNotice error={mutation.error} /></div>}
+      <Field label={t("common.role")}><Select disabled={!local || mutation.isPending} value={role} onValueChange={value => { setRole(value as IdentityRole); if (value === "admin") setProjects([]); }}>
+        <SelectTrigger><SelectValue /></SelectTrigger><SelectContent>
+          <SelectItem value="user">{t("common.member")}</SelectItem><SelectItem value="admin">{t("common.admin")}</SelectItem>
+        </SelectContent></Select></Field>
+      <div className="flex items-start justify-between gap-4">
+        <div><p className="text-sm font-medium">{t("users.activeAccount")}</p><p className="mt-1 text-xs text-muted-foreground">{t("users.activeHint")}</p></div>
+        <Switch checked={enabled} disabled={mutation.isPending} onCheckedChange={setEnabled} aria-label={t("users.activeAccount")} />
       </div>
-    </EntitySheet>
-  );
+      {local ? <>
+        <PasswordPolicyNotice query={policy} />
+        <AccountPasswordField label={t("users.newPasswordOptional")} optional value={password} onChange={setPassword} policy={policy.data} disabled={mutation.isPending} />
+        {role === "user" ? <ProjectSelection value={projects} onChange={setProjects} disabled={mutation.isPending} /> : <p className="text-sm text-muted-foreground">{t("accountForm.adminHint")}</p>}
+      </> : <section className="grid gap-3">
+        <p className="text-sm text-muted-foreground">{t("users.ssoHint")}</p>
+        <h3 className="text-sm font-medium">{t("users.projects")}</h3>
+        <ul className="divide-y">{detail.projects.items.map(project => <li key={project.id} className="py-2 text-sm">{project.name}</li>)}</ul>
+        {!detail.projects.items.length && <p className="text-sm">{t("users.noProjects")}</p>}
+      </section>}
+      <dl className="grid gap-2 border-t pt-4 text-xs">
+        <div className="flex justify-between gap-4"><dt className="text-muted-foreground">{t("users.created")}</dt><dd>{formatDate(user.created_at, i18n.language)}</dd></div>
+        <div className="flex justify-between gap-4"><dt className="text-muted-foreground">{t("users.lastLogin")}</dt><dd>{user.last_login_at ? formatDate(user.last_login_at, i18n.language) : t("common.never")}</dd></div>
+      </dl>
+    </form>
+  </EntitySheet>;
 }
 
 function Field({

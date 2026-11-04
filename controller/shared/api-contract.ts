@@ -15,12 +15,13 @@ export const apiTags = [
   ['models', 'Platform Settings', 'Registered Model definitions, connection tests and capability tests.'],
   ['model-configurations', 'Platform Settings', 'Model assignments, validation evidence and activation.'],
   ['runners', 'Platform Settings', 'Runner capacity and instance lifecycle.'],
+  ['projects', 'Platform Settings', 'Project creation, membership, Runner configuration and group assignment.'],
   ['project-groups', 'Platform Settings', 'Administrator-managed project groups and their allocated Runner pools.'],
   ['system', 'Platform Settings', 'Component health, software identities and public runtime readiness.'],
 ].map(([name, area, description]) => ({ name: name!, description: description!, 'x-product-area': area! }));
 
 export function operationContract(method: string, path: string) {
-  const tag = path.includes('/project-groups') || path.startsWith('/api/v1/projects') || /\/runner-pools\/:id\/(group|connectivity)$/.test(path) ? 'project-groups'
+  const tag = path.startsWith('/api/v1/projects') ? 'projects' : path.includes('/project-groups') || /\/runner-pools\/:id\/(group|connectivity)$/.test(path) ? 'project-groups'
     : path.startsWith('/api/v1/users/') ? 'account'
     : path.includes('/access-tokens') ? 'access-tokens' : path.includes('/account/') ? 'account'
     : path.includes('/authoring/') ? 'authoring' : path.includes('/playground/') ? 'playground'

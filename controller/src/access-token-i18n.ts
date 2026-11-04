@@ -14,7 +14,10 @@ export const accessTokensEn = {
   "emptyDescription": "Create a separate token for each integration and select only the permissions it needs.",
   "revoked": "Revoked",
   "expired": "Expired",
-  "scope": "Scope: authorized resources in the token's project or platform workspace",
+  "scope": "Scope: authorized resources in the token’s bound project, including explicit shares.",
+  "adminScope": "Platform resources use their own permissions. Reading project resources requires X-Project-ID on every request; business resources are read only.",
+  "noEffectivePermissions": "No active permissions. Create a new token with the required resource permissions.",
+  "adminReadDescription": "Read this resource in the project specified by X-Project-ID. Creation, changes and deletion are unavailable.",
   "fixedProject": "Bound to project {{project}}. Switching projects will not change this token's scope.",
   "createdAt": "Created: ",
   "expiresAt": "Expires: ",
@@ -27,9 +30,9 @@ export const accessTokensEn = {
   "name": "Name",
   "namePlaceholder": "e.g. CI deployment",
   "expiration": "Expiration",
-  "permissionsTitle": "Module permissions",
+  "permissionsTitle": "Resource permissions",
   "permissionsDescription": "Access covers all resources in each selected module, including future resources. Read and write includes creation, changes, publication and deletion.",
-  "readOnlyHint": "Your tokens can access Guardrail design and integrations. Platform settings, Runner management and audit logs require an administrator.",
+  "readOnlyHint": "Your tokens can access project workflows and read Provider metadata and model configuration. Project administration, Provider changes, Runner management and audit logs require an administrator.",
   "noAccess": "No access",
   "selectPermissionHint": "Select at least one module permission.",
   "issuedTitle": "Token created",
@@ -71,8 +74,8 @@ export const accessTokensEn = {
       "description": "Read models; read and write access can run interactions"
     },
     "models": {
-      "name": "Model configuration",
-      "description": "Models, providers and configuration activation"
+      "name": "Models",
+      "description": "Model definitions and connection tests. Administrators manage platform Models; project Models are read only."
     },
     "runners": {
       "name": "Runners",
@@ -82,7 +85,11 @@ export const accessTokensEn = {
       "name": "Runtime logs",
       "description": "Runtime events, traffic metrics and captured content (read only)"
     },
-    "settings": { "name": "Platform settings", "description": "Provider management, model assignments and platform configuration" },
+    "projects": { "name": "Projects", "description": "Project list and creation, membership, Runner configuration and group assignment" },
+    "projectGroups": { "name": "Project groups", "description": "Groups, allocated Runner pools and admission monitoring" },
+    "providers": { "name": "Providers", "description": "Provider connections, credentials, discovery and combined model registration" },
+    "modelConfiguration": { "name": "Model configuration", "description": "Model assignments, validation and activation for platform defaults and project groups" },
+    "modelPricing": { "name": "Model pricing", "description": "Pricing catalog and model pricing rules" },
     "audit": {
       "name": "Audit log",
       "description": "System activity records (read only)"
@@ -102,7 +109,10 @@ export const accessTokensZh: typeof accessTokensEn = {
   "emptyDescription": "为每个集成创建独立的 Token，仅选择它需要的权限。",
   "revoked": "已撤销",
   "expired": "已过期",
-  "scope": "范围：Token 所属项目或平台工作区内的已授权资源",
+  "scope": "范围：Token 绑定项目的已授权资源，包含明确共享给该项目的资源。",
+  "adminScope": "平台资源按实体分别授权。读取项目资源时，每次请求必须传入 X-Project-ID；业务资源仅限只读。",
+  "noEffectivePermissions": "没有有效权限。请按所需资源权限创建新的 Token。",
+  "adminReadDescription": "读取 X-Project-ID 指定项目中的该类资源；不允许创建、修改或删除。",
   "fixedProject": "固定绑定项目 {{project}}。切换项目不会改变此 Token 的范围。",
   "createdAt": "创建于：",
   "expiresAt": "到期：",
@@ -115,9 +125,9 @@ export const accessTokensZh: typeof accessTokensEn = {
   "name": "名称",
   "namePlaceholder": "例如：CI 发布",
   "expiration": "有效期",
-  "permissionsTitle": "模块权限",
+  "permissionsTitle": "资源权限",
   "permissionsDescription": "范围覆盖所选模块的全部资源，包括未来新增资源。读写包括创建、修改、发布和删除。",
-  "readOnlyHint": "你的令牌可以访问 Guardrail 设计、集成和运行观测功能。平台设置、Runner 管理和审计日志需要管理员权限。",
+  "readOnlyHint": "你的令牌可访问项目工作流，并读取提供商信息与模型配置。项目管理、提供商修改、Runner 管理和审计日志需要管理员权限。",
   "noAccess": "无权限",
   "selectPermissionHint": "至少选择一个模块权限。",
   "issuedTitle": "Token 已创建",
@@ -159,8 +169,8 @@ export const accessTokensZh: typeof accessTokensEn = {
       "description": "读取模型；读写权限可运行交互"
     },
     "models": {
-      "name": "模型配置",
-      "description": "模型、提供商与配置发布"
+      "name": "模型",
+      "description": "模型定义与连接测试。管理员管理平台模型，项目模型仅限只读。"
     },
     "runners": {
       "name": "Runners",
@@ -170,7 +180,11 @@ export const accessTokensZh: typeof accessTokensEn = {
       "name": "运行日志",
       "description": "运行事件、流量指标与调用内容（只读）"
     },
-    "settings": { "name": "平台设置", "description": "提供商管理、模型分配和平台配置" },
+    "projects": { "name": "项目", "description": "项目列表与创建、成员管理、Runner 配置和项目组分配" },
+    "projectGroups": { "name": "项目组", "description": "项目组、已分配的 Runner 池和准入监控" },
+    "providers": { "name": "提供商", "description": "提供商连接、凭据、模型发现与联合注册" },
+    "modelConfiguration": { "name": "模型配置", "description": "平台默认配置与项目组的模型分配、验证和启用" },
+    "modelPricing": { "name": "模型定价", "description": "定价目录和模型价格规则" },
     "audit": {
       "name": "审计日志",
       "description": "系统操作记录（只读）"

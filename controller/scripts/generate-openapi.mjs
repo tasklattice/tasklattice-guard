@@ -9,9 +9,9 @@ import { z } from 'zod';
 import { apiTags, operationContract } from '../shared/api-contract.ts';
 import SwaggerParser from '@apidevtools/swagger-parser';
 import { GUARD_AUTH_COOKIE_PREFIX } from '../server/auth.ts';
-import { requiredAccountPermission, tokenRoutePermissions } from '../server/http/token-permissions.ts';
+import { adminProjectScope, requiredAccountPermission, tokenRoutePermissions } from '../server/http/token-permissions.ts';
 import { accountRoles, hasPermission } from '../shared/rbac.ts';
-import { createProjectSchema } from '../shared/projects.ts';
+import { projectIdSchema, createProjectSchema } from '../shared/projects.ts';
 import { createAccessTokenSchema } from '../shared/access-tokens.ts';
 import { assignmentInputSchema, modelConfigurationInputSchema, modelRuntimeSettingsInputSchema } from '../server/model-config/domain.ts';
 import { MAX_DOCUMENTS, MAX_DOCUMENT_BYTES, MAX_TOTAL_BYTES } from '../server/control-plane-ai/document-ingestion.ts';
@@ -141,18 +141,26 @@ try {
     const sessionOnly = middleware.includes('accountSession') || middleware.includes('browserSession'); const authenticated = middleware.includes('authenticated');
     const sharingRoute = path.startsWith('/api/v1/account/shares') || path === '/api/v1/account/shareable-resources' || path === '/api/v1/account/share-recipients';
     assert(!authenticated || permission || sessionOnly || path === '/api/v1/account/identity', `Missing token policy: ${method} ${path}`);
-    const platformDefault = method === 'POST' && /^\/api\/v1\/guardrails\/:(?:id|guardrailId)\/(?:test-runs|publish|versions\/:version\/(?:test-runs|release|environment-check))$/.test(path);
     const accountPermission = requiredAccountPermission(method, path);
-    const allowedRoles = middleware.includes('projectAdministrator') ? ['admin'] : middleware.includes('projectUser') || sharingRoute ? ['user'] : platformDefault ? ['admin', 'user'] : accountPermission ? accountRoles.filter(role => hasPermission(role, accountPermission.resource, accountPermission.action)) : [...accountRoles];
+    const allowedRoles = middleware.includes('projectAdministrator') ? ['admin'] : middleware.includes('projectUser') || sharingRoute ? ['user'] : accountPermission ? accountRoles.filter(role => hasPermission(role, accountPermission.resource, accountPermission.action)) : [...accountRoles];
     const role = allowedRoles.length === 1 ? allowedRoles[0] : 'user';
     const operation = { operationId:id, summary: `${method} ${template}`, tags:[sessionOnly || path==='/api/v1/account/identity' ? 'Account' : permission?.[2] ?? 'System'],
-      description: permission ? `${platformDefault ? 'For Default, requires the admin role and runners:write instead. For project Guardrails, requires the user role. ' : ''}Requires ${permission[2]}:${permission[3]} for personal access tokens. ${permission[3]==='write' ? 'Write includes read access; account role restrictions still apply. ' : ''}Allowed account roles: ${allowedRoles.join(', ')}. Token access is capped by the authenticated account role and project ownership or explicit sharing.` : sessionOnly ? sharingRoute ? 'Project user browser session only. Read-only sharing grants are scoped to the authenticated project; personal access tokens cannot manage shares.' : 'Browser session only. Personal access tokens cannot manage credentials. Ownership is taken from the authenticated session.' : path==='/api/v1/account/identity' ? 'Returns the authenticated identity, project and token permissions. Effective permissions are capped by the current account role.' : 'Public system health information; no credential is required.',
+      description: permission ? `Requires ${permission[2]}:${permission[3]} for personal access tokens. ${permission[3]==='write' ? 'Write includes read access; account role restrictions still apply. ' : ''}Allowed account roles: ${allowedRoles.join(', ')}. Token access is capped by the authenticated account role and project ownership or explicit sharing.` : sessionOnly ? sharingRoute ? 'Project user browser session only. Read-only sharing grants are scoped to the authenticated project; personal access tokens cannot manage shares.' : 'Browser session only. Personal access tokens cannot manage credentials. Ownership is taken from the authenticated session.' : path==='/api/v1/account/identity' ? 'Returns the authenticated identity, project and token permissions. Effective permissions are capped by the current account role.' : 'Public system health information; no credential is required.',
       security: authenticated ? sessionOnly ? [{sessionCookie:[]}] : [{personalAccessToken:[]},{sessionCookie:[]}] : [],
       ...(permission ? {'x-token-permission':{module:permission[2],access:permission[3]}} : {}),
       'x-account-role':role, 'x-account-roles':allowedRoles, ...(permission ? {'x-token-account-role':role} : {}), 'x-source':`server/http/app.ts#${source.getLineAndCharacterOfPosition(route.handler.pos).line+1}`,
       parameters:[], responses:{} };
     const semantics = operationContract(method, path);
     Object.assign(operation, semantics, { description: `${semantics.description} ${operation.description}` });
+    const projectScope = adminProjectScope(method, path);
+    if (projectScope) {
+      operation['x-admin-project-scope'] = projectScope;
+      const description = projectScope === 'required'
+        ? 'Administrators must send X-Project-ID for every request (including detail reads); missing/invalid selection returns 400, unknown project or resource outside it returns 404. Only resources owned by that project are returned. Project user tokens use their persisted project; the header cannot change it.'
+        : 'Administrators read platform Models/configuration without this header. X-Project-ID selects a project read-only; unknown projects return 404. Project user tokens use their persisted project.';
+      operation.description += ` ${description} The projectId query parameter is not a project selector.`;
+      operation.parameters.push({ name: 'X-Project-ID', in: 'header', required: false, 'x-required-for-roles': projectScope === 'required' ? ['admin'] : [], schema: inputSchema(projectIdSchema, 'ProjectSelection'), description });
+    }
     for (const match of path.matchAll(/:([^/]+)/g)) operation.parameters.push({name:match[1],in:'path',required:true,schema:{type:'string'}});
     for (const parser of route.parsers) {
       const schema = inputs[parser.key];

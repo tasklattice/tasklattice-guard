@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { accountPermission } from "./rbac.js";
 
-export const tokenModules = ["guardrails", "routers", "endpoints", "policies", "playground", "models", "runners", "runtime", "audit", "settings"] as const;
+export const tokenModules = ["projects", "projectGroups", "providers", "models", "modelConfiguration", "modelPricing", "runners", "guardrails", "routers", "endpoints", "policies", "playground", "runtime", "audit"] as const;
 export type TokenModule = typeof tokenModules[number];
 export type TokenPermissions = Partial<Record<TokenModule, "read" | "write" | undefined>>;
 export const readOnlyTokenModules: readonly TokenModule[] = ["runtime", "audit"];
@@ -9,7 +9,8 @@ const access = z.enum(["read", "write"]).optional();
 export const tokenPermissionsSchema = z.strictObject({
   guardrails: access, routers: access, endpoints: access, policies: access,
   playground: access, models: access, runners: access,
-  runtime: z.literal("read").optional(), audit: z.literal("read").optional(), settings: access,
+  runtime: z.literal("read").optional(), audit: z.literal("read").optional(),
+  providers: access, modelConfiguration: access, modelPricing: access, projects: access, projectGroups: access,
 }).refine(value => Object.values(value).some(Boolean), "Select at least one module permission.");
 export const createAccessTokenSchema = z.strictObject({
   name: z.string().trim().min(1).max(100),
@@ -26,8 +27,16 @@ export function accountModuleAccess(role: string | null | undefined, module: Tok
   return accountPermission(role, module);
 }
 
+/** Retired or unknown grants never acquire authority through a replacement module. */
+export function supportedTokenPermissions(permissions: TokenPermissions): TokenPermissions {
+  return Object.fromEntries(tokenModules.flatMap(module => {
+    const grant = permissions[module];
+    return grant === "read" || grant === "write" ? [[module, grant]] : [];
+  }));
+}
+
 export function effectiveTokenPermissions(permissions: TokenPermissions, role: string): TokenPermissions {
-  return Object.fromEntries(Object.entries(permissions).flatMap(([module, grant]) => {
+  return Object.fromEntries(Object.entries(supportedTokenPermissions(permissions)).flatMap(([module, grant]) => {
     const maximum = accountModuleAccess(role, module as TokenModule);
     return grant && maximum ? [[module, maximum === "read" ? "read" : grant]] : [];
   }));

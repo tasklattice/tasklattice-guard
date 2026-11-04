@@ -42,7 +42,7 @@ Policy Studio 将 Detector 组合为可复用的 Policy。Detector 负责检测�
 | `model/grounding` | 仅 Output | 根据用户问题和参考资料检查回答。 |
 | `service/formal-verification` | 仅 Output | 根据外部服务中的形式化策略版本检查回答。 |
 
-模型分类、事实依据检查和形式验证使用[检测器目录](/settings/guardrail-catalog)中已激活的能力绑定。缺少绑定或服务调用失败会导致测试失败。模型地址与凭据保留在环境配置中。
+模型分类、事实依据检查和形式验证使用[防护能力](/settings/protection-capabilities)中已激活的能力绑定。缺少绑定或服务调用失败会导致测试失败。模型地址与凭据保留在环境配置中。
 
 两类 `agent/` Detector 已出现在表单中，但当前 Studio 尚不能完成其外部内容来源的验收。请先使用已发布的预置 Policy。再到 Guardrail 中验证实际场景。
 
@@ -138,7 +138,7 @@ Rule 按顺序执行。后续 Rule 读取前一条 Rule 处理后的文本。阻
 
 1. 在[模型提供商](/settings/providers)中注册自定义 Provider，填写服务地址与凭据。
 2. 在[模型](/settings/models)中注册对应 Model，协议选择 `tali.automated-reasoning.v1`。
-3. 在[检测器目录](/settings/guardrail-catalog)的 **Output → 自动推理** 中选择该 Model。
+3. 在[防护能力](/settings/protection-capabilities)的 **Output → 自动推理** 中选择该 Model。
 4. 选择验证，填写服务中已有的策略 ID、版本、阈值和用户问题。
 5. 提供结果已知且互不相同的有效回答与无效回答。
 6. 检查两条样例的实际结果。通过后保存绑定。再激活配置。

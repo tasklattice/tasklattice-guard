@@ -34,7 +34,7 @@ describe("i18n source boundary", () => {
     const { default: i18n } = await import("./i18n");
     const zh = i18n.getFixedT("zh-CN");
     expect(zh("nav.providers")).toBe("模型提供商");
-    expect(zh("nav.guardrailCatalog")).toBe("检测器目录");
+    expect(zh("nav.guardrailCatalog")).toBe("防护能力");
     expect(zh("nav.runner")).toBe("执行节点");
     expect(zh("nav.guardrailDesign")).toBe("护栏设计");
     expect(zh("modelSettings.capabilityColumn")).toBe("检测能力");
@@ -206,7 +206,7 @@ describe("Provider registration translation contract", () => {
       const translated = zh[key] ?? zh[baseKey(key)]!;
       const parameters = (text: string) => [...text.matchAll(/{{\s*([\w]+)\s*}}/g)].map(match => match[1]).sort();
       expect(parameters(translated), key).toEqual(parameters(en[key]!));
-      expect(translated, key).not.toMatch(/\bProvider\b|Guardrail Catalog/);
+      expect(translated, key).not.toMatch(/\bProvider\b|Guardrail Catalog|Protection Capabilities/);
     }
   });
 });

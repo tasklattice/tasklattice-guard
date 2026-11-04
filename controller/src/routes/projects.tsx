@@ -1,7 +1,7 @@
 import { useRef, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
-import { Plus, Search, MoreHorizontal } from "lucide-react";
+import { Plus, Search } from "lucide-react";
 import type { Project } from "../../shared/projects";
 import {
   normalizeProjectName,
@@ -10,13 +10,14 @@ import {
 import { ProjectRunnerConfiguration } from "@/components/project-runner-configuration";
 import { EntitySheet } from "@/components/entity-sheet";
 import { PageHeader, ErrorNotice } from "@/components/product-shell";
-import { DirectoryPicker } from "@/components/directory-picker";
+import { DirectorySelect, type DirectorySelection } from "@/components/directory-select";
+import { queryKeys } from "@/features/query-keys";
+import { toast } from "@/components/ui/notifications";
 import {
   DirectoryPagination,
   useDirectoryPage,
 } from "@/components/directory-pagination";
 import { Button } from "@/components/ui/button";
-import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import {
   Table,
@@ -41,6 +42,7 @@ export function ProjectsPage() {
   const [selected, setSelected] = useState<Project | null>(null);
   const [runnerProject, setRunnerProject] = useState<Project | null>(null);
   const runnerTrigger = useRef<HTMLButtonElement>(null);
+  const membersTrigger = useRef<HTMLButtonElement>(null);
   const [createOpen, setCreateOpen] = useState(false);
   const trigger = useRef<HTMLButtonElement>(null);
   const query = useQuery({
@@ -94,10 +96,7 @@ export function ProjectsPage() {
                   <Button variant="ghost" aria-label={`${t("projects.configureRunner")} · ${project.name}`} onClick={event => { runnerTrigger.current = event.currentTarget; setRunnerProject(project); }}>
                     {t("projects.configureRunner")}
                   </Button>
-                  <DropdownMenu>
-                    <DropdownMenuTrigger asChild><Button variant="ghost" size="icon" aria-label={`${t("common.actions")} · ${project.name}`}><MoreHorizontal aria-hidden="true" /></Button></DropdownMenuTrigger>
-                    <DropdownMenuContent align="end"><DropdownMenuItem onSelect={() => setSelected(project)}>{t("projects.manageLocalUsers")}</DropdownMenuItem></DropdownMenuContent>
-                  </DropdownMenu>
+                  <Button variant="ghost" aria-label={`${t("projects.manageLocalUsers")} · ${project.name}`} onClick={event => { membersTrigger.current = event.currentTarget; setSelected(project); }}>{t("projects.manageLocalUsers")}</Button>
                   </div>
                 </TableCell>
               </TableRow>
@@ -122,7 +121,7 @@ export function ProjectsPage() {
       <p className="mt-3 text-xs">{t("projects.ssoOnlyHint")}</p>
       {runnerProject && <ProjectRunnerConfiguration project={runnerProject} returnFocusRef={runnerTrigger} onClose={() => setRunnerProject(null)} />}
       {selected && (
-        <ProjectMembers project={selected} onClose={() => setSelected(null)} />
+        <ProjectMembers project={selected} returnFocusRef={membersTrigger} onClose={() => setSelected(null)} />
       )}
       {createOpen && (
         <CreateProjectSheet
@@ -140,15 +139,16 @@ export function ProjectsPage() {
 function ProjectMembers({
   project,
   onClose,
+  returnFocusRef,
 }: {
   project: Project;
   onClose: () => void;
+  returnFocusRef: React.RefObject<HTMLButtonElement | null>;
 }) {
   const { t } = useTranslation();
   const client = useQueryClient();
   const control = useDirectoryPage(`members:${project.id}`);
-  const [adding, setAdding] = useState(false);
-  const [candidate, setCandidate] = useState("");
+  const [candidate, setCandidate] = useState<DirectorySelection[]>([]);
   const query = useQuery({
     queryKey: ["project-members", project.id, control.query],
     queryFn: ({ signal }) =>
@@ -157,14 +157,16 @@ function ProjectMembers({
   const change = useMutation({
     mutationFn: ({ userId, enabled }: { userId: string; enabled: boolean }) =>
       setProjectMember(project.id, userId, enabled),
-    onSuccess: async () => {
-      setCandidate("");
-      setAdding(false);
+    onSuccess: async (_result, variables) => {
+      setCandidate([]);
+      toast.success(t(variables.enabled ? "accountForm.memberAdded" : "accountForm.memberRemoved"));
       await Promise.all([
         client.invalidateQueries({ queryKey: ["project-members", project.id] }),
         client.invalidateQueries({ queryKey: ["projects"] }),
+        client.invalidateQueries({ queryKey: queryKeys.users }),
+        client.invalidateQueries({ queryKey: ["user-detail"] }),
         client.invalidateQueries({
-          queryKey: ["picker", `members:${project.id}`],
+          queryKey: ["directory-select", `members:${project.id}`],
         }),
       ]);
     },
@@ -172,6 +174,7 @@ function ProjectMembers({
   return (
     <EntitySheet
       footer={null}
+      returnFocusRef={returnFocusRef}
       open
       onOpenChange={(open) => {
         if (!open && !change.isPending) onClose();
@@ -185,36 +188,24 @@ function ProjectMembers({
       {query.error || change.error ? (
         <ErrorNotice error={query.error ?? change.error} />
       ) : null}
-      <Button variant="outline" onClick={() => setAdding(!adding)}>
-        {t("projects.addMember")}
-      </Button>
-      {adding && (
-        <div className="my-4 grid gap-3">
-          <DirectoryPicker
-            scope={`members:${project.id}`}
-            label={t("projects.chooseUser")}
-            value={candidate}
-            onChange={setCandidate}
-            load={async (q, signal) => {
-              const page = await listMemberCandidates(project.id, q, signal);
-              return { ...page, items: page.items.map(item => ({ id: item.id, name: item.username })) };
-            }}
-          />
-          <Button
-            disabled={!candidate || change.isPending}
-            onClick={() => change.mutate({ userId: candidate, enabled: true })}
-          >
-            {t("projects.addMember")}
-          </Button>
-        </div>
-      )}
-      <Input
-        className="mt-5"
-        aria-label={t("users.search")}
-        placeholder={t("users.search")}
-        value={control.search}
-        onChange={(e) => control.setSearch(e.target.value)}
-      />
+      <section className="grid gap-3" aria-label={t("projects.addMember")}>
+        <h3 className="text-sm font-medium">{t("projects.addMember")}</h3>
+        <DirectorySelect scope={`members:${project.id}`} label={t("accountForm.chooseUser")} value={candidate}
+          onChange={setCandidate} single disabled={change.isPending}
+          load={async (q, signal) => {
+            const page = await listMemberCandidates(project.id, q, signal);
+            return { ...page, items: page.items.map(item => ({ id: item.id, name: item.username })) };
+          }} />
+        <Button className="justify-self-start" disabled={!candidate.length || change.isPending}
+          onClick={() => change.mutate({ userId: candidate[0]!.id, enabled: true })}>
+          {change.isPending ? t("common.saving") : t("projects.addMember")}
+        </Button>
+      </section>
+      <h3 className="mt-8 mb-3 text-sm font-medium">{t("accountForm.assignedUsers")}</h3>
+      {(Boolean(query.data?.items.length) || control.search) && <Input
+        aria-label={t("users.search")} placeholder={t("users.search")} value={control.search}
+        onChange={event => control.setSearch(event.target.value)} />}
+      {!query.isPending && !query.error && !query.data?.items.length && <p className="text-sm text-muted-foreground">{t(control.search ? "users.noResults" : "accountForm.noMembers")}</p>}
       {query.isPending && <p role="status">{t("common.loading")}</p>}
       <ul className="divide-y">
         {query.data?.items.map((member) => (
@@ -241,12 +232,12 @@ function ProjectMembers({
           </li>
         ))}
       </ul>
-      <DirectoryPagination
+      {(control.page.page > 1 || query.data?.nextCursor) && (<DirectoryPagination
         control={control}
         count={query.data?.items.length ?? 0}
         nextCursor={query.data?.nextCursor}
         busy={query.isFetching}
-      />
+      />)}
     </EntitySheet>
   );
 }
@@ -325,6 +316,7 @@ function CreateProjectSheet({
             maxLength={45}
             required
             aria-describedby="project-name-hint"
+            aria-invalid={Boolean(name && !projectNameSchema.safeParse(name).success)}
           />
         </label>
         <p
@@ -333,13 +325,14 @@ function CreateProjectSheet({
         >
           {t("projects.nameHint")}
         </p>
-        {name && (
-          <p className="text-xs font-mono">
-            {projectNameSchema.safeParse(name).success
-              ? `runner-${normalizeProjectName(name)}-0`
-              : t("projects.invalidName")}
-          </p>
-        )}
+        {name && (projectNameSchema.safeParse(name).success ? <div className="project-create-fact">
+          <span>{t("accountForm.projectUrl")}</span>
+          <p>{window.location.origin}/{normalizeProjectName(name)}</p>
+        </div> : <p role="alert" className="text-xs text-destructive">{t("projects.invalidName")}</p>)}
+        <div className="project-create-fact">
+          <span>{t("accountForm.defaultRunner")}</span><p>runner-default</p>
+          <p className="text-xs text-muted-foreground">{t("accountForm.defaultRunnerHint")}</p>
+        </div>
         <label className="grid gap-2 text-sm font-medium">
           {t("projects.newDepartment")}
           <Input

@@ -42,7 +42,7 @@ Each Rule references a versioned detector. Use JSON in **Advanced definition** f
 | `model/grounding` | Output only | Checks an answer against the user query and reference sources. |
 | `service/formal-verification` | Output only | Checks an answer against a versioned formal policy in an external service. |
 
-Model classification, grounding and formal verification use active bindings in the [Guardrail Catalog](/settings/guardrail-catalog). Missing bindings or service failures cause tests to fail. Model addresses and credentials remain in environment configuration.
+Model classification, grounding and formal verification use active bindings in the [Protection Capabilities](/settings/protection-capabilities). Missing bindings or service failures cause tests to fail. Model addresses and credentials remain in environment configuration.
 
 Both `agent/` detectors appear in the form. Studio currently cannot complete their acceptance tests for external content sources. Use published bundled Policies. Test actual scenarios in a Guardrail.
 
@@ -138,7 +138,7 @@ A platform administrator completes the Provider, Model and capability-binding st
 
 1. Register a custom Provider in [Providers](/settings/providers) with the service address and credential.
 2. Register its Model in [Models](/settings/models). Select `tali.automated-reasoning.v1` as the protocol.
-3. Select that Model under **Output → Automated reasoning** in the [Guardrail Catalog](/settings/guardrail-catalog).
+3. Select that Model under **Output → Automated reasoning** in the [Protection Capabilities](/settings/protection-capabilities).
 4. Start validation with an existing service policy ID, version, threshold and user query.
 5. Supply distinct valid and invalid answers with known outcomes.
 6. Inspect both results. After both examples pass, save the binding. Activate the configuration.

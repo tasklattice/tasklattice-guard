@@ -10,19 +10,20 @@ export type AuthorityContext =
 export const accountRoles = ["admin", "user"] as const;
 export type AccountRole = typeof accountRoles[number];
 export type AccessAction = "read" | "write";
-export const permissionResources = ["guardrails", "policies", "playground", "routers", "endpoints", "models", "runners", "runtime", "audit", "settings", "users"] as const;
+export const permissionResources = ["guardrails", "policies", "playground", "routers", "endpoints", "models", "runners", "runtime", "audit", "providers", "modelConfiguration", "modelPricing", "projects", "projectGroups", "users"] as const;
 export type PermissionResource = typeof permissionResources[number];
 
 /** Write includes read. Missing entries deny access. */
 export const rolePermissions: Readonly<Record<AccountRole, Readonly<Partial<Record<PermissionResource, AccessAction>>>>> = {
   admin: {
     guardrails: "read", policies: "read", playground: "read", routers: "read", endpoints: "read",
-    models: "write", runners: "write", settings: "write", users: "write",
+    models: "write", runners: "write", providers: "write", modelConfiguration: "write", modelPricing: "write",
+    projects: "write", projectGroups: "write", users: "write",
     audit: "read",
   },
   user: {
     guardrails: "write", policies: "write", playground: "write", routers: "write", endpoints: "write",
-    models: "write", runtime: "read", runners: "read",
+    models: "write", providers: "read", modelConfiguration: "read", runtime: "read", runners: "read",
   },
 };
 
@@ -40,7 +41,7 @@ export function hasPermission(role: string | null | undefined, resource: Permiss
 }
 
 export function isPlatformAdministrator(role: string | null | undefined): boolean {
-  return hasPermission(role, "settings", "write");
+  return role === "admin";
 }
 
 export function roleHome(role: string | null | undefined): "/settings/providers" | "/" {
@@ -53,7 +54,9 @@ export function pagePermission(pathname: string): { resource: PermissionResource
     return { resource: "runners", action: "read" };
   }
   const routes: ReadonlyArray<readonly [string, PermissionResource, AccessAction]> = [
-    ["/settings", "settings", "read"], ["/access", "users", "read"],
+    ["/settings/providers", "providers", "write"], ["/settings/project-groups", "projectGroups", "read"],
+    ["/access/projects", "projects", "read"], ["/settings/pricing", "modelPricing", "read"],
+    ["/settings", "modelConfiguration", "write"], ["/access", "users", "read"],
     ["/", "runtime", "read"], ["/billing", "runtime", "read"], ["/logs", "runtime", "read"], ["/audit-log", "audit", "read"],
     // Authoring workspaces belong to users; platform configuration retains
     // read access to business metadata without opening these workspaces.

@@ -539,7 +539,7 @@ export const getModelReadiness = () => requestController<import("../../shared/mo
 export const getModelConfiguration = async () => {
   const view = await requestController<ModelConfigurationView>("/api/v1/model-configuration");
   if (!view.draft?.assignments?.bindings) {
-    throw new Error("The Controller is serving a Model configuration with an unsupported schema. Deploy the matching Controller backend before using Guardrail Catalog.");
+    throw new Error("The Controller is serving a Model configuration with an unsupported schema. Deploy the matching Controller backend before using Protection Capabilities.");
   }
   return view;
 };

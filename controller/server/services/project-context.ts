@@ -31,6 +31,11 @@ export function runWithProjectContext<T>(context: ProjectContext, callback: () =
     : { ...context, scope: "project", projectId: context.projectId! }, callback);
 }
 
+/** Explicit administrative inspection keeps project isolation without acquiring user write authority. */
+export function runWithProjectReadContext<T>(projectId: string, actorId: string, callback: () => T): T {
+  return requestProject.run({ scope: "project", projectId, actorId, role: "admin" }, callback);
+}
+
 export function currentProjectId(): string | null {
   const context = requestProject.getStore();
   if (context?.scope === "user") throw new ControllerError("Project authority is required for this resource.", 403, "project_required");
@@ -123,7 +128,7 @@ export function resourceReadPredicate(
 ): SQL | undefined {
   const projectId = currentProjectId();
   if (!projectId) return undefined;
-  const access = or(
+  const access = currentAccountRole() === "admin" ? eq(ownerColumn, projectId) : or(
     eq(ownerColumn, projectId),
     // Match the current owner too, so a stale grant cannot follow a moved ID.
     sql`exists (select 1 from ${resourceShares}
@@ -176,6 +181,7 @@ export async function assertResourceReadAccess(db: ControllerDatabase, kind: Sha
   const ownerProjectId = await resourceOwner(db, kind, id);
   if (!ownerProjectId) throw new NotFoundError(kind, id);
   if (ownerProjectId === projectId) return;
+  if (currentAccountRole() === "admin") throw new NotFoundError(kind, id);
   const [grant] = await db.select({ id: resourceShares.id }).from(resourceShares).where(and(
     eq(resourceShares.ownerProjectId, ownerProjectId),
     eq(resourceShares.recipientProjectId, projectId),

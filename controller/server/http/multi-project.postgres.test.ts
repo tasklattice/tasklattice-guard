@@ -1,7 +1,7 @@
 import { seedTestProjects } from "../db/postgres-test-database.js";
 // @vitest-environment node
-import { randomUUID } from "node:crypto";
-import { readFileSync } from "node:fs";
+import { generateKeyPairSync, randomUUID } from "node:crypto";
+import { readFileSync, writeFileSync, rmSync } from "node:fs";
 import { resolve } from "node:path";
 
 import { eq } from "drizzle-orm";
@@ -19,12 +19,14 @@ import { ProjectService } from "../services/projects.js";
 import { AccessTokenService } from "../services/access-tokens.js";
 import { ControlPlaneService } from "../services/control-plane.js";
 import { ProjectShareService } from "../services/project-shares.js";
+import { emptyPolicyDefinition } from "../../shared/policy-definition.js";
 import { createHttpApp } from "./app.js";
 
 const url = process.env.GUARD_TEST_POSTGRES_URL;
 
 describe.skipIf(!url)("multi-project password authentication and sharing in PostgreSQL", () => {
   const namespace = `guard_projects_${randomUUID().replaceAll("-", "")}`;
+  const signingKey = `/tmp/${namespace}.pem`;
   const fixtureEndpoint = (projectId: string) => `fixture-endpoint-${projectId}`;
   let admin: Pool;
   let pool: Pool;
@@ -42,6 +44,7 @@ describe.skipIf(!url)("multi-project password authentication and sharing in Post
       await pool.query(migration(`${tag}.sql`).replaceAll('"public".', `"${namespace}".`));
     }
     await seedTestProjects(pool);
+    writeFileSync(signingKey, generateKeyPairSync("ed25519").privateKey.export({ format: "pem", type: "pkcs8" }), { mode: 0o600 });
     // Match a bootstrapped deployment: Endpoint responses resolve a project's
     // Runner group against its registered pool before returning distribution.
     await pool.query("INSERT INTO runner_pool (id, name) VALUES ('default', 'Default')");
@@ -53,7 +56,7 @@ describe.skipIf(!url)("multi-project password authentication and sharing in Post
       CONTROLLER_HTTP_HOST: "127.0.0.1",
       CONTROLLER_PUBLIC_URL: "http://localhost:8080",
       CONTROLLER_RUNNER_TOKEN: "runner-token-that-is-at-least-32-characters",
-      CONTROLLER_ARTIFACT_SIGNING_KEY_PATH: "/tmp/controller-signing-key.pem",
+      CONTROLLER_ARTIFACT_SIGNING_KEY_PATH: signingKey,
       CONTROLLER_POLICY_CATALOG_DIR: resolve("../runner/toolkit/policy_library/assets"),
       BETTER_AUTH_SECRET: "better-auth-secret-that-is-at-least-32-characters",
     });
@@ -72,6 +75,7 @@ describe.skipIf(!url)("multi-project password authentication and sharing in Post
       });
     }
     const service = new ControlPlaneService(db, config);
+    await service.initialize();
     app = createHttpApp({
       config,
       auth,
@@ -85,6 +89,7 @@ describe.skipIf(!url)("multi-project password authentication and sharing in Post
   });
 
   afterAll(async () => {
+    rmSync(signingKey, { force: true });
     await pool?.end();
     await admin?.query(`DROP SCHEMA IF EXISTS "${namespace}" CASCADE`);
     await admin?.end();
@@ -201,6 +206,59 @@ describe.skipIf(!url)("multi-project password authentication and sharing in Post
       { kind: "resource.share_revoked", project_id: "projectA" },
     ]);
   });
+
+  it("issues administrator entity tokens and isolates list/detail reads to the explicit project", async () => {
+    await auth.api.createUser({ body: { email: "scope-admin@test.example", password: "test-password-only", name: "Scope admin", role: "admin", data: { username: "scope-admin" } } });
+    const login = await app.request("/api/auth/sign-in/username", { method: "POST", headers: { "content-type": "application/json", origin: "http://localhost:8080" }, body: JSON.stringify({ username: "scope-admin", password: "test-password-only" }) });
+    const cookie = login.headers.get("set-cookie")!.match(/tali-guard\.session_token=[^;]+/)![0];
+    const issue = async (permissions: Record<string, string>) => app.request("/api/v1/account/access-tokens", { method: "POST", headers: { cookie, "content-type": "application/json", origin: "http://localhost:8080" }, body: JSON.stringify({ name: "Entity access", expiresInDays: 7, permissions }) });
+    expect((await issue({ settings: "write" })).status).toBe(400);
+    expect((await issue({ guardrails: "write" })).status).toBe(403);
+    const issued = await issue({ guardrails: "read", routers: "read", endpoints: "read", policies: "read", projects: "write" });
+    expect(issued.status).toBe(201);
+    const { secret } = await issued.json();
+    const headers = { authorization: `Bearer ${secret}`, "content-type": "application/json" };
+    const request = (path: string, project?: string, method = "GET", body?: unknown) => app.request(`/api/v1${path}`, { method,
+      headers: { ...headers, ...(project === undefined ? {} : { "x-project-id": project }) }, ...(body === undefined ? {} : { body: JSON.stringify(body) }) });
+    for (const project of ["projectA", "projectB"]) {
+      await pool.query("INSERT INTO guardrail (id,project_id,name,draft_config) VALUES ($1,$2,$1,'{}')", [`scoped-guard-${project}`, project]);
+      await pool.query("INSERT INTO traffic_router (id,project_id,name,draft) VALUES ($1,$2,$1,$3)", [`scoped-router-${project}`, project, { routes: [] }]);
+      const definition = emptyPolicyDefinition(); definition.metadata.id = `scoped-policy-${project}`; definition.metadata.name = `${project} policy`;
+      await pool.query("INSERT INTO policy_resource (id,project_id,definition,maintainer) VALUES ($1,$2,$3,'fixture')", [definition.metadata.id, project, definition]);
+    }
+    // Even an explicit share must not widen administrative inspection beyond the selected owner project.
+    await pool.query("INSERT INTO resource_share(id,owner_project_id,recipient_project_id,resource_type,resource_id) VALUES ('admin-inspection-share','projectA','projectB','endpoint',$1)", [fixtureEndpoint("projectA")]);
+    try {
+      for (const path of ["/guardrails", "/routers", "/endpoints", "/policies"]) {
+        expect((await request(path)).status).toBe(400);
+        expect((await request(path, "missing")).status).toBe(404);
+        const response = await request(path, "projectB");
+        expect(response.status, path).toBe(200);
+        const data = await response.json();
+        expect(data.items.some((item: { id: string }) => item.id.endsWith("projectA")), path).toBe(false);
+        expect(data.items.some((item: { id: string }) => item.id.endsWith("projectB")), path).toBe(true);
+      }
+      for (const path of ["/guardrails/scoped-guard-projectA", "/routers/scoped-router-projectA", `/endpoints/${fixtureEndpoint("projectA")}`, "/policies/scoped-policy-projectA/definition"]) {
+        expect((await request(path, "projectB")).status, path).toBe(404);
+        expect((await request(path, "projectA")).status, path).toBe(200);
+      }
+      expect((await request("/guardrails/scoped-guard-projectB", "projectB", "PATCH", { name: "forbidden" })).status).toBe(403);
+      expect((await request("/projects")).status).toBe(200);
+      const created = await request("/projects", undefined, "POST", { name: "token-managed-project" });
+      expect(created.status).toBe(201);
+      const memberId = (await pool.query("SELECT id FROM auth_user WHERE username='fixture-projectb'")).rows[0].id;
+      const path = `/projects/token-managed-project/members/${memberId}`;
+      expect((await request(path, undefined, "PUT")).status).toBe(204);
+      expect((await (await request("/projects/token-managed-project/members")).json()).items).toContainEqual(expect.objectContaining({ userId: memberId }));
+      expect((await request(path, undefined, "DELETE")).status).toBe(204);
+      expect((await (await request("/projects/token-managed-project/members")).json()).items).toEqual([]);
+      expect((await request("/users")).status).toBe(403);
+      const audit = await pool.query("SELECT detail FROM audit_event WHERE kind='access_token.request' AND detail->>'route'='/api/v1/projects'");
+      expect(audit.rows).toContainEqual({ detail: expect.objectContaining({ method: "POST", status: 201 }) });
+    } finally {
+      await pool.query("DELETE FROM resource_share WHERE id='admin-inspection-share'");
+    }
+  }, 30_000);
 
   it("switches only to member projects and keeps personal credentials bound to their issued project", async () => {
     const login = await app.request("/api/auth/sign-in/username", { method: "POST", headers: { "content-type": "application/json", origin: "http://localhost:8080" },

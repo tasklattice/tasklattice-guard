@@ -292,7 +292,7 @@ input/output call-version pinning.
 
 ### Topic Control Rail validation diagnostics
 
-When **Guardrail Catalog → Topic Control → Validate** fails, Runner emits
+When **Protection Capabilities → Topic Control → Validate** fails, Runner emits
 `rail_validation_case_failed` and `rail_validation_model_exchange` JSON events
 at WARNING level. Filter Runner container logs by `validation_id` or `case_id`.
 The latter events contain the model/profile, method, URL, actual request body

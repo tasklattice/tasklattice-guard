@@ -269,7 +269,7 @@ function ConfigurationForm({
             {!reviewedCatalog || !sources.length ? (
               <p role="status">
                 {catalogPending ? copy.loading : copy.modelsNoSource}{" "}
-                <Link to="/settings/guardrail-catalog">
+                <Link to="/settings/protection-capabilities">
                   {copy.modelsSettings}
                 </Link>
               </p>

@@ -35,13 +35,13 @@ describe("ControlPlaneSidebar", () => {
     render(<SidebarProvider><TooltipProvider><ControlPlaneSidebar /></TooltipProvider></SidebarProvider>);
     const expected = {
       Providers: "/settings/providers",
-      Models: "/settings/models", "Guardrail Catalog": "/settings/guardrail-catalog",
+      Models: "/settings/models", "Protection Capabilities": "/settings/protection-capabilities",
       Health: "/settings/health", Runner: "/settings/runner", Version: "/settings/version",
       Projects: "/access/projects", "Users": "/access", "Audit log": "/audit-log",
     };
     for (const [label, path] of Object.entries(expected)) expect(screen.getByRole("link", { name: label }).getAttribute("href")).toBe(path);
     const groups = {
-      "Models & detection": ["Providers", "Models", "Guardrail Catalog"],
+      "Models & detection": ["Providers", "Models", "Protection Capabilities"],
       "Platform operations": ["Runner", "Health", "Audit log", "Version"],
       "People & projects": ["Users", "Projects"],
     };
@@ -61,7 +61,7 @@ describe("ControlPlaneSidebar", () => {
     identity.role = "user";
     render(<SidebarProvider><TooltipProvider><ControlPlaneSidebar /></TooltipProvider></SidebarProvider>);
     for (const name of ["Guardrails", "Playground", "Policy Library", "Routers", "Endpoints", "Runtime logs", "Billing", "Settings", "Documentation"]) expect(screen.getByRole("link", { name })).toBeTruthy();
-    for (const name of ["Sharing", "Runner", "Health", "Models", "Providers", "Guardrail Catalog", "Project runtime groups", "Version", "Users", "Audit log"]) expect(screen.queryByRole("link", { name })).toBeNull();
+    for (const name of ["Sharing", "Runner", "Health", "Models", "Providers", "Protection Capabilities", "Project runtime groups", "Version", "Users", "Audit log"]) expect(screen.queryByRole("link", { name })).toBeNull();
     expect(screen.getByRole("link", { name: "TaskLattice Guard" }).getAttribute("href")).toBe("/projectA");
     expect(screen.getByRole("link", { name: "Runtime logs" }).getAttribute("href")).toBe("/projectA/logs");
     const observability = screen.getByText("Runtime observability").closest('[data-sidebar="group"]') as HTMLElement;
@@ -100,14 +100,14 @@ describe("ControlPlaneSidebar", () => {
     expect(screen.getByRole("link", { name: "Providers" })).toBeTruthy();
     await act(async () => { await i18n.changeLanguage("zh-CN"); });
     for (const name of ["模型与检测", "平台运行", "人员与项目"]) expect(screen.getByText(name)).toBeTruthy();
-    const paths = { "模型提供商": "/settings/providers", "检测器目录": "/settings/guardrail-catalog", "健康": "/settings/health", "执行节点": "/settings/runner", "版本": "/settings/version" };
+    const paths = { "模型提供商": "/settings/providers", "防护能力": "/settings/protection-capabilities", "健康": "/settings/health", "执行节点": "/settings/runner", "版本": "/settings/version" };
     for (const [name, path] of Object.entries(paths)) expect(screen.getByRole("link", { name }).getAttribute("href")).toBe(path);
-    for (const name of ["Providers", "Provider", "Guardrail Catalog", "Runner"]) expect(screen.queryByRole("link", { name })).toBeNull();
+    for (const name of ["Providers", "Provider", "Protection Capabilities", "Runner"]) expect(screen.queryByRole("link", { name })).toBeNull();
     const rail = document.querySelector('[data-sidebar="rail"]');
     fireEvent.click(screen.getAllByRole("button", { name: "展开或收起导航" }).find(button => button !== rail)!);
     for (const name of Object.keys(paths)) expect(screen.getByRole("link", { name }).getAttribute("aria-label")).toBe(name);
     await act(async () => { await i18n.changeLanguage("en"); });
-    for (const name of ["Providers", "Guardrail Catalog", "Health", "Runner", "Version"]) expect(screen.getByRole("link", { name }).getAttribute("aria-label")).toBe(name);
+    for (const name of ["Providers", "Protection Capabilities", "Health", "Runner", "Version"]) expect(screen.getByRole("link", { name }).getAttribute("aria-label")).toBe(name);
   });
 
   it("localizes every project navigation group and entry in Chinese", async () => {

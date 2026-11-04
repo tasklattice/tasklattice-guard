@@ -289,7 +289,7 @@ export class ModelConfigurationService {
         const affectedModels = await tx.select({ id: modelDefinitions.id }).from(modelDefinitions).where(eq(modelDefinitions.providerId, id));
         const ids = new Set(affectedModels.map((model) => model.id));
         await tx.update(modelDefinitions).set({
-          status: "pending", validationMessage: "Provider connection settings changed. Validate the affected detectors in Guardrail Catalog.", validatedAt: null, validationLatencyMs: null,
+          status: "pending", validationMessage: "Provider connection settings changed. Validate the affected detectors in Protection Capabilities.", validatedAt: null, validationLatencyMs: null,
           connectionStatus: "pending", connectionMessage: "Provider connection settings changed. Test the model call again.", connectionCheckedAt: null, connectionLatencyMs: null,
           updatedAt: new Date(),
         }).where(eq(modelDefinitions.providerId, id));
@@ -388,7 +388,7 @@ export class ModelConfigurationService {
     const connectionCheck = providerCredentialEvidence(successfulProbe.model, successfulProbe.result);
     const registered = probes.map(({ model, result }) => ({
       id: randomUUID(), projectId: currentProjectId(), ...model, providerId: id, status: "pending" as const,
-      validationMessage: "Registered. Assign and validate this Model in Guardrail Catalog.",
+      validationMessage: "Registered. Assign and validate this Model in Protection Capabilities.",
       validationLatencyMs: null, validatedAt: null, createdBy: actorId,
       ...connectionEvidence(result),
     }));
@@ -440,7 +440,7 @@ export class ModelConfigurationService {
       ...input,
       ...connection,
       status: "pending",
-      validationMessage: "Registered. Assign and validate this Model in Guardrail Catalog.",
+      validationMessage: "Registered. Assign and validate this Model in Protection Capabilities.",
       validationLatencyMs: null,
       validatedAt: null,
       createdBy: actorId,
@@ -525,7 +525,7 @@ export class ModelConfigurationService {
       }
       await this.groupRuntime.assertModelUnused(id, tx);
       const [model] = await tx.update(modelDefinitions).set({
-        ...input, status: "pending", validationMessage: "Protocol configured. Validate it in the Guardrail Catalog.",
+        ...input, status: "pending", validationMessage: "Protocol configured. Validate it in Protection Capabilities.",
         validatedAt: null, validationLatencyMs: null, updatedAt: new Date(),
         connectionStatus: "pending", connectionMessage: "Protocol changed. Test the model call again.", connectionCheckedAt: null, connectionLatencyMs: null,
       }).where(and(eq(modelDefinitions.id, id), modelOwnerPredicate())).returning();
@@ -1343,7 +1343,7 @@ export class ModelConfigurationService {
         z.object({ model: z.string().trim().min(1), answers: z.object({
           greeting: z.object({ type: z.literal("noul"), noul: z.number().min(0).max(1) }),
         }).strict() }).parse(await response.json());
-        return probe(true, `${model.model} returned a valid Noul response. Validate each selected input detector in Guardrail Catalog.`, started);
+        return probe(true, `${model.model} returned a valid Noul response. Validate each selected input detector in Protection Capabilities.`, started);
       } catch (error) {
         return probe(false, probeError("TypeSafe model call failed", error), started);
       }
@@ -1362,7 +1362,7 @@ export class ModelConfigurationService {
         z.object({ model: z.string().trim().min(1), answers: z.object({
           greeting: z.object({ type: z.literal("noul"), noul: z.number().min(0).max(1) }),
         }).strict() }).parse(await response.json());
-        return probe(true, `${model.model} returned a valid Noul response. Validate each selected input detector in Guardrail Catalog.`, started);
+        return probe(true, `${model.model} returned a valid Noul response. Validate each selected input detector in Protection Capabilities.`, started);
       } catch (error) {
         return probe(false, probeError("Laya model call failed", error), started);
       }
@@ -1411,7 +1411,7 @@ export class ModelConfigurationService {
     }
     if (model.profile === "tali.automated-reasoning.v1") {
       if (mode === "connection") return this.probeFormalConnection(provider.baseUrl, credential, provider.skipTlsVerify);
-      return probe(false, "Formal proof services require a policy ID, version and known valid/invalid examples. Use Guardrail Catalog binding validation to verify this service.", started);
+      return probe(false, "Formal proof services require a policy ID, version and known valid/invalid examples. Use Protection Capabilities binding validation to verify this service.", started);
     }
 
     try {

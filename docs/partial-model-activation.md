@@ -1,7 +1,7 @@
 # Apply model configuration
 
 Model settings have **current configuration + pending changes**, not user-managed
-versions. The Guardrail Catalog's **Review and Apply** sheet lists saved binding
+versions. The Protection Capabilities's **Review and Apply** sheet lists saved binding
 changes. Saved changes are selected initially; users can deselect them. Failed or unrun
 model tests are visible warnings and do not prevent selection. Apply overwrites only the selected bindings.
 

@@ -271,23 +271,28 @@ describe.skipIf(!url)("Current model configuration PostgreSQL semantics", () => 
     expect((await pool.query('SELECT id FROM model_configuration_revision')).rows).toHaveLength(2);
     expect((await pool.query('SELECT id FROM audit_event')).rows.length).toBeGreaterThan(0);
   });
-  it.each(['unready', 'stale-draft', 'stale-active'])('rejects %s Apply without advancing generation', async kind => {
+  it.each(['stale-draft', 'stale-active'])('rejects %s Apply without advancing generation', async kind => {
     const { draftId, selection } = await seedPartial();
     if (kind === 'stale-draft') await pool.query("UPDATE model_configuration_revision SET validation_report=validation_report || '{\"valid\":true}'::jsonb WHERE id=$1", [draftId]);
     await expect(service.applyConfiguration('synthetic-admin', {
       ...selection,
-      ...(kind === 'unready' ? { bindingIds: ['content_safety.output' as const] } : {}),
       ...(kind === 'stale-active' ? { expectedActiveId: null } : {}),
-    })).rejects.toMatchObject({ code: kind === 'unready' ? 'validation_failed' : 'model_configuration_changed' });
+    })).rejects.toMatchObject({ code: 'model_configuration_changed' });
     expect(Number((await pool.query('SELECT desired_generation FROM controller_state')).rows[0].desired_generation)).toBe(0);
     expect((await pool.query('SELECT id FROM controller_outbox')).rows).toHaveLength(0);
   });
   it.each(["failed", "not_tested"])("activates %s model bindings without changing their test results", async status => {
-    const draftId = await seed(true);
+    await seed();
     if (status === "failed") {
       service.setRailValidator(async () => ({ passed: false, message: "Model API returned 429", latencyMs: 1 }));
       const receipt = await service.previewAssignment("content_safety.input", modelId, "synthetic-admin");
       await service.updateAssignment("content_safety.input", modelId, "synthetic-admin", receipt.validationId);
+    } else {
+      const validator = vi.fn();
+      service.setRailValidator(validator);
+      const saved = await service.updateAssignment("content_safety.input", modelId, "synthetic-admin");
+      expect(saved.assignments.bindings["content_safety.input"]).toBe(modelId);
+      expect(validator).not.toHaveBeenCalled();
     }
     const result = await service.applyConfiguration("synthetic-admin", await review());
     expect(result.validationReport?.valid).toBe(false);

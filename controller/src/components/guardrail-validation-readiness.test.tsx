@@ -31,7 +31,7 @@ it("shows an actionable missing Topic dependency and blocks Validation", async (
   expect((await screen.findByRole("alert")).textContent).toContain("No model is assigned");
   expect(screen.getByRole("alert").textContent).toContain("Affected Policies: Topic Control");
   expect(screen.getByRole("button", { name: "Run tests" }).hasAttribute("disabled")).toBe(true);
-  expect(screen.getByRole("link", { name: protectionEn.dependencies.configure }).getAttribute("href")).toBe("/settings/guardrail-catalog");
+  expect(screen.getByRole("link", { name: protectionEn.dependencies.configure }).getAttribute("href")).toBe("/settings/protection-capabilities");
   fireEvent.click(screen.getByRole("button", { name: "Edit and remove Topic Control" }));
   expect(onEdit).toHaveBeenCalledOnce();
 });

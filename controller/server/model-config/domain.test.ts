@@ -14,7 +14,7 @@ import {
   providerAcceptsProfile,
 } from "./domain.js";
 
-describe("Guardrail Catalog capability binding profiles", () => {
+describe("Protection Capabilities capability binding profiles", () => {
   it("supports Laya output content safety while keeping its other contracts scoped", () => {
     expect(profileTransports["tali.laya.v1"]).toBe("laya_systemone");
     for (const target of ["content_safety.input", "content_safety.output", "jailbreak.input", "topic_control.input"] as const) {

@@ -32,7 +32,7 @@ export function ModelCapabilityUnavailable({ availability, label, title, hint }:
     <p role="status" className={`text-sm leading-6 ${availability.pending ? "" : "text-destructive"}`}>{availability.reason}</p>
     <p className="text-xs leading-5 text-muted-foreground">{hint}</p>
     <div className="flex flex-wrap items-center gap-3">
-      {administrator ? <a className="inline-flex min-h-11 items-center text-sm text-primary underline underline-offset-4" href="/settings/guardrail-catalog" target="_blank" rel="noopener noreferrer">{t("protection.dependencies.configure")}</a> : <p className="text-sm text-muted-foreground">{t("auth.platformSetupRequired")}</p>}
+      {administrator ? <a className="inline-flex min-h-11 items-center text-sm text-primary underline underline-offset-4" href="/settings/protection-capabilities" target="_blank" rel="noopener noreferrer">{t("protection.dependencies.configure")}</a> : <p className="text-sm text-muted-foreground">{t("auth.platformSetupRequired")}</p>}
       <Button variant="outline" className="min-h-11" disabled={availability.refreshing} onClick={availability.refresh}>{t("common.retry")}</Button>
     </div>
   </section>;

@@ -122,7 +122,7 @@ not publish or activate a Guardrail.
 | Guardrail | Ordered Policy composition, draft validation, immutable compiled versions |
 | Router | Ordered Routes selecting weighted, fixed Guardrail versions in a published Revision |
 | Endpoint | Runtime integration configuration, credentials, and explicit Router binding |
-| Provider / Model / Guardrail Catalog | Provider connectivity, physical model callability, and validated Rail assignment respectively |
+| Provider / Model / Protection Capabilities | Provider connectivity, physical model callability, and validated Rail assignment respectively |
 
 Policies and Rules execute in configured order. Rejection stops execution;
 transformations change the content seen by subsequent Rules. Guardrail identity
@@ -202,7 +202,7 @@ A version's `ready` build status does not imply Runner deployment convergence.
 PostgreSQL is authoritative; the stream accelerates convergence.
 
 Provider connectivity, model callability, and Rail validation are separate
-checks. Guardrail Catalog revisions assign models to stable bindings such as
+checks. Protection Capabilities revisions assign models to stable bindings such as
 `content_safety.input` and `content_safety.output`. Input and Output execute
 today; Retrieval, Dialog, and Execution are reserved Rail types. DeepSeek
 Providers support Control Plane work and explicit `classifier_review.input` / `classifier_review.output`

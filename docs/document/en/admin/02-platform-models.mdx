@@ -15,11 +15,13 @@ Default needs no detection model. It uses reviewed local Rules. Model-backed Pol
 2. Check connectivity. Private-CA and TLS settings apply only to that Provider.
 3. Register the physical model under [Models](/settings/models) and set its concurrency limit, which defaults to 2.
 4. Make a real test call. Model discovery alone does not prove callability.
-5. Assign the Model to a compatible capability under [Guardrail Catalog](/settings/guardrail-catalog).
-6. Validate its behavior examples. Save the binding and activate the configuration.
+5. Assign the Model to a compatible capability under [Protection Capabilities](/settings/protection-capabilities).
+6. Save the binding, then review and apply the configuration. Validation is optional.
 7. Inspect application progress under [platform health](/settings/health).
 
-Input and Output bindings are independent. For example, `content_safety.input` and `content_safety.output` require compatible contracts for their respective stages.
+Protection Capabilities shows one row per capability. Input and output share a model by default; choose **Configure by stage** to assign different models. Existing different assignments are preserved. A shared model must support both stages; input-only models such as JEV content safety are available in stage configuration.
+
+Each capability has separate **Validate** and **Save** buttons. Optional validation checks each configured stage and shows input and output results separately. **Save** saves the stage bindings; if one stage fails to save, its selection and error remain available for retry. Saved bindings can be reviewed and applied without validation, including when tests failed. Input and output still require compatible contracts; test results remain separate from activation.
 
 Health checks the bindings used by the runtime baseline and enabled published routes. Unused assignments and historical versions do not make a local installation unhealthy.
 
@@ -41,6 +43,6 @@ For Grounding through NVIDIA's hosted `nvidia/nemotron-3.5-lightning-30b-a3b`, t
 
 A capability binding supplies a detector dependency. A Policy defines reusable protection behavior. A successful model connection does not establish that a particular Rule detects the intended content.
 
-An existing Generic chat Model, including DeepSeek, can also be selected for **Independent classifier review · Input Rail / Output Rail** while retaining its Control Plane assignment. The built-in prompt automatically includes the original criteria, evaluated input/output and context; enable `review_unknown=true` in a supported Guard Policy binding to review JEV/Laya input or Laya content-safety output gray-area results. Each Rail has its own binding. Primary detectors still require their supported specialized protocols. Controller distributes only the Models and credentials referenced by active data-plane bindings.
+An existing Generic chat Model, including DeepSeek, can also be selected for **Independent classifier review** while retaining its Control Plane assignment. The built-in prompt automatically includes the original criteria, evaluated input/output and context; enable `review_unknown=true` in a supported Guard Policy binding to review JEV/Laya input or Laya content-safety output gray-area results. The stages may share a model or use separate models, with independent validation results. Primary detectors still require their supported specialized protocols. Controller distributes only the Models and credentials referenced by active data-plane bindings.
 
 For proof-service setup and known validation examples, see [formal verification](/document/operator/operator-create-policy#operator-policy-formal-service). Deployment and protocol details remain in `docs/model-configuration.md` in the repository.

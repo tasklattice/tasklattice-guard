@@ -1,6 +1,6 @@
 ---
 id: "platform-models"
-title: "配置 Provider、Model 与保护能力"
+title: "配置 Provider、Model 与防护能力"
 summary: "连接 Provider、注册并测试 Model，再把兼容模型分配给需要它的 Rail。"
 order: 1
 ---
@@ -15,11 +15,13 @@ Default 无需检测模型，使用已审查的本地 Rule。模型 Policy 仍�
 2. 检查连接。私有 CA 与 TLS 设置仅作用于该 Provider。
 3. 在[模型](/settings/models)注册物理模型，并设置并发度，默认 2。
 4. 执行真实调用测试。发现模型不代表它可调用。
-5. 在[检测器目录](/settings/guardrail-catalog)为兼容能力绑定 Model。
-6. 验证行为样例。保存绑定，再激活配置。
+5. 在[防护能力](/settings/protection-capabilities)为兼容能力绑定 Model。
+6. 保存绑定，再审查并应用配置。验证为可选操作。
 7. 在[平台健康](/settings/health)查看应用进度。
 
-Input 与 Output 的绑定独立。例如 `content_safety.input` 与 `content_safety.output` 分别要求符合对应阶段的契约。
+防护能力按 Capability 展示，每项能力一行。输入和输出默认共用模型，点击**分阶段配置**可分别选择。已有的不同模型绑定会保留。共用模型须同时支持两阶段；JEV 内容安全等仅支持输入的模型可在分阶段配置中选择。
+
+每项能力提供独立的**验证**和**保存**按钮。验证为可选操作，会分别检查各个已配置阶段并展示输入、输出结果。**保存**会依次保存阶段绑定；某阶段保存失败时，会保留该阶段的选择和错误以便重试。已保存的绑定无需验证即可审查并应用，验证失败也不阻止应用。输入和输出仍各自要求兼容契约，验证结果与应用状态分别保留。
 
 健康检查关注运行基线和已启用发布路由使用的绑定。未使用的配置和历史版本不会让本地安装变为不健康。
 
@@ -41,6 +43,6 @@ Input 与 Output 的绑定独立。例如 `content_safety.input` 与 `content_sa
 
 能力绑定提供检测器依赖，Policy 定义可复用的保护行为。模型连接成功不能证明某条 Rule 能识别目标内容。
 
-已注册的 Generic chat Model（包括 DeepSeek）也可绑定到**分类灰区复核 · Input Rail / Output Rail**，并保留原有 Control Plane 用途。内置提示词自动带上原判定标准、待检查的输入/输出和上下文；在支持复核的 Guard Policy 绑定中开启 `review_unknown=true`，即可复核 JEV/Laya 输入或 Laya 内容安全输出的灰区结果。每个 Rail 单独绑定。第一阶段检测仍需对应的专用协议。Controller 只下发生效数据面绑定引用的 Model 和凭据。
+已注册的 Generic chat Model（包括 DeepSeek）也可绑定到**分类灰区复核**，并保留原有 Control Plane 用途。内置提示词自动带上原判定标准、待检查的输入/输出和上下文；在支持复核的 Guard Policy 绑定中开启 `review_unknown=true`，即可复核 JEV/Laya 输入或 Laya 内容安全输出的灰区结果。两阶段可共用或分别选择模型，验证结果保持独立。第一阶段检测仍需对应的专用协议。Controller 只下发生效数据面绑定引用的 Model 和凭据。
 
 证明服务配置及已知结果的验证样例见[形式验证](/document/operator/operator-create-policy#operator-policy-formal-service)。部署与协议细节保留在仓库的 `docs/model-configuration.md`。

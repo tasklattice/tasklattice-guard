@@ -68,7 +68,7 @@ const navigation = [
     items: [
       { label: "nav.providers", to: "/settings/providers", icon: ServerCog },
       { label: "nav.models", to: "/settings/models", icon: Bot },
-      { label: "nav.guardrailCatalog", to: "/settings/guardrail-catalog", icon: LibraryBig },
+      { label: "nav.guardrailCatalog", to: "/settings/protection-capabilities", icon: LibraryBig },
     ],
   },
   {
@@ -112,12 +112,7 @@ export function ControlPlaneSidebar() {
         </SidebarHeader>
 
         <SidebarContent className="px-2 py-3">
-          <div className="mx-1 mb-2">
-            {administrator ? <div className="flex h-11 items-center gap-2.5 px-2.5 text-sm text-sidebar-foreground group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:px-0" title={t("sidebar.platformIdentity")}>
-              <ShieldCheck className="size-4.5 shrink-0 text-muted-foreground" strokeWidth={1.75} aria-hidden="true" />
-              <span className="truncate font-medium group-data-[collapsible=icon]:hidden">{t("sidebar.platformIdentity")}</span>
-            </div> : <ProjectSwitcher collapsed={state === "collapsed"} />}
-          </div>
+          {!administrator ? <div className="mx-1 mb-2"><ProjectSwitcher collapsed={state === "collapsed"} /></div> : null}
           {navigation.filter(group => group.scope === "platform" ? administrator : workflowUser).map((group) => {
             return (
               <SidebarGroup key={group.label} className="px-0 py-2 group-data-[collapsible=icon]:px-1">

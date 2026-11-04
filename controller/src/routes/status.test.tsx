@@ -80,7 +80,7 @@ describe("Health tab", () => {
     await screen.findByRole("heading", { name: "Unhealthy" });
     expect(screen.getByText("Models required")).toBeTruthy();
     expect(screen.getByText("jailbreak.input · Missing active model")).toBeTruthy();
-    expect(screen.getByRole("link", { name: "Configure model bindings" }).getAttribute("href")).toBe("/settings/guardrail-catalog");
+    expect(screen.getByRole("link", { name: "Configure model bindings" }).getAttribute("href")).toBe("/settings/protection-capabilities");
   });
   it("explains an unhealthy component instead of displaying an opaque degraded label", async () => {
     vi.mocked(getControllerSystemHealth).mockResolvedValue(unhealthy);

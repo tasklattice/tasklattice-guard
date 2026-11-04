@@ -1,6 +1,6 @@
 import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { and, desc, eq, gt, isNull, sql } from "drizzle-orm";
-import { allowsTokenPermission, createAccessTokenSchema, type AccessTokenView, type TokenModule, type TokenPermissions } from "../../shared/access-tokens.js";
+import { supportedTokenPermissions, allowsTokenPermission, createAccessTokenSchema, type AccessTokenView, type TokenModule, type TokenPermissions } from "../../shared/access-tokens.js";
 import type { ControllerDatabase } from "../db/client.js";
 import { account, auditEvents, personalAccessTokens, projectMembers, user } from "../db/schema.js";
 import { isAccountRole } from "../../shared/rbac.js";
@@ -10,7 +10,7 @@ import { ControllerError, NotFoundError } from "../domain/errors.js";
 export type TokenIdentity = { id: string; role: string; projectId: string | null; tokenId: string; permissions: TokenPermissions };
 const digest = (token: string) => createHash("sha256").update(token).digest("hex");
 function view(row: typeof personalAccessTokens.$inferSelect): AccessTokenView {
-  return { id: row.id, name: row.name, prefix: row.prefix, permissions: row.permissions, projectId: row.projectId,
+  return { id: row.id, name: row.name, prefix: row.prefix, permissions: supportedTokenPermissions(row.permissions), projectId: row.projectId,
     createdAt: row.createdAt.toISOString(), expiresAt: row.expiresAt.toISOString(),
     lastUsedAt: row.lastUsedAt?.toISOString() ?? null, revokedAt: row.revokedAt?.toISOString() ?? null };
 }
@@ -89,7 +89,7 @@ export class AccessTokenService {
           and (${projectMembers.access} = 'write' or not exists (select 1 from jsonb_each_text(${personalAccessTokens.permissions}) p where p.value = 'write')))`))
       .returning({ id: personalAccessTokens.id });
     return touched.length ? { id: row.owner.id, role: row.owner.role, projectId: row.token.projectId,
-      tokenId: row.token.id, permissions: row.token.permissions } : null;
+      tokenId: row.token.id, permissions: supportedTokenPermissions(row.token.permissions) } : null;
   }
   async recordRequest(actor: TokenIdentity, method: string, route: string, status: number) {
     await this.db.insert(auditEvents).values({ id: randomUUID(), projectId: actor.projectId, kind: "access_token.request", actorId: actor.id,

@@ -48,7 +48,7 @@ const names: Record<string, { group?: string; page: string }> = {
   "/settings/runner": { group: "nav.platformOperations", page: "nav.runner" },
   "/settings/providers": { group: "nav.modelServices", page: "nav.providers" },
   "/settings/models": { group: "nav.modelServices", page: "nav.models" },
-  "/settings/guardrail-catalog": { group: "nav.modelServices", page: "nav.guardrailCatalog" },
+  "/settings/protection-capabilities": { group: "nav.modelServices", page: "nav.guardrailCatalog" },
   "/document": { group: "nav.helpResources", page: "nav.helpCenter" },
 };
 

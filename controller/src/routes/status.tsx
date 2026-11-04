@@ -120,7 +120,7 @@ export function HealthPage() {
                 <p>{t(`componentHealth.modelDetail.${models?.reason ?? "unknown"}`)}</p>
                 {models?.bindings.filter(binding => binding.status !== "passed").map(binding => <p key={binding.id} className="mt-1 text-sm">{binding.id} · {t(`componentHealth.modelBinding.${binding.status}`)}</p>)}
                 {isPlatformAdministrator(auth.user?.role)
-                  ? <Link className="health-runner-link" to="/settings/guardrail-catalog">{t("componentHealth.configureModels")}<ArrowRight aria-hidden="true" className="size-4" /></Link>
+                  ? <Link className="health-runner-link" to="/settings/protection-capabilities">{t("componentHealth.configureModels")}<ArrowRight aria-hidden="true" className="size-4" /></Link>
                   : models?.status !== "healthy" ? <p className="mt-2 text-muted-foreground">{t("componentHealth.contactAdmin")}</p> : null}
               </TableCell>
             </TableRow>

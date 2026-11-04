@@ -1,11 +1,13 @@
+import { passwordPolicySchema, type PasswordPolicy } from "../../shared/password-policy";
 import { internalAccountEmail, parseUsername } from "../../shared/username";
 import { isAccountRole } from "../../shared/rbac";
 import { authClient } from "@/lib/better-auth";
 import { requestController } from "@/lib/controller-api";
 import { setCurrentProjectId } from "@/lib/project-context";
 
-export type SignInOptions = { password: boolean; sso: { providerId: string; displayName: string } | null };
+export type SignInOptions = { passwordPolicy: PasswordPolicy; password: boolean; sso: { providerId: string; displayName: string } | null };
 export const getSignInOptions = () => requestController<SignInOptions>("/api/sign-in/options");
+export const getPasswordPolicy = async () => passwordPolicySchema.parse((await getSignInOptions()).passwordPolicy);
 export const getAccountSignInMethod = async () => {
   const result = await authClient.listAccounts();
   if (result.error) throw new Error(result.error.message || "Sign-in method is unavailable.");

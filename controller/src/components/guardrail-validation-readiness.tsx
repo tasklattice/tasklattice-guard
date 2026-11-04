@@ -63,7 +63,7 @@ export function GuardrailValidationReadiness({ readiness, onEdit, onRetry, onRem
         {!readiness.checking && !readiness.unavailable && readiness.unknownPolicies.length ? <p>{t("protection.dependencies.unknownPolicy", { policies: readiness.unknownPolicies.join(", ") })}</p> : null}
         {error && !administrator ? <p>{t("auth.platformSetupRequired")}</p> : null}
         {!readiness.checking && readiness.blocked ? <div className="flex flex-wrap gap-2">
-          {error && administrator ? <a className="inline-flex min-h-11 items-center text-sm text-primary underline-offset-4 hover:underline" href="/settings/guardrail-catalog" target="_blank" rel="noopener noreferrer">{t("protection.dependencies.configure")}</a> : null}
+          {error && administrator ? <a className="inline-flex min-h-11 items-center text-sm text-primary underline-offset-4 hover:underline" href="/settings/protection-capabilities" target="_blank" rel="noopener noreferrer">{t("protection.dependencies.configure")}</a> : null}
           {error && onEdit ? <Button variant="outline" className="min-h-11 h-auto whitespace-normal" onClick={onEdit}>{t(readiness.hasTopicBlocker ? "protection.validationReadiness.editTopic" : "protection.validationReadiness.edit")}</Button> : null}
           {readiness.hasTopicBlocker && onRemoveTopic ? <Button variant="outline" className="min-h-11 h-auto whitespace-normal" onClick={onRemoveTopic}>{t("protection.validationReadiness.removeTopic")}</Button> : null}
           {readiness.blocked ? <Button variant="outline" className="min-h-11" disabled={readiness.refreshing} onClick={onRetry ?? readiness.refresh}>{t("protection.validationReadiness.retry")}</Button> : null}

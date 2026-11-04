@@ -28,7 +28,7 @@ vi.mock("@tanstack/react-router", () => ({
   useSearch: () => ({}),
   useNavigate: () => vi.fn(),
   Link: ({ to, children, ...props }: AnchorHTMLAttributes<HTMLAnchorElement> & { to: string; children: ReactNode }) => <a href={to} {...props}>{children}</a>,
-  useRouterState: ({ select }: { select: (state: { location: { pathname: string } }) => string }) => select({ location: { pathname: "/settings/guardrail-catalog" } }),
+  useRouterState: ({ select }: { select: (state: { location: { pathname: string } }) => string }) => select({ location: { pathname: "/settings/protection-capabilities" } }),
 }));
 vi.mock("@/lib/controller-api", async (importOriginal) => {
   const original = await importOriginal<typeof import("@/lib/controller-api")>();
@@ -48,7 +48,7 @@ vi.mock("@/lib/controller-api", async (importOriginal) => {
 });
 vi.mock("react-i18next", () => ({
   useTranslation: () => ({
-    t: (key: string, values?: Record<string, string | number>) => values?.revision ? `${key} ${values.revision}` : key,
+    t: (key: string, values?: Record<string, string | number>) => values?.revision ? `${key} ${values.revision}` : values?.message ? `${key} ${values.message}` : key,
     i18n: { exists: () => false },
   }),
 }));
@@ -135,7 +135,7 @@ async function actionItem(trigger: HTMLElement, name: string) {
 }
 
 async function catalogAction(row: HTMLElement, name: string) {
-  return actionItem(within(row).getAllByLabelText(/^modelSettings.actionsColumn /, { selector: "button" })[0]!, name);
+  return within(row).findByRole("button", { name });
 }
 
 async function modelAction(modelName: string, name: string) {
@@ -144,7 +144,7 @@ async function modelAction(modelName: string, name: string) {
 
 // These multi-step Carbon integration workflows reached 11.6s on a slow CI
 // worker. Keep a bounded integration budget for interactions and save/reload.
-describe("Models and Guardrail Catalog", { timeout: 30_000 }, () => {
+describe("Models and Protection Capabilities", { timeout: 30_000 }, () => {
   beforeEach(() => {
     identity.role = "admin"; identity.project_id = "projectA";
     Element.prototype.scrollIntoView = vi.fn();
@@ -179,29 +179,198 @@ describe("Models and Guardrail Catalog", { timeout: 30_000 }, () => {
     expect(screen.queryByRole("option", { name: /Project A model/ })).toBeNull();
   });
 
-  it("offers only platform models in global Guardrail Catalog bindings", async () => {
+  it("offers only platform models in global Protection Capabilities bindings", async () => {
     vi.mocked(getModelConfiguration).mockResolvedValue({ ...view, models: [
       ...view.models,
       { ...safetyModel, id: "project-model", name: "Project A private model", projectId: "projectA" },
     ] });
     renderPage(<GuardrailCatalogPage />);
-    const jailbreak = await screen.findByLabelText("modelSettings.detectors.jailbreak_detection.title · modelSettings.inputRail", { selector: "tr" });
+    const jailbreak = await screen.findByLabelText("modelSettings.detectors.jailbreak_detection.title", { selector: "tr" });
     fireEvent.keyDown(within(jailbreak).getByRole("combobox", { name: "modelSettings.modelColumn" }), { key: "ArrowDown" });
     expect(await screen.findByRole("option", { name: /Qwen Guard · Mock provider/ })).toBeTruthy();
     expect(screen.queryByRole("option", { name: /Project A private model/ })).toBeNull();
   });
 
-  it("shows model-backed capabilities grouped into Input and Output Rail tabs", async () => {
+  it("shows one row per capability with shared models and separate stage results, without Rail tabs", async () => {
     renderPage(<GuardrailCatalogPage />);
-    expect(await screen.findByRole("heading", { name: "modelSettings.catalogConfiguration" })).toBeTruthy();
-    expect(screen.getByRole("tab", { name: "modelSettings.inputRail" }).getAttribute("data-state")).toBe("active");
-    const runner = screen.getByRole("heading", { name: "modelSettings.catalogConfiguration" }).closest("section")!;
-    expect(within(runner).getByRole("columnheader", { name: "modelSettings.capabilityColumn" })).toBeTruthy();
-    expect(screen.getByRole("columnheader", { name: "modelSettings.modelColumn" })).toBeTruthy();
-    expect(screen.getByLabelText("modelSettings.detectors.content_safety.title · modelSettings.inputRail", { selector: "tr" })).toBeTruthy();
-    expect(screen.getByLabelText("modelSettings.detectors.jailbreak_detection.title · modelSettings.inputRail", { selector: "tr" })).toBeTruthy();
-    expect(screen.getAllByText("modelSettings.detectors.content_safety.title · modelSettings.inputRail").length).toBeGreaterThan(0);
-    expect(screen.getAllByText("modelSettings.detectors.jailbreak_detection.title · modelSettings.inputRail").length).toBeGreaterThan(0);
+    const runner = (await screen.findByRole("heading", { name: "modelSettings.catalogConfiguration" })).closest("section")!;
+    expect(within(runner).queryByRole("tab")).toBeNull();
+    expect(within(runner).getAllByRole("row")).toHaveLength(8);
+    const safety = within(runner).getByLabelText("modelSettings.detectors.content_safety.title", { selector: "tr" });
+    expect(within(safety).getAllByRole("combobox")).toHaveLength(1);
+    for (const stage of ["input", "output"]) {
+      const result = within(safety).getByRole("group", { name: `modelSettings.detectors.content_safety.title · modelSettings.stage.${stage}` });
+      expect(within(result).getByText("modelSettings.railSamplesPassed")).toBeTruthy();
+    }
+    const jailbreak = within(runner).getByLabelText("modelSettings.detectors.jailbreak_detection.title", { selector: "tr" });
+    expect(within(jailbreak).queryByText("modelSettings.stage.output")).toBeNull();
+    const grounding = within(runner).getByLabelText("modelSettings.detectors.contextual_grounding.title", { selector: "tr" });
+    expect(within(grounding).queryByText("modelSettings.stage.input")).toBeNull();
+  });
+
+  it("selects one shared model, validates both stages, and saves their separate receipts", async () => {
+    const current = structuredClone(view);
+    current.models.push({ ...safetyModel, id: "replacement", name: "Replacement Guard" });
+    vi.mocked(getModelConfiguration).mockImplementation(async () => structuredClone(current));
+    vi.mocked(validateModelAssignment).mockImplementation(async (target, modelId) => ({
+      ...current.draft!, validationId: `receipt-${target}`, validationReport: {
+        ...current.draft!.validationReport!, checks: [{ id: `probe:${target}:${modelId}`, scope: "capability", status: "passed", evidenceKind: "nemo-rail-v1", message: "Passed" }],
+      },
+    }));
+    vi.mocked(saveModelAssignment).mockImplementation(async (target, modelId) => {
+      if (target !== "control_plane") current.draft!.assignments.bindings[target] = modelId;
+      return structuredClone(current.draft!);
+    });
+    renderPage(<GuardrailCatalogPage />);
+    const row = await screen.findByLabelText("modelSettings.detectors.content_safety.title", { selector: "tr" });
+    fireEvent.keyDown(within(row).getByRole("combobox"), { key: "ArrowDown" });
+    fireEvent.click(await screen.findByRole("option", { name: /Replacement Guard/ }));
+    expect(within(row).getAllByText("modelSettings.notChecked")).toHaveLength(2);
+    fireEvent.click(await catalogAction(row, "modelSettings.validateAssignment"));
+    await waitFor(() => expect(validateModelAssignment).toHaveBeenCalledTimes(2));
+    expect(validateModelAssignment).toHaveBeenNthCalledWith(1, "content_safety.input", "replacement");
+    expect(validateModelAssignment).toHaveBeenNthCalledWith(2, "content_safety.output", "replacement");
+    await waitFor(() => expect(within(row).getAllByText("modelSettings.railSamplesPassed")).toHaveLength(2));
+    fireEvent.click(await catalogAction(row, "modelSettings.saveAssignment"));
+    await waitFor(() => expect(saveModelAssignment).toHaveBeenCalledTimes(2));
+    expect(saveModelAssignment).toHaveBeenNthCalledWith(1, "content_safety.input", "replacement", "receipt-content_safety.input");
+    expect(saveModelAssignment).toHaveBeenNthCalledWith(2, "content_safety.output", "replacement", "receipt-content_safety.output");
+    await waitFor(() => expect(within(row).queryByText("modelSettings.unsaved")).toBeNull());
+    expect(activateModelConfiguration).not.toHaveBeenCalled();
+  });
+
+  it("saves and applies a shared model without running validation", async () => {
+    const current = structuredClone(view);
+    current.active = { ...structuredClone(view.draft!), id: "active-config", state: "active" };
+    current.models.push({ ...safetyModel, id: "untested-model", name: "Untested Guard", status: "registered" });
+    vi.mocked(getModelConfiguration).mockImplementation(async () => structuredClone(current));
+    vi.mocked(saveModelAssignment).mockImplementation(async (target, modelId) => {
+      if (target !== "control_plane") current.draft!.assignments.bindings[target] = modelId;
+      current.draft!.state = "draft";
+      current.draft!.validationReport = null;
+      current.draft!.reviewToken = `saved-${target}`;
+      return structuredClone(current.draft!);
+    });
+    renderPage(<GuardrailCatalogPage />);
+    const row = await screen.findByLabelText("modelSettings.detectors.content_safety.title", { selector: "tr" });
+    expect(within(row).getByRole("button", { name: "modelSettings.validateAssignment" })).toBeTruthy();
+    expect(within(row).getByRole("button", { name: "modelSettings.saveAssignment" })).toBeTruthy();
+    expect(within(row).queryByRole("button", { name: /^modelSettings.actionsColumn/ })).toBeNull();
+    fireEvent.keyDown(within(row).getByRole("combobox"), { key: "ArrowDown" });
+    fireEvent.click(await screen.findByRole("option", { name: /Untested Guard/ }));
+    fireEvent.click(await catalogAction(row, "modelSettings.saveAssignment"));
+    await waitFor(() => expect(within(row).queryByText("modelSettings.unsaved")).toBeNull());
+    expect(saveModelAssignment).toHaveBeenNthCalledWith(1, "content_safety.input", "untested-model", undefined);
+    expect(saveModelAssignment).toHaveBeenNthCalledWith(2, "content_safety.output", "untested-model", undefined);
+    fireEvent.click(screen.getByRole("button", { name: "modelSettings.reviewActivation" }));
+    const review = await screen.findByRole("dialog");
+    const apply = within(review).getByRole("button", { name: "modelSettings.activateRevisionAction" });
+    expect(apply).toHaveProperty("disabled", false);
+    fireEvent.click(apply);
+    await waitFor(() => expect(activateModelConfiguration).toHaveBeenCalledWith({
+      bindingIds: ["content_safety.input", "content_safety.output"], expectedDraftToken: "saved-content_safety.output", expectedActiveId: "active-config",
+    }));
+    expect(validateModelAssignment).not.toHaveBeenCalled();
+    expect(within(row).queryByText("modelSettings.railSamplesPassed")).toBeNull();
+  });
+
+  it("preserves unequal saved assignments and requires an explicit choice when returning to shared mode", async () => {
+    const configured = structuredClone(view);
+    configured.models.push({ ...safetyModel, id: "output-model", name: "Output Guard" });
+    configured.draft!.assignments.bindings["content_safety.output"] = "output-model";
+    vi.mocked(getModelConfiguration).mockResolvedValue(configured);
+    renderPage(<GuardrailCatalogPage />);
+    const row = await screen.findByLabelText("modelSettings.detectors.content_safety.title", { selector: "tr" });
+    expect(within(row).getByRole("combobox", { name: "modelSettings.stage.input" }).textContent).toContain("Qwen Guard");
+    expect(within(row).getByRole("combobox", { name: "modelSettings.stage.output" }).textContent).toContain("Output Guard");
+    fireEvent.click(within(row).getByRole("button", { name: "modelSettings.useSharedModel" }));
+    expect(within(row).getByRole("combobox").textContent).toContain("modelSettings.chooseSharedModel");
+    expect(await catalogAction(row, "modelSettings.saveAssignment")).toHaveProperty("disabled", true);
+    expect(saveModelAssignment).not.toHaveBeenCalled();
+    fireEvent.click(within(row).getByRole("button", { name: "modelSettings.configureByStage" }));
+    expect(within(row).getByRole("combobox", { name: "modelSettings.stage.output" }).textContent).toContain("Output Guard");
+    expect(within(row).queryByText("modelSettings.unsaved")).toBeNull();
+  });
+
+  it("offers input-only JEV only in the input stage and keeps the output model unchanged", async () => {
+    vi.mocked(getModelConfiguration).mockResolvedValue({ ...view, models: [...view.models,
+      { ...chatModel, id: "jev", name: "JEV", providerKind: "typesafe", profile: "tali.typesafe-jev.v1" },
+    ] });
+    renderPage(<GuardrailCatalogPage />);
+    const row = await screen.findByLabelText("modelSettings.detectors.content_safety.title", { selector: "tr" });
+    fireEvent.keyDown(within(row).getByRole("combobox"), { key: "ArrowDown" });
+    expect(screen.queryByRole("option", { name: /JEV/ })).toBeNull();
+    fireEvent.keyDown(within(row).getByRole("combobox"), { key: "Escape" });
+    fireEvent.click(within(row).getByRole("button", { name: "modelSettings.configureByStage" }));
+    fireEvent.keyDown(within(row).getByRole("combobox", { name: "modelSettings.stage.input" }), { key: "ArrowDown" });
+    fireEvent.click(await screen.findByRole("option", { name: /JEV/ }));
+    const output = within(row).getByRole("combobox", { name: "modelSettings.stage.output" });
+    expect(output.textContent).toContain("Qwen Guard");
+    fireEvent.keyDown(output, { key: "ArrowDown" });
+    expect(screen.queryByRole("option", { name: /JEV/ })).toBeNull();
+    fireEvent.keyDown(output, { key: "Escape" });
+    fireEvent.click(await catalogAction(row, "modelSettings.validateAssignment"));
+    await waitFor(() => expect(validateModelAssignment).toHaveBeenCalledWith("content_safety.output", "safety-model"));
+    expect(validateModelAssignment).toHaveBeenCalledWith("content_safety.input", "jev");
+  });
+
+  it("replaces a stale pass after an input request failure and still validates output", async () => {
+    vi.mocked(validateModelAssignment).mockRejectedValueOnce(new Error("Input service unavailable"))
+      .mockResolvedValueOnce({ ...view.draft!, validationId: "output-receipt" });
+    renderPage(<GuardrailCatalogPage />);
+    const row = await screen.findByLabelText("modelSettings.detectors.content_safety.title", { selector: "tr" });
+    fireEvent.click(await catalogAction(row, "modelSettings.validateAssignment"));
+    await waitFor(() => expect(validateModelAssignment).toHaveBeenCalledTimes(2));
+    const input = within(row).getByRole("group", { name: "modelSettings.detectors.content_safety.title · modelSettings.stage.input" });
+    const output = within(row).getByRole("group", { name: "modelSettings.detectors.content_safety.title · modelSettings.stage.output" });
+    expect(within(input).queryByText("modelSettings.railSamplesPassed")).toBeNull();
+    expect(within(output).getByText("modelSettings.railSamplesPassed")).toBeTruthy();
+    fireEvent.click(within(input).getByRole("button", { name: /modelSettings.probeFailed/ }));
+    expect(within(screen.getByRole("dialog")).getByText("Input service unavailable")).toBeTruthy();
+    expect(toast.success).not.toHaveBeenCalled();
+  });
+
+  it("retains a failed stage save for retry even when the other stage saves successfully", async () => {
+    const current = structuredClone(view);
+    current.models.push({ ...safetyModel, id: "replacement", name: "Replacement Guard" });
+    vi.mocked(getModelConfiguration).mockImplementation(async () => structuredClone(current));
+    let failInput = true;
+    vi.mocked(saveModelAssignment).mockImplementation(async (target, modelId) => {
+      if (target === "content_safety.input" && failInput) throw new Error("Input save rejected");
+      if (target !== "control_plane") current.draft!.assignments.bindings[target] = modelId;
+      return structuredClone(current.draft!);
+    });
+    renderPage(<GuardrailCatalogPage />);
+    const row = await screen.findByLabelText("modelSettings.detectors.content_safety.title", { selector: "tr" });
+    fireEvent.keyDown(within(row).getByRole("combobox"), { key: "ArrowDown" });
+    fireEvent.click(await screen.findByRole("option", { name: /Replacement Guard/ }));
+    fireEvent.click(await catalogAction(row, "modelSettings.saveAssignment"));
+    await waitFor(() => expect(saveModelAssignment).toHaveBeenCalledTimes(2));
+    expect(current.draft!.assignments.bindings["content_safety.input"]).toBe("safety-model");
+    expect(current.draft!.assignments.bindings["content_safety.output"]).toBe("replacement");
+    expect(within(row).getByRole("combobox").textContent).toContain("Replacement Guard");
+    expect(within(row).getByRole("alert")).toBeTruthy();
+    expect(within(row).getByText("modelSettings.unsaved")).toBeTruthy();
+    expect(toast.success).not.toHaveBeenCalled();
+    failInput = false;
+    fireEvent.click(await catalogAction(row, "modelSettings.saveAssignment"));
+    await waitFor(() => expect(within(row).queryByText("modelSettings.unsaved")).toBeNull());
+    expect(within(row).queryByRole("alert")).toBeNull();
+    expect(current.draft!.assignments.bindings["content_safety.input"]).toBe("replacement");
+    expect(activateModelConfiguration).not.toHaveBeenCalled();
+  });
+
+  it("clears both shared bindings without issuing validation calls", async () => {
+    renderPage(<GuardrailCatalogPage />);
+    const row = await screen.findByLabelText("modelSettings.detectors.content_safety.title", { selector: "tr" });
+    fireEvent.keyDown(within(row).getByRole("combobox"), { key: "ArrowDown" });
+    fireEvent.click(await screen.findByRole("option", { name: "modelSettings.notAssigned" }));
+    expect(await catalogAction(row, "modelSettings.validateAssignment")).toHaveProperty("disabled", true);
+    fireEvent.click(await catalogAction(row, "modelSettings.saveAssignment"));
+    await waitFor(() => expect(saveModelAssignment).toHaveBeenCalledTimes(2));
+    expect(saveModelAssignment).toHaveBeenCalledWith("content_safety.input", null, undefined);
+    expect(saveModelAssignment).toHaveBeenCalledWith("content_safety.output", null, undefined);
+    expect(validateModelAssignment).not.toHaveBeenCalled();
   });
 
   it("allows saving before testing and preserves a preview receipt when tested", async () => {
@@ -211,7 +380,7 @@ describe("Models and Guardrail Catalog", { timeout: 30_000 }, () => {
       ] },
     });
     renderPage(<GuardrailCatalogPage />);
-    const jailbreak = await screen.findByLabelText("modelSettings.detectors.jailbreak_detection.title · modelSettings.inputRail", { selector: "tr" });
+    const jailbreak = await screen.findByLabelText("modelSettings.detectors.jailbreak_detection.title", { selector: "tr" });
     fireEvent.keyDown(within(jailbreak).getByRole("combobox", { name: "modelSettings.modelColumn" }), { key: "ArrowDown" });
     fireEvent.click(await screen.findByRole("option", { name: /Qwen Guard · Mock provider/ }));
     const save = await catalogAction(jailbreak, "modelSettings.saveAssignment");
@@ -229,10 +398,10 @@ describe("Models and Guardrail Catalog", { timeout: 30_000 }, () => {
       { ...chatModel, name: "DeepSeek Chat", providerKind: "deepseek", providerName: "DeepSeek" }, safetyModel,
     ] });
     renderPage(<GuardrailCatalogPage />);
-    fireEvent.click(await screen.findByRole("tab", { name: `modelSettings.${rail}Rail` }));
-    const reviewer = await screen.findByLabelText(`modelSettings.detectors.classifier_review.title · modelSettings.${rail}Rail`, { selector: "tr" });
+    const reviewer = await screen.findByLabelText(`modelSettings.detectors.classifier_review.title`, { selector: "tr" });
+    fireEvent.click(within(reviewer).getByRole("button", { name: "modelSettings.configureByStage" }));
     expect(within(reviewer).getByText("modelSettings.detectors.classifier_review.description")).toBeTruthy();
-    fireEvent.keyDown(within(reviewer).getByRole("combobox"), { key: "ArrowDown" });
+    fireEvent.keyDown(within(reviewer).getByRole("combobox", { name: `modelSettings.stage.${rail}` }), { key: "ArrowDown" });
     expect(screen.queryByRole("option", { name: /Qwen Guard/ })).toBeNull();
     fireEvent.click(await screen.findByRole("option", { name: /DeepSeek Chat · DeepSeek/ }));
     fireEvent.click(await catalogAction(reviewer, "modelSettings.validateAssignment"));
@@ -240,8 +409,9 @@ describe("Models and Guardrail Catalog", { timeout: 30_000 }, () => {
     fireEvent.click(await catalogAction(reviewer, "modelSettings.saveAssignment"));
     await waitFor(() => expect(saveModelAssignment).toHaveBeenCalledWith(`classifier_review.${rail}`, "chat-model", "candidate-validation"));
     expect(saveModelAssignment).toHaveBeenCalledTimes(1);
-    const primary = screen.getByLabelText(`modelSettings.detectors.content_safety.title · modelSettings.${rail}Rail`, { selector: "tr" });
-    fireEvent.keyDown(within(primary).getByRole("combobox"), { key: "ArrowDown" });
+    const primary = screen.getByLabelText(`modelSettings.detectors.content_safety.title`, { selector: "tr" });
+    fireEvent.click(within(primary).getByRole("button", { name: "modelSettings.configureByStage" }));
+    fireEvent.keyDown(within(primary).getByRole("combobox", { name: `modelSettings.stage.${rail}` }), { key: "ArrowDown" });
     expect(screen.queryByRole("option", { name: /DeepSeek Chat/ })).toBeNull();
     expect(screen.getByRole("option", { name: /Qwen Guard/ })).toBeTruthy();
   });
@@ -251,14 +421,15 @@ describe("Models and Guardrail Catalog", { timeout: 30_000 }, () => {
       ...view.models, { ...chatModel, id: "laya-model", name: "Laya Auto", providerKind: "laya", providerName: "Laya", profile: "tali.laya.v1" },
     ] });
     renderPage(<GuardrailCatalogPage />);
-    fireEvent.click(await screen.findByRole("tab", { name: `modelSettings.${rail}Rail` }));
-    const primary = await screen.findByLabelText(`modelSettings.detectors.content_safety.title · modelSettings.${rail}Rail`, { selector: "tr" });
-    fireEvent.keyDown(within(primary).getByRole("combobox"), { key: "ArrowDown" });
+    const primary = await screen.findByLabelText(`modelSettings.detectors.content_safety.title`, { selector: "tr" });
+    fireEvent.click(within(primary).getByRole("button", { name: "modelSettings.configureByStage" }));
+    fireEvent.keyDown(within(primary).getByRole("combobox", { name: `modelSettings.stage.${rail}` }), { key: "ArrowDown" });
     fireEvent.click(await screen.findByRole("option", { name: /Laya Auto · Laya/ }));
     fireEvent.click(await catalogAction(primary, "modelSettings.validateAssignment"));
     await waitFor(() => expect(validateModelAssignment).toHaveBeenCalledWith(`content_safety.${rail}`, "laya-model"));
-    const pii = screen.getByLabelText(`modelSettings.detectors.pii_detection.title · modelSettings.${rail}Rail`, { selector: "tr" });
-    fireEvent.keyDown(within(pii).getByRole("combobox"), { key: "ArrowDown" });
+    const pii = screen.getByLabelText(`modelSettings.detectors.pii_detection.title`, { selector: "tr" });
+    fireEvent.click(within(pii).getByRole("button", { name: "modelSettings.configureByStage" }));
+    fireEvent.keyDown(within(pii).getByRole("combobox", { name: `modelSettings.stage.${rail}` }), { key: "ArrowDown" });
     expect(screen.queryByRole("option", { name: /Laya Auto/ })).toBeNull();
   });
 
@@ -274,9 +445,9 @@ describe("Models and Guardrail Catalog", { timeout: 30_000 }, () => {
       ],
     } });
     renderPage(<GuardrailCatalogPage />);
-    fireEvent.click(await screen.findByRole("tab", { name: `modelSettings.${rail}Rail` }));
-    const pii = await screen.findByLabelText(`modelSettings.detectors.pii_detection.title · modelSettings.${rail}Rail`, { selector: "tr" });
-    fireEvent.keyDown(within(pii).getByRole("combobox"), { key: "ArrowDown" });
+    const pii = await screen.findByLabelText(`modelSettings.detectors.pii_detection.title`, { selector: "tr" });
+    fireEvent.click(within(pii).getByRole("button", { name: "modelSettings.configureByStage" }));
+    fireEvent.keyDown(within(pii).getByRole("combobox", { name: `modelSettings.stage.${rail}` }), { key: "ArrowDown" });
     expect(screen.queryByRole("option", { name: /DeepSeek Chat/ })).toBeNull();
     fireEvent.click(await screen.findByRole("option", { name: /DeepSeek PII · DeepSeek/ }));
     fireEvent.click(await catalogAction(pii, "modelSettings.validateAssignment"));
@@ -407,8 +578,10 @@ describe("Models and Guardrail Catalog", { timeout: 30_000 }, () => {
       ],
     } });
     renderPage(<GuardrailCatalogPage />);
-    const pii = await screen.findByLabelText("modelSettings.detectors.pii_detection.title · modelSettings.inputRail", { selector: "tr" });
-    fireEvent.keyDown(within(pii).getByRole("combobox"), { key: "ArrowDown" });
+    const pii = await screen.findByLabelText("modelSettings.detectors.pii_detection.title", { selector: "tr" });
+    const expand = within(pii).queryByRole("button", { name: "modelSettings.configureByStage" });
+    if (expand) fireEvent.click(expand);
+    fireEvent.keyDown(within(pii).getByRole("combobox", { name: "modelSettings.stage.input" }), { key: "ArrowDown" });
     fireEvent.click(await screen.findByRole("option", { name: /Qwen Guard · Mock provider/ }));
     fireEvent.click(await catalogAction(pii, "modelSettings.validateAssignment"));
     expect(await catalogAction(pii, "modelSettings.saveAssignment")).toHaveProperty("disabled", false);
@@ -417,15 +590,15 @@ describe("Models and Guardrail Catalog", { timeout: 30_000 }, () => {
     refreshed.draft!.updatedAt = "2026-09-01T00:01:00Z";
     vi.mocked(getModelConfiguration).mockResolvedValue(refreshed);
     await act(async () => { await client!.refetchQueries(); });
-    await waitFor(() => expect(within(pii).getByRole("combobox").textContent).toContain("Qwen Guard"));
+    await waitFor(() => expect(within(pii).getByRole("combobox", { name: "modelSettings.stage.input" }).textContent).toContain("Qwen Guard"));
 
     // Saving another row also refreshes the draft and must preserve PII edits.
     vi.mocked(saveModelAssignment).mockResolvedValue(refreshed.draft!);
-    const safety = screen.getByLabelText("modelSettings.detectors.content_safety.title · modelSettings.inputRail", { selector: "tr" });
+    const safety = screen.getByLabelText("modelSettings.detectors.content_safety.title", { selector: "tr" });
     fireEvent.click(await catalogAction(safety, "modelSettings.saveAssignment"));
     await waitFor(() => expect(saveModelAssignment).toHaveBeenCalledWith("content_safety.input", "safety-model", undefined));
     expect(await catalogAction(pii, "modelSettings.saveAssignment")).toHaveProperty("disabled", false);
-    expect(within(pii).getByRole("combobox").textContent).toContain("Qwen Guard");
+    expect(within(pii).getByRole("combobox", { name: "modelSettings.stage.input" }).textContent).toContain("Qwen Guard");
 
     const saved = structuredClone(refreshed);
     saved.draft!.assignments.bindings["pii_semantic.input"] = "safety-model";
@@ -440,8 +613,8 @@ describe("Models and Guardrail Catalog", { timeout: 30_000 }, () => {
     cleanup();
     client!.clear();
     renderPage(<GuardrailCatalogPage />);
-    const reloaded = await screen.findByLabelText("modelSettings.detectors.pii_detection.title · modelSettings.inputRail", { selector: "tr" });
-    expect(within(reloaded).getByRole("combobox").textContent).toContain("Qwen Guard");
+    const reloaded = await screen.findByLabelText("modelSettings.detectors.pii_detection.title", { selector: "tr" });
+    expect(within(reloaded).getByRole("combobox", { name: "modelSettings.stage.input" }).textContent).toContain("Qwen Guard");
   });
 
   it("keeps failed saves visible and preserves the selected PII model for retry", async () => {
@@ -451,10 +624,12 @@ describe("Models and Guardrail Catalog", { timeout: 30_000 }, () => {
     vi.mocked(getModelConfiguration).mockResolvedValue(configured);
     vi.mocked(saveModelAssignment).mockRejectedValue(new Error("Validation receipt expired; validate this model again."));
     renderPage(<GuardrailCatalogPage />);
-    const pii = await screen.findByLabelText("modelSettings.detectors.pii_detection.title · modelSettings.inputRail", { selector: "tr" });
+    const pii = await screen.findByLabelText("modelSettings.detectors.pii_detection.title", { selector: "tr" });
+    const expand = within(pii).queryByRole("button", { name: "modelSettings.configureByStage" });
+    if (expand) fireEvent.click(expand);
     fireEvent.click(await catalogAction(pii, "modelSettings.saveAssignment"));
-    expect(await screen.findByText("Validation receipt expired; validate this model again.")).toBeTruthy();
-    expect(within(pii).getByRole("combobox").textContent).toContain("Qwen Guard");
+    expect(await screen.findByText(/Validation receipt expired; validate this model again/)).toBeTruthy();
+    expect(within(pii).getByRole("combobox", { name: "modelSettings.stage.input" }).textContent).toContain("Qwen Guard");
     expect(toast.success).not.toHaveBeenCalled();
   });
 
@@ -474,7 +649,7 @@ describe("Models and Guardrail Catalog", { timeout: 30_000 }, () => {
 
   it("validates only the selected detector without a global Catalog action", async () => {
     renderPage(<GuardrailCatalogPage />);
-    const contentSafety = await screen.findByLabelText("modelSettings.detectors.content_safety.title · modelSettings.inputRail", { selector: "tr" });
+    const contentSafety = await screen.findByLabelText("modelSettings.detectors.content_safety.title", { selector: "tr" });
     fireEvent.click(await catalogAction(contentSafety, "modelSettings.validateAssignment"));
     await waitFor(() => expect(validateModelAssignment).toHaveBeenCalledWith("content_safety.input", expect.anything()));
     expect(screen.queryByRole("button", { name: "modelSettings.validateCatalog" })).toBeNull();
@@ -482,6 +657,7 @@ describe("Models and Guardrail Catalog", { timeout: 30_000 }, () => {
 
   it("validates the Control Plane assignment independently", async () => {
     renderPage(<GuardrailCatalogPage />);
+    fireEvent.click(await screen.findByRole("tab", { name: "modelSettings.controlPlane" }));
     const section = (await screen.findByRole("heading", { name: "modelSettings.controlPlane" })).closest("section")!;
     fireEvent.click(within(section).getByRole("button", { name: "modelSettings.validateAssignment" }));
     await waitFor(() => expect(validateModelAssignment).toHaveBeenCalledWith("control_plane", expect.anything()));
@@ -489,10 +665,14 @@ describe("Models and Guardrail Catalog", { timeout: 30_000 }, () => {
 
   it("keeps Runner activation independent of an uncommitted Control Plane selection", async () => {
     renderPage(<GuardrailCatalogPage />);
+    fireEvent.click(await screen.findByRole("tab", { name: "modelSettings.controlPlane" }));
     const section = (await screen.findByRole("heading", { name: "modelSettings.controlPlane" })).closest("section")!;
     fireEvent.keyDown(within(section).getByRole("combobox"), { key: "ArrowDown" });
     fireEvent.click(await screen.findByRole("option", { name: "modelSettings.notAssigned" }));
+    fireEvent.click(screen.getByRole("tab", { name: "modelSettings.catalogConfiguration" }));
     expect(screen.getByRole("button", { name: "modelSettings.reviewActivation" }).hasAttribute("disabled")).toBe(false);
+    fireEvent.click(screen.getByRole("tab", { name: "modelSettings.controlPlane" }));
+    expect(within(section).getByRole("combobox").textContent).toContain("modelSettings.notAssigned");
   });
 
   it("activates Control Plane after validation without a Save step", async () => {
@@ -500,6 +680,7 @@ describe("Models and Guardrail Catalog", { timeout: 30_000 }, () => {
       ...view.draft.validationReport!, checks: [{ id: "probe:control_plane:chat-model", scope: "model", status: "passed", message: "Passed" }],
     } });
     renderPage(<GuardrailCatalogPage />);
+    fireEvent.click(await screen.findByRole("tab", { name: "modelSettings.controlPlane" }));
     const section = (await screen.findByRole("heading", { name: "modelSettings.controlPlane" })).closest("section")!;
     const activate = within(section).getByRole("button", { name: "modelSettings.activateControlPlane" });
     expect(activate.hasAttribute("disabled")).toBe(false);
@@ -530,7 +711,7 @@ describe("Models and Guardrail Catalog", { timeout: 30_000 }, () => {
       },
     });
     renderPage(<GuardrailCatalogPage />);
-    const row = await screen.findByLabelText("modelSettings.detectors.content_safety.title · modelSettings.inputRail", { selector: "tr" });
+    const row = await screen.findByLabelText("modelSettings.detectors.content_safety.title", { selector: "tr" });
     expect(within(row).queryByText(message)).toBeNull();
     fireEvent.click(within(row).getAllByRole("button", { name: /modelSettings.probeFailed/ })[0]!);
     const inspector = screen.getByRole("dialog", { name: "modelSettings.validationErrorTitle" });

@@ -108,12 +108,12 @@ describe("platform Project Group administration", () => {
   });
 
   it("intersects PAT scopes with platform role for allocation mutations", async () => {
-    for (const token of [{ role: "user", permissions: { settings: "write" } }, { role: "admin", permissions: { settings: "read" } }]) {
+    for (const token of [{ role: "user", permissions: { projectGroups: "write" } }, { role: "admin", permissions: { projectGroups: "read" } }]) {
       const { app, groups } = setup("admin", token);
       expect((await app.request("/api/v1/project-groups", { method: "POST", headers: { authorization: "Bearer test", "content-type": "application/json" }, body: JSON.stringify({ name: "Group" }) })).status).toBe(403);
       expect(groups.create).not.toHaveBeenCalled();
     }
-    const { app, groups, accessTokens } = setup("user", { role: "admin", permissions: { settings: "write" } });
+    const { app, groups, accessTokens } = setup("user", { role: "admin", permissions: { projectGroups: "write" } });
     expect((await app.request("/api/v1/project-groups", { method: "POST", headers: { authorization: "Bearer test", "content-type": "application/json" }, body: JSON.stringify({ name: "Group" }) })).status).toBe(201);
     expect(groups.create).toHaveBeenCalledExactlyOnceWith({ name: "Group" }, "token-actor");
     expect(accessTokens.recordRequest).toHaveBeenCalledOnce();

@@ -72,7 +72,7 @@ describe("Project navigation", () => {
 });
 
 describe("Global navigation", () => {
-  it.each(["/account", "/account/security", "/account/access-tokens", "/access", "/access/projects", "/audit-log", "/settings/providers", "/settings/models", "/settings/guardrail-catalog", "/settings/health", "/settings/runner", "/settings/version"])("loads %s without a project", async path => {
+  it.each(["/account", "/account/security", "/account/access-tokens", "/access", "/access/projects", "/audit-log", "/settings/providers", "/settings/models", "/settings/protection-capabilities", "/settings/health", "/settings/runner", "/settings/version"])("loads %s without a project", async path => {
     const router = at(path); await router.load();
     expect(router.state.matches.at(-1)?.routeId).toBe(path);
     expect(router.state.matches.at(-1)?.params).toEqual({});

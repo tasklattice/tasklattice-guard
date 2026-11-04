@@ -3,20 +3,27 @@ import type { AccessAction, PermissionResource } from "../../shared/rbac.js";
 
 // Shared route allowlist for session RBAC and token scopes. Unclassified APIs deny access.
 export const tokenRoutePermissions: ReadonlyArray<readonly [string, string, TokenModule, "read" | "write"]> = [
-  ["GET", "/api/v1/projects/:id/runner", "settings", "read"],
-  ["PUT", "/api/v1/projects/:id/runner", "settings", "write"],
-  ["GET", "/api/v1/project-groups", "settings", "read"],
-  ["GET", "/api/v1/project-groups/:id", "settings", "read"],
-  ["GET", "/api/v1/project-groups/:id/pools", "settings", "read"],
-  ["POST", "/api/v1/project-groups", "settings", "write"],
-  ["PATCH", "/api/v1/project-groups/:id", "settings", "write"],
-  ["DELETE", "/api/v1/project-groups/:id", "settings", "write"],
-  ["POST", "/api/v1/project-groups/:id/pools", "settings", "write"],
-  ["GET", "/api/v1/project-groups/:id/model-configuration", "settings", "read"],
-  ["PUT", "/api/v1/project-groups/:id/model-configuration", "settings", "write"],
-  ["PUT", "/api/v1/projects/:id/group", "settings", "write"],
-  ["PUT", "/api/v1/runner-pools/:id/connectivity", "settings", "write"],
-  ["GET", "/api/v1/project-admission-monitor", "settings", "read"],
+  ["GET", "/api/v1/projects", "projects", "read"],
+  ["POST", "/api/v1/projects", "projects", "write"],
+  ["GET", "/api/v1/projects/:projectId/members", "projects", "read"],
+  ["GET", "/api/v1/projects/:projectId/member-candidates", "projects", "read"],
+  ["PUT", "/api/v1/projects/:projectId/members/:userId", "projects", "write"],
+  ["DELETE", "/api/v1/projects/:projectId/members/:userId", "projects", "write"],
+  ["GET", "/api/v1/project-groups/:id/projects", "projects", "read"],
+  ["GET", "/api/v1/projects/:id/runner", "projects", "read"],
+  ["PUT", "/api/v1/projects/:id/runner", "projects", "write"],
+  ["GET", "/api/v1/project-groups", "projectGroups", "read"],
+  ["GET", "/api/v1/project-groups/:id", "projectGroups", "read"],
+  ["GET", "/api/v1/project-groups/:id/pools", "projectGroups", "read"],
+  ["POST", "/api/v1/project-groups", "projectGroups", "write"],
+  ["PATCH", "/api/v1/project-groups/:id", "projectGroups", "write"],
+  ["DELETE", "/api/v1/project-groups/:id", "projectGroups", "write"],
+  ["POST", "/api/v1/project-groups/:id/pools", "projectGroups", "write"],
+  ["GET", "/api/v1/project-groups/:id/model-configuration", "modelConfiguration", "read"],
+  ["PUT", "/api/v1/project-groups/:id/model-configuration", "modelConfiguration", "write"],
+  ["PUT", "/api/v1/projects/:id/group", "projects", "write"],
+  ["PUT", "/api/v1/runner-pools/:id/connectivity", "runners", "write"],
+  ["GET", "/api/v1/project-admission-monitor", "projectGroups", "read"],
   ["GET", "/api/v1/guardrail-capabilities", "guardrails", "read"],
   ["GET", "/api/v1/policy-catalog/detectors", "policies", "read"],
   ["GET", "/api/v1/policies/:id/definition", "policies", "read"],
@@ -25,22 +32,22 @@ export const tokenRoutePermissions: ReadonlyArray<readonly [string, string, Toke
   ["GET", "/api/v1/policies/:id/definition/test-runs/latest", "policies", "read"],
   ["GET", "/api/v1/policies/:id/definition/test-runs/:runId", "policies", "read"],
   ["POST", "/api/v1/policies/:id/definition/publish", "policies", "write"],
-  ["POST", "/api/v1/model-configuration/draft/assignments/:target/candidate-validations", "settings", "write"],
-  ["GET", "/api/v1/model-configuration/draft/assignments/:target/candidate-validations/:validationId", "settings", "read"],
+  ["POST", "/api/v1/model-configuration/draft/assignments/:target/candidate-validations", "modelConfiguration", "write"],
+  ["GET", "/api/v1/model-configuration/draft/assignments/:target/candidate-validations/:validationId", "modelConfiguration", "read"],
   ["GET", "/api/v1/policies/:id/test-runs/:runId", "policies", "read"],
   ["GET", "/api/v1/routers/:id/revisions/:revision", "routers", "read"],
-  ["GET", "/api/v1/model-configuration", "models", "read"],
-  ["GET", "/api/v1/model-providers", "models", "read"],
-  ["POST", "/api/v1/model-providers", "settings", "write"],
-  ["PATCH", "/api/v1/model-providers/:id", "settings", "write"],
-  ["POST", "/api/v1/model-provider-discoveries", "settings", "write"],
-  ["POST", "/api/v1/model-provider-registrations", "settings", "write"],
-  ["POST", "/api/v1/model-providers/:id/connection-tests", "settings", "write"],
-  ["POST", "/api/v1/model-providers/:id/model-discoveries", "settings", "write"],
-  ["DELETE", "/api/v1/model-providers/:id", "settings", "write"],
-  ["GET", "/api/v1/model-pricing", "settings", "read"],
-  ["GET", "/api/v1/model-pricing/catalog", "settings", "read"],
-  ["PUT", "/api/v1/models/:id/pricing", "settings", "write"],
+  ["GET", "/api/v1/model-configuration", "modelConfiguration", "read"],
+  ["GET", "/api/v1/model-providers", "providers", "read"],
+  ["POST", "/api/v1/model-providers", "providers", "write"],
+  ["PATCH", "/api/v1/model-providers/:id", "providers", "write"],
+  ["POST", "/api/v1/model-provider-discoveries", "providers", "write"],
+  ["POST", "/api/v1/model-provider-registrations", "providers", "write"],
+  ["POST", "/api/v1/model-providers/:id/connection-tests", "providers", "write"],
+  ["POST", "/api/v1/model-providers/:id/model-discoveries", "providers", "write"],
+  ["DELETE", "/api/v1/model-providers/:id", "providers", "write"],
+  ["GET", "/api/v1/model-pricing", "modelPricing", "read"],
+  ["GET", "/api/v1/model-pricing/catalog", "modelPricing", "read"],
+  ["PUT", "/api/v1/models/:id/pricing", "modelPricing", "write"],
   ["GET", "/api/v1/guardrails/:id/usage-costs", "guardrails", "read"],
   ["GET", "/api/v1/models", "models", "read"],
   ["POST", "/api/v1/models", "models", "write"],
@@ -49,11 +56,11 @@ export const tokenRoutePermissions: ReadonlyArray<readonly [string, string, Toke
   ["PUT", "/api/v1/models/:id/runtime-settings", "models", "write"],
   ["PUT", "/api/v1/models/:id/protocol", "models", "write"],
   ["DELETE", "/api/v1/models/:id", "models", "write"],
-  ["PUT", "/api/v1/model-configuration/draft", "settings", "write"],
-  ["PUT", "/api/v1/model-configuration/draft/assignments/:target", "settings", "write"],
-  ["POST", "/api/v1/model-configuration/draft/assignments/:target/validations", "settings", "write"],
-  ["POST", "/api/v1/model-configuration/draft/validations", "settings", "write"],
-  ["POST", "/api/v1/model-configuration/apply", "settings", "write"],
+  ["PUT", "/api/v1/model-configuration/draft", "modelConfiguration", "write"],
+  ["PUT", "/api/v1/model-configuration/draft/assignments/:target", "modelConfiguration", "write"],
+  ["POST", "/api/v1/model-configuration/draft/assignments/:target/validations", "modelConfiguration", "write"],
+  ["POST", "/api/v1/model-configuration/draft/validations", "modelConfiguration", "write"],
+  ["POST", "/api/v1/model-configuration/apply", "modelConfiguration", "write"],
   ["GET", "/api/v1/policies", "policies", "read"],
   ["GET", "/api/v1/guardrail-profiles", "policies", "read"],
   ["GET", "/api/v1/policy-catalog/protection-presets", "policies", "read"],
@@ -161,9 +168,19 @@ export function requiredTokenPermission(method: string, path: string) {
 /** Resource permissions apply equally to preconfigured and user-created Guardrails. */
 export function requiredAccountPermission(method: string, path: string): { resource: PermissionResource; action: AccessAction } | undefined {
   if (method === "GET" && /^\/api\/v1\/users(?:\/[^/]+)?$/.test(path)) return {resource:"users",action:"read"};
-  if (/^\/api\/v1\/projects(?:\/[^/]+\/(?:members(?:\/[^/]+)?|member-candidates))?$/.test(path)) return {resource:"users",action:method === "GET" ? "read" : "write"};
-  if (method === "GET" && /^\/api\/v1\/project-groups\/[^/]+\/projects$/.test(path)) return {resource:"settings",action:"read"};
   const permission = requiredTokenPermission(method, path);
   if (!permission) return undefined;
   return { resource: permission[2], action: permission[3] };
+}
+
+/** Business inventories always need an explicit project for administrators.
+ * Platform catalogs have no project owner. Models have both platform and project inventories. */
+export function adminProjectScope(method: string, path: string): "required" | "optional" | undefined {
+  const permission = requiredTokenPermission(method, path);
+  if (!permission || permission[3] !== "read") return undefined;
+  if (path === "/api/v1/models" || path === "/api/v1/model-configuration") return "optional";
+  if (["/api/v1/guardrail-capabilities", "/api/v1/authoring/capabilities", "/api/v1/policy-catalog/actions", "/api/v1/policy-catalog/detectors"].includes(path)
+    || path === "/api/v1/routing/selector-fields") return undefined;
+  if (["guardrails", "routers", "endpoints", "policies", "playground"].includes(permission[2])) return "required";
+  return undefined;
 }

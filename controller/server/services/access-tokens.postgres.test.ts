@@ -108,14 +108,20 @@ describe.skipIf(!url)("Personal access tokens in PostgreSQL", () => {
     expect(await service.authenticate(issued.secret)).toBeNull();
     await expect(service.create("other", input)).rejects.toMatchObject({code: "project_required"});
   });
+  it("drops retired settings grants without mapping them to new entity permissions", async () => {
+    const issued = await service.create("owner", input);
+    await pool.query("UPDATE personal_access_token SET permissions=$1 WHERE id=$2", [{ settings: "write", projects: "read" }, issued.token.id]);
+    expect((await service.list("owner"))[0]!.permissions).toEqual({ projects: "read" });
+    expect(await service.authenticate(issued.secret)).toMatchObject({ permissions: { projects: "read" } });
+  });
   it("allows user workflow grants and rejects platform grants", async () => {
     const workflowInput = { ...input, permissions: { guardrails: "write", routers: "read" } };
     expect((await service.create("other", workflowInput, "projectA")).token.permissions).toEqual(workflowInput.permissions);
-    await expect(service.create("other", { ...input, permissions: { settings: "read" } }, "projectA")).rejects.toMatchObject({ status: 403 });
+    await expect(service.create("other", { ...input, permissions: { projects: "read" } }, "projectA")).rejects.toMatchObject({ status: 403 });
     const issued = await service.create("other", { ...input, permissions: { routers: "read" } }, "projectA");
     expect(await service.authenticate(issued.secret)).toMatchObject({ id: "other", role: "user", permissions: { routers: "read" } });
   });
-  it.each([{ permissions: {} }, { permissions: { users: "write" } }, { permissions: { audit: "write" } }, { expiresInDays: 0 }, { name: " " }, { userId: "other" }])("rejects invalid issuance input %j", async change => {
+  it.each([{ permissions: { settings: "write" } }, { permissions: {} }, { permissions: { users: "write" } }, { permissions: { audit: "write" } }, { expiresInDays: 0 }, { name: " " }, { userId: "other" }])("rejects invalid issuance input %j", async change => {
     await expect(service.create("owner", { ...input, ...change })).rejects.toThrow();
     expect(await service.list("owner")).toEqual([]);
   });

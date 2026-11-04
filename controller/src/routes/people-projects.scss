@@ -30,3 +30,8 @@
 .user-directory-row:focus-visible { outline: 2px solid var(--ring); outline-offset: -2px; }
 
 .project-row-actions { display: flex; align-items: center; gap: 4px; }
+
+.people-projects-fields { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+.project-create-fact { display: grid; gap: 8px; }
+.project-create-fact > span { font-size: 14px; font-weight: 500; }
+.project-create-fact > p { overflow-wrap: anywhere; }

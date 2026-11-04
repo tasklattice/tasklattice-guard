@@ -76,9 +76,30 @@ describe("Access token management", () => {
     state.role = "user"; mount();
     fireEvent.click(screen.getByRole("button", { name: "Create token" }));
     expect(within(screen.getByLabelText("Routers", { exact: true })).getByRole("option", { name: "Read and write" })).toBeTruthy();
-    expect(within(screen.getByLabelText("Model configuration", { exact: true })).getByRole("option", { name: "Read and write" })).toBeTruthy();
+    expect(within(screen.getByLabelText("Models", { exact: true })).getByRole("option", { name: "Read and write" })).toBeTruthy();
     expect(within(screen.getByLabelText("Runners", { exact: true })).getAllByRole("option").map(option => option.getAttribute("value"))).toEqual(["none", "read"]);
-    for (const label of ["Platform settings", "Audit log"]) expect(screen.queryByLabelText(label, { exact: true })).toBeNull();
+    for (const label of ["Platform settings", "Projects", "Project groups", "Model pricing", "Audit log"]) expect(screen.queryByLabelText(label, { exact: true })).toBeNull();
+  });
+  it("offers administrator entity grants and read-only project resources, and submits Projects permission", async () => {
+    state.role = "admin"; mount();
+    fireEvent.click(screen.getByRole("button", { name: "Create token" }));
+    const dialog = screen.getByRole("dialog");
+    expect(within(dialog).getByText(/every request; business resources are read only/)).toBeTruthy();
+    expect(screen.queryByLabelText("Platform settings", { exact: true })).toBeNull();
+    for (const label of ["Projects", "Project groups", "Providers", "Models", "Model configuration", "Model pricing", "Runners"])
+      expect(within(screen.getByLabelText(label, { exact: true })).getByRole("option", { name: "Read and write" })).toBeTruthy();
+    for (const label of ["GuardRails", "Routers", "Endpoints", "Policy Library", "Playground", "Audit log"])
+      expect(within(screen.getByLabelText(label, { exact: true })).getAllByRole("option").map(option => option.getAttribute("value"))).toEqual(["none", "read"]);
+    fireEvent.change(screen.getByLabelText("Name", { exact: true }), { target: { value: "Project provisioning" } });
+    fireEvent.change(screen.getByLabelText("Projects", { exact: true }), { target: { value: "write" } });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Create token" }));
+    await screen.findByText("Token created");
+    expect(state.create).toHaveBeenCalledWith({ name: "Project provisioning", expiresInDays: 30, permissions: { projects: "write" } });
+  });
+  it("does not display a retired settings grant as active authority", async () => {
+    state.role = "admin"; state.list.mockResolvedValue({ items: [{ ...token, permissions: { settings: "write" } }] }); mount();
+    expect(await screen.findByText("No active permissions. Create a new token with the required resource permissions.")).toBeTruthy();
+    expect(screen.queryByText(/accessTokens.modules.settings/)).toBeNull();
   });
   it("confirms revocation, shows errors, then updates the list after success", async () => {
     state.list.mockResolvedValue({ items: [token] }); state.revoke.mockRejectedValueOnce(new Error("Revoke failed")); mount();

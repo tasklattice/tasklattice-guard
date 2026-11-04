@@ -101,7 +101,7 @@ describe("ControlPlaneLayout", () => {
     expect(screen.getByRole("link", { name: "Platform" }).getAttribute("href")).toBe("/settings/providers");
   });
 
-  it.each(["/settings/models", "/settings/guardrail-catalog", "/settings/runner", "/access/projects", "/access", "/audit-log"])("prevents users from mounting platform page %s", path => {
+  it.each(["/settings/models", "/settings/protection-capabilities", "/settings/runner", "/access/projects", "/access", "/audit-log"])("prevents users from mounting platform page %s", path => {
     pathname = path; render(<ControlPlaneLayout />);
     expect(screen.queryByText("Page content")).toBeNull();
     expect(screen.getByRole("link", { name: "Dashboard" }).getAttribute("href")).toBe("/");

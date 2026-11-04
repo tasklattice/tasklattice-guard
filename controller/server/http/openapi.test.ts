@@ -64,7 +64,7 @@ describe("Generated OpenAPI contract", () => {
     expect(contract.paths["/api/v1/guardrails"].post["x-account-roles"]).toEqual(["user"]);
     expect(contract.paths["/api/v1/models"].post["x-account-roles"]).toEqual(["admin", "user"]);
     expect(contract.paths["/api/v1/model-providers"].post["x-account-roles"]).toEqual(["admin"]);
-    expect(contract.paths["/api/v1/model-providers"].post["x-token-permission"]).toEqual({ module: "settings", access: "write" });
+    expect(contract.paths["/api/v1/model-providers"].post["x-token-permission"]).toEqual({ module: "providers", access: "write" });
     expect(contract.paths["/api/v1/guardrails"].get["x-account-roles"]).toEqual(["admin", "user"]);
     expect(contract.paths["/api/v1/telemetry/events"].get["x-account-roles"]).toEqual(["user"]);
     expect(contract.paths["/api/v1/telemetry/events/{id}"].get["x-account-roles"]).toEqual(["user"]);
@@ -90,6 +90,18 @@ describe("Generated OpenAPI contract", () => {
     expect(approve["x-token-permission"]).toEqual({ module: "routers", access: "write" });
     expect(approve.description).toContain("must differ from the submitter");
     expect(contract.paths["/api/v1/routers/{id}/publish"]).toBeUndefined();
+  });
+  it("documents project selection and entity grants without restoring administrator business writes", () => {
+    for (const path of ["/api/v1/guardrails", "/api/v1/guardrails/{id}", "/api/v1/routers", "/api/v1/endpoints", "/api/v1/policies"]) {
+      expect(contract.paths[path].get["x-admin-project-scope"]).toBe("required");
+      expect(contract.paths[path].get.parameters).toContainEqual(expect.objectContaining({ name: "X-Project-ID", in: "header", "x-required-for-roles": ["admin"] }));
+    }
+    expect(contract.paths["/api/v1/models"].get["x-admin-project-scope"]).toBe("optional");
+    expect(contract.paths["/api/v1/projects"].post["x-token-permission"]).toEqual({ module: "projects", access: "write" });
+    expect(contract.paths["/api/v1/projects"].post.security).toContainEqual({ personalAccessToken: [] });
+    expect(contract.paths["/api/v1/guardrails/{id}/publish"].post["x-account-roles"]).toEqual(["user"]);
+    const schema = contract.paths["/api/v1/account/access-tokens"].post.requestBody.content["application/json"].schema;
+    expect(validate(schema, { name: "Legacy", expiresInDays: 7, permissions: { settings: "write" } }).valid).toBe(false);
   });
   it("returns JSON 404 for removed API routes rather than the SPA", async () => {
     const app = setup();

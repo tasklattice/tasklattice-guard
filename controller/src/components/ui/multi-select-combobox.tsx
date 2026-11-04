@@ -21,6 +21,7 @@ export type MultiSelectComboboxProps = {
   noOptionsDescription?: string;
   noOptionsMessage?: string;
   onValueChange: (value: string[]) => void;
+  onSearchChange?: (value: string) => void;
   options: readonly MultiSelectOption[];
   placeholder?: string;
   searchPlaceholder?: string;
@@ -36,6 +37,7 @@ export function MultiSelectCombobox({
   id,
   maxSelected,
   onValueChange,
+  onSearchChange,
   options,
   placeholder,
   searchPlaceholder,
@@ -50,6 +52,7 @@ export function MultiSelectCombobox({
   const generated = useId();
   const { t, i18n } = useTranslation();
   const [query, setQuery] = useState("");
+  const changeSearch = (value: string) => { setQuery(value); onSearchChange?.(value); };
   const [selectionHost, setSelectionHost] = useState<Element | null>(null);
   // Carbon has no selected-item renderer for FilterableMultiSelect. Mount the
   // native tags in its field, retaining its search, listbox and keyboard logic.
@@ -125,7 +128,7 @@ export function MultiSelectCombobox({
             Boolean(filterMultiSelectOptions([item], inputValue ?? "").length)
           }
           downshiftProps={{ isItemDisabled: (item) => Boolean(item?.disabled) }}
-          onInputChange={setQuery}
+          onInputChange={changeSearch}
           onChange={({ selectedItem }) =>
             onValueChange(selectedItem ? [selectedItem.value] : [])
           }
@@ -152,7 +155,7 @@ export function MultiSelectCombobox({
           filterItems={(all, { inputValue }) =>
             filterMultiSelectOptions(all, inputValue ?? "")
           }
-          onInputValueChange={({ inputValue }) => setQuery(inputValue ?? "")}
+          onInputValueChange={({ inputValue }) => changeSearch(inputValue ?? "")}
           onChange={({ selectedItems }) =>
             onValueChange(selectedItems.map((item) => item.value))
           }

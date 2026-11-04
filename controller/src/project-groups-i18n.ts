@@ -21,8 +21,8 @@ export const projectGroupsEn = {
   modelsSource: "Validated source",
   modelsChooseSource: "Choose a validated revision",
   modelsNoSource:
-    "No eligible validated configuration is available. Validate runtime bindings in the Guardrail Catalog, then refresh and review here.",
-  modelsSettings: "Guardrail Catalog",
+    "No eligible validated configuration is available. Validate runtime bindings in Protection Capabilities, then refresh and review here.",
+  modelsSettings: "Protection Capabilities",
   modelsBindings: "Runtime bindings to grant",
   modelsValidatedAt: "Validated",
   modelsConflict:
@@ -52,8 +52,8 @@ export const projectGroupsZh: ProjectGroupsCopy = {
   modelsSource: "已验证的来源",
   modelsChooseSource: "选择已验证的配置版本",
   modelsNoSource:
-    "暂无符合条件的已验证配置。请先在 Guardrail 目录中验证运行时绑定，再在此刷新并确认。",
-  modelsSettings: "Guardrail 目录",
+    "暂无符合条件的已验证配置。请先在“防护能力”中验证运行时绑定，再在此刷新并确认。",
+  modelsSettings: "防护能力",
   modelsBindings: "待授权的运行时绑定",
   modelsValidatedAt: "验证时间",
   modelsConflict:

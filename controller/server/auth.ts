@@ -1,3 +1,4 @@
+import { PASSWORD_MAX_LENGTH } from "../shared/password-policy.js";
 import { betterAuth } from "better-auth";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
 import { admin, genericOAuth, username } from "better-auth/plugins";
@@ -53,6 +54,7 @@ export function createAuth(config: ControllerConfig, db: ControllerDatabase, inc
       enabled: true,
       disableSignUp: true,
       minPasswordLength: config.minPasswordLength,
+      maxPasswordLength: PASSWORD_MAX_LENGTH,
       autoSignIn: true,
     },
     disabledPaths: [
@@ -114,8 +116,8 @@ export function createAuth(config: ControllerConfig, db: ControllerDatabase, inc
             }
             if (context?.path === "/admin/create-user") {
               const password = context.body?.password;
-              if (typeof password !== "string" || password.length < config.minPasswordLength || password.length > 128) {
-                throw new APIError("BAD_REQUEST", { message: `A password of ${config.minPasswordLength}–128 characters is required.` });
+              if (typeof password !== "string" || password.length < config.minPasswordLength || password.length > PASSWORD_MAX_LENGTH) {
+                throw new APIError("BAD_REQUEST", { message: `A password of ${config.minPasswordLength}–${PASSWORD_MAX_LENGTH} characters is required.` });
               }
             }
             const value: unknown = (created as typeof created & { username?: unknown }).username;

@@ -19,13 +19,16 @@ afterEach(()=>{cleanup();client.clear();vi.clearAllMocks();});
 const mount=()=>render(<QueryClientProvider client={client}><ProjectsPage/></QueryClientProvider>);
 it('loads members and local candidates in separate on-demand queries',async()=>{
  mount();await screen.findByText('runner-default');expect(api.listProjectMembers).not.toHaveBeenCalled();expect(api.listMemberCandidates).not.toHaveBeenCalled();
- fireEvent.click(screen.getByRole('button',{name:'Actions · support'}));fireEvent.click(await screen.findByText('Manage local users'));await screen.findByText('sso');expect(screen.queryByRole('button',{name:'Remove access'})).toBeNull();expect(api.listMemberCandidates).not.toHaveBeenCalled();
- fireEvent.click(screen.getByRole('button',{name:'Add member'}));await screen.findByText('local');expect(api.listMemberCandidates).toHaveBeenCalledWith('support',{q:'',cursor:undefined,limit:25},expect.any(AbortSignal));
+ fireEvent.click(screen.getByRole('button',{name:'Manage local users · support'}));await screen.findByText('sso');expect(screen.queryByRole('button',{name:'Remove access'})).toBeNull();
+ fireEvent.click(screen.getByRole('combobox',{name:'Search and select a local user'}));await screen.findByRole('option',{name:'local'});expect(api.listMemberCandidates).toHaveBeenCalledWith('support',{q:'',cursor:undefined,limit:25},expect.any(AbortSignal));
 });
 it('creates one canonical Project identity without a separate ID override',async()=>{
  mount();await screen.findByText('runner-default');fireEvent.click(screen.getByRole('button',{name:'Create project'}));const sheet=screen.getByRole('dialog');
  expect(within(sheet).queryByLabelText('Project ID (optional)')).toBeNull();
  fireEvent.change(within(sheet).getByLabelText('Project name'),{target:{value:'New Project'}});
+ expect(within(sheet).getByText('runner-default')).toBeTruthy();
+ expect(within(sheet).getByText(/http.*new-project/)).toBeTruthy();
+ expect(within(sheet).queryByText('runner-new-project-0')).toBeNull();
  fireEvent.click(within(sheet).getByRole('button',{name:'Create project'}));await waitFor(()=>expect(api.createProject).toHaveBeenCalledWith({name:'new-project'}));
 });
 

@@ -1,3 +1,4 @@
+import { PASSWORD_MAX_LENGTH } from "../../shared/password-policy.js";
 import { directoryQuerySchema } from "../../shared/directory.js";
 import { hasPermission, isAccountRole } from "../../shared/rbac.js";
 import { createHash } from "node:crypto";
@@ -19,7 +20,7 @@ import { pathTestSchema, parseHttpRequest, requestSource } from "../../shared/pl
 import { openApiDocument, apiReferenceHtml, apiAgentIndex } from "./openapi.js";
 import { allowsTokenPermission, effectiveTokenPermissions } from "../../shared/access-tokens.js";
 import type { AccessTokenService, TokenIdentity } from "../services/access-tokens.js";
-import { requiredAccountPermission, requiredTokenPermission } from "./token-permissions.js";
+import { adminProjectScope, requiredAccountPermission, requiredTokenPermission } from "./token-permissions.js";
 import { partialModelActivationSchema } from "../../shared/model-activation.js";
 import { routerDraftSchema, previewRouter, selectorFields, selectableSelectorFields, RoutingEvaluationError, routingInputSchema } from "../../shared/traffic-routing.js";
 import { routingEventSchema } from "../services/traffic-routing.js";
@@ -72,7 +73,7 @@ import {
 import { isGuardrailVersionId } from "../../shared/guardrail-version.js";
 import { SSO_PROVIDER_ID } from "../sso-config.js";
 import { ProjectShareService } from "../services/project-shares.js";
-import { runWithUserContext, runWithProjectContext } from "../services/project-context.js";
+import { runWithProjectReadContext, runWithUserContext, runWithProjectContext } from "../services/project-context.js";
 import type { PlatformStatusSnapshot } from "../../shared/platform-status.js";
 import { protectionDirectories } from "../../shared/protection-map.js";
 import { admissionMonitorQuerySchema } from "../../shared/admission-monitor.js";
@@ -397,7 +398,7 @@ export function createHttpApp(input: {
   });
   app.get("/api/sign-in/options", context => {
     context.header("Cache-Control", "no-store");
-    return context.json({ password: true, sso: input.config.sso
+    return context.json({ passwordPolicy: { minLength: input.config.minPasswordLength, maxLength: PASSWORD_MAX_LENGTH }, password: true, sso: input.config.sso
       ? { providerId: SSO_PROVIDER_ID, displayName: input.config.sso.displayName } : null });
   });
   app.on(["GET", "POST"], "/api/auth/*", async context => {
@@ -435,7 +436,8 @@ export function createHttpApp(input: {
   };
   const projectAdministrator: MiddlewareHandler<{ Variables: Variables }> = async (context, next) => {
     if (context.get("actor").role !== "admin") throw new ControllerError("A platform administrator is required.", 403, "forbidden");
-    await next();
+    if (context.get("actor").tokenId) await next();
+    else await browserSession(context, next);
   };
   app.get("/api/v1/account/projects", authenticated, browserSession, async context =>
     context.json(await projects().list(directoryQuerySchema.parse(context.req.query()),context.get("actor").id)));
@@ -457,19 +459,19 @@ export function createHttpApp(input: {
     context.json(await input.service.users.list(directoryQuerySchema.parse(context.req.query()))));
   app.get("/api/v1/users/:id", authenticated, browserSession, projectAdministrator, async context =>
     context.json(await input.service.users.detail(context.req.param("id"),directoryQuerySchema.parse(context.req.query()))));
-  app.get("/api/v1/projects", authenticated, browserSession, projectAdministrator, async context =>
+  app.get("/api/v1/projects", authenticated, projectAdministrator, async context =>
     context.json(await projects().list(directoryQuerySchema.extend({groupId:projectIdSchema.optional(),withoutPool:z.enum(["true"]).optional().transform(value=>value==="true")}).parse(context.req.query()))));
-  app.post("/api/v1/projects", authenticated, browserSession, projectAdministrator, async context =>
+  app.post("/api/v1/projects", authenticated, projectAdministrator, async context =>
     context.json(await projects().create(context.get("actor").id, await context.req.json()), 201));
-  app.get("/api/v1/projects/:projectId/members", authenticated, browserSession, projectAdministrator, async context =>
+  app.get("/api/v1/projects/:projectId/members", authenticated, projectAdministrator, async context =>
     context.json(await projects().members(context.req.param("projectId"),directoryQuerySchema.parse(context.req.query()))));
-  app.get("/api/v1/projects/:projectId/member-candidates", authenticated, browserSession, projectAdministrator, async context =>
+  app.get("/api/v1/projects/:projectId/member-candidates", authenticated, projectAdministrator, async context =>
     context.json(await projects().memberCandidates(context.req.param("projectId"),directoryQuerySchema.parse(context.req.query()))));
-  app.put("/api/v1/projects/:projectId/members/:userId", authenticated, browserSession, projectAdministrator, async context => {
+  app.put("/api/v1/projects/:projectId/members/:userId", authenticated, projectAdministrator, async context => {
     await projects().setMember(context.get("actor").id, context.req.param("projectId"), context.req.param("userId"), true);
     return context.body(null, 204);
   });
-  app.delete("/api/v1/projects/:projectId/members/:userId", authenticated, browserSession, projectAdministrator, async context => {
+  app.delete("/api/v1/projects/:projectId/members/:userId", authenticated, projectAdministrator, async context => {
     await projects().setMember(context.get("actor").id, context.req.param("projectId"), context.req.param("userId"), false);
     return context.body(null, 204);
   });
@@ -614,7 +616,7 @@ export function createHttpApp(input: {
     const body = z.object({ modelId: z.string().uuid(), formalValidation: formalValidationSchema.optional() }).parse(await context.req.json());
     return context.json(await input.models.previewAssignment(target, body.modelId, context.get("actor").id, body.formalValidation), 201);
   });
-  app.get("/api/v1/model-configuration/draft/assignments/:target/candidate-validations/:validationId", authenticated, async context => {
+  app.get("/api/v1/model-configuration/draft/assignments/:target/candidate-validations/:validationId", authenticated, projectAdministrator, async context => {
     if (!input.models) throw new ControllerError("Model configuration is unavailable.", 503, "model_configuration_unavailable");
     const target = modelAssignmentTargetSchema.parse(context.req.param("target"));
     return context.json(await input.models.getAssignmentValidation(target, context.req.param("validationId"), context.get("actor").id));
@@ -1132,11 +1134,11 @@ export function createHttpApp(input: {
       projectRunnerConfigurationSchema.parse(await context.req.json()), context.get("actor").id)));
   app.get("/api/v1/project-groups", authenticated, async context => context.json(await input.service.projectGroups.list(directoryQuerySchema.parse(context.req.query()))));
   app.get("/api/v1/project-groups/:id", authenticated, async context => context.json(await input.service.projectGroups.get(context.req.param("id"))));
-  app.get("/api/v1/project-groups/:id/projects", authenticated, browserSession, projectAdministrator, async context =>
+  app.get("/api/v1/project-groups/:id/projects", authenticated, projectAdministrator, async context =>
     context.json(await projects().list({...directoryQuerySchema.parse(context.req.query()),groupId:context.req.param("id")})));
   app.get("/api/v1/project-groups/:id/pools", authenticated, async context =>
     context.json(await input.service.projectGroups.pools(context.req.param("id"),directoryQuerySchema.parse(context.req.query()))));
-  app.get("/api/v1/project-groups/:id/model-configuration", authenticated, async context => {
+  app.get("/api/v1/project-groups/:id/model-configuration", authenticated, projectAdministrator, async context => {
     if (!input.models) throw new ControllerError("Model configuration is unavailable.", 503, "model_configuration_unavailable");
     return context.json(await input.models.groupRuntime.view(context.req.param("id")));
   });
@@ -1535,6 +1537,30 @@ function peerAddress(context: Context): string | null {
 }
 
 function authentication(auth: ControllerAuth, tokens?: AccessTokenService, projects?: ProjectService): MiddlewareHandler<{ Variables: Variables }> {
+  const runAsActor = async (context: Context<{ Variables: Variables }>, actor: Actor, next: () => Promise<void>) => {
+    const scope = actor.role === "admin" ? adminProjectScope(context.req.method, context.req.path) : undefined;
+    const requestedProject = context.req.header("x-project-id");
+    if (scope && context.req.query("projectId") !== undefined)
+      throw new ControllerError("Use X-Project-ID to select a project, not the projectId query parameter.", 400, "invalid_project_selector");
+    if (scope === "required" || scope === "optional" && requestedProject !== undefined) {
+      if (!requestedProject) throw new ControllerError("X-Project-ID is required to read project resources.", 400, "project_required");
+      if (!projectIdSchema.safeParse(requestedProject).success)
+        throw new ControllerError("X-Project-ID must be a valid Project ID.", 400, "invalid_project_id");
+      if (!projects) throw new ControllerError("Project management is unavailable.", 503, "projects_unavailable");
+      await projects.requireExists(requestedProject);
+      context.set("actor", { ...actor, projectId: requestedProject });
+      await runWithProjectReadContext(requestedProject, actor.id, next);
+      return;
+    }
+    // Platform model writes must never be interpreted as writes to a selected project.
+    if (actor.role === "admin" && requestedProject !== undefined
+      && requiredTokenPermission(context.req.method, context.req.path)?.[2] === "models"
+      && requiredTokenPermission(context.req.method, context.req.path)?.[3] === "write")
+      throw new ControllerError("Administrators can only read project Models.", 403, "project_read_only");
+    context.set("actor", actor);
+    if (actor.projectId || actor.role === "admin") await runWithProjectContext({ projectId: actor.projectId, actorId: actor.id, role: actor.role as "admin" | "user" }, next);
+    else await runWithUserContext(actor.id, actor.role as "user", next);
+  };
   return async (context, next) => {
     const authorizationHeader = context.req.header("authorization");
     if (authorizationHeader !== undefined) {
@@ -1557,8 +1583,7 @@ function authentication(auth: ControllerAuth, tokens?: AccessTokenService, proje
           return context.json({ error: { code: "insufficient_token_permission", message: "This token does not allow the requested operation." } }, 403);
       }
       const projectId = actor.role === "admin" ? null : actor.projectId;
-      context.set("actor", { ...actor, projectId });
-      await runWithProjectContext({ projectId, actorId: actor.id, role: actor.role }, () => next());
+      await runAsActor(context, { ...actor, projectId }, next);
       if (!["GET", "HEAD"].includes(context.req.method))
         await tokens!.recordRequest(actor, context.req.method, permission![1], context.res.status);
       return;
@@ -1589,9 +1614,7 @@ function authentication(auth: ControllerAuth, tokens?: AccessTokenService, proje
     const accountRoute = /^\/api\/v1\/account\/(?:identity|projects?|share-recipients|project-access(?:\/refresh)?|access-tokens(?:\/[^/]+)?|shareable-resources|shares(?:\/[^/]+)?)$/.test(context.req.path);
     if ((!permission && !accountRoute) || (permission && !hasPermission(role, permission.resource, permission.action)))
       return context.json({ error: { code: "forbidden", message: "Your account role does not allow this operation." } }, 403);
-    context.set("actor", { id: session.user.id, role, projectId, sessionId: session.session?.id });
-    if (projectId || role === "admin") await runWithProjectContext({ projectId, actorId: session.user.id, role }, () => next());
-    else await runWithUserContext(session.user.id, role, () => next());
+    await runAsActor(context, { id: session.user.id, role, projectId, sessionId: session.session?.id }, next);
   };
 }
 

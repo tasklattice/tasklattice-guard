@@ -39,7 +39,7 @@ export function ProtectionDependencies({ bindings, policies }: { bindings: Guard
           </li>;
         })}
       </ul>}
-      {administrator ? <a className="inline-flex min-h-11 items-center text-sm text-primary underline-offset-4 hover:underline" href="/settings/guardrail-catalog" target="_blank" rel="noopener noreferrer">{t("protection.dependencies.configure")}</a> : <p className="text-sm text-muted-foreground">{t("auth.platformSetupRequired")}</p>}
+      {administrator ? <a className="inline-flex min-h-11 items-center text-sm text-primary underline-offset-4 hover:underline" href="/settings/protection-capabilities" target="_blank" rel="noopener noreferrer">{t("protection.dependencies.configure")}</a> : <p className="text-sm text-muted-foreground">{t("auth.platformSetupRequired")}</p>}
     </> : null}
   </section>;
 }

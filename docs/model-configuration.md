@@ -6,7 +6,7 @@ preparation and model failures follow the configured failure policy. Provider co
 model callability, assignment to a protection check, and full Default validation
 are separate steps. See [Default requirements](guardrail-policies.md).
 
-## Providers, Models, and Guardrail Catalog
+## Providers, Models, and Protection Capabilities
 
 The Helm install command does not read model configuration or credentials from
 `.env` and does not create Provider Secrets. Runtime model configuration has four
@@ -17,13 +17,38 @@ separate UI owners:
 | Health | Global Controller, baseline Guardrail, Runner convergence, and active model-binding readiness |
 | Providers | Endpoint, encrypted credential, discovery, connectivity, and Provider-scoped TLS policy |
 | Models | Registered inventory plus one real callability check per physical model |
-| Guardrail Catalog | Rail-specific model assignment, behavioral validation, Save, and activation |
+| Protection Capabilities | Capability-level model selection, optional stage overrides, per-stage validation, Save, and activation |
 
-A callable model is not automatically used by a Rail. The active Guardrail
-Catalog revision maps a stable binding such as `content_safety.input`,
+The **Protection Capabilities** name describes this product's configuration page.
+Its protection categories follow NVIDIA's [NeMo Guardrails catalog](https://docs.nvidia.com/nemo/guardrails/latest/configure-guardrails/guardrail-catalog),
+and its runtime Input/Output stages follow [NeMo rail types](https://docs.nvidia.com/nemo/guardrails/latest/about-nemo-guardrails-library/rail-types).
+The UI name is product-specific; NeMo's official documentation still calls its
+pre-built guardrail reference **Guardrail Catalog**. The page uses
+`/settings/protection-capabilities`; the former page URL is not retained as an alias
+or redirect. Capability identifiers remain stable.
+
+A callable model is not automatically used by a Rail. The active Protection Capabilities
+revision maps a stable binding such as `content_safety.input`,
 `content_safety.output`, or `jailbreak.input` to one registered model. One model
 may serve multiple bindings when its explicit protocol profile supports each
 contract. Input and Output assignments remain independent.
+
+The page shows one row per implemented capability, without Input/Output tabs.
+Capabilities supporting both stages default to one shared model selector; its
+options must support both stage contracts. **Configure by stage** exposes
+independent input and output selectors, including input-only profiles such as
+JEV content safety. Existing unequal assignments open in stage mode and are
+preserved. Returning to shared mode requires an explicit model choice before
+replacing unequal assignments.
+
+Each capability exposes **Validate** and **Save** as separate row buttons.
+Optional **Validate** runs each configured stage separately and displays its own result
+and failure evidence. One failed stage does not skip the other stage. **Save**
+persists each binding and any available validation receipt sequentially. A failed save
+remains visible beside its stage and keeps that selection available for retry;
+partial saves do not activate the runtime. Review and Apply remains a separate
+step and accepts saved bindings whether validation passed, failed, or was not run.
+Shared selection is a UI convenience, not a merged validation contract.
 
 An existing `generic-chat` model, including DeepSeek, can also be explicitly
 assigned to `classifier_review.input` or `classifier_review.output` without changing its profile or Control
@@ -143,7 +168,7 @@ artifacts when the selected detector changes.
   a Chat Completions or `/models` endpoint is not required. Custom gateway prefixes
   remain intact and never redirect to NVIDIA's public service.
 - Register the model in **Models**, then select it for **Jailbreak detection** in
-  **Guardrail Catalog → Input**, validate, save, and activate. The protocol is inferred for the
+  **Protection Capabilities → Input**, validate, save, and activate. The protocol is inferred for the
   canonical model ID; deployment aliases can use the existing protocol settings.
   Any chat model that supports OpenAI-compatible Chat Completions can instead use
   the `tali.openai-compatible-jailbreak.v1` profile and must return `SAFE` or
@@ -153,7 +178,7 @@ The dedicated client sends raw user input as `{"input":"..."}` and strictly
 checks the native `jailbreak` boolean and finite `[-1, 1]` `score`. It uses the
 service's boolean decision, not an invented local threshold. It does not send
 chat prompts, model IDs, or generation parameters. **Models → Test call** checks
-the response envelope only; **Guardrail Catalog → Validate** runs both benign and
+the response envelope only; **Protection Capabilities → Validate** runs both benign and
 jailbreak smoke samples. These samples do not constitute a comprehensive accuracy
 benchmark. Classification errors remain errors and follow the Guardrail's failure
 policy; they never become a safe verdict. This detector is input-only.
@@ -200,7 +225,7 @@ kind enum. Keep the Provider → Model → detector binding structure: credentia
 endpoint belong to the Provider, while the version and evaluator profile belong
 to the Model, preserving switching and rollback.
 
-Assign the same registered model independently to **Guardrail Catalog → Input → Topic Control**,
+Assign the same registered model independently to **Protection Capabilities → Input → Topic Control**,
 **Jailbreak detection**, and **Content Safety**, validate each candidate, save, then activate through the existing revision workflow. Registration
 checks callability; each binding validation executes its own benign and off-topic
 or unsafe samples through NeMo. The multi-purpose profile supports `tali.guard.topic-control.semantic.v1`,
@@ -323,7 +348,7 @@ have a **TLS settings** action. It defaults to off and applies only to that
 Provider's discovery, detector validation, and Control Plane/Data Plane model
 requests. Enabling it skips certificate-chain and hostname checks, not HTTPS
 encryption. Changes are persisted and sent to active Runners; test affected models
-again in Models and revalidate their bindings in Guardrail Catalog because previous
+again in Models and revalidate their bindings in Protection Capabilities because previous
 connection and validation evidence is cleared.
 This does not change Controller–Runner mTLS or other Providers' verification.
 
