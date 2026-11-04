@@ -13,7 +13,7 @@ from fastapi.security import HTTPBearer
 from pydantic import BaseModel, ConfigDict, ValidationError
 
 from .routing import RoutingError
-from .tenant_admission import AdmissionRejected, AdmissionUnavailable
+from .project_admission import AdmissionRejected, AdmissionUnavailable
 from .toolkit.runtime.outcome import GuardrailExecutionError
 from .toolkit.runtime.contracts import GuardContentBlock, ProtectionDecision, ProtectionRequest, RequestContext
 
@@ -134,13 +134,13 @@ def register_scan(api, *, max_body_bytes: int, timeout_seconds: float) -> None:
             if access.adapter != SCAN_ADAPTER:
                 raise ScanFailure(403, "adapter_mismatch", "Endpoint does not support Scan.")
             try:
-                permit = await api._acquire_tenant_permit(endpoint_id, token)
+                permit = await api._acquire_project_permit(endpoint_id, token)
             except AdmissionRejected as error:
                 response_headers["Retry-After"] = str(error.retry_after)
-                raise ScanFailure(429, "tenant_admission_rejected", "Tenant admission capacity is unavailable. Retry shortly.") from error
+                raise ScanFailure(429, "project_admission_rejected", "Project admission capacity is unavailable. Retry shortly.") from error
             except AdmissionUnavailable as error:
                 response_headers["Retry-After"] = "1"
-                raise ScanFailure(503, "tenant_admission_unavailable", "Endpoint admission allocation is unavailable.") from error
+                raise ScanFailure(503, "project_admission_unavailable", "Endpoint admission allocation is unavailable.") from error
             if request.headers.get("content-type", "").split(";", 1)[0].strip().lower() != "application/json":
                 raise ScanFailure(415, "unsupported_media_type", "Use application/json.")
             body = bytearray()
@@ -235,4 +235,4 @@ def register_scan(api, *, max_body_bytes: int, timeout_seconds: float) -> None:
             return JSONResponse(status_code=status, headers=response_headers,
                 content={"detail": {"code": code, "message": message, "requestId": scan_id}})
         finally:
-            await api._release_tenant_permit(permit)
+            await api._release_project_permit(permit)

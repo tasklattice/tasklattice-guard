@@ -3,10 +3,10 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { loadConfig } from "../config.js";
 import { createTestDatabase } from "../db/postgres-test-database.js";
 import { ControlPlaneService } from "./control-plane.js";
-import { runWithTenantContext } from "./tenant-context.js";
+import { runWithProjectContext } from "./project-context.js";
 
 const url = process.env.GUARD_TEST_POSTGRES_URL;
-describe.skipIf(!url)("deletion-impact telemetry across tenant groups", () => {
+describe.skipIf(!url)("deletion-impact telemetry across project groups", () => {
   let database: Awaited<ReturnType<typeof createTestDatabase>>;
   let service: ControlPlaneService;
   beforeAll(async () => {
@@ -15,14 +15,14 @@ describe.skipIf(!url)("deletion-impact telemetry across tenant groups", () => {
       CONTROLLER_RUNNER_TOKEN: "test-runner-token-at-least-thirty-two-characters", CONTROLLER_ARTIFACT_SIGNING_KEY_PATH: "/tmp/unused-key",
       BETTER_AUTH_SECRET: "test-auth-secret-at-least-thirty-two-characters" }));
     await database.pool.query(`
-      INSERT INTO tenant_group(id,name) VALUES ('group-c','Group C');
-      UPDATE tenant SET group_id='group-c' WHERE id='tenantC';
+      INSERT INTO project_group(id,name) VALUES ('group-c','Group C');
+      UPDATE project SET group_id='group-c' WHERE id='projectC';
       INSERT INTO runner_pool(id,name,group_id) VALUES ('default','Default','default'),('pool-c','Pool C','group-c');
-      INSERT INTO guardrail(id,tenant_id,name,draft_config,status) VALUES ('guard','tenantA','Guard','{}','active');
-      INSERT INTO traffic_router(id,tenant_id,name,draft,active_snapshot,active_revision) VALUES
-        ('router-a','tenantA','A','{"routes":[]}', '{"routes":[{"targets":[{"guardrailId":"guard"}]}]}',1),
-        ('router-c','tenantC','C','{"routes":[]}', '{"routes":[{"targets":[{"guardrailId":"guard"}]}]}',1);
-      INSERT INTO endpoint(id,tenant_id,name,adapter,traffic_router_id) VALUES ('endpoint-c','tenantC','C','litellm-generic-guardrail','router-c');
+      INSERT INTO guardrail(id,project_id,name,draft_config,status) VALUES ('guard','projectA','Guard','{}','active');
+      INSERT INTO traffic_router(id,project_id,name,draft,active_snapshot,active_revision) VALUES
+        ('router-a','projectA','A','{"routes":[]}', '{"routes":[{"targets":[{"guardrailId":"guard"}]}]}',1),
+        ('router-c','projectC','C','{"routes":[]}', '{"routes":[{"targets":[{"guardrailId":"guard"}]}]}',1);
+      INSERT INTO endpoint(id,project_id,name,adapter,traffic_router_id) VALUES ('endpoint-c','projectC','C','litellm-generic-guardrail','router-c');
       INSERT INTO runner_instance(runner_id,boot_id,pool_id,runner_version,nemo_version,max_concurrency,status) VALUES
         ('runner-a','boot-a','default','test','test',1,'ready'),('runner-c','boot-c','pool-c','test','test',1,'ready');
       INSERT INTO telemetry_watermark(runner_id,last_received_at) VALUES ('runner-a',now()),('runner-c',now() - interval '1 hour');
@@ -66,35 +66,35 @@ describe.skipIf(!url)("deletion-impact telemetry across tenant groups", () => {
       INSERT INTO telemetry_watermark(runner_id,last_received_at) VALUES ('runner-c',now());`);
   }, 30000);
 
-  it("redacts other tenants and unknown events while retaining conservative deletion checks", async () => {
-    const asA = <T>(work: () => T) => runWithTenantContext({ tenantId: "tenantA", role: "user", actorId: "actor-a" }, work);
+  it("redacts other projects and unknown events while retaining conservative deletion checks", async () => {
+    const asA = <T>(work: () => T) => runWithProjectContext({ projectId: "projectA", role: "user", actorId: "actor-a" }, work);
     await database.pool.query(`UPDATE runner_instance SET status='ready', last_heartbeat_at=now();
       UPDATE telemetry_watermark SET last_received_at=now();
-      INSERT INTO endpoint(id,tenant_id,name,adapter) VALUES ('endpoint-a','tenantA','A Endpoint','litellm-generic-guardrail');
-      INSERT INTO runtime_event(id,tenant_id,occurred_at,request_id,runner_id,guardrail_id,endpoint_id,direction,decision,duration_ms)
-      VALUES ('event-c','tenantC',now()-interval '1 minute','call-c','runner-c','guard','endpoint-a','incoming','allow',1),
+      INSERT INTO endpoint(id,project_id,name,adapter) VALUES ('endpoint-a','projectA','A Endpoint','litellm-generic-guardrail');
+      INSERT INTO runtime_event(id,project_id,occurred_at,request_id,runner_id,guardrail_id,endpoint_id,direction,decision,duration_ms)
+      VALUES ('event-c','projectC',now()-interval '1 minute','call-c','runner-c','guard','endpoint-a','incoming','allow',1),
         ('event-unknown',null,now(),'call-unknown','runner-c','guard','endpoint-a','incoming','allow',1);`);
     const adminGuard = await service.guardrailDeletionImpact("guard");
     expect(adminGuard).toMatchObject({ incomingRequestCount: 2, activeRouterCount: 2, requiresSecondConfirmation: true, telemetryFresh: true });
-    const tenantGuard = await asA(() => service.guardrailDeletionImpact("guard"));
-    expect(tenantGuard).toMatchObject({ incomingRequestCount: 0, lastRequestAt: null, activeRouterCount: 1,
+    const projectGuard = await asA(() => service.guardrailDeletionImpact("guard"));
+    expect(projectGuard).toMatchObject({ incomingRequestCount: 0, lastRequestAt: null, activeRouterCount: 1,
       telemetryWatermark: null, requiresSecondConfirmation: true, telemetryFresh: true });
     await expect(asA(() => service.softDeleteGuardrail({ id: "guard", actorId: "actor-a", reason: "test", confirmRecentTraffic: false })))
-      .rejects.toMatchObject({ code: "recent_traffic_confirmation_required", detail: { impact: tenantGuard } });
+      .rejects.toMatchObject({ code: "recent_traffic_confirmation_required", detail: { impact: projectGuard } });
     await expect(asA(() => service.softDeleteGuardrail({ id: "guard", actorId: "actor-a", reason: "test", confirmRecentTraffic: true, confirmationName: "wrong" })))
-      .rejects.toMatchObject({ code: "confirmation_name_mismatch", detail: { impact: tenantGuard } });
-    const tenantEndpoint = await asA(() => service.endpointDeletionImpact("endpoint-a"));
-    expect(tenantEndpoint).toMatchObject({ incomingRequestCount: 0, lastRequestAt: null, activeRouterCount: 0,
+      .rejects.toMatchObject({ code: "confirmation_name_mismatch", detail: { impact: projectGuard } });
+    const projectEndpoint = await asA(() => service.endpointDeletionImpact("endpoint-a"));
+    expect(projectEndpoint).toMatchObject({ incomingRequestCount: 0, lastRequestAt: null, activeRouterCount: 0,
       telemetryWatermark: null, requiresSecondConfirmation: true });
     await expect(asA(() => service.softDeleteEndpoint({ id: "endpoint-a", actorId: "actor-a", reason: "test", confirmRecentTraffic: false })))
-      .rejects.toMatchObject({ code: "recent_traffic_confirmation_required", detail: { impact: tenantEndpoint } });
+      .rejects.toMatchObject({ code: "recent_traffic_confirmation_required", detail: { impact: projectEndpoint } });
     await database.pool.query("UPDATE telemetry_watermark SET last_received_at=now()-interval '1 hour' WHERE runner_id='runner-c'");
     const stale = await asA(() => service.guardrailDeletionImpact("guard"));
     expect(stale).toMatchObject({ incomingRequestCount: 0, activeRouterCount: 1, telemetryFresh: false, telemetryWatermark: null });
     await expect(asA(() => service.softDeleteGuardrail({ id: "guard", actorId: "actor-a", reason: "test", confirmRecentTraffic: false })))
       .rejects.toMatchObject({ code: "telemetry_stale", detail: { impact: stale } });
-    await database.pool.query(`INSERT INTO runtime_event(id,tenant_id,occurred_at,request_id,runner_id,guardrail_id,endpoint_id,direction,decision,duration_ms)
-      VALUES ('event-a','tenantA',now()-interval '2 minutes','call-a','runner-a','guard','endpoint-a','incoming','allow',1)`);
+    await database.pool.query(`INSERT INTO runtime_event(id,project_id,occurred_at,request_id,runner_id,guardrail_id,endpoint_id,direction,decision,duration_ms)
+      VALUES ('event-a','projectA',now()-interval '2 minutes','call-a','runner-a','guard','endpoint-a','incoming','allow',1)`);
     const visible = await asA(() => service.guardrailDeletionImpact("guard"));
     expect(visible.incomingRequestCount).toBe(1);
     expect(visible.lastRequestAt?.getTime()).toBeLessThan(adminGuard.lastRequestAt!.getTime());

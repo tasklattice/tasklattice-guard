@@ -10,7 +10,7 @@ vi.mock("@tanstack/react-router", () => ({
 }));
 vi.mock("react-i18next", () => ({ useTranslation: () => ({ t: (key: string) => key }) }));
 afterEach(() => { cleanup(); identity.role = "user"; });
-it("preserves user operational settings tabs and the active route without exposing model administration", () => {
+it("offers exactly Health, Runner and Version to project users", () => {
   render(<SettingsNavigation />);
   expect(screen.getAllByRole("tab").map(tab => tab.getAttribute("href"))).toEqual(["/settings/health", "/settings/runner", "/settings/version"]);
   expect(screen.getByRole("tab", { name: "nav.runner" }).getAttribute("aria-selected")).toBe("true");

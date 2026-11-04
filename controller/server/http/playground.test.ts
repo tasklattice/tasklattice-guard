@@ -62,9 +62,9 @@ describe("Guardrail Playground HTTP capability", () => {
         usage: { runtime_engine: "llmrails", runtime_profile: "llmrails_colang1_standard" },
       });
     }) as typeof fetch;
-    const poolForTenant = vi.fn().mockResolvedValue({ poolId: "pool-a", groupId: "group-a", runtimeUrl: "https://group-a.test", publicUrl: "https://group-a.test" });
+    const poolForProject = vi.fn().mockResolvedValue({ poolId: "pool-a", groupId: "group-a", runtimeUrl: "https://group-a.test", publicUrl: "https://group-a.test" });
     const service = {
-      groupRouting: { poolForTenant },
+      groupRouting: { poolForProject },
       playgroundDraftCandidate: vi.fn().mockResolvedValue({
         guardrailId: "guardrail-draft",
         guardrailName: "Draft Guardrail",
@@ -80,7 +80,7 @@ describe("Guardrail Playground HTTP capability", () => {
     const app = createHttpApp({
       config,
       auth: {
-        api: { getSession: vi.fn().mockResolvedValue({ user: { id: "admin-1", role: "user", tenantId: "tenantA" } }) },
+        api: { getSession: vi.fn().mockResolvedValue({ session: { id: "fixture-session", activeProjectId: "projectA" }, user: { id: "admin-1", role: "user", projectId: "projectA" } }) },
         handler: vi.fn(),
       } as unknown as ControllerAuth,
       service,
@@ -113,9 +113,9 @@ describe("Guardrail Playground HTTP capability", () => {
       },
     });
     expect(runnerFetch).toHaveBeenCalledTimes(3);
-    expect(service.registerPlaygroundInvocation).toHaveBeenCalledWith(expect.objectContaining({ tenantId: "tenantA", guardrailId: "guardrail-draft", guardrailVersion: versionId, poolId: "pool-a", groupId: "group-a" }));
+    expect(service.registerPlaygroundInvocation).toHaveBeenCalledWith(expect.objectContaining({ projectId: "projectA", guardrailId: "guardrail-draft", guardrailVersion: versionId, poolId: "pool-a", groupId: "group-a" }));
     expect(modelFetch).toHaveBeenCalledTimes(1);
-    poolForTenant.mockResolvedValue({ poolId: "pool-b", groupId: "group-b", runtimeUrl: "https://group-b.test", publicUrl: "https://group-b.test" });
+    poolForProject.mockResolvedValue({ poolId: "pool-b", groupId: "group-b", runtimeUrl: "https://group-b.test", publicUrl: "https://group-b.test" });
     const moved = await app.request("/api/v1/playground/guardrails/guardrail-draft/draft-interactions", {
       method: "POST", headers: { "content-type": "application/json" },
       body: JSON.stringify({ preview_id: preview.preview_id, model_id: "deepseek-test", message: "after move", history: [] }),
@@ -131,7 +131,7 @@ describe("Guardrail Playground HTTP capability", () => {
     const app = createHttpApp({
       config,
       auth: {
-        api: { getSession: vi.fn().mockResolvedValue({ user: { id: "member-1", role: "unknown", tenantId: "tenantA" } }) },
+        api: { getSession: vi.fn().mockResolvedValue({ session: { id: "fixture-session", activeProjectId: "projectA" }, user: { id: "member-1", role: "unknown", projectId: "projectA" } }) },
         handler: vi.fn(),
       } as unknown as ControllerAuth,
       service: { playgroundDraftCandidate: prepare } as unknown as ControlPlaneService,
@@ -149,12 +149,12 @@ describe("Guardrail Playground HTTP capability", () => {
   it("lists the configured model and runs real input-model-output checkpoints on an immutable version", async () => {
     const versionId = "20260904-074000.456Z";
     let registered = false;
-    const poolForTenant = vi.fn().mockResolvedValue({ poolId: "pool-b", groupId: "group-b", runtimeUrl: "https://group-b.test", publicUrl: "https://group-b.test" });
+    const poolForProject = vi.fn().mockResolvedValue({ poolId: "pool-b", groupId: "group-b", runtimeUrl: "https://group-b.test", publicUrl: "https://group-b.test" });
     const registerInvocation = vi.fn(async () => {
       registered = true;
       // Reassignment after selection must not make the recorded pool differ
       // from the already-selected client used for the second checkpoint.
-      poolForTenant.mockResolvedValue({ poolId: "pool-c", groupId: "group-c", runtimeUrl: "https://group-c.test", publicUrl: "https://group-c.test" });
+      poolForProject.mockResolvedValue({ poolId: "pool-c", groupId: "group-c", runtimeUrl: "https://group-c.test", publicUrl: "https://group-c.test" });
     });
     const modelFetch = vi.fn(async () => Response.json({ choices: [{ message: { content: "model answer" } }] })) as typeof fetch;
     const runnerFetch = vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
@@ -178,11 +178,11 @@ describe("Guardrail Playground HTTP capability", () => {
     const app = createHttpApp({
       config,
       auth: {
-        api: { getSession: vi.fn().mockResolvedValue({ user: { id: "member-1", role: "user", tenantId: "tenantA" } }) },
+        api: { getSession: vi.fn().mockResolvedValue({ session: { id: "fixture-session", activeProjectId: "projectA" }, user: { id: "member-1", role: "user", projectId: "projectA" } }) },
         handler: vi.fn(),
       } as unknown as ControllerAuth,
       service: {
-        groupRouting: { poolForTenant },
+        groupRouting: { poolForProject },
         registerPlaygroundInvocation: registerInvocation,
         getGuardrail: vi.fn().mockResolvedValue({
           id: "guardrail-default",
@@ -234,8 +234,8 @@ describe("Guardrail Playground HTTP capability", () => {
       output_check: { phase: "output", guardrail: { id: "guardrail-default", version: versionId } },
     });
     expect(runnerFetch).toHaveBeenCalledTimes(2);
-    expect(registerInvocation).toHaveBeenCalledWith(expect.objectContaining({ tenantId: "tenantA", poolId: "pool-b", groupId: "group-b", guardrailId: "guardrail-default", guardrailVersion: versionId }));
-    expect(poolForTenant).toHaveBeenCalledTimes(1);
+    expect(registerInvocation).toHaveBeenCalledWith(expect.objectContaining({ projectId: "projectA", poolId: "pool-b", groupId: "group-b", guardrailId: "guardrail-default", guardrailVersion: versionId }));
+    expect(poolForProject).toHaveBeenCalledTimes(1);
     expect(modelFetch).toHaveBeenCalledTimes(1);
     registerInvocation.mockRejectedValueOnce(new Error("database unavailable"));
     const failedRegistration = await app.request("/api/v1/playground/guardrails/guardrail-default/interactions", {
@@ -274,7 +274,7 @@ describe("Guardrail Playground HTTP capability", () => {
     });
     const playgroundRunner = new RunnerPlaygroundClient({ baseUrl: "https://runtime.test", token: config.runnerToken, fetcher: runnerFetch });
     const auth = {
-      api: { getSession: vi.fn().mockResolvedValue({ user: { id: "member-1", role: "user", tenantId: "tenantA" } }) }, handler: vi.fn(),
+      api: { getSession: vi.fn().mockResolvedValue({ session: { id: "fixture-session", activeProjectId: "projectA" }, user: { id: "member-1", role: "user", projectId: "projectA" } }) }, handler: vi.fn(),
     } as unknown as ControllerAuth;
     const app = createHttpApp({
       config, auth,

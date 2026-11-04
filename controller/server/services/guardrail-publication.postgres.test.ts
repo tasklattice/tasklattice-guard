@@ -1,3 +1,4 @@
+import { withTestProject } from "../db/postgres-test-database.js";
 import { completeReport, getReport } from "../db/report-test-utils.js";
 // @vitest-environment node
 import { generateKeyPairSync } from "node:crypto";
@@ -62,7 +63,7 @@ describe.skipIf(!url)("Publishing the tested candidate in PostgreSQL", { timeout
 
   it("publishes the exact tested content, signed locally, without compiling again", async () => {
     const draft = defaultGuardrailDraft(PolicyCatalog.load(catalogDir).list());
-    const guardrail = await service.createGuardrail({ name: "Promotion fixture", draftConfig: draft, runtimeProfile: "auto", actorId: "admin" });
+    const guardrail = await withTestProject(() => service.createGuardrail({ name: "Promotion fixture", draftConfig: draft, runtimeProfile: "auto", actorId: "admin" }));
     const run = await service.requestValidation({ guardrailId: guardrail.id, actorId: "admin", compilerAvailable: true });
     expect((await database.pool.query("SELECT payload FROM guardrail_validation_snapshot WHERE digest=$1", [run.snapshotDigest])).rows[0].payload.candidateInspection).toMatchObject({ name: "Promotion fixture", testSuite: { total: run.metrics.total } });
     const candidate = await runnerCandidate(run.id);
@@ -123,7 +124,7 @@ describe.skipIf(!url)("Publishing the tested candidate in PostgreSQL", { timeout
 
   it("turns a passed run whose candidate differs from the request into a failure", async () => {
     const draft = defaultGuardrailDraft(PolicyCatalog.load(catalogDir).list());
-    const guardrail = await service.createGuardrail({ name: "Tampered fixture", draftConfig: draft, runtimeProfile: "auto", actorId: "admin" });
+    const guardrail = await withTestProject(() => service.createGuardrail({ name: "Tampered fixture", draftConfig: draft, runtimeProfile: "auto", actorId: "admin" }));
     const run = await service.requestValidation({ guardrailId: guardrail.id, actorId: "admin", compilerAvailable: true });
     const candidate = await runnerCandidate(run.id);
     (candidate.plan.steps as Array<{ on_unsafe: string }>)[0]!.on_unsafe = "allow";
@@ -134,7 +135,7 @@ describe.skipIf(!url)("Publishing the tested candidate in PostgreSQL", { timeout
   });
   it("counts pending and released versions, admits the tenth atomically, and frees slots only on deletion", async () => {
     const draft = defaultGuardrailDraft(PolicyCatalog.load(catalogDir).list());
-    const guardrail = await service.createGuardrail({ name: "Version quota", draftConfig: draft, runtimeProfile: "auto", actorId: "admin" });
+    const guardrail = await withTestProject(() => service.createGuardrail({ name: "Version quota", draftConfig: draft, runtimeProfile: "auto", actorId: "admin" }));
     await database.pool.query(`INSERT INTO guardrail_version (guardrail_id, version, generation, status, runtime_profile, plan, released_at)
       SELECT $1, 'retained-' || n, -n, CASE WHEN n % 2 = 0 THEN 'ready' ELSE 'pending' END, 'auto', '{}'::jsonb, CASE WHEN n % 2 = 0 THEN now() ELSE NULL END FROM generate_series(1, 9) n`, [guardrail.id]);
     const pass = async () => {
@@ -165,7 +166,7 @@ describe.skipIf(!url)("Publishing the tested candidate in PostgreSQL", { timeout
   async function releasedFixture() {
     const draft = defaultGuardrailDraft(PolicyCatalog.load(catalogDir).list());
     draft.policyBindings = draft.policyBindings.filter(item => item.policyId === "local-network-addresses");
-    const guardrail = await service.createGuardrail({ name: "Report lifecycle", draftConfig: draft, runtimeProfile: "auto", actorId: "admin" });
+    const guardrail = await withTestProject(() => service.createGuardrail({ name: "Report lifecycle", draftConfig: draft, runtimeProfile: "auto", actorId: "admin" }));
     const run = await service.requestValidation({ guardrailId: guardrail.id, actorId: "admin", compilerAvailable: true });
     await completeReport(service, { runId: run.id, status: "passed", metrics: emptyValidationMetrics(run.metrics.total), results: [], candidateArtifact: await runnerCandidate(run.id) });
     const version = await service.requestGuardrailPublish({ guardrailId: guardrail.id, actorId: "admin", expectedDraftRevision: 1 });
@@ -320,7 +321,7 @@ describe.skipIf(!url)("Publishing the tested candidate in PostgreSQL", { timeout
   it("does not mark a passed draft or a passed Pending version Ready before publication", async () => {
     const draft = defaultGuardrailDraft(PolicyCatalog.load(catalogDir).list());
     draft.policyBindings = draft.policyBindings.filter(item => item.policyId === "local-network-addresses");
-    const guardrail = await service.createGuardrail({ name: "Readiness gates", draftConfig: draft, runtimeProfile: "auto", actorId: "admin" });
+    const guardrail = await withTestProject(() => service.createGuardrail({ name: "Readiness gates", draftConfig: draft, runtimeProfile: "auto", actorId: "admin" }));
     const run = await service.requestValidation({ guardrailId: guardrail.id, actorId: "admin", compilerAvailable: true });
     await completeReport(service, { runId: run.id, status: "passed", metrics: emptyValidationMetrics(run.metrics.total), results: [], candidateArtifact: await runnerCandidate(run.id) });
     expect(await service.getGuardrail(guardrail.id)).toMatchObject({ readiness: "not_ready", versionSummary: { total: 0 } });
@@ -396,8 +397,8 @@ describe.skipIf(!url)("Publishing the tested candidate in PostgreSQL", { timeout
 
   it("allows deleting routed versions' completed reports and rejects running report deletion", async () => {
     const { guardrail, run, version } = await releasedFixture();
-    await service.trafficRouting.create("Evidence protection", "", { routes: [{ id: "fallback", name: "Fallback", kind: "fallback", enabled: true,
-      selector: { expression: { combinator: "and", conditions: [] } }, targets: [{ id: "target", guardrailId: guardrail.id, guardrailVersion: version.version, weightBps: 10000 }] }] }, "admin");
+    await withTestProject(() => service.trafficRouting.create("Evidence protection", "", { routes: [{ id: "fallback", name: "Fallback", kind: "fallback", enabled: true,
+      selector: { expression: { combinator: "and", conditions: [] } }, targets: [{ id: "target", guardrailId: guardrail.id, guardrailVersion: version.version, weightBps: 10000 }] }] }, "admin"));
     expect(await service.testingReportDeletionImpact(run.id)).toMatchObject({ deletable: true });
     const running = await service.requestVersionTestRun({ guardrailId: guardrail.id, version: version.version, actorId: "admin" });
     expect(await service.testingReportDeletionImpact(running.id)).toMatchObject({ running: true, deletable: false });
@@ -486,7 +487,7 @@ describe.skipIf(!url)("Publishing the tested candidate in PostgreSQL", { timeout
 
   it.each(["untested", "queued", "failed"])("publishes a full-feature Profile while tests are %s without model assignments", async status => {
     const draft = profileDraft(fullFeatureBaseline, await service.listPolicies());
-    const guardrail = await service.createGuardrail({ name: `Profile ${status}`, draftConfig: draft, runtimeProfile: "auto", actorId: "admin" });
+    const guardrail = await withTestProject(() => service.createGuardrail({ name: `Profile ${status}`, draftConfig: draft, runtimeProfile: "auto", actorId: "admin" }));
     const compiler = vi.fn(async (input: ArtifactCompilation) => compile(input));
     service.setArtifactCompiler(compiler);
     const run = status === "untested" ? null : await service.requestValidation({ guardrailId: guardrail.id, actorId: "admin", compilerAvailable: true });
@@ -516,7 +517,7 @@ describe.skipIf(!url)("Publishing the tested candidate in PostgreSQL", { timeout
   });
 
   it("publishes an empty test suite and serializes simultaneous compilation results", async () => {
-    const guardrail = await service.createGuardrail({ name: "No tests", draftConfig: defaultGuardrailDraft(PolicyCatalog.load(catalogDir).list()), runtimeProfile: "auto", actorId: "admin" });
+    const guardrail = await withTestProject(() => service.createGuardrail({ name: "No tests", draftConfig: defaultGuardrailDraft(PolicyCatalog.load(catalogDir).list()), runtimeProfile: "auto", actorId: "admin" }));
     await database.pool.query("UPDATE guardrail SET excluded_test_case_ids=(SELECT jsonb_agg(id) FROM guardrail_test_case WHERE guardrail_id=$1) WHERE id=$1", [guardrail.id]);
     let enter!: () => void;
     let resume!: () => void;
@@ -553,9 +554,9 @@ describe.skipIf(!url)("Publishing the tested candidate in PostgreSQL", { timeout
 
   it("retries Profile creation with one identity and rejects a changed idempotency payload", async () => {
     const input = { name: "Retry creation", draftConfig: profileDraft(fullFeatureBaseline, await service.listPolicies()), runtimeProfile: "auto", actorId: "admin", idempotencyKey: "same-creation" };
-    const [first, second] = await Promise.all([service.createGuardrail(input), service.createGuardrail(input)]);
+    const [first, second] = await Promise.all([withTestProject(() => service.createGuardrail(input)), withTestProject(() => service.createGuardrail(input))]);
     expect(first.id).toBe(second.id);
-    await expect(service.createGuardrail({ ...input, name: "Different" })).rejects.toMatchObject({ status: 409 });
+    await expect(withTestProject(() => service.createGuardrail({ ...input, name: "Different" }))).rejects.toMatchObject({ status: 409 });
     expect((await database.pool.query("SELECT count(*)::int AS n FROM guardrail WHERE creation_key IS NOT NULL")).rows[0].n).toBe(1);
   });
 
@@ -600,7 +601,7 @@ describe.skipIf(!url)("Publishing the tested candidate in PostgreSQL", { timeout
   });
 
   it("rejects an unsupported compiler result before signing a new publication", async () => {
-    const guardrail = await service.createGuardrail({ name: "Old compiler", draftConfig: defaultGuardrailDraft(PolicyCatalog.load(catalogDir).list()), runtimeProfile: "auto", actorId: "admin" });
+    const guardrail = await withTestProject(() => service.createGuardrail({ name: "Old compiler", draftConfig: defaultGuardrailDraft(PolicyCatalog.load(catalogDir).list()), runtimeProfile: "auto", actorId: "admin" }));
     service.setArtifactCompiler(async input => ({ ...compile(input), compilerVersion: "unsupported-compiler" }));
     await expect(service.requestGuardrailPublish({ guardrailId: guardrail.id, actorId: "admin" })).rejects.toMatchObject({ code: "artifact_recompile_required" });
     expect((await service.getGuardrail(guardrail.id)).versions).toEqual([]);

@@ -130,9 +130,9 @@ describe("bounded schemas and error classes", () => {
     expect(() => previewRouter(draft(), { ...input(), extractionErrors: ["headers_overflow"] })).toThrow(expect.objectContaining({ code: "routing_input_error" }));
   });
   it("keeps system Endpoint identity authoritative and custom keys literal", () => {
-    const sample = { ...input(), fields: { "endpoint.id": "spoofed", "tenant.id": "a" } };
+    const sample = { ...input(), fields: { "endpoint.id": "spoofed", "project.id": "a" } };
     expect(evaluateCondition({ field: "endpoint.id", operator: "equals", value: "http" }, sample).matched).toBe(true);
-    expect(evaluateCondition({ field: "adapter.field", key: "tenant.id", operator: "equals", value: "a" }, sample).matched).toBe(true);
+    expect(evaluateCondition({ field: "adapter.field", key: "project.id", operator: "equals", value: "a" }, sample).matched).toBe(true);
     expect(evaluateCondition({ field: "adapter.field", key: "toString", operator: "exists", value: "" }, sample).matched).toBe(false);
   });
   it("allows incomplete weights in drafts but validates immutable versions, empty groups and fallback on publish", () => {

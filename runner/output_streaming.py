@@ -12,7 +12,7 @@ from fastapi import Request, WebSocket, WebSocketDisconnect
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from .routing import RoutingError
-from .tenant_admission import AdmissionRejected, AdmissionUnavailable
+from .project_admission import AdmissionRejected, AdmissionUnavailable
 from .toolkit.runtime.streaming import OutputStreamEvaluationError
 
 INPUT_CREDITS = 8
@@ -76,14 +76,14 @@ def register_output_stream(api) -> None:
             await socket.close(code=1008)
             return
         try:
-            permit = await api._acquire_tenant_permit(endpoint_id, socket.headers.get("x-api-key"))
+            permit = await api._acquire_project_permit(endpoint_id, socket.headers.get("x-api-key"))
         except (AdmissionRejected, AdmissionUnavailable):
             await socket.close(code=1013, reason="Endpoint admission is unavailable. Retry shortly.")
             return
         try:
             await socket.accept()
         except BaseException:
-            await api._release_tenant_permit(permit)
+            await api._release_project_permit(permit)
             raise
         stream_id = None
         output_sequence = 0
@@ -223,4 +223,4 @@ def register_output_stream(api) -> None:
             except (RuntimeError, WebSocketDisconnect, OSError, TimeoutError):
                 pass
             finally:
-                await api._release_tenant_permit(permit)
+                await api._release_project_permit(permit)

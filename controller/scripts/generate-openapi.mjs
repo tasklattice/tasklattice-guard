@@ -11,8 +11,9 @@ import SwaggerParser from '@apidevtools/swagger-parser';
 import { GUARD_AUTH_COOKIE_PREFIX } from '../server/auth.ts';
 import { requiredAccountPermission, tokenRoutePermissions } from '../server/http/token-permissions.ts';
 import { accountRoles, hasPermission } from '../shared/rbac.ts';
+import { createProjectSchema } from '../shared/projects.ts';
 import { createAccessTokenSchema } from '../shared/access-tokens.ts';
-import { assignmentInputSchema, modelConfigurationInputSchema, modelConcurrencyInputSchema } from '../server/model-config/domain.ts';
+import { assignmentInputSchema, modelConfigurationInputSchema, modelRuntimeSettingsInputSchema } from '../server/model-config/domain.ts';
 import { MAX_DOCUMENTS, MAX_DOCUMENT_BYTES, MAX_TOTAL_BYTES } from '../server/control-plane-ai/document-ingestion.ts';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
@@ -128,23 +129,24 @@ try {
   components.Error = errorSchema;
   const statusDescription = {200:'Successful response.',201:'Resource created.',202:'Accepted for asynchronous processing; this does not guarantee deployment or completion.',204:'Successful response with no body.',400:'Request schema validation failed.',401:'Missing, invalid, expired or revoked credential.',403:'Insufficient token permission, account role, or session requirement.',404:'Resource not found.',409:'State conflict; reload and review before retrying.',415:'Unsupported content type.',422:'Domain validation failed.',500:'Internal server error.',503:'Required service or runtime is unavailable.'};
   const bodyOverrides = new Map([
+    ['POST /api/v1/projects',createProjectSchema],
     ['POST /api/v1/account/access-tokens',createAccessTokenSchema],
     ['PUT /api/v1/models/:id/protocol',modelConfigurationInputSchema],
-    ['PUT /api/v1/models/:id/concurrency',modelConcurrencyInputSchema],
+    ['PUT /api/v1/models/:id/runtime-settings',modelRuntimeSettingsInputSchema],
     ['PUT /api/v1/model-configuration/draft',assignmentInputSchema],
   ]);
   for (const route of entries) {
     const {id,method,path,middleware} = route; const template = path.replace(/:([^/]+)/g,'{$1}');
     const permission = tokenRoutePermissions.find(([m,p])=>m===method && p===path);
     const sessionOnly = middleware.includes('accountSession') || middleware.includes('browserSession'); const authenticated = middleware.includes('authenticated');
-    const sharingRoute = path.startsWith('/api/v1/account/shares') || path === '/api/v1/account/shareable-resources' || path === '/api/v1/account/tenants';
+    const sharingRoute = path.startsWith('/api/v1/account/shares') || path === '/api/v1/account/shareable-resources' || path === '/api/v1/account/share-recipients';
     assert(!authenticated || permission || sessionOnly || path === '/api/v1/account/identity', `Missing token policy: ${method} ${path}`);
     const platformDefault = method === 'POST' && /^\/api\/v1\/guardrails\/:(?:id|guardrailId)\/(?:test-runs|publish|versions\/:version\/(?:test-runs|release|environment-check))$/.test(path);
     const accountPermission = requiredAccountPermission(method, path);
-    const allowedRoles = sharingRoute ? ['user'] : platformDefault ? ['admin', 'user'] : accountPermission ? accountRoles.filter(role => hasPermission(role, accountPermission.resource, accountPermission.action)) : [...accountRoles];
+    const allowedRoles = middleware.includes('projectAdministrator') ? ['admin'] : middleware.includes('projectUser') || sharingRoute ? ['user'] : platformDefault ? ['admin', 'user'] : accountPermission ? accountRoles.filter(role => hasPermission(role, accountPermission.resource, accountPermission.action)) : [...accountRoles];
     const role = allowedRoles.length === 1 ? allowedRoles[0] : 'user';
     const operation = { operationId:id, summary: `${method} ${template}`, tags:[sessionOnly || path==='/api/v1/account/identity' ? 'Account' : permission?.[2] ?? 'System'],
-      description: permission ? `${platformDefault ? 'For Default, requires the admin role and runners:write instead. For tenant Guardrails, requires the user role. ' : ''}Requires ${permission[2]}:${permission[3]} for personal access tokens. ${permission[3]==='write' ? 'Write includes read access; account role restrictions still apply. ' : ''}Allowed account roles: ${allowedRoles.join(', ')}. Token access is capped by the authenticated account role and tenant ownership or explicit sharing.` : sessionOnly ? sharingRoute ? 'Tenant user browser session only. Read-only sharing grants are scoped to the authenticated tenant; personal access tokens cannot manage shares.' : 'Browser session only. Personal access tokens cannot manage credentials. Ownership is taken from the authenticated session.' : path==='/api/v1/account/identity' ? 'Returns the authenticated identity, tenant and token permissions. Effective permissions are capped by the current account role.' : 'Public system health information; no credential is required.',
+      description: permission ? `${platformDefault ? 'For Default, requires the admin role and runners:write instead. For project Guardrails, requires the user role. ' : ''}Requires ${permission[2]}:${permission[3]} for personal access tokens. ${permission[3]==='write' ? 'Write includes read access; account role restrictions still apply. ' : ''}Allowed account roles: ${allowedRoles.join(', ')}. Token access is capped by the authenticated account role and project ownership or explicit sharing.` : sessionOnly ? sharingRoute ? 'Project user browser session only. Read-only sharing grants are scoped to the authenticated project; personal access tokens cannot manage shares.' : 'Browser session only. Personal access tokens cannot manage credentials. Ownership is taken from the authenticated session.' : path==='/api/v1/account/identity' ? 'Returns the authenticated identity, project and token permissions. Effective permissions are capped by the current account role.' : 'Public system health information; no credential is required.',
       security: authenticated ? sessionOnly ? [{sessionCookie:[]}] : [{personalAccessToken:[]},{sessionCookie:[]}] : [],
       ...(permission ? {'x-token-permission':{module:permission[2],access:permission[3]}} : {}),
       'x-account-role':role, 'x-account-roles':allowedRoles, ...(permission ? {'x-token-account-role':role} : {}), 'x-source':`server/http/app.ts#${source.getLineAndCharacterOfPosition(route.handler.pos).line+1}`,

@@ -37,10 +37,10 @@ def capture_model_logs(caplog):
         logger.removeHandler(caplog.handler)
 
 
-def service(kind, handler, timeout=20):
+def service(kind, handler, timeout=20, attempts=3):
     if kind == 'jev':
-        return JEV.evaluator("jailbreak", handler, timeout_seconds=timeout)
-    provider = build_safety_model_provider(replace(config(), timeout_seconds=timeout),
+        return JEV.evaluator("jailbreak", handler, timeout_seconds=timeout, rate_limit_attempts=attempts)
+    provider = build_safety_model_provider(replace(config(), timeout_seconds=timeout, rate_limit_attempts=attempts),
                                           transport=httpx.MockTransport(handler))
     return SafetyModelEvaluator((provider,))
 
@@ -115,14 +115,13 @@ async def test_does_not_repeat_billable_or_permanent_failures(kind, failure):
 @pytest.mark.parametrize('kind', ['nvidia', 'jev'])
 @pytest.mark.parametrize('attempts', [1, 3])
 async def test_rate_limit_exhaustion_is_bounded_and_remains_an_error(kind, attempts, monkeypatch):
-    monkeypatch.setattr('runner.toolkit.nemo.actions.model_retry._rate_limit_attempts', attempts)
     calls = []
 
     def handler(request):
         calls.append(request.content)
         return httpx.Response(429, headers={'Retry-After': '0'})
 
-    result = await service(kind, handler).evaluate(jailbreak_request())
+    result = await service(kind, handler, attempts=attempts).evaluate(jailbreak_request())
     assert result.verdict == 'error' and not result.findings
     assert len(calls) == attempts and all(body == calls[0] for body in calls)
     usage = result.usage.model_calls[0]
@@ -133,7 +132,6 @@ async def test_rate_limit_exhaustion_is_bounded_and_remains_an_error(kind, attem
 
 @pytest.mark.parametrize('kind', ['nvidia', 'jev'])
 async def test_rate_limit_recovery_preserves_request_and_model_verdict(kind, monkeypatch):
-    monkeypatch.setattr('runner.toolkit.nemo.actions.model_retry._rate_limit_attempts', 3)
     calls = []
 
     def handler(request):

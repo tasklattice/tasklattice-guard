@@ -34,11 +34,13 @@ describe("Guard Better Auth", () => {
     expect(GUARD_AUTH_COOKIE_PREFIX).toBe("tali-guard");
     expect(betterAuth).toHaveBeenCalledWith(expect.objectContaining({
       advanced: { cookiePrefix: "tali-guard" },
+      session: expect.objectContaining({ disableSessionRefresh: true }),
       emailAndPassword: expect.objectContaining({ disableSignUp: true }),
       user: expect.objectContaining({ additionalFields: expect.objectContaining({
-        tenantId: { type: "string", required: false, defaultValue: "tenantA", input: false },
+        preferredLanguage: expect.objectContaining({ input: true }),
       }) }),
     }));
+    expect(betterAuth.mock.calls[0]![0].user.additionalFields).not.toHaveProperty("projectId");
   });
 });
 

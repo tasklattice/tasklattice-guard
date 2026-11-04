@@ -1,4 +1,4 @@
-import { currentTenantId, resourceWritePredicate } from "./tenant-context.js";
+import { currentProjectId, resourceWritePredicate } from "./project-context.js";
 import { createHash } from "node:crypto";
 import { and, eq, gte, inArray, lte, sql } from "drizzle-orm";
 import { z } from "zod";
@@ -18,7 +18,7 @@ const cursorSchema = z.object({
 
 export async function querySecurityEvents(db: ControllerDatabase, input: SecurityEventsQuery): Promise<SecurityEventPage> {
   const query = input;
-  const scope = createHash("sha256").update(JSON.stringify([currentTenantId(), query.guardrailId, query.window, query.limit, query.severity ?? []])).digest("hex");
+  const scope = createHash("sha256").update(JSON.stringify([currentProjectId(), query.guardrailId, query.window, query.limit, query.severity ?? []])).digest("hex");
   let cursor: z.infer<typeof cursorSchema> | undefined;
   if (query.cursor) {
     try {
@@ -32,7 +32,7 @@ export async function querySecurityEvents(db: ControllerDatabase, input: Securit
   const finding = sql`f.item`;
   const ordinal = sql<number>`f.ordinal`;
   const predicate = and(
-    resourceWritePredicate(runtimeEvents.tenantId),
+    resourceWritePredicate(runtimeEvents.projectId),
     eq(runtimeEvents.guardrailId, query.guardrailId),
     gte(runtimeEvents.occurredAt, new Date(since)),
     lte(runtimeEvents.occurredAt, new Date(until)),

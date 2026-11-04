@@ -29,12 +29,12 @@ async def test_real_runner_apps_accept_only_their_own_inbound_controller_token(m
     monkeypatch.setenv("GUARD_ARTIFACT_PUBLIC_KEY_PATH", str(Path(__file__).parents[1] / "fixtures/artifacts/local-secrets-v1/public-key.pem"))
     monkeypatch.setenv("GUARD_RUNNER_COMPILER_CAPABLE", "false")
     monkeypatch.setenv("GUARD_RUNNER_EXPERIMENTAL_LEASE_ENFORCEMENT", "false")
-    monkeypatch.setenv("GUARD_RUNNER_TENANT_ADMISSION_ENABLED", "false")
-    monkeypatch.delenv("GUARD_RUNNER_TENANT_ADMISSION_JSON", raising=False)
+    monkeypatch.setenv("GUARD_RUNNER_PROJECT_ADMISSION_ENABLED", "false")
+    monkeypatch.delenv("GUARD_RUNNER_PROJECT_ADMISSION_JSON", raising=False)
     apps = []
     for pool, control, inbound in [("pool-a", CONTROL_A, HTTP_A), ("pool-b", CONTROL_B, HTTP_B)]:
         monkeypatch.setenv("GUARD_RUNNER_POOL_ID", pool)
-        monkeypatch.setenv("GUARD_RUNNER_ID", pool)
+        monkeypatch.setenv("GUARD_RUNNER_ID", f"runner-{pool}-0")
         monkeypatch.setenv("GUARD_RUNNER_CONTROL_TOKEN", control)
         monkeypatch.setenv("GUARD_CONTROLLER_HTTP_TOKEN", inbound)
         monkeypatch.setenv("GUARD_RUNNER_STATE_PATH", str(tmp_path / pool))

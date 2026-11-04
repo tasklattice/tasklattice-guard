@@ -1,4 +1,4 @@
-import { resourceReadPredicate } from "./tenant-context.js";
+import { resourceReadPredicate } from "./project-context.js";
 import { reportCompletionTime } from "./testing-report-retention.js";
 import { and, count, desc, eq, getTableColumns, inArray, sql } from "drizzle-orm";
 import { z } from "zod";
@@ -39,7 +39,7 @@ export const testingReportsQuery = z.object({
 export async function queryTestingReports(db: ControllerDatabase, input: z.input<typeof testingReportsQuery>) {
   const query = testingReportsQuery.parse(input);
   const filters = and(
-    resourceReadPredicate("guardrail", guardrails.id, guardrails.tenantId),
+    resourceReadPredicate("guardrail", guardrails.id, guardrails.projectId),
     query.guardrailId ? eq(validationRuns.guardrailId, query.guardrailId) : undefined,
     query.status === "all" ? undefined : query.status === "incomplete"
       ? inArray(validationRuns.status, ["queued", "running"]) : eq(validationRuns.status, query.status),
@@ -71,11 +71,11 @@ export async function queryTestingReports(db: ControllerDatabase, input: z.input
 async function versionEvidence(db: ControllerDatabase, guardrailId: string) {
   const versions = await db.select({ version: guardrailVersions.version, runId: guardrailVersions.validationRunId })
     .from(guardrailVersions).innerJoin(guardrails, eq(guardrails.id, guardrailVersions.guardrailId))
-    .where(and(eq(guardrailVersions.guardrailId, guardrailId), resourceReadPredicate("guardrail", guardrails.id, guardrails.tenantId)));
+    .where(and(eq(guardrailVersions.guardrailId, guardrailId), resourceReadPredicate("guardrail", guardrails.id, guardrails.projectId)));
   if (!versions.length) return [];
   const scope = and(eq(validationRuns.guardrailId, guardrailId), eq(validationRuns.subject, "version"),
     inArray(validationRuns.guardrailVersion, versions.map(item => item.version)),
-    resourceReadPredicate("guardrail", guardrails.id, guardrails.tenantId));
+    resourceReadPredicate("guardrail", guardrails.id, guardrails.projectId));
   const latest = await db.selectDistinctOn([validationRuns.guardrailVersion], summary).from(validationRuns)
     .innerJoin(guardrails, eq(guardrails.id, validationRuns.guardrailId)).where(scope)
     .orderBy(validationRuns.guardrailVersion, desc(validationRuns.createdAt), desc(validationRuns.id));
@@ -87,6 +87,6 @@ async function versionEvidence(db: ControllerDatabase, guardrailId: string) {
   const released = releaseIds.length ? await db.select(summary).from(validationRuns)
     .innerJoin(guardrails, eq(guardrails.id, validationRuns.guardrailId))
     .where(and(eq(validationRuns.guardrailId, guardrailId), inArray(validationRuns.id, releaseIds),
-      resourceReadPredicate("guardrail", guardrails.id, guardrails.tenantId))) : [];
+      resourceReadPredicate("guardrail", guardrails.id, guardrails.projectId))) : [];
   return [...new Map([...latest, ...completed, ...released].map(run => [run.id, run])).values()];
 }

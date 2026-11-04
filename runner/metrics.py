@@ -125,7 +125,7 @@ class RunnerMetrics:
         self._active_jobs: dict[str, int] = {"compile": 0, "validation": 0}
         self._loaded_artifact_count = 0
         self._admission_load: Callable[[], tuple[int, int, int]] = lambda: (0, 0, max_concurrency)
-        self._tenant_admission_snapshot: Callable[[], dict] = lambda: {"version": 1, "available": False, "reason": "disabled"}
+        self._project_admission_snapshot: Callable[[], dict] = lambda: {"version": 1, "available": False, "reason": "disabled"}
         self._process = psutil.Process()
         self.registry = CollectorRegistry()
         ProcessCollector(registry=self.registry)
@@ -830,12 +830,12 @@ class RunnerMetrics:
     def set_admission_load_provider(self, provider: Callable[[], tuple[int, int, int]]) -> None:
         self._admission_load = provider
 
-    def set_tenant_admission_snapshot_provider(self, provider: Callable[[], dict]) -> None:
-        self._tenant_admission_snapshot = provider
+    def set_project_admission_snapshot_provider(self, provider: Callable[[], dict]) -> None:
+        self._project_admission_snapshot = provider
 
-    def tenant_admission_snapshot_json(self) -> bytes:
+    def project_admission_snapshot_json(self) -> bytes:
         try:
-            encoded = json.dumps(self._tenant_admission_snapshot(), allow_nan=False, separators=(",", ":")).encode("utf-8")
+            encoded = json.dumps(self._project_admission_snapshot(), allow_nan=False, separators=(",", ":")).encode("utf-8")
             if len(encoded) <= 65_536:
                 return encoded
             reason = "payload_limit"

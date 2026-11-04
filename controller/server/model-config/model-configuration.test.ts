@@ -2,9 +2,9 @@ import { resolve } from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import type { ControllerDatabase } from "../db/client.js";
 import { modelAssignmentValidations, controllerState, outboxEvents, modelConfigurationRevisions, modelDefinitions, modelProviders, policyVersions, runnerPools } from "../db/schema.js";
-import { emptyModelAssignments, modelInputSchema, modelConcurrencyInputSchema } from "./domain.js";
+import { emptyModelAssignments, modelInputSchema, modelRuntimeSettingsInputSchema } from "./domain.js";
 import { ModelConfigurationService } from "./service.js";
-import { runWithTenantContext } from "../services/tenant-context.js";
+import { runWithProjectContext } from "../services/project-context.js";
 import { jailbreakDetectAttackInput, jailbreakDetectProfile, jailbreakDetectSafeInput } from "./jailbreak-detect.js";
 import type { ValidationCredentialLeaseStore } from "./validation-credential-leases.js";
 
@@ -20,8 +20,8 @@ function setup(state = "draft", assigned = false, failProbe = false) {
     : empty;
   const rows = new Map<unknown, Array<Record<string, unknown>>>([
     [modelProviders, [{ id: "provider-1", name: "Mock", kind: "custom-openai-compatible", baseUrl: "https://provider.test/v1", credentialCiphertext: null }]],
-    [modelDefinitions, [{ id, tenantId: null, providerId: "provider-1", name: "Guard alias", model: "guard-alias", ...input, status: "pending", validatedAt: null }]],
-    [modelConfigurationRevisions, [{ id: "revision-1", tenantId: "tenantA", revision: 1, state, assignments, rowVersion: "synthetic-tx-1" }]],
+    [modelDefinitions, [{ id, projectId: null, providerId: "provider-1", name: "Guard alias", model: "guard-alias", ...input, status: "pending", validatedAt: null }]],
+    [modelConfigurationRevisions, [{ id: "revision-1", projectId: "projectA", revision: 1, state, assignments, rowVersion: "synthetic-tx-1" }]],
     [runnerPools, [{ id: "pool-a", groupId: "group-a" }, { id: "pool-b", groupId: "group-b" }]],
   ]);
   const query = (table: unknown) => {
@@ -64,7 +64,7 @@ function setup(state = "draft", assigned = false, failProbe = false) {
 }
 
 describe("Capability configuration after registration", () => {
-  it.each(["tenantA", "tenantB"])("prevents tenant %s users from changing global bindings or resolving credentials", async (tenantId) => {
+  it.each(["projectA", "projectB"])("prevents project %s users from changing global bindings or resolving credentials", async (projectId) => {
     const { service, tx, fetcher, railValidator } = setup("validated");
     const operations = [
       () => service.updateDraft(emptyModelAssignments(), "group_b"),
@@ -75,11 +75,11 @@ describe("Capability configuration after registration", () => {
       () => service.validateDraft("group_b"),
       () => service.applyConfiguration("group_b", {} as never),
       () => service.finalizeActivation("revision-1"),
-      () => service.failActivation("revision-1", "Tenant supplied failure"),
+      () => service.failActivation("revision-1", "Project supplied failure"),
       () => service.resolveCredentials(["provider-1"]),
     ];
     for (const operation of operations) {
-      await expect(runWithTenantContext({ tenantId, actorId: "group_b", role: "user" }, operation))
+      await expect(runWithProjectContext({ projectId, actorId: "group_b", role: "user" }, operation))
         .rejects.toMatchObject({ code: "forbidden" });
     }
     expect(tx.update).not.toHaveBeenCalled();
@@ -142,7 +142,7 @@ describe("Capability configuration after registration", () => {
     rows.set(controllerState, [{ id: "singleton", desiredGeneration: 1 }]);
     expect((await service.activeConfiguration())?.models[0]?.maxConcurrency).toBe(2);
     const before = { ...rows.get(modelDefinitions)![0] };
-    const result = await service.configureConcurrency(id, { maxConcurrency: 5 }, "admin");
+    const result = await service.configureRuntimeSettings(id, { maxConcurrency: 5 }, "admin");
     expect(result.maxConcurrency).toBe(5);
     expect(result.status).toBe(before.status);
     expect(result.validatedAt).toBe(before.validatedAt);
@@ -151,9 +151,14 @@ describe("Capability configuration after registration", () => {
     expect(tx.update).toHaveBeenCalledWith(controllerState);
     expect(fetcher).not.toHaveBeenCalled();
   });
-  it("defaults older registrations to two and rejects invalid concurrency values", () => {
+  it("supplies model defaults and rejects invalid runtime settings", () => {
     expect(modelInputSchema.parse({ ...input, providerId: id, name: "Model", model: "model" }).maxConcurrency).toBe(2);
-    for (const maxConcurrency of [0, -1, 1.5, 65, "2"]) expect(() => modelConcurrencyInputSchema.parse({ maxConcurrency })).toThrow();
+    for (const maxConcurrency of [0, -1, 1.5, 65, "2"]) expect(() => modelRuntimeSettingsInputSchema.parse({ maxConcurrency })).toThrow();
+    for (const rateLimitAttempts of [0, 11, 1.5, "2"]) expect(() => modelRuntimeSettingsInputSchema.parse({ rateLimitAttempts })).toThrow();
+    for (const [lowerThreshold, upperThreshold] of [[0.9, 0.9], [0.9, 0.1], [-0.1, 0.9], [0.1, 1.1], [NaN, 0.9]]) {
+      expect(() => modelRuntimeSettingsInputSchema.parse({ lowerThreshold, upperThreshold })).toThrow();
+    }
+    expect(modelRuntimeSettingsInputSchema.parse({ lowerThreshold: 0, upperThreshold: 1 })).toMatchObject({ lowerThreshold: 0, upperThreshold: 1 });
   });
 
   it("validates a Laya assignment with its own profile and contract without changing active assignments", async () => {

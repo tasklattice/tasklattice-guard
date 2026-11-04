@@ -1,4 +1,4 @@
-import { currentTenantId, tenantOwnerForCreate, resourceReadPredicate, policyWritePredicate } from "./tenant-context.js";
+import { currentProjectId, projectOwnerForCreate, resourceReadPredicate, policyWritePredicate } from "./project-context.js";
 import { ReportResults, type ReportUploadIdentity } from "./report-results.js";
 import { randomUUID } from "node:crypto";
 import { and, desc, eq, isNull, sql } from "drizzle-orm";
@@ -25,10 +25,10 @@ export class PolicyResourceService {
   constructor(private db: ControllerDatabase, directory: string, private catalog: () => PolicyDto[], private reports = new ReportResults(db)) { this.compiler = new DeclarativeCompiler(directory); }
 
   async get(id: string): Promise<PolicyResource> {
-    const [row] = await this.db.select().from(resources).where(and(eq(resources.id, id), resourceReadPredicate("policy", resources.id, resources.tenantId)));
+    const [row] = await this.db.select().from(resources).where(and(eq(resources.id, id), resourceReadPredicate("policy", resources.id, resources.projectId)));
     const [published] = await this.db.select().from(versions).where(eq(versions.policyId, id)).orderBy(desc(versions.createdAt)).limit(1);
     if (row) return { ...row, published_version: published?.version ?? this.catalog().find(p => p.id === id)?.version ?? null, validation: await this.report(id) };
-    const [imported] = await this.db.select().from(policyImportedVersions).where(and(eq(policyImportedVersions.policyId, id), resourceReadPredicate("policy", policyImportedVersions.policyId, policyImportedVersions.tenantId))).orderBy(desc(policyImportedVersions.importedAt)).limit(1);
+    const [imported] = await this.db.select().from(policyImportedVersions).where(and(eq(policyImportedVersions.policyId, id), resourceReadPredicate("policy", policyImportedVersions.policyId, policyImportedVersions.projectId))).orderBy(desc(policyImportedVersions.importedAt)).limit(1);
     const definition = this.compiler.shipped(id) ?? (imported ? this.compiler.fromSnapshot(imported.definition) : null);
     if (!definition) throw new NotFoundError("Policy definition", id);
     return { id, definition, revision: 0, maintainer: "Platform administrators", published_version: imported?.version ?? definition.metadata.version };
@@ -42,11 +42,11 @@ export class PolicyResourceService {
     await this.db.transaction(async tx => {
       await advisoryTransactionLock(tx, `policy-resource:${id}`);
       const [current] = await tx.select().from(resources).where(eq(resources.id, id)).for("update");
-      if (currentTenantId() && current && current.tenantId !== currentTenantId()) throw new NotFoundError("Policy draft", id);
-      const [legacy] = await tx.select({ id: policyRecords.id, tenantId: policyRecords.tenantId }).from(policyRecords).where(eq(policyRecords.id, id));
-      if (currentTenantId() && legacy && legacy.tenantId !== currentTenantId()) throw new NotFoundError("Policy draft", id);
-      const importedVersions = await tx.select({ id: policyImportedVersions.policyId, tenantId: policyImportedVersions.tenantId }).from(policyImportedVersions).where(eq(policyImportedVersions.policyId, id));
-      if (currentTenantId() && importedVersions.some(imported => imported.tenantId !== currentTenantId())) throw new NotFoundError("Policy draft", id);
+      if (currentProjectId() && current && current.projectId !== currentProjectId()) throw new NotFoundError("Policy draft", id);
+      const [legacy] = await tx.select({ id: policyRecords.id, projectId: policyRecords.projectId }).from(policyRecords).where(eq(policyRecords.id, id));
+      if (currentProjectId() && legacy && legacy.projectId !== currentProjectId()) throw new NotFoundError("Policy draft", id);
+      const importedVersions = await tx.select({ id: policyImportedVersions.policyId, projectId: policyImportedVersions.projectId }).from(policyImportedVersions).where(eq(policyImportedVersions.policyId, id));
+      if (currentProjectId() && importedVersions.some(imported => imported.projectId !== currentProjectId())) throw new NotFoundError("Policy draft", id);
       const imported = importedVersions[0];
       if (legacy) throw new ConflictError("This ID belongs to a programmable Policy.", "policy_identity_conflict");
       if (input.create && (current || imported || this.catalog().some(p => p.id === id))) throw new ConflictError("Policy ID already exists.", "policy_identity_conflict");
@@ -54,14 +54,14 @@ export class PolicyResourceService {
       if (current && canonicalJson(current.definition) === canonicalJson(definition) && current.maintainer === input.maintainer) return;
       const revision = (current?.revision ?? 0) + 1;
       if (current) await tx.update(resources).set({ definition, maintainer: input.maintainer, revision, updatedAt: new Date() }).where(eq(resources.id, id));
-      else await tx.insert(resources).values({ id, tenantId: tenantOwnerForCreate(), definition, maintainer: input.maintainer, revision });
+      else await tx.insert(resources).values({ id, projectId: projectOwnerForCreate(), definition, maintainer: input.maintainer, revision });
       await tx.insert(auditEvents).values({ id: randomUUID(), kind: "policy.updated", actorId: input.actorId, resourceType: "policy", resourceId: id, detail: { revision } });
     });
     return this.get(id);
   }
 
   async views(base: PolicyDto[], db: Pick<ControllerDatabase, "select"> = this.db, id?: string): Promise<PolicyDto[]> {
-    const rows = await db.select().from(resources).where(and(id ? eq(resources.id, id) : undefined, resourceReadPredicate("policy", resources.id, resources.tenantId)));
+    const rows = await db.select().from(resources).where(and(id ? eq(resources.id, id) : undefined, resourceReadPredicate("policy", resources.id, resources.projectId)));
     const published = await db.select().from(versions).where(id ? eq(versions.policyId, id) : undefined).orderBy(desc(versions.createdAt));
     const result = new Map(base.map(policy => {
       // Plan bundled declarative model Policies from their authored definitions.
@@ -73,16 +73,16 @@ export class PolicyResourceService {
       const history = published.filter(v => v.policyId === row.id).map(v => v.view);
       const existing = result.get(row.id);
       const head = history[0] ?? existing ?? this.compiler.compile({ ...row.definition, metadata: { ...row.definition.metadata, version: "0" } });
-      result.set(row.id, { ...head, tenant_id: row.tenantId, maintenance: { revision: row.revision, maintainer: row.maintainer }, published_versions: [...history.slice(1), ...(history.length && existing ? [existing] : []), ...existing?.published_versions ?? []] });
+      result.set(row.id, { ...head, project_id: row.projectId, maintenance: { revision: row.revision, maintainer: row.maintainer }, published_versions: [...history.slice(1), ...(history.length && existing ? [existing] : []), ...existing?.published_versions ?? []] });
     }
     return [...result.values()];
   }
 
   async validate(id: string, actorId: string, compilerAvailable: boolean): Promise<ResourceValidation> {
-    if (!compilerAvailable) throw new ConflictError("A healthy GuardRails 0 Runner is required to run Policy tests.", "default_runner_unavailable");
+    if (!compilerAvailable) throw new ConflictError("A healthy compiler Runner in the project runtime group is required to run Policy tests.", "default_runner_unavailable");
     const runId = `policy-report-${randomUUID()}`;
     await this.db.transaction(async tx => {
-      const [row] = await tx.select().from(resources).where(and(eq(resources.id, id), policyWritePredicate(resources.id, resources.tenantId))).for("update");
+      const [row] = await tx.select().from(resources).where(and(eq(resources.id, id), policyWritePredicate(resources.id, resources.projectId))).for("update");
       if (!row) throw new NotFoundError("Policy draft", id);
       const issues = definitionIssues(row.definition);
       if (issues.length) throw new ValidationError(issues.join("\n"), { issues });
@@ -121,15 +121,15 @@ export class PolicyResourceService {
   }
 
   async report(id: string, runId?: string): Promise<ResourceValidation | null> {
-    if (currentTenantId()) {
-      const [row] = await this.db.select({ id: resources.id }).from(resources).where(and(eq(resources.id, id), resourceReadPredicate("policy", resources.id, resources.tenantId)));
+    if (currentProjectId()) {
+      const [row] = await this.db.select({ id: resources.id }).from(resources).where(and(eq(resources.id, id), resourceReadPredicate("policy", resources.id, resources.projectId)));
       if (!row) throw new NotFoundError("Policy draft", id);
     }
     // Recheck read/share scope in the statement that reads the child as well:
     // a grant may have been revoked after the existence check above.
     const [run] = await this.db.select({ id: runs.id, policyId: runs.policyId, revision: runs.revision, status: runs.status, failureReason: runs.failureReason,
       total: sql<number>`jsonb_array_length(${runs.tests})`, passed: sql<number>`(SELECT count(*)::int FROM validation_report_case WHERE run_id="policy_resource_validation"."id" AND status='passed')`,
-    }).from(runs).innerJoin(resources, eq(resources.id, runs.policyId)).where(and(resourceReadPredicate("policy", resources.id, resources.tenantId), eq(runs.policyId, id), isNull(runs.parentId), ...(runId ? [eq(runs.id, runId)] : []))).orderBy(desc(runs.createdAt)).limit(1);
+    }).from(runs).innerJoin(resources, eq(resources.id, runs.policyId)).where(and(resourceReadPredicate("policy", resources.id, resources.projectId), eq(runs.policyId, id), isNull(runs.parentId), ...(runId ? [eq(runs.id, runId)] : []))).orderBy(desc(runs.createdAt)).limit(1);
     return run ?? null;
   }
   async running(id: string): Promise<boolean> {
@@ -177,7 +177,7 @@ export class PolicyResourceService {
 
   async publish(id: string, expectedRevision: number, actorId: string) {
     return this.db.transaction(async tx => {
-      const [row] = await tx.select().from(resources).where(and(eq(resources.id, id), policyWritePredicate(resources.id, resources.tenantId))).for("update");
+      const [row] = await tx.select().from(resources).where(and(eq(resources.id, id), policyWritePredicate(resources.id, resources.projectId))).for("update");
       if (!row) throw new NotFoundError("Policy draft", id);
       const [existing] = await tx.select().from(versions).where(and(eq(versions.policyId, id), eq(versions.revision, expectedRevision)));
       if (existing) return existing.view;

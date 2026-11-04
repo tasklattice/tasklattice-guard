@@ -21,7 +21,6 @@ class ClassifierBackend:
     profile: str
     topic_profile: str
     evidence_key: str
-    threshold_option: str
     jailbreak_type: type
     content_safety_type: type
     topic_type: type
@@ -48,7 +47,7 @@ class ClassifierBackend:
 JEV = ClassifierBackend(
     name="jev", base_url="https://typesafe.test/v1", model="jev-1.13.0",
     profile=JEV_PROFILE, topic_profile=JEV_TOPIC_PROFILE,
-    evidence_key="evaluations", threshold_option="jev_thresholds",
+    evidence_key="evaluations",
     jailbreak_type=jev_jailbreak.JevJailbreakEvaluator,
     content_safety_type=jev_content_safety.JevContentSafetyEvaluator,
     topic_type=jev_topic.JevTopicEvaluator,
@@ -60,7 +59,7 @@ JEV = ClassifierBackend(
 LAYA = ClassifierBackend(
     name="laya", base_url="https://laya.test/v1", model="laya",
     profile=LAYA_PROFILE, topic_profile=LAYA_TOPIC_PROFILE,
-    evidence_key="layaEvaluations", threshold_option="laya_thresholds",
+    evidence_key="layaEvaluations",
     jailbreak_type=laya_jailbreak.LayaJailbreakEvaluator,
     content_safety_type=laya_content_safety.LayaContentSafetyEvaluator,
     topic_type=laya_topic.LayaTopicEvaluator,

@@ -13,7 +13,7 @@ describe("Controller metrics contract", () => {
       desiredGeneration: async () => 12,
       listRunnerPoolsWithCapacity: async () => [{
         id: "default",
-        name: "GuardRails 0",
+        name: "runner-default",
         isDefault: true,
         desiredReplicas: 2,
         safeRpsPerRunner: 50,
@@ -289,7 +289,7 @@ describe("Controller metrics contract", () => {
         from: vi.fn(() => ({
           where: vi.fn().mockResolvedValue([
             {
-              id: "router-active", name: "Production API", activeRevision: 3,
+              id: "router-active", projectId: "project-a", name: "Production API", activeRevision: 3,
               activeSnapshot: { routes: [
                 { id: "r1", name: "Paused", kind: "normal", enabled: false, selector: { expression: { combinator: "and", conditions: [] } },
                   targets: [{ id: "t0", guardrailId: "guardrail-2", guardrailVersion: "20260904-020000.002Z", weightBps: 10000 }] },
@@ -300,9 +300,9 @@ describe("Controller metrics contract", () => {
                   ] },
               ] },
             },
-            { id: "router-unpublished", name: "Unpublished API", activeRevision: null, activeSnapshot: null },
+            { id: "router-unpublished", projectId: "project-b", name: "Unpublished API", activeRevision: null, activeSnapshot: null },
             {
-              id: "router-inactive", name: "Draft API", activeRevision: 1,
+              id: "router-inactive", projectId: "project-b", name: "Draft API", activeRevision: 1,
               activeSnapshot: { routes: [
                 { id: "r3", name: "All", kind: "fallback", enabled: true, selector: { expression: { combinator: "and", conditions: [] } },
                   targets: [{ id: "t3", guardrailId: "guardrail-2", guardrailVersion: "20260904-020000.002Z", weightBps: 10000 }] },
@@ -314,22 +314,28 @@ describe("Controller metrics contract", () => {
       .mockImplementationOnce(() => ({
         from: vi.fn().mockResolvedValue([
           {
-            id: "endpoint-active", name: "Agent Gateway", adapter: "litellm-generic-guardrail",
+            id: "endpoint-active", projectId: "project-a", name: "Agent Gateway", adapter: "litellm-generic-guardrail",
             status: "active", deletedAt: null, trafficRouterId: "router-active",
           },
           {
-            id: "endpoint-disabled", name: "Disabled Gateway", adapter: "litellm-generic-guardrail",
+            id: "endpoint-disabled", projectId: "project-b", name: "Disabled Gateway", adapter: "litellm-generic-guardrail",
             status: "disabled", deletedAt: null, trafficRouterId: "router-inactive",
           },
           {
-            id: "endpoint-zero-traffic", name: "New Gateway", adapter: "openai-compatible",
+            id: "endpoint-zero-traffic", projectId: "project-a", name: "New Gateway", adapter: "openai-compatible",
             status: "active", deletedAt: null, trafficRouterId: null,
           },
           {
-            id: "endpoint-deleted", name: "Deleted Gateway", adapter: "litellm-generic-guardrail",
+            id: "endpoint-deleted", projectId: "project-a", name: "Deleted Gateway", adapter: "litellm-generic-guardrail",
             status: "disabled", deletedAt: new Date(), trafficRouterId: "router-active",
           },
         ]),
+      }))
+      .mockImplementationOnce(() => ({
+        from: vi.fn(() => ({ innerJoin: vi.fn().mockResolvedValue([
+          { projectId: "project-a", poolId: "pool-project-a" },
+          { projectId: "project-b", poolId: "default" },
+        ]) })),
       }));
     const db = { select } as unknown as ControllerDatabase;
 
@@ -358,7 +364,7 @@ describe("Controller metrics contract", () => {
     expect(snapshot.endpointBindings).toEqual([
       {
         guardrailId: "guardrail-1", endpointId: "endpoint-active",
-        endpointName: "Agent Gateway", poolId: "default", status: "active",
+        endpointName: "Agent Gateway", poolId: "pool-project-a", status: "active",
       },
       {
         guardrailId: "guardrail-2", endpointId: "endpoint-disabled",
@@ -369,7 +375,7 @@ describe("Controller metrics contract", () => {
       {
         guardrailId: "guardrail-1", guardrailVersion: "20260904-030000.003Z",
         routerId: "router-active", routerName: "Production API",
-        poolId: "default", status: "active",
+        poolId: "pool-project-a", status: "active",
       },
       {
         guardrailId: "guardrail-2", guardrailVersion: "20260904-020000.002Z",

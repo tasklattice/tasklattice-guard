@@ -13,6 +13,7 @@ import { LogsPage } from "@/routes/logs";
 import { EndpointsPage } from "@/routes/endpoints";
 import { PlaygroundPage } from "@/routes/playground";
 import { UsersPage } from "@/routes/users";
+import { ProjectsPage } from "@/routes/projects";
 import { DashboardPage } from "@/routes/dashboard";
 import { PolicyLibraryPage } from "@/routes/policy-library";
 import { AccountPage } from "@/routes/account";
@@ -23,8 +24,6 @@ import { AuditLogPage } from "@/routes/audit-log";
 import { VersionPage } from "@/routes/version";
 import { HealthPage } from "@/routes/status";
 import { RunnerPage } from "@/routes/runner";
-import { TenantLoadLabPage } from "@/routes/tenant-load-lab";
-import { TenantGroupsPage } from "@/routes/tenant-groups";
 import { GuardrailCatalogPage, ModelsPage, ProvidersPage } from "@/routes/models";
 import { policyLibrarySearch } from "@/lib/policy-library-search";
 import { isGuardrailVersionId } from "../shared/guardrail-version";
@@ -32,7 +31,6 @@ import { isGuardrailVersionId } from "../shared/guardrail-version";
 const rootRoute = createRootRoute({ component: ControlPlaneLayout });
 const indexRoute = createRoute({ getParentRoute: () => rootRoute, path: "/", component: () => <Navigate to="/dashboard" replace /> });
 const dashboardRoute = createRoute({ getParentRoute: () => rootRoute, path: "/dashboard", component: DashboardPage });
-const mockSsoRoute = createRoute({ getParentRoute: () => rootRoute, path: "/mock-sso", component: () => null });
 const sharingRoute = createRoute({ getParentRoute: () => rootRoute, path: "/sharing", component: SharingPage });
 const guardrailsRoute = createRoute({ getParentRoute: () => rootRoute, path: "/guardrails", component: GuardrailsPage });
 const guardrailDetailRoute = createRoute({ getParentRoute: () => rootRoute, path: "/guardrails/$guardrailId", validateSearch: (search: Record<string, unknown>): { tab?: string; report?: string; version?: string; compare?: string; window?: "1h" | "24h" | "7d" | "15d" | "30d"; severity?: string; pageSize?: 25 | 50; metric?: RuntimeMetricKey } => ({
@@ -93,6 +91,7 @@ const logsRoute = createRoute({ getParentRoute: () => rootRoute, path: "/logs", 
 }), component: LogsPage });
 const auditLogRoute = createRoute({ getParentRoute: () => rootRoute, path: "/audit-log", validateSearch: auditLogSearch, component: AuditLogPage });
 const usersRoute = createRoute({ getParentRoute: () => rootRoute, path: "/access", component: UsersPage });
+const projectsRoute = createRoute({ getParentRoute: () => rootRoute, path: "/access/projects", component: ProjectsPage });
 const accountRoute = createRoute({ getParentRoute: () => rootRoute, path: "/account", component: AccountRoutePage });
 function AccountRoutePage() {
   const path = useRouterState({ select: state => state.location.pathname.replace(/\/$/, "") });
@@ -105,10 +104,7 @@ const settingsRoute = createRoute({ getParentRoute: () => rootRoute, path: "/set
 const versionRoute = createRoute({ getParentRoute: () => rootRoute, path: "/settings/version", component: VersionPage });
 const healthRoute = createRoute({ getParentRoute: () => rootRoute, path: "/settings/health", component: HealthPage });
 const runnerRoute = createRoute({ getParentRoute: () => rootRoute, path: "/settings/runner", component: RunnerPage });
-const tenantLoadLabRoute = createRoute({ getParentRoute: () => rootRoute, path: "/settings/tenant-load-lab", component: TenantLoadLabPage });
-const tenantGroupsRoute = createRoute({ getParentRoute: () => rootRoute, path: "/settings/tenant-groups", component: TenantGroupsPage });
 const providersRoute = createRoute({ getParentRoute: () => rootRoute, path: "/settings/providers", component: ProvidersPage });
-const tenantModelsRoute = createRoute({ getParentRoute: () => rootRoute, path: "/models", component: ModelsPage });
 const modelsRoute = createRoute({ getParentRoute: () => rootRoute, path: "/settings/models", validateSearch: (search: Record<string, unknown>) => ({ tab: search.tab === "pricing" ? "pricing" : undefined }), component: ModelsPage });
 const guardrailCatalogRoute = createRoute({ getParentRoute: () => rootRoute, path: "/settings/guardrail-catalog", component: GuardrailCatalogPage });
 const documentRoute = createRoute({ getParentRoute: () => rootRoute, path: "/document", notFoundComponent: DocumentNotFound });
@@ -128,7 +124,6 @@ const documentArticleRoute = createRoute({
 export const routeTree = rootRoute.addChildren([
   indexRoute,
   dashboardRoute,
-  mockSsoRoute,
   sharingRoute,
   guardrailsRoute,
   guardrailDetailRoute,
@@ -141,16 +136,14 @@ export const routeTree = rootRoute.addChildren([
   billingRoute,
   auditLogRoute,
   usersRoute,
+  projectsRoute,
   accountRoute.addChildren([accountSecurityRoute, accountTokensRoute, accountGeneralRoute]),
   settingsRoute,
   healthRoute,
   versionRoute,
   runnerRoute,
-  tenantLoadLabRoute,
-  tenantGroupsRoute,
   providersRoute,
   modelsRoute,
-  tenantModelsRoute,
   guardrailCatalogRoute,
   documentRoute.addChildren([documentIndexRoute, documentArticleRoute]),
 ]);

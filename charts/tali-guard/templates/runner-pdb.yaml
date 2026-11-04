@@ -1,23 +1,17 @@
 {{- include "tali-guard.defaults" . -}}
-{{- $root := . -}}
-{{- $default := dict "name" "default" "replicaCount" .Values.runner.default.replicaCount -}}
-{{- $pools := concat (list $default) .Values.runner.pools -}}
-{{- range $index, $pool := $pools }}
-{{- $runnerName := ternary (include "tali-guard.defaultRunnerName" $root) (printf "%s-runner-%s" (include "tali-guard.fullname" $root) $pool.name | trunc 63 | trimSuffix "-") (eq $pool.name "default") -}}
-{{- if gt $index 0 }}---{{ end }}
+{{- $runnerName := include "tali-guard.defaultRunnerName" . -}}
 apiVersion: policy/v1
 kind: PodDisruptionBudget
 metadata:
   name: {{ printf "%s-availability" $runnerName | trunc 63 | trimSuffix "-" }}
   labels:
-    {{- include "tali-guard.commonLabels" $root | nindent 4 }}
+    {{- include "tali-guard.commonLabels" . | nindent 4 }}
     app.kubernetes.io/component: runner
-    tasklattice.io/runner-pool: {{ $pool.name | quote }}
+    tasklattice.io/runner-pool: "default"
 spec:
-  minAvailable: {{ min 1 (int $pool.replicaCount) }}
+  minAvailable: {{ min 1 (int .Values.runner.default.replicaCount) }}
   selector:
     matchLabels:
-      app.kubernetes.io/instance: {{ $root.Release.Name }}
+      app.kubernetes.io/instance: {{ .Release.Name }}
       app.kubernetes.io/component: runner
-      tasklattice.io/runner-pool: {{ $pool.name | quote }}
-{{ end }}
+      tasklattice.io/runner-pool: "default"

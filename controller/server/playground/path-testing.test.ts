@@ -11,7 +11,7 @@ const base = {
   request: "POST /chat HTTP/1.1\nX-Channel: partner\n\nhello",
 };
 describe("Runner path test transport", () => {
-  it("sends tenant-group path tests to the selected pool without changing their credentials", async () => {
+  it("sends project-group path tests to the selected pool without changing their credentials", async () => {
     const fetcher = vi.fn().mockResolvedValue(Response.json({}));
     const root = new RunnerPlaygroundClient({ baseUrl: "http://default:8091", token: "internal", fetcher });
     await root.forBaseUrl("http://group-b:8091").testPath(pathTestSchema.parse({ ...base, target: "endpoint", targetId: "endpoint-1", credential: "group-b-key",

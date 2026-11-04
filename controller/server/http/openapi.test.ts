@@ -28,7 +28,7 @@ function setup(authenticated = true) {
   const config = loadConfig({ NODE_ENV: "test", CONTROLLER_DATABASE_URL: "postgresql://test:test@localhost/test",
     CONTROLLER_RUNNER_TOKEN: "runner-token-that-is-at-least-32-characters", CONTROLLER_ARTIFACT_SIGNING_KEY_PATH: "/tmp/test-key.pem",
     CONTROLLER_POLICY_CATALOG_DIR: resolve("../runner/toolkit/policy_library/assets"), BETTER_AUTH_SECRET: "better-auth-secret-that-is-at-least-32-characters" });
-  return createHttpApp({ config, auth: { api: { getSession: vi.fn().mockResolvedValue(authenticated ? { user: { id: "reader", role: "user", tenantId: "tenantA" } } : null) } } as unknown as ControllerAuth,
+  return createHttpApp({ config, auth: { api: { getSession: vi.fn().mockResolvedValue(authenticated ? { session: { id: "fixture-session", activeProjectId: "projectA" }, user: { id: "reader", role: "user", projectId: "projectA" } } : null) } } as unknown as ControllerAuth,
     service: { trafficRouting: { list: async () => [] } } as unknown as ControlPlaneService,
     runnerControl: {} as RunnerControlServer, metrics: { registry: new Registry() } as ControllerMetrics });
 }

@@ -11,20 +11,12 @@ Laya 是独立的 Decision Model 适配，覆盖输入/输出内容安全、输�
 | 仅话题协议 | `tali.typesafe-jev-topic.v1` | `tali.laya-topic.v1` |
 | Transport | `typesafe_systemone` | `laya_systemone` |
 | 模型 ID | 用户注册的 JEV 版本 | 初始建议为 `auto`，可填写服务支持的模型 ID |
-| 阈值环境变量 | `GUARD_JEV_LOWER_THRESHOLD` / `GUARD_JEV_UPPER_THRESHOLD` | `GUARD_LAYA_LOWER_THRESHOLD` / `GUARD_LAYA_UPPER_THRESHOLD` |
-| Helm 配置 | `runner.jev` | `runner.laya` |
+| 阈值设置 | 对应 JEV 模型的设置 | 对应 Laya 模型的设置 |
 | 响应评估证据 | `evaluations` | `layaEvaluations`，含 `decisionModel: "laya"` |
 
-两组阈值的代码默认值均为 **0.1 / 0.9**。修改 JEV 的实际部署阈值不会修改 Laya。若要让 Laya 的上界为 0.85，应显式配置：
+每个注册模型独立保存上下阈值，默认值均为 **0.1 / 0.9**。在 **模型 → 配置模型** 中选择 Laya，将上阈值改为 `0.85` 即可，不需要修改 Helm values 或环境变量。约束为 `0 ≤ 下阈值 < 上阈值 ≤ 1`。
 
-```yaml
-runner:
-  laya:
-    lowerThreshold: 0.1
-    upperThreshold: 0.85
-```
-
-阈值仍属于 Runner 级配置，作用于该 Runner 上的全部 Laya 检测。它们是操作点，不是已经校准的准确率或置信度保证。
+同一模型的所有能力绑定使用这组阈值；需要独立实验时另行注册模型。阈值变化会使此前的能力验证指纹失效，需要重新验证；项目运行组已授权的快照在明确刷新前保持不变。阈值是操作点，不是准确率或置信度保证。
 
 ## 请求、判定与错误
 

@@ -7,7 +7,7 @@ Use the `local-credentials` Policy for passwords, private keys and API/auth cred
 Install the updated Controller catalog before selecting the new version. Keep Default and the original Report unchanged. The following patch selects only the credential Policy, including its additional opt-in rules, on a duplicate of Default:
 
 ```sh
-bin/guardctl tenant provision \
+bin/guardctl project provision \
   --url http://localhost:38081 --env-file .local-secrets/guardctl.env \
   --name 'PII credential regression' --source guardrail-default \
   --adapter litellm-generic-guardrail \

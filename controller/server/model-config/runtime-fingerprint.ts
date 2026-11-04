@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { canonicalJson } from "../../shared/canonical-json.js";
 import type { ModelAssignments } from "./domain.js";
 
-type Model = { id: string; tenantId?: string | null; providerId: string; model: string; profile: string; timeoutSeconds: number; maxTokens: number };
+type Model = { id: string; projectId?: string | null; providerId: string; model: string; profile: string; timeoutSeconds: number; maxTokens: number; lowerThreshold?: number; upperThreshold?: number };
 type Provider = { id: string; kind: string; baseUrl: string; skipTlsVerify: boolean; credentialCiphertext: string };
 
 /** Validation authority excludes mutable display/health metadata and Controller
@@ -12,8 +12,8 @@ export function modelRuntimeValidationFingerprint(assignments: ModelAssignments,
   const selected = models.filter(model => ids.has(model.id)).sort((a, b) => a.id.localeCompare(b.id));
   const providerIds = new Set(selected.map(model => model.providerId));
   const snapshot = { bindings: assignments.bindings, models: selected.map(model => ({ id: model.id,
-    tenantId: model.tenantId ?? null, providerId: model.providerId, model: model.model, profile: model.profile,
-    timeoutSeconds: model.timeoutSeconds, maxTokens: model.maxTokens })),
+    projectId: model.projectId ?? null, providerId: model.providerId, model: model.model, profile: model.profile,
+    timeoutSeconds: model.timeoutSeconds, maxTokens: model.maxTokens, lowerThreshold: model.lowerThreshold ?? 0.1, upperThreshold: model.upperThreshold ?? 0.9 })),
     providers: providers.filter(provider => providerIds.has(provider.id)).sort((a, b) => a.id.localeCompare(b.id)).map(provider => ({
       id: provider.id, kind: provider.kind, baseUrl: provider.baseUrl, skipTlsVerify: provider.skipTlsVerify,
       credentialCiphertext: provider.credentialCiphertext,
@@ -22,8 +22,8 @@ export function modelRuntimeValidationFingerprint(assignments: ModelAssignments,
 }
 
 export function modelBindingValidationFingerprint(target: string, model: Model, provider: Provider): string {
-  const snapshot = { target, model: { id: model.id, tenantId: model.tenantId ?? null, providerId: model.providerId,
-    model: model.model, profile: model.profile, timeoutSeconds: model.timeoutSeconds, maxTokens: model.maxTokens },
+  const snapshot = { target, model: { id: model.id, projectId: model.projectId ?? null, providerId: model.providerId,
+    model: model.model, profile: model.profile, timeoutSeconds: model.timeoutSeconds, maxTokens: model.maxTokens, lowerThreshold: model.lowerThreshold ?? 0.1, upperThreshold: model.upperThreshold ?? 0.9 },
     provider: { id: provider.id, kind: provider.kind, baseUrl: provider.baseUrl, skipTlsVerify: provider.skipTlsVerify,
       credentialCiphertext: provider.credentialCiphertext } };
   return createHash("sha256").update(canonicalJson(snapshot)).digest("hex");

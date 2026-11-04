@@ -1,3 +1,4 @@
+import { withTestProject } from "../db/postgres-test-database.js";
 // @vitest-environment node
 import { generateKeyPairSync, verify } from "node:crypto";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
@@ -43,8 +44,8 @@ describe.skipIf(!url)("Preconfigured Guardrail lifecycle", () => {
     const artifact = initial.versions[0]!.artifact!;
     expect(verify(null, Buffer.from(artifact.checksum, "utf8"), key.publicKey, Buffer.from(artifact.signature, "base64"))).toBe(true);
     // No global baseline is delivered to unrelated pools.
-    await service.tenantGroups.create({ id: "secondary", name: "Secondary" }, "user");
-    await service.tenantGroups.createPool("secondary", {
+    await service.projectGroups.create({ id: "secondary", name: "Secondary" }, "user");
+    await service.projectGroups.createPool("secondary", {
       id: "secondary", name: "Secondary", runtimeUrl: "http://secondary:8091", publicUrl: null,
     }, "user");
     expect((await service.desiredStateForPool("secondary")).artifacts).toEqual([]);
@@ -70,8 +71,8 @@ describe.skipIf(!url)("Preconfigured Guardrail lifecycle", () => {
     expect((await database.pool.query("SELECT count(*)::int AS n FROM guardrail_validation_run WHERE guardrail_id=$1", [id])).rows[0].n).toBe(0);
 
     // A pending Router change protects Default with the ordinary reference check.
-    const router = await service.trafficRouting.create("Explicit fallback", "", { routes: [{ id: "fallback", name: "Fallback", kind: "fallback", enabled: true,
-      selector: { expression: { combinator: "and", conditions: [] } }, targets: [{ id: "target", guardrailId: id, guardrailVersion: initial.versions[0]!.version, weightBps: 10000 }] }] }, "user");
+    const router = {id: "explicit-fallback"};
+    await database.pool.query("INSERT INTO traffic_router(id,project_id,name,draft) VALUES ($1,'projectA','Explicit fallback',$2)", [router.id, {routes:[{id:"fallback",name:"Fallback",kind:"fallback",enabled:true,selector:{expression:{combinator:"and",conditions:[]}},targets:[{id:"target",guardrailId:id,guardrailVersion:initial.versions[0]!.version,weightBps:10000}]}]}]);
     const review = await service.trafficRouting.preview(router.id, 1);
     const change = await service.trafficRouting.submitChange(router.id, { expectedDraftRevision: 1, reviewedSnapshot: review.snapshot,
       reviewedEndpointIds: review.endpointIds, reason: "Pin explicit fallback", ticket: "TEST-1" }, "user");

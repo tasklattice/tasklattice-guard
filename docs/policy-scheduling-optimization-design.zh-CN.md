@@ -261,9 +261,9 @@ npm run proto:check
 换分类器、调阈值、换模型时才需要原文，那是独立的"数据留存"决策，不应由调度优化驱动。若要做，按下面七条设计，**"整段加密"是必要条件而非充分条件**：
 
 1. 默认 `evidence`（无明文）；`content` 需逐 Guardrail 显式开启 + 审批记录；
-2. 当前只有一个全局 `MODEL_GUARDRAILS_RUNTIME_LOG_ENCRYPTION_KEY`，做语料要改为 per-tenant DEK + KMS 包裹、可轮换，密钥不与密文同库；
+2. 当前只有一个全局 `MODEL_GUARDRAILS_RUNTIME_LOG_ENCRYPTION_KEY`，做语料要改为 per-project DEK + KMS 包裹、可轮换，密钥不与密文同库；
 3. TTL 上限与按 Guardrail 的配额（现有诊断候选 300s 不能直接当语料留存）；
-4. 租户隔离，导入/导出必脱敏；
+4. 项目隔离，导入/导出必脱敏；
 5. 每次解密写审计；
 6. 删除/导出通道（GDPR/PIPL：加密不等于匿名，留存与删除义务照样适用）；
 7. **重放不得再出站**：只能回放录制响应（现有 `scripts/model_response_gateway.py::ReplayFixtures`）或离线模型，否则重放本身成为绕过 Guardrail 的 PII 出站通道。

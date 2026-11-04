@@ -10,8 +10,8 @@ import i18n from "@/i18n";
 
 import { ControlPlaneSidebar } from "./control-plane-sidebar";
 
-const identity = vi.hoisted(() => ({ role: "admin", tenant_id: "tenantA" }));
-vi.mock("@/lib/auth", () => ({ useAuth: () => ({ user: { role: identity.role, tenant_id: identity.tenant_id } }) }));
+const identity = vi.hoisted(() => ({ role: "admin", project_id: "projectA" }));
+vi.mock("@/lib/auth", () => ({ useAuth: () => ({ user: { role: identity.role, project_id: identity.project_id } }) }));
 
 const queryData = vi.hoisted(() => ({ value: { items: [] } as Record<string, unknown> }));
 vi.mock("@tanstack/react-query", () => ({
@@ -26,23 +26,23 @@ vi.mock("@tanstack/react-router", () => ({
 vi.mock("@/hooks/use-mobile", () => ({ useIsMobile: () => false }));
 
 describe("ControlPlaneSidebar", () => {
-  afterEach(() => { cleanup(); identity.role = "admin"; identity.tenant_id = "tenantA"; vi.clearAllMocks(); queryData.value = { items: [] }; });
+  afterEach(() => { cleanup(); identity.role = "admin"; identity.project_id = "projectA"; vi.clearAllMocks(); queryData.value = { items: [] }; });
 
   beforeEach(async () => { await i18n.changeLanguage("en"); });
 
-  it("groups administrator pages by model services, platform operations and governance", () => {
+  it("groups administrator pages by people and projects, model services and platform operations", () => {
     render(<SidebarProvider><TooltipProvider><ControlPlaneSidebar /></TooltipProvider></SidebarProvider>);
     const expected = {
       Providers: "/settings/providers",
       Models: "/settings/models", "Guardrail Catalog": "/settings/guardrail-catalog",
-      Health: "/settings/health", Runner: "/settings/runner", "Tenant groups": "/settings/tenant-groups", "Tenant load lab": "/settings/tenant-load-lab", Version: "/settings/version",
-      "Users & access": "/access", "Audit log": "/audit-log",
+      Health: "/settings/health", Runner: "/settings/runner", Version: "/settings/version",
+      Projects: "/access/projects", "Users": "/access", "Audit log": "/audit-log",
     };
     for (const [label, path] of Object.entries(expected)) expect(screen.getByRole("link", { name: label }).getAttribute("href")).toBe(path);
     const groups = {
       "Models & detection": ["Providers", "Models", "Guardrail Catalog"],
-      "Platform operations": ["Health", "Runner", "Tenant groups", "Tenant load lab", "Version"],
-      "Access & audit": ["Users & access", "Audit log"],
+      "Platform operations": ["Runner", "Health", "Audit log", "Version"],
+      "People & projects": ["Users", "Projects"],
     };
     for (const [label, links] of Object.entries(groups)) {
       const group = screen.getByText(label).closest('[data-sidebar="group"]') as HTMLElement;
@@ -59,35 +59,35 @@ describe("ControlPlaneSidebar", () => {
   it("shows users workflow groups and runtime observations without platform audit", () => {
     identity.role = "user";
     render(<SidebarProvider><TooltipProvider><ControlPlaneSidebar /></TooltipProvider></SidebarProvider>);
-    for (const name of ["Guardrails", "Playground", "Policy Library", "Routers", "Endpoints", "Runtime logs", "Billing", "Settings", "Models", "Sharing", "Runner", "Documentation"]) expect(screen.getByRole("link", { name })).toBeTruthy();
-    for (const name of ["Health", "Providers", "Guardrail Catalog", "Tenant groups", "Tenant load lab", "Version", "Users & access", "Audit log"]) expect(screen.queryByRole("link", { name })).toBeNull();
+    for (const name of ["Guardrails", "Playground", "Policy Library", "Routers", "Endpoints", "Runtime logs", "Billing", "Settings", "Documentation"]) expect(screen.getByRole("link", { name })).toBeTruthy();
+    for (const name of ["Sharing", "Runner", "Health", "Models", "Providers", "Guardrail Catalog", "Project runtime groups", "Version", "Users", "Audit log"]) expect(screen.queryByRole("link", { name })).toBeNull();
     expect(screen.getByRole("link", { name: "TaskLattice Guard" }).getAttribute("href")).toBe("/dashboard");
     expect(screen.getByRole("link", { name: "Runtime logs" }).getAttribute("href")).toBe("/logs");
     const observability = screen.getByText("Runtime observability").closest('[data-sidebar="group"]') as HTMLElement;
     expect(within(observability).getAllByRole("link").map(link => link.textContent)).toEqual(["Runtime logs", "Billing"]);
     expect(screen.getByRole("link", { name: "Billing" }).getAttribute("href")).toBe("/billing");
+    expect(screen.queryByText("System")).toBeNull();
     expect(screen.getByRole("link", { name: "Settings" }).getAttribute("href")).toBe("/settings/health");
-    expect(screen.getByRole("link", { name: "Settings" }).closest('[data-sidebar="footer"]')).toBeTruthy();
     expect(document.body.textContent).not.toContain("Platform");
   });
 
-  it("refreshes the active tenant and scopes count queries when the identity changes", () => {
+  it("refreshes the active project and scopes count queries when the identity changes", () => {
     identity.role = "user";
-    queryData.value = { items: [{ id: "tenantA-private" }, { id: "tenantA-shared" }] };
+    queryData.value = { items: [{ id: "projectA-private" }, { id: "projectA-shared" }] };
     const view = render(<SidebarProvider><ControlPlaneSidebar /></SidebarProvider>);
-    expect(screen.getByLabelText("Active tenant").textContent).toContain("tenantA");
-    expect(screen.getByRole("link", { name: "Models" }).getAttribute("href")).toBe("/models");
-    identity.tenant_id = "tenantB";
-    queryData.value = { items: [{ id: "tenantB-owned" }] };
+    expect(screen.getByRole("button", { name: "Switch project: projectA" })).toBeTruthy();
+    expect(screen.queryByText("Active project")).toBeNull();
+    identity.project_id = "projectB";
+    queryData.value = { items: [{ id: "projectB-owned" }] };
     view.rerender(<SidebarProvider><ControlPlaneSidebar /></SidebarProvider>);
-    expect(screen.getByLabelText("Active tenant").textContent).toContain("tenantB");
-    expect(screen.queryByText("tenantA")).toBeNull();
+    expect(screen.getByRole("button", { name: "Switch project: projectB" })).toBeTruthy();
+    expect(screen.queryByText("projectA")).toBeNull();
     const calls = vi.mocked(useQuery).mock.calls;
-    for (const [options] of calls.slice(-3)) expect(options.queryKey).toContain("tenantB");
+    for (const [options] of calls.slice(-3)) expect(options.queryKey).toContain("projectB");
     expect([...document.querySelectorAll('[data-sidebar="menu-badge"]')].map(badge => badge.textContent)).toEqual(["1", "1", "1"]);
   });
 
-  it("keeps the dashboard reachable from the collapsed tenant sidebar", () => {
+  it("keeps the dashboard reachable from the collapsed project sidebar", () => {
     identity.role = "user";
     render(<SidebarProvider defaultOpen={false}><TooltipProvider><ControlPlaneSidebar /></TooltipProvider></SidebarProvider>);
     expect(screen.getByRole("link", { name: "TaskLattice Guard" }).getAttribute("href")).toBe("/dashboard");
@@ -98,7 +98,7 @@ describe("ControlPlaneSidebar", () => {
     render(<SidebarProvider><ControlPlaneSidebar /><SidebarTrigger /></SidebarProvider>);
     expect(screen.getByRole("link", { name: "Providers" })).toBeTruthy();
     await act(async () => { await i18n.changeLanguage("zh-CN"); });
-    for (const name of ["模型与检测", "平台运行", "访问与审计"]) expect(screen.getByText(name)).toBeTruthy();
+    for (const name of ["模型与检测", "平台运行", "人员与项目"]) expect(screen.getByText(name)).toBeTruthy();
     const paths = { "模型提供商": "/settings/providers", "检测器目录": "/settings/guardrail-catalog", "健康": "/settings/health", "执行节点": "/settings/runner", "版本": "/settings/version" };
     for (const [name, path] of Object.entries(paths)) expect(screen.getByRole("link", { name }).getAttribute("href")).toBe(path);
     for (const name of ["Providers", "Provider", "Guardrail Catalog", "Runner"]) expect(screen.queryByRole("link", { name })).toBeNull();
@@ -109,12 +109,15 @@ describe("ControlPlaneSidebar", () => {
     for (const name of ["Providers", "Guardrail Catalog", "Health", "Runner", "Version"]) expect(screen.getByRole("link", { name }).getAttribute("aria-label")).toBe(name);
   });
 
-  it("localizes every tenant navigation group and entry in Chinese", async () => {
+  it("localizes every project navigation group and entry in Chinese", async () => {
     identity.role = "user";
     await i18n.changeLanguage("zh-CN");
     render(<SidebarProvider><ControlPlaneSidebar /></SidebarProvider>);
-    for (const name of ["护栏设计", "集成", "运行观测", "系统"]) expect(screen.getByText(name)).toBeTruthy();
-    for (const name of ["安全护栏", "调试场", "策略库", "模型", "路由器", "端点", "运行日志", "账单", "资源共享", "执行节点", "设置", "文档"]) expect(screen.getByRole("link", { name })).toBeTruthy();
+    for (const name of ["护栏设计", "集成", "运行观测"]) expect(screen.getByText(name)).toBeTruthy();
+    for (const name of ["安全护栏", "调试场", "策略库", "路由器", "端点", "运行日志", "账单", "设置", "文档"]) expect(screen.getByRole("link", { name })).toBeTruthy();
+    expect(screen.queryByText("系统")).toBeNull();
+    for (const name of ["资源共享", "执行节点"]) expect(screen.queryByRole("link", { name })).toBeNull();
+    expect(screen.queryByRole("link", { name: "模型" })).toBeNull();
     expect(screen.queryByRole("link", { name: "审计日志" })).toBeNull();
   });
 

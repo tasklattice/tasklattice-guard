@@ -1,3 +1,4 @@
+import { withTestProject } from "../db/postgres-test-database.js";
 // @vitest-environment node
 import { createHash, randomUUID } from "node:crypto";
 import { resolve } from "node:path";
@@ -11,8 +12,8 @@ import * as schema from "../db/schema.js";
 import type { RouterDraft } from "../../shared/traffic-routing.js";
 import { ControlPlaneService } from "./control-plane.js";
 import { routingEventSchema, type RoutingEvent } from "./traffic-routing.js";
-import { runWithTenantContext } from "./tenant-context.js";
-import { TenantShareService } from "./tenant-shares.js";
+import { runWithProjectContext } from "./project-context.js";
+import { ProjectShareService } from "./project-shares.js";
 import { PolicyCatalog } from "../policy-catalog/catalog.js";
 import { defaultGuardrailDraft } from "../domain/defaults.js";
 import { canonicalJson } from "../../shared/canonical-json.js";
@@ -46,12 +47,12 @@ describe.skipIf(!url)("Traffic composition transactions in PostgreSQL", () => {
     await pool.query(`INSERT INTO auth_user (id,name,email,role) VALUES ('admin','Admin','admin@example.test','admin'),('approver','Approver','approver@example.test','admin');
       INSERT INTO controller_state (id) VALUES ('singleton');
       INSERT INTO runner_pool (id,name) VALUES ('default','Default');
-      INSERT INTO guardrail (id,name,draft_config,status) VALUES ('guard-a','Original','{}','active'),('guard-b','Other','{}','active');
+      INSERT INTO guardrail (project_id,id,name,draft_config,status) VALUES ('projectA','guard-a','Original','{}','active'),('projectA','guard-b','Other','{}','active');
       INSERT INTO guardrail_version (guardrail_id,version,generation,status,runtime_profile,plan,artifact_id,released_at) VALUES
         ('guard-a','1',1,'ready','auto','{}','artifact-a',now()),('guard-b','1',2,'ready','auto','{}','artifact-b',now());
-      INSERT INTO endpoint (id,name,adapter) VALUES ('http','LiteLLM','litellm-generic-guardrail'),('scan','SCAN','f5-scan');`);
+      INSERT INTO endpoint (project_id,id,name,adapter) VALUES ('projectA','http','LiteLLM','litellm-generic-guardrail'),('projectA','scan','SCAN','f5-scan');`);
   });
-  async function create(value = draft()) { return service.trafficRouting.create("Router", "", value, actor); }
+  async function create(value = draft()) { return withTestProject(() => service.trafficRouting.create("Router", "", value, actor)); }
   /** Review the current draft and submit it as the actor. */
   async function submit(routerId: string, draftRevision = 1, reason = "Change ticket", by = actor) {
     const review = await service.trafficRouting.preview(routerId, draftRevision);
@@ -66,39 +67,39 @@ describe.skipIf(!url)("Traffic composition transactions in PostgreSQL", () => {
   async function generation() { return Number((await pool.query("SELECT desired_generation FROM controller_state WHERE id='singleton'")).rows[0].desired_generation); }
   async function count(table: string, where = "TRUE") { return (await pool.query(`SELECT count(*)::int AS n FROM ${table} WHERE ${where}`)).rows[0].n as number; }
 
-  it("isolates tenant resources and allows read-only sharing", async () => {
-    await pool.query("INSERT INTO auth_user (id,name,email,role,tenant_id) VALUES ('admin-b','Admin B','admin-b@example.test','admin','tenantB')");
-    const asB = <T>(callback: () => T) => runWithTenantContext({ tenantId: "tenantB", actorId: "admin-b" }, callback);
-    const asA = <T>(callback: () => T) => runWithTenantContext({ tenantId: "tenantA", actorId: actor }, callback);
+  it("isolates project resources and allows read-only sharing", async () => {
+    await pool.query("INSERT INTO auth_user (id,name,email,role) SELECT id,name,email,role FROM (VALUES ('admin-b','Admin B','admin-b@example.test','admin','projectB')) AS fixture(id,name,email,role,project_id)");
+    const asB = <T>(callback: () => T) => runWithProjectContext({ projectId: "projectB", actorId: "admin-b" }, callback);
+    const asA = <T>(callback: () => T) => runWithProjectContext({ projectId: "projectA", actorId: actor }, callback);
 
     await expect(asB(() => service.getEndpoint("http"))).rejects.toMatchObject({ code: "not_found" });
-    const owned = await asB(() => service.createEndpoint({ name: "B endpoint", adapter: "litellm-generic-guardrail", actorId: "admin-b" }));
+    const owned = await asB(() => withTestProject(() => service.createEndpoint({ name: "B endpoint", adapter: "litellm-generic-guardrail", actorId: "admin-b" })));
     expect((await asB(() => service.listEndpoints())).map(item => item.id)).toEqual([owned.id]);
     expect((await asA(() => service.listEndpoints())).map(item => item.id)).not.toContain(owned.id);
-    await expect(asB(() => service.trafficRouting.create("B router", "", draft(), "admin-b")))
+    await expect(asB(() => withTestProject(() => service.trafficRouting.create("B router", "", draft(), "admin-b"))))
       .rejects.toMatchObject({ code: "validation_failed" });
 
-    await pool.query(`INSERT INTO resource_share (id,owner_tenant_id,recipient_tenant_id,resource_type,resource_id,created_by)
-      VALUES ('share-endpoint','tenantA','tenantB','endpoint','http','admin'),
-        ('share-guardrail','tenantA','tenantB','guardrail','guard-a','admin')`);
+    await pool.query(`INSERT INTO resource_share (id,owner_project_id,recipient_project_id,resource_type,resource_id,created_by)
+      VALUES ('share-endpoint','projectA','projectB','endpoint','http','admin'),
+        ('share-guardrail','projectA','projectB','guardrail','guard-a','admin')`);
     expect((await asB(() => service.getEndpoint("http"))).id).toBe("http");
     await expect(asB(() => service.updateEndpoint({ id: "http", enabled: false, actorId: "admin-b" })))
       .rejects.toMatchObject({ code: "not_found" });
 
-    const router = await asB(() => service.trafficRouting.create("B router", "", draft(), "admin-b", [owned.id]));
-    expect(router.tenantId).toBe("tenantB");
+    const router = await asB(() => withTestProject(() => service.trafficRouting.create("B router", "", draft(), "admin-b", [owned.id])));
+    expect(router.projectId).toBe("projectB");
     await expect(asA(() => service.trafficRouting.get(router.id))).rejects.toMatchObject({ code: "not_found" });
     expect((await asB(() => service.trafficRouting.get(router.id))).id).toBe(router.id);
-    await pool.query("INSERT INTO resource_share (id,owner_tenant_id,recipient_tenant_id,resource_type,resource_id) VALUES ('share-router','tenantB','tenantA','router',$1)", [router.id]);
+    await pool.query("INSERT INTO resource_share (id,owner_project_id,recipient_project_id,resource_type,resource_id) VALUES ('share-router','projectB','projectA','router',$1)", [router.id]);
     expect((await asA(() => service.trafficRouting.get(router.id))).id).toBe(router.id);
     await expect(asA(() => service.trafficRouting.approveChange(router.id, "missing-change", actor, {})))
       .rejects.toMatchObject({ code: "not_found" });
-    expect((await pool.query("SELECT tenant_id FROM audit_event WHERE resource_id = $1 AND kind = 'router.created'", [router.id])).rows)
-      .toEqual([{ tenant_id: "tenantB" }]);
+    expect((await pool.query("SELECT project_id FROM audit_event WHERE resource_id = $1 AND kind = 'router.created'", [router.id])).rows)
+      .toEqual([{ project_id: "projectB" }]);
 
-    await pool.query(`INSERT INTO runtime_event (id,tenant_id,occurred_at,request_id,runner_id,endpoint_id,direction,decision,duration_ms)
-      VALUES ('event-a','tenantA',now(),'request-a','runner','http','incoming','allow',1),
-        ('event-b','tenantB',now(),'request-b','runner',$1,'incoming','allow',1)`, [owned.id]);
+    await pool.query(`INSERT INTO runtime_event (id,project_id,occurred_at,request_id,runner_id,endpoint_id,direction,decision,duration_ms)
+      VALUES ('event-a','projectA',now(),'request-a','runner','http','incoming','allow',1),
+        ('event-b','projectB',now(),'request-b','runner',$1,'incoming','allow',1)`, [owned.id]);
     expect((await asB(() => service.queryRuntimeEvents({}))).items.map(item => item.id)).toEqual(["event-b"]);
     await expect(asB(() => service.getRuntimeEvent("event-a"))).rejects.toMatchObject({ code: "not_found" });
 
@@ -107,22 +108,22 @@ describe.skipIf(!url)("Traffic composition transactions in PostgreSQL", () => {
       .rejects.toMatchObject({ code: "validation_failed" });
   });
 
-  it("keeps shared Guardrail dependents private and leaves another tenant's Router pinned", async () => {
-    await pool.query("INSERT INTO auth_user (id,name,email,role,tenant_id) VALUES ('admin-b','Admin B','admin-b@example.test','admin','tenantB')");
+  it("keeps shared Guardrail dependents private and leaves another project's Router pinned", async () => {
+    await pool.query("INSERT INTO auth_user (id,name,email,role) SELECT id,name,email,role FROM (VALUES ('admin-b','Admin B','admin-b@example.test','admin','projectB')) AS fixture(id,name,email,role,project_id)");
     await pool.query(`UPDATE guardrail SET status = 'active' WHERE id = 'guard-a';
       INSERT INTO guardrail_version (guardrail_id,version,generation,status,runtime_profile,plan,artifact_id,released_at)
       VALUES ('guard-a','2',3,'ready','auto','{}','artifact-a-2',now());
-      INSERT INTO resource_share (id,owner_tenant_id,recipient_tenant_id,resource_type,resource_id,created_by)
-      VALUES ('share-guardrail','tenantA','tenantB','guardrail','guard-a','admin');
-      INSERT INTO endpoint (id,name,adapter,tenant_id) VALUES ('endpoint-b','Endpoint B','litellm-generic-guardrail','tenantB');`);
-    const asA = <T>(callback: () => T) => runWithTenantContext({ tenantId: "tenantA", actorId: actor }, callback);
-    const asB = <T>(callback: () => T) => runWithTenantContext({ tenantId: "tenantB", actorId: "admin-b" }, callback);
-    await pool.query("INSERT INTO traffic_router (id,tenant_id,name,draft,active_snapshot) VALUES ('private-b-router','tenantB','Private B name',$1,$1)", [JSON.stringify(draft())]);
+      INSERT INTO resource_share (id,owner_project_id,recipient_project_id,resource_type,resource_id,created_by)
+      VALUES ('share-guardrail','projectA','projectB','guardrail','guard-a','admin');
+      INSERT INTO endpoint (id,name,adapter,project_id) VALUES ('endpoint-b','Endpoint B','litellm-generic-guardrail','projectB');`);
+    const asA = <T>(callback: () => T) => runWithProjectContext({ projectId: "projectA", actorId: actor }, callback);
+    const asB = <T>(callback: () => T) => runWithProjectContext({ projectId: "projectB", actorId: "admin-b" }, callback);
+    await pool.query("INSERT INTO traffic_router (id,project_id,name,draft,active_snapshot) VALUES ('private-b-router','projectB','Private B name',$1,$1)", [JSON.stringify(draft())]);
     await expect(asA(() => service.trafficRouting.assertGuardrailUnused("guard-a")))
       .rejects.toMatchObject({ code: "guardrail_in_use" });
     expect((await asA(() => service.trafficRouting.list())).map(router => router.id)).not.toContain("private-b-router");
     expect((await asB(() => service.trafficRouting.get("private-b-router"))).activeSnapshot?.routes[0]?.targets[0]?.guardrailVersion).toBe("1");
-    const shares = new TenantShareService(drizzle(pool, { schema }));
+    const shares = new ProjectShareService(drizzle(pool, { schema }));
     await expect(asA(() => shares.revokeShare("share-guardrail", actor)))
       .rejects.toMatchObject({ code: "share_in_use" });
     await pool.query("UPDATE traffic_router SET active_snapshot = NULL WHERE id = 'private-b-router'");
@@ -131,19 +132,19 @@ describe.skipIf(!url)("Traffic composition transactions in PostgreSQL", () => {
   });
 
   it("redacts private Router dependencies while preserving publication and retention blockers", async () => {
-    await pool.query(`INSERT INTO auth_user (id,name,email,role,tenant_id) VALUES ('user-b','B Author','b-author@example.test','user','tenantB');
+    await pool.query(`INSERT INTO auth_user (id,name,email,role) SELECT id,name,email,role FROM (VALUES ('user-b','B Author','b-author@example.test','user','projectB')) AS fixture(id,name,email,role,project_id);
       INSERT INTO guardrail_version (guardrail_id,version,generation,status,runtime_profile,plan,artifact_id,released_at)
         VALUES ('guard-a','2',3,'ready','auto','{}','artifact-a-2',now());
-      INSERT INTO resource_share (id,owner_tenant_id,recipient_tenant_id,resource_type,resource_id)
-        VALUES ('share-guardrail','tenantA','tenantB','guardrail','guard-a');`);
-    const asA = <T>(callback: () => T) => runWithTenantContext({ tenantId: "tenantA", actorId: actor, role: "user" }, callback);
-    const asB = <T>(callback: () => T) => runWithTenantContext({ tenantId: "tenantB", actorId: "user-b", role: "user" }, callback);
-    const router = await asB(() => service.trafficRouting.create("Confidential B Router", "", draft(), "user-b"));
+      INSERT INTO resource_share (id,owner_project_id,recipient_project_id,resource_type,resource_id)
+        VALUES ('share-guardrail','projectA','projectB','guardrail','guard-a');`);
+    const asA = <T>(callback: () => T) => runWithProjectContext({ projectId: "projectA", actorId: actor, role: "user" }, callback);
+    const asB = <T>(callback: () => T) => runWithProjectContext({ projectId: "projectB", actorId: "user-b", role: "user" }, callback);
+    const router = await asB(() => withTestProject(() => service.trafficRouting.create("Confidential B Router", "", draft(), "user-b")));
     const review = await asB(() => service.trafficRouting.preview(router.id, 1));
     const change = await asB(() => service.trafficRouting.submitChange(router.id, {
       expectedDraftRevision: 1, reviewedSnapshot: review.snapshot, reviewedEndpointIds: [], reason: "Private request", ticket: "PRIVATE-B-TICKET",
     }, "user-b"));
-    const hidden = { routerId: "", routerName: "Another tenant’s Router" };
+    const hidden = { routerId: "", routerName: "Another project’s Router" };
     const noPrivateMetadata = (value: unknown) => {
       const serialized = `${String(value)} ${JSON.stringify(value)}`;
       for (const secret of [router.id, router.name, change.id, "PRIVATE-B-TICKET"]) expect(serialized).not.toContain(secret);
@@ -193,7 +194,7 @@ describe.skipIf(!url)("Traffic composition transactions in PostgreSQL", () => {
 
     // Explicit Router sharing restores its readable metadata; global workers
     // and platform administrators retain their complete dependency view.
-    await pool.query("INSERT INTO resource_share (id,owner_tenant_id,recipient_tenant_id,resource_type,resource_id) VALUES ('router-share','tenantB','tenantA','router',$1)", [router.id]);
+    await pool.query("INSERT INTO resource_share (id,owner_project_id,recipient_project_id,resource_type,resource_id) VALUES ('router-share','projectB','projectA','router',$1)", [router.id]);
     expect((await impact()).unrestorableRevisions).toEqual([expect.objectContaining({ routerId: router.id, routerName: router.name, revision: 1 })]);
     expect((await service.trafficRouting.versionReferences("guard-a", "1")).historical).toEqual([expect.objectContaining({ routerId: router.id })]);
   });
@@ -310,7 +311,7 @@ describe.skipIf(!url)("Traffic composition transactions in PostgreSQL", () => {
   });
 
   it("applies exactly the submitted version even after a newer one is published", async () => {
-    const router = await service.trafficRouting.create("Pinned", "", draft(), actor, ["http"]);
+    const router = await withTestProject(() => service.trafficRouting.create("Pinned", "", draft(), actor, ["http"]));
     const change = await submit(router.id);
     expect(change.snapshot.routes[0]!.targets[0]!.guardrailVersion).toBe("1");
     await addVersion("2", 3, "ready", "artifact-2");
@@ -319,7 +320,7 @@ describe.skipIf(!url)("Traffic composition transactions in PostgreSQL", () => {
   });
 
   it.each(["binding", "readiness", "revision"])("supersedes a pending change after %s drift instead of applying it", async drift => {
-    const router = await service.trafficRouting.create("Drift", "", draft(), actor, ["http"]);
+    const router = await withTestProject(() => service.trafficRouting.create("Drift", "", draft(), actor, ["http"]));
     if (drift === "revision") await apply(router.id);
     const change = await submit(router.id);
     if (drift === "binding") await service.trafficRouting.bind(router.id, ["http", "scan"], actor);
@@ -372,14 +373,14 @@ describe.skipIf(!url)("Traffic composition transactions in PostgreSQL", () => {
   }
   const toOld = () => { const value = draft(); value.routes[0]!.targets[0]!.guardrailId = "guard-b"; value.routes[0]!.targets[0]!.guardrailVersion = "0"; return value; };
   it("lets a user delete every unused preconfigured version", async () => {
-    await pool.query(`INSERT INTO auth_user (id,name,email,role) VALUES ('tenant','Tenant','tenant@example.test','user');
-      INSERT INTO guardrail (id,name,draft_config,status) VALUES ('guardrail-default','Default','{}','active');
+    await pool.query(`INSERT INTO auth_user (id,name,email,role) VALUES ('project','Project','project@example.test','user');
+      INSERT INTO guardrail (project_id,id,name,draft_config,status) VALUES ('projectA','guardrail-default','Default','{}','active');
       INSERT INTO guardrail_version (guardrail_id,version,generation,status,runtime_profile,plan,released_at) VALUES
         ('guardrail-default','initial',3,'ready','auto','{}',now()),
         ('guardrail-default','unused',4,'ready','auto','{}',now())`);
     for (const version of ["initial", "unused"]) {
       expect(await impact(version, "guardrail-default")).toMatchObject({ deletable: true, references: [], blockers: [] });
-      await service.deleteGuardrailVersion({ guardrailId: "guardrail-default", version, actorId: "tenant" });
+      await service.deleteGuardrailVersion({ guardrailId: "guardrail-default", version, actorId: "project" });
     }
     expect(await count("guardrail_version", "guardrail_id='guardrail-default'")).toBe(0);
     expect(await count("audit_event", "kind='guardrail.version_deleted' AND resource_id='guardrail-default'")).toBe(2);
@@ -433,26 +434,26 @@ describe.skipIf(!url)("Traffic composition transactions in PostgreSQL", () => {
     await expect(service.trafficRouting.assertGuardrailUnused("guard-b")).rejects.toThrow("pending Router change requests");
   });
   it("creates a draft with multiple exclusive source Endpoints atomically", async () => {
-    const router = await service.trafficRouting.create("Sources", "", draft(), actor, ["http", "scan"]);
+    const router = await withTestProject(() => service.trafficRouting.create("Sources", "", draft(), actor, ["http", "scan"]));
     expect([...router.endpointIds].sort()).toEqual(["http", "scan"]);
     expect(router.activeSnapshot).toBeNull();
-    await expect(service.trafficRouting.create("Conflict", "", draft(), actor, ["http"])).rejects.toMatchObject({ code: "endpoint_router_conflict" });
+    await expect(withTestProject(() => service.trafficRouting.create("Conflict", "", draft(), actor, ["http"]))).rejects.toMatchObject({ code: "endpoint_router_conflict" });
     expect(await count("traffic_router")).toBe(1);
-    await expect(service.trafficRouting.create("Missing", "", draft(), actor, ["missing"])).rejects.toThrow("Endpoint was not found");
+    await expect(withTestProject(() => service.trafficRouting.create("Missing", "", draft(), actor, ["missing"]))).rejects.toThrow("Endpoint was not found");
     expect(await count("traffic_router")).toBe(1);
   });
 
   it("serializes competing creation requests for the same source Endpoint", async () => {
     const results = await Promise.allSettled([
-      service.trafficRouting.create("First", "", draft(), actor, ["http"]),
-      service.trafficRouting.create("Second", "", draft(), actor, ["http"]),
+      withTestProject(() => service.trafficRouting.create("First", "", draft(), actor, ["http"])),
+      withTestProject(() => service.trafficRouting.create("Second", "", draft(), actor, ["http"])),
     ]);
     expect(results.filter(result => result.status === "fulfilled")).toHaveLength(1);
     expect(await count("traffic_router")).toBe(1);
   });
 
   it("captures immutable endpoint and version names across edits and binding changes", async () => {
-    const router = await service.trafficRouting.create("Context", "", draft(), actor, ["http"]);
+    const router = await withTestProject(() => service.trafficRouting.create("Context", "", draft(), actor, ["http"]));
     await apply(router.id);
     const original = { endpoints: [{ id: "http", name: "LiteLLM", adapter: "litellm-generic-guardrail" }], guardrails: [{ id: "guard-a", name: "Original", version: "1" }] };
     expect((await service.trafficRouting.revisions(router.id))[0]?.context).toEqual(original);
@@ -476,7 +477,7 @@ describe.skipIf(!url)("Traffic composition transactions in PostgreSQL", () => {
   it("routes exactly the pinned versions: the reviewed snapshot is the draft, and no strategy is accepted", async () => {
     await addVersion("z-newer", 4);
     const value = draft();
-    const router = await service.trafficRouting.create("Pinned", "", value, actor, ["http"]);
+    const router = await withTestProject(() => service.trafficRouting.create("Pinned", "", value, actor, ["http"]));
     const preview = await service.trafficRouting.preview(router.id, 1);
     // A newer version exists, yet the reviewed snapshot still names version "1".
     expect(preview.snapshot).toEqual(value);
@@ -484,7 +485,7 @@ describe.skipIf(!url)("Traffic composition transactions in PostgreSQL", () => {
     expect(published.activeSnapshot).toEqual(value);
     const following = draft() as unknown as { routes: Array<{ targets: Array<Record<string, unknown>> }> };
     following.routes[0]!.targets[0]!.versionStrategy = "latest";
-    await expect(service.trafficRouting.create("Following", "", following as never, actor)).rejects.toThrow();
+    await expect(withTestProject(() => service.trafficRouting.create("Following", "", following as never, actor))).rejects.toThrow();
   });
 
   it.each(["binding", "readiness"])("requires re-review after %s drift before submission", async drift => {
@@ -510,7 +511,7 @@ describe.skipIf(!url)("Traffic composition transactions in PostgreSQL", () => {
     duplicate.routes[0]!.targets.push({ ...draft().routes[0]!.targets[0]!, id: "duplicate", weightBps: 5000 });
     // With every target pinned, a duplicate is visible in the draft itself and never saved.
     await expect(service.trafficRouting.save(router.id, 1, duplicate, actor)).rejects.toThrow("duplicate Guardrail Version");
-    const capable = await service.trafficRouting.create("Capability", "", draft(), actor, ["scan"]);
+    const capable = await withTestProject(() => service.trafficRouting.create("Capability", "", draft(), actor, ["scan"]));
     await service.trafficRouting.save(capable.id, 1, withHeader(), actor);
     await expect(service.trafficRouting.preview(capable.id, 2)).rejects.toThrow("does not supply");
     expect(await count("traffic_router_revision")).toBe(0); expect(await generation()).toBe(0);
@@ -710,7 +711,7 @@ describe.skipIf(!url)("Traffic composition transactions in PostgreSQL", () => {
     await db.update(schema.guardrails).set({ draftRevision: 2, draftConfig: { ...snapshot.draftConfig, allowedTopics: ["changed"] }, loggingLevel: "trace" }).where(eq(schema.guardrails.id, "guard-a"));
     await pool.query("UPDATE guardrail_test_case SET content='changed' WHERE guardrail_id='guard-a'");
     const request = { id: "guard-a", name: "Independent", sourceVersion: "1", idempotencyKey: "copy", actorId: actor };
-    const copies = await Promise.all(Array.from({ length: 6 }, () => service.duplicateGuardrail(request)));
+    const copies = await Promise.all(Array.from({ length: 6 }, () => withTestProject(() => service.duplicateGuardrail(request))));
     const copy = copies[0]!; expect(new Set(copies.map(c => c.id)).size).toBe(1); expect(copy.id).not.toBe("guard-a");
     expect(copy).toMatchObject({ draftConfig: snapshot.draftConfig, runtimeProfile: snapshot.runtimeProfile, loggingLevel: "debug", excludedTestCaseIds: ["custom-case"], status: "draft", latestValidationRun: null, versions: [] });
     expect(copy.copyOrigin).toMatchObject({ sourceGuardrailId: "guard-a", sourceName: "Original", sourceVersion: "1", sourceDraftRevision: null });
@@ -726,22 +727,22 @@ describe.skipIf(!url)("Traffic composition transactions in PostgreSQL", () => {
     expect((await service.trafficRouting.get(router.id)).activeSnapshot).toEqual(draft());
     expect((await service.trafficRouting.get(router.id)).endpointIds).toEqual(["http"]);
     expect(await generation()).toBe(2);
-    expect((await service.duplicateGuardrail(request)).id).toBe(copy.id);
-    await expect(service.duplicateGuardrail({ ...request, name: "Different request" })).rejects.toMatchObject({ code: "duplicate_key_conflict" });
+    expect((await withTestProject(() => service.duplicateGuardrail(request))).id).toBe(copy.id);
+    await expect(withTestProject(() => service.duplicateGuardrail({ ...request, name: "Different request" }))).rejects.toMatchObject({ code: "duplicate_key_conflict" });
   });
 
   it("freezes a requested draft revision and fails stale or snapshot-less copies without partial objects", async () => {
     const { snapshot } = await sourceFixture();
     const request = { id: "guard-a", name: "Draft copy", sourceDraftRevision: 1, idempotencyKey: "draft-copy", actorId: actor };
-    const copy = await service.duplicateGuardrail(request);
+    const copy = await withTestProject(() => service.duplicateGuardrail(request));
     // Older stored drafts omit the mode; reads preserve their strict topic semantics.
     expect(copy.draftConfig).toEqual({ ...snapshot.draftConfig, topicControlMode: "strict" });
     expect(copy.copyOrigin).toMatchObject({ sourceDraftRevision: 1, sourceVersion: null });
     await pool.query("UPDATE guardrail SET draft_revision=2 WHERE id='guard-a'");
-    expect((await service.duplicateGuardrail(request)).id).toBe(copy.id);
-    await expect(service.duplicateGuardrail({ ...request, idempotencyKey: "stale" })).rejects.toMatchObject({ code: "guardrail_draft_conflict" });
+    expect((await withTestProject(() => service.duplicateGuardrail(request))).id).toBe(copy.id);
+    await expect(withTestProject(() => service.duplicateGuardrail({ ...request, idempotencyKey: "stale" }))).rejects.toMatchObject({ code: "guardrail_draft_conflict" });
     await pool.query("UPDATE guardrail_version SET source_snapshot=NULL WHERE guardrail_id='guard-a'");
-    await expect(service.duplicateGuardrail({ id: "guard-a", name: "Previous", sourceVersion: "1", idempotencyKey: "previous", actorId: actor })).rejects.toMatchObject({ code: "source_snapshot_unavailable" });
+    await expect(withTestProject(() => service.duplicateGuardrail({ id: "guard-a", name: "Previous", sourceVersion: "1", idempotencyKey: "previous", actorId: actor }))).rejects.toMatchObject({ code: "source_snapshot_unavailable" });
     expect(await count("guardrail", "duplicate_key IS NOT NULL")).toBe(1);
     expect(await count("audit_event", "kind='guardrail.duplicated'")).toBe(1);
   });

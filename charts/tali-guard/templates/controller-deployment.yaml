@@ -19,6 +19,9 @@ spec:
   template:
     metadata:
       annotations:
+        {{- if .Values.keycloak.enabled }}
+        checksum/keycloak-realm: {{ include (print $.Template.BasePath "/keycloak-dev.yaml") . | sha256sum }}
+        {{- end }}
         checksum/controller-config: {{ include "tali-guard.controllerConfig" . | sha256sum }}
       {{- if .Values.postgresql.enabled }}
         tasklattice.io/database-revision: {{ .Release.Revision | quote }}
@@ -84,6 +87,14 @@ spec:
               valueFrom: { secretKeyRef: { name: {{ include "tali-guard.metricsSecretName" . }}, key: {{ .Values.security.metrics.tokenKey }} } }
             - name: BETTER_AUTH_SECRET
               valueFrom: { secretKeyRef: { name: {{ include "tali-guard.controlSecretName" . }}, key: {{ .Values.security.controlSecret.betterAuthSecretKey }} } }
+            {{- $sso := .Values.controller.sso | default dict }}
+            {{- if .Values.keycloak.enabled }}
+            - name: CONTROLLER_SSO_CLIENT_SECRET
+              valueFrom: { secretKeyRef: { name: {{ printf "%s-keycloak" (include "tali-guard.fullname" .) }}, key: client-secret } }
+            {{- else if $sso.enabled }}
+            - name: CONTROLLER_SSO_CLIENT_SECRET
+              valueFrom: { secretKeyRef: { name: {{ required "controller.sso.existingSecret is required" $sso.existingSecret | quote }}, key: {{ $sso.clientSecretKey | default "client-secret" | quote }} } }
+            {{- end }}
             - name: MODEL_GUARDRAILS_RUNTIME_LOG_ENCRYPTION_KEY
               valueFrom: { secretKeyRef: { name: {{ include "tali-guard.runtimeLogSecretName" . }}, key: {{ .Values.security.runtimeLogs.encryptionKeyKey }} } }
             {{- range $role, $account := dict "Admin" .Values.security.bootstrapAdmin "User" .Values.security.bootstrapUser }}
@@ -119,7 +130,45 @@ spec:
           readinessProbe: { httpGet: { path: /health/ready, port: http }, periodSeconds: 10 }
           livenessProbe: { httpGet: { path: /health/live, port: http }, periodSeconds: 20 }
           resources: {{- toYaml .Values.controller.resources | nindent 12 }}
+        {{- if .Values.keycloak.enabled }}
+        # Local development only. Shared loopback keeps the OIDC issuer identical
+        # for the host browser and Controller, with no discovery URL rewriting.
+        - name: keycloak
+          image: {{ printf "%s:%s" .Values.keycloak.image.repository .Values.keycloak.image.tag | quote }}
+          imagePullPolicy: {{ .Values.keycloak.image.pullPolicy }}
+          args:
+            - start-dev
+            - --import-realm
+            - --http-port={{ .Values.keycloak.port }}
+            - --hostname=http://localhost:{{ .Values.keycloak.port }}
+            - --health-enabled=true
+          env:
+            - { name: KC_BOOTSTRAP_ADMIN_USERNAME, value: admin }
+            - name: KC_BOOTSTRAP_ADMIN_PASSWORD
+              valueFrom: { secretKeyRef: { name: {{ printf "%s-keycloak" (include "tali-guard.fullname" .) }}, key: admin-password } }
+            - name: TALI_KEYCLOAK_CLIENT_SECRET
+              valueFrom: { secretKeyRef: { name: {{ printf "%s-keycloak" (include "tali-guard.fullname" .) }}, key: client-secret } }
+          ports:
+            - { name: keycloak, containerPort: {{ .Values.keycloak.port }} }
+            - { name: kc-management, containerPort: 9000 }
+          startupProbe: { httpGet: { path: /health/started, port: kc-management }, periodSeconds: 5, failureThreshold: 60 }
+          readinessProbe: { httpGet: { path: /health/ready, port: kc-management }, periodSeconds: 5 }
+          livenessProbe: { httpGet: { path: /health/live, port: kc-management }, periodSeconds: 10 }
+          resources:
+            requests: { cpu: 50m, memory: 512Mi }
+            limits: { memory: 1Gi }
+          securityContext: { runAsUser: 1000, runAsGroup: 0, allowPrivilegeEscalation: false, capabilities: { drop: [ALL] } }
+          volumeMounts:
+            - { name: keycloak-realm, mountPath: /opt/keycloak/data/import/tali-realm.json, subPath: tali-realm.json, readOnly: true }
+            - { name: keycloak-data, mountPath: /opt/keycloak/data }
+        {{- end }}
       volumes:
+        {{- if .Values.keycloak.enabled }}
+        - name: keycloak-realm
+          configMap: { name: {{ printf "%s-keycloak-realm" (include "tali-guard.fullname" .) }} }
+        - name: keycloak-data
+          emptyDir: {}
+        {{- end }}
         - name: bootstrap-admin
           secret:
             secretName: {{ include "tali-guard.bootstrapAdminSecretName" . }}

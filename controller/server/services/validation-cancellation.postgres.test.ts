@@ -30,7 +30,7 @@ describe.skipIf(!url)("durable test cancellation", () => {
   afterAll(async () => { await database?.drop(); });
 
   async function fixture(id: string, status: string) {
-    await database.pool.query(`INSERT INTO guardrail (id, name, draft_config) VALUES ($1, 'Cancellation fixture', '{}')`, [id]);
+    await database.pool.query(`INSERT INTO guardrail (project_id,id, name, draft_config) VALUES ('projectA',$1, 'Cancellation fixture', '{}')`, [id]);
     const snapshotDigest = await storeValidationSnapshot(database.db, { candidateArtifact: null, candidatePolicies: [], candidateInspection: { draftConfig: { policyBindings: [] } } as never, testSuite: [] });
     await database.pool.query(`INSERT INTO guardrail_validation_run
       (id, guardrail_id, guardrail_version, source_draft_revision, status, snapshot_digest) VALUES ($1, $1, 'v1', 1, $2, $3)`, [id, status, snapshotDigest]);
@@ -75,7 +75,7 @@ describe.skipIf(!url)("durable test cancellation", () => {
     const app = createHttpApp({ config, service: new ControlPlaneService(database.db, config),
       auth: { handler: async () => Response.json({}, { headers: { "set-cookie": "test-session=fixture; HttpOnly; Path=/" } }),
         api: { getSession: async ({ headers }: { headers: Headers }) => headers.get("cookie") === "test-session=fixture"
-          ? { user: { id: "actor", role: "user", tenantId: "tenantA" } } : null } } as unknown as ControllerAuth,
+          ? { session: {id: "fixture-session", activeProjectId: "projectA"}, user: { id: "actor", role: "user", projectId: "projectA" } } : null } } as unknown as ControllerAuth,
       runnerControl: { hasDefaultCompiler: () => true } as RunnerControlServer, metrics: {} as ControllerMetrics });
     const server = serve({ fetch: app.fetch, hostname: "127.0.0.1", port: 0 });
     await new Promise<void>(resolve => server.listening ? resolve() : server.once("listening", resolve));
@@ -84,8 +84,8 @@ describe.skipIf(!url)("durable test cancellation", () => {
     const base = `http://127.0.0.1:${address.port}`;
     const cli = async (command: string, flags = ["--run-id", "cli-run"]) => {
       const { stdout } = await promisify(execFile)(process.execPath, ["--import", "tsx", resolve("src/cli/guardctl.ts"),
-        "tenant", command, ...flags, `--url=${base}`], { timeout: 15_000,
-        env: { ...process.env, GUARD_TENANT_TOKEN: "", GUARD_TENANT_USERNAME: "test-user", GUARD_TENANT_PASSWORD: "test-only" } });
+        "project", command, ...flags, `--url=${base}`], { timeout: 15_000,
+        env: { ...process.env, GUARD_PROJECT_TOKEN: "", GUARD_PROJECT_USERNAME: "test-user", GUARD_PROJECT_PASSWORD: "test-only" } });
       return JSON.parse(stdout.trim());
     };
     try {

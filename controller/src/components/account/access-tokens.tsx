@@ -48,7 +48,7 @@ export function AccessTokens() {
       <div className="max-w-2xl"><h2 className="text-lg font-semibold">{t("accessTokens.title")}</h2>
         <p className="mt-1 text-sm leading-6 text-muted-foreground">{t("accessTokens.description")}</p>
       </div>
-      <Button variant="create" className="min-h-11" onClick={() => { opener.current = document.activeElement as HTMLElement; setName(""); setDays(30); setPermissions({}); create.reset(); setCreating(true); }}><Plus />{t("accessTokens.create")}</Button>
+      <Button variant="create" className="min-h-11" disabled={user?.role === "user" && !user.project_id} onClick={() => { opener.current = document.activeElement as HTMLElement; setName(""); setDays(30); setPermissions({}); create.reset(); setCreating(true); }}><Plus />{t("accessTokens.create")}</Button>
     </div>
     {query.isPending && <p role="status">{t("accessTokens.loading")}</p>}
     {query.error && <div className="space-y-3"><ErrorNotice error={query.error} /><Button variant="outline" onClick={() => void query.refetch()}>{t("common.retry")}</Button></div>}
@@ -61,6 +61,7 @@ export function AccessTokens() {
               {token.revokedAt ? <span className="text-sm text-muted-foreground">{t("accessTokens.revoked")}</span> : expired ? <span className="text-sm text-muted-foreground">{t("accessTokens.expired")}</span> : <Button variant="outline" className="min-h-11 shrink-0" aria-label={t("accessTokens.revokeLabel", { name: token.name })} onClick={() => { opener.current = document.activeElement as HTMLElement; revoke.reset(); setRevoking(token); }}><Trash2 />{t("accessTokens.revoke")}</Button>}
             </div>
             <div className="flex flex-wrap gap-x-5 gap-y-2 text-sm">{Object.entries(token.permissions).filter(([,access]) => access).map(([module, access]) => <span key={module}>{t(`accessTokens.modules.${module as TokenModule}.name`)} <span className="text-muted-foreground">· {permissionLabel(access!)}</span></span>)}</div>
+            <p className="text-sm">{token.projectId ? t("account.projectLabel", {project: token.projectId}) : t("sidebar.platformIdentity")}</p>
             <p className="text-xs leading-5 text-muted-foreground">{t("accessTokens.scope")}</p>
             <dl className="flex flex-wrap gap-x-6 gap-y-1 text-xs text-muted-foreground">
               <div><dt className="inline">{t("accessTokens.createdAt")}</dt><dd className="inline">{date(token.createdAt)}</dd></div>
@@ -76,6 +77,7 @@ export function AccessTokens() {
       closeDisabled={create.isPending} onOpenChange={open => { if (!open && !create.isPending) setCreating(false); }}
       footer={<><Button variant="outline" disabled={create.isPending} onClick={() => setCreating(false)}>{t("common.cancel")}</Button><Button form="create-access-token" type="submit" disabled={!name.trim() || !selected.length || create.isPending}>{create.isPending ? t("accessTokens.creating") : t("accessTokens.create")}</Button></>}>
       <form id="create-access-token" className="access-token-form space-y-6" onSubmit={event => { event.preventDefault(); if (name.trim() && selected.length && !create.isPending) create.mutate(); }}>
+        <p className="text-sm text-muted-foreground">{user?.role === "user" ? t("accessTokens.fixedProject", {project: user.project_id}) : t("sidebar.platformIdentity")}</p>
         <div className="access-token-identity"><div className="flex flex-col gap-2"><Label htmlFor="token-name">{t("accessTokens.name")}</Label><Input id="token-name" autoFocus required maxLength={100} value={name} disabled={create.isPending} onChange={event => setName(event.target.value)} placeholder={t("accessTokens.namePlaceholder")} /></div>
           <div className="flex flex-col gap-2"><Label htmlFor="token-expiration">{t("accessTokens.expiration")}</Label><CarbonNativeSelect id="token-expiration" value={days} disabled={create.isPending} onChange={event => setDays(Number(event.target.value) as typeof days)}>{[7,30,90,365].map(day => <option key={day} value={day}>{t("accessTokens.days", { count: day })}</option>)}</CarbonNativeSelect></div></div>
         <div><h3 className="font-medium">{t("accessTokens.permissionsTitle")}</h3><p className="mt-1 text-sm leading-6 text-muted-foreground">{t("accessTokens.permissionsDescription")}</p>

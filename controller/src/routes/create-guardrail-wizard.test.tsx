@@ -223,7 +223,7 @@ describe("Create Guardrail wizard", () => {
     apiMocks.getPolicies.mockReset().mockResolvedValue({ items: [policy, requiredPolicy], count: 2 });
     apiMocks.getPresets.mockReset().mockResolvedValue({ items: [], count: 0 });
     apiMocks.preview.mockReset().mockResolvedValue({
-      engine: "GuardRails 0 · NeMo",
+      engine: "runner-default · NeMo",
       colang_version: "2.x",
       checksum: "draft-checksum",
       rails: [],

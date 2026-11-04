@@ -11,15 +11,48 @@ TaskLattice Guard has two application component types:
 | **Guard Controller** | React/TanStack UI, Hono management API, Better Auth identity, PostgreSQL state, publication, reconciliation, audit, runtime logs, capacity recommendations | `controller/` |
 | **Guard Runner** | FastAPI runtime API, local Endpoint authentication, routing, NVIDIA NeMo Guardrails compilation/evaluation, artifact activation, telemetry export | `runner/` |
 
-`GuardRails 0` is the mandatory compiler-capable Runner pool, identified
-internally as `default`. It is a Runner role. NeMo code lives in
+`runner-default` is the mandatory compiler-capable Runner pool, identified
+internally as `default`. The display name is independent of the pool ID. NeMo code lives in
 `runner/toolkit/`; Controller does not load NeMo, and Runner receives no
 Controller database credentials. PostgreSQL, Redis, and observability backends
 are supporting dependencies.
 
+Project names are canonical, unique and immutable: 1–45 lowercase letters, digits
+and single hyphens. Creation normalizes whitespace and underscores to hyphens;
+`default` is reserved. Existing Project IDs and Keycloak Group Path mappings remain
+independent of the name.
+
+A Project uses its one dedicated Runner pool, or the shared `default` pool when it
+has no dedicated allocation and belongs to the default runtime group. Instances
+are named `runner-<project-name>-<ordinal>`, starting at `0`; the shared pool uses
+`runner-default-0`, `runner-default-1`, and so on. Pool labels omit the ordinal.
+The Controller rejects registration with the wrong Project name or ordinal format.
+The administrator UI manages allocation from Projects; runtime groups remain an
+internal routing and model-authorization boundary. Registering dedicated capacity
+atomically allocates the pool and an exclusive authorization scope, reusing an
+existing exclusive scope when possible. New scopes start without model grants.
+Sharing model authorization never gives a pool another Project's resources.
+Allocation changes retain the offline and stale-assignment checks.
+
+Helm deploys only the Default Runner as the platform baseline. Administrators
+create and manage all other Runners in the admin UI; their workloads and compiler
+capability are configured outside the chart. Registering a pool does not deploy
+a workload. Each Runtime Service
+balances its own replicas; an offline dedicated pool does not fall back to shared
+capacity.
+
+Upgrade migration canonicalizes legacy Project names without changing their IDs.
+Only unambiguous legacy pools are bound automatically. An unbound custom pool gets
+no Project configuration and cannot register until an administrator selects its
+Project in Runner connectivity settings while the group's Runners are offline.
+Existing pool IDs, tokens and historical Runner IDs are retained. Deploy the new
+StatefulSets to adopt the new instance names; existing live instances are not
+renamed by a database migration.
+
+
 ## Deployment topology
 
-The chart runs one Controller and at least two GuardRails 0 Runners. Every
+The chart runs one Controller and at least two runner-default Runners. Every
 Runner pool is a StatefulSet with stable ordinal identities. A stable Runtime
 Service balances across ready replicas with `sessionAffinity: None`; a private
 headless Service provides StatefulSet identity. Upstreams use the Runtime
@@ -158,7 +191,8 @@ generated JSON packaged with the compiled Controller.
 
 1. Controller validates the current Guardrail draft and builds a canonical Plan.
    The browser does not submit raw NeMo YAML or Colang for publication.
-2. A healthy GuardRails 0 Runner compiles the Plan with the pinned NeMo toolkit.
+2. A healthy compiler-capable Runner in the project's runtime group compiles the
+   Plan with the pinned NeMo toolkit. Platform presets use the default pool.
 3. Controller verifies the returned checksum, signs the artifact with Ed25519,
    stores it, marks the version `ready`, and advances desired state as applicable.
 4. Target Runners verify checksums/signatures, stage and prewarm the complete

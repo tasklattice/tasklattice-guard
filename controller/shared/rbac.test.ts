@@ -25,7 +25,7 @@ describe("Account RBAC", () => {
     expect(hasPermission(role, "runners", "read")).toBe(true);
     expect(hasPermission(role, "runners", "write")).toBe(role === "admin");
     expect(hasPermission(role, "settings", "write")).toBe(role === "admin");
-    for (const path of ["/settings", "/settings/health", "/settings/runner", "/settings/version", "/settings/runner/"]) {
+    for (const path of ["/settings", "/settings/", "/settings/health", "/settings/runner", "/settings/runner/", "/settings/version"]) {
       expect(pagePermission(path)).toEqual({ resource: "runners", action: "read" });
     }
   });
@@ -33,7 +33,7 @@ describe("Account RBAC", () => {
     expect(roleHome("admin")).toBe("/settings/providers");
     expect(roleHome("user")).toBe("/guardrails");
   });
-  it.each(["/settings/tenant-load-lab", "/settings/tenant-load-lab/", "/settings/tenant-groups", "/settings/tenant-groups/"])("reserves %s for platform administrators", path => {
+  it.each(["/settings/project-groups", "/settings/project-groups/"])("reserves %s for platform administrators", path => {
     const permission = pagePermission(path)!;
     expect(permission).toEqual({ resource: "settings", action: "read" });
     expect(hasPermission("admin", permission.resource, permission.action)).toBe(true);

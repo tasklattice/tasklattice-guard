@@ -4,12 +4,12 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { getModelConfiguration, type ModelConfigurationView } from "@/lib/controller-api";
-import { getGroupModelConfiguration, groupModelConfigurationKey, updateGroupModelConfiguration, type GroupModelConfigurationView } from "@/lib/tenant-groups-api";
-import { tenantGroupsEn } from "@/tenant-groups-i18n";
+import { getGroupModelConfiguration, groupModelConfigurationKey, updateGroupModelConfiguration, type GroupModelConfigurationView } from "@/lib/project-groups-api";
+import { projectGroupsEn } from "@/project-groups-i18n";
 import { GroupModelConfigurationSheet } from "./group-model-configuration";
 
 vi.mock("@/lib/controller-api", async original => ({ ...await original<typeof import("@/lib/controller-api")>(), getModelConfiguration: vi.fn() }));
-vi.mock("@/lib/tenant-groups-api", async original => ({ ...await original<typeof import("@/lib/tenant-groups-api")>(), getGroupModelConfiguration: vi.fn(), updateGroupModelConfiguration: vi.fn() }));
+vi.mock("@/lib/project-groups-api", async original => ({ ...await original<typeof import("@/lib/project-groups-api")>(), getGroupModelConfiguration: vi.fn(), updateGroupModelConfiguration: vi.fn() }));
 vi.mock("@tanstack/react-router", () => ({ Link: ({ children, to }: { children: ReactNode; to: string }) => <a href={to}>{children}</a> }));
 vi.mock("@/components/entity-sheet", () => ({ EntitySheet: ({ children, footer, title }: { children: ReactNode; footer: ReactNode; title: ReactNode }) => <section role="dialog" aria-label={String(title)}>{children}{footer}</section> }));
 
@@ -22,7 +22,7 @@ const onClose = vi.fn();
 const group = { id: "ab", name: "A + B" };
 function mount() {
   client = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 }, mutations: { retry: false } } });
-  return render(<QueryClientProvider client={client}><GroupModelConfigurationSheet group={group} copy={tenantGroupsEn} onClose={onClose} /></QueryClientProvider>);
+  return render(<QueryClientProvider client={client}><GroupModelConfigurationSheet group={group} scopeDescription="Applies to the dedicated Runner." copy={projectGroupsEn} onClose={onClose} /></QueryClientProvider>);
 }
 const apply = () => screen.getByRole("button", { name: "Apply Model policy" });
 async function chooseMode(mode: string) {
@@ -30,7 +30,7 @@ async function chooseMode(mode: string) {
 }
 beforeEach(() => {
   vi.clearAllMocks();
-  policy = { groupId: "ab", mode: "legacy", version: 0, grantId: null, sourceRevisionId: null, sourceFingerprint: null,
+  policy = { groupId: "ab", mode: "blocked", version: 0, grantId: null, sourceRevisionId: null, sourceFingerprint: null,
     generation: null, modelIds: [], providerIds: [], updatedAt: null };
   catalog = { providers: [], models: [{ id: "model-a", name: "Detector A", providerName: "Provider A" } as ModelConfigurationView["models"][number]],
     draft: { id: sourceId, state: "validated", assignments: { controlPlane: null, bindings: { "test.binding": "model-a" } },
@@ -83,15 +83,13 @@ describe("group runtime Model policy", () => {
     await waitFor(() => expect(updateGroupModelConfiguration).toHaveBeenCalledWith("ab", { mode: "blocked", expectedVersion: 7 }));
   });
 
-  it("requires an explicit choice to return to platform defaults", async () => {
-    policy = { ...policy, mode: "blocked", version: 3 };
-    mount(); await screen.findByRole("combobox", { name: "Model access" });
-    expect(apply().hasAttribute("disabled")).toBe(true);
-    await chooseMode("legacy"); fireEvent.click(apply());
-    await waitFor(() => expect(updateGroupModelConfiguration).toHaveBeenCalledWith("ab", { mode: "legacy", expectedVersion: 3 }));
+  it("never offers platform inheritance to a custom group", async () => {
+    mount(); await screen.findByRole("combobox", {name:"Model access"});
+    expect(screen.queryByRole("option", {name:"Platform defaults"})).toBeNull();
   });
 
   it("requires refresh and review after a conflict without silently retrying a newer version", async () => {
+    policy = {...policy, mode:"scoped"};
     vi.mocked(updateGroupModelConfiguration).mockRejectedValueOnce(new Error("The group Model policy changed"));
     mount(); await chooseMode("blocked"); fireEvent.click(apply());
     await screen.findByText("The group Model policy changed");
@@ -108,7 +106,7 @@ describe("group runtime Model policy", () => {
   it("does not enable edits using a cached policy after its refresh fails", async () => {
     vi.mocked(getGroupModelConfiguration).mockRejectedValue(new Error("Private upstream detail"));
     mount(); client.setQueryData(groupModelConfigurationKey("ab"), policy);
-    expect((await screen.findByRole("alert")).textContent).toContain("current group Model policy is unavailable");
+    expect((await screen.findByRole("alert")).textContent).toContain("current Model policy is unavailable");
     expect(screen.queryByRole("combobox", { name: "Model access" })).toBeNull();
     expect(screen.queryByText("Private upstream detail")).toBeNull();
   });

@@ -1,3 +1,4 @@
+import { directoryQuerySchema } from "../../shared/directory.js";
 import { hasPermission, isAccountRole } from "../../shared/rbac.js";
 import { createHash } from "node:crypto";
 import { telemetryProgressInput } from "../services/telemetry-progress.js";
@@ -37,6 +38,8 @@ import { policyDefinitionSchema } from "../../shared/policy-definition.js";
 import { publicPolicy } from "../policy-catalog/public-policy.js";
 
 import type { ControllerAuth } from "../auth.js";
+import type { ProjectService } from "../services/projects.js";
+import { projectIdSchema } from "../../shared/projects.js";
 import type { ControllerConfig } from "../config.js";
 import { IntentAnalysisError, OpenAICompatibleIntentAnalyzer, type IntentAnalyzer } from "../control-plane-ai/intent-analyzer.js";
 import { recommendationCatalog } from "../control-plane-ai/recommendation-catalog.js";
@@ -65,19 +68,17 @@ import {
   runPlaygroundInteraction,
 } from "../playground/service.js";
 import { isGuardrailVersionId } from "../../shared/guardrail-version.js";
-import { signInMockSsoIdentity } from "../mock-sso.js";
-import { TenantShareService } from "../services/tenant-shares.js";
-import { LEGACY_TENANT_ID, runWithTenantContext } from "../services/tenant-context.js";
+import { SSO_PROVIDER_ID } from "../sso-config.js";
+import { ProjectShareService } from "../services/project-shares.js";
+import { runWithUserContext, runWithProjectContext } from "../services/project-context.js";
 import type { PlatformStatusSnapshot } from "../../shared/platform-status.js";
 import { protectionDirectories } from "../../shared/protection-map.js";
-import { tenantLoadLabControlSchema } from "../../shared/tenant-load-lab.js";
-import { requestTenantLoadLab } from "../services/tenant-load-lab.js";
 import { admissionMonitorQuerySchema } from "../../shared/admission-monitor.js";
 import { groupModelConfigurationInput } from "../../shared/group-model-configuration.js";
-import { createGroupPoolSchema, createTenantGroupSchema, tenantGroupAssignmentSchema,
-  tenantGroupIdSchema, updatePoolConnectivitySchema, updateTenantGroupSchema } from "../../shared/tenant-groups.js";
+import { createGroupPoolSchema, createProjectGroupSchema, projectGroupAssignmentSchema,
+  projectGroupIdSchema, projectRunnerConfigurationSchema, updatePoolConnectivitySchema, updateProjectGroupSchema } from "../../shared/project-groups.js";
 
-type Actor = { id: string; role: string; tenantId: string; tokenId?: string; permissions?: TokenIdentity["permissions"] };
+type Actor = { id: string; role: string; projectId: string | null; sessionId?: string; tokenId?: string; permissions?: TokenIdentity["permissions"] };
 type Variables = { actor: Actor };
 const packageVersionsQuery = z.string().max(4_000).optional()
   .transform(value => value?.split(",").map(item => item.trim()).filter(Boolean) ?? [])
@@ -214,14 +215,16 @@ const modelCredentialRefsInput = z.object({ refs: z.array(z.string().uuid()).max
 const shareInput = z.object({
   resourceType: z.enum(["guardrail", "router", "endpoint", "policy", "model"]),
   resourceId: z.string().trim().min(1).max(256),
-  recipientTenantId: z.string().trim().min(1).max(128),
+  recipientProjectId: z.string().trim().min(1).max(128),
 });
 
 export function createHttpApp(input: {
   config: ControllerConfig;
   auth: ControllerAuth;
+  ssoHandler?: (request: Request) => Promise<Response>;
   accessTokens?: AccessTokenService;
-  tenantShares?: TenantShareService;
+  projects?: ProjectService;
+  projectShares?: ProjectShareService;
   service: ControlPlaneService;
   runnerControl: RunnerControlServer;
   metrics: ControllerMetrics;
@@ -254,12 +257,12 @@ export function createHttpApp(input: {
     return configured ? new OpenAICompatiblePlaygroundModel(configured) : injectedPlaygroundModel;
   };
   const playgroundDraftPreviews = new PlaygroundDraftPreviewStore();
-  const tenantPool = async (tenantId: string) => input.service.groupRouting
-    ? input.service.groupRouting.poolForTenant(tenantId)
+  const projectPool = async (projectId: string) => input.service.groupRouting
+    ? input.service.groupRouting.poolForProject(projectId)
     : { poolId: "default", groupId: "default", runtimeUrl: input.config.runtimeServiceUrl, publicUrl: input.config.runtimePublicUrl };
-  const selectRunnerForTenant = async (tenantId: string) => {
+  const selectRunnerForProject = async (projectId: string) => {
     if (!playgroundRunner) throw new ControllerError("Runner is not configured.", 503, "playground_runner_unavailable");
-    const pool = await tenantPool(tenantId);
+    const pool = await projectPool(projectId);
     if (input.config.runnerHttpTokens != null) {
       const token = input.config.runnerHttpTokens.get(pool.poolId);
       if (!token) throw new ControllerError("The selected Runner pool has no configured Controller HTTP credential.", 503, "runner_http_credential_unavailable");
@@ -269,14 +272,14 @@ export function createHttpApp(input: {
       ? playgroundRunner : playgroundRunner.forBaseUrl(pool.runtimeUrl);
     return { pool, runner };
   };
-  const runnerForTenant = async (tenantId: string) => (await selectRunnerForTenant(tenantId)).runner;
-  const hasTenantCompiler = async (tenantId: string) => {
+  const runnerForProject = async (projectId: string) => (await selectRunnerForProject(projectId)).runner;
+  const hasProjectCompiler = async (projectId: string) => {
     if (!input.service.groupRouting || !input.runnerControl.hasCompilerForPools) return input.runnerControl.hasDefaultCompiler();
-    const pools = await input.service.groupRouting.poolsForTenant(tenantId);
+    const pools = await input.service.groupRouting.poolsForProject(projectId);
     return input.runnerControl.hasCompilerForPools(pools.map(pool => pool.id));
   };
-  const withDistribution = async <T extends { id: string; adapter: string; tenantId: string; credentialRequired: boolean }>(resource: T, context: Context, wait = false) => {
-    const pool = await tenantPool(resource.tenantId);
+  const withDistribution = async <T extends { id: string; adapter: string; projectId: string; credentialRequired: boolean }>(resource: T, context: Context, wait = false) => {
+    const pool = await projectPool(resource.projectId);
     const distribution = wait
       ? await input.runnerControl.distributeDesiredState(pool.poolId)
       : await input.runnerControl.distributionStatus(pool.poolId);
@@ -369,32 +372,31 @@ export function createHttpApp(input: {
       return context.json({ error: { code: "forbidden", message: "Platform user administration requires an administrator session." } }, 403);
     return input.auth.handler(authHandlerRequest(context, input.config.trustedProxyCidrs));
   });
-  app.on(["GET", "POST"], "/api/auth/*", (context) => input.auth.handler(authHandlerRequest(context, input.config.trustedProxyCidrs)));
-
-  app.get("/api/mock-sso/config", context => context.json({ enabled: input.config.mockSsoEnabled }));
-  app.post("/api/mock-sso/sign-in", async context => {
+  app.get("/api/sign-in/options", context => {
     context.header("Cache-Control", "no-store");
-    if (!input.config.mockSsoEnabled) return context.json({ error: { code: "not_found", message: "Mock SSO is disabled." } }, 404);
-    const origin = context.req.header("origin");
-    if (context.req.header("sec-fetch-site") === "cross-site" || (origin && !input.config.trustedOrigins.includes(origin)))
-      return context.json({ error: { code: "forbidden", message: "Untrusted request origin." } }, 403);
-    if (!context.req.header("content-type")?.toLowerCase().startsWith("application/json"))
-      return context.json({ error: { code: "unsupported_content_type", message: "JSON content type is required." } }, 415);
-    const { identity } = z.strictObject({ identity: z.enum(["tenantA", "tenantB", "tenantC"]) }).parse(await context.req.json());
-    return signInMockSsoIdentity(input.auth, input.config, identity);
+    return context.json({ password: true, sso: input.config.sso
+      ? { providerId: SSO_PROVIDER_ID, displayName: input.config.sso.displayName } : null });
+  });
+  app.on(["GET", "POST"], "/api/auth/*", async context => {
+    const request = authHandlerRequest(context, input.config.trustedProxyCidrs);
+    if (context.req.path === "/api/auth/sign-in/social" || context.req.path === `/api/auth/callback/${SSO_PROVIDER_ID}`) {
+      if (!input.ssoHandler) return context.json({ error: { code: "sso_disabled", message: "SSO is not configured." } }, 404);
+      return input.ssoHandler(request);
+    }
+    return input.auth.handler(request);
   });
 
-  const authenticated = authentication(input.auth, input.accessTokens);
-  const tenantUser: MiddlewareHandler<{ Variables: Variables }> = async (context, next) => {
+  const authenticated = authentication(input.auth, input.accessTokens, input.projects);
+  const projectUser: MiddlewareHandler<{ Variables: Variables }> = async (context, next) => {
     if (context.get("actor").role !== "user")
-      return context.json({ error: { code: "forbidden", message: "A tenant business user is required." } }, 403);
+      return context.json({ error: { code: "forbidden", message: "A project business user is required." } }, 403);
     await next();
   };
   const browserSession: MiddlewareHandler<{ Variables: Variables }> = async (context, next) => {
     context.header("Cache-Control", "no-store");
     if (context.get("actor").tokenId) throw new ControllerError("Use your browser session for account management.", 403, "session_required");
     const origin = context.req.header("origin");
-    if (context.req.header("sec-fetch-site") === "cross-site" || (origin && !input.config.trustedOrigins.includes(origin)))
+    if (context.req.header("sec-fetch-site") === "cross-site" || (origin && origin !== new URL(input.config.publicUrl).origin && !input.config.trustedOrigins.includes(origin)))
       throw new ControllerError("Untrusted request origin.", 403, "forbidden");
     await next();
   };
@@ -404,12 +406,56 @@ export function createHttpApp(input: {
       await next();
     });
   };
+  const projects = () => {
+    if (!input.projects) throw new ControllerError("Project management is unavailable.", 503, "projects_unavailable");
+    return input.projects;
+  };
+  const projectAdministrator: MiddlewareHandler<{ Variables: Variables }> = async (context, next) => {
+    if (context.get("actor").role !== "admin") throw new ControllerError("A platform administrator is required.", 403, "forbidden");
+    await next();
+  };
+  app.get("/api/v1/account/projects", authenticated, browserSession, async context =>
+    context.json(await projects().list(directoryQuerySchema.parse(context.req.query()),context.get("actor").id)));
+  app.get("/api/v1/account/project-access", authenticated, browserSession, projectUser, async context => {
+    const actor = context.get("actor");
+    return context.json(await projects().accessStatus(actor.id, actor.projectId));
+  });
+  app.post("/api/v1/account/project-access/refresh", authenticated, browserSession, projectUser, async context => {
+    const actor = context.get("actor");
+    return context.json(await projects().refreshAccess(actor.id, actor.sessionId!));
+  });
+  app.put("/api/v1/account/project", authenticated, browserSession, projectUser, async context => {
+    const { projectId } = z.strictObject({ projectId: projectIdSchema }).parse(await context.req.json());
+    const actor = context.get("actor");
+    await projects().select(actor.id, actor.sessionId!, projectId);
+    return context.json({ projectId });
+  });
+  app.get("/api/v1/users", authenticated, browserSession, projectAdministrator, async context =>
+    context.json(await input.service.users.list(directoryQuerySchema.parse(context.req.query()))));
+  app.get("/api/v1/users/:id", authenticated, browserSession, projectAdministrator, async context =>
+    context.json(await input.service.users.detail(context.req.param("id"),directoryQuerySchema.parse(context.req.query()))));
+  app.get("/api/v1/projects", authenticated, browserSession, projectAdministrator, async context =>
+    context.json(await projects().list(directoryQuerySchema.extend({groupId:projectIdSchema.optional(),withoutPool:z.enum(["true"]).optional().transform(value=>value==="true")}).parse(context.req.query()))));
+  app.post("/api/v1/projects", authenticated, browserSession, projectAdministrator, async context =>
+    context.json(await projects().create(context.get("actor").id, await context.req.json()), 201));
+  app.get("/api/v1/projects/:projectId/members", authenticated, browserSession, projectAdministrator, async context =>
+    context.json(await projects().members(context.req.param("projectId"),directoryQuerySchema.parse(context.req.query()))));
+  app.get("/api/v1/projects/:projectId/member-candidates", authenticated, browserSession, projectAdministrator, async context =>
+    context.json(await projects().memberCandidates(context.req.param("projectId"),directoryQuerySchema.parse(context.req.query()))));
+  app.put("/api/v1/projects/:projectId/members/:userId", authenticated, browserSession, projectAdministrator, async context => {
+    await projects().setMember(context.get("actor").id, context.req.param("projectId"), context.req.param("userId"), true);
+    return context.body(null, 204);
+  });
+  app.delete("/api/v1/projects/:projectId/members/:userId", authenticated, browserSession, projectAdministrator, async context => {
+    await projects().setMember(context.get("actor").id, context.req.param("projectId"), context.req.param("userId"), false);
+    return context.body(null, 204);
+  });
   app.get("/api/v1/account/access-tokens", authenticated, accountSession, async context =>
     context.json({ items: await input.accessTokens!.list(context.get("actor").id) }));
   app.post("/api/v1/account/access-tokens", authenticated, accountSession, async context => {
     if (!context.req.header("content-type")?.toLowerCase().startsWith("application/json"))
       throw new ControllerError("JSON content type is required.", 415, "unsupported_media_type");
-    return context.json(await input.accessTokens!.create(context.get("actor").id, await context.req.json()), 201);
+    return context.json(await input.accessTokens!.create(context.get("actor").id, await context.req.json(), context.get("actor").projectId), 201);
   });
   app.delete("/api/v1/account/access-tokens/:id", authenticated, accountSession, async context => {
     await input.accessTokens!.revoke(context.get("actor").id, context.req.param("id"));
@@ -418,26 +464,26 @@ export function createHttpApp(input: {
   app.get("/api/v1/account/identity", authenticated, context => {
     context.header("Cache-Control", "no-store");
     const actor = context.get("actor");
-    return context.json({ userId: actor.id, tenantId: actor.role === "admin" ? null : actor.tenantId, role: actor.role, authentication: actor.tokenId ? "access_token" : "session",
+    return context.json({ userId: actor.id, projectId: actor.role === "admin" ? null : actor.projectId || null, role: actor.role, authentication: actor.tokenId ? "access_token" : "session",
       tokenId: actor.tokenId ?? null, permissions: actor.permissions ?? null,
       effectivePermissions: actor.permissions ? effectiveTokenPermissions(actor.permissions, actor.role) : null });
   });
 
   const shareService = () => {
-    if (!input.tenantShares) throw new ControllerError("Tenant sharing is unavailable.", 503, "sharing_unavailable");
-    return input.tenantShares;
+    if (!input.projectShares) throw new ControllerError("Project sharing is unavailable.", 503, "sharing_unavailable");
+    return input.projectShares;
   };
-  app.get("/api/v1/account/tenants", authenticated, tenantUser, browserSession, async context =>
-    context.json({ items: await shareService().listTenants() }));
-  app.get("/api/v1/account/shareable-resources", authenticated, tenantUser, browserSession, async context =>
+  app.get("/api/v1/account/share-recipients", authenticated, projectUser, browserSession, async context =>
+    context.json(await shareService().listProjects(directoryQuerySchema.parse(context.req.query()))));
+  app.get("/api/v1/account/shareable-resources", authenticated, projectUser, browserSession, async context =>
     context.json({ items: await shareService().listOwnedResources() }));
-  app.get("/api/v1/account/shares", authenticated, tenantUser, browserSession, async context =>
+  app.get("/api/v1/account/shares", authenticated, projectUser, browserSession, async context =>
     context.json({ items: await shareService().listShares() }));
-  app.post("/api/v1/account/shares", authenticated, tenantUser, browserSession, async context => {
+  app.post("/api/v1/account/shares", authenticated, projectUser, browserSession, async context => {
     const body = shareInput.parse(await context.req.json());
     return context.json({ share: await shareService().createShare(body, context.get("actor").id) }, 201);
   });
-  app.delete("/api/v1/account/shares/:id", authenticated, tenantUser, browserSession, async context => {
+  app.delete("/api/v1/account/shares/:id", authenticated, projectUser, browserSession, async context => {
     await shareService().revokeShare(context.req.param("id"), context.get("actor").id);
     return context.body(null, 204);
   });
@@ -511,9 +557,9 @@ export function createHttpApp(input: {
     if (!input.models) throw new ControllerError("Model configuration is unavailable.", 503, "model_configuration_unavailable");
     return context.json(await input.models.testModelConnection(context.req.param("id"), context.get("actor").id));
   });
-  app.put("/api/v1/models/:id/concurrency", authenticated, async (context) => {
+  app.put("/api/v1/models/:id/runtime-settings", authenticated, async (context) => {
     if (!input.models) throw new ControllerError("Model configuration is unavailable.", 503, "model_configuration_unavailable");
-    return context.json(await input.models.configureConcurrency(context.req.param("id"), await context.req.json(), context.get("actor").id));
+    return context.json(await input.models.configureRuntimeSettings(context.req.param("id"), await context.req.json(), context.get("actor").id));
   });
   app.put("/api/v1/models/:id/protocol", authenticated, async (context) => {
     if (!input.models) throw new ControllerError("Model configuration is unavailable.", 503, "model_configuration_unavailable");
@@ -588,7 +634,7 @@ export function createHttpApp(input: {
     if (body.definition.metadata.id !== context.req.param("id")) throw new ValidationError("Policy identity must match its URL.");
     return context.json(await input.service.policyResources.save({ ...body, ...(body.create === undefined ? {} : { create: body.create }), actorId: context.get("actor").id }));
   });
-  app.post("/api/v1/policies/:id/definition/test-runs", authenticated, async context => context.json(await input.service.policyResources.validate(context.req.param("id"), context.get("actor").id, await hasTenantCompiler(context.get("actor").tenantId)), 202));
+  app.post("/api/v1/policies/:id/definition/test-runs", authenticated, async context => context.json(await input.service.policyResources.validate(context.req.param("id"), context.get("actor").id, await hasProjectCompiler(requireProjectId(context.get("actor").projectId))), 202));
   app.get("/api/v1/policies/:id/definition/test-runs/latest", authenticated, async context => context.json(await input.service.policyResources.report(context.req.param("id"))));
   app.get("/api/v1/policies/:id/definition/test-runs/:runId", authenticated, async context => {
     const report = await input.service.policyResources.report(context.req.param("id"), context.req.param("runId"));
@@ -637,7 +683,7 @@ export function createHttpApp(input: {
   app.post("/api/v1/policies/:id/test-runs", authenticated, async (context) => {
     const run = await input.service.requestPolicyValidation({
       id: context.req.param("id"), actorId: context.get("actor").id,
-      compilerAvailable: await hasTenantCompiler(context.get("actor").tenantId),
+      compilerAvailable: await hasProjectCompiler(requireProjectId(context.get("actor").projectId)),
     });
     const statusUrl = `/api/v1/policies/${encodeURIComponent(context.req.param("id"))}/test-runs/${encodeURIComponent(run.id)}`;
     context.header("Location", statusUrl);
@@ -704,13 +750,13 @@ export function createHttpApp(input: {
     return context.json({ items, count: items.length });
   });
   app.post("/api/v1/playground/guardrails/:guardrailId/draft-previews", authenticated, async (context) => {
-    if (input.tenantShares) await input.tenantShares.assertOwner("guardrail", context.req.param("guardrailId"));
+    if (input.projectShares) await input.projectShares.assertOwner("guardrail", context.req.param("guardrailId"));
     const playgroundModel = await currentPlaygroundModel();
     if (!playgroundModel || !playgroundRunner) {
       throw new ControllerError("Guardrail Playground has no model connection configured.", 503, "playground_unavailable");
     }
     const candidate = await input.service.playgroundDraftCandidate(context.req.param("guardrailId"));
-    const { pool, runner: groupRunner } = await selectRunnerForTenant(context.get("actor").tenantId);
+    const { pool, runner: groupRunner } = await selectRunnerForProject(requireProjectId(context.get("actor").projectId));
     const preview = playgroundDraftPreviews.create({
       actorId: context.get("actor").id,
       allocation: { poolId: pool.poolId, groupId: pool.groupId, runtimeUrl: pool.runtimeUrl },
@@ -740,7 +786,7 @@ export function createHttpApp(input: {
     }
   });
   app.post("/api/v1/playground/guardrails/:guardrailId/draft-interactions", authenticated, async (context) => {
-    if (input.tenantShares) await input.tenantShares.assertOwner("guardrail", context.req.param("guardrailId"));
+    if (input.projectShares) await input.projectShares.assertOwner("guardrail", context.req.param("guardrailId"));
     const playgroundModel = await currentPlaygroundModel();
     if (!playgroundModel || !playgroundRunner) {
       throw new ControllerError("Guardrail Playground has no model connection configured.", 503, "playground_unavailable");
@@ -756,7 +802,7 @@ export function createHttpApp(input: {
       playgroundDraftPreviews.delete(preview.previewId);
       throw new ControllerError("The Guardrail draft changed. Prepare a new preview before testing.", 409, "playground_draft_revision_changed");
     }
-    const { pool, runner } = await selectRunnerForTenant(context.get("actor").tenantId);
+    const { pool, runner } = await selectRunnerForProject(requireProjectId(context.get("actor").projectId));
     if (pool.poolId !== preview.allocation.poolId || pool.groupId !== preview.allocation.groupId || pool.runtimeUrl !== preview.allocation.runtimeUrl) {
       playgroundDraftPreviews.delete(preview.previewId);
       throw new ControllerError("The Runner allocation changed. Prepare a new preview before testing.", 409, "playground_draft_allocation_changed");
@@ -774,7 +820,7 @@ export function createHttpApp(input: {
       target: preview,
       model: playgroundModel,
       runner,
-      registerInvocation: callId => input.service.registerPlaygroundInvocation({ callId, tenantId: context.get("actor").tenantId,
+      registerInvocation: callId => input.service.registerPlaygroundInvocation({ callId, projectId: requireProjectId(context.get("actor").projectId),
         guardrailId: preview.guardrailId, guardrailVersion: preview.candidateVersion, poolId: pool.poolId, groupId: pool.groupId }),
       modelId: body.model_id,
       message: body.message,
@@ -792,7 +838,7 @@ export function createHttpApp(input: {
     if (!version || version.status !== "ready" || !version.artifactId) {
       throw new ValidationError("Playground requires a ready, immutable Guardrail Version.");
     }
-    const { pool, runner } = await selectRunnerForTenant(context.get("actor").tenantId);
+    const { pool, runner } = await selectRunnerForProject(requireProjectId(context.get("actor").projectId));
     return context.json(await runPlaygroundInteraction({
       guardrail: {
         id: guardrail.id,
@@ -808,7 +854,7 @@ export function createHttpApp(input: {
       target: { kind: "published", version: version.version },
       model: playgroundModel,
       runner,
-      registerInvocation: callId => input.service.registerPlaygroundInvocation({ callId, tenantId: context.get("actor").tenantId,
+      registerInvocation: callId => input.service.registerPlaygroundInvocation({ callId, projectId: requireProjectId(context.get("actor").projectId),
         guardrailId: guardrail.id, guardrailVersion: version.version, poolId: pool.poolId, groupId: pool.groupId }),
       modelId: body.model_id,
       message: body.message,
@@ -980,7 +1026,7 @@ export function createHttpApp(input: {
       ...options,
       guardrailId: context.req.param("guardrailId"),
       actorId: context.get("actor").id,
-      compilerAvailable: await hasTenantCompiler(context.get("actor").tenantId),
+      compilerAvailable: await hasProjectCompiler(requireProjectId(context.get("actor").projectId)),
     }), 202);
   });
 
@@ -1019,7 +1065,7 @@ export function createHttpApp(input: {
       credentialId: context.req.param("credentialId"),
       actorId: context.get("actor").id,
     });
-    await input.runnerControl.distributeDesiredState((await tenantPool(endpoint.tenantId)).poolId);
+    await input.runnerControl.distributeDesiredState((await projectPool(endpoint.projectId)).poolId);
     return context.body(null, 204);
   });
   app.get("/api/v1/endpoints/:id/deletion-impact", authenticated, async (context) => {
@@ -1056,62 +1102,50 @@ export function createHttpApp(input: {
       }))),
     });
   });
-  app.get("/api/v1/tenant-groups", authenticated, async context => context.json(await input.service.tenantGroups.list()));
-  app.get("/api/v1/tenant-groups/:id/model-configuration", authenticated, async context => {
+  app.get("/api/v1/projects/:id/runner", authenticated, async context =>
+    context.json(await input.service.projectGroups.projectRunner(context.req.param("id"))));
+  app.put("/api/v1/projects/:id/runner", authenticated, async context =>
+    context.json(await input.service.projectGroups.configureProjectRunner(context.req.param("id"),
+      projectRunnerConfigurationSchema.parse(await context.req.json()), context.get("actor").id)));
+  app.get("/api/v1/project-groups", authenticated, async context => context.json(await input.service.projectGroups.list(directoryQuerySchema.parse(context.req.query()))));
+  app.get("/api/v1/project-groups/:id", authenticated, async context => context.json(await input.service.projectGroups.get(context.req.param("id"))));
+  app.get("/api/v1/project-groups/:id/projects", authenticated, browserSession, projectAdministrator, async context =>
+    context.json(await projects().list({...directoryQuerySchema.parse(context.req.query()),groupId:context.req.param("id")})));
+  app.get("/api/v1/project-groups/:id/pools", authenticated, async context =>
+    context.json(await input.service.projectGroups.pools(context.req.param("id"),directoryQuerySchema.parse(context.req.query()))));
+  app.get("/api/v1/project-groups/:id/model-configuration", authenticated, async context => {
     if (!input.models) throw new ControllerError("Model configuration is unavailable.", 503, "model_configuration_unavailable");
     return context.json(await input.models.groupRuntime.view(context.req.param("id")));
   });
-  app.put("/api/v1/tenant-groups/:id/model-configuration", authenticated, async context => {
+  app.put("/api/v1/project-groups/:id/model-configuration", authenticated, async context => {
     if (!input.models) throw new ControllerError("Model configuration is unavailable.", 503, "model_configuration_unavailable");
     const body = groupModelConfigurationInput.parse(await context.req.json());
     return context.json(await input.models.groupRuntime.update(context.req.param("id"), body, context.get("actor").id,
       input.config.runnerPoolTokens != null));
   });
-  app.post("/api/v1/tenant-groups", authenticated, async context => context.json(await input.service.tenantGroups.create(
-    createTenantGroupSchema.parse(await context.req.json()), context.get("actor").id), 201));
-  app.patch("/api/v1/tenant-groups/:id", authenticated, async context => context.json(await input.service.tenantGroups.update(
-    tenantGroupIdSchema.parse(context.req.param("id")), updateTenantGroupSchema.parse(await context.req.json()), context.get("actor").id)));
-  app.delete("/api/v1/tenant-groups/:id", authenticated, async context => {
-    await input.service.tenantGroups.remove(tenantGroupIdSchema.parse(context.req.param("id")), context.get("actor").id);
+  app.post("/api/v1/project-groups", authenticated, async context => context.json(await input.service.projectGroups.create(
+    createProjectGroupSchema.parse(await context.req.json()), context.get("actor").id), 201));
+  app.patch("/api/v1/project-groups/:id", authenticated, async context => context.json(await input.service.projectGroups.update(
+    projectGroupIdSchema.parse(context.req.param("id")), updateProjectGroupSchema.parse(await context.req.json()), context.get("actor").id)));
+  app.delete("/api/v1/project-groups/:id", authenticated, async context => {
+    await input.service.projectGroups.remove(projectGroupIdSchema.parse(context.req.param("id")), context.get("actor").id);
     return context.body(null, 204);
   });
-  app.get("/api/v1/tenants", authenticated, async context => context.json({ items: await input.service.tenantGroups.listTenants() }));
-  app.put("/api/v1/tenants/:id/group", authenticated, async context => context.json(await input.service.tenantGroups.assignTenant(
-    context.req.param("id"), tenantGroupAssignmentSchema.parse(await context.req.json()), context.get("actor").id)));
-  app.post("/api/v1/tenant-groups/:id/pools", authenticated, async context => context.json(await input.service.tenantGroups.createPool(
-    tenantGroupIdSchema.parse(context.req.param("id")), createGroupPoolSchema.parse(await context.req.json()), context.get("actor").id), 201));
-  app.put("/api/v1/runner-pools/:id/group", authenticated, async context => context.json(await input.service.tenantGroups.assignPool(
-    context.req.param("id"), tenantGroupAssignmentSchema.parse(await context.req.json()), context.get("actor").id)));
-  app.put("/api/v1/runner-pools/:id/connectivity", authenticated, async context => context.json(await input.service.tenantGroups.updateConnectivity(
+  app.put("/api/v1/projects/:id/group", authenticated, async context => context.json(await input.service.projectGroups.assignProject(
+    context.req.param("id"), projectGroupAssignmentSchema.parse(await context.req.json()), context.get("actor").id)));
+  app.post("/api/v1/project-groups/:id/pools", authenticated, async context => context.json(await input.service.projectGroups.createPool(
+    projectGroupIdSchema.parse(context.req.param("id")), createGroupPoolSchema.parse(await context.req.json()), context.get("actor").id), 201));
+  app.put("/api/v1/runner-pools/:id/connectivity", authenticated, async context => context.json(await input.service.projectGroups.updateConnectivity(
     context.req.param("id"), updatePoolConnectivitySchema.parse(await context.req.json()), context.get("actor").id)));
 
-  app.get("/api/v1/tenant-admission-monitor", authenticated, async context => {
+  app.get("/api/v1/project-admission-monitor", authenticated, async context => {
     if (context.get("actor").role !== "admin") throw new ControllerError("Platform administrator access is required.", 403, "forbidden");
     const query = admissionMonitorQuerySchema.parse(context.req.query());
     context.header("Cache-Control", "no-store");
     return context.json(await input.service.admissionMonitor.view(query.poolId));
   });
-  app.get("/api/v1/tenant-load-lab/state", authenticated, async context => {
-    context.header("Cache-Control", "no-store");
-    return context.json(await requestTenantLoadLab(input.config.tenantLoadLabUrl));
-  });
-  app.post("/api/v1/tenant-load-lab/control", authenticated, async context => {
-    const command = tenantLoadLabControlSchema.parse(await context.req.json());
-    context.header("Cache-Control", "no-store");
-    if (command.action === "start" || command.action === "peak") {
-      // The lab's private target configuration is independent from Controller's
-      // group assignments. Refuse new load when those assignments have drifted.
-      const state = await requestTenantLoadLab(input.config.tenantLoadLabUrl);
-      for (const tenant of state.tenants) {
-        const pools = await input.service.groupRouting.poolsForTenant(tenant.id);
-        if (!pools.some(pool => pool.id === tenant.poolId && pool.groupId === tenant.groupId)) {
-          throw new ConflictError("The lab Runner allocation is out of date. Update its private configuration before starting traffic.", "tenant_load_lab_allocation_changed");
-        }
-      }
-    }
-    return context.json(await requestTenantLoadLab(input.config.tenantLoadLabUrl, command));
-  });
-  app.get("/api/v1/runner-pools", authenticated, async (context) => context.json({ items: await input.service.listRunnerPoolsWithCapacity() }));
+  app.get("/api/v1/runner-pools", authenticated, async context => context.json(await input.service.runners.list(directoryQuerySchema.parse(context.req.query()))));
+  app.get("/api/v1/runner-pools/:id", authenticated, async context => context.json(await input.service.runners.detail(context.req.param("id"),directoryQuerySchema.parse(context.req.query()))));
   app.patch("/api/v1/runner-pools/:id", authenticated, async (context) => {
     const body = runnerPoolInput.parse(await context.req.json());
     return context.json(await input.service.updateRunnerPool({ id: context.req.param("id"), actorId: context.get("actor").id, ...body }));
@@ -1233,9 +1267,9 @@ export function createHttpApp(input: {
             note: "Draft matching only. Target weights are candidates; no runtime assignment or GuardRail execution." } });
       }
       if (!router.activeRevision || router.activeRevision !== body.expectedRevision) throw new ValidationError("Published Router revision changed. Reload before testing.");
-      if (input.tenantShares) {
-        await input.tenantShares.assertOwner("router", body.targetId);
-        await input.tenantShares.assertOwner("endpoint", body.endpointId);
+      if (input.projectShares) {
+        await input.projectShares.assertOwner("router", body.targetId);
+        await input.projectShares.assertOwner("endpoint", body.endpointId);
       }
       if (!router.endpointIds.includes(body.endpointId)) throw new ValidationError("Select an Endpoint bound to this Router.");
       routingInputSchema.parse({ endpointId: body.endpointId, fields: body.fields, business_request: businessRequest, endpoint_request: body.endpointRequest });
@@ -1247,10 +1281,10 @@ export function createHttpApp(input: {
         await input.service.verifyScanTestCredential(body.targetId, body.credential);
       }
       if (body.configuration !== "published" || body.action !== "execute") throw new ValidationError("Endpoint tests execute the deployed configuration.");
-      if (input.tenantShares) await input.tenantShares.assertOwner("endpoint", body.targetId);
+      if (input.projectShares) await input.projectShares.assertOwner("endpoint", body.targetId);
     }
     if (!playgroundRunner) throw new ControllerError("Runner is not configured.", 503, "playground_runner_unavailable");
-    return context.json(await (await runnerForTenant(context.get("actor").tenantId)).testPath(body, endpointAdapter));
+    return context.json(await (await runnerForProject(requireProjectId(context.get("actor").projectId))).testPath(body, endpointAdapter));
   });
   app.post("/api/v1/routers/:id/simulations", authenticated, async context => {
     await input.service.trafficRouting.get(context.req.param("id"));
@@ -1477,7 +1511,7 @@ function peerAddress(context: Context): string | null {
   }
 }
 
-function authentication(auth: ControllerAuth, tokens?: AccessTokenService): MiddlewareHandler<{ Variables: Variables }> {
+function authentication(auth: ControllerAuth, tokens?: AccessTokenService, projects?: ProjectService): MiddlewareHandler<{ Variables: Variables }> {
   return async (context, next) => {
     const authorizationHeader = context.req.header("authorization");
     if (authorizationHeader !== undefined) {
@@ -1490,8 +1524,8 @@ function authentication(auth: ControllerAuth, tokens?: AccessTokenService): Midd
         return context.json({ error: { code: "unauthenticated", message: "Access token is invalid, expired, or revoked." } }, 401);
       }
       if (!isAccountRole(actor.role)) return context.json({ error: { code: "forbidden", message: "A user or admin account is required." } }, 403);
-      if (actor.role === "user" && !validTenantId(actor.tenantId))
-        return context.json({ error: { code: "unauthenticated", message: "Account has no tenant." } }, 401);
+      if (actor.role === "user" && !validProjectId(actor.projectId))
+        return context.json({ error: { code: "unauthenticated", message: "Account has no project." } }, 401);
       const permission = requiredTokenPermission(context.req.method, context.req.path);
       if (context.req.path !== "/api/v1/account/identity" || context.req.method !== "GET") {
         const accountPermission = requiredAccountPermission(context.req.method, context.req.path);
@@ -1499,9 +1533,9 @@ function authentication(auth: ControllerAuth, tokens?: AccessTokenService): Midd
           || !allowsTokenPermission(actor.permissions, permission[2], permission[3], actor.role))
           return context.json({ error: { code: "insufficient_token_permission", message: "This token does not allow the requested operation." } }, 403);
       }
-      const tenantId = actor.role === "admin" ? LEGACY_TENANT_ID : actor.tenantId;
-      context.set("actor", { ...actor, tenantId });
-      await runWithTenantContext({ tenantId, actorId: actor.id, role: actor.role }, () => next());
+      const projectId = actor.role === "admin" ? null : actor.projectId;
+      context.set("actor", { ...actor, projectId });
+      await runWithProjectContext({ projectId, actorId: actor.id, role: actor.role }, () => next());
       if (!["GET", "HEAD"].includes(context.req.method))
         await tokens!.recordRequest(actor, context.req.method, permission![1], context.res.status);
       return;
@@ -1511,20 +1545,40 @@ function authentication(auth: ControllerAuth, tokens?: AccessTokenService): Midd
     if (!session) return context.json({ error: { code: "unauthenticated", message: "Authentication is required." } }, 401);
     const role = session.user.role;
     if (!isAccountRole(role)) return context.json({ error: { code: "forbidden", message: "A user or admin account is required." } }, 403);
-    if (role === "user" && !validTenantId(session.user.tenantId))
-      return context.json({ error: { code: "unauthenticated", message: "Account has no tenant." } }, 401);
+    const selectedProject = session.session?.activeProjectId;
+    const expectedProject = context.req.header("x-project-id");
+    if (role === "user" && expectedProject && expectedProject !== selectedProject)
+      return context.json({ error: { code: "project_changed", message: "The active project changed. Refresh before continuing." } }, 409);
+    const membership = projects && role === "user" && validProjectId(selectedProject)
+      ? await projects.membership(session.user.id, selectedProject) : null;
+    const projectId = role === "user" && validProjectId(selectedProject)
+      && (!projects || membership) ? selectedProject : null;
+    const accountRecovery = ["/api/v1/account/identity", "/api/v1/account/projects", "/api/v1/account/project", "/api/v1/account/project-access", "/api/v1/account/project-access/refresh"].includes(context.req.path)
+      || (context.req.method !== "POST" && /^\/api\/v1\/account\/access-tokens(?:\/[^/]+)?$/.test(context.req.path));
+    if (role === "user" && !projectId && !accountRecovery)
+      return context.json({ error: { code: "project_required", message: "Select a project you belong to, or ask an administrator for access." } }, 403);
+    if (role === "user" && projectId && projects && !accountRecovery && !await projects.runnerInitialized(projectId))
+      return context.json({error: {code: "project_not_initialized", message: "This project's Runner environment has not been initialized. Contact an administrator."}}, 403);
     const permission = requiredAccountPermission(context.req.method, context.req.path);
-    const accountRoute = /^\/api\/v1\/account\/(?:identity|access-tokens(?:\/[^/]+)?|tenants|shareable-resources|shares(?:\/[^/]+)?)$/.test(context.req.path);
+    if (membership?.access === "read" && (permission?.action === "write"
+      || (!['GET', 'HEAD'].includes(context.req.method) && context.req.path.startsWith("/api/v1/account/shares"))))
+      return context.json({ error: { code: "project_read_only", message: "Your Keycloak role grants read-only project access." } }, 403);
+    const accountRoute = /^\/api\/v1\/account\/(?:identity|projects?|share-recipients|project-access(?:\/refresh)?|access-tokens(?:\/[^/]+)?|shareable-resources|shares(?:\/[^/]+)?)$/.test(context.req.path);
     if ((!permission && !accountRoute) || (permission && !hasPermission(role, permission.resource, permission.action)))
       return context.json({ error: { code: "forbidden", message: "Your account role does not allow this operation." } }, 403);
-    const tenantId = role === "admin" ? LEGACY_TENANT_ID : session.user.tenantId!;
-    context.set("actor", { id: session.user.id, role, tenantId });
-    await runWithTenantContext({ tenantId, actorId: session.user.id, role }, () => next());
+    context.set("actor", { id: session.user.id, role, projectId, sessionId: session.session?.id });
+    if (projectId || role === "admin") await runWithProjectContext({ projectId, actorId: session.user.id, role }, () => next());
+    else await runWithUserContext(session.user.id, role, () => next());
   };
 }
 
-function validTenantId(tenantId: string | null | undefined): tenantId is string {
-  return typeof tenantId === "string" && tenantId.trim().length > 0 && tenantId === tenantId.trim();
+function requireProjectId(value: string | null): string {
+  if (!value) throw new ControllerError("An initialized Project is required.", 403, "project_required");
+  return value;
+}
+
+function validProjectId(projectId: string | null | undefined): projectId is string {
+  return typeof projectId === "string" && projectId.trim().length > 0 && projectId === projectId.trim();
 }
 
 function metricsAuthentication(token: string | null): MiddlewareHandler {

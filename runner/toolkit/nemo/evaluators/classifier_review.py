@@ -107,7 +107,7 @@ class ClassifierReviewer:
     contracts = frozenset({REVIEW_CONTRACT})
     rails = frozenset({"input", "output"})
 
-    def __init__(self, *, base_url: str, model: str, api_key: str, provider_id: str,
+    def __init__(self, *, rate_limit_attempts: int = 3, base_url: str, model: str, api_key: str, provider_id: str,
                  timeout_seconds: float = 15, max_tokens: int = 256,
                  skip_tls_verify: bool = False, transport: httpx.AsyncBaseTransport | None = None,
                  rail_type: str = "input"):
@@ -116,6 +116,7 @@ class ClassifierReviewer:
         self.rails = frozenset({rail_type})
         self._url, self._model = base_url.rstrip("/") + "/chat/completions", model
         self._key, self._provider = api_key, provider_id
+        self._rate_limit_attempts = rate_limit_attempts
         self._timeout, self._tokens = timeout_seconds, max_tokens
         self._tls, self._transport = skip_tls_verify, transport
 
@@ -175,7 +176,7 @@ class ClassifierReviewer:
                                     timeout=max(.001,attempt_deadline-time.monotonic()))
                                 response.raise_for_status()
                                 return response
-                            response = await with_connection_retry(send,deadline=attempt_deadline,call=call)
+                            response = await with_connection_retry(send,deadline=attempt_deadline,call=call,rate_limit_attempts=self._rate_limit_attempts)
                             with model_response():
                                 payload = response.json()
                                 if not isinstance(payload,dict) or not isinstance(payload.get("model"),str) or not payload["model"].strip():

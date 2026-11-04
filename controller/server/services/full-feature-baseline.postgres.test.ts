@@ -1,3 +1,4 @@
+import { withTestProject } from "../db/postgres-test-database.js";
 // @vitest-environment node
 import { resolve } from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
@@ -31,7 +32,7 @@ describe.skipIf(!url)("Full-feature Profile creation and deletion", () => {
     const config = await draft();
     const preview = await service.previewGuardrailPlan({ draftConfig: config, runtimeProfile: "auto" });
     expect(preview.actions.some(action => action.name === "jailbreak")).toBe(true);
-    const created = await service.createGuardrail({ name: "Full feature", draftConfig: config, runtimeProfile: "auto", actorId: "admin" });
+    const created = await withTestProject(() => service.createGuardrail({ name: "Full feature", draftConfig: config, runtimeProfile: "auto", actorId: "admin" }));
     const stored = await service.getGuardrail(created.id);
     expect(stored.draftConfig).toEqual(config);
     expect(stored.draftConfig.profileOrigin?.version).toBe("1.0.0");
@@ -52,7 +53,7 @@ describe.skipIf(!url)("Full-feature Profile creation and deletion", () => {
     const removed = ["builtin-pii", "builtin-topic-safety", "builtin-content-safety", "builtin-jailbreak-strict", "local-government-identifiers"];
     config.policyBindings = config.policyBindings.filter(binding => !removed.includes(binding.policyId));
     await service.previewGuardrailPlan({ draftConfig: config, runtimeProfile: "auto" });
-    const created = await service.createGuardrail({ name: "Local subset", draftConfig: config, runtimeProfile: "auto", actorId: "admin" });
+    const created = await withTestProject(() => service.createGuardrail({ name: "Local subset", draftConfig: config, runtimeProfile: "auto", actorId: "admin" }));
     const saved = await service.getGuardrail(created.id);
     const plan = buildGuardrailPlan({ guardrailId: created.id, guardrailVersion: "test", draft: saved.draftConfig, policies: await service.listPolicies() });
     expect(publishedProtectionCoverage(plan)?.requiredModelBindings).toEqual([]);
@@ -66,7 +67,7 @@ describe.skipIf(!url)("Full-feature Profile creation and deletion", () => {
     const config = await draft();
     config.policyBindings = config.policyBindings.filter(binding => binding.policyId !== "local-government-identifiers");
     await service.previewGuardrailPlan({ draftConfig: config, runtimeProfile: "auto" });
-    const created = await service.createGuardrail({ name: "Reduced baseline", draftConfig: config, runtimeProfile: "auto", actorId: "admin" });
+    const created = await withTestProject(() => service.createGuardrail({ name: "Reduced baseline", draftConfig: config, runtimeProfile: "auto", actorId: "admin" }));
     expect(Object.keys((await service.getGuardrail(created.id)).draftConfig.policyBindings.find(binding => binding.policyId === "local-contact-data")!.testCaseOverrides!)).toHaveLength(25);
     await database.pool.query("UPDATE guardrail_profile SET definition=jsonb_set(definition, '{policies,0,policyVersion}', '\"unavailable\"') WHERE id='full-feature-baseline'");
     const profiles = await service.listGuardrailProfiles();

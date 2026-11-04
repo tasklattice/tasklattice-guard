@@ -1,1 +1,0 @@
-ALTER TABLE "endpoint" ADD COLUMN "credential_required" boolean DEFAULT true NOT NULL;

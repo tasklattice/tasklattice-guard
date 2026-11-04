@@ -35,15 +35,15 @@ function desiredStateService(results: unknown[][], snapshots = [revision]) {
   return service;
 }
 
-// Select order: pool allocation, controller state, group tenants, visible ready
+// Select order: pool allocation, controller state, group projects, visible ready
 // artifacts, disabled Guardrails, logging levels, disabled Endpoints, active Endpoints.
 const desiredStateResults = () => [
   [{ groupId: "group-one" }],
   [{ desiredGeneration: 9 }],
-  [{ id: "tenantA" }],
+  [{ id: "projectA" }],
   [artifact("art-1"), artifact("art-2"), artifact("art-default")],
   [], [], [],
-  [{ id: "endpoint-1", tenantId: "tenantA", trafficRouterId: "router-1", adapter: "litellm-generic-guardrail", credentialRequired: true, verification: { credentials: [] } }],
+  [{ id: "endpoint-1", projectId: "projectA", trafficRouterId: "router-1", adapter: "litellm-generic-guardrail", credentialRequired: true, verification: { credentials: [] } }],
 ] as unknown[][];
 
 describe("desired state per pool", () => {
@@ -58,12 +58,12 @@ describe("desired state per pool", () => {
     const desired = await service.desiredStateForPool("edge");
     expect(desired.generation).toBe(9);
     expect(desired.groupId).toBe("group-one");
-    expect(service.trafficRouting.runtimeSnapshots).toHaveBeenCalledWith(["tenantA"], expect.anything());
+    expect(service.trafficRouting.runtimeSnapshots).toHaveBeenCalledWith(["projectA"], expect.anything());
     expect(desired.artifacts.map((item) => item.id).sort()).toEqual(["art-1", "art-2", "art-default"]);
     expect(desired).not.toHaveProperty("routers");
     expect(desired.routerRevisions).toEqual([expect.objectContaining({ routerId: "router-1", assignmentAlgorithm: "hmac-sha256-v1", assignmentKeyId: "v1" })]);
     expect(desired.routerRevisions[0]!.assignmentKey).toHaveLength(32);
-    expect(desired.endpoints).toEqual([expect.objectContaining({ endpointId: "endpoint-1", tenantId: "tenantA", trafficRouterId: "router-1" })]);
+    expect(desired.endpoints).toEqual([expect.objectContaining({ endpointId: "endpoint-1", projectId: "projectA", trafficRouterId: "router-1" })]);
   });
 
   it("uses the default pool's allocation rather than treating its name as global authority", async () => {
@@ -72,7 +72,7 @@ describe("desired state per pool", () => {
     expect(desired).not.toHaveProperty("routers");
   });
 
-  it("rejects unknown or orphaned pools before reading any tenant resource", async () => {
+  it("rejects unknown or orphaned pools before reading any project resource", async () => {
     const service = desiredStateService([[]]);
     await expect(service.desiredStateForPool("unallocated")).rejects.toMatchObject({ code: "runner_pool_group_unavailable" });
     expect(service.trafficRouting.runtimeSnapshots).not.toHaveBeenCalled();
@@ -91,7 +91,7 @@ describe("desired state per pool", () => {
     ]);
   });
 
-  it("passes an empty tenant list explicitly instead of falling back to every tenant", async () => {
+  it("passes an empty project list explicitly instead of falling back to every project", async () => {
     const results = desiredStateResults();
     results[2] = [];
     results[3] = [];
@@ -106,13 +106,13 @@ describe("desired state per pool", () => {
 });
 
 describe("deletion impact from published Routers", () => {
-  const snapshotFor = (guardrailId: string, tenantId = "tenantA") => ({ tenantId, activeSnapshot: { routes: [{ targets: [{ guardrailId }] }] } });
-  const serviceWithPools = (results: unknown[][], poolsByTenant: Record<string, string[]>) => {
+  const snapshotFor = (guardrailId: string, projectId = "projectA") => ({ projectId, activeSnapshot: { routes: [{ targets: [{ guardrailId }] }] } });
+  const serviceWithPools = (results: unknown[][], poolsByProject: Record<string, string[]>) => {
     const db = { select: scriptedSelect(results) } as unknown as ControllerDatabase;
     const service = new ControlPlaneService(db, config);
-    const poolsForTenant = vi.fn(async (tenantId: string) => (poolsByTenant[tenantId] ?? []).map(id => ({ id })));
-    Object.assign(service, { groupRouting: { poolsForTenant } });
-    return { service, poolsForTenant };
+    const poolsForProject = vi.fn(async (projectId: string) => (poolsByProject[projectId] ?? []).map(id => ({ id })));
+    Object.assign(service, { groupRouting: { poolsForProject } });
+    return { service, poolsForProject };
   };
   const runner = (poolId: string, receivedAgoMs = 0) => ({ poolId, status: "ready", lastHeartbeatAt: new Date(), lastReceivedAt: new Date(Date.now() - receivedAgoMs) });
 
@@ -123,7 +123,7 @@ describe("deletion impact from published Routers", () => {
       [snapshotFor("guardrail-1"), snapshotFor("guardrail-2"), snapshotFor("guardrail-1")],
       [{ requestCount: 0, lastRequestAt: null }],
       [],
-    ], { tenantA: ["default"] });
+    ], { projectA: ["default"] });
     await expect(service.guardrailDeletionImpact("guardrail-1")).resolves.toMatchObject({
       resourceId: "guardrail-1", activeRouterCount: 2, requiresSecondConfirmation: false,
     });
@@ -131,20 +131,20 @@ describe("deletion impact from published Routers", () => {
 
   it("reports an Endpoint as routed only when its bound Router is published", async () => {
     const bound = serviceWithPools([
-      [{ id: "endpoint-1", tenantId: "tenantC", trafficRouterId: "router-1" }], [{ id: "router-1" }], [{ requestCount: 3, lastRequestAt: new Date() }], [runner("pool-c")],
-    ], { tenantC: ["pool-c"] });
+      [{ id: "endpoint-1", projectId: "projectC", trafficRouterId: "router-1" }], [{ id: "router-1" }], [{ requestCount: 3, lastRequestAt: new Date() }], [runner("pool-c")],
+    ], { projectC: ["pool-c"] });
     await expect(bound.service.endpointDeletionImpact("endpoint-1")).resolves.toMatchObject({ activeRouterCount: 1, telemetryFresh: true, requiresSecondConfirmation: true });
-    expect(bound.poolsForTenant).toHaveBeenCalledWith("tenantC");
+    expect(bound.poolsForProject).toHaveBeenCalledWith("projectC");
     const unbound = serviceWithPools([[{ id: "endpoint-2", trafficRouterId: null }], [{ requestCount: 0, lastRequestAt: null }]], {});
     await expect(unbound.service.endpointDeletionImpact("endpoint-2")).resolves.toMatchObject({ activeRouterCount: 0, telemetryFresh: true });
-    expect(unbound.poolsForTenant).not.toHaveBeenCalled();
+    expect(unbound.poolsForProject).not.toHaveBeenCalled();
   });
 
-  it("requires fresh Runner telemetry from every pool of every referencing Router's tenant", async () => {
+  it("requires fresh Runner telemetry from every pool of every referencing Router's project", async () => {
     const results = (telemetry: unknown[]) => [[{ id: "guardrail-1" }],
-      [snapshotFor("guardrail-1", "tenantA"), snapshotFor("guardrail-1", "tenantC")],
+      [snapshotFor("guardrail-1", "projectA"), snapshotFor("guardrail-1", "projectC")],
       [{ requestCount: 4, lastRequestAt: new Date() }], telemetry];
-    const pools = { tenantA: ["default", "pool-a"], tenantC: ["pool-c"] };
+    const pools = { projectA: ["default", "pool-a"], projectC: ["pool-c"] };
     const fresh = serviceWithPools(results([runner("default"), runner("pool-a"), runner("pool-c")]), pools);
     await expect(fresh.service.guardrailDeletionImpact("guardrail-1")).resolves.toMatchObject({ activeRouterCount: 2, telemetryFresh: true, incomingRequestCount: 4 });
     const missing = serviceWithPools(results([runner("default"), runner("pool-a")]), pools);
@@ -153,7 +153,7 @@ describe("deletion impact from published Routers", () => {
     await expect(stale.service.guardrailDeletionImpact("guardrail-1")).resolves.toMatchObject({ telemetryFresh: false });
     const secondRunnerStale = serviceWithPools(results([runner("default"), runner("pool-a"), runner("pool-c"), runner("pool-c", 180_000)]), pools);
     await expect(secondRunnerStale.service.guardrailDeletionImpact("guardrail-1")).resolves.toMatchObject({ telemetryFresh: false });
-    const absentMapping = serviceWithPools(results([runner("default"), runner("pool-a")]), { tenantA: ["default", "pool-a"], tenantC: [] });
+    const absentMapping = serviceWithPools(results([runner("default"), runner("pool-a")]), { projectA: ["default", "pool-a"], projectC: [] });
     await expect(absentMapping.service.guardrailDeletionImpact("guardrail-1")).resolves.toMatchObject({ telemetryFresh: false });
   });
 });

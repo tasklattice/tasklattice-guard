@@ -15,9 +15,7 @@ def render(tmp_path: Path, isolation: dict, **overrides):
     values = {
         "postgresql": {"enabled": True}, "redis": {"enabled": True},
         "security": {"bootstrapAdmin": {"email": "admin@example.test"}},
-        "runner": {"default": {"replicaCount": 1}, "pools": [
-            {"name": "isolated", "replicaCount": 1, "maxConcurrency": 2,
-             "resources": {"requests": {"memory": "256Mi"}, "limits": {"memory": "512Mi"}}}]},
+        "runner": {"default": {"replicaCount": 1}},
         "networkPolicy": {"enabled": True, "runnerIsolation": isolation},
     }
     values.update(overrides)
@@ -38,12 +36,12 @@ def test_default_does_not_isolate_runtime_ingress_or_egress(tmp_path: Path):
     assert policies(result.stdout) == []
 
 
-def test_each_pool_denies_unlisted_peers_and_database_egress(tmp_path: Path):
+def test_default_runner_denies_unlisted_peers_and_database_egress(tmp_path: Path):
     result = render(tmp_path, {"enabled": True})
     assert result.returncode == 0, result.stderr
     rendered = policies(result.stdout)
-    assert len(rendered) == 2
-    assert {doc["spec"]["podSelector"]["matchLabels"]["tasklattice.io/runner-pool"] for doc in rendered} == {"default", "isolated"}
+    assert len(rendered) == 1
+    assert {doc["spec"]["podSelector"]["matchLabels"]["tasklattice.io/runner-pool"] for doc in rendered} == {"default"}
     for doc in rendered:
         spec = doc["spec"]
         assert spec["policyTypes"] == ["Ingress", "Egress"]
@@ -65,13 +63,13 @@ def test_gateway_ingress_and_provider_exception_are_explicit_and_pool_specific(t
     gateway = {"namespaceSelector": {"matchLabels": {"kubernetes.io/metadata.name": "gateway"}},
                "podSelector": {"matchLabels": {"app": "trusted-runtime-gateway"}}}
     provider = {"to": [{"ipBlock": {"cidr": "192.0.2.9/32"}}], "ports": [{"protocol": "TCP", "port": 443}]}
-    result = render(tmp_path, {"enabled": True, "ingressPeers": [gateway], "poolEgress": {"isolated": [provider]}})
+    result = render(tmp_path, {"enabled": True, "ingressPeers": [gateway], "poolEgress": {"default": [provider]}})
     assert result.returncode == 0, result.stderr
     for doc in policies(result.stdout):
         spec = doc["spec"]
         assert spec["ingress"][1]["from"] == [gateway]
         pool = spec["podSelector"]["matchLabels"]["tasklattice.io/runner-pool"]
-        assert (provider in spec["egress"]) == (pool == "isolated")
+        assert (provider in spec["egress"]) == (pool == "default")
 
 
 @pytest.mark.parametrize("isolation", [

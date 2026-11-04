@@ -4,6 +4,8 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { ControlPlaneLayout } from "./layout";
 
+vi.mock("@/components/project-initialization", () => ({ProjectInitializationGate: ({children}: {children: ReactNode}) => children}));
+
 let pathname = "/dashboard";
 let role = "admin";
 type SessionState = "authenticated" | "anonymous" | "loading" | "error";
@@ -49,11 +51,9 @@ vi.mock("react-i18next", () => ({
       "nav.settings": "Settings",
       "nav.platformOperations": "Platform operations",
       "nav.modelServices": "Models & detection",
-      "nav.accessAudit": "Access & audit",
+      "nav.peopleProjects": "People & projects",
       "nav.runtimeObservations": "Observability",
       "nav.runner": "Runner",
-      "nav.tenantLoadLab": "Tenant load lab",
-      "nav.tenantGroups": "Tenant groups",
       "auth.sessionLoading": "Checking your session…",
     } as Record<string, string>)[key] ?? key,
   }),
@@ -89,17 +89,17 @@ describe("ControlPlaneLayout", () => {
     expect(screen.queryByText("Page content")).toBeNull();
   });
 
-  it.each(["/settings/models", "/settings/guardrail-catalog", "/settings/tenant-load-lab", "/settings/tenant-load-lab/", "/settings/tenant-groups", "/settings/tenant-groups/", "/access", "/audit-log"])("prevents a user from mounting %s", path => {
+  it.each(["/settings/models", "/settings/guardrail-catalog", "/access/projects", "/access", "/audit-log"])("prevents a user from mounting %s", path => {
     role = "user"; pathname = path;
     render(<ControlPlaneLayout />);
     expect(screen.queryByText("Page content")).toBeNull();
     expect(screen.getByRole("link", { name: "Guardrails" }).getAttribute("href")).toBe("/guardrails");
   });
-  it.each(["/guardrails", "/playground", "/policy-library", "/integration/routers", "/integration/endpoints", "/logs", "/billing", "/models", "/sharing", "/account", "/settings", "/settings/health", "/settings/runner", "/settings/version"])("allows a user to mount %s", path => {
+  it.each(["/guardrails", "/playground", "/policy-library", "/integration/routers", "/integration/endpoints", "/logs", "/billing", "/sharing", "/account", "/account/security", "/account/access-tokens", "/settings", "/settings/", "/settings/health", "/settings/runner", "/settings/runner/", "/settings/version"])("allows a user to mount %s", path => {
     role = "user"; pathname = path; render(<ControlPlaneLayout />);
     expect(screen.getByText("Page content")).toBeTruthy();
   });
-  it.each(["/dashboard", "/dashboard/"])("mounts the tenant dashboard at %s without redirecting to Guardrails", path => {
+  it.each(["/dashboard", "/dashboard/"])("mounts the project dashboard at %s without redirecting to Guardrails", path => {
     pathname = path;
     role = "user"; render(<ControlPlaneLayout />);
     expect(screen.getByText("Page content")).toBeTruthy();
@@ -129,23 +129,15 @@ describe("ControlPlaneLayout", () => {
     expect(screen.getByText("Redirect /settings/providers")).toBeTruthy();
   });
 
-  it.each([["admin", "Platform operations"], ["user", "Settings"]])("labels the Runner page under the %s navigation group", (accountRole, group) => {
-    pathname = "/settings/runner";
-    role = accountRole;
+  it.each(["/settings/health", "/settings/runner", "/settings/version"])("allows administrators to open %s under platform operations", path => {
+    pathname = path;
+    role = "admin";
     render(<ControlPlaneLayout />);
 
-    expect(screen.getByText(group)).toBeTruthy();
-    expect(screen.getByText("Runner")).toBeTruthy();
-  });
-
-  it("labels Tenant load lab under Platform operations and mounts the administrator workspace", () => {
-    pathname = "/settings/tenant-load-lab";
-    render(<ControlPlaneLayout />);
     expect(screen.getByText("Platform operations")).toBeTruthy();
-    expect(screen.getByText("Tenant load lab")).toBeTruthy();
-    expect(screen.queryByText("Dashboard")).toBeNull();
     expect(screen.getByText("Page content")).toBeTruthy();
   });
+
 
   describe.each<SessionState>(["authenticated", "anonymous", "loading", "error"])("documentation with an %s session", state => {
     it.each(["/document", "/document/", "/document/overview/quickstart-protection", "/document/operator/operator-create-policy"])("renders %s without waiting for authentication", path => {

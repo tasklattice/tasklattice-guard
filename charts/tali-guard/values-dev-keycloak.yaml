@@ -1,0 +1,4 @@
+# Optional overlay for npm run helm:deploy:dev:keycloak.
+# Local identities/passwords are development fixtures, not production accounts.
+keycloak:
+  enabled: true

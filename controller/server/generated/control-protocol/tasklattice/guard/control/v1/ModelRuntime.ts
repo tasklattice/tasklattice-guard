@@ -21,9 +21,20 @@ export interface ModelRuntime {
    */
   'skipTlsVerify'?: (boolean);
   /**
-   * Concurrent active model RPCs per Runner process. Zero from older controllers means 2.
+   * Concurrent active model RPCs per Runner process; unset uses 2.
    */
   'maxConcurrency'?: (number);
+  /**
+   * Total attempts on explicit rate-limit rejection, including the initial call.
+   */
+  'rateLimitAttempts'?: (number);
+  /**
+   * Decision-model operating band; unset uses 0.1 and 0.9. Zero is valid.
+   */
+  'lowerThreshold'?: (number | string);
+  'upperThreshold'?: (number | string);
+  '_lowerThreshold'?: "lowerThreshold";
+  '_upperThreshold'?: "upperThreshold";
 }
 
 /**
@@ -46,7 +57,18 @@ export interface ModelRuntime__Output {
    */
   'skipTlsVerify': (boolean);
   /**
-   * Concurrent active model RPCs per Runner process. Zero from older controllers means 2.
+   * Concurrent active model RPCs per Runner process; unset uses 2.
    */
   'maxConcurrency': (number);
+  /**
+   * Total attempts on explicit rate-limit rejection, including the initial call.
+   */
+  'rateLimitAttempts': (number);
+  /**
+   * Decision-model operating band; unset uses 0.1 and 0.9. Zero is valid.
+   */
+  'lowerThreshold'?: (number);
+  'upperThreshold'?: (number);
+  '_lowerThreshold'?: "lowerThreshold";
+  '_upperThreshold'?: "upperThreshold";
 }

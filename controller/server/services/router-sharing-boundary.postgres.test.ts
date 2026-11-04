@@ -2,7 +2,7 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { RouterDraft } from "../../shared/traffic-routing.js";
 import { createTestDatabase } from "../db/postgres-test-database.js";
-import { runWithTenantContext } from "./tenant-context.js";
+import { runWithProjectContext } from "./project-context.js";
 import { TrafficRoutingService } from "./traffic-routing.js";
 
 const url = process.env.GUARD_TEST_POSTGRES_URL;
@@ -23,30 +23,28 @@ const context = { endpoints: [{ id: "endpoint-private", name: "Private Endpoint"
 describe.skipIf(!url)("shared Router reference visibility", () => {
   let database: Awaited<ReturnType<typeof createTestDatabase>>;
   let service: TrafficRoutingService;
-  const asA = <T>(fn: () => T) => runWithTenantContext({ tenantId: "tenantA", actorId: "user-a", role: "user" }, fn);
-  const asB = <T>(fn: () => T) => runWithTenantContext({ tenantId: "tenantB", actorId: "user-b", role: "user" }, fn);
-  const asC = <T>(fn: () => T) => runWithTenantContext({ tenantId: "tenantC", actorId: "user-c", role: "user" }, fn);
-  const asAdmin = <T>(fn: () => T) => runWithTenantContext({ tenantId: "tenantA", actorId: "admin", role: "admin" }, fn);
+  const asA = <T>(fn: () => T) => runWithProjectContext({ projectId: "projectA", actorId: "user-a", role: "user" }, fn);
+  const asB = <T>(fn: () => T) => runWithProjectContext({ projectId: "projectB", actorId: "user-b", role: "user" }, fn);
+  const asC = <T>(fn: () => T) => runWithProjectContext({ projectId: "projectC", actorId: "user-c", role: "user" }, fn);
+  const asAdmin = <T>(fn: () => T) => runWithProjectContext({ projectId: "projectA", actorId: "admin", role: "admin" }, fn);
 
   beforeAll(async () => {
     database = await createTestDatabase(url!, "router_share_refs");
     service = new TrafficRoutingService(database.db);
     const pool = database.pool;
-    await pool.query(`INSERT INTO auth_user (id,name,email,role,tenant_id) VALUES
-      ('user-a','A','router-a@example.test','user','tenantA'), ('user-b','B','router-b@example.test','user','tenantB'),
-      ('user-c','C','router-c@example.test','user','tenantC'), ('admin','Admin','router-admin@example.test','admin','tenantA');
-      INSERT INTO guardrail (id,tenant_id,name,draft_config) VALUES
-      ('guard-private','tenantB','Private Guardrail','{}'), ('guard-own','tenantA','Own Guardrail','{}');`);
-    await pool.query("INSERT INTO traffic_router (id,tenant_id,name,draft,active_revision,active_snapshot,rollout_error) VALUES ('router-b','tenantB','B Router',$1,1,$1,'runner failed: guard-private Private Endpoint')", [JSON.stringify(snapshot)]);
-    await pool.query("INSERT INTO endpoint (id,tenant_id,name,adapter,traffic_router_id) VALUES ('endpoint-private','tenantB','Private Endpoint','litellm-generic-guardrail','router-b')");
+    await pool.query(`INSERT INTO auth_user (id,name,email,role) SELECT id,name,email,role FROM (VALUES ('user-a','A','router-a@example.test','user','projectA'),('user-b','B','router-b@example.test','user','projectB'),('user-c','C','router-c@example.test','user','projectC'),('admin','Admin','router-admin@example.test','admin','projectA')) AS fixture(id,name,email,role,project_id);
+      INSERT INTO guardrail (id,project_id,name,draft_config) VALUES
+      ('guard-private','projectB','Private Guardrail','{}'), ('guard-own','projectA','Own Guardrail','{}');`);
+    await pool.query("INSERT INTO traffic_router (id,project_id,name,draft,active_revision,active_snapshot,rollout_error) VALUES ('router-b','projectB','B Router',$1,1,$1,'runner failed: guard-private Private Endpoint')", [JSON.stringify(snapshot)]);
+    await pool.query("INSERT INTO endpoint (id,project_id,name,adapter,traffic_router_id) VALUES ('endpoint-private','projectB','Private Endpoint','litellm-generic-guardrail','router-b')");
     await pool.query("INSERT INTO traffic_router_change_request (id,router_id,kind,status,snapshot,endpoint_ids,context,reason,submitted_by) VALUES ('change-b','router-b','publish','pending',$1,$2,$3,'Change','user-b')",
       [JSON.stringify(snapshot), JSON.stringify(["endpoint-private"]), JSON.stringify(context)]);
     await pool.query("INSERT INTO traffic_router_revision (router_id,revision,source_draft_revision,request_draft_revision,snapshot,idempotency_key,created_by,context) VALUES ('router-b',1,1,1,$1,'key','user-b',$2)",
       [JSON.stringify(snapshot), JSON.stringify(context)]);
     await pool.query(`
-      INSERT INTO resource_share (id,owner_tenant_id,recipient_tenant_id,resource_type,resource_id) VALUES
-      ('router-share','tenantB','tenantA','router','router-b'),
-      ('guard-owner-share','tenantA','tenantB','guardrail','guard-own');`);
+      INSERT INTO resource_share (id,owner_project_id,recipient_project_id,resource_type,resource_id) VALUES
+      ('router-share','projectB','projectA','router','router-b'),
+      ('guard-owner-share','projectA','projectB','guardrail','guard-own');`);
   }, 30000);
   afterAll(async () => { await database?.drop(); });
 
@@ -84,9 +82,9 @@ describe.skipIf(!url)("shared Router reference visibility", () => {
   });
 
   it("reveals only explicitly shared references and redacts them again on revocation", async () => {
-    await database.pool.query(`INSERT INTO resource_share (id,owner_tenant_id,recipient_tenant_id,resource_type,resource_id) VALUES
-      ('endpoint-share','tenantB','tenantA','endpoint','endpoint-private'),
-      ('guard-share','tenantB','tenantA','guardrail','guard-private')`);
+    await database.pool.query(`INSERT INTO resource_share (id,owner_project_id,recipient_project_id,resource_type,resource_id) VALUES
+      ('endpoint-share','projectB','projectA','endpoint','endpoint-private'),
+      ('guard-share','projectB','projectA','guardrail','guard-private')`);
     const shared = serialized(await asA(views));
     expect(shared).toContain("endpoint-private");
     expect(shared).toContain("Private Endpoint");

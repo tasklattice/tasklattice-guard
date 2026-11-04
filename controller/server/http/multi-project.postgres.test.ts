@@ -1,0 +1,228 @@
+import { seedTestProjects } from "../db/postgres-test-database.js";
+// @vitest-environment node
+import { randomUUID } from "node:crypto";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
+
+import { eq } from "drizzle-orm";
+import { drizzle } from "drizzle-orm/node-postgres";
+import { Pool } from "pg";
+import { Registry } from "prom-client";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
+
+import { createAuth } from "../auth.js";
+import { loadConfig } from "../config.js";
+import type { RunnerControlServer } from "../control-channel/control-server.js";
+import * as schema from "../db/schema.js";
+import type { ControllerMetrics } from "../metrics.js";
+import { ProjectService } from "../services/projects.js";
+import { AccessTokenService } from "../services/access-tokens.js";
+import { ControlPlaneService } from "../services/control-plane.js";
+import { ProjectShareService } from "../services/project-shares.js";
+import { createHttpApp } from "./app.js";
+
+const url = process.env.GUARD_TEST_POSTGRES_URL;
+
+describe.skipIf(!url)("multi-project password authentication and sharing in PostgreSQL", () => {
+  const namespace = `guard_projects_${randomUUID().replaceAll("-", "")}`;
+  const fixtureEndpoint = (projectId: string) => `fixture-endpoint-${projectId}`;
+  let admin: Pool;
+  let pool: Pool;
+  let app: ReturnType<typeof createHttpApp>;
+  let auth: ReturnType<typeof createAuth>;
+
+  beforeAll(async () => {
+    expect(["localhost", "127.0.0.1", "[::1]"]).toContain(new URL(url!).hostname);
+    admin = new Pool({ connectionString: url, max: 1 });
+    await admin.query(`CREATE SCHEMA "${namespace}"`);
+    pool = new Pool({ connectionString: url, max: 5, options: `-c search_path=${namespace}` });
+    const migration = (name: string) => readFileSync(new URL(`../db/migrations/${name}`, import.meta.url), "utf8");
+    const journal = JSON.parse(migration("meta/_journal.json")) as { entries: Array<{ tag: string }> };
+    for (const { tag } of journal.entries) {
+      await pool.query(migration(`${tag}.sql`).replaceAll('"public".', `"${namespace}".`));
+    }
+    await seedTestProjects(pool);
+    // Match a bootstrapped deployment: Endpoint responses resolve a project's
+    // Runner group against its registered pool before returning distribution.
+    await pool.query("INSERT INTO runner_pool (id, name) VALUES ('default', 'Default')");
+
+    const db = drizzle(pool, { schema });
+    const config = loadConfig({
+      NODE_ENV: "test",
+      CONTROLLER_DATABASE_URL: url!,
+      CONTROLLER_HTTP_HOST: "127.0.0.1",
+      CONTROLLER_PUBLIC_URL: "http://localhost:8080",
+      CONTROLLER_RUNNER_TOKEN: "runner-token-that-is-at-least-32-characters",
+      CONTROLLER_ARTIFACT_SIGNING_KEY_PATH: "/tmp/controller-signing-key.pem",
+      CONTROLLER_POLICY_CATALOG_DIR: resolve("../runner/toolkit/policy_library/assets"),
+      BETTER_AUTH_SECRET: "better-auth-secret-that-is-at-least-32-characters",
+    });
+    auth = createAuth(config, db);
+    for (const projectId of ["projectA", "projectB", "projectC"]) {
+      const username = `fixture-${projectId.toLowerCase()}`;
+      const created = await auth.api.createUser({ body: {
+        email: `${username}@test.example`, password: "test-password-only", name: projectId,
+        role: "user", data: { username },
+      } });
+      await db.delete(schema.projectMembers).where(eq(schema.projectMembers.userId, created.user.id));
+      await db.insert(schema.projectMembers).values({projectId: projectId, userId: created.user.id});
+      await db.insert(schema.endpoints).values({
+        id: fixtureEndpoint(projectId), projectId, name: `${projectId} test endpoint`,
+        adapter: "litellm-generic-guardrail", status: "disabled", verification: {},
+      });
+    }
+    const service = new ControlPlaneService(db, config);
+    app = createHttpApp({
+      config,
+      auth,
+      accessTokens: new AccessTokenService(db),
+      projects: new ProjectService(db, (tx, id) => service.initializeProject(tx, id), config.runtimeServiceUrl),
+      projectShares: new ProjectShareService(db),
+      service,
+      runnerControl: { distributionStatus: async () => ({}) } as RunnerControlServer,
+      metrics: { registry: new Registry() } as ControllerMetrics,
+    });
+  });
+
+  afterAll(async () => {
+    await pool?.end();
+    await admin?.query(`DROP SCHEMA IF EXISTS "${namespace}" CASCADE`);
+    await admin?.end();
+  });
+
+  it("exposes identity sources and multi-project memberships only to platform browser sessions", async () => {
+    const created = await auth.api.createUser({ body: { email: "directory-admin@test.example", password: "test-password-only", name: "Directory admin", role: "admin", data: {username: "directory-admin"} } });
+    const local = (await pool.query("SELECT id FROM auth_user WHERE username='fixture-projecta'")).rows[0].id;
+    const sso = await auth.api.createUser({ body: { email: "directory-sso@test.example", password: "test-password-only", data: {username: "directory-sso"}, name: "Directory SSO", role: "user" } });
+    await pool.query("INSERT INTO auth_account (id,user_id,account_id,provider_id,issuer,created_at,updated_at) VALUES ($1,$2,$2,'corporate-sso','https://identity.test',now(),now())", [randomUUID(),sso.user.id]);
+    await pool.query("INSERT INTO project_member (project_id,user_id,source) VALUES ('projectA',$1,'sso'),('projectB',$1,'sso')", [sso.user.id]);
+    const login = await app.request("/api/auth/sign-in/username", {method:"POST",headers:{"content-type":"application/json",origin:"http://localhost:8080"},body:JSON.stringify({username:"directory-admin",password:"test-password-only"})});
+    expect(login.status).toBe(200);
+    const cookie = login.headers.get("set-cookie")!.match(/tali-guard\.session_token=[^;]+/)![0];
+    const response = await app.request("/api/v1/users", {headers:{cookie}});
+    expect(response.status).toBe(200);
+    const {items} = await response.json();
+    expect(items).toContainEqual(expect.objectContaining({id:created.user.id,source:"local",projectCount:0}));
+    expect(items).toContainEqual(expect.objectContaining({id:local,source:"local",projectCount:1}));
+    expect(items).toContainEqual(expect.objectContaining({id:sso.user.id,source:"sso",projectCount:2}));
+    expect(items.every((item:unknown)=>!Object.hasOwn(item as object,"projects"))).toBe(true);
+    const detail=await app.request(`/api/v1/users/${sso.user.id}`,{headers:{cookie}});
+    expect(detail.status).toBe(200);
+    expect((await detail.json()).projects.items).toEqual([{id:"projectA",name:"test-project-a"},{id:"projectB",name:"test-project-b"}]);
+    const candidates=await app.request('/api/v1/projects/projectC/member-candidates?limit=1',{headers:{cookie}});
+    expect(candidates.status).toBe(200);expect((await candidates.json()).items).toHaveLength(1);
+    for (const method of ["PUT", "DELETE"]) {
+      const denied = await app.request(`/api/v1/projects/projectA/members/${sso.user.id}`, {method,headers:{cookie,origin:"http://localhost:8080"}});
+      expect(denied.status).toBe(403);
+      expect(await denied.json()).toMatchObject({error:{code:"sso_managed_membership"}});
+    }
+    expect((await app.request("/api/v1/users")).status).toBe(401);
+    const memberLogin = await app.request("/api/auth/sign-in/username", {method:"POST",headers:{"content-type":"application/json",origin:"http://localhost:8080"},body:JSON.stringify({username:"fixture-projecta",password:"test-password-only"})});
+    const memberCookie = memberLogin.headers.get("set-cookie")!.match(/tali-guard\.session_token=[^;]+/)![0];
+    expect((await app.request("/api/v1/users", {headers:{cookie:memberCookie}})).status).toBe(403);
+  });
+
+  it("isolates project inventories, shares an endpoint read-only, then revokes access", async () => {
+    async function signIn(identity: "projectA" | "projectB" | "projectC") {
+      const response = await app.request("/api/auth/sign-in/username", {
+        method: "POST",
+        headers: { "content-type": "application/json", origin: "http://localhost:8080" },
+        body: JSON.stringify({ username: `fixture-${identity.toLowerCase()}`, password: "test-password-only" }),
+      });
+      expect(response.status).toBe(200);
+      const cookie = response.headers.get("set-cookie")?.match(/tali-guard\.session_token=[^;]+/)?.[0];
+      expect(cookie).toBeTruthy();
+      return (path: string, init?: RequestInit) => app.request(path, {
+        ...init,
+        headers: { cookie: cookie!, ...init?.headers },
+      });
+    }
+
+    const projectA = await signIn("projectA");
+    const projectB = await signIn("projectB");
+    const projectC = await signIn("projectC");
+    for (const [identity, request] of [["projectA", projectA], ["projectB", projectB], ["projectC", projectC]] as const) {
+      const session = await request("/api/v1/account/identity");
+      expect(session.status).toBe(200);
+      expect(await session.json()).toMatchObject({ projectId: identity, role: "user", authentication: "session" });
+      const stale = await request("/api/v1/endpoints", { headers: { "x-project-id": "projectC" } });
+      expect(stale.status).toBe(identity === "projectC" ? 200 : 409);
+      const endpoints = await request("/api/v1/endpoints?projectId=projectC", { headers: { "x-role": "admin" } });
+      expect(endpoints.status).toBe(200);
+      expect((await endpoints.json()).items.map((item: { id: string }) => item.id)).toEqual([fixtureEndpoint(identity)]);
+      const shareable = await request("/api/v1/account/shareable-resources");
+      expect(shareable.status).toBe(200);
+      expect((await shareable.json()).items.filter((item: { resourceType: string }) => item.resourceType === "endpoint"))
+        .toMatchObject([{ resourceType: "endpoint", resourceId: fixtureEndpoint(identity) }]);
+    }
+
+    const issuedToken = await projectB("/api/v1/account/access-tokens", {
+      method: "POST", headers: { "content-type": "application/json", origin: "http://localhost:8080" },
+      body: JSON.stringify({ name: "Project B inventory", expiresInDays: 7, permissions: { endpoints: "read" } }),
+    });
+    expect(issuedToken.status).toBe(201);
+    const { secret } = await issuedToken.json() as { secret: string };
+    const patHeaders = { authorization: `Bearer ${secret}`, "x-project-id": "projectC", "x-role": "admin" };
+    expect(await (await app.request("/api/v1/account/identity", { headers: patHeaders })).json())
+      .toMatchObject({ projectId: "projectB", role: "user", authentication: "access_token" });
+    expect((await (await app.request("/api/v1/endpoints", { headers: patHeaders })).json()).items.map((item: { id: string }) => item.id))
+      .toEqual([fixtureEndpoint("projectB")]);
+    expect((await app.request("/api/v1/account/shares", { headers: patHeaders })).status).toBe(403);
+
+    const share = await projectA("/api/v1/account/shares", {
+      method: "POST", headers: { "content-type": "application/json", origin: "http://localhost:8080" },
+      body: JSON.stringify({ resourceType: "endpoint", resourceId: fixtureEndpoint("projectA"), recipientProjectId: "projectB" }),
+    });
+    expect(share.status).toBe(201);
+    const shareId = (await share.json()).share.id as string;
+    expect((await (await projectB("/api/v1/endpoints")).json()).items.map((item: { id: string }) => item.id).sort())
+      .toEqual([fixtureEndpoint("projectA"), fixtureEndpoint("projectB")]);
+    expect((await projectB(`/api/v1/endpoints/${fixtureEndpoint("projectA")}`)).status).toBe(200);
+    expect((await projectC(`/api/v1/endpoints/${fixtureEndpoint("projectA")}`)).status).toBe(404);
+
+    const edit = await projectB(`/api/v1/endpoints/${fixtureEndpoint("projectA")}`, {
+      method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ enabled: true }),
+    });
+    expect(edit.status).toBe(404);
+    const reShare = await projectB("/api/v1/account/shares", {
+      method: "POST", headers: { "content-type": "application/json" },
+      body: JSON.stringify({ resourceType: "endpoint", resourceId: fixtureEndpoint("projectA"), recipientProjectId: "projectC" }),
+    });
+    expect(reShare.status).toBe(404);
+
+    expect((await projectA(`/api/v1/account/shares/${shareId}`, { method: "DELETE", headers: { origin: "http://localhost:8080" } })).status).toBe(204);
+    expect((await projectB(`/api/v1/endpoints/${fixtureEndpoint("projectA")}`)).status).toBe(404);
+    expect((await (await projectB("/api/v1/endpoints")).json()).items.map((item: { id: string }) => item.id))
+      .toEqual([fixtureEndpoint("projectB")]);
+    expect((await (await projectA("/api/v1/account/shares")).json()).items).toEqual([]);
+    const audit = await pool.query("SELECT kind, project_id FROM audit_event WHERE resource_id=$1 ORDER BY occurred_at", [fixtureEndpoint("projectA")]);
+    expect(audit.rows).toEqual([
+      { kind: "resource.shared", project_id: "projectA" },
+      { kind: "resource.share_revoked", project_id: "projectA" },
+    ]);
+  });
+
+  it("switches only to member projects and keeps personal credentials bound to their issued project", async () => {
+    const login = await app.request("/api/auth/sign-in/username", { method: "POST", headers: { "content-type": "application/json", origin: "http://localhost:8080" },
+      body: JSON.stringify({ username: "fixture-projecta", password: "test-password-only" }) });
+    const cookie = login.headers.get("set-cookie")!.match(/tali-guard\.session_token=[^;]+/)![0];
+    const request = (path: string, method = "GET", body?: unknown, headers: Record<string,string> = {}) => app.request(path, {
+      method, headers: { cookie, origin: "http://localhost:8080", "content-type": "application/json", ...headers }, ...(body ? {body:JSON.stringify(body)} : {}),
+    });
+    const identity = await (await request("/api/v1/account/identity")).json();
+    expect((await request("/api/v1/account/project", "PUT", {projectId:"projectB"})).status).toBe(403);
+    expect((await request("/api/v1/projects", "POST", {name:"forbidden"})).status).toBe(403);
+    const issued = await (await request("/api/v1/account/access-tokens", "POST", {name:"Project A",expiresInDays:7,permissions:{endpoints:"read"}})).json();
+    await pool.query("INSERT INTO project_member(project_id,user_id) VALUES ('projectB',$1)", [identity.userId]);
+    expect((await request("/api/v1/account/project", "PUT", {projectId:"projectB"})).status).toBe(200);
+    expect(await (await request("/api/v1/account/identity")).json()).toMatchObject({projectId:"projectB"});
+    expect((await request("/api/v1/endpoints", "GET", undefined, {"x-project-id":"projectA"})).status).toBe(409);
+    const tokenIdentity = await app.request("/api/v1/account/identity", {headers:{authorization:`Bearer ${issued.secret}`}});
+    expect(await tokenIdentity.json()).toMatchObject({projectId:"projectA"});
+    await pool.query("UPDATE project_member SET access='read' WHERE project_id='projectB' AND user_id=$1", [identity.userId]);
+    expect((await request("/api/v1/endpoints", "POST", {name:"forbidden"})).status).toBe(403);
+    expect((await request("/api/v1/endpoints")).status).toBe(200);
+    await pool.query("DELETE FROM project_member WHERE project_id='projectA' AND user_id=$1", [identity.userId]);
+    expect((await app.request("/api/v1/account/identity", {headers:{authorization:`Bearer ${issued.secret}`}})).status).toBe(401);
+  });
+});

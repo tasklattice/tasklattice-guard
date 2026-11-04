@@ -8,7 +8,7 @@ as the console. They do not edit the database or Runner state.
 ```text
 platform register-model → Provider + Model
 platform bind           → validate candidate → apply one capability/direction
-tenant provision        → duplicate Default → patch copy → validate → publish
+project provision        → duplicate Default → patch copy → validate → publish
                         → Endpoint + Router → Emergency apply → wait for rollout
 Veritas Target          → Endpoint runtime URL → published Guardrail
 ```
@@ -17,9 +17,9 @@ Veritas Target          → Endpoint runtime URL → published Guardrail
 
 Use a private environment file (mode `0600`, outside version control) with
 `GUARD_PLATFORM_USERNAME` and `GUARD_PLATFORM_PASSWORD` for the platform account,
-and `GUARD_TENANT_USERNAME` and `GUARD_TENANT_PASSWORD` for the tenant account.
-Alternatively supply `GUARD_PLATFORM_TOKEN` and `GUARD_TENANT_TOKEN` with the
-appropriate API permissions. Tenant operations never fall back to platform
+and `GUARD_PROJECT_USERNAME` and `GUARD_PROJECT_PASSWORD` for the project account.
+Alternatively supply `GUARD_PLATFORM_TOKEN` and `GUARD_PROJECT_TOKEN` with the
+appropriate API permissions. Project operations never fall back to platform
 credentials. Provider secrets are read by environment-variable name and never
 printed. Environment variables override values in `--env-file`.
 
@@ -27,7 +27,7 @@ Examples below use `.local-secrets/guardctl.env`. Add the provider keys there as
 `MODEL_GUARDRAILS_JEV_API_KEY_ENV_VAR` and
 `MODEL_GUARDRAILS_NVIDIA_API_KEY_ENV_VAR`, or export them into the process.
 Use `--url` for the Controller origin; separate `GUARD_PLATFORM_URL` and
-`GUARD_TENANT_URL` are also supported.
+`GUARD_PROJECT_URL` are also supported.
 
 ## Platform: register the models
 
@@ -85,10 +85,10 @@ for Laya content-safety output. Its model profile is `generic-chat` or
 `review_unknown` in a supporting Policy version. See
 [JEV 灰区复核](classifier-gray-review.md) for versions, evidence and failure behavior.
 
-## Tenant: create from a Profile and publish a test Endpoint
+## Project: create from a Profile and publish a test Endpoint
 
 ```sh
-bin/guardctl tenant provision \
+bin/guardctl project provision \
   --url http://localhost:38081 --env-file .local-secrets/guardctl.env \
   --name 'HarmBench Content Safety' --profile local-baseline \
   --patch docs/examples/content-safety-input.json \
@@ -153,4 +153,4 @@ thresholds and response-level acceptance evidence, see
 
 ## Laya Decision Model
 
-Use `--provider-kind laya --model laya --profile tali.laya.v1` to register the independent Laya adapter. Its initial protocol matches JEV System One/Noul, with separate prompts and `runner.laya` thresholds. See [Laya Decision Model](laya-decision-model.md) for registration, per-detector validation, response evidence and future protocol changes.
+Use `--provider-kind laya --model laya --profile tali.laya.v1` to register the independent Laya adapter. Its initial protocol matches JEV System One/Noul, with separate prompts and per-Model thresholds configured in **Models → Configure Model**. See [Laya Decision Model](laya-decision-model.md) for registration, per-detector validation, response evidence and future protocol changes.

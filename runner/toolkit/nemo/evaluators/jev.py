@@ -52,12 +52,13 @@ class JevNoulEvaluator:
     contracts: frozenset[str]
     rails = frozenset({"input"})
 
-    def __init__(self, *, base_url: str, model: str, api_key: str,
+    def __init__(self, *, rate_limit_attempts: int = 3, base_url: str, model: str, api_key: str,
                  provider_id: str = "typesafe", timeout_seconds: float = 20,
                  lower_threshold: float = DEFAULT_LOWER_THRESHOLD,
                  upper_threshold: float = DEFAULT_UPPER_THRESHOLD,
                  transport: httpx.AsyncBaseTransport | None = None,
                  skip_tls_verify: bool = False, profile_ref: str, reviewer=None) -> None:
+        self._rate_limit_attempts = rate_limit_attempts
         if not 0 <= lower_threshold < upper_threshold <= 1:
             raise ValueError("Expected 0 <= lower_threshold < upper_threshold <= 1.")
         self._url = base_url.rstrip("/") + "/systemone"
@@ -147,7 +148,7 @@ class JevNoulEvaluator:
                             attempt.raise_for_status()
                             return attempt
 
-                        response = await with_connection_retry(guarded, deadline=deadline, call=call)
+                        response = await with_connection_retry(guarded, deadline=deadline, call=call, rate_limit_attempts=self._rate_limit_attempts)
                         with model_response():
                             payload = response.json()
                             actual_model, probabilities = parse_answers(payload, set(questions))

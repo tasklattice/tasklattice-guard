@@ -25,7 +25,6 @@ def busy(delay="0.001"):
 
 
 async def test_admission_rejection_recovers_without_inventing_a_classification(monkeypatch):
-    monkeypatch.setattr(model_retry, "_rate_limit_attempts", 3)
     bodies = []
 
     def respond(wire):
@@ -62,7 +61,6 @@ async def test_other_failures_are_not_retried_or_changed_into_success(response):
 
 
 async def test_busy_recovery_has_an_attempt_bound_and_keeps_real_failure(monkeypatch):
-    monkeypatch.setattr(model_retry, "_rate_limit_attempts", 3)
     calls = 0
 
     def respond(wire):

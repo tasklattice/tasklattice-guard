@@ -21,22 +21,6 @@ from .model_call import ModelCallTracker, model_error_chain, model_error_diagnos
 
 _T = TypeVar("_T")
 _LOGGER = logging.getLogger("uvicorn.error.tasklattice.model")
-# Attempts for an explicit provider rate limit, configured once at startup.
-_rate_limit_attempts = 3
-
-
-def configure_provider_retry(attempts: int) -> None:
-    """Set how many total attempts a rate-limited model request may use."""
-    global _rate_limit_attempts
-    if attempts < 1:
-        raise ValueError("Provider retry attempts must be positive.")
-    _rate_limit_attempts = attempts
-
-
-def rate_limit_retry_attempts() -> int:
-    return _rate_limit_attempts
-
-
 def _retry_after_seconds(response: httpx.Response | None) -> float | None:
     if response is None:
         return None
@@ -57,7 +41,7 @@ def _transient_connection(error: BaseException) -> bool:
 
 
 async def with_connection_retry(operation: Callable[[], Awaitable[_T]], *,
-                                deadline: float, call: ModelCallTracker,
+                                deadline: float, call: ModelCallTracker, rate_limit_attempts: int = 3,
                                 retryable_rejection: Callable[[httpx.Response], bool] | None = None) -> _T:
     """Bounded recovery within one shared monotonic deadline.
 
@@ -68,11 +52,13 @@ async def with_connection_retry(operation: Callable[[], Awaitable[_T]], *,
     identify an explicit pre-inference admission rejection. Other server
     failures, malformed responses and uncertain classifications never retry.
     """
+    if type(rate_limit_attempts) is not int or not 1 <= rate_limit_attempts <= 10:
+        raise ValueError("Model rate-limit attempts must be from 1 to 10.")
     remaining = deadline - time.monotonic()
     if remaining <= 0:
         raise TimeoutError("Model call deadline exceeded")
     async with asyncio.timeout(remaining):
-        for attempt in range(max(2, _rate_limit_attempts)):
+        for attempt in range(max(2, rate_limit_attempts)):
             try:
                 return await operation()
             except httpx.HTTPStatusError as error:
@@ -82,7 +68,7 @@ async def with_connection_retry(operation: Callable[[], Awaitable[_T]], *,
                     raise
                 hinted = _retry_after_seconds(error.response)
                 delay = hinted if hinted is not None else min(8.0, 0.5 * 2 ** attempt) * random.uniform(0.8, 1.2)
-                retry = attempt < _rate_limit_attempts - 1 and deadline - time.monotonic() > delay + 0.05
+                retry = attempt < rate_limit_attempts - 1 and deadline - time.monotonic() > delay + 0.05
                 _LOGGER.warning("%s", json.dumps({"event": "model_rate_limited",
                     "http_status": status,
                     "call_id": call.call_id, "attempt": attempt + 1, "will_retry": retry,

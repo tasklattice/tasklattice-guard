@@ -1,6 +1,5 @@
 // @vitest-environment node
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
-import { readFileSync } from "node:fs";
 import { createTestDatabase } from "../db/postgres-test-database.js";
 import { loadConfig } from "../config.js";
 import { ControlPlaneService } from "./control-plane.js";
@@ -12,13 +11,13 @@ describe.skipIf(!url)("durable Runner control stream identity", () => {
   let first: ControlPlaneService;
   let second: ControlPlaneService;
   let ledger: RunnerLeaseLedger;
-  const registration = { runnerId: "runner-a", bootId: "same-boot", poolId: "pool-a", runnerVersion: "test", nemoVersion: "test",
+  const registration = { runnerId: "runner-test-project-a-0", bootId: "same-boot", poolId: "pool-a", runnerVersion: "test", nemoVersion: "test",
     compilerCapable: false, maxConcurrency: 1, labels: {}, appliedGeneration: 7 };
   const identity = (sessionId = "session-a") => ({ sessionId, runnerId: registration.runnerId, bootId: registration.bootId, poolId: registration.poolId });
   const snapshot = (sessionId = "session-a", nonce = "snapshot-a") => ({ ...identity(sessionId), nonce, generation: 7, modelRevisionId: "model-a" });
-  const grant = (sessionId = "session-a", nonce = "grant-a", snapshotNonce = "snapshot-a") => ({ poolId: "pool-a", runnerId: "runner-a", bootId: "same-boot",
+  const grant = (sessionId = "session-a", nonce = "grant-a", snapshotNonce = "snapshot-a") => ({ poolId: "pool-a", runnerId: "runner-test-project-a-0", bootId: "same-boot",
     controlSessionId: sessionId, nonce, epoch: 0, generation: 7, snapshotNonce, modelRevisionId: "model-a", durationMs: 5000, uncertaintyMs: 1000 });
-  const heartbeat = (controlSessionId?: string) => ({ runnerId: "runner-a", bootId: "same-boot", controlSessionId, sequence: 99,
+  const heartbeat = (controlSessionId?: string) => ({ runnerId: "runner-test-project-a-0", bootId: "same-boot", controlSessionId, sequence: 99,
     appliedGeneration: 7, load: { inflight: 0, maxConcurrency: 1, queueDepth: 0, cpuUtilization: 0, memoryUtilization: 0, latencyP95Ms: 0 } });
 
   beforeAll(async () => {
@@ -33,7 +32,7 @@ describe.skipIf(!url)("durable Runner control stream identity", () => {
   beforeEach(async () => {
     await database.pool.query(`DELETE FROM runner_serving_grant; DELETE FROM runner_instance; DELETE FROM runner_control_session;
       DELETE FROM runner_pool_lease_epoch; DELETE FROM runner_pool;
-      INSERT INTO runner_pool (id,name) VALUES ('pool-a','Pool A');
+      INSERT INTO runner_pool (id,name,project_id) VALUES ('pool-a','runner-test-project-a','projectA');
       INSERT INTO controller_state (id,desired_generation) VALUES ('singleton',7) ON CONFLICT (id) DO UPDATE SET desired_generation=7;`);
   });
   afterAll(async () => { await database?.drop(); });
@@ -61,7 +60,7 @@ describe.skipIf(!url)("durable Runner control stream identity", () => {
     expect(await first.runnerControlSessions.isCurrent(identity())).toBe(false);
     expect(await first.recordHeartbeat(heartbeat("session-a"))).toBe(false);
     expect(await first.recordHeartbeat(heartbeat())).toBe(false);
-    await first.disconnectRunner("runner-a", "same-boot", "session-a");
+    await first.disconnectRunner("runner-test-project-a-0", "same-boot", "session-a");
     expect(await first.runnerControlSessions.acknowledged({ ...snapshot(), accepted: true })).toBe(false);
     await expect(ledger.issueSnapshotBound(grant("session-a", "stale-grant"))).rejects.toMatchObject({ code: "runner_lease_snapshot_unavailable" });
     expect(await second.runnerControlSessions.isCurrent(identity("session-b"))).toBe(true);
@@ -100,7 +99,7 @@ describe.skipIf(!url)("durable Runner control stream identity", () => {
     await acknowledge(first);
     await database.pool.query("UPDATE runner_pool_lease_epoch SET epoch=1 WHERE pool_id='pool-a'");
     await expect(ledger.issueSnapshotBound({ ...grant(), epoch: 1 })).rejects.toMatchObject({ code: "runner_lease_snapshot_unavailable" });
-    await database.pool.query("UPDATE runner_pool_lease_epoch SET epoch=0 WHERE pool_id='pool-a'; INSERT INTO tenant_group (id,name) VALUES ('new-group','New') ON CONFLICT DO NOTHING; UPDATE runner_pool SET group_id='new-group' WHERE id='pool-a'");
+    await database.pool.query("UPDATE runner_pool_lease_epoch SET epoch=0 WHERE pool_id='pool-a'; INSERT INTO project_group (id,name) VALUES ('new-group','New') ON CONFLICT DO NOTHING; UPDATE runner_pool SET group_id='new-group' WHERE id='pool-a'");
     await expect(ledger.issueSnapshotBound(grant())).rejects.toMatchObject({ code: "runner_lease_snapshot_unavailable" });
     await database.pool.query("UPDATE runner_pool SET group_id='default' WHERE id='pool-a'; UPDATE controller_state SET desired_generation=8 WHERE id='singleton'");
     await expect(ledger.issueSnapshotBound(grant())).rejects.toMatchObject({ code: "runner_lease_snapshot_unavailable" });
@@ -111,19 +110,11 @@ describe.skipIf(!url)("durable Runner control stream identity", () => {
     await first.registerRunner(registration, "session-a");
     await acknowledge(first);
     const [issued] = await Promise.allSettled([ledger.issueSnapshotBound(grant()), second.registerRunner(registration, "session-b"),
-      first.disconnectRunner("runner-a", "same-boot", "session-a")]);
+      first.disconnectRunner("runner-test-project-a-0", "same-boot", "session-a")]);
     expect(await second.runnerControlSessions.isCurrent(identity("session-b"))).toBe(true);
     const rows = (await database.pool.query("SELECT control_session_id FROM runner_serving_grant")).rows;
     expect(rows).toEqual(issued.status === "fulfilled" ? [{ control_session_id: "session-a" }] : []);
   });
 
-  it("retains current sessions, snapshot evidence and grant history when migration is replayed", async () => {
-    await first.registerRunner(registration, "session-a");
-    await acknowledge(first);
-    await ledger.issueSnapshotBound(grant());
-    await database.pool.query(readFileSync(new URL("../db/migrations/0011_runner_control_sessions.sql", import.meta.url), "utf8"));
-    expect(await first.runnerControlSessions.isCurrent(identity())).toBe(true);
-    expect((await database.pool.query("SELECT snapshot_accepted FROM runner_control_session")).rows).toEqual([{ snapshot_accepted: true }]);
-    expect((await database.pool.query("SELECT control_session_id FROM runner_serving_grant")).rows).toEqual([{ control_session_id: "session-a" }]);
-  });
+
 });

@@ -19,6 +19,7 @@ export const createAccessTokenSchema = z.strictObject({
 export type CreateAccessToken = z.infer<typeof createAccessTokenSchema>;
 export type AccessTokenView = {
   id: string; name: string; prefix: string; permissions: TokenPermissions;
+  projectId?: string | null;
   createdAt: string; expiresAt: string; lastUsedAt: string | null; revokedAt: string | null;
 };
 export function accountModuleAccess(role: string | null | undefined, module: TokenModule): "read" | "write" | null {

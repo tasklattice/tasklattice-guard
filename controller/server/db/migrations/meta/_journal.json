@@ -5,141 +5,15 @@
     {
       "idx": 0,
       "version": "7",
-      "when": 1793373600000,
+      "when": 1793700000000,
       "tag": "0000_current_schema",
-      "breakpoints": true
+      "breakpoints": false
     },
     {
       "idx": 1,
       "version": "7",
-      "when": 1793586360199,
-      "tag": "0001_endpoint_credential_required",
-      "breakpoints": true
-    },
-    {
-      "idx": 2,
-      "version": "7",
-      "when": 1793609440105,
-      "tag": "0002_model_concurrency",
-      "breakpoints": true
-    },
-    {
-      "idx": 3,
-      "version": "7",
-      "when": 1793609440106,
-      "tag": "0003_multi_tenant_resources",
-      "breakpoints": true
-    },
-    {
-      "idx": 4,
-      "version": "7",
-      "when": 1793609440107,
-      "tag": "0004_tenant_groups",
-      "breakpoints": true
-    },
-    {
-      "idx": 5,
-      "version": "7",
-      "when": 1793609440108,
-      "tag": "0005_playground_invocation_attribution",
-      "breakpoints": true
-    },
-    {
-      "idx": 6,
-      "version": "7",
-      "when": 1793609440109,
-      "tag": "0006_quarantine_historical_telemetry",
-      "breakpoints": true
-    },
-    {
-      "idx": 7,
-      "version": "7",
-      "when": 1793609440110,
-      "tag": "0007_playground_invocation_pool",
-      "breakpoints": true
-    },
-    {
-      "idx": 8,
-      "version": "7",
-      "when": 1793609440111,
-      "tag": "0008_audit_attribution_quarantine",
-      "breakpoints": true
-    },
-    {
-      "idx": 9,
-      "version": "7",
-      "when": 1793609440112,
-      "tag": "0009_runner_lease_ledger",
-      "breakpoints": true
-    },
-    {
-      "idx": 10,
-      "version": "7",
-      "when": 1793609440113,
-      "tag": "0010_lease_snapshot_binding",
-      "breakpoints": true
-    },
-    {
-      "idx": 11,
-      "version": "7",
-      "when": 1793609440114,
-      "tag": "0011_runner_control_sessions",
-      "breakpoints": true
-    },
-    {
-      "idx": 12,
-      "version": "7",
-      "when": 1793609440115,
-      "tag": "0012_prepared_allocation_transitions",
-      "breakpoints": true
-    },
-    {
-      "idx": 13,
-      "version": "7",
-      "when": 1793609440116,
-      "tag": "0013_validation_credential_leases",
-      "breakpoints": true
-    },
-    {
-      "idx": 14,
-      "version": "7",
-      "when": 1793609440117,
-      "tag": "0014_fenced_allocation_completion",
-      "breakpoints": true
-    },
-    {
-      "idx": 15,
-      "version": "7",
-      "when": 1793609440118,
-      "tag": "0015_endpoint_telemetry_contexts",
-      "breakpoints": true
-    },
-    {
-      "idx": 16,
-      "version": "7",
-      "when": 1793609440119,
-      "tag": "0016_bounded_endpoint_context_storage",
-      "breakpoints": true
-    },
-    {
-      "idx": 17,
-      "version": "7",
-      "when": 1793609440120,
-      "tag": "0017_routing_telemetry_contexts",
-      "breakpoints": true
-    },
-    {
-      "idx": 18,
-      "version": "7",
-      "when": 1793609440121,
-      "tag": "0018_runner_telemetry_progress",
-      "breakpoints": true
-    },
-    {
-      "idx": 19,
-      "version": "7",
-      "when": 1793609440122,
-      "tag": "0019_group_model_configurations",
+      "when": 1793717727432,
+      "tag": "0001_model_runtime_settings",
       "breakpoints": true
     }
   ]

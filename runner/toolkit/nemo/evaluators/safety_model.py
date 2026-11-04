@@ -254,7 +254,7 @@ class SafetyModelEvaluator:
                 result = await with_connection_retry(
                     lambda: provider.assess(messages, scope=request.rail_type,
                                             candidate_taxonomy_ids=candidates),
-                    deadline=deadline, call=tracker,
+                    deadline=deadline, call=tracker, rate_limit_attempts=provider.config.rate_limit_attempts,
                 )
                 if result.verdict not in {"safe", "unsafe", "uncertain", "controversial"}:
                     raise ModelResponseError("response_schema", "InvalidClassification")

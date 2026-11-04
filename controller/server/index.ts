@@ -1,7 +1,8 @@
 import { AccessTokenService } from "./services/access-tokens.js";
+import { ProjectService } from "./services/projects.js";
 import { serve, type ServerType } from "@hono/node-server";
 
-import { createAuth } from "./auth.js";
+import { createAuth, createSsoHandler } from "./auth.js";
 import { loadConfig } from "./config.js";
 import { createDatabase } from "./db/client.js";
 import { databasePoolState, logDatabaseFailure } from "./db/diagnostics.js";
@@ -13,9 +14,8 @@ import { ControlPlaneService } from "./services/control-plane.js";
 import { ControllerMetrics } from "./metrics.js";
 import { BootstrapAccountSynchronizer } from "./bootstrap.js";
 import { RunnerPlaygroundClient } from "./playground/service.js";
-import { ensureMockSsoUsers } from "./mock-sso.js";
 import { ModelConfigurationService } from "./model-config/service.js";
-import { TenantShareService } from "./services/tenant-shares.js";
+import { ProjectShareService } from "./services/project-shares.js";
 import { RunnerLeaseLedger } from "./services/runner-lease-ledger.js";
 
 const config = loadConfig();
@@ -23,6 +23,7 @@ const { db, pool } = createDatabase(config);
 await runMigrations(config, db);
 const service = new ControlPlaneService(db, config);
 await service.initialize();
+await service.initializeProjects();
 await service.pricing.start();
 const models = new ModelConfigurationService(db, config.betterAuthSecret, config.policyCatalogDir);
 await models.groupRuntime.assertAuthenticationCompatibility(config.runnerPoolTokens !== null);
@@ -44,10 +45,6 @@ const accountSyncTimer = setInterval(() => {
   }).finally(() => { pendingAccountSync = null; });
 }, 2_000);
 accountSyncTimer.unref();
-if (config.mockSsoEnabled) {
-  const identities = await ensureMockSsoUsers({ auth, db, config });
-  process.stdout.write(`Mock SSO ready for ${identities.map((identity) => identity.tenantId).join(", ")}.\n`);
-}
 const metrics = new ControllerMetrics();
 const runnerControl = new RunnerControlServer(config, service, metrics, models, new RunnerLeaseLedger(db));
 await runnerControl.start();
@@ -63,8 +60,10 @@ const app = createHttpApp({
   isStopping: () => shuttingDown,
   config,
   auth,
+  ssoHandler: createSsoHandler(config, db),
   accessTokens: new AccessTokenService(db),
-  tenantShares: new TenantShareService(db),
+  projects: new ProjectService(db, (tx, id) => service.initializeProject(tx, id), config.runtimeServiceUrl),
+  projectShares: new ProjectShareService(db),
   service,
   runnerControl,
   metrics,

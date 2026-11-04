@@ -107,8 +107,21 @@ Helm, `kubectl`, and `make` available. From the repository root, run:
 npm run helm:deploy:dev
 ```
 
-This builds the local images, installs or upgrades the development deployment,
-and waits for workload readiness. Open [the console](http://localhost:38081)
+To include the real Keycloak development identities and Project setup, run:
+
+```bash
+npm run helm:deploy:dev:keycloak
+```
+
+This adds `sso-user1` / `password` → `test1` and `sso-user2` / `password` →
+`test2`. Both profiles deploy only the Default Runner; `test1` uses
+`runner-default-0`, while `test2` requires manual Runner setup in the administrator
+UI. Sign in with the **Keycloak** button; local `admin` and `user` sign-in remain
+available. `Test2` is normalized to the immutable Project name `test2`.
+See [Keycloak development bootstrap](charts/tali-guard/README.md#keycloak-development-bootstrap).
+
+Both commands build the local images, install or upgrade the development deployment,
+and wait for workload readiness. Open [the console](http://localhost:38081)
 and sign in with `admin` / `password` or `user` / `password`.
 All environments use username/password authentication through Better Auth.
 Initialization overwrites configured bootstrap accounts and revokes old sessions;

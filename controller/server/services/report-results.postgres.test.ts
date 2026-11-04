@@ -23,7 +23,7 @@ describe.skipIf(!url)("Bounded report storage and replay", () => {
   beforeAll(async () => {
     database = await createTestDatabase(url!, "bounded_reports");
     reports = new ReportResults(database.db);
-    await database.pool.query("INSERT INTO guardrail(id,name,draft_config) VALUES('guard','Fixture','{}')");
+    await database.pool.query("INSERT INTO guardrail (project_id,id,name,draft_config) VALUES ('projectA','guard','Fixture','{}')");
   });
   beforeEach(async () => {
     await database.pool.query("DELETE FROM guardrail_validation_run");
@@ -155,7 +155,7 @@ describe.skipIf(!url)("Bounded report storage and replay", () => {
   it("keeps raw Policy evidence immutable across assertion retries and shares the parent detail",async()=>{
     const {assertPolicyTest}=await import("./policy-resources.js");
     const test={id:"case-0",name:"Policy case",phase:"input",kind:"scenario",required:true,expected_decision:"block",covered_rule_ids:[]} as never;
-    await database.pool.query("INSERT INTO policy_resource(id,definition,maintainer) VALUES('policy','{}','fixture')");
+    await database.pool.query("INSERT INTO policy_resource (project_id,id,definition,maintainer) VALUES ('projectA','policy','{}','fixture')");
     await database.pool.query("INSERT INTO policy_resource_validation(id,policy_id,revision,status,tests) VALUES('parent','policy',1,'running',$1)",[JSON.stringify([test])]);
     await database.pool.query("INSERT INTO policy_resource_validation(id,parent_id,policy_id,revision,status,tests) VALUES('child','parent','policy',1,'running',$1)",[JSON.stringify([test])]);
     const raw={...result(0),passed:true};

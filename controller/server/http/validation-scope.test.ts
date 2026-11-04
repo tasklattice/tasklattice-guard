@@ -15,7 +15,7 @@ const config = loadConfig({ NODE_ENV: "test", CONTROLLER_DATABASE_URL: "postgres
 function setup(role: string | null) {
   const requestValidation = vi.fn().mockResolvedValue({ id: "run" });
   const requestVersionTestRun = vi.fn().mockResolvedValue({ id: "version-run" });
-  const auth = { api: { getSession: vi.fn().mockResolvedValue(role ? { user: { id: "actor", role, tenantId: "tenantA" } } : null) } };
+  const auth = { api: { getSession: vi.fn().mockResolvedValue(role ? { session: { id: "fixture-session", activeProjectId: "projectA" }, user: { id: "actor", role, projectId: "projectA" } } : null) } };
   const app = createHttpApp({ config, auth: auth as unknown as ControllerAuth,
     service: { requestValidation, requestVersionTestRun } as unknown as ControlPlaneService,
     runnerControl: { hasDefaultCompiler: () => true } as unknown as RunnerControlServer, metrics: {} as ControllerMetrics });
@@ -41,14 +41,14 @@ describe("Unified Default tests", () => {
     expect((await post(app, draft, { testModelRules: "false" })).status).toBe(400);
     expect((await post(app, draft, { testModelRules: false, actorId: "other" })).status).toBe(400);
   });
-  it("removes both waiver entry points and retains ordinary tenant testing", async () => {
+  it("removes both waiver entry points and retains ordinary project testing", async () => {
     const { app } = setup("user");
     for (const path of ["/api/v1/system/default-guardrail/candidates", "/api/v1/system/default-guardrail/versions/20261020-090915.265Z/test-waivers"]) {
       expect(requiredTokenPermission("POST", path)).toBeUndefined();
       expect((await post(app, path, {})).status).toBe(404);
     }
-    const tenant = setup("user");
-    expect((await post(tenant.app, "/api/v1/guardrails/tenant/test-runs", { testModelRules: false })).status).toBe(202);
+    const project = setup("user");
+    expect((await post(project.app, "/api/v1/guardrails/project/test-runs", { testModelRules: false })).status).toBe(202);
     expect(requiredTokenPermission("POST", draft)?.slice(2)).toEqual(["guardrails", "write"]);
   });
 });

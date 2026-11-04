@@ -39,7 +39,7 @@ describe('Router Monitoring', () => {
     fireEvent.click(within(drawer).getAllByRole('button', { name: 'Close', exact: true })[0]);
     expect(screen.queryByRole('dialog')).toBeNull();
   });
-  it('hides tenant log links from platform administrators', async () => {
+  it('hides project log links from platform administrators', async () => {
     identity.role = 'admin'; mount();
     expect(await screen.findByText('5.00%')).toBeTruthy();
     expect(screen.queryByRole('link', { name: 'View errors' })).toBeNull();

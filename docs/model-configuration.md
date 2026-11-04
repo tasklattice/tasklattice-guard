@@ -54,6 +54,25 @@ Execution are reserved manifest values for later expansion; adding them extends
 the shared binding manifest without changing Provider, Model, Policy, or
 Guardrail ownership.
 
+## Model runtime settings
+
+**Models → Configure Model** owns concurrency, rate-limit attempts, and JEV/Laya
+lower/upper thresholds. These settings are saved in the database and distributed
+with model configuration; Helm values and Runner environment variables do not
+override them. Defaults are concurrency `2`, rate-limit attempts `3` (total calls,
+including the first; `1` disables rate-limit retries), and thresholds `0.1` / `0.9`.
+Attempts must be 1–10 and thresholds must satisfy `0 ≤ lower < upper ≤ 1`.
+Explicit rate-limit retries apply to Safety Model, Classifier Review and JEV/Laya
+adapters, including Laya's recognized pre-inference admission rejection. Connection
+recovery retains its separate one-retry budget. All retries share the deadline.
+
+Referenced models can change these runtime settings while their protocol stays
+locked. Threshold changes invalidate capability-validation fingerprints; rerun
+validation before relying on old results. Scoped project-group grants retain their
+frozen settings until explicitly refreshed. Redis call-context TTL, compression
+and capacity fallback remain deployment settings because they govern shared
+context storage, not an individual model.
+
 ## Data-plane scheduling and model concurrency
 
 Newly compiled Guardrails run independent local checks before model-dependent
@@ -338,12 +357,11 @@ Lightning, as does the Grounding adapter. Other judges retain their validated
 reasoning behavior; other model/provider combinations do not receive this option.
 Provider rate limits and Guardrail deadlines still apply.
 
-For providers with a small concurrency quota, set the Runner environment variable
-`GUARD_VALIDATION_MAX_CONCURRENCY=1` to run test cases sequentially (default: 8).
-This changes validation scheduling only, not live traffic admission or detector
-timeouts. Report sequential classification results separately from concurrent
-availability failures. A blocked request alone is not detection evidence: inspect
-the successful model call, detector verdict, and matched Policy/Rule together.
+For providers with a small concurrency quota, set **Models → Configure Model →
+Maximum concurrency** to `1`. This limits that model's calls from both validation
+and live traffic on each Runner. Validation has an internal worker limit of 8;
+model admission is shared across those workers and live requests. Separate
+classification quality from availability failures when interpreting results.
 
 ## Model connection recovery and failure evidence
 

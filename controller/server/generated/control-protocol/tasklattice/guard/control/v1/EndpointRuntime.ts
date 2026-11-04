@@ -28,14 +28,14 @@ export interface EndpointRuntime {
    * Controller-assigned owner; absent on legacy Controllers. Callers must
    * authenticate the Endpoint against the same snapshot before using it.
    */
-  'tenantId'?: (string);
+  'projectId'?: (string);
   /**
    * Opaque Controller-persisted allocation/snapshot provenance. Internal only;
    * public request headers and response assignments must never carry it.
    */
   'telemetryContextId'?: (string);
   '_scanFlagOnlyDefault'?: "scanFlagOnlyDefault";
-  '_tenantId'?: "tenantId";
+  '_projectId'?: "projectId";
   '_telemetryContextId'?: "telemetryContextId";
 }
 
@@ -65,13 +65,13 @@ export interface EndpointRuntime__Output {
    * Controller-assigned owner; absent on legacy Controllers. Callers must
    * authenticate the Endpoint against the same snapshot before using it.
    */
-  'tenantId'?: (string);
+  'projectId'?: (string);
   /**
    * Opaque Controller-persisted allocation/snapshot provenance. Internal only;
    * public request headers and response assignments must never carry it.
    */
   'telemetryContextId'?: (string);
   '_scanFlagOnlyDefault'?: "scanFlagOnlyDefault";
-  '_tenantId'?: "tenantId";
+  '_projectId'?: "projectId";
   '_telemetryContextId'?: "telemetryContextId";
 }

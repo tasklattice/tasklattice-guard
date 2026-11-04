@@ -69,7 +69,7 @@ const platformRoutes = [
 ] as const;
 
 function setup(role: string | null) {
-  const getSession = vi.fn().mockResolvedValue(role === null ? null : { user: { id: "actor", role, tenantId: "tenantA" } });
+  const getSession = vi.fn().mockResolvedValue(role === null ? null : { session: { id: "fixture-session", activeProjectId: "projectA" }, user: { id: "actor", role, projectId: "projectA" } });
   const unexpected = vi.fn(() => { throw new Error("Protected service was reached"); });
   const service = new Proxy({}, { get: (_, key) => key === "listGuardrailProfiles" ? async () => defaultGuardrailProfiles : unexpected });
   const app = createHttpApp({ config,
@@ -94,9 +94,9 @@ describe.each([null, "unknown-role"])("Product API authorization for role %s", (
 });
 
 describe("User platform boundary", () => {
-  it.each(["/system/health", "/system/version", "/runner-pools"])("allows tenant operational reads at %s", async path => {
+  it.each(["/system/health", "/system/version", "/runner-pools"])("allows project operational reads at %s", async path => {
     const app = createHttpApp({ config,
-      auth: { api: { getSession: vi.fn().mockResolvedValue({ user: { id: "actor", role: "user", tenantId: "tenantA" } }) } } as unknown as ControllerAuth,
+      auth: { api: { getSession: vi.fn().mockResolvedValue({ session: { id: "fixture-session", activeProjectId: "projectA" }, user: { id: "actor", role: "user", projectId: "projectA" } }) } } as unknown as ControllerAuth,
       service: { listRunnerHeartbeats: vi.fn().mockResolvedValue([]), listRunnerPoolsWithCapacity: vi.fn().mockResolvedValue([]) } as unknown as ControlPlaneService,
       runnerControl: {} as RunnerControlServer, metrics: {} as ControllerMetrics });
     expect((await app.request(`/api/v1${path}`)).status).toBe(200);
@@ -111,7 +111,7 @@ describe("User platform boundary", () => {
   it.each(["user"])("lets %s create Guardrail drafts with its own actor identity", async role => {
     const createGuardrail = vi.fn().mockResolvedValue({ id: "new-guard" });
     const app = createHttpApp({ config,
-      auth: { api: { getSession: vi.fn().mockResolvedValue({ user: { id: "actor", role, tenantId: "tenantA" } }) } } as unknown as ControllerAuth,
+      auth: { api: { getSession: vi.fn().mockResolvedValue({ session: { id: "fixture-session", activeProjectId: "projectA" }, user: { id: "actor", role, projectId: "projectA" } }) } } as unknown as ControllerAuth,
       service: { createGuardrail } as unknown as ControlPlaneService,
       runnerControl: {} as RunnerControlServer, metrics: {} as ControllerMetrics });
     const response = await app.request("/api/v1/guardrails", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ name: "User guardrail", draftConfig: { policyBindings: [{ policyId: "policy", policyVersion: "v1" }] } }) });
@@ -124,7 +124,7 @@ describe("Administrator business boundary", () => {
   it.each([
     "/telemetry/events", "/telemetry/events/event?includeContent=true",
     "/telemetry/endpoint-activity", "/telemetry/metrics",
-  ])("denies tenant runtime data at %s before protected work", async path => {
+  ])("denies project runtime data at %s before protected work", async path => {
     const { app, unexpected } = setup("admin");
     expect((await app.request(`/api/v1${path}`)).status).toBe(403);
     expect(unexpected).not.toHaveBeenCalled();
@@ -143,16 +143,16 @@ describe("Dashboard runtime authority", () => {
   it.each([null, "unknown-role", "admin"])("rejects role %s before reading dashboard data, despite spoofed headers", async role => {
     const { app, unexpected } = setup(role);
     for (const path of paths) {
-      const response = await app.request(`/api/v1${path}`, { headers: { "x-role": "user", "x-user-id": "tenant-user" } });
+      const response = await app.request(`/api/v1${path}`, { headers: { "x-role": "user", "x-user-id": "project-user" } });
       expect(response.status).toBe(role === null ? 401 : 403);
       expect(unexpected).not.toHaveBeenCalled();
     }
   });
 
   it("serves scoped metrics and events to the user and revokes both on a role change", async () => {
-    const getSession = vi.fn().mockResolvedValue({ user: { id: "tenant-user", role: "user", tenantId: "tenantA" } });
+    const getSession = vi.fn().mockResolvedValue({ session: { id: "fixture-session", activeProjectId: "projectA" }, user: { id: "project-user", role: "user", projectId: "projectA" } });
     const metrics = { total_decisions: 7 };
-    const events = { items: [{ id: "tenant-event", guardrailId: "tenant-guardrail" }] };
+    const events = { items: [{ id: "project-event", guardrailId: "project-guardrail" }] };
     const runtimeMetrics = vi.fn().mockResolvedValue(metrics);
     const queryRuntimeEvents = vi.fn().mockResolvedValue(events);
     const app = createHttpApp({ config,
@@ -160,13 +160,13 @@ describe("Dashboard runtime authority", () => {
       service: { runtimeMetrics, queryRuntimeEvents } as unknown as ControlPlaneService,
       runnerControl: {} as RunnerControlServer, metrics: {} as ControllerMetrics });
     for (const [index, path] of paths.entries()) {
-      const response = await app.request(`/api/v1${path}&guardrailId=tenant-guardrail`);
+      const response = await app.request(`/api/v1${path}&guardrailId=project-guardrail`);
       expect(response.status).toBe(200);
       expect(await response.json()).toEqual(index === 0 ? metrics : events);
     }
-    expect(runtimeMetrics).toHaveBeenCalledExactlyOnceWith({ window: "7d", guardrailId: "tenant-guardrail" });
-    expect(queryRuntimeEvents).toHaveBeenCalledExactlyOnceWith({ limit: 50, guardrailId: "tenant-guardrail" });
-    getSession.mockResolvedValue({ user: { id: "tenant-user", role: "admin" } });
+    expect(runtimeMetrics).toHaveBeenCalledExactlyOnceWith({ window: "7d", guardrailId: "project-guardrail" });
+    expect(queryRuntimeEvents).toHaveBeenCalledExactlyOnceWith({ limit: 50, guardrailId: "project-guardrail" });
+    getSession.mockResolvedValue({ user: { id: "project-user", role: "admin" } });
     for (const path of paths) expect((await app.request(`/api/v1${path}`)).status).toBe(403);
     expect(runtimeMetrics).toHaveBeenCalledOnce();
     expect(queryRuntimeEvents).toHaveBeenCalledOnce();
@@ -178,7 +178,7 @@ describe("Role changes revoke business authority", () => {
     const { app, getSession, unexpected } = setup("user");
     const send = () => app.request("/api/v1/guardrails", { method: "POST", headers: { "content-type": "application/json" }, body: "{}" });
     expect((await send()).status).toBe(400);
-    getSession.mockResolvedValueOnce({ user: { id: "actor", role: "admin", tenantId: "tenantA" } });
+    getSession.mockResolvedValueOnce({ session: { id: "fixture-session", activeProjectId: "projectA" }, user: { id: "actor", role: "admin", projectId: "projectA" } });
     expect((await send()).status).toBe(403);
     expect(unexpected).not.toHaveBeenCalled();
     expect(getSession).toHaveBeenLastCalledWith(expect.objectContaining({ query: { disableCookieCache: true } }));
@@ -186,7 +186,7 @@ describe("Role changes revoke business authority", () => {
 });
 
 describe("Session freshness and read-only access", () => {
-  it("rejects public signup before a visitor can acquire tenantA read access", async () => {
+  it("rejects public signup before a visitor can acquire business access", async () => {
     const data: Record<string, Array<Record<string, unknown>>> = { user: [], session: [], account: [], verification: [] };
     const options = createAuth({ ...config, publicUrl: "http://localhost:8093", trustedOrigins: ["http://localhost:8093"] }, {} as ControllerDatabase).options;
     const auth = betterAuth({ ...options, database: memoryAdapter(data), databaseHooks: undefined });
@@ -204,20 +204,20 @@ describe("Session freshness and read-only access", () => {
     expect(unexpected).not.toHaveBeenCalled();
   });
 
-  it("does not accept a client-supplied tenant or role on Better Auth profile updates", async () => {
+  it("does not accept a client-supplied project or role on Better Auth profile updates", async () => {
     const data: Record<string, Array<Record<string, unknown>>> = { user: [], session: [], account: [], verification: [] };
     const options = createAuth({ ...config, publicUrl: "http://localhost:8093", trustedOrigins: ["http://localhost:8093"] }, {} as ControllerDatabase).options;
     const auth = betterAuth({ ...options, database: memoryAdapter(data), databaseHooks: undefined });
-    await auth.api.createUser({ body: { name: "Tenant fixture", email: "tenant@users.guard.invalid", password: "synthetic-auth-password-2026", data: { username: "tenant" } } });
-    const signedIn = await auth.api.signInEmail({ body: { email: "tenant@users.guard.invalid", password: "synthetic-auth-password-2026", data: { username: "tenant" } }, asResponse: true });
+    await auth.api.createUser({ body: { name: "Project fixture", email: "project@users.guard.invalid", password: "synthetic-auth-password-2026", data: { username: "project" } } });
+    const signedIn = await auth.api.signInEmail({ body: { email: "project@users.guard.invalid", password: "synthetic-auth-password-2026", data: { username: "project" } }, asResponse: true });
     const cookie = signedIn.headers.getSetCookie().map(value => value.split(";")[0]).join("; ");
     await auth.handler(new Request("http://localhost:8093/api/auth/update-user", {
       method: "POST",
       headers: { cookie, origin: "http://localhost:8093", "content-type": "application/json" },
-      body: JSON.stringify({ name: "Updated fixture", tenantId: "tenantB", role: "admin" }),
+      body: JSON.stringify({ name: "Updated fixture", projectId: "projectB", role: "admin" }),
     }));
-    expect((await auth.api.getSession({ headers: new Headers({ cookie }), query: { disableCookieCache: true } }))?.user.tenantId).toBe("tenantA");
-    expect(data.user![0]!.tenantId).toBe("tenantA");
+    expect((await auth.api.getSession({ headers: new Headers({ cookie }), query: { disableCookieCache: true } }))?.user.projectId).toBeUndefined();
+    expect(data.user![0]!.projectId).toBeUndefined();
     expect(data.user![0]!.role).toBe("user");
   });
 
@@ -236,7 +236,7 @@ describe("Session freshness and read-only access", () => {
     expect(cookie).not.toContain("tali-guard.session_data=");
     const headers = new Headers({ cookie, "content-type": "application/json" });
     expect((await auth.api.getSession({ headers }))?.user.role).toBe("admin");
-    expect((await auth.api.getSession({ headers }))?.user.tenantId).toBe("tenantA");
+    expect((await auth.api.getSession({ headers }))?.user.projectId).toBeUndefined();
     if (state === "demoted") data.user![0]!.role = "user";
     else if (state === "revoked") data.session!.splice(0);
     else if (state === "expired") for (const session of data.session!) session.expiresAt = new Date(0);
@@ -264,7 +264,7 @@ describe("Session freshness and read-only access", () => {
     expect((await send()).status).toBe(400);
     getSession.mockResolvedValueOnce(null);
     expect((await send()).status).toBe(401);
-    getSession.mockResolvedValueOnce({ user: { id: "actor", role: "user", tenantId: "tenantA" } });
+    getSession.mockResolvedValueOnce({ session: { id: "fixture-session", activeProjectId: "projectA" }, user: { id: "actor", role: "user", projectId: "projectA" } });
     expect((await send()).status).toBe(403);
     expect(getSession).toHaveBeenCalledTimes(3);
     expect(unexpected).not.toHaveBeenCalled();

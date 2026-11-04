@@ -1,3 +1,4 @@
+import { withTestProject } from "../db/postgres-test-database.js";
 import { completeReport } from "../db/report-test-utils.js";
 // @vitest-environment node
 import { resolve } from "node:path";
@@ -36,8 +37,8 @@ describe.skipIf(!url)("Test report persistence under connection pressure", () =>
     }));
     await database.pool.query("INSERT INTO auth_user (id, name, email, role) VALUES ('admin', 'Admin', 'admin@example.test', 'admin')");
     await database.pool.query("INSERT INTO controller_state (id, desired_generation) VALUES ('singleton', 1)");
-    const guardrail = await service.createGuardrail({ name: "Persistence fixture", actorId: "admin", runtimeProfile: "auto",
-      draftConfig: defaultGuardrailDraft(PolicyCatalog.load(catalogDir).list()) });
+    const guardrail = await withTestProject(() => service.createGuardrail({ name: "Persistence fixture", actorId: "admin", runtimeProfile: "auto",
+      draftConfig: defaultGuardrailDraft(PolicyCatalog.load(catalogDir).list()) }));
     guardrailId = guardrail.id;
   });
   afterAll(async () => { await service?.stopReportWork(); await database?.drop(); });

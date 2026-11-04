@@ -14,8 +14,8 @@ describe.skipIf(!url)("correlated runtime body enrichment (PostgreSQL)", () => {
   beforeAll(async () => {
     database = await createTestDatabase(url!, "runtime_enrichment");
     db = database.db;
-    await database.pool.query("INSERT INTO guardrail (id,tenant_id,name,draft_config) VALUES ('guard','tenantA','Shared definition','{}')");
-    await database.pool.query("INSERT INTO endpoint (id,tenant_id,name,adapter) VALUES ('endpoint','tenantB','Caller Endpoint','litellm-generic-guardrail')");
+    await database.pool.query("INSERT INTO guardrail (id,project_id,name,draft_config) VALUES ('guard','projectA','Shared definition','{}')");
+    await database.pool.query("INSERT INTO endpoint (id,project_id,name,adapter) VALUES ('endpoint','projectB','Caller Endpoint','litellm-generic-guardrail')");
   }, 30_000);
   afterAll(async () => { await database?.drop(); });
   function event(id: string): RuntimeEventInput {
@@ -31,7 +31,7 @@ describe.skipIf(!url)("correlated runtime body enrichment (PostgreSQL)", () => {
     for (const input of enrichmentFirst ? [enriched, base, enriched, base] : [base, enriched, enriched, base]) await writeRuntimeEvent(db, input);
     const rows = await db.select().from(runtimeEvents).where(eq(runtimeEvents.id, base.id));
     expect(rows).toHaveLength(1);
-    expect(rows[0]).toMatchObject({ tenantId: "tenantB", requestId: "call", runnerId: "input-runner", occurredAt: base.occurredAt, durationMs: 4, metadata: enriched.metadata });
+    expect(rows[0]).toMatchObject({ projectId: "projectB", requestId: "call", runnerId: "input-runner", occurredAt: base.occurredAt, durationMs: 4, metadata: enriched.metadata });
   });
 
   it("enriches only content fields and never overwrites captured originals", async () => {

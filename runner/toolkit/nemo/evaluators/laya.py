@@ -111,7 +111,7 @@ class LayaNoulEvaluator:
     rails = frozenset({"input"})
     decision_rule = "any_upper_all_lower"
 
-    def __init__(self, *, base_url: str, model: str, api_key: str,
+    def __init__(self, *, rate_limit_attempts: int = 3, base_url: str, model: str, api_key: str,
                  provider_id: str = "laya", timeout_seconds: float = 20,
                  lower_threshold: float = DEFAULT_LOWER_THRESHOLD,
                  upper_threshold: float = DEFAULT_UPPER_THRESHOLD,
@@ -123,6 +123,7 @@ class LayaNoulEvaluator:
         self._url = base_url.rstrip("/") + "/systemone"
         self._model, self._api_key, self._provider_id = model, api_key, provider_id
         self._timeout, self._transport, self._skip_tls_verify = timeout_seconds, transport, skip_tls_verify
+        self._rate_limit_attempts = rate_limit_attempts
         self._lower, self._upper = lower_threshold, upper_threshold
         self._profile_ref = profile_ref
         self._reviewer = reviewer
@@ -261,7 +262,7 @@ class LayaNoulEvaluator:
                             attempt.raise_for_status()
                             return attempt
 
-                        response = await with_connection_retry(guarded, deadline=deadline, call=call,
+                        response = await with_connection_retry(guarded, deadline=deadline, call=call, rate_limit_attempts=self._rate_limit_attempts,
                                                                retryable_rejection=admission_rejected)
                         with model_response():
                             payload = response.json()

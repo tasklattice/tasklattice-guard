@@ -1,5 +1,5 @@
 # Render-only rollout fixture. These Secret names are references, not credentials.
-# Resource limits and PVC requests are assertions; this does not certify a 2Gi cluster.
+# Resource limits are assertions; this does not certify a 2Gi cluster.
 postgresql:
   enabled: true
   persistence:
@@ -19,18 +19,6 @@ runner:
     resources:
       requests: { cpu: 25m, memory: 64Mi }
       limits: { memory: 256Mi }
-  pools:
-    - name: isolated
-      replicaCount: 1
-      maxConcurrency: 4
-      resources:
-        requests: { cpu: 25m, memory: 64Mi }
-        limits: { memory: 256Mi }
-  telemetryProgress:
-    persistence:
-      enabled: true
-      size: 64Mi
-      storageClass: test-persistent-rwo
 security:
   bootstrapAdmin:
     email: admin@example.test
@@ -42,4 +30,3 @@ security:
     controllerKey: tokens.json
     runnerSecrets:
       default: { name: test-default-pool-token, key: token }
-      isolated: { name: test-isolated-pool-token, key: token }

@@ -1,7 +1,7 @@
 import { useState, type FormEvent } from "react";
-import { useQuery } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
-import { ArrowRight, Building2 } from "lucide-react";
+import { useQuery } from "@tanstack/react-query";
+import { Building2 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
 import { BrandLogo } from "@/components/brand-logo";
@@ -10,7 +10,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useAuth } from "@/lib/auth";
-import { getMockSsoConfig } from "@/lib/identity-api";
+import { getSignInOptions, loginSso } from "@/lib/identity-api";
 import type { SupportedLanguage } from "@/i18n";
 
 export function LoginPage() {
@@ -20,11 +20,21 @@ export function LoginPage() {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
-  const mockSso = useQuery({ queryKey: ["mock-sso", "config"], queryFn: getMockSsoConfig, retry: false, staleTime: 60_000 });
+  const [ssoPending, setSsoPending] = useState(false);
+  const [callbackError, setCallbackError] = useState(() => new URLSearchParams(window.location.search).has("sso_error"));
+  const options = useQuery({ queryKey: ["sign-in-options"], queryFn: getSignInOptions, retry: false, staleTime: 30_000 });
+
+  async function signInWithSso() {
+    if (!options.data?.sso) return;
+    setError(""); setCallbackError(false); setSsoPending(true);
+    try { await loginSso(options.data.sso.providerId); }
+    catch { setError(t("auth.ssoFailed")); setSsoPending(false); }
+  }
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setError("");
+    setCallbackError(false);
     try {
       await login({ username, password });
       await navigate({ to: "/dashboard", replace: true });
@@ -62,16 +72,21 @@ export function LoginPage() {
             <h1 className="mt-2 font-sans text-3xl font-normal tracking-normal">{t("auth.loginTitle")}</h1>
             <p className="mt-3 text-sm leading-6 text-muted-foreground">{t("auth.loginDescription")}</p>
 
-            {mockSso.data?.enabled ? <Button type="button" size="lg" variant="outline" className="mt-8 min-h-[44px] w-full justify-between" onClick={() => void navigate({ to: "/mock-sso" })}>
-              {t("auth.mockSsoContinue")}<ArrowRight className="size-4" />
-            </Button> : null}
-
+            {callbackError ? <Alert className="mt-5" variant="destructive"><AlertDescription>{t("auth.ssoFailed")}</AlertDescription></Alert> : null}
+            {options.isError ? <Alert className="mt-5"><AlertDescription>{t("auth.ssoOptionsUnavailable")} <button type="button" className="underline" onClick={() => void options.refetch()}>{t("auth.ssoRetry")}</button></AlertDescription></Alert> : null}
             <form className="mt-8 grid gap-5" onSubmit={submit}>
               <Field label={t("auth.loginIdentifier")}><Input className="field:min-h-[44px]" autoFocus type="text" autoComplete="username" placeholder="admin" value={username} onChange={(event) => setUsername(event.target.value)} required /></Field>
               <Field label={t("common.password")}><Input className="field:min-h-[44px]" type="password" autoComplete="current-password" value={password} onChange={(event) => setPassword(event.target.value)} required /></Field>
               {error ? <Alert variant="destructive"><AlertDescription>{error}</AlertDescription></Alert> : null}
-              <Button type="submit" size="lg" className="mt-1 min-h-[44px] w-full" disabled={loginPending}>{loginPending ? t("auth.loginSubmitting") : t("auth.loginSubmit")}</Button>
+              <Button type="submit" size="lg" className="mt-1 min-h-[44px] w-full" disabled={loginPending || ssoPending}>{loginPending ? t("auth.loginSubmitting") : t("auth.loginSubmit")}</Button>
             </form>
+
+            {options.data?.sso ? <div className="mt-6 grid gap-4">
+              <p className="text-center text-xs text-muted-foreground">{t("auth.signInAlternative")}</p>
+              <Button type="button" variant="outline" size="lg" className="min-h-11 w-full" disabled={ssoPending || loginPending} onClick={() => void signInWithSso()}>
+                <Building2 className="size-4" />{ssoPending ? t("auth.ssoRedirecting") : t("auth.ssoSignIn", { provider: options.data.sso.displayName })}
+              </Button>
+            </div> : null}
 
           </div>
         </div>

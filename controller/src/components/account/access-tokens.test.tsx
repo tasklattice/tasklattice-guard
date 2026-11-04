@@ -4,7 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AccessTokens } from "./access-tokens";
 import i18n from "@/i18n";
 const state = vi.hoisted(() => ({ role: "user", list: vi.fn(), create: vi.fn(), revoke: vi.fn() }));
-vi.mock("@/lib/auth", () => ({ useAuth: () => ({ user: { id: "owner", role: state.role } }) }));
+vi.mock("@/lib/auth", () => ({ useAuth: () => ({ user: { id: "owner", role: state.role, project_id: "projectA" } }) }));
 vi.mock("@/lib/access-tokens-api", () => ({ listAccessTokens: state.list, createAccessToken: state.create, revokeAccessToken: state.revoke }));
 const token = { id: "token", name: "CI", prefix: "tlg_pat_abcdefg", permissions: { routers: "read" }, createdAt: new Date().toISOString(), expiresAt: new Date(Date.now() + 86_400_000).toISOString(), lastUsedAt: null, revokedAt: null };
 function mount() {

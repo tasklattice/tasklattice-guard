@@ -39,7 +39,7 @@ export class PostgresValidationCredentialLeaseStore implements ValidationCredent
       if (!lease) return false;
       const allocation = await tx.execute<{ group_id: string; epoch: string }>(sql`
         select p.group_id, coalesce(e.epoch, 0)::text as epoch from runner_pool p
-        inner join tenant_group g on g.id = p.group_id
+        inner join project_group g on g.id = p.group_id
         left join runner_pool_lease_epoch e on e.pool_id = p.id
         where p.id = ${poolId} and not coalesce(e.draining, false)`);
       const current = allocation.rows[0];
@@ -68,7 +68,7 @@ export class PostgresValidationCredentialLeaseStore implements ValidationCredent
       .from(leases).where(and(eq(leases.id, id), sql`${leases.expiresAt} > clock_timestamp()`,
         eq(leases.providerId, refs[0]!),
         poolId === undefined ? isNull(leases.poolId) : and(eq(leases.poolId, poolId), sql`exists (
-          select 1 from runner_pool p inner join tenant_group g on g.id = p.group_id
+          select 1 from runner_pool p inner join project_group g on g.id = p.group_id
           left join runner_pool_lease_epoch e on e.pool_id = p.id
           where p.id = ${leases.poolId} and p.group_id = ${leases.groupId}
             and coalesce(e.epoch, 0) = ${leases.allocationEpoch} and not coalesce(e.draining, false))`,

@@ -13,7 +13,7 @@ import { endpointContextCleanupBatchSize, issueEndpointTelemetryContexts, lockEn
 const url = process.env.GUARD_TEST_POSTGRES_URL;
 type Projection = Parameters<typeof issueEndpointTelemetryContexts>[1];
 type Transaction = Parameters<Parameters<ControllerDatabase["transaction"]>[0]>[0];
-const endpoint = (id = "endpoint-a") => ({ endpointId: id, tenantId: "tenantA", adapter: "litellm-generic-guardrail",
+const endpoint = (id = "endpoint-a") => ({ endpointId: id, projectId: "projectA", adapter: "litellm-generic-guardrail",
   trafficRouterId: "router-a", verification: { credentials: [{ digest: "trusted-credential-digest" }] }, scanFlagOnlyDefault: true });
 const router = () => ({ routerId: "router-a", revision: 3, routes: [{ id: "route-a", enabled: true,
   targets: [{ id: "target-a", guardrailId: "guardrail-a", guardrailVersion: "version-a", weightBps: 10000 }] }] });
@@ -47,9 +47,9 @@ describe.skipIf(!url)("bounded immutable Endpoint provenance storage", () => {
   const rows = async () => (await database.pool.query("SELECT * FROM endpoint_telemetry_context ORDER BY id")).rows;
   const cleanup = () => database.db.transaction(tx => pruneEndpointTelemetryContexts(tx));
   const seedRetired = async (id: string, age = "40 days", pool = "seed-pool") => {
-    await database.pool.query(`INSERT INTO endpoint_telemetry_context(id,snapshot_key,tenant_id,group_id,pool_id,allocation_epoch,generation,
+    await database.pool.query(`INSERT INTO endpoint_telemetry_context(id,snapshot_key,project_id,group_id,pool_id,allocation_epoch,generation,
       endpoint_id,adapter,verification_digest,endpoint_snapshot_digest,issued_at,retired_at)
-      VALUES ($1,$1,'tenantA','seed-group',$3,1,1,$1,'litellm-generic-guardrail','verification','snapshot',
+      VALUES ($1,$1,'projectA','seed-group',$3,1,1,$1,'litellm-generic-guardrail','verification','snapshot',
         clock_timestamp()-interval '50 days',clock_timestamp()-$2::interval)`, [id, age, pool]);
   };
   const insertRuntimeReference = (tx: Transaction, contextId: string, id: string) => tx.execute(sql`
@@ -69,14 +69,14 @@ describe.skipIf(!url)("bounded immutable Endpoint provenance storage", () => {
     expect(original).toMatch(/^[A-Za-z0-9_-]{43}$/);
   });
 
-  it.each(["verification", "router revision", "router target", "epoch", "tenant", "group", "adapter"])("issues fresh authority for a changed %s", async kind => {
+  it.each(["verification", "router revision", "router target", "epoch", "project", "group", "adapter"])("issues fresh authority for a changed %s", async kind => {
     const old = (await issue()).get("endpoint-a")!;
     const next = projection();
     if (kind === "verification") next.endpoints[0]!.verification = { credentials: [{ digest: "rotated-credential-digest" }] };
     if (kind === "router revision") next.routers[0]!.revision += 1;
     if (kind === "router target") next.routers[0]!.routes[0]!.targets[0]!.guardrailVersion = "version-b";
     if (kind === "epoch") next.epoch += 1;
-    if (kind === "tenant") next.endpoints[0]!.tenantId = "tenantC";
+    if (kind === "project") next.endpoints[0]!.projectId = "projectC";
     if (kind === "group") next.groupId = "group-b";
     if (kind === "adapter") next.endpoints[0]!.adapter = "f5-scan";
     const replacement = (await issue(next)).get("endpoint-a")!;
@@ -103,7 +103,7 @@ describe.skipIf(!url)("bounded immutable Endpoint provenance storage", () => {
     const shrunk = limits({ maxRowsPerPool: 1, maxRowsGlobal: 1, maxPayloadBytesPerContext: 1, maxPayloadBytesPerPool: 1, maxPayloadBytesGlobal: 1 });
     expect(await issue({ ...input, generation: 900 }, shrunk)).toEqual(old);
     expect(await rows()).toEqual(before);
-    const changed = projection({ endpoints: [endpoint("endpoint-a"), { ...endpoint("endpoint-b"), tenantId: "tenantC" }, endpoint("endpoint-c")] });
+    const changed = projection({ endpoints: [endpoint("endpoint-a"), { ...endpoint("endpoint-b"), projectId: "projectC" }, endpoint("endpoint-c")] });
     await expect(issue(changed, limits({ maxRowsPerPool: 3, maxRowsGlobal: 3 })))
       .rejects.toMatchObject({ code: "endpoint_context_capacity_exhausted", status: 503, detail: { scope: "pool", resource: "rows", limit: 3 } });
     expect(await rows()).toEqual(before);
@@ -207,15 +207,15 @@ describe.skipIf(!url)("bounded immutable Endpoint provenance storage", () => {
   });
 
   it("bounds each sweep to128 visits and advances past protected history to reclaim later garbage", async () => {
-    await database.pool.query(`INSERT INTO endpoint_telemetry_context(id,snapshot_key,tenant_id,group_id,pool_id,allocation_epoch,generation,
+    await database.pool.query(`INSERT INTO endpoint_telemetry_context(id,snapshot_key,project_id,group_id,pool_id,allocation_epoch,generation,
       endpoint_id,adapter,verification_digest,endpoint_snapshot_digest,issued_at,retired_at)
-      SELECT 'protected-'||lpad(n::text,3,'0'),'protected-'||n,'tenantA','seed','seed',1,1,'protected-'||n,'guard','v','s',
+      SELECT 'protected-'||lpad(n::text,3,'0'),'protected-'||n,'projectA','seed','seed',1,1,'protected-'||n,'guard','v','s',
         now()-interval '50 days',now()-interval '40 days' FROM generate_series(1,128) n;
       INSERT INTO runtime_event(id,occurred_at,request_id,runner_id,direction,decision,duration_ms,metadata,allocation_context_id)
       SELECT 'event-'||id,now(),id,'synthetic','incoming','allow',1,'{}',id FROM endpoint_telemetry_context;
-      INSERT INTO endpoint_telemetry_context(id,snapshot_key,tenant_id,group_id,pool_id,allocation_epoch,generation,
+      INSERT INTO endpoint_telemetry_context(id,snapshot_key,project_id,group_id,pool_id,allocation_epoch,generation,
         endpoint_id,adapter,verification_digest,endpoint_snapshot_digest,issued_at,retired_at)
-      SELECT 'free-'||lpad(n::text,3,'0'),'free-'||n,'tenantA','seed','seed',1,1,'free-'||n,'guard','v','s',
+      SELECT 'free-'||lpad(n::text,3,'0'),'free-'||n,'projectA','seed','seed',1,1,'free-'||n,'guard','v','s',
         now()-interval '50 days',now()-interval '39 days' FROM generate_series(1,129) n;`);
     expect(endpointContextCleanupBatchSize).toBe(128);
     expect(await cleanup()).toBe(0);

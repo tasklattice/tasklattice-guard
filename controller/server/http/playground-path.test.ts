@@ -56,7 +56,7 @@ function setup(authenticated = true, scan = false) {
         getSession: vi
           .fn()
           .mockResolvedValue(
-            authenticated ? { user: { id: "user", role: "user", tenantId: "tenantA" } } : null,
+            authenticated ? { session: { id: "fixture-session", activeProjectId: "projectA" }, user: { id: "user", role: "user", projectId: "projectA" } } : null,
           ),
       },
       handler: vi.fn(),

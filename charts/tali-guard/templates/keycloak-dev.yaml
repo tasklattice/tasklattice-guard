@@ -1,0 +1,180 @@
+{{- if .Values.keycloak.enabled }}
+{{- if (.Values.controller.sso | default dict).enabled }}
+{{- fail "Use either keycloak.enabled or controller.sso.enabled, not both" }}
+{{- end }}
+{{- $identities := .Files.Get "files/keycloak-dev-identities.json" | fromJson }}
+{{- $name := printf "%s-keycloak" (include "tali-guard.fullname" .) }}
+# Adapted from tasklattice-relay/charts/tali-relay/templates/keycloak.yaml.
+# Dev-only realm import: fixed subjects preserve Guard identities across restarts.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ $name }}-realm
+data:
+  identities.json: {{ toJson $identities | quote }}
+  tali-realm.json: |
+    {
+      "realm": "tali",
+      "displayName": "TaskLattice Guard Development",
+      "enabled": true,
+      "registrationAllowed": false,
+      "resetPasswordAllowed": false,
+      "duplicateEmailsAllowed": false,
+      "clientScopes": [
+        {
+          "name": "profile",
+          "description": "OpenID Connect profile claims",
+          "protocol": "openid-connect",
+          "attributes": {
+            "include.in.token.scope": "true",
+            "display.on.consent.screen": "true"
+          },
+          "protocolMappers": [
+            {
+              "name": "full name",
+              "protocol": "openid-connect",
+              "protocolMapper": "oidc-full-name-mapper",
+              "consentRequired": false,
+              "config": {
+                "id.token.claim": "true",
+                "access.token.claim": "true",
+                "userinfo.token.claim": "true"
+              }
+            },
+            {
+              "name": "preferred username",
+              "protocol": "openid-connect",
+              "protocolMapper": "oidc-usermodel-property-mapper",
+              "consentRequired": false,
+              "config": {
+                "user.attribute": "username",
+                "claim.name": "preferred_username",
+                "jsonType.label": "String",
+                "id.token.claim": "true",
+                "access.token.claim": "true",
+                "userinfo.token.claim": "true"
+              }
+            }
+          ]
+        },
+        {
+          "name": "email",
+          "description": "OpenID Connect email claims",
+          "protocol": "openid-connect",
+          "attributes": {
+            "include.in.token.scope": "true",
+            "display.on.consent.screen": "true"
+          },
+          "protocolMappers": [
+            {
+              "name": "email",
+              "protocol": "openid-connect",
+              "protocolMapper": "oidc-usermodel-property-mapper",
+              "consentRequired": false,
+              "config": {
+                "user.attribute": "email",
+                "claim.name": "email",
+                "jsonType.label": "String",
+                "id.token.claim": "true",
+                "access.token.claim": "true",
+                "userinfo.token.claim": "true"
+              }
+            },
+            {
+              "name": "email verified",
+              "protocol": "openid-connect",
+              "protocolMapper": "oidc-usermodel-property-mapper",
+              "consentRequired": false,
+              "config": {
+                "user.attribute": "emailVerified",
+                "claim.name": "email_verified",
+                "jsonType.label": "boolean",
+                "id.token.claim": "true",
+                "access.token.claim": "true",
+                "userinfo.token.claim": "true"
+              }
+            }
+          ]
+        },
+        {
+          "name": "groups",
+          "description": "TaskLattice Guard full Group paths",
+          "protocol": "openid-connect",
+          "attributes": {
+            "include.in.token.scope": "true",
+            "display.on.consent.screen": "false"
+          },
+          "protocolMappers": [
+            {
+              "name": "groups",
+              "protocol": "openid-connect",
+              "protocolMapper": "oidc-group-membership-mapper",
+              "consentRequired": false,
+              "config": {
+                "full.path": "true",
+                "id.token.claim": "true",
+                "access.token.claim": "true",
+                "userinfo.token.claim": "true",
+                "claim.name": "groups",
+                "jsonType.label": "String",
+                "multivalued": "true"
+              }
+            }
+          ]
+        }
+      ],
+      "clients": [{
+        "clientId": "tasklattice-guard",
+        "name": "TaskLattice Guard",
+        "enabled": true,
+        "protocol": "openid-connect",
+        "publicClient": false,
+        "clientAuthenticatorType": "client-secret",
+        "secret": "${TALI_KEYCLOAK_CLIENT_SECRET}",
+        "standardFlowEnabled": true,
+        "directAccessGrantsEnabled": false,
+        "defaultClientScopes": ["profile", "email", "groups"],
+        "redirectUris": {{ list (printf "%s/api/auth/callback/corporate-sso" (include "tali-guard.primaryPublicUrl" .)) | toJson }},
+        "webOrigins": {{ list (include "tali-guard.primaryPublicUrl" .) | toJson }},
+        "attributes": {"pkce.code.challenge.method": "S256"}
+      }],
+      "groups": [{"name":"tali","subGroups":[{"name":"d","subGroups":[{
+        "name": {{ $identities.department | quote }},
+        "subGroups":[{"name":"p","subGroups":[
+          {{- range $index, $project := $identities.projects }}
+          {{- if $index }},{{ end }}
+          {"name":{{ $project.name | quote }},"subGroups":[{"name":"r","subGroups":[{"name":"ROLE_AGENT_DEVELOPER"}]}]}
+          {{- end }}
+        ]}]
+      }]}]}],
+      "users": [
+        {{- range $index, $project := $identities.projects }}
+        {{- if $index }},{{ end }}
+        {
+          "id": {{ $project.userId | quote }},
+          "username": {{ $project.username | quote }},
+          "email": {{ printf "%s@guard.example.com" $project.username | quote }},
+          "firstName": {{ $project.username | quote }},
+          "lastName": "Test",
+          "enabled": true, "emailVerified": true,
+          "groups": [{{ printf "/tali/d/%s/p/%s/r/ROLE_AGENT_DEVELOPER" $identities.department $project.name | quote }}],
+          "credentials": [{"type":"password","value":"password","temporary":false}]
+        }
+        {{- end }}
+      ]
+    }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $name }}
+spec:
+  type: LoadBalancer
+  selector:
+    app.kubernetes.io/instance: {{ .Release.Name }}
+    app.kubernetes.io/component: controller
+  ports:
+    - name: http
+      port: {{ .Values.keycloak.port }}
+      targetPort: keycloak
+{{- end }}

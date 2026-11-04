@@ -133,24 +133,24 @@ def test_authenticated_endpoint_owner_is_controller_assigned_and_legacy_fails_cl
     ])
     store.apply(state)
     assert store.authenticate_endpoint("e", secret)
-    assert store.authenticated_endpoint_tenant("e", secret) is None
+    assert store.authenticated_endpoint_project("e", secret) is None
     state.generation = 2
-    state.endpoints[0].tenant_id = "tenantA"
+    state.endpoints[0].project_id = "projectA"
     store.apply(state)
-    assert store.authenticated_endpoint_tenant("e", secret) == "tenantA"
-    assert store.authenticated_endpoint_tenant("e", "wrong") is None
-    assert store.authenticated_endpoint_tenant("missing", secret) is None
+    assert store.authenticated_endpoint_project("e", secret) == "projectA"
+    assert store.authenticated_endpoint_project("e", "wrong") is None
+    assert store.authenticated_endpoint_project("missing", secret) is None
     restarted = ArtifactStore(FIXTURE / "public-key.pem", tmp_path / "state")
     restarted.attach_registry(Registry())
-    assert restarted.authenticated_endpoint_tenant("e", secret) == "tenantA"
+    assert restarted.authenticated_endpoint_project("e", secret) == "projectA"
     state.generation = 3
-    state.endpoints[0].tenant_id = " "
+    state.endpoints[0].project_id = " "
     store.apply(state)
-    assert store.authenticated_endpoint_tenant("e", secret) is None
+    assert store.authenticated_endpoint_project("e", secret) is None
     state.generation = 4
     del state.endpoints[:]
     store.apply(state)
-    assert store.authenticated_endpoint_tenant("e", secret) is None
+    assert store.authenticated_endpoint_project("e", secret) is None
 
 
 def test_scan_default_is_backward_compatible_atomic_and_restored(tmp_path):

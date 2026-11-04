@@ -21,7 +21,7 @@ const config = loadConfig({
 describe("Runner instance management HTTP routes", () => {
   it.each(["admin"])("lets %s update Runner capacity with its own actor identity", async role => {
     const updateRunnerPool = vi.fn().mockResolvedValue({ id: "pool" });
-    const app = appWith({ user: { id: "actor", role, tenantId: "tenantA" } }, { updateRunnerPool });
+    const app = appWith({ session: { id: "fixture-session", activeProjectId: "projectA" }, user: { id: "actor", role, projectId: "projectA" } }, { updateRunnerPool });
     const targets = { desiredReplicas: 2, safeRpsPerRunner: 50, maxConcurrencyPerRunner: 64 };
     const response = await app.request("/api/v1/runner-pools/pool", {
       method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify(targets),
@@ -35,7 +35,7 @@ describe("Runner instance management HTTP routes", () => {
   });
   it("uses each Runner's reported source, retaining unknown metadata for older Runners", async () => {
     const software = { version: "v1.0.0-1-gabcdef-dirty", commit: "abcdef", branch: "main", dirty: true, source: "build" };
-    const app = appWith({ user: { id: "user-1", role: "admin", tenantId: "tenantA" } }, {
+    const app = appWith({ session: { id: "fixture-session", activeProjectId: "projectA" }, user: { id: "user-1", role: "admin", projectId: "projectA" } }, {
       listRunnerPoolsWithCapacity: vi.fn().mockResolvedValue([{ id: "default", instances: [
         { runnerId: "new", runnerVersion: software.version, labels: { "tasklattice.build": JSON.stringify(software) }, status: "ready", lastHeartbeatAt: null },
         { runnerId: "old", runnerVersion: "0.2.0", labels: {}, status: "offline", lastHeartbeatAt: null },
@@ -52,7 +52,7 @@ describe("Runner instance management HTTP routes", () => {
   it.each(["admin"])("lets %s force-remove a syncing registration and closes only the removed boot connection", async role => {
     const removeRunnerInstance = vi.fn().mockResolvedValue({ bootId: "boot-1" });
     const removeRunnerConnection = vi.fn();
-    const app = appWith({ user: { id: "actor", role, tenantId: "tenantA" } }, { removeRunnerInstance }, { removeRunnerConnection });
+    const app = appWith({ session: { id: "fixture-session", activeProjectId: "projectA" }, user: { id: "actor", role, projectId: "projectA" } }, { removeRunnerInstance }, { removeRunnerConnection });
     const response = await app.request("/api/v1/runner-instances/runner-syncing?force=true&bootId=boot-1", { method: "DELETE" });
     expect(response.status).toBe(204);
     expect(removeRunnerInstance).toHaveBeenCalledWith({ runnerId: "runner-syncing", actorId: "actor", force: true, bootId: "boot-1" });
@@ -61,7 +61,7 @@ describe("Runner instance management HTTP routes", () => {
 
   it.each(["force=true", "force=invalid&bootId=boot-1"])("rejects invalid force removal parameters (%s)", async (query) => {
     const removeRunnerInstance = vi.fn();
-    const app = appWith({ user: { id: "admin-1", role: "admin", tenantId: "tenantA" } }, { removeRunnerInstance });
+    const app = appWith({ session: { id: "fixture-session", activeProjectId: "projectA" }, user: { id: "admin-1", role: "admin", projectId: "projectA" } }, { removeRunnerInstance });
     const response = await app.request(`/api/v1/runner-instances/runner-syncing?${query}`, { method: "DELETE" });
     expect(response.status).toBe(400);
     expect(removeRunnerInstance).not.toHaveBeenCalled();
@@ -69,7 +69,7 @@ describe("Runner instance management HTTP routes", () => {
 
   it.each(["admin"])("forwards offline Runner removal for %s", async role => {
     const removeRunnerInstance = vi.fn().mockResolvedValue(undefined);
-    const app = appWith({ user: { id: "actor", role, tenantId: "tenantA" } }, { removeRunnerInstance });
+    const app = appWith({ session: { id: "fixture-session", activeProjectId: "projectA" }, user: { id: "actor", role, projectId: "projectA" } }, { removeRunnerInstance });
 
     const response = await app.request("/api/v1/runner-instances/runner-offline", { method: "DELETE" });
 
@@ -82,7 +82,7 @@ describe("Runner instance management HTTP routes", () => {
 });
 
 function appWith(
-  session: { user: { id: string; role: string; tenantId?: string } } | null,
+  session: { user: { id: string; role: string; projectId?: string } } | null,
   service: Partial<ControlPlaneService>,
   runnerControl: Partial<RunnerControlServer> = {},
 ) {

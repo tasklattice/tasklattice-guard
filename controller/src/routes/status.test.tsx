@@ -6,7 +6,8 @@ import { componentHealthEn } from "@/component-health-i18n";
 import { getControllerSystemHealth, type SystemHealthSnapshot } from "@/lib/controller-api";
 import { HealthPage } from "./status";
 
-vi.mock("@/lib/auth", () => ({ useAuth: () => ({ user: { role: "admin" } }) }));
+const identity = vi.hoisted(() => ({ role: "admin" }));
+vi.mock("@/lib/auth", () => ({ useAuth: () => ({ user: { role: identity.role } }) }));
 vi.mock("@tanstack/react-router", () => ({
   Link: ({ children, to, ...props }: { children: ReactNode; to: string }) => <a href={to} {...props}>{children}</a>,
   useRouterState: ({ select }: { select: (state: { location: { pathname: string } }) => string }) => select({ location: { pathname: "/settings/health" } }),
@@ -39,9 +40,17 @@ function renderPage() {
   return render(<QueryClientProvider client={client}><HealthPage /></QueryClientProvider>);
 }
 beforeEach(() => { vi.mocked(getControllerSystemHealth).mockReset().mockResolvedValue(healthy); });
-afterEach(() => { cleanup(); client?.clear(); vi.useRealTimers(); });
+afterEach(() => { cleanup(); client?.clear(); vi.useRealTimers(); identity.role = "admin"; });
 
 describe("Health tab", () => {
+  it("lets project users inspect health without offering platform model configuration", async () => {
+    identity.role = "user";
+    renderPage();
+    await screen.findByText("Control plane, data plane and required models are healthy.");
+    expect(screen.queryByRole("link", { name: "Configure model bindings" })).toBeNull();
+    expect(screen.getByRole("link", { name: "View Runners" }).getAttribute("href")).toBe("/settings/runner");
+    expect(screen.getAllByRole("tab")).toHaveLength(3);
+  });
   it("leads with the system conclusion and limits details to component and model health", async () => {
     renderPage();
     expect(await screen.findByRole("heading", { name: "Healthy", level: 2 })).toBeTruthy();

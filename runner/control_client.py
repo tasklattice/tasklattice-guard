@@ -40,7 +40,6 @@ from .protocol_codec import validation_case_result_to_proto, validation_metrics_
 from .validator import DefaultRunnerValidator
 from .serving_lease import ServingLease, LeaseChallenge
 from .validation_logging import validation_event
-from .toolkit.nemo.actions.model_retry import configure_provider_retry
 
 VALIDATION_TIMEOUT_SECONDS = 30 * 60
 
@@ -55,12 +54,10 @@ class _LeaseAuthorityLost(RuntimeError):
 
 def _prepare_model_dependencies(
     configuration: protocol.DataPlaneModelConfiguration, credentials: dict[str, str],
-    jev_thresholds: tuple[float, float] | None = None,
-    laya_thresholds: tuple[float, float] | None = None,
 ) -> tuple[ActionProviders, tuple[NativeRailModel, ...]]:
     with diagnostic_phase("desired_state.models", model_revision_id=configuration.revision_id):
         providers = action_providers(*dynamic_runtime_action_providers(
-            configuration, credentials, jev_thresholds=jev_thresholds, laya_thresholds=laya_thresholds))
+            configuration, credentials))
         return providers, native_rail_models(configuration, credentials)
 
 
@@ -105,7 +102,6 @@ class RunnerControlClient:
         self._heartbeat_interval = 10
         self._sequence = 0
         self._capability_tasks: set[asyncio.Task] = set()
-        configure_provider_retry(int(getattr(settings, "model_rate_limit_attempts", 3)))
         self._validation_lock = asyncio.Lock()
         self._validation_tasks: dict[str, asyncio.Task] = {}
         self._report_spools: OrderedDict[str, ReportSpool] = OrderedDict()
@@ -120,8 +116,7 @@ class RunnerControlClient:
         self._materialization_key: str | None = None
         self._provider_observer = provider_observer
         self._validator = (
-            DefaultRunnerValidator(self._compiler, providers, self._store.verify,
-                                   max_concurrency=getattr(settings, "validation_max_concurrency", 8))
+            DefaultRunnerValidator(self._compiler, providers, self._store.verify)
             if self._compiler
             else None
         )
@@ -334,8 +329,8 @@ class RunnerControlClient:
                 applied_generation=self._store.generation,
                 applied_protection_generation=self._store.protection_generation,
                 load=self._metrics.heartbeat(),
-                tenant_admission_snapshot=(admission_snapshot_to_proto(self._metrics.tenant_admission_snapshot_json())
-                    if callable(getattr(self._metrics, "tenant_admission_snapshot_json", None)) else None),
+                project_admission_snapshot=(admission_snapshot_to_proto(self._metrics.project_admission_snapshot_json())
+                    if callable(getattr(self._metrics, "project_admission_snapshot_json", None)) else None),
             ),
         ))
         self._metrics.observe_heartbeat_sent()
@@ -467,14 +462,6 @@ class RunnerControlClient:
                 if materialization_key != self._materialization_key:
                     providers, native_models = await prepare(
                         _prepare_model_dependencies, desired_state.model_configuration, credentials,
-                        jev_thresholds=(
-                            float(getattr(self._settings, "jev_lower_threshold", 0.1)),
-                            float(getattr(self._settings, "jev_upper_threshold", 0.9)),
-                        ),
-                        laya_thresholds=(
-                            float(getattr(self._settings, "laya_lower_threshold", 0.1)),
-                            float(getattr(self._settings, "laya_upper_threshold", 0.9)),
-                        ),
                     )
             else:
                 materialization_key = None
@@ -489,8 +476,7 @@ class RunnerControlClient:
                 self._providers = providers
                 if self._compiler is not None:
                     await prepare(self._compiler.configure_native_models, native_models or ())
-                    self._validator = DefaultRunnerValidator(self._compiler, providers, self._store.verify,
-                                                             max_concurrency=getattr(self._settings, "validation_max_concurrency", 8))
+                    self._validator = DefaultRunnerValidator(self._compiler, providers, self._store.verify)
                 if self._provider_observer is not None:
                     try:
                         await self._provider_observer(providers)

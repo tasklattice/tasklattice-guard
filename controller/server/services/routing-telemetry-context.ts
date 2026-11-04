@@ -4,8 +4,8 @@ import type { RoutingEvent } from "./traffic-routing.js";
 
 /** Authorization is evaluated within the assignment INSERT, using only the
  * authenticated pool and immutable archived snapshot, never today's owner. */
-export function routingEventTenantId(event: RoutingEvent, authenticatedPoolId: string): SQL<string | null> {
-  return sql<string | null>`(select ${context.tenantId} from ${context}
+export function routingEventProjectId(event: RoutingEvent, authenticatedPoolId: string): SQL<string | null> {
+  return sql<string | null>`(select ${context.projectId} from ${context}
     where ${context.id} = ${event.allocationContextId ?? null} and ${context.poolId} = ${authenticatedPoolId}
       and ${context.endpointId} = ${event.endpointId} and ${context.routerId} = ${event.routerId}
       and ${context.routerRevision} = ${event.routerRevision}

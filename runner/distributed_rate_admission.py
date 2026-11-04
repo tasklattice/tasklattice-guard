@@ -22,7 +22,7 @@ from redis.backoff import NoBackoff
 from redis.exceptions import RedisError
 from redis.retry import Retry
 
-from .tenant_admission import AdmissionRejected, AdmissionUnavailable
+from .project_admission import AdmissionRejected, AdmissionUnavailable
 
 
 @dataclass(frozen=True)
@@ -31,7 +31,7 @@ class DistributedRateConfiguration:
     revision: str
     window_ms: int
     pool_limit: int
-    tenant_limits: Mapping[str, int]
+    project_limits: Mapping[str, int]
 
     @classmethod
     def from_json(cls, raw: str) -> DistributedRateConfiguration:
@@ -47,9 +47,9 @@ class DistributedRateConfiguration:
             values = json.loads(raw, object_pairs_hook=unique_object)
         except (TypeError, json.JSONDecodeError) as error:
             raise ValueError("Distributed rate policy must be a JSON object.") from error
-        fields = {"pool_id", "revision", "window_ms", "pool_limit", "tenant_limits"}
+        fields = {"pool_id", "revision", "window_ms", "pool_limit", "project_limits"}
         if not isinstance(values, dict) or set(values) != fields:
-            raise ValueError("Distributed rate policy must contain exactly pool_id, revision, window_ms, pool_limit and tenant_limits.")
+            raise ValueError("Distributed rate policy must contain exactly pool_id, revision, window_ms, pool_limit and project_limits.")
         for field in ("pool_id", "revision"):
             value = values[field]
             if not isinstance(value, str) or not value or value != value.strip() or len(value) > 256:
@@ -61,28 +61,28 @@ class DistributedRateConfiguration:
         window = values["window_ms"]
         if isinstance(window, bool) or not isinstance(window, int) or not 100 <= window <= 86_400_000:
             raise ValueError("Distributed rate window_ms must be an integer between 100 and 86400000.")
-        limits = values["tenant_limits"]
+        limits = values["project_limits"]
         if not isinstance(limits, dict) or not 1 <= len(limits) <= 1000 or any(
             not key or key != key.strip() or len(key) > 256 for key in limits
         ):
-            raise ValueError("Distributed rate tenant_limits requires 1 to 1000 nonempty unpadded tenant IDs of at most 256 characters.")
+            raise ValueError("Distributed rate project_limits requires 1 to 1000 nonempty unpadded project IDs of at most 256 characters.")
         for limit in [values["pool_limit"], *limits.values()]:
             if isinstance(limit, bool) or not isinstance(limit, int) or not 1 <= limit <= 100_000:
                 raise ValueError("Distributed rate limits must be integers between 1 and 100000.")
         if sum(min(limit, values["pool_limit"]) for limit in limits.values()) > 100_000:
-            raise ValueError("Distributed rate retained tenant history must not exceed 100000 entries per pool.")
+            raise ValueError("Distributed rate retained project history must not exceed 100000 entries per pool.")
         try:
             for key in limits:
                 key.encode("utf-8")
         except UnicodeEncodeError as error:
-            raise ValueError("Distributed rate tenant IDs must be valid UTF-8.") from error
-        return cls(**{**values, "tenant_limits": MappingProxyType(dict(limits))})
+            raise ValueError("Distributed rate project IDs must be valid UTF-8.") from error
+        return cls(**{**values, "project_limits": MappingProxyType(dict(limits))})
 
     @property
     def canonical_json(self) -> str:
         return json.dumps({"pool_id": self.pool_id, "revision": self.revision,
             "window_ms": self.window_ms, "pool_limit": self.pool_limit,
-            "tenant_limits": dict(self.tenant_limits)}, sort_keys=True, separators=(",", ":"))
+            "project_limits": dict(self.project_limits)}, sort_keys=True, separators=(",", ":"))
 
     @property
     def digest(self) -> str:
@@ -149,7 +149,7 @@ class RedisRateAdmission:
     def __init__(self, redis: Redis, configuration: DistributedRateConfiguration):
         self._redis = redis
         self.configuration = configuration
-        # Hashing prevents tenant/pool IDs from injecting Redis hash tags.
+        # Hashing prevents project/pool IDs from injecting Redis hash tags.
         pool = hashlib.sha256(configuration.pool_id.encode()).hexdigest()
         self._prefix = f"tasklattice:guard:rate:{{{pool}}}"
         self._digest = configuration.digest
@@ -168,10 +168,10 @@ class RedisRateAdmission:
     def state_keys(self) -> tuple[str, ...]:
         """Exact provisioned keys; useful for ACL setup and admin inspection."""
         return (self._policy_key, self._pool_key, *(
-            self._tenant_key(tenant) for tenant in sorted(self.configuration.tenant_limits)))
+            self._project_key(project) for project in sorted(self.configuration.project_limits)))
 
-    def _tenant_key(self, tenant: str) -> str:
-        return f"{self._prefix}:tenant:{hashlib.sha256(tenant.encode()).hexdigest()}"
+    def _project_key(self, project: str) -> str:
+        return f"{self._prefix}:project:{hashlib.sha256(project.encode()).hexdigest()}"
 
     async def provision(self) -> None:
         """Privileged explicit initialization; refuses any existing state.
@@ -188,11 +188,11 @@ class RedisRateAdmission:
         if result != 1:
             raise AdmissionUnavailable("Distributed rate state already exists; provisioning cannot reset or replace it.")
 
-    async def admit(self, tenant: str) -> None:
-        limit = self.configuration.tenant_limits.get(tenant)
+    async def admit(self, project: str) -> None:
+        limit = self.configuration.project_limits.get(project)
         if limit is None:
-            raise AdmissionUnavailable("Endpoint tenant has no provisioned distributed rate policy.")
-        keys = (self._policy_key, self._pool_key, self._tenant_key(tenant))
+            raise AdmissionUnavailable("Endpoint project has no provisioned distributed rate policy.")
+        keys = (self._policy_key, self._pool_key, self._project_key(project))
         try:
             async with asyncio.timeout(2):
                 result = await self._redis.eval(_ADMIT, 3, *keys, self._digest,

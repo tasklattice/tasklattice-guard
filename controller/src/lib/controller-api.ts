@@ -1,4 +1,7 @@
+import {directorySearch,type PageQuery} from "./directory-query";
+import type {DirectoryPage} from "../../shared/directory";
 import type { FormalValidation } from "../../shared/formal-validation";
+import { currentProjectId } from "./project-context";
 import type { EndpointAdapterId } from "./api-types";
 import type { AuditQuery } from "../../shared/audit-query";
 import type { EnforcementAction } from "../../shared/enforcement-action.generated";
@@ -49,7 +52,7 @@ export type DiscoveredProviderModels = {
 };
 
 export type ModelDefinition = {
-  tenantId?: string | null;
+  projectId?: string | null;
   protocolEditable?: boolean;
   connectionStatus?: "pending" | "validated" | "failed";
   connectionMessage?: string | null;
@@ -65,6 +68,9 @@ export type ModelDefinition = {
   timeoutSeconds: number;
   maxTokens: number;
   maxConcurrency?: number;
+  rateLimitAttempts?: number;
+  lowerThreshold?: number;
+  upperThreshold?: number;
   status: "pending" | "validated" | "failed";
   validationMessage: string | null;
   validationLatencyMs: number | null;
@@ -140,7 +146,7 @@ export type GuardrailDraftConfig = {
 };
 
 export type Guardrail = {
-  tenantId?: string;
+  projectId?: string;
   monthlyCost?: import("../../shared/model-pricing").GuardrailMonthlyCost;
   protection?: import("../../shared/protection-mode").ProtectionModeSettings;
   copyOrigin?: { sourceGuardrailId: string; sourceName: string; sourceVersion: string | null; sourceDraftRevision: number | null; copiedAt: string; contentDigest: string } | null;
@@ -298,7 +304,7 @@ export type GuardrailPlanPreview = {
 };
 
 export type Endpoint = {
-  tenantId?: string;
+  projectId?: string;
   id: string;
   name: string;
   adapter: EndpointAdapterId;
@@ -448,11 +454,15 @@ export class ControllerRequestError extends Error {
 export async function requestController<T>(path: string, options?: RequestInit & { timeoutMs?: number }): Promise<T> {
   const { timeoutMs = 30_000, ...init } = options ?? {};
   const formData = typeof FormData !== "undefined" && init?.body instanceof FormData;
+  const headers = new Headers(init.headers);
+  if (init.body && !formData && !headers.has("content-type")) headers.set("content-type", "application/json");
+  const projectId = currentProjectId();
+  if (projectId && path.startsWith("/api/v1/")) headers.set("x-project-id", projectId);
   const response = await fetch(path, {
     credentials: "same-origin",
     ...init,
     ...(!init?.method || init.method === 'GET' ? { signal: init?.signal ? AbortSignal.any([init.signal, AbortSignal.timeout(timeoutMs)]) : AbortSignal.timeout(timeoutMs) } : {}),
-    headers: init?.body && !formData ? { "content-type": "application/json", ...init.headers } : init?.headers,
+    headers: projectId ? headers : init.body && !formData ? { "content-type": "application/json", ...init.headers } : init.headers,
   });
   if (response.status === 204) return undefined as T;
   const rawResponse = response.ok ? undefined : response.clone?.();
@@ -463,7 +473,7 @@ export async function requestController<T>(path: string, options?: RequestInit &
   if (!response.ok) {
     // A forbidden write may mean the user's role changed. Recheck identity,
     // without treating every 403 as a logout or retrying the rejected write.
-    if (response.status === 401 || response.status === 403) window.dispatchEvent(new CustomEvent("tasklattice:unauthorized"));
+    if (response.status === 401 || response.status === 403 || payload.error?.code === "project_changed") window.dispatchEvent(new CustomEvent("tasklattice:unauthorized"));
     throw new ControllerRequestError(
       formatApiError(payload.error?.detail ?? payload.detail) ?? payload.error?.message ?? payload.message ?? `Request failed with status ${response.status}.`,
       response.status, payload.error?.code, payload.error?.detail ?? payload.detail,
@@ -545,8 +555,9 @@ export const revalidateModelProvider = (id: string) => requestController<ModelPr
 export const discoverModelProvider = (id: string) => requestController<DiscoveredProviderModels>(`/api/v1/model-providers/${encodeURIComponent(id)}/model-discoveries`, json("POST"));
 export const deleteModelProvider = (id: string) => requestController<void>(`/api/v1/model-providers/${encodeURIComponent(id)}`, json("DELETE"));
 export const createModelDefinition = (input: { providerId: string; name: string; model: string; profile: ModelProfile; timeoutSeconds: number; maxTokens: number; maxConcurrency?: number }) => requestController<ModelDefinition>("/api/v1/models", json("POST", input));
-export const configureModelConcurrency = (id: string, maxConcurrency: number) => requestController<ModelDefinition>(`/api/v1/models/${encodeURIComponent(id)}/concurrency`, json("PUT", { maxConcurrency }));
-export const configureModelDefinition = (id: string, input: Pick<ModelDefinition, "profile" | "timeoutSeconds" | "maxTokens" | "maxConcurrency">) => requestController<ModelDefinition>(`/api/v1/models/${encodeURIComponent(id)}/protocol`, json("PUT", input));
+export type ModelRuntimeSettings = { maxConcurrency: number; rateLimitAttempts: number; lowerThreshold: number; upperThreshold: number };
+export const configureModelRuntimeSettings = (id: string, settings: ModelRuntimeSettings) => requestController<ModelDefinition>(`/api/v1/models/${encodeURIComponent(id)}/runtime-settings`, json("PUT", settings));
+export const configureModelDefinition = (id: string, input: Pick<ModelDefinition, "profile" | "timeoutSeconds" | "maxTokens"> & ModelRuntimeSettings) => requestController<ModelDefinition>(`/api/v1/models/${encodeURIComponent(id)}/protocol`, json("PUT", input));
 export const revalidateModelDefinition = (id: string) => requestController<ModelDefinition>(`/api/v1/models/${encodeURIComponent(id)}/capability-tests`, json("POST"));
 export const testModelConnection = (id: string) => requestController<ModelDefinition>(`/api/v1/models/${encodeURIComponent(id)}/connection-tests`, json("POST"));
 export const deleteModelDefinition = (id: string) => requestController<void>(`/api/v1/models/${encodeURIComponent(id)}`, json("DELETE"));
@@ -602,9 +613,10 @@ export const getControllerEndpointDeletionImpact = (id: string) => requestContro
 export const deleteControllerEndpoint = (id: string, input: { reason: string; confirmRecentTraffic: boolean; confirmationName?: string | undefined }) => requestController<void>(`/api/v1/endpoints/${encodeURIComponent(id)}`, json("DELETE", input));
 
 export { listTrafficRouters as listControllerRouters } from "./traffic-routing-api";
-export const listRunnerPools = (signal?: AbortSignal) => requestController<Collection<RunnerPool>>("/api/v1/runner-pools", {
-  signal: signal ? AbortSignal.any([signal, AbortSignal.timeout(10_000)]) : AbortSignal.timeout(10_000),
-});
+export type RunnerPoolSummary = {id:string;name:string;totalCount:number;connectedCount:number};
+export type RunnerPoolDetail = RunnerPool & {nextCursor:string|null;counts:{total:number;connected:number;pending:number;syncing:number;hasMetrics:boolean}};
+export const listRunnerPools = (query:PageQuery={},signal?:AbortSignal) => requestController<DirectoryPage<RunnerPoolSummary>>(`/api/v1/runner-pools${directorySearch(query)}`,{signal});
+export const getRunnerPool = (id:string,query:PageQuery={},signal?:AbortSignal) => requestController<RunnerPoolDetail>(`/api/v1/runner-pools/${encodeURIComponent(id)}${directorySearch(query)}`,{signal});
 export const updateRunnerPool = (id: string, input: Pick<RunnerPool, "desiredReplicas" | "safeRpsPerRunner" | "maxConcurrencyPerRunner">) => requestController<RunnerPool>(`/api/v1/runner-pools/${encodeURIComponent(id)}`, json("PATCH", input));
 export const removeRunnerInstance = (runnerId: string, options?: { force: true; bootId: string }) => {
   const query = options ? `?${new URLSearchParams({ force: "true", bootId: options.bootId })}` : "";

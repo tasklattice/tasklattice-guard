@@ -60,7 +60,7 @@ async function images(component) {
   if (!component || component === 'runner') await run('docker', ['build', '--build-arg', `TALI_BUILD_INFO=${buildInfo}`, '-f', 'Dockerfile.runner', '-t', env.RUNNER_IMAGE ?? `${env.RUNNER_REPOSITORY ?? 'ghcr.io/tasklattice/tali-guard-runner'}:dev`, '.']);
 }
 async function lint(extra = args) {
-  for (const values of [required, ['--values', devValues], ['--values', devValues, '--set', 'observability.serviceMonitor.enabled=true', '--set', 'observability.prometheusRule.enabled=true', '--set', 'observability.grafanaDashboard.enabled=true'], ['--values', devValues, ...debugArgs()]]) {
+  for (const values of [required, ['--values', devValues], ['--values', devValues, '--set', 'observability.serviceMonitor.enabled=true', '--set', 'observability.prometheusRule.enabled=true', '--set', 'observability.grafanaDashboard.enabled=true'], ['--values', devValues, ...debugArgs()], ['--values', devValues, '--values', `${chart}/values-dev-keycloak.yaml`]]) {
     await run('helm', ['lint', chart, '--strict', ...values, ...extra]);
   }
   await run('helm', ['lint', litellmChart, '--strict', '--values', litellmValues, ...extra]);
@@ -115,6 +115,7 @@ try {
     case 'helm-package': await run('bash', ['scripts/package-runtime-chart.sh', args[0] ?? env.DEV_CHART_VERSION ?? '0.0.0-dev']); break;
     case 'helm-lint': await lint(); break;
     case 'helm-template': await run('helm', ['template', release, chart, '--namespace', namespace, '--values', devValues, ...args]); break;
+    case 'helm-deploy-keycloak': await deployGuard(false, ['--values', `${chart}/values-dev-keycloak.yaml`, '--wait-for-jobs', ...args]); break;
     case 'helm-deploy':
     case 'helm-deploy-debug': await deployGuard(action.endsWith('debug'), args); break;
     case 'litellm-deploy': await deployLitellm(args); break;
@@ -132,7 +133,7 @@ try {
       await run('.venv/bin/python', ['-m', 'pytest', '-q', '-m', 'contract', ...args]);
       await lint([]);
       for (const dashboard of ['overview', 'troubleshooting']) await run('jq', ['empty', `${chart}/grafana/dashboards/tasklattice-guard-${dashboard}.json`]);
-      for (const extra of [[], ['--set', 'observability.serviceMonitor.enabled=true', '--set', 'observability.prometheusRule.enabled=true', '--set', 'observability.grafanaDashboard.enabled=true'], debugArgs()]) await run('helm', ['template', release, chart, '--values', devValues, ...extra], true);
+      for (const extra of [[], ['--set', 'observability.serviceMonitor.enabled=true', '--set', 'observability.prometheusRule.enabled=true', '--set', 'observability.grafanaDashboard.enabled=true'], debugArgs(), ['--values', `${chart}/values-dev-keycloak.yaml`]]) await run('helm', ['template', release, chart, '--values', devValues, ...extra], true);
       await run('helm', ['template', litellmRelease, litellmChart, '--values', litellmValues], true);
       break;
     default: throw new Error(`Unknown project command: ${action}`);

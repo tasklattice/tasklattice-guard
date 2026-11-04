@@ -13,7 +13,7 @@ describe.skipIf(!url)("bounded telemetry transactions and replay", () => {
   beforeAll(async () => {
     database = await createTestDatabase(url!, "telemetry_chunks");
     database.pool.options.max = 1;
-    await database.pool.query("INSERT INTO guardrail(id,name,draft_config) VALUES ('guard','Guard','{}')");
+    await database.pool.query("INSERT INTO guardrail (project_id,id,name,draft_config) VALUES ('projectA','guard','Guard','{}')");
   });
   afterAll(async () => { await database?.drop(); });
 

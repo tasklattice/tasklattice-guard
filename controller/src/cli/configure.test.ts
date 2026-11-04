@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { bindModel, configurationApi, manageTestRun, parseConfigurationArgs, provisionTenant, registerModel, type Api } from './configure.js';
+import { bindModel, configurationApi, manageTestRun, parseConfigurationArgs, provisionProject, registerModel, type Api } from './configure.js';
 
 const journal = () => ({ data: {} as any, save: vi.fn(async () => {}) });
 const assignments = (model = 'nvidia') => ({ controlPlane: null, bindings: { 'content_safety.input': model, 'content_safety.output': 'nvidia', 'jailbreak.input': 'jev' } });
@@ -27,15 +27,15 @@ describe('guardctl configuration', () => {
   });
 
   it('uses only the selected plane credential and never follows redirects', async () => {
-    const fetcher = vi.fn(async (_url: any, options: any) => { expect(options.headers.authorization).toBe('Bearer tenant-token'); expect(options.redirect).toBe('error'); return new Response('{}'); });
-    const api = await configurationApi('http://localhost:38081', 'tenant', { GUARD_PLATFORM_TOKEN: 'admin-token', GUARD_TENANT_TOKEN: 'tenant-token' }, fetcher as typeof fetch);
+    const fetcher = vi.fn(async (_url: any, options: any) => { expect(options.headers.authorization).toBe('Bearer project-token'); expect(options.redirect).toBe('error'); return new Response('{}'); });
+    const api = await configurationApi('http://localhost:38081', 'project', { GUARD_PLATFORM_TOKEN: 'admin-token', GUARD_PROJECT_TOKEN: 'project-token' }, fetcher as typeof fetch);
     await api('/api/v1/guardrails');
-    await expect(configurationApi('http://localhost:38081', 'tenant', { GUARD_PLATFORM_TOKEN: 'admin-token' })).rejects.toThrow('GUARD_TENANT');
+    await expect(configurationApi('http://localhost:38081', 'project', { GUARD_PLATFORM_TOKEN: 'admin-token' })).rejects.toThrow('GUARD_PROJECT');
     await expect(api('//elsewhere.test/api/v1/models')).rejects.toThrow('Management API paths');
     expect(fetcher).toHaveBeenCalledTimes(1);
   });
 
-  it.each(['platform', 'tenant'] as const)('uses the %s username login contract', async plane => {
+  it.each(['platform', 'project'] as const)('uses the %s username login contract', async plane => {
     const fetcher = vi.fn(async (url: any, options: any) => {
       expect(url).toBe('http://localhost:38081/api/auth/sign-in/username');
       expect(JSON.parse(options.body)).toEqual({ username: plane, password: 'password' });
@@ -111,7 +111,7 @@ describe('guardctl configuration', () => {
       return path.endsWith('/copy') ? { ...source, id: 'copy' } : source;
     };
     const j = journal();
-    await expect(provisionTenant(api, { name: 'Test', source: 'guardrail-default', 'emergency-reason': 'Authorized test' }, { draftConfig: { policyBindings: ['model'] } }, j)).rejects.toThrow('Compilation failed');
+    await expect(provisionProject(api, { name: 'Test', source: 'guardrail-default', 'emergency-reason': 'Authorized test' }, { draftConfig: { policyBindings: ['model'] } }, j)).rejects.toThrow('Compilation failed');
     expect(calls.find(c => c.path.endsWith('/duplicate')).body).toMatchObject({ sourceDraftRevision: 1 });
     expect(calls.find(c => c.method === 'PATCH')).toMatchObject({ path: '/api/v1/guardrails/copy', body: { draftConfig: { policyBindings: ['model'], outputDelivery: 'full_buffered' }, expectedDraftRevision: 1 } });
     expect(calls.some(c => c.path.includes('routers') || c.path.includes('emergency-apply'))).toBe(false);
@@ -142,12 +142,12 @@ describe('guardctl configuration', () => {
       throw Error(`Unexpected API: ${method} ${path}`);
     };
     const flags = { name: 'Copy', source: 'guardrail-default', 'emergency-reason': 'Authorized local regression' }, j = journal();
-    const result = await provisionTenant(api, flags, {}, j);
+    const result = await provisionProject(api, flags, {}, j);
     expect(result).toMatchObject({ sourceGuardrailId: 'guardrail-default', guardrailId: 'copy', rollout: 'active', credentialSaved: true });
     expect(JSON.stringify(result)).not.toContain('private-endpoint-key');
     expect(calls.some(c => c.path.includes('test-runs'))).toBe(false);
     const mutations = calls.filter(c => c.method !== 'GET').length;
-    await provisionTenant(api, flags, {}, j);
+    await provisionProject(api, flags, {}, j);
     expect(calls.filter(c => c.method !== 'GET')).toHaveLength(mutations);
     expect(calls.filter(c => c.path.endsWith('/emergency-apply'))).toHaveLength(1);
   });
@@ -165,7 +165,7 @@ describe('guardctl configuration', () => {
       throw Error(`Unexpected API: ${method} ${path}`);
     };
     const flags = { name: 'From Profile', 'emergency-reason': 'Local regression' }, state = journal();
-    for (let retry = 0; retry < 2; retry++) await expect(provisionTenant(api, flags, {}, state)).rejects.toThrow('Compiler temporarily unavailable');
+    for (let retry = 0; retry < 2; retry++) await expect(provisionProject(api, flags, {}, state)).rejects.toThrow('Compiler temporarily unavailable');
     const creates = calls.filter(call => call.method === 'POST' && call.path === '/api/v1/guardrails');
     expect(creates).toHaveLength(1);
     expect(creates[0].body).toMatchObject({ idempotencyKey: expect.any(String), draftConfig: { profileOrigin: { id: 'local-baseline', version: '1.0.0' } } });

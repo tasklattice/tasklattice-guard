@@ -70,7 +70,7 @@ const activeConfiguration = (revisionId: string, revision: number) => ({
 describe("Runner model-configuration convergence", () => {
   it("uses the selected pool's group Models and keeps its ACK/NACK out of global activation", async () => {
     const service = serviceMock();
-    const scoped = activeConfiguration("tenant-group-model:grant-a", 1);
+    const scoped = activeConfiguration("project-group-model:grant-a", 1);
     const models = { configurationForPool: vi.fn().mockResolvedValue(scoped), activeConfiguration: vi.fn(),
       finalizeActivation: vi.fn(), failActivation: vi.fn() };
     const server = new RunnerControlServer(config, service as unknown as ControlPlaneService,
@@ -93,7 +93,7 @@ describe("Runner model-configuration convergence", () => {
   });
 
   it("refuses group Models on a Runner without challenged snapshot acknowledgement", async () => {
-    const models = { configurationForPool: vi.fn().mockResolvedValue(activeConfiguration("tenant-group-model:grant-a", 1)), activeConfiguration: vi.fn() };
+    const models = { configurationForPool: vi.fn().mockResolvedValue(activeConfiguration("project-group-model:grant-a", 1)), activeConfiguration: vi.fn() };
     const server = new RunnerControlServer(config, serviceMock() as unknown as ControlPlaneService,
       metricsMock() as unknown as ControllerMetrics, models as unknown as ModelConfigurationService);
     const stream = streamMock();
@@ -421,16 +421,16 @@ describe("Runner model-configuration convergence", () => {
     const service = serviceMock();
     service.desiredStateForPool.mockResolvedValue({ generation: 9, groupId: "default", allocationEpoch: 0, artifacts: [], disabledGuardrailIds: [],
       disabledEndpointIds: [], routers: [], guardrailLoggingLevels: {}, endpoints: [{ endpointId: "endpoint-a",
-        tenantId: "tenantA", adapter: "litellm-generic-guardrail", trafficRouterId: null,
+        projectId: "projectA", adapter: "litellm-generic-guardrail", trafficRouterId: null,
         verification: { credentials: [] }, scanFlagOnlyDefault: true }] } as never);
     const server = new RunnerControlServer(config, service as unknown as ControlPlaneService,
       metricsMock() as unknown as ControllerMetrics, { activeConfiguration: vi.fn().mockResolvedValue(null) } as unknown as ModelConfigurationService);
     const stream = streamMock();
     await handle(server, stream, registration("runner-owner"), null);
     const desired = stream.write.mock.calls.map(([message]) => message.desiredState).find(Boolean);
-    expect(desired?.endpoints).toEqual([expect.objectContaining({ endpointId: "endpoint-a", tenantId: "tenantA" })]);
+    expect(desired?.endpoints).toEqual([expect.objectContaining({ endpointId: "endpoint-a", projectId: "projectA" })]);
   });
-  it("dispatches each tenant's validation only to a compiler in its allocated group", async () => {
+  it("dispatches each project's validation only to a compiler in its allocated group", async () => {
     const jobs = ["a", "b"].map((group, index) => ({ id: `job-${group}`, kind: "guardrail.validation_requested", aggregateId: `guard-${group}`,
       createdAt: new Date(index), payload: { runId: `run-${group}`, testCases: [],
         plan: { guardrail_version: "20261012-030000.000Z", safety_level: "strict", output_delivery: "full_buffered" } } }));
@@ -656,6 +656,28 @@ describe("Runner model-configuration convergence", () => {
     const { requestId } = stream.write.mock.calls[0]![0].artifactAdmissionRequest;
     await handle(server, stream, { artifactAdmissionResult: { requestId, runnerId: "runner", admitted: true, reason: "", nemoVersion: "test", modelRevisionId: "revision-9" } }, connection);
     expect(await checking).toEqual([expect.objectContaining({ unavailable: false, admitted: true, modelRevisionId: "revision-9" })]);
+    await server.stop();
+  });
+
+  it.each(["default", "project-pool"])("scopes background admission to the stored Guardrail allocation %s without a request Project", async (poolId) => {
+    const groupRouting = { poolsForValidation: vi.fn().mockResolvedValue([poolId]), poolsForProject: vi.fn() };
+    const service = { ...serviceMock(), groupRouting };
+    const models = { activeConfiguration: vi.fn().mockResolvedValue(activeConfiguration("revision-9", 9)) };
+    const server = new RunnerControlServer(config, service as unknown as ControlPlaneService,
+      metricsMock() as unknown as ControllerMetrics, models as unknown as ModelConfigurationService);
+    for (const id of ["default", "project-pool", "unrelated-pool"]) {
+      const hello = registration(`runner-${id}`);
+      hello.registration.poolId = id;
+      await handle(server, streamMock(), hello, null);
+    }
+    const artifact = { guardrailId: "stored-guard", guardrailVersion: "20261026-030000.000Z",
+      compilerVersion: NEMO_COMPILER_VERSION, actionBindings: [], plan: { compiler_version: PLAN_COMPILER_VERSION,
+        guardrail_version: "20261026-030000.000Z", safety_level: "strict", output_delivery: "full_buffered" } };
+    expect(await server.checkArtifactAdmission(artifact as never)).toEqual([
+      expect.objectContaining({ poolId, runnerId: `runner-${poolId}`, unavailable: true }),
+    ]);
+    expect(groupRouting.poolsForValidation).toHaveBeenCalledWith("guardrail.validation_requested", "stored-guard");
+    expect(groupRouting.poolsForProject).not.toHaveBeenCalled();
     await server.stop();
   });
 

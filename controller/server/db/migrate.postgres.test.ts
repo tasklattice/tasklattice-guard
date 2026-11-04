@@ -57,28 +57,19 @@ describe.skipIf(!url)("Current database schema baseline", () => {
     expect((await pool.query("SELECT * FROM guardrail_profile ORDER BY id")).rows).toEqual(before);
     expect((await pool.query("SELECT hash FROM drizzle.__drizzle_migrations")).rows).toEqual(Array.from({ length: migrationCount }, () => ({ hash: "current-v1-baseline" })));
   });
-  it("upgrades the current upstream schema without skipping tenant migrations or resetting model concurrency", async () => {
-    const directory = mkdtempSync(join(tmpdir(), "guard-upstream-migration-"));
-    try {
-      cpSync(config.migrationsPath, directory, { recursive: true });
-      const journalPath = join(directory, "meta/_journal.json");
-      const journal = JSON.parse(readFileSync(journalPath, "utf8"));
-      journal.entries = journal.entries.slice(0, 3);
-      expect(journal.entries.at(-1).tag).toBe("0002_model_concurrency");
-      writeFileSync(journalPath, JSON.stringify(journal));
-      await runMigrations({ ...config, migrationsPath: directory }, createPooledDatabase(pool));
-      await pool.query("INSERT INTO model_provider(id,name,kind,base_url,credential_ciphertext) VALUES ('upstream-provider','Provider','custom-openai-compatible','http://provider.invalid/v1','')");
-      await pool.query("INSERT INTO model_definition(id,provider_id,name,model,max_concurrency) VALUES ('upstream-model','upstream-provider','Model','synthetic',7)");
-      await migrate();
-      expect((await pool.query("SELECT tenant_id,max_concurrency FROM model_definition WHERE id='upstream-model'")).rows)
-        .toEqual([{ tenant_id: null, max_concurrency: 7 }]);
-      expect((await pool.query("SELECT id FROM tenant ORDER BY id")).rows)
-        .toEqual([{ id: "tenantA" }, { id: "tenantB" }, { id: "tenantC" }]);
-      expect((await pool.query("SELECT count(*)::int AS n FROM drizzle.__drizzle_migrations")).rows[0].n).toBe(migrationCount);
-      await migrate();
-      expect((await pool.query("SELECT count(*)::int AS n FROM drizzle.__drizzle_migrations")).rows[0].n).toBe(migrationCount);
-    } finally { rmSync(directory, { recursive: true, force: true }); }
+  it("creates only the current Project model, without upgrade scaffolding or sample tenants", async () => {
+    await migrate();
+    expect((await pool.query("SELECT id FROM project")).rows).toEqual([]);
+    expect((await pool.query("SELECT id FROM project_group")).rows).toEqual([{id:"default"}]);
+    for (const table of ["tenant","tenant_group","project_group_move","project_group_move_group","project_group_move_pool","historical_telemetry_attribution","historical_telemetry_quarantine_checkpoint"]) {
+      expect((await pool.query("SELECT to_regclass($1) AS name",[table])).rows[0].name).toBeNull();
+    }
+    await pool.query("INSERT INTO project(id,name) VALUES ('support','support')");
+    await expect(pool.query("UPDATE project SET name='renamed' WHERE id='support'")).rejects.toMatchObject({code:"23514"});
+    await expect(pool.query("INSERT INTO runner_pool(id,name) VALUES ('unbound','Unbound')")).rejects.toMatchObject({code:"23514"});
+    await pool.query("INSERT INTO runner_pool(id,name,project_id) VALUES ('support','runner-support','support')");
   });
+
   it("refuses an incomplete historical upgrade without applying schema changes", async () => {
     await pool.query("CREATE SCHEMA drizzle; CREATE TABLE drizzle.__drizzle_migrations(id serial PRIMARY KEY, hash text NOT NULL,created_at bigint)");
     await pool.query("INSERT INTO drizzle.__drizzle_migrations(hash,created_at) VALUES ('old',$1)", [SCHEMA_BASELINE - 1]);

@@ -2,10 +2,11 @@
 TaskLattice Guard installed two application component types:
 
   Controller: {{ include "tali-guard.controllerName" . }}
-  GuardRails 0: {{ include "tali-guard.defaultRunnerName" . }} ({{ .Values.runner.default.replicaCount }} replicas)
+  runner-default: {{ include "tali-guard.defaultRunnerName" . }} ({{ .Values.runner.default.replicaCount }} replicas)
 
-GuardRails 0 is the mandatory baseline and authoritative NeMo compiler.
+runner-default is the mandatory baseline and authoritative NeMo compiler.
 Its PodDisruptionBudget keeps at least one Runner available.
+Helm deploys only the Default Runner. Manage other Runners manually in the administrator UI.
 
 Check both rollouts:
 
@@ -30,6 +31,18 @@ Controller UI/API:
   {{ . }}
 {{ end }}
   curl {{ trimSuffix "/" (include "tali-guard.primaryPublicUrl" .) }}/api/v1/system/status
+
+{{- if .Values.keycloak.enabled }}
+
+Development Keycloak: http://localhost:{{ .Values.keycloak.port }}
+Sign in using the "Keycloak" button in Guard:
+{{- $identities := .Files.Get "files/keycloak-dev-identities.json" | fromJson }}
+{{ range $identities.projects }}
+  {{ .username }} / password -> Project {{ .name }}
+{{ end }}
+Local user sign-in remains available. Configure the test2 Runner in the administrator UI.
+Upgrade this profile with: npm run helm:deploy:dev:keycloak
+{{- end }}
 
 Runner data-plane traffic enters through the stable service/{{ include "tali-guard.runtimeName" . }} on port 8091.
 Upstream callers never address an individual Runner Pod.

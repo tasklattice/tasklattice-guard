@@ -8,14 +8,14 @@ vi.mock("@tanstack/react-router", () => ({
   Link: ({ children, to: _to, ...props }: { children: ReactNode; to?: string } & AnchorHTMLAttributes<HTMLAnchorElement>) => <a href="/account" {...props}>{children}</a>,
 }));
 
-const identity = vi.hoisted(() => ({ role: "admin", tenant_id: null as string | null }));
+const identity = vi.hoisted(() => ({ role: "admin", project_id: null as string | null }));
 vi.mock("@/lib/auth", () => ({
   useAuth: () => ({
     user: {
       display_name: "Local Administrator",
       username: "admin",
       role: identity.role,
-      tenant_id: identity.tenant_id,
+      project_id: identity.project_id,
     },
     logout: vi.fn(),
     logoutPending: false,
@@ -24,11 +24,11 @@ vi.mock("@/lib/auth", () => ({
 
 vi.mock("react-i18next", () => ({
   useTranslation: () => ({
-    t: (key: string, values?: { name?: string; tenant?: string }) => ({
+    t: (key: string, values?: { name?: string; project?: string }) => ({
       "sidebar.accountMenuFor": `Open account menu for ${values?.name}`,
       "account.fallbackName": "User",
       "account.localAccount": "Local account",
-      "account.tenantLabel": `Tenant: ${values?.tenant}`,
+      "account.projectLabel": `Project: ${values?.project}`,
       "sidebar.platformIdentity": "Platform administrator",
       "account.title": "Account",
       "auth.manageUsers": "Manage users",
@@ -40,7 +40,7 @@ vi.mock("react-i18next", () => ({
 vi.mock("@/components/ui/notifications", () => ({ toast: { error: vi.fn() } }));
 
 describe("AccountMenu", () => {
-  afterEach(() => { cleanup(); identity.role = "admin"; identity.tenant_id = null; });
+  afterEach(() => { cleanup(); identity.role = "admin"; identity.project_id = null; });
 
   it("uses an avatar-only header trigger and reveals identity details in the menu", () => {
     render(<AccountMenu placement="header" />);
@@ -58,12 +58,12 @@ describe("AccountMenu", () => {
     expect(screen.getByRole("menuitem", { name: "Sign out" })).toBeTruthy();
   });
 
-  it("shows the tenant identity without platform user management", () => {
+  it("shows the project identity without platform user management", () => {
     identity.role = "user";
-    identity.tenant_id = "tenantC";
+    identity.project_id = "projectC";
     render(<AccountMenu placement="header" />);
     fireEvent.click(screen.getByRole("button", { name: "Open account menu for Local Administrator" }));
-    expect(screen.getByText("Tenant: tenantC")).toBeTruthy();
+    expect(screen.getByText("Project: projectC")).toBeTruthy();
     expect(screen.queryByRole("menuitem", { name: "Manage users" })).toBeNull();
     expect(screen.queryByText("Platform administrator")).toBeNull();
   });

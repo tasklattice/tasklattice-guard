@@ -25,7 +25,7 @@ describe.skipIf(!url)("Policy publication identity in PostgreSQL", () => {
   });
   beforeEach(async () => {
     for (const table of ["policy_version", "policy_record", "policy_validation_run", "audit_event"]) await pool.query(`DELETE FROM "${table}"`);
-    await pool.query("INSERT INTO policy_record (id,name,owner,draft) VALUES ('fixture','Publication identity','test',$1)", [draft]);
+    await pool.query("INSERT INTO policy_record (project_id,id,name,owner,draft) VALUES ('projectA','fixture','Publication identity','test',$1)", [draft]);
     await pool.query("INSERT INTO policy_validation_run (id,policy_id,draft_revision,status,created_by) VALUES ('run-1','fixture',1,'passed','test')");
   });
   it("returns one exact version and one audit event for concurrent retries", async () => {

@@ -29,19 +29,19 @@ export const configurationHelp = `Non-interactive configuration (existing Contro
     [--timeout-seconds 30] [--max-tokens 512] [--refresh-credential]
   guardctl platform bind --binding content_safety.input --model-id ID --state FILE
     [--validation-id ID | --revalidate] [--wait-seconds 300]
-  guardctl tenant test --guardrail-id ID [--version VERSION] [--local-only]
-  guardctl tenant test-status --run-id ID
-  guardctl tenant test-cases --run-id ID [--cursor CURSOR] [--filter all|failed|passed|skipped]
-  guardctl tenant test-case --run-id ID --ordinal N [--trace-offset N]
-  guardctl tenant test-cancel --run-id ID
-  guardctl tenant provision --name NAME --patch FILE --state FILE
+  guardctl project test --guardrail-id ID [--version VERSION] [--local-only]
+  guardctl project test-status --run-id ID
+  guardctl project test-cases --run-id ID [--cursor CURSOR] [--filter all|failed|passed|skipped]
+  guardctl project test-case --run-id ID --ordinal N [--trace-offset N]
+  guardctl project test-cancel --run-id ID
+  guardctl project provision --name NAME --patch FILE --state FILE
     --emergency-reason TEXT [--profile local-baseline | --source GUARDRAIL_ID] [--adapter litellm-generic-guardrail]
     [--endpoint-id ID] [--router-id ID] [--replace-change-id ID] [--wait-seconds 300]
 
 Common: --url URL, --env-file FILE. Credentials come from environment only:
   GUARD_PLATFORM_TOKEN or GUARD_PLATFORM_USERNAME + GUARD_PLATFORM_PASSWORD
-  GUARD_TENANT_TOKEN   or GUARD_TENANT_USERNAME   + GUARD_TENANT_PASSWORD
-Optional GUARD_PLATFORM_URL / GUARD_TENANT_URL override the default Controller URL.
+  GUARD_PROJECT_TOKEN   or GUARD_PROJECT_USERNAME   + GUARD_PROJECT_PASSWORD
+Optional GUARD_PLATFORM_URL / GUARD_PROJECT_URL override the default Controller URL.
 No interactive confirmation. Emergency apply requires an explicit audit reason.
 State files contain the created Endpoint credential (mode 0600); keep them private.
 Use the same state and arguments to resume. Use a new state for a different configuration.`;
@@ -63,8 +63,8 @@ export function parseConfigurationArgs(args: string[]): { command: string; flags
   return { command, flags };
 }
 
-/** Separate credentials per plane; never fall back to an admin session for tenant writes. */
-export async function configurationApi(base: string, plane: 'platform' | 'tenant', env: NodeJS.ProcessEnv, fetcher: typeof fetch = fetch): Promise<Api> {
+/** Separate credentials per plane; never fall back to an admin session for project writes. */
+export async function configurationApi(base: string, plane: 'platform' | 'project', env: NodeJS.ProcessEnv, fetcher: typeof fetch = fetch): Promise<Api> {
   const url = new URL(base);
   assert.ok(['http:', 'https:'].includes(url.protocol) && !url.username && !url.password && !url.search && !url.hash, 'Use an HTTP(S) Controller URL without credentials or query parameters');
   assert.equal(url.pathname.replace(/\/$/, ''), '', 'Controller URL must be an origin');
@@ -191,7 +191,7 @@ export async function bindModel(api: Api, flags: Flags, journal: Journal): Promi
   return { binding, modelId, activeRevision: s.activeRevision, previousModelId: originalAssignments.bindings[binding], state: 'active' };
 }
 
-export async function provisionTenant(api: Api, flags: Flags, patch: any, journal: Journal): Promise<any> {
+export async function provisionProject(api: Api, flags: Flags, patch: any, journal: Journal): Promise<any> {
   const name = required(flags, 'name'), reason = required(flags, 'emergency-reason');
   const sourceId = flags.source ?? journal.data.request?.sourceId, profileId = sourceId ? undefined : flags.profile ?? 'local-baseline', adapter = flags.adapter ?? 'litellm-generic-guardrail';
   assert.ok(!(flags.source && flags.profile), 'Choose --profile or --source');
@@ -305,10 +305,10 @@ export async function manageTestRun(api: Api, command: 'test' | 'test-status' | 
   return command === 'test-cancel' ? api(`${path}/cancel`, 'POST') : api(path);
 }
 
-export async function runConfiguration(plane: 'platform' | 'tenant', args: string[], defaultUrl: string): Promise<void> {
+export async function runConfiguration(plane: 'platform' | 'project', args: string[], defaultUrl: string): Promise<void> {
   const { command, flags } = parseConfigurationArgs(args);
   if (!command || command === 'help' || command === '--help' || flags.help) { console.log(configurationHelp); return; }
-  assert.ok((plane === 'platform' && ['register-model', 'bind'].includes(command)) || (plane === 'tenant' && ['provision', 'test', 'test-status', 'test-cancel', 'test-cases', 'test-case'].includes(command)), 'Unknown configuration command; use platform help or tenant help');
+  assert.ok((plane === 'platform' && ['register-model', 'bind'].includes(command)) || (plane === 'project' && ['provision', 'test', 'test-status', 'test-cancel', 'test-cases', 'test-case'].includes(command)), 'Unknown configuration command; use platform help or project help');
   const cwd = process.env.GUARDCTL_CWD ?? process.cwd();
   const env = { ...(flags['env-file'] ? parseEnv(await readFile(resolve(cwd, flags['env-file']), 'utf8')) : {}), ...process.env };
   const base = flags.url ?? env[`GUARD_${plane.toUpperCase()}_URL`] ?? defaultUrl;
@@ -324,7 +324,7 @@ export async function runConfiguration(plane: 'platform' | 'tenant', args: strin
     if (journal.data.connection) assert.deepEqual(journal.data.connection, connection, 'State belongs to another API connection');
     else { journal.data.connection = connection; await journal.save(); }
     const result = command === 'bind' ? await bindModel(api, flags, journal)
-      : await provisionTenant(api, flags, JSON.parse(await readFile(resolve(cwd, required(flags, 'patch')), 'utf8')), journal);
+      : await provisionProject(api, flags, JSON.parse(await readFile(resolve(cwd, required(flags, 'patch')), 'utf8')), journal);
     emit({ ...result, stateFile: state });
   });
 }

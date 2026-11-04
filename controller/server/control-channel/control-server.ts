@@ -39,7 +39,7 @@ import type { ModelConfigurationService } from "../model-config/service.js";
 import type { ControlPlaneService } from "../services/control-plane.js";
 import type { ArtifactContent } from "../domain/artifact-content.js";
 import { ConflictError } from "../domain/errors.js";
-import { tenantOwnerForCreate } from "../services/tenant-context.js";
+import { currentProjectId, projectOwnerForCreate } from "../services/project-context.js";
 import type { PoolAdmission, SignedArtifact } from "../domain/environment-check.js";
 import { controlChannelOptions } from "./transport.js";
 import { authenticateRunnerPrincipal } from "./runner-authentication.js";
@@ -145,7 +145,7 @@ export class RunnerControlServer {
   async compileArtifact(input: ArtifactCompilation): Promise<ArtifactContent> {
     if (this.stopping) throw new Error("Controller is stopping");
     const allowed = this.service.groupRouting
-      ? new Set((await this.service.groupRouting.poolsForTenant(tenantOwnerForCreate())).map(pool => pool.id)) : new Set(["default"]);
+      ? new Set((await this.service.groupRouting.poolsForProject(projectOwnerForCreate())).map(pool => pool.id)) : new Set(["default"]);
     let runner: Connection | undefined;
     for (const connection of this.connections.values()) if (allowed.has(connection.poolId) && connection.compilerCapable
       && connection.offlineCompilation && await this.isCurrentConnection(connection)) { runner = connection; break; }
@@ -176,8 +176,13 @@ export class RunnerControlServer {
     const contractIssue = artifactExecutionContractIssue(artifact);
     const expectedByPool = new Map<string, string>();
     const byPool = new Map<string, Connection>();
+    const projectId = currentProjectId();
+    // Background checks have no request Project. Resolve the stored Guardrail's
+    // allocation; a platform preset belongs to Default, never every pool.
     const allowed = this.service.groupRouting
-      ? new Set((await this.service.groupRouting.poolsForTenant(tenantOwnerForCreate())).map(pool => pool.id))
+      ? new Set(projectId
+        ? (await this.service.groupRouting.poolsForProject(projectId)).map(pool => pool.id)
+        : await this.service.groupRouting.poolsForValidation("guardrail.validation_requested", artifact.guardrailId))
       : null;
     for (const connection of this.connections.values()) {
       if (allowed && !allowed.has(connection.poolId)) continue;
@@ -581,7 +586,7 @@ export class RunnerControlServer {
         throw new Error("Heartbeat identity does not match the registered stream.");
       }
       try {
-        const admissionSnapshot = admissionSnapshotBytesFromWire(heartbeat.tenantAdmissionSnapshot);
+        const admissionSnapshot = admissionSnapshotBytesFromWire(heartbeat.projectAdmissionSnapshot);
         const accepted = await this.service.recordHeartbeat({
           runnerId: heartbeat.runnerId,
           bootId: heartbeat.bootId,
@@ -811,7 +816,7 @@ export class RunnerControlServer {
     if (!result.accepted) {
       await this.service.rejectValidation({
         runId: result.runId,
-        reason: result.reason || "GuardRails 0 could not execute Guardrail Validation.",
+        reason: result.reason || "The assigned Runner could not execute Guardrail Validation.",
       });
       return;
     }
@@ -931,7 +936,7 @@ export class RunnerControlServer {
         })),
         endpoints: desired.endpoints.map((endpoint) => ({
           endpointId: endpoint.endpointId,
-          tenantId: endpoint.tenantId,
+          projectId: endpoint.projectId,
           ...(endpoint.telemetryContextId ? { telemetryContextId: endpoint.telemetryContextId } : {}),
           adapter: endpoint.adapter,
           routerId: endpoint.trafficRouterId ?? "",
@@ -955,6 +960,7 @@ export class RunnerControlServer {
             timeoutSeconds: model.timeoutSeconds,
             maxTokens: model.maxTokens,
             maxConcurrency: model.maxConcurrency ?? 2,
+          rateLimitAttempts: model.rateLimitAttempts ?? 3, lowerThreshold: model.lowerThreshold ?? 0.1, upperThreshold: model.upperThreshold ?? 0.9,
           })),
           bindings: dataBindings,
         } : null,

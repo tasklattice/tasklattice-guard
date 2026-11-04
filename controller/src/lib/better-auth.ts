@@ -8,9 +8,9 @@ export const authClient = createAuthClient({
     adminClient(),
     usernameClient({ displayUsername: false }),
     inferAdditionalFields({
+      session: { activeProjectId: { type: "string", required: false } },
       user: {
         preferredLanguage: { type: "string", required: false },
-        tenantId: { type: "string", required: false },
       },
     }),
   ],

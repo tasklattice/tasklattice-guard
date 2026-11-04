@@ -306,7 +306,7 @@ async def test_typed_control_registration_installs_then_revokes_current_upload_c
         await exporter.stop()
 
 
-def test_progress_settings_are_explicit_and_keep_persistent_path_separate(monkeypatch, tmp_path):
+def test_progress_settings_default_to_runner_state_and_allow_a_path_override(monkeypatch, tmp_path):
     from runner.config import RunnerSettings
     from tests.test_runner_model_config import _required_runner_env
     _required_runner_env(monkeypatch)
@@ -319,6 +319,9 @@ def test_progress_settings_are_explicit_and_keep_persistent_path_separate(monkey
     monkeypatch.setenv("GUARD_RUNNER_SCOPED_TELEMETRY", "true")
     monkeypatch.setenv("GUARD_RUNNER_CONTROL_TOKEN", "pool-control-token-with-at-least-32-characters")
     monkeypatch.setenv("GUARD_RUNNER_STATE_PATH", str(tmp_path / "artifacts"))
+    monkeypatch.delenv("GUARD_RUNNER_TELEMETRY_PROGRESS_PATH", raising=False)
+    settings = RunnerSettings.from_env()
+    assert settings.telemetry_progress_state_path == settings.artifact_state_path == tmp_path / "artifacts"
     monkeypatch.setenv("GUARD_RUNNER_TELEMETRY_PROGRESS_PATH", str(tmp_path / "persistent"))
     settings = RunnerSettings.from_env()
     assert settings.artifact_state_path == tmp_path / "artifacts"

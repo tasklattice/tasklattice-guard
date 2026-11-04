@@ -20,7 +20,7 @@ const config = loadConfig({
 
 describe("Router management HTTP routes", () => {
   it("rejects an unknown role before deleting a Router", async () => {
-    const app = appWith({ user: { id: "member-1", role: "unknown", tenantId: "tenantA" } }, {});
+    const app = appWith({ session: { id: "fixture-session", activeProjectId: "projectA" }, user: { id: "member-1", role: "unknown", projectId: "projectA" } }, {});
 
     expect((await app.request("/api/v1/routers/router-1", {
       method: "DELETE",
@@ -31,7 +31,7 @@ describe("Router management HTTP routes", () => {
     const remove = vi.fn().mockResolvedValue(undefined);
     const distributeDesiredState = vi.fn().mockResolvedValue({ desiredGeneration: 8, distributionStatus: "ready" });
     const app = appWith(
-      { user: { id: "admin-1", role, tenantId: "tenantA" } },
+      { session: { id: "fixture-session", activeProjectId: "projectA" }, user: { id: "admin-1", role, projectId: "projectA" } },
       { trafficRouting: { remove } },
       distributeDesiredState,
     );
@@ -47,7 +47,7 @@ describe("Router management HTTP routes", () => {
 });
 
 function appWith(
-  session: { user: { id: string; role: string; tenantId?: string } } | null,
+  session: { user: { id: string; role: string; projectId?: string } } | null,
   service: Partial<ControlPlaneService>,
   distributeDesiredState = vi.fn().mockResolvedValue({ desiredGeneration: 7, distributionStatus: "ready" }),
 ) {

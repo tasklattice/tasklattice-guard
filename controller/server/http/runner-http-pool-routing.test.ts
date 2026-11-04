@@ -24,10 +24,10 @@ function setup(poolId: string, scoped = true, runtimeUrlOverride?: string) {
       CONTROLLER_RUNNER_HTTP_TOKENS_JSON: JSON.stringify({ default: inboundA, beta: inboundB }) } : {}) });
   const runtimeUrl = runtimeUrlOverride ?? (poolId === "default" ? config.runtimeServiceUrl : `http://${poolId}-runner:8091`);
   const fetcher = vi.fn().mockResolvedValue(Response.json({ rules: [], assignment: {}, runnerId: "runner" }));
-  const service = { groupRouting: { poolForTenant: vi.fn().mockResolvedValue({ poolId, groupId: "group", runtimeUrl, publicUrl: null }) },
+  const service = { groupRouting: { poolForProject: vi.fn().mockResolvedValue({ poolId, groupId: "group", runtimeUrl, publicUrl: null }) },
     trafficRouting: { get: vi.fn().mockResolvedValue({ id: "router", activeRevision: 1, endpointIds: ["endpoint"] }) } };
   const app = createHttpApp({ config,
-    auth: { api: { getSession: vi.fn().mockResolvedValue({ user: { id: "user", role: "user", tenantId: "tenantB" } }) } } as unknown as ControllerAuth,
+    auth: { api: { getSession: vi.fn().mockResolvedValue({ session: { id: "fixture-session", activeProjectId: "projectB" }, user: { id: "user", role: "user", projectId: "projectB" } }) } } as unknown as ControllerAuth,
     service: service as unknown as ControlPlaneService, runnerControl: {} as RunnerControlServer, metrics: {} as ControllerMetrics,
     // A deliberately legacy base client proves pool selection replaces its
     // credentials, including the default pool at the unchanged base URL.

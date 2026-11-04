@@ -50,7 +50,7 @@ import {
   metricWindows,
   type MetricScope,
 } from "./runtime-metric-results.js";
-import { currentTenantId, resourceReadPredicate, resourceWritePredicate } from "./tenant-context.js";
+import { currentProjectId, resourceReadPredicate, resourceWritePredicate } from "./project-context.js";
 
 export {
   assembleMetrics,
@@ -76,7 +76,7 @@ export async function queryRuntimeMetrics(
     "1d": 86_400_000,
   }[interval];
   const predicate = and(
-    currentTenantId() ? eq(event.tenantId, currentTenantId()!) : undefined,
+    currentProjectId() ? eq(event.projectId, currentProjectId()!) : undefined,
     gte(event.occurredAt, new Date(now - duration * 2)),
     // Allow small clock skew between the app process and PostgreSQL.
     lte(event.occurredAt, new Date(now + 60_000)),
@@ -435,7 +435,7 @@ export async function queryRuntimeMetrics(
         })
         .from(guardrails)
         .leftJoinLateral(validation, eq(guardrails.id, guardrails.id))
-        .where(and(isNull(guardrails.deletedAt), resourceReadPredicate("guardrail", guardrails.id, guardrails.tenantId))),
+        .where(and(isNull(guardrails.deletedAt), resourceReadPredicate("guardrail", guardrails.id, guardrails.projectId))),
     );
     // One row per published Router target so Guardrail scoping keeps working;
     // consumers de-duplicate by Router id when counting.
@@ -448,7 +448,7 @@ export async function queryRuntimeMetrics(
           active_snapshot: trafficRouters.activeSnapshot,
         })
         .from(trafficRouters)
-        .where(and(isNull(trafficRouters.deletedAt), resourceWritePredicate(trafficRouters.tenantId))),
+        .where(and(isNull(trafficRouters.deletedAt), resourceWritePredicate(trafficRouters.projectId))),
     )).flatMap((router) => {
       const guardrailIds = [...new Set((router.active_snapshot?.routes ?? []).flatMap((route) => route.targets.map((target) => target.guardrailId)))];
       return (guardrailIds.length ? guardrailIds : [null]).map((guardrail_id) => ({
@@ -462,7 +462,7 @@ export async function queryRuntimeMetrics(
       tx
         .select({ id: endpoints.id, name: endpoints.name })
         .from(endpoints)
-        .where(and(isNull(endpoints.deletedAt), resourceReadPredicate("endpoint", endpoints.id, endpoints.tenantId))),
+        .where(and(isNull(endpoints.deletedAt), resourceReadPredicate("endpoint", endpoints.id, endpoints.projectId))),
     );
     return {
       ...assembleMetrics(

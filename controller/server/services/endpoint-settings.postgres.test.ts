@@ -1,3 +1,4 @@
+import { withTestProject } from "../db/postgres-test-database.js";
 // @vitest-environment node
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createTestDatabase } from "../db/postgres-test-database.js";
@@ -24,7 +25,7 @@ describe.skipIf(!url)("Endpoint settings in PostgreSQL", () => {
   afterAll(async () => { await database?.drop(); });
 
   it("preserves the initial true default and persists false with audit and distribution", async () => {
-    const created = await service.createEndpoint({ name: "Scan", adapter: "f5-scan", actorId: "admin" });
+    const created = await withTestProject(() => service.createEndpoint({ name: "Scan", adapter: "f5-scan", actorId: "admin" }));
     expect(created.scanFlagOnlyDefault).toBe(true);
     const credentialId = created.credentials[0]!.id;
     expect((await service.updateEndpoint({ id: created.id, scanFlagOnlyDefault: false, actorId: "admin" })).scanFlagOnlyDefault).toBe(false);
@@ -43,16 +44,16 @@ describe.skipIf(!url)("Endpoint settings in PostgreSQL", () => {
   });
 
   it("accepts false at creation and rejects Scan settings for LiteLLM", async () => {
-    expect(await service.createEndpoint({ name: "Explicit", adapter: "f5-scan", scanFlagOnlyDefault: false, actorId: "admin" }))
+    expect(await withTestProject(() => service.createEndpoint({ name: "Explicit", adapter: "f5-scan", scanFlagOnlyDefault: false, actorId: "admin" })))
       .toMatchObject({ scanFlagOnlyDefault: false });
-    await expect(service.createEndpoint({ name: "Invalid", adapter: "litellm-generic-guardrail", scanFlagOnlyDefault: false, actorId: "admin" }))
+    await expect(withTestProject(() => service.createEndpoint({ name: "Invalid", adapter: "litellm-generic-guardrail", scanFlagOnlyDefault: false, actorId: "admin" })))
       .rejects.toThrow("only supported by F5");
-    const lite = await service.createEndpoint({ name: "Lite", adapter: "litellm-generic-guardrail", actorId: "admin" });
+    const lite = await withTestProject(() => service.createEndpoint({ name: "Lite", adapter: "litellm-generic-guardrail", actorId: "admin" }));
     await expect(service.updateEndpoint({ id: lite.id, scanFlagOnlyDefault: false, actorId: "admin" })).rejects.toThrow("only supported by F5");
     expect((await service.getEndpoint(lite.id)).status).toBe("active");
   });
   it.each(["litellm-generic-guardrail", "f5-scan"])("persists authentication changes without rotating %s credentials", async adapter => {
-    const created = await service.createEndpoint({ name: "Credential setting", adapter, actorId: "admin" });
+    const created = await withTestProject(() => service.createEndpoint({ name: "Credential setting", adapter, actorId: "admin" }));
     expect(created.credentialRequired).toBe(true);
     expect(created.credential).toMatch(/^tg_/);
     const before = (await database.pool.query("SELECT desired_generation::int AS n FROM controller_state")).rows[0].n;
@@ -75,7 +76,7 @@ describe.skipIf(!url)("Endpoint settings in PostgreSQL", () => {
   });
 
   it("issues a credential even when created for anonymous access", async () => {
-    const created = await service.createEndpoint({ name: "Anonymous", adapter: "f5-scan", credentialRequired: false, actorId: "admin" });
+    const created = await withTestProject(() => service.createEndpoint({ name: "Anonymous", adapter: "f5-scan", credentialRequired: false, actorId: "admin" }));
     expect(created.credentialRequired).toBe(false);
     expect(created.credential).toMatch(/^tg_/);
     expect(created.credentials).toHaveLength(1);

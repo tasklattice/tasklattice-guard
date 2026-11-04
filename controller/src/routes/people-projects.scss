@@ -1,0 +1,32 @@
+.people-projects-page {
+  padding-block: 32px;
+  > header h1 { font-size: 24px; }
+  .cds--btn:disabled { color: #525252; }
+  .directory-search { display: flex; align-items: center; position: relative; }
+  .directory-search > svg { position: absolute; left: 12px; z-index: 1; color: #525252; pointer-events: none; }
+  .directory-search input { padding-left: 36px; }
+}
+.project-list { margin-top: 24px; border: 1px solid var(--border); background: var(--card); }
+.project-list-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 24px; padding: 16px 20px; }
+.project-list-toolbar .directory-search { width: 300px; }
+.project-list th, .project-list td { padding-inline: 20px; }
+.project-list td { height: 80px; vertical-align: middle; }
+.project-list td:first-child { font-weight: 500; }
+ .project-list table { table-layout: fixed; }
+.project-list th:first-child { width: 24%; }
+.project-list th:nth-child(2) { width: 28%; }
+.project-list th:nth-child(3) { width: 10%; }
+.project-list th:last-child { width: 38%; }
+.project-list td:first-child, .project-list td:nth-child(2) { overflow-wrap: anywhere; }
+.project-list td:last-child { white-space: nowrap; }
+.people-projects-submit:disabled { color: #525252; }
+.user-directory { margin-top: 24px; border: 1px solid var(--border); background: var(--card); }
+.user-directory-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 24px; padding: 16px 20px; }
+.user-directory-toolbar .directory-search { width: 320px; }
+.user-directory-columns { display: grid; grid-template-columns: minmax(190px, 1.25fr) 120px minmax(160px, 1fr) 110px 96px 32px; align-items: center; gap: 16px; padding: 16px 20px; }
+.user-directory-heading { border-bottom: 1px solid var(--border); background: var(--muted); color: var(--muted-foreground); font-size: 12px; }
+.user-directory-row { width: 100%; text-align: left; min-height: 80px; }
+.user-directory-row:hover { background: var(--muted); }
+.user-directory-row:focus-visible { outline: 2px solid var(--ring); outline-offset: -2px; }
+
+.project-row-actions { display: flex; align-items: center; gap: 4px; }

@@ -99,8 +99,10 @@ async def test_uncertainty_band_is_configurable_so_blocking_policies_stop_failin
                       binding=replace(original.binding, capability="content_safety", contract_ref="tali.guard.content-safety.v1"))
 
     async def verdict(thresholds):
+        if thresholds is not None:
+            config.runtimes[0].lower_threshold, config.runtimes[0].upper_threshold = thresholds
         providers = dynamic_runtime_action_providers(config, {"provider-1": "synthetic"},
-            transport=httpx.MockTransport(respond), **{classifier_backend.threshold_option: thresholds})
+            transport=httpx.MockTransport(respond))
         action = next(p for p in providers if isinstance(p, EvaluationActionProvider))
         return (await action.execute(request)).verdict
 

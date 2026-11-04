@@ -2,6 +2,7 @@ import type { VersionTestingEvidence } from "../../shared/testing-report-retenti
 import type { RouterDraft } from "../../shared/traffic-routing.js";
 import type { ValidationProgress } from "../../shared/validation-progress.js";
 import {
+  check,
   bigint,
   boolean,
   customType,
@@ -49,39 +50,40 @@ import type { PackageManifest, PackageSignature } from "../domain/guardrail-pack
 const createdAt = timestamp("created_at", { withTimezone: true }).notNull().defaultNow();
 const updatedAt = timestamp("updated_at", { withTimezone: true }).notNull().defaultNow();
 
-export const tenantGroups = pgTable("tenant_group", {
+export const projectGroups = pgTable("project_group", {
   id: text("id").primaryKey(),
   name: text("name").notNull(),
   isDefault: boolean("is_default").notNull().default(false),
   createdAt,
   updatedAt,
-}, table => [uniqueIndex("tenant_group_single_default_idx").on(table.isDefault).where(sql`${table.isDefault} = true`)]);
+}, table => [uniqueIndex("project_group_single_default_idx").on(table.isDefault).where(sql`${table.isDefault} = true`)]);
 
-export const tenants = pgTable("tenant", {
+export const projects = pgTable("project", {
   id: text("id").primaryKey(),
   name: text("name").notNull(),
-  groupId: text("group_id").notNull().default("default").references(() => tenantGroups.id),
+  externalDepartmentId: text("external_department_id"),
+  groupId: text("group_id").notNull().default("default").references(() => projectGroups.id),
   createdAt,
-}, table => [index("tenant_group_idx").on(table.groupId)]);
+}, table => [index("project_group_idx").on(table.groupId, table.id), uniqueIndex("project_name_idx").on(table.name)]);
 
 /** A grant permits the recipient to read a resource and its child history.
  * Draft changes, publication, credential operations and deletion remain owner-only.
  */
 export const resourceShares = pgTable("resource_share", {
   id: text("id").primaryKey(),
-  ownerTenantId: text("owner_tenant_id").notNull().references(() => tenants.id, { onDelete: "cascade" }),
-  recipientTenantId: text("recipient_tenant_id").notNull().references(() => tenants.id, { onDelete: "cascade" }),
+  ownerProjectId: text("owner_project_id").notNull().references(() => projects.id, { onDelete: "cascade" }),
+  recipientProjectId: text("recipient_project_id").notNull().references(() => projects.id, { onDelete: "cascade" }),
   resourceType: text("resource_type").notNull(),
   resourceId: text("resource_id").notNull(),
   createdBy: text("created_by").references(() => user.id),
   createdAt,
 }, (table) => [
-  uniqueIndex("resource_share_unique_idx").on(table.ownerTenantId, table.recipientTenantId, table.resourceType, table.resourceId),
-  index("resource_share_owner_idx").on(table.ownerTenantId, table.resourceType, table.resourceId),
+  uniqueIndex("resource_share_unique_idx").on(table.ownerProjectId, table.recipientProjectId, table.resourceType, table.resourceId),
+  index("resource_share_owner_idx").on(table.ownerProjectId, table.resourceType, table.resourceId),
 ]);
 
 export const policyResources = pgTable("policy_resource", {
-  tenantId: text("tenant_id").notNull().default("tenantA").references(() => tenants.id),
+  projectId: text("project_id").notNull().references(() => projects.id),
   id: text("id").primaryKey(),
   definition: jsonb("definition").$type<import("../../shared/policy-definition.js").PolicyDefinition>().notNull(),
   revision: integer("revision").notNull().default(1),
@@ -108,7 +110,6 @@ export const policyResourceValidations = pgTable("policy_resource_validation", {
 // validate, hash, or rotate human credentials itself.
 export const user = pgTable("auth_user", {
   id: text("id").primaryKey(),
-  tenantId: text("tenant_id").notNull().default("tenantA").references(() => tenants.id),
   name: text("name").notNull(),
   username: text("username").unique(),
   email: text("email").notNull().unique(),
@@ -119,6 +120,8 @@ export const user = pgTable("auth_user", {
   banReason: text("ban_reason"),
   banExpires: timestamp("ban_expires", { withTimezone: true }),
   preferredLanguage: text("preferred_language").notNull().default("en"),
+  ssoProjectGrants: jsonb("sso_project_grants").$type<import("../sso.js").RelayProjectGrant[]>().notNull().default([]),
+  ssoVerifiedAt: timestamp("sso_verified_at", { withTimezone: true }),
   lastLoginAt: timestamp("last_login_at", { withTimezone: true }),
   createdAt,
   updatedAt,
@@ -127,6 +130,7 @@ export const user = pgTable("auth_user", {
 export const personalAccessTokens = pgTable("personal_access_token", {
   id: text("id").primaryKey(),
   userId: text("user_id").notNull().references(() => user.id, { onDelete: "cascade" }),
+  projectId: text("project_id").references(() => projects.id),
   name: text("name").notNull(),
   prefix: text("prefix").notNull(),
   tokenHash: text("token_hash").notNull().unique(),
@@ -145,9 +149,20 @@ export const session = pgTable("auth_session", {
   userAgent: text("user_agent"),
   impersonatedBy: text("impersonated_by"),
   userId: text("user_id").notNull().references(() => user.id, { onDelete: "cascade" }),
+  activeProjectId: text("active_project_id").references(() => projects.id),
   createdAt,
   updatedAt,
 }, (table) => [index("auth_session_user_idx").on(table.userId)]);
+
+// Projects own business resources. Human identities gain access through membership.
+export const projectMembers = pgTable("project_member", {
+  projectId: text("project_id").notNull().references(() => projects.id, { onDelete: "cascade" }),
+  userId: text("user_id").notNull().references(() => user.id, { onDelete: "cascade" }),
+  source: text("source").notNull().default("local"),
+  access: text("access").$type<"read" | "write">().notNull().default("write"),
+  roles: jsonb("roles").$type<string[]>().notNull().default([]),
+  createdAt,
+}, table => [primaryKey({ columns: [table.projectId, table.userId] }), index("project_member_user_idx").on(table.userId, table.projectId)]);
 
 export const account = pgTable("auth_account", {
   id: text("id").primaryKey(),
@@ -165,7 +180,7 @@ export const account = pgTable("auth_account", {
   createdAt,
   updatedAt,
 }, (table) => [
-  index("auth_account_user_idx").on(table.userId),
+  index("auth_account_user_idx").on(table.userId, table.providerId),
   uniqueIndex("auth_account_issuer_idx").on(table.issuer, table.accountId),
 ]);
 
@@ -181,7 +196,8 @@ export const verification = pgTable("auth_verification", {
 export const runnerPools = pgTable("runner_pool", {
   id: text("id").primaryKey(),
   name: text("name").notNull(),
-  groupId: text("group_id").notNull().default("default").references(() => tenantGroups.id),
+  projectId: text("project_id").references(() => projects.id),
+  groupId: text("group_id").notNull().default("default").references(() => projectGroups.id),
   runtimeUrl: text("runtime_url"),
   publicUrl: text("public_url"),
   isDefault: boolean("is_default").notNull().default(false),
@@ -190,14 +206,13 @@ export const runnerPools = pgTable("runner_pool", {
   maxConcurrencyPerRunner: integer("max_concurrency_per_runner").notNull().default(64),
   createdAt,
   updatedAt,
-}, (table) => [uniqueIndex("runner_pool_single_default_idx").on(table.isDefault).where(sql`${table.isDefault} = true`), index("runner_pool_group_idx").on(table.groupId)]);
+}, (table) => [uniqueIndex("runner_pool_single_default_idx").on(table.isDefault).where(sql`${table.isDefault} = true`), index("runner_pool_group_idx").on(table.groupId, table.id), uniqueIndex("runner_pool_project_idx").on(table.projectId), check("runner_pool_project_required", sql`(${table.id}='default' and ${table.projectId} is null) or (${table.id}<>'default' and ${table.projectId} is not null)`)]);
 
 // Durable foundations only; these tables do not yet control live serving or moves.
 export const runnerPoolLeaseEpochs = pgTable("runner_pool_lease_epoch", {
   poolId: text("pool_id").primaryKey().references(() => runnerPools.id),
   epoch: bigint("epoch", { mode: "number" }).notNull().default(0),
   draining: boolean("draining").notNull().default(false),
-  barrierRevision: bigint("barrier_revision", { mode: "number" }).notNull().default(0),
   updatedAt,
 });
 
@@ -235,58 +250,8 @@ export const runnerServingGrants = pgTable("runner_serving_grant", {
 }, table => [primaryKey({ columns: [table.poolId, table.runnerId, table.bootId, table.nonce] }),
   index("runner_serving_grant_expiry_idx").on(table.poolId, table.epoch, table.conservativeExpiresAt)]);
 
-// Completion requires an injected authoritative permanent external fencer and
-// a live full-horizon observation; no production fencer or HTTP API is wired.
-export const tenantGroupMoves = pgTable("tenant_group_move", {
-  id: text("id").primaryKey(),
-  idempotencyKey: text("idempotency_key").notNull(),
-  kind: text("kind").$type<"tenant" | "pool">().notNull(),
-  subjectId: text("subject_id").notNull(),
-  sourceGroupId: text("source_group_id").notNull().references(() => tenantGroups.id),
-  destinationGroupId: text("destination_group_id").notNull().references(() => tenantGroups.id),
-  actorId: text("actor_id").notNull().references(() => user.id),
-  state: text("state").$type<"prepared" | "completed">().notNull().default("prepared"),
-  barrierId: text("barrier_id").notNull(),
-  timingPolicyId: text("timing_policy_id").notNull(),
-  maxGrantDurationMs: integer("max_grant_duration_ms").notNull(),
-  waitHorizonMs: integer("wait_horizon_ms").notNull(),
-  requiresExternalFence: boolean("requires_external_fence").notNull().default(true),
-  waitAttemptId: text("wait_attempt_id"),
-  waitProcessId: text("wait_process_id"),
-  waitStartedAt: timestamp("wait_started_at", { withTimezone: true }),
-  waitObservedAt: timestamp("wait_observed_at", { withTimezone: true }),
-  waitElapsedMs: bigint("wait_elapsed_ms", { mode: "number" }),
-  completedAt: timestamp("completed_at", { withTimezone: true }),
-  completedGeneration: bigint("completed_generation", { mode: "number" }),
-  completedActorId: text("completed_actor_id").references(() => user.id),
-  fenceVerifierId: text("fence_verifier_id"),
-  fenceEvidenceId: text("fence_evidence_id"),
-  fenceBindingDigest: text("fence_binding_digest"),
-  createdAt, updatedAt,
-}, table => [uniqueIndex("tenant_group_move_actor_key_idx").on(table.actorId, table.idempotencyKey),
-  uniqueIndex("tenant_group_move_subject_idx").on(table.kind, table.subjectId).where(sql`${table.state} = 'prepared'`),
-  uniqueIndex("tenant_group_move_barrier_idx").on(table.barrierId),
-  uniqueIndex("tenant_group_move_fence_evidence_idx").on(table.fenceVerifierId, table.fenceEvidenceId).where(sql`${table.state} = 'completed'`)]);
-
-export const tenantGroupMoveGroups = pgTable("tenant_group_move_group", {
-  groupId: text("group_id").primaryKey().references(() => tenantGroups.id),
-  moveId: text("move_id").notNull().references(() => tenantGroupMoves.id),
-}, table => [index("tenant_group_move_group_move_idx").on(table.moveId)]);
-
-export const tenantGroupMovePools = pgTable("tenant_group_move_pool", {
-  poolId: text("pool_id").notNull().references(() => runnerPools.id),
-  moveId: text("move_id").notNull().references(() => tenantGroupMoves.id),
-  sourceGroupId: text("source_group_id").notNull().references(() => tenantGroups.id),
-  sourceEpoch: bigint("source_epoch", { mode: "number" }).notNull(),
-  sourceBarrierRevision: bigint("source_barrier_revision", { mode: "number" }).notNull(),
-  grantCount: bigint("grant_count", { mode: "number" }).notNull(),
-  grantDigest: text("grant_digest").notNull(),
-  longestGrantMs: integer("longest_grant_ms").notNull(),
-  requiresExternalFence: boolean("requires_external_fence").notNull().default(true),
-  releasedAt: timestamp("released_at", { withTimezone: true }),
-}, table => [primaryKey({ columns: [table.moveId, table.poolId] }),
-  index("tenant_group_move_pool_move_idx").on(table.moveId),
-  uniqueIndex("tenant_group_move_pool_active_idx").on(table.poolId).where(sql`${table.releasedAt} IS NULL`)]);
+// Historical transition records remain read-only. Allocation guards consult
+// them so removing the unfinished move prototype cannot bypass an existing lock.
 
 export const controllerState = pgTable("controller_state", {
   id: text("id").primaryKey(),
@@ -330,7 +295,7 @@ export const modelValidationCredentialLeases = pgTable("model_validation_credent
 
 export const modelDefinitions = pgTable("model_definition", {
   id: text("id").primaryKey(),
-  tenantId: text("tenant_id").references(() => tenants.id),
+  projectId: text("project_id").references(() => projects.id),
   providerId: text("provider_id").notNull().references(() => modelProviders.id, { onDelete: "restrict" }),
   name: text("name").notNull(),
   model: text("model").notNull(),
@@ -338,6 +303,9 @@ export const modelDefinitions = pgTable("model_definition", {
   timeoutSeconds: integer("timeout_seconds").notNull().default(20),
   maxTokens: integer("max_tokens").notNull().default(512),
   maxConcurrency: integer("max_concurrency").notNull().default(2),
+  rateLimitAttempts: integer("rate_limit_attempts").notNull().default(3),
+  lowerThreshold: doublePrecision("lower_threshold").notNull().default(0.1),
+  upperThreshold: doublePrecision("upper_threshold").notNull().default(0.9),
   // Transport health is independent of scenario/capability validation below.
   connectionStatus: text("connection_status").$type<ModelResourceStatus>().notNull().default("pending"),
   connectionMessage: text("connection_message").notNull().default("Not checked."),
@@ -351,11 +319,11 @@ export const modelDefinitions = pgTable("model_definition", {
   createdAt,
   updatedAt,
 }, (table) => [
-  uniqueIndex("model_definition_tenant_provider_model_idx").on(table.tenantId, table.providerId, table.model, table.profile),
-  uniqueIndex("model_definition_platform_provider_model_idx").on(table.providerId, table.model, table.profile).where(sql`${table.tenantId} is null`),
+  uniqueIndex("model_definition_project_provider_model_idx").on(table.projectId, table.providerId, table.model, table.profile),
+  uniqueIndex("model_definition_platform_provider_model_idx").on(table.providerId, table.model, table.profile).where(sql`${table.projectId} is null`),
   index("model_definition_provider_idx").on(table.providerId),
   index("model_definition_status_idx").on(table.status),
-  index("model_definition_tenant_idx").on(table.tenantId),
+  index("model_definition_project_idx").on(table.projectId),
 ]);
 
 export const modelAssignmentValidations = pgTable("model_assignment_validation", {
@@ -371,7 +339,7 @@ export const modelAssignmentValidations = pgTable("model_assignment_validation",
 
 export const modelConfigurationRevisions = pgTable("model_configuration_revision", {
   id: text("id").primaryKey(),
-  tenantId: text("tenant_id").notNull().default("tenantA").references(() => tenants.id),
+  projectId: text("project_id").references(() => projects.id),
   revision: integer("revision").notNull(),
   state: text("state").$type<ModelRevisionState>().notNull().default("draft"),
   generation: bigint("generation", { mode: "number" }),
@@ -384,17 +352,18 @@ export const modelConfigurationRevisions = pgTable("model_configuration_revision
   createdAt,
   updatedAt,
 }, (table) => [
-  uniqueIndex("model_configuration_revision_tenant_number_idx").on(table.tenantId, table.revision),
+  uniqueIndex("model_configuration_revision_project_number_idx").on(table.projectId, table.revision),
+  uniqueIndex("model_configuration_revision_platform_number_idx").on(table.revision).where(sql`${table.projectId} is null`),
   index("model_configuration_revision_state_idx").on(table.state),
 ]);
 
 // One current policy per group. Replacements get a fresh immutable identity;
 // prior non-secret identities/digests remain in audit, not secret history rows.
-export const groupModelConfigurations = pgTable("tenant_group_model_configuration", {
-  groupId: text("group_id").primaryKey().references(() => tenantGroups.id, { onDelete: "cascade" }),
+export const groupModelConfigurations = pgTable("project_group_model_configuration", {
+  groupId: text("group_id").primaryKey().references(() => projectGroups.id, { onDelete: "cascade" }),
   id: text("id").notNull().unique(),
   version: bigint("version", { mode: "number" }).notNull(),
-  mode: text("mode").$type<"legacy" | "scoped" | "blocked">().notNull(),
+  mode: text("mode").$type<"platform" | "scoped" | "blocked">().notNull(),
   sourceRevisionId: text("source_revision_id"),
   sourceFingerprint: text("source_fingerprint"),
   runtimePayload: jsonb("runtime_payload").$type<import("../model-config/domain.js").ActiveModelConfiguration>(),
@@ -407,7 +376,7 @@ export const groupModelConfigurations = pgTable("tenant_group_model_configuratio
 
 export const policyRecords = pgTable("policy_record", {
   id: text("id").primaryKey(),
-  tenantId: text("tenant_id").notNull().default("tenantA").references(() => tenants.id),
+  projectId: text("project_id").notNull().references(() => projects.id),
   name: text("name").notNull(),
   description: text("description").notNull().default(""),
   source: text("source").notNull().default("custom"),
@@ -419,7 +388,7 @@ export const policyRecords = pgTable("policy_record", {
   draftRevision: integer("draft_revision").notNull().default(1),
   createdAt,
   updatedAt,
-}, (table) => [index("policy_record_name_idx").on(table.name), index("policy_record_tenant_idx").on(table.tenantId)]);
+}, (table) => [index("policy_record_name_idx").on(table.name), index("policy_record_project_idx").on(table.projectId)]);
 
 export const policyVersions = pgTable("policy_version", {
   policyId: text("policy_id").notNull().references(() => policyRecords.id, { onDelete: "cascade" }),
@@ -436,7 +405,7 @@ export const policyVersions = pgTable("policy_version", {
 
 /** Built-in Policy versions a package brought that the local catalog does not ship. */
 export const policyImportedVersions = pgTable("policy_imported_version", {
-  tenantId: text("tenant_id").notNull().default("tenantA").references(() => tenants.id),
+  projectId: text("project_id").notNull().references(() => projects.id),
   policyId: text("policy_id").notNull(),
   version: text("version").notNull(),
   digest: text("digest").notNull(),
@@ -472,7 +441,7 @@ export const guardrails = pgTable("guardrail", {
   copyOrigin: jsonb("copy_origin").$type<Record<string, unknown>>(),
   duplicateKey: text("duplicate_key").unique(),
   id: text("id").primaryKey(),
-  tenantId: text("tenant_id").notNull().default("tenantA").references(() => tenants.id),
+  projectId: text("project_id").references(() => projects.id),
   name: text("name").notNull(),
   draftConfig: jsonb("draft_config").$type<GuardrailDraftConfig>().notNull(),
   draftRevision: integer("draft_revision").notNull().default(1),
@@ -489,9 +458,9 @@ export const guardrails = pgTable("guardrail", {
   sourceId: text("source_id"),
   createdAt,
   updatedAt,
-}, (table) => [index("guardrail_status_idx").on(table.status), index("guardrail_tenant_idx").on(table.tenantId)]);
+}, (table) => [index("guardrail_status_idx").on(table.status), index("guardrail_project_idx").on(table.projectId)]);
 
-/** One record per provisioned preset in this tenant's Controller database. */
+/** One record per provisioned preset in this project's Controller database. */
 export const deploymentPresets = pgTable("deployment_preset", {
   key: text("key").primaryKey(),
   guardrailId: text("guardrail_id").notNull(),
@@ -539,8 +508,8 @@ const bytea = customType<{ data: Buffer; driverData: Buffer }>({ dataType: () =>
 
 /** Uploaded release packages, kept verbatim for audit and re-verification. */
 export const guardrailPackages = pgTable("guardrail_package", {
-  tenantId: text("tenant_id").notNull().default("tenantA").references(() => tenants.id),
-  // SHA-256 of the owning tenant, a separator, and the exact uploaded bytes.
+  projectId: text("project_id").notNull().references(() => projects.id),
+  // SHA-256 of the owning project, a separator, and the exact uploaded bytes.
   id: text("id").primaryKey(),
   content: bytea("content").notNull(),
   sizeBytes: integer("size_bytes").notNull(),
@@ -695,12 +664,12 @@ export const artifacts = pgTable("guardrail_artifact", {
 ]);
 
 export const trafficRouters = pgTable("traffic_router", {
-  id: text("id").primaryKey(), tenantId: text("tenant_id").notNull().default("tenantA").references(() => tenants.id), name: text("name").notNull(), description: text("description").notNull().default(""),
+  id: text("id").primaryKey(), projectId: text("project_id").notNull().references(() => projects.id), name: text("name").notNull(), description: text("description").notNull().default(""),
   draftRevision: integer("draft_revision").notNull().default(1), draft: jsonb("draft").$type<RouterDraft>().notNull(),
   deletedAt: timestamp("deleted_at", { withTimezone: true }), rolloutError: text("rollout_error"),
   activeRevision: integer("active_revision"), activeDraftRevision: integer("active_draft_revision"),
   activeSnapshot: jsonb("active_snapshot").$type<RouterDraft>(), desiredGeneration: bigint("desired_generation", { mode: "number" }).notNull().default(0), createdAt, updatedAt,
-}, (table) => [index("traffic_router_tenant_idx").on(table.tenantId)]);
+}, (table) => [index("traffic_router_project_idx").on(table.projectId)]);
 /** Metadata observed at publication, not the binding history of individual requests.
  * Missing references on inactive targets have no metadata entry; their IDs remain in snapshot.
  */
@@ -735,7 +704,7 @@ export const trafficRouterRevisions = pgTable("traffic_router_revision", {
   idempotencyKey: text("idempotency_key").notNull(), requestDraftRevision: integer("request_draft_revision").notNull(), rollbackRevision: integer("rollback_revision"), createdBy: text("created_by").notNull().references(() => user.id), createdAt,
 }, t => [primaryKey({ columns: [t.routerId, t.revision] }), uniqueIndex("traffic_router_revision_idempotency_idx").on(t.routerId, t.idempotencyKey)]);
 export const routeAssignments = pgTable("route_assignment", {
-  tenantId: text("tenant_id").references(() => tenants.id),
+  projectId: text("project_id").references(() => projects.id),
   allocationContextId: text("allocation_context_id"),
   callId: text("call_id").notNull(), assignmentStatus: text("assignment_status").notNull(), failureReason: text("failure_reason"),
   decisionId: text("decision_id").primaryKey(), routerId: text("router_id").notNull(), routerRevision: integer("router_revision").notNull(),
@@ -747,13 +716,13 @@ export const routeAssignments = pgTable("route_assignment", {
   index("route_assignment_router_time_idx").on(t.routerId, t.occurredAt),
   index("route_assignment_guardrail_idx").on(t.guardrailId),
   index("route_assignment_allocation_context_idx").on(t.allocationContextId),
-  index("route_assignment_tenant_router_time_idx").on(t.tenantId, t.routerId, t.occurredAt),
+  index("route_assignment_project_router_time_idx").on(t.projectId, t.routerId, t.occurredAt),
 ]);
 
 export const endpoints = pgTable("endpoint", {
   trafficRouterId: text("traffic_router_id").references(() => trafficRouters.id),
   id: text("id").primaryKey(),
-  tenantId: text("tenant_id").notNull().default("tenantA").references(() => tenants.id),
+  projectId: text("project_id").notNull().references(() => projects.id),
   name: text("name").notNull(),
   adapter: text("adapter").notNull(),
   credentialRequired: boolean("credential_required").notNull().default(true),
@@ -765,7 +734,7 @@ export const endpoints = pgTable("endpoint", {
   deleteReason: text("delete_reason"),
   createdAt,
   updatedAt,
-}, (table) => [index("endpoint_status_idx").on(table.status), index("endpoint_tenant_idx").on(table.tenantId)]);
+}, (table) => [index("endpoint_status_idx").on(table.status), index("endpoint_project_idx").on(table.projectId)]);
 
 export type RunnerLoad = {
   inflight: number;
@@ -804,11 +773,11 @@ export const runnerInstances = pgTable("runner_instance", {
   lastHeartbeatAt: timestamp("last_heartbeat_at", { withTimezone: true }).notNull().defaultNow(),
   disconnectedAt: timestamp("disconnected_at", { withTimezone: true }),
   updatedAt,
-}, (table) => [index("runner_instance_pool_idx").on(table.poolId)]);
+}, (table) => [index("runner_instance_pool_idx").on(table.poolId, table.runnerId)]);
 
 export const playgroundInvocations = pgTable("playground_invocation", {
   callId: text("call_id").primaryKey(),
-  tenantId: text("tenant_id").notNull().references(() => tenants.id),
+  projectId: text("project_id").notNull().references(() => projects.id),
   guardrailId: text("guardrail_id").notNull(),
   guardrailVersion: text("guardrail_version").notNull(),
   // Immutable snapshot of the allocation selected for dispatch. NULL for
@@ -823,7 +792,7 @@ export const playgroundInvocations = pgTable("playground_invocation", {
 export const endpointTelemetryContexts = pgTable("endpoint_telemetry_context", {
   id: text("id").primaryKey(),
   snapshotKey: text("snapshot_key").notNull().unique(),
-  tenantId: text("tenant_id").notNull(),
+  projectId: text("project_id").notNull(),
   groupId: text("group_id").notNull(),
   poolId: text("pool_id").notNull(),
   allocationEpoch: bigint("allocation_epoch", { mode: "number" }).notNull(),
@@ -837,7 +806,7 @@ export const endpointTelemetryContexts = pgTable("endpoint_telemetry_context", {
   routerSnapshotDigest: text("router_snapshot_digest"),
   targets: jsonb("targets").$type<Array<{ routeId: string; targetId: string; guardrailId: string; guardrailVersion: string }>>().notNull().default([]),
   payloadBytes: bigint("payload_bytes", { mode: "number" }).notNull().generatedAlwaysAs(sql`128::bigint
-    + octet_length(id) + octet_length(snapshot_key) + octet_length(tenant_id) + octet_length(group_id)
+    + octet_length(id) + octet_length(snapshot_key) + octet_length(project_id) + octet_length(group_id)
     + octet_length(pool_id) + octet_length(endpoint_id) + octet_length(adapter) + octet_length(verification_digest)
     + octet_length(endpoint_snapshot_digest) + octet_length(coalesce(router_id, ''))
     + octet_length(coalesce(router_snapshot_digest, '')) + octet_length(targets::text)`),
@@ -849,7 +818,7 @@ export const endpointTelemetryContexts = pgTable("endpoint_telemetry_context", {
 
 export const runtimeEvents = pgTable("runtime_event", {
   id: text("id").primaryKey(),
-  tenantId: text("tenant_id").references(() => tenants.id),
+  projectId: text("project_id").references(() => projects.id),
   occurredAt: timestamp("occurred_at", { withTimezone: true }).notNull(),
   receivedAt: timestamp("received_at", { withTimezone: true }).notNull().defaultNow(),
   requestId: text("request_id").notNull(),
@@ -865,7 +834,7 @@ export const runtimeEvents = pgTable("runtime_event", {
   metadata: jsonb("metadata").$type<Record<string, unknown>>().notNull().default({}),
 }, (table) => [
   index("runtime_event_guardrail_time_id_idx").on(table.guardrailId, table.occurredAt, table.id),
-  index("runtime_event_tenant_time_idx").on(table.tenantId, table.occurredAt),
+  index("runtime_event_project_time_idx").on(table.projectId, table.occurredAt),
   index("runtime_event_endpoint_time_idx").on(table.endpointId, table.occurredAt),
   index("runtime_event_allocation_context_idx").on(table.allocationContextId),
   index("runtime_event_router_time_idx").on(table.routerId, table.occurredAt, table.id),
@@ -875,20 +844,6 @@ export const runtimeEvents = pgTable("runtime_event", {
   index("runtime_event_endpoint_error_time_idx").on(table.endpointId, table.occurredAt).where(sql`lower(${table.decision}) IN ('error','failed','failure','timeout','timed_out')`),
   index("runtime_event_endpoint_final_time_idx").on(table.endpointId, table.occurredAt).where(sql`${table.metadata}->>'streamFinalCheck'='true'`),
 ]);
-
-// Operator-only evidence of assignments made before trusted provenance existed.
-// This is not an authorization source and must not be restored automatically.
-export const historicalTelemetryAttribution = pgTable("historical_telemetry_attribution", {
-  resourceType: text("resource_type").notNull(),
-  resourceId: text("resource_id").notNull(),
-  previousTenantId: text("previous_tenant_id").notNull(),
-  quarantinedAt: timestamp("quarantined_at", { withTimezone: true }).notNull().defaultNow(),
-}, table => [primaryKey({ columns: [table.resourceType, table.resourceId] })]);
-
-export const historicalTelemetryQuarantineCheckpoint = pgTable("historical_telemetry_quarantine_checkpoint", {
-  id: text("id").primaryKey(),
-  completedAt: timestamp("completed_at", { withTimezone: true }).notNull().defaultNow(),
-});
 
 export const runnerTelemetryWals = pgTable("runner_telemetry_wal", {
   runnerId: text("runner_id").primaryKey(),
@@ -938,7 +893,7 @@ export const modelPriceSync = pgTable("model_price_sync", {
 });
 
 export const modelUsageCosts = pgTable("model_usage_cost", {
-  tenantId: text("tenant_id").references(() => tenants.id),
+  projectId: text("project_id").references(() => projects.id),
   id: text("id").primaryKey(),
   eventId: text("event_id").notNull(),
   allocationContextId: text("allocation_context_id"),
@@ -961,7 +916,7 @@ export const modelUsageCosts = pgTable("model_usage_cost", {
 
 export const auditEvents = pgTable("audit_event", {
   id: text("id").primaryKey(),
-  tenantId: text("tenant_id").references(() => tenants.id),
+  projectId: text("project_id").references(() => projects.id),
   kind: text("kind").notNull(),
   actorId: text("actor_id").references(() => user.id),
   resourceType: text("resource_type").notNull(),
@@ -971,7 +926,7 @@ export const auditEvents = pgTable("audit_event", {
 }, (table) => [
   index("audit_resource_idx").on(table.resourceType, table.resourceId),
   index("audit_time_id_idx").on(table.occurredAt.desc(), table.id.desc()),
-  index("audit_tenant_time_idx").on(table.tenantId, table.occurredAt),
+  index("audit_project_time_idx").on(table.projectId, table.occurredAt),
 ]);
 
 export const outboxEvents = pgTable("controller_outbox", {
@@ -986,8 +941,8 @@ export const outboxEvents = pgTable("controller_outbox", {
 }, (table) => [index("controller_outbox_pending_idx").on(table.processedAt, table.availableAt)]);
 
 export const schema = {
-  tenantGroups,
-  tenants,
+  projectGroups,
+  projects,
   resourceShares,
   user,
   session,

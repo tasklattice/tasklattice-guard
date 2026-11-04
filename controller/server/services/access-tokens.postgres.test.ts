@@ -1,3 +1,4 @@
+import { seedTestProjects } from "../db/postgres-test-database.js";
 // @vitest-environment node
 import { randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
@@ -19,12 +20,14 @@ describe.skipIf(!url)("Personal access tokens in PostgreSQL", () => {
     const read = (name: string) => readFileSync(new URL(`../db/migrations/${name}`, import.meta.url), "utf8");
     const journal = JSON.parse(read("meta/_journal.json"));
     for (const { tag } of journal.entries) await pool.query(read(`${tag}.sql`).replaceAll('"public".', `"${namespace}".`));
+    await seedTestProjects(pool);
     service = new AccessTokenService(drizzle(pool, { schema }));
   });
   afterAll(async () => { await pool?.end(); await admin?.query(`DROP SCHEMA IF EXISTS "${namespace}" CASCADE`); await admin?.end(); });
   beforeEach(async () => {
     await pool.query("TRUNCATE auth_user CASCADE");
     await pool.query("INSERT INTO auth_user(id,name,email,role) VALUES ('owner','Owner','owner@test.local','admin'),('other','Other','other@test.local','user')");
+    await pool.query("INSERT INTO project_member(project_id,user_id) VALUES ('projectA','other')");
   });
   const input = { name: "CI", expiresInDays: 30, permissions: { models: "write", runners: "read" } };
   it("issues unique 256-bit secrets, stores only a hash and returns safe metadata", async () => {
@@ -37,7 +40,7 @@ describe.skipIf(!url)("Personal access tokens in PostgreSQL", () => {
     expect(JSON.stringify(await service.list("owner"))).not.toContain(first.secret);
     expect(await service.list("other")).toEqual([]);
     expect(JSON.stringify((await pool.query("SELECT * FROM audit_event")).rows)).not.toContain(first.secret);
-    expect(await service.authenticate(first.secret)).toMatchObject({ id: "owner", role: "admin", tenantId: "tenantA", tokenId: first.token.id, permissions: input.permissions });
+    expect(await service.authenticate(first.secret)).toMatchObject({ id: "owner", role: "admin", projectId: null, tokenId: first.token.id, permissions: input.permissions });
     expect((await service.list("owner")).find(t => t.id === first.token.id)?.lastUsedAt).not.toBeNull();
   });
   it("rejects tampered, expired and revoked tokens immediately, with owner-only idempotent revocation", async () => {
@@ -53,8 +56,8 @@ describe.skipIf(!url)("Personal access tokens in PostgreSQL", () => {
   });
   it("reads current owner status and role on every authentication", async () => {
     const issued = await service.create("owner", input);
-    await pool.query("UPDATE auth_user SET role='user', tenant_id='tenantB' WHERE id='owner'");
-    expect(await service.authenticate(issued.secret)).toMatchObject({ role: "user", tenantId: "tenantB" });
+    await pool.query("UPDATE auth_user SET role='user' WHERE id='owner'");
+    expect(await service.authenticate(issued.secret)).toBeNull();
     await pool.query("UPDATE auth_user SET banned=true WHERE id='owner'");
     expect(await service.authenticate(issued.secret)).toBeNull();
     await expect(service.create("owner", input)).rejects.toMatchObject({ status: 403 });
@@ -65,7 +68,6 @@ describe.skipIf(!url)("Personal access tokens in PostgreSQL", () => {
   });
   it.each([
     ["role demotion", "UPDATE auth_user SET role='user' WHERE id='owner'"],
-    ["tenant reassignment", "UPDATE auth_user SET tenant_id='tenantB' WHERE id='owner'"],
     ["account ban", "UPDATE auth_user SET banned=true WHERE id='owner'"],
     ["token expiry", "UPDATE personal_access_token SET expires_at=clock_timestamp()+interval '100 milliseconds' WHERE user_id='owner'; SELECT pg_sleep(0.2)"],
   ])("rejects a token when %s occurs between lookup and touch", async (_change, changeOwner) => {
@@ -100,11 +102,17 @@ describe.skipIf(!url)("Personal access tokens in PostgreSQL", () => {
     expect(await service.authenticate(issued.secret)).toBeNull();
     await expect(service.create("owner", input)).rejects.toMatchObject({ status: 403 });
   });
+  it("revokes project tokens when membership is removed", async () => {
+    const issued = await service.create("other", { ...input, permissions: {routers: "read"} }, "projectA");
+    await pool.query("DELETE FROM project_member WHERE user_id='other'");
+    expect(await service.authenticate(issued.secret)).toBeNull();
+    await expect(service.create("other", input)).rejects.toMatchObject({code: "project_required"});
+  });
   it("allows user workflow grants and rejects platform grants", async () => {
     const workflowInput = { ...input, permissions: { guardrails: "write", routers: "read" } };
-    expect((await service.create("other", workflowInput)).token.permissions).toEqual(workflowInput.permissions);
-    await expect(service.create("other", { ...input, permissions: { settings: "read" } })).rejects.toMatchObject({ status: 403 });
-    const issued = await service.create("other", { ...input, permissions: { routers: "read" } });
+    expect((await service.create("other", workflowInput, "projectA")).token.permissions).toEqual(workflowInput.permissions);
+    await expect(service.create("other", { ...input, permissions: { settings: "read" } }, "projectA")).rejects.toMatchObject({ status: 403 });
+    const issued = await service.create("other", { ...input, permissions: { routers: "read" } }, "projectA");
     expect(await service.authenticate(issued.secret)).toMatchObject({ id: "other", role: "user", permissions: { routers: "read" } });
   });
   it.each([{ permissions: {} }, { permissions: { users: "write" } }, { permissions: { audit: "write" } }, { expiresInDays: 0 }, { name: " " }, { userId: "other" }])("rejects invalid issuance input %j", async change => {

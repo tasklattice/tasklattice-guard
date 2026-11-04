@@ -5,14 +5,14 @@ import { policyImportedVersions, policyRecords, policyResources, policyResourceV
 import { derivesFromCatalogNode, frozenBuiltInDefinition, planBuiltInDefinitions, planCustomVersions, planPolicyEdges, planPolicyVersion, policyNodeDigest, snapshotChecksum, type PolicyNode } from "../domain/policy-node.js";
 import type { PolicyDto } from "../policy-catalog/catalog.js";
 import type { ProgrammablePolicySnapshot } from "../policy-studio/model.js";
-import { currentTenantId, resourceReadPredicate } from "./tenant-context.js";
+import { currentProjectId, resourceReadPredicate } from "./project-context.js";
 
 /** A Guardrail share does not transitively disclose its frozen Policy leaves.
  * Require a current Policy read grant and the same immutable definition; IDs
  * reused after deletion cannot authorize a different historical definition. */
 export async function mayReadFrozenPolicyContent(db: Pick<ControllerDatabase, "select">, nodes: PolicyNode[] | null,
   plan: Record<string, unknown>, shipped: readonly PolicyDto[]): Promise<boolean> {
-  if (!currentTenantId()) return true;
+  if (!currentProjectId()) return true;
   if (!Array.isArray(nodes) || !Array.isArray(plan.policy_bindings)) return false;
   if (plan.policy_bindings.some(binding => !binding || typeof binding !== "object" || Array.isArray(binding))) return false;
   if (nodes.some(node => !node || typeof node.id !== "string" || typeof node.version !== "string" ||
@@ -26,11 +26,11 @@ export async function mayReadFrozenPolicyContent(db: Pick<ControllerDatabase, "s
   // Callers may pass a transaction backed by a single pg client; do not rely
   // on its deprecated concurrent-query queue behavior.
   const records = await db.select({ id: policyRecords.id }).from(policyRecords)
-    .where(and(inArray(policyRecords.id, ids), resourceReadPredicate("policy", policyRecords.id, policyRecords.tenantId)));
+    .where(and(inArray(policyRecords.id, ids), resourceReadPredicate("policy", policyRecords.id, policyRecords.projectId)));
   const resources = await db.select({ id: policyResources.id }).from(policyResources)
-    .where(and(inArray(policyResources.id, ids), resourceReadPredicate("policy", policyResources.id, policyResources.tenantId)));
+    .where(and(inArray(policyResources.id, ids), resourceReadPredicate("policy", policyResources.id, policyResources.projectId)));
   const imported = await db.select().from(policyImportedVersions)
-    .where(and(inArray(policyImportedVersions.policyId, ids), resourceReadPredicate("policy", policyImportedVersions.policyId, policyImportedVersions.tenantId)));
+    .where(and(inArray(policyImportedVersions.policyId, ids), resourceReadPredicate("policy", policyImportedVersions.policyId, policyImportedVersions.projectId)));
   const versions = await db.select().from(policyVersions).where(inArray(policyVersions.policyId, ids));
   const maintained = await db.select().from(policyResourceVersions).where(inArray(policyResourceVersions.policyId, ids));
   const publicVersions = shipped.flatMap(policy => [policy, ...(policy.published_versions ?? [])]);

@@ -7,7 +7,7 @@ import { ControllerError, ValidationError } from "../domain/errors.js";
 import { defaultEndpointContextStorageLimits, validateEndpointContextStorageLimits, type EndpointContextStorageLimits } from "../endpoint-context-storage-policy.js";
 
 type Transaction = Parameters<Parameters<ControllerDatabase["transaction"]>[0]>[0];
-type Endpoint = { endpointId: string; tenantId: string; adapter: string; trafficRouterId: string | null; verification: unknown; scanFlagOnlyDefault: boolean };
+type Endpoint = { endpointId: string; projectId: string; adapter: string; trafficRouterId: string | null; verification: unknown; scanFlagOnlyDefault: boolean };
 type Router = { routerId: string; revision: number; routes: Array<{ id: string; enabled: boolean; targets: Array<{ id: string; guardrailId: string; guardrailVersion: string; weightBps: number }> }> };
 type Stored = typeof contexts.$inferSelect;
 type Issued = typeof contexts.$inferInsert;
@@ -20,8 +20,8 @@ function canonical(value: unknown): string {
   return JSON.stringify(value) ?? "null";
 }
 const digest = (value: unknown) => createHash("sha256").update(canonical(value)).digest("hex");
-function authority(row: Pick<Stored, "tenantId" | "groupId" | "poolId" | "allocationEpoch" | "endpointId" | "adapter" | "verificationDigest" | "endpointSnapshotDigest" | "routerId" | "routerRevision" | "routerSnapshotDigest" | "targets">) {
-  return { tenantId: row.tenantId, groupId: row.groupId, poolId: row.poolId, allocationEpoch: row.allocationEpoch,
+function authority(row: Pick<Stored, "projectId" | "groupId" | "poolId" | "allocationEpoch" | "endpointId" | "adapter" | "verificationDigest" | "endpointSnapshotDigest" | "routerId" | "routerRevision" | "routerSnapshotDigest" | "targets">) {
+  return { projectId: row.projectId, groupId: row.groupId, poolId: row.poolId, allocationEpoch: row.allocationEpoch,
     endpointId: row.endpointId, adapter: row.adapter, verificationDigest: row.verificationDigest,
     endpointSnapshotDigest: row.endpointSnapshotDigest, routerId: row.routerId, routerRevision: row.routerRevision,
     routerSnapshotDigest: row.routerSnapshotDigest, targets: row.targets };
@@ -54,7 +54,7 @@ export async function issueEndpointTelemetryContexts(tx: Transaction, input: {
   const issued = new Map<string, string>(), pending: Issued[] = [];
   for (const endpoint of input.endpoints) {
     const router = input.routers.find(row => row.routerId === endpoint.trafficRouterId);
-    const frozen = { tenantId: endpoint.tenantId, groupId: input.groupId, poolId: input.poolId,
+    const frozen = { projectId: endpoint.projectId, groupId: input.groupId, poolId: input.poolId,
       allocationEpoch: input.epoch, endpointId: endpoint.endpointId, adapter: endpoint.adapter,
       verificationDigest: digest(endpoint.verification), endpointSnapshotDigest: digest(endpoint),
       routerId: router?.routerId ?? null, routerRevision: router?.revision ?? null,
@@ -77,7 +77,7 @@ export async function issueEndpointTelemetryContexts(tx: Transaction, input: {
     // Let PostgreSQL measure exactly the same logical UTF-8/jsonb payload as its
     // generated column, without inserting/retiring any authority first.
     const sizes = await tx.execute<{ id: string; bytes: string }>(sql`select item->>'id' as id,
-      (128::bigint + octet_length(item->>'id') + octet_length(item->>'snapshotKey') + octet_length(item->>'tenantId')
+      (128::bigint + octet_length(item->>'id') + octet_length(item->>'snapshotKey') + octet_length(item->>'projectId')
       + octet_length(item->>'groupId') + octet_length(item->>'poolId') + octet_length(item->>'endpointId') + octet_length(item->>'adapter')
       + octet_length(item->>'verificationDigest') + octet_length(item->>'endpointSnapshotDigest')
       + octet_length(coalesce(item->>'routerId','')) + octet_length(coalesce(item->>'routerSnapshotDigest',''))

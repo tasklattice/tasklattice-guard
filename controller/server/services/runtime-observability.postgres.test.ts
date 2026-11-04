@@ -150,7 +150,7 @@ describe.skipIf(!process.env.GUARD_TEST_POSTGRES_URL)('bounded runtime observabi
   });
 
   it('preserves old endpoint activity while counting only recent requests', async () => {
-    await db.execute(sql`INSERT INTO endpoint(id,name,adapter) VALUES ('activity','Activity','test')`);
+    await db.execute(sql`INSERT INTO endpoint (project_id,id,name,adapter) VALUES ('projectA','activity','Activity','test')`);
     await db.execute(sql`INSERT INTO runtime_event(id,occurred_at,request_id,runner_id,endpoint_id,direction,decision,duration_ms,metadata) VALUES
       ('old-activity',now()-interval '40 days','old','runner','activity','outgoing','error',1,'{"executionStatus":"error","streamFinalCheck":true}'),
       ('recent-activity',now()-interval '1 hour','recent','runner','activity','incoming','allow',1,'{}')`);
@@ -164,7 +164,7 @@ describe.skipIf(!process.env.GUARD_TEST_POSTGRES_URL)('bounded runtime observabi
   });
 
   it('deduplicates failed requests, includes blocks as success, and computes detection P95', async () => {
-    await db.execute(sql`INSERT INTO endpoint(id,name,adapter) VALUES ('quality','Quality','test'), ('idle','Idle','test')`);
+    await db.execute(sql`INSERT INTO endpoint (project_id,id,name,adapter) VALUES ('projectA','quality','Quality','test'),('projectA','idle','Idle','test')`);
     await db.execute(sql`INSERT INTO runtime_event(id,occurred_at,request_id,runner_id,endpoint_id,direction,decision,duration_ms,metadata) VALUES
       ('quality-1',now(),'failed-request','runner','quality','incoming','error',10,'{"executionStatus":"error"}'),
       ('quality-2',now(),'failed-request','runner','quality','outgoing','timeout',90,'{"executionStatus":"timeout"}'),

@@ -34,7 +34,7 @@ describe.skipIf(!url)("model credential current pool allocation", () => {
     const assignments = emptyModelAssignments();
     assignments.bindings["content_safety.input"] = modelId;
     await database.pool.query("INSERT INTO auth_user(id,name,email,role) VALUES ('credential-admin','Admin','credential-admin@test.invalid','admin')");
-    await database.pool.query("INSERT INTO tenant_group(id,name) VALUES ('credential-group','Credential group')");
+    await database.pool.query("INSERT INTO project_group(id,name) VALUES ('credential-group','Credential group')");
     for (const [id, name, secret] of [[providerId, "Active provider", "active-secret"], [candidateProviderId, "Candidate provider", "candidate-secret"]]) {
       await database.pool.query("INSERT INTO model_provider(id,name,kind,base_url,credential_ciphertext) VALUES ($1,$2,'custom-openai-compatible','https://provider.invalid',$3)",
         [id, name, encryptModelCredential(secret!, rootSecret)]);
@@ -42,7 +42,7 @@ describe.skipIf(!url)("model credential current pool allocation", () => {
     for (const [id, provider, name] of [[modelId, providerId, "Active model"], [candidateModelId, candidateProviderId, "Candidate model"]]) {
       await database.pool.query("INSERT INTO model_definition(id,provider_id,name,model,profile) VALUES ($1,$2,$3,$3,'tali.qwen3guard.v1')", [id, provider, name]);
     }
-    await database.pool.query("INSERT INTO model_configuration_revision(id,tenant_id,revision,state,generation,assignments) VALUES ('active-credential-revision','tenantA',1,'active',1,$1)", [JSON.stringify(assignments)]);
+    await database.pool.query("INSERT INTO model_configuration_revision(id,project_id,revision,state,generation,assignments) VALUES ('active-credential-revision',NULL,1,'active',1,$1)", [JSON.stringify(assignments)]);
   }, 30000);
   afterAll(async () => { await database?.drop(); });
   beforeEach(async () => {
@@ -75,7 +75,7 @@ describe.skipIf(!url)("model credential current pool allocation", () => {
       expect(await (await request(poolToken)).json()).toEqual({ credentials: {} });
     } finally {
       await database.pool.query("UPDATE runner_pool SET group_id='credential-group' WHERE id='pool-a'");
-      await database.pool.query("ALTER TABLE runner_pool ADD CONSTRAINT runner_pool_group_id_fkey FOREIGN KEY(group_id) REFERENCES tenant_group(id)");
+      await database.pool.query("ALTER TABLE runner_pool ADD CONSTRAINT runner_pool_group_id_fkey FOREIGN KEY(group_id) REFERENCES project_group(id)");
     }
   });
   it("rechecks allocation in the secret fetch after an earlier successful lookup", async () => {

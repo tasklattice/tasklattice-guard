@@ -1,6 +1,6 @@
 import { usePageUpdateBlocker } from "@/lib/page-updates";
-import { TenantResourceBadge } from "@/components/tenant-resource-badge";
-import { hasPermission, isPlatformAdministrator } from "../../shared/rbac";
+import { ProjectResourceBadge } from "@/components/project-resource-badge";
+import { isPlatformAdministrator } from "../../shared/rbac";
 import { useNavigate, useSearch } from "@tanstack/react-router";
 import { ModelPricingPanel } from "@/components/model-pricing";
 import { FormalValidationSheet } from "@/components/formal-validation-sheet";
@@ -105,8 +105,7 @@ export function ModelsPage() {
   const auth = useAuth();
   const queryClient = useQueryClient();
   const query = useQuery({ queryKey: configurationKey, queryFn: getModelConfiguration, refetchInterval: 10_000, retry: false });
-  const administrator = hasPermission(auth.user?.role, "models", "write");
-  const platformAdministrator = isPlatformAdministrator(auth.user?.role);
+  const administrator = isPlatformAdministrator(auth.user?.role);
   const refresh = async () => { await queryClient.invalidateQueries({ queryKey: configurationKey }); };
 
   if (query.isLoading) return <ModelsSkeleton />;
@@ -120,11 +119,11 @@ export function ModelsPage() {
       {!administrator ? (
         <Alert className="mt-6"><CircleAlert /><AlertTitle>{t("modelSettings.readOnly")}</AlertTitle><AlertDescription>{t("modelSettings.readOnlyDescription")}</AlertDescription></Alert>
       ) : null}
-      {platformAdministrator ? <Tabs value={search.tab === "pricing" ? "pricing" : "models"} onValueChange={tab => void navigate({ to: "/settings/models", search: { tab } })} className="mt-6">
+      <Tabs value={search.tab === "pricing" ? "pricing" : "models"} onValueChange={tab => void navigate({ to: "/settings/models", search: { tab } })} className="mt-6">
         <TabsList aria-label={t("modelPricing.models")}><TabsTrigger value="models">{t("modelPricing.models")}</TabsTrigger><TabsTrigger value="pricing">{t("modelPricing.prices")}</TabsTrigger></TabsList>
         <TabsContent value="models"><ResourceManagement resource="model" view={query.data} administrator={administrator} onChanged={refresh} /></TabsContent>
         <TabsContent value="pricing" className="pt-5"><ModelPricingPanel administrator={administrator} /></TabsContent>
-      </Tabs> : <div className="mt-6"><p className="mb-4 text-sm text-muted-foreground">{t("sharing.platformProviders")}</p><ResourceManagement resource="model" view={query.data} administrator={administrator} onChanged={refresh} /></div>}
+      </Tabs>
     </section>
   );
 }
@@ -275,7 +274,7 @@ export function GuardrailCatalogPage() {
           </div>
         )}
         assignments={assignments}
-        models={query.data.models.filter(model => model.tenantId == null)}
+        models={query.data.models.filter(model => model.projectId == null)}
         report={displayedReport}
         savedAssignments={query.data.draft.assignments}
         disabled={!administrator || operationPending || saveAssignmentMutation.isPending || validateAssignmentMutation.isPending}
@@ -286,7 +285,7 @@ export function GuardrailCatalogPage() {
         onValidate={(target) => { if (target === "automated_reasoning.output") setFormalValidationOpen(true); else validateAssignmentMutation.mutate(target); }}
       />
       <ControlPlaneSection
-        models={query.data.models.filter(model => model.tenantId == null)}
+        models={query.data.models.filter(model => model.projectId == null)}
         selectedId={assignments.controlPlane}
         savedId={query.data.draft.assignments.controlPlane}
         report={displayedReport}
@@ -603,10 +602,7 @@ function ModelOption({ model }: { model: ModelDefinition }) {
 
 function ResourceManagement({ resource, view, administrator, onChanged }: { resource: "provider" | "model"; view: ModelConfigurationView; administrator: boolean; onChanged: () => Promise<void> }) {
   const { t } = useTranslation();
-  const user = useAuth().user;
-  const tenantId = user?.tenant_id;
-  const platformAdministrator = isPlatformAdministrator(user?.role);
-  const ownsModel = (model: ModelDefinition) => platformAdministrator ? model.tenantId == null : Boolean(tenantId && model.tenantId === tenantId);
+  const ownsModel = (model: ModelDefinition) => model.projectId == null;
   const ownedModels = view.models.filter(ownsModel);
   const isMobile = useIsMobile();
   const [createMode, setCreateMode] = useState<"provider" | "model" | null>(null);
@@ -672,7 +668,7 @@ function ResourceManagement({ resource, view, administrator, onChanged }: { reso
                     <div className="min-w-0"><p className="text-[11px] font-medium text-muted-foreground">{t("modelSettings.endpoint")}</p><code className="mt-1 block truncate text-xs" title={provider.baseUrl}>{provider.baseUrl}</code>{provider.skipTlsVerify ? <p className="mt-1 text-xs font-medium text-amber-700 dark:text-amber-400">{t("providerRegistration.tlsSkipped")}</p> : null}</div>
                     <div className="text-right"><p className="text-[11px] font-medium text-muted-foreground">{t("modelSettings.registeredModels")}</p><p className="mt-1 text-sm font-semibold">{providerModelCount}</p></div>
                   </div>
-                  {platformAdministrator ? <Button type="button" variant="outline" className="h-11 w-full justify-between" disabled={!administrator || pending} aria-label={`${t("modelSettings.manageProvider")} ${provider.name}`} onClick={() => setProviderTargetId(provider.id)}>{t("modelSettings.manageProvider")}<ChevronRight /></Button> : null}
+                  {administrator ? <Button type="button" variant="outline" className="h-11 w-full justify-between" disabled={pending} aria-label={`${t("modelSettings.manageProvider")} ${provider.name}`} onClick={() => setProviderTargetId(provider.id)}>{t("modelSettings.manageProvider")}<ChevronRight /></Button> : null}
                 </article>;
               })}
             </div>
@@ -685,7 +681,7 @@ function ResourceManagement({ resource, view, administrator, onChanged }: { reso
                     <TableCell><code className="block max-w-80 truncate text-xs text-muted-foreground" title={provider.baseUrl}>{provider.baseUrl}</code>{provider.skipTlsVerify ? <p className="mt-1 text-xs font-medium text-amber-700 dark:text-amber-400">{t("providerRegistration.tlsSkipped")}</p> : null}</TableCell>
                     <TableCell>{view.models.filter((model) => model.providerId === provider.id).length}</TableCell>
                     <TableCell><ValidationEvidence kind="provider" status={provider.status} checkedAt={provider.validatedAt} latencyMs={provider.validationLatencyMs} message={provider.validationMessage} /></TableCell>
-                    <TableCell className="pr-5 text-right">{platformAdministrator ? <Button type="button" variant="outline" className="h-11" disabled={!administrator || pending} aria-label={`${t("modelSettings.manageProvider")} ${provider.name}`} onClick={() => setProviderTargetId(provider.id)}>{t("modelSettings.manageProvider")}<ChevronRight /></Button> : null}</TableCell>
+                    <TableCell className="pr-5 text-right">{administrator ? <Button type="button" variant="outline" className="h-11" disabled={pending} aria-label={`${t("modelSettings.manageProvider")} ${provider.name}`} onClick={() => setProviderTargetId(provider.id)}>{t("modelSettings.manageProvider")}<ChevronRight /></Button> : null}</TableCell>
                   </TableRow>
                 ))}</TableBody>
               </Table>
@@ -707,7 +703,7 @@ function ResourceManagement({ resource, view, administrator, onChanged }: { reso
               const provider = view.providers.find((item) => item.id === model.providerId);
               return (
                 <TableRow key={model.id}>
-                  <TableCell className="pl-5"><div><p className="font-medium">{model.name}</p><code className="mt-1 block max-w-80 truncate text-xs text-muted-foreground" title={model.model}>{model.model}</code><TenantResourceBadge ownerTenantId={model.tenantId} activeTenantId={tenantId} /></div></TableCell>
+                  <TableCell className="pl-5"><div><p className="font-medium">{model.name}</p><code className="mt-1 block max-w-80 truncate text-xs text-muted-foreground" title={model.model}>{model.model}</code><ProjectResourceBadge ownerProjectId={model.projectId} /></div></TableCell>
                   <TableCell><div className="flex items-start gap-3"><ProviderMark provider={model.providerName} kind={model.providerKind} model={model.model} /><div><p className="mb-1.5 font-medium">{model.providerName}</p>{provider ? <ValidationEvidence kind="provider" status={provider.status} checkedAt={provider.validatedAt} latencyMs={provider.validationLatencyMs} message={provider.validationMessage} /> : <StateBadge state="unavailable" label={t("modelSettings.providerUnavailable")} />}</div></div></TableCell>
                   <TableCell><ModelCallEvidence model={model} checking={probeMutation.isPending && probeMutation.variables?.id === model.id} /></TableCell>
                   <TableCell className="text-right tabular-nums">{model.maxConcurrency ?? 2}</TableCell>
@@ -719,7 +715,7 @@ function ResourceManagement({ resource, view, administrator, onChanged }: { reso
         ) : <EmptyResource>{t("modelSettings.noModels")}</EmptyResource>}
       </ResourceSection> : null}
 
-      {createMode ? <RegisterModelsDrawer intent={createMode === "provider" ? "add-provider" : "register-models"} initialProviderId={initialProviderId} open onOpenChange={(open) => { if (!open) setCreateMode(null); }} allowProviderCreation={platformAdministrator} providers={view.providers} registeredModels={ownedModels} onChanged={onChanged} /> : null}
+      {createMode ? <RegisterModelsDrawer intent={createMode === "provider" ? "add-provider" : "register-models"} initialProviderId={initialProviderId} open onOpenChange={(open) => { if (!open) setCreateMode(null); }} allowProviderCreation={administrator} providers={view.providers} registeredModels={ownedModels} onChanged={onChanged} /> : null}
       {providerTarget ? <ProviderManagementSheet
         open
         provider={providerTarget}

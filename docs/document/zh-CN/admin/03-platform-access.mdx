@@ -1,56 +1,127 @@
 ---
 id: "platform-access"
-title: "账户、凭据与审计"
-summary: "区分浏览器会话、个人管理 Token、Endpoint 凭据和 Runner 凭据，并按用途审查权限。"
+title: "Project、用户与 SSO"
+summary: "项目隔离、真实用户、个人凭证，以及复用 Relay Keycloak 的配置与权限规则。"
 order: 2
 ---
-账户角色控制管理工作区权限，凭据认证不同调用链路。请按任务选择对应角色和凭据。
+**Project 就是资源项目，User 是真实的人类用户，Credential 是用户持有的访问凭证。** 一个人可以加入多个项目；切换项目不改变人的身份。
+
+<a id="project-basics" />
+## 权限范围
+
+| 范围 | 职责 |
+| --- | --- |
+| Platform | 管理身份接入、用户、项目、模型服务、Runner 和平台审计；不隐式拥有项目业务写入权。 |
+| Project | 拥有 Policy、Guardrail、Router、Endpoint 等业务资源，是隔离边界。 |
+| User | 独立的人类账号。通过 ProjectMember 加入项目，使用本地账号或 Keycloak 登录。 |
+
+
+参考 Relay 的 User → ProjectMember → Project 关系。内部资源的 `projectId` 表示 Project ID；Runner 分组负责容量分配，不等于人的组织身份。系统没有默认 Project，也不会自动把新用户加入任何项目。`default` 仅是默认 Runner 运行组和池，不授予用户权限。
+
+<a id="project-management" />
+## 使用与管理
+
+- 本地账号：管理员在[账户与权限](/access)创建用户，在[项目](/access/projects)创建项目、添加或移除成员。
+- SSO 账号：在 Keycloak 管理 Group Path，Guard 登录时同步项目成员。控制台展示原始角色，不允许本地修改 SSO 成员关系。
+- 业务用户：在顶部选择项目。未加入任何项目时可以登录和管理自己的账号，但不能读取业务资源。
+- Runner 分配：在[项目管理](/access/projects)中选择项目的**配置 Runner**。连接地址与模型授权分别设置，共享配置会明确提示影响范围；**Runner 更多操作**中可改用独立 Runner。登记不自动部署工作负载，切换分配仍需遵守离线检查。
+
+用户、Project、运行组和 Runner 列表默认每页 25 项，只展示摘要和数量。点击某项后再加载详情；项目成员和用户所属项目也分别分页。搜索由服务端处理，选择本地成员或切换项目时不会预加载整个目录。
+
+Project 名称规范化为小写字母、数字和连字符，创建后不可修改，并直接作为 Project ID 和专用池 ID。专用实例名为 `runner-<project-name>-<index>`，共享实例名为 `runner-default-<index>`。默认运行组可使用平台模型配置，其他运行组须明确授权后才可使用模型。
+
+当前仍为开发版本。数据库使用新的初始化基线，不升级旧 Tenant 数据、映射旧 Runner 名称或补绑定旧池。切换基线时应重新初始化开发数据库。
+
+<a id="project-initialization" />
+## 未初始化时的交互
+
+用户可以完成登录。没有对应 Project、没有成员权限，或项目未配置 Runner 地址时，工作区显示“项目尚未初始化”或“项目的 Runner 运行环境尚未初始化”，账号菜单与项目切换仍可使用。
+
+页面只生成邮件主题和正文，提供复制与展开查看；用户自行粘贴到邮箱发送，不自动发邮件或打开邮件客户端。管理员完成 Project、成员和 Runner 配置后，用户点击“重新检查”继续使用。已验证的 SSO 信息过期时需要重新登录。
+
+邮件模板包含平台地址、用户账号与 ID、Project/部门以及缺失配置，不含密码、Token 或 Client Secret：
+
+```text
+主题：[TaskLattice Guard] 项目初始化申请
+
+管理员您好，我已登录 Guard，但项目工作区尚未初始化。
+平台地址：<平台地址>
+用户／登录账号：<用户信息>
+用户 ID：<用户 ID>
+Project／部门：<项目与部门，未分配时注明>
+当前状态：<缺少项目、成员权限或 Runner 配置>
+
+请核对权限并初始化对应 Project，并分配共享或独立 Runner。
+SSO 账号请核对 Keycloak Group Path。完成后请通知我，
+我会点击“重新检查”继续使用。谢谢。
+```
+
+<a id="project-sign-in" />
+## 接入 Relay Keycloak
+
+Guard 使用 Better Auth 的 OIDC 授权码流程，校验 ID Token 签名、issuer、audience、有效期和 nonce，并启用 PKCE。账号按 issuer + subject 识别，保留真实邮箱，要求邮箱已验证，不按同邮箱自动合并本地账号。当前实现 OIDC，不包含 SAML。
+
+复用 Relay 的 Keycloak 实例与 Realm，**为 Guard 单独创建保密 Client**，例如 `tasklattice-guard`。启用 Standard Flow，关闭 Direct Access Grants；回调地址精确填写 `https://guard.example.com/api/auth/callback/corporate-sso`。为该 Client 配置 Group Membership mapper：claim 为 `groups`，开启 Full group path，并写入 ID Token；保证 email 与 email_verified 可用。
+
+Helm 配置示例（Keycloak 尚未部署时保持关闭）：
+
+```yaml
+controller:
+  sso:
+    enabled: true
+    issuer: https://identity.example.com/realms/tali
+    clientId: tasklattice-guard
+    displayName: Keycloak
+    groupClaim: groups
+    allowedEmailDomains: [example.com]
+    existingSecret: guard-oidc
+    clientSecretKey: client-secret
+```
+
+将 Client Secret 存入同命名空间的 `guard-oidc` Secret 的 `client-secret` 键，勿写入 values 或文档。设置 Guard 的 `publicUrl` 为实际访问地址。非 Helm 部署可使用 `.env.example` 中的 `CONTROLLER_SSO_*` 变量。生产 issuer 使用 HTTPS。关闭 SSO 不影响本地管理员登录；身份源故障不会阻塞本地登录。
 
 <a id="admin-governance" />
-## 分离业务与平台角色
+## Group Path 与权限
 
-| 角色 | 主要工作区 | 权限 |
-| --- | --- | --- |
-| 用户，`user` | 护栏设计、集成和运行观测 | 创建并管理业务 Guardrail、Policy、Router 和 Endpoint，查看运行日志与已采集正文。 |
-| 管理员，`admin` | 平台配置、访问与审计 | 配置共享模型、能力绑定和账户，读取操作审计，维护平台 Default 操作。 |
+精确识别以下路径，不按前缀或任意角色字符串授权：
 
-管理员不能修改业务资源或查看租户运行日志。业务用户不能配置共享模型服务或读取操作审计。管理 API 允许时，管理员仍可只读查询业务元数据。
+| Keycloak Group Path | Guard 权限 |
+| --- | --- |
+| `/tali/r/ROLE_PLATFORM_ADMIN` | 平台管理员；管理模型服务、用户、项目和审计。 |
+| `/tali/d/{departmentId}/p/{projectId}/r/ROLE_PROJECT_ADMIN` | 对应项目业务读写。不会变成平台管理员。 |
+| 同一项目路径下的 `ROLE_AGENT_DEVELOPER` | 对应项目业务读写。 |
+| 同一项目路径下的 `ROLE_AUDITOR`、`ROLE_REVIEWER`、`ROLE_USER` | 对应项目只读。当前不映射 Relay 专用审批、Agent 或任务能力。 |
 
-角色作用于共享工作空间，不建立业务资源之间的所有权隔离。
+管理员先在 Guard 创建 Project，填写与路径完全一致的 Project ID 和部门 ID。登录只同步已初始化且部门匹配的项目成员关系；不会根据身份源声明自动创建项目。不存在或部门不匹配的项目会进入初始化提示，不会获得访问权限。部门管理员路径不隐含所有项目授权。未知路径不授予访问权。平台管理员使用平台工作区，不获得业务写入能力。
 
 <a id="access-shared-operations" />
-### 共享的运行管理权限
+### 同步与撤权
 
-两种角色都可查看健康、Runner 状态和软件版本，也可调整容量目标、移除运行规则允许删除的注册记录。正在提供服务的实例仍受保护。个人 Token 写入需具备 `runners:write`。
+每次 SSO 登录按本次已验证的 Group Path 重建该账号的项目授权，撤销消失的成员关系、降低已变化的权限，并更新平台管理员身份。无匹配路径时账号没有项目权限。
 
-用户从设置入口进入这些页面，管理员从“平台运行”侧边栏进入。两者继续使用 `/settings/*` 路径。
-
-两种角色都保留个人账户、密码管理、Access Tokens 和文档。用户在[账单](/billing)查看模型用量，管理员在[模型](/settings/models?tab=pricing)管理价格。
-
-设计流程使用精简的能力状态接口，不包含 Provider 地址、凭据提示、控制面模型配置或测试正文。
+本地读取和写入每次检查当前成员关系；旧浏览器页面不能在切换项目后继续向另一个项目写入。SSO 会话最长一小时；SSO 用户的个人 Token 也要求最近一小时完成过 SSO 登录。Keycloak 中的改动会在下次登录同步，**不提供 Keycloak 实时撤权推送**。紧急处置可在 Guard 禁用账号。退出 Guard 仅结束 Guard 会话，不结束 Keycloak 全局会话。
 
 <a id="access-token-authority" />
-### 个人 Token 的有效权限
+### 个人凭证的权限
 
-有效权限取当前账户角色与模块授权的交集，write 包含 read。角色变化后，后续请求会重新计算已有 Token 的权限。
-
-用户可授予运行记录和已采集正文的只读权限，管理员可授予审计读取权限。Token 不能超过所属账户的角色权限。Router 审批还要求审批人与提交人不同。
+个人 Token 固定绑定签发时的 Project，浏览器切换项目不会改变 Token 的项目。权限同时受账号角色、当前项目成员关系、模块授权和有效期限制。项目只读成员不能签发写入 Token；失去项目或被降权后，不再接受越权的旧 Token。平台与业务角色切换会使对应旧 Token 失效。
 
 <a id="credential-types" />
-## 按调用链路选择凭据
+## 选择凭证
 
-| 凭据 | 用途 | 边界 |
-| --- | --- | --- |
-| 浏览器 Session | 按当前账户权限操作控制台。 | 不用于运行时检测。 |
-| 个人 Access Token | 在角色、模块和有效期范围内自动调用管理 API。 | 不能签发其他个人 Token。 |
-| Endpoint 凭据 | 为单个 Endpoint 认证应用或网关的检测调用。 | 不能登录控制台或修改平台配置。 |
-| Runner 控制凭据 | Controller 与 Runner 的控制连接和配置下发。 | 不用于业务检测请求。 |
+| 凭证 | 用途 |
+| --- | --- |
+| 浏览器 Session | 人类用户登录控制台，选择已加入的项目。 |
+| 个人 Access Token | 代表签发用户，在固定项目和模块范围内调用管理 API。不能管理成员或签发其他 Token。 |
+| Endpoint 凭据 | 应用或网关调用单个 Endpoint 的运行时检测；不用于用户登录。 |
+| Runner 控制凭据 | Controller 与 Runner 通信；不代表人类用户。 |
 
 <a id="platform-audit" />
-## 核对权限与操作
+## 核对结果
 
-管理员在[账户与权限](/access)分配角色。每个账户管理自己的 [Access Tokens](/account/access-tokens)。
+登录后检查[项目](/access/projects)中的项目、成员来源和 Keycloak 原始角色。普通用户只能选择已加入的项目。管理员在[审计日志](/audit-log)查看项目成员与 SSO 同步操作；用户在[个人 Token](/account/access-tokens)管理自己的凭证。
 
-Endpoint 凭据仅在签发时展示完整值。业务用户将其交给对应应用，并按需轮换。
+<a id="project-upgrade" />
+## 开发数据库初始化
 
-管理员在[审计日志](/audit-log)核对配置操作，用户在[运行日志](/logs)查看请求 Decision 和发现。健康与下发状态不等于任一种日志记录。
+代码、API、数据库、Runner 协议和配置统一使用 `Project`（`projectId` / `project_id`）。当前数据库采用单一初始化基线，旧 Tenant 改名、数据回填、历史归属修补和 Runner 池补绑定迁移已删除。旧开发数据库应重新初始化，不执行原地兼容升级。Platform 数据使用空 Project 归属。

@@ -7,14 +7,81 @@ This chart deploys exactly two Guard application component types:
 
 - **Guard Controller** — TypeScript UI/API, Better Auth, desired state,
   reconciliation, audit, telemetry ingest, and capacity views.
-- **Guard Runner** — Python/NeMo data plane. `GuardRails 0` is the mandatory
+- **Guard Runner** — Python/NeMo data plane. `runner-default` is the mandatory
   baseline pool and authoritative NeMo configuration compiler; `default` remains
-  only its internal protocol ID. Every Runner pool is a StatefulSet, so instance
-  IDs use stable ordinal Pod names such as `tali-guard-runner-0` instead of
-  rollout-dependent hashes.
+  only its internal protocol ID. The chart creates one Runner StatefulSet with
+  stable ordinal Pod names such as `runner-default-0`.
 
 PostgreSQL and optional Redis are infrastructure dependencies, not additional
 Guard application components.
+
+Helm provides the basic platform startup configuration and deploys only the
+Default Runner. Create and manage all other Runners manually in the administrator
+UI. Their workloads and settings are outside this chart. Helm does not configure
+Runner admission policies. Deploy one Guard
+installation per Kubernetes namespace; the Default Runner workload name does not
+include the Helm release prefix.
+
+The current development schema is a fresh baseline. Recreate development
+databases when switching from the old Tenant or Runner naming schema; no data
+backfill or old-name mapping is provided.
+
+## Keycloak development bootstrap
+
+Keycloak is configured under the top-level `keycloak` values alongside
+`postgresql` and `redis`. It is disabled by default; the development overlay
+sets `keycloak.enabled: true`. Override `keycloak.image.repository`,
+`keycloak.image.tag`, `keycloak.image.pullPolicy` and `keycloak.port` as needed.
+The shared port configures the listener, Service and loopback OIDC issuer.
+
+```bash
+npm run helm:deploy:dev:keycloak
+```
+
+This adds `values-dev-keycloak.yaml` to the usual development values and waits
+for the initialization Job. Defaults: namespace `tali`, context `orbstack`,
+Guard <http://localhost:38081>, Keycloak <http://localhost:38083>.
+`HELM_NAMESPACE`, `HELM_CONTEXT` and ordinary Helm overrides still work.
+Use the same command for subsequent upgrades of this profile.
+
+| Login | Initial credential | Project | Runner |
+| --- | --- | --- | --- |
+| Local `user` | Existing local bootstrap configuration | Existing assignments retained | Existing assignment |
+| Keycloak `sso-user1` | `password` | `test1` | Shared `runner-default-0` |
+| Keycloak `sso-user2` | `password` | `test2` | Configure manually in the administrator UI |
+
+Project names are canonical and immutable: `Test2` becomes `test2`. This profile
+also deploys only `runner-default-0`. The initialization Job creates the development
+Projects and runtime groups, without creating Runner pools or changing capacity.
+`test2` has its own runtime group; configure its Runner and grant Models explicitly
+in the administrator UI before using its runtime. No platform Model credentials
+are implicitly inherited by that group.
+
+The realm import and full-path groups mapper are adapted from Relay's
+`charts/tali-relay/templates/keycloak.yaml`; Guard's API initialization script
+is `controller/scripts/runtime/bootstrap-dev-keycloak.mjs`, adapted from
+Relay's `scripts/configure-dev-keycloak-sso.sh` workflow. Identity definitions
+live in `files/keycloak-dev-identities.json`. Both SSO users receive project
+write access through `/tali/d/dep1/p/<project>/r/ROLE_AGENT_DEVELOPER`; they have
+no platform administrator role. Guard creates their local identity on first
+SSO login and synchronizes memberships from the verified groups claim.
+The initialization Job never assigns SSO memberships locally.
+
+This is an ephemeral development identity provider: Keycloak runs beside the
+Controller so browser and server share the same loopback issuer. Its data is
+rebuilt from the fixture after a Pod replacement, using stable user IDs and a
+retained generated client Secret. Guard's database and local user are retained.
+The development Controller uses `NODE_ENV=development` for loopback HTTP OIDC;
+the standard profile remains production mode and requires HTTPS for SSO.
+External OIDC and embedded development Keycloak cannot be enabled together.
+The Keycloak admin credential is generated in the release's Kubernetes Secret;
+it is not the test users' credential and is never printed by bootstrap.
+
+Reruns reuse matching Projects; conflicting Project allocation or SSO department
+fails explicitly. The Job runs during resource readiness and signs out its
+temporary admin session when done. It uses the management API with a mounted Secret, without database or Kubernetes API access.
+Existing databases predating the current schema baseline are not reset by this
+command. Initialize a separate development database/namespace to test that case.
 
 ## Optional pool-bound Runner credentials
 
@@ -22,8 +89,8 @@ The chart can inject pre-provisioned pool credentials without putting token
 values in Helm values or rendered manifests. Create Kubernetes Secrets in the
 release namespace through your secret manager. One Controller Secret key must
 contain the JSON map from each pool ID to its distinct high-entropy token. Each
-Runner pool needs a separate Secret key containing only that pool's matching
-token. For example, with an extra pool named `batch`:
+Runner needs a separate Secret key containing only its pool's matching token.
+The chart injects a Runner reference only for `default`:
 
 ```yaml
 security:
@@ -33,13 +100,11 @@ security:
     controllerKey: pool-tokens.json
     runnerSecrets:
       default: { name: guard-default-token, key: token }
-      batch: { name: guard-batch-token, key: token }
 ```
 
-Every chart-defined pool, including `default`, needs a reference. The chart
-rejects missing, duplicate and unknown pool references and a Runner reference
-to the Controller map key. It cannot inspect Secret contents or verify they
-match: Kubernetes must find every referenced Secret and key, and Controller
+Only `default` belongs in `runnerSecrets`. The chart rejects missing or unknown
+Runner references and a Runner reference to the Controller map key. It cannot
+inspect Secret contents or verify they match: Kubernetes must find every referenced Secret and key, and Controller
 startup validates the JSON and distinct token values. An externally managed
 pool needs a corresponding entry in the Controller's map and independent
 provisioning for that workload.
@@ -65,7 +130,6 @@ security:
     controllerKey: pool-http-tokens.json
     runnerSecrets:
       default: { name: guard-default-http, key: token }
-      batch: { name: guard-batch-http, key: token }
 ```
 
 This requires `poolAuthentication.enabled: true` and the same pool IDs in both
@@ -83,36 +147,32 @@ authentication, it also omits `GUARD_CONTROLLER_TOKEN` from Runner containers.
 That mode currently quarantines Endpoint and routing telemetry without verified
 snapshot context, suppresses scoped
 Runner watermarks and makes freshness-based distribution/deletion actions
-unavailable. It is not a production-complete monitoring or load-lab mode.
+unavailable. It does not yet provide complete production telemetry.
 
 Active model configuration remains platform-wide, and safe reassignment has
-additional requirements. Read the [credential mode matrix and rollout
-procedure](../../docs/runner-http-pool-credentials.md),
-[tenant groups](../../docs/tenant-groups.md) and
-[scoped HTTP plan](../../docs/runner-scoped-http-plan.md) before enabling these
-options. Separate credential references do not change any defaults.
+additional requirements. Separate credential references do not change any
+defaults.
 
 Authenticated telemetry progress is a further opt-in:
 `security.poolAuthentication.telemetryProgress: true` requires pool credentials,
-`scopedTelemetry: true` and `runner.telemetryProgress.persistence.enabled: true`.
-Each Runner replica then receives a separate 64Mi PVC by default, mounted at
-`/var/lib/tasklattice/telemetry-progress`; artifact cache storage is unchanged.
-The size and StorageClass are configurable under that persistence map. Adding
-the claim template to an existing StatefulSet requires controlled drain and
-recreation, and lost WAL identity requires reviewed recovery. Follow the
-[persistent telemetry rollout procedure](../../docs/runner-telemetry-progress-rollout.md)
-before enabling it. Progress remains separate from freshness-based deletion.
+and `scopedTelemetry: true`. Its WAL shares the Runner's existing ephemeral
+state directory, `/var/lib/tasklattice/guard-runner`, with the artifact cache;
+no additional volume or PVC is created. `runner.state.sizeLimit` bounds the
+shared volume. Container restarts reuse the local WAL. Pod recreation loses
+unsent telemetry, and the new Runner boot starts a new WAL with fresh cursors;
+previous upload capabilities are revoked. Progress remains separate from
+freshness-based deletion.
 
 ## Images and dependencies
 
 | Purpose | Default image/configuration | Required |
 | --- | --- | --- |
 | Controller | `ghcr.io/tasklattice/tali-guard-controller:<Chart.appVersion>` | Yes, exactly one replica |
-| Runner | `ghcr.io/tasklattice/tali-guard-runner:<Chart.appVersion>` | Yes, minimum 1; production defaults to 2 replicas |
+| Runner | `ghcr.io/tasklattice/tali-guard-runner:<Chart.appVersion>` | Yes, minimum and default 1 replica |
 | PostgreSQL | External PostgreSQL 14+ | Yes |
 | Development PostgreSQL | `postgres:17-alpine` | Only when `postgresql.enabled=true` |
 | Development Redis | `redis:7.4-alpine` | Included locally to support scaling beyond one Runner |
-| Redis | `runner.callContextRedisUrl` | Only when any Runner pool has more than one replica |
+| Redis | `runner.callContextRedisUrl` | Only when the Default Runner has more than one replica |
 
 Set top-level `publicUrl` once to configure the shared UI/Endpoint address and
 Better Auth trusted origin. `runner.publicUrl` is only needed for a different
@@ -415,7 +475,7 @@ do not create or delete namespaces, start application Pods or allocate PVCs.
 
 `npm run helm:deploy:dev` keeps both application tags fixed at `dev` and changes a
 Helm-managed rollout revision annotation on every run. Controller and all
-Runner pools therefore replace their Pods and load the latest local `dev`
+Default Runner replicas therefore replace their Pods and load the latest local `dev`
 images even though the image names remain unchanged. The command waits for Pod
 readiness; use `npm run helm:status` to inspect the deployment at any time.
 
@@ -517,11 +577,10 @@ Catalog** and persisted in the Controller database:
   and Playground generation. Runner activation is not required.
 - Validate and save Input / Output Rail capability bindings, then use
   **Activate on Runner** to distribute them to Runners.
-- With pool authentication enabled, use **Tenant groups → Runtime Models** to
+- With pool authentication enabled, use **Project groups → Runtime Models** to
   grant a validated runtime configuration to one group or block its future
   credential retrieval. Groups remain on platform defaults until explicitly
-  changed. See [group Model grants](../../docs/group-model-configurations.md),
-  including coordinated Provider rotation and migration requirements.
+  changed.
 
 Helm configures deployment infrastructure: images, resources, networking,
 databases, and platform Secrets. It does not configure model endpoints,
@@ -571,24 +630,23 @@ there is no global runtime baseline or startup package setting.
 
 ## Scaling contract
 
-Controller remains one replica in this chart version. GuardRails 0 defaults to
-one StatefulSet replica in `values-dev-uat.yaml` and two in production `values.yaml`,
-with a minimum of one replica and `minAvailable: 1`; the production Pods are
-`<release>-tali-guard-runner-0` and `-1`. Scale the data plane with
-`runner.default.replicaCount` and `runner.pools`. Production must set
-`runner.callContextRedisUrl` when any pool has more than one replica so
-input/output checks for one request remain pinned to the same Guardrail
+Controller remains one replica in this chart version. runner-default defaults to
+one StatefulSet replica in all profiles, with a minimum of one replica and
+`minAvailable: 1`. The initial instance is `runner-default-0`. Scale the data plane with
+`runner.default.replicaCount`. Manage other Runners manually in the administrator
+UI. Production must set `runner.callContextRedisUrl` when the Default Runner has
+more than one replica so input/output checks for one request remain pinned to the same Guardrail
 generation across Pods. The development profile provides its own Redis.
 
-Every Runner pool gets a stable logical Runtime Service; individual Pod names
+The Default Runner gets a stable logical Runtime Service; individual Pod names
 are never part of the upstream contract. Kubernetes performs ordinary balancing
 with no session affinity. Input/output consistency comes from `call_id` and the
 required shared Redis context when a pool has multiple replicas. The optional
 Ingress routes `/runtime/v1/endpoints` directly to Runtime and other paths to
 Controller UI/API; protected runtime traffic never traverses Controller.
 
-Each pool also gets a private headless governing Service for StatefulSet network
-identity. Upstream endpoints continue to use only the load-balanced Runtime
+The Default Runner also gets a private headless governing Service for StatefulSet
+network identity. Upstream endpoints continue to use only the load-balanced Runtime
 Service; the headless Service and ordinal Pod names are not public endpoints.
 
 ## Prometheus and Grafana
@@ -816,60 +874,9 @@ configure the application. Rebuild and publish the Controller image before using
 this chart; its initialization protocol and mounted-account support must match
 the templates.
 
-### Optional Runner pool network policies
+### Optional Default Runner network policy
 
-`networkPolicy.runnerIsolation.enabled=true` adds per-pool ingress/egress default-deny policies. Configure trusted gateway/scraper `ingressPeers`, DNS peers and pool-specific external Provider/Redis/collector destinations under `poolEgress` before enabling. Controller and bundled Redis are explicit shared destinations; other Runner pools and PostgreSQL are not default exceptions. Requires an enforcing CNI and a packet-level rollout test. Other policies can add permissions; rendering does not prove network isolation. See [Runner network isolation](../../docs/runner-network-isolation.md).
-
-### Optional per-pool tenant admission
-
-Admission is absent/off by default. Supply a complete `tenantAdmission` object on
-`runner.default` or an individual `runner.pools[]` entry to enable local process
-concurrency caps and bounded queues. Named pools do not inherit default settings.
-Use the exact Runner JSON field names inside these objects:
-
-```yaml
-runner:
-  default:
-    tenantAdmission:
-      capacity: 4
-      tenant_limits: { tenantA: 2, tenantB: 2 }
-      max_queued: 8
-      max_queued_per_tenant: 4
-      queue_timeout_seconds: 0.25
-    # Optional additional distributed rate, requiring pool auth/external Redis:
-    distributedRateAdmission:
-      pool_id: default
-      revision: v1
-      window_ms: 1000
-      pool_limit: 20
-      tenant_limits: { tenantA: 12, tenantB: 12 }
-```
-
-Each supplied object renders the corresponding enabled flag and JSON environment
-variable. Targeted template validation checks fields, bounds and policy consistency.
-Distributed rate additionally requires configured pool authentication and an
-explicit external `runner.callContextRedisUrl`; bundled ephemeral Redis is
-rejected. Operators must separately provision the identical policy in Redis;
-the chart supplies no initialization/reset Job. An external URL does not prove
-durability or failover safety. Rates are pool/tenant **admission starts** across
-replicas, separate from local simultaneous work; this v1 policy supplies no
-distributed concurrency/reservation guarantee or group-wide total. Read the exact scopes,
-provisioning procedure, Redis clock/data-loss/ACL assumptions and tests in
-[distributed tenant admission](../../docs/distributed-tenant-admission.md) and
-[local admission](../../docs/tenant-admission.md) before enabling.
-
-For a group-wide rate total across several pools, configure optional
-`groupRateAdmission` instead of `distributedRateAdmission`. Every participating
-pool uses the identical complete group/tenant/pool policy and exact Controller
-allocation epochs; named pools do not inherit it. The chart validates known
-member-pool consistency but does not provision Redis or verify remote releases.
-See [group rate admission](../../docs/group-rate-admission.md) for the policy,
-resource bounds, explicit provisioning and mixed-version rollout constraints.
-
-Local admission also reports actual permit/queue/outcome/latency snapshots over
-authenticated Runner heartbeats. The admin load-lab monitor shows current group
-placement and gaps for unavailable sources without exposing metrics credentials
-to the browser. See [actual admission monitoring](../../docs/tenant-admission-monitor.md).
+`networkPolicy.runnerIsolation.enabled=true` adds an ingress/egress default-deny policy for the Default Runner. Configure trusted gateway/scraper `ingressPeers`, DNS peers and external Provider/Redis/collector destinations under `poolEgress.default` before enabling. Controller and bundled Redis are explicit shared destinations; other Runner pools and PostgreSQL are not default exceptions. Requires an enforcing CNI and a packet-level rollout test. Other policies can add permissions; rendering does not prove network isolation.
 
 ## Redis capacity and context degradation
 
@@ -879,7 +886,7 @@ memory accounting is not identical to container RSS; the remaining headroom
 covers allocator overhead and transient operations. A memory limit reduces OOM
 risk but is not a guarantee against an unusually large allocation.
 
-All Runner pools receive these settings:
+The Default Runner receives these settings:
 
 ```yaml
 runner:

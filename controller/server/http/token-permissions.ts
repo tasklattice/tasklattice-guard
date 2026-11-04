@@ -3,20 +3,20 @@ import type { AccessAction, PermissionResource } from "../../shared/rbac.js";
 
 // Shared route allowlist for session RBAC and token scopes. Unclassified APIs deny access.
 export const tokenRoutePermissions: ReadonlyArray<readonly [string, string, TokenModule, "read" | "write"]> = [
-  ["GET", "/api/v1/tenant-groups", "settings", "read"],
-  ["POST", "/api/v1/tenant-groups", "settings", "write"],
-  ["PATCH", "/api/v1/tenant-groups/:id", "settings", "write"],
-  ["DELETE", "/api/v1/tenant-groups/:id", "settings", "write"],
-  ["POST", "/api/v1/tenant-groups/:id/pools", "settings", "write"],
-  ["GET", "/api/v1/tenant-groups/:id/model-configuration", "settings", "read"],
-  ["PUT", "/api/v1/tenant-groups/:id/model-configuration", "settings", "write"],
-  ["GET", "/api/v1/tenants", "settings", "read"],
-  ["PUT", "/api/v1/tenants/:id/group", "settings", "write"],
-  ["PUT", "/api/v1/runner-pools/:id/group", "settings", "write"],
+  ["GET", "/api/v1/projects/:id/runner", "settings", "read"],
+  ["PUT", "/api/v1/projects/:id/runner", "settings", "write"],
+  ["GET", "/api/v1/project-groups", "settings", "read"],
+  ["GET", "/api/v1/project-groups/:id", "settings", "read"],
+  ["GET", "/api/v1/project-groups/:id/pools", "settings", "read"],
+  ["POST", "/api/v1/project-groups", "settings", "write"],
+  ["PATCH", "/api/v1/project-groups/:id", "settings", "write"],
+  ["DELETE", "/api/v1/project-groups/:id", "settings", "write"],
+  ["POST", "/api/v1/project-groups/:id/pools", "settings", "write"],
+  ["GET", "/api/v1/project-groups/:id/model-configuration", "settings", "read"],
+  ["PUT", "/api/v1/project-groups/:id/model-configuration", "settings", "write"],
+  ["PUT", "/api/v1/projects/:id/group", "settings", "write"],
   ["PUT", "/api/v1/runner-pools/:id/connectivity", "settings", "write"],
-  ["GET", "/api/v1/tenant-load-lab/state", "settings", "read"],
-  ["GET", "/api/v1/tenant-admission-monitor", "settings", "read"],
-  ["POST", "/api/v1/tenant-load-lab/control", "settings", "write"],
+  ["GET", "/api/v1/project-admission-monitor", "settings", "read"],
   ["GET", "/api/v1/guardrail-capabilities", "guardrails", "read"],
   ["GET", "/api/v1/policy-catalog/detectors", "policies", "read"],
   ["GET", "/api/v1/policies/:id/definition", "policies", "read"],
@@ -46,7 +46,7 @@ export const tokenRoutePermissions: ReadonlyArray<readonly [string, string, Toke
   ["POST", "/api/v1/models", "models", "write"],
   ["POST", "/api/v1/models/:id/capability-tests", "models", "write"],
   ["POST", "/api/v1/models/:id/connection-tests", "models", "write"],
-  ["PUT", "/api/v1/models/:id/concurrency", "models", "write"],
+  ["PUT", "/api/v1/models/:id/runtime-settings", "models", "write"],
   ["PUT", "/api/v1/models/:id/protocol", "models", "write"],
   ["DELETE", "/api/v1/models/:id", "models", "write"],
   ["PUT", "/api/v1/model-configuration/draft", "settings", "write"],
@@ -121,6 +121,7 @@ export const tokenRoutePermissions: ReadonlyArray<readonly [string, string, Toke
   ["POST", "/api/v1/playground/path-tests", "playground", "write"],
   ["GET", "/api/v1/system/version", "runners", "read"],
   ["GET", "/api/v1/system/health", "runners", "read"],
+  ["GET", "/api/v1/runner-pools/:id", "runners", "read"],
   ["GET", "/api/v1/runner-pools", "runners", "read"],
   ["PATCH", "/api/v1/runner-pools/:id", "runners", "write"],
   ["DELETE", "/api/v1/runner-instances/:runnerId", "runners", "write"],
@@ -159,6 +160,9 @@ export function requiredTokenPermission(method: string, path: string) {
 
 /** Resource permissions apply equally to preconfigured and user-created Guardrails. */
 export function requiredAccountPermission(method: string, path: string): { resource: PermissionResource; action: AccessAction } | undefined {
+  if (method === "GET" && /^\/api\/v1\/users(?:\/[^/]+)?$/.test(path)) return {resource:"users",action:"read"};
+  if (/^\/api\/v1\/projects(?:\/[^/]+\/(?:members(?:\/[^/]+)?|member-candidates))?$/.test(path)) return {resource:"users",action:method === "GET" ? "read" : "write"};
+  if (method === "GET" && /^\/api\/v1\/project-groups\/[^/]+\/projects$/.test(path)) return {resource:"settings",action:"read"};
   const permission = requiredTokenPermission(method, path);
   if (!permission) return undefined;
   return { resource: permission[2], action: permission[3] };

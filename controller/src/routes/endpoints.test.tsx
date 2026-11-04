@@ -111,7 +111,7 @@ vi.mock("react-i18next", () => ({
   }),
 }));
 
-vi.mock("@/lib/auth", () => ({ useAuth: () => ({ user: { role: "user", tenant_id: "tenantB" } }) }));
+vi.mock("@/lib/auth", () => ({ useAuth: () => ({ user: { role: "user", project_id: "projectB" } }) }));
 
 vi.mock("@/lib/api", async (importOriginal) => {
   const original = await importOriginal<typeof import("@/lib/api")>();
@@ -296,7 +296,7 @@ describe("Endpoint onboarding", () => {
   });
 
   it("keeps shared Endpoint settings and credentials read-only", async () => {
-    const item = endpoint({ tenant_id: "tenantA", adapter_id: "f5-scan", protocol: "scan", scan_flag_only_default: true });
+    const item = endpoint({ project_id: "projectA", adapter_id: "f5-scan", protocol: "scan", scan_flag_only_default: true });
     getEndpointsMock.mockResolvedValue({ items: [item], count: 1 });
     getEndpointMock.mockResolvedValue(item);
     renderWithProviders(<EndpointsPage />);
@@ -556,7 +556,7 @@ describe("Endpoint onboarding", () => {
     deleteEndpointMock.mockResolvedValue(undefined);
 
     const { client } = renderWithProviders(<EndpointsPage />);
-    const sidebarKey = [...queryKeys.endpoints, "tenant", "tenantB"];
+    const sidebarKey = [...queryKeys.endpoints, "project", "projectB"];
     client.setQueryData(sidebarKey, { items: [item] });
 
     fireEvent.click(await screen.findByText(item.name));

@@ -7,31 +7,34 @@ from types import SimpleNamespace
 import pytest
 
 from runner.config import RunnerSettings
-def test_laya_settings_are_independent_and_reject_invalid_operating_points(monkeypatch):
+
+def test_runner_names_follow_the_immutable_project_and_replica_index(monkeypatch):
     _required_runner_env(monkeypatch)
-    monkeypatch.setenv("GUARD_JEV_LOWER_THRESHOLD", "0.1")
-    monkeypatch.setenv("GUARD_JEV_UPPER_THRESHOLD", "0.85")
-    monkeypatch.setenv("GUARD_LAYA_LOWER_THRESHOLD", "0")
-    monkeypatch.setenv("GUARD_LAYA_UPPER_THRESHOLD", "0.6")
-    settings = RunnerSettings.from_env()
-    assert (settings.jev_lower_threshold, settings.jev_upper_threshold) == (.1, .85)
-    assert (settings.laya_lower_threshold, settings.laya_upper_threshold) == (0, .6)
-    for lower, upper in [(".6", ".6"), (".9", ".2"), ("nan", ".9"), ("-.1", ".9"), (".1", "1.1")]:
-        monkeypatch.setenv("GUARD_LAYA_LOWER_THRESHOLD", lower)
-        monkeypatch.setenv("GUARD_LAYA_UPPER_THRESHOLD", upper)
-        with pytest.raises(ValueError, match="GUARD_LAYA"):
+    monkeypatch.setenv("GUARD_RUNNER_POOL_ID", "support-search")
+    monkeypatch.setenv("GUARD_RUNNER_ID", "runner-support-search-0")
+    assert RunnerSettings.from_env().runner_id == "runner-support-search-0"
+    for name in ["runner-default-0", "runner-support-search-01", "runner-support-search--1", "runner-support-search-2147483648"]:
+        monkeypatch.setenv("GUARD_RUNNER_ID", name)
+        with pytest.raises(ValueError, match="GUARD_RUNNER_ID"):
             RunnerSettings.from_env()
-
-
-def test_validation_concurrency_can_be_reduced_without_changing_serving(monkeypatch):
-    _required_runner_env(monkeypatch)
-    monkeypatch.setenv("GUARD_VALIDATION_MAX_CONCURRENCY", "1")
-    settings = RunnerSettings.from_env()
-    assert settings.validation_max_concurrency == 1
-    assert settings.max_concurrency == 64
-    monkeypatch.setenv("GUARD_VALIDATION_MAX_CONCURRENCY", "0")
-    with pytest.raises(ValueError, match="must be positive"):
+    monkeypatch.delenv("GUARD_RUNNER_ID")
+    monkeypatch.setenv("GUARD_RUNNER_INDEX", "3")
+    assert RunnerSettings.from_env().runner_id == "runner-support-search-3"
+    monkeypatch.setenv("GUARD_RUNNER_POOL_ID", "Support Search")
+    with pytest.raises(ValueError, match="canonical Project name"):
         RunnerSettings.from_env()
+
+def test_model_operating_points_are_validated_per_runtime():
+    from runner.toolkit.safety.providers import ModelRuntimeConfig
+    base = dict(id="laya", base_url="https://laya.test/v1", model="auto")
+    model = ModelRuntimeConfig(**base, lower_threshold=0, upper_threshold=.6, rate_limit_attempts=1)
+    assert (model.lower_threshold, model.upper_threshold, model.rate_limit_attempts) == (0, .6, 1)
+    for lower, upper in [(.6, .6), (.9, .2), (float("nan"), .9), (-.1, .9), (.1, 1.1)]:
+        with pytest.raises(ValueError, match="lower_threshold"):
+            ModelRuntimeConfig(**base, lower_threshold=lower, upper_threshold=upper)
+    for attempts in [0, 11, 1.5, True]:
+        with pytest.raises(ValueError, match="rate-limit attempts"):
+            ModelRuntimeConfig(**base, rate_limit_attempts=attempts)
 
 
 def test_optional_pool_control_token_is_validated_and_kept_distinct(monkeypatch):
@@ -144,23 +147,23 @@ def test_experimental_lease_enforcement_is_explicit_and_requires_a_pool_token(mo
         RunnerSettings.from_env()
 
 
-def test_tenant_admission_is_off_by_default_and_requires_complete_explicit_configuration(monkeypatch):
+def test_project_admission_is_off_by_default_and_requires_complete_explicit_configuration(monkeypatch):
     _required_runner_env(monkeypatch)
-    monkeypatch.delenv("GUARD_RUNNER_TENANT_ADMISSION_ENABLED", raising=False)
-    monkeypatch.delenv("GUARD_RUNNER_TENANT_ADMISSION_JSON", raising=False)
-    assert RunnerSettings.from_env().tenant_admission is None
-    monkeypatch.setenv("GUARD_RUNNER_TENANT_ADMISSION_ENABLED", "true")
-    with pytest.raises(ValueError, match="requires GUARD_RUNNER_TENANT_ADMISSION_JSON"):
+    monkeypatch.delenv("GUARD_RUNNER_PROJECT_ADMISSION_ENABLED", raising=False)
+    monkeypatch.delenv("GUARD_RUNNER_PROJECT_ADMISSION_JSON", raising=False)
+    assert RunnerSettings.from_env().project_admission is None
+    monkeypatch.setenv("GUARD_RUNNER_PROJECT_ADMISSION_ENABLED", "true")
+    with pytest.raises(ValueError, match="requires GUARD_RUNNER_PROJECT_ADMISSION_JSON"):
         RunnerSettings.from_env()
-    raw = json.dumps(dict(capacity=2, tenant_limits={"tenantA": 1, "tenantB": 1}, max_queued=3,
-                          max_queued_per_tenant=2, queue_timeout_seconds=0.25))
-    monkeypatch.setenv("GUARD_RUNNER_TENANT_ADMISSION_JSON", raw)
-    configured = RunnerSettings.from_env().tenant_admission
+    raw = json.dumps(dict(capacity=2, project_limits={"projectA": 1, "projectB": 1}, max_queued=3,
+                          max_queued_per_project=2, queue_timeout_seconds=0.25))
+    monkeypatch.setenv("GUARD_RUNNER_PROJECT_ADMISSION_JSON", raw)
+    configured = RunnerSettings.from_env().project_admission
     assert configured.capacity == 2
-    assert configured.tenant_limits == {"tenantA": 1, "tenantB": 1}
+    assert configured.project_limits == {"projectA": 1, "projectB": 1}
     assert configured.queue_timeout_seconds == 0.25
-    monkeypatch.setenv("GUARD_RUNNER_TENANT_ADMISSION_ENABLED", "false")
-    with pytest.raises(ValueError, match="requires GUARD_RUNNER_TENANT_ADMISSION_ENABLED"):
+    monkeypatch.setenv("GUARD_RUNNER_PROJECT_ADMISSION_ENABLED", "false")
+    with pytest.raises(ValueError, match="requires GUARD_RUNNER_PROJECT_ADMISSION_ENABLED"):
         RunnerSettings.from_env()
 
 
@@ -172,21 +175,21 @@ def test_distributed_rate_admission_requires_explicit_matching_trusted_policy(mo
     monkeypatch.setenv("GUARD_RUNNER_DISTRIBUTED_RATE_ENABLED", "true")
     with pytest.raises(ValueError, match="requires strict rate JSON"):
         RunnerSettings.from_env()
-    local = dict(capacity=2, tenant_limits={"tenantA": 1}, max_queued=2, max_queued_per_tenant=1, queue_timeout_seconds=0.25)
-    rate = dict(pool_id="default", revision="v1", window_ms=1000, pool_limit=5, tenant_limits={"tenantA": 3})
-    monkeypatch.setenv("GUARD_RUNNER_TENANT_ADMISSION_ENABLED", "true")
-    monkeypatch.setenv("GUARD_RUNNER_TENANT_ADMISSION_JSON", json.dumps(local))
+    local = dict(capacity=2, project_limits={"projectA": 1}, max_queued=2, max_queued_per_project=1, queue_timeout_seconds=0.25)
+    rate = dict(pool_id="default", revision="v1", window_ms=1000, pool_limit=5, project_limits={"projectA": 3})
+    monkeypatch.setenv("GUARD_RUNNER_PROJECT_ADMISSION_ENABLED", "true")
+    monkeypatch.setenv("GUARD_RUNNER_PROJECT_ADMISSION_JSON", json.dumps(local))
     monkeypatch.setenv("GUARD_RUNNER_DISTRIBUTED_RATE_JSON", json.dumps(rate))
     monkeypatch.setenv("GUARD_RUNNER_CALL_CONTEXT_REDIS_URL", "redis://127.0.0.1:6379/0")
     monkeypatch.setenv("GUARD_RUNNER_CONTROL_TOKEN", "pool-control-token-with-at-least-32-characters")
     settings = RunnerSettings.from_env()
     assert settings.distributed_rate_admission.pool_limit == 5
-    for required in ("GUARD_RUNNER_CONTROL_TOKEN", "GUARD_RUNNER_CALL_CONTEXT_REDIS_URL", "GUARD_RUNNER_TENANT_ADMISSION_ENABLED"):
+    for required in ("GUARD_RUNNER_CONTROL_TOKEN", "GUARD_RUNNER_CALL_CONTEXT_REDIS_URL", "GUARD_RUNNER_PROJECT_ADMISSION_ENABLED"):
         with monkeypatch.context() as missing:
             missing.delenv(required, raising=False)
             with pytest.raises(ValueError):
                 RunnerSettings.from_env()
-    for field, invalid in [("pool_id", "another-pool"), ("tenant_limits", {"other": 3})]:
+    for field, invalid in [("pool_id", "another-pool"), ("project_limits", {"other": 3})]:
         monkeypatch.setenv("GUARD_RUNNER_DISTRIBUTED_RATE_JSON", json.dumps({**rate, field: invalid}))
         with pytest.raises(ValueError, match="must match the trusted Runner pool"):
             RunnerSettings.from_env()
@@ -260,7 +263,7 @@ def _required_runner_env(monkeypatch: pytest.MonkeyPatch) -> None:
         "GUARD_OTEL_TRACE_SAMPLE_RATIO",
     ):
         monkeypatch.delenv(name, raising=False)
-    monkeypatch.setenv("GUARD_RUNNER_ID", "runner-test")
+    monkeypatch.setenv("GUARD_RUNNER_ID", "runner-default-0")
     monkeypatch.setenv("GUARD_RUNNER_POOL_ID", "default")
     monkeypatch.setenv("GUARD_CONTROLLER_TOKEN", "runner-token-that-is-at-least-32-characters")
     monkeypatch.setenv("GUARD_ARTIFACT_PUBLIC_KEY_PATH", "/tmp/public-key.pem")

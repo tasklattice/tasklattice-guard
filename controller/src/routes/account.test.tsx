@@ -8,7 +8,7 @@ import { AccountPage } from "./account";
 
 const updateProfileMock = vi.fn();
 const navigateMock = vi.fn();
-const authClientMock = vi.hoisted(() => ({ updateUser: vi.fn(), getSession: vi.fn() }));
+const authClientMock = vi.hoisted(() => ({ updateUser: vi.fn(), getSession: vi.fn(), listAccounts: vi.fn() }));
 vi.mock("@/lib/better-auth", () => ({ authClient: authClientMock }));
 vi.mock("@tanstack/react-router", () => ({ useNavigate: () => navigateMock }));
 
@@ -78,6 +78,7 @@ describe("AccountPage", () => {
     updateProfileMock.mockReset().mockResolvedValue(undefined);
     authClientMock.updateUser.mockReset();
     authClientMock.getSession.mockReset();
+    authClientMock.listAccounts.mockReset().mockResolvedValue({ data: [{providerId: "credential"}], error: null });
   });
   afterEach(cleanup);
 
@@ -109,7 +110,14 @@ describe("AccountPage", () => {
     cleanup();
     renderPage("security");
     expect(await screen.findByText("Password & sessions")).toBeTruthy();
-    expect(screen.getByRole("button", { name: "Change password" })).toBeTruthy();
+    expect(await screen.findByRole("button", { name: "Change password" })).toBeTruthy();
+  });
+
+  it("directs SSO users to Keycloak without offering a local password change", async () => {
+    authClientMock.listAccounts.mockResolvedValue({ data: [{providerId: "corporate-sso"}], error: null });
+    renderPage("security");
+    expect(await screen.findByText("account.ssoManaged")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Change password" })).toBeNull();
   });
 
   it("saves a language change directly through the status-only API", async () => {

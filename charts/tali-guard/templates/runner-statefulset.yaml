@@ -1,147 +1,120 @@
 {{- include "tali-guard.defaults" . -}}
 {{- include "tali-guard.validateValues" . -}}
-{{- $root := . -}}
-{{- $default := dict "name" "default" "replicaCount" .Values.runner.default.replicaCount "maxConcurrency" .Values.runner.default.maxConcurrency "compilerCapable" true "resources" .Values.runner.default.resources "tenantAdmission" .Values.runner.default.tenantAdmission "distributedRateAdmission" .Values.runner.default.distributedRateAdmission "groupRateAdmission" .Values.runner.default.groupRateAdmission -}}
-{{- $pools := concat (list $default) .Values.runner.pools -}}
-{{- range $index, $pool := $pools }}
-{{- $runnerName := ternary (include "tali-guard.defaultRunnerName" $root) (printf "%s-runner-%s" (include "tali-guard.fullname" $root) $pool.name | trunc 63 | trimSuffix "-") (eq $pool.name "default") -}}
-{{- $headlessServiceName := printf "%s-headless" $runnerName | trunc 63 | trimSuffix "-" -}}
-{{- if gt $index 0 }}---{{ end }}
+{{- $runnerName := include "tali-guard.defaultRunnerName" . -}}
+{{- $headlessServiceName := printf "%s-headless" $runnerName -}}
 apiVersion: apps/v1
 kind: StatefulSet
 metadata:
   name: {{ $runnerName }}
   labels:
-    {{- include "tali-guard.commonLabels" $root | nindent 4 }}
+    {{- include "tali-guard.commonLabels" . | nindent 4 }}
     app.kubernetes.io/component: runner
-    tasklattice.io/runner-pool: {{ $pool.name | quote }}
+    tasklattice.io/runner-pool: "default"
 spec:
   serviceName: {{ $headlessServiceName }}
   podManagementPolicy: Parallel
-  replicas: {{ $pool.replicaCount }}
+  replicas: {{ .Values.runner.default.replicaCount }}
   minReadySeconds: 5
   updateStrategy:
     type: RollingUpdate
   selector:
     matchLabels:
-      app.kubernetes.io/instance: {{ $root.Release.Name }}
+      app.kubernetes.io/instance: {{ .Release.Name }}
       app.kubernetes.io/component: runner
-      tasklattice.io/runner-pool: {{ $pool.name | quote }}
+      tasklattice.io/runner-pool: "default"
   template:
     metadata:
       annotations:
-      {{- with $root.Values.rolloutRevision }}
+      {{- with .Values.rolloutRevision }}
         tasklattice.io/rollout-revision: {{ . | quote }}
       {{- end }}
       labels:
-        app.kubernetes.io/name: {{ include "tali-guard.name" $root }}
-        app.kubernetes.io/instance: {{ $root.Release.Name }}
+        app.kubernetes.io/name: {{ include "tali-guard.name" . }}
+        app.kubernetes.io/instance: {{ .Release.Name }}
         app.kubernetes.io/component: runner
         app.kubernetes.io/part-of: tasklattice-guard
-        tasklattice.io/runner-pool: {{ $pool.name | quote }}
+        tasklattice.io/runner-pool: "default"
     spec:
-      serviceAccountName: {{ include "tali-guard.serviceAccountName" $root }}
+      serviceAccountName: {{ include "tali-guard.serviceAccountName" . }}
       automountServiceAccountToken: false
       terminationGracePeriodSeconds: 30
-      securityContext: {{- toYaml $root.Values.podSecurityContext | nindent 8 }}
-      {{- with $root.Values.imagePullSecrets }}
+      securityContext: {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      {{- with .Values.imagePullSecrets }}
       imagePullSecrets: {{- toYaml . | nindent 8 }}
       {{- end }}
       containers:
         - name: runner
-          image: "{{ $root.Values.runner.image.repository }}:{{ default $root.Chart.AppVersion $root.Values.runner.image.tag }}"
-          imagePullPolicy: {{ $root.Values.runner.image.pullPolicy }}
-          securityContext: {{- toYaml $root.Values.securityContext | nindent 12 }}
+          image: "{{ .Values.runner.image.repository }}:{{ default .Chart.AppVersion .Values.runner.image.tag }}"
+          imagePullPolicy: {{ .Values.runner.image.pullPolicy }}
+          securityContext: {{- toYaml .Values.securityContext | nindent 12 }}
           ports:
             - { name: runtime, containerPort: 8091, protocol: TCP }
           env:
-            - { name: GUARD_URL, value: {{ printf "http://%s:%v" (include "tali-guard.controllerName" $root) 8080 | quote }} }
+            - { name: GUARD_URL, value: {{ printf "http://%s:%v" (include "tali-guard.controllerName" .) 8080 | quote }} }
             - { name: GUARD_RUNNER_ID, valueFrom: { fieldRef: { fieldPath: metadata.name } } }
-            - { name: GUARD_RUNNER_POOL_ID, value: {{ $pool.name | quote }} }
-            - { name: GUARD_RUNNER_COMPILER_CAPABLE, value: {{ default false $pool.compilerCapable | quote }} }
-            - { name: GUARD_RUNNER_MAX_CONCURRENCY, value: {{ $pool.maxConcurrency | quote }} }
-            {{- with $pool.tenantAdmission }}
-            - { name: GUARD_RUNNER_TENANT_ADMISSION_ENABLED, value: "true" }
-            - { name: GUARD_RUNNER_TENANT_ADMISSION_JSON, value: {{ toJson . | quote }} }
-            {{- end }}
-            {{- with $pool.distributedRateAdmission }}
-            - { name: GUARD_RUNNER_DISTRIBUTED_RATE_ENABLED, value: "true" }
-            - { name: GUARD_RUNNER_DISTRIBUTED_RATE_JSON, value: {{ toJson . | quote }} }
-            {{- end }}
-            {{- with $pool.groupRateAdmission }}
-            - { name: GUARD_RUNNER_GROUP_RATE_ENABLED, value: "true" }
-            - { name: GUARD_RUNNER_GROUP_RATE_JSON, value: {{ toJson . | quote }} }
-            {{- end }}
-            - { name: GUARD_CONTROLLER_TARGET, value: {{ printf "%s:%v" (include "tali-guard.controllerName" $root) 9090 | quote }} }
-            - { name: GUARD_CONTROLLER_TELEMETRY_ENDPOINT, value: {{ printf "http://%s:%v/api/internal/v1/runtime-events" (include "tali-guard.controllerName" $root) 8080 | quote }} }
-            {{- if or $root.Values.observability.performanceDebug.enabled $root.Values.observability.tracing.enabled }}
-            - { name: OTEL_EXPORTER_OTLP_ENDPOINT, value: {{ required "observability.tracing.otlpEndpoint is required when tracing or performanceDebug is enabled" $root.Values.observability.tracing.otlpEndpoint | quote }} }
+            - { name: GUARD_RUNNER_POOL_ID, value: "default" }
+            - { name: GUARD_RUNNER_COMPILER_CAPABLE, value: "true" }
+            - { name: GUARD_RUNNER_MAX_CONCURRENCY, value: {{ .Values.runner.default.maxConcurrency | quote }} }
+            - { name: GUARD_CONTROLLER_TARGET, value: {{ printf "%s:%v" (include "tali-guard.controllerName" .) 9090 | quote }} }
+            - { name: GUARD_CONTROLLER_TELEMETRY_ENDPOINT, value: {{ printf "http://%s:%v/api/internal/v1/runtime-events" (include "tali-guard.controllerName" .) 8080 | quote }} }
+            {{- if or .Values.observability.performanceDebug.enabled .Values.observability.tracing.enabled }}
+            - { name: OTEL_EXPORTER_OTLP_ENDPOINT, value: {{ required "observability.tracing.otlpEndpoint is required when tracing or performanceDebug is enabled" .Values.observability.tracing.otlpEndpoint | quote }} }
             - { name: OTEL_TRACES_SAMPLER, value: parentbased_traceidratio }
-            {{- if $root.Values.observability.performanceDebug.enabled }}
+            {{- if .Values.observability.performanceDebug.enabled }}
             - { name: OTEL_TRACES_SAMPLER_ARG, value: "1" }
             {{- else }}
-            - { name: OTEL_TRACES_SAMPLER_ARG, value: {{ $root.Values.observability.tracing.sampleRatio | quote }} }
+            - { name: OTEL_TRACES_SAMPLER_ARG, value: {{ .Values.observability.tracing.sampleRatio | quote }} }
             {{- end }}
             {{- end }}
-            {{- if or $root.Values.observability.performanceDebug.enabled $root.Values.observability.profiling.enabled }}
-            - { name: GUARD_PYROSCOPE_SERVER_ADDRESS, value: {{ required "observability.profiling.serverAddress is required when profiling or performanceDebug is enabled" $root.Values.observability.profiling.serverAddress | quote }} }
-            - { name: GUARD_PYROSCOPE_SAMPLE_RATE, value: {{ $root.Values.observability.profiling.sampleRate | quote }} }
+            {{- if or .Values.observability.performanceDebug.enabled .Values.observability.profiling.enabled }}
+            - { name: GUARD_PYROSCOPE_SERVER_ADDRESS, value: {{ required "observability.profiling.serverAddress is required when profiling or performanceDebug is enabled" .Values.observability.profiling.serverAddress | quote }} }
+            - { name: GUARD_PYROSCOPE_SAMPLE_RATE, value: {{ .Values.observability.profiling.sampleRate | quote }} }
             {{- end }}
-            {{- if not (and $root.Values.security.poolAuthentication.scopedTelemetry $root.Values.security.runnerHttpAuthentication.enabled) }}
+            {{- if not (and .Values.security.poolAuthentication.scopedTelemetry .Values.security.runnerHttpAuthentication.enabled) }}
             - name: GUARD_CONTROLLER_TOKEN
-              valueFrom: { secretKeyRef: { name: {{ include "tali-guard.controlSecretName" $root }}, key: {{ $root.Values.security.controlSecret.runnerTokenKey }} } }
+              valueFrom: { secretKeyRef: { name: {{ include "tali-guard.controlSecretName" . }}, key: {{ .Values.security.controlSecret.runnerTokenKey }} } }
             {{- end }}
-            {{- if $root.Values.security.poolAuthentication.scopedTelemetry }}
+            {{- if .Values.security.poolAuthentication.scopedTelemetry }}
             - { name: GUARD_RUNNER_SCOPED_TELEMETRY, value: "true" }
             {{- end }}
-            {{- if $root.Values.security.poolAuthentication.telemetryProgress }}
+            {{- if .Values.security.poolAuthentication.telemetryProgress }}
             - { name: GUARD_RUNNER_TELEMETRY_PROGRESS_ENABLED, value: "true" }
-            - { name: GUARD_RUNNER_TELEMETRY_PROGRESS_PATH, value: /var/lib/tasklattice/telemetry-progress }
             {{- end }}
-            {{- if $root.Values.security.poolAuthentication.enabled }}
-            {{- $poolSecret := get $root.Values.security.poolAuthentication.runnerSecrets $pool.name }}
+            {{- if .Values.security.poolAuthentication.enabled }}
+            {{- $poolSecret := get .Values.security.poolAuthentication.runnerSecrets "default" }}
             - name: GUARD_RUNNER_CONTROL_TOKEN
               valueFrom: { secretKeyRef: { name: {{ $poolSecret.name | quote }}, key: {{ $poolSecret.key | quote }} } }
             {{- end }}
-            {{- if $root.Values.security.runnerHttpAuthentication.enabled }}
-            {{- $httpSecret := get $root.Values.security.runnerHttpAuthentication.runnerSecrets $pool.name }}
+            {{- if .Values.security.runnerHttpAuthentication.enabled }}
+            {{- $httpSecret := get .Values.security.runnerHttpAuthentication.runnerSecrets "default" }}
             - name: GUARD_CONTROLLER_HTTP_TOKEN
               valueFrom: { secretKeyRef: { name: {{ $httpSecret.name | quote }}, key: {{ $httpSecret.key | quote }} } }
             {{- end }}
             - name: GUARD_METRICS_TOKEN
-              valueFrom: { secretKeyRef: { name: {{ include "tali-guard.metricsSecretName" $root }}, key: {{ $root.Values.security.metrics.tokenKey }} } }
+              valueFrom: { secretKeyRef: { name: {{ include "tali-guard.metricsSecretName" . }}, key: {{ .Values.security.metrics.tokenKey }} } }
             - name: MODEL_GUARDRAILS_RUNTIME_LOG_ENCRYPTION_KEY
-              valueFrom: { secretKeyRef: { name: {{ include "tali-guard.runtimeLogSecretName" $root }}, key: {{ $root.Values.security.runtimeLogs.encryptionKeyKey }} } }
+              valueFrom: { secretKeyRef: { name: {{ include "tali-guard.runtimeLogSecretName" . }}, key: {{ .Values.security.runtimeLogs.encryptionKeyKey }} } }
             - { name: GUARD_ARTIFACT_PUBLIC_KEY_PATH, value: /var/run/tasklattice/artifact/public-key.pem }
-            {{- if $root.Values.security.controlTls.enabled }}
+            {{- if .Values.security.controlTls.enabled }}
             - { name: GUARD_CONTROLLER_CA_PATH, value: /var/run/tasklattice/control-tls/ca.crt }
             - { name: GUARD_RUNNER_CLIENT_CERT_PATH, value: /var/run/tasklattice/control-tls/runner.crt }
             - { name: GUARD_RUNNER_CLIENT_KEY_PATH, value: /var/run/tasklattice/control-tls/runner.key }
             {{- end }}
-            {{- with include "tali-guard.callContextRedisUrl" $root }}
+            {{- with include "tali-guard.callContextRedisUrl" . }}
             - { name: GUARD_RUNNER_CALL_CONTEXT_REDIS_URL, value: {{ . | quote }} }
             {{- end }}
-            - { name: GUARD_RUNNER_CALL_CONTEXT_TTL_SECONDS, value: {{ $root.Values.runner.callContext.ttlSeconds | quote }} }
-            - { name: GUARD_RUNNER_CALL_CONTEXT_COMPRESS_PLANS, value: {{ $root.Values.runner.callContext.compressPlans | quote }} }
-            - { name: GUARD_RUNNER_CALL_CONTEXT_CAPACITY_FALLBACK, value: {{ $root.Values.runner.callContext.capacityFallback | quote }} }
-            - { name: GUARD_VALIDATION_MAX_CONCURRENCY, value: {{ $root.Values.runner.validation.maxConcurrency | quote }} }
-            - { name: GUARD_MODEL_RATE_LIMIT_ATTEMPTS, value: {{ $root.Values.runner.validation.providerRateLimitAttempts | quote }} }
-            - { name: GUARD_JEV_LOWER_THRESHOLD, value: {{ $root.Values.runner.jev.lowerThreshold | quote }} }
-            - { name: GUARD_JEV_UPPER_THRESHOLD, value: {{ $root.Values.runner.jev.upperThreshold | quote }} }
-            - { name: GUARD_LAYA_LOWER_THRESHOLD, value: {{ dig "lowerThreshold" 0.1 ($root.Values.runner.laya | default dict) | quote }} }
-            - { name: GUARD_LAYA_UPPER_THRESHOLD, value: {{ dig "upperThreshold" 0.9 ($root.Values.runner.laya | default dict) | quote }} }
+            - { name: GUARD_RUNNER_CALL_CONTEXT_TTL_SECONDS, value: {{ .Values.runner.callContext.ttlSeconds | quote }} }
+            - { name: GUARD_RUNNER_CALL_CONTEXT_COMPRESS_PLANS, value: {{ .Values.runner.callContext.compressPlans | quote }} }
+            - { name: GUARD_RUNNER_CALL_CONTEXT_CAPACITY_FALLBACK, value: {{ .Values.runner.callContext.capacityFallback | quote }} }
           volumeMounts:
             - { name: artifact-signing, mountPath: /var/run/tasklattice/artifact, readOnly: true }
-            {{- if $root.Values.security.controlTls.enabled }}
+            {{- if .Values.security.controlTls.enabled }}
             - { name: control-tls, mountPath: /var/run/tasklattice/control-tls, readOnly: true }
             {{- end }}
-            {{- if $root.Values.security.customCa.existingSecret }}
+            {{- if .Values.security.customCa.existingSecret }}
             - { name: custom-ca, mountPath: /etc/ssl/certs/tasklattice-custom-ca.crt, subPath: tasklattice-custom-ca.crt, readOnly: true }
             {{- end }}
             - { name: state, mountPath: /var/lib/tasklattice/guard-runner }
-            {{- if $root.Values.security.poolAuthentication.telemetryProgress }}
-            - { name: telemetry-progress, mountPath: /var/lib/tasklattice/telemetry-progress }
-            {{- end }}
             - { name: tmp, mountPath: /tmp }
           startupProbe: { httpGet: { path: /health/live, port: runtime }, periodSeconds: 2, timeoutSeconds: 10, failureThreshold: 60 }
           readinessProbe: { httpGet: { path: /health/ready, port: runtime }, periodSeconds: 10, timeoutSeconds: 10 }
@@ -152,49 +125,30 @@ spec:
                 # Give Service endpoint propagation time before Uvicorn receives
                 # SIGTERM and drains requests inside the remaining grace period.
                 command: [/bin/sh, -c, "sleep 5"]
-          resources: {{- toYaml $pool.resources | nindent 12 }}
+          resources: {{- toYaml .Values.runner.default.resources | nindent 12 }}
       volumes:
         - name: artifact-signing
           secret:
-            secretName: {{ include "tali-guard.artifactSigningSecretName" $root }}
+            secretName: {{ include "tali-guard.artifactSigningSecretName" . }}
             items:
-              - { key: {{ $root.Values.security.artifactSigning.publicKeyKey }}, path: public-key.pem }
-        {{- if $root.Values.security.controlTls.enabled }}
+              - { key: {{ .Values.security.artifactSigning.publicKeyKey }}, path: public-key.pem }
+        {{- if .Values.security.controlTls.enabled }}
         - name: control-tls
           secret:
-            secretName: {{ include "tali-guard.controlTlsSecretName" $root }}
+            secretName: {{ include "tali-guard.controlTlsSecretName" . }}
             items:
-              - { key: {{ $root.Values.security.controlTls.caKey }}, path: ca.crt }
-              - { key: {{ $root.Values.security.controlTls.runnerCertificateKey }}, path: runner.crt }
-              - { key: {{ $root.Values.security.controlTls.runnerPrivateKeyKey }}, path: runner.key }
+              - { key: {{ .Values.security.controlTls.caKey }}, path: ca.crt }
+              - { key: {{ .Values.security.controlTls.runnerCertificateKey }}, path: runner.crt }
+              - { key: {{ .Values.security.controlTls.runnerPrivateKeyKey }}, path: runner.key }
         {{- end }}
-        {{- if $root.Values.security.customCa.existingSecret }}
+        {{- if .Values.security.customCa.existingSecret }}
         - name: custom-ca
           secret:
-            secretName: {{ include "tali-guard.customCaSecretName" $root }}
+            secretName: {{ include "tali-guard.customCaSecretName" . }}
             items:
-              - { key: {{ $root.Values.security.customCa.certificateKey }}, path: tasklattice-custom-ca.crt }
+              - { key: {{ .Values.security.customCa.certificateKey }}, path: tasklattice-custom-ca.crt }
         {{- end }}
         - name: state
-          emptyDir: { sizeLimit: {{ $root.Values.runner.state.sizeLimit }} }
+          emptyDir: { sizeLimit: {{ .Values.runner.state.sizeLimit }} }
         - name: tmp
           emptyDir: {}
-  {{- if $root.Values.security.poolAuthentication.telemetryProgress }}
-  # StatefulSet claim templates create one retained claim per stable ordinal.
-  # Do not mount this as emptyDir or share a claim across Runner replicas.
-  volumeClaimTemplates:
-    - metadata:
-        name: telemetry-progress
-        labels:
-          {{- include "tali-guard.commonLabels" $root | nindent 10 }}
-          tasklattice.io/runner-pool: {{ $pool.name | quote }}
-      spec:
-        accessModes: [ReadWriteOnce]
-        {{- with $root.Values.runner.telemetryProgress.persistence.storageClass }}
-        storageClassName: {{ . | quote }}
-        {{- end }}
-        resources:
-          requests:
-            storage: {{ $root.Values.runner.telemetryProgress.persistence.size | quote }}
-  {{- end }}
-{{ end }}

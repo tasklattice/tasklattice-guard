@@ -20,31 +20,31 @@ bin/guardctl --url=http://localhost:38081
 bin/guardctl platform help
 bin/guardctl platform register-model [OPTIONS]
 bin/guardctl platform bind [OPTIONS]
-bin/guardctl tenant help
-bin/guardctl tenant provision [OPTIONS]
-bin/guardctl tenant test --guardrail-id ID [--version VERSION] [--local-only]
-bin/guardctl tenant test-status --run-id ID [--detail]
-bin/guardctl tenant test-cancel --run-id ID
+bin/guardctl project help
+bin/guardctl project provision [OPTIONS]
+bin/guardctl project test --guardrail-id ID [--version VERSION] [--local-only]
+bin/guardctl project test-status --run-id ID [--detail]
+bin/guardctl project test-cancel --run-id ID
 ```
 
-Only `platform` and `tenant` are one-shot command families. Enter `show`,
+Only `platform` and `project` are one-shot command families. Enter `show`,
 `export`, and `import` inside the interactive shell, or pipe them on stdin.
 For one-shot commands, put `--url` after the subcommand; both `--url URL`
 and `--url=URL` work. To launch the interactive shell, use `--url=URL`.
 
 ## Asynchronous Guardrail tests
 
-These commands call the same Controller routes as the UI. Use the tenant
-credentials described below (`GUARD_TENANT_TOKEN` with `guardrails:write`, or
-`GUARD_TENANT_USERNAME` and `GUARD_TENANT_PASSWORD`):
+These commands call the same Controller routes as the UI. Use the project
+credentials described below (`GUARD_PROJECT_TOKEN` with `guardrails:write`, or
+`GUARD_PROJECT_USERNAME` and `GUARD_PROJECT_PASSWORD`):
 
 ```sh
 # Submit once; the JSON response contains the immutable run ID.
-bin/guardctl tenant test --guardrail-id GUARDRAIL_ID --url=https://guard.example.com
+bin/guardctl project test --guardrail-id GUARDRAIL_ID --url=https://guard.example.com
 
 # Inspect that exact ID, or stop it without deleting the report.
-bin/guardctl tenant test-status --run-id RUN_ID --url=https://guard.example.com
-bin/guardctl tenant test-cancel --run-id RUN_ID --url=https://guard.example.com
+bin/guardctl project test-status --run-id RUN_ID --url=https://guard.example.com
+bin/guardctl project test-cancel --run-id RUN_ID --url=https://guard.example.com
 ```
 
 `test` returns immediately after submission. `--version` tests a frozen version;
@@ -56,7 +56,7 @@ all case traces while polling. Add `--detail` for the complete report (HTTP
 compression is negotiated automatically):
 
 ```sh
-bin/guardctl tenant test-status --run-id RUN_ID --detail --url=https://guard.example.com > report.json
+bin/guardctl project test-status --run-id RUN_ID --detail --url=https://guard.example.com > report.json
 ```
 
 `test-cancel` is idempotent and changes only queued/running Guardrail tests.
@@ -74,7 +74,7 @@ plane. It configures which protection the runtime executes; Veritas sends the
 test traffic to the runtime and produces Reports.
 
 ```text
-PLATFORM ACCOUNT                         TENANT ACCOUNT
+PLATFORM ACCOUNT                         PROJECT ACCOUNT
 Provider: connection + credential        Default Guardrail
     │                                        │ duplicate
 Model: model name + protocol profile     Editable Guardrail copy
@@ -132,7 +132,7 @@ node controller/dist-cli/guardctl.cjs platform help
 Inside the standard deployment's Runner container:
 
 ```sh
-kubectl -n tali exec -it tali-guard-runner-0 -- guardctl
+kubectl -n tali exec -it runner-default-0 -- guardctl
 ```
 
 The container supplies the Controller URL through `GUARD_URL`, but does not
@@ -146,9 +146,9 @@ Configuration workflows use separate credentials for each account type:
 | Workflow | Token authentication | Session authentication |
 | --- | --- | --- |
 | `platform …` | `GUARD_PLATFORM_TOKEN` | `GUARD_PLATFORM_EMAIL` + `GUARD_PLATFORM_PASSWORD` |
-| `tenant …` | `GUARD_TENANT_TOKEN` | `GUARD_TENANT_EMAIL` + `GUARD_TENANT_PASSWORD` |
+| `project …` | `GUARD_PROJECT_TOKEN` | `GUARD_PROJECT_EMAIL` + `GUARD_PROJECT_PASSWORD` |
 
-A token takes precedence over email/password for its plane. Tenant commands do
+A token takes precedence over email/password for its plane. Project commands do
 not fall back to platform credentials. The Controller enforces the account's
 role and token permissions.
 
@@ -158,8 +158,8 @@ Environment values override file values. A file template is:
 ```dotenv
 GUARD_PLATFORM_EMAIL=your-platform-account@example.com
 GUARD_PLATFORM_PASSWORD=replace-with-platform-password
-GUARD_TENANT_EMAIL=your-tenant-account@example.com
-GUARD_TENANT_PASSWORD=replace-with-tenant-password
+GUARD_PROJECT_EMAIL=your-project-account@example.com
+GUARD_PROJECT_PASSWORD=replace-with-project-password
 MODEL_GUARDRAILS_NVIDIA_API_KEY_ENV_VAR=replace-with-provider-key
 MODEL_GUARDRAILS_JEV_API_KEY_ENV_VAR=replace-with-provider-key
 ```
@@ -172,7 +172,7 @@ ignored by Git. Do not pass passwords or Provider keys as command arguments.
 For configuration commands, URL precedence is:
 
 1. `--url` on the command.
-2. `GUARD_PLATFORM_URL` or `GUARD_TENANT_URL`, for the selected plane.
+2. `GUARD_PLATFORM_URL` or `GUARD_PROJECT_URL`, for the selected plane.
 3. The CLI's normal URL resolution: process `GUARD_URL`, process
    `CONTROLLER_PUBLIC_URL`, local `.env` discovery, then `http://localhost:8080`.
 
@@ -241,13 +241,13 @@ and does not provide an unassign operation.
 The CLI waits for activation before returning success. Do not compare models
 by switching the global binding while a Veritas Run is still executing.
 
-### tenant provision
+### project provision
 
 Duplicate a source Guardrail, patch the copy, validate and publish it, then
 create or reuse a dedicated Endpoint/Router and apply its reviewed route.
 
 ```text
-guardctl tenant provision
+guardctl project provision
   --name NAME --patch FILE --state FILE --emergency-reason TEXT
   [--source GUARDRAIL_ID] [--adapter ADAPTER]
   [--endpoint-id ID] [--router-id ID] [--replace-change-id ID]
@@ -312,10 +312,10 @@ bin/guardctl platform bind \
 
 This leaves output and unrelated bindings unchanged.
 
-### 3. Create and publish the tenant's test path
+### 3. Create and publish the project's test path
 
 ```sh
-bin/guardctl tenant provision \
+bin/guardctl project provision \
   --url http://localhost:38081 --env-file .local-secrets/guardctl.env \
   --name 'Content Safety comparison' --source guardrail-default \
   --patch docs/examples/content-safety-input.json \
@@ -431,7 +431,7 @@ publication references, original model assignments, and any newly created
 Endpoint credential. They are written with mode `0600` and a `.lock` prevents
 concurrent use of the same state file.
 
-Repeat the same command and state file to resume. A completed tenant workflow
+Repeat the same command and state file to resume. A completed project workflow
 verifies the existing resources without creating another copy or Emergency
 apply. Use a new state for a different requested configuration. Saved original
 bindings are recovery information; the CLI does not automatically restore
@@ -445,7 +445,7 @@ a new reviewed operation rather than rotating credentials or deleting objects.
 
 | Symptom | What to check |
 | --- | --- |
-| Missing `GUARD_PLATFORM_*` or `GUARD_TENANT_*` | Supply credentials for the selected command family; check `--env-file`. |
+| Missing `GUARD_PLATFORM_*` or `GUARD_PROJECT_*` | Supply credentials for the selected command family; check `--env-file`. |
 | HTTP `401` / `403` | Check account, role, token permissions, and Controller URL. |
 | Provider connection/model settings differ | Reuse the matching configuration or choose another Provider/Model identity; the CLI does not silently overwrite it. |
 | Candidate receipt expired | Use `--revalidate`. Cached expired receipts refresh automatically; explicit expired receipts are rejected. |
@@ -463,8 +463,8 @@ a new reviewed operation rather than rotating credentials or deleting objects.
 | --- | --- |
 | [`guardctl`](guardctl) | Repository executable launcher. |
 | [`controller/src/cli/guardctl.ts`](../controller/src/cli/guardctl.ts) | Interactive shell and dispatch. |
-| [`controller/src/cli/configure.ts`](../controller/src/cli/configure.ts) | Platform and tenant configuration workflows. |
+| [`controller/src/cli/configure.ts`](../controller/src/cli/configure.ts) | Platform and project configuration workflows. |
 | [`controller/src/cli/configure.test.ts`](../controller/src/cli/configure.test.ts) | Workflow, authentication, validation, and resume tests. |
 | [`controller/scripts/build-guardctl.mjs`](../controller/scripts/build-guardctl.mjs) | Standalone bundle build. |
-| [`docs/guardctl-configuration.md`](../docs/guardctl-configuration.md) | Additional model and tenant configuration examples. |
+| [`docs/guardctl-configuration.md`](../docs/guardctl-configuration.md) | Additional model and project configuration examples. |
 | [`docs/api-contract.md`](../docs/api-contract.md) | Controller API contract and generation workflow; the running Controller serves `/api/openapi.json`. |

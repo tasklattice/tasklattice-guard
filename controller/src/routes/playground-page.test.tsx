@@ -4,7 +4,7 @@ import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { PlaygroundPage } from "./playground";
 
 const api = vi.hoisted(() => ({ models: vi.fn(), guardrails: vi.fn(), draftPreview: vi.fn() }));
-const session = vi.hoisted(() => ({ role: "operator" }));
+const session = vi.hoisted(() => ({ role: "user" }));
 vi.mock("@/lib/auth", () => ({ useAuth: () => ({ user: { role: session.role } }) }));
 vi.mock("react-i18next", () => ({ useTranslation: () => ({ t: (key: string) => key }) }));
 vi.mock("@/lib/api", () => ({
@@ -35,7 +35,7 @@ beforeEach(() => {
   api.models.mockResolvedValue(models);
 });
 afterEach(() => {
-  session.role = "operator";
+  session.role = "user";
   cleanup();
   clients.splice(0).forEach(client => client.clear());
   vi.clearAllMocks();
@@ -67,6 +67,13 @@ it("keeps path testing available when the chat model lookup fails", async () => 
   expect(screen.queryByText("playground.controllerUnavailableTitle")).toBeNull();
   fireEvent.click(screen.getByRole("tab", { name: "playground.advancedMode" }));
   expect(await screen.findByLabelText("Request body")).toBeTruthy();
+});
+
+it("does not offer platform model management to project users when chat is unavailable", async () => {
+  api.models.mockResolvedValue({ items: [] });
+  mount();
+  expect(await screen.findByText("playground.controllerUnavailableTitle")).toBeTruthy();
+  expect(screen.queryByRole("link", { name: "resourceList.configureChatModel" })).toBeNull();
 });
 
 it("switches actual panels and keeps the advanced request when returning to it", async () => {

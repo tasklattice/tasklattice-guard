@@ -15,12 +15,13 @@ export const apiTags = [
   ['models', 'Platform Settings', 'Registered Model definitions, connection tests and capability tests.'],
   ['model-configurations', 'Platform Settings', 'Model assignments, validation evidence and activation.'],
   ['runners', 'Platform Settings', 'Runner capacity and instance lifecycle.'],
-  ['tenant-groups', 'Platform Settings', 'Administrator-managed tenant groups and their allocated Runner pools.'],
+  ['project-groups', 'Platform Settings', 'Administrator-managed project groups and their allocated Runner pools.'],
   ['system', 'Platform Settings', 'Component health, software identities and public runtime readiness.'],
 ].map(([name, area, description]) => ({ name: name!, description: description!, 'x-product-area': area! }));
 
 export function operationContract(method: string, path: string) {
-  const tag = path.includes('/tenant-groups') || path.startsWith('/api/v1/tenants') || /\/runner-pools\/:id\/(group|connectivity)$/.test(path) ? 'tenant-groups'
+  const tag = path.includes('/project-groups') || path.startsWith('/api/v1/projects') || /\/runner-pools\/:id\/(group|connectivity)$/.test(path) ? 'project-groups'
+    : path.startsWith('/api/v1/users/') ? 'account'
     : path.includes('/access-tokens') ? 'access-tokens' : path.includes('/account/') ? 'account'
     : path.includes('/authoring/') ? 'authoring' : path.includes('/playground/') ? 'playground'
     : path.includes('/model-configuration') ? 'model-configurations' : path.includes('/model-provider') ? 'model-providers'
@@ -96,27 +97,23 @@ export function operationContract(method: string, path: string) {
   if (path.endsWith('/usage-costs')) { summary = 'Read Guardrail model usage and estimated cost'; description += ' UTC periods, separate currencies and traffic sources. Missing prices or usage remain unaccounted. Persisted operational data is excluded from Guardrail packages; changing a price never recalculates historical amounts.'; }
   if (path === '/api/v1/model-configuration/apply') { summary = 'Apply selected model configuration changes'; description += ' Requires bindingIds, expectedDraftToken (from draft.reviewToken) and expectedActiveId. Applies only selected changes with Runner Rail evidence; explicit removals are allowed. Unselected bindings retain current values, and pending edits remain saved. Stale reviews and in-flight applies return 409. 200 means Runner synchronization completed; 202 means still syncing, not yet globally effective. Replaces current configuration after acknowledgement; no version history or rollback is retained. Read GET /model-configuration before retrying.'; }
   if (path === '/api/v1/deployment/capabilities') { summary = 'Read deployment capabilities'; description += ' Every deployment offers the same features. Package export and import are always available and need no environment configuration.'; }
-  if (path.startsWith('/api/v1/tenant-load-lab/')) {
-    summary = method === 'GET' ? 'Read the synthetic tenant load experiment' : 'Control the synthetic tenant load experiment';
-    description += ' Administrator-only, optional local experiment service. Uses real Runner traffic and a fixed-latency fake model. Quota mode simulates admission in the workload client; it does not enable production tenant quotas. Occupancy refers to client pipelines, not tenant CPU. No tenant credentials or captured business content are returned. Returns 503 when the experiment service is unconfigured or unavailable.';
+  if (path === '/api/v1/project-admission-monitor') {
+    summary = 'Read measured project and group admission pressure';
+    description += ' Platform administrators only. Aggregates bounded snapshots from authenticated current Runner heartbeat sessions, with optional poolId source filtering and current database group/project membership checks. Occupancy is held local Endpoint permits. Rates and histogram-estimated admission/held p95 use valid counter deltas; missing, stale, offline, invalid or reset intervals remain unavailable. Controller-local bounded history resets after restart or allocation/session changes. No request content, credentials, browser metrics URLs, CPU attribution or whole-pipeline latency is supplied.';
   }
-  if (path === '/api/v1/tenant-admission-monitor') {
-    summary = 'Read measured tenant and group admission pressure';
-    description += ' Platform administrators only. Aggregates bounded snapshots from authenticated current Runner heartbeat sessions, with optional poolId source filtering and current database group/tenant membership checks. Occupancy is held local Endpoint permits. Rates and histogram-estimated admission/held p95 use valid counter deltas; missing, stale, offline, invalid or reset intervals remain unavailable. Controller-local bounded history resets after restart or allocation/session changes. No request content, credentials, browser metrics URLs, CPU attribution or whole-pipeline latency is supplied.';
+  if (tag === 'project-groups') {
+    description += ' Platform administrators allocate each project and Runner pool to one group. Pools must be registered with an internal runtime origin before Runners connect. Moving a project or pool requires the relevant old Runners to be offline and an expectedGroupId to prevent stale updates. Group members share the allocated pool; this does not isolate shared Controller, database, Redis, or provider infrastructure.';
   }
-  if (tag === 'tenant-groups') {
-    description += ' Platform administrators allocate each tenant and Runner pool to one group. Pools must be registered with an internal runtime origin before Runners connect. Moving a tenant or pool requires the relevant old Runners to be offline and an expectedGroupId to prevent stale updates. Group members share the allocated pool; this does not isolate shared Controller, database, Redis, or provider infrastructure.';
-  }
-  if (path === '/api/v1/tenant-groups/:id/model-configuration') {
+  if (path === '/api/v1/project-groups/:id/model-configuration') {
     summary = method === 'GET' ? 'Read a group runtime Model policy' : 'Replace a group runtime Model policy';
-    description += ' Administrator-only. Missing policy preserves legacy global runtime Models. Scoped mode freezes a validated platform draft or published revision and encrypted Provider credentials with a fresh grant identity; expectedVersion and expectedSourceFingerprint reject stale reviews. Blocked mode revokes new group credential retrieval without global fallback. Explicit legacy mode restores the global default. Replacing a grant changes desired generation; already-delivered credentials require workload/provider fencing. Public responses omit Provider secrets and frozen credential material.';
+    description += ' Administrator-only. Only the default group inherits platform runtime Models; other groups start blocked. Scoped mode freezes a validated platform draft or published revision and encrypted Provider credentials with a fresh grant identity; expectedVersion and expectedSourceFingerprint reject stale reviews. Blocked mode revokes new group credential retrieval without global fallback. Platform mode is restricted to the default group. Replacing a grant changes desired generation; already-delivered credentials require workload/provider fencing. Public responses omit Provider secrets and frozen credential material.';
   }
   if (method === 'POST' && path.includes('/guardrails/') && path.endsWith('/test-runs')) {
     description += ' Optional testModelRules (default true). False executes only registered local Rules and records model-dependent cases as Skipped. The report persists this scope, skipped Rules and actual model calls. Passing requires executed required cases to pass and the full Artifact to load. Publication retains all enabled model protection. All Guardrails, including the preconfigured Default, use the ordinary Guardrail authoring permissions.';
   }
   if (path === '/api/v1/telemetry/security-events') { summary = 'Page through individual Security Events'; description += ' Returns 25 findings by default or 50 when requested. Time and severity filters are applied before the finding limit. The cursor binds the filters, page size and fixed time/ingestion boundary; use it unchanged for subsequent pages. Counts describe this page only; aggregate statistics load independently through telemetry/metrics. No protected bodies, traces or raw provider evidence are returned.'; }
-  if (path === '/api/v1/telemetry/events/:id') { description += ' Tenant runtime log detail. Metadata is returned by default; includeContent=true explicitly loads captured request or response content. Requires the user role and runtime read permission. Existing capture, redaction and retention rules apply.'; }
-  if (path === '/api/v1/audit-events') { description += ' Platform configuration activity, including actor attribution. Available only to administrators; tenant runtime permissions do not grant audit access.'; }
+  if (path === '/api/v1/telemetry/events/:id') { description += ' Project runtime log detail. Metadata is returned by default; includeContent=true explicitly loads captured request or response content. Requires the user role and runtime read permission. Existing capture, redaction and retention rules apply.'; }
+  if (path === '/api/v1/audit-events') { description += ' Platform configuration activity, including actor attribution. Available only to administrators; project runtime permissions do not grant audit access.'; }
   if (path.endsWith('/account/identity')) { summary = 'Read the current identity and effective permissions'; }
   if (path.includes('/access-tokens')) { description += ' Browser session only. Revocation is a no-op when already revoked. Creation returns the secret once; it cannot be recovered or transparently replayed.'; }
   return { tags: [tag], summary, description, 'x-product-area': apiTags.find(item => item.name === tag)!['x-product-area'], 'x-idempotency': { mode, ...details }, 'x-retry-policy': retry };

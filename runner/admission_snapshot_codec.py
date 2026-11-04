@@ -8,13 +8,13 @@ from google.protobuf.json_format import ParseDict
 from . import generated as protocol
 
 
-def admission_snapshot_to_proto(payload: bytes) -> protocol.TenantAdmissionSnapshot:
+def admission_snapshot_to_proto(payload: bytes) -> protocol.ProjectAdmissionSnapshot:
     """Do not emit private instrumentation errors or an unbounded payload."""
     try:
         if len(payload) > 65_536:
-            return protocol.TenantAdmissionSnapshot(version=1, available=False, reason="payload_limit")
+            return protocol.ProjectAdmissionSnapshot(version=1, available=False, reason="payload_limit")
         # Metrics use an internal dictionary contract. ParseDict accepts its
         # camel/snake field names while enforcing the generated message types.
-        return ParseDict(json.loads(payload), protocol.TenantAdmissionSnapshot())
+        return ParseDict(json.loads(payload), protocol.ProjectAdmissionSnapshot())
     except Exception:
-        return protocol.TenantAdmissionSnapshot(version=1, available=False, reason="instrumentation_unavailable")
+        return protocol.ProjectAdmissionSnapshot(version=1, available=False, reason="instrumentation_unavailable")

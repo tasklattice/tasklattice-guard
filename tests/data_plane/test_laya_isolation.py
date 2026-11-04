@@ -21,6 +21,10 @@ async def test_mixed_models_use_distinct_credentials_models_thresholds_and_verdi
     other.runtimes[0].id = other.bindings[0].model_ref = "laya-model"
     other.runtimes[0].model = "laya"
     other.runtimes[0].credential_ref = "laya-provider"
+    config.runtimes[0].lower_threshold = .1
+    config.runtimes[0].upper_threshold = .85
+    other.runtimes[0].lower_threshold = .2
+    other.runtimes[0].upper_threshold = .6
     config.runtimes.extend(other.runtimes)
     config.bindings.extend(other.bindings)
     calls = []
@@ -34,7 +38,7 @@ async def test_mixed_models_use_distinct_credentials_models_thresholds_and_verdi
             q: {"type": "noul", "noul": .7} for q in body["questions"]}})
 
     providers = dynamic_runtime_action_providers(config, {"provider-1": "jev-key", "laya-provider": "laya-key"},
-        jev_thresholds=(.1, .85), laya_thresholds=(.2, .6), transport=httpx.MockTransport(respond))
+        transport=httpx.MockTransport(respond))
     action = next(p for p in providers if isinstance(p, EvaluationActionProvider))
     request = jailbreak_request()
     laya = await action.execute(request)
@@ -122,3 +126,29 @@ def test_laya_outer_action_failure_keeps_laya_attribution():
     assert body["evaluations"] == [] and body["execution"]["status"] == "error"
     row, = body["layaEvaluations"]
     assert row["decisionModel"] == "laya" and row["verdict"] == "error"
+
+
+async def test_rate_limit_attempts_are_taken_from_each_model_runtime():
+    config = candidate("input", "content_safety", JEV_PROFILE).configuration
+    config.runtimes[0].model = "jev-1.13.0"
+    config.runtimes[0].rate_limit_attempts = 1
+    other = candidate("input", "jailbreak", LAYA_PROFILE, "tali.guard.jailbreak.v1").configuration
+    other.runtimes[0].id = other.bindings[0].model_ref = "laya-model"
+    other.runtimes[0].model = "laya"
+    other.runtimes[0].rate_limit_attempts = 2
+    config.runtimes.extend(other.runtimes)
+    config.bindings.extend(other.bindings)
+    calls = []
+
+    def respond(wire):
+        calls.append(json.loads(wire.content)["model"])
+        return httpx.Response(429, headers={"retry-after": "0"})
+
+    providers = dynamic_runtime_action_providers(config, {"provider-1": "synthetic"}, transport=httpx.MockTransport(respond))
+    action = next(p for p in providers if isinstance(p, EvaluationActionProvider))
+    request = jailbreak_request()
+    assert (await action.execute(request)).verdict == "error"
+    jev = replace(request, capability="content_safety",
+        binding=replace(request.binding, capability="content_safety", contract_ref="tali.guard.content-safety.v1"))
+    assert (await action.execute(jev)).verdict == "error"
+    assert calls == ["laya", "laya", "jev-1.13.0"]

@@ -222,7 +222,7 @@ normalize_local_env() {
   write_env_value "CONTROLLER_BOOTSTRAP_ADMIN_NAME" "Local Administrator"
   write_env_value "CONTROLLER_BOOTSTRAP_USER_NAME" "Local User"
 
-  write_env_value "GUARD_RUNNER_ID" "local-default-1"
+  write_env_value "GUARD_RUNNER_ID" "runner-default-0"
   write_env_value "GUARD_RUNNER_POOL_ID" "default"
   write_env_value "GUARD_RUNNER_COMPILER_CAPABLE" "true"
   write_env_value "GUARD_RUNNER_MAX_CONCURRENCY" "64"

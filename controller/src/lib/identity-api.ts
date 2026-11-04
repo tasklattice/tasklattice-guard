@@ -1,21 +1,27 @@
 import { internalAccountEmail, parseUsername } from "../../shared/username";
 import { isAccountRole } from "../../shared/rbac";
 import { authClient } from "@/lib/better-auth";
-import type { MockSsoIdentity } from "../../shared/mock-sso";
+import { requestController } from "@/lib/controller-api";
+import { setCurrentProjectId } from "@/lib/project-context";
+
+export type SignInOptions = { password: boolean; sso: { providerId: string; displayName: string } | null };
+export const getSignInOptions = () => requestController<SignInOptions>("/api/sign-in/options");
+export const getAccountSignInMethod = async () => {
+  const result = await authClient.listAccounts();
+  if (result.error) throw new Error(result.error.message || "Sign-in method is unavailable.");
+  return result.data?.some(account => account.providerId === "corporate-sso") ? "sso" as const : "password" as const;
+};
+export const loginSso = async (providerId: string) => {
+  const result = await authClient.signIn.social({ provider: providerId,
+    callbackURL: "/dashboard", errorCallbackURL: "/dashboard?sso_error=1" });
+  if (result.error) throw new Error(result.error.message || "SSO sign-in could not be started.");
+};
 
 export type IdentityRole = import("../../shared/rbac").AccountRole;
-export type IdentityUser = {
-  id: string;
-  display_name: string;
-  username: string;
-  role: IdentityRole;
-  tenant_id: string | null;
-  enabled: boolean;
-  preferred_language: "en" | "zh-CN";
-  last_login_at: string | null;
-  created_at: string;
-  updated_at: string;
-};
+export type {IdentityUser,UserSummary,UserDetail} from "../../shared/identity";
+import type {IdentityUser,UserSummary,UserDetail} from "../../shared/identity";
+import type {DirectoryPage} from "../../shared/directory";
+import {directorySearch,type PageQuery} from "./directory-query";
 export type AuthStatus = { authenticated: boolean; user: IdentityUser | null };
 
 export const getAuthStatus = async (): Promise<AuthStatus> => {
@@ -23,7 +29,10 @@ export const getAuthStatus = async (): Promise<AuthStatus> => {
   // the identity stored in the short-lived signed session cookie cache.
   const result = await authClient.getSession({ query: { disableCookieCache: true } });
   if (result.error) throw new Error(result.error.message || "Authentication status is unavailable.");
-  return { authenticated: Boolean(result.data), user: result.data ? identityUser(result.data.user) : null };
+  const user = result.data ? identityUser(result.data.user,
+    result.data.session && "activeProjectId" in result.data.session ? result.data.session.activeProjectId ?? null : undefined) : null;
+  setCurrentProjectId(user?.project_id ?? null);
+  return { authenticated: Boolean(result.data), user };
 };
 
 export const login = async (input: { username: string; password: string }) => {
@@ -31,34 +40,16 @@ export const login = async (input: { username: string; password: string }) => {
   const result = await authClient.signIn.username({ username, password: input.password });
   if (result.error) throw new Error(result.error.message || "Sign in failed.");
   if (!result.data?.user) throw new Error("Better Auth did not return the signed-in user.");
-  return { user: identityUser(result.data.user) };
-};
-
-export const getMockSsoConfig = async (): Promise<{ enabled: boolean }> => {
-  const response = await fetch("/api/mock-sso/config", { credentials: "same-origin" });
-  if (!response.ok) throw new Error("Mock SSO status is unavailable.");
-  return response.json() as Promise<{ enabled: boolean }>;
-};
-
-export const loginMockSso = async (identity: MockSsoIdentity) => {
-  const response = await fetch("/api/mock-sso/sign-in", {
-    method: "POST",
-    credentials: "same-origin",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({ identity }),
-  });
-  if (!response.ok) {
-    const result = await response.json().catch(() => null) as { error?: { message?: string } } | null;
-    throw new Error(result?.error?.message || "Mock SSO sign in failed.");
-  }
+  // The session selects a project independently of the human user's default.
   const status = await getAuthStatus();
-  if (!status.user) throw new Error("Mock SSO did not establish a session.");
+  if (!status.user) throw new Error("Better Auth did not create a session.");
   return { user: status.user };
 };
 
 export const logout = async () => {
   const result = await authClient.signOut();
   if (result.error) throw new Error(result.error.message || "Sign out failed.");
+  setCurrentProjectId(null);
 };
 
 export const updateMe = async (input: { display_name?: string; preferred_language?: "en" | "zh-CN" }) => {
@@ -85,17 +76,8 @@ export const changePassword = async (input: { current_password: string; new_pass
   return { user: session.user };
 };
 
-export const getUsers = async () => {
-  const users: unknown[] = [];
-  for (let offset = 0; offset < 10_000; offset += 100) {
-    const result = await authClient.admin.listUsers({ query: { limit: 100, offset, sortBy: "createdAt", sortDirection: "desc" } });
-    if (result.error) throw new Error(result.error.message || "Users could not be loaded.");
-    const page = result.data?.users ?? [];
-    users.push(...page);
-    if (page.length < 100) break;
-  }
-  return { users: users.map(identityUser) };
-};
+export const getUsers = (query:PageQuery = {},signal?:AbortSignal) => requestController<DirectoryPage<UserSummary>>(`/api/v1/users${directorySearch(query)}`,{signal});
+export const getUser = (id:string,query:PageQuery = {},signal?:AbortSignal) => requestController<UserDetail>(`/api/v1/users/${encodeURIComponent(id)}${directorySearch(query)}`,{signal});
 
 export const createUser = async (input: { display_name: string; username: string; password: string; role: IdentityRole; preferred_language: "en" | "zh-CN" }) => {
   const result = await authClient.admin.createUser({
@@ -128,31 +110,25 @@ export const updateUser = async (id: string, input: { display_name?: string; rol
     const result = await authClient.admin.setUserPassword({ userId: id, newPassword: input.password });
     if (result.error) throw new Error(result.error.message || "Password reset failed.");
   }
-  const users = await getUsers();
-  const updated = users.users.find((item) => item.id === id);
-  if (!updated) throw new Error("Updated user was not returned by Better Auth.");
-  return updated;
+  return (await getUser(id)).user;
 };
 
-function identityUser(value: unknown): IdentityUser {
+function identityUser(value: unknown, activeProjectId?: string | null): IdentityUser {
   const user = value as {
-    id: string; name: string; username: string; role?: string | null; banned?: boolean | null;
-    tenantId?: string | null;
+    id: string; name: string; username: string; email?: string; role?: string | null; banned?: boolean | null;
     preferredLanguage?: string | null; createdAt: Date | string; updatedAt?: Date | string;
     lastLoginAt?: Date | string | null;
   };
   const role = user.role ?? "user";
   if (!isAccountRole(role)) throw new Error("This account has an unsupported role. Contact an administrator.");
-  if (role === "user" && (typeof user.tenantId !== "string" || !user.tenantId.trim())) {
-    throw new Error("This account has no tenant assignment. Contact an administrator.");
-  }
   const createdAt = new Date(user.createdAt).toISOString();
   return {
     id: user.id,
+    ...(user.email ? { email: user.email } : {}),
     display_name: user.name,
     username: user.username,
     role,
-    tenant_id: role === "user" ? user.tenantId! : null,
+    project_id: role === "user" ? activeProjectId ?? null : null,
     enabled: !user.banned,
     preferred_language: user.preferredLanguage === "zh-CN" ? "zh-CN" : "en",
     last_login_at: user.lastLoginAt ? new Date(user.lastLoginAt).toISOString() : null,

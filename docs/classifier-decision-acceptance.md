@@ -1,6 +1,6 @@
 # Classifier configuration and decision acceptance
 
-JEV probabilities use one lower/upper operating point per Runner. They are raw
+JEV probabilities use one lower/upper operating point per registered Model. They are raw
 Noul answers, not confidence or severity. A Rule applies its own action after
 classification; an Allow result continues the remaining Policies.
 
@@ -43,22 +43,18 @@ repair. Its tests distinguish access-process questions and authorized caregiver
 guidance from direct retrieval, covert access, access without consent and bulk
 disclosure. This local repair does not depend on JEV's verdict.
 
-## Isolated Runner configuration
+## Model operating point
 
-Use a dedicated deployment for the acceptance operating point:
+In **Models → Configure Model**, select the registered JEV model and set the lower
+threshold to `0.1` and upper threshold to `0.85` for this acceptance configuration.
+The defaults are `0.1` / `0.9`; valid values satisfy `0 ≤ lower < upper ≤ 1`.
+Every binding of that registered Model uses its operating point, including the
+topic-only profile. Register a separate Model for an isolated comparison. Keep
+model versions, questions, topic lists and benchmark expectations fixed.
 
-```yaml
-runner:
-  jev:
-    lowerThreshold: 0.1
-    upperThreshold: 0.85
-```
-
-The corresponding environment variables are `GUARD_JEV_LOWER_THRESHOLD` and
-`GUARD_JEV_UPPER_THRESHOLD`. They affect **all JEV checks on that Runner**,
-including the topic-only profile. A separate Endpoint by itself does not
-isolate these settings. Keep model versions, model questions, topic lists and
-benchmark expectations fixed when comparing policy behavior.
+The Controller distributes settings without a Helm upgrade or Runner restart.
+Threshold changes invalidate prior capability-validation fingerprints. Scoped
+project-group grants keep their snapshot until explicitly refreshed after validation.
 
 ## Response evidence
 

@@ -2,6 +2,7 @@ import { z } from "zod";
 
 import { usernameSchema } from "../shared/username.js";
 import { clusterBootstrapEnvironment } from "./cluster-bootstrap.js";
+import { loadSsoConfig } from "./sso-config.js";
 import { defaultEndpointContextStorageLimits, validateEndpointContextStorageLimits } from "./endpoint-context-storage-policy.js";
 
 function isCidr(value: string): boolean {
@@ -81,12 +82,6 @@ const environmentSchema = z.object({
   CONTROLLER_BOOTSTRAP_ADMIN_USERNAME: usernameSchema.optional(),
   CONTROLLER_BOOTSTRAP_ADMIN_REVISION: z.string().optional(),
   CONTROLLER_BOOTSTRAP_ADMIN_PASSWORD: z.string().min(1).max(128).optional(),
-  CONTROLLER_MOCK_SSO_ENABLED: z.enum(["true", "false"]).default("false").transform((value) => value === "true"),
-  CONTROLLER_TENANT_LOAD_LAB_URL: z.string().url().refine(value => {
-    const url = new URL(value);
-    return ["http:", "https:"].includes(url.protocol) && !url.username && !url.password
-      && !url.search && !url.hash && ["", "/"].includes(url.pathname);
-  }, "Tenant load lab must be an HTTP(S) origin without credentials or a path.").optional(),
   CONTROLLER_BOOTSTRAP_ADMIN_NAME: z.string().min(1).default("Administrator"),
   CONTROLLER_BOOTSTRAP_USER_USERNAME: usernameSchema.optional(),
   CONTROLLER_BOOTSTRAP_USER_REVISION: z.string().optional(),
@@ -105,8 +100,6 @@ const environmentSchema = z.object({
   if (value.CONTROLLER_GRPC_TRANSPORT === "plaintext" && tlsPaths.some(Boolean)) {
     context.addIssue({ code: "custom", message: "Plaintext gRPC cannot be combined with TLS certificate paths." });
   }
-  const publicHostname = new URL(value.CONTROLLER_PUBLIC_URL).hostname;
-  const isLoopback = ["localhost", "127.0.0.1", "[::1]"].includes(publicHostname);
   if (value.NODE_ENV === "production" && !value.CONTROLLER_METRICS_TOKEN) {
     context.addIssue({
       code: "custom",
@@ -115,14 +108,6 @@ const environmentSchema = z.object({
     });
   }
 
-  const localBind = ["localhost", "127.0.0.1", "::1"].includes(value.CONTROLLER_HTTP_HOST);
-  if (value.CONTROLLER_MOCK_SSO_ENABLED && (value.NODE_ENV === "production" || !isLoopback || !localBind)) {
-    context.addIssue({
-      code: "custom",
-      path: ["CONTROLLER_MOCK_SSO_ENABLED"],
-      message: "Mock SSO is available only outside production with a loopback Controller URL and HTTP bind address.",
-    });
-  }
   for (const role of ["ADMIN", "USER"] as const) {
     const username = value[`CONTROLLER_BOOTSTRAP_${role}_USERNAME`];
     const password = value[`CONTROLLER_BOOTSTRAP_${role}_PASSWORD`];
@@ -271,11 +256,10 @@ export function loadConfig(environment: NodeJS.ProcessEnv = process.env) {
     metricsToken: parsed.CONTROLLER_METRICS_TOKEN ?? null,
     artifactSigningKeyPath: parsed.CONTROLLER_ARTIFACT_SIGNING_KEY_PATH,
     betterAuthSecret: parsed.BETTER_AUTH_SECRET,
+    sso: loadSsoConfig(environment),
     trustedOrigins: parsed.BETTER_AUTH_TRUSTED_ORIGINS.split(",").map((item) => item.trim()).filter(Boolean),
     trustedProxyCidrs: parsed.CONTROLLER_TRUSTED_PROXY_CIDRS.split(",").map((item) => item.trim()).filter(Boolean),
     minPasswordLength: parsed.BETTER_AUTH_MIN_PASSWORD_LENGTH,
-    mockSsoEnabled: parsed.CONTROLLER_MOCK_SSO_ENABLED,
-    tenantLoadLabUrl: parsed.CONTROLLER_TENANT_LOAD_LAB_URL ?? null,
     bootstrapAdmin: parsed.CONTROLLER_BOOTSTRAP_ADMIN_USERNAME && parsed.CONTROLLER_BOOTSTRAP_ADMIN_PASSWORD
       ? { username: parsed.CONTROLLER_BOOTSTRAP_ADMIN_USERNAME, password: parsed.CONTROLLER_BOOTSTRAP_ADMIN_PASSWORD, name: parsed.CONTROLLER_BOOTSTRAP_ADMIN_NAME, ...(parsed.CONTROLLER_BOOTSTRAP_ADMIN_REVISION ? { revision: parsed.CONTROLLER_BOOTSTRAP_ADMIN_REVISION } : {}) }
       : null,

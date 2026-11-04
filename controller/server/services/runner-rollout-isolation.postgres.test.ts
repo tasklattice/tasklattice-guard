@@ -7,19 +7,20 @@ const url = process.env.GUARD_TEST_POSTGRES_URL;
 describe.skipIf(!url)("pool-scoped snapshot rejection diagnostics", () => {
   let database: Awaited<ReturnType<typeof createTestDatabase>>;
   let service: TrafficRoutingService;
-  const principal = { poolId: "rollout-ab", bootId: "rollout-boot", controlSessionId: "rollout-session" };
+  const principal = { poolId: "default", bootId: "rollout-boot", controlSessionId: "rollout-session" };
   beforeAll(async () => {
     database = await createTestDatabase(url!, "rollout_isolation");
     service = new TrafficRoutingService(database.db);
-    await database.pool.query(`INSERT INTO tenant_group(id,name) VALUES ('rollout-ab','AB'),('rollout-c','C');
-      UPDATE tenant SET group_id=CASE WHEN id='tenantC' THEN 'rollout-c' ELSE 'rollout-ab' END;
-      INSERT INTO runner_pool(id,name,group_id) VALUES ('rollout-ab','AB','rollout-ab'),('rollout-c','C','rollout-c');
-      INSERT INTO runner_control_session(id,runner_id,boot_id,pool_id) VALUES ('rollout-session','rollout-runner','rollout-boot','rollout-ab');
+    await database.pool.query(`INSERT INTO project_group(id,name) VALUES ('rollout-c','C');
+      UPDATE project SET group_id=CASE WHEN id='projectC' THEN 'rollout-c' ELSE 'default' END;
+      INSERT INTO runner_pool(id,name,group_id) VALUES ('default','AB','default'),('rollout-c','C','rollout-c');
+      UPDATE runner_pool SET project_id='projectC' WHERE id='rollout-c';
+      INSERT INTO runner_control_session(id,runner_id,boot_id,pool_id) VALUES ('rollout-session','rollout-runner','rollout-boot','default');
       INSERT INTO runner_instance(runner_id,boot_id,pool_id,status,runner_version,nemo_version,max_concurrency,control_session_id)
-        VALUES ('rollout-runner','rollout-boot','rollout-ab','ready','test','test',1,'rollout-session');
-      INSERT INTO traffic_router(id,tenant_id,name,draft,active_revision,desired_generation) VALUES
-        ('router-a','tenantA','A','{}',1,7),('router-b','tenantB','B','{}',1,7),('router-c','tenantC','C','{}',1,7),
-        ('router-future','tenantA','Future','{}',1,9),('router-draft','tenantA','Draft','{}',NULL,7);`);
+        VALUES ('rollout-runner','rollout-boot','default','ready','test','test',1,'rollout-session');
+      INSERT INTO traffic_router(id,project_id,name,draft,active_revision,desired_generation) VALUES
+        ('router-a','projectA','A','{}',1,7),('router-b','projectB','B','{}',1,7),('router-c','projectC','C','{}',1,7),
+        ('router-future','projectA','Future','{}',1,9),('router-draft','projectA','Draft','{}',NULL,7);`);
   }, 30000);
   afterAll(async () => { await database?.drop(); });
   beforeEach(async () => {
@@ -31,8 +32,8 @@ describe.skipIf(!url)("pool-scoped snapshot rejection diagnostics", () => {
     expect(await failures()).toEqual(["router-a", "router-b"]);
     const routers = (await database.pool.query("SELECT rollout_error FROM traffic_router")).rows;
     expect(JSON.stringify(routers)).not.toMatch(/private-policy|secret-endpoint/);
-    const [audit] = (await database.pool.query("SELECT tenant_id,detail FROM audit_event")).rows;
-    expect(audit.tenant_id).toBeNull();
+    const [audit] = (await database.pool.query("SELECT project_id,detail FROM audit_event")).rows;
+    expect(audit.project_id).toBeNull();
     expect(audit.detail.reason).toHaveLength(2000);
     expect(audit.detail.reason).toContain("private-policy-a");
   });
@@ -41,6 +42,13 @@ describe.skipIf(!url)("pool-scoped snapshot rejection diagnostics", () => {
     await service.reportRolloutFailure(7, "rollout-runner", "private", identity);
     expect(await failures()).toEqual([]);
     expect((await database.pool.query("SELECT * FROM audit_event")).rows).toEqual([]);
+  });
+  it("excludes a same-group Project once it has dedicated capacity", async () => {
+    await database.pool.query("INSERT INTO runner_pool(id,name,project_id) VALUES ('dedicated-a','runner-test-project-a','projectA')");
+    try {
+      await service.reportRolloutFailure(7, "rollout-runner", "private shared-pool failure", principal);
+      expect(await failures()).toEqual(["router-b"]);
+    } finally { await database.pool.query("DELETE FROM runner_pool WHERE id='dedicated-a'"); }
   });
   it("ignores disconnected or offline sources", async () => {
     await database.pool.query("UPDATE runner_control_session SET disconnected_at=now()");

@@ -31,22 +31,22 @@ from .runtime_log_capture import RuntimeLogCapture
 from .synchronization import RuntimeSynchronizationMiddleware
 from .distributed_rate_admission import RedisRateAdmission
 from .group_rate_admission import RedisGroupRateAdmission
-from .admission_metrics import TenantAdmissionMetrics
+from .admission_metrics import ProjectAdmissionMetrics
 
 
 def create_app(settings: RunnerSettings | None = None) -> FastAPI:
     configured = settings or RunnerSettings.from_env()
     if configured.group_rate_admission is not None:
-        if (configured.distributed_rate_admission is not None or configured.tenant_admission is None or
+        if (configured.distributed_rate_admission is not None or configured.project_admission is None or
             not configured.call_context_redis_url or not configured.control_token):
             raise ValueError("Group v2 rate requires local admission, Redis, pool control and v1 disabled.")
-        configured.group_rate_admission.validate_runner(configured.pool_id, configured.tenant_admission.tenant_limits)
+        configured.group_rate_admission.validate_runner(configured.pool_id, configured.project_admission.project_limits)
     if configured.distributed_rate_admission is not None:
-        if configured.tenant_admission is None or not configured.call_context_redis_url or not configured.control_token:
+        if configured.project_admission is None or not configured.call_context_redis_url or not configured.control_token:
             raise ValueError("Distributed rate admission requires local admission, Redis and pool control authentication.")
         if (configured.distributed_rate_admission.pool_id != configured.pool_id or
-            set(configured.distributed_rate_admission.tenant_limits) != set(configured.tenant_admission.tenant_limits)):
-            raise ValueError("Distributed rate policy must match the trusted pool and local tenant configuration.")
+            set(configured.distributed_rate_admission.project_limits) != set(configured.project_admission.project_limits)):
+            raise ValueError("Distributed rate policy must match the trusted pool and local project configuration.")
     observability = configure_observability(configured)
     store = ArtifactStore(configured.artifact_public_key_path, configured.artifact_state_path)
     providers = action_providers(*dynamic_runtime_action_providers(DataPlaneModelConfiguration(), {}))
@@ -114,10 +114,10 @@ def create_app(settings: RunnerSettings | None = None) -> FastAPI:
         if isinstance(contexts, RedisCallContextStore) else None)
     rate = None
     group_rate = None
-    admission_observer = (TenantAdmissionMetrics(metrics.registry, configured.tenant_admission.capacity,
-                          configured.tenant_admission.tenant_limits) if configured.tenant_admission is not None else None)
+    admission_observer = (ProjectAdmissionMetrics(metrics.registry, configured.project_admission.capacity,
+                          configured.project_admission.project_limits) if configured.project_admission is not None else None)
     if admission_observer is not None:
-        metrics.set_tenant_admission_snapshot_provider(admission_observer.snapshot)
+        metrics.set_project_admission_snapshot_provider(admission_observer.snapshot)
     if configured.distributed_rate_admission is not None:
         rate = RedisRateAdmission.connect(configured.call_context_redis_url, configured.distributed_rate_admission)
     if configured.group_rate_admission is not None:
@@ -134,8 +134,8 @@ def create_app(settings: RunnerSettings | None = None) -> FastAPI:
         scan_max_body_bytes=configured.scan_max_body_bytes,
         scan_timeout_seconds=configured.scan_timeout_seconds,
         runtime_log_capture=log_capture,
-        tenant_admission=(configured.tenant_admission.build(lambda: control.synchronized, rate=rate, group_rate=group_rate, observer=admission_observer)
-                          if configured.tenant_admission is not None else None),
+        project_admission=(configured.project_admission.build(lambda: control.synchronized, rate=rate, group_rate=group_rate, observer=admission_observer)
+                          if configured.project_admission is not None else None),
     )
 
     @asynccontextmanager

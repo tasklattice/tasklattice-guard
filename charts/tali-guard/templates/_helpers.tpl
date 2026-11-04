@@ -118,6 +118,9 @@
 {{- $specs = append $specs (dict "name" (include (printf "tali-guard.bootstrap%sSecretName" $role) $) "kind" "account" "username" $account.username "displayName" $account.name "usernameKey" $account.usernameKey "nameKey" $account.nameKey "credentialKey" $account.credentialKey) -}}
 {{- end -}}
 {{- end -}}
+{{- if .Values.keycloak.enabled -}}
+{{- $specs = append $specs (dict "name" (printf "%s-keycloak" $base) "kind" "tokens" "keys" (list "admin-password" "client-secret")) -}}
+{{- end -}}
 {{- if not .Values.security.artifactSigning.existingSecret -}}
 {{- $specs = append $specs (dict "name" (include "tali-guard.artifactSigningSecretName" .) "kind" "ed25519" "privateKey" .Values.security.artifactSigning.privateKeyKey "publicKey" .Values.security.artifactSigning.publicKeyKey) -}}
 {{- end -}}
@@ -152,7 +155,7 @@
 {{- end }}
 
 {{- define "tali-guard.defaultRunnerName" -}}
-{{- printf "%s-runner" (include "tali-guard.fullname" .) | trunc 63 | trimSuffix "-" }}
+runner-default
 {{- end }}
 
 {{- define "tali-guard.runtimeName" -}}
@@ -267,17 +270,10 @@ app.kubernetes.io/part-of: tasklattice-guard
 {{- end -}}
 {{- end -}}
 {{- end -}}
-{{- include "tali-guard.validateAdmission" . -}}
 {{- $poolAuth := .Values.security.poolAuthentication -}}
 {{- range $name := list "enabled" "scopedTelemetry" "telemetryProgress" -}}
 {{- if not (kindIs "bool" (get $poolAuth $name)) -}}{{- fail (printf "security.poolAuthentication.%s must be a boolean" $name) -}}{{- end -}}
 {{- end -}}
-{{- $progress := .Values.runner.telemetryProgress.persistence -}}
-{{- if not (kindIs "map" $progress) -}}{{- fail "runner.telemetryProgress.persistence must be an object" -}}{{- end -}}
-{{- if not (kindIs "bool" $progress.enabled) -}}{{- fail "runner.telemetryProgress.persistence.enabled must be a boolean" -}}{{- end -}}
-{{- if not (kindIs "string" $progress.size) -}}{{- fail "runner.telemetryProgress.persistence.size must be a capacity string" -}}{{- end -}}
-{{- if not (regexMatch "^[1-9][0-9]{0,5}(Mi|Gi)$" $progress.size) -}}{{- fail "runner.telemetryProgress.persistence.size must be a positive Mi or Gi capacity" -}}{{- end -}}
-{{- if not (kindIs "string" $progress.storageClass) -}}{{- fail "runner.telemetryProgress.persistence.storageClass must be a string" -}}{{- end -}}
 {{- if and $poolAuth.scopedTelemetry (not $poolAuth.enabled) -}}
 {{- fail "security.poolAuthentication.scopedTelemetry requires enabled=true" -}}
 {{- end -}}
@@ -285,18 +281,12 @@ app.kubernetes.io/part-of: tasklattice-guard
 {{- if or (not $poolAuth.enabled) (not $poolAuth.scopedTelemetry) -}}
 {{- fail "security.poolAuthentication.telemetryProgress requires enabled=true and scopedTelemetry=true" -}}
 {{- end -}}
-{{- if not .Values.runner.telemetryProgress.persistence.enabled -}}
-{{- fail "security.poolAuthentication.telemetryProgress requires runner.telemetryProgress.persistence.enabled=true; an ephemeral WAL cannot preserve Runner identity" -}}
-{{- end -}}
-{{- else if .Values.runner.telemetryProgress.persistence.enabled -}}
-{{- fail "runner.telemetryProgress.persistence.enabled requires security.poolAuthentication.telemetryProgress=true" -}}
 {{- end -}}
 {{- if $poolAuth.enabled -}}
 {{- if or (not $poolAuth.controllerSecret) (not $poolAuth.controllerKey) -}}
 {{- fail "security.poolAuthentication requires controllerSecret and controllerKey" -}}
 {{- end -}}
 {{- $names := list "default" -}}
-{{- range .Values.runner.pools -}}{{- $names = append $names .name -}}{{- end -}}
 {{- $seen := dict -}}
 {{- range $names -}}
 {{- $ref := get $poolAuth.runnerSecrets . -}}
@@ -324,7 +314,6 @@ app.kubernetes.io/part-of: tasklattice-guard
 {{- fail "security.runnerHttpAuthentication requires controllerSecret and controllerKey" -}}
 {{- end -}}
 {{- $names := list "default" -}}
-{{- range .Values.runner.pools -}}{{- $names = append $names .name -}}{{- end -}}
 {{- $reserved := dict -}}
 {{- $_ := set $reserved (printf "%s/%s" (include "tali-guard.controlSecretName" .) .Values.security.controlSecret.runnerTokenKey) true -}}
 {{- $_ := set $reserved (printf "%s/%s" $poolAuth.controllerSecret $poolAuth.controllerKey) true -}}
@@ -348,14 +337,13 @@ app.kubernetes.io/part-of: tasklattice-guard
 {{- fail "security.runnerHttpAuthentication references require enabled=true" -}}
 {{- end -}}
 {{- if lt (int .Values.runner.default.replicaCount) 1 }}
-{{- fail "runner.default.replicaCount must be at least 1; GuardRails 0 is the mandatory baseline Runner pool" }}
+{{- fail "runner.default.replicaCount must be at least 1; runner-default is the mandatory baseline Runner pool" }}
 {{- end }}
 
 {{- if not (kindIs "bool" .Values.networkPolicy.runnerIsolation.enabled) -}}{{- fail "networkPolicy.runnerIsolation.enabled must be a boolean" -}}{{- end -}}
 {{- if .Values.networkPolicy.runnerIsolation.enabled -}}
 {{- if not .Values.networkPolicy.enabled -}}{{- fail "networkPolicy.runnerIsolation requires networkPolicy.enabled=true" -}}{{- end -}}
 {{- $names := list "default" -}}
-{{- range .Values.runner.pools -}}{{- $names = append $names .name -}}{{- end -}}
 {{- range $name, $_ := .Values.networkPolicy.runnerIsolation.poolEgress -}}
 {{- if not (has $name $names) -}}{{- fail (printf "networkPolicy.runnerIsolation.poolEgress contains unknown chart pool %s" $name) -}}{{- end -}}
 {{- end -}}
@@ -412,12 +400,7 @@ app.kubernetes.io/part-of: tasklattice-guard
 {{- fail "runner.callContext.ttlSeconds must be positive" }}
 {{- end }}
 {{- if and (gt (int .Values.runner.default.replicaCount) 1) (not (or .Values.redis.enabled .Values.runner.callContextRedisUrl)) }}
-{{- fail "shared Redis is required when GuardRails 0 has more than one replica; enable redis or set runner.callContextRedisUrl" }}
-{{- end }}
-{{- range .Values.runner.pools }}
-{{- if and (gt (int .replicaCount) 1) (not (or $.Values.redis.enabled $.Values.runner.callContextRedisUrl)) }}
-{{- fail (printf "shared Redis is required when Runner pool %s has more than one replica" .name) }}
-{{- end }}
+{{- fail "shared Redis is required when runner-default has more than one replica; enable redis or set runner.callContextRedisUrl" }}
 {{- end }}
 {{- end }}
 
@@ -434,7 +417,7 @@ metadata:
   labels:
     {{- include "tali-guard.commonLabels" . | nindent 4 }}
 data:
-  NODE_ENV: production
+  NODE_ENV: {{ ternary "development" "production" .Values.keycloak.enabled }}
   CONTROLLER_DATABASE_STATEMENT_TIMEOUT_MS: {{ .Values.controller.databaseTimeouts.statementMs | quote }}
   CONTROLLER_DATABASE_LOCK_TIMEOUT_MS: {{ .Values.controller.databaseTimeouts.lockMs | quote }}
   CONTROLLER_DATABASE_IDLE_TRANSACTION_TIMEOUT_MS: {{ .Values.controller.databaseTimeouts.idleTransactionMs | quote }}
@@ -453,6 +436,23 @@ data:
   CONTROLLER_RUNTIME_SERVICE_URL: {{ include "tali-guard.defaultRuntimeServiceUrl" . | quote }}
   CONTROLLER_RUNTIME_PUBLIC_URL: {{ include "tali-guard.runtimePublicUrl" . | quote }}
   BETTER_AUTH_TRUSTED_ORIGINS: {{ include "tali-guard.trustedOrigins" . | fromJsonArray | join "," | quote }}
+  {{- $sso := .Values.controller.sso | default dict }}
+  {{- if .Values.keycloak.enabled }}
+  CONTROLLER_SSO_ENABLED: "true"
+  CONTROLLER_SSO_ISSUER: {{ printf "http://localhost:%v/realms/tali" .Values.keycloak.port | quote }}
+  CONTROLLER_SSO_CLIENT_ID: tasklattice-guard
+  CONTROLLER_SSO_DISPLAY_NAME: Keycloak
+  CONTROLLER_SSO_GROUP_CLAIM: groups
+  {{- else }}
+  CONTROLLER_SSO_ENABLED: {{ $sso.enabled | default false | quote }}
+  {{- if $sso.enabled }}
+  CONTROLLER_SSO_ISSUER: {{ required "controller.sso.issuer is required" $sso.issuer | quote }}
+  CONTROLLER_SSO_CLIENT_ID: {{ required "controller.sso.clientId is required" $sso.clientId | quote }}
+  CONTROLLER_SSO_DISPLAY_NAME: {{ $sso.displayName | default "Company SSO" | quote }}
+  CONTROLLER_SSO_GROUP_CLAIM: {{ $sso.groupClaim | default "groups" | quote }}
+  CONTROLLER_SSO_ALLOWED_EMAIL_DOMAINS: {{ $sso.allowedEmailDomains | default list | join "," | quote }}
+  {{- end }}
+  {{- end }}
   CONTROLLER_MIN_LOGIN_LENGTH: {{ .Values.controller.auth.minLoginLength | quote }}
   {{- with .Values.controller.trustedProxyCidrs }}
   CONTROLLER_TRUSTED_PROXY_CIDRS: {{ join "," . | quote }}
@@ -486,102 +486,4 @@ data:
 {{- $number := float64 $value -}}
 {{- if or (lt $number (float64 .minimum)) (gt $number (float64 .maximum)) (and .integer (ne $number (floor $number))) -}}
 {{- fail (printf "%s is outside its supported numeric bounds" .name) -}}{{- end -}}
-{{- end -}}
-
-{{- define "tali-guard.featureIdentity" -}}
-{{- if not (kindIs "string" .value) -}}{{- fail (printf "%s must be a string" .name) -}}{{- end -}}
-{{- if or (eq .value "") (ne .value (trim .value)) (gt (len .value) 256) -}}{{- fail (printf "%s must be nonempty, unpadded and at most 256 characters" .name) -}}{{- end -}}
-{{- end -}}
-
-{{- define "tali-guard.featureIntegerMap" -}}
-{{- if not (kindIs "map" .value) -}}{{- fail (printf "%s must be an object" .name) -}}{{- end -}}
-{{- if or (lt (len .value) 1) (gt (len .value) 1000) -}}{{- fail (printf "%s requires 1 to 1000 entries" .name) -}}{{- end -}}
-{{- $settings := . -}}
-{{- range $key, $value := .value -}}
-{{- include "tali-guard.featureIdentity" (dict "name" $settings.name "value" $key) -}}
-{{- include "tali-guard.featureNumber" (dict "name" $settings.name "value" $value "minimum" $settings.minimum "maximum" $settings.maximum "integer" true) -}}
-{{- end -}}
-{{- end -}}
-
-{{/* Admission is explicit per pool, with no inheritance or policy provisioning. */}}
-{{- define "tali-guard.validateAdmission" -}}
-{{- $root := . -}}
-{{- $default := dict "name" "default" "tenantAdmission" .Values.runner.default.tenantAdmission "distributedRateAdmission" .Values.runner.default.distributedRateAdmission "groupRateAdmission" .Values.runner.default.groupRateAdmission -}}
-{{- $pools := concat (list $default) .Values.runner.pools -}}
-{{- $configured := dict -}}
-{{- range $pools -}}{{- $_ := set $configured .name . -}}{{- end -}}
-{{- range $pool := $pools -}}
-{{- $local := $pool.tenantAdmission -}}
-{{- $rate := $pool.distributedRateAdmission -}}
-{{- $group := $pool.groupRateAdmission -}}
-{{- if not (kindIs "invalid" $local) -}}
-{{- include "tali-guard.featureObject" (dict "name" "tenantAdmission" "value" $local "fields" (list "capacity" "tenant_limits" "max_queued" "max_queued_per_tenant" "queue_timeout_seconds")) -}}
-{{- include "tali-guard.featureNumber" (dict "name" "tenantAdmission.capacity" "value" $local.capacity "minimum" 1 "maximum" 9007199254740991 "integer" true) -}}
-{{- range $name := list "max_queued" "max_queued_per_tenant" -}}{{- include "tali-guard.featureNumber" (dict "name" (printf "tenantAdmission.%s" $name) "value" (get $local $name) "minimum" 0 "maximum" 9007199254740991 "integer" true) -}}{{- end -}}
-{{- include "tali-guard.featureNumber" (dict "name" "tenantAdmission.queue_timeout_seconds" "value" $local.queue_timeout_seconds "minimum" 0 "maximum" 30 "integer" false) -}}
-{{- include "tali-guard.featureIntegerMap" (dict "name" "tenantAdmission.tenant_limits" "value" $local.tenant_limits "minimum" 1 "maximum" 9007199254740991) -}}
-{{- end -}}
-{{- if not (kindIs "invalid" $rate) -}}
-{{- include "tali-guard.featureObject" (dict "name" "distributedRateAdmission" "value" $rate "fields" (list "pool_id" "revision" "window_ms" "pool_limit" "tenant_limits")) -}}
-{{- range $name := list "pool_id" "revision" -}}{{- include "tali-guard.featureIdentity" (dict "name" (printf "distributedRateAdmission.%s" $name) "value" (get $rate $name)) -}}{{- end -}}
-{{- include "tali-guard.featureNumber" (dict "name" "distributedRateAdmission.window_ms" "value" $rate.window_ms "minimum" 100 "maximum" 86400000 "integer" true) -}}
-{{- include "tali-guard.featureNumber" (dict "name" "distributedRateAdmission.pool_limit" "value" $rate.pool_limit "minimum" 1 "maximum" 100000 "integer" true) -}}
-{{- include "tali-guard.featureIntegerMap" (dict "name" "distributedRateAdmission.tenant_limits" "value" $rate.tenant_limits "minimum" 1 "maximum" 100000) -}}
-{{- end -}}
-{{- if not (kindIs "invalid" $group) -}}
-{{- include "tali-guard.featureObject" (dict "name" "groupRateAdmission" "value" $group "fields" (list "group_id" "revision" "window_ms" "group_limit" "tenant_limits" "pool_limits" "pool_epochs")) -}}
-{{- range $name := list "group_id" "revision" -}}{{- include "tali-guard.featureIdentity" (dict "name" (printf "groupRateAdmission.%s" $name) "value" (get $group $name)) -}}{{- end -}}
-{{- include "tali-guard.featureNumber" (dict "name" "groupRateAdmission.window_ms" "value" $group.window_ms "minimum" 100 "maximum" 86400000 "integer" true) -}}
-{{- include "tali-guard.featureNumber" (dict "name" "groupRateAdmission.group_limit" "value" $group.group_limit "minimum" 1 "maximum" 100000 "integer" true) -}}
-{{- range $name := list "tenant_limits" "pool_limits" -}}{{- include "tali-guard.featureIntegerMap" (dict "name" (printf "groupRateAdmission.%s" $name) "value" (get $group $name) "minimum" 1 "maximum" 100000) -}}{{- end -}}
-{{- include "tali-guard.featureIntegerMap" (dict "name" "groupRateAdmission.pool_epochs" "value" $group.pool_epochs "minimum" 0 "maximum" 9007199254740991) -}}
-{{- end -}}
-{{- if $local -}}
-{{- range $tenant, $_ := $local.tenant_limits -}}
-{{- if ne $tenant (trim $tenant) -}}{{- fail (printf "Runner pool %s tenantAdmission tenant IDs must be unpadded" $pool.name) -}}{{- end -}}
-{{- end -}}
-{{- end -}}
-{{- if $group -}}
-{{- if $rate -}}{{- fail "groupRateAdmission and distributedRateAdmission cannot be enabled together" -}}{{- end -}}
-{{- if not $local -}}{{- fail (printf "Runner pool %s groupRateAdmission requires tenantAdmission" $pool.name) -}}{{- end -}}
-{{- if not $root.Values.security.poolAuthentication.enabled -}}{{- fail "groupRateAdmission requires security.poolAuthentication.enabled=true" -}}{{- end -}}
-{{- if or $root.Values.redis.enabled (not $root.Values.runner.callContextRedisUrl) -}}{{- fail "groupRateAdmission requires external persistent Redis via runner.callContextRedisUrl" -}}{{- end -}}
-{{- if or (ne $group.group_id (trim $group.group_id)) (ne $group.revision (trim $group.revision)) -}}
-{{- fail "groupRateAdmission group_id and revision must be unpadded UTF-8 strings <=256 characters" -}}{{- end -}}
-{{- if not (hasKey $group.pool_limits $pool.name) -}}{{- fail (printf "groupRateAdmission.pool_limits must contain local pool %s" $pool.name) -}}{{- end -}}
-{{- if not (deepEqual (keys $group.pool_limits | sortAlpha) (keys $group.pool_epochs | sortAlpha)) -}}{{- fail "groupRateAdmission.pool_epochs keys must exactly match pool_limits" -}}{{- end -}}
-{{- range $tenant, $_ := $local.tenant_limits -}}
-{{- if not (hasKey $group.tenant_limits $tenant) -}}{{- fail "groupRateAdmission must include every local tenantAdmission tenant" -}}{{- end -}}
-{{- end -}}
-{{- $tenantHistory := 0 -}}
-{{- range $tenant, $limit := $group.tenant_limits -}}
-{{- if or (ne $tenant (trim $tenant)) -}}{{- fail "groupRateAdmission tenant IDs must be unpadded UTF-8 strings <=256 characters" -}}{{- end -}}
-{{- $tenantHistory = add $tenantHistory (min (int $limit) (int $group.group_limit)) -}}
-{{- end -}}
-{{- $poolHistory := 0 -}}
-{{- range $name, $limit := $group.pool_limits -}}
-{{- if or (ne $name (trim $name)) -}}{{- fail "groupRateAdmission pool IDs must be unpadded UTF-8 strings <=256 characters" -}}{{- end -}}
-{{- $poolHistory = add $poolHistory (min (int $limit) (int $group.group_limit)) -}}
-{{- if hasKey $configured $name -}}
-{{- $peer := get $configured $name -}}
-{{- if not (deepEqual $peer.groupRateAdmission $group) -}}{{- fail "all declared groupRateAdmission pools in this chart require the identical complete group policy" -}}{{- end -}}
-{{- end -}}
-{{- end -}}
-{{- if or (gt $tenantHistory 100000) (gt $poolHistory 100000) -}}{{- fail "groupRateAdmission retained tenant and pool histories must each be <=100000 entries" -}}{{- end -}}
-{{- end -}}
-{{- if $rate -}}
-{{- if not $local -}}{{- fail (printf "Runner pool %s distributedRateAdmission requires tenantAdmission" $pool.name) -}}{{- end -}}
-{{- if not $root.Values.security.poolAuthentication.enabled -}}{{- fail "distributedRateAdmission requires security.poolAuthentication.enabled=true" -}}{{- end -}}
-{{- if or $root.Values.redis.enabled (not $root.Values.runner.callContextRedisUrl) -}}{{- fail "distributedRateAdmission requires external persistent Redis via runner.callContextRedisUrl; bundled ephemeral Redis is unsupported" -}}{{- end -}}
-{{- if ne $rate.pool_id $pool.name -}}{{- fail (printf "Runner pool %s distributedRateAdmission.pool_id must match its trusted pool name" $pool.name) -}}{{- end -}}
-{{- if ne $rate.revision (trim $rate.revision) -}}{{- fail "distributedRateAdmission revision must be unpadded" -}}{{- end -}}
-{{- if not (deepEqual (keys $local.tenant_limits | sortAlpha) (keys $rate.tenant_limits | sortAlpha)) -}}{{- fail (printf "Runner pool %s distributedRateAdmission tenant IDs must match tenantAdmission" $pool.name) -}}{{- end -}}
-{{- $history := 0 -}}
-{{- range $tenant, $limit := $rate.tenant_limits -}}
-{{- if ne $tenant (trim $tenant) -}}{{- fail "distributedRateAdmission tenant IDs must be unpadded" -}}{{- end -}}
-{{- $history = add $history (min (int $limit) (int $rate.pool_limit)) -}}
-{{- end -}}
-{{- if gt $history 100000 -}}{{- fail "distributedRateAdmission retained tenant history must not exceed 100000 entries per pool" -}}{{- end -}}
-{{- end -}}
-{{- end -}}
 {{- end -}}

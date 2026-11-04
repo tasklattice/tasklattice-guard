@@ -196,7 +196,7 @@ async def test_runtime_authenticates_locally_and_emits_content_free_telemetry():
         )
         response = await client.post(
             "/runtime/v1/endpoints/endpoint-secondary/beta/litellm_basic_guardrail_api",
-            headers={"x-api-key": "valid-secret", "x-tenant": "tenant-a"},
+            headers={"x-api-key": "valid-secret", "x-project": "project-a"},
             json={
                 "input_type": "request",
                 "texts": ["secret prompt"],
@@ -219,7 +219,7 @@ async def test_runtime_authenticates_locally_and_emits_content_free_telemetry():
     assert unauthorized.status_code == 401
     assert response.status_code == 200
     assert response.json()["action"] == "BLOCKED"
-    assert ("x-tenant", "tenant-a") in runtime.request.context.endpoint_request
+    assert ("x-project", "project-a") in runtime.request.context.endpoint_request
     assert runtime.request.context.value("header", "x-api-key") is None
     assert telemetry.events[0]["guardrailId"] == "guardrail-1"
     assert telemetry.events[0]["routerId"] == "router-1"
@@ -282,7 +282,7 @@ async def test_controller_can_prepare_and_evaluate_draft_without_runtime_evidenc
         )
         evaluated = await client.post(
             "/internal/v1/playground/draft-previews/preview-1/evaluate",
-            headers={"authorization": "Bearer controller-token", "x-tenant": "preview-tenant"},
+            headers={"authorization": "Bearer controller-token", "x-project": "preview-project"},
             json={
                 **{key: value for key, value in payload.items() if key != "guardrail_id"},
                 "phase": "input",

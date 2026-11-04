@@ -1,10 +1,11 @@
 import { hasPermission, isPlatformAdministrator, roleHome } from "../../shared/rbac";
 import { useQuery } from "@tanstack/react-query";
 import { Link, useRouterState } from "@tanstack/react-router";
-import { Activity, Bot, Building2, Cable, CircleHelp, FlaskConical, GitBranch, History, LibraryBig, ReceiptText, Rocket, ScrollText, Server, ServerCog, Settings, ShieldCheck, Share2, UsersRound } from "lucide-react";
+import { Activity, Bot, Building2, Cable, CircleHelp, FlaskConical, GitBranch, History, LibraryBig, ReceiptText, Rocket, ScrollText, Server, ServerCog, Settings, ShieldCheck, UsersRound } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
 import { BrandLogo } from "@/components/brand-logo";
+import { ProjectSwitcher } from "@/components/project-switcher";
 import {
   Sidebar,
   SidebarContent,
@@ -27,18 +28,17 @@ import { useAuth } from "@/lib/auth";
 
 const navigation = [
   {
-    scope: "tenant",
+    scope: "project",
     label: "nav.guardrailDesign",
     items: [
       { label: "nav.guardrails", to: "/guardrails", icon: ShieldCheck, count: "guardrails" },
       { label: "nav.playground", to: "/playground", icon: FlaskConical },
       // Shows the released Policies where Guardrails are not authored.
       { label: "nav.policyLibrary", to: "/policy-library", icon: LibraryBig },
-      { label: "nav.models", to: "/models", icon: Bot },
     ],
   },
   {
-    scope: "tenant",
+    scope: "project",
     label: "nav.runtime",
     items: [
       { label: "nav.routers", to: "/integration/routers", icon: Rocket, count: "routers" },
@@ -46,11 +46,19 @@ const navigation = [
     ],
   },
   {
-    scope: "tenant",
+    scope: "project",
     label: "nav.runtimeObservations",
     items: [
       { label: "nav.logs", to: "/logs", icon: ScrollText },
       { label: "nav.billing", to: "/billing", icon: ReceiptText },
+    ],
+  },
+  {
+    scope: "platform",
+    label: "nav.peopleProjects",
+    items: [
+      { label: "nav.access", to: "/access", icon: UsersRound },
+      { label: "projects.title", to: "/access/projects", icon: Building2 },
     ],
   },
   {
@@ -66,27 +74,10 @@ const navigation = [
     scope: "platform",
     label: "nav.platformOperations",
     items: [
+      { label: "nav.runner", to: "/settings/runner", icon: Server },
       { label: "nav.health", to: "/settings/health", icon: Activity },
-      { label: "nav.runner", to: "/settings/runner", icon: Server },
-      { label: "nav.tenantGroups", to: "/settings/tenant-groups", icon: Building2 },
-      { label: "nav.tenantLoadLab", to: "/settings/tenant-load-lab", icon: Activity },
-      { label: "nav.version", to: "/settings/version", icon: GitBranch },
-    ],
-  },
-  {
-    scope: "platform",
-    label: "nav.accessAudit",
-    items: [
-      { label: "nav.access", to: "/access", icon: UsersRound },
       { label: "nav.auditLog", to: "/audit-log", icon: History },
-    ],
-  },
-  {
-    scope: "tenant",
-    label: "nav.system",
-    items: [
-      { label: "nav.sharing", to: "/sharing", icon: Share2 },
-      { label: "nav.runner", to: "/settings/runner", icon: Server },
+      { label: "nav.version", to: "/settings/version", icon: GitBranch },
     ],
   },
 ] as const;
@@ -98,9 +89,9 @@ export function ControlPlaneSidebar() {
   const workflowUser = hasPermission(user?.role, "guardrails", "write");
   const { setOpenMobile, state } = useSidebar();
   const pathname = useRouterState({ select: (routerState) => routerState.location.pathname });
-  const guardrails = useQuery({ queryKey: [...queryKeys.guardrails, "tenant", user?.tenant_id], queryFn: getGuardrails, enabled: workflowUser });
-  const routers = useQuery({ queryKey: [...trafficRouterKeys.all, "tenant", user?.tenant_id], queryFn: listTrafficRouters, enabled: workflowUser });
-  const endpoints = useQuery({ queryKey: [...queryKeys.endpoints, "tenant", user?.tenant_id], queryFn: getEndpoints, enabled: workflowUser });
+  const guardrails = useQuery({ queryKey: [...queryKeys.guardrails, "project", user?.project_id], queryFn: getGuardrails, enabled: workflowUser });
+  const routers = useQuery({ queryKey: [...trafficRouterKeys.all, "project", user?.project_id], queryFn: listTrafficRouters, enabled: workflowUser });
+  const endpoints = useQuery({ queryKey: [...queryKeys.endpoints, "project", user?.project_id], queryFn: getEndpoints, enabled: workflowUser });
   const counts: Record<string, number | undefined> = {
     guardrails: guardrails.data?.items.length,
     routers: routers.data?.items.length,
@@ -120,20 +111,22 @@ export function ControlPlaneSidebar() {
         </SidebarHeader>
 
         <SidebarContent className="px-2 py-3">
-          <div className="mx-1 mb-1 flex min-h-12 items-center gap-2 rounded-lg border border-sidebar-border px-2.5 py-2" aria-label={t(administrator ? "sidebar.platformIdentity" : "sidebar.activeTenant")} title={administrator ? t("sidebar.platformIdentity") : user?.tenant_id ?? undefined}>
-            <Building2 className="size-4 shrink-0 text-primary" aria-hidden="true" />
-            <span className="min-w-0 group-data-[collapsible=icon]:hidden"><span className="block text-[10px] text-sidebar-foreground/55">{t(administrator ? "sidebar.platformIdentity" : "sidebar.activeTenant")}</span><strong className="block truncate text-xs font-medium">{administrator ? t("sidebar.platformIdentity") : user?.tenant_id ?? "—"}</strong></span>
+          <div className="mx-1 mb-2">
+            {administrator ? <div className="flex h-11 items-center gap-2.5 px-2.5 text-sm text-sidebar-foreground group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:px-0" title={t("sidebar.platformIdentity")}>
+              <ShieldCheck className="size-4.5 shrink-0 text-muted-foreground" strokeWidth={1.75} aria-hidden="true" />
+              <span className="truncate font-medium group-data-[collapsible=icon]:hidden">{t("sidebar.platformIdentity")}</span>
+            </div> : <ProjectSwitcher collapsed={state === "collapsed"} />}
           </div>
           {navigation.filter(group => group.scope === "platform" ? administrator : workflowUser).map((group) => {
             return (
               <SidebarGroup key={group.label} className="px-0 py-2 group-data-[collapsible=icon]:px-1">
-                {group.label ? <SidebarGroupLabel className="h-7 px-2.5 text-[11px] font-medium text-sidebar-foreground/55 group-data-[collapsible=icon]:hidden">
+                {group.label ? <SidebarGroupLabel className="h-7 px-2.5 text-xs font-medium text-sidebar-foreground/75 group-data-[collapsible=icon]:hidden">
                   {t(group.label)}
                 </SidebarGroupLabel> : null}
                 <SidebarGroupContent>
                   <SidebarMenu className="gap-1">
                     {group.items.map((item) => {
-                      const active = pathname === item.to || pathname.startsWith(`${item.to}/`);
+                      const active = pathname === item.to || (item.to !== "/access" && pathname.startsWith(`${item.to}/`));
                       const count = "count" in item ? counts[item.count] : undefined;
                       const label = t(item.label);
                       return (

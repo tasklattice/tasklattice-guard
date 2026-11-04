@@ -311,8 +311,8 @@ export class RunnerPlaygroundClient {
     if (!response.ok) {
       throw new ControllerError(
         response.status === 404
-          ? (draft ? "The prepared Guardrail draft preview expired." : "The selected Guardrail Version has not reached GuardRails 0 yet.")
-          : "GuardRails 0 could not evaluate the Playground request.",
+          ? (draft ? "The prepared Guardrail draft preview expired." : "The selected Guardrail Version has not reached the assigned Runner yet.")
+          : "The assigned Runner could not evaluate the Playground request.",
         response.status === 404 ? 409 : 502,
         response.status === 404 ? "playground_artifact_not_ready" : "playground_runner_failed",
       );
@@ -348,7 +348,7 @@ export class RunnerPlaygroundClient {
     );
     if (!response.ok) {
       throw new ControllerError(
-        "GuardRails 0 could not prepare the draft preview.",
+        "The assigned Runner could not prepare the draft preview.",
         response.status === 409 ? 409 : 502,
         response.status === 409 ? "playground_draft_preview_stale" : "playground_draft_preview_failed",
       );

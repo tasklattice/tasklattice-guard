@@ -438,7 +438,7 @@ export type PolicyIntentDetails = {
 };
 
 export type Guardrail = {
-  tenant_id?: string;
+  project_id?: string;
   monthly_cost?: import("../../shared/model-pricing").GuardrailMonthlyCost;
   copy_origin?: import("./controller-api").Guardrail["copyOrigin"];
   id: string;
@@ -637,7 +637,7 @@ export type PolicyParameter = {
 export type Policy = {
   /** Resource may be deleted, subject to reference checks. */
   deletable?: boolean;
-  tenant_id?: string;
+  project_id?: string;
   definition?: import("../../shared/policy-definition").PolicyDefinition;
   maintenance?: { revision: number; maintainer: string };
   compliance?: import("../../shared/policy-compliance").PolicyCompliance;
@@ -823,7 +823,7 @@ export type OneTimeEndpointCredential = EndpointCredential & {
 };
 
 export type Endpoint = {
-  tenant_id?: string;
+  project_id?: string;
   id: string;
   adapter_id: EndpointAdapterId;
   protocol: EndpointProtocol;

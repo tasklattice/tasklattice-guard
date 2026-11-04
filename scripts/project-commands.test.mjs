@@ -173,16 +173,16 @@ test('development values and debug backend overrides reach Helm before explicit 
   assert.ok(args.includes('observability.prometheusRule.labels.release=uat-monitoring'));
   assert.deepEqual(args.slice(-2), ['--set-string', 'observability.tracing.otlpEndpoint=http://explicit:4318']);
 });
-test('lint covers default, UAT and debug settings without an additional Guard values file', t => {
+test('lint covers default, UAT, debug and the optional Keycloak overlay', t => {
   const f = fixture(t);
   const result = f.run('helm-lint');
   assert.equal(result.status, 0, result.stderr);
   const calls = f.calls();
   assert.ok(calls.every(call => call.command === 'helm' && call.args[0] === 'lint'));
   const guardCalls = calls.filter(call => call.args[1] === 'charts/tali-guard');
-  assert.equal(guardCalls.length, 4);
+  assert.equal(guardCalls.length, 5);
   assert.ok(guardCalls[3].args.includes('observability.performanceDebug.enabled=true'));
-  assert.deepEqual(guardCalls.flatMap(call => call.args.filter((arg, i) => call.args[i - 1] === '--values')), Array(3).fill('charts/tali-guard/values-dev-uat.yaml'));
+  assert.deepEqual(guardCalls.flatMap(call => call.args.filter((arg, i) => call.args[i - 1] === '--values')), [...Array(4).fill('charts/tali-guard/values-dev-uat.yaml'), 'charts/tali-guard/values-dev-keycloak.yaml']);
 });
 test('developer env loading preserves explicit shell overrides', () => {
   const root = mkdtempSync(join(tmpdir(), 'guard-env-load-'));
@@ -193,4 +193,15 @@ test('developer env loading preserves explicit shell overrides', () => {
     assert.equal(result.status, 0, result.stderr);
     assert.deepEqual(JSON.parse(result.stdout), ['18080', 'test-token']);
   } finally { rmSync(root, { recursive:true, force:true }); }
+});
+
+test('helm-deploy-keycloak adds the dev realm overlay and waits for Project initialization', t => {
+  const f = fixture(t);
+  const result = f.run('helm-deploy-keycloak');
+  assert.equal(result.status, 0, result.stderr);
+  const calls = f.calls();
+  assert.deepEqual(calls.map(call => call.command), ['bash', 'docker', 'docker', 'bash']);
+  const deploy = calls.at(-1);
+  assert.ok(deploy.args.includes('charts/tali-guard/values-dev-keycloak.yaml'));
+  assert.ok(deploy.args.includes('--wait-for-jobs'));
 });

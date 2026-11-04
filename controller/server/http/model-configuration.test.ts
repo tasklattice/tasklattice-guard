@@ -70,13 +70,13 @@ describe("Model configuration HTTP routes", () => {
     expect(models.finalizeActivation).toHaveBeenCalledWith(revision.id, "pool-c");
     expect((await response.json()).distribution.distributionStatus).toBe("syncing");
   });
-  it("routes operational concurrency updates through the tenant Model service boundary", async () => {
-    const models = { configureConcurrency: vi.fn().mockResolvedValue({ id: "model-1", maxConcurrency: 3 }) };
+  it("routes operational concurrency updates through the project Model service boundary", async () => {
+    const models = { configureRuntimeSettings: vi.fn().mockResolvedValue({ id: "model-1", maxConcurrency: 3 }) };
     const options = { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify({ maxConcurrency: 3 }) };
-    expect((await appWith("user", models).request("/api/v1/models/model-1/concurrency", options)).status).toBe(200);
-    expect(models.configureConcurrency).toHaveBeenCalledWith("model-1", { maxConcurrency: 3 }, "user-1");
-    expect((await appWith("admin", models).request("/api/v1/models/model-1/concurrency", options)).status).toBe(200);
-    expect(models.configureConcurrency).toHaveBeenCalledWith("model-1", { maxConcurrency: 3 }, "admin-1");
+    expect((await appWith("user", models).request("/api/v1/models/model-1/runtime-settings", options)).status).toBe(200);
+    expect(models.configureRuntimeSettings).toHaveBeenCalledWith("model-1", { maxConcurrency: 3 }, "user-1");
+    expect((await appWith("admin", models).request("/api/v1/models/model-1/runtime-settings", options)).status).toBe(200);
+    expect(models.configureRuntimeSettings).toHaveBeenCalledWith("model-1", { maxConcurrency: 3 }, "admin-1");
   });
 
   it("keeps administrator GET read-only even when activation is ready", async () => {
@@ -86,7 +86,7 @@ describe("Model configuration HTTP routes", () => {
     expect(models.finalizeActivation).not.toHaveBeenCalled();
     expect(runner.distributionStatus).not.toHaveBeenCalled();
   });
-  it("lets tenant users configure their own Models through the service boundary", async () => {
+  it("lets project users configure their own Models through the service boundary", async () => {
     const input = { profile: "tali.qwen3guard.v1", timeoutSeconds: 20, maxTokens: 512 };
     const models = { configureModel: vi.fn().mockResolvedValue({ id: "model-1", status: "pending", ...input }) };
     const options = { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify(input) };
@@ -116,11 +116,11 @@ describe("Model configuration HTTP routes", () => {
     expect(models.discoverProviderDraft).toHaveBeenCalledWith({ ...connection, skipTlsVerify: false });
     const result = await app.request("/api/v1/model-provider-registrations", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ connection, models: [selection] }) });
     expect(result.status).toBe(201);
-    expect(models.registerProviderModels).toHaveBeenCalledWith({ connection: { ...connection, skipTlsVerify: false }, models: [{ ...selection, maxConcurrency: 2 }] }, "admin-1");
+    expect(models.registerProviderModels).toHaveBeenCalledWith({ connection: { ...connection, skipTlsVerify: false }, models: [{ ...selection, maxConcurrency: 2, rateLimitAttempts: 3, lowerThreshold: 0.1, upperThreshold: 0.9 }] }, "admin-1");
   });
-  it("lets users read the sanitized tenant Model configuration projection", async () => {
-    const tenantView = { ...view, draft: null };
-    const models = { view: vi.fn().mockResolvedValue(tenantView) };
+  it("lets users read the sanitized project Model configuration projection", async () => {
+    const projectView = { ...view, draft: null };
+    const models = { view: vi.fn().mockResolvedValue(projectView) };
     const app = appWith("user", models);
     const response = await app.request("/api/v1/model-configuration");
     expect(response.status).toBe(200);
@@ -352,7 +352,7 @@ function appWith(
   appConfig = config,
 ) {
   const auth = {
-    api: { getSession: vi.fn().mockResolvedValue({ user: { id: `${role}-1`, role, tenantId: "tenantA" } }) },
+    api: { getSession: vi.fn().mockResolvedValue({ session: { id: "fixture-session", activeProjectId: "projectA" }, user: { id: `${role}-1`, role } }) },
     handler: vi.fn(),
   } as unknown as ControllerAuth;
   return createHttpApp({

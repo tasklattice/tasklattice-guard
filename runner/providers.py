@@ -41,17 +41,8 @@ def dynamic_runtime_action_providers(
     credentials: dict[str, str],
     *,
     transport: httpx.AsyncBaseTransport | None = None,
-    jev_thresholds: tuple[float, float] | None = None,
-    laya_thresholds: tuple[float, float] | None = None,
 ) -> tuple[ActionProvider, ...]:
-    """Build a complete provider registry from one Controller-owned revision.
-
-    ``jev_thresholds`` and ``laya_thresholds`` set independent operating bands
-    (lower, upper) for each decision model. Probabilities
-    strictly inside it are reported as ``unknown``. Each classifier Rule's
-    ``on_unknown`` controls that result independently of other Policies. Errors
-    retain their failure handling. Deployments tune the band per Runner.
-    """
+    """Build providers using each Model's Controller-owned runtime settings."""
 
     source_profiles = {item.id: item.profile_ref for item in configuration.runtimes}
     for binding in configuration.bindings:
@@ -86,7 +77,10 @@ def dynamic_runtime_action_providers(
             api_key=credentials.get(item.credential_ref, ""),
             timeout_seconds=float(item.timeout_seconds or 20),
             max_tokens=int(item.max_tokens or 128),
-            max_concurrency=int(getattr(item, "max_concurrency", 0) or 2),
+            max_concurrency=int(item.max_concurrency or 2),
+            rate_limit_attempts=int(item.rate_limit_attempts or 3),
+            lower_threshold=item.lower_threshold if item.HasField("lower_threshold") else 0.1,
+            upper_threshold=item.upper_threshold if item.HasField("upper_threshold") else 0.9,
             skip_tls_verify=item.skip_tls_verify,
         )
         for item in configuration.runtimes
@@ -108,11 +102,8 @@ def dynamic_runtime_action_providers(
             runtime = _assigned_runtime(item.model_ref,runtimes)
             reviewers[phase] = ClassifierReviewer(base_url=runtime.base_url,model=runtime.model,api_key=runtime.api_key or "",
                 provider_id=runtime.id,timeout_seconds=runtime.timeout_seconds,max_tokens=runtime.max_tokens,
-                skip_tls_verify=runtime.skip_tls_verify,transport=transports[runtime.id],rail_type=phase)
-    jev_options = ({"lower_threshold": jev_thresholds[0], "upper_threshold": jev_thresholds[1]}
-                   if jev_thresholds is not None else {})
-    laya_options = ({"lower_threshold": laya_thresholds[0], "upper_threshold": laya_thresholds[1]}
-                    if laya_thresholds is not None else {})
+                skip_tls_verify=runtime.skip_tls_verify,transport=transports[runtime.id],rail_type=phase,
+                rate_limit_attempts=runtime.rate_limit_attempts)
     local_providers = local_action_providers(PromptSecurityActionProvider())
     pii_evaluator = PiiEvaluator()
 
@@ -164,7 +155,8 @@ def dynamic_runtime_action_providers(
             provider_id=runtime.id, timeout_seconds=runtime.timeout_seconds,
             skip_tls_verify=runtime.skip_tls_verify, transport=transports[runtime.id],
             reviewer=reviewers.get("input"),
-            **jev_options,
+            lower_threshold=runtime.lower_threshold, upper_threshold=runtime.upper_threshold,
+            rate_limit_attempts=runtime.rate_limit_attempts,
         )
         routes.append(EvaluationRoute(capability, next(iter(evaluator.contracts)), evaluator))
     for capability, phase, evaluator_type in (("jailbreak", "input", LayaJailbreakEvaluator),
@@ -178,7 +170,8 @@ def dynamic_runtime_action_providers(
             provider_id=runtime.id, timeout_seconds=runtime.timeout_seconds,
             skip_tls_verify=runtime.skip_tls_verify, transport=transports[runtime.id],
             reviewer=reviewers.get(phase), rail_type=phase,
-            **laya_options,
+            lower_threshold=runtime.lower_threshold, upper_threshold=runtime.upper_threshold,
+            rate_limit_attempts=runtime.rate_limit_attempts,
         )
         routes.append(EvaluationRoute(capability, next(iter(evaluator.contracts)), evaluator))
     providers: list[ActionProvider] = [
@@ -199,7 +192,8 @@ def dynamic_runtime_action_providers(
                 base_url=runtime.base_url, model=runtime.model, api_key=runtime.api_key or "",
                 provider_id=runtime.id, timeout_seconds=runtime.timeout_seconds,
                 skip_tls_verify=runtime.skip_tls_verify, transport=transports[runtime.id], profile_ref=topic.profile_ref,
-                **jev_options,
+                lower_threshold=runtime.lower_threshold, upper_threshold=runtime.upper_threshold,
+                rate_limit_attempts=runtime.rate_limit_attempts,
                 reviewer=reviewers.get("input"),
             )
         elif topic.profile_ref in LAYA_PROFILES:
@@ -207,7 +201,8 @@ def dynamic_runtime_action_providers(
                 base_url=runtime.base_url, model=runtime.model, api_key=runtime.api_key or "",
                 provider_id=runtime.id, timeout_seconds=runtime.timeout_seconds,
                 skip_tls_verify=runtime.skip_tls_verify, transport=transports[runtime.id], profile_ref=topic.profile_ref,
-                **laya_options,
+                lower_threshold=runtime.lower_threshold, upper_threshold=runtime.upper_threshold,
+                rate_limit_attempts=runtime.rate_limit_attempts,
                 reviewer=reviewers.get("input"),
             )
         else:

@@ -1,4 +1,4 @@
-"""Explicit v2 rate of admission starts shared across a Controller tenant group.
+"""Explicit v2 rate of admission starts shared across a Controller project group.
 
 All participating pools/replicas use one canonical policy and Redis hash slot.
 No counters are created from requests; concurrency and reservations are separate.
@@ -23,7 +23,7 @@ from redis.exceptions import RedisError
 from redis.retry import Retry
 
 from .distributed_rate_admission import _PROVISION
-from .tenant_admission import AdmissionRejected, AdmissionUnavailable
+from .project_admission import AdmissionRejected, AdmissionUnavailable
 
 
 @dataclass(frozen=True)
@@ -32,7 +32,7 @@ class GroupRateConfiguration:
     revision: str
     window_ms: int
     group_limit: int
-    tenant_limits: Mapping[str, int]
+    project_limits: Mapping[str, int]
     pool_limits: Mapping[str, int]
     pool_epochs: Mapping[str, int]
 
@@ -50,9 +50,9 @@ class GroupRateConfiguration:
             values = json.loads(raw, object_pairs_hook=unique)
         except (TypeError, json.JSONDecodeError) as error:
             raise ValueError("Group rate policy must be a JSON object.") from error
-        fields = {"group_id", "revision", "window_ms", "group_limit", "tenant_limits", "pool_limits", "pool_epochs"}
+        fields = {"group_id", "revision", "window_ms", "group_limit", "project_limits", "pool_limits", "pool_epochs"}
         if not isinstance(values, dict) or set(values) != fields:
-            raise ValueError("Group rate policy must contain exactly group_id, revision, window_ms, group_limit, tenant_limits, pool_limits and pool_epochs.")
+            raise ValueError("Group rate policy must contain exactly group_id, revision, window_ms, group_limit, project_limits, pool_limits and pool_epochs.")
 
         def identity(value):
             if not isinstance(value, str) or not value or value != value.strip() or len(value) > 256:
@@ -67,38 +67,38 @@ class GroupRateConfiguration:
         window = values["window_ms"]
         if type(window) is not int or not 100 <= window <= 86_400_000:
             raise ValueError("Group rate window_ms must be an integer between 100 and 86400000.")
-        for field in ("tenant_limits", "pool_limits", "pool_epochs"):
+        for field in ("project_limits", "pool_limits", "pool_epochs"):
             mapping = values[field]
             if not isinstance(mapping, dict) or not 1 <= len(mapping) <= 1000:
                 raise ValueError("Group rate maps must contain 1 to 1000 named entries.")
             for key in mapping:
                 identity(key)
-        for limit in [values["group_limit"], *values["tenant_limits"].values(), *values["pool_limits"].values()]:
+        for limit in [values["group_limit"], *values["project_limits"].values(), *values["pool_limits"].values()]:
             if type(limit) is not int or not 1 <= limit <= 100_000:
                 raise ValueError("Group rate limits must be integers between 1 and 100000.")
         if set(values["pool_limits"]) != set(values["pool_epochs"]) or any(
             type(epoch) is not int or not 0 <= epoch <= 9_007_199_254_740_991 for epoch in values["pool_epochs"].values()
         ):
             raise ValueError("Group rate pool_epochs must match pool_limits with nonnegative safe-integer epochs.")
-        for field in ("tenant_limits", "pool_limits"):
+        for field in ("project_limits", "pool_limits"):
             if sum(min(limit, values["group_limit"]) for limit in values[field].values()) > 100_000:
-                raise ValueError("Group rate retained tenant and pool histories must each not exceed 100000 entries.")
+                raise ValueError("Group rate retained project and pool histories must each not exceed 100000 entries.")
         return cls(**{**values, **{field: MappingProxyType(dict(values[field]))
-            for field in ("tenant_limits", "pool_limits", "pool_epochs")}})
+            for field in ("project_limits", "pool_limits", "pool_epochs")}})
 
     @property
     def canonical_json(self) -> str:
         return json.dumps({"group_id": self.group_id, "revision": self.revision, "window_ms": self.window_ms,
-            "group_limit": self.group_limit, "tenant_limits": dict(self.tenant_limits),
+            "group_limit": self.group_limit, "project_limits": dict(self.project_limits),
             "pool_limits": dict(self.pool_limits), "pool_epochs": dict(self.pool_epochs)}, sort_keys=True, separators=(",", ":"))
 
     @property
     def digest(self) -> str:
         return hashlib.sha256(self.canonical_json.encode()).hexdigest()
 
-    def validate_runner(self, pool_id: str, local_tenants: Mapping[str, int]) -> None:
-        if pool_id not in self.pool_limits or not set(local_tenants).issubset(self.tenant_limits):
-            raise ValueError("Group rate policy must include the trusted Runner pool and all local admission tenants.")
+    def validate_runner(self, pool_id: str, local_projects: Mapping[str, int]) -> None:
+        if pool_id not in self.pool_limits or not set(local_projects).issubset(self.project_limits):
+            raise ValueError("Group rate policy must include the trusted Runner pool and all local admission projects.")
 
 
 _ADMIT_GROUP = """
@@ -156,18 +156,18 @@ class RedisGroupRateAdmission:
     def _pool_key(self, pool: str) -> str:
         return f"{self._prefix}:pool:{hashlib.sha256(pool.encode()).hexdigest()}"
 
-    def _tenant_key(self, tenant: str) -> str:
-        return f"{self._prefix}:tenant:{hashlib.sha256(tenant.encode()).hexdigest()}"
+    def _project_key(self, project: str) -> str:
+        return f"{self._prefix}:project:{hashlib.sha256(project.encode()).hexdigest()}"
 
     @property
     def state_keys(self) -> tuple[str, ...]:
         return (self._policy_key, self._group_key,
-            *(self._tenant_key(tenant) for tenant in sorted(self.configuration.tenant_limits)),
+            *(self._project_key(project) for project in sorted(self.configuration.project_limits)),
             *(self._pool_key(pool) for pool in sorted(self.configuration.pool_limits)))
 
-    def validate_allocation(self, tenant: str, group_id: str, epoch: int) -> None:
+    def validate_allocation(self, project: str, group_id: str, epoch: int) -> None:
         if (group_id != self.configuration.group_id or type(epoch) is not int or
-            epoch != self.configuration.pool_epochs[self.pool_id] or tenant not in self.configuration.tenant_limits):
+            epoch != self.configuration.pool_epochs[self.pool_id] or project not in self.configuration.project_limits):
             raise AdmissionUnavailable("Controller allocation has no matching group rate policy.")
 
     async def provision(self) -> None:
@@ -181,14 +181,14 @@ class RedisGroupRateAdmission:
         if result != 1:
             raise AdmissionUnavailable("Group rate state already exists; provisioning cannot reset or replace it.")
 
-    async def admit(self, tenant: str, *, group_id: str, epoch: int) -> None:
-        self.validate_allocation(tenant, group_id, epoch)
-        keys = (self._policy_key, self._group_key, self._tenant_key(tenant), self._pool_key(self.pool_id))
+    async def admit(self, project: str, *, group_id: str, epoch: int) -> None:
+        self.validate_allocation(project, group_id, epoch)
+        keys = (self._policy_key, self._group_key, self._project_key(project), self._pool_key(self.pool_id))
         try:
             async with asyncio.timeout(2):
                 result = await self._redis.eval(_ADMIT_GROUP, 4, *keys, self._digest,
                     self.configuration.window_ms, self.configuration.group_limit,
-                    self.configuration.tenant_limits[tenant], self.configuration.pool_limits[self.pool_id], uuid.uuid4().hex)
+                    self.configuration.project_limits[project], self.configuration.pool_limits[self.pool_id], uuid.uuid4().hex)
         except (RedisError, OSError, TimeoutError) as error:
             raise AdmissionUnavailable("Group rate authority is unavailable.") from error
         if (not isinstance(result, (list, tuple)) or len(result) != 2 or any(type(value) is not int for value in result)):

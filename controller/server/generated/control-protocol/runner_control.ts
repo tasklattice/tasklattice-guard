@@ -42,6 +42,10 @@ import type { PolicyActionReference as _tasklattice_guard_control_v1_PolicyActio
 import type { PolicyRailBinding as _tasklattice_guard_control_v1_PolicyRailBinding, PolicyRailBinding__Output as _tasklattice_guard_control_v1_PolicyRailBinding__Output } from './tasklattice/guard/control/v1/PolicyRailBinding.js';
 import type { PolicySource as _tasklattice_guard_control_v1_PolicySource, PolicySource__Output as _tasklattice_guard_control_v1_PolicySource__Output } from './tasklattice/guard/control/v1/PolicySource.js';
 import type { PolicyVersion as _tasklattice_guard_control_v1_PolicyVersion, PolicyVersion__Output as _tasklattice_guard_control_v1_PolicyVersion__Output } from './tasklattice/guard/control/v1/PolicyVersion.js';
+import type { ProjectAdmissionHistogram as _tasklattice_guard_control_v1_ProjectAdmissionHistogram, ProjectAdmissionHistogram__Output as _tasklattice_guard_control_v1_ProjectAdmissionHistogram__Output } from './tasklattice/guard/control/v1/ProjectAdmissionHistogram.js';
+import type { ProjectAdmissionObservation as _tasklattice_guard_control_v1_ProjectAdmissionObservation, ProjectAdmissionObservation__Output as _tasklattice_guard_control_v1_ProjectAdmissionObservation__Output } from './tasklattice/guard/control/v1/ProjectAdmissionObservation.js';
+import type { ProjectAdmissionOutcomes as _tasklattice_guard_control_v1_ProjectAdmissionOutcomes, ProjectAdmissionOutcomes__Output as _tasklattice_guard_control_v1_ProjectAdmissionOutcomes__Output } from './tasklattice/guard/control/v1/ProjectAdmissionOutcomes.js';
+import type { ProjectAdmissionSnapshot as _tasklattice_guard_control_v1_ProjectAdmissionSnapshot, ProjectAdmissionSnapshot__Output as _tasklattice_guard_control_v1_ProjectAdmissionSnapshot__Output } from './tasklattice/guard/control/v1/ProjectAdmissionSnapshot.js';
 import type { PromptDefinition as _tasklattice_guard_control_v1_PromptDefinition, PromptDefinition__Output as _tasklattice_guard_control_v1_PromptDefinition__Output } from './tasklattice/guard/control/v1/PromptDefinition.js';
 import type { ProviderEvidence as _tasklattice_guard_control_v1_ProviderEvidence, ProviderEvidence__Output as _tasklattice_guard_control_v1_ProviderEvidence__Output } from './tasklattice/guard/control/v1/ProviderEvidence.js';
 import type { RegistrationAccepted as _tasklattice_guard_control_v1_RegistrationAccepted, RegistrationAccepted__Output as _tasklattice_guard_control_v1_RegistrationAccepted__Output } from './tasklattice/guard/control/v1/RegistrationAccepted.js';
@@ -57,10 +61,6 @@ import type { ServingLeaseRequest as _tasklattice_guard_control_v1_ServingLeaseR
 import type { ServingLeaseResponse as _tasklattice_guard_control_v1_ServingLeaseResponse, ServingLeaseResponse__Output as _tasklattice_guard_control_v1_ServingLeaseResponse__Output } from './tasklattice/guard/control/v1/ServingLeaseResponse.js';
 import type { StringPair as _tasklattice_guard_control_v1_StringPair, StringPair__Output as _tasklattice_guard_control_v1_StringPair__Output } from './tasklattice/guard/control/v1/StringPair.js';
 import type { TelemetryUploadAuthorization as _tasklattice_guard_control_v1_TelemetryUploadAuthorization, TelemetryUploadAuthorization__Output as _tasklattice_guard_control_v1_TelemetryUploadAuthorization__Output } from './tasklattice/guard/control/v1/TelemetryUploadAuthorization.js';
-import type { TenantAdmissionHistogram as _tasklattice_guard_control_v1_TenantAdmissionHistogram, TenantAdmissionHistogram__Output as _tasklattice_guard_control_v1_TenantAdmissionHistogram__Output } from './tasklattice/guard/control/v1/TenantAdmissionHistogram.js';
-import type { TenantAdmissionObservation as _tasklattice_guard_control_v1_TenantAdmissionObservation, TenantAdmissionObservation__Output as _tasklattice_guard_control_v1_TenantAdmissionObservation__Output } from './tasklattice/guard/control/v1/TenantAdmissionObservation.js';
-import type { TenantAdmissionOutcomes as _tasklattice_guard_control_v1_TenantAdmissionOutcomes, TenantAdmissionOutcomes__Output as _tasklattice_guard_control_v1_TenantAdmissionOutcomes__Output } from './tasklattice/guard/control/v1/TenantAdmissionOutcomes.js';
-import type { TenantAdmissionSnapshot as _tasklattice_guard_control_v1_TenantAdmissionSnapshot, TenantAdmissionSnapshot__Output as _tasklattice_guard_control_v1_TenantAdmissionSnapshot__Output } from './tasklattice/guard/control/v1/TenantAdmissionSnapshot.js';
 import type { TrafficCondition as _tasklattice_guard_control_v1_TrafficCondition, TrafficCondition__Output as _tasklattice_guard_control_v1_TrafficCondition__Output } from './tasklattice/guard/control/v1/TrafficCondition.js';
 import type { TrafficScope as _tasklattice_guard_control_v1_TrafficScope, TrafficScope__Output as _tasklattice_guard_control_v1_TrafficScope__Output } from './tasklattice/guard/control/v1/TrafficScope.js';
 import type { ValidationCancelRequest as _tasklattice_guard_control_v1_ValidationCancelRequest, ValidationCancelRequest__Output as _tasklattice_guard_control_v1_ValidationCancelRequest__Output } from './tasklattice/guard/control/v1/ValidationCancelRequest.js';
@@ -143,6 +143,10 @@ export interface ProtoGrpcType {
           PolicyRailBinding: MessageTypeDefinition<_tasklattice_guard_control_v1_PolicyRailBinding, _tasklattice_guard_control_v1_PolicyRailBinding__Output>
           PolicySource: MessageTypeDefinition<_tasklattice_guard_control_v1_PolicySource, _tasklattice_guard_control_v1_PolicySource__Output>
           PolicyVersion: MessageTypeDefinition<_tasklattice_guard_control_v1_PolicyVersion, _tasklattice_guard_control_v1_PolicyVersion__Output>
+          ProjectAdmissionHistogram: MessageTypeDefinition<_tasklattice_guard_control_v1_ProjectAdmissionHistogram, _tasklattice_guard_control_v1_ProjectAdmissionHistogram__Output>
+          ProjectAdmissionObservation: MessageTypeDefinition<_tasklattice_guard_control_v1_ProjectAdmissionObservation, _tasklattice_guard_control_v1_ProjectAdmissionObservation__Output>
+          ProjectAdmissionOutcomes: MessageTypeDefinition<_tasklattice_guard_control_v1_ProjectAdmissionOutcomes, _tasklattice_guard_control_v1_ProjectAdmissionOutcomes__Output>
+          ProjectAdmissionSnapshot: MessageTypeDefinition<_tasklattice_guard_control_v1_ProjectAdmissionSnapshot, _tasklattice_guard_control_v1_ProjectAdmissionSnapshot__Output>
           PromptDefinition: MessageTypeDefinition<_tasklattice_guard_control_v1_PromptDefinition, _tasklattice_guard_control_v1_PromptDefinition__Output>
           ProviderEvidence: MessageTypeDefinition<_tasklattice_guard_control_v1_ProviderEvidence, _tasklattice_guard_control_v1_ProviderEvidence__Output>
           RailType: EnumTypeDefinition
@@ -167,10 +171,6 @@ export interface ProtoGrpcType {
           StringPair: MessageTypeDefinition<_tasklattice_guard_control_v1_StringPair, _tasklattice_guard_control_v1_StringPair__Output>
           TargetSource: EnumTypeDefinition
           TelemetryUploadAuthorization: MessageTypeDefinition<_tasklattice_guard_control_v1_TelemetryUploadAuthorization, _tasklattice_guard_control_v1_TelemetryUploadAuthorization__Output>
-          TenantAdmissionHistogram: MessageTypeDefinition<_tasklattice_guard_control_v1_TenantAdmissionHistogram, _tasklattice_guard_control_v1_TenantAdmissionHistogram__Output>
-          TenantAdmissionObservation: MessageTypeDefinition<_tasklattice_guard_control_v1_TenantAdmissionObservation, _tasklattice_guard_control_v1_TenantAdmissionObservation__Output>
-          TenantAdmissionOutcomes: MessageTypeDefinition<_tasklattice_guard_control_v1_TenantAdmissionOutcomes, _tasklattice_guard_control_v1_TenantAdmissionOutcomes__Output>
-          TenantAdmissionSnapshot: MessageTypeDefinition<_tasklattice_guard_control_v1_TenantAdmissionSnapshot, _tasklattice_guard_control_v1_TenantAdmissionSnapshot__Output>
           TrafficCombinator: EnumTypeDefinition
           TrafficCondition: MessageTypeDefinition<_tasklattice_guard_control_v1_TrafficCondition, _tasklattice_guard_control_v1_TrafficCondition__Output>
           TrafficOperator: EnumTypeDefinition

@@ -84,14 +84,14 @@ run has an immutable run ID. In each Controller deployment, tests execute only
 on the default pool's StatefulSet ordinal `-0` Runner. If that Runner is absent,
 busy, or has not acknowledged the current model configuration, queued work waits;
 it does not move to ordinal `-1` or another pool. This is a deployment-level
-boundary, not a new per-user/tenant Runner assignment mechanism.
+boundary, not a new per-user/project Runner assignment mechanism.
 
-Use GuardCtl with the tenant's normal API credentials:
+Use GuardCtl with the project's normal API credentials:
 
 ```bash
-bin/guardctl tenant test --guardrail-id <guardrail-id> --url=https://guard.example.com
-bin/guardctl tenant test-status --run-id <run-id> --url=https://guard.example.com
-bin/guardctl tenant test-cancel --run-id <run-id> --url=https://guard.example.com
+bin/guardctl project test --guardrail-id <guardrail-id> --url=https://guard.example.com
+bin/guardctl project test-status --run-id <run-id> --url=https://guard.example.com
+bin/guardctl project test-cancel --run-id <run-id> --url=https://guard.example.com
 ```
 
 These commands are equivalent to the UI's test actions. Submit once and use the
@@ -134,7 +134,7 @@ identifiers and timing rather than request bodies, credentials or raw provider
 responses. For example, in the local deployment:
 
 ```bash
-kubectl -n tali logs tali-guard-runner-0 --since=30m | grep '<run-id>'
+kubectl -n tali logs runner-default-0 --since=30m | grep '<run-id>'
 ```
 
 ### Large test reports and the finalizing phase
@@ -156,11 +156,11 @@ format; upgrade both planes for large reports.
 The client no longer treats a five-minute total wait as report failure. It polls
 the same ID until the server reports a terminal state; model/task execution
 deadlines remain server-owned. Detailed report GETs negotiate HTTP compression
-and use a separate two-minute client read budget. `guardctl tenant test-status`
+and use a separate two-minute client read budget. `guardctl project test-status`
 reads a lightweight summary by default; add `--detail` to download all evidence:
 
 ```bash
-bin/guardctl tenant test-status --run-id <run-id> --detail --url=https://guard.example.com > report.json
+bin/guardctl project test-status --run-id <run-id> --detail --url=https://guard.example.com > report.json
 ```
 
 For delivery diagnostics, follow `validation.report_packing` →

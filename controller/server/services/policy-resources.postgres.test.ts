@@ -1,3 +1,4 @@
+import { withTestProject } from "../db/postgres-test-database.js";
 import { createTestDatabase } from "../db/postgres-test-database.js";
 import { ReportResults } from "./report-results.js";
 import { stageCases } from "../db/report-test-utils.js";
@@ -31,9 +32,9 @@ describe.skipIf(!url)("declarative Policy transactions", () => {
     definition.rules = ["first", "second"].map(id => ({ id, name: id, description: "", stages: ["input"], detector: { ref: "text/keyword", version: "1.0.0", parameters: { detector_options: { terms: [id] } } }, on_match: { action: "block" }, risk_level: "medium", metadata: { taxonomy_ids: ["TALI-BUSINESS-POLICY"] } }));
     definition.tests = definition.rules.map(r => ({ id: r.id, name: r.name, description: "", phase: "input", content: r.id, expected_decision: "block", covered_rule_ids: [r.id], kind: "rule_acceptance", scope: "rule", required: true, group: "Tests", parameter_names: [] }));
     const id = definition.metadata.id;
-    const first = await service.save({ definition, maintainer: "Test", expectedRevision: 0, actorId: "test", create: true });
+    const first = await withTestProject(() => service.save({ definition, maintainer: "Test", expectedRevision: 0, actorId: "test", create: true }));
     expect(first.revision).toBe(1); expect((await service.views([]))[0]!.version).toBe("0");
-    expect((await service.save({ definition, maintainer: "Test", expectedRevision: 1, actorId: "test" })).revision).toBe(1);
+    expect((await withTestProject(() => service.save({ definition, maintainer: "Test", expectedRevision: 1, actorId: "test" }))).revision).toBe(1);
     await expect(service.publish(id, 1, "test")).rejects.toThrow("must pass");
     const report = await service.validate(id, "test", true);
     const jobs = (await pool.query("SELECT * FROM policy_resource_validation WHERE parent_id=$1", [report.id])).rows;
@@ -53,7 +54,7 @@ describe.skipIf(!url)("declarative Policy transactions", () => {
     expect(new Set(published.map(p => p.version)).size).toBe(1);
     expect((await pool.query("SELECT count(*)::int AS count FROM policy_resource_version")).rows[0].count).toBe(1);
     const changed = { ...definition, metadata: { ...definition.metadata, name: "Changed draft" } };
-    const attempts = await Promise.allSettled([1, 2].map(() => service.save({ definition: changed, maintainer: "Test", expectedRevision: 1, actorId: "test" })));
+    const attempts = await Promise.allSettled([1, 2].map(() => withTestProject(() => service.save({ definition: changed, maintainer: "Test", expectedRevision: 1, actorId: "test" }))));
     expect(attempts.filter(r => r.status === "fulfilled")).toHaveLength(1);
     await expect(service.publish(id, 2, "test")).rejects.toThrow("must pass");
     expect((await service.publish(id, 1, "test")).version).toBe(published[0]!.version);
@@ -63,7 +64,7 @@ describe.skipIf(!url)("declarative Policy transactions", () => {
     const definition = service.compiler.shipped("configured-phrase-filter")!;
     definition.metadata.id = "test-phrases";
     definition.testing = { parameters: { phrase_entries: JSON.stringify([{ id: "a", phrase: "alpha", action: "block" }, { id: "b", phrase: "beta", action: "transform", replacement: "[hidden]" }]) } };
-    await service.save({ definition, maintainer: "Test", expectedRevision: 0, actorId: "test", create: true });
+    await withTestProject(() => service.save({ definition, maintainer: "Test", expectedRevision: 0, actorId: "test", create: true }));
     const report = await service.validate(definition.metadata.id, "test", true);
     const jobs = (await pool.query("SELECT v.tests, o.payload FROM policy_resource_validation v JOIN controller_outbox o ON o.id=v.id WHERE v.parent_id=$1", [report.id])).rows;
     expect(jobs).toHaveLength(2);
@@ -76,7 +77,7 @@ describe.skipIf(!url)("declarative Policy transactions", () => {
     const definition = service.compiler.shipped("builtin-topic-safety")!;
     definition.metadata.id = "parameterized-topic";
     definition.testing = { parameters: { denied_topics: "Synthetic test topic", allowed_topics: "Synthetic support", topic_mode: "strict" } };
-    await service.save({ definition, maintainer: "Test", expectedRevision: 0, actorId: "test", create: true });
+    await withTestProject(() => service.save({ definition, maintainer: "Test", expectedRevision: 0, actorId: "test", create: true }));
     const report = await service.validate(definition.metadata.id, "test", true);
     const jobs = (await pool.query("SELECT v.id, v.tests, o.payload FROM policy_resource_validation v JOIN controller_outbox o ON o.id=v.id WHERE v.parent_id=$1", [report.id])).rows;
     expect(jobs).toHaveLength(2);
@@ -94,7 +95,7 @@ describe.skipIf(!url)("declarative Policy transactions", () => {
     expect(parameters.some(p => p.restricted_topics === "Business restriction")).toBe(true);
     expect(JSON.stringify(parameters)).not.toContain("Synthetic");
     definition.testing.parameters.denied_topics = "Changed example";
-    await service.save({ definition, maintainer: "Test", expectedRevision: 1, actorId: "test" });
+    await withTestProject(() => service.save({ definition, maintainer: "Test", expectedRevision: 1, actorId: "test" }));
     expect((await service.publish(definition.metadata.id, 1, "test")).definition?.testing?.parameters.denied_topics).toBe("Synthetic test topic");
   });
 });

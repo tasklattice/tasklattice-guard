@@ -24,11 +24,20 @@ export class RunnerTelemetryProgress {
     if (!z.string().uuid().safeParse(walId).success) throw new ConflictError("Telemetry WAL identity is invalid.", "telemetry_wal_conflict");
     return this.db.transaction(async tx => {
       await advisoryTransactionLock(tx, "traffic-router-bindings");
-      if (!await current(tx, identity)) throw unavailable();
+      if (!await current(tx, identity, true)) throw unavailable();
       await tx.insert(runnerTelemetryWals).values({ runnerId: identity.runnerId, poolId: identity.poolId, walId }).onConflictDoNothing();
-      const [wal] = await tx.select().from(runnerTelemetryWals).where(eq(runnerTelemetryWals.runnerId, identity.runnerId)).for("update");
-      if (!wal || wal.poolId !== identity.poolId || wal.walId !== walId) throw new ConflictError(
-        "The retained telemetry WAL identity changed; explicit recovery is required.", "telemetry_wal_conflict");
+      let [wal] = await tx.select().from(runnerTelemetryWals).where(eq(runnerTelemetryWals.runnerId, identity.runnerId)).for("update");
+      if (!wal || wal.poolId !== identity.poolId) throw new ConflictError(
+        "Telemetry WAL does not belong to this Runner pool.", "telemetry_wal_conflict");
+      if (wal.walId !== walId) {
+        // Telemetry is best effort: a missing local WAL starts fresh on
+        // registration. Revoke capabilities tied to the previous WAL.
+        await tx.delete(runnerTelemetryCapabilities).where(eq(runnerTelemetryCapabilities.walId, wal.walId));
+        [wal] = await tx.update(runnerTelemetryWals).set({ walId, acknowledgedCursor: 0, producedCursor: 0,
+          lastBatchId: null, lastBatchDigest: null, lastBatchFirst: null, lastBatchLast: null,
+          receivedAt: null, caughtUpAt: null }).where(eq(runnerTelemetryWals.runnerId, identity.runnerId)).returning();
+        if (!wal) throw unavailable();
+      }
       const token = randomBytes(32).toString("hex");
       const [issued] = await tx.insert(runnerTelemetryCapabilities).values({ controlSessionId: identity.sessionId,
         walId, capabilityHash: digest(token) }).onConflictDoNothing().returning({ id: runnerTelemetryCapabilities.controlSessionId });

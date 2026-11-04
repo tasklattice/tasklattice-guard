@@ -51,7 +51,7 @@ class RuntimeArtifact:
 
 @dataclass(frozen=True, slots=True)
 class AuthenticatedEndpointAllocation:
-    tenant_id: str
+    project_id: str
     group_id: str
     epoch: int
     generation: int
@@ -345,17 +345,17 @@ class ArtifactStore:
                 getattr(self, "_router_revisions", {}), getattr(self, "_artifacts", {}),
                 getattr(self, "_release_id", None), getattr(self, "_model_revision_id", None), access.authenticated)
 
-    def authenticated_endpoint_tenant(self, endpoint_id: str, credential: str | None) -> str | None:
+    def authenticated_endpoint_project(self, endpoint_id: str, credential: str | None) -> str | None:
         """Authenticate and read the owner from the same local state snapshot.
 
-        Legacy snapshots with no owner fail closed for optional tenant
+        Legacy snapshots with no owner fail closed for optional project
         admission. This read alone does not fence a subsequent allocation move.
         """
         with self._lock:
             if not self.authorize_endpoint(endpoint_id, credential).allowed:
                 return None
-            tenant = self._endpoints.get(endpoint_id, {}).get("_tenant_id")
-            return tenant if isinstance(tenant, str) and tenant and tenant.strip() == tenant else None
+            project = self._endpoints.get(endpoint_id, {}).get("_project_id")
+            return project if isinstance(project, str) and project and project.strip() == project else None
 
     def authenticated_endpoint_allocation(self, endpoint_id: str, credential: str | None) -> AuthenticatedEndpointAllocation | None:
         """Read auth, owner and Controller allocation from one atomic snapshot.
@@ -364,12 +364,12 @@ class ArtifactStore:
         check current control synchronization/lease state before executing.
         """
         with self._lock:
-            tenant = self.authenticated_endpoint_tenant(endpoint_id, credential)
+            project = self.authenticated_endpoint_project(endpoint_id, credential)
             group = getattr(self, "_allocation_group_id", None)
             epoch = getattr(self, "_allocation_epoch", None)
-            if tenant is None or group is None or epoch is None:
+            if project is None or group is None or epoch is None:
                 return None
-            return AuthenticatedEndpointAllocation(tenant, group, epoch, self._generation)
+            return AuthenticatedEndpointAllocation(project, group, epoch, self._generation)
 
     def endpoint_scan_flag_only_default(self, endpoint_id: str) -> bool:
         with self._lock:
@@ -450,7 +450,7 @@ class ArtifactStore:
                 "_credential_digests": tuple(credential.sha256 for credential in item.verification.credentials
                     if not credential.HasField("revoked_at")),
                 "_credential_required": item.credential_required,
-                "_tenant_id": item.tenant_id if item.HasField("tenant_id") else None,
+                "_project_id": item.project_id if item.HasField("project_id") else None,
                 "_telemetry_context_id": item.telemetry_context_id if item.HasField("telemetry_context_id") else None,
                 "_scan_flag_only_default": item.scan_flag_only_default if item.HasField("scan_flag_only_default") else True}
         registry = self._registry

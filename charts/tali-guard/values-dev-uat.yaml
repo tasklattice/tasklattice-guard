@@ -34,7 +34,7 @@ runner:
     tag: dev
     pullPolicy: Never
   default:
-    # One Runner is sufficient for local development; production defaults to two.
+    # One Default Runner replica.
     replicaCount: 1
   service:
     public:

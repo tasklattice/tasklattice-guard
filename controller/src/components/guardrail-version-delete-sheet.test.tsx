@@ -38,12 +38,12 @@ describe("Guardrail version deletion", () => {
     await waitFor(() => expect(confirm().hasAttribute("disabled")).toBe(false));
   });
 
-  it("shows a private tenant dependency without a Router link", async () => {
+  it("shows a private project dependency without a Router link", async () => {
     mount({ ...base, deletable: false, references: [
-      { kind: "router_active", routerId: "", routerName: "Another tenant’s Router" },
+      { kind: "router_active", routerId: "", routerName: "Another project’s Router" },
     ] });
     const list = await screen.findByRole("region", { name: "guardrails.versionReferences" });
-    expect(within(list).getByText("Another tenant’s Router")).toBeTruthy();
+    expect(within(list).getByText("Another project’s Router")).toBeTruthy();
     expect(within(list).queryByRole("link")).toBeNull();
     expect(confirm().hasAttribute("disabled")).toBe(true);
   });

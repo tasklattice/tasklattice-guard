@@ -86,6 +86,15 @@ export const providerUpdateSchema = providerInputSchema.partial().extend({
   "Provide at least one Provider field to update.",
 );
 
+export const modelRuntimeSettingsObjectSchema = z.object({
+  maxConcurrency: z.number().int().min(1).max(64).default(2),
+  rateLimitAttempts: z.number().int().min(1).max(10).default(3),
+  lowerThreshold: z.number().min(0).max(1).default(0.1),
+  upperThreshold: z.number().min(0).max(1).default(0.9),
+});
+const validThresholds = (value: { lowerThreshold: number; upperThreshold: number }) => value.lowerThreshold < value.upperThreshold;
+const thresholdError = { message: "Lower threshold must be below upper threshold.", path: ["upperThreshold"] };
+
 const modelInputObjectSchema = z.object({
   providerId: z.string().uuid(),
   name: z.string().trim().min(2).max(120),
@@ -93,22 +102,22 @@ const modelInputObjectSchema = z.object({
   profile: z.enum(modelProfiles).default("generic-chat"),
   timeoutSeconds: z.number().int().min(1).max(120).default(20),
   maxTokens: z.number().int().min(1).max(32_768).default(512),
-  maxConcurrency: z.number().int().min(1).max(64).default(2),
+  ...modelRuntimeSettingsObjectSchema.shape,
 });
 
-export const modelInputSchema = modelInputObjectSchema.refine((input) => !isRetiredModel(input.model), {
+export const modelInputSchema = modelInputObjectSchema.refine(validThresholds, thresholdError).refine((input) => !isRetiredModel(input.model), {
   message: "This Model has been retired and cannot be registered.", path: ["model"],
 });
 
 export const modelConfigurationInputSchema = modelInputObjectSchema.pick({
   profile: true, timeoutSeconds: true, maxTokens: true,
-}).extend({ maxConcurrency: modelInputObjectSchema.shape.maxConcurrency.optional() });
+}).extend(modelRuntimeSettingsObjectSchema.shape).refine(validThresholds, thresholdError);
 
-export const modelConcurrencyInputSchema = z.object({ maxConcurrency: z.number().int().min(1).max(64) });
+export const modelRuntimeSettingsInputSchema = modelRuntimeSettingsObjectSchema.refine(validThresholds, thresholdError);
 
 export const providerRegistrationSchema = z.object({
   connection: providerInputSchema,
-  models: z.array(modelInputObjectSchema.omit({ providerId: true }).refine((input) => !isRetiredModel(input.model), {
+  models: z.array(modelInputObjectSchema.omit({ providerId: true }).refine(validThresholds, thresholdError).refine((input) => !isRetiredModel(input.model), {
     message: "This Model has been retired and cannot be registered.", path: ["model"],
   })).min(1).max(50),
 }).refine((input) => new Set(input.models.map((model) => model.model)).size === input.models.length, {
@@ -286,6 +295,9 @@ export type ActiveModelRuntime = {
   timeoutSeconds: number;
   maxTokens: number;
   maxConcurrency?: number;
+  rateLimitAttempts?: number;
+  lowerThreshold?: number;
+  upperThreshold?: number;
 };
 
 export type ActiveModelConfiguration = {

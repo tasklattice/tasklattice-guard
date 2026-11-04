@@ -29,7 +29,7 @@ through Policy Studio's existing definition, validation, and publication APIs
 if it is not already available. Use the immutable published version returned by
 that instance, not the source document's version or another instance's revision.
 
-Create a `guardctl tenant provision` patch with this binding:
+Create a `guardctl project provision` patch with this binding:
 
 ```json
 {

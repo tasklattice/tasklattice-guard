@@ -46,6 +46,9 @@ class ModelRuntimeConfig:
     timeout_seconds: float = 20.0
     max_tokens: int = 128
     max_concurrency: int = 2
+    rate_limit_attempts: int = 3
+    lower_threshold: float = 0.1
+    upper_threshold: float = 0.9
     skip_tls_verify: bool = False
 
     def __post_init__(self) -> None:
@@ -57,6 +60,10 @@ class ModelRuntimeConfig:
             raise ValueError("OpenAI Chat Model Runtimes require an HTTP(S) base_url.")
         if type(self.max_concurrency) is not int or not 1 <= self.max_concurrency <= 64:
             raise ValueError("Model Runtime concurrency must be from 1 to 64.")
+        if type(self.rate_limit_attempts) is not int or not 1 <= self.rate_limit_attempts <= 10:
+            raise ValueError("Model rate-limit attempts must be from 1 to 10.")
+        if not 0 <= self.lower_threshold < self.upper_threshold <= 1:
+            raise ValueError("Expected 0 <= lower_threshold < upper_threshold <= 1.")
         if self.timeout_seconds <= 0 or self.max_tokens <= 0:
             raise ValueError("Model Runtime timeout and max_tokens must be positive.")
 
@@ -175,6 +182,7 @@ class SafetyModelProviderConfig:
     timeout_seconds: float = 20.0
     priority: int = 100
     max_tokens: int = 128
+    rate_limit_attempts: int = 3
     contract_ref: str = ""
     profile_ref: str = ""
     runtime_ref: str = ""
@@ -968,6 +976,7 @@ def resolve_evaluator_model_providers(
             timeout_seconds=runtime.timeout_seconds,
             priority=binding.priority,
             max_tokens=runtime.max_tokens,
+            rate_limit_attempts=runtime.rate_limit_attempts,
             contract_ref=binding.contract_ref,
             profile_ref=binding.profile_ref,
             runtime_ref=binding.model_ref,

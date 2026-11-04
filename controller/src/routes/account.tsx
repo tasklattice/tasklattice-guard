@@ -1,7 +1,7 @@
 import { useNavigate } from "@tanstack/react-router";
 import { AccessTokens } from "@/components/account/access-tokens";
 import { useEffect, useState, type FormEvent } from "react";
-import { useMutation } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import { KeyRound, Languages, ShieldCheck, UserRound } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { toast } from "@/components/ui/notifications";
@@ -18,6 +18,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import type { SupportedLanguage } from "@/i18n";
 import { useAuth } from "@/lib/auth";
+import { getAccountSignInMethod } from "@/lib/identity-api";
 
 export function AccountPage({ section = "general" }: { section?: "general" | "security" | "access-tokens" }) {
   const { t: uiText } = useTranslation();
@@ -27,6 +28,8 @@ export function AccountPage({ section = "general" }: { section?: "general" | "se
   const [displayName, setDisplayName] = useState(user?.display_name ?? "");
   const [language, setLanguage] = useState<SupportedLanguage>(user?.preferred_language ?? "en");
   const [passwordOpen, setPasswordOpen] = useState(false);
+  const signInMethod = useQuery({ queryKey: ["account-sign-in-method", user?.id], queryFn: getAccountSignInMethod, enabled: Boolean(user), retry: false });
+  const usesSso = signInMethod.data === "sso";
 
   useEffect(() => {
     setDisplayName(user?.display_name ?? "");
@@ -74,7 +77,7 @@ export function AccountPage({ section = "general" }: { section?: "general" | "se
                   <UserAvatar name={user.display_name} size="large" />
                   <div className="min-w-0 flex-1">
                     <p className="truncate text-sm font-semibold">{user.display_name}</p>
-                    <p className="mt-0.5 truncate text-xs text-muted-foreground">{user.username}</p>
+                    <p className="mt-0.5 truncate text-xs text-muted-foreground">{usesSso ? user.email : user.username}</p>
                   </div>
                   <Badge variant="outline" className="gap-1.5 font-normal">
                     <ShieldCheck className="text-primary" />
@@ -90,9 +93,9 @@ export function AccountPage({ section = "general" }: { section?: "general" | "se
                   </div>
 
                   <div className="grid gap-2">
-                    <Label htmlFor="account-username">{t("account.username")}</Label>
-                    <Input id="account-username" type="text" value={user.username} readOnly aria-readonly />
-                    <p className="text-xs leading-5 text-muted-foreground">{t("account.usernameReadOnly")}</p>
+                    <Label htmlFor="account-username">{t(usesSso ? "account.ssoEmail" : "account.username")}</Label>
+                    <Input id="account-username" type="text" value={usesSso ? user.email ?? "" : user.username} readOnly aria-readonly />
+                    <p className="text-xs leading-5 text-muted-foreground">{t(usesSso ? "account.ssoManaged" : "account.usernameReadOnly")}</p>
                   </div>
 
                   <div className="grid gap-2">
@@ -148,10 +151,11 @@ export function AccountPage({ section = "general" }: { section?: "general" | "se
                   <span className="flex size-10 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary"><KeyRound className="size-4.5" /></span>
                   <div>
                     <p className="text-sm font-medium">{t("account.password")}</p>
-                    <p className="mt-1 max-w-xl text-xs leading-5 text-muted-foreground">{t("account.passwordManagedLocally")}</p>
+                    <p className="mt-1 max-w-xl text-xs leading-5 text-muted-foreground">{t(signInMethod.isError ? "account.signInMethodUnavailable" : signInMethod.isPending ? "common.loading" : usesSso ? "account.ssoManaged" : "account.passwordManagedLocally")}</p>
                   </div>
                 </div>
-                <Button variant="outline" onClick={() => setPasswordOpen(true)}><KeyRound />{t("auth.changePassword")}</Button>
+                {signInMethod.data === "password" ? <Button variant="outline" onClick={() => setPasswordOpen(true)}><KeyRound />{t("auth.changePassword")}</Button> : null}
+                {signInMethod.isError ? <Button variant="outline" onClick={() => void signInMethod.refetch()}>{t("auth.ssoRetry")}</Button> : null}
               </div>
             </CardContent>
           </Card>

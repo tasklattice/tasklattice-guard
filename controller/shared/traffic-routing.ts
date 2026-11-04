@@ -88,7 +88,7 @@ export type RouterChangeRequest = {
   emergencyReason: string | null; emergencyContact: string | null; appliedRevision: number | null; revertsChangeRequestId: string | null;
 };
 export type TrafficRouter = {
-  tenantId?: string;
+  projectId?: string;
   id: string; name: string; description: string; draftRevision: number; draft: RouterDraft; activeRevision: number | null;
   activeDraftRevision: number | null; activeSnapshot: RouterDraft | null; desiredGeneration: number;
   rolloutStatus: RouterRolloutState; endpointIds: string[]; updatedAt: string;

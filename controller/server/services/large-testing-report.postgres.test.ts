@@ -1,3 +1,4 @@
+import { withTestProject } from "../db/postgres-test-database.js";
 // @vitest-environment node
 import { execFile } from "node:child_process";
 import { generateKeyPairSync } from "node:crypto";
@@ -54,7 +55,7 @@ describe.skipIf(!url)("950-case full-feature report delivery", () => {
       // Reproduce the reported local-only composition: model Policies removed.
       draft.policyBindings = draft.policyBindings.filter(binding =>
         !["builtin-jailbreak-strict", "builtin-content-safety", "builtin-pii", "builtin-topic-safety"].includes(binding.policyId));
-      const guardrail = await service.createGuardrail({ name: "Large local-only baseline", draftConfig: draft, runtimeProfile: "auto", actorId: "report-user" });
+      const guardrail = await withTestProject(() => service.createGuardrail({ name: "Large local-only baseline", draftConfig: draft, runtimeProfile: "auto", actorId: "report-user" }));
       const rows = await database.db.select().from(testCases).where(eq(testCases.guardrailId, guardrail.id));
       expect(rows.length).toBeGreaterThan(600);
       expect(rows.length).toBeLessThan(950);
@@ -66,7 +67,7 @@ describe.skipIf(!url)("950-case full-feature report delivery", () => {
       const app = createHttpApp({ config, service, runnerControl: control, metrics,
         auth: { handler: async () => Response.json({}, { headers: { "set-cookie": "test-session=fixture; HttpOnly; Path=/" } }),
           api: { getSession: async ({ headers }: { headers: Headers }) => headers.get("cookie") === "test-session=fixture"
-            ? { user: { id: "report-user", role: "user", tenantId: "tenantA" } } : null } } as unknown as ControllerAuth });
+            ? { session: {id: "fixture-session", activeProjectId: "projectA"}, user: { id: "report-user", role: "user", projectId: "projectA" } } : null } } as unknown as ControllerAuth });
       http = serve({ fetch: app.fetch, hostname: "127.0.0.1", port: 0 });
       await new Promise<void>(resolve => http!.listening ? resolve() : http!.once("listening", resolve));
       const address = http.address();
@@ -74,8 +75,8 @@ describe.skipIf(!url)("950-case full-feature report delivery", () => {
       const base = `http://127.0.0.1:${address.port}`;
       const cli = async (command: string, flags: string[]) => {
         const { stdout } = await promisify(execFile)(process.execPath, ["--import", "tsx", resolve("src/cli/guardctl.ts"),
-          "tenant", command, ...flags, `--url=${base}`], { timeout: 120_000, maxBuffer: 128 * 1024 * 1024,
-          env: { ...process.env, GUARD_TENANT_TOKEN: "", GUARD_TENANT_USERNAME: "report-user", GUARD_TENANT_PASSWORD: "test-only" } });
+          "project", command, ...flags, `--url=${base}`], { timeout: 120_000, maxBuffer: 128 * 1024 * 1024,
+          env: { ...process.env, GUARD_PROJECT_TOKEN: "", GUARD_PROJECT_USERNAME: "report-user", GUARD_PROJECT_PASSWORD: "test-only" } });
         return JSON.parse(stdout.trim());
       };
       const run = await cli("test", ["--guardrail-id", guardrail.id, "--local-only"]);

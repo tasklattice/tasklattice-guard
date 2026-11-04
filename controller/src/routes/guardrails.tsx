@@ -2,7 +2,7 @@ import { guardrailRequestRatesQuery } from "@/features/guardrail-request-rates";
 import type { RuntimeStatusMetric } from "@/features/runtime-metric-status";
 import type { RuntimeMetricKey } from "@/features/runtime-metrics";
 import { isPlatformAdministrator, hasPermission } from "../../shared/rbac";
-import { TenantResourceBadge } from "@/components/tenant-resource-badge";
+import { ProjectResourceBadge } from "@/components/project-resource-badge";
 import { GuardrailProtectionMode, useGuardrailProtectionActions } from "@/components/guardrail-protection-mode";
 import { MAX_GUARDRAIL_VERSIONS } from "../../shared/guardrail-version-limit";
 import { ImmutableVersionView } from "@/components/guardrail-immutable-versions";
@@ -327,7 +327,7 @@ export function GuardrailDetailPage() {
   }
 
   const protectionActions = useGuardrailProtectionActions(
-    guardrailQuery.data?.tenant_id && guardrailQuery.data.tenant_id !== auth.user?.tenant_id ? undefined : guardrailQuery.data,
+    guardrailQuery.data?.project_id && guardrailQuery.data.project_id !== auth.user?.project_id ? undefined : guardrailQuery.data,
     refresh,
   );
 
@@ -347,7 +347,7 @@ export function GuardrailDetailPage() {
   const guardrail = guardrailQuery.data;
   const policies = policiesQuery.data?.items ?? EMPTY_POLICIES;
   const routers = routersQuery.data?.items.filter((item) => item.activeSnapshot?.routes.some(route => route.enabled && route.targets.some(target => target.guardrailId === guardrail.id && target.weightBps > 0))) ?? [];
-  const shared = Boolean(guardrail.tenant_id && guardrail.tenant_id !== auth.user?.tenant_id);
+  const shared = Boolean(guardrail.project_id && guardrail.project_id !== auth.user?.project_id);
   const canTest = hasPermission(auth.user?.role, "guardrails", "write") && !shared;
   const canManageDraft = hasPermission(auth.user?.role, "guardrails", "write") && !shared;
   const canTestDraft = canManageDraft;
@@ -364,7 +364,7 @@ export function GuardrailDetailPage() {
           <div className="flex flex-wrap items-center gap-2">
             <h1 className="font-sans text-[2rem] font-normal tracking-normal">{guardrail.name}</h1>
             <GuardrailProtectionMode guardrail={guardrail} />
-            <TenantResourceBadge ownerTenantId={guardrail.tenant_id} activeTenantId={auth.user?.tenant_id} />
+            <ProjectResourceBadge ownerProjectId={guardrail.project_id} activeProjectId={auth.user?.project_id} />
           </div>
           {guardrail.origin === "imported" ? <p className="mt-2 flex items-center gap-2 text-sm text-muted-foreground"><Download className="size-3.5" aria-hidden="true" />{t("guardrailPackage.importedFrom", { source: guardrail.source_id ?? "" })}</p> : null}
           {guardrail.profile_origin ? <p className="mt-2 text-sm text-muted-foreground">{t("protection.profile.source", { id: guardrail.profile_origin.id, version: guardrail.profile_origin.version })}</p> : null}

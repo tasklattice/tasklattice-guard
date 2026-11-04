@@ -118,7 +118,7 @@ function mapGuardrail(
   const publishedCurrent = published && !hasUnpublishedChanges;
   return {
     copy_origin: value.copyOrigin,
-    tenant_id: value.tenantId,
+    project_id: value.projectId,
     id: value.id,
     name: value.name,
     allowed_topics: value.draftConfig.allowedTopics,
@@ -476,7 +476,7 @@ export async function runProgrammablePolicyValidation(id: string): Promise<Polic
     await new Promise((resolve) => setTimeout(resolve, 1_000));
     current = await controllerApi.requestController<PolicyDraftValidationRun>(`/api/v1/policies/${encodeURIComponent(id)}/test-runs/${encodeURIComponent(initial.id)}`);
   }
-  if (current.status === "queued" || current.status === "running") throw new Error("Policy Validation timed out while waiting for GuardRails 0.");
+  if (current.status === "queued" || current.status === "running") throw new Error("Policy Validation timed out while waiting for the assigned Runner.");
   return current;
 }
 export const publishProgrammablePolicy = (id: string, expectedDraftRevision: number) => controllerApi.requestController<ProgrammablePolicyVersion>(`/api/v1/policies/${encodeURIComponent(id)}/publish`, { method: "POST", body: JSON.stringify({ expectedDraftRevision }) });

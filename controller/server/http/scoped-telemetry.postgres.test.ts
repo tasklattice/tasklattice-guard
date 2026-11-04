@@ -23,11 +23,11 @@ describe.skipIf(!url)("pool-scoped telemetry HTTP", () => {
   beforeAll(async () => {
     database = await createTestDatabase(url!, "scoped_telemetry");
     service = new ControlPlaneService(database.db, loadConfig(env));
-    await database.pool.query(`INSERT INTO guardrail (id,tenant_id,name,draft_config) VALUES ('shared','tenantC','Shared','{}');
-      INSERT INTO endpoint (id,tenant_id,name,adapter) VALUES ('endpoint-a','tenantA','A','litellm-generic-guardrail');`);
-    await service.registerPlaygroundInvocation({ callId: "playground:a", tenantId: "tenantA", guardrailId: "shared", guardrailVersion: "20260912-083000.123Z", poolId: "pool-a", groupId: "group-a" });
-    await service.registerPlaygroundInvocation({ callId: "playground:b", tenantId: "tenantB", guardrailId: "shared", guardrailVersion: "20260912-083000.123Z", poolId: "pool-b", groupId: "group-b" });
-    await database.pool.query("INSERT INTO playground_invocation (call_id,tenant_id,guardrail_id,guardrail_version,expires_at) VALUES ('playground:old','tenantC','shared','20260912-083000.123Z',now() + interval '1 hour')");
+    await database.pool.query(`INSERT INTO guardrail (id,project_id,name,draft_config) VALUES ('shared','projectC','Shared','{}');
+      INSERT INTO endpoint (id,project_id,name,adapter) VALUES ('endpoint-a','projectA','A','litellm-generic-guardrail');`);
+    await service.registerPlaygroundInvocation({ callId: "playground:a", projectId: "projectA", guardrailId: "shared", guardrailVersion: "20260912-083000.123Z", poolId: "pool-a", groupId: "group-a" });
+    await service.registerPlaygroundInvocation({ callId: "playground:b", projectId: "projectB", guardrailId: "shared", guardrailVersion: "20260912-083000.123Z", poolId: "pool-b", groupId: "group-b" });
+    await database.pool.query("INSERT INTO playground_invocation (call_id,project_id,guardrail_id,guardrail_version,expires_at) VALUES ('playground:old','projectC','shared','20260912-083000.123Z',now() + interval '1 hour')");
   }, 30000);
   afterAll(async () => { await database?.drop(); });
   const app = (scoped: boolean) => createHttpApp({ config: loadConfig({ ...env, CONTROLLER_RUNNER_SCOPED_TELEMETRY: String(scoped) }),
@@ -51,13 +51,13 @@ describe.skipIf(!url)("pool-scoped telemetry HTTP", () => {
       event("endpoint", "external", { endpointId: "endpoint-a", metadata: { protocol: "litellm" } }), routing], "spoofed-runner");
     expect(response.status).toBe(202);
     expect(await response.json()).toEqual({ accepted: 5 });
-    expect((await database.pool.query("SELECT id, tenant_id FROM runtime_event ORDER BY id")).rows).toEqual([
-      { id: "endpoint", tenant_id: null }, { id: "foreign", tenant_id: null }, { id: "old", tenant_id: null }, { id: "own", tenant_id: "tenantA" },
+    expect((await database.pool.query("SELECT id, project_id FROM runtime_event ORDER BY id")).rows).toEqual([
+      { id: "endpoint", project_id: null }, { id: "foreign", project_id: null }, { id: "old", project_id: null }, { id: "own", project_id: "projectA" },
     ]);
-    expect((await database.pool.query("SELECT event_id, tenant_id FROM model_usage_cost ORDER BY event_id")).rows).toEqual([
-      { event_id: "foreign", tenant_id: null }, { event_id: "old", tenant_id: null }, { event_id: "own", tenant_id: "tenantA" },
+    expect((await database.pool.query("SELECT event_id, project_id FROM model_usage_cost ORDER BY event_id")).rows).toEqual([
+      { event_id: "foreign", project_id: null }, { event_id: "old", project_id: null }, { event_id: "own", project_id: "projectA" },
     ]);
-    expect((await database.pool.query("SELECT tenant_id FROM route_assignment WHERE decision_id='d1'")).rows).toEqual([{ tenant_id: null }]);
+    expect((await database.pool.query("SELECT project_id FROM route_assignment WHERE decision_id='d1'")).rows).toEqual([{ project_id: null }]);
     expect((await database.pool.query("SELECT runner_id FROM telemetry_watermark")).rows).toEqual([]);
     expect((await post(scoped, poolB, [], "spoofed-runner")).status).toBe(202);
     expect((await database.pool.query("SELECT runner_id FROM telemetry_watermark")).rows).toEqual([]);
@@ -66,7 +66,7 @@ describe.skipIf(!url)("pool-scoped telemetry HTTP", () => {
     const legacyApp = app(false);
     expect((await post(legacyApp, poolA, [])).status).toBe(401);
     expect((await post(legacyApp, legacy, [event("legacy-endpoint", "external", { endpointId: "endpoint-a", metadata: { protocol: "litellm" } })], "legacy-runner")).status).toBe(202);
-    expect((await database.pool.query("SELECT tenant_id FROM runtime_event WHERE id='legacy-endpoint'")).rows).toEqual([{ tenant_id: "tenantA" }]);
+    expect((await database.pool.query("SELECT project_id FROM runtime_event WHERE id='legacy-endpoint'")).rows).toEqual([{ project_id: "projectA" }]);
     expect((await database.pool.query("SELECT runner_id FROM telemetry_watermark WHERE runner_id='legacy-runner'")).rowCount).toBe(1);
   });
   it("does not let a different pool enrich a valid event or update quarantined routing evidence", async () => {
@@ -77,9 +77,9 @@ describe.skipIf(!url)("pool-scoped telemetry HTTP", () => {
     const completion = { id: "r2", eventType: "completion", decisionId: "d1", callId: "c1", runnerId: "claimed-runner", endpointId: "endpoint-a",
       routerId: "", routerRevision: 0, routeId: "", targetId: "", guardrailId: "", guardrailVersion: "", occurredAt: new Date().toISOString(), decisionAt: assignment.occurred_at.toISOString(), assignmentStatus: "unassigned", outcome: "error" };
     expect((await post(scoped, poolB, [forged, completion])).status).toBe(202);
-    const after = (await database.pool.query("SELECT tenant_id, metadata FROM runtime_event WHERE id='own'")).rows[0];
-    expect(after.tenant_id).toBe("tenantA");
+    const after = (await database.pool.query("SELECT project_id, metadata FROM runtime_event WHERE id='own'")).rows[0];
+    expect(after.project_id).toBe("projectA");
     expect(after.metadata).toEqual(row.metadata);
-    expect((await database.pool.query("SELECT tenant_id, outcome FROM route_assignment WHERE decision_id='d1'")).rows).toEqual([{ tenant_id: null, outcome: null }]);
+    expect((await database.pool.query("SELECT project_id, outcome FROM route_assignment WHERE decision_id='d1'")).rows).toEqual([{ project_id: null, outcome: null }]);
   });
 });

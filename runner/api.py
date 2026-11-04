@@ -38,7 +38,7 @@ from .metrics import (
 from .output_streaming import register_output_stream
 from .telemetry import RuntimeTelemetryExporter
 from .runtime_log_capture import RuntimeLogCapture
-from .tenant_admission import AdmissionRejected, AdmissionUnavailable, AdmissionPermit, EndpointAdmission
+from .project_admission import AdmissionRejected, AdmissionUnavailable, AdmissionPermit, EndpointAdmission
 from .model_http_evidence import capture_model_http_evidence, failed_model_http_evidence
 
 
@@ -191,7 +191,7 @@ class RunnerAPI:
         scan_max_body_bytes: int = 1_048_576,
         scan_timeout_seconds: float = 25,
         runtime_log_capture: RuntimeLogCapture | None = None,
-        tenant_admission: EndpointAdmission | None = None,
+        project_admission: EndpointAdmission | None = None,
     ) -> None:
         self.router = APIRouter(dependencies=[Depends(self._model_evidence_scope)])
         self._runtime = runtime
@@ -207,7 +207,7 @@ class RunnerAPI:
         self._runtime_log_encryption_key = runtime_log_encryption_key
         self._runtime_log_capture = runtime_log_capture or RuntimeLogCapture()
         self._draft_previews = draft_previews
-        self._tenant_admission = tenant_admission
+        self._project_admission = project_admission
         self._register()
         register_output_stream(self)
         from .path_testing import register_path_testing
@@ -239,11 +239,11 @@ class RunnerAPI:
         authenticated = self._store.authenticate_endpoint(endpoint_id, credential)
         return EndpointAccess(self._store.endpoint_adapter(endpoint_id), authenticated, authenticated), None
 
-    async def _acquire_tenant_permit(self, endpoint_id: str, credential: str | None) -> AdmissionPermit | None:
-        return await self._tenant_admission.acquire(self._store, endpoint_id, credential) if self._tenant_admission is not None else None
+    async def _acquire_project_permit(self, endpoint_id: str, credential: str | None) -> AdmissionPermit | None:
+        return await self._project_admission.acquire(self._store, endpoint_id, credential) if self._project_admission is not None else None
 
     @staticmethod
-    async def _release_tenant_permit(permit: AdmissionPermit | None) -> None:
+    async def _release_project_permit(permit: AdmissionPermit | None) -> None:
         if permit is not None:
             await asyncio.shield(permit.release())
 
@@ -308,12 +308,12 @@ class RunnerAPI:
                 self._metrics.reject_request("litellm", phase=phase, result="adapter_mismatch")
                 raise HTTPException(status_code=409, detail="Endpoint adapter is not compatible with LiteLLM.")
             try:
-                permit = await self._acquire_tenant_permit(endpoint_id, x_api_key)
+                permit = await self._acquire_project_permit(endpoint_id, x_api_key)
             except AdmissionRejected as error:
-                self._metrics.reject_request("litellm", phase=phase, result="tenant_admission_rejected")
-                raise HTTPException(status_code=429, detail="Tenant admission capacity is unavailable. Retry shortly.", headers={"Retry-After": str(error.retry_after)}) from error
+                self._metrics.reject_request("litellm", phase=phase, result="project_admission_rejected")
+                raise HTTPException(status_code=429, detail="Project admission capacity is unavailable. Retry shortly.", headers={"Retry-After": str(error.retry_after)}) from error
             except AdmissionUnavailable as error:
-                self._metrics.reject_request("litellm", phase=phase, result="tenant_admission_unavailable")
+                self._metrics.reject_request("litellm", phase=phase, result="project_admission_unavailable")
                 raise HTTPException(status_code=503, detail="Endpoint admission allocation is unavailable.", headers={"Retry-After": "1"}) from error
             try:
                 request_id = str(uuid.uuid4())
@@ -380,7 +380,7 @@ class RunnerAPI:
                             observation=observation,
                         )
             finally:
-                await self._release_tenant_permit(permit)
+                await self._release_project_permit(permit)
 
         @self.router.post("/internal/v1/guardrails/{guardrail_id}/evaluate")
         async def evaluate_guardrail(

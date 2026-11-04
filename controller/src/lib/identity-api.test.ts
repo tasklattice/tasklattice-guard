@@ -21,7 +21,7 @@ const signedInUser = {
   name: "Administrator",
   username: "admin",
   role: "admin",
-  tenantId: null,
+  projectId: null,
   banned: false,
   preferredLanguage: "zh-CN",
   createdAt: "2026-08-20T00:00:00.000Z",
@@ -30,7 +30,7 @@ const signedInUser = {
 
 describe("identity login", () => {
   beforeEach(() => {
-    getSession.mockReset();
+    getSession.mockReset().mockResolvedValue({ data: { user: signedInUser }, error: null });
     signInWithUsername.mockReset();
     signInWithUsername.mockResolvedValue({ data: { user: signedInUser }, error: null });
   });
@@ -42,16 +42,16 @@ describe("identity login", () => {
   });
 
   it("uses the canonical user role instead of the retired member alias", async () => {
-    getSession.mockResolvedValue({ data: { user: { ...signedInUser, role: "user", tenantId: "tenantB" } }, error: null });
-    expect((await getAuthStatus()).user).toMatchObject({ role: "user", tenant_id: "tenantB" });
+    getSession.mockResolvedValue({ data: { session: { activeProjectId: "projectB" }, user: { ...signedInUser, role: "user" } }, error: null });
+    expect((await getAuthStatus()).user).toMatchObject({ role: "user", project_id: "projectB" });
   });
-  it.each([undefined, null, "", "   ", 42])("rejects a tenant user with malformed assignment %s", async (tenantId) => {
-    getSession.mockResolvedValue({ data: { user: { ...signedInUser, role: "user", tenantId } }, error: null });
-    await expect(getAuthStatus()).rejects.toThrow("no tenant assignment");
+  it.each([undefined, null, "", "   ", 42])("keeps users without a selected project signed in for onboarding: %s", async (projectId) => {
+    getSession.mockResolvedValue({ data: { user: { ...signedInUser, role: "user", projectId } }, error: null });
+    expect((await getAuthStatus()).user).toMatchObject({ role: "user", project_id: null });
   });
-  it("keeps platform administrators outside tenant scope", async () => {
-    getSession.mockResolvedValue({ data: { user: { ...signedInUser, tenantId: "tenantA" } }, error: null });
-    expect((await getAuthStatus()).user).toMatchObject({ role: "admin", tenant_id: null });
+  it("keeps platform administrators outside project scope", async () => {
+    getSession.mockResolvedValue({ data: { user: { ...signedInUser, projectId: "projectA" } }, error: null });
+    expect((await getAuthStatus()).user).toMatchObject({ role: "admin", project_id: null });
   });
   it("rejects an unsupported role instead of granting user authority", async () => {
     getSession.mockResolvedValue({ data: { user: { ...signedInUser, role: "unknown" } }, error: null });

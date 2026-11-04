@@ -33,50 +33,45 @@ spec:
   ports:
     - { name: http, port: {{ .Values.controller.service.public.port }}, targetPort: http }
 {{- end }}
-{{- $root := . -}}
-{{- $pools := concat (list (dict "name" "default")) .Values.runner.pools -}}
-{{- range $pool := $pools }}
-{{- $runnerName := ternary (include "tali-guard.defaultRunnerName" $root) (printf "%s-runner-%s" (include "tali-guard.fullname" $root) $pool.name | trunc 63 | trimSuffix "-") (eq $pool.name "default") -}}
-{{- $headlessServiceName := printf "%s-headless" $runnerName | trunc 63 | trimSuffix "-" }}
+{{- $headlessServiceName := printf "%s-headless" (include "tali-guard.defaultRunnerName" .) }}
 ---
 apiVersion: v1
 kind: Service
 metadata:
   name: {{ $headlessServiceName }}
   labels:
-    {{- include "tali-guard.commonLabels" $root | nindent 4 }}
+    {{- include "tali-guard.commonLabels" . | nindent 4 }}
     app.kubernetes.io/component: runner
-    tasklattice.io/runner-pool: {{ $pool.name | quote }}
+    tasklattice.io/runner-pool: "default"
     tasklattice.io/service-role: governing
     tasklattice.io/metrics-target: "true"
 spec:
   clusterIP: None
   publishNotReadyAddresses: true
   selector:
-    app.kubernetes.io/instance: {{ $root.Release.Name }}
+    app.kubernetes.io/instance: {{ .Release.Name }}
     app.kubernetes.io/component: runner
-    tasklattice.io/runner-pool: {{ $pool.name | quote }}
+    tasklattice.io/runner-pool: "default"
   ports:
     - { name: runtime, port: 8091, targetPort: runtime }
 ---
 apiVersion: v1
 kind: Service
 metadata:
-  name: {{ if eq $pool.name "default" }}{{ include "tali-guard.runtimeName" $root }}{{ else }}{{ printf "%s-%s" (include "tali-guard.runtimeName" $root) $pool.name | trunc 63 | trimSuffix "-" }}{{ end }}
+  name: {{ include "tali-guard.runtimeName" . }}
   labels:
-    {{- include "tali-guard.commonLabels" $root | nindent 4 }}
+    {{- include "tali-guard.commonLabels" . | nindent 4 }}
     app.kubernetes.io/component: runner
-    tasklattice.io/runner-pool: {{ $pool.name | quote }}
+    tasklattice.io/runner-pool: "default"
 spec:
-  type: {{ $root.Values.runner.service.type }}
+  type: {{ .Values.runner.service.type }}
   sessionAffinity: None
   selector:
-    app.kubernetes.io/instance: {{ $root.Release.Name }}
+    app.kubernetes.io/instance: {{ .Release.Name }}
     app.kubernetes.io/component: runner
-    tasklattice.io/runner-pool: {{ $pool.name | quote }}
+    tasklattice.io/runner-pool: "default"
   ports:
     - { name: runtime, port: 8091, targetPort: runtime }
-{{- end }}
 {{- if .Values.runner.service.public.enabled }}
 ---
 apiVersion: v1

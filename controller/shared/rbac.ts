@@ -1,3 +1,11 @@
+/** Authority boundaries; these are scopes, not three mutually exclusive human roles. */
+export const authorityScopes = ["platform", "project", "user"] as const;
+export type AuthorityScope = typeof authorityScopes[number];
+export type AuthorityContext =
+  | { scope: "platform"; actorId?: string; role: "admin" }
+  | { scope: "project"; projectId: string; actorId?: string; role?: AccountRole }
+  | { scope: "user"; actorId: string; role: AccountRole };
+
 /** Account authority shared by the API, browser and personal access tokens. */
 export const accountRoles = ["admin", "user"] as const;
 export type AccountRole = typeof accountRoles[number];
@@ -41,9 +49,6 @@ export function roleHome(role: string | null | undefined): "/settings/providers"
 
 export function pagePermission(pathname: string): { resource: PermissionResource; action: AccessAction } | null {
   const path = pathname.replace(/\/$/, "");
-  if (["/settings/tenant-load-lab", "/settings/tenant-groups"].some(prefix => path === prefix || path.startsWith(`${prefix}/`))) {
-    return { resource: "settings", action: "read" };
-  }
   if (["/settings", "/settings/health", "/settings/runner", "/settings/version"].includes(path)) {
     return { resource: "runners", action: "read" };
   }
@@ -55,8 +60,8 @@ export function pagePermission(pathname: string): { resource: PermissionResource
     ["/guardrails", "guardrails", "write"], ["/policy-library", "policies", "write"],
     ["/playground", "playground", "write"], ["/integration/routers", "routers", "write"],
     ["/integration/endpoints", "endpoints", "write"],
-    ["/models", "models", "write"], ["/sharing", "guardrails", "write"],
+    ["/sharing", "guardrails", "write"],
   ];
-  const route = routes.find(([path]) => pathname === path || pathname.startsWith(`${path}/`));
+  const route = routes.find(([prefix]) => path === prefix || path.startsWith(`${prefix}/`));
   return route ? { resource: route[1], action: route[2] } : null;
 }

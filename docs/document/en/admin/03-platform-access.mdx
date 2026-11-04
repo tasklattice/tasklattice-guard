@@ -1,56 +1,109 @@
 ---
 id: "platform-access"
-title: "Accounts, credentials, and audit"
-summary: "Separate browser sessions, personal management Tokens, Endpoint credentials, and Runner credentials by purpose."
+title: "Projects, users, and SSO"
+summary: "Project isolation, human identities, personal credentials, and integration with Relay Keycloak."
 order: 2
 ---
-Account roles control the management workspace. Credentials authenticate separate call paths. Select the role and credential that match the task.
+**A Project is the resource project, a User is a human identity, and a Credential proves the caller's identity.** A person may join several projects without becoming a different user.
+
+<a id="project-basics" />
+## Authority scopes
+
+| Scope | Responsibility |
+| --- | --- |
+| Platform | Manages identity integration, users, projects, model services, Runners and platform audit. |
+| Project | Owns Policies, Guardrails, Routers and Endpoints; provides resource isolation. |
+| User | An independent human account linked to projects through ProjectMember. |
+
+This follows Relay's User → ProjectMember → Project model. Internal resource `projectId` fields identify projects. Runner groups allocate capacity independently of human identity. There is no default Project or automatic membership. `default` identifies a Runner group and pool only.
+
+<a id="project-management" />
+## Manage access
+
+- Local accounts: create users in [Access](/access), then create projects and manage membership in [Projects](/access/projects).
+- SSO accounts: manage Group Paths in Keycloak. Guard synchronizes membership at sign-in, displays original roles, and rejects local SSO membership edits.
+- Business users: select a project in the header. Users without membership can sign in and manage their account but cannot access business resources.
+- Runner allocation: open [Projects](/access/projects), then choose **Configure Runner** for a project. Connection settings and model access are separate settings. Shared configuration changes show their impact; **Runner options** contains the switch to dedicated capacity. Registering a pool does not deploy its workload, and allocation changes retain their offline checks.
+
+User, Project, group and Runner directories return 25 summaries per page. Details, memberships and Runner instances load separately when opened. Search and cursors are handled by the server; member selection and Project switching do not preload the entire directory.
+
+A Project has one canonical, immutable lowercase name, used as its Project ID and dedicated pool ID. Dedicated instances use `runner-<project-name>-<index>`; shared instances use `runner-default-<index>`. Only the default runtime group inherits platform Models. Other groups require an explicit grant.
+
+This development version uses a fresh database baseline. Old Tenant data, Runner names and unbound pools are not upgraded. Reinitialize development databases when switching to this baseline.
+
+<a id="project-initialization" />
+## Initialization
+
+An authenticated human without a Project, membership or configured Runner address sees an initialization screen. Account settings and project switching remain available. The screen generates an email subject and body containing the platform URL, human account, Project/department and missing setup. Users copy the text and send it themselves; Guard does not send email or launch an email client. After an administrator completes setup, **Check again** refreshes access. Expired SSO verification requires another sign-in.
+
+Authority is divided into **Platform**, **Project**, and **User** scopes. User scope owns the human account and personal credentials; Project scope owns business resources and membership. These are authority boundaries, not three exclusive user roles.
+
+<a id="project-sign-in" />
+## Connect Relay Keycloak
+
+Guard uses Better Auth's OIDC authorization code flow with PKCE and ID token signature, issuer, audience, expiry and nonce verification. Identity is keyed by issuer + subject. Verified real email addresses are required; matching email does not automatically link local accounts. This implementation supports OIDC, not SAML.
+
+Reuse Relay's Keycloak instance and Realm, with a **dedicated confidential Guard Client**, for example `tasklattice-guard`. Enable Standard Flow, disable Direct Access Grants, and register the exact callback `https://guard.example.com/api/auth/callback/corporate-sso`. Add a Group Membership mapper with claim `groups`, Full group path enabled, and inclusion in the ID Token. Include email and email_verified.
+
+Helm example (leave SSO disabled until Keycloak is deployed):
+
+```yaml
+controller:
+  sso:
+    enabled: true
+    issuer: https://identity.example.com/realms/tali
+    clientId: tasklattice-guard
+    displayName: Keycloak
+    groupClaim: groups
+    allowedEmailDomains: [example.com]
+    existingSecret: guard-oidc
+    clientSecretKey: client-secret
+```
+
+Store the Client Secret in the `client-secret` key of the `guard-oidc` Secret in the same namespace, never in values or documentation. Set Guard's `publicUrl` to its actual external origin. Non-Helm deployments use the `CONTROLLER_SSO_*` variables in `.env.example`. Production issuers require HTTPS. Local administrator sign-in remains available when SSO is disabled or the IdP is unavailable.
 
 <a id="admin-governance" />
-## Separate business and platform roles
+## Group Paths and permissions
 
-| Role | Main workspace | Authority |
-| --- | --- | --- |
-| User, `user` | Guardrail design, Integration and Runtime observability | Creates and manages business Guardrails, Policies, Routers and Endpoints. Inspects runtime logs and captured content. |
-| Administrator, `admin` | Platform configuration and Access & audit | Configures shared models, capability bindings and accounts. Reads activity audits. Maintains platform Default operations. |
+Paths match exactly; prefixes and arbitrary role claims do not grant access.
 
-Administrators cannot mutate business resources or inspect tenant runtime logs. Business users cannot configure shared model services or read activity audits. Administrators retain read access to business metadata where management APIs permit it.
+| Keycloak Group Path | Guard permission |
+| --- | --- |
+| `/tali/r/ROLE_PLATFORM_ADMIN` | Platform administration: providers, users, projects and audit. |
+| `/tali/d/{departmentId}/p/{projectId}/r/ROLE_PROJECT_ADMIN` | Business read/write in that project, without platform administration. |
+| `ROLE_AGENT_DEVELOPER` under the same project path | Business read/write in that project. |
+| `ROLE_AUDITOR`, `ROLE_REVIEWER`, or `ROLE_USER` under that project path | Project read-only access. Relay-specific approval, Agent and task capabilities are not mapped. |
 
-Roles apply across the shared workspace. They do not establish ownership isolation between business resources.
+An administrator initializes the Project with the exact Project ID and department ID from the path. Sign-in synchronizes membership only for existing matching projects. Missing projects or mismatched departments show the initialization screen without granting access. Department administrator paths do not implicitly grant access to every project. Unknown paths grant nothing. Platform administrators use the platform workspace without business write authority.
 
 <a id="access-shared-operations" />
-### Shared operational access
+### Synchronization and revocation
 
-Both roles can inspect health, Runner status and software versions. They can adjust Runner capacity targets and remove registrations that the runtime permits. Serving instances remain protected. Personal-token writes require `runners:write`.
+Every SSO sign-in rebuilds the user's project grants from verified Group Paths, revokes missing memberships, applies permission reductions, and updates platform authority. No matching paths means no project access.
 
-Users enter these pages through Settings. Administrators use the Platform operations sidebar. Both use the existing `/settings/*` paths.
-
-Both roles retain account settings, password management, personal Access Tokens and documentation. Users inspect model usage through [Billing](/billing). Administrators manage model prices under [Models](/settings/models?tab=pricing).
-
-Design workflows receive a reduced capability projection. It excludes Provider addresses, credential hints, control-plane model configuration and test bodies.
+Requests check current membership. Stale browser pages cannot write into a project selected elsewhere. SSO sessions last at most one hour; personal tokens of SSO users also require an SSO sign-in within the past hour. Keycloak changes synchronize at the next sign-in; **real-time Keycloak revocation push is not implemented**. Disable the Guard account for urgent revocation. Signing out ends the Guard session only, not the Keycloak global session.
 
 <a id="access-token-authority" />
-### Personal-token authority
+### Personal credential authority
 
-Effective authority is the intersection of the current account role and selected module grants. Write includes read. A role change recalculates existing token authority on subsequent requests.
-
-A user can grant read access to runtime records and captured content. An administrator can grant audit access. Neither token can exceed its owning account's role. Router approval also requires an actor different from the submitter.
+Personal tokens stay bound to the project selected at issuance, regardless of browser project switching. Authority is bounded by account role, current membership, module grants and expiry. Read-only members cannot issue write tokens. Removed membership or reduced permissions invalidates excessive grants. Changing between platform and business roles invalidates the corresponding old tokens.
 
 <a id="credential-types" />
-## Select the credential for the call path
+## Choose credentials
 
-| Credential | Purpose | Boundary |
-| --- | --- | --- |
-| Browser session | Console operations with current account permissions. | Not a runtime inspection credential. |
-| Personal Access Token | Automated management API calls within role, module and expiry limits. | Cannot issue other personal tokens. |
-| Endpoint credential | Application or gateway inspection calls for one Endpoint. | Cannot sign in to the console or modify platform configuration. |
-| Runner control credential | Controller–Runner control connection and configuration distribution. | Not for business inspection requests. |
+| Credential | Use |
+| --- | --- |
+| Browser Session | A human signs in and selects a project they belong to. |
+| Personal Access Token | Calls management APIs for its owner, fixed project and module grants; cannot manage membership or issue tokens. |
+| Endpoint credential | An application calls one Endpoint's runtime detection API; not a human login. |
+| Runner credential | Controller-to-Runner communication; not a human identity. |
 
 <a id="platform-audit" />
-## Review access and activity
+## Verify access
 
-Administrators assign roles under [accounts and access](/access). Each account manages its own [Access Tokens](/account/access-tokens).
+Check projects, membership sources and original Keycloak roles in [Projects](/access/projects). Business users can select only their memberships. Administrators review membership and SSO synchronization events in [Audit](/audit-log); each user manages their [personal tokens](/account/access-tokens).
 
-Endpoint credentials appear in full only at issuance. Business users supply them to the associated application and rotate them as necessary.
+<a id="project-upgrade" />
+## Development database initialization
 
-Administrators review configuration activity in [Audit log](/audit-log). Users inspect request Decisions and findings in [Runtime logs](/logs). Health and rollout status remain separate from either record type.
+Code, APIs, database fields, Runner protocol and configuration use `Project` (`projectId` / `project_id`). The database has one fresh initialization baseline. Tenant renaming, data backfills, historical ownership repairs and legacy Runner pool binding migrations have been removed. Reinitialize old development databases; in-place compatibility upgrades are not supported. Platform records use null Project ownership.

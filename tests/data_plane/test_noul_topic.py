@@ -75,15 +75,15 @@ async def test_http_failures_do_not_become_topic_matches_or_retry_without_budget
 
 
 async def test_explicit_rate_limiting_is_retried_up_to_the_configured_budget(classifier_backend):
-    from runner.toolkit.nemo.actions.model_retry import rate_limit_retry_attempts
+    attempts = 2
     calls = []
     def respond(request):
         calls.append(request)
         return httpx.Response(429, headers={"retry-after": "0"}, text="synthetic-key must not appear in evidence")
-    result = await classifier_backend.evaluator("topic_control", respond).evaluate(_topic_request())
+    result = await classifier_backend.evaluator("topic_control", respond, rate_limit_attempts=attempts).evaluate(_topic_request())
     assert result.verdict == "error" and not result.findings
-    assert len(calls) == rate_limit_retry_attempts()
-    assert result.usage.model_calls[0].retries == rate_limit_retry_attempts() - 1
+    assert len(calls) == attempts
+    assert result.usage.model_calls[0].retries == attempts - 1
     assert "synthetic-key" not in result.reason
 
 

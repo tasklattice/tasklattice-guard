@@ -1,6 +1,6 @@
 import { GuardrailRequestRate } from "./guardrail-request-rate";
 import type { GuardrailRequestRates } from "@/lib/observability-api";
-import { TenantResourceBadge } from "@/components/tenant-resource-badge";
+import { ProjectResourceBadge } from "@/components/project-resource-badge";
 import { hasPermission } from "../../shared/rbac";
 import { GuardrailRowActions } from "./guardrail-row-actions";
 import { Link } from "@tanstack/react-router";
@@ -57,7 +57,7 @@ export function GuardrailRegistry({
                 >
                   <ShieldCheck aria-hidden="true" />
                   <span>{guardrail.name}</span>
-                  <TenantResourceBadge ownerTenantId={guardrail.tenant_id} activeTenantId={user?.tenant_id} />
+                  <ProjectResourceBadge ownerProjectId={guardrail.project_id} activeProjectId={user?.project_id} />
                 </Link>
               </TableCell>
               <TableCell><StateBadge state={guardrail.status} />
@@ -69,7 +69,7 @@ export function GuardrailRegistry({
               <TableCell className="text-xs text-muted-foreground">
                 {new Date(guardrail.updated_at).toLocaleString(i18n.language)}
               </TableCell>
-              <TableCell className="resource-actions-column" onClick={event => event.stopPropagation()}>{canEdit && (!guardrail.tenant_id || guardrail.tenant_id === user?.tenant_id) ? <GuardrailRowActions guardrail={guardrail} /> : null}</TableCell>
+              <TableCell className="resource-actions-column" onClick={event => event.stopPropagation()}>{canEdit && (!guardrail.project_id || guardrail.project_id === user?.project_id) ? <GuardrailRowActions guardrail={guardrail} /> : null}</TableCell>
             </TableRow>
           ))}
         </TableBody>

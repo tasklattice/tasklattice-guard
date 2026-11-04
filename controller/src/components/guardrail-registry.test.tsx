@@ -17,7 +17,7 @@ vi.mock("@tanstack/react-router", () => ({
   ),
 }));
 
-const identity = vi.hoisted(() => ({ role: "viewer", tenant_id: "tenantB" }));
+const identity = vi.hoisted(() => ({ role: "viewer", project_id: "projectB" }));
 vi.mock("@/lib/auth", () => ({ useAuth: () => ({ user: identity }) }));
 
 vi.mock("react-i18next", () => ({
@@ -40,8 +40,8 @@ vi.mock("react-i18next", () => ({
         "guardrails.registry": "Guardrail registry · {{count}}",
         "guardrails.updated": "Updated",
         "guardrails.validation": "Testing Report",
-        "sharing.ownedBy": "Owned by {{tenant}}",
-        "sharing.sharedFrom": "Shared from {{tenant}} · Read-only",
+        "sharing.ownedBy": "Owned by {{project}}",
+        "sharing.sharedFrom": "Shared from {{project}} · Read-only",
       };
       return Object.entries(values ?? {}).reduce(
         (label, [name, value]) => label.replace(`{{${name}}}`, String(value)),
@@ -78,11 +78,11 @@ describe("GuardrailRegistry", () => {
 
   it("shows ownership and actions for owned Guardrails while shared Guardrails stay read-only", () => {
     identity.role = "user";
-    const owned = { ...guardrail, id: "owned", name: "Owned Guardrail", tenant_id: "tenantB" };
-    const shared = { ...guardrail, id: "shared", name: "Shared Guardrail", tenant_id: "tenantA" };
+    const owned = { ...guardrail, id: "owned", name: "Owned Guardrail", project_id: "projectB" };
+    const shared = { ...guardrail, id: "shared", name: "Shared Guardrail", project_id: "projectA" };
     render(<QueryClientProvider client={new QueryClient()}><GuardrailRegistry guardrails={[owned, shared]} onOpen={vi.fn()} /></QueryClientProvider>);
-    expect(screen.getByText("Owned by tenantB")).toBeTruthy();
-    expect(screen.getByText("Shared from tenantA · Read-only")).toBeTruthy();
+    expect(screen.getByText("Owned by projectB")).toBeTruthy();
+    expect(screen.getByText("Shared from projectA · Read-only")).toBeTruthy();
     expect(screen.getByRole("button", { name: "routing.actions: Owned Guardrail" })).toBeTruthy();
     expect(screen.queryByRole("button", { name: "routing.actions: Shared Guardrail" })).toBeNull();
     expect(screen.getByRole("link", { name: "Open Shared Guardrail" })).toBeTruthy();

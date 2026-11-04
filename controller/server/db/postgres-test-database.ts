@@ -1,3 +1,4 @@
+import { currentAuthorityScope, runWithProjectContext } from "../services/project-context.js";
 import { randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { seedProfiles } from "./seed-profiles.js";
@@ -21,6 +22,7 @@ export async function createTestDatabase(url: string, prefix: string, { maxConne
   for (const { tag } of journal.entries) {
     await pool.query(read(`${tag}.sql`).replaceAll('"public".', `"${namespace}".`));
   }
+  await seedTestProjects(pool);
   await seedProfiles(createPooledDatabase(pool));
   return {
     db: createPooledDatabase(pool),
@@ -32,4 +34,14 @@ export async function createTestDatabase(url: string, prefix: string, { maxConne
       await admin.end();
     },
   };
+}
+
+/** Explicit sample identities for integration fixtures, never production bootstrap. */
+export async function seedTestProjects(pool: Pool) {
+  await pool.query("INSERT INTO project(id,name) VALUES ('projectA','test-project-a'),('projectB','test-project-b'),('projectC','test-project-c') ON CONFLICT DO NOTHING");
+}
+
+/** Legacy service fixtures now opt into their explicit project at creation. */
+export function withTestProject<T>(callback: () => T): T {
+  return currentAuthorityScope() ? callback() : runWithProjectContext({projectId: "projectA", role: "user"}, callback);
 }

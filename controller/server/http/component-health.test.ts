@@ -21,7 +21,7 @@ function setup(signedIn = true) {
   const models = { modelHealth: vi.fn().mockResolvedValue({ status: "unhealthy", reason: "configuration_required",
     bindings: [{ id: "jailbreak.input", status: "missing" }] }) };
   const app = createHttpApp({ config, models: models as unknown as ModelConfigurationService,
-    auth: { api: { getSession: vi.fn().mockResolvedValue(signedIn ? { user: { id: "reader", role: "admin", tenantId: "tenantA" } } : null) } } as unknown as ControllerAuth,
+    auth: { api: { getSession: vi.fn().mockResolvedValue(signedIn ? { session: { id: "fixture-session", activeProjectId: "projectA" }, user: { id: "reader", role: "admin", projectId: "projectA" } } : null) } } as unknown as ControllerAuth,
     service: service as unknown as ControlPlaneService,
     runnerControl: {} as RunnerControlServer, metrics: {} as ControllerMetrics,
   });

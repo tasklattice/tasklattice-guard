@@ -10,23 +10,23 @@ import type { RunnerControlServer } from "../control-channel/control-server.js";
 import type { ControllerMetrics } from "../metrics.js";
 import { createHttpApp } from "./app.js";
 import { tokenRoutePermissions, requiredTokenPermission } from "./token-permissions.js";
-import { currentTenantId } from "../services/tenant-context.js";
+import { currentProjectId } from "../services/project-context.js";
 import { allowsTokenPermission } from "../../shared/access-tokens.js";
 const config = loadConfig({ NODE_ENV: "test", CONTROLLER_DATABASE_URL: "postgresql://controller:controller@localhost/controller",
   CONTROLLER_RUNNER_TOKEN: "runner-token-that-is-at-least-32-characters", CONTROLLER_ARTIFACT_SIGNING_KEY_PATH: "/tmp/controller-signing-key.pem",
   CONTROLLER_POLICY_CATALOG_DIR: resolve("../runner/toolkit/policy_library/assets"), BETTER_AUTH_SECRET: "better-auth-secret-that-is-at-least-32-characters" });
-function setup(identity: TokenIdentity | null = { id: "owner", role: "admin", tenantId: "tenantA", tokenId: "token", permissions: { routers: "read" } }) {
-  const getSession = vi.fn().mockResolvedValue({ user: { id: "session-owner", role: "admin", tenantId: "tenantA" } });
+function setup(identity: TokenIdentity | null = { id: "owner", role: "admin", projectId: "projectA", tokenId: "token", permissions: { routers: "read" } }) {
+  const getSession = vi.fn().mockResolvedValue({ session: { id: "fixture-session", activeProjectId: "projectA" }, user: { id: "session-owner", role: "admin", projectId: "projectA" } });
   const accessTokens = { authenticate: vi.fn().mockResolvedValue(identity), recordRequest: vi.fn(), list: vi.fn().mockResolvedValue([]),
     create: vi.fn().mockResolvedValue({ secret: "one-time-secret" }), revoke: vi.fn() };
   const createRouter = vi.fn().mockResolvedValue({ id: "new" });
   const updateRunnerPool = vi.fn().mockResolvedValue({ id: "pool" });
   const app = createHttpApp({ config, auth: { api: { getSession } } as unknown as ControllerAuth,
     accessTokens: accessTokens as unknown as AccessTokenService,
-    service: { trafficRouting: { list: async () => [], create: createRouter }, listGuardrails: vi.fn(async () => [{ tenantId: currentTenantId() }]),
+    service: { trafficRouting: { list: async () => [], create: createRouter }, listGuardrails: vi.fn(async () => [{ projectId: currentProjectId() }]),
       queryRuntimeEvents: async () => ({ items: [], count: 0 }),
       querySecurityEvents: async () => ({ items: [], count: 0, nextCursor: null }),
-      getRuntimeEvent: async (_id: string, includeContent: boolean) => ({ id: "event", metadata: includeContent ? { contentBefore: [{ text: "Captured tenant request" }] } : {} }),
+      getRuntimeEvent: async (_id: string, includeContent: boolean) => ({ id: "event", metadata: includeContent ? { contentBefore: [{ text: "Captured project request" }] } : {} }),
       listAuditEvents: async () => ({ items: [] }), updateRunnerPool,
     } as unknown as ControlPlaneService,
     runnerControl: {} as RunnerControlServer, metrics: {} as ControllerMetrics });
@@ -38,16 +38,16 @@ function setup(identity: TokenIdentity | null = { id: "owner", role: "admin", te
 describe("Access token HTTP authority", () => {
   it.each(["admin"])("allows %s Runner writes only with the matching token grant", async role => {
     const targets = { desiredReplicas: 2, safeRpsPerRunner: 50, maxConcurrencyPerRunner: 64 };
-    const writable = setup({ id: "owner", role, tenantId: "tenantA", tokenId: "token", permissions: { runners: "write" } });
+    const writable = setup({ id: "owner", role, projectId: "projectA", tokenId: "token", permissions: { runners: "write" } });
     expect((await writable.request("PATCH", "/runner-pools/pool", "Bearer test", targets)).status).toBe(200);
     expect(writable.updateRunnerPool).toHaveBeenCalledExactlyOnceWith({ id: "pool", actorId: "owner", ...targets });
     expect(writable.accessTokens.recordRequest).toHaveBeenCalledWith(expect.objectContaining({ tokenId: "token" }), "PATCH", "/api/v1/runner-pools/:id", 200);
-    const readOnly = setup({ id: "owner", role, tenantId: "tenantA", tokenId: "token", permissions: { runners: "read" } });
+    const readOnly = setup({ id: "owner", role, projectId: "projectA", tokenId: "token", permissions: { runners: "read" } });
     expect((await readOnly.request("PATCH", "/runner-pools/pool", "Bearer test", targets)).status).toBe(403);
     expect(readOnly.updateRunnerPool).not.toHaveBeenCalled();
   });
-  it("does not let a tenant token mutate shared Runner pools", async () => {
-    const { request, updateRunnerPool } = setup({ id: "owner", role: "user", tenantId: "tenantA", tokenId: "token", permissions: { runners: "write" } });
+  it("does not let a project token mutate shared Runner pools", async () => {
+    const { request, updateRunnerPool } = setup({ id: "owner", role: "user", projectId: "projectA", tokenId: "token", permissions: { runners: "write" } });
     expect((await request("PATCH", "/runner-pools/pool", "Bearer test", {})).status).toBe(403);
     expect(updateRunnerPool).not.toHaveBeenCalled();
   });
@@ -59,7 +59,7 @@ describe("Access token HTTP authority", () => {
     ["POST", "/guardrails/guardrail-default/versions/v1/environment-check"],
     ["DELETE", "/guardrails/guardrail-default/versions/v1"],
   ])("does not grant a user token platform maintenance through runners:write: %s %s", async (method, path) => {
-    const { request } = setup({ id: "owner", role: "user", tenantId: "tenantA", tokenId: "token", permissions: { runners: "write" } });
+    const { request } = setup({ id: "owner", role: "user", projectId: "projectA", tokenId: "token", permissions: { runners: "write" } });
     expect((await request(method!, path!, "Bearer test", {})).status).toBe(403);
   });
   it("uses token identity instead of a concurrent browser session and reports its scopes", async () => {
@@ -72,18 +72,18 @@ describe("Access token HTTP authority", () => {
     expect((await request("GET", "/routers", header)).status).toBe(401);
     expect(getSession).not.toHaveBeenCalled();
   });
-  it("fails closed for user PATs with no persisted tenant despite tenant headers", async () => {
-    const { request, accessTokens } = setup({ id: "owner", role: "user", tenantId: "", tokenId: "token", permissions: { routers: "write" } });
-    expect((await request("GET", "/account/identity", "Bearer test", undefined, { "x-tenant-id": "tenantB" })).status).toBe(401);
+  it("fails closed for user PATs with no persisted project despite project headers", async () => {
+    const { request, accessTokens } = setup({ id: "owner", role: "user", projectId: "", tokenId: "token", permissions: { routers: "write" } });
+    expect((await request("GET", "/account/identity", "Bearer test", undefined, { "x-project-id": "projectB" })).status).toBe(401);
     expect((await request("GET", "/routers")).status).toBe(401);
     expect(accessTokens.recordRequest).not.toHaveBeenCalled();
   });
-  it("uses tenant user context and global metadata context for platform tokens", async () => {
-    const tenant = setup({ id: "owner", role: "user", tenantId: "tenantB", tokenId: "token", permissions: { guardrails: "read" } });
-    expect(await (await tenant.request("GET", "/guardrails")).json()).toMatchObject({ items: [{ tenantId: "tenantB" }] });
-    const platform = setup({ id: "owner", role: "admin", tenantId: "tenantB", tokenId: "token", permissions: { guardrails: "read" } });
-    expect(await (await platform.request("GET", "/guardrails")).json()).toMatchObject({ items: [{ tenantId: null }] });
-    expect(await (await platform.request("GET", "/account/identity")).json()).toMatchObject({ tenantId: null, role: "admin" });
+  it("uses project user context and global metadata context for platform tokens", async () => {
+    const project = setup({ id: "owner", role: "user", projectId: "projectB", tokenId: "token", permissions: { guardrails: "read" } });
+    expect(await (await project.request("GET", "/guardrails")).json()).toMatchObject({ items: [{ projectId: "projectB" }] });
+    const platform = setup({ id: "owner", role: "admin", projectId: "projectB", tokenId: "token", permissions: { guardrails: "read" } });
+    expect(await (await platform.request("GET", "/guardrails")).json()).toMatchObject({ items: [{ projectId: null }] });
+    expect(await (await platform.request("GET", "/account/identity")).json()).toMatchObject({ projectId: null, role: "admin" });
   });
   it("allows module reads, denies writes and other modules", async () => {
     const { request, createRouter } = setup();
@@ -93,35 +93,35 @@ describe("Access token HTTP authority", () => {
     expect(createRouter).not.toHaveBeenCalled();
   });
   it.each(["user"])("forwards a %s token mutation with the owner and token attribution", async role => {
-    const { request, accessTokens, createRouter } = setup({ id: "owner", role, tenantId: "tenantA", tokenId: "token", permissions: { routers: "write" } });
+    const { request, accessTokens, createRouter } = setup({ id: "owner", role, projectId: "projectA", tokenId: "token", permissions: { routers: "write" } });
     const draft = { routes: [{ id: "fallback", name: "Fallback", kind: "fallback", enabled: true, selector: { expression: { combinator: "and", conditions: [] } }, targets: [{ id: "target", guardrailId: "guard", guardrailVersion: "1", weightBps: 10000 }] }] };
     expect((await request("POST", "/routers", "Bearer test", { name: "Automation", draft })).status).toBe(201);
     expect(createRouter.mock.calls[0]?.[3]).toBe("owner");
     expect(accessTokens.recordRequest).toHaveBeenCalledWith(expect.objectContaining({ tokenId: "token" }), "POST", "/api/v1/routers", 201);
   });
   it("denies administrator business mutations even when an old token grants write", async () => {
-    const { request, createRouter } = setup({ id: "owner", role: "admin", tenantId: "tenantA", tokenId: "token", permissions: { routers: "write" } });
+    const { request, createRouter } = setup({ id: "owner", role: "admin", projectId: "projectA", tokenId: "token", permissions: { routers: "write" } });
     expect((await request("POST", "/routers", "Bearer test", {})).status).toBe(403);
     expect(createRouter).not.toHaveBeenCalled();
     expect(await (await request("GET", "/account/identity")).json()).toMatchObject({ effectivePermissions: { routers: "read" } });
   });
   it("retains business and Model authority after a role change, but blocks platform grants", async () => {
-    const { request } = setup({ id: "owner", role: "user", tenantId: "tenantA", tokenId: "token", permissions: { routers: "write", models: "write", settings: "write" } });
+    const { request } = setup({ id: "owner", role: "user", projectId: "projectA", tokenId: "token", permissions: { routers: "write", models: "write", settings: "write" } });
     expect((await request("GET", "/routers")).status).toBe(200);
     expect((await request("POST", "/routers", "Bearer test", {})).status).toBe(400);
     expect((await request("GET", "/models")).status).toBe(503);
     expect((await request("PUT", "/models/id/pricing", "Bearer test", {})).status).toBe(403);
   });
-  it("lets a tenant runtime token read captured content but rejects an old audit grant", async () => {
-    const { request } = setup({ id: "owner", role: "user", tenantId: "tenantA", tokenId: "token", permissions: { runtime: "read", audit: "read" } });
+  it("lets a project runtime token read captured content but rejects an old audit grant", async () => {
+    const { request } = setup({ id: "owner", role: "user", projectId: "projectA", tokenId: "token", permissions: { runtime: "read", audit: "read" } });
     expect((await request("GET", "/telemetry/events")).status).toBe(200);
     expect((await request("GET", "/telemetry/security-events?guardrailId=guard")).status).toBe(200);
-    expect(await (await request("GET", "/telemetry/events/event?includeContent=true")).json()).toMatchObject({ metadata: { contentBefore: [{ text: "Captured tenant request" }] } });
+    expect(await (await request("GET", "/telemetry/events/event?includeContent=true")).json()).toMatchObject({ metadata: { contentBefore: [{ text: "Captured project request" }] } });
     expect((await request("GET", "/audit-events")).status).toBe(403);
     expect(await (await request("GET", "/account/identity")).json()).toMatchObject({ effectivePermissions: { runtime: "read" } });
   });
-  it("lets platform tokens read audit records but rejects old tenant runtime grants", async () => {
-    const { request } = setup({ id: "owner", role: "admin", tenantId: "tenantA", tokenId: "token", permissions: { runtime: "read", audit: "read" } });
+  it("lets platform tokens read audit records but rejects old project runtime grants", async () => {
+    const { request } = setup({ id: "owner", role: "admin", projectId: "projectA", tokenId: "token", permissions: { runtime: "read", audit: "read" } });
     expect((await request("GET", "/audit-events")).status).toBe(200);
     for (const path of ["/telemetry/events", "/telemetry/security-events?guardrailId=guard", "/telemetry/events/event?includeContent=true", "/telemetry/metrics"]) {
       expect((await request("GET", path)).status).toBe(403);
@@ -129,7 +129,7 @@ describe("Access token HTTP authority", () => {
     expect(await (await request("GET", "/account/identity")).json()).toMatchObject({ effectivePermissions: { audit: "read" } });
   });
   it.each([["GET", "/account/access-tokens"], ["POST", "/account/access-tokens"], ["DELETE", "/account/access-tokens/another"],
-    ["GET", "/account/tenants"], ["GET", "/account/shareable-resources"], ["GET", "/account/shares"],
+    ["GET", "/account/projects"], ["GET", "/account/shareable-resources"], ["GET", "/account/shares"],
     ["POST", "/account/shares"], ["DELETE", "/account/shares/another"],
   ])("tokens cannot manage account credentials or sharing: %s %s", async (method, path) => {
     const { request, accessTokens } = setup();
@@ -140,9 +140,13 @@ describe("Access token HTTP authority", () => {
     const { request, accessTokens } = setup();
     const response = await request("POST", "/account/access-tokens", null, { name: "CI" });
     expect(response.status).toBe(201); expect(response.headers.get("cache-control")).toBe("no-store");
-    expect(accessTokens.create).toHaveBeenCalledWith("session-owner", { name: "CI" });
+    expect(accessTokens.create).toHaveBeenCalledWith("session-owner", { name: "CI" }, null);
     await request("DELETE", "/account/access-tokens/id", null);
     expect(accessTokens.revoke).toHaveBeenCalledWith("session-owner", "id");
+  });
+  it("accepts account mutations from the configured public origin", async () => {
+    const { request } = setup();
+    expect((await request("POST", "/account/access-tokens", null, { name: "CI" }, {origin: new URL(config.publicUrl).origin, "sec-fetch-site": "same-origin"})).status).toBe(201);
   });
   it("rejects cross-site issuance before the service", async () => {
     const { request, accessTokens } = setup();
@@ -152,7 +156,10 @@ describe("Access token HTTP authority", () => {
   it("covers every authenticated product route explicitly and denies unknown operations", () => {
     const source = readFileSync(new URL("./app.ts", import.meta.url), "utf8");
     for (const [, method, path] of source.matchAll(/app\.(get|post|put|patch|delete)\(["'](\/api\/v1\/[^"']+)["'], authenticated/g)) {
-      if (path!.startsWith("/api/v1/account/") || path === "/api/v1/account/identity") continue;
+      if (path!.startsWith("/api/v1/account/") || /^\/api\/v1\/projects(?:\/[^/]+\/members(?:\/[^/]+)?)?$/.test(path!)) {
+        expect(requiredTokenPermission(method!.toUpperCase(), path!)).toBeUndefined();
+        continue;
+      }
       expect(tokenRoutePermissions.some(([verb, template]) => verb === method!.toUpperCase() && template === path), path).toBe(true);
     }
     expect(requiredTokenPermission("POST", "/api/v1/future-admin-operation")).toBeUndefined();

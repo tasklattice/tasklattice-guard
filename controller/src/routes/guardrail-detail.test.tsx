@@ -275,7 +275,7 @@ describe("Guardrail detail information hierarchy", () => {
     expect(Object.fromEntries(link.searchParams)).toEqual({ eventId: "event-critical", requestId: "trace-playground", checkpointId: "event-critical", guardrailId: "guardrail-observed" });
   });
 
-  it("hides tenant log links from platform administrators", () => {
+  it("hides project log links from platform administrators", () => {
     identity.role = "admin";
     render(<GuardrailFindingsView data={{ items: [], count: 0 } as unknown as GuardrailFindingPage} loading={false} error={null} policies={[]} routers={[]} endpoints={[]} window="24h" onWindowChange={() => undefined} />);
     expect(screen.getByRole("region", { name: "guardrails.securityFindingsTitle" })).toBeTruthy();

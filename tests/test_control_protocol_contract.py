@@ -173,7 +173,7 @@ def test_nested_traffic_scope_and_endpoint_credentials_are_typed() -> None:
     scope = {
         "combinator": "and",
         "conditions": [
-            {"field": "header", "key": "x-tenant", "operator": "equals", "value": "acme"},
+            {"field": "header", "key": "x-project", "operator": "equals", "value": "acme"},
             {
                 "combinator": "or",
                 "conditions": [

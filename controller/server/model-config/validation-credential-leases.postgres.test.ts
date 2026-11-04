@@ -17,8 +17,8 @@ describe.skipIf(!url)("durable candidate credential leases", () => {
     first = new PostgresValidationCredentialLeaseStore(database.db);
     second = new PostgresValidationCredentialLeaseStore(database.db);
     await database.pool.query("INSERT INTO model_provider(id,name,kind,base_url,credential_ciphertext) VALUES ($1,'Candidate','custom-openai-compatible','https://invalid.example',$2)", [provider.id, provider.credentialCiphertext]);
-    await database.pool.query("INSERT INTO tenant_group(id,name) VALUES ('candidate-group','Candidate'),('other-group','Other')");
-    await database.pool.query("INSERT INTO runner_pool(id,name,group_id) VALUES ('candidate-pool','Candidate','candidate-group'),('other-pool','Other','other-group')");
+    await database.pool.query("INSERT INTO project_group(id,name) VALUES ('candidate-group','Candidate'),('other-group','Other')");
+    await database.pool.query("INSERT INTO runner_pool(id,name,group_id,project_id) VALUES ('candidate-pool','Candidate','candidate-group','projectA'),('other-pool','Other','other-group','projectB')");
     await database.pool.query("INSERT INTO runner_pool_lease_epoch(pool_id) VALUES ('candidate-pool'),('other-pool')");
   }, 30000);
   afterAll(async () => { await database?.drop(); });

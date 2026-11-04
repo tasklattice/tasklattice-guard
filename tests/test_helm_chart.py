@@ -21,31 +21,19 @@ REQUIRED = (
 )
 
 
-def test_context_capacity_defaults_are_persisted_in_all_runner_pools():
-    docs = render_dev("--set", "runner.pools[0].name=batch", "--set", "runner.pools[0].replicaCount=1")
+def test_context_capacity_defaults_are_applied_to_default_runner():
+    docs = render_dev()
     redis = next(d for d in docs if d["kind"] == "Deployment" and d["metadata"]["name"].endswith("-redis"))
     container = redis["spec"]["template"]["spec"]["containers"][0]
     assert container["args"][-4:] == ["--maxmemory", "4gb", "--maxmemory-policy", "noeviction"]
     assert container["resources"]["limits"]["memory"] == "6Gi"
     runners = [d for d in docs if d["kind"] == "StatefulSet" and "runner" in d["metadata"]["name"]]
-    assert len(runners) == 2
+    assert len(runners) == 1
     for runner in runners:
         env = {v["name"]: v.get("value") for v in runner["spec"]["template"]["spec"]["containers"][0]["env"]}
         assert env["GUARD_RUNNER_CALL_CONTEXT_TTL_SECONDS"] == "300"
         assert env["GUARD_RUNNER_CALL_CONTEXT_COMPRESS_PLANS"] == "true"
         assert env["GUARD_RUNNER_CALL_CONTEXT_CAPACITY_FALLBACK"] == "true"
-
-
-def test_laya_thresholds_are_independent_and_upgrade_defaults_preserve_zero():
-    for options, lower, upper in [([], "0.1", "0.9"),
-        (["--set-json", "runner.laya.lowerThreshold=0", "--set-json", "runner.laya.upperThreshold=0.6"], "0", "0.6"),
-        (["--set-json", "runner.laya=null"], "0.1", "0.9")]:
-        docs = render_dev(*options, "--set", "runner.jev.upperThreshold=0.85")
-        runner = next(d for d in docs if d["kind"] == "StatefulSet" and "runner" in d["metadata"]["name"])
-        env = {e["name"]: e.get("value") for e in runner["spec"]["template"]["spec"]["containers"][0]["env"]}
-        assert env["GUARD_LAYA_LOWER_THRESHOLD"] == lower
-        assert env["GUARD_LAYA_UPPER_THRESHOLD"] == upper
-        assert env["GUARD_JEV_UPPER_THRESHOLD"] == "0.85"
 
 
 def test_context_capacity_alerts_are_release_scoped():
@@ -86,6 +74,17 @@ def render_error(*values: str) -> str:
     )
     assert result.returncode != 0
     return result.stderr
+
+
+def test_removed_extra_pools_do_not_create_or_change_chart_resources():
+    documents = render("--set-json", 'runner.pools=[{"name":"support-search","replicaCount":2,"maxConcurrency":64}]',
+                       "--set", "networkPolicy.runnerIsolation.enabled=true")
+    assert documents == render("--set", "networkPolicy.runnerIsolation.enabled=true")
+    runners = [item for item in documents if item["kind"] == "StatefulSet"]
+    assert [item["metadata"]["name"] for item in runners] == ["runner-default"]
+    env = {item["name"]: item for item in runners[0]["spec"]["template"]["spec"]["containers"][0]["env"]}
+    assert env["GUARD_RUNNER_POOL_ID"]["value"] == "default"
+    assert env["GUARD_RUNNER_ID"]["valueFrom"]["fieldRef"]["fieldPath"] == "metadata.name"
 
 
 def controller_config(documents):
@@ -147,16 +146,16 @@ def test_normal_security_configuration_needs_no_generated_credential_details():
                     assert all(key["key"] != "ca.key" for key in volume["secret"]["items"])
 
 
-def test_minimum_install_has_controller_and_two_stable_guardrails_zero_runners():
+def test_minimum_install_has_controller_and_one_stable_default_runner():
     documents = render()
     deployments = [item for item in documents if item.get("kind") == "Deployment"]
     stateful_sets = [item for item in documents if item.get("kind") == "StatefulSet"]
 
     assert [item["metadata"]["name"] for item in deployments] == ["contract-tali-guard-controller"]
-    assert [item["metadata"]["name"] for item in stateful_sets] == ["contract-tali-guard-runner"]
+    assert [item["metadata"]["name"] for item in stateful_sets] == ["runner-default"]
     runner = stateful_sets[0]
-    assert runner["spec"]["replicas"] == 2
-    assert runner["spec"]["serviceName"] == "contract-tali-guard-runner-headless"
+    assert runner["spec"]["replicas"] == 1
+    assert runner["spec"]["serviceName"] == "runner-default-headless"
     assert runner["spec"]["podManagementPolicy"] == "Parallel"
     assert runner["spec"]["minReadySeconds"] == 5
     runner_pod_spec = runner["spec"]["template"]["spec"]
@@ -168,9 +167,9 @@ def test_minimum_install_has_controller_and_two_stable_guardrails_zero_runners()
     assert runner_container["lifecycle"]["preStop"]["exec"]["command"] == [
         "/bin/sh", "-c", "sleep 5",
     ]
-    assert deployments[0]["spec"]["replicas"] + runner["spec"]["replicas"] == 3
+    assert deployments[0]["spec"]["replicas"] + runner["spec"]["replicas"] == 2
     pdb = next(item for item in documents if item.get("kind") == "PodDisruptionBudget")
-    assert pdb["metadata"]["name"] == "contract-tali-guard-runner-availability"
+    assert pdb["metadata"]["name"] == "runner-default-availability"
     assert pdb["spec"]["minAvailable"] == 1
 
 
@@ -206,16 +205,10 @@ def test_controller_and_runner_have_distinct_images_ports_and_responsibilities()
     assert "GUARD_PYROSCOPE_SERVER_ADDRESS" not in runner_env
 
 
-def test_custom_ca_secret_is_mounted_into_controller_and_every_runner_system_certificate_directory():
+def test_custom_ca_secret_is_mounted_into_controller_and_default_runner_system_certificate_directory():
     documents = render(
         "--set", "security.customCa.existingSecret=model-provider-ca",
         "--set", "security.customCa.certificateKey=company-root.crt",
-        "--set", "runner.pools[0].name=gpu",
-        "--set", "runner.pools[0].replicaCount=1",
-        "--set", "runner.pools[0].maxConcurrency=128",
-        "--set", "runner.pools[0].resources.requests.cpu=1",
-        "--set", "runner.pools[0].resources.requests.memory=2Gi",
-        "--set", "runner.pools[0].resources.limits.memory=8Gi",
     )
     workloads = [
         item for item in documents
@@ -223,7 +216,7 @@ def test_custom_ca_secret_is_mounted_into_controller_and_every_runner_system_cer
         and item["metadata"]["labels"]["app.kubernetes.io/component"] in {"controller", "runner"}
     ]
 
-    assert len(workloads) == 3
+    assert len(workloads) == 2
     for workload in workloads:
         pod_spec = workload["spec"]["template"]["spec"]
         container = pod_spec["containers"][0]
@@ -405,7 +398,7 @@ def test_endpoint_tracks_runner_service_namespace_and_port():
     )
 
 
-def test_guardrails_zero_cannot_drop_below_one_replica():
+def test_default_runner_cannot_drop_below_one_replica():
     result = subprocess.run(
         ["helm", "template", "contract", str(CHART), *REQUIRED, "--set", "runner.default.replicaCount=0"],
         check=False,
@@ -414,7 +407,7 @@ def test_guardrails_zero_cannot_drop_below_one_replica():
     )
 
     assert result.returncode != 0
-    assert "GuardRails 0" in result.stderr
+    assert "runner-default" in result.stderr
 
 
 def test_runtime_public_url_changes_advertising_and_controller_rollout_only():
@@ -500,7 +493,7 @@ def test_shared_host_virtualservice_example_matches_rendered_services(tmp_path):
     assert controller_env["CONTROLLER_BOOTSTRAP_ADMIN_DIRECTORY"]["value"] == "/var/run/tasklattice/bootstrap-admin"
     assert next(volume for volume in controller_deployment["spec"]["template"]["spec"]["volumes"] if volume["name"] == "bootstrap-admin")["secret"]["secretName"] == "tali-guard-uat-bootstrap-admin"
     runner = next(doc for doc in documents if doc["kind"] == "StatefulSet")
-    assert runner["spec"]["replicas"] == 2
+    assert runner["spec"]["replicas"] == 1
     runner_env = {entry["name"]: entry.get("value") for entry in runner["spec"]["template"]["spec"]["containers"][0]["env"]}
     assert runner_env["GUARD_URL"] == "http://tali-guard-uat-controller:8080"
     assert runner_env["GUARD_CONTROLLER_TARGET"] == "tali-guard-uat-controller:9090"
@@ -584,7 +577,7 @@ def test_endpoint_ingress_routes_ui_and_runtime():
 
 def test_adapter_limits_use_application_defaults():
     documents = render()
-    runtime = next(item for item in documents if item["kind"] == "StatefulSet" and item["metadata"]["name"].endswith("-runner"))
+    runtime = next(item for item in documents if item["kind"] == "StatefulSet" and item["metadata"]["name"] == "runner-default")
     env = {item["name"] for item in runtime["spec"]["template"]["spec"]["containers"][0]["env"]}
     assert "GUARD_SCAN_MAX_BODY_BYTES" not in env
     assert "GUARD_SCAN_TIMEOUT_SECONDS" not in env
@@ -633,16 +626,13 @@ def test_platform_metadata_at_root_and_nested_values_does_not_block_rendering(tm
         "labels": labels,
         "commonLabels": labels,
         "controller": {"labels": labels, "image": {"metadata": {"source": "internal"}}},
-        "runner": {"default": {"labels": labels}, "pools": [{
-            "name": "extra", "replicaCount": 1, "maxConcurrency": 32, "resources": {}, "labels": labels,
-        }]},
+        "runner": {"default": {"labels": labels}},
         "security": {"bootstrapAdmin": {"metadata": {"owner": "platform"}}},
         "observability": {"serviceMonitor": {"metadata": {"labels": labels}}},
     }))
-    pool = [{"name": "extra", "replicaCount": 1, "maxConcurrency": 32, "resources": {}}]
     # The platform owns injection into rendered metadata. Extra Values must
     # neither block rendering nor change chart-owned selectors or settings.
-    assert render("--values", str(overrides)) == render("--set-json", "runner.pools=" + json.dumps(pool))
+    assert render("--values", str(overrides)) == render()
 
 
 def test_kubernetes_overrides_and_custom_secret_keys_are_preserved(tmp_path):
@@ -699,12 +689,12 @@ def test_development_values_are_self_contained_and_keep_two_app_components():
         "tali-guard-controller", "tali-guard-redis",
     }
     assert {item["metadata"]["name"] for item in stateful_sets} == {
-        "tali-guard-postgresql", "tali-guard-runner",
+        "tali-guard-postgresql", "runner-default",
     }
     controller_pod = deployments_by_name["tali-guard-controller"]["spec"]["template"]["spec"]
-    runner_workload = next(item for item in stateful_sets if item["metadata"]["name"] == "tali-guard-runner")
+    runner_workload = next(item for item in stateful_sets if item["metadata"]["name"] == "runner-default")
     runner_pod = runner_workload["spec"]["template"]["spec"]
-    assert runner_workload["spec"]["serviceName"] == "tali-guard-runner-headless"
+    assert runner_workload["spec"]["serviceName"] == "runner-default-headless"
     assert runner_workload["spec"]["replicas"] == 1
     assert runner_pod["containers"][0]["image"].endswith(":dev")
     assert controller_pod["containers"][0]["image"].endswith(":dev")
@@ -718,7 +708,7 @@ def test_development_values_are_self_contained_and_keep_two_app_components():
     controller_service = services["tali-guard-controller"]
     controller_public_service = services["tali-guard-controller-public"]
     runner_service = services["tali-guard-runtime"]
-    runner_headless_service = services["tali-guard-runner-headless"]
+    runner_headless_service = services["runner-default-headless"]
     runner_public_service = services["tali-guard-runtime-public"]
     assert controller_service["spec"]["type"] == "ClusterIP"
     assert {item["port"] for item in controller_service["spec"]["ports"]} == {8080, 9090}
@@ -789,21 +779,15 @@ def test_production_profile_does_not_install_development_postgresql():
     documents = render()
 
     stateful_sets = [item for item in documents if item.get("kind") == "StatefulSet"]
-    assert [item["metadata"]["name"] for item in stateful_sets] == ["contract-tali-guard-runner"]
+    assert [item["metadata"]["name"] for item in stateful_sets] == ["runner-default"]
     assert all(not item["metadata"]["name"].endswith("postgresql") for item in stateful_sets)
     controller = next(item for item in documents if item.get("kind") == "Deployment" and item["metadata"]["name"].endswith("controller"))
     assert "initContainers" not in controller["spec"]["template"]["spec"]
 
 
-def test_rollout_revision_updates_controller_and_every_runner_pool():
+def test_rollout_revision_updates_controller_and_default_runner():
     documents = render(
         "--set", "rolloutRevision=dev-build-42",
-        "--set", "runner.pools[0].name=gpu",
-        "--set", "runner.pools[0].replicaCount=1",
-        "--set", "runner.pools[0].maxConcurrency=128",
-        "--set", "runner.pools[0].resources.requests.cpu=1",
-        "--set", "runner.pools[0].resources.requests.memory=2Gi",
-        "--set", "runner.pools[0].resources.limits.memory=8Gi",
     )
     workloads = [
         item for item in documents
@@ -811,43 +795,39 @@ def test_rollout_revision_updates_controller_and_every_runner_pool():
         and item["metadata"]["labels"].get("app.kubernetes.io/component") in {"controller", "runner"}
     ]
 
-    assert len(workloads) == 3
+    assert len(workloads) == 2
     assert all(
         item["spec"]["template"]["metadata"]["annotations"]["tasklattice.io/rollout-revision"] == "dev-build-42"
         for item in workloads
     )
 
 
-def test_extension_pool_is_an_additional_runner_not_a_new_component_type():
+def test_default_runner_capacity_and_resources_are_configurable():
     documents = render(
-        "--set", "runner.pools[0].name=gpu",
-        "--set", "runner.pools[0].replicaCount=3",
-        "--set", "runner.pools[0].maxConcurrency=128",
-        "--set", "runner.pools[0].resources.requests.cpu=1",
-        "--set", "runner.pools[0].resources.requests.memory=2Gi",
-        "--set", "runner.pools[0].resources.limits.memory=8Gi",
-        "--set", "runner.callContextRedisUrl=redis://redis:6379/0",
+        "--set", "runner.default.replicaCount=3",
+        "--set", "runner.default.maxConcurrency=128",
+        "--set", "runner.default.resources.requests.cpu=1",
+        "--set", "runner.default.resources.requests.memory=2Gi",
+        "--set", "runner.default.resources.limits.memory=8Gi",
     )
-    stateful_sets = [item for item in documents if item.get("kind") == "StatefulSet"]
-
-    assert len(stateful_sets) == 2
-    extension = next(item for item in stateful_sets if item["metadata"]["name"].endswith("runner-gpu"))
-    assert extension["metadata"]["labels"]["app.kubernetes.io/component"] == "runner"
-    assert extension["spec"]["replicas"] == 3
-    assert extension["spec"]["serviceName"] == "contract-tali-guard-runner-gpu-headless"
-    services = {item["metadata"]["name"]: item for item in documents if item.get("kind") == "Service"}
-    assert "contract-tali-guard-runtime" in services
-    assert "contract-tali-guard-runtime-gpu" in services
-    assert "contract-tali-guard-runner-default" not in services
-    assert "contract-tali-guard-runner-headless" in services
-    assert "contract-tali-guard-runner-gpu-headless" in services
+    runner, = [item for item in documents if item["kind"] == "StatefulSet"]
+    assert runner["metadata"]["name"] == "runner-default"
+    assert runner["spec"]["replicas"] == 3
+    assert runner["spec"]["serviceName"] == "runner-default-headless"
+    container = runner["spec"]["template"]["spec"]["containers"][0]
+    assert container["resources"] == {"requests": {"cpu": 1, "memory": "2Gi"}, "limits": {"memory": "8Gi"}}
+    env = {item["name"]: item.get("value") for item in container["env"]}
+    assert env["GUARD_RUNNER_MAX_CONCURRENCY"] == "128"
+    assert env["GUARD_RUNNER_COMPILER_CAPABLE"] == "true"
+    services = {item["metadata"]["name"]: item for item in documents if item["kind"] == "Service"}
+    assert "runner-default-headless" in services
     assert services["contract-tali-guard-runtime"]["spec"]["sessionAffinity"] == "None"
 
 
 def test_multiple_runner_replicas_require_shared_call_context():
     required_without_redis = REQUIRED[:-2]
     result = subprocess.run(
-        ["helm", "template", "contract", str(CHART), *required_without_redis],
+        ["helm", "template", "contract", str(CHART), *required_without_redis, "--set", "runner.default.replicaCount=2"],
         check=False,
         capture_output=True,
         text=True,
@@ -1270,14 +1250,12 @@ def test_bootstrap_ignores_inline_login_material(field):
 
 
 def test_plaintext_bootstrap_renders_no_private_keys_or_random_secret_material():
-    first = render_dev("--set", "security.controlTls.enabled=false", "--set", "runner.pools[0].name=extra", "--set", "runner.pools[0].replicaCount=1",
-                       "--set", "runner.pools[0].maxConcurrency=32", "--set-json", "runner.pools[0].resources={}")
-    second = render_dev("--set", "security.controlTls.enabled=false", "--set", "runner.pools[0].name=extra", "--set", "runner.pools[0].replicaCount=1",
-                        "--set", "runner.pools[0].maxConcurrency=32", "--set-json", "runner.pools[0].resources={}")
+    first = render_dev("--set", "security.controlTls.enabled=false")
+    second = render_dev("--set", "security.controlTls.enabled=false")
     assert first == second  # Stable offline rendering for repeated ArgoCD syncs.
     assert "BEGIN" not in json.dumps(first)
     workloads = [item for item in first if item.get("kind") in {"Deployment", "StatefulSet"} and item["metadata"]["labels"]["app.kubernetes.io/component"] in {"controller", "runner"}]
-    assert len(workloads) == 3
+    assert len(workloads) == 2
     for workload in workloads:
         pod = workload["spec"]["template"]["spec"]
         environment = {entry["name"]: entry for entry in pod["containers"][0]["env"]}
@@ -1441,9 +1419,9 @@ def test_bootstrap_user_is_enabled_by_default_and_supports_existing_secrets():
     documents = render()
     deployment = next(item for item in documents if item.get("kind") == "Deployment")
     assert any(item["name"].startswith("CONTROLLER_BOOTSTRAP_USER_") for item in deployment["spec"]["template"]["spec"]["containers"][0]["env"])
-    documents = render("--set", "security.bootstrapUser.enabled=true", "--set", "security.bootstrapUser.existingSecret=tenant-bootstrap")
+    documents = render("--set", "security.bootstrapUser.enabled=true", "--set", "security.bootstrapUser.existingSecret=project-bootstrap")
     pod = next(item for item in documents if item["kind"] == "Deployment")["spec"]["template"]["spec"]
-    assert next(volume for volume in pod["volumes"] if volume["name"] == "bootstrap-user")["secret"]["secretName"] == "tenant-bootstrap"
+    assert next(volume for volume in pod["volumes"] if volume["name"] == "bootstrap-user")["secret"]["secretName"] == "project-bootstrap"
     assert not any(spec["kind"] == "account" for spec in bootstrap_specs(documents))
 
 
@@ -1455,10 +1433,9 @@ def test_bootstrap_user_rejects_invalid_configuration(settings, error):
     assert error.lower() in render_error("--set", "security.bootstrapUser.enabled=true", *settings).lower()
 
 
-def test_both_charts_keep_credentials_out_of_sources_and_rendered_manifests():
-    for path in (ROOT / "charts").rglob("*"):
-        if path.is_file():
-            assert b"password" not in path.read_bytes().lower(), str(path)
+def test_default_chart_profiles_keep_credentials_out_of_rendered_manifests():
+    # The opt-in Keycloak fixture intentionally contains the requested test
+    # credentials. Standard profiles must continue to expose only Secret refs.
     for chart in (CHART, ROOT / "charts/tali-litellm-dev"):
         profile = chart / ("values-dev-uat.yaml" if chart == CHART else "values-dev.yaml")
         output = subprocess.run(["helm", "template", "scan", str(chart), "-f", str(profile)], capture_output=True, text=True, check=True).stdout
@@ -1557,22 +1534,45 @@ def test_trusted_proxy_cidrs_are_opt_in_and_reach_the_controller():
     assert config["CONTROLLER_TRUSTED_PROXY_CIDRS"] == "10.244.0.0/16,fd00::/8"
 
 
-def test_runner_validation_and_jev_limits_are_system_configuration():
-    runner = next(item for item in render() if item["kind"] == "StatefulSet" and item["metadata"]["name"].endswith("-runner"))
-    env = {entry["name"]: entry.get("value") for entry in runner["spec"]["template"]["spec"]["containers"][0]["env"]}
-    assert env["GUARD_VALIDATION_MAX_CONCURRENCY"] == "8"
-    assert env["GUARD_MODEL_RATE_LIMIT_ATTEMPTS"] == "3"
-    assert env["GUARD_JEV_LOWER_THRESHOLD"] == "0.1"
-    assert env["GUARD_JEV_UPPER_THRESHOLD"] == "0.9"
+def test_model_settings_are_not_runner_deployment_configuration():
+    values = yaml.safe_load(DEFAULT_VALUES.read_text())["runner"]
+    assert not {"validation", "jev", "laya"} & values.keys()
+    runner = next(item for item in render() if item["kind"] == "StatefulSet" and item["metadata"]["name"] == "runner-default")
+    names = {entry["name"] for entry in runner["spec"]["template"]["spec"]["containers"][0]["env"]}
+    assert not {"GUARD_VALIDATION_MAX_CONCURRENCY", "GUARD_MODEL_RATE_LIMIT_ATTEMPTS",
+                "GUARD_JEV_LOWER_THRESHOLD", "GUARD_JEV_UPPER_THRESHOLD",
+                "GUARD_LAYA_LOWER_THRESHOLD", "GUARD_LAYA_UPPER_THRESHOLD"} & names
 
-    tuned = next(item for item in render(
-        "--set", "runner.validation.maxConcurrency=1",
-        "--set", "runner.validation.providerRateLimitAttempts=5",
-        "--set-json", "runner.jev.lowerThreshold=0.4",
-        "--set-json", "runner.jev.upperThreshold=0.6",
-    ) if item["kind"] == "StatefulSet" and item["metadata"]["name"].endswith("-runner"))
-    tuned_env = {entry["name"]: entry.get("value") for entry in tuned["spec"]["template"]["spec"]["containers"][0]["env"]}
-    assert tuned_env["GUARD_VALIDATION_MAX_CONCURRENCY"] == "1"
-    assert tuned_env["GUARD_MODEL_RATE_LIMIT_ATTEMPTS"] == "5"
-    assert tuned_env["GUARD_JEV_LOWER_THRESHOLD"] == "0.4"
-    assert tuned_env["GUARD_JEV_UPPER_THRESHOLD"] == "0.6"
+
+def test_keycloak_development_profile_initializes_two_sso_identities_and_only_default_runner():
+    docs = render_dev('--values', str(CHART / 'values-dev-keycloak.yaml'))
+    config = next(doc for doc in docs if doc['kind'] == 'ConfigMap' and doc['metadata']['name'].endswith('-keycloak-realm'))
+    realm = json.loads(config['data']['tali-realm.json'])
+    identities = json.loads(config['data']['identities.json'])
+    assert len(realm['users']) == 2
+    for index, user in enumerate(realm['users'], 1):
+        assert user['username'] == f'sso-user{index}'
+        assert user['groups'] == [f'/tali/d/dep1/p/test{index}/r/ROLE_AGENT_DEVELOPER']
+        assert user['credentials'] == [{'type': 'password', 'value': 'password', 'temporary': False}]
+        assert user['emailVerified'] is True
+        assert user['id'] == identities['projects'][index - 1]['userId']
+    client = realm['clients'][0]
+    assert client['publicClient'] is False
+    assert client['directAccessGrantsEnabled'] is False
+    assert 'groups' in client['defaultClientScopes']
+    assert client['secret'] == '${TALI_KEYCLOAK_CLIENT_SECRET}'
+    controller = next(doc for doc in docs if doc['kind'] == 'Deployment' and doc['metadata']['name'].endswith('-controller'))
+    containers = controller['spec']['template']['spec']['containers']
+    environment = resolved_environment(docs, containers[0])
+    assert environment['NODE_ENV']['value'] == 'development'
+    assert environment['CONTROLLER_SSO_ISSUER']['value'] == 'http://localhost:38083/realms/tali'
+    policy = next(doc for doc in docs if doc['kind'] == 'NetworkPolicy' and doc['metadata']['name'].endswith('-control-channel'))
+    assert policy['spec']['ingress'][1]['ports'] == [{'protocol': 'TCP', 'port': 8080}, {'protocol': 'TCP', 'port': 38083}]
+    keycloak = next(container for container in containers if container['name'] == 'keycloak')
+    assert '--import-realm' in keycloak['args']
+    runners = [doc for doc in docs if doc['kind'] == 'StatefulSet' and doc['metadata']['name'].startswith('runner-')]
+    assert {runner['metadata']['name']: runner['spec']['replicas'] for runner in runners} == {'runner-default': 1}
+    job = next(doc for doc in docs if doc['kind'] == 'Job' and '-keycloak-init-' in doc['metadata']['name'])
+    assert 'helm.sh/hook' not in job['metadata'].get('annotations', {})
+    assert job['spec']['template']['spec']['automountServiceAccountToken'] is False
+    assert not any(doc['metadata']['name'].endswith('-keycloak-realm') for doc in render_dev())

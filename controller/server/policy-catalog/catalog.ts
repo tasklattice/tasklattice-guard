@@ -119,7 +119,7 @@ export type PolicyDto = {
   deletable?: boolean;
   /** Kept only to resolve existing pinned drafts; omitted from new selections. */
   retired?: boolean;
-  tenant_id?: string;
+  project_id?: string;
   definition?: import("../../shared/policy-definition.js").PolicyDefinition;
   maintenance?: { revision: number; maintainer: string };
   published_versions?: PolicyDto[];

@@ -1,4 +1,4 @@
-import { runtimeEventTenantId } from "./tenant-context.js";
+import { runtimeEventProjectId } from "./project-context.js";
 import { and, eq, sql } from "drizzle-orm";
 import type { ControllerDatabase } from "../db/client.js";
 import { runtimeEvents } from "../db/schema.js";
@@ -11,7 +11,7 @@ type Writer = Pick<ControllerDatabase, "insert">;
 export async function writeRuntimeEvent(db: Writer, event: RuntimeEventInput, authenticatedPoolId?: string) {
   const insert = db.insert(runtimeEvents).values({
     id: event.id,
-    tenantId: runtimeEventTenantId(event, authenticatedPoolId),
+    projectId: runtimeEventProjectId(event, authenticatedPoolId),
     occurredAt: event.occurredAt, requestId: event.requestId,
     runnerId: event.runnerId, guardrailId: event.guardrailId ?? null,
     guardrailVersion: event.guardrailVersion ?? null, endpointId: event.endpointId ?? null,
@@ -30,10 +30,10 @@ export async function writeRuntimeEvent(db: Writer, event: RuntimeEventInput, au
     target: runtimeEvents.id,
     set: { metadata: sql`${runtimeEvents.metadata} || ${JSON.stringify(enrichment)}::jsonb` },
     setWhere: and(
-      sql`${runtimeEvents.tenantId} IS NOT DISTINCT FROM excluded.tenant_id`,
+      sql`${runtimeEvents.projectId} IS NOT DISTINCT FROM excluded.project_id`,
       // A scoped event without verified ownership must not enrich an existing
       // quarantined record from an unknown sender.
-      authenticatedPoolId === undefined ? undefined : sql`excluded.tenant_id IS NOT NULL`,
+      authenticatedPoolId === undefined ? undefined : sql`excluded.project_id IS NOT NULL`,
       eq(runtimeEvents.requestId, event.requestId), eq(runtimeEvents.runnerId, event.runnerId),
       eq(runtimeEvents.direction, event.direction), eq(runtimeEvents.occurredAt, event.occurredAt),
       sql`${runtimeEvents.endpointId} IS NOT DISTINCT FROM ${event.endpointId ?? null}`,

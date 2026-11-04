@@ -1,6 +1,6 @@
-import { useAuth } from "@/lib/auth";
-import { hasPermission } from "../../shared/rbac";
 import { SettingsNavigation } from "@/components/settings-navigation";
+import { useAuth } from "@/lib/auth";
+import { isPlatformAdministrator } from "../../shared/rbac";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { ArrowRight, CircleCheck, CircleHelp, CircleX, RefreshCw } from "lucide-react";
@@ -119,7 +119,7 @@ export function HealthPage() {
               <TableCell>
                 <p>{t(`componentHealth.modelDetail.${models?.reason ?? "unknown"}`)}</p>
                 {models?.bindings.filter(binding => binding.status !== "passed").map(binding => <p key={binding.id} className="mt-1 text-sm">{binding.id} · {t(`componentHealth.modelBinding.${binding.status}`)}</p>)}
-                {hasPermission(auth.user?.role, "models", "write")
+                {isPlatformAdministrator(auth.user?.role)
                   ? <Link className="health-runner-link" to="/settings/guardrail-catalog">{t("componentHealth.configureModels")}<ArrowRight aria-hidden="true" className="size-4" /></Link>
                   : models?.status !== "healthy" ? <p className="mt-2 text-muted-foreground">{t("componentHealth.contactAdmin")}</p> : null}
               </TableCell>

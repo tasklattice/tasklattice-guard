@@ -1,7 +1,7 @@
 import { and, eq, inArray } from "drizzle-orm";
 import type { ControllerDatabase } from "../db/client.js";
 import { modelUsageCosts, guardrails, guardrailVersions, outboxEvents, routeAssignments, runtimeEvents, validationRuns } from "../db/schema.js";
-import { resourceWritePredicate } from "./tenant-context.js";
+import { resourceWritePredicate } from "./project-context.js";
 
 type Transaction = Parameters<Parameters<ControllerDatabase["transaction"]>[0]>[0];
 
@@ -11,11 +11,11 @@ export async function clearGuardrailOperationalData(tx: Transaction, guardrailId
   const requests = await tx.delete(outboxEvents).where(and(
     eq(outboxEvents.aggregateId, guardrailId), eq(outboxEvents.kind, "guardrail.validation_requested"),
   ));
-  // Invocation evidence belongs to its Endpoint's tenant. Removing or restoring
+  // Invocation evidence belongs to its Endpoint's project. Removing or restoring
   // a shared definition must preserve the recipient's own operational history.
-  await tx.delete(modelUsageCosts).where(and(eq(modelUsageCosts.guardrailId, guardrailId), resourceWritePredicate(modelUsageCosts.tenantId)));
-  const events = await tx.delete(runtimeEvents).where(and(eq(runtimeEvents.guardrailId, guardrailId), resourceWritePredicate(runtimeEvents.tenantId)));
-  const calls = await tx.delete(routeAssignments).where(and(eq(routeAssignments.guardrailId, guardrailId), resourceWritePredicate(routeAssignments.tenantId)));
+  await tx.delete(modelUsageCosts).where(and(eq(modelUsageCosts.guardrailId, guardrailId), resourceWritePredicate(modelUsageCosts.projectId)));
+  const events = await tx.delete(runtimeEvents).where(and(eq(runtimeEvents.guardrailId, guardrailId), resourceWritePredicate(runtimeEvents.projectId)));
+  const calls = await tx.delete(routeAssignments).where(and(eq(routeAssignments.guardrailId, guardrailId), resourceWritePredicate(routeAssignments.projectId)));
   await tx.update(guardrailVersions).set({
     status: "pending", validationRunId: null, testingEvidence: null, releasedAt: null, releasedBy: null, environmentCheck: null,
   }).where(eq(guardrailVersions.guardrailId, guardrailId));

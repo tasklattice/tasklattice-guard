@@ -24,7 +24,7 @@ FIXTURE = Path(__file__).resolve().parents[1] / "fixtures/artifacts/stream-safet
 def providers(handler):
     config = protocol.DataPlaneModelConfiguration(revision_id="failure-attribution", revision=1,
         runtimes=[protocol.ModelRuntime(id="safety", base_url="http://model.test/v1", model="Qwen/Qwen3Guard-Gen-8B",
-            profile_ref="tali.qwen3guard.v1", credential_ref="fixture-provider", timeout_seconds=2, max_tokens=128)],
+            profile_ref="tali.qwen3guard.v1", credential_ref="fixture-provider", timeout_seconds=2, max_tokens=128, rate_limit_attempts=1)],
         bindings=[protocol.CapabilityBinding(binding_id="content_safety.output", capability_ref="content_safety",
             rail_type=protocol.RAIL_TYPE_OUTPUT, implementation_ref="tali.runtime.safety-model.v1",
             model_ref="safety", profile_ref="tali.qwen3guard.v1", contract_refs=["tali.guard.content-safety.v1"])])
@@ -42,7 +42,6 @@ def answer():
     ("schema","model","response_schema",None), ("label","model","response_schema",None),
 ])
 async def test_model_fault_survives_real_runtime_telemetry_and_report_wire(tmp_path, monkeypatch, fault, source, category, status):
-    monkeypatch.setattr('runner.toolkit.nemo.actions.model_retry._rate_limit_attempts', 1)
     def respond(request):
         if isinstance(fault, int): return httpx.Response(fault, text="private provider error")
         if fault == "timeout": raise httpx.ReadTimeout("private timeout", request=request)

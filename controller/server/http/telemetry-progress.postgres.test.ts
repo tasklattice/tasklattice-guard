@@ -22,12 +22,12 @@ describe.skipIf(!url)("current-session contiguous telemetry delivery", () => {
   let database: Awaited<ReturnType<typeof createTestDatabase>>;
   let service: ControlPlaneService;
   let sessionId: string, walId: string, capability: string;
-  const identity = () => ({ sessionId, runnerId: "runner-a", bootId: "boot-a", poolId: "pool-a" });
-  const register = async (session = sessionId, bootId = "boot-a") => service.registerRunner({ runnerId: "runner-a", bootId, poolId: "pool-a",
+  const identity = () => ({ sessionId, runnerId: "runner-test-project-a-0", bootId: "boot-a", poolId: "pool-a" });
+  const register = async (session = sessionId, bootId = "boot-a") => service.registerRunner({ runnerId: "runner-test-project-a-0", bootId, poolId: "pool-a",
     runnerVersion: "test", nemoVersion: "test", maxConcurrency: 2, compilerCapable: false, labels: {}, appliedGeneration: 1 }, session);
   const app = () => createHttpApp({ config, service, auth: { api: { getSession: vi.fn() } } as unknown as ControllerAuth,
     runnerControl: {} as RunnerControlServer, metrics: { registry: new Registry() } as ControllerMetrics });
-  const event = (id = "runtime-one") => ({ id, requestId: id, runnerId: "runner-a", occurredAt: new Date().toISOString(),
+  const event = (id = "runtime-one") => ({ id, requestId: id, runnerId: "runner-test-project-a-0", occurredAt: new Date().toISOString(),
     direction: "incoming", decision: "allow", durationMs: 1, metadata: {} });
   const batch = (events = [event()], firstCursor = 1, producedCursor = firstCursor + events.length - 1) => ({ events,
     progress: { walId, batchId: randomUUID(), firstCursor, lastCursor: firstCursor + events.length - 1, producedCursor } });
@@ -35,13 +35,13 @@ describe.skipIf(!url)("current-session contiguous telemetry delivery", () => {
     method: "POST", headers: { authorization: `Bearer ${token}`, "content-type": "application/json", "x-tasklattice-telemetry-capability": uploadCapability },
     body: JSON.stringify(body),
   });
-  const cursors = async () => (await database.pool.query("SELECT acknowledged_cursor,produced_cursor,caught_up_at FROM runner_telemetry_wal WHERE runner_id='runner-a'")).rows[0];
+  const cursors = async () => (await database.pool.query("SELECT acknowledged_cursor,produced_cursor,caught_up_at FROM runner_telemetry_wal WHERE runner_id='runner-test-project-a-0'")).rows[0];
 
   beforeAll(async () => {
     database = await createTestDatabase(url!, "telemetry_progress");
     service = new ControlPlaneService(database.db, config);
-    await database.pool.query(`INSERT INTO runner_pool(id,name) VALUES ('pool-a','A'),('pool-b','B');
-      INSERT INTO guardrail(id,tenant_id,name,draft_config) VALUES ('progress-guard','tenantA','Progress','{}');
+    await database.pool.query(`INSERT INTO runner_pool(id,name,project_id) VALUES ('pool-a','runner-test-project-a','projectA'),('pool-b','runner-test-project-b','projectB');
+      INSERT INTO guardrail(id,project_id,name,draft_config) VALUES ('progress-guard','projectA','Progress','{}');
       INSERT INTO controller_state(id,desired_generation) VALUES ('singleton',1) ON CONFLICT(id) DO UPDATE SET desired_generation=1;`);
   }, 30_000);
   beforeEach(async () => {
@@ -68,7 +68,7 @@ describe.skipIf(!url)("current-session contiguous telemetry delivery", () => {
 
   it("commits contiguous mixed event dispositions and ACK together, replaying a lost reply exactly once", async () => {
     const now = new Date().toISOString();
-    const routing = { id: "route-one", runnerId: "runner-a", eventType: "route_assignment", decisionId: "decision-one", callId: "call-one",
+    const routing = { id: "route-one", runnerId: "runner-test-project-a-0", eventType: "route_assignment", decisionId: "decision-one", callId: "call-one",
       endpointId: "unsupported", routerId: "", routerRevision: 0, routeId: "", targetId: "", guardrailId: "", guardrailVersion: "",
       assignmentStatus: "unassigned", occurredAt: now, decisionAt: now };
     const payload = batch([event(), routing] as ReturnType<typeof event>[], 1, 3);
@@ -98,7 +98,7 @@ describe.skipIf(!url)("current-session contiguous telemetry delivery", () => {
     expect(await cursors()).toMatchObject({ acknowledged_cursor: "1", produced_cursor: "2", caught_up_at: null });
   });
 
-  it("invalidates previous boot/session uploads and resumes only the same retained WAL", async () => {
+  it("invalidates previous boot/session uploads and resumes a surviving local WAL", async () => {
     expect((await post(batch())).status).toBe(202);
     const old = capability;
     sessionId = randomUUID();
@@ -108,10 +108,32 @@ describe.skipIf(!url)("current-session contiguous telemetry delivery", () => {
     expect(resumed.acknowledgedCursor).toBe(1);
     capability = resumed.capability;
     expect((await post(batch([event("new")], 2))).status).toBe(202);
-    const next = randomUUID(); await register(next, "boot-c");
-    await expect(service.telemetryProgress.issue({ ...identity(), sessionId: next, bootId: "boot-c" }, randomUUID()))
-      .rejects.toMatchObject({ code: "telemetry_wal_conflict" });
     expect((await database.pool.query("SELECT wal_id FROM runner_telemetry_wal")).rows).toEqual([{ wal_id: walId }]);
+  });
+
+  it("starts a new WAL after Pod recreation even when unsent telemetry was lost", async () => {
+    const previousIdentity = identity();
+    const previousWal = walId;
+    const previousCapability = capability;
+    const previousBatch = batch([event()], 1, 3);
+    expect((await post(previousBatch)).status).toBe(202);
+    sessionId = randomUUID();
+    await register(sessionId, "boot-b");
+    walId = randomUUID();
+    const started = await service.telemetryProgress.issue({ ...identity(), bootId: "boot-b" }, walId);
+    expect(started).toMatchObject({ walId, acknowledgedCursor: 0, producedCursor: 0, lastBatchId: "", lastBatchDigest: "" });
+    expect(await cursors()).toMatchObject({ acknowledged_cursor: "0", produced_cursor: "0", caught_up_at: null });
+    expect((await database.pool.query("SELECT last_batch_id,last_batch_digest,last_batch_first,last_batch_last,received_at FROM runner_telemetry_wal")).rows)
+      .toEqual([{ last_batch_id: null, last_batch_digest: null, last_batch_first: null, last_batch_last: null, received_at: null }]);
+    capability = started.capability;
+    expect((await post(previousBatch, poolA, previousCapability)).status).toBe(401);
+    expect((await post(batch([event("stale-token")]), poolA, previousCapability)).status).toBe(401);
+    expect((await post(previousBatch)).status).toBe(401);
+    await expect(service.telemetryProgress.issue(previousIdentity, previousWal)).rejects.toMatchObject({ status: 401 });
+    expect((await post(batch([event("after-recreation")]))).status).toBe(202);
+    expect((await database.pool.query("SELECT id FROM runtime_event ORDER BY id")).rows)
+      .toEqual([{ id: "after-recreation" }, { id: "runtime-one" }]);
+    expect((await database.pool.query("SELECT wal_id FROM runner_telemetry_capability")).rows).toEqual([{ wal_id: walId }]);
   });
 
   it("rolls back event writes and ACK on cursor persistence failure, retaining replay", async () => {
@@ -121,7 +143,7 @@ describe.skipIf(!url)("current-session contiguous telemetry delivery", () => {
     const now = new Date().toISOString();
     const metered = { ...event(), guardrailId: "progress-guard", metadata: { usage: { model_calls: [{ call_id: "model-call", provider: "synthetic",
       model: "synthetic", usage_known: true, input_tokens: 1, output_tokens: 1 }] } } };
-    const routing = { id: "rollback-route", runnerId: "runner-a", eventType: "route_assignment", decisionId: "rollback-decision", callId: "rollback-call",
+    const routing = { id: "rollback-route", runnerId: "runner-test-project-a-0", eventType: "route_assignment", decisionId: "rollback-decision", callId: "rollback-call",
       endpointId: "unsupported", routerId: "", routerRevision: 0, routeId: "", targetId: "", guardrailId: "", guardrailVersion: "",
       assignmentStatus: "unassigned", occurredAt: now, decisionAt: now };
     const payload = batch([metered, routing] as ReturnType<typeof event>[]);
@@ -147,10 +169,10 @@ describe.skipIf(!url)("current-session contiguous telemetry delivery", () => {
   });
 
   it("keeps unrelated Runner uploads concurrent while blocking a same-Runner takeover until commit", async () => {
-    await service.registerRunner({ runnerId: "runner-b", bootId: "boot-b", poolId: "pool-b", runnerVersion: "test", nemoVersion: "test",
+    await service.registerRunner({ runnerId: "runner-test-project-b-0", bootId: "boot-b", poolId: "pool-b", runnerVersion: "test", nemoVersion: "test",
       maxConcurrency: 2, compilerCapable: false, labels: {}, appliedGeneration: 1 }, "session-b");
     const walB = randomUUID();
-    const issuedB = await service.telemetryProgress.issue({ runnerId: "runner-b", bootId: "boot-b", poolId: "pool-b", sessionId: "session-b" }, walB);
+    const issuedB = await service.telemetryProgress.issue({ runnerId: "runner-test-project-b-0", bootId: "boot-b", poolId: "pool-b", sessionId: "session-b" }, walB);
     let entered!: () => void, release!: () => void;
     const started = new Promise<void>(resolve => { entered = resolve; });
     const gate = new Promise<void>(resolve => { release = resolve; });
@@ -159,7 +181,7 @@ describe.skipIf(!url)("current-session contiguous telemetry delivery", () => {
       entered(); await gate;
     });
     await started;
-    const otherPayload = { events: [{ runnerId: "runner-b" }], progress: { walId: walB, batchId: randomUUID(), firstCursor: 1, lastCursor: 1, producedCursor: 1 } };
+    const otherPayload = { events: [{ runnerId: "runner-test-project-b-0" }], progress: { walId: walB, batchId: randomUUID(), firstCursor: 1, lastCursor: 1, producedCursor: 1 } };
     const unrelated = await Promise.race([
       service.telemetryProgress.ingest("pool-b", issuedB.capability, otherPayload.progress, "b".repeat(64), otherPayload.events, async () => {}),
       new Promise<never>((_, reject) => setTimeout(() => reject(new Error("unrelated Runner upload was globally serialized")), 2000)),

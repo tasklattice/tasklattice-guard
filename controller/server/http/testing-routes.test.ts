@@ -31,7 +31,7 @@ function setup(role = "user") {
     CONTROLLER_POLICY_CATALOG_DIR: resolve("../runner/toolkit/policy_library/assets"), BETTER_AUTH_SECRET: "better-auth-secret-that-is-at-least-32-characters" });
   const distributeDesiredState = vi.fn().mockResolvedValue(undefined);
   const app = createHttpApp({ config,
-    auth: { api: { getSession: vi.fn().mockResolvedValue({ user: { id: "admin-1", role, tenantId: "tenantA" } }) } } as unknown as ControllerAuth,
+    auth: { api: { getSession: vi.fn().mockResolvedValue({ session: { id: "fixture-session", activeProjectId: "projectA" }, user: { id: "admin-1", role, projectId: "projectA" } }) } } as unknown as ControllerAuth,
     service: service as unknown as ControlPlaneService,
     runnerControl: { hasDefaultCompiler: () => true, distributeDesiredState } as RunnerControlServer, metrics: {} as ControllerMetrics,
   });

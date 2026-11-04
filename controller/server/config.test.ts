@@ -118,13 +118,6 @@ describe("Controller config", () => {
     expect(loadConfig({ ...requiredEnvironment, CONTROLLER_RUNNER_POOL_TOKENS_JSON: JSON.stringify({ "pool-a": control }),
       CONTROLLER_RUNNER_HTTP_TOKENS_JSON: JSON.stringify({ "pool-a": ascii }) }).runnerHttpTokens?.get("pool-a")).toBe(ascii);
   });
-  it("keeps the tenant experiment opt-in and validates its fixed service origin", () => {
-    expect(loadConfig(requiredEnvironment).tenantLoadLabUrl).toBeNull();
-    expect(loadConfig({ ...requiredEnvironment, CONTROLLER_TENANT_LOAD_LAB_URL: "http://tenant-lab:38110" }).tenantLoadLabUrl).toBe("http://tenant-lab:38110");
-    for (const value of ["ftp://tenant-lab", "http://user:password@tenant-lab", "http://tenant-lab/override", "http://tenant-lab?secret=yes"]) {
-      expect(() => loadConfig({ ...requiredEnvironment, CONTROLLER_TENANT_LOAD_LAB_URL: value })).toThrow();
-    }
-  });
   it("supplies finite database budgets and validates the Runner synchronization limit", () => {
     expect(loadConfig(requiredEnvironment)).toMatchObject({ databaseTimeouts: { statementMs: 30000, lockMs: 5000, idleTransactionMs: 30000 }, runnerSyncConcurrency: 4 });
     for (const key of ["CONTROLLER_DATABASE_STATEMENT_TIMEOUT_MS", "CONTROLLER_DATABASE_LOCK_TIMEOUT_MS", "CONTROLLER_DATABASE_IDLE_TRANSACTION_TIMEOUT_MS", "CONTROLLER_RUNNER_SYNC_CONCURRENCY"]) {
@@ -137,13 +130,6 @@ describe("Controller config", () => {
       minPasswordLength: 8,
       metricsToken: null,
     });
-  });
-
-  it("enables mock SSO only by explicit local, non-production configuration", () => {
-    expect(loadConfig({ ...requiredEnvironment, CONTROLLER_HTTP_HOST: "127.0.0.1", CONTROLLER_MOCK_SSO_ENABLED: "true" }).mockSsoEnabled).toBe(true);
-    expect(() => loadConfig({ ...requiredEnvironment, CONTROLLER_MOCK_SSO_ENABLED: "true" })).toThrow(/CONTROLLER_MOCK_SSO_ENABLED|Mock SSO/);
-    expect(() => loadConfig({ ...requiredEnvironment, CONTROLLER_HTTP_HOST: "127.0.0.1", NODE_ENV: "production", CONTROLLER_MOCK_SSO_ENABLED: "true", CONTROLLER_METRICS_TOKEN: "metrics-token-that-is-at-least-32-characters" })).toThrow(/CONTROLLER_MOCK_SSO_ENABLED|Mock SSO/);
-    expect(() => loadConfig({ ...requiredEnvironment, CONTROLLER_HTTP_HOST: "127.0.0.1", CONTROLLER_PUBLIC_URL: "https://guard.example.test", CONTROLLER_MOCK_SSO_ENABLED: "true" })).toThrow(/CONTROLLER_MOCK_SSO_ENABLED|Mock SSO/);
   });
 
   it("accepts only a non-trivial optional metrics token", () => {

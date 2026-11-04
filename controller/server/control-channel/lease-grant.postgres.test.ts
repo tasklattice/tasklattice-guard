@@ -52,7 +52,7 @@ describe.skipIf(!url)("experimental authenticated lease probe and durable ledger
     stream.emit("data", { servingLeaseRequest: request });
     await vi.waitFor(() => expect(writes.filter(item => item.servingLeaseResponse).length).toBe(2));
     expect(writes.filter(item => item.servingLeaseResponse).at(-1)!.servingLeaseResponse.granted).toBe(false);
-    await new RunnerLeaseLedger(db.db).beginDrain("pool-a", 0);
+    await db.pool.query("UPDATE runner_pool_lease_epoch SET draining=true WHERE pool_id='pool-a'");
     stream.emit("data", { servingLeaseRequest: { ...request, nonce: "lease-2" } });
     await vi.waitFor(() => expect(writes.filter(item => item.servingLeaseResponse).length).toBe(3));
     expect(writes.filter(item => item.servingLeaseResponse).at(-1)!.servingLeaseResponse.granted).toBe(false);

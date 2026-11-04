@@ -26,7 +26,7 @@ const { save, preview, publish, approve, emergencyApply, withdraw, revert, role,
   role: { value: "user", id: "submitter" },
 }));
 vi.mock("@/lib/auth", () => ({
-  useAuth: () => ({ user: { id: role.id, role: role.value, tenant_id: "tenantB" } }),
+  useAuth: () => ({ user: { id: role.id, role: role.value, project_id: "projectB" } }),
 }));
 
 const navigation = vi.hoisted(() => ({
@@ -268,8 +268,8 @@ describe("Router detail workflow", () => {
     expect(screen.queryByLabelText("Route name")).toBeNull();
   });
   it("keeps shared Routers read-only across routing and endpoint workspaces", async () => {
-    mount({ ...router, tenantId: "tenantA" });
-    expect(await screen.findByText("Shared from tenantA · read-only")).toBeTruthy();
+    mount({ ...router, projectId: "projectA" });
+    expect(await screen.findByText("Shared from projectA · read-only")).toBeTruthy();
     fireEvent.click(screen.getByRole("tab", { name: "Routing", exact: true }));
     expect(screen.queryByRole("button", { name: "Edit routing", exact: true })).toBeNull();
     expect(screen.queryByRole("button", { name: "Review & submit", exact: true })).toBeNull();

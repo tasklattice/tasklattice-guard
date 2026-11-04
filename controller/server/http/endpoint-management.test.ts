@@ -21,7 +21,7 @@ const config = loadConfig({
 
 const endpoint = {
   id: "endpoint-1",
-  tenantId: "tenantA",
+  projectId: "projectA",
   name: "Primary gateway",
   adapter: "litellm-generic-guardrail",
   credentialRequired: true,
@@ -40,7 +40,7 @@ describe("Endpoint management HTTP routes", () => {
     const resource = { ...endpoint, adapter, credentialRequired: false };
     const createEndpoint = vi.fn().mockResolvedValue(resource);
     const updateEndpoint = vi.fn().mockResolvedValue(resource);
-    const app = appWith({ user: { id: "member-1", role: "user", tenantId: "tenantA" } }, { createEndpoint, updateEndpoint });
+    const app = appWith({ session: { id: "fixture-session", activeProjectId: "projectA" }, user: { id: "member-1", role: "user", projectId: "projectA" } }, { createEndpoint, updateEndpoint });
     for (const method of ["POST", "PATCH"]) {
       const body = method === "POST" ? { name: "Anonymous", adapter, credentialRequired: false } : { credentialRequired: false };
       const response = await app.request(`/api/v1/endpoints${method === "POST" ? "" : "/endpoint-1"}`, {
@@ -58,7 +58,7 @@ describe("Endpoint management HTTP routes", () => {
 
   it.each([null, "false", 0, {}, []])("rejects invalid credentialRequired %j before mutation", async credentialRequired => {
     const createEndpoint = vi.fn(), updateEndpoint = vi.fn();
-    const app = appWith({ user: { id: "member-1", role: "user", tenantId: "tenantA" } }, { createEndpoint, updateEndpoint });
+    const app = appWith({ session: { id: "fixture-session", activeProjectId: "projectA" }, user: { id: "member-1", role: "user", projectId: "projectA" } }, { createEndpoint, updateEndpoint });
     for (const method of ["POST", "PATCH"]) {
       const response = await app.request(`/api/v1/endpoints${method === "POST" ? "" : "/endpoint-1"}`, {
         method, headers: { "content-type": "application/json" },
@@ -72,7 +72,7 @@ describe("Endpoint management HTTP routes", () => {
 
   it.each(["f5-scan", "litellm-generic-guardrail"])("uses the incoming origin across all %s setup responses", async (adapter) => {
     const resource = { ...endpoint, adapter, credential: "tg_one_time" };
-    const app = appWith({ user: { id: "admin-1", role: "user", tenantId: "tenantA" } }, {
+    const app = appWith({ session: { id: "fixture-session", activeProjectId: "projectA" }, user: { id: "admin-1", role: "user", projectId: "projectA" } }, {
       listEndpoints: vi.fn().mockResolvedValue([resource]),
       getEndpoint: vi.fn().mockResolvedValue(resource),
       createEndpoint: vi.fn().mockResolvedValue(resource),
@@ -101,7 +101,7 @@ describe("Endpoint management HTTP routes", () => {
   });
 
   it("uses the proxy's external origin and preserves an explicit runtime override", async () => {
-    const session = { user: { id: "member-1", role: "user", tenantId: "tenantA" } };
+    const session = { session: { id: "fixture-session", activeProjectId: "projectA" }, user: { id: "member-1", role: "user", projectId: "projectA" } };
     const service = { getEndpoint: vi.fn().mockResolvedValue(endpoint) };
     const headers = { "x-forwarded-host": "guard.example.test:9443", "x-forwarded-proto": "https" };
     for (const runtimePublicUrl of [null, "https://runtime.example.test:8443/guard"]) {
@@ -115,7 +115,7 @@ describe("Endpoint management HTTP routes", () => {
   it("retains an explicit false default during creation and updates", async () => {
     const createEndpoint = vi.fn().mockResolvedValue({ ...endpoint, adapter: "f5-scan", scanFlagOnlyDefault: false });
     const updateEndpoint = vi.fn().mockResolvedValue({ ...endpoint, adapter: "f5-scan", scanFlagOnlyDefault: false });
-    const app = appWith({ user: { id: "admin-1", role: "user", tenantId: "tenantA" } }, { createEndpoint, updateEndpoint });
+    const app = appWith({ session: { id: "fixture-session", activeProjectId: "projectA" }, user: { id: "admin-1", role: "user", projectId: "projectA" } }, { createEndpoint, updateEndpoint });
     const created = await app.request("/api/v1/endpoints", {
       method: "POST", headers: { "content-type": "application/json" },
       body: JSON.stringify({ name: "Scan", adapter: "f5-scan", scanFlagOnlyDefault: false }),
@@ -131,7 +131,7 @@ describe("Endpoint management HTTP routes", () => {
 
   it.each([{}, { scanFlagOnlyDefault: "false" }, { scanFlagOnlyDefault: null }, { scanFlagOnlyDefault: 0 }])("rejects invalid Scan default updates %j", async body => {
     const updateEndpoint = vi.fn();
-    const app = appWith({ user: { id: "admin-1", role: "user", tenantId: "tenantA" } }, { updateEndpoint });
+    const app = appWith({ session: { id: "fixture-session", activeProjectId: "projectA" }, user: { id: "admin-1", role: "user", projectId: "projectA" } }, { updateEndpoint });
     expect((await app.request("/api/v1/endpoints/endpoint-1", {
       method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify(body),
     })).status).toBe(400);
@@ -139,7 +139,7 @@ describe("Endpoint management HTTP routes", () => {
   });
   it.each(["litellm-generic-guardrail", "f5-scan"])("creates the supported Endpoint adapter %s", async (adapter) => {
     const createEndpoint = vi.fn().mockResolvedValue({ ...endpoint, adapter });
-    const app = appWith({ user: { id: "admin-1", role: "user", tenantId: "tenantA" } }, { createEndpoint });
+    const app = appWith({ session: { id: "fixture-session", activeProjectId: "projectA" }, user: { id: "admin-1", role: "user", projectId: "projectA" } }, { createEndpoint });
     const response = await app.request("/api/v1/endpoints", {
       method: "POST", headers: { "content-type": "application/json" },
       body: JSON.stringify({ name: "Supported endpoint", adapter }),
@@ -150,7 +150,7 @@ describe("Endpoint management HTTP routes", () => {
 
   it.each(["generic-http-guard", "a2a-guard", "http", "a2a", "scan", "unknown"])("rejects unsupported Endpoint adapter %s before creating anything", async (adapter) => {
     const createEndpoint = vi.fn();
-    const app = appWith({ user: { id: "admin-1", role: "user", tenantId: "tenantA" } }, { createEndpoint });
+    const app = appWith({ session: { id: "fixture-session", activeProjectId: "projectA" }, user: { id: "admin-1", role: "user", projectId: "projectA" } }, { createEndpoint });
     const response = await app.request("/api/v1/endpoints", {
       method: "POST", headers: { "content-type": "application/json" },
       body: JSON.stringify({ name: "Invalid endpoint", adapter }),
@@ -161,7 +161,7 @@ describe("Endpoint management HTTP routes", () => {
 
   it("allows authenticated users to read detail without exposing a digest", async () => {
     const getEndpoint = vi.fn().mockResolvedValue(endpoint);
-    const app = appWith({ user: { id: "member-1", role: "user", tenantId: "tenantA" } }, { getEndpoint });
+    const app = appWith({ session: { id: "fixture-session", activeProjectId: "projectA" }, user: { id: "member-1", role: "user", projectId: "projectA" } }, { getEndpoint });
 
     const response = await app.request("/api/v1/endpoints/endpoint-1");
     expect(response.status).toBe(200);
@@ -175,7 +175,7 @@ describe("Endpoint management HTTP routes", () => {
   });
 
   it("rejects unknown roles before status and credential mutations", async () => {
-    const app = appWith({ user: { id: "member-1", role: "unknown", tenantId: "tenantA" } }, {});
+    const app = appWith({ session: { id: "fixture-session", activeProjectId: "projectA" }, user: { id: "member-1", role: "unknown", projectId: "projectA" } }, {});
 
     expect((await app.request("/api/v1/endpoints/endpoint-1", {
       method: "PATCH",
@@ -199,7 +199,7 @@ describe("Endpoint management HTTP routes", () => {
     const revokeEndpointCredential = vi.fn().mockResolvedValue(undefined);
     const getEndpoint = vi.fn().mockResolvedValue(endpoint);
     const app = appWith(
-      { user: { id: "admin-1", role, tenantId: "tenantA" } },
+      { session: { id: "fixture-session", activeProjectId: "projectA" }, user: { id: "admin-1", role, projectId: "projectA" } },
       { updateEndpoint, rotateEndpointCredential, revokeEndpointCredential, getEndpoint },
     );
 
@@ -226,7 +226,7 @@ describe("Endpoint management HTTP routes", () => {
 });
 
 function appWith(
-  session: { user: { id: string; role: string; tenantId?: string } } | null,
+  session: { user: { id: string; role: string; projectId?: string } } | null,
   service: Partial<ControlPlaneService>,
   appConfig = config,
 ) {

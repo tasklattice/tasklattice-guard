@@ -9,6 +9,7 @@ import type { CSSProperties } from "react";
 import { useTranslation } from "react-i18next";
 
 import { AccountMenu } from "@/components/account-menu";
+import { ProjectInitializationGate } from "@/components/project-initialization";
 import { ControlPlaneSidebar } from "@/components/control-plane-sidebar";
 import {
   Breadcrumb,
@@ -23,14 +24,12 @@ import { Toaster } from "@/components/ui/notifications";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { useAuth } from "@/lib/auth";
 import { LoginPage } from "@/routes/login";
-import { MockSsoPage } from "@/routes/mock-sso";
 import { HelpLayout } from "@/routes/help-layout";
 
 const names: Record<string, { group?: string; page: string }> = {
   "/": { page: "nav.dashboard" },
   "/dashboard": { page: "nav.dashboard" },
-  "/models": { group: "nav.modelServices", page: "nav.models" },
-  "/sharing": { group: "nav.system", page: "nav.sharing" },
+  "/sharing": { page: "nav.sharing" },
   "/guardrails": { group: "nav.guardrailDesign", page: "nav.guardrails" },
   "/policy-library": { group: "nav.guardrailDesign", page: "nav.policyLibrary" },
   "/playground": { group: "nav.guardrailDesign", page: "nav.playground" },
@@ -38,15 +37,14 @@ const names: Record<string, { group?: string; page: string }> = {
   "/integration/endpoints": { group: "nav.runtime", page: "nav.endpoints" },
   "/billing": { group: "nav.runtimeObservations", page: "nav.billing" },
   "/logs": { group: "nav.runtimeObservations", page: "nav.logs" },
-  "/audit-log": { group: "nav.accessAudit", page: "nav.auditLog" },
-  "/access": { group: "nav.accessAudit", page: "nav.access" },
-  "/account": { group: "nav.system", page: "account.title" },
-  "/settings": { group: "nav.settings", page: "nav.health" },
-  "/settings/version": { group: "nav.settings", page: "nav.version" },
-  "/settings/health": { group: "nav.settings", page: "nav.health" },
-  "/settings/runner": { group: "nav.settings", page: "nav.runner" },
-  "/settings/tenant-load-lab": { group: "nav.settings", page: "nav.tenantLoadLab" },
-  "/settings/tenant-groups": { group: "nav.settings", page: "nav.tenantGroups" },
+  "/audit-log": { group: "nav.platformOperations", page: "nav.auditLog" },
+  "/access": { group: "nav.peopleProjects", page: "nav.access" },
+  "/access/projects": { group: "nav.peopleProjects", page: "projects.title" },
+  "/account": { page: "account.title" },
+  "/settings": { group: "nav.platformOperations", page: "nav.health" },
+  "/settings/version": { group: "nav.platformOperations", page: "nav.version" },
+  "/settings/health": { group: "nav.platformOperations", page: "nav.health" },
+  "/settings/runner": { group: "nav.platformOperations", page: "nav.runner" },
   "/settings/providers": { group: "nav.modelServices", page: "nav.providers" },
   "/settings/models": { group: "nav.modelServices", page: "nav.models" },
   "/settings/guardrail-catalog": { group: "nav.modelServices", page: "nav.guardrailCatalog" },
@@ -64,7 +62,6 @@ export function ControlPlaneLayout() {
     ?? (pathname.startsWith("/guardrails/") ? names["/guardrails"] : undefined)
     ?? (pathname.startsWith("/integration/routers/") ? names["/integration/routers"] : undefined)
     ?? { page: "nav.dashboard" };
-  if (pathname === "/mock-sso") return <MockSsoPage />;
   if (auth.isLoading) {
     return <div className="flex min-h-dvh items-center justify-center bg-background"><div className="flex items-center gap-3 text-sm text-muted-foreground"><ShieldCheck className="size-5 animate-pulse text-primary" />{t("auth.sessionLoading")}</div></div>;
   }
@@ -73,15 +70,15 @@ export function ControlPlaneLayout() {
   if (pathname === "/" || (pathname === "/dashboard" && !hasPermission(auth.user.role, "runtime"))) return <Navigate to={home} replace />;
   const permission = pagePermission(pathname);
   const forbidden = permission !== null && !hasPermission(auth.user.role, permission.resource, permission.action);
-  const group = location.group === "nav.settings" && isPlatformAdministrator(auth.user.role)
-    ? "nav.platformOperations" : location.group;
+  const group = location.group === "nav.platformOperations" && pathname.startsWith("/settings") && !isPlatformAdministrator(auth.user.role)
+    ? "nav.settings" : location.group;
 
   return (
     <TooltipProvider>
-      <SidebarProvider key={`${auth.user.id}:${auth.user.role}:${auth.user.tenant_id ?? "platform"}`} style={{ "--sidebar-width": "15.75rem" } as CSSProperties}>
+      <SidebarProvider key={`${auth.user.id}:${auth.user.role}:${auth.user.project_id ?? "platform"}`} style={{ "--sidebar-width": "15.75rem" } as CSSProperties}>
         <ControlPlaneSidebar />
         <SidebarInset className="min-w-0 bg-background">
-          <header className="sticky top-0 z-20 flex h-16 items-center justify-between border-b bg-card/90 px-4 backdrop-blur-md sm:px-6">
+          <header className="sticky top-0 z-20 flex h-16 items-center justify-between border-b bg-card px-4 sm:px-6">
             <div className="flex min-w-0 items-center gap-3">
               <SidebarTrigger className="size-11 rounded-lg" />
               <Separator orientation="vertical" className="h-5 self-center" />
@@ -104,7 +101,7 @@ export function ControlPlaneLayout() {
               title={t("auth.accessDeniedTitle")}
               description={t("auth.rolePageDenied")}
               action={<Button asChild><Link to={home}>{t(home === "/guardrails" ? "nav.guardrails" : "nav.platform")}</Link></Button>}
-            /></section> : <Outlet />}
+            /></section> : auth.user.role === "user" && !pathname.startsWith("/account") ? <ProjectInitializationGate><Outlet /></ProjectInitializationGate> : <Outlet />}
           </main>
         </SidebarInset>
         <Toaster />

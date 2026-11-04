@@ -1,10 +1,9 @@
-import { createContext, useCallback, useContext, useEffect, type ReactNode } from "react";
+import { Fragment, createContext, useCallback, useContext, useEffect, type ReactNode } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import i18n, { setApplicationLanguage, type SupportedLanguage } from "@/i18n";
 import {
   getAuthStatus,
-  loginMockSso as loginMockSsoRequest,
   login as loginRequest,
   logout as logoutRequest,
   updateMe,
@@ -12,7 +11,6 @@ import {
   type IdentityUser,
 } from "@/lib/identity-api";
 import { queryKeys } from "@/features/query-keys";
-import type { MockSsoIdentity } from "../../shared/mock-sso";
 
 type LoginInput = { username: string; password: string };
 type ProfileInput = {
@@ -26,12 +24,10 @@ type AuthContextValue = {
   isLoading: boolean;
   error: unknown;
   login: (input: LoginInput) => Promise<void>;
-  loginMockSso: (identity: MockSsoIdentity) => Promise<void>;
   logout: () => Promise<void>;
   setLanguage: (language: SupportedLanguage) => Promise<void>;
   updateProfile: (input: ProfileInput) => Promise<void>;
   loginPending: boolean;
-  mockSsoPending: boolean;
   logoutPending: boolean;
 };
 
@@ -45,7 +41,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       previous?.authenticated === next.authenticated
       && previous?.user?.id === next.user?.id
       && previous?.user?.role === next.user?.role
-      && previous?.user?.tenant_id === next.user?.tenant_id
+      && previous?.user?.project_id === next.user?.project_id
       && previous?.user?.enabled === next.user?.enabled
     ) return;
 
@@ -80,10 +76,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const loginMutation = useMutation({
     mutationFn: loginRequest,
-    onSuccess: ({ user }) => setAuthenticatedUser(user),
-  });
-  const mockSsoMutation = useMutation({
-    mutationFn: loginMockSsoRequest,
     onSuccess: ({ user }) => setAuthenticatedUser(user),
   });
   const logoutMutation = useMutation({
@@ -141,16 +133,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         isLoading: statusQuery.isLoading,
         error: statusQuery.error,
         login: async (input) => { await loginMutation.mutateAsync(input); },
-        loginMockSso: async (identity) => { await mockSsoMutation.mutateAsync(identity); },
         logout: async () => { await logoutMutation.mutateAsync(); },
         setLanguage,
         updateProfile,
         loginPending: loginMutation.isPending,
-        mockSsoPending: mockSsoMutation.isPending,
         logoutPending: logoutMutation.isPending,
       }}
     >
-      {children}
+      <Fragment key={`${user?.id ?? "anonymous"}:${user?.role ?? ""}:${user?.project_id ?? ""}`}>{children}</Fragment>
     </AuthContext.Provider>
   );
 }

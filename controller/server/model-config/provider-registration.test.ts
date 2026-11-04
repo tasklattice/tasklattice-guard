@@ -4,7 +4,7 @@ import { auditEvents, modelDefinitions, modelProviders } from "../db/schema.js";
 import { decryptModelCredential } from "./secret-crypto.js";
 import { ModelConfigurationService } from "./service.js";
 import { providerRegistrationSchema } from "./domain.js";
-import { runWithTenantContext } from "../services/tenant-context.js";
+import { runWithProjectContext } from "../services/project-context.js";
 
 const connection = { name: "Test NVIDIA", kind: "custom-openai-compatible", baseUrl: "https://provider.test/v1/", apiKey: "test-registration-credential" };
 const model = (id: string) => ({ name: id, model: id, profile: "generic-chat", timeoutSeconds: 20, maxTokens: 128 });
@@ -36,17 +36,17 @@ function setup(failCatalog = false) {
 }
 
 describe("Relay-style Provider registration", () => {
-  it("returns Provider selection metadata without credentials or credential hints to tenant users", async () => {
+  it("returns Provider selection metadata without credentials or credential hints to project users", async () => {
     const { service, rows } = setup();
     await service.registerProviderModels({ connection, models: [model("chat")] }, "admin");
-    const metadata = await runWithTenantContext({ tenantId: "tenantB", role: "user" }, () => service.listProviders());
+    const metadata = await runWithProjectContext({ projectId: "projectB", role: "user" }, () => service.listProviders());
     expect(metadata).toHaveLength(1);
     expect(metadata[0]).toMatchObject({ name: connection.name, kind: connection.kind, status: "validated" });
     for (const field of ["credentialCiphertext", "credentialHint", "credentialConfigured", "validationMessage", "createdBy"]) {
       expect(metadata[0]).not.toHaveProperty(field);
     }
     expect(JSON.stringify(metadata)).not.toContain(connection.apiKey);
-    expect(rows.get(modelProviders)?.[0]).not.toHaveProperty("tenantId");
+    expect(rows.get(modelProviders)?.[0]).not.toHaveProperty("projectId");
     const platform = await service.listProviders();
     expect(platform[0]).toHaveProperty("credentialConfigured", true);
   });
@@ -210,7 +210,7 @@ describe("Relay-style Provider registration", () => {
     const result = await service.registerProviderModels({ connection, models: [model("chat"), model("bad")] }, "admin");
     expect(db.transaction).toHaveBeenCalledOnce();
     expect(result.models.map((item) => item.model)).toEqual(["chat", "bad"]);
-    expect(result.models.every((item) => item.tenantId === null)).toBe(true);
+    expect(result.models.every((item) => item.projectId === null)).toBe(true);
     expect(result.models.every((item) => item.status === "pending" && item.validatedAt === null)).toBe(true);
     expect(result.failures).toEqual([]);
     expect(fetcher).toHaveBeenCalledTimes(2);
@@ -229,7 +229,7 @@ describe("Relay-style Provider registration", () => {
     expect(result.provider).not.toHaveProperty("credentialCiphertext");
   });
 
-  it.each(["tenantA", "tenantB"])("prevents tenant %s users from changing or discovering global Providers", async (tenantId) => {
+  it.each(["projectA", "projectB"])("prevents project %s users from changing or discovering global Providers", async (projectId) => {
     const { service, rows, fetcher } = setup();
     const operations = [
       () => service.createProvider(connection, "group_b"),
@@ -241,7 +241,7 @@ describe("Relay-style Provider registration", () => {
       () => service.deleteProvider("provider-1", "group_b"),
     ];
     for (const operation of operations) {
-      await expect(runWithTenantContext({ tenantId, actorId: "group_b", role: "user" }, operation))
+      await expect(runWithProjectContext({ projectId, actorId: "group_b", role: "user" }, operation))
         .rejects.toMatchObject({ code: "forbidden" });
     }
     expect(rows.get(modelProviders)).toBeUndefined();
@@ -292,22 +292,22 @@ describe("Relay-style Provider registration", () => {
     const providerId = "fe3671e8-a707-4d9b-a6a4-ea804ae76ec4";
     rows.set(modelProviders, [{ id: providerId, name: "Saved provider", kind: "custom-openai-compatible", baseUrl: connection.baseUrl, credentialCiphertext: "", skipTlsVerify: false }]);
     const result = await service.createModel({ providerId, ...model("bad") }, "admin");
-    expect(result).toMatchObject({ tenantId: null, model: "bad", status: "pending", validatedAt: null, validationLatencyMs: null });
+    expect(result).toMatchObject({ projectId: null, model: "bad", status: "pending", validatedAt: null, validationLatencyMs: null });
     expect(result.connectionStatus).toBe("failed");
     expect(fetcher).toHaveBeenCalledOnce();
     expect(String(fetcher.mock.calls[0]?.[0])).toContain("/chat/completions");
     expect(rows.get(modelDefinitions)).toHaveLength(1);
   });
 
-  it("creates tenant-owned Models on a global platform Provider", async () => {
+  it("creates project-owned Models on a global platform Provider", async () => {
     const { service, rows } = setup();
     const providerId = "a2b3c4d5-1111-4444-8888-123456789012";
     rows.set(modelProviders, [{ id: providerId, name: "Platform provider", kind: "custom-openai-compatible", baseUrl: connection.baseUrl, credentialCiphertext: "", skipTlsVerify: false }]);
-    const created = await runWithTenantContext({ tenantId: "tenantB", actorId: "group_b", role: "user" }, () =>
+    const created = await runWithProjectContext({ projectId: "projectB", actorId: "group_b", role: "user" }, () =>
       service.createModel({ ...model("chat"), providerId }, "group_b"));
-    expect(created).toMatchObject({ tenantId: "tenantB", providerId, model: "chat", connectionStatus: "validated" });
-    expect(rows.get(modelProviders)?.[0]).not.toHaveProperty("tenantId");
-    expect(rows.get(modelDefinitions)?.[0]?.tenantId).toBe("tenantB");
+    expect(created).toMatchObject({ projectId: "projectB", providerId, model: "chat", connectionStatus: "validated" });
+    expect(rows.get(modelProviders)?.[0]).not.toHaveProperty("projectId");
+    expect(rows.get(modelDefinitions)?.[0]?.projectId).toBe("projectB");
   });
 
   it("rejects empty and duplicate selections before making external requests", async () => {

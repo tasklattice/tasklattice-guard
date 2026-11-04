@@ -24,7 +24,7 @@
     "start": "npm run start --prefix controller",
     "typecheck": "npm run typecheck --prefix controller",
     "test": "npm run test:cli && npm run test:contracts && npm run test:control-plane && npm run test:data-plane && npm run test:e2e && npm run typecheck && npm run build",
-    "test:cli": "node --test scripts/stream-transport.test.mjs scripts/project-commands.test.mjs controller/scripts/dev-setup.node-test.mjs controller/scripts/openapi-generation.node-test.mjs",
+    "test:cli": "node --test scripts/stream-transport.test.mjs scripts/project-commands.test.mjs controller/scripts/dev-setup.node-test.mjs controller/scripts/openapi-generation.node-test.mjs controller/scripts/bootstrap-dev-keycloak.node-test.mjs",
     "test:runner-cli": "bash scripts/test-runner-guardctl.sh",
     "test:control-plane": "npm run test:control-plane:artifacts && npm run test:control-plane:python && npm run test:control-plane --prefix controller",
     "test:control-plane:artifacts": "npm run policies:check && npm run policies:regression && .venv/bin/python -m scripts.generate_default_baseline --check",
@@ -53,7 +53,8 @@
     "helm:test": "node scripts/project-commands.mjs helm-test",
     "helm:delete:dev": "node scripts/project-commands.mjs helm-delete",
     "policies:regression": ".venv/bin/python scripts/policy_sources.py test --all --output output/policy-regression.json",
-    "bench:scheduling": ".venv/bin/python scripts/benchmark_scheduling.py"
+    "bench:scheduling": ".venv/bin/python scripts/benchmark_scheduling.py",
+    "helm:deploy:dev:keycloak": "node scripts/project-commands.mjs helm-deploy-keycloak"
   },
   "devDependencies": {
     "ws": "^8.22.0"

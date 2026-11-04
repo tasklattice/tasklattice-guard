@@ -232,12 +232,12 @@ describe("Controller/Runner control protocol", () => {
     expect(trafficScopeToWire({
       combinator: "and",
       conditions: [
-        { field: "header", key: "x-tenant", operator: "equals", value: "acme" },
+        { field: "header", key: "x-project", operator: "equals", value: "acme" },
         { combinator: "or", conditions: [{ field: "path", key: "", operator: "starts_with", value: "/agents" }] },
       ],
     })).toEqual({
       combinator: "TRAFFIC_COMBINATOR_AND",
-      conditions: [{ field: "header", key: "x-tenant", operator: "TRAFFIC_OPERATOR_EQUALS", value: "acme", values: [], requestSource: "", caseSensitive: true }],
+      conditions: [{ field: "header", key: "x-project", operator: "TRAFFIC_OPERATOR_EQUALS", value: "acme", values: [], requestSource: "", caseSensitive: true }],
       groups: [{
         combinator: "TRAFFIC_COMBINATOR_OR",
         conditions: [{ field: "path", key: "", operator: "TRAFFIC_OPERATOR_STARTS_WITH", value: "/agents", values: [], requestSource: "", caseSensitive: true }],

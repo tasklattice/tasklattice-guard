@@ -41,7 +41,7 @@ describe("Intent analysis HTTP API", () => {
     const analyzer = fakeAnalyzer();
     vi.mocked(analyzer.analyzeDocuments).mockResolvedValue({ ...analysis, requirements: [{ title: "Privacy", description: "Protect identifiers", effect: "transform", source_refs: ["document-1:lines-1-1"] }], recommended_policy_ids: [policyId] });
     const policies = PolicyCatalog.load(config.policyCatalogDir).list();
-    const response = await appWith({ user: { id: "admin-1", role: "user", tenantId: "tenantA" } }, analyzer, policies)
+    const response = await appWith({ session: { id: "fixture-session", activeProjectId: "projectA" }, user: { id: "admin-1", role: "user", projectId: "projectA" } }, analyzer, policies)
       .request("/api/v1/authoring/document-analyses", {
         method: "POST",
         headers: { "content-type": "multipart/form-data; boundary=regression-boundary" },
@@ -58,7 +58,7 @@ describe("Intent analysis HTTP API", () => {
 
   it("reports the configured authoring model with document analysis", async () => {
     const analyzer = fakeAnalyzer();
-    const response = await appWith({ user: { id: "member-1", role: "user", tenantId: "tenantA" } }, analyzer)
+    const response = await appWith({ session: { id: "fixture-session", activeProjectId: "projectA" }, user: { id: "member-1", role: "user", projectId: "projectA" } }, analyzer)
       .request("/api/v1/authoring/capabilities");
 
     expect(response.status).toBe(200);
@@ -72,7 +72,7 @@ describe("Intent analysis HTTP API", () => {
 
   it("converts an administrator's business purpose into editable Topic rules", async () => {
     const analyzer = fakeAnalyzer();
-    const response = await appWith({ user: { id: "admin-1", role: "user", tenantId: "tenantA" } }, analyzer)
+    const response = await appWith({ session: { id: "fixture-session", activeProjectId: "projectA" }, user: { id: "admin-1", role: "user", projectId: "projectA" } }, analyzer)
       .request("/api/v1/authoring/intent-analyses", {
         method: "POST",
         headers: { "content-type": "application/json" },
@@ -101,7 +101,7 @@ describe("Intent analysis HTTP API", () => {
       "Privacy standard\nAccount identifiers must be redacted before any model request.\n\r\n",
       `--${boundary}--\r\n`,
     ].join("");
-    const response = await appWith({ user: { id: "admin-1", role: "user", tenantId: "tenantA" } }, analyzer)
+    const response = await appWith({ session: { id: "fixture-session", activeProjectId: "projectA" }, user: { id: "admin-1", role: "user", projectId: "projectA" } }, analyzer)
       .request("/api/v1/authoring/document-analyses", {
         method: "POST",
         headers: { "content-type": `multipart/form-data; boundary=${boundary}` },
@@ -121,7 +121,7 @@ describe("Intent analysis HTTP API", () => {
   });
 
   it("returns an explicit unavailable response when no authoring model is configured", async () => {
-    const app = appWith({ user: { id: "admin-1", role: "user", tenantId: "tenantA" } }, null);
+    const app = appWith({ session: { id: "fixture-session", activeProjectId: "projectA" }, user: { id: "admin-1", role: "user", projectId: "projectA" } }, null);
     const status = await app.request("/api/v1/authoring/capabilities");
     const analysisResponse = await app.request("/api/v1/authoring/intent-analyses", {
       method: "POST",
@@ -136,7 +136,7 @@ describe("Intent analysis HTTP API", () => {
 
   it("lets users generate authoring proposals", async () => {
     const analyzer = fakeAnalyzer();
-    const response = await appWith({ user: { id: "member-1", role: "user", tenantId: "tenantA" } }, analyzer)
+    const response = await appWith({ session: { id: "fixture-session", activeProjectId: "projectA" }, user: { id: "member-1", role: "user", projectId: "projectA" } }, analyzer)
       .request("/api/v1/authoring/intent-analyses", {
         method: "POST",
         headers: { "content-type": "application/json" },
@@ -170,7 +170,7 @@ function fakeAnalyzer(): IntentAnalyzer {
 }
 
 function appWith(
-  session: { user: { id: string; role: string; tenantId?: string } } | null,
+  session: { user: { id: string; role: string; projectId?: string } } | null,
   intentAnalyzer: IntentAnalyzer | null,
   policies: Awaited<ReturnType<ControlPlaneService["listPolicies"]>> = [],
 ) {

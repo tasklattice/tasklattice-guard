@@ -19,8 +19,13 @@ message ModelRuntime {
   int32 max_tokens = 9;
   // Explicit Provider-scoped opt-in. False retains HTTPS certificate checks.
   bool skip_tls_verify = 10;
-  // Concurrent active model RPCs per Runner process. Zero from older controllers means 2.
+  // Concurrent active model RPCs per Runner process; unset uses 2.
   int32 max_concurrency = 11;
+  // Total attempts on explicit rate-limit rejection, including the initial call.
+  int32 rate_limit_attempts = 12;
+  // Decision-model operating band; unset uses 0.1 and 0.9. Zero is valid.
+  optional double lower_threshold = 13;
+  optional double upper_threshold = 14;
 }
 
 // Bind one stable product capability on one Rail surface to a registered

@@ -1,4 +1,4 @@
-import { TenantResourceBadge } from "@/components/tenant-resource-badge";
+import { ProjectResourceBadge } from "@/components/project-resource-badge";
 import { hasPermission } from "../../shared/rbac";
 import { EndpointRouterLink } from "@/components/endpoint-router-link";
 import { EndpointSetupBadge } from "@/components/endpoint-setup-badge";
@@ -174,7 +174,7 @@ export function EndpointsPage({ endpointId, onEndpointChange }: {
         endpoint={selected}
         onOpenChange={(open) => !open && setSelected(null)}
         onUpdated={refreshEndpoints}
-        onDelete={hasPermission(auth.user?.role, "endpoints", "write") && (!selected?.tenant_id || selected.tenant_id === auth.user?.tenant_id) ? (endpoint) => {
+        onDelete={hasPermission(auth.user?.role, "endpoints", "write") && (!selected?.project_id || selected.project_id === auth.user?.project_id) ? (endpoint) => {
           setSelected(null);
           deleteMutation.reset();
           queryClient.removeQueries({ queryKey: queryKeys.endpointDeletionImpact(endpoint.id), exact: true });
@@ -208,7 +208,7 @@ function EndpointRow({ endpoint, onOpen }: { endpoint: Endpoint; onOpen: () => v
   return <TableRow className="resource-row" onClick={onOpen}>
     <TableCell>
       <button type="button" className="resource-name" onClick={event => { event.stopPropagation(); onOpen(); }} aria-label={t("endpoints.openEndpoint", { name: endpoint.name })}>
-        <EndpointProtocolIcon protocol={endpoint.protocol} size="sm" /><span>{endpoint.name}</span><TenantResourceBadge ownerTenantId={endpoint.tenant_id} activeTenantId={user?.tenant_id} />
+        <EndpointProtocolIcon protocol={endpoint.protocol} size="sm" /><span>{endpoint.name}</span><ProjectResourceBadge ownerProjectId={endpoint.project_id} activeProjectId={user?.project_id} />
       </button>
       <span className="resource-secondary" title={`${t(`endpoints.adapters.${endpoint.adapter_id}`)} · ${endpoint.id}`}>{t(`endpoints.protocolShort.${endpoint.protocol}`)} · {shortId(endpoint.id)}</span>
     </TableCell>
@@ -269,7 +269,7 @@ function EndpointDetailContent({
 }) {
   const { t, i18n } = useTranslation();
   const auth = useAuth();
-  const canManage = hasPermission(auth.user?.role, "endpoints", "write") && (!initialEndpoint.tenant_id || initialEndpoint.tenant_id === auth.user?.tenant_id);
+  const canManage = hasPermission(auth.user?.role, "endpoints", "write") && (!initialEndpoint.project_id || initialEndpoint.project_id === auth.user?.project_id);
   const queryClient = useQueryClient();
   const copy = useCopyText();
   const query = useQuery({
@@ -390,7 +390,7 @@ function EndpointDetailContent({
                 <p className="mt-1 text-xs text-muted-foreground">{t("endpoints.createdAt", { date: formatDate(endpoint.created_at, i18n.language) })}</p>
               </div>
               <EndpointSetupBadge status={endpoint.setup_status} />
-              <TenantResourceBadge ownerTenantId={endpoint.tenant_id} activeTenantId={auth.user?.tenant_id} />
+              <ProjectResourceBadge ownerProjectId={endpoint.project_id} activeProjectId={auth.user?.project_id} />
             </div>
             <Button asChild variant="testing"><Link to="/playground" search={{ mode: "advanced", endpoint: endpoint.id }}><FlaskConical />{t("endpoints.testEndpoint")}</Link></Button>
           </div>

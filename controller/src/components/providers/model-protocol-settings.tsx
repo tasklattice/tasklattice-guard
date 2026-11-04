@@ -7,21 +7,30 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { configureModelDefinition, configureModelConcurrency, type ModelDefinition } from "@/lib/controller-api";
+import { configureModelDefinition, configureModelRuntimeSettings, type ModelDefinition } from "@/lib/controller-api";
 import { isTypeSafeProfile, isLayaProfile } from "../../../shared/guardrail-catalog";
 import { profiles } from "./model-selection";
 
-// Protocol settings remain immutable once assigned; the operational concurrency
-// limit can be changed independently and distributed to active Runners.
+// Referenced protocols remain immutable; runtime settings are distributed to Runners.
 export function ModelProtocolSettings({ models, disabled, onChanged }: {
   models: ModelDefinition[]; disabled: boolean; onChanged: () => Promise<void>;
 }) {
   const { t } = useTranslation();
   const [open, setOpen] = useState(false);
   const [model, setModel] = useState<ModelDefinition>();
+  const settings = {
+    maxConcurrency: model?.maxConcurrency ?? 2,
+    rateLimitAttempts: model?.rateLimitAttempts ?? 3,
+    lowerThreshold: model?.lowerThreshold ?? 0.1,
+    upperThreshold: model?.upperThreshold ?? 0.9,
+  };
+  const validSettings = Number.isInteger(settings.maxConcurrency) && settings.maxConcurrency >= 1 && settings.maxConcurrency <= 64
+    && Number.isInteger(settings.rateLimitAttempts) && settings.rateLimitAttempts >= 1 && settings.rateLimitAttempts <= 10
+    && settings.lowerThreshold >= 0 && settings.lowerThreshold < settings.upperThreshold && settings.upperThreshold <= 1;
+  const decisionModel = model && (isTypeSafeProfile(model.profile) || isLayaProfile(model.profile));
   const save = useMutation({
-    mutationFn: () => model!.protocolEditable === false || models.some((item) => item.id === model!.id && item.profile === model!.profile && item.timeoutSeconds === model!.timeoutSeconds && item.maxTokens === model!.maxTokens) ? configureModelConcurrency(model!.id, model!.maxConcurrency ?? 2) : configureModelDefinition(model!.id, {
-      profile: model!.profile, timeoutSeconds: model!.timeoutSeconds, maxTokens: model!.maxTokens, maxConcurrency: model!.maxConcurrency ?? 2,
+    mutationFn: () => model!.protocolEditable === false || models.some((item) => item.id === model!.id && item.profile === model!.profile && item.timeoutSeconds === model!.timeoutSeconds && item.maxTokens === model!.maxTokens) ? configureModelRuntimeSettings(model!.id, settings) : configureModelDefinition(model!.id, {
+      profile: model!.profile, timeoutSeconds: model!.timeoutSeconds, maxTokens: model!.maxTokens, ...settings,
     }),
     onSuccess: async () => { await onChanged(); setOpen(false); },
   });
@@ -43,10 +52,10 @@ export function ModelProtocolSettings({ models, disabled, onChanged }: {
       density="compact"
       footer={<>
         <Button type="button" variant="outline" disabled={save.isPending} onClick={() => changeOpen(false)}>{t("common.cancel")}</Button>
-        <Button type="submit" form="model-protocol-form" disabled={disabled || !model || save.isPending}>{save.isPending ? <LoaderCircle className="animate-spin motion-reduce:animate-none" /> : <Save />}{t("common.save")}</Button>
+        <Button type="submit" form="model-protocol-form" disabled={disabled || !model || !validSettings || save.isPending}>{save.isPending ? <LoaderCircle className="animate-spin motion-reduce:animate-none" /> : <Save />}{t("common.save")}</Button>
       </>}
     >
-        <form id="model-protocol-form" className="space-y-5" onSubmit={(event) => { event.preventDefault(); if (model) save.mutate(); }}>
+        <form id="model-protocol-form" className="space-y-5" onSubmit={(event) => { event.preventDefault(); if (model && validSettings) save.mutate(); }}>
           <div className="space-y-2">
             <Label htmlFor="protocol-model">{t("modelSettings.model")}</Label>
             <Select value={model?.id ?? ""} disabled={save.isPending} onValueChange={(id) => { setModel(models.find((item) => item.id === id)); save.reset(); }}>
@@ -68,6 +77,28 @@ export function ModelProtocolSettings({ models, disabled, onChanged }: {
             {!isTypeSafeProfile(model.profile) && !isLayaProfile(model.profile) ? <div className="space-y-2"><Label htmlFor="model-token-limit">{t("modelSettings.maxTokens")}</Label><Input id="model-token-limit" type="number" className="field:h-11" required min={1} max={32768} value={model.maxTokens} onChange={(event) => setModel({ ...model, maxTokens: Number(event.target.value) })} /></div> : null}
           </fieldset> : null}
           {model ? <div className="space-y-2"><Label htmlFor="model-concurrency">{t("modelSettings.maxConcurrency")}</Label><Input id="model-concurrency" type="number" className="field:h-11" required min={1} max={64} disabled={disabled || save.isPending} value={model.maxConcurrency ?? 2} onChange={(event) => setModel({ ...model, maxConcurrency: Number(event.target.value) })} /><p className="text-xs leading-5 text-muted-foreground">{t("modelSettings.maxConcurrencyHint")}</p></div> : null}
+          {model ? <div className="space-y-2">
+            <Label htmlFor="model-rate-limit-attempts">{t("modelSettings.rateLimitAttempts")}</Label>
+            <Input id="model-rate-limit-attempts" type="number" className="field:h-11" required min={1} max={10}
+              disabled={disabled || save.isPending} value={settings.rateLimitAttempts}
+              onChange={(event) => setModel({ ...model, rateLimitAttempts: Number(event.target.value) })} />
+            <p className="text-xs leading-5 text-muted-foreground">{t("modelSettings.rateLimitAttemptsHint")}</p>
+          </div> : null}
+          {decisionModel ? <fieldset disabled={disabled || save.isPending} className="space-y-2">
+            <legend className="mb-2 text-sm font-medium">{t("modelSettings.decisionThresholds")}</legend>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2"><Label htmlFor="model-lower-threshold">{t("modelSettings.lowerThreshold")}</Label>
+                <Input id="model-lower-threshold" type="number" className="field:h-11" required min={0} max={1} step="any"
+                  aria-describedby="model-threshold-hint" value={settings.lowerThreshold}
+                  onChange={(event) => setModel({ ...model, lowerThreshold: Number(event.target.value) })} /></div>
+              <div className="space-y-2"><Label htmlFor="model-upper-threshold">{t("modelSettings.upperThreshold")}</Label>
+                <Input id="model-upper-threshold" type="number" className="field:h-11" required min={0} max={1} step="any"
+                  aria-describedby="model-threshold-hint" value={settings.upperThreshold}
+                  onChange={(event) => setModel({ ...model, upperThreshold: Number(event.target.value) })} /></div>
+            </div>
+            <p id="model-threshold-hint" className="text-xs leading-5 text-muted-foreground">{t("modelSettings.decisionThresholdsHint")}</p>
+            {settings.lowerThreshold >= settings.upperThreshold ? <p role="alert" className="text-sm text-destructive">{t("modelSettings.thresholdOrderError")}</p> : null}
+          </fieldset> : null}
           {save.error ? <p role="alert" className="rounded-lg border border-destructive/20 bg-destructive/5 px-4 py-3 text-sm text-destructive">{save.error.message}</p> : null}
         </form>
     </EntitySheet>

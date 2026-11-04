@@ -780,7 +780,7 @@ async function handleCommand(line: string) {
 async function main() {
   // One-shot commands preserve shell argument boundaries and never prompt for input.
   const argv = process.argv.slice(2);
-  if (argv[0] === 'platform' || argv[0] === 'tenant') {
+  if (argv[0] === 'platform' || argv[0] === 'project') {
     rl.close();
     await runConfiguration(argv[0], argv.slice(1), session.baseUrl);
     return;
