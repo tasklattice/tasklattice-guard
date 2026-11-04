@@ -1,14 +1,23 @@
 import { SettingsNavigation } from "@/components/settings-navigation";
+import type { ReactNode } from "react";
 import { useIsFetching, useQueryClient } from "@tanstack/react-query";
 import { RefreshCw } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
 import { PageHeader } from "@/components/product-shell";
-import { RunnerCapacitySection, runnerPoolKey } from "@/components/runner-capacity";
+import { ProjectRunnerCapacity, RunnerCapacitySection, runnerPoolKey } from "@/components/runner-capacity";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
 export function RunnerPage() {
+  return <RunnerPageLayout><RunnerCapacitySection showHeader={false} /></RunnerPageLayout>;
+}
+
+export function ProjectRunnerPage() {
+  return <RunnerPageLayout><ProjectRunnerCapacity /></RunnerPageLayout>;
+}
+
+function RunnerPageLayout({ children }: { children: ReactNode }) {
   const { t } = useTranslation();
   const queryClient = useQueryClient();
   const refreshing = useIsFetching({ queryKey: runnerPoolKey }) > 0;
@@ -33,7 +42,7 @@ export function RunnerPage() {
       />
       <SettingsNavigation />
       <div className="mt-6">
-        <RunnerCapacitySection showHeader={false} />
+        {children}
       </div>
     </section>
   );

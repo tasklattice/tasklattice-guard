@@ -3,7 +3,7 @@ import { DirectoryPagination, useDirectoryPage } from "./directory-pagination";
 import { hasPermission } from "../../shared/rbac";
 import { Fragment, useId, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ChevronDown, ChevronRight, RefreshCw, Trash2 } from "lucide-react";
+import { RefreshCw, Trash2 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { toast } from "@/components/ui/notifications";
 
@@ -40,6 +40,54 @@ import "./runner-capacity.scss";
 export const runnerPoolKey = ["resources", "runner-pools"] as const;
 type RemovalTarget = { runner: RunnerInstance; poolName: string };
 
+export function ProjectRunnerCapacity() {
+  const { t } = useTranslation();
+  const { user } = useAuth();
+  const query = useQuery({
+    queryKey: [...runnerPoolKey, "project", user?.project_id],
+    // Project scope resolves one shared or dedicated pool on the server.
+    queryFn: ({ signal }) => listRunnerPools({ limit: 1 }, signal),
+    refetchInterval: 10_000,
+    retry: false,
+  });
+  const pool = query.data?.items[0];
+
+  return (
+    <section className="runner-capacity" aria-label={t("runners.title")}>
+      {query.isPending && <RunnerLoading />}
+      {query.isError && <RunnerError error={query.error} refreshing={query.isFetching} onRetry={() => void query.refetch()} />}
+      {!query.isPending && !query.isError && (pool
+        ? <RunnerPoolDetails key={pool.id} id={pool.id} />
+        : <EmptyState title={t("runners.emptyTitle")} description={t("runners.emptyDescription")} />)}
+    </section>
+  );
+}
+
+function RunnerLoading() {
+  const { t } = useTranslation();
+  return (
+    <div className="runner-pool-panel" aria-busy="true">
+      <p role="status">{t("runnerView.loading")}</p>
+      <Skeleton className="mt-5 h-64" />
+    </div>
+  );
+}
+
+function RunnerError({ error, refreshing, onRetry }: { error: unknown; refreshing: boolean; onRetry: () => void }) {
+  const { t } = useTranslation();
+  return (
+    <div className="runner-pool-panel">
+      <h2 className="runner-summary-title">{t("runnerView.unavailable")}</h2>
+      <p className="mt-2 mb-4 text-sm text-muted-foreground">{t("runnerView.unavailableDetail")}</p>
+      <ErrorNotice error={error} />
+      <Button variant="outline" className="mt-4 min-h-11" disabled={refreshing} onClick={onRetry}>
+        <RefreshCw />
+        {t(refreshing ? "runnerView.refreshing" : "common.retry")}
+      </Button>
+    </div>
+  );
+}
+
 export function RunnerCapacitySection({
   showHeader = true,
 }: {
@@ -48,7 +96,7 @@ export function RunnerCapacitySection({
   const { t } = useTranslation();
   const queryClient = useQueryClient();
   const control = useDirectoryPage("runners");
-  const [selected, setSelected] = useState<string | null>(null);
+  const [selected, setSelected] = useState<Pick<RunnerPool, "id" | "name"> | null>(null);
   const query = useQuery({
     queryKey: [...runnerPoolKey, control.query],
     queryFn: ({ signal }) => listRunnerPools(control.query, signal),
@@ -78,32 +126,8 @@ export function RunnerCapacitySection({
         value={control.search}
         onChange={(event) => control.setSearch(event.target.value)}
       />
-      {query.isLoading ? (
-        <div className="runner-pool-panel" aria-busy="true">
-          <p role="status">{t("runnerView.loading")}</p>
-          <Skeleton className="mt-5 h-64" />
-        </div>
-      ) : null}
-      {query.isError ? (
-        <div className="runner-pool-panel">
-          <h2 className="runner-summary-title">
-            {t("runnerView.unavailable")}
-          </h2>
-          <p className="mt-2 mb-4 text-sm text-muted-foreground">
-            {t("runnerView.unavailableDetail")}
-          </p>
-          <ErrorNotice error={query.error} />
-          <Button
-            variant="outline"
-            className="mt-4 min-h-11"
-            disabled={query.isFetching}
-            onClick={() => void query.refetch()}
-          >
-            <RefreshCw />
-            {t(query.isFetching ? "runnerView.refreshing" : "common.retry")}
-          </Button>
-        </div>
-      ) : null}
+      {query.isLoading && <RunnerLoading />}
+      {query.isError && <RunnerError error={query.error} refreshing={query.isFetching} onRetry={() => void query.refetch()} />}
       {!query.isLoading && !query.isError && !query.data?.items.length ? (
         <EmptyState
           title={t("runners.emptyTitle")}
@@ -126,7 +150,7 @@ export function RunnerCapacitySection({
                 {pool.connectedCount} / {pool.totalCount}
               </TableCell>
               <TableCell>
-                <Button variant="ghost" onClick={() => setSelected(pool.id)}>
+                <Button variant="ghost" onClick={() => setSelected(pool)}>
                   {t("common.details")}
                 </Button>
               </TableCell>
@@ -142,7 +166,7 @@ export function RunnerCapacitySection({
       />
       {selected && (
         <RunnerPoolDetailSheet
-          id={selected}
+          pool={selected}
           onClose={() => setSelected(null)}
           onRemove={setRemoving}
         />
@@ -163,22 +187,15 @@ export function RunnerCapacitySection({
 }
 
 function RunnerPoolDetailSheet({
-  id,
+  pool,
   onClose,
   onRemove,
 }: {
-  id: string;
+  pool: Pick<RunnerPool, "id" | "name">;
   onClose: () => void;
   onRemove: (target: RemovalTarget) => void;
 }) {
   const { t } = useTranslation();
-  const control = useDirectoryPage(`runners:${id}`);
-  const query = useQuery({
-    queryKey: [...runnerPoolKey, id, control.query],
-    queryFn: ({ signal }) => getRunnerPool(id, control.query, signal),
-    refetchInterval: 10_000,
-    retry: false,
-  });
   return (
     <EntitySheet
       open
@@ -186,28 +203,43 @@ function RunnerPoolDetailSheet({
       onOpenChange={(open) => {
         if (!open) onClose();
       }}
-      title={query.data?.name ?? id}
+      title={pool.name}
       description={t("runnerView.description")}
       eyebrow={t("runnerView.pool")}
       width="lg"
     >
-      {query.error && <ErrorNotice error={query.error} />}
-      {query.isPending && <p role="status">{t("common.loading")}</p>}
-      {!query.isError && query.data && (
-        <RunnerPoolPanel
-          pool={query.data}
-          updatedAt={query.dataUpdatedAt}
-          refreshing={query.isFetching}
-          onRemove={onRemove}
+      <RunnerPoolDetails key={pool.id} id={pool.id} onRemove={onRemove} />
+    </EntitySheet>
+  );
+}
+
+function RunnerPoolDetails({ id, onRemove }: { id: string; onRemove?: (target: RemovalTarget) => void }) {
+  const control = useDirectoryPage(`runners:${id}`);
+  const query = useQuery({
+    queryKey: [...runnerPoolKey, id, control.query],
+    queryFn: ({ signal }) => getRunnerPool(id, control.query, signal),
+    refetchInterval: 10_000,
+    retry: false,
+  });
+  if (query.isPending) return <RunnerLoading />;
+  if (query.isError) return <RunnerError error={query.error} refreshing={query.isFetching} onRetry={() => void query.refetch()} />;
+  return (
+    <>
+      <RunnerPoolPanel
+        pool={query.data}
+        updatedAt={query.dataUpdatedAt}
+        refreshing={query.isFetching}
+        onRemove={onRemove}
+      />
+      {(control.page.page > 1 || query.data.nextCursor) && (
+        <DirectoryPagination
+          control={control}
+          count={query.data.instances.length}
+          nextCursor={query.data.nextCursor}
+          busy={query.isFetching}
         />
       )}
-      <DirectoryPagination
-        control={control}
-        count={query.data?.instances.length ?? 0}
-        nextCursor={query.data?.nextCursor}
-        busy={query.isFetching}
-      />
-    </EntitySheet>
+    </>
   );
 }
 
@@ -220,12 +252,11 @@ function RunnerPoolPanel({
   pool: RunnerPoolDetail;
   updatedAt: number;
   refreshing: boolean;
-  onRemove: (target: RemovalTarget) => void;
+  onRemove?: (target: RemovalTarget) => void;
 }) {
   const { t, i18n } = useTranslation();
   const { user } = useAuth();
   const id = useId();
-  const [planning, setPlanning] = useState(false);
   const [editing, setEditing] = useState(false);
   const editButton = useRef<HTMLButtonElement>(null);
   const { total, connected, pending, syncing, hasMetrics } = pool.counts;
@@ -349,8 +380,8 @@ function RunnerPoolPanel({
                 key={runner.runnerId}
                 runner={runner}
                 now={updatedAt}
-                canRemove={hasPermission(user?.role, "runners", "write")}
-                onRemove={() => onRemove({ runner, poolName: pool.name })}
+                canRemove={Boolean(onRemove) && hasPermission(user?.role, "runners", "write")}
+                onRemove={() => onRemove?.({ runner, poolName: pool.name })}
               />
             ))}
             {!pool.instances.length ? (
@@ -363,31 +394,8 @@ function RunnerPoolPanel({
           </TableBody>
         </Table>
       </section>
-      <div className="runner-planning-line">
-        <p>
-          <strong>
-            {t("runnerView.capacityTarget", { count: pool.desiredReplicas })}
-          </strong>
-          <span> · {t("runnerView.currentlyServing", { count: serving })}</span>
-        </p>
-        <Button
-          variant="link"
-          className="min-h-11 shrink-0"
-          aria-expanded={planning}
-          aria-controls={`${id}-planning`}
-          onClick={() => {
-            setPlanning(!planning);
-            if (planning) setEditing(false);
-          }}
-        >
-          {t("runners.planningTitle")}
-          <ChevronDown className={planning ? "rotate-180" : undefined} />
-        </Button>
-      </div>
       <section
         className="runner-planning"
-        id={`${id}-planning`}
-        hidden={!planning}
         aria-labelledby={`${id}-planning-title`}
       >
         <h3 id={`${id}-planning-title`}>{t("runners.planningTitle")}</h3>
@@ -412,18 +420,20 @@ function RunnerPoolPanel({
             perRunner: pool.safeRpsPerRunner.toFixed(1),
           })}
         </p>
-        <p>{t("runnerView.planningHint")}</p>
         {hasPermission(user?.role, "runners", "write") ? (
-          <Button
-            ref={editButton}
-            variant="link"
-            className="mt-2 min-h-11"
-            aria-expanded={editing}
-            aria-controls={`${id}-editor`}
-            onClick={() => setEditing(!editing)}
-          >
-            {t("runnerView.editTargets")}
-          </Button>
+          <>
+            <p>{t("runnerView.planningHint")}</p>
+            <Button
+              ref={editButton}
+              variant="link"
+              className="mt-2 min-h-11"
+              aria-expanded={editing}
+              aria-controls={`${id}-editor`}
+              onClick={() => setEditing(!editing)}
+            >
+              {t("runnerView.editTargets")}
+            </Button>
+          </>
         ) : null}
         {editing ? (
           <div id={`${id}-editor`}>
@@ -458,8 +468,6 @@ function RunnerRow({
   onRemove: () => void;
 }) {
   const { t, i18n } = useTranslation();
-  const [expanded, setExpanded] = useState(false);
-  const id = useId();
   const offline = runner.status === "offline";
   const current = runner.appliedGeneration === runner.desiredGeneration;
   const configuration = offline
@@ -476,16 +484,7 @@ function RunnerRow({
         data-runner-state={runner.status}
       >
         <TableCell>
-          <Button
-            variant="link"
-            className="runner-instance-toggle"
-            aria-expanded={expanded}
-            aria-controls={id}
-            onClick={() => setExpanded(!expanded)}
-          >
-            <ChevronRight className={expanded ? "rotate-90" : undefined} />
-            <span>{runner.runnerId}</span>
-          </Button>
+          <span className="runner-instance-name">{runner.runnerId}</span>
         </TableCell>
         <TableCell>
           <span
@@ -528,82 +527,80 @@ function RunnerRow({
           </time>
         </TableCell>
       </TableRow>
-      {expanded ? (
-        <TableRow className="runner-detail-row" id={id}>
-          <TableCell colSpan={5}>
-            <div className="runner-instance-details">
+      <TableRow className="runner-detail-row">
+        <TableCell colSpan={5}>
+          <div className="runner-instance-details">
+            <dl>
+              <RunnerDatum
+                label={t("runnerView.runtimeVersion")}
+                value={runner.runnerVersion || "—"}
+              />
+              <RunnerDatum
+                label={t("runnerView.nemoVersion")}
+                value={runner.nemoVersion || "—"}
+              />
+              <RunnerDatum
+                label={t("runnerView.compiler")}
+                value={t(
+                  runner.compilerCapable
+                    ? "runnerView.enabled"
+                    : "runnerView.disabled",
+                )}
+              />
+            </dl>
+            <dl>
+              <RunnerDatum
+                label={t("uiCopy.cPUMemory")}
+                value={
+                  load
+                    ? `${Math.round(load.cpuUtilization * 100)}% / ${Math.round(load.memoryUtilization * 100)}%`
+                    : "—"
+                }
+              />
+              <RunnerDatum
+                label={t("runners.maxConcurrencyPerRunner")}
+                value={String(runner.maxConcurrency)}
+              />
+              <RunnerDatum
+                label={t("runnerView.heartbeatReported")}
+                value={formatDate(runner.lastHeartbeatAt, i18n.language)}
+              />
+            </dl>
+            <div>
               <dl>
                 <RunnerDatum
-                  label={t("runnerView.runtimeVersion")}
-                  value={runner.runnerVersion || "—"}
-                />
-                <RunnerDatum
-                  label={t("runnerView.nemoVersion")}
-                  value={runner.nemoVersion || "—"}
-                />
-                <RunnerDatum
-                  label={t("runnerView.compiler")}
-                  value={t(
-                    runner.compilerCapable
-                      ? "runnerView.enabled"
-                      : "runnerView.disabled",
+                  label={t(
+                    offline
+                      ? "runnerView.lastVersions"
+                      : "runnerView.appliedCurrent",
                   )}
+                  value={`${runner.appliedGeneration} / ${runner.desiredGeneration}`}
                 />
               </dl>
-              <dl>
-                <RunnerDatum
-                  label={t("uiCopy.cPUMemory")}
-                  value={
-                    load
-                      ? `${Math.round(load.cpuUtilization * 100)}% / ${Math.round(load.memoryUtilization * 100)}%`
-                      : "—"
-                  }
-                />
-                <RunnerDatum
-                  label={t("runners.maxConcurrencyPerRunner")}
-                  value={String(runner.maxConcurrency)}
-                />
-                <RunnerDatum
-                  label={t("runnerView.heartbeatReported")}
-                  value={formatDate(runner.lastHeartbeatAt, i18n.language)}
-                />
-              </dl>
-              <div>
-                <dl>
-                  <RunnerDatum
-                    label={t(
-                      offline
-                        ? "runnerView.lastVersions"
-                        : "runnerView.appliedCurrent",
-                    )}
-                    value={`${runner.appliedGeneration} / ${runner.desiredGeneration}`}
-                  />
-                </dl>
-                <p>{t(`runnerView.configurationDetail.${configuration}`)}</p>
-                {removable ? (
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    className="runner-remove-button mt-3 min-h-11"
-                    aria-label={t(
-                      offline
-                        ? "runners.removeAria"
-                        : "runners.forceRemoveAria",
-                      { runnerId: runner.runnerId },
-                    )}
-                    onClick={onRemove}
-                  >
-                    <Trash2 />
-                    {t(
-                      offline ? "runners.removeOffline" : "runners.forceRemove",
-                    )}
-                  </Button>
-                ) : null}
-              </div>
+              <p>{t(`runnerView.configurationDetail.${configuration}`)}</p>
+              {removable ? (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  className="runner-remove-button mt-3 min-h-11"
+                  aria-label={t(
+                    offline
+                      ? "runners.removeAria"
+                      : "runners.forceRemoveAria",
+                    { runnerId: runner.runnerId },
+                  )}
+                  onClick={onRemove}
+                >
+                  <Trash2 />
+                  {t(
+                    offline ? "runners.removeOffline" : "runners.forceRemove",
+                  )}
+                </Button>
+              ) : null}
             </div>
-          </TableCell>
-        </TableRow>
-      ) : null}
+          </div>
+        </TableCell>
+      </TableRow>
     </Fragment>
   );
 }

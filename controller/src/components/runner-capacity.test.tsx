@@ -5,7 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { runnerViewEn } from "@/runner-view-i18n";
 import type { RunnerPool } from "@/lib/controller-api";
 
-import { RunnerCapacitySection } from "./runner-capacity";
+import { ProjectRunnerCapacity, RunnerCapacitySection } from "./runner-capacity";
 
 const mocks = vi.hoisted(() => ({
   listRunnerPools: vi.fn(),
@@ -145,12 +145,8 @@ async function renderPage(showHeader = true, openDetail = true) {
   if(openDetail) fireEvent.click(await screen.findByRole("button",{name:"details"}));
   return client;
 }
-async function expand(id: string) {
-  fireEvent.click(await screen.findByRole("button", { name: id, exact: true }));
-}
 async function editCapacity() {
-  await screen.findByRole("button", { name: "runner-ready", exact: true });
-  fireEvent.click(screen.getByRole("button", { name: "planningTitle" }));
+  await screen.findByText("runner-ready");
   fireEvent.click(screen.getByRole("button", { name: "Edit capacity targets" }));
 }
 
@@ -163,23 +159,52 @@ beforeEach(() => {
 });
 afterEach(() => { cleanup(); clients.splice(0).forEach(client => client.clear()); });
 
+describe("Project Runner details", () => {
+  async function renderProject() {
+    mocks.role = "user";
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    clients.push(client);
+    render(<QueryClientProvider client={client}><ProjectRunnerCapacity /></QueryClientProvider>);
+    return client;
+  }
+
+  it("opens the assigned pool inline without a directory, dialog or collapsed details", async () => {
+    await renderProject();
+    expect(await screen.findByText("runner-ready")).toBeTruthy();
+    expect(screen.getAllByText("NeMo version")).toHaveLength(2);
+    expect(screen.getByText("Recommended Runners")).toBeTruthy();
+    expect(screen.queryByRole("textbox")).toBeNull();
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(screen.queryByRole("navigation")).toBeNull();
+    expect(screen.queryByRole("button")).toBeNull();
+  });
+
+  it("clears stale details after a refresh failure and recovers inline", async () => {
+    const client = await renderProject();
+    await screen.findByText("runner-ready");
+    mocks.listRunnerPools.mockRejectedValue(new Error("Connection unavailable"));
+    await act(async () => { await client.invalidateQueries({ queryKey: ["resources", "runner-pools"] }); });
+    expect(await screen.findByRole("heading", { name: "Unable to load Runner status" })).toBeTruthy();
+    expect(screen.queryByText("runner-ready")).toBeNull();
+    mocks.listRunnerPools.mockResolvedValue({ items: [runnerPool] });
+    fireEvent.click(screen.getByRole("button", { name: "retry" }));
+    expect(await screen.findByText("runner-ready")).toBeTruthy();
+  });
+});
+
 describe("Runner fleet overview and details", () => {
-  it("prioritizes serving count and instance rows, with technical details collapsed", async () => {
+  it("shows instance details and capacity planning directly", async () => {
     await renderPage(false);
     expect(await screen.findByRole("heading", { name: "1 Runner serving" })).toBeTruthy();
     expect(screen.getByText("1 registered Runner is offline. All connected Runners have applied their current configuration.")).toBeTruthy();
-    expect(screen.getByText("Capacity target: 2 Runners")).toBeTruthy();
-    expect(screen.getByText(/1 currently serving/)).toBeTruthy();
-    expect(screen.getByRole("button", { name: "runner-ready" }).getAttribute("aria-expanded")).toBe("false");
-    expect(screen.queryByText("NeMo version")).toBeNull();
-    expect(screen.queryByRole("heading", { name: "Runner capacity" })).toBeNull();
-    await expand("runner-ready");
-    expect(screen.getByRole("button", { name: "runner-ready" }).getAttribute("aria-expanded")).toBe("true");
-    expect(screen.getByText("0.24.0")).toBeTruthy();
+    expect(screen.getAllByText("NeMo version")).toHaveLength(2);
+    expect(screen.getAllByText("0.24.0")).toHaveLength(2);
     expect(screen.getByText("Applied / current configuration version")).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "planningTitle" })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "runner-ready" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "planningTitle" })).toBeNull();
+    expect(screen.queryByRole("heading", { name: "Runner capacity" })).toBeNull();
     expect(screen.queryByRole("button", { name: /Remove runner-ready/ })).toBeNull();
-    fireEvent.click(screen.getByRole("button", { name: "runner-ready" }));
-    expect(screen.queryByText("NeMo version")).toBeNull();
   });
 
   it("shows pending configuration separately from an offline registration", async () => {
@@ -198,7 +223,7 @@ describe("Runner fleet overview and details", () => {
     expect(await screen.findByRole("heading", { name: "No Runners serving" })).toBeTruthy();
     const row = screen.getByRole("row", { name: /runner-offline/ });
     expect(within(row).queryByText("42 / 17")).toBeNull();
-    await expand("runner-offline");
+    await screen.findByText("runner-offline");
     expect(screen.queryByText("90% / 80%")).toBeNull();
     expect(screen.getByText(/last reported version does not confirm/)).toBeTruthy();
   });
@@ -226,14 +251,14 @@ describe("Runner fleet overview and details", () => {
     await screen.findByRole("heading", { name: "1 Runner serving" });
     mocks.listRunnerPools.mockRejectedValue(new Error("Connection unavailable"));
     await act(async () => { await client.invalidateQueries({ queryKey: ["resources", "runner-pools"] }); });
-    expect(await screen.findByRole("heading", { name: "Unable to load Runner status" })).toBeTruthy();
+    expect(await screen.findAllByRole("heading", { name: "Unable to load Runner status" })).not.toHaveLength(0);
     expect(screen.queryByText("1 Runner serving")).toBeNull();
-    expect(screen.queryByRole("button", { name: "runner-offline" })).toBeNull();
+    expect(screen.queryByText("runner-offline")).toBeNull();
   });
 });
 
 describe("Runner capacity planning", () => {
-  it("lets an administrator open planning and save capacity targets", async () => {
+  it("lets an administrator edit and save capacity targets", async () => {
     await renderPage();
     await editCapacity();
     expect(screen.getByText(/Changing them does not start or stop Runners/)).toBeTruthy();
@@ -264,8 +289,7 @@ describe("Runner capacity planning", () => {
   it.each(["user", "member"])("does not offer target changes for %s", async role => {
     mocks.role = role;
     await renderPage();
-    await screen.findByRole("button", { name: "runner-ready" });
-    fireEvent.click(screen.getByRole("button", { name: "planningTitle" }));
+    await screen.findByText("runner-ready");
     expect(screen.getByText("Recommended Runners")).toBeTruthy();
     expect(screen.queryByRole("button", { name: "Edit capacity targets" })).toBeNull();
   });
@@ -274,8 +298,7 @@ describe("Runner capacity planning", () => {
 describe("Runner removal permissions and recovery", () => {
   it("offers administrators offline removal with confirmation", async () => {
     await renderPage();
-    expect(screen.queryByRole("button", { name: "Remove runner-offline" })).toBeNull();
-    await expand("runner-offline");
+    await screen.findByText("runner-offline");
     fireEvent.click(screen.getByRole("button", { name: "Remove runner-offline" }));
     expect(screen.getByText("Remove this offline Runner?")).toBeTruthy();
     expect(screen.getByText(/runtime events, and audit history remain/)).toBeTruthy();
@@ -289,7 +312,7 @@ describe("Runner removal permissions and recovery", () => {
     mocks.role = role;
     mocks.listRunnerPools.mockResolvedValue({ items: [{ ...runnerPool, instances: [{ ...runnerPool.instances[1], status: "syncing", appliedGeneration }] }] });
     await renderPage();
-    await expand("runner-ready");
+    await screen.findByText("runner-ready");
     fireEvent.click(screen.getByRole("button", { name: "Force remove runner-ready" }));
     expect(screen.getByText("Force remove this Runner?")).toBeTruthy();
     expect(screen.getByText(/does not stop its process or delete its Pod/)).toBeTruthy();
@@ -302,14 +325,14 @@ describe("Runner removal permissions and recovery", () => {
     mocks.role = role;
     mocks.listRunnerPools.mockResolvedValue({ items: [{ ...runnerPool, instances: [{ ...runnerPool.instances[1], status }] }] });
     await renderPage();
-    await expand("runner-ready");
+    await screen.findByText("runner-ready");
     expect(screen.queryByRole("button", { name: /Remove runner-|Force remove runner-/ })).toBeNull();
   });
 
   it("keeps the removal confirmation open when the Runner reconnects", async () => {
     mocks.removeRunnerInstance.mockRejectedValue(new Error("Only an offline Runner registration can be removed."));
     await renderPage();
-    await expand("runner-offline");
+    await screen.findByText("runner-offline");
     fireEvent.click(screen.getByRole("button", { name: "Remove runner-offline" }));
     fireEvent.click(screen.getByRole("button", { name: "Remove Runner" }));
     expect((await screen.findByRole("alert")).textContent).toContain("Only an offline Runner registration can be removed.");

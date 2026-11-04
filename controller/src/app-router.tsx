@@ -23,7 +23,7 @@ import { SharingPage } from "@/routes/sharing";
 import { AuditLogPage } from "@/routes/audit-log";
 import { VersionPage } from "@/routes/version";
 import { HealthPage } from "@/routes/status";
-import { RunnerPage } from "@/routes/runner";
+import { ProjectRunnerPage, RunnerPage } from "@/routes/runner";
 import { GuardrailCatalogPage, ModelsPage, ProvidersPage } from "@/routes/models";
 import { policyLibrarySearch } from "@/lib/policy-library-search";
 import { isGuardrailVersionId } from "../shared/guardrail-version";
@@ -108,7 +108,7 @@ const healthRoute = createRoute({ getParentRoute: () => rootRoute, path: "/setti
 const runnerRoute = createRoute({ getParentRoute: () => rootRoute, path: "/settings/runner", component: RunnerPage });
 const projectSettingsRoute = createRoute({ getParentRoute: () => projectRoute, path: "settings", component: () => <Navigate to="/$projectId/settings/health" params={projectParams()} replace /> });
 const projectHealthRoute = createRoute({ getParentRoute: () => projectRoute, path: "settings/health", component: HealthPage });
-const projectRunnerRoute = createRoute({ getParentRoute: () => projectRoute, path: "settings/runner", component: RunnerPage });
+const projectRunnerRoute = createRoute({ getParentRoute: () => projectRoute, path: "settings/runner", component: ProjectRunnerPage });
 const projectVersionRoute = createRoute({ getParentRoute: () => projectRoute, path: "settings/version", component: VersionPage });
 const providersRoute = createRoute({ getParentRoute: () => rootRoute, path: "/settings/providers", component: ProvidersPage });
 const modelsRoute = createRoute({ getParentRoute: () => rootRoute, path: "/settings/models", validateSearch: (search: Record<string, unknown>) => ({ tab: search.tab === "pricing" ? "pricing" : undefined }), component: ModelsPage });
