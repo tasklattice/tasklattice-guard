@@ -53,6 +53,7 @@ import {
   testModelConnection,
   saveModelAssignment,
   validateModelAssignment,
+  validateSavedModelAssignment,
   type ModelAssignments,
   type ModelAssignmentTarget,
   type ModelConfigurationView,
@@ -182,18 +183,28 @@ export function GuardrailCatalogPage() {
     },
     mutationFn: async (target: ModelAssignmentTarget) => {
       const modelId = target === "control_plane" ? assignments?.controlPlane : assignments?.bindings[target];
-      return { revision: await (target === "automated_reasoning.output" ? validateModelAssignment(target, modelId ?? undefined, formalValidation.current) : validateModelAssignment(target, modelId ?? undefined)), modelId };
+      const context = target === "automated_reasoning.output" ? formalValidation.current : undefined;
+      if (target !== "control_plane" && modelId && modelId === query.data?.draft?.assignments.bindings[target]) {
+        return { revision: await validateSavedModelAssignment(target, modelId, context), modelId, saved: true as const };
+      }
+      const revision = await (context ? validateModelAssignment(target, modelId ?? undefined, context) : validateModelAssignment(target, modelId ?? undefined));
+      return { revision, modelId, saved: false as const };
     },
-    onSuccess: async ({ revision, modelId }, target) => {
+    onSuccess: async ({ revision, modelId, saved }, target) => {
       if (target === "automated_reasoning.output") setFormalValidationOpen(false);
-      if (revision.validationId && modelId) validationReceipts.current[`${target}:${modelId}`] = revision.validationId;
+      if (!saved && revision.validationId && modelId) validationReceipts.current[`${target}:${modelId}`] = revision.validationId;
       const passed = Boolean(modelId && revision.validationReport?.checks.some((check) => check.id === `probe:${target}:${modelId}` && check.status === "passed"));
       if (!capabilityActionRunning.current) toast[passed ? "success" : "error"](t(passed ? "modelSettings.assignmentValidationPassed" : "modelSettings.assignmentValidationFailed"));
-      setPreviewReport((previous) => ({
-        ...revision.validationReport!,
-        checks: [...(previous?.checks ?? []).filter((check) => !check.id.startsWith(`probe:${target}:`)),
-          ...(revision.validationReport?.checks ?? []).filter((check) => check.id.startsWith(`probe:${target}:`))],
-      }));
+      if (saved) {
+        await queryClient.cancelQueries({ queryKey: configurationKey });
+        queryClient.setQueryData<ModelConfigurationView>(configurationKey, previous => previous ? { ...previous, draft: revision } : previous);
+      }
+      setPreviewReport((previous) => {
+        const checks = (previous?.checks ?? []).filter(check => !check.id.startsWith(`probe:${target}:`));
+        if (saved) return previous && checks.length ? { ...previous, checks } : null;
+        return { ...revision.validationReport!, checks: [...checks,
+          ...(revision.validationReport?.checks ?? []).filter(check => check.id.startsWith(`probe:${target}:`))] };
+      });
     },
     onError: (error, target) => {
       const modelId = target === "control_plane" ? assignments?.controlPlane : assignments?.bindings[target];
@@ -543,9 +554,9 @@ function GuardrailCatalogSection({ action, ...props }: CapabilityConfigurationPr
       </>} />
       <Table className="table-fixed min-w-[64rem]">
         <TableHeader><TableRow>
-          <TableHead className="w-[28%] pl-5">{t("modelSettings.capabilityColumn")}</TableHead>
+          <TableHead className="w-[17rem] pl-5">{t("modelSettings.capabilityColumn")}</TableHead>
           <TableHead>{t("modelSettings.modelColumn")}</TableHead>
-          <TableHead className="w-56">{t("modelSettings.validationColumn")}</TableHead>
+          <TableHead className="w-64 pr-8 min-[1600px]:w-[30%]">{t("modelSettings.validationColumn")}</TableHead>
           <TableHead className="w-64 pr-5">{t("modelSettings.actionsColumn")}</TableHead>
         </TableRow></TableHeader>
         <TableBody>{capabilities.map(capability => <CapabilityConfigurationRow key={capability}
@@ -572,7 +583,7 @@ function CapabilityConfigurationRow({ bindings, assignments, savedAssignments, m
   // the presentation never overwrites an existing per-stage configuration.
   const staged = bindings.length > 1 && (mode === "staged" || (mode === null && !sameModel));
   const unresolvedSharedModel = !staged && !sameModel;
-  const dirty = bindings.some(item => assignments.bindings[item.id] !== savedAssignments.bindings[item.id]);
+  const changedIds = ids.filter(id => assignments.bindings[id] !== savedAssignments.bindings[id]);
   const configuredIds = ids.filter(id => Boolean(assignments.bindings[id]));
   const busy = ids.some(id => savingTarget === id || validatingTarget === id || capabilityAction?.targets.includes(id));
   const sharedModels = models.filter(model => bindings.every(item => supportsBinding(model, item)))
@@ -605,7 +616,7 @@ function CapabilityConfigurationRow({ bindings, assignments, savedAssignments, m
         <p className="font-medium">{title}</p>
         <ProtectionInfo title={title}><p>{t(binding.capabilityRef === "classifier_review" ? "modelSettings.detectors.classifier_review.description" : `modelSettings.categories.${binding.categoryId}.description`)}</p></ProtectionInfo>
       </div>
-      {dirty ? <p className="mt-2 text-xs text-muted-foreground">{t("modelSettings.unsaved")}</p> : null}
+      {changedIds.length ? <p className="mt-2 text-xs text-muted-foreground">{t("modelSettings.unsaved")}</p> : null}
     </TableCell>
     <TableCell className="whitespace-normal py-5 align-top">
       {staged ? <div className="space-y-3">{bindings.map(item => <div key={item.id}>{modelSelect([item])}</div>)}</div> : modelSelect(bindings, unresolvedSharedModel)}
@@ -615,7 +626,7 @@ function CapabilityConfigurationRow({ bindings, assignments, savedAssignments, m
         {unresolvedSharedModel ? <p className="mt-1 text-xs text-muted-foreground">{t("modelSettings.chooseSharedModelHelp")}</p> : null}
       </> : null}
     </TableCell>
-    <TableCell className="whitespace-normal py-5 align-top">
+    <TableCell className="whitespace-normal py-5 pr-8 align-top">
       <div className="space-y-3">{bindings.map(item => <div key={item.id} className={`grid grid-cols-[3rem_minmax(0,1fr)] items-center gap-2 ${staged ? "min-h-[4.25rem] pt-6" : "min-h-11"}`} role="group" aria-label={`${title} · ${t(`modelSettings.stage.${item.railType}`)}`}>
         <p className="text-xs leading-6 text-muted-foreground">{t(`modelSettings.stage.${item.railType}`)}</p>
         <div className="min-w-0">
@@ -631,7 +642,7 @@ function CapabilityConfigurationRow({ bindings, assignments, savedAssignments, m
         <Button type="button" variant="testing" className="h-11 w-full min-w-0" disabled={disabled || busy || unresolvedSharedModel || !configuredIds.length} onClick={() => onValidate(configuredIds)}>
           {busy && capabilityAction?.kind === "validate" ? <LoaderCircle className="animate-spin" /> : <TestTube2 />}{t("modelSettings.validateAssignment")}
         </Button>
-        <Button type="button" variant="save" className="h-11 w-full min-w-0" disabled={disabled || busy || unresolvedSharedModel || (!configuredIds.length && !dirty)} onClick={() => onSave(ids.filter(id => assignments.bindings[id] || assignments.bindings[id] !== savedAssignments.bindings[id]))}>
+        <Button type="button" variant="save" className="h-11 w-full min-w-0" disabled={disabled || busy || unresolvedSharedModel || !changedIds.length} onClick={() => onSave(changedIds)}>
           {busy && capabilityAction?.kind === "save" ? <LoaderCircle className="animate-spin" /> : <Save />}{t("modelSettings.saveAssignment")}
         </Button>
       </div>

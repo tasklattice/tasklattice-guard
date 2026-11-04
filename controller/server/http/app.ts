@@ -608,7 +608,8 @@ export function createHttpApp(input: {
   app.post("/api/v1/model-configuration/draft/assignments/:target/validations", authenticated, async context => {
     if (!input.models) throw new ControllerError("Model configuration is unavailable.", 503, "model_configuration_unavailable");
     const target = modelAssignmentTargetSchema.parse(context.req.param("target"));
-    return context.json(await input.models.validateAssignment(target, context.get("actor").id));
+    const body = context.req.raw.body ? z.object({ modelId: z.string().uuid(), formalValidation: formalValidationSchema.optional() }).parse(await context.req.json()) : undefined;
+    return context.json(await input.models.validateAssignment(target, context.get("actor").id, body));
   });
   app.post("/api/v1/model-configuration/draft/assignments/:target/candidate-validations", authenticated, async context => {
     if (!input.models) throw new ControllerError("Model configuration is unavailable.", 503, "model_configuration_unavailable");

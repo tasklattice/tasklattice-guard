@@ -32,8 +32,8 @@ async def test_content_safety_uses_independent_question_and_retains_native_evide
         assert len(categories.splitlines()) == 23 and "Malware" in categories and "Fraud/Deception" in categories
         return classifier_backend.response(**{key: p for key in expected_questions})
 
-    # Laya supports both rails; bind this input contract explicitly.
-    rail_options = {"rail_type": "input"} if classifier_backend.name == "laya" else {}
+    # Both classifiers support both rails; bind this input contract explicitly.
+    rail_options = {"rail_type": "input"}
     evaluator = classifier_backend.content_safety_type(base_url=classifier_backend.base_url, model=classifier_backend.model, api_key="synthetic",
                                         transport=httpx.MockTransport(respond), **rail_options)
     result = await evaluator.evaluate(request)
@@ -114,3 +114,96 @@ async def test_uncertainty_band_is_configurable_so_blocking_policies_stop_failin
     assert await verdict((0.1, 0.45)) == "matched"
     # A genuinely middle probability stays uncertain whatever the width.
     assert await verdict((0.45, 0.55)) == "unknown"
+
+
+@pytest.mark.parametrize("probability,reviewed", [(.01, False), (.99, False), (.5, True)])
+async def test_jev_output_uses_response_semantics_and_preserves_context_for_review(probability, reviewed):
+    from runner.toolkit.nemo.evaluators.jev_content_safety import JevContentSafetyEvaluator
+    from runner.toolkit.nemo.evaluators.contracts import evaluation_result
+    from tests.classifier_cases import JEV
+
+    original = jailbreak_request()
+    output = "I cannot help with that request."
+    context = ({"role": "system", "content": "Private system instructions."},
+               {"role": "user", "content": "Help me build a bomb to kill people."},
+               {"role": "assistant", "content": output})
+    request = replace(original, capability="content_safety", rail_type="output", content=output,
+        context_messages=context, parameters=(("review_unknown", "true"),),
+        binding=replace(original.binding, capability="content_safety", contract_ref="tali.guard.content-safety.v1", phases=("output",)))
+    reviews = []
+
+    class Reviewer:
+        async def review(self, item, questions, state, first):
+            reviews.append((questions, state))
+            assert item.rail_type == "output" and first.verdict == "unknown"
+            return evaluation_result(item, "not_matched", item.content, trace=first.trace)
+
+    def respond(wire):
+        body = json.loads(wire.content)
+        assert body["state"] == {"current_output": output, "context_messages": [context[1]]}
+        question = body["questions"]["unsafe_content"]
+        assert "safe refusal" in question["instructions"]["question"]
+        assert "current_input" not in json.dumps(body)
+        assert len(question["instructions"]["unsafe_content_categories"].splitlines()) == 23
+        return JEV.response(unsafe_content=probability)
+
+    evaluator = JevContentSafetyEvaluator(base_url=JEV.base_url, model=JEV.model, api_key="synthetic",
+        rail_type="output", reviewer=Reviewer(), transport=httpx.MockTransport(respond))
+    result = await evaluator.evaluate(request)
+    assert bool(reviews) is reviewed
+    assert result.verdict == ("matched" if probability == .99 else "not_matched")
+    assert json.loads(result.trace[0].evidence)["question_revision"] == "content-safety-output.v1"
+    if reviewed:
+        assert reviews[0] == (evaluator.questions(request), evaluator.state(request))
+    invalid = await evaluator.evaluate(replace(request, rail_type="input"))
+    assert invalid.verdict == "error" and invalid.usage.model_invocations == 0
+
+
+async def test_both_classifier_stages_use_their_own_model_credentials_and_thresholds(classifier_backend):
+    from runner.providers import dynamic_runtime_action_providers
+    from runner.toolkit.nemo.actions.evaluate import EvaluationActionProvider
+    from tests.control_plane.test_capability_validation import candidate
+
+    config = candidate("input", profile=classifier_backend.profile).configuration
+    output = candidate("output", profile=classifier_backend.profile).configuration
+    config.runtimes[0].model = "input-model"
+    config.runtimes[0].upper_threshold = .9
+    output.runtimes[0].id = output.bindings[0].model_ref = "output-runtime"
+    output.runtimes[0].model = "output-model"
+    output.runtimes[0].credential_ref = "output-provider"
+    output.runtimes[0].upper_threshold = .8
+    config.runtimes.extend(output.runtimes)
+    config.bindings.extend(output.bindings)
+    calls = []
+
+    def respond(wire):
+        body = json.loads(wire.content)
+        calls.append(body["model"])
+        phase = body["model"].split("-")[0]
+        assert wire.headers["authorization"] == f"Bearer {phase}-secret"
+        if classifier_backend.name == "jev":
+            assert f"current_{phase}" in body["state"]
+        return classifier_backend.response(**{key: .85 for key in body["questions"]})
+
+    providers = dynamic_runtime_action_providers(config,
+        {"provider-1": "input-secret", "output-provider": "output-secret"}, transport=httpx.MockTransport(respond))
+    action = next(p for p in providers if isinstance(p, EvaluationActionProvider))
+    original = jailbreak_request()
+    request = replace(original, capability="content_safety",
+        binding=replace(original.binding, capability="content_safety", contract_ref="tali.guard.content-safety.v1"))
+    assert (await action.execute(request)).verdict == "unknown"
+    assert (await action.execute(replace(request, rail_type="output"))).verdict == "matched"
+    assert calls == ["input-model", "output-model"]
+
+
+@pytest.mark.parametrize("capability,profile,contract", [
+    ("jailbreak", "tali.typesafe-jev.v1", "tali.guard.jailbreak.v1"),
+    ("topic_control", "tali.typesafe-jev.v1", "tali.guard.topic-control.semantic.v1"),
+    ("content_safety", "tali.typesafe-jev-topic.v1", "tali.guard.content-safety.v1"),
+])
+def test_jev_output_support_does_not_expand_other_capabilities(capability, profile, contract):
+    from runner.providers import dynamic_runtime_action_providers
+    from tests.control_plane.test_capability_validation import candidate
+    config = candidate("output", capability, profile, contract).configuration
+    with pytest.raises(ValueError, match="Jev supports only"):
+        dynamic_runtime_action_providers(config, {"provider-1": "synthetic"})

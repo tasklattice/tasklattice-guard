@@ -47,15 +47,16 @@ def dynamic_runtime_action_providers(
     source_profiles = {item.id: item.profile_ref for item in configuration.runtimes}
     for binding in configuration.bindings:
         if JEV_PROFILES.intersection({binding.profile_ref, source_profiles.get(binding.model_ref)}):
+            phase = _rail_name(binding.rail_type)
             allowed = {"topic_control": JevTopicEvaluator.contracts}
             if binding.profile_ref == JEV_PROFILE:
                 allowed["jailbreak"] = JevJailbreakEvaluator.contracts
                 allowed["content_safety"] = JevContentSafetyEvaluator.contracts
             if (binding.profile_ref not in JEV_PROFILES or source_profiles.get(binding.model_ref) != binding.profile_ref
-                or binding.capability_ref not in allowed or binding.binding_id != f"{binding.capability_ref}.input"
-                or _rail_name(binding.rail_type) != "input"
+                or binding.capability_ref not in allowed or binding.binding_id != f"{binding.capability_ref}.{phase}"
+                or (phase == "output" and binding.capability_ref != "content_safety")
                 or tuple(binding.contract_refs) != tuple(allowed.get(binding.capability_ref, ()))):
-                scope = "input Topic Control" if binding.profile_ref == JEV_TOPIC_PROFILE else "input Topic Control, Jailbreak detection or Content Safety"
+                scope = "input Topic Control" if binding.profile_ref == JEV_TOPIC_PROFILE else "input Topic Control, input Jailbreak detection or input/output Content Safety"
                 raise ValueError(f"Jev supports only {scope} with matching capability, contract and runtime profile.")
         if LAYA_PROFILES.intersection({binding.profile_ref, source_profiles.get(binding.model_ref)}):
             phase = _rail_name(binding.rail_type)
@@ -145,8 +146,9 @@ def dynamic_runtime_action_providers(
         for capability in ("pii", "content_safety", "jailbreak")
         if capability in safety_evaluator.capabilities
     )
-    for capability, evaluator_type in (("jailbreak", JevJailbreakEvaluator), ("content_safety", JevContentSafetyEvaluator)):
-        binding = bindings.get(f"{capability}.input")
+    for capability, phase, evaluator_type in (("jailbreak", "input", JevJailbreakEvaluator),
+            ("content_safety", "input", JevContentSafetyEvaluator), ("content_safety", "output", JevContentSafetyEvaluator)):
+        binding = bindings.get(f"{capability}.{phase}")
         if binding is None or binding.profile_ref != JEV_PROFILE:
             continue
         runtime = _assigned_runtime(binding.model_ref, runtimes)
@@ -154,7 +156,7 @@ def dynamic_runtime_action_providers(
             base_url=runtime.base_url, model=runtime.model, api_key=runtime.api_key or "",
             provider_id=runtime.id, timeout_seconds=runtime.timeout_seconds,
             skip_tls_verify=runtime.skip_tls_verify, transport=transports[runtime.id],
-            reviewer=reviewers.get("input"),
+            reviewer=reviewers.get(phase), rail_type=phase,
             lower_threshold=runtime.lower_threshold, upper_threshold=runtime.upper_threshold,
             rate_limit_attempts=runtime.rate_limit_attempts,
         )

@@ -310,8 +310,16 @@ describe("Capability configuration after registration", () => {
     const { service } = setup("draft", true);
     const cases = [{ id: "unsafe", passed: false, inputContent: "Unsafe input", outputContent: "Allowed output", expectedDecision: "block", actualDecision: "allow", reason: "Missed unsafe content" }];
     service.setRailValidator(async () => ({ passed: false, message: "Sample failed", latencyMs: 2, cases }));
-    const revision = await service.validateAssignment("content_safety.input", "admin");
+    const revision = await service.validateAssignment("content_safety.input", "admin", { modelId: id });
     expect(revision.validationReport?.checks).toContainEqual(expect.objectContaining({ status: "failed", cases }));
+  });
+
+  it("rejects validation when the saved model differs from the requested model", async () => {
+    const { service, railValidator, tx } = setup("draft", true);
+    await expect(service.validateAssignment("content_safety.input", "admin", { modelId: "previous-model" }))
+      .rejects.toThrow("The saved Model assignment changed.");
+    expect(railValidator).not.toHaveBeenCalled();
+    expect(tx.update).not.toHaveBeenCalled();
   });
 
   it("never substitutes a Controller model probe when the Runner validation fails", async () => {

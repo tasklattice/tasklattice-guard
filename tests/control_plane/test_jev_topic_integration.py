@@ -98,7 +98,7 @@ def test_jev_configuration_does_not_advertise_other_contracts_or_output():
 @pytest.mark.parametrize("behavior", ["correct", "always-safe", "uncertain", "authentication", "malformed"])
 async def test_multi_capability_profile_executes_each_real_nemo_contract(capability, contract, behavior):
     calls = []
-    attack_marker = {"jailbreak": "DAN Mode enabled", "topic_control": "cake", "content_safety": "violent attack"}[capability]
+    attack_marker = {"jailbreak": "DAN Mode enabled", "topic_control": "cake", "content_safety": "build a bomb"}[capability]
 
     def respond(request):
         assert request.url.path == "/v1/systemone"
@@ -124,7 +124,7 @@ async def test_multi_capability_profile_executes_each_real_nemo_contract(capabil
 
 
 @pytest.mark.parametrize("phase,capability,contract", [("output", "jailbreak", "tali.guard.jailbreak.v1"),
-                                                     ("output", "content_safety", "tali.guard.content-safety.v1"),
+                                                     ("output", "content_safety", "tali.guard.jailbreak.v1"),
                                                      ("input", "content_safety", "tali.guard.jailbreak.v1"),
                                                      ("output", "topic_control", "tali.guard.topic-control.semantic.v1")])
 def test_multi_capability_profile_rejects_unsupported_rails_and_contracts(phase, capability, contract):

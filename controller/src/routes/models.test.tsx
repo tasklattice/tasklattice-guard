@@ -15,6 +15,7 @@ import {
   testModelConnection,
   updateModelProviderCredential,
   validateModelAssignment,
+  validateSavedModelAssignment,
   type ModelAssignments,
   type ModelConfigurationView,
 } from "@/lib/controller-api";
@@ -39,6 +40,7 @@ vi.mock("@/lib/controller-api", async (importOriginal) => {
     deleteModelDefinition: vi.fn(),
     deleteModelProvider: vi.fn(),
     validateModelAssignment: vi.fn(),
+    validateSavedModelAssignment: vi.fn(),
     saveModelAssignment: vi.fn(),
     revalidateModelProvider: vi.fn(),
     testModelConnection: vi.fn(),
@@ -151,6 +153,7 @@ describe("Models and Protection Capabilities", { timeout: 30_000 }, () => {
     vi.mocked(getModelConfiguration).mockReset().mockResolvedValue(view);
     vi.mocked(activateModelConfiguration).mockReset().mockResolvedValue({ ...view, distribution: { desiredGeneration: 7, distributionStatus: "ready" } });
     vi.mocked(validateModelAssignment).mockReset().mockResolvedValue({ ...view.draft!, validationId: "candidate-validation" });
+    vi.mocked(validateSavedModelAssignment).mockReset().mockResolvedValue(view.draft!);
     vi.mocked(revalidateModelProvider).mockReset().mockResolvedValue(provider);
     vi.mocked(testModelConnection).mockReset().mockResolvedValue(safetyModel);
     vi.mocked(updateModelProviderCredential).mockReset().mockResolvedValue(provider);
@@ -198,6 +201,7 @@ describe("Models and Protection Capabilities", { timeout: 30_000 }, () => {
     expect(within(runner).getAllByRole("row")).toHaveLength(8);
     const safety = within(runner).getByLabelText("modelSettings.detectors.content_safety.title", { selector: "tr" });
     expect(within(safety).getAllByRole("combobox")).toHaveLength(1);
+    expect(await catalogAction(safety, "modelSettings.saveAssignment")).toHaveProperty("disabled", true);
     for (const stage of ["input", "output"]) {
       const result = within(safety).getByRole("group", { name: `modelSettings.detectors.content_safety.title · modelSettings.stage.${stage}` });
       expect(within(result).getByText("modelSettings.railSamplesPassed")).toBeTruthy();
@@ -225,6 +229,12 @@ describe("Models and Protection Capabilities", { timeout: 30_000 }, () => {
     const row = await screen.findByLabelText("modelSettings.detectors.content_safety.title", { selector: "tr" });
     fireEvent.keyDown(within(row).getByRole("combobox"), { key: "ArrowDown" });
     fireEvent.click(await screen.findByRole("option", { name: /Replacement Guard/ }));
+    expect(await catalogAction(row, "modelSettings.saveAssignment")).toHaveProperty("disabled", false);
+    fireEvent.keyDown(within(row).getByRole("combobox"), { key: "ArrowDown" });
+    fireEvent.click(await screen.findByRole("option", { name: /Qwen Guard/ }));
+    expect(await catalogAction(row, "modelSettings.saveAssignment")).toHaveProperty("disabled", true);
+    fireEvent.keyDown(within(row).getByRole("combobox"), { key: "ArrowDown" });
+    fireEvent.click(await screen.findByRole("option", { name: /Replacement Guard/ }));
     expect(within(row).getAllByText("modelSettings.notChecked")).toHaveLength(2);
     fireEvent.click(await catalogAction(row, "modelSettings.validateAssignment"));
     await waitFor(() => expect(validateModelAssignment).toHaveBeenCalledTimes(2));
@@ -236,6 +246,7 @@ describe("Models and Protection Capabilities", { timeout: 30_000 }, () => {
     expect(saveModelAssignment).toHaveBeenNthCalledWith(1, "content_safety.input", "replacement", "receipt-content_safety.input");
     expect(saveModelAssignment).toHaveBeenNthCalledWith(2, "content_safety.output", "replacement", "receipt-content_safety.output");
     await waitFor(() => expect(within(row).queryByText("modelSettings.unsaved")).toBeNull());
+    expect(await catalogAction(row, "modelSettings.saveAssignment")).toHaveProperty("disabled", true);
     expect(activateModelConfiguration).not.toHaveBeenCalled();
   });
 
@@ -292,14 +303,14 @@ describe("Models and Protection Capabilities", { timeout: 30_000 }, () => {
     expect(within(row).queryByText("modelSettings.unsaved")).toBeNull();
   });
 
-  it("offers input-only JEV only in the input stage and keeps the output model unchanged", async () => {
+  it("offers JEV in shared and per-stage content safety configuration", async () => {
     vi.mocked(getModelConfiguration).mockResolvedValue({ ...view, models: [...view.models,
       { ...chatModel, id: "jev", name: "JEV", providerKind: "typesafe", profile: "tali.typesafe-jev.v1" },
     ] });
     renderPage(<GuardrailCatalogPage />);
     const row = await screen.findByLabelText("modelSettings.detectors.content_safety.title", { selector: "tr" });
     fireEvent.keyDown(within(row).getByRole("combobox"), { key: "ArrowDown" });
-    expect(screen.queryByRole("option", { name: /JEV/ })).toBeNull();
+    expect(await screen.findByRole("option", { name: /JEV/ })).toBeTruthy();
     fireEvent.keyDown(within(row).getByRole("combobox"), { key: "Escape" });
     fireEvent.click(within(row).getByRole("button", { name: "modelSettings.configureByStage" }));
     fireEvent.keyDown(within(row).getByRole("combobox", { name: "modelSettings.stage.input" }), { key: "ArrowDown" });
@@ -307,24 +318,24 @@ describe("Models and Protection Capabilities", { timeout: 30_000 }, () => {
     const output = within(row).getByRole("combobox", { name: "modelSettings.stage.output" });
     expect(output.textContent).toContain("Qwen Guard");
     fireEvent.keyDown(output, { key: "ArrowDown" });
-    expect(screen.queryByRole("option", { name: /JEV/ })).toBeNull();
-    fireEvent.keyDown(output, { key: "Escape" });
+    fireEvent.click(await screen.findByRole("option", { name: /JEV/ }));
     fireEvent.click(await catalogAction(row, "modelSettings.validateAssignment"));
-    await waitFor(() => expect(validateModelAssignment).toHaveBeenCalledWith("content_safety.output", "safety-model"));
+    await waitFor(() => expect(validateModelAssignment).toHaveBeenCalledWith("content_safety.output", "jev"));
     expect(validateModelAssignment).toHaveBeenCalledWith("content_safety.input", "jev");
   });
 
   it("replaces a stale pass after an input request failure and still validates output", async () => {
-    vi.mocked(validateModelAssignment).mockRejectedValueOnce(new Error("Input service unavailable"))
-      .mockResolvedValueOnce({ ...view.draft!, validationId: "output-receipt" });
+    vi.mocked(validateSavedModelAssignment).mockRejectedValueOnce(new Error("Input service unavailable"));
     renderPage(<GuardrailCatalogPage />);
     const row = await screen.findByLabelText("modelSettings.detectors.content_safety.title", { selector: "tr" });
     fireEvent.click(await catalogAction(row, "modelSettings.validateAssignment"));
-    await waitFor(() => expect(validateModelAssignment).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(validateSavedModelAssignment).toHaveBeenCalledTimes(2));
     const input = within(row).getByRole("group", { name: "modelSettings.detectors.content_safety.title · modelSettings.stage.input" });
     const output = within(row).getByRole("group", { name: "modelSettings.detectors.content_safety.title · modelSettings.stage.output" });
     expect(within(input).queryByText("modelSettings.railSamplesPassed")).toBeNull();
     expect(within(output).getByText("modelSettings.railSamplesPassed")).toBeTruthy();
+    expect(await catalogAction(row, "modelSettings.saveAssignment")).toHaveProperty("disabled", true);
+    expect(saveModelAssignment).not.toHaveBeenCalled();
     fireEvent.click(within(input).getByRole("button", { name: /modelSettings.probeFailed/ }));
     expect(within(screen.getByRole("dialog")).getByText("Input service unavailable")).toBeTruthy();
     expect(toast.success).not.toHaveBeenCalled();
@@ -357,6 +368,8 @@ describe("Models and Protection Capabilities", { timeout: 30_000 }, () => {
     await waitFor(() => expect(within(row).queryByText("modelSettings.unsaved")).toBeNull());
     expect(within(row).queryByRole("alert")).toBeNull();
     expect(current.draft!.assignments.bindings["content_safety.input"]).toBe("replacement");
+    expect(saveModelAssignment).toHaveBeenCalledTimes(3);
+    expect(saveModelAssignment).toHaveBeenLastCalledWith("content_safety.input", "replacement", undefined);
     expect(activateModelConfiguration).not.toHaveBeenCalled();
   });
 
@@ -593,10 +606,16 @@ describe("Models and Protection Capabilities", { timeout: 30_000 }, () => {
     await waitFor(() => expect(within(pii).getByRole("combobox", { name: "modelSettings.stage.input" }).textContent).toContain("Qwen Guard"));
 
     // Saving another row also refreshes the draft and must preserve PII edits.
-    vi.mocked(saveModelAssignment).mockResolvedValue(refreshed.draft!);
+    vi.mocked(saveModelAssignment).mockImplementation(async (target, modelId) => {
+      if (target !== "control_plane") refreshed.draft!.assignments.bindings[target] = modelId;
+      return structuredClone(refreshed.draft!);
+    });
     const safety = screen.getByLabelText("modelSettings.detectors.content_safety.title", { selector: "tr" });
+    fireEvent.keyDown(within(safety).getByRole("combobox"), { key: "ArrowDown" });
+    fireEvent.click(await screen.findByRole("option", { name: "modelSettings.notAssigned" }));
     fireEvent.click(await catalogAction(safety, "modelSettings.saveAssignment"));
-    await waitFor(() => expect(saveModelAssignment).toHaveBeenCalledWith("content_safety.input", "safety-model", undefined));
+    await waitFor(() => expect(saveModelAssignment).toHaveBeenCalledWith("content_safety.output", null, undefined));
+    await waitFor(() => expect(within(safety).queryByText("modelSettings.unsaved")).toBeNull());
     expect(await catalogAction(pii, "modelSettings.saveAssignment")).toHaveProperty("disabled", false);
     expect(within(pii).getByRole("combobox", { name: "modelSettings.stage.input" }).textContent).toContain("Qwen Guard");
 
@@ -618,15 +637,12 @@ describe("Models and Protection Capabilities", { timeout: 30_000 }, () => {
   });
 
   it("keeps failed saves visible and preserves the selected PII model for retry", async () => {
-    const configured = structuredClone(view);
-    configured.draft!.assignments.bindings["pii_semantic.input"] = "safety-model";
-    configured.draft!.validationReport!.checks.push({ id: "probe:pii_semantic.input:safety-model", scope: "capability", status: "passed", evidenceKind: "nemo-rail-v1", message: "Passed" });
-    vi.mocked(getModelConfiguration).mockResolvedValue(configured);
     vi.mocked(saveModelAssignment).mockRejectedValue(new Error("Validation receipt expired; validate this model again."));
     renderPage(<GuardrailCatalogPage />);
     const pii = await screen.findByLabelText("modelSettings.detectors.pii_detection.title", { selector: "tr" });
-    const expand = within(pii).queryByRole("button", { name: "modelSettings.configureByStage" });
-    if (expand) fireEvent.click(expand);
+    fireEvent.click(within(pii).getByRole("button", { name: "modelSettings.configureByStage" }));
+    fireEvent.keyDown(within(pii).getByRole("combobox", { name: "modelSettings.stage.input" }), { key: "ArrowDown" });
+    fireEvent.click(await screen.findByRole("option", { name: /Qwen Guard/ }));
     fireEvent.click(await catalogAction(pii, "modelSettings.saveAssignment"));
     expect(await screen.findByText(/Validation receipt expired; validate this model again/)).toBeTruthy();
     expect(within(pii).getByRole("combobox", { name: "modelSettings.stage.input" }).textContent).toContain("Qwen Guard");
@@ -651,7 +667,7 @@ describe("Models and Protection Capabilities", { timeout: 30_000 }, () => {
     renderPage(<GuardrailCatalogPage />);
     const contentSafety = await screen.findByLabelText("modelSettings.detectors.content_safety.title", { selector: "tr" });
     fireEvent.click(await catalogAction(contentSafety, "modelSettings.validateAssignment"));
-    await waitFor(() => expect(validateModelAssignment).toHaveBeenCalledWith("content_safety.input", expect.anything()));
+    await waitFor(() => expect(validateSavedModelAssignment).toHaveBeenCalledWith("content_safety.input", "safety-model", undefined));
     expect(screen.queryByRole("button", { name: "modelSettings.validateCatalog" })).toBeNull();
   });
 

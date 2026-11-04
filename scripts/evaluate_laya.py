@@ -56,10 +56,10 @@ class EvidenceTransport(httpx.AsyncBaseTransport):
         await self.inner.aclose()
 
 
-def evaluation_request(sample, *, review=False, timeout=75):
+def evaluation_request(sample, *, review=False, timeout=75, regression_id="laya-regression"):
     capability = sample["capability"]
     _, contract = EVALUATORS[capability]
-    plan = GuardrailPlanSnapshot(guardrail_id="laya-regression", guardrail_version="offline",
+    plan = GuardrailPlanSnapshot(guardrail_id=regression_id, guardrail_version="offline",
         compiler_version="offline-v1", safety_level="balanced", output_delivery="full_buffered", steps=())
     rail = sample.get("rail_type", "input")
     return EvaluationRequest(content=sample["content"], rail_type=rail, guardrail_id=plan.guardrail_id,
@@ -67,7 +67,7 @@ def evaluation_request(sample, *, review=False, timeout=75):
         content_blocks=(), deadline=time.monotonic() + timeout,
         parameters=tuple(sample.get("parameters", {}).items()) + (("review_unknown", str(review).lower()),),
         capability=capability, proposed_action="block", plan=plan,
-        binding=NeMoActionBinding(id="laya-regression-check", capability=capability, contract_ref=contract,
+        binding=NeMoActionBinding(id=f"{regression_id}-check", capability=capability, contract_ref=contract,
             phases=(rail,), on_unsafe="block"),
         context_messages=tuple(sample.get("context_messages", [])), mode="detect",
         evidence_scope="full", execution_purpose="validation")

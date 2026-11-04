@@ -153,8 +153,7 @@ export const capabilityBindingDefinitions = [
   binding({
     id: "content_safety.output", categoryId: "content_safety", capabilityRef: "content_safety", railType: "output",
     implementationRef: "tali.runtime.safety-model.v1", contractRefs: ["tali.guard.content-safety.v1"],
-    profileRefs: capabilityProfileRefs.content_safety.filter(profile => profile !== "tali.typesafe-jev.v1"),
-    profilePreference: capabilityProfilePreference.content_safety.filter(profile => profile !== "tali.typesafe-jev.v1"),
+    profileRefs: capabilityProfileRefs.content_safety, profilePreference: capabilityProfilePreference.content_safety,
   }),
   binding({
     id: "jailbreak.input", categoryId: "jailbreak_protection", capabilityRef: "jailbreak", railType: "input",

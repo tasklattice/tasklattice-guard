@@ -28,12 +28,12 @@ parameters:
     Rule without skipping other Policies. Matches, errors and missing context keep
     their own handling.
 - name: review_unknown
-  label: Review uncertain input results
+  label: Review uncertain results
   kind: text
   required: false
   default: "false"
   placeholder: true or false
-  description: When true, a valid JEV input gray-area result is reviewed by the separately validated classifier_review.input binding. Output, matches, errors and missing context keep their handling.
+  description: When true, a valid JEV/Laya gray-area result is reviewed by the separately validated classifier_review binding for the current input/output stage. Matches, errors and missing context keep their handling.
 rules:
 - rules/model-content-safety.yaml
 tests:

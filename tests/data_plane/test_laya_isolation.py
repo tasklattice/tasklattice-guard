@@ -67,8 +67,8 @@ def test_cross_family_binding_cannot_silently_select_a_different_protocol(bindin
 
 
 @pytest.mark.parametrize("phase,capability,contract,attack_marker", [
-    ("input", "content_safety", "tali.guard.content-safety.v1", "violent attack"),
-    ("output", "content_safety", "tali.guard.content-safety.v1", "violent attack"),
+    ("input", "content_safety", "tali.guard.content-safety.v1", "build a bomb"),
+    ("output", "content_safety", "tali.guard.content-safety.v1", "build a bomb"),
     ("input", "jailbreak", "tali.guard.jailbreak.v1", "DAN Mode enabled"),
     ("input", "topic_control", "tali.guard.topic-control.semantic.v1", "chocolate cake"),
 ])

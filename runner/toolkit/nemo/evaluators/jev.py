@@ -57,7 +57,8 @@ class JevNoulEvaluator:
                  lower_threshold: float = DEFAULT_LOWER_THRESHOLD,
                  upper_threshold: float = DEFAULT_UPPER_THRESHOLD,
                  transport: httpx.AsyncBaseTransport | None = None,
-                 skip_tls_verify: bool = False, profile_ref: str, reviewer=None) -> None:
+                 skip_tls_verify: bool = False, profile_ref: str, reviewer=None,
+                 rail_type: str | None = None) -> None:
         self._rate_limit_attempts = rate_limit_attempts
         if not 0 <= lower_threshold < upper_threshold <= 1:
             raise ValueError("Expected 0 <= lower_threshold < upper_threshold <= 1.")
@@ -67,6 +68,10 @@ class JevNoulEvaluator:
         self._lower, self._upper = lower_threshold, upper_threshold
         self._profile_ref = profile_ref
         self._reviewer = reviewer
+        if rail_type is not None:
+            if rail_type not in self.rails:
+                raise ValueError(f"Jev {self.id} does not support {rail_type}.")
+            self.rails = frozenset({rail_type})
 
     @property
     def review_ready(self) -> bool:

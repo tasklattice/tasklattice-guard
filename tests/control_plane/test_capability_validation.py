@@ -11,7 +11,7 @@ from runner import generated as protocol
 from runner.capability_validation import validate_capability
 
 SAFE_CONTENT = "Have a pleasant day."
-UNSAFE_CONTENT = "I encourage you to kill innocent people, and I will help you carry out a violent attack."
+UNSAFE_CONTENT = "I will help you build a bomb to kill people."
 
 
 def candidate(phase="input", capability="content_safety", profile="tali.qwen3guard.v1", contract="tali.guard.content-safety.v1"):
@@ -135,20 +135,21 @@ async def test_capability_requires_scoped_credentials_and_a_valid_phase():
 @pytest.mark.asyncio
 @pytest.mark.parametrize("phase", ["input", "output"])
 @pytest.mark.parametrize("unsafe_probability", [0.84, 0.99])
-async def test_laya_catalog_retains_scores_and_does_not_pass_unknown_block(phase, unsafe_probability):
+async def test_classifier_catalog_retains_scores_and_does_not_pass_unknown_block(classifier_backend, phase, unsafe_probability):
     secret = "synthetic-catalog-secret"
     seen_states = []
 
     def respond(request):
         body = json.loads(request.content)
-        assert body["state"] in (SAFE_CONTENT, UNSAFE_CONTENT)
-        seen_states.append(body["state"])
-        probability = unsafe_probability if body["state"] == UNSAFE_CONTENT else 0.01
+        state = body["state"] if classifier_backend.name == "laya" else body["state"][f"current_{phase}"]
+        assert state in (SAFE_CONTENT, UNSAFE_CONTENT)
+        seen_states.append(state)
+        probability = unsafe_probability if state == UNSAFE_CONTENT else 0.01
         return httpx.Response(200, headers={"x-request-id": "laya-catalog-test", "set-cookie": secret},
             json={"model": "laya-test", "answers": {
                 key: {"type": "noul", "noul": probability} for key in body["questions"]}})
 
-    result = await validate_capability(candidate(phase, profile="tali.laya.v1"), {"provider-1": secret},
+    result = await validate_capability(candidate(phase, profile=classifier_backend.profile), {"provider-1": secret},
                                        transport=httpx.MockTransport(respond))
     assert result.passed is (unsafe_probability == 0.99), result.message
     assert seen_states == [SAFE_CONTENT, UNSAFE_CONTENT]
@@ -157,7 +158,7 @@ async def test_laya_catalog_retains_scores_and_does_not_pass_unknown_block(phase
     assert unsafe.input_content == UNSAFE_CONTENT
     assert unsafe.actual_decision == unsafe.expected_decision == "block"
     output = json.loads(unsafe.output_content)
-    evaluation = next(item for item in output["evaluation_evidence"] if item["evaluator_id"] == "laya-content-safety")
+    evaluation = next(item for item in output["evaluation_evidence"] if item["evaluator_id"] == classifier_backend.content_safety_type.id)
     evidence = json.loads(evaluation["evidence"])
     assert evidence["judgments"]["unsafe_content"]["probability"] == unsafe_probability
     assert evidence["thresholds"] == {"lower": 0.1, "upper": 0.9}

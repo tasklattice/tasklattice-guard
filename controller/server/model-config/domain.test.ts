@@ -31,14 +31,14 @@ describe("Protection Capabilities capability binding profiles", () => {
     expect(assignmentTargetAcceptsModel("topic_control.input", "tali.laya-topic.v1", "laya")).toBe(true);
     expect(assignmentTargetAcceptsModel("jailbreak.input", "tali.laya-topic.v1", "laya")).toBe(false);
   });
-  it("supports independent JEV input detectors without extending output or the topic-only contract", () => {
+  it("supports JEV input/output content safety while keeping its other contracts scoped", () => {
     const profile = "tali.typesafe-jev.v1";
     expect(profileTransports[profile]).toBe("typesafe_systemone");
-    for (const [target, contract] of [["topic_control.input", "tali.guard.topic-control.semantic.v1"], ["jailbreak.input", "tali.guard.jailbreak.v1"], ["content_safety.input", "tali.guard.content-safety.v1"]] as const) {
+    for (const [target, contract] of [["topic_control.input", "tali.guard.topic-control.semantic.v1"], ["jailbreak.input", "tali.guard.jailbreak.v1"], ["content_safety.input", "tali.guard.content-safety.v1"], ["content_safety.output", "tali.guard.content-safety.v1"]] as const) {
       expect(assignmentTargetAcceptsModel(target, profile, "typesafe")).toBe(true);
       expect(capabilityBindingContracts(target, profile)).toEqual([contract]);
     }
-    for (const target of ["control_plane", "content_safety.output", "pii_semantic.input"] as const) {
+    for (const target of ["control_plane", "pii_semantic.input", "pii_semantic.output", "classifier_review.output"] as const) {
       expect(assignmentTargetAcceptsModel(target, profile, "typesafe")).toBe(false);
     }
     expect(providerAcceptsProfile("custom-openai-compatible", profile)).toBe(false);

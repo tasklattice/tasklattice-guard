@@ -36,15 +36,16 @@ contract. Input and Output assignments remain independent.
 The page shows one row per implemented capability, without Input/Output tabs.
 Capabilities supporting both stages default to one shared model selector; its
 options must support both stage contracts. **Configure by stage** exposes
-independent input and output selectors, including input-only profiles such as
-JEV content safety. Existing unequal assignments open in stage mode and are
+independent input and output selectors. JEV and Laya content safety support
+both shared and stage-specific configuration. Existing unequal assignments open in stage mode and are
 preserved. Returning to shared mode requires an explicit model choice before
 replacing unequal assignments.
 
 Each capability exposes **Validate** and **Save** as separate row buttons.
 Optional **Validate** runs each configured stage separately and displays its own result
-and failure evidence. One failed stage does not skip the other stage. **Save**
-persists each binding and any available validation receipt sequentially. A failed save
+and failure evidence. One failed stage does not skip the other stage. Validation
+records evidence directly when the model assignment is already saved. **Save**
+persists changed bindings and their available validation receipts sequentially. A failed save
 remains visible beside its stage and keeps that selection available for retry;
 partial saves do not activate the runtime. Review and Apply remains a separate
 step and accepts saved bindings whether validation passed, failed, or was not run.
@@ -63,7 +64,7 @@ as the browser dropdown.
 Review uses a built-in prompt that automatically includes the original
 classifier questions, evaluated input/output and conversation context. No custom Guard prompt
 is needed. Enable `review_unknown=true` in a supported Guard Policy binding
-to review valid JEV/Laya gray-area input results or Laya content-safety output results.
+to review valid JEV/Laya gray-area input results or content-safety output results.
 Each enabled Rail requires its own review binding. Errors and missing context do
 not trigger review; see [gray-area review](classifier-gray-review.md).
 
@@ -192,7 +193,7 @@ also test Provider-scoped self-signed TLS behavior.
 Protocol references: [NVIDIA hosted classification API](https://docs.api.nvidia.com/nim/reference/nvidia-nemoguard-jailbreak-detect-infer)
 and [self-hosted NIM request/response examples](https://docs.nvidia.com/nim/nemoguard-jailbreakdetect/latest/getting-started.html).
 
-## TypeSafe Jev for input Content Safety, Jailbreak and Topic Control
+## TypeSafe Jev for input/output Content Safety and input Jailbreak and Topic Control
 
 Business and company boundaries use the Topic Control Policy's independent
 Denylist and Allowlist Rules. Both use the single `topic_control.input` binding
@@ -229,7 +230,7 @@ Assign the same registered model independently to **Protection Capabilities → 
 **Jailbreak detection**, and **Content Safety**, validate each candidate, save, then activate through the existing revision workflow. Registration
 checks callability; each binding validation executes its own benign and off-topic
 or unsafe samples through NeMo. The multi-purpose profile supports `tali.guard.topic-control.semantic.v1`,
-`tali.guard.jailbreak.v1`, and `tali.guard.content-safety.v1` on input. It does not advertise output or PII.
+`tali.guard.jailbreak.v1`, and `tali.guard.content-safety.v1` on input, plus content safety on output. It does not advertise output jailbreak/topic detection or PII.
 Content Safety uses its own `unsafe_content` question and the same 23-category taxonomy as the NVIDIA
 Safety Guard v3 adapter. Direct harmful requests do not need a jailbreak mechanism to match.
 The versioned question and native probability are retained in evidence. Probabilities between 0.1 and 0.9

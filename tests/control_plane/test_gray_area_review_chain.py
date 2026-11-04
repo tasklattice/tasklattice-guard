@@ -105,11 +105,11 @@ async def test_review_model_binding_requires_actual_two_sided_runtime_probes(beh
     request=candidate(rail,'classifier_review',profile,REVIEW_CONTRACT)
     def respond(req):
         data=json.loads(json.loads(req.content)['messages'][-1]['content'])
-        unsafe=behavior=='always-unsafe' or behavior=='correct' and 'violent attack' in data['state'][f'current_{rail}']
+        unsafe=behavior=='always-unsafe' or behavior=='correct' and 'build a bomb' in data['state'][f'current_{rail}']
         body={'answers':{'unsafe_content':'yes' if unsafe else 'no'}} if behavior!='malformed' else {'answers':{}}
         return httpx.Response(200,json={'model':'review-model-v1','choices':[{'message':{'content':json.dumps(body)}}]})
     result=await validate_capability(request,{'provider-1':'synthetic'},transport=httpx.MockTransport(respond))
-    assert ['violent attack' in case.input_content for case in result.cases] == [False, True]
+    assert ['build a bomb' in case.input_content for case in result.cases] == [False, True]
     assert result.passed is (behavior=='correct'),result.message
     assert len(result.cases)==2
 
@@ -137,15 +137,14 @@ def output_plan():
     (.01, "yes", "cleared", 1), (.9, "no", "blocked", 1),
     (.5, "yes", "blocked", 2), (.5, "no", "cleared", 2),
 ])
-async def test_output_laya_uses_its_own_review_binding_and_preserves_evidence(output_plan, score, answer, outcome, expected_calls):
-    from tests.classifier_cases import LAYA
+async def test_output_classifier_uses_its_own_review_binding_and_preserves_evidence(classifier_backend, output_plan, score, answer, outcome, expected_calls):
     response, calls, evidence = await scan(output_plan, {"content_safety": score},
-        backend=LAYA, phase="output", review={"content_safety": answer})
+        backend=classifier_backend, phase="output", review={"content_safety": answer})
     assert response.status_code == 200, response.text
     assert response.json()["result"]["outcome"] == outcome
     assert len(calls) == expected_calls
-    row = evidence["layaEvaluations"][0]
-    assert row["questionRevision"] == "laya-content-safety-output.v3"
+    row = evidence[classifier_backend.evidence_key][0]
+    assert row["questionRevision"] == ("laya-content-safety-output.v3" if classifier_backend.name == "laya" else "content-safety-output.v1")
     if expected_calls == 2:
         assert row["verdict"] == "unknown" and row["decisionSource"] == "review"
         assert row["review"]["revision"] == "classifier-review-output.v2"
@@ -153,19 +152,17 @@ async def test_output_laya_uses_its_own_review_binding_and_preserves_evidence(ou
         assert "review" not in row
 
 
-async def test_output_cannot_borrow_an_input_reviewer(output_plan):
-    from tests.classifier_cases import LAYA
-    response, calls, _ = await scan(output_plan, {"content_safety": .5}, backend=LAYA,
+async def test_output_cannot_borrow_an_input_reviewer(classifier_backend, output_plan):
+    response, calls, _ = await scan(output_plan, {"content_safety": .5}, backend=classifier_backend,
         phase="output", review={}, reviewer_phase="input", require_evidence=False)
     assert response.status_code >= 400 and not calls
 
 
 @pytest.mark.parametrize("fault", ["http", "malformed", "timeout"])
-async def test_output_review_errors_retain_unknown_primary_evidence(output_plan, fault):
-    from tests.classifier_cases import LAYA
-    response, _, evidence = await scan(output_plan, {"content_safety": .5}, backend=LAYA,
+async def test_output_review_errors_retain_unknown_primary_evidence(classifier_backend, output_plan, fault):
+    response, _, evidence = await scan(output_plan, {"content_safety": .5}, backend=classifier_backend,
         phase="output", review={}, review_fault=("content_safety", fault))
     assert response.status_code >= 400
     assert evidence["execution"]["status"] in {"error", "timeout"}
-    assert evidence["layaEvaluations"][0]["verdict"] == "unknown"
-    assert evidence["layaEvaluations"][0]["review"]["verdict"] == "error"
+    assert evidence[classifier_backend.evidence_key][0]["verdict"] == "unknown"
+    assert evidence[classifier_backend.evidence_key][0]["review"]["verdict"] == "error"

@@ -690,11 +690,16 @@ export class ModelConfigurationService {
     return publicRevision(updated);
   }
 
-  async validateAssignment(target: ModelAssignmentTarget, actorId: string) {
+  async validateAssignment(target: ModelAssignmentTarget, actorId: string, options?: { modelId: string; formalValidation?: FormalValidation | undefined }) {
     assertPlatformAuthority();
     const draft = await this.ensureEditableDraft(actorId);
     const assignments = normalizeModelAssignments(draft.assignments);
     const modelId = target === "control_plane" ? assignments.controlPlane : assignments.bindings[target];
+    if (options && options.modelId !== modelId) {
+      throw new ConflictError("The saved Model assignment changed. Reload the current assignment before validating.", "model_configuration_changed");
+    }
+    const formalValidation = options && target === "automated_reasoning.output" ? formalValidationSchema.parse(options.formalValidation) : undefined;
+    if (options?.formalValidation && !formalValidation) throw new ValidationError("Formal validation context is only supported by automated reasoning.");
     const checks = (draft.validationReport?.checks ?? []).filter((check) => !checkBelongsToTarget(check, target));
     if (!modelId) {
       checks.push({ id: `assignment:${target}`, scope: "configuration", status: "skipped", message: `${target} is not assigned.` });
@@ -710,8 +715,10 @@ export class ModelConfigurationService {
         checks.push({ id: `assignment:${target}`, scope: "configuration", status: "failed", message: `${model.name} is incompatible with ${target}.` });
       } else {
         checks.push({ id: `assignment:${target}`, scope: "configuration", status: "passed", message: `${model.name} is assigned to ${target}.` });
-        const result = await this.probeAssignment(target, provider, model);
-        if (model.projectId === currentProjectId()) {
+        const result = await this.probeAssignment(target, provider, model, formalValidation);
+        // Target-specific validation records binding evidence without changing
+        // the model metadata used to verify outstanding candidate receipts.
+        if (!options && model.projectId === currentProjectId()) {
           await this.db.update(modelDefinitions).set({
             status: result.passed ? "validated" : "failed",
             validationMessage: result.message,

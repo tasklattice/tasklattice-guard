@@ -174,7 +174,11 @@ describe("Model configuration HTTP routes", () => {
     })).status).toBe(200);
     expect(models.updateAssignment).toHaveBeenCalledWith("content_safety.input", modelId, "admin-1", undefined);
     expect((await app.request("/api/v1/model-configuration/draft/assignments/content_safety.input/validations", { method: "POST" })).status).toBe(200);
-    expect(models.validateAssignment).toHaveBeenCalledWith("content_safety.input", "admin-1");
+    expect(models.validateAssignment).toHaveBeenCalledWith("content_safety.input", "admin-1", undefined);
+    expect((await app.request("/api/v1/model-configuration/draft/assignments/content_safety.input/validations", {
+      method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ modelId }),
+    })).status).toBe(200);
+    expect(models.validateAssignment).toHaveBeenLastCalledWith("content_safety.input", "admin-1", { modelId });
   });
 
   it("requires an administrator to create Providers", async () => {
