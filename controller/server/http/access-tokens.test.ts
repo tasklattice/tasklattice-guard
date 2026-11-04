@@ -155,8 +155,8 @@ describe("Access token HTTP authority", () => {
   });
   it("covers every authenticated product route explicitly and denies unknown operations", () => {
     const source = readFileSync(new URL("./app.ts", import.meta.url), "utf8");
-    for (const [, method, path] of source.matchAll(/app\.(get|post|put|patch|delete)\(["'](\/api\/v1\/[^"']+)["'], authenticated/g)) {
-      if (path!.startsWith("/api/v1/account/") || /^\/api\/v1\/projects(?:\/[^/]+\/members(?:\/[^/]+)?)?$/.test(path!)) {
+    for (const [, method, path, sessionOnly] of source.matchAll(/app\.(get|post|put|patch|delete)\(["'](\/api\/v1\/[^"']+)["'], authenticated(, (?:browserSession|accountSession))?/g)) {
+      if (sessionOnly || path!.startsWith("/api/v1/account/")) {
         expect(requiredTokenPermission(method!.toUpperCase(), path!)).toBeUndefined();
         continue;
       }

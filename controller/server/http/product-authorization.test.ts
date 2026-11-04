@@ -97,7 +97,8 @@ describe("User platform boundary", () => {
   it.each(["/system/health", "/system/version", "/runner-pools"])("allows project operational reads at %s", async path => {
     const app = createHttpApp({ config,
       auth: { api: { getSession: vi.fn().mockResolvedValue({ session: { id: "fixture-session", activeProjectId: "projectA" }, user: { id: "actor", role: "user", projectId: "projectA" } }) } } as unknown as ControllerAuth,
-      service: { listRunnerHeartbeats: vi.fn().mockResolvedValue([]), listRunnerPoolsWithCapacity: vi.fn().mockResolvedValue([]) } as unknown as ControlPlaneService,
+      service: { listRunnerHeartbeats: vi.fn().mockResolvedValue([]), listRunnerPoolsWithCapacity: vi.fn().mockResolvedValue([]),
+        runners: { list: vi.fn().mockResolvedValue({ items: [], nextCursor: null }) } } as unknown as ControlPlaneService,
       runnerControl: {} as RunnerControlServer, metrics: {} as ControllerMetrics });
     expect((await app.request(`/api/v1${path}`)).status).toBe(200);
   });

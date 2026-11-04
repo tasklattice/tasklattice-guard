@@ -45,10 +45,11 @@ describe.skipIf(!url)("Preconfigured Guardrail lifecycle", () => {
     expect(verify(null, Buffer.from(artifact.checksum, "utf8"), key.publicKey, Buffer.from(artifact.signature, "base64"))).toBe(true);
     // No global baseline is delivered to unrelated pools.
     await service.projectGroups.create({ id: "secondary", name: "Secondary" }, "user");
+    await database.pool.query("UPDATE project SET group_id='secondary' WHERE id='projectB'");
     await service.projectGroups.createPool("secondary", {
-      id: "secondary", name: "Secondary", runtimeUrl: "http://secondary:8091", publicUrl: null,
+      projectId: "projectB", runtimeUrl: "http://secondary:8091", publicUrl: null,
     }, "user");
-    expect((await service.desiredStateForPool("secondary")).artifacts).toEqual([]);
+    expect((await service.desiredStateForPool("test-project-b")).artifacts).toEqual([]);
     expect(await service.requiredPlatformModelBindings()).toEqual([]);
 
     const renamed = await service.updateGuardrail({ id, actorId: "user", name: "My local protections", expectedDraftRevision: initial.draftRevision,

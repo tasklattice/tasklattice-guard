@@ -31,7 +31,8 @@ describe.skipIf(!url)("pool-bound archived routing provenance", () => {
     await database.pool.query(`INSERT INTO guardrail(id,project_id,name,draft_config) VALUES ('shared-c','projectC','Shared C','{}');
       INSERT INTO endpoint(id,project_id,name,adapter) VALUES ('endpoint-a','projectA','A','litellm-generic-guardrail');
       INSERT INTO project_group(id,name) VALUES ('group-a','A'),('group-c','C');
-      INSERT INTO runner_pool(id,name,group_id) VALUES ('pool-a','A','group-a');`);
+      UPDATE project SET group_id='group-a' WHERE id='projectA';
+      INSERT INTO runner_pool(id,name,group_id,project_id) VALUES ('pool-a','A','group-a','projectA');`);
     contextId = (await database.db.transaction(tx => issueEndpointTelemetryContexts(tx, {
       poolId: "pool-a", groupId: "group-a", epoch: 7, generation: 9, endpoints: [endpoint], routers: [router],
     }))).get("endpoint-a")!;

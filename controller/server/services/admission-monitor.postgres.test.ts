@@ -24,7 +24,7 @@ describe.skipIf(!url)("admission monitoring uses accepted durable Runner identit
     await database.pool.query(`INSERT INTO controller_state(id,desired_generation) VALUES ('singleton',7) ON CONFLICT(id) DO UPDATE SET desired_generation=7;
       INSERT INTO project_group(id,name) VALUES ('ab','A + B'),('c','C isolated');
       UPDATE project SET group_id=CASE WHEN id='projectC' THEN 'c' ELSE 'default' END;
-      INSERT INTO runner_pool(id,name,group_id) VALUES ('default','Shared','default'),('pool-c','Isolated','c'); UPDATE runner_pool SET project_id='projectC' WHERE id='pool-c';`);
+      INSERT INTO runner_pool(id,name,group_id,project_id) VALUES ('default','Shared','default',NULL),('pool-c','Isolated','c','projectC');`);
   }, 30000);
   beforeEach(async () => {
     service = new ControlPlaneService(database.db, config);

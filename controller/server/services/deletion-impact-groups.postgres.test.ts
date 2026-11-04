@@ -17,7 +17,7 @@ describe.skipIf(!url)("deletion-impact telemetry across project groups", () => {
     await database.pool.query(`
       INSERT INTO project_group(id,name) VALUES ('group-c','Group C');
       UPDATE project SET group_id='group-c' WHERE id='projectC';
-      INSERT INTO runner_pool(id,name,group_id) VALUES ('default','Default','default'),('pool-c','Pool C','group-c');
+      INSERT INTO runner_pool(id,name,group_id,project_id) VALUES ('default','Default','default',NULL),('pool-c','Pool C','group-c','projectC');
       INSERT INTO guardrail(id,project_id,name,draft_config,status) VALUES ('guard','projectA','Guard','{}','active');
       INSERT INTO traffic_router(id,project_id,name,draft,active_snapshot,active_revision) VALUES
         ('router-a','projectA','A','{"routes":[]}', '{"routes":[{"targets":[{"guardrailId":"guard"}]}]}',1),
@@ -30,22 +30,22 @@ describe.skipIf(!url)("deletion-impact telemetry across project groups", () => {
   }, 30000);
   afterAll(async () => { await database?.drop(); });
 
-  it("reports Router distribution freshness for every pool in its owner's group", async () => {
+  it("reports Router freshness from its Project pool without trusting unrelated capacity", async () => {
     const distribution = () => service.trafficRouting.distribution("router-c", 24);
     // The unrelated default Runner is fresh; the C Runner is stale.
     await expect(distribution()).resolves.toMatchObject({ telemetryFresh: false, completeness: "delayed_or_unavailable" });
     await database.pool.query("UPDATE telemetry_watermark SET last_received_at=now() WHERE runner_id='runner-c'");
     await expect(distribution()).resolves.toMatchObject({ telemetryFresh: true, completeness: "current" });
-    await database.pool.query("INSERT INTO runner_pool(id,name,group_id) VALUES ('pool-c-2','Pool C 2','group-c')");
-    await expect(distribution()).resolves.toMatchObject({ telemetryFresh: false, dataWatermark: null });
+    await database.pool.query("UPDATE project SET group_id='group-c' WHERE id='projectB'; INSERT INTO runner_pool(id,name,group_id,project_id) VALUES ('pool-c-2','Pool C 2','group-c','projectB')");
+    await expect(distribution()).resolves.toMatchObject({ telemetryFresh: true });
     await database.pool.query(`INSERT INTO runner_instance(runner_id,boot_id,pool_id,runner_version,nemo_version,max_concurrency,status)
       VALUES ('runner-c-2','boot-c-2','pool-c-2','test','test',1,'ready'),
         ('retired-c','boot-retired','pool-c-2','test','test',1,'offline');
       INSERT INTO telemetry_watermark(runner_id,last_received_at) VALUES ('runner-c-2',now());`);
     await expect(distribution()).resolves.toMatchObject({ telemetryFresh: true });
     await database.pool.query("UPDATE telemetry_watermark SET last_received_at=now() - interval '2 minutes' WHERE runner_id='runner-c-2'");
-    await expect(distribution()).resolves.toMatchObject({ telemetryFresh: false });
-    await database.pool.query("DELETE FROM telemetry_watermark WHERE runner_id='runner-c-2'; DELETE FROM runner_instance WHERE runner_id IN ('runner-c-2','retired-c'); DELETE FROM runner_pool WHERE id='pool-c-2'; UPDATE telemetry_watermark SET last_received_at=now() - interval '1 hour' WHERE runner_id='runner-c'");
+    await expect(distribution()).resolves.toMatchObject({ telemetryFresh: true });
+    await database.pool.query("DELETE FROM telemetry_watermark WHERE runner_id='runner-c-2'; DELETE FROM runner_instance WHERE runner_id IN ('runner-c-2','retired-c'); DELETE FROM runner_pool WHERE id='pool-c-2'; UPDATE project SET group_id='default' WHERE id='projectB'; UPDATE telemetry_watermark SET last_received_at=now() - interval '1 hour' WHERE runner_id='runner-c'");
   }, 30000);
 
   it("does not trust another group's healthy Runner or allow an empty pool to pass", async () => {
@@ -60,7 +60,7 @@ describe.skipIf(!url)("deletion-impact telemetry across project groups", () => {
     await database.pool.query("DELETE FROM telemetry_watermark WHERE runner_id='runner-c'; DELETE FROM runner_instance WHERE runner_id='runner-c'; DELETE FROM runner_pool WHERE id='pool-c'");
     await expect(service.trafficRouting.distribution("router-c", 24)).resolves.toMatchObject({ telemetryFresh: false, dataWatermark: null });
     await expect(service.endpointDeletionImpact("endpoint-c")).resolves.toMatchObject({ telemetryFresh: false });
-    await database.pool.query(`INSERT INTO runner_pool(id,name,group_id) VALUES ('pool-c','Pool C','group-c');
+    await database.pool.query(`INSERT INTO runner_pool(id,name,group_id,project_id) VALUES ('pool-c','Pool C','group-c','projectC');
       INSERT INTO runner_instance(runner_id,boot_id,pool_id,runner_version,nemo_version,max_concurrency,status)
         VALUES ('runner-c','boot-c','pool-c','test','test',1,'ready');
       INSERT INTO telemetry_watermark(runner_id,last_received_at) VALUES ('runner-c',now());`);

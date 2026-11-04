@@ -14,10 +14,9 @@ describe.skipIf(!url)("Project group Runner routing against PostgreSQL", () => {
     database = await createTestDatabase(url!, "project_group_routing");
     await database.pool.query(`INSERT INTO project_group (id, name) VALUES ('beta', 'Beta');
       UPDATE project SET group_id = 'beta' WHERE id = 'projectB';
-      INSERT INTO runner_pool (id, name, group_id, runtime_url, public_url) VALUES
-       ('default', 'Default', 'default', null, null),
-       ('beta-pool', 'Beta pool', 'beta', 'http://beta-runtime:8091', 'https://beta.example.test');
-      UPDATE runner_pool SET project_id='projectB',name='runner-test-project-b' WHERE id='beta-pool';
+      INSERT INTO runner_pool (id, name, group_id, project_id, runtime_url, public_url) VALUES
+       ('default', 'Default', 'default', null, null, null),
+       ('beta-pool', 'runner-test-project-b', 'beta', 'projectB', 'http://beta-runtime:8091', 'https://beta.example.test');
       INSERT INTO controller_state (id, desired_generation) VALUES ('singleton', 4);
       INSERT INTO guardrail (id,project_id,name,draft_config,status) VALUES ('g-b','projectB','B guard','{}','active');`);
     const config = loadConfig({ NODE_ENV: "test", CONTROLLER_DATABASE_URL: url!,
@@ -28,7 +27,7 @@ describe.skipIf(!url)("Project group Runner routing against PostgreSQL", () => {
     control = new ControlPlaneService(database.db, config);
   });
   afterAll(async () => { await database?.drop(); });
-  it("routes each project to its assigned group's pool, keeping legacy default addresses", async () => {
+  it("routes each Project to dedicated capacity or the default shared Runner", async () => {
     await expect(routing.poolForProject("projectA")).resolves.toMatchObject({ groupId: "default", poolId: "default", runtimeUrl: "http://default-runtime:8091", publicUrl: "https://default.example.test" });
     await expect(routing.poolForProject("projectB")).resolves.toMatchObject({ groupId: "beta", poolId: "beta-pool", runtimeUrl: "http://beta-runtime:8091", publicUrl: "https://beta.example.test" });
     await expect(routing.poolForProject("missing")).rejects.toMatchObject({ code: "project_group_unavailable" });

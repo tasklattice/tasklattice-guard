@@ -46,7 +46,7 @@ describe.skipIf(!url)("model credential current pool allocation", () => {
   }, 30000);
   afterAll(async () => { await database?.drop(); });
   beforeEach(async () => {
-    await database.pool.query("INSERT INTO runner_pool(id,name,group_id) VALUES ('pool-a','Pool A','credential-group') ON CONFLICT(id) DO UPDATE SET group_id='credential-group'");
+    await database.pool.query("UPDATE project SET group_id='default' WHERE id='projectA'; INSERT INTO runner_pool(id,name,group_id,project_id) VALUES ('pool-a','Pool A','default','projectA') ON CONFLICT(id) DO UPDATE SET group_id='default'");
     models = new ModelConfigurationService(database.db, rootSecret, resolve("../runner/toolkit/policy_library/assets"),
       vi.fn(() => { throw new Error("No external calls allowed"); }));
   });
@@ -67,14 +67,18 @@ describe.skipIf(!url)("model credential current pool allocation", () => {
     // Compatibility mode remains explicitly platform-wide and unscoped.
     expect(await models.resolveCredentials([providerId])).toEqual({ [providerId]: "active-secret" });
   });
-  it("fails closed for an orphaned group allocation in a legacy/corrupt database", async () => {
+  it("does not grant platform credentials to a non-default group without an explicit model grant", async () => {
+    await database.pool.query("UPDATE project SET group_id='credential-group' WHERE id='projectA'; UPDATE runner_pool SET group_id='credential-group' WHERE id='pool-a'");
+    expect(await (await request(poolToken)).json()).toEqual({ credentials: {} });
+  });
+  it("fails closed for an orphaned group allocation in a corrupt database", async () => {
     // Only this disposable schema is changed to represent a legacy broken FK.
     await database.pool.query("ALTER TABLE runner_pool DROP CONSTRAINT runner_pool_group_id_fkey");
     try {
       await database.pool.query("UPDATE runner_pool SET group_id='missing-group' WHERE id='pool-a'");
       expect(await (await request(poolToken)).json()).toEqual({ credentials: {} });
     } finally {
-      await database.pool.query("UPDATE runner_pool SET group_id='credential-group' WHERE id='pool-a'");
+      await database.pool.query("UPDATE runner_pool SET group_id='default' WHERE id='pool-a'");
       await database.pool.query("ALTER TABLE runner_pool ADD CONSTRAINT runner_pool_group_id_fkey FOREIGN KEY(group_id) REFERENCES project_group(id)");
     }
   });

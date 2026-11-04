@@ -31,7 +31,7 @@ describe.skipIf(!url)("immutable Endpoint telemetry allocation context", () => {
     await database.pool.query(`INSERT INTO guardrail(id,project_id,name,draft_config) VALUES ('shared-c','projectC','Shared C','{}');
       INSERT INTO endpoint(id,project_id,name,adapter) VALUES ('endpoint-a','projectA','A','litellm-generic-guardrail');
       INSERT INTO project_group(id,name) VALUES ('group-a','A'),('group-c','C');
-      INSERT INTO runner_pool(id,name,group_id) VALUES ('pool-a','A','group-a');
+      INSERT INTO runner_pool(id,name,group_id,project_id) VALUES ('pool-a','A','group-a','projectA');
       UPDATE project SET group_id='group-a' WHERE id='projectA';
       INSERT INTO controller_state(id,desired_generation) VALUES ('singleton',9) ON CONFLICT(id) DO NOTHING;`);
     const desired = await service.desiredStateForPool("pool-a");

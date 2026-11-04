@@ -13,8 +13,7 @@ describe.skipIf(!url)("pool-scoped snapshot rejection diagnostics", () => {
     service = new TrafficRoutingService(database.db);
     await database.pool.query(`INSERT INTO project_group(id,name) VALUES ('rollout-c','C');
       UPDATE project SET group_id=CASE WHEN id='projectC' THEN 'rollout-c' ELSE 'default' END;
-      INSERT INTO runner_pool(id,name,group_id) VALUES ('default','AB','default'),('rollout-c','C','rollout-c');
-      UPDATE runner_pool SET project_id='projectC' WHERE id='rollout-c';
+      INSERT INTO runner_pool(id,name,group_id,project_id) VALUES ('default','AB','default',NULL),('rollout-c','C','rollout-c','projectC');
       INSERT INTO runner_control_session(id,runner_id,boot_id,pool_id) VALUES ('rollout-session','rollout-runner','rollout-boot','default');
       INSERT INTO runner_instance(runner_id,boot_id,pool_id,status,runner_version,nemo_version,max_concurrency,control_session_id)
         VALUES ('rollout-runner','rollout-boot','default','ready','test','test',1,'rollout-session');

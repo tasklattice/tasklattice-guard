@@ -419,7 +419,7 @@ describe.skipIf(!url)("Publishing the tested candidate in PostgreSQL", { timeout
 
   it("applies operating modes only after all Runner ACKs, with concurrency and readiness checks", async () => {
     const { guardrail, version } = await releasedFixture();
-    await database.pool.query("INSERT INTO runner_pool (id, name) VALUES ('mode-test', 'Mode test')");
+    await database.pool.query("INSERT INTO runner_pool (id, name, project_id) VALUES ('mode-test', 'Mode test', 'projectA')");
     await database.pool.query(`INSERT INTO runner_instance (runner_id, boot_id, pool_id, status, runner_version, nemo_version, max_concurrency, labels)
       SELECT name, 'boot-' || name, 'mode-test', 'ready', 'test', 'test', 4, '{"tasklattice.protection-modes":"1"}'::jsonb FROM unnest(ARRAY['mode-a', 'mode-b']) AS name`);
     try {

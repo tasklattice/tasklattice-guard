@@ -62,7 +62,7 @@ describe.skipIf(!url)("950-case full-feature report delivery", () => {
       await database.db.insert(testCases).values(Array.from({ length: 950 - rows.length }, (_, index) => ({
         ...rows[index % rows.length]!, id: `repeat-${index}-${rows[index % rows.length]!.id}`,
       })));
-      const connection = await handle({ registration: { runnerId: "report-runner-0", bootId: "report-boot", poolId: "default",
+      const connection = await handle({ registration: { runnerId: "runner-default-0", bootId: "report-boot", poolId: "default",
         compilerCapable: true, maxConcurrency: 64, runnerVersion: "test", nemoVersion: "test", labels: {} } }, null);
       const app = createHttpApp({ config, service, runnerControl: control, metrics,
         auth: { handler: async () => Response.json({}, { headers: { "set-cookie": "test-session=fixture; HttpOnly; Path=/" } }),

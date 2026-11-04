@@ -815,6 +815,16 @@ export const endpointTelemetryContexts = pgTable("endpoint_telemetry_context", {
   uniqueIndex("endpoint_telemetry_context_active_endpoint_idx").on(table.poolId, table.endpointId).where(sql`${table.retiredAt} is null`),
   index("endpoint_telemetry_context_retention_idx").on(table.retiredAt, table.id).where(sql`${table.retiredAt} is not null`)]);
 
+// Persist the bounded retention sweep independently of retained context rows.
+export const endpointTelemetryContextGcCursor = pgTable("endpoint_telemetry_context_gc_cursor", {
+  id: text("id").primaryKey(),
+  lastRetiredAt: timestamp("last_retired_at", { withTimezone: true }),
+  lastContextId: text("last_context_id"),
+}, table => [
+  check("endpoint_telemetry_context_gc_cursor_singleton", sql`${table.id} = 'singleton'`),
+  check("endpoint_telemetry_context_gc_cursor_position", sql`(${table.lastRetiredAt} is null) = (${table.lastContextId} is null)`),
+]);
+
 export const runtimeEvents = pgTable("runtime_event", {
   id: text("id").primaryKey(),
   projectId: text("project_id").references(() => projects.id),

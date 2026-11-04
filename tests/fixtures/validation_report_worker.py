@@ -47,7 +47,7 @@ async def main():
         runtime_profile=payload["runtimeProfile"], test_model_rules=payload.get("testModelRules", True),
         test_cases=[validation_test_to_proto(case) for case in payload["testCases"]],
     )
-    client = RunnerControlClient(SimpleNamespace(runner_id="report-runner-0", pool_id="default", compiler_capable=True), Store(), Metrics())
+    client = RunnerControlClient(SimpleNamespace(runner_id="runner-default-0", pool_id="default", compiler_capable=True), Store(), Metrics())
     task = asyncio.create_task(client._validate(request))
     count, raw_bytes, wire_bytes, parts = 0, 0, 0, 0
     with Path(sys.argv[2]).open("wb") as output:
