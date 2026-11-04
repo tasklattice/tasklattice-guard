@@ -5,7 +5,7 @@ const env = process.env;
 const base = new URL(env.LITELLM_DEV_URL ?? "http://localhost:38083");
 const masterKey = env.LITELLM_DEV_MASTER_KEY ?? Buffer.from(execFileSync("kubectl", [
   "--context", env.HELM_CONTEXT ?? "orbstack", "--namespace", env.HELM_NAMESPACE ?? "tali",
-  "get", "secret", env.LITELLM_RUNTIME_SECRET ?? "tali-litellm-dev-init", "-o", "jsonpath={.data.master-key}",
+  "get", "secret", env.LITELLM_RUNTIME_SECRET ?? "tali-guard-litellm-init", "-o", "jsonpath={.data.master-key}",
 ], { encoding: "utf8" }).trim(), "base64").toString("utf8");
 const model = env.LITELLM_DEV_MODEL ?? "guarded-model";
 const headers = { authorization: `Bearer ${masterKey}`, "content-type": "application/json" };

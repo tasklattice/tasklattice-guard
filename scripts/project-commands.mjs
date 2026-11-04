@@ -21,17 +21,15 @@ const debugArgs = () => [
 const release = env.HELM_RELEASE ?? 'tali-guard';
 const namespace = env.HELM_NAMESPACE ?? 'tali';
 const context = env.HELM_CONTEXT ?? 'orbstack';
-// Test-only LiteLLM gateway with the TaskLattice Guard provider. Separate chart
-// and release: it is never part of the product chart or helm-deploy.
-const litellmChart = 'charts/tali-litellm-dev';
-const litellmValues = env.LITELLM_DEV_VALUES ?? `${litellmChart}/values-dev.yaml`;
-const litellmRelease = env.LITELLM_HELM_RELEASE ?? 'tali-litellm-dev';
-// Published by github.com/tasklattice/tasklattice-litellm-guard. The pinned
-// <litellm>-guard.<n> tag lives once, in the test chart's values.yaml.
+// Optional LiteLLM provider uses the same chart and release as Guard.
+// Published by github.com/tasklattice/tasklattice-litellm-guard; pinned once
+// under litellm-provider.image in the main values.yaml.
 function litellmPinnedImage() {
-  const block = /^image:\n((?:[ \t]+.*\n|\s*\n)+)/m.exec(readFileSync(new URL(`../${litellmChart}/values.yaml`, import.meta.url), 'utf8'))?.[1] ?? '';
+  const values = readFileSync(new URL(`../${chart}/values.yaml`, import.meta.url), 'utf8');
+  const provider = /^litellm-provider:\n((?:[ \t]+.*\n|\s*\n)+)/m.exec(values)?.[1] ?? '';
+  const block = /^  image:\n((?:[ \t]{4,}.*\n|\s*\n)+)/m.exec(provider)?.[1] ?? '';
   const field = (name) => new RegExp(`^\\s+${name}:\\s*"?([^"\\s#]+)"?`, 'm').exec(block)?.[1];
-  if (!field('repository') || !field('tag')) throw new Error(`${litellmChart}/values.yaml must pin image.repository and image.tag`);
+  if (!field('repository') || !field('tag')) throw new Error(`${chart}/values.yaml must pin litellm-provider.image.repository and image.tag`);
   return `${field('repository')}:${field('tag')}`;
 }
 const litellmImage = () => env.LITELLM_IMAGE ?? litellmPinnedImage();
@@ -63,7 +61,7 @@ async function lint(extra = args) {
   for (const values of [required, ['--values', devValues], ['--values', devValues, '--set', 'observability.serviceMonitor.enabled=true', '--set', 'observability.prometheusRule.enabled=true', '--set', 'observability.grafanaDashboard.enabled=true'], ['--values', devValues, ...debugArgs()], ['--values', devValues, '--values', `${chart}/values-dev-keycloak.yaml`]]) {
     await run('helm', ['lint', chart, '--strict', ...values, ...extra]);
   }
-  await run('helm', ['lint', litellmChart, '--strict', '--values', litellmValues, ...extra]);
+  await run('helm', ['lint', chart, '--strict', '--values', devValues, '--set', 'litellm-provider.enabled=true', ...extra]);
 }
 async function deployGuard(debug, extra) {
   await images();
@@ -76,7 +74,12 @@ async function deployGuard(debug, extra) {
     '--set-string', `rolloutRevision=${env.HELM_ROLLOUT_REVISION ?? Date.now().toString()}`,
     '--wait', '--timeout', env.HELM_TIMEOUT ?? '5m', ...extra]);
 }
-// Optional regression against two explicitly configured, isolated deployments.
+// Upgrade an existing Guard release while preserving its configured values.
+// Reset first so newly added chart defaults are present on older releases.
+const upgradeExisting = (extra) => run('helm', ['upgrade', release, chart,
+  '--kube-context', context, '--namespace', namespace,
+  '--reset-then-reuse-values', '--server-side=false',
+  '--wait', '--timeout', env.HELM_TIMEOUT ?? '5m', ...extra]);
 async function deployLitellm(extra) {
   const image = litellmImage();
   // Development uses preloaded images; deploying never pulls from a registry.
@@ -89,23 +92,22 @@ async function deployLitellm(extra) {
   if (env.LITELLM_SKIP_IMAGE_VERIFY !== '1') {
     try { await run('.venv/bin/python', ['scripts/verify_relay_stream_image.py', image]); }
     catch (error) {
-      throw new Error(`${error.message}\n${image} is not compatible with this Guard. Pin a tasklattice-litellm-guard release built for it in ${litellmChart}/values.yaml, or set LITELLM_IMAGE.`);
+      throw new Error(`${error.message}\n${image} is not compatible with this Guard. Pin a tasklattice-litellm-guard release built for it in ${chart}/values.yaml (litellm-provider.image), or set LITELLM_IMAGE.`);
     }
   }
-  // The wiring script creates the Guard Endpoint/Router and writes the Guard
-  // credential Secret itself, so the secret never passes through Helm values.
-  await run('node', ['scripts/litellm-dev-wire.mjs']);
   const upstream = ['LITELLM_UPSTREAM_API_BASE', 'LITELLM_UPSTREAM_SECRET', 'LITELLM_UPSTREAM_MODEL'].map((key) => env[key]);
   if (upstream.some(Boolean) && !upstream.every(Boolean)) throw new Error('Set LITELLM_UPSTREAM_API_BASE, LITELLM_UPSTREAM_SECRET and LITELLM_UPSTREAM_MODEL together.');
   const [apiBase, upstreamSecret, model] = upstream;
-  await run('bash', ['scripts/helm-upgrade.sh', litellmRelease, litellmChart, context, namespace,
-    '--values', litellmValues,
-    '--set', `image.repository=${image.slice(0, image.lastIndexOf(':'))}`,
-    '--set-string', `image.tag=${image.slice(image.lastIndexOf(':') + 1)}`,
-    '--set', `bootstrap.image.repository=${env.CONTROLLER_REPOSITORY ?? 'ghcr.io/tasklattice/tali-guard-controller'}`,
-    '--set', `model.mock.image.repository=${env.RUNNER_REPOSITORY ?? 'ghcr.io/tasklattice/tali-guard-runner'}`,
-    ...(apiBase ? ['--set-string', `model.upstream.apiBase=${apiBase}`, '--set-string', `model.upstream.existingSecret=${upstreamSecret}`, '--set-string', `model.upstream.model=${model}`] : []),
-    '--wait', '--timeout', env.HELM_TIMEOUT ?? '5m', ...extra]);
+  // The wiring script requires a running Guard and writes the Endpoint
+  // credential Secret itself; credentials never pass through Helm values.
+  await run('node', ['scripts/litellm-dev-wire.mjs']);
+  await upgradeExisting([
+    '--set', 'litellm-provider.enabled=true',
+    '--set', `litellm-provider.image.repository=${image.slice(0, image.lastIndexOf(':'))}`,
+    '--set-string', `litellm-provider.image.tag=${image.slice(image.lastIndexOf(':') + 1)}`,
+    ...(env.LITELLM_GUARD_SECRET ? ['--set-string', `litellm-provider.guard.existingSecret=${env.LITELLM_GUARD_SECRET}`] : []),
+    ...(apiBase ? ['--set-string', `litellm-provider.model.upstream.apiBase=${apiBase}`, '--set-string', `litellm-provider.model.upstream.existingSecret=${upstreamSecret}`, '--set-string', `litellm-provider.model.upstream.model=${model}`] : []),
+    ...extra]);
   if (env.LITELLM_SKIP_SMOKE !== '1') await run('node', ['scripts/litellm-dev-smoke.mjs']);
 }
 try {
@@ -119,11 +121,11 @@ try {
     case 'helm-deploy':
     case 'helm-deploy-debug': await deployGuard(action.endsWith('debug'), args); break;
     case 'litellm-deploy': await deployLitellm(args); break;
-    case 'litellm-deploy-full': await deployGuard(false, []); await deployLitellm(args); break;
+    case 'litellm-deploy-full': await deployGuard(false, [...args, '--set', 'litellm-provider.enabled=false']); await deployLitellm(args); break;
     case 'litellm-status':
-      await run('helm', ['status', litellmRelease, '--kube-context', context, '--namespace', namespace, ...args]);
-      await run('kubectl', ['--context', context, '--namespace', namespace, 'get', 'pods,deploy,statefulset,service', '--selector', `app.kubernetes.io/instance=${litellmRelease}`]); break;
-    case 'litellm-delete': await run('helm', ['uninstall', litellmRelease, '--kube-context', context, '--namespace', namespace, ...args]); break;
+      await run('helm', ['status', release, '--kube-context', context, '--namespace', namespace, ...args]);
+      await run('kubectl', ['--context', context, '--namespace', namespace, 'get', 'pods,deploy,statefulset,service', '--selector', `app.kubernetes.io/instance=${release},app.kubernetes.io/group=litellm-provider`]); break;
+    case 'litellm-delete': await upgradeExisting(['--set', 'litellm-provider.enabled=false', ...args]); break;
     case 'helm-status':
       await run('helm', ['status', release, '--kube-context', context, '--namespace', namespace, ...args]);
       await run('kubectl', ['--context', context, '--namespace', namespace, 'get', 'pods,deploy,statefulset,service', '--selector', 'app.kubernetes.io/part-of=tasklattice-guard']); break;
@@ -134,7 +136,7 @@ try {
       await lint([]);
       for (const dashboard of ['overview', 'troubleshooting']) await run('jq', ['empty', `${chart}/grafana/dashboards/tasklattice-guard-${dashboard}.json`]);
       for (const extra of [[], ['--set', 'observability.serviceMonitor.enabled=true', '--set', 'observability.prometheusRule.enabled=true', '--set', 'observability.grafanaDashboard.enabled=true'], debugArgs(), ['--values', `${chart}/values-dev-keycloak.yaml`]]) await run('helm', ['template', release, chart, '--values', devValues, ...extra], true);
-      await run('helm', ['template', litellmRelease, litellmChart, '--values', litellmValues], true);
+      await run('helm', ['template', release, chart, '--values', devValues, '--set', 'litellm-provider.enabled=true'], true);
       break;
     default: throw new Error(`Unknown project command: ${action}`);
   }

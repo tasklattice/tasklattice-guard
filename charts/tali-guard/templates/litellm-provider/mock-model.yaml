@@ -1,35 +1,41 @@
-{{- if include "tali-litellm-dev.mockEnabled" . }}
-{{- $name := include "tali-litellm-dev.mockModelName" . -}}
+{{- include "tali-guard.defaults" . -}}
+{{- $provider := index .Values "litellm-provider" -}}
+{{- if $provider.enabled }}
+{{- if include "tali-guard.litellm.mockEnabled" . }}
+{{- $name := include "tali-guard.litellm.mockModelName" . -}}
 apiVersion: v1
 kind: ConfigMap
 metadata:
   name: {{ $name }}
   labels:
-    {{- include "tali-litellm-dev.commonLabels" . | nindent 4 }}
+    {{- include "tali-guard.commonLabels" . | nindent 4 }}
     app.kubernetes.io/component: mock-model
+    app.kubernetes.io/group: litellm-provider
 data:
   mock_openai_model.py: |
-{{ .Files.Get "files/mock_openai_model.py" | indent 4 }}
+{{ .Files.Get "files/litellm/mock_openai_model.py" | indent 4 }}
 ---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: {{ $name }}
   labels:
-    {{- include "tali-litellm-dev.commonLabels" . | nindent 4 }}
+    {{- include "tali-guard.commonLabels" . | nindent 4 }}
     app.kubernetes.io/component: mock-model
+    app.kubernetes.io/group: litellm-provider
 spec:
   replicas: 1
   selector:
     matchLabels:
-      {{- include "tali-litellm-dev.selectorLabels" (dict "root" . "component" "mock-model") | nindent 6 }}
+      {{- include "tali-guard.litellm.selectorLabels" (dict "root" . "component" "mock-model") | nindent 6 }}
   template:
     metadata:
       labels:
-        {{- include "tali-litellm-dev.commonLabels" . | nindent 8 }}
+        {{- include "tali-guard.commonLabels" . | nindent 8 }}
         app.kubernetes.io/component: mock-model
+        app.kubernetes.io/group: litellm-provider
       annotations:
-        checksum/script: {{ .Files.Get "files/mock_openai_model.py" | sha256sum }}
+        checksum/script: {{ .Files.Get "files/litellm/mock_openai_model.py" | sha256sum }}
     spec:
       automountServiceAccountToken: false
       {{- with .Values.imagePullSecrets }}
@@ -44,15 +50,15 @@ spec:
       containers:
         - name: mock-model
           # The Guard Runner image provides FastAPI and uvicorn on PATH.
-          image: "{{ .Values.model.mock.image.repository }}:{{ .Values.model.mock.image.tag }}"
-          imagePullPolicy: {{ .Values.model.mock.image.pullPolicy }}
+          image: "{{ .Values.runner.image.repository }}:{{ default .Chart.AppVersion .Values.runner.image.tag }}"
+          imagePullPolicy: {{ .Values.runner.image.pullPolicy }}
           command: ["python", "/opt/mock/mock_openai_model.py"]
           env:
             - name: MOCK_MODEL_PORT
-              value: {{ .Values.model.mock.port | quote }}
+              value: {{ $provider.model.mock.port | quote }}
           ports:
             - name: http
-              containerPort: {{ .Values.model.mock.port }}
+              containerPort: {{ $provider.model.mock.port }}
           readinessProbe:
             httpGet:
               path: /health
@@ -64,7 +70,7 @@ spec:
               port: http
             initialDelaySeconds: 10
             periodSeconds: 10
-          resources: {{- toYaml .Values.model.mock.resources | nindent 12 }}
+          resources: {{- toYaml $provider.model.mock.resources | nindent 12 }}
           securityContext:
             allowPrivilegeEscalation: false
             readOnlyRootFilesystem: true
@@ -84,14 +90,16 @@ kind: Service
 metadata:
   name: {{ $name }}
   labels:
-    {{- include "tali-litellm-dev.commonLabels" . | nindent 4 }}
+    {{- include "tali-guard.commonLabels" . | nindent 4 }}
     app.kubernetes.io/component: mock-model
+    app.kubernetes.io/group: litellm-provider
 spec:
   type: ClusterIP
   selector:
-    {{- include "tali-litellm-dev.selectorLabels" (dict "root" . "component" "mock-model") | nindent 4 }}
+    {{- include "tali-guard.litellm.selectorLabels" (dict "root" . "component" "mock-model") | nindent 4 }}
   ports:
     - name: http
-      port: {{ .Values.model.mock.port }}
+      port: {{ $provider.model.mock.port }}
       targetPort: http
+{{- end }}
 {{- end }}

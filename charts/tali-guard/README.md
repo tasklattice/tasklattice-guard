@@ -26,6 +26,16 @@ The current development schema is a fresh baseline. Recreate development
 databases when switching from the old Tenant or Runner naming schema; no data
 backfill or old-name mapping is provided.
 
+## LiteLLM Provider development gateway
+
+The top-level `litellm-provider` block in [values.yaml](values.yaml) configures
+an optional LiteLLM test gateway. It is disabled by default and shares this
+chart, Helm release and credential initialization Job. Run
+`npm run helm:deploy:dev-with-litellm` to deploy Guard and enable it, or
+`npm run litellm:deploy:dev` to enable it on an existing Guard release.
+See [the Provider configuration guide](litellm-provider.md) for image pins,
+Endpoint wiring, upstream models and the enable/disable commands.
+
 ## Keycloak development bootstrap
 
 Keycloak is configured under the top-level `keycloak` values alongside

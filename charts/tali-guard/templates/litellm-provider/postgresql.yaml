@@ -1,14 +1,18 @@
+{{- include "tali-guard.defaults" . -}}
+{{- $provider := index .Values "litellm-provider" -}}
+{{- if $provider.enabled }}
 apiVersion: v1
 kind: Service
 metadata:
-  name: {{ include "tali-litellm-dev.postgresqlName" . }}
+  name: {{ include "tali-guard.litellm.postgresqlName" . }}
   labels:
-    {{- include "tali-litellm-dev.commonLabels" . | nindent 4 }}
-    app.kubernetes.io/component: postgresql
+    {{- include "tali-guard.commonLabels" . | nindent 4 }}
+    app.kubernetes.io/component: litellm-postgresql
+    app.kubernetes.io/group: litellm-provider
 spec:
   clusterIP: None
   selector:
-    {{- include "tali-litellm-dev.selectorLabels" (dict "root" . "component" "postgresql") | nindent 4 }}
+    {{- include "tali-guard.litellm.selectorLabels" (dict "root" . "component" "litellm-postgresql") | nindent 4 }}
   ports:
     - name: postgresql
       port: 5432
@@ -17,21 +21,23 @@ spec:
 apiVersion: apps/v1
 kind: StatefulSet
 metadata:
-  name: {{ include "tali-litellm-dev.postgresqlName" . }}
+  name: {{ include "tali-guard.litellm.postgresqlName" . }}
   labels:
-    {{- include "tali-litellm-dev.commonLabels" . | nindent 4 }}
-    app.kubernetes.io/component: postgresql
+    {{- include "tali-guard.commonLabels" . | nindent 4 }}
+    app.kubernetes.io/component: litellm-postgresql
+    app.kubernetes.io/group: litellm-provider
 spec:
-  serviceName: {{ include "tali-litellm-dev.postgresqlName" . }}
+  serviceName: {{ include "tali-guard.litellm.postgresqlName" . }}
   replicas: 1
   selector:
     matchLabels:
-      {{- include "tali-litellm-dev.selectorLabels" (dict "root" . "component" "postgresql") | nindent 6 }}
+      {{- include "tali-guard.litellm.selectorLabels" (dict "root" . "component" "litellm-postgresql") | nindent 6 }}
   template:
     metadata:
       labels:
-        {{- include "tali-litellm-dev.commonLabels" . | nindent 8 }}
-        app.kubernetes.io/component: postgresql
+        {{- include "tali-guard.commonLabels" . | nindent 8 }}
+        app.kubernetes.io/component: litellm-postgresql
+        app.kubernetes.io/group: litellm-provider
     spec:
       automountServiceAccountToken: false
       securityContext:
@@ -46,8 +52,8 @@ spec:
       {{- end }}
       containers:
         - name: postgresql
-          image: "{{ .Values.postgresql.image.repository }}:{{ .Values.postgresql.image.tag }}"
-          imagePullPolicy: {{ .Values.postgresql.image.pullPolicy }}
+          image: "{{ $provider.postgresql.image.repository }}:{{ $provider.postgresql.image.tag }}"
+          imagePullPolicy: {{ $provider.postgresql.image.pullPolicy }}
           securityContext:
             allowPrivilegeEscalation: false
             capabilities:
@@ -60,27 +66,27 @@ spec:
             - name: PGDATA
               value: /var/lib/postgresql/data/pgdata
             - name: POSTGRES_DB
-              value: {{ .Values.postgresql.database | quote }}
+              value: {{ $provider.postgresql.database | quote }}
             - name: POSTGRES_USER
-              value: {{ .Values.postgresql.username | quote }}
+              value: {{ $provider.postgresql.username | quote }}
           envFrom:
             - secretRef:
-                name: {{ include "tali-litellm-dev.databaseSecretName" . }}
+                name: {{ include "tali-guard.litellm.databaseSecretName" . }}
           readinessProbe:
             exec:
-              command: [pg_isready, --username, {{ .Values.postgresql.username | quote }}, --dbname, {{ .Values.postgresql.database | quote }}]
+              command: [pg_isready, --username, {{ $provider.postgresql.username | quote }}, --dbname, {{ $provider.postgresql.database | quote }}]
             initialDelaySeconds: 2
             periodSeconds: 5
             timeoutSeconds: 3
             failureThreshold: 12
           livenessProbe:
             exec:
-              command: [pg_isready, --username, {{ .Values.postgresql.username | quote }}, --dbname, {{ .Values.postgresql.database | quote }}]
+              command: [pg_isready, --username, {{ $provider.postgresql.username | quote }}, --dbname, {{ $provider.postgresql.database | quote }}]
             initialDelaySeconds: 10
             periodSeconds: 10
             timeoutSeconds: 3
             failureThreshold: 6
-          resources: {{- toYaml .Values.postgresql.resources | nindent 12 }}
+          resources: {{- toYaml $provider.postgresql.resources | nindent 12 }}
           volumeMounts:
             - name: data
               mountPath: /var/lib/postgresql/data
@@ -96,3 +102,4 @@ spec:
           emptyDir: {}
         - name: tmp
           emptyDir: {}
+{{- end }}

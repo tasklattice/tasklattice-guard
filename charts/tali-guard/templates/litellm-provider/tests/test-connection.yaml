@@ -1,10 +1,14 @@
+{{- include "tali-guard.defaults" . -}}
+{{- $provider := index .Values "litellm-provider" -}}
+{{- if $provider.enabled }}
 apiVersion: v1
 kind: Pod
 metadata:
-  name: {{ include "tali-litellm-dev.fullname" . }}-test
+  name: {{ include "tali-guard.litellm.fullname" . }}-test
   labels:
-    {{- include "tali-litellm-dev.commonLabels" . | nindent 4 }}
+    {{- include "tali-guard.commonLabels" . | nindent 4 }}
     app.kubernetes.io/component: test
+    app.kubernetes.io/group: litellm-provider
   annotations:
     helm.sh/hook: test
     helm.sh/hook-delete-policy: before-hook-creation
@@ -19,8 +23,8 @@ spec:
       type: RuntimeDefault
   containers:
     - name: health
-      image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
-      imagePullPolicy: {{ .Values.image.pullPolicy }}
+      image: "{{ $provider.image.repository }}:{{ $provider.image.tag }}"
+      imagePullPolicy: {{ $provider.image.pullPolicy }}
       command: ["python", "-c"]
       args:
         - |
@@ -29,8 +33,9 @@ spec:
           with urllib.request.urlopen(url, timeout=10) as response:
               assert response.status == 200, f"HTTP {response.status} from {url}"
               print("litellm:", json.loads(response.read() or b"{}"))
-        - http://{{ include "tali-litellm-dev.fullname" . }}:{{ .Values.service.port }}/health/liveliness
+        - http://{{ include "tali-guard.litellm.fullname" . }}:{{ $provider.service.port }}/health/liveliness
       securityContext:
         allowPrivilegeEscalation: false
         capabilities:
           drop: ["ALL"]
+{{- end }}

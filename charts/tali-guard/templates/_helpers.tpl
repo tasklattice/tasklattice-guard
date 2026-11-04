@@ -139,6 +139,9 @@
 {{- $dns := list $controller (printf "%s.%s" $controller .Release.Namespace) (printf "%s.%s.svc" $controller .Release.Namespace) (printf "%s.%s.svc.cluster.local" $controller .Release.Namespace) -}}
 {{- $specs = append $specs (dict "name" (include "tali-guard.controlTlsSecretName" .) "kind" "mtls" "serverDnsNames" $dns "runnerName" (include "tali-guard.defaultRunnerName" .) "caKey" .Values.security.controlTls.caKey "caPrivateKeyKey" .Values.security.controlTls.caPrivateKeyKey "serverCertificateKey" .Values.security.controlTls.controllerCertificateKey "serverPrivateKeyKey" .Values.security.controlTls.controllerPrivateKeyKey "clientCertificateKey" .Values.security.controlTls.runnerCertificateKey "clientPrivateKeyKey" .Values.security.controlTls.runnerPrivateKeyKey) -}}
 {{- end -}}
+{{- if (index .Values "litellm-provider").enabled -}}
+{{- $specs = concat $specs (include "tali-guard.litellm.bootstrapSecretSpecs" . | fromJsonArray) -}}
+{{- end -}}
 {{- toJson $specs -}}
 {{- end -}}
 
@@ -257,6 +260,9 @@ app.kubernetes.io/part-of: tasklattice-guard
 {{- end }}
 
 {{- define "tali-guard.validateValues" -}}
+{{- if and (index .Values "litellm-provider").enabled (not .Values.security.bootstrap.enabled) -}}
+{{- fail "litellm-provider.enabled requires security.bootstrap.enabled" -}}
+{{- end -}}
 {{- if hasKey .Values.controller "endpointContextStorage" -}}
 {{- $storage := .Values.controller.endpointContextStorage -}}
 {{- include "tali-guard.featureObject" (dict "name" "controller.endpointContextStorage" "value" $storage "fields" (list "maxRowsPerPool" "maxRowsGlobal" "maxPayloadBytesPerContext" "maxPayloadBytesPerPool" "maxPayloadBytesGlobal")) -}}

@@ -150,22 +150,25 @@ The `litellm-generic-guardrail` adapter can be exercised end to end against a
 real LiteLLM proxy carrying the TaskLattice Guard Provider. The Provider lives in
 [tasklattice-litellm-guard](https://github.com/tasklattice/tasklattice-litellm-guard),
 which publishes `ghcr.io/tasklattice/tali-litellm:<litellm>-guard.<n>`; this
-repository carries no copy of it. `charts/tali-litellm-dev/values.yaml` pins the
-tag, and the deploy command refuses an image whose
+repository carries no copy of it. `charts/tali-guard/values.yaml` pins the
+tag under `litellm-provider.image`, and the deploy command refuses an image whose
 `io.tasklattice.guard.output-stream-protocol` label differs from
 `OUTPUT_STREAM_PROTOCOL_VERSION` in `runner/output_streaming.py`.
 
 ```bash
 npm run helm:deploy:dev-with-litellm   # tali-guard + LiteLLM + mock model, then smoke test
-npm run litellm:deploy:dev             # LiteLLM only, against an existing tali-guard release
+npm run litellm:deploy:dev             # enable LiteLLM in the existing tali-guard release
 npm run litellm:smoke                  # allowed, blocked-output and streaming calls
 npm run litellm:delete:dev
 ```
 
-The stack is deployed from the test-only chart `charts/tali-litellm-dev`; it is
-not part of the product chart and `npm run helm:deploy:dev` never installs it.
-See [the chart README](../charts/tali-litellm-dev/README.md) for wiring details,
-ports, and switching the synthetic echo model to a real provider.
+The stack is an optional component of `charts/tali-guard`, controlled by
+`litellm-provider.enabled` in the existing values file and disabled by default.
+It uses the same Helm release and bootstrap Job as Guard. The provider-only
+enable/disable commands preserve the release's configured values;
+`litellm:delete:dev` disables the component without uninstalling Guard.
+See [the Provider configuration guide](../charts/tali-guard/litellm-provider.md)
+for wiring details, ports, and switching the synthetic echo model to a real provider.
 
 ## Tests and generated contracts
 

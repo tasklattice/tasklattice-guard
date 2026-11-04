@@ -337,3 +337,84 @@ observability:
   #   heartbeatMaxAgeSeconds: 30
   #   telemetryMaxAgeSeconds: 60
   #   pipelineMaxAgeSeconds: 60
+
+# Optional LiteLLM gateway for local Provider integration tests.
+# Enable with npm run helm:deploy:dev-with-litellm; same chart and release.
+litellm-provider:
+  enabled: false
+  image:
+    # Published by github.com/tasklattice/tasklattice-litellm-guard: upstream
+    # LiteLLM plus the TaskLattice Guard Provider. This is the single pin
+    # `npm run litellm:deploy:dev` inspects locally; it verifies the image's
+    # io.tasklattice.guard.output-stream-protocol label against the Runner first.
+    repository: ghcr.io/tasklattice/tali-litellm
+    tag: "1.87.0-guard.3"
+    pullPolicy: IfNotPresent
+
+  service:
+    type: LoadBalancer
+    # 38080 tali-relay, 38081 Guard Controller, 38082 Guard runtime.
+    port: 38083
+
+  # The shared bootstrap Job generates proxy credentials.
+  ui:
+    username: admin
+
+  guard:
+    # Secret written by scripts/litellm-dev-wire.mjs after it creates the Guard
+    # Endpoint and Router. Keys: api-base (Runner endpoint base URL ending in
+    # /runtime/v1/endpoints/<id>) and api-key (one-time Endpoint credential).
+    # The credential never passes through Helm values.
+    existingSecret: tali-guard-litellm-guard
+    timeoutSeconds: 10
+    # Protected streaming requires fail_closed (Provider design notes in
+    # tasklattice-litellm-guard, litellm/v<version>/README.md).
+    unreachableFallback: fail_closed
+
+  model:
+    # Model alias applications send to LiteLLM.
+    name: guarded-model
+    # Synthetic OpenAI-compatible echo model. Used unless upstream is complete.
+    mock:
+      enabled: true
+      # Reuses runner.image from this chart.
+      port: 8097
+      resources:
+        requests:
+          cpu: 10m
+          memory: 64Mi
+        limits:
+          cpu: 500m
+          memory: 256Mi
+    # Real OpenAI-compatible provider. All three values are required together;
+    # when set, the mock model is not deployed.
+    upstream:
+      apiBase: ""
+      existingSecret: ""
+      apiKeyKey: api-key
+      model: ""
+
+  replicaCount: 1
+  resources:
+    requests:
+      cpu: 100m
+      memory: 512Mi
+    limits:
+      cpu: "1"
+      memory: 2Gi
+
+  # Development-only PostgreSQL for LiteLLM; separate from Guard data.
+  postgresql:
+    image:
+      repository: postgres
+      tag: "17-alpine"
+      pullPolicy: IfNotPresent
+    database: litellm
+    username: litellm
+    resources:
+      requests:
+        cpu: 50m
+        memory: 128Mi
+      limits:
+        cpu: 500m
+        memory: 512Mi

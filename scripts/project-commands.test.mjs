@@ -7,8 +7,8 @@ import { spawnSync } from 'node:child_process';
 
 function fixture(t) {
   const root = mkdtempSync(join(tmpdir(), 'guard-command-test-'));
-  for (const dir of ['scripts', 'bin', '.venv/bin', 'charts/tali-litellm-dev']) mkdirSync(join(root, dir), { recursive: true });
-  copyFileSync(new URL('../charts/tali-litellm-dev/values.yaml', import.meta.url), join(root, 'charts/tali-litellm-dev/values.yaml'));
+  for (const dir of ['scripts', 'bin', '.venv/bin', 'charts/tali-guard']) mkdirSync(join(root, dir), { recursive: true });
+  copyFileSync(new URL('../charts/tali-guard/values.yaml', import.meta.url), join(root, 'charts/tali-guard/values.yaml'));
   copyFileSync(new URL('./project-commands.mjs', import.meta.url), join(root, 'scripts/project-commands.mjs'));
   copyFileSync(new URL('./git-build-info.mjs', import.meta.url), join(root, 'scripts/git-build-info.mjs'));
   for (const args of [['init'], ['config', 'user.email', 'test@example.com'], ['config', 'user.name', 'Test'], ['add', '.'], ['commit', '-m', 'initial']]) {
@@ -71,25 +71,27 @@ test('image builds package the release version and pass repository overrides', t
   assert.equal(calls[0].controllerRepository, 'registry.test/controller');
   assert.equal(calls[0].runnerRepository, 'registry.test/runner');
 });
-const pinnedLitellm = /^image:\n(?:\s+.*\n)*?\s+tag:\s*"([^"]+)"/m.exec(readFileSync(new URL('../charts/tali-litellm-dev/values.yaml', import.meta.url), 'utf8'))[1];
-test('litellm-deploy uses the preloaded chart-pinned image, verifies its protocol, wires Guard, then installs the test chart', t => {
+const pinnedLitellm = /^litellm-provider:\n(?:\s+.*\n)*?\s+tag:\s*"([^"]+)"/m.exec(readFileSync(new URL('../charts/tali-guard/values.yaml', import.meta.url), 'utf8'))[1];
+test('litellm-deploy uses the preloaded chart-pinned image, verifies its protocol, wires Guard, then enables the provider in the Guard release', t => {
   const f = fixture(t);
-  const result = f.run('litellm-deploy', ['--set', 'replicaCount=1'], { HELM_TIMEOUT: '7m' });
+  const result = f.run('litellm-deploy', ['--set', 'litellm-provider.replicaCount=1'], { HELM_TIMEOUT: '7m' });
   assert.equal(result.status, 0, result.stderr);
   const calls = f.calls();
   const image = `ghcr.io/tasklattice/tali-litellm:${pinnedLitellm}`;
   assert.match(pinnedLitellm, /^\d+\.\d+\.\d+-guard\.\d+$/);
-  assert.deepEqual(calls.map(c => c.command), ['docker', 'python', 'node', 'bash', 'node']);
+  assert.deepEqual(calls.map(c => c.command), ['docker', 'python', 'node', 'helm', 'node']);
   assert.deepEqual(calls[0].args, ['image', 'inspect', image]);
   assert.deepEqual(calls[1].args, ['scripts/verify_relay_stream_image.py', image]);
   assert.deepEqual(calls[2].args, ['scripts/litellm-dev-wire.mjs']);
-  assert.deepEqual(calls[3].args.slice(0, 5), ['scripts/helm-upgrade.sh', 'tali-litellm-dev', 'charts/tali-litellm-dev', 'test-context', 'test-namespace']);
-  assert.ok(calls[3].args.includes('charts/tali-litellm-dev/values-dev.yaml'));
-  assert.ok(calls[3].args.includes('image.repository=ghcr.io/tasklattice/tali-litellm'));
-  assert.ok(calls[3].args.includes(`image.tag=${pinnedLitellm}`));
-  assert.equal(calls[3].args.some(arg => arg.startsWith('model.upstream.')), false);
+  assert.deepEqual(calls[3].args.slice(0, 3), ['upgrade', 'tali-guard', 'charts/tali-guard']);
+  assert.ok(calls[3].args.includes('--reset-then-reuse-values'));
+  assert.ok(calls[3].args.includes('litellm-provider.enabled=true'));
+  assert.ok(!calls[3].args.includes('--values'));
+  assert.ok(calls[3].args.includes('litellm-provider.image.repository=ghcr.io/tasklattice/tali-litellm'));
+  assert.ok(calls[3].args.includes(`litellm-provider.image.tag=${pinnedLitellm}`));
+  assert.equal(calls[3].args.some(arg => arg.startsWith('litellm-provider.model.upstream.')), false);
   assert.equal(calls[3].args[calls[3].args.indexOf('--timeout') + 1], '7m');
-  assert.deepEqual(calls[3].args.slice(-2), ['--set', 'replicaCount=1']);
+  assert.deepEqual(calls[3].args.slice(-2), ['--set', 'litellm-provider.replicaCount=1']);
   assert.deepEqual(calls[4].args, ['scripts/litellm-dev-smoke.mjs']);
 });
 test('LITELLM_IMAGE overrides the chart pin for local inspection, verification and install', t => {
@@ -98,7 +100,7 @@ test('LITELLM_IMAGE overrides the chart pin for local inspection, verification a
   assert.equal(result.status, 0, result.stderr);
   const calls = f.calls();
   assert.deepEqual(calls[0].args, ['image', 'inspect', 'registry.test/litellm:1.88.0-guard.2']);
-  assert.ok(calls[3].args.includes('image.repository=registry.test/litellm') && calls[3].args.includes('image.tag=1.88.0-guard.2'));
+  assert.ok(calls[3].args.includes('litellm-provider.image.repository=registry.test/litellm') && calls[3].args.includes('litellm-provider.image.tag=1.88.0-guard.2'));
 });
 test('litellm-deploy stops before touching Guard when the image is not preloaded locally', t => {
   const f = fixture(t);
@@ -118,10 +120,10 @@ test('litellm-deploy passes a complete upstream provider and skips the smoke tes
   const result = f.run('litellm-deploy', [], { LITELLM_UPSTREAM_API_BASE: 'https://api.example/v1', LITELLM_UPSTREAM_SECRET: 'upstream', LITELLM_UPSTREAM_MODEL: 'gpt-test', LITELLM_SKIP_SMOKE: '1' });
   assert.equal(result.status, 0, result.stderr);
   const calls = f.calls();
-  assert.deepEqual(calls.map(c => c.command), ['docker', 'python', 'node', 'bash']);
-  assert.ok(calls[3].args.includes('model.upstream.apiBase=https://api.example/v1'));
-  assert.ok(calls[3].args.includes('model.upstream.model=gpt-test'));
-  assert.ok(calls[3].args.includes('model.upstream.existingSecret=upstream'));
+  assert.deepEqual(calls.map(c => c.command), ['docker', 'python', 'node', 'helm']);
+  assert.ok(calls[3].args.includes('litellm-provider.model.upstream.apiBase=https://api.example/v1'));
+  assert.ok(calls[3].args.includes('litellm-provider.model.upstream.model=gpt-test'));
+  assert.ok(calls[3].args.includes('litellm-provider.model.upstream.existingSecret=upstream'));
   assert.ok(!calls[3].args.some(arg => arg.includes('sk-test')));
   const partial = f.run('litellm-deploy', [], { LITELLM_UPSTREAM_API_BASE: 'https://api.example/v1', LITELLM_SKIP_SMOKE: '1' });
   assert.equal(partial.status, 1);
@@ -132,13 +134,14 @@ test('litellm-deploy-full deploys Guard exactly like helm-deploy before LiteLLM'
   const result = f.run('litellm-deploy-full', [], { HELM_ROLLOUT_REVISION: 'regression', LITELLM_SKIP_SMOKE: '1' });
   assert.equal(result.status, 0, result.stderr);
   const calls = f.calls();
-  assert.deepEqual(calls.map(c => c.command), ['bash', 'docker', 'docker', 'bash', 'docker', 'python', 'node', 'bash']);
+  assert.deepEqual(calls.map(c => c.command), ['bash', 'docker', 'docker', 'bash', 'docker', 'python', 'node', 'helm']);
   assert.deepEqual(calls[3].args.slice(0, 3), ['scripts/helm-upgrade.sh', 'tali-guard', 'charts/tali-guard']);
   assert.ok(calls[3].args.includes('rolloutRevision=regression'));
   assert.deepEqual(calls[4].args, ['image', 'inspect', `ghcr.io/tasklattice/tali-litellm:${pinnedLitellm}`]);
-  assert.deepEqual(calls[7].args.slice(0, 3), ['scripts/helm-upgrade.sh', 'tali-litellm-dev', 'charts/tali-litellm-dev']);
+  assert.deepEqual(calls[7].args.slice(0, 3), ['upgrade', 'tali-guard', 'charts/tali-guard']);
+  assert.ok(calls[3].args.includes('litellm-provider.enabled=false'));
 });
-test('helm-deploy never touches the LiteLLM test chart or image', t => {
+test('helm-deploy does not enable LiteLLM or inspect its image', t => {
   const f = fixture(t);
   assert.equal(f.run('helm-deploy').status, 0);
   assert.equal(f.calls().some(call => call.args.some(arg => String(arg).includes('litellm'))), false);
@@ -180,9 +183,10 @@ test('lint covers default, UAT, debug and the optional Keycloak overlay', t => {
   const calls = f.calls();
   assert.ok(calls.every(call => call.command === 'helm' && call.args[0] === 'lint'));
   const guardCalls = calls.filter(call => call.args[1] === 'charts/tali-guard');
-  assert.equal(guardCalls.length, 5);
+  assert.equal(guardCalls.length, 6);
+  assert.ok(guardCalls[5].args.includes("litellm-provider.enabled=true"));
   assert.ok(guardCalls[3].args.includes('observability.performanceDebug.enabled=true'));
-  assert.deepEqual(guardCalls.flatMap(call => call.args.filter((arg, i) => call.args[i - 1] === '--values')), [...Array(4).fill('charts/tali-guard/values-dev-uat.yaml'), 'charts/tali-guard/values-dev-keycloak.yaml']);
+  assert.deepEqual(guardCalls.flatMap(call => call.args.filter((arg, i) => call.args[i - 1] === '--values')), [...Array(4).fill('charts/tali-guard/values-dev-uat.yaml'), 'charts/tali-guard/values-dev-keycloak.yaml', 'charts/tali-guard/values-dev-uat.yaml']);
 });
 test('developer env loading preserves explicit shell overrides', () => {
   const root = mkdtempSync(join(tmpdir(), 'guard-env-load-'));
@@ -204,4 +208,25 @@ test('helm-deploy-keycloak adds the dev realm overlay and waits for Project init
   const deploy = calls.at(-1);
   assert.ok(deploy.args.includes('charts/tali-guard/values-dev-keycloak.yaml'));
   assert.ok(deploy.args.includes('--wait-for-jobs'));
+});
+
+
+test('litellm-delete disables the optional provider without uninstalling Guard or resetting its settings', t => {
+  const f = fixture(t);
+  const result = f.run('litellm-delete', [], { HELM_RELEASE: 'custom-guard' });
+  assert.equal(result.status, 0, result.stderr);
+  const [call] = f.calls();
+  assert.equal(call.command, 'helm');
+  assert.deepEqual(call.args.slice(0, 3), ['upgrade', 'custom-guard', 'charts/tali-guard']);
+  assert.ok(call.args.includes('--reset-then-reuse-values'));
+  assert.ok(call.args.includes('litellm-provider.enabled=false'));
+  assert.ok(!call.args.includes('--values'));
+});
+
+test('litellm-status reads the Guard release and filters provider workloads', t => {
+  const f = fixture(t);
+  assert.equal(f.run('litellm-status', [], { HELM_RELEASE: 'custom-guard' }).status, 0);
+  const [helm, kubectl] = f.calls();
+  assert.deepEqual(helm.args.slice(0, 2), ['status', 'custom-guard']);
+  assert.ok(kubectl.args.includes('app.kubernetes.io/instance=custom-guard,app.kubernetes.io/group=litellm-provider'));
 });

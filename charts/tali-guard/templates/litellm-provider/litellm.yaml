@@ -1,25 +1,30 @@
-{{- $name := include "tali-litellm-dev.fullname" . -}}
+{{- include "tali-guard.defaults" . -}}
+{{- $provider := index .Values "litellm-provider" -}}
+{{- if $provider.enabled }}
+{{- $name := include "tali-guard.litellm.fullname" . -}}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: {{ $name }}
   labels:
-    {{- include "tali-litellm-dev.commonLabels" . | nindent 4 }}
+    {{- include "tali-guard.commonLabels" . | nindent 4 }}
     app.kubernetes.io/component: litellm
+    app.kubernetes.io/group: litellm-provider
 spec:
-  replicas: {{ .Values.replicaCount }}
+  replicas: {{ $provider.replicaCount }}
   strategy:
     type: Recreate
   selector:
     matchLabels:
-      {{- include "tali-litellm-dev.selectorLabels" (dict "root" . "component" "litellm") | nindent 6 }}
+      {{- include "tali-guard.litellm.selectorLabels" (dict "root" . "component" "litellm") | nindent 6 }}
   template:
     metadata:
       labels:
-        {{- include "tali-litellm-dev.commonLabels" . | nindent 8 }}
+        {{- include "tali-guard.commonLabels" . | nindent 8 }}
         app.kubernetes.io/component: litellm
+        app.kubernetes.io/group: litellm-provider
       annotations:
-        checksum/config: {{ include "tali-litellm-dev.litellmConfig" . | sha256sum }}
+        checksum/config: {{ include "tali-guard.litellm.litellmConfig" . | sha256sum }}
     spec:
       automountServiceAccountToken: false
       {{- with .Values.imagePullSecrets }}
@@ -34,17 +39,17 @@ spec:
           type: RuntimeDefault
       initContainers:
         - name: wait-for-postgresql
-          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
-          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          image: "{{ $provider.image.repository }}:{{ $provider.image.tag }}"
+          imagePullPolicy: {{ $provider.image.pullPolicy }}
           command: ["python", "-c"]
           args:
             - |
-{{ .Files.Get "files/wait-postgresql.py" | indent 14 }}
+{{ .Files.Get "files/litellm/wait-postgresql.py" | indent 14 }}
           env:
             - name: DATABASE_URL
               valueFrom:
                 secretKeyRef:
-                  name: {{ include "tali-litellm-dev.runtimeSecretName" . }}
+                  name: {{ include "tali-guard.litellm.runtimeSecretName" . }}
                   key: database-url
           resources:
             requests: {cpu: 5m, memory: 8Mi}
@@ -55,8 +60,8 @@ spec:
               drop: ["ALL"]
       containers:
         - name: litellm
-          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
-          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          image: "{{ $provider.image.repository }}:{{ $provider.image.tag }}"
+          imagePullPolicy: {{ $provider.image.pullPolicy }}
           args: ["--config", "/etc/litellm/config.yaml", "--port", "4000", "--num_workers", "1", "--use_v2_migration_resolver"]
           ports:
             - name: http
@@ -75,44 +80,44 @@ spec:
             - name: LITELLM_MASTER_KEY
               valueFrom:
                 secretKeyRef:
-                  name: {{ include "tali-litellm-dev.runtimeSecretName" . }}
+                  name: {{ include "tali-guard.litellm.runtimeSecretName" . }}
                   key: master-key
             - name: DATABASE_URL
               valueFrom:
                 secretKeyRef:
-                  name: {{ include "tali-litellm-dev.runtimeSecretName" . }}
+                  name: {{ include "tali-guard.litellm.runtimeSecretName" . }}
                   key: database-url
             - name: UI_USERNAME
               valueFrom:
                 secretKeyRef:
-                  name: {{ include "tali-litellm-dev.runtimeSecretName" . }}
+                  name: {{ include "tali-guard.litellm.runtimeSecretName" . }}
                   key: ui-username
             - name: LITELLM_SALT_KEY
               valueFrom:
                 secretKeyRef:
-                  name: {{ include "tali-litellm-dev.runtimeSecretName" . }}
+                  name: {{ include "tali-guard.litellm.runtimeSecretName" . }}
                   key: salt-key
             # Guard Endpoint wiring is written by scripts/litellm-dev-wire.mjs.
             - name: TASKLATTICE_GUARD_API_BASE
               valueFrom:
                 secretKeyRef:
-                  name: {{ .Values.guard.existingSecret }}
+                  name: {{ $provider.guard.existingSecret }}
                   key: api-base
             - name: TASKLATTICE_GUARD_API_KEY
               valueFrom:
                 secretKeyRef:
-                  name: {{ .Values.guard.existingSecret }}
+                  name: {{ $provider.guard.existingSecret }}
                   key: api-key
-            {{- if include "tali-litellm-dev.upstreamConfigured" . }}
+            {{- if include "tali-guard.litellm.upstreamConfigured" . }}
             - name: LITELLM_UPSTREAM_API_KEY
               valueFrom:
                 secretKeyRef:
-                  name: {{ .Values.model.upstream.existingSecret }}
-                  key: {{ .Values.model.upstream.apiKeyKey }}
+                  name: {{ $provider.model.upstream.existingSecret }}
+                  key: {{ $provider.model.upstream.apiKeyKey }}
             {{- end }}
           envFrom:
             - secretRef:
-                name: {{ include "tali-litellm-dev.runtimeSecretName" . }}
+                name: {{ include "tali-guard.litellm.runtimeSecretName" . }}
           volumeMounts:
             - name: config
               mountPath: /etc/litellm/config.yaml
@@ -136,7 +141,7 @@ spec:
               port: http
             initialDelaySeconds: 30
             periodSeconds: 10
-          resources: {{- toYaml .Values.resources | nindent 12 }}
+          resources: {{- toYaml $provider.resources | nindent 12 }}
           securityContext:
             allowPrivilegeEscalation: false
             capabilities:
@@ -154,13 +159,15 @@ kind: Service
 metadata:
   name: {{ $name }}
   labels:
-    {{- include "tali-litellm-dev.commonLabels" . | nindent 4 }}
+    {{- include "tali-guard.commonLabels" . | nindent 4 }}
     app.kubernetes.io/component: litellm
+    app.kubernetes.io/group: litellm-provider
 spec:
-  type: {{ .Values.service.type }}
+  type: {{ $provider.service.type }}
   selector:
-    {{- include "tali-litellm-dev.selectorLabels" (dict "root" . "component" "litellm") | nindent 4 }}
+    {{- include "tali-guard.litellm.selectorLabels" (dict "root" . "component" "litellm") | nindent 4 }}
   ports:
     - name: http
-      port: {{ .Values.service.port }}
+      port: {{ $provider.service.port }}
       targetPort: http
+{{- end }}

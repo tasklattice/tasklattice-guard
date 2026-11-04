@@ -52,3 +52,12 @@ Local host-facing Runner endpoint:
 
   http://localhost:{{ .Values.runner.service.public.port }}
 {{- end }}
+
+{{- if (index .Values "litellm-provider").enabled }}
+
+Development LiteLLM gateway (same release):
+
+  kubectl -n {{ .Release.Namespace }} rollout status deployment/{{ include "tali-guard.litellm.fullname" . }}
+  UI: http://localhost:{{ (index .Values "litellm-provider").service.port }}/ui
+  Generated credentials: Secret {{ include "tali-guard.litellm.runtimeSecretName" . }}
+{{- end }}

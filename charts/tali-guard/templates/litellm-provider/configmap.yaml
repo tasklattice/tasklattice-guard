@@ -1,0 +1,13 @@
+{{- include "tali-guard.defaults" . -}}
+{{- $provider := index .Values "litellm-provider" -}}
+{{- if $provider.enabled }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "tali-guard.litellm.fullname" . }}-config
+  labels:
+    {{- include "tali-guard.commonLabels" . | nindent 4 }}
+data:
+  litellm-config.yaml: |
+    {{- include "tali-guard.litellm.litellmConfig" . | nindent 4 }}
+{{- end }}

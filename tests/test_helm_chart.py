@@ -1426,9 +1426,8 @@ def test_bootstrap_user_rejects_invalid_configuration(settings, error):
 def test_default_chart_profiles_keep_credentials_out_of_rendered_manifests():
     # The opt-in Keycloak fixture intentionally contains the requested test
     # credentials. Standard profiles must continue to expose only Secret refs.
-    for chart in (CHART, ROOT / "charts/tali-litellm-dev"):
-        profile = chart / ("values-dev-uat.yaml" if chart == CHART else "values-dev.yaml")
-        output = subprocess.run(["helm", "template", "scan", str(chart), "-f", str(profile)], capture_output=True, text=True, check=True).stdout
+    for enabled in ("false", "true"):
+        output = subprocess.run(["helm", "template", "scan", str(CHART), "-f", str(DEV_VALUES), "--set", f"litellm-provider.enabled={enabled}"], capture_output=True, text=True, check=True).stdout
         assert "password" not in output.lower()
         assert not any(item and item["kind"] == "Secret" for item in yaml.safe_load_all(output))
 

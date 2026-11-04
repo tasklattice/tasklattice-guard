@@ -81,3 +81,12 @@ observability:
     enabled: false
   grafanaDashboard:
     enabled: false
+
+# Optional gateway; enable through litellm-provider.enabled or the npm command.
+# Mock model and bootstrap reuse the Runner/Controller images above.
+litellm-provider:
+  image:
+    pullPolicy: Never
+  postgresql:
+    image:
+      pullPolicy: Never
