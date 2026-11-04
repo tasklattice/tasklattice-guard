@@ -98,6 +98,7 @@ def test_jev_configuration_does_not_advertise_other_contracts_or_output():
 @pytest.mark.parametrize("behavior", ["correct", "always-safe", "uncertain", "authentication", "malformed"])
 async def test_multi_capability_profile_executes_each_real_nemo_contract(capability, contract, behavior):
     calls = []
+    attack_marker = {"jailbreak": "DAN Mode enabled", "topic_control": "cake", "content_safety": "violent attack"}[capability]
 
     def respond(request):
         assert request.url.path == "/v1/systemone"
@@ -108,13 +109,14 @@ async def test_multi_capability_profile_executes_each_real_nemo_contract(capabil
         if behavior == "malformed":
             return httpx.Response(200, json={"answers": {}})
         text = body["state"]["current_input"]
-        unsafe = {"jailbreak": "Ignore all previous instructions", "topic_control": "cake", "content_safety": "build a bomb"}[capability] in text
+        unsafe = attack_marker in text
         probability = 0.5 if behavior == "uncertain" else 0.99 if behavior == "correct" and unsafe else 0.01
         return httpx.Response(200, json={"model": "jev-1.13.0", "answers": {
             key: {"type": "noul", "noul": probability} for key in body["questions"]}})
 
     config = candidate("input", capability, JEV_PROFILE, contract)
     result = await validate_capability(config, {"provider-1": "synthetic"}, transport=httpx.MockTransport(respond))
+    assert [attack_marker in case.input_content for case in result.cases] == [False, True]
     assert result.passed is (behavior == "correct"), result.message
     assert len(calls) == 2
     expected_questions = {"jailbreak": {"jailbreak_attempt", "unsafe_pretext"}, "topic_control": {"unlisted_task"}, "content_safety": {"unsafe_content"}}

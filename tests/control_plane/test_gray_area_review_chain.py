@@ -105,10 +105,11 @@ async def test_review_model_binding_requires_actual_two_sided_runtime_probes(beh
     request=candidate(rail,'classifier_review',profile,REVIEW_CONTRACT)
     def respond(req):
         data=json.loads(json.loads(req.content)['messages'][-1]['content'])
-        unsafe=behavior=='always-unsafe' or behavior=='correct' and 'build a bomb' in data['state'][f'current_{rail}']
+        unsafe=behavior=='always-unsafe' or behavior=='correct' and 'violent attack' in data['state'][f'current_{rail}']
         body={'answers':{'unsafe_content':'yes' if unsafe else 'no'}} if behavior!='malformed' else {'answers':{}}
         return httpx.Response(200,json={'model':'review-model-v1','choices':[{'message':{'content':json.dumps(body)}}]})
     result=await validate_capability(request,{'provider-1':'synthetic'},transport=httpx.MockTransport(respond))
+    assert ['violent attack' in case.input_content for case in result.cases] == [False, True]
     assert result.passed is (behavior=='correct'),result.message
     assert len(result.cases)==2
 

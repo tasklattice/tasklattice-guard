@@ -67,9 +67,9 @@ def test_cross_family_binding_cannot_silently_select_a_different_protocol(bindin
 
 
 @pytest.mark.parametrize("phase,capability,contract,attack_marker", [
-    ("input", "content_safety", "tali.guard.content-safety.v1", "build a bomb"),
-    ("output", "content_safety", "tali.guard.content-safety.v1", "build a bomb"),
-    ("input", "jailbreak", "tali.guard.jailbreak.v1", "Ignore all previous instructions"),
+    ("input", "content_safety", "tali.guard.content-safety.v1", "violent attack"),
+    ("output", "content_safety", "tali.guard.content-safety.v1", "violent attack"),
+    ("input", "jailbreak", "tali.guard.jailbreak.v1", "DAN Mode enabled"),
     ("input", "topic_control", "tali.guard.topic-control.semantic.v1", "chocolate cake"),
 ])
 @pytest.mark.parametrize("behavior", ["correct", "always-safe", "always-unsafe", "malformed"])
@@ -90,6 +90,7 @@ async def test_laya_binding_validation_requires_both_real_rail_outcomes(phase, c
         return httpx.Response(200, json={"model": "laya", "answers": answers})
 
     result = await validate_capability(request, {"provider-1": "synthetic"}, transport=httpx.MockTransport(respond))
+    assert [attack_marker in case.input_content for case in result.cases] == [False, True]
     assert result.passed is (behavior == "correct"), result.message
     assert len(calls) == len(result.cases) == 2
     assert all(c["model"] == "laya" for c in calls)
