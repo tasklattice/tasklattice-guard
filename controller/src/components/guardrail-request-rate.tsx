@@ -1,3 +1,4 @@
+import { projectParams } from "@/lib/project-paths";
 import { Link } from "@tanstack/react-router";
 import { useTranslation } from "react-i18next";
 import { Skeleton } from "./ui/skeleton";
@@ -14,7 +15,7 @@ export function GuardrailRequestRate({ guardrailId, name, points, loading, error
   const duration = Date.parse(points?.at(-1)?.timestamp ?? "") - start || 1;
   const line = points?.map(point => `${2 + (Date.parse(point.timestamp) - start) / duration * 156},${34 - point.total / maximum * 30}`).join(" ");
 
-  return <Link to="/guardrails/$guardrailId" params={{ guardrailId }}
+  return <Link to="/$projectId/guardrails/$guardrailId" params={{ ...projectParams(), guardrailId }}
     search={{ tab: "runtime", window: "1h", metric: "request_rate" }} hash="runtime-metrics"
     className="guardrail-request-rate" onClick={event => event.stopPropagation()}
     aria-label={t("guardrails.requestRateOpen", { name })} title={t("guardrails.requestRateHint")}>

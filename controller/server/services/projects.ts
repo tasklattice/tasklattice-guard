@@ -25,6 +25,7 @@ import {
 import { SSO_PROVIDER_ID } from "../sso-config.js";
 import { projectPoolAllocation } from "./runner-allocation.js";
 import { advisoryTransactionLock } from "../db/postgres-locks.js";
+import { projectNameSchema } from "../../shared/runner-naming.js";
 
 type Transaction = Parameters<Parameters<ControllerDatabase["transaction"]>[0]>[0];
 
@@ -34,6 +35,37 @@ export class ProjectService {
     private readonly provisionDefault: (tx: Transaction, projectId: string) => Promise<void>,
     private readonly defaultRuntimeUrl?: string,
   ) {}
+
+  /** Explicit bootstrap target only; ordinary onboarding never grants membership. */
+  async ensureBootstrapMembership(username: string, projectName: string) {
+    const name = projectNameSchema.parse(projectName);
+    return this.db.transaction(async (tx) => {
+      await advisoryTransactionLock(tx, "traffic-router-bindings");
+      const [member] = await tx.select({ id: user.id, role: user.role }).from(user)
+        .where(eq(user.username, username)).for("update");
+      if (!member || member.role !== "user") throw new Error("Bootstrap Project requires a local business user.");
+      const [external] = await tx.select({ id: account.id }).from(account)
+        .where(and(eq(account.userId, member.id), eq(account.providerId, SSO_PROVIDER_ID))).limit(1);
+      if (external) throw new Error("Manage SSO Project membership in Keycloak.");
+      await tx.insert(projects).values({ id: name, name, groupId: "default" }).onConflictDoNothing();
+      const [project] = await tx.select({ id: projects.id, groupId: projects.groupId }).from(projects)
+        .where(eq(projects.name, name)).for("update");
+      if (!project) throw new Error("Bootstrap Project name conflicts with an existing ID.");
+      const [dedicated] = await tx.select({ id: runnerPools.id }).from(runnerPools)
+        .where(eq(runnerPools.projectId, project.id)).limit(1);
+      if (project.groupId !== "default" || dedicated) {
+        throw new Error("Bootstrap Project must use the default shared Runner pool.");
+      }
+      await this.provisionDefault(tx, project.id);
+      const added = await tx.insert(projectMembers).values({ projectId: project.id, userId: member.id })
+        .onConflictDoNothing().returning({ userId: projectMembers.userId });
+      if (added.length) await tx.insert(auditEvents).values({
+        id: randomUUID(), projectId: project.id, actorId: member.id,
+        kind: "project.member_added", resourceType: "project", resourceId: project.id,
+        detail: { userId: member.id, source: "bootstrap" },
+      });
+    });
+  }
 
   async runnerInitialized(projectId: string): Promise<boolean> {
     const pools = await this.db
@@ -200,7 +232,6 @@ export class ProjectService {
     const rows = await this.db
       .select({
         userId: user.id,
-        name: user.name,
         username: user.username,
         email: user.email,
         source: sql<string>`case when exists(select 1 from ${account} a where a.user_id=${user.id} and a.provider_id=${SSO_PROVIDER_ID}) then 'sso' else 'local' end`,
@@ -215,7 +246,6 @@ export class ProjectService {
           query.cursor ? gt(user.id, query.cursor) : undefined,
           query.q
             ? or(
-                ilike(user.name, searchPattern(query.q)),
                 ilike(user.username, searchPattern(query.q)),
               )
             : undefined,
@@ -228,7 +258,7 @@ export class ProjectService {
 
   async memberCandidates(projectId: string, query: DirectoryQuery) {
     const rows = await this.db
-      .select({ id: user.id, name: user.name, username: user.username })
+      .select({ id: user.id, username: user.username })
       .from(user)
       .where(
         and(
@@ -237,7 +267,6 @@ export class ProjectService {
           query.cursor ? gt(user.id, query.cursor) : undefined,
           query.q
             ? or(
-                ilike(user.name, searchPattern(query.q)),
                 ilike(user.username, searchPattern(query.q)),
               )
             : undefined,

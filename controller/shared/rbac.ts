@@ -43,18 +43,18 @@ export function isPlatformAdministrator(role: string | null | undefined): boolea
   return hasPermission(role, "settings", "write");
 }
 
-export function roleHome(role: string | null | undefined): "/settings/providers" | "/guardrails" {
-  return isPlatformAdministrator(role) ? "/settings/providers" : "/guardrails";
+export function roleHome(role: string | null | undefined): "/settings/providers" | "/" {
+  return isPlatformAdministrator(role) ? "/settings/providers" : "/";
 }
 
 export function pagePermission(pathname: string): { resource: PermissionResource; action: AccessAction } | null {
-  const path = pathname.replace(/\/$/, "");
+  const path = pathname.replace(/\/$/, "") || "/";
   if (["/settings", "/settings/health", "/settings/runner", "/settings/version"].includes(path)) {
     return { resource: "runners", action: "read" };
   }
   const routes: ReadonlyArray<readonly [string, PermissionResource, AccessAction]> = [
     ["/settings", "settings", "read"], ["/access", "users", "read"],
-    ["/dashboard", "runtime", "read"], ["/billing", "runtime", "read"], ["/logs", "runtime", "read"], ["/audit-log", "audit", "read"],
+    ["/", "runtime", "read"], ["/billing", "runtime", "read"], ["/logs", "runtime", "read"], ["/audit-log", "audit", "read"],
     // Authoring workspaces belong to users; platform configuration retains
     // read access to business metadata without opening these workspaces.
     ["/guardrails", "guardrails", "write"], ["/policy-library", "policies", "write"],

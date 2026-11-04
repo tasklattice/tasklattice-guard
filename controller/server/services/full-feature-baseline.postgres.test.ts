@@ -16,7 +16,7 @@ describe.skipIf(!url)("Full-feature Profile creation and deletion", () => {
   let service: ControlPlaneService;
   beforeAll(async () => {
     database = await createTestDatabase(url!, "full_profile");
-    await database.pool.query("INSERT INTO auth_user (id, name, email, role) VALUES ('admin', 'Admin', 'admin@example.test', 'admin')");
+    await database.pool.query("INSERT INTO auth_user (id, username, email, role) VALUES ('admin', 'Admin', 'admin@example.test', 'admin')");
     service = new ControlPlaneService(database.db, loadConfig({ NODE_ENV: "test", CONTROLLER_DATABASE_URL: url!,
       CONTROLLER_POLICY_CATALOG_DIR: resolve("../runner/toolkit/policy_library/assets"),
       CONTROLLER_ARTIFACT_SIGNING_KEY_PATH: "/tmp/unused-profile-test-key.pem", CONTROLLER_RUNNER_TOKEN: "profile-test-runner-token-32-characters",

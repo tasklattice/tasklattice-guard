@@ -6874,12 +6874,6 @@
           "primaryKey": true,
           "notNull": true
         },
-        "name": {
-          "name": "name",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
         "username": {
           "name": "username",
           "type": "text",

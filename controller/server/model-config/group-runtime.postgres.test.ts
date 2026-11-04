@@ -54,7 +54,7 @@ describe.skipIf(!url)("explicit group runtime Model grants", () => {
 
   beforeAll(async () => {
     database = await createTestDatabase(url!, "group_runtime_models");
-    await database.pool.query(`INSERT INTO auth_user(id,name,email,role) VALUES ('group-model-admin','Admin','group-model-admin@test.invalid','admin');
+    await database.pool.query(`INSERT INTO auth_user(id,username,email,role) VALUES ('group-model-admin','Admin','group-model-admin@test.invalid','admin');
       INSERT INTO project_group(id,name) VALUES ('group-ab','A/B'),('group-c','C');
       INSERT INTO runner_pool(id,name,group_id,project_id) VALUES ('default','Default','default',NULL),('pool-ab','A/B','group-ab','projectA'),('pool-c','C','group-c','projectC');
       INSERT INTO controller_state(id,desired_generation) VALUES ('singleton',1) ON CONFLICT(id) DO NOTHING;`);

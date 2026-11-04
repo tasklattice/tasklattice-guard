@@ -25,7 +25,7 @@ order: 0
 
 1. 确认目标 Guardrail Version 已 Released，依赖可用。
 2. 准备指向该确切版本的已发布 Router。
-3. 在 [Endpoints](/integration/endpoints) 创建 Endpoint，选择类型和 Router。
+3. 在 [Endpoints](/$projectId/integration/endpoints) 创建 Endpoint，选择类型和 Router。
 4. 开启“要求 Credential”时，安全保存显示的完整凭据。复制运行时地址，保留 `/runtime/v1/endpoints/<endpoint_id>`。
 5. 测试流量前，确认运行环境已应用配置。
 
@@ -100,7 +100,7 @@ Guardrail 的 Monitor 和 Bypass 有独立语义，可能返回原文而不执�
 <a id="endpoint-verification" />
 ## 验证实际交付
 
-对照预期明确的样例、[运行日志](/logs)和实际交付内容。版本已发布、配置已应用、调用方正确接入是三个独立条件。
+对照预期明确的样例、[运行日志](/$projectId/logs)和实际交付内容。版本已发布、配置已应用、调用方正确接入是三个独立条件。
 
 | 验证项 | LiteLLM 规范 | Scan |
 | --- | --- | --- |

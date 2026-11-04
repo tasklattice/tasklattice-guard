@@ -27,7 +27,7 @@ describe.skipIf(!url)("Historical model-enabled Default publication uses the ord
         CONTROLLER_ARTIFACT_SIGNING_KEY_PATH: key, CONTROLLER_POLICY_CATALOG_DIR: resolve("../runner/toolkit/policy_library/assets"),
         CONTROLLER_PROTO_PATH: resolve("../proto/tasklattice/guard/control/v1/runner_control.proto"), BETTER_AUTH_SECRET: "test-auth-secret-that-is-at-least-32-chars" });
       const service = new ControlPlaneService(database.db, config);
-      await database.db.insert(user).values(["admin", "user"].map(role => ({ id: role, name: role, email: `${role}@example.test`, role, emailVerified: true })));
+      await database.db.insert(user).values(["admin", "user"].map(role => ({ id: role, username: role, email: `${role}@example.test`, role, emailVerified: true })));
       await database.db.insert(controllerState).values({ id: "singleton", desiredGeneration: 0 });
       const catalog = PolicyCatalog.load(config.policyCatalogDir).list();
       const draft = defaultGuardrailDraft(catalog);

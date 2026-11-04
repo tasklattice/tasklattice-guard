@@ -38,7 +38,7 @@ A change becomes **Superseded** if its active revision, Endpoint bindings or ref
 
 Approval starts rollout. It does not establish that every Runner applied the configuration.
 
-[Manage Endpoints](/integration/endpoints) · [Manage Routers](/integration/routers)
+[Manage Endpoints](/$projectId/integration/endpoints) · [Manage Routers](/$projectId/integration/routers)
 
 <a id="operator-canary-release" />
 ## Split one Route between stable and candidate versions
@@ -59,7 +59,7 @@ Follow these steps:
 3. Check earlier Routes and the fallback. Review every Endpoint bound to the shared Router.
 4. Preview matching. Submit the versions, weights and bindings for approval.
 5. Confirm rollout. Then inspect actual Target shares, assignments, Decisions, errors and latency in **Monitoring**.
-6. Check candidate outcomes in [runtime logs](/logs). Allow for telemetry delay and sample variation.
+6. Check candidate outcomes in [runtime logs](/$projectId/logs). Allow for telemetry delay and sample variation.
 7. Increase the candidate share through separately approved changes. Roll back the active change if results are unacceptable.
 
 **Test matching** checks routing only. It does not execute protection or establish actual traffic proportions.
@@ -90,4 +90,4 @@ The caller must inspect content and apply each Decision. For blocked Input, stop
 
 Enforce, Monitor and Bypass produce different online behavior. Tests and explicit Playground trials still execute detection. Review the [operating modes](/document/overview/term-guardrail#state-guardrail-readiness) when results differ from the expected Policy action.
 
-[Endpoint integration](/document/developer/endpoint-setup) · [View runtime logs](/logs)
+[Endpoint integration](/document/developer/endpoint-setup) · [View runtime logs](/$projectId/logs)

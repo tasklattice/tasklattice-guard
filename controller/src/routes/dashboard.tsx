@@ -1,3 +1,4 @@
+import { projectParams } from "@/lib/project-paths";
 import { useState, type ComponentType } from "react";
 import { Link } from "@tanstack/react-router";
 import {
@@ -163,7 +164,7 @@ function DashboardFilters({ guardrailId, window, guardrails, onGuardrailChange, 
           {(["1h", "24h", "7d", "15d", "30d"] as MetricWindow[]).map((value) => <SelectItem key={value} value={value}>{t(`dashboard.windows.${value}`)}</SelectItem>)}
         </SelectContent>
       </Select>
-      <Button className="min-h-11 w-full sm:w-auto" asChild><Link to="/integration/routers"><Settings2 />{t("dashboard.manage")}</Link></Button>
+      <Button className="min-h-11 w-full sm:w-auto" asChild><Link params={projectParams()} to="/$projectId/integration/routers"><Settings2 />{t("dashboard.manage")}</Link></Button>
     </div>
   );
 }
@@ -231,10 +232,10 @@ function AttentionPanel({ metrics, onInvestigate }: { metrics: Metrics; onInvest
     return issue ? [{ metric, ...issue }] : [];
   }).sort((a, b) => Number(b.status === "critical") - Number(a.status === "critical"));
   const items = [
-    metrics.degraded_endpoints ? { icon: CircleAlert, title: t("dashboard.attentionEndpoint"), detail: t("dashboard.attentionEndpointDetail", { count: metrics.degraded_endpoints }), to: "/integration/endpoints" as const } : null,
-    metrics.fail_closed_count ? { icon: ShieldCheck, title: t("dashboard.attentionFailClosed"), detail: t("dashboard.attentionFailClosedDetail", { count: metrics.fail_closed_count }), to: "/logs" as const } : null,
-    metrics.guardrails_needing_test ? { icon: CircleAlert, title: t("dashboard.attentionTesting"), detail: t("dashboard.attentionTestingDetail", { count: metrics.guardrails_needing_test }), to: "/guardrails" as const } : null,
-  ].filter(Boolean) as Array<{ icon: ComponentType<{ className?: string }>; title: string; detail: string; to: "/logs" | "/integration/endpoints" | "/guardrails" }>;
+    metrics.degraded_endpoints ? { icon: CircleAlert, title: t("dashboard.attentionEndpoint"), detail: t("dashboard.attentionEndpointDetail", { count: metrics.degraded_endpoints }), to: "/$projectId/integration/endpoints" as const } : null,
+    metrics.fail_closed_count ? { icon: ShieldCheck, title: t("dashboard.attentionFailClosed"), detail: t("dashboard.attentionFailClosedDetail", { count: metrics.fail_closed_count }), to: "/$projectId/logs" as const } : null,
+    metrics.guardrails_needing_test ? { icon: CircleAlert, title: t("dashboard.attentionTesting"), detail: t("dashboard.attentionTestingDetail", { count: metrics.guardrails_needing_test }), to: "/$projectId/guardrails" as const } : null,
+  ].filter(Boolean) as Array<{ icon: ComponentType<{ className?: string }>; title: string; detail: string; to: "/$projectId/logs" | "/$projectId/integration/endpoints" | "/$projectId/guardrails" }>;
 
   return <Card className="dashboard-attention gap-0 py-0 shadow-none">
     <CardHeader className="border-b py-3">
@@ -250,7 +251,7 @@ function AttentionPanel({ metrics, onInvestigate }: { metrics: Metrics; onInvest
           <span className="mt-2 flex items-center gap-1 text-xs font-medium text-primary">{t("dashboardInvestigation.contact")}<ArrowUpRight className="size-3.5" /></span>
         </span>
       </button>)}
-      {items.map(item => <Link key={item.title} to={item.to} search={item.to === "/logs" ? runtimeInvestigationLogs(metrics) : {}} className="dashboard-attention-link">
+      {items.map(item => <Link params={projectParams()} key={item.title} to={item.to} search={item.to === "/$projectId/logs" ? runtimeInvestigationLogs(metrics) : {}} className="dashboard-attention-link">
         <item.icon className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
         <span className="min-w-0 flex-1"><span className="block text-xs font-medium">{item.title}</span><span className="mt-0.5 block text-xs leading-5 text-muted-foreground">{item.detail}</span></span>
         <ArrowRight className="mt-1 size-3.5 shrink-0 text-muted-foreground" />
@@ -282,7 +283,7 @@ function GettingStarted({ metrics }: { metrics: Metrics }) {
         <div className="space-y-1">{steps.map(([done, label]) => <div key={label} className="flex min-h-10 items-center gap-3 rounded-lg px-2 text-sm"><span className={cn("grid size-5 place-items-center rounded-full", done ? "bg-emerald-50 text-emerald-700" : "text-muted-foreground")}>
           {done ? <Check className="size-3.5" /> : <Circle className="size-3.5" />}
         </span>{label}</div>)}</div>
-      <Button className="mt-auto w-full" variant="outline" asChild><Link to={guardrailCreated ? "/integration/routers" : "/guardrails"}>{guardrailCreated ? t("dashboard.createRouter") : t("dashboard.createGuardrail")}<ArrowRight /></Link></Button>
+      <Button className="mt-auto w-full" variant="outline" asChild><Link params={projectParams()} to={guardrailCreated ? "/$projectId/integration/routers" : "/$projectId/guardrails"}>{guardrailCreated ? t("dashboard.createRouter") : t("dashboard.createGuardrail")}<ArrowRight /></Link></Button>
       </CardContent>
     </Card>
   );

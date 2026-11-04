@@ -2,7 +2,9 @@ import { loadConfig } from "./config.js";
 import { createDatabase } from "./db/client.js";
 import { createAuth } from "./auth.js";
 import { runMigrations } from "./db/migrate.js";
-import { ensureBootstrapAdmin, ensureBootstrapUser } from "./bootstrap.js";
+import { BootstrapAccountSynchronizer } from "./bootstrap.js";
+import { ControlPlaneService } from "./services/control-plane.js";
+import { ProjectService } from "./services/projects.js";
 
 const config = loadConfig();
 if (!config.bootstrapAdmin && !config.bootstrapUser) {
@@ -14,13 +16,14 @@ const auth = createAuth(config, db);
 
 try {
   await runMigrations(config, db);
-  for (const [role, account, ensure] of [
-    ["admin", config.bootstrapAdmin, ensureBootstrapAdmin],
-    ["user", config.bootstrapUser, ensureBootstrapUser],
-  ] as const) {
-    if (!account) continue;
-    const status = await ensure({ auth, ...account });
-    process.stdout.write(`${status === "created" ? "Created" : "Updated"} Better Auth ${role} ${account.username}.\n`);
+  let projects: ProjectService | undefined;
+  if (config.bootstrapUser?.project) {
+    const service = new ControlPlaneService(db, config);
+    await service.initialize();
+    projects = new ProjectService(db, (tx, id) => service.initializeProject(tx, id), config.runtimeServiceUrl);
+  }
+  for (const result of await new BootstrapAccountSynchronizer(auth, projects).synchronize(config)) {
+    process.stdout.write(`${result.status === "created" ? "Created" : "Updated"} Better Auth ${result.role} ${result.username}.\n`);
   }
 } finally {
   await pool.end();

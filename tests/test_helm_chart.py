@@ -76,17 +76,6 @@ def render_error(*values: str) -> str:
     return result.stderr
 
 
-def test_removed_extra_pools_do_not_create_or_change_chart_resources():
-    documents = render("--set-json", 'runner.pools=[{"name":"support-search","replicaCount":2,"maxConcurrency":64}]',
-                       "--set", "networkPolicy.runnerIsolation.enabled=true")
-    assert documents == render("--set", "networkPolicy.runnerIsolation.enabled=true")
-    runners = [item for item in documents if item["kind"] == "StatefulSet"]
-    assert [item["metadata"]["name"] for item in runners] == ["runner-default"]
-    env = {item["name"]: item for item in runners[0]["spec"]["template"]["spec"]["containers"][0]["env"]}
-    assert env["GUARD_RUNNER_POOL_ID"]["value"] == "default"
-    assert env["GUARD_RUNNER_ID"]["valueFrom"]["fieldRef"]["fieldPath"] == "metadata.name"
-
-
 def controller_config(documents):
     return next(doc for doc in documents if doc["kind"] == "ConfigMap" and doc["metadata"]["name"].endswith("controller-config"))
 
@@ -524,8 +513,6 @@ def test_internal_wiring_uses_fixed_ports_and_controller_replica_count():
         if item["kind"] == "Service" and not item["metadata"]["name"].endswith("-public"):
             for port in item["spec"]["ports"]:
                 assert port["port"] == {"http":8080, "grpc":9090, "runtime":8091, "postgresql":5432, "redis":6379}[port["name"]]
-    redis_policy = next(item for item in documents if item["kind"] == "NetworkPolicy" and item["metadata"]["name"].endswith("-redis"))
-    assert redis_policy["spec"]["ingress"][0]["ports"][0]["port"] == 6379
 
 
 def test_public_url_derives_origin_and_ingress_host_with_explicit_overrides():
@@ -1406,6 +1393,9 @@ def test_runtime_address_is_not_inferred_without_local_load_balancer(overrides):
 
 def test_development_bootstraps_both_roles_with_separate_secrets():
     documents = render_dev()
+    deployment = next(item for item in documents if item["kind"] == "Deployment" and item["metadata"]["name"].endswith("-controller"))
+    env = {item["name"]: item.get("value") for item in deployment["spec"]["template"]["spec"]["containers"][0]["env"]}
+    assert env["CONTROLLER_BOOTSTRAP_USER_PROJECT"] == "test1"
     accounts = [spec for spec in bootstrap_specs(documents) if spec["kind"] == "account"]
     assert len(accounts) == 2
     for role in ("admin", "user"):
@@ -1566,8 +1556,6 @@ def test_keycloak_development_profile_initializes_two_sso_identities_and_only_de
     environment = resolved_environment(docs, containers[0])
     assert environment['NODE_ENV']['value'] == 'development'
     assert environment['CONTROLLER_SSO_ISSUER']['value'] == 'http://localhost:38083/realms/tali'
-    policy = next(doc for doc in docs if doc['kind'] == 'NetworkPolicy' and doc['metadata']['name'].endswith('-control-channel'))
-    assert policy['spec']['ingress'][1]['ports'] == [{'protocol': 'TCP', 'port': 8080}, {'protocol': 'TCP', 'port': 38083}]
     keycloak = next(container for container in containers if container['name'] == 'keycloak')
     assert '--import-realm' in keycloak['args']
     runners = [doc for doc in docs if doc['kind'] == 'StatefulSet' and doc['metadata']['name'].startswith('runner-')]

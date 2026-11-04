@@ -11,7 +11,7 @@ vi.mock("./identity-api", () => ({
 }));
 vi.mock("@/i18n", () => ({ default: { language: "en" }, setApplicationLanguage: vi.fn() }));
 
-const user: IdentityUser = { id: "first", display_name: "First", username: "first", role: "admin",
+const user: IdentityUser = { id: "first", username: "first", role: "admin",
   project_id: "projectA",
   enabled: true, preferred_language: "en", last_login_at: null, created_at: "2026-09-06", updated_at: "2026-09-06" };
 const dashboardKeys = [
@@ -94,7 +94,7 @@ describe("Authenticated cache boundaries", () => {
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     client.setQueryData(queryKeys.auth, { authenticated: true, user });
     client.setQueryData(queryKeys.guardrails, { items: ["retained"] });
-    mocks.getAuthStatus.mockResolvedValue({ authenticated: true, user: { ...user, display_name: "Renamed" } });
+    mocks.getAuthStatus.mockResolvedValue({ authenticated: true, user: { ...user, preferred_language: "zh-CN" } });
     render(<QueryClientProvider client={client}><AuthProvider><Probe /></AuthProvider></QueryClientProvider>);
     await client.invalidateQueries({ queryKey: queryKeys.auth });
     expect(client.getQueryData(queryKeys.guardrails)).toEqual({ items: ["retained"] });

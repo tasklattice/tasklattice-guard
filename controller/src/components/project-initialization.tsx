@@ -7,6 +7,7 @@ import { ErrorNotice } from "@/components/product-shell";
 import { useAuth } from "@/lib/auth";
 import { getProjectAccess, refreshProjectAccess } from "@/lib/projects-api";
 import { initializationEmail } from "@/projects-i18n";
+import { projectPath } from "@/lib/project-paths";
 
 export function ProjectInitializationGate({children}: {children: ReactNode}) {
   const {user} = useAuth();
@@ -16,13 +17,13 @@ export function ProjectInitializationGate({children}: {children: ReactNode}) {
   const [checked, setChecked] = useState(false);
   const query = useQuery({queryKey: ["project-access", user?.id, user?.project_id], queryFn: getProjectAccess, retry: false});
   const refresh = useMutation({mutationFn: refreshProjectAccess, onSuccess: async status => {
-    if (status.state === "ready" || status.projectId !== user?.project_id) { window.location.assign("/dashboard"); return; }
+    if (status.state === "ready" || status.projectId !== user?.project_id) { window.location.assign(projectPath(status.projectId)); return; }
     setChecked(true); await query.refetch();
   }});
   if (query.isPending) return <p role="status" className="py-12 text-sm text-muted-foreground">{t("projects.checking")}</p>;
   if (query.isError) return <section className="max-w-3xl space-y-4 py-10"><ErrorNotice error={query.error} /><Button variant="outline" onClick={() => void query.refetch()}>{t("common.retry")}</Button></section>;
   if (query.data.state === "ready") return children;
-  const email = initializationEmail({chinese: i18n.language.startsWith("zh"), name: user?.display_name ?? "", account: user?.email && !user.email.endsWith("@users.guard.invalid") ? user.email : user?.username ?? "", userId: user?.id ?? "", origin: window.location.origin, status: query.data});
+  const email = initializationEmail({chinese: i18n.language.startsWith("zh"), account: user?.email && !user.email.endsWith("@users.guard.invalid") ? user.email : user?.username ?? "", userId: user?.id ?? "", origin: window.location.origin, status: query.data});
   const template = `${t("projects.emailSubject")}: ${email.subject}\n\n${email.body}`;
   async function copy() {
     try { await navigator.clipboard.writeText(template); setCopied(true); setCopyError(false); }

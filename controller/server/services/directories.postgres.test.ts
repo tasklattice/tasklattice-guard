@@ -18,7 +18,7 @@ describe.skipIf(!url)('bounded administration directories',()=>{
   database=await createTestDatabase(url!,'directory');users=new UserDirectory(database.db);projects=new ProjectService(database.db, async () => {});groups=new ProjectGroupService(database.db);runners=new RunnerDirectory(database.db,10);
   await database.pool.query(`
     INSERT INTO controller_state(id,desired_generation) VALUES ('singleton',0);
-    INSERT INTO auth_user(id,name,email,username) SELECT 'user-'||lpad(i::text,3,'0'),'User '||i,'user'||i||'@example.test','user'||i FROM generate_series(1,61) i;
+    INSERT INTO auth_user(id,email,username) SELECT 'user-'||lpad(i::text,3,'0'),'user'||i||'@example.test','user'||i FROM generate_series(1,61) i;
     INSERT INTO project(id,name) SELECT 'project-'||lpad(i::text,3,'0'),'project-'||lpad(i::text,3,'0') FROM generate_series(1,61) i;
     INSERT INTO project_member(project_id,user_id,source,access) SELECT id,'user-001','local','write' FROM project;
     INSERT INTO project_member(project_id,user_id,source,access) SELECT 'project-001',id,'local','write' FROM auth_user WHERE id<>'user-001';

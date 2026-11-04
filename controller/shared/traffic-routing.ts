@@ -83,8 +83,8 @@ export type RouterChangeRequest = {
   id: string; routerId: string; kind: "publish" | "revert"; status: RouterChangeRequestStatus;
   sourceDraftRevision: number | null; baseRevision: number | null; snapshot: RouterDraft; endpointIds: string[];
   context: { endpoints: Array<{ id: string; name: string; adapter: string }>; guardrails: Array<{ id: string; name: string; version: string }> } | null;
-  ticket: string; reason: string; submittedBy: string; submittedByName: string | null; submittedAt: string;
-  decidedBy: string | null; decidedByName: string | null; decidedAt: string | null; decisionNote: string | null;
+  ticket: string; reason: string; submittedBy: string; submittedByUsername: string | null; submittedAt: string;
+  decidedBy: string | null; decidedByUsername: string | null; decidedAt: string | null; decisionNote: string | null;
   emergencyReason: string | null; emergencyContact: string | null; appliedRevision: number | null; revertsChangeRequestId: string | null;
 };
 export type TrafficRouter = {

@@ -10,6 +10,7 @@ import { SyntaxCode } from "@/components/syntax-code";
 import { cn } from "@/lib/utils";
 import { getHelpContent, searchHelpContent, type HelpContent, type HelpDocument, type HelpSection } from "@/features/help-content";
 import { decodeDocumentAnchor, documentHref } from "@/features/help-navigation";
+import { useAuth } from "@/lib/auth";
 
 function DocumentNavigationLink({ href = "", ...props }: ComponentProps<"a">) {
   const pathname = useRouterState({ select: state => state.location.pathname });
@@ -20,8 +21,10 @@ function DocumentNavigationLink({ href = "", ...props }: ComponentProps<"a">) {
 }
 
 function DocumentLink({ href = "", children, ...props }: ComponentProps<"a">) {
+  const { user } = useAuth();
   const className = "inline-flex min-h-11 items-center gap-1 rounded-md px-2 text-primary underline underline-offset-4 hover:bg-primary/5";
   if (href.startsWith("#") || href.startsWith("/document/")) return <DocumentNavigationLink {...props} href={href} className={className}>{children}<ArrowRight className="size-3.5 shrink-0" /></DocumentNavigationLink>;
+  if (href.startsWith("/$projectId/")) return <Link {...props} to={user?.project_id ? href : "/"} params={{ projectId: user?.project_id ?? "" }} className={className}>{children}<ArrowRight className="size-3.5 shrink-0" /></Link>;
   // Server documents must make an HTTP request rather than enter the SPA router.
   return href.startsWith("/") && !href.startsWith("//") && !href.startsWith("/api/") && href !== "/metrics"
     ? <Link {...props} to={href} className={className}>{children}<ArrowRight className="size-3.5 shrink-0" /></Link>

@@ -21,7 +21,7 @@ function fixture() {
 describe("username authentication and authoritative bootstrap", () => {
   it.each([["admin", ensureBootstrapAdmin], ["user", ensureBootstrapUser]] as const)("signs in the %s role through Better Auth", async (role, ensure) => {
     const { auth, data } = fixture();
-    expect(await ensure({ auth, username: role, password: "password", name: role })).toBe("created");
+    expect(await ensure({ auth, username: role, password: "password" })).toBe("created");
     const login = await auth.api.signInUsername({ body: { username: role.toUpperCase(), password: "password" } });
     expect(login.user).toMatchObject({ username: role, role });
     expect(data.account[0]!.password).not.toBe("password");
@@ -31,22 +31,22 @@ describe("username authentication and authoritative bootstrap", () => {
   });
   it.each([["admin", ensureBootstrapAdmin], ["user", ensureBootstrapUser]] as const)("overwrites existing %s credentials and role, retains ID and revokes sessions", async (role, ensure) => {
     const { auth, data } = fixture();
-    const input = { auth, username: role, password: "previous-password", name: "Previous name" };
+    const input = { auth, username: role, password: "previous-password" };
     await ensure(input);
     const login = await auth.api.signInUsername({ body: { username: role, password: input.password } });
     expect(data.session).toHaveLength(1);
     data.user[0]!.role = role === "admin" ? "user" : "admin";
     data.user[0]!.banned = true;
-    expect(await ensure({ ...input, password: "password", name: "Reset name" })).toBe("updated");
+    expect(await ensure({ ...input, password: "password" })).toBe("updated");
     expect(data.user).toHaveLength(1);
-    expect(data.user[0]).toMatchObject({ id: login.user.id, name: "Reset name", role, banned: false });
+    expect(data.user[0]).toMatchObject({ id: login.user.id, role, banned: false });
     expect(data.session).toHaveLength(0);
     await expect(auth.api.signInUsername({ body: { username: role, password: input.password } })).rejects.toThrow();
     expect((await auth.api.signInUsername({ body: { username: role, password: "password" } })).user.id).toBe(login.user.id);
   });
   it("disables email login, sign-up and recovery over HTTP", async () => {
     const { auth } = fixture();
-    await ensureBootstrapAdmin({ auth, username: "admin", password: "password", name: "Admin" });
+    await ensureBootstrapAdmin({ auth, username: "admin", password: "password" });
     for (const path of ["/sign-in/email", "/sign-up/email", "/request-password-reset", "/reset-password", "/change-email", "/send-verification-email", "/verify-email"]) {
       const response = await auth.handler(new Request(`http://localhost:8080/api/auth${path}`, { method: "POST",
         headers: { "content-type": "application/json", origin: "http://localhost:8080" },
@@ -61,7 +61,7 @@ describe("username authentication and authoritative bootstrap", () => {
   it("reapplies the same password after a Job revision changes and skips ordinary polls", async () => {
     const { auth, data } = fixture();
     const synchronizer = new BootstrapAccountSynchronizer(auth);
-    const config = { bootstrapAdmin: { username: "admin", password: "password", name: "Admin", revision: "first" }, bootstrapUser: null };
+    const config = { bootstrapAdmin: { username: "admin", password: "password", revision: "first" }, bootstrapUser: null };
     await synchronizer.synchronize(config);
     const login = await auth.api.signInUsername({ body: { username: "admin", password: "password" } });
     expect(await synchronizer.synchronize(config)).toEqual([]);
@@ -78,7 +78,7 @@ describe("username authentication and authoritative bootstrap", () => {
   it("validates before creating an account", async () => {
     const { auth, data } = fixture();
     for (const input of [{ username: "admin@example.com", password: "password" }, { username: "admin", password: "short" }]) {
-      await expect(ensureBootstrapAdmin({ auth, name: "Admin", ...input })).rejects.toThrow();
+      await expect(ensureBootstrapAdmin({ auth, ...input })).rejects.toThrow();
     }
     expect(data.user).toHaveLength(0);
   });

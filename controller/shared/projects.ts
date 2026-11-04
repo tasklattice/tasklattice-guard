@@ -7,7 +7,7 @@ export const createProjectSchema = z.strictObject({
   externalDepartmentId: projectIdSchema.optional(),
 });
 export type Project = { id: string; name: string; groupId: string; externalDepartmentId?: string | null; access?: "read" | "write"; roles?: string[] };
-export type ProjectMember = { userId: string; name: string; username: string | null; email: string; source: string; access: "read" | "write"; roles: string[] };
+export type ProjectMember = { userId: string; username: string | null; email: string; source: string; access: "read" | "write"; roles: string[] };
 export type ProjectSummary = Project & {groupName:string;poolId:string|null;poolName:string|null;memberCount:number};
 export type ProjectAccessStatus = {
   state: "ready" | "project_required" | "project_missing" | "runner_uninitialized";

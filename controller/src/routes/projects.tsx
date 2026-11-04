@@ -195,7 +195,10 @@ function ProjectMembers({
             label={t("projects.chooseUser")}
             value={candidate}
             onChange={setCandidate}
-            load={(q, signal) => listMemberCandidates(project.id, q, signal)}
+            load={async (q, signal) => {
+              const page = await listMemberCandidates(project.id, q, signal);
+              return { ...page, items: page.items.map(item => ({ id: item.id, name: item.username })) };
+            }}
           />
           <Button
             disabled={!candidate || change.isPending}
@@ -220,8 +223,7 @@ function ProjectMembers({
             className="flex items-center justify-between gap-3 py-4"
           >
             <div>
-              {member.name}
-              <p className="text-xs text-muted-foreground">{member.username}</p>
+              {member.username ?? member.userId}
             </div>
             {member.source === "local" ? (
               <Button

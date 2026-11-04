@@ -1,5 +1,7 @@
 import { hasPermission, isPlatformAdministrator } from "../../shared/rbac";
 import { AdvancedPlayground } from "@/components/playground/advanced-playground";
+import { Link } from "@tanstack/react-router";
+import { projectParams } from "@/lib/project-paths";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -528,8 +530,9 @@ function PlaygroundReturnLink() {
   const endpoint = search.get("endpoint");
   const router = search.get("router");
   const guardrail = search.get("guardrail");
-  const href = endpoint ? `/integration/endpoints?endpointId=${encodeURIComponent(endpoint)}`
-    : router ? `/integration/routers/${encodeURIComponent(router)}`
-      : guardrail ? `/guardrails/${encodeURIComponent(guardrail)}?tab=testing` : "/guardrails";
-  return <Button asChild variant="outline"><a href={href}>{t("common.back")}</a></Button>;
+  const link = endpoint ? <Link to="/$projectId/integration/endpoints" params={projectParams()} search={{ endpointId: endpoint }}>{t("common.back")}</Link>
+    : router ? <Link to="/$projectId/integration/routers/$routerId" params={{ ...projectParams(), routerId: router }}>{t("common.back")}</Link>
+      : guardrail ? <Link to="/$projectId/guardrails/$guardrailId" params={{ ...projectParams(), guardrailId: guardrail }} search={{ tab: "testing" }}>{t("common.back")}</Link>
+        : <Link to="/$projectId/guardrails" params={projectParams()}>{t("common.back")}</Link>;
+  return <Button asChild variant="outline">{link}</Button>;
 }

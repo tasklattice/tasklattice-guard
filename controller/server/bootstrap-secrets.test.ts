@@ -129,8 +129,8 @@ describe("database, account and gateway bootstrap", () => {
     expect(request.mock.calls.filter(([method]) => method === "POST")).toHaveLength(1);
   });
   it("creates debuggable username/password account data without hash import", async () => {
-    const data = await secretData({ kind: "account", username: "admin", displayName: "Admin" });
-    expect(data).toMatchObject({ username: "admin", name: "Admin", password: "password" });
+    const data = await secretData({ kind: "account", username: "admin" });
+    expect(data).toMatchObject({ username: "admin", password: "password" });
     expect(data.revision).toMatch(/^[a-f0-9-]{36}$/);
   });
   it("creates the LiteLLM database and gateway together and retains their keys", async () => {
@@ -156,21 +156,21 @@ describe("database, account and gateway bootstrap", () => {
 });
 
 it("overwrites old account Secrets on every initialization and removes hash fields", async () => {
-  const spec = { name: "account-init", kind: "account", username: "admin", displayName: "Admin" };
+  const spec = { name: "account-init", kind: "account", username: "admin" };
   const unmanaged = { metadata: {}, data: encode({ email: "old@example.com", "password-hash": "old-hash" }) };
   const { stored, request } = clusterFixture({ account: unmanaged });
   expect(await ensureSecret(request, "namespace", "release", spec, owner)).toBe("created");
-  expect(stored.get("account-init").data).toEqual({ ...encode({ username: "admin", name: "Admin", password: "password" }), revision: expect.any(String) });
+  expect(stored.get("account-init").data).toEqual({ ...encode({ username: "admin", password: "password" }), revision: expect.any(String) });
   const revision = stored.get("account-init").data.revision;
   stored.get("account-init").data = encode({ email: "old@example.com", "password-hash": "old-hash", password: "different" });
   expect(await ensureSecret(request, "namespace", "release", spec, owner)).toBe("updated");
-  expect(stored.get("account-init").data).toEqual({ ...encode({ username: "admin", name: "Admin", password: "password" }), revision: expect.any(String) });
+  expect(stored.get("account-init").data).toEqual({ ...encode({ username: "admin", password: "password" }), revision: expect.any(String) });
   expect(stored.get("account-init").data.revision).not.toBe(revision);
   expect(stored.get("account")).toBe(unmanaged);
 });
 
 it("does not overwrite an account Secret belonging to another release", async () => {
-  const spec = { name: "account-init", kind: "account", username: "admin", displayName: "Admin" };
+  const spec = { name: "account-init", kind: "account", username: "admin" };
   const { request } = clusterFixture({ "account-init": { metadata: {}, data: {} } });
   await expect(ensureSecret(request, "namespace", "release", spec, owner)).rejects.toThrow("another owner");
   expect(request.mock.calls.every(([method]) => method === "GET")).toBe(true);

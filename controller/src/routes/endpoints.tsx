@@ -1,3 +1,4 @@
+import { projectParams } from "@/lib/project-paths";
 import { ProjectResourceBadge } from "@/components/project-resource-badge";
 import { hasPermission } from "../../shared/rbac";
 import { EndpointRouterLink } from "@/components/endpoint-router-link";
@@ -392,7 +393,7 @@ function EndpointDetailContent({
               <EndpointSetupBadge status={endpoint.setup_status} />
               <ProjectResourceBadge ownerProjectId={endpoint.project_id} activeProjectId={auth.user?.project_id} />
             </div>
-            <Button asChild variant="testing"><Link to="/playground" search={{ mode: "advanced", endpoint: endpoint.id }}><FlaskConical />{t("endpoints.testEndpoint")}</Link></Button>
+            <Button asChild variant="testing"><Link params={projectParams()} to="/$projectId/playground" search={{ mode: "advanced", endpoint: endpoint.id }}><FlaskConical />{t("endpoints.testEndpoint")}</Link></Button>
           </div>
           <dl className="divide-y divide-border">
             <Detail label={t("endpoints.id")} mono copyValue={endpoint.id}>{endpoint.id}</Detail>

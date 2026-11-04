@@ -1,3 +1,4 @@
+import { setCurrentProjectId } from "@/lib/project-context";
 import "@/i18n";
 import type { ReactNode } from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
@@ -10,7 +11,7 @@ const mocks = vi.hoisted(() => ({ role: "user", list: vi.fn(), revisions: vi.fn(
 vi.mock("@/lib/auth", () => ({ useAuth: () => ({ user: { role: mocks.role } }) }));
 vi.mock("@tanstack/react-router", () => ({
   useNavigate: () => mocks.navigate,
-  Link: ({ children, to, params, search, ...props }: { children: ReactNode; to: string; params?: { routerId: string }; search?: Record<string, string> }) => <a {...props} href={to.replace("$routerId", params?.routerId ?? "") + (search ? `?${new URLSearchParams(search)}` : "")}>{children}</a>,
+  Link: ({ children, to, params, search, ...props }: { children: ReactNode; to: string; params?: { routerId: string; projectId: string }; search?: Record<string, string> }) => <a {...props} href={to.replace("$projectId", params?.projectId ?? "").replace("$routerId", params?.routerId ?? "") + (search ? `?${new URLSearchParams(search)}` : "")}>{children}</a>,
 }));
 vi.mock("@/components/traffic-routing/create-router-sheet", () => ({ CreateRouterSheet: () => null }));
 vi.mock("@/lib/api", () => ({ getEndpoints: async () => ({ items: [{ id: "endpoint", name: "Gateway" }] }) }));
@@ -53,7 +54,8 @@ describe("Router list actions and publication state", () => {
     mocks.get.mockReset().mockResolvedValue(router);
     mocks.remove.mockReset().mockResolvedValue(undefined);
   });
-  afterEach(cleanup);
+  beforeEach(() => { setCurrentProjectId("test1"); });
+afterEach(cleanup);
 
   it("uses the active revision's timestamp rather than its sequence, the latest revision, or Router update time", async () => {
     mount();
@@ -87,10 +89,10 @@ describe("Router list actions and publication state", () => {
       rolloutStatus: "unpublished", pendingChangeRequest: { id: "change", status: "pending" } }] });
     mount();
     const pending = await screen.findByRole("link", { name: "Awaiting approval" });
-    expect(pending.getAttribute("href")).toBe("/integration/routers/router?tab=change-requests");
+    expect(pending.getAttribute("href")).toBe("/test1/integration/routers/router?tab=change-requests");
     expect(screen.queryByText("Draft changes")).toBeNull();
     const endpoint = await screen.findByRole("link", { name: "Gateway" });
-    expect(endpoint.getAttribute("href")).toBe("/integration/endpoints?endpointId=endpoint");
+    expect(endpoint.getAttribute("href")).toBe("/test1/integration/endpoints?endpointId=endpoint");
     fireEvent.click(endpoint);
     expect(mocks.navigate).not.toHaveBeenCalled();
     fireEvent.click(screen.getByRole("combobox", { name: "Status & changes" }));
@@ -112,7 +114,7 @@ describe("Router list actions and publication state", () => {
     const sheet = await openDelete();
     expect(await sheet.findByText("This Router has 1 bound Endpoints. Unbind them before deleting it.")).toBeTruthy();
     expect(sheet.getByRole("button", { name: "Delete Router" }).matches(":disabled")).toBe(true);
-    expect(sheet.getByRole("link", { name: "Manage Endpoints" }).getAttribute("href")).toBe("/integration/routers/router?tab=endpoints");
+    expect(sheet.getByRole("link", { name: "Manage Endpoints" }).getAttribute("href")).toBe("/test1/integration/routers/router?tab=endpoints");
     fireEvent.click(sheet.getByRole("button", { name: "Cancel" }));
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
     expect(mocks.remove).not.toHaveBeenCalled();

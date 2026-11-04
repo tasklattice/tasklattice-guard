@@ -32,7 +32,7 @@ describe.skipIf(!url)("shared Router reference visibility", () => {
     database = await createTestDatabase(url!, "router_share_refs");
     service = new TrafficRoutingService(database.db);
     const pool = database.pool;
-    await pool.query(`INSERT INTO auth_user (id,name,email,role) SELECT id,name,email,role FROM (VALUES ('user-a','A','router-a@example.test','user','projectA'),('user-b','B','router-b@example.test','user','projectB'),('user-c','C','router-c@example.test','user','projectC'),('admin','Admin','router-admin@example.test','admin','projectA')) AS fixture(id,name,email,role,project_id);
+    await pool.query(`INSERT INTO auth_user (id,username,email,role) SELECT id,name,email,role FROM (VALUES ('user-a','A','router-a@example.test','user','projectA'),('user-b','B','router-b@example.test','user','projectB'),('user-c','C','router-c@example.test','user','projectC'),('admin','Admin','router-admin@example.test','admin','projectA')) AS fixture(id,name,email,role,project_id);
       INSERT INTO guardrail (id,project_id,name,draft_config) VALUES
       ('guard-private','projectB','Private Guardrail','{}'), ('guard-own','projectA','Own Guardrail','{}');`);
     await pool.query("INSERT INTO traffic_router (id,project_id,name,draft,active_revision,active_snapshot,rollout_error) VALUES ('router-b','projectB','B Router',$1,1,$1,'runner failed: guard-private Private Endpoint')", [JSON.stringify(snapshot)]);

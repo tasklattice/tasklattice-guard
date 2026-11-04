@@ -1,3 +1,4 @@
+import { projectParams, projectRoutePath } from "@/lib/project-paths";
 import { hasPermission, isPlatformAdministrator, roleHome } from "../../shared/rbac";
 import { useQuery } from "@tanstack/react-query";
 import { Link, useRouterState } from "@tanstack/react-router";
@@ -31,26 +32,26 @@ const navigation = [
     scope: "project",
     label: "nav.guardrailDesign",
     items: [
-      { label: "nav.guardrails", to: "/guardrails", icon: ShieldCheck, count: "guardrails" },
-      { label: "nav.playground", to: "/playground", icon: FlaskConical },
+      { label: "nav.guardrails", to: "/$projectId/guardrails", icon: ShieldCheck, count: "guardrails" },
+      { label: "nav.playground", to: "/$projectId/playground", icon: FlaskConical },
       // Shows the released Policies where Guardrails are not authored.
-      { label: "nav.policyLibrary", to: "/policy-library", icon: LibraryBig },
+      { label: "nav.policyLibrary", to: "/$projectId/policy-library", icon: LibraryBig },
     ],
   },
   {
     scope: "project",
     label: "nav.runtime",
     items: [
-      { label: "nav.routers", to: "/integration/routers", icon: Rocket, count: "routers" },
-      { label: "nav.endpoints", to: "/integration/endpoints", icon: Cable, count: "endpoints" },
+      { label: "nav.routers", to: "/$projectId/integration/routers", icon: Rocket, count: "routers" },
+      { label: "nav.endpoints", to: "/$projectId/integration/endpoints", icon: Cable, count: "endpoints" },
     ],
   },
   {
     scope: "project",
     label: "nav.runtimeObservations",
     items: [
-      { label: "nav.logs", to: "/logs", icon: ScrollText },
-      { label: "nav.billing", to: "/billing", icon: ReceiptText },
+      { label: "nav.logs", to: "/$projectId/logs", icon: ScrollText },
+      { label: "nav.billing", to: "/$projectId/billing", icon: ReceiptText },
     ],
   },
   {
@@ -86,9 +87,9 @@ export function ControlPlaneSidebar() {
   const { t } = useTranslation();
   const { user } = useAuth();
   const administrator = isPlatformAdministrator(user?.role);
-  const workflowUser = hasPermission(user?.role, "guardrails", "write");
+  const workflowUser = hasPermission(user?.role, "guardrails", "write") && Boolean(user?.project_id);
   const { setOpenMobile, state } = useSidebar();
-  const pathname = useRouterState({ select: (routerState) => routerState.location.pathname });
+  const pathname = useRouterState({ select: (routerState) => projectRoutePath(routerState.location.pathname) });
   const guardrails = useQuery({ queryKey: [...queryKeys.guardrails, "project", user?.project_id], queryFn: getGuardrails, enabled: workflowUser });
   const routers = useQuery({ queryKey: [...trafficRouterKeys.all, "project", user?.project_id], queryFn: listTrafficRouters, enabled: workflowUser });
   const endpoints = useQuery({ queryKey: [...queryKeys.endpoints, "project", user?.project_id], queryFn: getEndpoints, enabled: workflowUser });
@@ -100,8 +101,8 @@ export function ControlPlaneSidebar() {
   return (
       <Sidebar collapsible="icon" className="border-r border-sidebar-border">
         <SidebarHeader className="h-16 justify-center border-b border-sidebar-border px-4 group-data-[collapsible=icon]:px-3">
-          <Link
-            to={hasPermission(user?.role, "runtime") ? "/dashboard" : roleHome(user?.role)}
+          <Link params={projectParams()}
+            to={user?.project_id && hasPermission(user?.role, "runtime") ? "/$projectId" : roleHome(user?.role)}
             aria-label="TaskLattice Guard"
             onClick={() => setOpenMobile(false)}
             className="flex min-h-11 items-center gap-2.5 rounded-lg px-1 outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring group-data-[collapsible=icon]:justify-center"
@@ -137,7 +138,7 @@ export function ControlPlaneSidebar() {
                             tooltip={label}
                             className="h-11 rounded-lg px-2.5 text-[13px] text-sidebar-foreground/80 data-[active=true]:bg-accent data-[active=true]:font-medium data-[active=true]:text-accent-foreground group-data-[collapsible=icon]:mx-auto group-data-[collapsible=icon]:size-11! group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:p-0!"
                           >
-                            <Link
+                            <Link params={projectParams()}
                               to={item.to}
                               aria-label={state === "collapsed" ? label : undefined}
                               onClick={() => setOpenMobile(false)}
@@ -179,9 +180,9 @@ export function ControlPlaneSidebar() {
               </SidebarMenuButton>
             </SidebarMenuItem>
             {workflowUser && <SidebarMenuItem>
-              <SidebarMenuButton asChild isActive={pathname.startsWith("/settings")} tooltip={t("nav.settings")}
+              <SidebarMenuButton asChild isActive={pathname.startsWith("/$projectId/settings")} tooltip={t("nav.settings")}
                 className="h-11 rounded-lg px-2.5 text-[13px] text-sidebar-foreground/80 data-[active=true]:bg-accent data-[active=true]:font-medium data-[active=true]:text-accent-foreground group-data-[collapsible=icon]:mx-auto group-data-[collapsible=icon]:size-11! group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:p-0!">
-                <Link to="/settings/health" aria-label={state === "collapsed" ? t("nav.settings") : undefined} onClick={() => setOpenMobile(false)}>
+                <Link to="/$projectId/settings/health" params={projectParams()} aria-label={state === "collapsed" ? t("nav.settings") : undefined} onClick={() => setOpenMobile(false)}>
                   <Settings className="size-4.5" strokeWidth={pathname.startsWith("/settings") ? 2.2 : 1.8} />
                   <span className="group-data-[collapsible=icon]:hidden">{t("nav.settings")}</span>
                 </Link>

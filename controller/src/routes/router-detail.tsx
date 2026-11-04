@@ -1,3 +1,4 @@
+import { projectParams } from "@/lib/project-paths";
 import { ProjectResourceBadge } from "@/components/project-resource-badge";
 import { hasPermission } from "../../shared/rbac";
 import { useTranslation } from "react-i18next";
@@ -78,16 +79,16 @@ export function RouterWorkspace({ router }: { router: api.TrafficRouter }) {
   const navigate = useNavigate();
   const tab = search.tab ?? (search.routeId ? "routing" : "overview");
   const setTab = (nextTab: string, routeId = search.routeId) => void navigate({
-    to: "/integration/routers/$routerId",
-    params: { routerId: router.id },
+    to: "/$projectId/integration/routers/$routerId",
+    params: { ...projectParams(), routerId: router.id },
     search: previous => ({ ...previous, tab: nextTab, routeId }),
     resetScroll: false,
   });
   // Canonicalize direct links without adding a browser-history entry.
   useEffect(() => {
     if (!search.tab) void navigate({
-      to: "/integration/routers/$routerId",
-      params: { routerId: router.id },
+      to: "/$projectId/integration/routers/$routerId",
+      params: { ...projectParams(), routerId: router.id },
       search: previous => ({ ...previous, tab }),
       replace: true,
       resetScroll: false,
@@ -226,16 +227,16 @@ export function RouterWorkspace({ router }: { router: api.TrafficRouter }) {
   const draftIsAwaiting = Boolean(awaiting) && !dirty && awaiting!.sourceDraftRevision === router.draftRevision;
   return (
     <section className="router-workspace space-y-5 py-8">
-      <Link
+      <Link params={projectParams()}
         className="inline-flex min-h-11 items-center text-sm text-primary"
-        to="/integration/routers"
+        to="/$projectId/integration/routers"
       >{localize("routing.trafficRouters2")}</Link>
       <PageHeader
         className="router-workspace-header"
         title={router.name}
         description={localize("routing.manageTrafficRoutingFromIncomingEndpointsToGuardRails")}
         action={<div className="flex shrink-0 items-center gap-2">
-          <Button asChild variant="testing" className="router-workspace-action"><Link to="/playground" search={{ mode: "advanced", router: router.id }}><FlaskConical aria-hidden="true" />{localize("routing.testRouter")}</Link></Button>
+          <Button asChild variant="testing" className="router-workspace-action"><Link params={projectParams()} to="/$projectId/playground" search={{ mode: "advanced", router: router.id }}><FlaskConical aria-hidden="true" />{localize("routing.testRouter")}</Link></Button>
 
         </div>}
       />

@@ -27,7 +27,7 @@ describe.skipIf(!url)("Preconfigured Guardrail lifecycle", () => {
       CONTROLLER_PROTO_PATH: resolve("../proto/tasklattice/guard/control/v1/runner_control.proto"),
       BETTER_AUTH_SECRET: "better-auth-secret-that-is-at-least-32-characters" });
     database = await createTestDatabase(url!, "preconfigured");
-    await database.pool.query("INSERT INTO auth_user (id,name,email,role) VALUES ('user','User','user@example.test','user')");
+    await database.pool.query("INSERT INTO auth_user (id,username,email,role) VALUES ('user','User','user@example.test','user')");
   });
   afterAll(async () => { await database?.drop(); if (directory) rmSync(directory, { recursive: true, force: true }); });
 

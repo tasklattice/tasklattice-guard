@@ -10,7 +10,7 @@ describe.skipIf(!url)("audit project attribution", () => {
   beforeAll(async () => {
     database = await createTestDatabase(url!, "audit_project");
     await database.pool.query(`
-      INSERT INTO auth_user (id,name,email,role) SELECT id,name,email,role FROM (VALUES ('admin-a','projectA','Admin','admin@example.test','admin'),('user-a','projectA','A','a@example.test','user'),('user-b','projectB','B','b@example.test','user')) AS fixture(id,project_id,name,email,role);
+      INSERT INTO auth_user (id,username,email,role) SELECT id,name,email,role FROM (VALUES ('admin-a','projectA','Admin','admin@example.test','admin'),('user-a','projectA','A','a@example.test','user'),('user-b','projectB','B','b@example.test','user')) AS fixture(id,project_id,name,email,role);
       INSERT INTO guardrail (id,project_id,name,draft_config) VALUES
         ('guard-c','projectC','C','{}'), ('guard-a','projectA','A','{}');
       INSERT INTO policy_resource (id,project_id,definition,maintainer) VALUES ('conflicted-policy','projectA','{}','A');

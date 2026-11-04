@@ -11,7 +11,7 @@ describe.skipIf(!url)("Endpoint settings in PostgreSQL", () => {
   let service: ControlPlaneService;
   beforeAll(async () => {
     database = await createTestDatabase(url!, "scan_defaults");
-    await database.pool.query("INSERT INTO auth_user(id,name,email,role) VALUES ('admin','Admin','scan@test.local','admin')");
+    await database.pool.query("INSERT INTO auth_user(id,username,email,role) VALUES ('admin','Admin','scan@test.local','admin')");
     await database.pool.query("INSERT INTO controller_state(id,desired_generation) VALUES ('singleton',0)");
     const config = loadConfig({
       NODE_ENV: "test", CONTROLLER_DATABASE_URL: url,

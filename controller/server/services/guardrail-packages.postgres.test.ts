@@ -76,7 +76,7 @@ describe.skipIf(!url)("Guardrail release packages between isolated environments"
   const published: string[] = [];
 
   async function seed(database: Awaited<ReturnType<typeof createTestDatabase>>) {
-    await database.pool.query("INSERT INTO auth_user (id, name, email, role) VALUES ('admin', 'Admin', 'admin@example.test', 'admin')");
+    await database.pool.query("INSERT INTO auth_user (id, username, email, role) VALUES ('admin', 'Admin', 'admin@example.test', 'admin')");
     await database.pool.query("INSERT INTO controller_state (id, desired_generation) VALUES ('singleton', 0)");
     await database.pool.query("INSERT INTO runner_pool (id, name) VALUES ('default', 'Default')");
   }
@@ -425,7 +425,7 @@ describe.skipIf(!url)("Guardrail release packages between isolated environments"
   });
 
   it("routes an imported version only after Runners here confirm they can load it", async () => {
-    await prodDb.pool.query("INSERT INTO auth_user (id, name, email, role) VALUES ('approver', 'Approver', 'approver@example.test', 'admin')");
+    await prodDb.pool.query("INSERT INTO auth_user (id, username, email, role) VALUES ('approver', 'Approver', 'approver@example.test', 'admin')");
     const version = published[1]!;
     const router = await withTestProject(async () => prod.trafficRouting.create("Bank traffic", "", { routes: [{ id: "fallback", name: "Fallback", kind: "fallback", enabled: true,
       selector: { expression: { combinator: "and", conditions: [] } },
@@ -464,7 +464,7 @@ describe.skipIf(!url)("Guardrail release packages between isolated environments"
     await prodDb.pool.query("UPDATE guardrail_version SET status = 'ready', released_at = $3, validation_run_id = $4 WHERE guardrail_id = $1 AND version = $2", [guardrailId, version, release.released_at, release.validation_run_id]);
     // Sharing permits composition with imported content, while explicit checks
     // remain owner-only; automatic admission is a runtime infrastructure step.
-    await prodDb.pool.query("INSERT INTO auth_user (id,name,email,role) SELECT id,name,email,role FROM (VALUES ('project-b-operator','B','b@example.test','user','projectB'),('project-b-approver','B approver','b-approver@example.test','user','projectB')) AS fixture(id,name,email,role,project_id)");
+    await prodDb.pool.query("INSERT INTO auth_user (id,username,email,role) SELECT id,name,email,role FROM (VALUES ('project-b-operator','B','b@example.test','user','projectB'),('project-b-approver','B approver','b-approver@example.test','user','projectB')) AS fixture(id,name,email,role,project_id)");
     await prodDb.pool.query("INSERT INTO resource_share(id,owner_project_id,recipient_project_id,resource_type,resource_id) VALUES ('imported-guardrail-share','projectA','projectB','guardrail',$1)", [guardrailId]);
     const asB = <T>(callback: () => T) => runWithProjectContext({ projectId: "projectB", actorId: "project-b-operator", role: "user" }, callback);
     await expect(asB(() => prod.packages.checkVersionEnvironment(guardrailId, version))).rejects.toMatchObject({ code: "not_found" });
@@ -549,7 +549,7 @@ describe.skipIf(!url)("Guardrail release packages between isolated environments"
     const database = await createTestDatabase(url!, "guard_pkg_conflicting_owners");
     try {
       await seed(database);
-      await database.pool.query("INSERT INTO auth_user (id,name,email,role) SELECT id,name,email,role FROM (VALUES ('operator-b','projectB','B','operator-b@example.test','user')) AS fixture(id,project_id,name,email,role)");
+      await database.pool.query("INSERT INTO auth_user (id,username,email,role) SELECT id,name,email,role FROM (VALUES ('operator-b','projectB','B','operator-b@example.test','user')) AS fixture(id,project_id,name,email,role)");
       const definition = emptyPolicyDefinition();
       definition.metadata.id = STUDIO;
       definition.metadata.name = "Private A policy";
@@ -577,7 +577,7 @@ describe.skipIf(!url)("Guardrail release packages between isolated environments"
     const database = await createTestDatabase(url!, "guard_pkg_policy_edit_race");
     try {
       await seed(database);
-      await database.pool.query("INSERT INTO auth_user (id,name,email,role) SELECT id,name,email,role FROM (VALUES ('operator-b','projectB','B','operator-b@example.test','user')) AS fixture(id,project_id,name,email,role)");
+      await database.pool.query("INSERT INTO auth_user (id,username,email,role) SELECT id,name,email,role FROM (VALUES ('operator-b','projectB','B','operator-b@example.test','user')) AS fixture(id,project_id,name,email,role)");
       const service = new ControlPlaneService(database.db, prodConfig);
       const { bytes } = await uat.packages.exportPackage(guardrailId, [published[0]!]);
       const asB = <T>(callback: () => T) => runWithProjectContext({ projectId: "projectB", actorId: "operator-b", role: "user" }, callback);

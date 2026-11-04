@@ -1,3 +1,4 @@
+import { projectParams } from "@/lib/project-paths";
 import { GuardrailRequestRate } from "./guardrail-request-rate";
 import type { GuardrailRequestRates } from "@/lib/observability-api";
 import { ProjectResourceBadge } from "@/components/project-resource-badge";
@@ -49,8 +50,8 @@ export function GuardrailRegistry({
             >
               <TableCell className="min-w-0">
                 <Link
-                  to="/guardrails/$guardrailId"
-                  params={{ guardrailId: guardrail.id }}
+                  to="/$projectId/guardrails/$guardrailId"
+                  params={{ ...projectParams(), guardrailId: guardrail.id }}
                   aria-label={t("guardrails.openNamedGuardrail", { name: guardrail.name })}
                   className="resource-name"
                   onClick={(event) => event.stopPropagation()}

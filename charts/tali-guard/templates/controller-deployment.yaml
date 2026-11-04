@@ -102,8 +102,12 @@ spec:
             - name: CONTROLLER_BOOTSTRAP_{{ upper $role }}_DIRECTORY
               value: /var/run/tasklattice/bootstrap-{{ lower $role }}
             - name: CONTROLLER_BOOTSTRAP_{{ upper $role }}_FIELDS
-              value: {{ dict "usernameKey" $account.usernameKey "nameKey" $account.nameKey "credentialKey" $account.credentialKey | toJson | quote }}
+              value: {{ dict "usernameKey" $account.usernameKey "credentialKey" $account.credentialKey | toJson | quote }}
             {{- end }}
+            {{- end }}
+            {{- if and .Values.security.bootstrapUser.enabled .Values.security.bootstrapUser.project }}
+            - name: CONTROLLER_BOOTSTRAP_USER_PROJECT
+              value: {{ .Values.security.bootstrapUser.project | quote }}
             {{- end }}
             - { name: CONTROLLER_ARTIFACT_SIGNING_KEY_PATH, value: /var/run/tasklattice/artifact/private-key.pem }
             {{- if .Values.security.controlTls.enabled }}

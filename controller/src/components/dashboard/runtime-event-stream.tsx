@@ -1,3 +1,4 @@
+import { projectParams } from "@/lib/project-paths";
 import { Table as CarbonTable, TableHead as CarbonTableHead, TableBody as CarbonTableBody, TableRow as CarbonTableRow, TableHeader as CarbonTableHeader, TableCell as CarbonTableCell } from "@carbon/react";
 import { ArrowRight, ShieldCheck } from "lucide-react";
 import { Link } from "@tanstack/react-router";
@@ -35,7 +36,7 @@ export function RuntimeEventStream({ items, loading, guardrails }: {
           <p className="mt-0.5 truncate text-xs text-muted-foreground">{t("dashboard.recentEventsDescription")}</p>
         </div>
         <Button size="sm" variant="ghost" className="h-8 shrink-0 self-start px-2 text-xs sm:self-auto" asChild>
-          <Link to="/logs">{t("dashboard.viewAllEvents")}<ArrowRight /></Link>
+          <Link params={projectParams()} to="/$projectId/logs">{t("dashboard.viewAllEvents")}<ArrowRight /></Link>
         </Button>
       </header>
 

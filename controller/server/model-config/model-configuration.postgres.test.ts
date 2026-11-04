@@ -21,8 +21,8 @@ describe.skipIf(!url)("Current model configuration PostgreSQL semantics", () => 
   beforeAll(async () => {
     database = await createTestDatabase(url!, "guard_model_apply", { maxConnections: 2 });
     pool = database.pool;
-    await pool.query("INSERT INTO auth_user (id,name,email,role) SELECT id,id,id||'@example.test','admin' FROM unnest(ARRAY['admin','synthetic-admin','admin-a','admin-b','other']) AS id");
-    await pool.query("INSERT INTO auth_user (id,name,email,role) SELECT id,name,email,role FROM (VALUES ('group_b','B','group_b@example.test','user','projectB'),('group_c','C','group_c@example.test','user','projectC')) AS fixture(id,name,email,role,project_id)");
+    await pool.query("INSERT INTO auth_user (id,username,email,role) SELECT id,id,id||'@example.test','admin' FROM unnest(ARRAY['admin','synthetic-admin','admin-a','admin-b','other']) AS id");
+    await pool.query("INSERT INTO auth_user (id,username,email,role) SELECT id,name,email,role FROM (VALUES ('group_b','B','group_b@example.test','user','projectB'),('group_c','C','group_c@example.test','user','projectC')) AS fixture(id,name,email,role,project_id)");
     await pool.query("INSERT INTO model_provider (id,name,kind,base_url,credential_ciphertext) VALUES ($1,'Synthetic','custom-openai-compatible','http://provider.invalid/v1','')", [providerId]);
     await pool.query("INSERT INTO model_definition (id,provider_id,name,model,profile) VALUES ($1,$2,'Synthetic','synthetic','tali.qwen3guard.v1')", [modelId, providerId]);
   });

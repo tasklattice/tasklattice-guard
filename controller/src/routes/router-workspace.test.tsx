@@ -138,8 +138,8 @@ const router: TrafficRouter = {
 const pendingChange: RouterChangeRequest = {
   id: "change", routerId: "router", kind: "publish", status: "pending", sourceDraftRevision: 2, baseRevision: 1,
   snapshot: draft, endpointIds: [], context: null, ticket: "CHG-7", reason: "Enable partner revision",
-  submittedBy: "submitter", submittedByName: "Submitter", submittedAt: "2026-10-07T10:00:00.000Z",
-  decidedBy: null, decidedByName: null, decidedAt: null, decisionNote: null, emergencyReason: null, emergencyContact: null,
+  submittedBy: "submitter", submittedByUsername: "Submitter", submittedAt: "2026-10-07T10:00:00.000Z",
+  decidedBy: null, decidedByUsername: null, decidedAt: null, decisionNote: null, emergencyReason: null, emergencyContact: null,
   appliedRevision: null, revertsChangeRequestId: null,
 };
 function mount(value = router) {

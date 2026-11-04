@@ -223,11 +223,11 @@ security:
     # startup and after Secret revisions. Existing sessions are revoked.
     # existingSecret: guard-bootstrap-admin
     username: admin
-    name: Administrator
   # The user account initializes by default; set enabled=false to omit it.
   # bootstrapUser:
   #   enabled: true
   #   existingSecret: guard-bootstrap-user
+  #   project: my-project # Create/reuse this Project on the default shared Runner.
   # Optional private CA for outbound HTTPS model/provider connections:
   # customCa:
   #   existingSecret: company-model-ca
@@ -337,25 +337,3 @@ observability:
   #   heartbeatMaxAgeSeconds: 30
   #   telemetryMaxAgeSeconds: 60
   #   pipelineMaxAgeSeconds: 60
-
-networkPolicy:
-  # Requires a NetworkPolicy-capable CNI. Limits Controller gRPC to this release's
-  # Runners and bundled Redis ingress to Runners; HTTP routing remains available.
-  enabled: true
-  runnerIsolation:
-    # Opt-in default-deny ingress/egress for the Default Runner; needs an enforcing CNI.
-    # Controller access, bundled Redis and DNS below are allowed explicitly.
-    enabled: false
-    # Additional trusted runtime gateways/scrapers (NetworkPolicyPeer objects).
-    ingressPeers: []
-    dnsPeers:
-      - namespaceSelector:
-          matchLabels: { kubernetes.io/metadata.name: kube-system }
-        podSelector:
-          matchLabels: { k8s-app: kube-dns }
-    # Additional Default Runner egress. External Redis, Providers and OTLP collectors
-    # need explicit destinations/ports. Only the default key is supported.
-    poolEgress: {}
-    # default:
-    #   - to: [{ ipBlock: { cidr: 192.0.2.10/32 } }]
-    #     ports: [{ protocol: TCP, port: 443 }]

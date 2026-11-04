@@ -41,7 +41,7 @@ installation, dependency settings, and production Secrets.
 
 Both bootstrap accounts initialize in every environment: `admin` / `password`
 with the admin role, and `user` / `password` with the user role. Configure their
-`username` and `name`, or use `existingSecret` with `username`, `name`, and
+`username`, or use `existingSecret` with `username` and
 `password` fields. Set `security.bootstrapUser.enabled=false` to omit the second
 account. A minimum above eight characters requires external account Secrets.
 There is no `localDefault` or precomputed password-hash setting.
@@ -58,24 +58,29 @@ Controller initializes or overwrites these configured accounts at startup,
 retaining their IDs and resource ownership. It also checks mounted account
 Secrets every two seconds. A Job rerun writes a new `revision`, so the same initial
 password is reapplied after Kubernetes refreshes the mounted Secret, even if the
-user changed their password in the UI. Resetting restores the configured role and
-name, clears a ban, and revokes previous sessions. Other user accounts are retained.
+user changed their password in the UI. Resetting restores the configured role, clears a ban, and revokes previous sessions. Other user accounts are retained.
 External Secret updates use the same synchronization path; the Job never modifies
 external Secrets. Allow for Kubernetes' projected-volume refresh delay.
 
-The only mounted account fields are `username`, `name`, `password` and optional
-`revision`. Optional `usernameKey`, `nameKey`, and `credentialKey` customize names.
+The only mounted account fields are `username`, `password` and optional
+`revision`. Optional `usernameKey` and `credentialKey` customize Secret field names.
 The Controller passes the decoded password to Better Auth. Better Auth alone
 hashes and verifies database credentials; no hash generation or import is needed
 in Helm, the Job, or development setup. Base64 is an encoding for inspecting
 initial credentials, not the database's password-verification algorithm.
 
-Login and account management accept usernames, not email addresses. Existing
-accounts migrate to normalized email local parts, preserving IDs and credentials;
-invalid or duplicate local parts receive deterministic `account_<digest>` names.
-Look up these migrated names in Users. Better Auth's required internal email
-column remains implementation metadata and cannot be used to sign in. Sessions
-are checked against the database, so resets and bans take effect immediately.
+Local login and account management use usernames. SSO identities keep their
+verified email address and use its local part (before `@`) as the username.
+Usernames must be unique across local and SSO accounts. A conflicting username
+must be resolved before that SSO identity can sign in; identities are never merged
+by username. SSO issuer and subject remain the authentication binding.
+
+Personal names and provider tokens are not stored. Verified SSO claims are used
+only during the callback; persistent membership records keep the required project
+and role information. The schema is intended for a fresh database; historical
+account data is not upgraded.
+
+Sessions are checked against the database, so resets and bans take effect immediately.
 
 ## Test task lifecycle and cancellation
 

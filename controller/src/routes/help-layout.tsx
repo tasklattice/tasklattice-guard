@@ -35,7 +35,7 @@ export function HelpLayout() {
               <SelectItem value="en">{t("common.english")}</SelectItem>
             </SelectContent>
           </Select>
-          <Link to="/dashboard" className="inline-flex min-h-11 items-center gap-2 rounded-md px-2 text-sm text-muted-foreground hover:bg-muted focus-visible:outline-primary">
+          <Link to="/" className="inline-flex min-h-11 items-center gap-2 rounded-md px-2 text-sm text-muted-foreground hover:bg-muted focus-visible:outline-primary">
             <ArrowLeft aria-hidden="true" className="size-4" />{labels.backToPortal}
           </Link>
         </div>

@@ -44,7 +44,7 @@ describe.skipIf(!url)("Traffic composition transactions in PostgreSQL", () => {
   beforeEach(async () => {
     decisionTimes.clear();
     await pool.query('TRUNCATE auth_user, guardrail, runner_pool, controller_state, traffic_router, route_assignment, telemetry_watermark, controller_outbox CASCADE');
-    await pool.query(`INSERT INTO auth_user (id,name,email,role) VALUES ('admin','Admin','admin@example.test','admin'),('approver','Approver','approver@example.test','admin');
+    await pool.query(`INSERT INTO auth_user (id,username,email,role) VALUES ('admin','Admin','admin@example.test','admin'),('approver','Approver','approver@example.test','admin');
       INSERT INTO controller_state (id) VALUES ('singleton');
       INSERT INTO runner_pool (id,name) VALUES ('default','Default');
       INSERT INTO guardrail (project_id,id,name,draft_config,status) VALUES ('projectA','guard-a','Original','{}','active'),('projectA','guard-b','Other','{}','active');
@@ -68,7 +68,7 @@ describe.skipIf(!url)("Traffic composition transactions in PostgreSQL", () => {
   async function count(table: string, where = "TRUE") { return (await pool.query(`SELECT count(*)::int AS n FROM ${table} WHERE ${where}`)).rows[0].n as number; }
 
   it("isolates project resources and allows read-only sharing", async () => {
-    await pool.query("INSERT INTO auth_user (id,name,email,role) SELECT id,name,email,role FROM (VALUES ('admin-b','Admin B','admin-b@example.test','admin','projectB')) AS fixture(id,name,email,role,project_id)");
+    await pool.query("INSERT INTO auth_user (id,username,email,role) SELECT id,name,email,role FROM (VALUES ('admin-b','Admin B','admin-b@example.test','admin','projectB')) AS fixture(id,name,email,role,project_id)");
     const asB = <T>(callback: () => T) => runWithProjectContext({ projectId: "projectB", actorId: "admin-b" }, callback);
     const asA = <T>(callback: () => T) => runWithProjectContext({ projectId: "projectA", actorId: actor }, callback);
 
@@ -109,7 +109,7 @@ describe.skipIf(!url)("Traffic composition transactions in PostgreSQL", () => {
   });
 
   it("keeps shared Guardrail dependents private and leaves another project's Router pinned", async () => {
-    await pool.query("INSERT INTO auth_user (id,name,email,role) SELECT id,name,email,role FROM (VALUES ('admin-b','Admin B','admin-b@example.test','admin','projectB')) AS fixture(id,name,email,role,project_id)");
+    await pool.query("INSERT INTO auth_user (id,username,email,role) SELECT id,name,email,role FROM (VALUES ('admin-b','Admin B','admin-b@example.test','admin','projectB')) AS fixture(id,name,email,role,project_id)");
     await pool.query(`UPDATE guardrail SET status = 'active' WHERE id = 'guard-a';
       INSERT INTO guardrail_version (guardrail_id,version,generation,status,runtime_profile,plan,artifact_id,released_at)
       VALUES ('guard-a','2',3,'ready','auto','{}','artifact-a-2',now());
@@ -132,7 +132,7 @@ describe.skipIf(!url)("Traffic composition transactions in PostgreSQL", () => {
   });
 
   it("redacts private Router dependencies while preserving publication and retention blockers", async () => {
-    await pool.query(`INSERT INTO auth_user (id,name,email,role) SELECT id,name,email,role FROM (VALUES ('user-b','B Author','b-author@example.test','user','projectB')) AS fixture(id,name,email,role,project_id);
+    await pool.query(`INSERT INTO auth_user (id,username,email,role) SELECT id,name,email,role FROM (VALUES ('user-b','B Author','b-author@example.test','user','projectB')) AS fixture(id,name,email,role,project_id);
       INSERT INTO guardrail_version (guardrail_id,version,generation,status,runtime_profile,plan,artifact_id,released_at)
         VALUES ('guard-a','2',3,'ready','auto','{}','artifact-a-2',now());
       INSERT INTO resource_share (id,owner_project_id,recipient_project_id,resource_type,resource_id)
@@ -219,7 +219,7 @@ describe.skipIf(!url)("Traffic composition transactions in PostgreSQL", () => {
   it("publishes a submitted change only after a different administrator approves it", async () => {
     const router = await create();
     const change = await submit(router.id);
-    expect(change).toMatchObject({ status: "pending", kind: "publish", baseRevision: null, sourceDraftRevision: 1, ticket: "CHG-1", submittedByName: "Admin", snapshot: draft() });
+    expect(change).toMatchObject({ status: "pending", kind: "publish", baseRevision: null, sourceDraftRevision: 1, ticket: "CHG-1", submittedByUsername: "Admin", snapshot: draft() });
     expect(await generation()).toBe(0); expect(await count("traffic_router_revision")).toBe(0);
     expect((await service.trafficRouting.get(router.id)).pendingChangeRequest?.id).toBe(change.id);
     await expect(submit(router.id)).rejects.toMatchObject({ code: "router_change_request_pending" });
@@ -227,7 +227,7 @@ describe.skipIf(!url)("Traffic composition transactions in PostgreSQL", () => {
     const applied = await service.trafficRouting.approveChange(router.id, change.id, approver, { note: "Approved in CAB" });
     expect(applied).toMatchObject({ activeRevision: 1, activeSnapshot: draft(), pendingChangeRequest: null, publication: { revision: 1, replayed: false } });
     expect(await generation()).toBe(1);
-    expect(await service.trafficRouting.changeRequest(router.id, change.id)).toMatchObject({ status: "applied", decidedBy: approver, decidedByName: "Approver", decisionNote: "Approved in CAB", appliedRevision: 1 });
+    expect(await service.trafficRouting.changeRequest(router.id, change.id)).toMatchObject({ status: "applied", decidedBy: approver, decidedByUsername: "Approver", decisionNote: "Approved in CAB", appliedRevision: 1 });
     expect((await service.trafficRouting.revisions(router.id))[0]).toMatchObject({ revision: 1, changeRequestId: change.id, createdBy: approver });
     const replay = await service.trafficRouting.approveChange(router.id, change.id, approver, {});
     expect(replay.publication).toMatchObject({ revision: 1, generation: 1, replayed: true });
@@ -373,7 +373,7 @@ describe.skipIf(!url)("Traffic composition transactions in PostgreSQL", () => {
   }
   const toOld = () => { const value = draft(); value.routes[0]!.targets[0]!.guardrailId = "guard-b"; value.routes[0]!.targets[0]!.guardrailVersion = "0"; return value; };
   it("lets a user delete every unused preconfigured version", async () => {
-    await pool.query(`INSERT INTO auth_user (id,name,email,role) VALUES ('project','Project','project@example.test','user');
+    await pool.query(`INSERT INTO auth_user (id,username,email,role) VALUES ('project','Project','project@example.test','user');
       INSERT INTO guardrail (project_id,id,name,draft_config,status) VALUES ('projectA','guardrail-default','Default','{}','active');
       INSERT INTO guardrail_version (guardrail_id,version,generation,status,runtime_profile,plan,released_at) VALUES
         ('guardrail-default','initial',3,'ready','auto','{}',now()),

@@ -1,24 +1,34 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-const { signInWithUsername, getSession, updateUser } = vi.hoisted(() => ({
+const { signInWithUsername, signInSocial, getSession, updateUser } = vi.hoisted(() => ({
   signInWithUsername: vi.fn(),
+  signInSocial: vi.fn(),
   getSession: vi.fn(),
   updateUser: vi.fn(),
 }));
 
 vi.mock("@/lib/better-auth", () => ({
   authClient: {
-    signIn: { username: signInWithUsername },
+    signIn: { username: signInWithUsername, social: signInSocial },
     getSession,
     updateUser,
   },
 }));
 
-import { getAuthStatus, login, updateMe } from "@/lib/identity-api";
+import { getAuthStatus, login, loginSso, updateMe } from "@/lib/identity-api";
+
+describe("SSO project return URLs", () => {
+  afterEach(() => window.history.replaceState(null, "", "/"));
+  it("returns to the same project page, search and fragment", async () => {
+    window.history.replaceState(null, "", "/test2/playground?guardrail=example&sso_error=1#result");
+    signInSocial.mockResolvedValue({ error: null });
+    await loginSso("corporate-sso");
+    expect(signInSocial).toHaveBeenCalledWith({ provider: "corporate-sso", callbackURL: "/test2/playground?guardrail=example#result", errorCallbackURL: "/test2/playground?guardrail=example&sso_error=1#result" });
+  });
+});
 
 const signedInUser = {
   id: "admin-id",
-  name: "Administrator",
   username: "admin",
   role: "admin",
   projectId: null,
@@ -85,20 +95,11 @@ describe("profile updates", () => {
     expect(getSession).toHaveBeenCalledWith({ query: { disableCookieCache: true } });
     expect(result.user).toMatchObject({
       id: signedInUser.id,
-      display_name: signedInUser.name,
+      username: signedInUser.username,
       preferred_language: "zh-CN",
       created_at: signedInUser.createdAt,
       updated_at: signedInUser.updatedAt,
     });
-  });
-
-  it("saves the display name and language without timezone preferences", async () => {
-    getSession.mockResolvedValue({ data: { user: { ...signedInUser, name: "Guard Operator" } }, error: null });
-
-    const result = await updateMe({ display_name: "Guard Operator", preferred_language: "zh-CN" });
-
-    expect(updateUser).toHaveBeenCalledWith({ name: "Guard Operator", preferredLanguage: "zh-CN" });
-    expect(result.user.display_name).toBe("Guard Operator");
   });
 
   it("reports update errors without trying to refresh the session", async () => {

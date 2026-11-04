@@ -1,3 +1,4 @@
+import { projectParams } from "@/lib/project-paths";
 import { useRef, useState, type RefObject } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
@@ -47,7 +48,7 @@ export function ImportGuardrailSheet({ onClose, returnFocusRef }: { onClose: () 
       ]);
       toast.success(t(result.restored ? "guardrailPackage.restored" : "guardrailPackage.imported", { imported: result.imported.length, existing: result.existing.length, policies: result.policies.imported.length }));
       onClose();
-      void navigate({ to: "/guardrails/$guardrailId", params: { guardrailId: result.guardrailId }, search: { tab: "immutable" } });
+      void navigate({ to: "/$projectId/guardrails/$guardrailId", params: { ...projectParams(), guardrailId: result.guardrailId }, search: { tab: "immutable" } });
     },
   });
   const busy = upload.isPending || importing.isPending;

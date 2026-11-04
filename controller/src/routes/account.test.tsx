@@ -14,7 +14,6 @@ vi.mock("@tanstack/react-router", () => ({ useNavigate: () => navigateMock }));
 
 const user: IdentityUser = {
   id: "user-admin",
-  display_name: "Administrator",
   username: "admin",
   role: "admin",
   enabled: true,
@@ -33,9 +32,7 @@ vi.mock("react-i18next", () => ({
       "account.general": "General",
       "account.security": "Security",
       "account.profile": "Profile",
-      "account.profileDescription": "Choose how your name appears.",
-      "account.displayName": "Display name",
-      "account.displayNameHint": "This name identifies your activity.",
+      "account.profileDescription": "View your account identifier and choose your interface language.",
       "account.username": "Username",
       "account.usernameReadOnly": "Your username is managed by an administrator.",
       "account.interfaceLanguage": "Interface language",
@@ -82,23 +79,6 @@ describe("AccountPage", () => {
   });
   afterEach(cleanup);
 
-  it("persists an edited display name with the current account language", async () => {
-    renderPage();
-
-    const save = screen.getByRole("button", { name: "Save changes" }) as HTMLButtonElement;
-    expect(save.disabled).toBe(true);
-
-    fireEvent.change(screen.getByLabelText("Display name"), { target: { value: "Guard Operator" } });
-    expect(save.disabled).toBe(false);
-    fireEvent.click(save);
-    expect(screen.queryByRole("dialog")).toBeNull();
-
-    await waitFor(() => expect(updateProfileMock).toHaveBeenCalledWith({
-      display_name: "Guard Operator",
-      preferred_language: "en",
-    }));
-  });
-
   it("keeps password management in the Security section", async () => {
     renderPage();
 
@@ -123,7 +103,7 @@ describe("AccountPage", () => {
   it("saves a language change directly through the status-only API", async () => {
     authClientMock.updateUser.mockResolvedValue({ data: { status: true }, error: null });
     authClientMock.getSession.mockResolvedValue({ data: { user: {
-      id: user.id, name: user.display_name, username: user.username, role: user.role,
+      id: user.id, username: user.username, role: user.role,
       preferredLanguage: "zh-CN", createdAt: user.created_at, updatedAt: user.updated_at,
     } }, error: null });
     updateProfileMock.mockImplementation(updateMe);
@@ -138,7 +118,7 @@ describe("AccountPage", () => {
       fireEvent.click(await screen.findByRole("option", { name: "common.chinese" }));
       fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
 
-      await waitFor(() => expect(authClientMock.updateUser).toHaveBeenCalledWith({ name: user.display_name, preferredLanguage: "zh-CN" }));
+      await waitFor(() => expect(authClientMock.updateUser).toHaveBeenCalledWith({ preferredLanguage: "zh-CN" }));
       expect(authClientMock.getSession).toHaveBeenCalledWith({ query: { disableCookieCache: true } });
       expect(screen.queryByRole("alert")).toBeNull();
     } finally {

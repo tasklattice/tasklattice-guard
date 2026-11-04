@@ -115,7 +115,7 @@
 {{- end -}}
 {{- range $role, $account := dict "Admin" .Values.security.bootstrapAdmin "User" .Values.security.bootstrapUser -}}
 {{- if and (or (eq $role "Admin") $account.enabled) (not $account.existingSecret) -}}
-{{- $specs = append $specs (dict "name" (include (printf "tali-guard.bootstrap%sSecretName" $role) $) "kind" "account" "username" $account.username "displayName" $account.name "usernameKey" $account.usernameKey "nameKey" $account.nameKey "credentialKey" $account.credentialKey) -}}
+{{- $specs = append $specs (dict "name" (include (printf "tali-guard.bootstrap%sSecretName" $role) $) "kind" "account" "username" $account.username "usernameKey" $account.usernameKey "credentialKey" $account.credentialKey) -}}
 {{- end -}}
 {{- end -}}
 {{- if .Values.keycloak.enabled -}}
@@ -340,26 +340,6 @@ app.kubernetes.io/part-of: tasklattice-guard
 {{- fail "runner.default.replicaCount must be at least 1; runner-default is the mandatory baseline Runner pool" }}
 {{- end }}
 
-{{- if not (kindIs "bool" .Values.networkPolicy.runnerIsolation.enabled) -}}{{- fail "networkPolicy.runnerIsolation.enabled must be a boolean" -}}{{- end -}}
-{{- if .Values.networkPolicy.runnerIsolation.enabled -}}
-{{- if not .Values.networkPolicy.enabled -}}{{- fail "networkPolicy.runnerIsolation requires networkPolicy.enabled=true" -}}{{- end -}}
-{{- $names := list "default" -}}
-{{- range $name, $_ := .Values.networkPolicy.runnerIsolation.poolEgress -}}
-{{- if not (has $name $names) -}}{{- fail (printf "networkPolicy.runnerIsolation.poolEgress contains unknown chart pool %s" $name) -}}{{- end -}}
-{{- end -}}
-{{- range $peers := list .Values.networkPolicy.runnerIsolation.ingressPeers .Values.networkPolicy.runnerIsolation.dnsPeers -}}
-{{- if not (kindIs "slice" $peers) -}}{{- fail "networkPolicy.runnerIsolation peer collections must be lists" -}}{{- end -}}
-{{- range $peer := $peers -}}{{- include "tali-guard.featureNetworkPeer" $peer -}}{{- end -}}
-{{- end -}}
-{{- range $pool, $rules := .Values.networkPolicy.runnerIsolation.poolEgress -}}
-{{- if not (kindIs "slice" $rules) -}}{{- fail "networkPolicy.runnerIsolation.poolEgress entries must be lists" -}}{{- end -}}
-{{- range $rule := $rules -}}
-{{- if not (kindIs "map" $rule) -}}{{- fail "networkPolicy.runnerIsolation egress rules must be objects" -}}{{- end -}}
-{{- if or (not (kindIs "slice" $rule.to)) (empty $rule.to) (not (kindIs "slice" $rule.ports)) (empty $rule.ports) -}}{{- fail "networkPolicy.runnerIsolation egress rules require nonempty to and ports lists" -}}{{- end -}}
-{{- range $peer := $rule.to -}}{{- include "tali-guard.featureNetworkPeer" $peer -}}{{- end -}}
-{{- end -}}
-{{- end -}}
-{{- end -}}
 {{- if and .Values.postgresql.enabled .Values.database.existingSecret -}}
 {{- fail "postgresql.enabled cannot be combined with database.existingSecret" -}}
 {{- end -}}
@@ -466,17 +446,6 @@ data:
 {{- range .fields -}}{{- if not (hasKey $value .) -}}{{- fail (printf "%s requires %s" $name .) -}}{{- end -}}{{- end -}}
 {{- $fields := .fields -}}
 {{- range $key, $_ := $value -}}{{- if not (has $key $fields) -}}{{- fail (printf "%s contains unsupported field %s" $name $key) -}}{{- end -}}{{- end -}}
-{{- end -}}
-
-{{- define "tali-guard.featureNetworkPeer" -}}
-{{- if not (kindIs "map" .) -}}{{- fail "networkPolicy.runnerIsolation peers must be objects" -}}{{- end -}}
-{{- $ip := hasKey . "ipBlock" -}}
-{{- $selector := or (hasKey . "podSelector") (hasKey . "namespaceSelector") -}}
-{{- if or (and $ip $selector) (not (or $ip $selector)) -}}{{- fail "networkPolicy.runnerIsolation peers require ipBlock or pod/namespace selectors, without combining both" -}}{{- end -}}
-{{- if $ip -}}
-{{- if not (kindIs "map" .ipBlock) -}}{{- fail "networkPolicy.runnerIsolation.ipBlock must be an object" -}}{{- end -}}
-{{- if or (not (kindIs "string" .ipBlock.cidr)) (empty .ipBlock.cidr) -}}{{- fail "networkPolicy.runnerIsolation.ipBlock requires a CIDR" -}}{{- end -}}
-{{- end -}}
 {{- end -}}
 
 {{- define "tali-guard.featureNumber" -}}

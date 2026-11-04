@@ -25,31 +25,29 @@ export function AccountPage({ section = "general" }: { section?: "general" | "se
   const navigate = useNavigate();
   const { t, i18n } = useTranslation();
   const { user, updateProfile } = useAuth();
-  const [displayName, setDisplayName] = useState(user?.display_name ?? "");
   const [language, setLanguage] = useState<SupportedLanguage>(user?.preferred_language ?? "en");
   const [passwordOpen, setPasswordOpen] = useState(false);
   const signInMethod = useQuery({ queryKey: ["account-sign-in-method", user?.id], queryFn: getAccountSignInMethod, enabled: Boolean(user), retry: false });
   const usesSso = signInMethod.data === "sso";
 
   useEffect(() => {
-    setDisplayName(user?.display_name ?? "");
     setLanguage(user?.preferred_language ?? "en");
-  }, [user?.display_name, user?.preferred_language]);
+  }, [user?.preferred_language]);
 
   const mutation = useMutation({
-    mutationFn: () => updateProfile({ display_name: displayName.trim(), preferred_language: language }),
+    mutationFn: () => updateProfile({ preferred_language: language }),
     onSuccess: () => toast.success(t("account.saved")),
     onError: (error) => toast.error(error instanceof Error ? error.message : t("common.unknownError")),
   });
 
   if (!user) return null;
 
-  const dirty = displayName.trim() !== user.display_name || language !== user.preferred_language;
+  const dirty = language !== user.preferred_language;
   const formatDate = (value: string) => new Intl.DateTimeFormat(i18n.language, { dateStyle: "medium", timeStyle: "short" }).format(new Date(value));
 
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (displayName.trim() && dirty && !mutation.isPending) mutation.mutate();
+    if (dirty && !mutation.isPending) mutation.mutate();
   }
 
   return (
@@ -74,10 +72,10 @@ export function AccountPage({ section = "general" }: { section?: "general" | "se
               </CardHeader>
               <CardContent>
                 <div className="mb-6 flex items-center gap-3 rounded-xl border bg-muted/25 p-4">
-                  <UserAvatar name={user.display_name} size="large" />
+                  <UserAvatar username={user.username} size="large" />
                   <div className="min-w-0 flex-1">
-                    <p className="truncate text-sm font-semibold">{user.display_name}</p>
-                    <p className="mt-0.5 truncate text-xs text-muted-foreground">{usesSso ? user.email : user.username}</p>
+                    <p className="truncate text-sm font-semibold">{user.username}</p>
+                    {usesSso && <p className="mt-0.5 truncate text-xs text-muted-foreground">{user.email}</p>}
                   </div>
                   <Badge variant="outline" className="gap-1.5 font-normal">
                     <ShieldCheck className="text-primary" />
@@ -86,12 +84,6 @@ export function AccountPage({ section = "general" }: { section?: "general" | "se
                 </div>
 
                 <form className="grid gap-5" onSubmit={submit}>
-                  <div className="grid gap-2">
-                    <Label htmlFor="account-display-name">{t("account.displayName")}</Label>
-                    <Input id="account-display-name" autoComplete="name" value={displayName} onChange={(event) => setDisplayName(event.target.value)} />
-                    <p className="text-xs leading-5 text-muted-foreground">{t("account.displayNameHint")}</p>
-                  </div>
-
                   <div className="grid gap-2">
                     <Label htmlFor="account-username">{t(usesSso ? "account.ssoEmail" : "account.username")}</Label>
                     <Input id="account-username" type="text" value={usesSso ? user.email ?? "" : user.username} readOnly aria-readonly />
@@ -114,7 +106,7 @@ export function AccountPage({ section = "general" }: { section?: "general" | "se
                   </div>
 
                   <div className="flex justify-end border-t pt-5">
-                    <Button type="submit" disabled={!displayName.trim() || !dirty || mutation.isPending}>
+                    <Button type="submit" disabled={!dirty || mutation.isPending}>
                       {mutation.isPending ? t("common.saving") : t("account.saveChanges")}
                     </Button>
                   </div>

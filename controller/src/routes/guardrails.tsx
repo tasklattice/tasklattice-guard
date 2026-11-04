@@ -1,3 +1,4 @@
+import { projectParams } from "@/lib/project-paths";
 import { guardrailRequestRatesQuery } from "@/features/guardrail-request-rates";
 import type { RuntimeStatusMetric } from "@/features/runtime-metric-status";
 import type { RuntimeMetricKey } from "@/features/runtime-metrics";
@@ -127,10 +128,10 @@ export function GuardrailsPage() {
         loading={query.isPending} refreshing={query.isFetching || requestRates.isFetching} error={query.error} onRefresh={() => { void query.refetch(); if (guardrails.length) void requestRates.refetch(); }}
         emptyTitle={t("guardrails.emptyTitle")} emptyDescription={t("guardrails.emptyDescription")}
         action={actions}>
-        {items => <GuardrailRegistry guardrails={items} requestRates={requestRates.data} ratesLoading={requestRates.isPending} ratesError={requestRates.isError} onOpen={guardrailId => navigate({ to: "/guardrails/$guardrailId", params: { guardrailId } })} />}
+        {items => <GuardrailRegistry guardrails={items} requestRates={requestRates.data} ratesLoading={requestRates.isPending} ratesError={requestRates.isError} onOpen={guardrailId => navigate({ to: "/$projectId/guardrails/$guardrailId", params: { ...projectParams(), guardrailId } })} />}
       </ResourceList>
       {importOpen ? <ImportGuardrailSheet returnFocusRef={opener} onClose={() => setImportOpen(false)} /> : null}
-      <CreateGuardrailWizard open={createOpen} returnFocusRef={opener} onOpenChange={setCreateOpen} onCreated={async (id) => { setCreateOpen(false); await queryClient.invalidateQueries({ queryKey: queryKeys.guardrails }); navigate({ to: "/guardrails/$guardrailId", params: { guardrailId: id }, search: { tab: "testing" } }); }} />
+      <CreateGuardrailWizard open={createOpen} returnFocusRef={opener} onOpenChange={setCreateOpen} onCreated={async (id) => { setCreateOpen(false); await queryClient.invalidateQueries({ queryKey: queryKeys.guardrails }); navigate({ to: "/$projectId/guardrails/$guardrailId", params: { ...projectParams(), guardrailId: id }, search: { tab: "testing" } }); }} />
     </section>
   );
 }
@@ -139,7 +140,7 @@ export function GuardrailDetailPage() {
   const { t: uiText } = useTranslation();
   const { t } = useTranslation();
   const { guardrailId } = useParams({ strict: false }) as { guardrailId: string };
-  const navigate = useNavigate({ from: "/guardrails/$guardrailId" });
+  const navigate = useNavigate({ from: "/$projectId/guardrails/$guardrailId" });
   const auth = useAuth();
   const queryClient = useQueryClient();
   const guardrailQuery = useQuery({ queryKey: queryKeys.guardrail(guardrailId), queryFn: () => getGuardrail(guardrailId), refetchInterval: 5000 });
@@ -154,13 +155,13 @@ export function GuardrailDetailPage() {
   const testsQuery = useQuery({ queryKey: queryKeys.testCases(guardrailId), queryFn: () => getTestCases(guardrailId), enabled: Boolean(guardrailQuery.data) });
   const routersQuery = useQuery({ queryKey: queryKeys.routers, queryFn: getRouters });
   const endpointsQuery = useQuery({ queryKey: queryKeys.endpoints, queryFn: getEndpoints });
-  const search = useSearch({ from: "/guardrails/$guardrailId" });
+  const search = useSearch({ from: "/$projectId/guardrails/$guardrailId" });
   const requestedSection = search.tab === "draft" ? "runtime" : search.tab ?? "runtime";
   const canViewRuntime = hasPermission(auth.user?.role, "runtime", "read");
   const section = !canViewRuntime && (requestedSection === "runtime" || requestedSection === "event") ? "testing" : requestedSection;
-  const setSection = (tab: string) => void navigate({ to: "/guardrails/$guardrailId", params: { guardrailId }, search: previous => ({ ...previous, tab }) });
+  const setSection = (tab: string) => void navigate({ to: "/$projectId/guardrails/$guardrailId", params: { ...projectParams(), guardrailId }, search: previous => ({ ...previous, tab }) });
   const window: MetricWindow = search.window ?? "24h";
-  const setWindow = (window: MetricWindow) => void navigate({ to: "/guardrails/$guardrailId", params: { guardrailId }, search: previous => ({ ...previous, window }) });
+  const setWindow = (window: MetricWindow) => void navigate({ to: "/$projectId/guardrails/$guardrailId", params: { ...projectParams(), guardrailId }, search: previous => ({ ...previous, window }) });
   const [draftAction, setDraftAction] = useState<"edit" | "review" | "publish" | "changes" | "discard" | null>(null);
   const [draftJustSaved, setDraftJustSaved] = useState(false);
   const [testCasesOpen, setTestCasesOpen] = useState(false);
@@ -189,10 +190,10 @@ export function GuardrailDetailPage() {
   const currentValidationRun = listedReport ?? (selectedReportId ? reportQuery.data ?? null : null);
   const openReport = (run: ValidationRun) => {
     openedRuns.current.set(run.id, run);
-    void navigate({ to: "/guardrails/$guardrailId", params: { guardrailId }, search: previous => ({ ...previous, report: run.id }) });
+    void navigate({ to: "/$projectId/guardrails/$guardrailId", params: { ...projectParams(), guardrailId }, search: previous => ({ ...previous, report: run.id }) });
   };
   const closeReport = () => void navigate({
-    to: "/guardrails/$guardrailId", params: { guardrailId },
+    to: "/$projectId/guardrails/$guardrailId", params: { ...projectParams(), guardrailId },
     search: previous => { const { report: _closed, ...rest } = previous; return rest; },
   });
   const [versionDetailRequested, setVersionDetailRequested] = useState(false);
@@ -223,11 +224,11 @@ export function GuardrailDetailPage() {
   const compareBaseVersionNumber = search.compare && search.compare !== selectedVersionNumber
     && guardrailVersions.some((item) => item.version === search.compare) ? search.compare : null;
   const selectVersion = (version: string) => void navigate({
-    to: "/guardrails/$guardrailId", params: { guardrailId },
+    to: "/$projectId/guardrails/$guardrailId", params: { ...projectParams(), guardrailId },
     search: previous => ({ ...previous, tab: "immutable", version, compare: undefined }),
   });
   const selectCompareBase = (version: string | null) => void navigate({
-    to: "/guardrails/$guardrailId", params: { guardrailId },
+    to: "/$projectId/guardrails/$guardrailId", params: { ...projectParams(), guardrailId },
     search: previous => ({ ...previous, tab: "immutable", compare: version ?? undefined }),
   });
   const selectedVersion = guardrailVersions.find((item) => item.version === selectedVersionNumber);
@@ -250,7 +251,7 @@ export function GuardrailDetailPage() {
     retry: (attempt, error) => !(error instanceof ControllerRequestError && error.status === 429) && attempt < 1,
   });
   const findingSeverities = selectedSeverities(search.severity);
-  const setFindingSeverities = (levels: EventSeverity[]) => void navigate({ to: "/guardrails/$guardrailId", params: { guardrailId }, search: previous => ({ ...previous, severity: selectedSeverities(levels).join(",") || undefined }) });
+  const setFindingSeverities = (levels: EventSeverity[]) => void navigate({ to: "/$projectId/guardrails/$guardrailId", params: { ...projectParams(), guardrailId }, search: previous => ({ ...previous, severity: selectedSeverities(levels).join(",") || undefined }) });
   const findingsPageSize = search.pageSize ?? 25;
   const setFindingsPageSize = (pageSize: 25 | 50) => void navigate({ search: previous => ({ ...previous, pageSize: pageSize === 50 ? 50 : undefined }) });
   const [findingsRefresh, setFindingsRefresh] = useState(0);
@@ -286,7 +287,7 @@ export function GuardrailDetailPage() {
         queryClient.invalidateQueries({ queryKey: queryKeys.metrics }),
         queryClient.invalidateQueries({ queryKey: queryKeys.auditEvents }),
       ]);
-      navigate({ to: "/guardrails" });
+      navigate({ params: projectParams(), to: "/$projectId/guardrails" });
     },
     onError: async () => { await deletionImpactQuery.refetch(); },
   });
@@ -358,7 +359,7 @@ export function GuardrailDetailPage() {
 
   return (
     <section className="py-6 sm:py-8">
-      <Link to={isPlatformAdministrator(auth.user?.role) ? "/settings/providers" : "/guardrails"} className="inline-flex min-h-11 items-center gap-2 text-sm text-muted-foreground hover:text-foreground"><ArrowLeft className="size-4" />{t("guardrails.back")}</Link>
+      <Link params={projectParams()} to={isPlatformAdministrator(auth.user?.role) ? "/settings/providers" : "/$projectId/guardrails"} className="inline-flex min-h-11 items-center gap-2 text-sm text-muted-foreground hover:text-foreground"><ArrowLeft className="size-4" />{t("guardrails.back")}</Link>
       <div className="mt-3 flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2">
@@ -385,7 +386,7 @@ export function GuardrailDetailPage() {
             <MenuItem label={t("guardrails.editLogLevel")} renderIcon={ScrollText} onClick={() => setLoggingOpen(true)} />
             {hasDraft ? <MenuItem label={t("guardrails.draftChanges.view")} renderIcon={FileText} onClick={() => setDraftAction("changes")} /> : null}
             {canManageDraft && hasDraft && publishedVersions.length ? <MenuItem label={t("guardrails.draftChanges.discard")} renderIcon={RotateCcw} onClick={() => setDraftAction("discard")} /> : null}
-            {canManageDraft ? <MenuItem label={t("guardrails.openPlayground")} renderIcon={FlaskConical} onClick={() => { void navigate({ to: "/playground", search: { guardrail: guardrail.id, target: "draft", version: undefined } }); }} /> : null}
+            {canManageDraft ? <MenuItem label={t("guardrails.openPlayground")} renderIcon={FlaskConical} onClick={() => { void navigate({ params: projectParams(), to: "/$projectId/playground", search: { guardrail: guardrail.id, target: "draft", version: undefined } }); }} /> : null}
             <MenuItemDivider />
             <MenuItem label={t("guardrails.deleteAction")} renderIcon={Trash2} kind="danger" onClick={() => {
               deleteMutation.reset();
@@ -396,7 +397,7 @@ export function GuardrailDetailPage() {
         </div>
       </div>
 
-      {!guardrail.traffic_versions?.length && publishedVersions.length > 0 ? <div className="mt-2"><Link className="inline-flex min-h-11 items-center gap-1.5 text-sm text-primary hover:underline" to="/integration/routers">{t("resourceList.startRouting")}<ArrowUpRight className="size-3.5" /></Link></div> : null}
+      {!guardrail.traffic_versions?.length && publishedVersions.length > 0 ? <div className="mt-2"><Link params={projectParams()} className="inline-flex min-h-11 items-center gap-1.5 text-sm text-primary hover:underline" to="/$projectId/integration/routers">{t("resourceList.startRouting")}<ArrowUpRight className="size-3.5" /></Link></div> : null}
 
       {protectionActions.feedback}
 
@@ -530,7 +531,7 @@ export function GuardrailFindingsView({ guardrailId, data, summary: scopeSummary
   return <section className="space-y-4" aria-label={t("guardrails.securityFindingsTitle")}>
     <header className="flex items-start justify-between gap-6">
       <p className="max-w-3xl text-sm leading-6 text-muted-foreground">{t("guardrails.securityFindingsDescription")}</p>
-      {canViewLogs ? <Link to="/logs" search={{ guardrailId: guardrailId ?? data?.items[0]?.guardrail_id ?? undefined }} className="inline-flex shrink-0 items-center gap-1.5 py-1 text-sm text-primary underline-offset-4 hover:underline">{t("securityEvents.openLogs")}<ArrowUpRight className="size-4" /></Link> : null}
+      {canViewLogs ? <Link params={projectParams()} to="/$projectId/logs" search={{ guardrailId: guardrailId ?? data?.items[0]?.guardrail_id ?? undefined }} className="inline-flex shrink-0 items-center gap-1.5 py-1 text-sm text-primary underline-offset-4 hover:underline">{t("securityEvents.openLogs")}<ArrowUpRight className="size-4" /></Link> : null}
     </header>
     <div className="border bg-card">
       <EventFilterToolbar window={window} onWindowChange={onWindowChange} severities={severities} onSeveritiesChange={setSeverities} counts={summary} />
@@ -554,7 +555,7 @@ export function GuardrailFindingsView({ guardrailId, data, summary: scopeSummary
               <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground"><span>{t("guardrails.sourceLabel")}: <strong className="font-medium text-foreground">{source}</strong></span><span>{t("guardrails.versionLabel")}: <code>{finding.guardrail_version ?? "—"}</code></span><span>{t("guardrails.phaseLabel")}: <code>{finding.phase}</code></span>{finding.confidence !== null ? <span>{t("guardrails.confidenceLabel")}: <code>{`${Math.round(finding.confidence * 100)}%`}</code></span> : null}</div>
               {finding.detail ? <details className="mt-2 text-xs text-muted-foreground"><summary className="min-h-11 w-fit cursor-pointer content-center focus-visible:outline-2 focus-visible:outline-ring">{t("logs.checkpointDetail")}</summary><p className="max-w-3xl break-words pb-2 leading-5">{finding.detail}</p></details> : null}
             </div>
-            <div className="flex flex-col items-end gap-3"><time className="font-mono text-right text-[11px] text-muted-foreground" dateTime={finding.created_at}>{timestamp.time}<span className="mt-1 block">{timestamp.date}</span></time>{canViewLogs ? <Button asChild variant="outline" size="sm" className="min-h-11 shrink-0"><Link to="/logs" search={{ eventId: finding.event_id, requestId: finding.trace_id, checkpointId: finding.event_id, guardrailId: finding.guardrail_id ?? undefined }}><ScrollText />{t("logs.viewLog")}</Link></Button> : null}</div>
+            <div className="flex flex-col items-end gap-3"><time className="font-mono text-right text-[11px] text-muted-foreground" dateTime={finding.created_at}>{timestamp.time}<span className="mt-1 block">{timestamp.date}</span></time>{canViewLogs ? <Button asChild variant="outline" size="sm" className="min-h-11 shrink-0"><Link params={projectParams()} to="/$projectId/logs" search={{ eventId: finding.event_id, requestId: finding.trace_id, checkpointId: finding.event_id, guardrailId: finding.guardrail_id ?? undefined }}><ScrollText />{t("logs.viewLog")}</Link></Button> : null}</div>
           </article>;
         })}</div> : error ? null : <div className="flex min-h-56 flex-col items-center justify-center px-6 py-10 text-center"><ShieldCheck className="size-6 text-muted-foreground" /><p className="mt-3 text-sm font-medium">{t(severities.length ? "guardrails.noMatchingFindings" : evidenceStatus === "not_collected" ? "guardrails.findingsNotCollected" : evidenceStatus === "no_events" ? "guardrails.noRuntimeEvidence" : "guardrails.noSecurityFindings")}</p><p className="mt-1 max-w-lg text-xs leading-5 text-muted-foreground">{t(severities.length ? "guardrails.noMatchingFindingsDescription" : evidenceStatus === "not_collected" ? "guardrails.findingsNotCollectedDescription" : evidenceStatus === "no_events" ? "guardrails.noRuntimeEvidenceDescription" : "guardrails.noSecurityFindingsDescription")}</p>{severities.length ? <Button variant="ghost" className="mt-3" onClick={() => setSeverities([])}>{t("securityEvents.clearFilters")}</Button> : null}</div>}
       </div>

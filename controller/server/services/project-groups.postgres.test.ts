@@ -33,7 +33,7 @@ describe.skipIf(!url)("Project Group persistence and safe allocation in PostgreS
     control = new ControlPlaneService(database.db, loadConfig({ NODE_ENV: "test", CONTROLLER_DATABASE_URL: url!,
       CONTROLLER_RUNNER_TOKEN: "runner-token-that-is-at-least-32-characters", CONTROLLER_ARTIFACT_SIGNING_KEY_PATH: signingKey,
       BETTER_AUTH_SECRET: "better-auth-secret-that-is-at-least-32-characters" }));
-    await database.pool.query("INSERT INTO auth_user (id,name,email,role) SELECT id,name,email,role FROM (VALUES ($1,'Group admin','group-admin@example.test','admin','projectA')) AS fixture(id,name,email,role,project_id)", [actor]);
+    await database.pool.query("INSERT INTO auth_user (id,username,email,role) SELECT id,name,email,role FROM (VALUES ($1,'Group admin','group-admin@example.test','admin','projectA')) AS fixture(id,name,email,role,project_id)", [actor]);
   }, 30000);
   beforeEach(async () => {
     await database.pool.query(`

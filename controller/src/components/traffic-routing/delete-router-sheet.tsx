@@ -1,3 +1,4 @@
+import { projectParams } from "@/lib/project-paths";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { useTranslation } from "react-i18next";
@@ -45,7 +46,7 @@ export function DeleteTrafficRouterSheet({ router, onClose }: { router: TrafficR
     {current.isFetching && <p role="status">{t("routing.checkingRouterBindings")}</p>}
     {bound && <div className="space-y-2">
       <p>{t("routing.deleteRouterUnbindFirst", { count: current.data!.endpointIds.length })}</p>
-      <Button asChild variant="outline"><Link to="/integration/routers/$routerId" params={{ routerId: router.id }} search={{ tab: "endpoints" }}>{t("routing.manageRouterEndpoints")}</Link></Button>
+      <Button asChild variant="outline"><Link to="/$projectId/integration/routers/$routerId" params={{ ...projectParams(), routerId: router.id }} search={{ tab: "endpoints" }}>{t("routing.manageRouterEndpoints")}</Link></Button>
     </div>}
     <p className="text-sm text-muted-foreground">{t("routerDetail.deleteRetentionNote")}</p>
     {error && <ErrorNotice error={error} />}

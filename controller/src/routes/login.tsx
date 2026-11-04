@@ -11,6 +11,7 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useAuth } from "@/lib/auth";
 import { getSignInOptions, loginSso } from "@/lib/identity-api";
+import { projectLocation } from "@/lib/project-paths";
 import type { SupportedLanguage } from "@/i18n";
 
 export function LoginPage() {
@@ -37,7 +38,7 @@ export function LoginPage() {
     setCallbackError(false);
     try {
       await login({ username, password });
-      await navigate({ to: "/dashboard", replace: true });
+      if (!projectLocation(window.location.pathname)) await navigate({ to: "/", replace: true });
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : t("common.unknownError"));
     }

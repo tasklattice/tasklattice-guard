@@ -240,7 +240,7 @@ in that namespace:
 | Example Secret | Required keys |
 | --- | --- |
 | `tali-guard-uat-database` | `database-url`: PostgreSQL connection URL |
-| `tali-guard-uat-bootstrap-admin` | `username`, `name`, login credential and optional `revision`; exact field names and overrides are in [account operations](../../docs/operations.md#bootstrap-account-operations) |
+| `tali-guard-uat-bootstrap-admin` | `username`, login credential and optional `revision`; exact field names and overrides are in [account operations](../../docs/operations.md#bootstrap-account-operations) |
 
 Replace the Secret names and Redis URL with your environment's values. The
 example inherits ClusterIP Services, disabled Ingress, two Runner replicas,
@@ -526,7 +526,7 @@ kubectl -n guard-system create secret generic guard-database \
 For an externally managed administrator, have the platform provision an account
 Secret and set `security.bootstrapAdmin.existingSecret`. Use the Controller
 runtime's account field contract, or configure its field-name overrides. Otherwise
-set only the administrator username/name and let the initialization Job create it.
+set only the administrator username and let the initialization Job create it.
 
 Create an asymmetric Ed25519 artifact-signing Secret:
 
@@ -761,8 +761,13 @@ label-cardinality budget and upstream bypass boundary are in the repository's
 ## In-cluster account initialization
 
 The image initializes `admin` and `user` with their corresponding roles.
-Configure `username` and `name`, or supply `existingSecret`.
+Configure `username`, or supply `existingSecret`.
 Set `security.bootstrapUser.enabled=false` to omit the second account.
+Set `security.bootstrapUser.project` to create or reuse a Project on the default
+shared Runner and assign this local user to it. The development profile uses
+`test1`, with its own published Default Guardrail. Existing Project resources
+are preserved; a target using a dedicated Runner is rejected. Other users still
+require explicit membership, and SSO membership stays managed in Keycloak.
 
 Managed account Secrets are overwritten on every initialization Job run.
 Controller applies mounted account revisions while retaining account IDs and
@@ -782,7 +787,6 @@ security:
     enabled: true
   bootstrapAdmin:
     username: admin
-    name: Administrator
 ```
 
 A single initialization Job reuses the Controller image. On first installation it
@@ -873,10 +877,6 @@ fields through `--reuse-values`. Removed chart options are ignored and no longer
 configure the application. Rebuild and publish the Controller image before using
 this chart; its initialization protocol and mounted-account support must match
 the templates.
-
-### Optional Default Runner network policy
-
-`networkPolicy.runnerIsolation.enabled=true` adds an ingress/egress default-deny policy for the Default Runner. Configure trusted gateway/scraper `ingressPeers`, DNS peers and external Provider/Redis/collector destinations under `poolEgress.default` before enabling. Controller and bundled Redis are explicit shared destinations; other Runner pools and PostgreSQL are not default exceptions. Requires an enforcing CNI and a packet-level rollout test. Other policies can add permissions; rendering does not prove network isolation.
 
 ## Redis capacity and context degradation
 

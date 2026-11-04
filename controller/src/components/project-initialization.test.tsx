@@ -6,7 +6,7 @@ import { initializationEmail } from "@/projects-i18n";
 import { ProjectInitializationGate } from "./project-initialization";
 const api = vi.hoisted(() => ({ get: vi.fn(), refresh: vi.fn(), clipboard: vi.fn() }));
 vi.mock("@/lib/projects-api", () => ({ getProjectAccess: api.get, refreshProjectAccess: api.refresh }));
-vi.mock("@/lib/auth", () => ({ useAuth: () => ({ user: {id:"human-1", display_name:"Alice", username:"alice", email:"alice@users.guard.invalid", role:"user", project_id:null} }) }));
+vi.mock("@/lib/auth", () => ({ useAuth: () => ({ user: {id:"human-1", username:"alice", email:"alice@users.guard.invalid", role:"user", project_id:null} }) }));
 const missing = {state:"project_missing" as const, projectId:null, missingProjects:[{projectId:"support",departmentId:"operations"}]};
 const mount = () => render(<QueryClientProvider client={new QueryClient({defaultOptions:{queries:{retry:false}}})}><ProjectInitializationGate><div>Project workspace</div></ProjectInitializationGate></QueryClientProvider>);
 beforeEach(async () => {
@@ -42,7 +42,7 @@ describe("Project initialization", () => {
     expect(screen.queryByRole("button",{name:"Copy email template"})).toBeNull();
   });
   it("explains the missing Runner setup in the generated text", () => {
-    const email=initializationEmail({chinese:false,name:"Alice",account:"alice@example.test",userId:"human-1",origin:"https://guard.example.test",status:{state:"runner_uninitialized",projectId:"support",missingProjects:[]}});
+    const email=initializationEmail({chinese:false,account:"alice@example.test",userId:"human-1",origin:"https://guard.example.test",status:{state:"runner_uninitialized",projectId:"support",missingProjects:[]}});
     expect(email.body).toContain("Runner environment is not initialized"); expect(email.body).toContain("Project: support");
   });
 });

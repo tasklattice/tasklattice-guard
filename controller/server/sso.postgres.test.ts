@@ -84,7 +84,9 @@ describe.skipIf(!databaseUrl)("OIDC authorization code flow and Relay project gr
   it("signs in a real human, syncs projects from full paths, and freezes token project scope", async () => {
     const { callback, result } = await login();
     expect(callback.headers.get("location")).toBe("/dashboard");
-    expect(result?.user).toMatchObject({ name: "Alice", email: "alice@example.test", role: "user" });
+    expect(result?.user).toMatchObject({ username: "alice", email: "alice@example.test", role: "user" });
+    expect((await pool.query("SELECT id_token,access_token,refresh_token FROM auth_account")).rows)
+      .toEqual([{ id_token: null, access_token: null, refresh_token: null }]);
     expect(result?.session.activeProjectId).toBeNull();
     const userId = result!.user.id;
     expect((new Date(result!.session.expiresAt).getTime() - Date.now()) / 1000).toBeLessThanOrEqual(3600);

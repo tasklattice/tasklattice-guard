@@ -1,3 +1,4 @@
+import { projectParams } from "@/lib/project-paths";
 import { EndpointProtocolIcon } from "@/components/endpoint-protocol-icon";
 import { useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -38,8 +39,6 @@ import {
 } from "@/lib/traffic-routing-api";
 
 
-export const endpointHref = (id: string) =>
-  `/integration/endpoints?${new URLSearchParams({ endpointId: id })}`;
 type Action = { kind: "attach" } | { kind: "detach"; id: string; name: string };
 
 export function RouterEndpoints({
@@ -193,9 +192,9 @@ export function RouterEndpoints({
                 return (
                   <TableRow key={id}>
                     <TableCell>
-                      <Link
+                      <Link params={projectParams()}
                         className="inline-flex min-h-11 items-center gap-2 font-medium text-primary hover:underline"
-                        to="/integration/endpoints"
+                        to="/$projectId/integration/endpoints"
                         search={{ endpointId: id }}
                       >
                         {endpoint && <EndpointProtocolIcon protocol={endpoint.protocol} size="sm" />}
@@ -238,8 +237,8 @@ export function RouterEndpoints({
                         </DropdownMenuTrigger>
                         <DropdownMenuContent align="end">
                           <DropdownMenuItem asChild>
-                            <Link
-                              to="/integration/endpoints"
+                            <Link params={projectParams()}
+                              to="/$projectId/integration/endpoints"
                               search={{ endpointId: id }}
                             >
                               {t("routing.viewEndpoint")}

@@ -11,16 +11,16 @@ let client:QueryClient;
 beforeEach(async()=>{
  await i18n.changeLanguage('en');client=new QueryClient({defaultOptions:{queries:{retry:false},mutations:{retry:false}}});
  vi.mocked(api.listProjects).mockResolvedValue({items:[{id:'support',name:'support',groupId:'default',groupName:'Default',poolId:'default',poolName:'runner-default',memberCount:12}],nextCursor:'support'});
- vi.mocked(api.listProjectMembers).mockResolvedValue({items:[{userId:'sso',name:'SSO user',username:'sso',email:'sso@test',source:'sso',access:'read',roles:[]}],nextCursor:null});
- vi.mocked(api.listMemberCandidates).mockResolvedValue({items:[{id:'local',name:'Local user',username:'local'}],nextCursor:null});
+ vi.mocked(api.listProjectMembers).mockResolvedValue({items:[{userId:'sso',username:'sso',email:'sso@test',source:'sso',access:'read',roles:[]}],nextCursor:null});
+ vi.mocked(api.listMemberCandidates).mockResolvedValue({items:[{id:'local',username:'local'}],nextCursor:null});
  vi.mocked(api.createProject).mockResolvedValue({id:'new-project',name:'new-project',groupId:'default'});
 });
 afterEach(()=>{cleanup();client.clear();vi.clearAllMocks();});
 const mount=()=>render(<QueryClientProvider client={client}><ProjectsPage/></QueryClientProvider>);
 it('loads members and local candidates in separate on-demand queries',async()=>{
  mount();await screen.findByText('runner-default');expect(api.listProjectMembers).not.toHaveBeenCalled();expect(api.listMemberCandidates).not.toHaveBeenCalled();
- fireEvent.click(screen.getByRole('button',{name:'Actions · support'}));fireEvent.click(await screen.findByText('Manage local users'));await screen.findByText('SSO user');expect(screen.queryByRole('button',{name:'Remove access'})).toBeNull();expect(api.listMemberCandidates).not.toHaveBeenCalled();
- fireEvent.click(screen.getByRole('button',{name:'Add member'}));await screen.findByText('Local user');expect(api.listMemberCandidates).toHaveBeenCalledWith('support',{q:'',cursor:undefined,limit:25},expect.any(AbortSignal));
+ fireEvent.click(screen.getByRole('button',{name:'Actions · support'}));fireEvent.click(await screen.findByText('Manage local users'));await screen.findByText('sso');expect(screen.queryByRole('button',{name:'Remove access'})).toBeNull();expect(api.listMemberCandidates).not.toHaveBeenCalled();
+ fireEvent.click(screen.getByRole('button',{name:'Add member'}));await screen.findByText('local');expect(api.listMemberCandidates).toHaveBeenCalledWith('support',{q:'',cursor:undefined,limit:25},expect.any(AbortSignal));
 });
 it('creates one canonical Project identity without a separate ID override',async()=>{
  mount();await screen.findByText('runner-default');fireEvent.click(screen.getByRole('button',{name:'Create project'}));const sheet=screen.getByRole('dialog');

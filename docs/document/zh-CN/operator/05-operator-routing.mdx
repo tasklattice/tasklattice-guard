@@ -38,7 +38,7 @@ Router 通过已审阅的变更单发布。常规流程需要另一位有权限�
 
 批准只会启动下发，不能证明每个 Runner 都已应用配置。
 
-[管理 Endpoints](/integration/endpoints) · [管理 Routers](/integration/routers)
+[管理 Endpoints](/$projectId/integration/endpoints) · [管理 Routers](/$projectId/integration/routers)
 
 <a id="operator-canary-release" />
 ## 在同一条 Route 中分配稳定版与候选版
@@ -59,7 +59,7 @@ Router 通过已审阅的变更单发布。常规流程需要另一位有权限�
 3. 检查更早的 Route 和 fallback，核对共享 Router 绑定的所有 Endpoints。
 4. 预览匹配，将版本、权重和绑定提交审批。
 5. 确认下发后，在 **Monitoring** 检查实际 Target 占比、分配量、Decision、错误和延迟。
-6. 在[运行日志](/logs)检查候选版结果，并考虑统计延迟和样本波动。
+6. 在[运行日志](/$projectId/logs)检查候选版结果，并考虑统计延迟和样本波动。
 7. 通过逐次审批的变更扩大候选版比例。结果不符合预期时，回退当前活动变更。
 
 **Test matching** 只检查路由，不执行保护，也不能证明实际分流比例。
@@ -90,4 +90,4 @@ Input 与 Output 共享协议的 Call ID 时，才会沿用同一个 Target。�
 
 Enforce、Monitor 和 Bypass 的在线行为不同。测试与显式 Playground 试验仍执行真实检测。结果与预期 Policy 动作不同时，请核对[运行模式](/document/overview/term-guardrail#state-guardrail-readiness)。
 
-[Endpoint 接入](/document/developer/endpoint-setup) · [查看运行日志](/logs)
+[Endpoint 接入](/document/developer/endpoint-setup) · [查看运行日志](/$projectId/logs)

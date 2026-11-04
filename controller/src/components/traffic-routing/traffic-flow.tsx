@@ -1,3 +1,4 @@
+import { projectParams } from "@/lib/project-paths";
 import { EndpointSetupBadge } from "@/components/endpoint-setup-badge";
 import { createContext, useContext, useId, useMemo } from "react";
 import { Link } from "@tanstack/react-router";
@@ -27,7 +28,7 @@ function TrafficNode({ data }: NodeProps<TrafficFlowNode>) {
   if (data.kind === "endpoint") {
     const e = data.endpoint;
     return <>
-      <Link to="/integration/endpoints" search={{ endpointId: e.id }} className="router-flow-card nodrag" title={e.name}>
+      <Link params={projectParams()} to="/$projectId/integration/endpoints" search={{ endpointId: e.id }} className="router-flow-card nodrag" title={e.name}>
         <span className="router-flow-title"><EndpointProtocolIcon protocol={e.protocol} size="sm" /><span>{e.name}</span></span>
         <span><EndpointSetupBadge status={e.setup_status} /></span>
       </Link>
@@ -39,11 +40,11 @@ function TrafficNode({ data }: NodeProps<TrafficFlowNode>) {
     const name = guardrails.find(g => g.id === target.guardrailId)?.name ?? t("routing.guardRailUnavailable");
     return <>
       {target.weightBps > 0 && <Handle type="target" position={Position.Left} id="in" isConnectable={false} />}
-      <a className="router-flow-card nodrag" href={`/guardrails/${encodeURIComponent(target.guardrailId)}`} title={`${name} · ${target.guardrailVersion || t("routing.versionUnavailable")}`}>
+      <Link className="router-flow-card nodrag" to="/$projectId/guardrails/$guardrailId" params={{ ...projectParams(), guardrailId: target.guardrailId }} title={`${name} · ${target.guardrailVersion || t("routing.versionUnavailable")}`}>
         <span className="router-flow-title"><ShieldCheck aria-hidden="true" /><span>{name}</span></span>
         <span className="router-flow-version">{target.guardrailVersion || t("routing.versionUnavailable")}</span>
         {target.weightBps === 0 && <span className="router-flow-detail">{t("routing.zeroWeightTarget")}</span>}
-      </a>
+      </Link>
     </>;
   }
   const { route, ordinal } = data;

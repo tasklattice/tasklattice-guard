@@ -30,7 +30,8 @@ await models.groupRuntime.assertAuthenticationCompatibility(config.runnerPoolTok
 await models.initialize();
 
 const auth = createAuth(config, db);
-const bootstrapAccounts = new BootstrapAccountSynchronizer(auth);
+const projects = new ProjectService(db, (tx, id) => service.initializeProject(tx, id), config.runtimeServiceUrl);
+const bootstrapAccounts = new BootstrapAccountSynchronizer(auth, projects);
 async function synchronizeAccounts() {
   for (const result of await bootstrapAccounts.synchronize(loadConfig())) {
     process.stdout.write(`Better Auth bootstrap ${result.role} ${result.username}: ${result.status}.\n`);
@@ -62,7 +63,7 @@ const app = createHttpApp({
   auth,
   ssoHandler: createSsoHandler(config, db),
   accessTokens: new AccessTokenService(db),
-  projects: new ProjectService(db, (tx, id) => service.initializeProject(tx, id), config.runtimeServiceUrl),
+  projects,
   projectShares: new ProjectShareService(db),
   service,
   runnerControl,

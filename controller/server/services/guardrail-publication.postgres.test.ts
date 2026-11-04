@@ -45,7 +45,7 @@ describe.skipIf(!url)("Publishing the tested candidate in PostgreSQL", { timeout
       CONTROLLER_PROTO_PATH: protoPath,
       BETTER_AUTH_SECRET: "better-auth-secret-that-is-at-least-32-characters",
     }));
-    await database.pool.query("INSERT INTO auth_user (id, name, email, role) VALUES ('admin', 'Admin', 'admin@example.test', 'admin')");
+    await database.pool.query("INSERT INTO auth_user (id, username, email, role) VALUES ('admin', 'Admin', 'admin@example.test', 'admin')");
     await database.pool.query("INSERT INTO controller_state (id, desired_generation) VALUES ('singleton', 3)");
     await database.pool.query("INSERT INTO runner_pool(id,name,is_default) VALUES ('default','Default',true)");
   });

@@ -9,7 +9,7 @@ import type { ControllerConfig } from "./config.js";
 import type { ControllerDatabase } from "./db/client.js";
 import { account, projectMembers, session, user, verification } from "./db/schema.js";
 import { synchronizeSsoMemberships } from "./services/sso-memberships.js";
-import { oidcProvider } from "./sso.js";
+import { oidcProvider, ssoIdentityContext } from "./sso.js";
 import { SSO_PROVIDER_ID } from "./sso-config.js";
 import { internalAccountEmail, normalizeUsername, usernamePattern } from "../shared/username.js";
 
@@ -61,7 +61,16 @@ export function createAuth(config: ControllerConfig, db: ControllerDatabase, inc
       "/send-verification-email", "/verify-email",
       "/link-social", "/unlink-account",
     ],
-    account: { accountLinking: { enabled: false } },
+    account: {
+      accountLinking: { enabled: false },
+      // Provider tokens can contain profile data. Only verified identity and
+      // entitlement claims are needed, within the current callback request.
+      additionalFields: {
+        idToken: { type: "string", required: false, input: false, returned: false, transform: { input: () => undefined } },
+        accessToken: { type: "string", required: false, input: false, returned: false, transform: { input: () => undefined } },
+        refreshToken: { type: "string", required: false, input: false, returned: false, transform: { input: () => undefined } },
+      },
+    },
     session: {
       expiresIn: 60 * 60 * 24 * 7,
       updateAge: 60 * 60,
@@ -71,6 +80,8 @@ export function createAuth(config: ControllerConfig, db: ControllerDatabase, inc
     },
     user: {
       additionalFields: {
+        // Better Auth has a core name field; it is never a stored user attribute.
+        name: { type: "string", required: false, input: false, returned: false, transform: { input: () => undefined } },
         preferredLanguage: {
           type: "string",
           required: false,
@@ -123,11 +134,11 @@ export function createAuth(config: ControllerConfig, db: ControllerDatabase, inc
               if (external) throw new APIError("FORBIDDEN", { message: "Use Keycloak to sign in to this account." });
             }
             if (sso && context?.path === "/callback/:id" && context.params?.id === SSO_PROVIDER_ID) {
-              const [identity] = await db.select({ idToken: account.idToken }).from(account)
+              const verified = ssoIdentityContext.getStore()?.identity;
+              const [identity] = await db.select({ subject: account.accountId }).from(account)
                 .where(and(eq(account.userId, created.userId), eq(account.providerId, SSO_PROVIDER_ID), eq(account.issuer, sso.issuer))).limit(1);
-              if (!identity?.idToken) throw new APIError("FORBIDDEN", { message: "Verified SSO identity is missing." });
-              const claims = JSON.parse(Buffer.from(identity.idToken.split(".")[1]!, "base64url").toString("utf8"));
-              await synchronizeSsoMemberships(db, created.userId, claims[sso.groupClaim]);
+              if (!verified || identity?.subject !== verified.subject) throw new APIError("FORBIDDEN", { message: "Verified SSO identity is missing." });
+              await synchronizeSsoMemberships(db, created.userId, verified.groups);
             }
             const [owner] = await db.select({ role: user.role }).from(user).where(eq(user.id, created.userId)).limit(1);
             const expiresAt = sso ? new Date(Math.min(created.expiresAt.getTime(), Date.now() + 60 * 60 * 1000)) : created.expiresAt;
@@ -168,6 +179,6 @@ export function createSsoHandler(config: ControllerConfig, db: ControllerDatabas
     let instance: ControllerAuth;
     try { instance = await pending; }
     catch { return Response.json({ error: { code: "sso_unavailable", message: "The identity provider is unavailable. Retry or use local sign-in." } }, { status: 503 }); }
-    return instance.handler(request);
+    return ssoIdentityContext.run({}, () => instance.handler(request));
   };
 }

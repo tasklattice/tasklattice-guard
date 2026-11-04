@@ -49,7 +49,7 @@ describe.skipIf(!url)("950-case full-feature report delivery", () => {
     }).handleMessage(stream, message, connection);
     let http: ReturnType<typeof serve> | undefined;
     try {
-      await database.pool.query("INSERT INTO auth_user (id, name, email) VALUES ('report-user', 'Tester', 'report@example.test')");
+      await database.pool.query("INSERT INTO auth_user (id, username, email) VALUES ('report-user', 'Tester', 'report@example.test')");
       await service.initialize();
       const draft = profileDraft(fullFeatureBaseline, await service.listPolicies());
       // Reproduce the reported local-only composition: model Policies removed.

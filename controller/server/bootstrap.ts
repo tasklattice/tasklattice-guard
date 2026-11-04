@@ -3,12 +3,12 @@ import { createLocalAccountIssuer } from "better-auth/db";
 import type { ControllerAuth } from "./auth.js";
 import { internalAccountEmail, usernameSchema } from "../shared/username.js";
 import type { AccountRole } from "../shared/rbac.js";
+import type { ProjectService } from "./services/projects.js";
 
 type BootstrapAccountInput = {
   auth: ControllerAuth;
   username: string;
   password: string;
-  name: string;
 };
 
 export function ensureBootstrapAdmin(input: BootstrapAccountInput) {
@@ -28,7 +28,7 @@ async function ensureBootstrapAccount(input: BootstrapAccountInput, role: Accoun
   const existing = await context.adapter.findOne<{ id: string }>({ model: "user", where: [{ field: "username", value: username }] });
   if (!existing) {
     await input.auth.api.createUser({ body: {
-      email: internalAccountEmail(username), password: input.password, name: input.name,
+      email: internalAccountEmail(username), password: input.password, name: "",
       role, data: { username },
     } });
     return "created";
@@ -45,7 +45,7 @@ async function ensureBootstrapAccount(input: BootstrapAccountInput, role: Accoun
     accountId: existing.id, userId: existing.id, password,
   });
   await context.internalAdapter.updateUser(existing.id, {
-    name: input.name, role, banned: false, banReason: null, banExpires: null,
+    role, banned: false, banReason: null, banExpires: null,
   });
   await context.internalAdapter.deleteUserSessions(existing.id);
   return "updated";
@@ -55,10 +55,11 @@ async function ensureBootstrapAccount(input: BootstrapAccountInput, role: Accoun
 // changes revision even when it writes the same password as last time.
 export class BootstrapAccountSynchronizer {
   private applied = new Map<string, string>();
-  constructor(private readonly auth: ControllerAuth) {}
+  constructor(private readonly auth: ControllerAuth,
+    private readonly projects?: Pick<ProjectService, "ensureBootstrapMembership">) {}
 
   async synchronize(config: { bootstrapAdmin: Omit<BootstrapAccountInput, "auth"> & { revision?: string } | null;
-    bootstrapUser: Omit<BootstrapAccountInput, "auth"> & { revision?: string } | null }) {
+    bootstrapUser: Omit<BootstrapAccountInput, "auth"> & { revision?: string; project?: string } | null }) {
     const results: { role: string; username: string; status: "created" | "updated" }[] = [];
     for (const [role, account, ensure] of [
       ["admin", config.bootstrapAdmin, ensureBootstrapAdmin],
@@ -68,6 +69,10 @@ export class BootstrapAccountSynchronizer {
       const signature = JSON.stringify(account);
       if (this.applied.get(role) === signature) continue;
       const status = await ensure({ auth: this.auth, ...account });
+      if (role === "user" && account.project) {
+        if (!this.projects) throw new Error("Bootstrap Project provisioning is not configured.");
+        await this.projects.ensureBootstrapMembership(account.username, account.project);
+      }
       this.applied.set(role, signature);
       results.push({ role, username: account.username, status });
     }

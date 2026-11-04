@@ -111,15 +111,15 @@ export const projectsZh = {
   empty: "暂无项目", createHint: "先创建项目，再添加真实用户作为成员。",
 };
 
-export function initializationEmail(input: {chinese: boolean; name: string; account: string; userId: string; origin: string; status: ProjectAccessStatus}) {
-  const {chinese, name, account, userId, origin, status} = input;
+export function initializationEmail(input: {chinese: boolean; account: string; userId: string; origin: string; status: ProjectAccessStatus}) {
+  const {chinese, account, userId, origin, status} = input;
   const projects = status.missingProjects.map(project => `${project.projectId} (${chinese ? "部门" : "department"}: ${project.departmentId})`).join(", ") || status.projectId || (chinese ? "尚未分配" : "Not assigned");
   const reason = status.state === "runner_uninitialized" ? (chinese ? "项目的 Runner 运行环境尚未初始化" : "The project's Runner environment is not initialized") : (chinese ? "项目或项目成员关系尚未初始化" : "The project or project membership is not initialized");
   return chinese ? {
     subject: "[TaskLattice Guard] 项目初始化申请",
-    body: `管理员您好，\n\n我已登录 TaskLattice Guard，但目前无法进入项目工作区，请协助完成初始化。\n\n平台地址：${origin}\n用户：${name}\n登录账号：${account}\n用户 ID：${userId}\nProject：${projects}\n当前状态：${reason}\n\n请核对我的项目权限，在 Guard 中初始化对应 Project，并分配共享或独立 Runner。SSO 账号请同时核对 Keycloak Group Path 中的部门、Project ID 和角色。\n\n完成后请通知我，我会点击“重新检查”继续使用。谢谢。`,
+    body: `管理员您好，\n\n我已登录 TaskLattice Guard，但目前无法进入项目工作区，请协助完成初始化。\n\n平台地址：${origin}\n登录账号：${account}\n用户 ID：${userId}\nProject：${projects}\n当前状态：${reason}\n\n请核对我的项目权限，在 Guard 中初始化对应 Project，并分配共享或独立 Runner。SSO 账号请同时核对 Keycloak Group Path 中的部门、Project ID 和角色。\n\n完成后请通知我，我会点击“重新检查”继续使用。谢谢。`,
   } : {
     subject: "[TaskLattice Guard] Project initialization request",
-    body: `Hello administrator,\n\nI have signed in to TaskLattice Guard but cannot access my project workspace. Please help initialize my access.\n\nPlatform: ${origin}\nUser: ${name}\nAccount: ${account}\nUser ID: ${userId}\nProject: ${projects}\nStatus: ${reason}\n\nPlease verify my project permissions, initialize the matching Project in Guard, and allocate a shared or dedicated Runner. For SSO accounts, also verify the department, Project ID and role in the Keycloak Group Path.\n\nPlease let me know when it is ready. I will select “Check again” to continue. Thank you.`,
+    body: `Hello administrator,\n\nI have signed in to TaskLattice Guard but cannot access my project workspace. Please help initialize my access.\n\nPlatform: ${origin}\nAccount: ${account}\nUser ID: ${userId}\nProject: ${projects}\nStatus: ${reason}\n\nPlease verify my project permissions, initialize the matching Project in Guard, and allocate a shared or dedicated Runner. For SSO accounts, also verify the department, Project ID and role in the Keycloak Group Path.\n\nPlease let me know when it is ready. I will select “Check again” to continue. Thank you.`,
   };
 }

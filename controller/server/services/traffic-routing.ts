@@ -99,7 +99,7 @@ export class TrafficRoutingService {
         .innerJoin(trafficRouters, eq(trafficRouters.id, trafficRouterChangeRequests.routerId))
         .where(or(eq(trafficRouterChangeRequests.status, "pending"), and(eq(trafficRouterChangeRequests.status, "applied"),
           eq(trafficRouterChangeRequests.kind, "publish"), eq(trafficRouterChangeRequests.appliedRevision, trafficRouters.activeRevision))))
-        .then(found => this.withNames(this.db, found.map(row => row.change))),
+        .then(found => this.withUsernames(this.db, found.map(row => row.change))),
     ]);
     const owners = [...new Set(rows.map(row => row.projectId))];
     const allocations = owners.length ? await this.db.select({ id: projects.id, poolId: runnerPools.id })
@@ -229,7 +229,7 @@ export class TrafficRoutingService {
   async changeRequests(id: string) {
     await this.get(id);
     const rows = await this.db.select().from(trafficRouterChangeRequests).where(eq(trafficRouterChangeRequests.routerId, id)).orderBy(desc(trafficRouterChangeRequests.submittedAt));
-    return this.withNames(this.db, rows);
+    return this.withUsernames(this.db, rows);
   }
   async changeRequest(id: string, changeId: string) {
     const found = (await this.changeRequests(id)).find(change => change.id === changeId);
@@ -394,14 +394,14 @@ export class TrafficRoutingService {
     if (!change) throw new NotFoundError("Router change request", changeId);
     return change;
   }
-  private async withNames(tx: Tx | ControllerDatabase, rows: Array<typeof trafficRouterChangeRequests.$inferSelect>): Promise<RouterChangeRequest[]> {
+  private async withUsernames(tx: Tx | ControllerDatabase, rows: Array<typeof trafficRouterChangeRequests.$inferSelect>): Promise<RouterChangeRequest[]> {
     const ids = [...new Set(rows.flatMap(row => [row.submittedBy, row.decidedBy].filter((value): value is string => Boolean(value))))];
-    const people = ids.length ? await tx.select({ id: user.id, name: user.name }).from(user).where(inArray(user.id, ids)) : [];
+    const people = ids.length ? await tx.select({ id: user.id, username: user.username }).from(user).where(inArray(user.id, ids)) : [];
     const refs = await this.visibleReferences(tx, rows.map(row => row.snapshot), rows.map(row => row.context), rows.flatMap(row => row.endpointIds));
-    const name = (userId: string | null) => people.find(person => person.id === userId)?.name ?? null;
+    const username = (userId: string | null) => people.find(person => person.id === userId)?.username ?? null;
     return rows.map(row => ({ ...row, snapshot: redactSnapshot(row.snapshot, refs),
       endpointIds: row.endpointIds.filter(id => refs.endpoints === null || refs.endpoints.has(id)),
-      context: redactContext(row.context, refs), submittedByName: name(row.submittedBy), decidedByName: name(row.decidedBy),
+      context: redactContext(row.context, refs), submittedByUsername: username(row.submittedBy), decidedByUsername: username(row.decidedBy),
       submittedAt: row.submittedAt.toISOString(), decidedAt: row.decidedAt?.toISOString() ?? null }));
   }
   async revisions(id: string) {

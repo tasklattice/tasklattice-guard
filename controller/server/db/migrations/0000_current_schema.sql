@@ -142,7 +142,6 @@ CREATE TABLE "public".auth_session (
 
 CREATE TABLE "public".auth_user (
     id text NOT NULL,
-    name text NOT NULL,
     email text NOT NULL,
     email_verified boolean DEFAULT false NOT NULL,
     image text,

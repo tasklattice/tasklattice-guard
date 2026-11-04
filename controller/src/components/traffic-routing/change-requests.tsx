@@ -46,9 +46,9 @@ function ChangeFacts({ change }: { change: api.RouterChangeRequest }) {
   const rows: Array<[string, string]> = [
     [localize("routing.changeReason"), change.reason],
     [localize("routing.changeTicket"), change.ticket || "—"],
-    [localize("routing.submittedBy"), `${change.submittedByName ?? change.submittedBy} · ${new Date(change.submittedAt).toLocaleString()}`],
+    [localize("routing.submittedBy"), `${change.submittedByUsername ?? change.submittedBy} · ${new Date(change.submittedAt).toLocaleString()}`],
   ];
-  if (change.decidedAt) rows.push([localize("routing.decidedBy"), `${change.decidedByName ?? change.decidedBy ?? localize("routing.system")} · ${new Date(change.decidedAt).toLocaleString()}`]);
+  if (change.decidedAt) rows.push([localize("routing.decidedBy"), `${change.decidedByUsername ?? change.decidedBy ?? localize("routing.system")} · ${new Date(change.decidedAt).toLocaleString()}`]);
   if (change.decisionNote) rows.push([localize("routing.decisionNote"), change.decisionNote]);
   if (change.emergencyReason) rows.push([localize("routing.emergencyReason"), change.emergencyReason]);
   return (
@@ -72,7 +72,7 @@ export function PendingChangeNotice({ change, onOpen }: { change: api.RouterChan
         <p className="text-sm font-medium">{localize("routing.changeAwaitingApproval")}</p>
         <p className="mt-1 text-sm text-muted-foreground">
           {localize("routing.changeAwaitingApprovalDetail", {
-            name: change.submittedByName ?? change.submittedBy,
+            name: change.submittedByUsername ?? change.submittedBy,
             time: new Date(change.submittedAt).toLocaleString(),
           })}
           {change.ticket ? ` · ${change.ticket}` : ""}
@@ -327,8 +327,8 @@ export function ChangeRequestHistory({ routerId, revisions, onOpenChange, onOpen
                   </TableCell>
                   <TableCell><ChangeStatus change={change} /></TableCell>
                   <TableCell className="whitespace-nowrap">{new Date(change.submittedAt).toLocaleString()}</TableCell>
-                  <TableCell>{change.submittedByName ?? change.submittedBy}</TableCell>
-                  <TableCell>{change.decidedAt ? change.decidedByName ?? change.decidedBy ?? localize("routing.system") : "—"}</TableCell>
+                  <TableCell>{change.submittedByUsername ?? change.submittedBy}</TableCell>
+                  <TableCell>{change.decidedAt ? change.decidedByUsername ?? change.decidedBy ?? localize("routing.system") : "—"}</TableCell>
                   <TableCell>{revision ? <Button variant="link" className="px-0 font-mono text-xs" onClick={() => onOpenRevision(revision.revision)}>{revisionLabel(revision)}<ArrowUpRight /></Button> : change.appliedRevision !== null ? <span className="text-xs text-muted-foreground">{localize("routing.revisionUnavailable")}</span> : "—"}</TableCell>
                 </TableRow>;
               })}

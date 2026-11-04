@@ -26,7 +26,7 @@ describe.skipIf(!url)("Personal access tokens in PostgreSQL", () => {
   afterAll(async () => { await pool?.end(); await admin?.query(`DROP SCHEMA IF EXISTS "${namespace}" CASCADE`); await admin?.end(); });
   beforeEach(async () => {
     await pool.query("TRUNCATE auth_user CASCADE");
-    await pool.query("INSERT INTO auth_user(id,name,email,role) VALUES ('owner','Owner','owner@test.local','admin'),('other','Other','other@test.local','user')");
+    await pool.query("INSERT INTO auth_user(id,username,email,role) VALUES ('owner','Owner','owner@test.local','admin'),('other','Other','other@test.local','user')");
     await pool.query("INSERT INTO project_member(project_id,user_id) VALUES ('projectA','other')");
   });
   const input = { name: "CI", expiresInDays: 30, permissions: { models: "write", runners: "read" } };

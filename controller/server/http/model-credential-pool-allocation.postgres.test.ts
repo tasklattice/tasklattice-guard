@@ -33,7 +33,7 @@ describe.skipIf(!url)("model credential current pool allocation", () => {
     database = await createTestDatabase(url!, "credential_pool_allocation");
     const assignments = emptyModelAssignments();
     assignments.bindings["content_safety.input"] = modelId;
-    await database.pool.query("INSERT INTO auth_user(id,name,email,role) VALUES ('credential-admin','Admin','credential-admin@test.invalid','admin')");
+    await database.pool.query("INSERT INTO auth_user(id,username,email,role) VALUES ('credential-admin','Admin','credential-admin@test.invalid','admin')");
     await database.pool.query("INSERT INTO project_group(id,name) VALUES ('credential-group','Credential group')");
     for (const [id, name, secret] of [[providerId, "Active provider", "active-secret"], [candidateProviderId, "Candidate provider", "candidate-secret"]]) {
       await database.pool.query("INSERT INTO model_provider(id,name,kind,base_url,credential_ciphertext) VALUES ($1,$2,'custom-openai-compatible','https://provider.invalid',$3)",

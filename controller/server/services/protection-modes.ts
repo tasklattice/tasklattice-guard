@@ -58,8 +58,8 @@ export class ProtectionModeService {
 
   async summary(row: Guardrail, ready: boolean) {
     const snapshot = protectionModeSnapshot(row, await this.runners(this.db, row, true), ready, Date.now() - this.offlineAfterSeconds * 1000);
-    const [actor] = row.protectionModeUpdatedBy ? await this.db.select({ name: user.name }).from(user).where(eq(user.id, row.protectionModeUpdatedBy)) : [];
-    return { ...snapshot, updatedBy: actor?.name ?? snapshot.updatedBy };
+    const [actor] = row.protectionModeUpdatedBy ? await this.db.select({ username: user.username }).from(user).where(eq(user.id, row.protectionModeUpdatedBy)) : [];
+    return { ...snapshot, updatedBy: actor?.username ?? snapshot.updatedBy };
   }
 
   async get(id: string) {

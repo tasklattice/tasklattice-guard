@@ -1,3 +1,4 @@
+import { setCurrentProjectId } from "@/lib/project-context";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -20,6 +21,7 @@ const current: Policy = {
   effects: ["transform"], detectors: ["text/regex"], safety_level: "balanced", output_delivery: "full_buffered",
   protection: { directory: "privacy", execution: "local", modelCapabilities: [], requiredContext: [], outputStreaming: "complete_response", limitations: [] },
 };
+beforeEach(() => { setCurrentProjectId("test1"); });
 afterEach(cleanup);
 beforeEach(() => { routing.search = {}; routing.navigate.mockReset(); });
 
@@ -44,7 +46,7 @@ describe("focused protection library", () => {
     expect(alert.textContent).toContain("No other version has been substituted");
     expect(screen.queryByRole("dialog")).toBeNull();
     fireEvent.click(within(alert).getByRole("button", { name: "common.close" }));
-    expect(routing.navigate).toHaveBeenCalledWith({ to: "/policy-library", search: { policy: undefined, version: undefined }, replace: true });
+    expect(routing.navigate).toHaveBeenCalledWith({ to: "/$projectId/policy-library", params: { projectId: "test1" }, search: { policy: undefined, version: undefined }, replace: true });
   });
 
   it("shows the complete map and respects an empty directory", async () => {

@@ -24,7 +24,7 @@ describe.skipIf(!url)("project authority across Policy, telemetry and package bo
       CONTROLLER_POLICY_CATALOG_DIR: resolve("../runner/toolkit/policy_library/assets"), BETTER_AUTH_SECRET: "better-auth-secret-that-is-at-least-32-characters" });
     service = new ControlPlaneService(database.db, config);
     shares = new ProjectShareService(database.db);
-    await database.pool.query(`INSERT INTO auth_user (id,name,email,role) SELECT id,name,email,role FROM (VALUES ('actor-projectA','A','a@example.test','user','projectA'),('actor-projectB','B','b@example.test','user','projectB'),('actor-projectC','C','c@example.test','user','projectC')) AS fixture(id,name,email,role,project_id);
+    await database.pool.query(`INSERT INTO auth_user (id,username,email,role) SELECT id,name,email,role FROM (VALUES ('actor-projectA','A','a@example.test','user','projectA'),('actor-projectB','B','b@example.test','user','projectB'),('actor-projectC','C','c@example.test','user','projectC')) AS fixture(id,name,email,role,project_id);
       INSERT INTO guardrail (id,project_id,name,draft_config) VALUES ('shared-guardrail','projectA','A Guardrail','{}');
       INSERT INTO endpoint (id,project_id,name,adapter) VALUES ('endpoint-b','projectB','B Endpoint','litellm-generic-guardrail');
       INSERT INTO resource_share (id,owner_project_id,recipient_project_id,resource_type,resource_id) VALUES ('guardrail-share','projectA','projectB','guardrail','shared-guardrail');`);

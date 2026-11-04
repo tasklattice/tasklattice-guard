@@ -210,10 +210,15 @@ describe("Controller config", () => {
 
 
 describe("bootstrap username/password configuration", () => {
+  it("normalizes an explicit bootstrap Project and rejects the reserved Runner pool name", () => {
+    const env = { ...requiredEnvironment, CONTROLLER_BOOTSTRAP_USER_USERNAME: "user", CONTROLLER_BOOTSTRAP_USER_PASSWORD: "password" };
+    expect(loadConfig({ ...env, CONTROLLER_BOOTSTRAP_USER_PROJECT: " My_Project " }).bootstrapUser?.project).toBe("my-project");
+    expect(() => loadConfig({ ...env, CONTROLLER_BOOTSTRAP_USER_PROJECT: "default" })).toThrow();
+  });
   it("accepts separate username/password accounts", () => {
     expect(loadConfig(requiredEnvironment).bootstrapUser).toBeNull();
     expect(loadConfig({ ...requiredEnvironment, CONTROLLER_BOOTSTRAP_USER_USERNAME: " USER ", CONTROLLER_BOOTSTRAP_USER_PASSWORD: "password" }).bootstrapUser)
-      .toEqual({ username: "user", password: "password", name: "User" });
+      .toEqual({ username: "user", password: "password" });
   });
   it.each([
     { CONTROLLER_BOOTSTRAP_USER_USERNAME: "user" },

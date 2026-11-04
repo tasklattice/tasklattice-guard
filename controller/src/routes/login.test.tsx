@@ -11,7 +11,7 @@ vi.mock("@tanstack/react-router", () => ({ useNavigate: () => mocks.navigate }))
 vi.mock("@/lib/auth", () => ({ useAuth: () => ({ login: mocks.login, setLanguage: vi.fn(), loginPending: false }) }));
 vi.mock("react-i18next", () => ({ useTranslation: () => ({ t: (key: string) => key, i18n: { language: "en" } }) }));
 
-afterEach(() => { cleanup(); vi.resetAllMocks(); });
+afterEach(() => { cleanup(); vi.resetAllMocks(); window.history.replaceState(null, "", "/"); });
 
 function submitCredentials() {
   fireEvent.change(screen.getByLabelText("auth.loginIdentifier"), { target: { value: "operator" } });
@@ -20,12 +20,20 @@ function submitCredentials() {
 }
 
 describe("Username and password sign-in", () => {
-  it("submits credentials and opens the dashboard after successful authentication", async () => {
+  it("preserves a project deep link and its filters after sign-in", async () => {
+    window.history.replaceState(null, "", "/test2/playground?guardrail=example#result");
+    mocks.login.mockResolvedValue(undefined);
+    renderLogin(); submitCredentials();
+    await waitFor(() => expect(mocks.login).toHaveBeenCalled());
+    expect(mocks.navigate).not.toHaveBeenCalled();
+    expect(window.location.pathname + window.location.search + window.location.hash).toBe("/test2/playground?guardrail=example#result");
+  });
+  it("submits credentials and opens the landing page after successful authentication", async () => {
     mocks.login.mockResolvedValue(undefined);
     renderLogin();
     submitCredentials();
     await waitFor(() => expect(mocks.login).toHaveBeenCalledWith({ username: "operator", password: "test-password-only" }));
-    await waitFor(() => expect(mocks.navigate).toHaveBeenCalledWith({ to: "/dashboard", replace: true }));
+    await waitFor(() => expect(mocks.navigate).toHaveBeenCalledWith({ to: "/", replace: true }));
   });
 
   it("shows authentication failures without navigating", async () => {
@@ -44,6 +52,6 @@ describe("Username and password sign-in", () => {
     expect(await screen.findByText("auth.ssoFailed")).toBeTruthy();
     expect(mocks.sso).toHaveBeenCalledWith("corporate-sso");
     submitCredentials();
-    await waitFor(() => expect(mocks.navigate).toHaveBeenCalledWith({to:"/dashboard",replace:true}));
+    await waitFor(() => expect(mocks.navigate).toHaveBeenCalledWith({to:"/",replace:true}));
   });
 });

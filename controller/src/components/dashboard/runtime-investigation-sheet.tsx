@@ -1,3 +1,4 @@
+import { navigationProjectId, projectParams, projectPath } from "@/lib/project-paths";
 import { useState } from "react";
 import { Link } from "@tanstack/react-router";
 import { ArrowUpRight, Check, Copy } from "lucide-react";
@@ -15,7 +16,7 @@ export function RuntimeInvestigationSheet({ metrics, metric, onClose }: { metric
   const [copyState, setCopyState] = useState<"idle" | "copying" | "copied" | "failed">("idle");
   const investigation = runtimeInvestigation(metrics, metric);
   const logsSearch = runtimeInvestigationLogs(metrics, metric);
-  const logsUrl = new URL("/logs", window.location.origin);
+  const logsUrl = new URL(projectPath(navigationProjectId(), "/logs"), window.location.origin);
   for (const [key, value] of Object.entries(logsSearch)) if (value) logsUrl.searchParams.set(key, value);
   const label = t(`dashboard.metrics.${metric}`);
   const guidance = t(`dashboardInvestigation.${metric === "p95_latency" ? "latencyGuidance" : "errorGuidance"}`);
@@ -62,7 +63,7 @@ export function RuntimeInvestigationSheet({ metrics, metric, onClose }: { metric
           {copyState === "copied" ? t("dashboardInvestigation.copied") : copyState === "failed" ? t("dashboardInvestigation.copyFailed") : null}
         </p>
         <div className="runtime-investigation-footer__actions">
-          <Button variant="outline" asChild><Link to="/logs" search={logsSearch}>{t("dashboardInvestigation.viewLogs")}<ArrowUpRight /></Link></Button>
+          <Button variant="outline" asChild><Link params={projectParams()} to="/$projectId/logs" search={logsSearch}>{t("dashboardInvestigation.viewLogs")}<ArrowUpRight /></Link></Button>
           <Button disabled={copyState === "copying"} onClick={async () => {
             setCopyState("copying");
             try { await navigator.clipboard.writeText(summary); setCopyState("copied"); }

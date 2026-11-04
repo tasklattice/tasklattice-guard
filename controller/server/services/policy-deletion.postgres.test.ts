@@ -16,7 +16,7 @@ describe.skipIf(!url)("Policy deletion in PostgreSQL", () => {
   let service: ControlPlaneService;
   beforeAll(async () => {
     database = await createTestDatabase(url!, "policy_deletion");
-    await database.pool.query("INSERT INTO auth_user (id, name, email, role) VALUES ('test', 'Test', 'test@example.test', 'user')");
+    await database.pool.query("INSERT INTO auth_user (id, username, email, role) VALUES ('test', 'Test', 'test@example.test', 'user')");
     service = new ControlPlaneService(database.db, { policyCatalogDir: resolve("../runner/toolkit/policy_library/assets") } as ControllerConfig);
   });
   afterAll(async () => { await database?.drop(); });
@@ -82,7 +82,7 @@ describe.skipIf(!url)("Policy deletion in PostgreSQL", () => {
   it("records the locked Policy owner, not the platform administrator's project, after hard deletion", async () => {
     const definition = emptyPolicyDefinition();
     definition.metadata.id = "policy-owned-c"; definition.metadata.name = "Private C policy";
-    await database.pool.query("INSERT INTO auth_user (id,name,email,role) SELECT id,name,email,role FROM (VALUES ('admin-a','projectA','Admin','admin-a@example.test','admin')) AS fixture(id,project_id,name,email,role)");
+    await database.pool.query("INSERT INTO auth_user (id,username,email,role) SELECT id,name,email,role FROM (VALUES ('admin-a','projectA','Admin','admin-a@example.test','admin')) AS fixture(id,project_id,name,email,role)");
     await database.pool.query("INSERT INTO policy_resource (id,project_id,definition,maintainer) VALUES ('policy-owned-c','projectC',$1,'C')", [definition]);
     await runWithProjectContext({ projectId: "projectA", role: "admin" }, () => service.deletePolicy({ id: "policy-owned-c", actorId: "admin-a" }));
     const audit = (await database.pool.query("SELECT project_id FROM audit_event WHERE kind='policy.deleted' AND resource_id='policy-owned-c'")).rows;

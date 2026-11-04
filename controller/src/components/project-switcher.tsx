@@ -6,6 +6,7 @@ import { useTranslation } from "react-i18next";
 import { useDirectoryPage } from "./directory-pagination";
 import { useAuth } from "@/lib/auth";
 import { listMyProjects, selectProject } from "@/lib/projects-api";
+import { projectPath } from "@/lib/project-paths";
 import "./project-switcher.scss";
 
 /** Owns the current Project identity, directory and session switch in one place. */
@@ -29,7 +30,7 @@ export function ProjectSwitcher({ collapsed = false }: { collapsed?: boolean }) 
     try {
       await selectProject(projectId);
       // Re-enter with the persisted session; no cached data crosses Projects.
-      window.location.assign("/dashboard");
+      window.location.assign(projectPath(projectId));
     } catch {
       setError(true);
       setPending(null);

@@ -22,42 +22,6 @@ data:
       "duplicateEmailsAllowed": false,
       "clientScopes": [
         {
-          "name": "profile",
-          "description": "OpenID Connect profile claims",
-          "protocol": "openid-connect",
-          "attributes": {
-            "include.in.token.scope": "true",
-            "display.on.consent.screen": "true"
-          },
-          "protocolMappers": [
-            {
-              "name": "full name",
-              "protocol": "openid-connect",
-              "protocolMapper": "oidc-full-name-mapper",
-              "consentRequired": false,
-              "config": {
-                "id.token.claim": "true",
-                "access.token.claim": "true",
-                "userinfo.token.claim": "true"
-              }
-            },
-            {
-              "name": "preferred username",
-              "protocol": "openid-connect",
-              "protocolMapper": "oidc-usermodel-property-mapper",
-              "consentRequired": false,
-              "config": {
-                "user.attribute": "username",
-                "claim.name": "preferred_username",
-                "jsonType.label": "String",
-                "id.token.claim": "true",
-                "access.token.claim": "true",
-                "userinfo.token.claim": "true"
-              }
-            }
-          ]
-        },
-        {
           "name": "email",
           "description": "OpenID Connect email claims",
           "protocol": "openid-connect",
@@ -133,7 +97,7 @@ data:
         "secret": "${TALI_KEYCLOAK_CLIENT_SECRET}",
         "standardFlowEnabled": true,
         "directAccessGrantsEnabled": false,
-        "defaultClientScopes": ["profile", "email", "groups"],
+        "defaultClientScopes": ["email", "groups"],
         "redirectUris": {{ list (printf "%s/api/auth/callback/corporate-sso" (include "tali-guard.primaryPublicUrl" .)) | toJson }},
         "webOrigins": {{ list (include "tali-guard.primaryPublicUrl" .) | toJson }},
         "attributes": {"pkce.code.challenge.method": "S256"}
@@ -154,8 +118,6 @@ data:
           "id": {{ $project.userId | quote }},
           "username": {{ $project.username | quote }},
           "email": {{ printf "%s@guard.example.com" $project.username | quote }},
-          "firstName": {{ $project.username | quote }},
-          "lastName": "Test",
           "enabled": true, "emailVerified": true,
           "groups": [{{ printf "/tali/d/%s/p/%s/r/ROLE_AGENT_DEVELOPER" $identities.department $project.name | quote }}],
           "credentials": [{"type":"password","value":"password","temporary":false}]

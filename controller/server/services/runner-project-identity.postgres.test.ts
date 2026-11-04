@@ -15,7 +15,7 @@ describe.skipIf(!url)("Project names and dedicated Runner identity", () => {
   const admin = <T>(fn: () => T) => runWithProjectContext({role:"admin",actorId:"admin"}, fn);
   beforeEach(async () => {
     database = await createTestDatabase(url!, "runner_names");
-    await database.pool.query(`INSERT INTO auth_user(id,name,email,role) VALUES ('admin','Admin','admin@test.invalid','admin');
+    await database.pool.query(`INSERT INTO auth_user(id,username,email,role) VALUES ('admin','Admin','admin@test.invalid','admin');
       INSERT INTO runner_pool(id,name,is_default,runtime_url) VALUES ('default','runner-default',true,'http://default.invalid');
       INSERT INTO controller_state(id,desired_generation) VALUES ('singleton',0);`);
     const config = loadConfig({NODE_ENV:"test",CONTROLLER_DATABASE_URL:url!,CONTROLLER_RUNNER_TOKEN:"test-runner-token-at-least-32-characters",

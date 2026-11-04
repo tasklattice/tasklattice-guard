@@ -16,11 +16,11 @@ import {
 import { useAuth } from "@/lib/auth";
 import { cn } from "@/lib/utils";
 
-export function UserAvatar({ name, size = "default" }: { name: string; size?: "default" | "large" }) {
+export function UserAvatar({ username, size = "default" }: { username: string; size?: "default" | "large" }) {
   return (
     <Avatar className={cn(size === "large" ? "size-10" : "size-8", "rounded-full ring-1 ring-border")}>
       <AvatarFallback className="rounded-full bg-primary text-[11px] font-bold text-primary-foreground">
-        {userInitials(name)}
+        {Array.from(username).slice(0, 2).join("").toUpperCase()}
       </AvatarFallback>
     </Avatar>
   );
@@ -37,7 +37,7 @@ export function AccountMenu({
 }) {
   const { t } = useTranslation();
   const { user, logout, logoutPending } = useAuth();
-  const displayName = user?.display_name || t("account.fallbackName");
+  const username = user?.username || t("account.fallbackName");
 
   async function signOut() {
     try {
@@ -52,7 +52,7 @@ export function AccountMenu({
       <DropdownMenuTrigger asChild>
         <button
           type="button"
-          aria-label={t("sidebar.accountMenuFor", { name: displayName })}
+          aria-label={t("sidebar.accountMenuFor", { name: username })}
           className={cn(
             "group flex h-11 items-center outline-none transition-colors focus-visible:ring-2",
             placement === "header"
@@ -61,11 +61,11 @@ export function AccountMenu({
             collapsed ? "mx-auto size-11 justify-center" : placement === "header" ? "" : "w-full gap-2.5 px-2",
           )}
         >
-          <UserAvatar name={displayName} />
+          <UserAvatar username={username} />
           {!collapsed && placement !== "header" ? (
             <>
               <span className="min-w-0 flex-1 text-left">
-                <strong className="block truncate text-xs font-semibold text-sidebar-foreground">{displayName}</strong>
+                <strong className="block truncate text-xs font-semibold text-sidebar-foreground">{username}</strong>
                 <span className="mt-0.5 block truncate text-[10px] text-sidebar-foreground/50">{user?.project_id ? t("account.projectLabel", { project: user.project_id }) : user?.role === "admin" ? t("sidebar.platformIdentity") : t("projects.uninitialized")}</span>
               </span>
               <ChevronDown className="size-3.5 text-sidebar-foreground/45 transition-transform group-data-[state=open]:rotate-180" />
@@ -80,8 +80,7 @@ export function AccountMenu({
       >
         <DropdownMenuLabel className="font-normal">
           <span className="min-w-0">
-            <strong className="block truncate text-sm font-semibold text-foreground">{displayName}</strong>
-            <span className="mt-0.5 block truncate text-xs text-muted-foreground">{user?.username}</span>
+            <strong className="block truncate text-sm font-semibold text-foreground">{username}</strong>
             <span className="mt-0.5 block truncate text-xs text-muted-foreground">{user?.project_id ? t("account.projectLabel", { project: user.project_id }) : user?.role === "admin" ? t("sidebar.platformIdentity") : t("projects.uninitialized")}</span>
           </span>
         </DropdownMenuLabel>
@@ -108,11 +107,4 @@ export function AccountMenu({
       </DropdownMenuContent>
     </DropdownMenu>
   );
-}
-
-export function userInitials(name: string) {
-  const parts = name.trim().split(/\s+/).filter(Boolean);
-  if (!parts.length) return "U";
-  if (parts.length === 1) return Array.from(parts[0]).slice(0, 2).join("").toUpperCase();
-  return `${Array.from(parts[0])[0] ?? ""}${Array.from(parts.at(-1) ?? "")[0] ?? ""}`.toUpperCase();
 }

@@ -23,7 +23,7 @@ const event = (id = "checkpoint-1"): controllerApi.RuntimeEvent => ({
 });
 const clients: QueryClient[] = [];
 afterEach(() => { cleanup(); clients.splice(0).forEach(client => client.clear()); vi.restoreAllMocks(); });
-async function setup(path = "/logs", items = [event()]) {
+async function setup(path = "/test1/logs", items = [event()]) {
   vi.spyOn(api, "getGuardrails").mockResolvedValue({ items: [], count: 0 });
   vi.spyOn(api, "getRouters").mockResolvedValue({ items: [], count: 0 });
   vi.spyOn(api, "getGuardrailLoggingSettings").mockResolvedValue({ level: "info" } as Awaited<ReturnType<typeof api.getGuardrailLoggingSettings>>);
@@ -53,7 +53,7 @@ describe("URL-driven log inspection", () => {
   });
 
   it("restores an exact checkpoint outside the list page and preserves routing filters on close", async () => {
-    const { router, detail, list, history } = await setup("/logs?requestId=request%3A1&checkpointId=older-checkpoint&guardrailId=guardrail-1&routerId=router-1");
+    const { router, detail, list, history } = await setup("/test1/logs?requestId=request%3A1&checkpointId=older-checkpoint&guardrailId=guardrail-1&routerId=router-1");
     expect(await screen.findByRole("button", { name: /logs.executionTrace/ })).toBeTruthy();
     expect(detail).toHaveBeenCalledWith("older-checkpoint", expect.any(AbortSignal));
     expect(list).toHaveBeenCalledWith(100, { requestId: "request:1", guardrailId: "guardrail-1" }, expect.any(AbortSignal));
@@ -66,7 +66,7 @@ describe("URL-driven log inspection", () => {
   });
 
   it("resolves a request-only link and writes the automatically selected checkpoint to its URL", async () => {
-    const { router } = await setup("/logs?requestId=request%3A1&guardrailId=guardrail-1");
+    const { router } = await setup("/test1/logs?requestId=request%3A1&guardrailId=guardrail-1");
     await screen.findByRole("button", { name: /logs.executionTrace/ });
     await waitFor(() => expect(router.state.location.search.checkpointId).toBe("checkpoint-1"));
   });
@@ -96,7 +96,7 @@ describe("URL-driven log inspection", () => {
   });
 
   it("restores the Error filter and exact monitoring window from a link", async () => {
-    const { list, router } = await setup("/logs?outcome=error&routerId=router-1&endpointId=endpoint-1&routerRevision=2&since=2026-09-19T00%3A00%3A00Z&until=2026-09-20T00%3A00%3A00Z", [
+    const { list, router } = await setup("/test1/logs?outcome=error&routerId=router-1&endpointId=endpoint-1&routerRevision=2&since=2026-09-19T00%3A00%3A00Z&until=2026-09-20T00%3A00%3A00Z", [
       { ...event(), metadata: { executionStatus: "error" } },
     ]);
     await screen.findByRole("table");
@@ -111,7 +111,7 @@ describe("URL-driven log inspection", () => {
 
   it("keeps metadata-only and unassigned records in the same inspectable list", async () => {
     const metadataOnly = { ...event("metadata-only"), requestId: "unassigned-request", guardrailId: null, decision: "allow", metadata: { runtimeLogCaptured: false, protocol: "litellm" } };
-    const { detail } = await setup("/logs", [event(), metadataOnly]);
+    const { detail } = await setup("/test1/logs", [event(), metadataOnly]);
     await screen.findByRole("cell", { name: /litellm.*unassigned-request/ });
     expect(screen.getAllByRole("row")).toHaveLength(3);
     detail.mockResolvedValue(metadataOnly);
@@ -123,7 +123,7 @@ describe("URL-driven log inspection", () => {
   });
 
   it("keeps an exact event filter after closing detail, even outside the default time window", async () => {
-    const { router, list, detail } = await setup("/logs?eventId=older-checkpoint&requestId=request%3A1&checkpointId=older-checkpoint&guardrailId=guardrail-1");
+    const { router, list, detail } = await setup("/test1/logs?eventId=older-checkpoint&requestId=request%3A1&checkpointId=older-checkpoint&guardrailId=guardrail-1");
     const traceToggle = await screen.findByRole("button", { name: /logs.executionTrace/ });
     expect(traceToggle.getAttribute("aria-expanded")).toBe("false");
     expect(screen.queryByRole("button", { name: "logs.inspectSpan" })).toBeNull();
@@ -145,7 +145,7 @@ describe("URL-driven log inspection", () => {
     await screen.findByRole("table");
     detail.mockRejectedValueOnce(new Error("Record not found"));
     list.mockClear();
-    await router.navigate({ to: "/logs", search: { eventId: "missing-event" } });
+    await router.navigate({ to: "/test1/logs", search: { eventId: "missing-event" } });
     expect(await screen.findByText("Record not found")).toBeTruthy();
     expect(screen.queryByRole("table")).toBeNull();
     expect(list).not.toHaveBeenCalled();
@@ -154,7 +154,7 @@ describe("URL-driven log inspection", () => {
   });
 
   it("preserves each checkpoint's own version and protocol within one request", async () => {
-    await setup("/logs", [
+    await setup("/test1/logs", [
       { ...event("input"), guardrailVersion: "v1", metadata: { protocol: "litellm" } },
       { ...event("output"), guardrailVersion: "revision-b", direction: "outgoing", metadata: { protocol: "litellm-stream" } },
     ]);
@@ -185,7 +185,7 @@ function timeBound(field: "start" | "end") {
 
 describe("minute-precision log filtering", () => {
   it("stages edits, then sends UTC bounds including the whole end minute and keeps routing filters", async () => {
-    const { list, router } = await setup("/logs?routerId=router-1&routeId=route-1&outcome=block");
+    const { list, router } = await setup("/test1/logs?routerId=router-1&routeId=route-1&outcome=block");
     await screen.findByRole("table");
     list.mockClear();
     expect(screen.queryByLabelText("logs.startDate")).toBeNull();
@@ -202,7 +202,7 @@ describe("minute-precision log filtering", () => {
   });
 
   it("selects a calendar day without dismissing the editor or losing its minute value", async () => {
-    const { list } = await setup("/logs?since=2026-09-19T06%3A02%3A00Z&until=2026-09-21T06%3A05%3A59.999Z");
+    const { list } = await setup("/test1/logs?since=2026-09-19T06%3A02%3A00Z&until=2026-09-21T06%3A05%3A59.999Z");
     await screen.findByRole("table");
     list.mockClear();
     openTimeRange();
@@ -222,7 +222,7 @@ describe("minute-precision log filtering", () => {
   });
 
   it.each(["cancel", "escape", "outside"])("discards unapplied edits when dismissed via %s", async method => {
-    const { list } = await setup("/logs?since=2026-09-19T06%3A02%3A00Z&until=2026-09-19T06%3A05%3A59.999Z");
+    const { list } = await setup("/test1/logs?since=2026-09-19T06%3A02%3A00Z&until=2026-09-19T06%3A05%3A59.999Z");
     await screen.findByRole("table");
     list.mockClear();
     const originalStart = timeBound("start");
@@ -257,7 +257,7 @@ describe("minute-precision log filtering", () => {
   });
 
   it("fills a one-hour preset, clears fixed bounds, and restores them with Back", async () => {
-    const { list, router, history } = await setup("/logs?since=2026-09-19T06%3A02%3A00Z&until=2026-09-19T06%3A05%3A59.999Z&routerId=router-1");
+    const { list, router, history } = await setup("/test1/logs?since=2026-09-19T06%3A02%3A00Z&until=2026-09-19T06%3A05%3A59.999Z&routerId=router-1");
     await screen.findByRole("table");
     const originalStart = timeBound("start");
     const originalEnd = timeBound("end");

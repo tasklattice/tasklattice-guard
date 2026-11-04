@@ -105,7 +105,7 @@ Monitor 立即转发流式片段，在流结束后检测完整回复。认证、
 | 更新时间 | 资源更新时间，不是最后请求时间或 Router 变更时间。 |
 | 操作 | 提供当前有权限执行的资源操作。 |
 
-Policy 数量与测试结果要针对具体草稿或版本查看。路由引用与 Router 下发状态也要单独核对。费用统一在[账单](/billing)查看。
+Policy 数量与测试结果要针对具体草稿或版本查看。路由引用与 Router 下发状态也要单独核对。费用统一在[账单](/$projectId/billing)查看。
 
 就绪不能证明 Runner 健康或已有真实流量。还要检查 Endpoint、Router 与运行记录。切换期间，多个版本和在途调用可以同时存在。
 
@@ -192,7 +192,7 @@ Policy 数量与测试结果要针对具体草稿或版本查看。路由引用�
 | Transform | 使用返回的替换内容或有效补丁。 |
 | Block | 停止当前阶段，不向模型发送被阻断的 Input，不交付被阻断的 Output。 |
 
-[Playground](/playground)展示完整链路，[运行日志](/logs)展示检测证据。
+[Playground](/$projectId/playground)展示完整链路，[运行日志](/$projectId/logs)展示检测证据。
 
 <a id="term-enforcement-action" />
 ### Enforcement Action
@@ -243,7 +243,7 @@ Controller 管理配置与版本，Runner 执行检测。应用或网关调用�
 <a id="guardrail-usage-cost" />
 ## 用量与模型费用
 
-在[账单](/billing)按 Guardrail 筛选。统计覆盖各版本的运行调用、草稿测试、版本测试和 Playground 检测，周期边界使用 UTC。
+在[账单](/$projectId/billing)按 Guardrail 筛选。统计覆盖各版本的运行调用、草稿测试、版本测试和 Playground 检测，周期边界使用 UTC。
 
 金额用于估计内部检测成本，不包含应用业务模型、连接探测或控制面编写辅助。未调用模型的本地检查不产生模型费用。
 

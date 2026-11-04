@@ -1,8 +1,9 @@
+import { setCurrentProjectId } from "@/lib/project-context";
 import { resolve } from "node:path";
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import type { ReactNode } from "react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { Guardrail, GuardrailFindingPage, GuardrailPolicyBinding, GuardrailVersion, GuardrailVersionDetail, Metrics, Policy, TestCase } from "@/lib/api";
 import type { TrafficRouter } from "@/lib/traffic-routing-api";
@@ -26,7 +27,7 @@ vi.mock("react-i18next", () => ({
 }));
 
 vi.mock("@tanstack/react-router", () => ({
-  Link: ({ children, to, search }: { children: ReactNode; to?: string; search?: Record<string, string> }) => <a href={`${to ?? "#test"}${search ? `?${new URLSearchParams(search)}` : ""}`}>{children}</a>,
+  Link: ({ children, to, params, search }: { children: ReactNode; to?: string; params?: { projectId: string }; search?: Record<string, string> }) => <a href={`${to?.replace("$projectId", params?.projectId ?? "") ?? "#test"}${search ? `?${new URLSearchParams(search)}` : ""}`}>{children}</a>,
   useNavigate: () => vi.fn(),
   useParams: () => ({}),
 }));
@@ -83,7 +84,8 @@ const deletableGuardrail = {
 } satisfies Guardrail;
 
 describe("Guardrail detail information hierarchy", () => {
-  afterEach(() => { cleanup(); identity.role = "user"; vi.restoreAllMocks(); });
+  beforeEach(() => { setCurrentProjectId("test1"); });
+afterEach(() => { cleanup(); identity.role = "user"; vi.restoreAllMocks(); });
 
   it("loads the Guardrail logging level and recovers from a failed settings request", async () => {
     const load = vi.spyOn(api, "getGuardrailLoggingSettings")
@@ -271,7 +273,7 @@ describe("Guardrail detail information hierarchy", () => {
     expect(screen.getByText("Policy content-safety matched Rule harmful-request.")).toBeTruthy();
     expect(screen.getByText("99%")).toBeTruthy();
     const link = new URL(screen.getByRole("link", { name: "logs.viewLog" }).getAttribute("href")!, "http://localhost");
-    expect(link.pathname).toBe("/logs");
+    expect(link.pathname).toBe("/test1/logs");
     expect(Object.fromEntries(link.searchParams)).toEqual({ eventId: "event-critical", requestId: "trace-playground", checkpointId: "event-critical", guardrailId: "guardrail-observed" });
   });
 
@@ -377,7 +379,7 @@ describe("Guardrail detail information hierarchy", () => {
     fireEvent.click(screen.getByRole("tab", { name: /immutableVersions.policies/ }));
     expect(screen.getByText("pii")).toBeTruthy();
     // Each Policy opens the exact version this snapshot was built from.
-    expect(screen.getByText("pii").closest("a")?.getAttribute("href")).toBe("/policy-library?policy=pii&version=1.95.0");
+    expect(screen.getByText("pii").closest("a")?.getAttribute("href")).toBe("/test1/policy-library?policy=pii&version=1.95.0");
     fireEvent.click(screen.getByRole("tab", { name: "immutableVersions.compiled" }));
     expect(screen.getByText("guardrails.compiledRailsActions")).toBeTruthy();
     expect(screen.getByText("guardrails.dependenciesModels")).toBeTruthy();

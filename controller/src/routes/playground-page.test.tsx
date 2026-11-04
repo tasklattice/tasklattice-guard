@@ -1,10 +1,16 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import type { ReactNode } from "react";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { PlaygroundPage } from "./playground";
 
 const api = vi.hoisted(() => ({ models: vi.fn(), guardrails: vi.fn(), draftPreview: vi.fn() }));
 const session = vi.hoisted(() => ({ role: "user" }));
+vi.mock("@tanstack/react-router", () => ({
+  Link: ({ children, to, params, search, ...props }: { children: ReactNode; to: string; params?: Record<string, string>; search?: Record<string, string> }) => (
+    <a {...props} href={to.replace(/\$(\w+)/g, (_, key: string) => params?.[key] ?? "") + (search ? `?${new URLSearchParams(search)}` : "")}>{children}</a>
+  ),
+}));
 vi.mock("@/lib/auth", () => ({ useAuth: () => ({ user: { role: session.role } }) }));
 vi.mock("react-i18next", () => ({ useTranslation: () => ({ t: (key: string) => key }) }));
 vi.mock("@/lib/api", () => ({
@@ -30,7 +36,7 @@ function mount() {
   return render(<QueryClientProvider client={client}><PlaygroundPage /></QueryClientProvider>);
 }
 beforeEach(() => {
-  window.history.replaceState({}, "", "/playground");
+  window.history.replaceState({}, "", "/test1/playground");
   api.guardrails.mockResolvedValue({ items: [{ id: "guard", name: "Guard", published_current: "v1", published_version_count: 1 }] });
   api.models.mockResolvedValue(models);
 });
@@ -90,7 +96,7 @@ it("switches actual panels and keeps the advanced request when returning to it",
 });
 
 it("opens a ready advanced deep link without selecting Simple mode first", async () => {
-  window.history.replaceState({}, "", "/playground?mode=advanced");
+  window.history.replaceState({}, "", "/test1/playground?mode=advanced");
   mount();
   expect(await screen.findByLabelText("Request body")).toBeTruthy();
   expect(screen.getByRole("tab", { name: "playground.advancedMode" }).getAttribute("aria-selected")).toBe("true");
@@ -98,7 +104,7 @@ it("opens a ready advanced deep link without selecting Simple mode first", async
 
 
 it.each(["endpoint", "router"])("opens the %s deep link without a chat model or unrelated Guardrail selection", async (target) => {
-  window.history.replaceState({}, "", `/playground?mode=advanced&${target}=qa-target`);
+  window.history.replaceState({}, "", `/test1/playground?mode=advanced&${target}=qa-target`);
   api.models.mockResolvedValue({ items: [] });
   api.guardrails.mockResolvedValue({ items: [] });
   mount();

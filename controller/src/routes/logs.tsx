@@ -1,3 +1,4 @@
+import { projectParams } from "@/lib/project-paths";
 import { RuntimeFailureSummary } from "@/components/runtime-error-details";
 import { hasPermission } from "../../shared/rbac";
 import { runtimeLogOutcomes, type RuntimeLogOutcome } from "../../shared/runtime-outcome";
@@ -44,8 +45,8 @@ type OutcomeFilter = "all" | RuntimeLogOutcome;
 export function LogsPage() {
   const { t: uiText } = useTranslation();
   const { t } = useTranslation();
-  const search = useSearch({ from: "/logs" });
-  const navigate = useNavigate({ from: "/logs" });
+  const search = useSearch({ from: "/$projectId/logs" });
+  const navigate = useNavigate({ from: "/$projectId/logs" });
   const { requestId, checkpointId, eventId, outcome: selectedOutcome, guardrailId: selectedGuardrail, ...routingFilters } = search;
   const guardrailId = selectedGuardrail ?? "all";
   const setGuardrailId = (id: string) => void navigate({ search: previous => ({ ...previous, guardrailId: id === "all" ? undefined : id }) });
@@ -103,7 +104,7 @@ export function LogsPage() {
   return (
     <section className="py-8">
       <PageHeader title={t("pages.logs.title")} description={t("logs.description")} />
-      {routingFilters.routerId && <div className="my-3 rounded border p-3 text-sm">{uiText("uiCopy.router")}{" "}{routingFilters.routerId}{" "}{uiText("uiCopy.route")}{" "}{routingFilters.routeId ?? "—"}{" "}{uiText("uiCopy.target")}{" "}{routingFilters.targetId ?? "—"} · r{routingFilters.routerRevision ?? "—"} · {routingFilters.since} – {routingFilters.until} <Link to="/logs" search={{}} className="ml-3 text-primary">{uiText("uiCopy.clearRoutingFilters")}</Link></div>}
+      {routingFilters.routerId && <div className="my-3 rounded border p-3 text-sm">{uiText("uiCopy.router")}{" "}{routingFilters.routerId}{" "}{uiText("uiCopy.route")}{" "}{routingFilters.routeId ?? "—"}{" "}{uiText("uiCopy.target")}{" "}{routingFilters.targetId ?? "—"} · r{routingFilters.routerRevision ?? "—"} · {routingFilters.since} – {routingFilters.until} <Link params={projectParams()} to="/$projectId/logs" search={{}} className="ml-3 text-primary">{uiText("uiCopy.clearRoutingFilters")}</Link></div>}
 
       {settingsQuery.data && settingsQuery.data.level !== "info" ? (
         <div className="mt-5 flex items-start gap-3 rounded-lg border border-amber-200 bg-amber-50 p-4 text-amber-950">

@@ -14,7 +14,7 @@ function account(fields: Record<string, string>) {
 afterEach(() => directories.splice(0).forEach(path => rmSync(path, { recursive: true, force: true })));
 describe("mounted bootstrap accounts", () => {
   it("loads username/password fields and the login policy without mutating the environment", () => {
-    const input = { CONTROLLER_BOOTSTRAP_ADMIN_DIRECTORY: account({ username: "admin", name: "Admin", password: "password" }), CONTROLLER_MIN_LOGIN_LENGTH: "16" };
+    const input = { CONTROLLER_BOOTSTRAP_ADMIN_DIRECTORY: account({ username: "admin", password: "password" }), CONTROLLER_MIN_LOGIN_LENGTH: "16" };
     const result = clusterBootstrapEnvironment(input);
     expect(result.CONTROLLER_BOOTSTRAP_ADMIN_USERNAME).toBe("admin");
     expect(result.CONTROLLER_BOOTSTRAP_ADMIN_PASSWORD).toBe("password");
@@ -22,13 +22,13 @@ describe("mounted bootstrap accounts", () => {
     expect(input).not.toHaveProperty("CONTROLLER_BOOTSTRAP_ADMIN_USERNAME");
   });
   it("supports custom user fields", () => {
-    const result = clusterBootstrapEnvironment({ CONTROLLER_BOOTSTRAP_USER_DIRECTORY: account({ mail: "user", label: "User", login: "key" }), CONTROLLER_BOOTSTRAP_USER_FIELDS: JSON.stringify({ usernameKey: "mail", nameKey: "label", credentialKey: "login" }) });
+    const result = clusterBootstrapEnvironment({ CONTROLLER_BOOTSTRAP_USER_DIRECTORY: account({ mail: "user", login: "key" }), CONTROLLER_BOOTSTRAP_USER_FIELDS: JSON.stringify({ usernameKey: "mail", credentialKey: "login" }) });
     expect(result.CONTROLLER_BOOTSTRAP_USER_USERNAME).toBe("user");
     expect(result.CONTROLLER_BOOTSTRAP_USER_PASSWORD).toBe("key");
   });
   it("fails for missing required fields and field traversal", () => {
     const directory = account({ username: "admin" });
     expect(() => clusterBootstrapEnvironment({ CONTROLLER_BOOTSTRAP_ADMIN_DIRECTORY: directory })).toThrow();
-    expect(() => clusterBootstrapEnvironment({ CONTROLLER_BOOTSTRAP_ADMIN_DIRECTORY: directory, CONTROLLER_BOOTSTRAP_ADMIN_FIELDS: '{"nameKey":"../name"}' })).toThrow("Invalid bootstrap Secret field");
+    expect(() => clusterBootstrapEnvironment({ CONTROLLER_BOOTSTRAP_ADMIN_DIRECTORY: directory, CONTROLLER_BOOTSTRAP_ADMIN_FIELDS: '{"credentialKey":"../password"}' })).toThrow("Invalid bootstrap Secret field");
   });
 });

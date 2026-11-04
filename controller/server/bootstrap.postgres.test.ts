@@ -22,7 +22,7 @@ describe.skipIf(!process.env.GUARD_TEST_POSTGRES_URL)("username bootstrap (Postg
   afterAll(async () => { await database?.drop(); });
 
   it.each([["admin", ensureBootstrapAdmin], ["user", ensureBootstrapUser]] as const)("overwrites %s credentials, preserves ID, and invalidates existing sessions", async (role, ensure) => {
-    const input = { auth, username: role, name: role, password: "first-password" };
+    const input = { auth, username: role, password: "first-password" };
     await ensure(input);
     const first = await auth.api.signInUsername({ body: { username: role, password: input.password }, asResponse: true });
     expect(first.status).toBe(200);

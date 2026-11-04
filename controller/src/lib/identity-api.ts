@@ -12,8 +12,12 @@ export const getAccountSignInMethod = async () => {
   return result.data?.some(account => account.providerId === "corporate-sso") ? "sso" as const : "password" as const;
 };
 export const loginSso = async (providerId: string) => {
+  const callback = new URL(window.location.href);
+  callback.searchParams.delete("sso_error");
+  const callbackURL = `${callback.pathname}${callback.search}${callback.hash}`;
+  callback.searchParams.set("sso_error", "1");
   const result = await authClient.signIn.social({ provider: providerId,
-    callbackURL: "/dashboard", errorCallbackURL: "/dashboard?sso_error=1" });
+    callbackURL, errorCallbackURL: `${callback.pathname}${callback.search}${callback.hash}` });
   if (result.error) throw new Error(result.error.message || "SSO sign-in could not be started.");
 };
 
@@ -52,9 +56,8 @@ export const logout = async () => {
   setCurrentProjectId(null);
 };
 
-export const updateMe = async (input: { display_name?: string; preferred_language?: "en" | "zh-CN" }) => {
+export const updateMe = async (input: { preferred_language?: "en" | "zh-CN" }) => {
   const result = await authClient.updateUser({
-    ...(input.display_name ? { name: input.display_name } : {}),
     ...(input.preferred_language ? { preferredLanguage: input.preferred_language } : {}),
   });
   if (result.error) throw new Error(result.error.message || "Profile update failed.");
@@ -79,23 +82,20 @@ export const changePassword = async (input: { current_password: string; new_pass
 export const getUsers = (query:PageQuery = {},signal?:AbortSignal) => requestController<DirectoryPage<UserSummary>>(`/api/v1/users${directorySearch(query)}`,{signal});
 export const getUser = (id:string,query:PageQuery = {},signal?:AbortSignal) => requestController<UserDetail>(`/api/v1/users/${encodeURIComponent(id)}${directorySearch(query)}`,{signal});
 
-export const createUser = async (input: { display_name: string; username: string; password: string; role: IdentityRole; preferred_language: "en" | "zh-CN" }) => {
+export const createUser = async (input: { username: string; password: string; role: IdentityRole; preferred_language: "en" | "zh-CN" }) => {
+  const username = parseUsername(input.username);
   const result = await authClient.admin.createUser({
-    name: input.display_name,
-    email: internalAccountEmail(parseUsername(input.username)),
+    name: "", // Required by Better Auth; discarded before storage.
+    email: internalAccountEmail(username),
     password: input.password,
     role: input.role,
-    data: { username: parseUsername(input.username), preferredLanguage: input.preferred_language },
+    data: { username, preferredLanguage: input.preferred_language },
   });
   if (result.error) throw new Error(result.error.message || "User creation failed.");
   return identityUser(result.data.user);
 };
 
-export const updateUser = async (id: string, input: { display_name?: string; role?: IdentityRole; enabled?: boolean; password?: string }) => {
-  if (input.display_name) {
-    const result = await authClient.admin.updateUser({ userId: id, data: { name: input.display_name } });
-    if (result.error) throw new Error(result.error.message || "User update failed.");
-  }
+export const updateUser = async (id: string, input: { role?: IdentityRole; enabled?: boolean; password?: string }) => {
   if (input.role) {
     const result = await authClient.admin.setRole({ userId: id, role: input.role });
     if (result.error) throw new Error(result.error.message || "Role update failed.");
@@ -115,7 +115,7 @@ export const updateUser = async (id: string, input: { display_name?: string; rol
 
 function identityUser(value: unknown, activeProjectId?: string | null): IdentityUser {
   const user = value as {
-    id: string; name: string; username: string; email?: string; role?: string | null; banned?: boolean | null;
+    id: string; username: string; email?: string; role?: string | null; banned?: boolean | null;
     preferredLanguage?: string | null; createdAt: Date | string; updatedAt?: Date | string;
     lastLoginAt?: Date | string | null;
   };
@@ -125,7 +125,6 @@ function identityUser(value: unknown, activeProjectId?: string | null): Identity
   return {
     id: user.id,
     ...(user.email ? { email: user.email } : {}),
-    display_name: user.name,
     username: user.username,
     role,
     project_id: role === "user" ? activeProjectId ?? null : null,

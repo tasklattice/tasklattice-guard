@@ -34,7 +34,6 @@ const decodeData = secret => Object.fromEntries(Object.entries(secret.data ?? {}
 
 function accountData(spec) {
   return { [spec.usernameKey || "username"]: spec.username,
-    [spec.nameKey || "name"]: spec.displayName,
     [spec.credentialKey || "password"]: "password", revision: randomUUID() };
 }
 
@@ -54,7 +53,7 @@ function validateExisting(spec, secret) {
     return;
   }
   if (spec.kind === "account") {
-    if (!data[spec.usernameKey || "username"] || !data[spec.nameKey || "name"] || !data[spec.credentialKey || "password"]) {
+    if (!data[spec.usernameKey || "username"] || !data[spec.credentialKey || "password"]) {
       throw new Error(`Secret ${spec.name} has invalid account fields.`);
     }
     return;

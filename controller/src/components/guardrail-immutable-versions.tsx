@@ -1,3 +1,4 @@
+import { projectParams } from "@/lib/project-paths";
 import { TestModelRulesSwitch, ValidationScopeNotice } from "./validation-model-scope";
 import { hasPermission } from "../../shared/rbac";
 import { isValidationRunning } from "./validation-run-progress";
@@ -365,7 +366,7 @@ function PinnedPolicies({ bindings, page, onPageChange }: { bindings: GuardrailV
       <TableBody>{bindings.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE).map(binding => <TableRow key={`${binding.policy_id}@${binding.policy_version}`}>
         <TableCell className="whitespace-normal">
           {/* The exact Policy version this snapshot was built from, in the Policy Library. */}
-          <Link to="/policy-library" search={{ policy: binding.policy_id, version: binding.policy_version }} className="text-sm font-medium text-primary hover:underline"
+          <Link params={projectParams()} to="/$projectId/policy-library" search={{ policy: binding.policy_id, version: binding.policy_version }} className="text-sm font-medium text-primary hover:underline"
             aria-label={t("immutableVersions.openPolicy", { name: binding.policy_name ?? binding.policy_id, version: binding.policy_version })}>{binding.policy_name ?? binding.policy_id}</Link>
           {binding.policy_name ? <code className="block break-all text-xs">{binding.policy_id}</code> : null}<p className="mt-1 font-mono text-xs text-muted-foreground">{binding.policy_version}</p></TableCell>
         <TableCell className="tabular-nums">{binding.enabled_rule_ids.length}</TableCell>

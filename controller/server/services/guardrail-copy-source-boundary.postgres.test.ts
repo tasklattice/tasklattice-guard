@@ -32,7 +32,7 @@ describe.skipIf(!url)("shared Guardrail source copying and draft diffs", () => {
     service = new ControlPlaneService(database.db, loadConfig({ NODE_ENV: "test", CONTROLLER_DATABASE_URL: url!,
       CONTROLLER_RUNNER_TOKEN: "runner-token-that-is-at-least-32-characters", CONTROLLER_ARTIFACT_SIGNING_KEY_PATH: "/tmp/test-key",
       CONTROLLER_POLICY_CATALOG_DIR: resolve("../runner/toolkit/policy_library/assets"), BETTER_AUTH_SECRET: "better-auth-secret-that-is-at-least-32-characters" }));
-    await database.pool.query(`INSERT INTO auth_user (id,name,email,role) SELECT id,name,email,role FROM (VALUES ('projectA','A','copy-a@test.invalid','user','projectA'),('projectB','B','copy-b@test.invalid','user','projectB'),('projectC','C','copy-c@test.invalid','user','projectC')) AS fixture(id,name,email,role,project_id);
+    await database.pool.query(`INSERT INTO auth_user (id,username,email,role) SELECT id,name,email,role FROM (VALUES ('projectA','A','copy-a@test.invalid','user','projectA'),('projectB','B','copy-b@test.invalid','user','projectB'),('projectC','C','copy-c@test.invalid','user','projectC')) AS fixture(id,name,email,role,project_id);
       INSERT INTO project_group(id,name) VALUES ('copy-isolated','Isolated');
       UPDATE project SET group_id='copy-isolated' WHERE id='projectC';
       INSERT INTO policy_record(id,project_id,name,owner,draft) VALUES ('copy-private-policy','projectA','Private','A','{}');

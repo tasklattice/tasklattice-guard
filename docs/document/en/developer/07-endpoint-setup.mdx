@@ -25,7 +25,7 @@ A custom gateway or Agent can implement the LiteLLM contract without deploying L
 
 1. Confirm the target Guardrail Version's Released status. Check its dependencies.
 2. Prepare a published Router that targets this exact version.
-3. Create an Endpoint under [Endpoints](/integration/endpoints). Select its type and Router.
+3. Create an Endpoint under [Endpoints](/$projectId/integration/endpoints). Select its type and Router.
 4. When **Require Credential** is enabled, save the complete credential when it appears. Copy the Endpoint runtime address, including `/runtime/v1/endpoints/<endpoint_id>`.
 5. Confirm that the runtime applied the configuration before testing traffic.
 
@@ -100,7 +100,7 @@ Guardrail Monitor and Bypass modes have separate semantics. They can return orig
 <a id="endpoint-verification" />
 ## Verify actual delivery
 
-Compare known examples, [runtime logs](/logs) and delivered content. A published version, applied configuration and a correctly integrated caller are separate requirements.
+Compare known examples, [runtime logs](/$projectId/logs) and delivered content. A published version, applied configuration and a correctly integrated caller are separate requirements.
 
 | Check | LiteLLM protocol | Scan |
 | --- | --- | --- |

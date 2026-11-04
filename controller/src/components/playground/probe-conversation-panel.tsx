@@ -1,3 +1,4 @@
+import { projectParams } from "@/lib/project-paths";
 import { useCallback, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import { Link } from "@tanstack/react-router";
@@ -260,7 +261,7 @@ function PlaygroundComposer({ guardrail, guardrails, versions, target, selectedV
                 <SelectContent>{guardrails.map((item) => <SelectItem key={item.id} value={item.id}>{item.name}</SelectItem>)}</SelectContent>
               </Select>
               <Button asChild size="icon" variant="ghost" className="playground-definition-link shrink-0 text-muted-foreground" title={t("playground.openGuardrailDefinition")}>
-                <Link to="/guardrails/$guardrailId" params={{ guardrailId: guardrail.id }} aria-label={t("playground.openGuardrailDefinition")}><ExternalLink /></Link>
+                <Link to="/$projectId/guardrails/$guardrailId" params={{ ...projectParams(), guardrailId: guardrail.id }} aria-label={t("playground.openGuardrailDefinition")}><ExternalLink /></Link>
               </Button>
             </div>
             <Select value={targetValue} onValueChange={(value) => onTargetChange(value === "draft" ? { kind: "draft" } : { kind: "published", version: value.slice("version:".length) })} disabled={pending || versionsLoading || (!canTestDraft && !versions.length)}>

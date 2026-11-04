@@ -1,3 +1,4 @@
+import { projectParams } from "@/lib/project-paths";
 import { ProjectResourceBadge } from "@/components/project-resource-badge";
 import { hasPermission } from "../../shared/rbac";
 import { SecuritySeverityBadge } from "@/components/security-severity";
@@ -139,17 +140,17 @@ export function PolicyLibraryPage() {
   function openPolicy(policy: Policy, version?: string) {
     setCollectionId(null);
     setSelected(policy);
-    navigate({ to: "/policy-library", search: { policy: policy.id, version }, replace: true });
+    navigate({ params: projectParams(), to: "/$projectId/policy-library", search: { policy: policy.id, version }, replace: true });
   }
 
   function closePolicy() {
     setSelected(null);
-    navigate({ to: "/policy-library", search: { policy: undefined, version: undefined }, replace: true });
+    navigate({ params: projectParams(), to: "/$projectId/policy-library", search: { policy: undefined, version: undefined }, replace: true });
   }
 
   function closeCollection() {
     setCollectionId(null);
-    navigate({ to: "/policy-library", search: { policy: undefined, version: undefined }, replace: true });
+    navigate({ params: projectParams(), to: "/$projectId/policy-library", search: { policy: undefined, version: undefined }, replace: true });
   }
   const facets = useMemo(() => tagFacets(catalogItems, directory, selectedTags, search), [catalogItems, directory, selectedTags, search]);
   const filtered = filterCatalogPolicies(catalogItems, directory, selectedTags, search);
@@ -268,7 +269,7 @@ export function PolicyLibraryPage() {
                 {filtered.map(item => "profile" in item ? (
                   <CollectionCard key={`profile:${item.id}`} collection={item} onOpen={trigger => {
                     collectionOpenerRef.current = trigger; setCollectionId(item.id); setSelected(null);
-                    navigate({ to: "/policy-library", search: { policy: undefined, version: undefined, collection: item.id }, replace: true });
+                    navigate({ params: projectParams(), to: "/$projectId/policy-library", search: { policy: undefined, version: undefined, collection: item.id }, replace: true });
                   }} />
                 ) : (
                   <PolicyCard
@@ -297,7 +298,7 @@ export function PolicyLibraryPage() {
         onUse={hasPermission(user?.role, "guardrails", "write") && query.isSuccess && profilesQuery.isSuccess ? () => { closeCollection(); setCreateFromProfile(collection.id); } : undefined} /> : null}
       {createFromProfile ? <CreateGuardrailWizard open initialProfileId={createFromProfile} returnFocusRef={collectionOpenerRef}
         onOpenChange={open => { if (!open) setCreateFromProfile(null); }}
-        onCreated={id => { setCreateFromProfile(null); navigate({ to: "/guardrails/$guardrailId", params: { guardrailId: id } }); }} /> : null}
+        onCreated={id => { setCreateFromProfile(null); navigate({ to: "/$projectId/guardrails/$guardrailId", params: { ...projectParams(), guardrailId: id } }); }} /> : null}
 
       <PolicyDetail
         policy={selected}
@@ -327,7 +328,7 @@ export function PolicyLibraryPage() {
           setStudioPolicy(undefined);
           setPolicyImport(null);
           setSelected(next);
-          navigate({ to: "/policy-library", search: { policy: policyId, version: undefined }, replace: true });
+          navigate({ params: projectParams(), to: "/$projectId/policy-library", search: { policy: policyId, version: undefined }, replace: true });
         }}
       />
     </section>

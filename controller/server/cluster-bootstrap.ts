@@ -17,7 +17,6 @@ export function clusterBootstrapEnvironment(environment: NodeJS.ProcessEnv): Nod
     const fields = JSON.parse(environment[`${prefix}_FIELDS`] || "{}") as Record<string, string>;
     for (const [suffix, key] of [
       ["USERNAME", fields.usernameKey || "username"],
-      ["NAME", fields.nameKey || "name"],
       ["PASSWORD", fields.credentialKey || "password"],
     ] as const) {
       if (key === "." || key === ".." || key.includes("/") || key.includes("\\")) throw new Error("Invalid bootstrap Secret field name.");

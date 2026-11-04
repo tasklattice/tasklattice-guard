@@ -1,7 +1,10 @@
-import { createHash } from "node:crypto";
+import { AsyncLocalStorage } from "node:async_hooks";
 import { APIError } from "better-auth/api";
 import type { GenericOAuthConfig } from "better-auth/plugins/generic-oauth";
 import { SSO_PROVIDER_ID, type SsoConfig } from "./sso-config.js";
+
+// Verified claims live only for this callback, never in persisted OAuth tokens.
+export const ssoIdentityContext = new AsyncLocalStorage<{ identity?: { subject: string; groups: unknown } }>();
 
 export function oidcProvider(config: SsoConfig): GenericOAuthConfig {
   return {
@@ -11,7 +14,7 @@ export function oidcProvider(config: SsoConfig): GenericOAuthConfig {
     accountIssuer: config.issuer,
     clientId: config.clientId,
     clientSecret: config.clientSecret,
-    scopes: ["openid", "profile", "email"],
+    scopes: ["openid", "email"],
     pkce: true,
     requireIdTokenVerification: true,
     disableProviderLogout: true,
@@ -33,14 +36,14 @@ export function oidcProvider(config: SsoConfig): GenericOAuthConfig {
         throw new APIError("FORBIDDEN", { message: "This email domain is not allowed to sign in." });
       }
       relayEntitlements(claims[config.groupClaim]);
-      return { sub: claims.sub, id: claims.sub, email, emailVerified: true,
-        name: typeof claims.name === "string" && claims.name.trim() ? claims.name : email };
+      const context = ssoIdentityContext.getStore();
+      if (context) context.identity = { subject: claims.sub, groups: claims[config.groupClaim] };
+      return { sub: claims.sub, id: claims.sub, email, emailVerified: true };
     },
     mapProfileToUser: profile => ({
-      name: profile.name || profile.email!,
       email: profile.email!,
       emailVerified: true,
-      username: `sso-${createHash("sha256").update(`${config.issuer}\0${profile.sub}`).digest("hex").slice(0, 40)}`,
+      username: profile.email!.split("@")[0]!,
       role: "user",
     }),
   };

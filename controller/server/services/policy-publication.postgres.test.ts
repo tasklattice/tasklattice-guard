@@ -17,7 +17,7 @@ describe.skipIf(!url)("Policy publication identity in PostgreSQL", () => {
   beforeAll(async () => {
     database = await createTestDatabase(url!, "guard_policy_publish", { maxConnections: 4 });
     pool = database.pool;
-    await pool.query("INSERT INTO auth_user (id,name,email,role) VALUES ('test','Test','policy-test@example.test','admin')");
+    await pool.query("INSERT INTO auth_user (id,username,email,role) VALUES ('test','Test','policy-test@example.test','admin')");
     service = new ControlPlaneService(database.db, {} as ControllerConfig);
   });
   afterAll(async () => {

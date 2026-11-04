@@ -31,7 +31,7 @@ describe("Account RBAC", () => {
   });
   it("lands each role in its own workspace", () => {
     expect(roleHome("admin")).toBe("/settings/providers");
-    expect(roleHome("user")).toBe("/guardrails");
+    expect(roleHome("user")).toBe("/");
   });
   it.each(["/settings/project-groups", "/settings/project-groups/"])("reserves %s for platform administrators", path => {
     const permission = pagePermission(path)!;
@@ -47,7 +47,7 @@ describe("Account RBAC", () => {
     expect(hasPermission("user", "runtime", "write")).toBe(false);
     expect(hasPermission("admin", "runtime")).toBe(false);
   });
-  it.each(["/dashboard", "/dashboard/"])("protects the dashboard at %s with runtime read permission", path => {
+  it.each(["/"])("protects the dashboard at %s with runtime read permission", path => {
     const permission = pagePermission(path)!;
     expect(permission).toEqual({ resource: "runtime", action: "read" });
     expect(hasPermission("user", permission.resource, permission.action)).toBe(true);

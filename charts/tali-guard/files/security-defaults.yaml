@@ -11,15 +11,13 @@ bootstrapAdmin:
   existingSecret: ''
   usernameKey: username
   credentialKey: ''
-  nameKey: name
 bootstrapUser:
   enabled: true
   existingSecret: ''
   username: user
-  name: User
+  project: ''
   usernameKey: username
   credentialKey: ''
-  nameKey: name
 controlSecret:
   existingSecret: ''
   runnerTokenKey: runner-token

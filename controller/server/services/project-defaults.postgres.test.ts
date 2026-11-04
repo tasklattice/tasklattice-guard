@@ -9,6 +9,8 @@ import { loadConfig } from "../config.js";
 import { ControlPlaneService } from "./control-plane.js";
 import { ProjectService } from "./projects.js";
 import { runWithProjectContext } from "./project-context.js";
+import { createAuth } from "../auth.js";
+import { BootstrapAccountSynchronizer } from "../bootstrap.js";
 
 const url = process.env.GUARD_TEST_POSTGRES_URL;
 describe.skipIf(!url)("Project Default Guardrail provisioning", () => {
@@ -17,6 +19,7 @@ describe.skipIf(!url)("Project Default Guardrail provisioning", () => {
   let database: Awaited<ReturnType<typeof createTestDatabase>>;
   let service: ControlPlaneService;
   let projects: ProjectService;
+  let auth: ReturnType<typeof createAuth>;
   const inProject = <T>(projectId: string, callback: () => T) => runWithProjectContext({ projectId, role: "user" }, callback);
   const defaults = async () => (await database.pool.query("SELECT id,project_id,name FROM guardrail WHERE project_id IS NOT NULL ORDER BY project_id")).rows;
   beforeAll(async () => {
@@ -24,7 +27,7 @@ describe.skipIf(!url)("Project Default Guardrail provisioning", () => {
     const keyPath = join(directory, "artifact.pem");
     writeFileSync(keyPath, keys.privateKey.export({ type: "pkcs8", format: "pem" }));
     database = await createTestDatabase(url!, "project_defaults");
-    await database.pool.query("INSERT INTO auth_user(id,name,email,role) VALUES ('admin','Admin','admin@example.test','admin')");
+    await database.pool.query("INSERT INTO auth_user(id,username,email,role) VALUES ('admin','Admin','admin@example.test','admin')");
     const config = loadConfig({ NODE_ENV: "test", CONTROLLER_DATABASE_URL: url!,
       CONTROLLER_RUNNER_TOKEN: "runner-token-that-is-at-least-32-characters",
       CONTROLLER_ARTIFACT_SIGNING_KEY_PATH: keyPath,
@@ -32,7 +35,8 @@ describe.skipIf(!url)("Project Default Guardrail provisioning", () => {
       CONTROLLER_PROTO_PATH: resolve("../proto/tasklattice/guard/control/v1/runner_control.proto"),
       BETTER_AUTH_SECRET: "better-auth-secret-that-is-at-least-32-characters" });
     service = new ControlPlaneService(database.db, config);
-    projects = new ProjectService(database.db, (tx, id) => service.initializeProject(tx, id));
+    projects = new ProjectService(database.db, (tx, id) => service.initializeProject(tx, id), "http://default-runner:8091");
+    auth = createAuth(config, database.db);
     await service.initialize();
   });
   afterAll(async () => { await database?.drop(); if (directory) rmSync(directory, { recursive: true, force: true }); });
@@ -66,6 +70,32 @@ describe.skipIf(!url)("Project Default Guardrail provisioning", () => {
     expect((await database.pool.query("SELECT id FROM project WHERE id='failed-project'")).rowCount).toBe(0);
     expect((await database.pool.query("SELECT id FROM guardrail WHERE project_id='failed-project'")).rowCount).toBe(0);
     expect((await database.pool.query("SELECT key FROM deployment_preset WHERE key='project-default:failed-project'")).rowCount).toBe(0);
+  });
+
+  it("bootstraps a local user into its configured shared Project and preserves resources on restart", async () => {
+    const config = { bootstrapAdmin: null, bootstrapUser: {
+      username: "user", password: "password", project: " Local_Project ",
+    } };
+    const synchronizer = new BootstrapAccountSynchronizer(auth, projects);
+    await synchronizer.synchronize(config);
+    const login = await auth.api.signInUsername({ body: { username: "user", password: "password" } });
+    const sessions = await database.pool.query("SELECT active_project_id FROM auth_session WHERE user_id=$1", [login.user.id]);
+    expect(sessions.rows[0].active_project_id).toBe("local-project");
+    expect(await projects.accessStatus(login.user.id, "local-project")).toMatchObject({ state: "ready" });
+    const page = await projects.list({ limit: 25 }, login.user.id);
+    expect(page.items).toEqual([expect.objectContaining({ name: "local-project", poolId: "default" })]);
+    const original = (await defaults()).find(row => row.project_id === "local-project")!;
+    expect(original.name).toBe("Default");
+    await inProject("local-project", () => service.updateGuardrail({ id: original.id, name: "User edits", actorId: login.user.id }));
+    expect(await synchronizer.synchronize(config)).toEqual([]);
+    await new BootstrapAccountSynchronizer(auth, projects).synchronize(config);
+    expect((await defaults()).filter(row => row.project_id === "local-project"))
+      .toEqual([{ ...original, name: "User edits" }]);
+    expect((await projects.list({ limit: 25 }, login.user.id)).items[0]?.memberCount).toBe(1);
+    await expect(projects.ensureBootstrapMembership("user", "test-project-b"))
+      .resolves.toBeUndefined();
+    await service.projectGroups.createPool("default", { projectId: "local-project", runtimeUrl: "http://dedicated.invalid" }, "admin");
+    await expect(projects.ensureBootstrapMembership("user", "local-project")).rejects.toThrow("default shared Runner");
   });
 
   it("preserves project edits and deletion when startup runs again", async () => {

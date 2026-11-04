@@ -704,7 +704,7 @@ async function handleCommand(line: string) {
       const user = ident.data.user ?? ident.data;
       const role = user?.role ?? user?.roleId ?? 'user';
       const permissions = ident.data.effectivePermissions ?? ident.data.permissions;
-      console.log(`Signed in: ${(user?.username ?? user?.name ?? ident.data.userId ?? 'unknown')} (${role})`);
+      console.log(`Signed in: ${(user?.username ?? ident.data.userId ?? 'unknown')} (${role})`);
       if (permissions && typeof permissions === 'object') {
         console.log(`Permissions: ${Object.entries(permissions).map(([module, access]) => `${module}:${access}`).join(', ')}`);
       }

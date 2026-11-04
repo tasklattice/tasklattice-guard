@@ -12,7 +12,6 @@ const identity = vi.hoisted(() => ({ role: "admin", project_id: null as string |
 vi.mock("@/lib/auth", () => ({
   useAuth: () => ({
     user: {
-      display_name: "Local Administrator",
       username: "admin",
       role: identity.role,
       project_id: identity.project_id,
@@ -45,12 +44,11 @@ describe("AccountMenu", () => {
   it("uses an avatar-only header trigger and reveals identity details in the menu", () => {
     render(<AccountMenu placement="header" />);
 
-    const trigger = screen.getByRole("button", { name: "Open account menu for Local Administrator" });
-    expect(trigger.textContent).toBe("LA");
+    const trigger = screen.getByRole("button", { name: "Open account menu for admin" });
+    expect(trigger.textContent).toBe("AD");
 
     fireEvent.click(trigger, { button: 0, ctrlKey: false, pointerType: "mouse" });
 
-    expect(screen.getByText("Local Administrator")).toBeTruthy();
     expect(screen.getByText("admin")).toBeTruthy();
     expect(screen.getByText("Platform administrator")).toBeTruthy();
     expect(screen.getByRole("menuitem", { name: "Account" })).toBeTruthy();
@@ -62,7 +60,7 @@ describe("AccountMenu", () => {
     identity.role = "user";
     identity.project_id = "projectC";
     render(<AccountMenu placement="header" />);
-    fireEvent.click(screen.getByRole("button", { name: "Open account menu for Local Administrator" }));
+    fireEvent.click(screen.getByRole("button", { name: "Open account menu for admin" }));
     expect(screen.getByText("Project: projectC")).toBeTruthy();
     expect(screen.queryByRole("menuitem", { name: "Manage users" })).toBeNull();
     expect(screen.queryByText("Platform administrator")).toBeNull();

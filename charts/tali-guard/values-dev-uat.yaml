@@ -66,11 +66,10 @@ security:
   bootstrapAdmin:
     # Create the development account using the image-provided local login.
     username: admin
-    name: Local Administrator
   bootstrapUser:
     enabled: true
     username: user
-    name: Local User
+    project: test1
 
 # Keep the self-contained development baseline independent from Prometheus
 # Operator and Grafana. Use npm run helm:deploy:dev:debug when the local

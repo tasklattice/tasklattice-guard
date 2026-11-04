@@ -1,6 +1,7 @@
+import { setCurrentProjectId } from "@/lib/project-context";
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { importGuardrailPackage, uploadGuardrailPackage, type PackagePreview } from "@/lib/controller-api";
 import { ImportGuardrailSheet } from "./guardrail-import-sheet";
 import { toast } from "./ui/notifications";
@@ -11,6 +12,7 @@ vi.mock("@tanstack/react-router", () => ({ useNavigate: () => navigate }));
 vi.mock("@/lib/controller-api", async original => ({ ...(await original<typeof import("@/lib/controller-api")>()), uploadGuardrailPackage: vi.fn(), importGuardrailPackage: vi.fn() }));
 vi.mock("./ui/notifications", () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
 vi.mock("react-i18next", () => ({ useTranslation: () => ({ t: (key: string, values?: Record<string, unknown>) => values ? `${key}:${JSON.stringify(values)}` : key, i18n: { language: "en", exists: () => false } }) }));
+beforeEach(() => { setCurrentProjectId("test1"); });
 afterEach(() => { cleanup(); vi.clearAllMocks(); });
 
 const EXISTING = "20261001-010000.000Z", INCOMING = "20261007-010000.000Z";
@@ -62,7 +64,7 @@ describe("Guardrail package import", () => {
     await waitFor(() => expect(importGuardrailPackage).toHaveBeenCalledExactlyOnceWith("a".repeat(64), { restoreDeleted: false }));
     await waitFor(() => expect(onClose).toHaveBeenCalled());
     expect(toast.success).toHaveBeenCalledWith(`guardrailPackage.imported:${JSON.stringify({ imported: 1, existing: 1, policies: 1 })}`);
-    expect(navigate).toHaveBeenCalledWith({ to: "/guardrails/$guardrailId", params: { guardrailId: "bank-assistant" }, search: { tab: "immutable" } });
+    expect(navigate).toHaveBeenCalledWith({ to: "/$projectId/guardrails/$guardrailId", params: { projectId: "test1", guardrailId: "bank-assistant" }, search: { tab: "immutable" } });
   });
 
   it("shows why a package cannot be imported and offers no import", async () => {

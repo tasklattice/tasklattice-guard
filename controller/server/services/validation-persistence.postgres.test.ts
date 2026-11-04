@@ -35,7 +35,7 @@ describe.skipIf(!url)("Test report persistence under connection pressure", () =>
       CONTROLLER_PROTO_PATH: resolve("../proto/tasklattice/guard/control/v1/runner_control.proto"),
       BETTER_AUTH_SECRET: "better-auth-secret-that-is-at-least-32-characters",
     }));
-    await database.pool.query("INSERT INTO auth_user (id, name, email, role) VALUES ('admin', 'Admin', 'admin@example.test', 'admin')");
+    await database.pool.query("INSERT INTO auth_user (id, username, email, role) VALUES ('admin', 'Admin', 'admin@example.test', 'admin')");
     await database.pool.query("INSERT INTO controller_state (id, desired_generation) VALUES ('singleton', 1)");
     const guardrail = await withTestProject(() => service.createGuardrail({ name: "Persistence fixture", actorId: "admin", runtimeProfile: "auto",
       draftConfig: defaultGuardrailDraft(PolicyCatalog.load(catalogDir).list()) }));

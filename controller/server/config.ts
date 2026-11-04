@@ -1,6 +1,7 @@
 import { z } from "zod";
 
 import { usernameSchema } from "../shared/username.js";
+import { projectNameSchema } from "../shared/runner-naming.js";
 import { clusterBootstrapEnvironment } from "./cluster-bootstrap.js";
 import { loadSsoConfig } from "./sso-config.js";
 import { defaultEndpointContextStorageLimits, validateEndpointContextStorageLimits } from "./endpoint-context-storage-policy.js";
@@ -82,11 +83,10 @@ const environmentSchema = z.object({
   CONTROLLER_BOOTSTRAP_ADMIN_USERNAME: usernameSchema.optional(),
   CONTROLLER_BOOTSTRAP_ADMIN_REVISION: z.string().optional(),
   CONTROLLER_BOOTSTRAP_ADMIN_PASSWORD: z.string().min(1).max(128).optional(),
-  CONTROLLER_BOOTSTRAP_ADMIN_NAME: z.string().min(1).default("Administrator"),
   CONTROLLER_BOOTSTRAP_USER_USERNAME: usernameSchema.optional(),
   CONTROLLER_BOOTSTRAP_USER_REVISION: z.string().optional(),
   CONTROLLER_BOOTSTRAP_USER_PASSWORD: z.string().min(1).max(128).optional(),
-  CONTROLLER_BOOTSTRAP_USER_NAME: z.string().min(1).default("User"),
+  CONTROLLER_BOOTSTRAP_USER_PROJECT: projectNameSchema.optional(),
   MODEL_GUARDRAILS_RUNTIME_LOG_ENCRYPTION_KEY: z.string().trim().min(1).optional(),
   RUNNER_HEARTBEAT_INTERVAL_SECONDS: z.coerce.number().int().min(2).max(60).default(10),
   RUNNER_OFFLINE_AFTER_SECONDS: z.coerce.number().int().min(5).max(300).default(30),
@@ -261,10 +261,10 @@ export function loadConfig(environment: NodeJS.ProcessEnv = process.env) {
     trustedProxyCidrs: parsed.CONTROLLER_TRUSTED_PROXY_CIDRS.split(",").map((item) => item.trim()).filter(Boolean),
     minPasswordLength: parsed.BETTER_AUTH_MIN_PASSWORD_LENGTH,
     bootstrapAdmin: parsed.CONTROLLER_BOOTSTRAP_ADMIN_USERNAME && parsed.CONTROLLER_BOOTSTRAP_ADMIN_PASSWORD
-      ? { username: parsed.CONTROLLER_BOOTSTRAP_ADMIN_USERNAME, password: parsed.CONTROLLER_BOOTSTRAP_ADMIN_PASSWORD, name: parsed.CONTROLLER_BOOTSTRAP_ADMIN_NAME, ...(parsed.CONTROLLER_BOOTSTRAP_ADMIN_REVISION ? { revision: parsed.CONTROLLER_BOOTSTRAP_ADMIN_REVISION } : {}) }
+      ? { username: parsed.CONTROLLER_BOOTSTRAP_ADMIN_USERNAME, password: parsed.CONTROLLER_BOOTSTRAP_ADMIN_PASSWORD, ...(parsed.CONTROLLER_BOOTSTRAP_ADMIN_REVISION ? { revision: parsed.CONTROLLER_BOOTSTRAP_ADMIN_REVISION } : {}) }
       : null,
     bootstrapUser: parsed.CONTROLLER_BOOTSTRAP_USER_USERNAME && parsed.CONTROLLER_BOOTSTRAP_USER_PASSWORD
-      ? { username: parsed.CONTROLLER_BOOTSTRAP_USER_USERNAME, password: parsed.CONTROLLER_BOOTSTRAP_USER_PASSWORD, name: parsed.CONTROLLER_BOOTSTRAP_USER_NAME, ...(parsed.CONTROLLER_BOOTSTRAP_USER_REVISION ? { revision: parsed.CONTROLLER_BOOTSTRAP_USER_REVISION } : {}) }
+      ? { username: parsed.CONTROLLER_BOOTSTRAP_USER_USERNAME, password: parsed.CONTROLLER_BOOTSTRAP_USER_PASSWORD, ...(parsed.CONTROLLER_BOOTSTRAP_USER_REVISION ? { revision: parsed.CONTROLLER_BOOTSTRAP_USER_REVISION } : {}), ...(parsed.CONTROLLER_BOOTSTRAP_USER_PROJECT ? { project: parsed.CONTROLLER_BOOTSTRAP_USER_PROJECT } : {}) }
       : null,
     runtimeLogEncryptionKey: parsed.MODEL_GUARDRAILS_RUNTIME_LOG_ENCRYPTION_KEY ?? null,
     heartbeatIntervalSeconds: parsed.RUNNER_HEARTBEAT_INTERVAL_SECONDS,

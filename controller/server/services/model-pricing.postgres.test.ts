@@ -16,7 +16,7 @@ describe.skipIf(!url)("global model prices and immutable Guardrail costs", () =>
   const event = (id: string, options: Partial<RuntimeEventInput> = {}): RuntimeEventInput => ({ id, occurredAt: new Date(), requestId: id, runnerId: "runner-1", guardrailId: "guard-1", endpointId: "endpoint-a", direction: "incoming", decision: "allow", durationMs: 20, metadata: { usage: { model_calls: [{ call_id: id, runtime_ref: "model-1", provider: "provider-1", model: "llama-guard-3-8b", usage_known: true, input_tokens: 1000, output_tokens: 100, cached_input_tokens: 0 }] } }, ...options });
   beforeAll(async () => {
     database = await createTestDatabase(url!, "model_costs");
-    await database.pool.query("INSERT INTO auth_user(id,name,email,role) VALUES ('admin','Admin','costs@test.local','admin')");
+    await database.pool.query("INSERT INTO auth_user(id,username,email,role) VALUES ('admin','Admin','costs@test.local','admin')");
     await database.pool.query("INSERT INTO guardrail (project_id,id,name,draft_config) VALUES ('projectA','guard-1','Costs','{}')");
     await database.pool.query("INSERT INTO endpoint(id,project_id,name,adapter) VALUES ('endpoint-a','projectA','A Gateway','http')");
     await database.pool.query("INSERT INTO model_provider(id,name,kind,base_url,credential_ciphertext) VALUES ('provider-1','Groq','openai-compatible','https://api.groq.com/openai/v1','encrypted')");

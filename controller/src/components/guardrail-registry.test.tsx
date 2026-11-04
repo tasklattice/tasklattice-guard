@@ -40,7 +40,6 @@ vi.mock("react-i18next", () => ({
         "guardrails.registry": "Guardrail registry · {{count}}",
         "guardrails.updated": "Updated",
         "guardrails.validation": "Testing Report",
-        "sharing.ownedBy": "Owned by {{project}}",
         "sharing.sharedFrom": "Shared from {{project}} · Read-only",
       };
       return Object.entries(values ?? {}).reduce(
@@ -76,12 +75,12 @@ const guardrail = {
 describe("GuardrailRegistry", () => {
   afterEach(() => { cleanup(); identity.role = "viewer"; });
 
-  it("shows ownership and actions for owned Guardrails while shared Guardrails stay read-only", () => {
+  it("keeps shared Guardrails read-only without repeating the current project", () => {
     identity.role = "user";
     const owned = { ...guardrail, id: "owned", name: "Owned Guardrail", project_id: "projectB" };
     const shared = { ...guardrail, id: "shared", name: "Shared Guardrail", project_id: "projectA" };
     render(<QueryClientProvider client={new QueryClient()}><GuardrailRegistry guardrails={[owned, shared]} onOpen={vi.fn()} /></QueryClientProvider>);
-    expect(screen.getByText("Owned by projectB")).toBeTruthy();
+    expect(screen.queryByText("Owned by projectB")).toBeNull();
     expect(screen.getByText("Shared from projectA · Read-only")).toBeTruthy();
     expect(screen.getByRole("button", { name: "routing.actions: Owned Guardrail" })).toBeTruthy();
     expect(screen.queryByRole("button", { name: "routing.actions: Shared Guardrail" })).toBeNull();

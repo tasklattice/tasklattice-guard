@@ -105,7 +105,7 @@ Removing the last qualifying release, deleting the resource or restoring it rese
 | Updated | Shows the resource update time. It is not the last request or Router change. |
 | Actions | Provides permitted resource operations. |
 
-Inspect Policy counts and test results for a specific draft or version. Inspect routing references and Router rollout separately. Costs are under [Billing](/billing).
+Inspect Policy counts and test results for a specific draft or version. Inspect routing references and Router rollout separately. Costs are under [Billing](/$projectId/billing).
 
 Readiness does not establish healthy Runners or actual traffic. Check the Endpoint, Router and runtime records. Multiple versions and in-flight calls can coexist during a transition.
 
@@ -193,7 +193,7 @@ The caller must apply the returned result before content continues. HTTP success
 | Transform | Use the returned replacement or valid patches. |
 | Block | Stop the phase. Do not call the model with blocked Input or deliver blocked Output. |
 
-[Playground](/playground) demonstrates the complete path. [Runtime logs](/logs) show inspection evidence.
+[Playground](/$projectId/playground) demonstrates the complete path. [Runtime logs](/$projectId/logs) show inspection evidence.
 
 <a id="term-enforcement-action" />
 ### Enforcement Action
@@ -244,7 +244,7 @@ See [capture conditions and privacy boundaries](/document/admin/concept-logs#run
 <a id="guardrail-usage-cost" />
 ## Usage and model costs
 
-Open [Billing](/billing) and filter by Guardrail. Statistics cover its versions, including runtime, draft tests, version tests and Playground inspection. Period boundaries use UTC.
+Open [Billing](/$projectId/billing) and filter by Guardrail. Statistics cover its versions, including runtime, draft tests, version tests and Playground inspection. Period boundaries use UTC.
 
 These amounts estimate internal inspection costs. They exclude the application's business model, connection probes and control-plane authoring. Local checks without model calls incur no model cost.
 

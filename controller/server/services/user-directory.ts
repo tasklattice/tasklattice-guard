@@ -19,11 +19,11 @@ export class UserDirectory {
   async list(query: DirectoryQuery) {
     const { rows } = await this.db.execute<UserSummary>(sql`
       with page as materialized (
-        select id,name,username,role,banned from auth_user
+        select id,username,role,banned from auth_user
         where (${query.cursor ?? null}::text is null or id > ${query.cursor ?? null})
-          and (${query.q} = '' or name ilike ${searchPattern(query.q)} or username ilike ${searchPattern(query.q)})
+          and (${query.q} = '' or username ilike ${searchPattern(query.q)})
         order by id limit ${query.limit + 1}
-      ) select id,name as display_name,username,role,not banned as enabled,
+      ) select id,username,role,not banned as enabled,
         case when exists(select 1 from auth_account a where a.user_id=page.id and a.provider_id=${SSO_PROVIDER_ID}) then 'sso' else 'local' end as source,
         (select count(*)::int from project_member m where m.user_id=page.id) as "projectCount"
       from page order by id`);
@@ -38,7 +38,7 @@ export class UserDirectory {
         projects: Array<{ id: string; name: string }>;
       }
     >(sql`
-      select u.id,u.name as display_name,u.username,u.email,u.role,not u.banned as enabled,
+      select u.id,u.username,u.email,u.role,not u.banned as enabled,
         null::text as project_id,u.preferred_language,u.last_login_at,u.created_at,u.updated_at,
         case when exists(select 1 from auth_account a where a.user_id=u.id and a.provider_id=${SSO_PROVIDER_ID}) then 'sso' else 'local' end as source,
         coalesce((select jsonb_agg(p order by p.id) from (

@@ -23,7 +23,7 @@ describe.skipIf(!url)("declarative Policy transactions", () => {
   beforeAll(async () => {
     expect(["localhost", "127.0.0.1"]).toContain(new URL(url!).hostname);
     database=await createTestDatabase(url!,"policy_reports");pool=database.pool;reports=new ReportResults(database.db);
-    await pool.query("INSERT INTO auth_user(id,name,email,role) VALUES('test','Test','test@example.test','admin')");
+    await pool.query("INSERT INTO auth_user(id,username,email,role) VALUES('test','Test','test@example.test','admin')");
     service = new PolicyResourceService(database.db,resolve("../runner/toolkit/policy_library/assets"),()=>[],reports);
   });
   afterAll(async()=>database?.drop());

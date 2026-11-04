@@ -10,7 +10,7 @@ order: 0
 <a id="guardrail-build-steps" />
 ## 组合并测试草稿
 
-1. 在 [Policy Library](/policy-library) 中查看可用 Policy，阅读其 Rule、参数和 Test Case。
+1. 在 [Policy Library](/$projectId/policy-library) 中查看可用 Policy，阅读其 Rule、参数和 Test Case。
 2. 为业务场景创建 Guardrail，选择确切的 Policy Version。
 3. 核对启用的 Rule、检查阶段、参数值和动作覆盖。
 4. 添加正常、违规与边界样例。
@@ -37,8 +37,8 @@ Guardrail 至少保留一个 Released 版本，且仍有可执行 Artifact时，
 
 导入版本先为 Pending。请在本环境运行其冻结测试，通过后显式 Release。
 
-在 [Playground](/playground) 试用行为，在[运行日志](/logs)核对真实请求。保护行为变化后，请发布新版本。已有 Router Target 继续固定旧版本，直到路由变更经审阅后更新。
+在 [Playground](/$projectId/playground) 试用行为，在[运行日志](/$projectId/logs)核对真实请求。保护行为变化后，请发布新版本。已有 Router Target 继续固定旧版本，直到路由变更经审阅后更新。
 
 容量、删除与恢复规则见[生命周期与测试依据](/document/overview/term-guardrail#state-guardrail-readiness)。
 
-[管理 Guardrails](/guardrails)
+[管理 Guardrails](/$projectId/guardrails)

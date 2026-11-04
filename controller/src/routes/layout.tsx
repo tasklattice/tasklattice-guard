@@ -10,6 +10,8 @@ import { useTranslation } from "react-i18next";
 
 import { AccountMenu } from "@/components/account-menu";
 import { ProjectInitializationGate } from "@/components/project-initialization";
+import { ProjectRouteSelection } from "@/components/project-route-selection";
+import { isProjectPage, projectLocation, projectParams } from "@/lib/project-paths";
 import { ControlPlaneSidebar } from "@/components/control-plane-sidebar";
 import {
   Breadcrumb,
@@ -28,7 +30,6 @@ import { HelpLayout } from "@/routes/help-layout";
 
 const names: Record<string, { group?: string; page: string }> = {
   "/": { page: "nav.dashboard" },
-  "/dashboard": { page: "nav.dashboard" },
   "/sharing": { page: "nav.sharing" },
   "/guardrails": { group: "nav.guardrailDesign", page: "nav.guardrails" },
   "/policy-library": { group: "nav.guardrailDesign", page: "nav.policyLibrary" },
@@ -54,9 +55,11 @@ const names: Record<string, { group?: string; page: string }> = {
 export function ControlPlaneLayout() {
   const { t } = useTranslation();
   const auth = useAuth();
-  const pathname = useRouterState({ select: (state) => state.location.pathname });
+  const path = useRouterState({ select: (state) => state.location.pathname });
+  const scoped = projectLocation(path);
+  const pathname = scoped?.pathname ?? path;
   // Documentation is public, including while the session is loading or unavailable.
-  if (pathname === "/document" || pathname.startsWith("/document/")) return <HelpLayout />;
+  if (!scoped && (pathname === "/document" || pathname.startsWith("/document/"))) return <HelpLayout />;
   const location = names[pathname]
     ?? (pathname.startsWith("/account/") ? names["/account"] : undefined)
     ?? (pathname.startsWith("/guardrails/") ? names["/guardrails"] : undefined)
@@ -66,10 +69,16 @@ export function ControlPlaneLayout() {
     return <div className="flex min-h-dvh items-center justify-center bg-background"><div className="flex items-center gap-3 text-sm text-muted-foreground"><ShieldCheck className="size-5 animate-pulse text-primary" />{t("auth.sessionLoading")}</div></div>;
   }
   if (!auth.status?.authenticated || !auth.user) return <LoginPage />;
+  if (auth.user.role === "user") {
+    if (scoped && scoped.projectId !== auth.user.project_id) return <ProjectRouteSelection key={scoped.projectId} projectId={scoped.projectId} />;
+  }
   const home = roleHome(auth.user.role);
-  if (pathname === "/" || (pathname === "/dashboard" && !hasPermission(auth.user.role, "runtime"))) return <Navigate to={home} replace />;
+  if (path === "/" && auth.user.role === "admin") return <Navigate to={home} replace />;
+  if (path === "/" && auth.user.project_id) return <Navigate to="/$projectId" params={{ projectId: auth.user.project_id }} replace />;
   const permission = pagePermission(pathname);
-  const forbidden = permission !== null && !hasPermission(auth.user.role, permission.resource, permission.action);
+  const forbidden = Boolean(scoped && (!isProjectPage(pathname) || auth.user.role !== "user"))
+    || Boolean(!scoped && path !== "/" && auth.user.role === "user" && isProjectPage(pathname))
+    || (permission !== null && !hasPermission(auth.user.role, permission.resource, permission.action));
   const group = location.group === "nav.platformOperations" && pathname.startsWith("/settings") && !isPlatformAdministrator(auth.user.role)
     ? "nav.settings" : location.group;
 
@@ -87,7 +96,7 @@ export function ControlPlaneLayout() {
                   <BreadcrumbItem className="hidden sm:inline-flex">{t(group)}</BreadcrumbItem>
                   <BreadcrumbSeparator className="hidden sm:block" />
                   <BreadcrumbItem className="min-w-0">
-                    {pathname.startsWith('/integration/routers/') ? <Link to="/integration/routers" className="truncate">{t(location.page)}</Link> : pathname.startsWith("/account/") ? <Link to="/account" className="truncate">{t(location.page)}</Link> : <BreadcrumbPage className="truncate">{t(location.page)}</BreadcrumbPage>}
+                    {pathname.startsWith('/integration/routers/') ? <Link to="/$projectId/integration/routers" params={projectParams()} className="truncate">{t(location.page)}</Link> : pathname.startsWith("/account/") ? <Link to="/account" className="truncate">{t(location.page)}</Link> : <BreadcrumbPage className="truncate">{t(location.page)}</BreadcrumbPage>}
                   </BreadcrumbItem>
                   {pathname.startsWith('/account/') && <><BreadcrumbSeparator /><BreadcrumbItem><BreadcrumbPage>{pathname === '/account/security' ? t('account.security') : 'Access Tokens'}</BreadcrumbPage></BreadcrumbItem></>}
                   {pathname.startsWith('/integration/routers/') && <RouterNameBreadcrumb id={decodeURIComponent(pathname.split('/').at(-1)!)} />}
@@ -100,7 +109,7 @@ export function ControlPlaneLayout() {
             {forbidden ? <section className="py-8"><EmptyState
               title={t("auth.accessDeniedTitle")}
               description={t("auth.rolePageDenied")}
-              action={<Button asChild><Link to={home}>{t(home === "/guardrails" ? "nav.guardrails" : "nav.platform")}</Link></Button>}
+              action={<Button asChild><Link to={home}>{t(auth.user.role === "user" ? "nav.dashboard" : "nav.platform")}</Link></Button>}
             /></section> : auth.user.role === "user" && !pathname.startsWith("/account") ? <ProjectInitializationGate><Outlet /></ProjectInitializationGate> : <Outlet />}
           </main>
         </SidebarInset>

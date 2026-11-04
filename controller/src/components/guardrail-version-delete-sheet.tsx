@@ -1,3 +1,4 @@
+import { projectParams } from "@/lib/project-paths";
 import type { RefObject } from "react";
 import { useTranslation } from "react-i18next";
 import { useMutation, useQuery } from "@tanstack/react-query";
@@ -82,7 +83,7 @@ function ReferenceLine({ reference }: { reference: Reference }) {
   const { t } = useTranslation();
   return (
     <span>
-      {reference.routerId ? <Link className="font-medium text-primary" to="/integration/routers/$routerId" params={{ routerId: reference.routerId }}>{reference.routerName}</Link> : <span className="font-medium">{reference.routerName}</span>}
+      {reference.routerId ? <Link className="font-medium text-primary" to="/$projectId/integration/routers/$routerId" params={{ ...projectParams(), routerId: reference.routerId }}>{reference.routerName}</Link> : <span className="font-medium">{reference.routerName}</span>}
       {" · "}{t(`guardrails.versionReference.${reference.kind}`, { ticket: reference.ticket || "—" })}
     </span>
   );

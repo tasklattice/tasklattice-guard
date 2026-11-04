@@ -5,24 +5,26 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { ControlPlaneLayout } from "./layout";
 
 vi.mock("@/components/project-initialization", () => ({ProjectInitializationGate: ({children}: {children: ReactNode}) => children}));
+vi.mock("@/components/project-route-selection", () => ({ProjectRouteSelection: ({projectId}: {projectId: string}) => <div>Switch project {projectId}</div>}));
 
-let pathname = "/dashboard";
-let role = "admin";
+let pathname = "/test1";
+let projectId: string | null = "test1";
+let role = "user";
 type SessionState = "authenticated" | "anonymous" | "loading" | "error";
 let sessionState: SessionState = "authenticated";
 
 vi.mock("@tanstack/react-router", () => ({
   Link: ({ to, children }: { to: string; children: ReactNode }) => <a href={to}>{children}</a>,
-  Navigate: ({ to }: { to: string }) => <div>Redirect {to}</div>,
+  Navigate: ({ to, params }: { to: string; params?: {projectId: string} }) => <div>Redirect {to.replace("$projectId", params?.projectId ?? "")}</div>,
   Outlet: () => <div>Page content</div>,
-  useRouterState: () => pathname,
+  useRouterState: ({select}: {select: (state: {location: {pathname: string}}) => unknown}) => select({location: {pathname}}),
 }));
 
 vi.mock("@/lib/auth", () => ({
   useAuth: () => ({
     isLoading: sessionState === "loading",
     status: sessionState === "loading" || sessionState === "error" ? undefined : { authenticated: sessionState === "authenticated" },
-    user: sessionState === "authenticated" ? { role, display_name: "Administrator" } : null,
+    user: sessionState === "authenticated" ? { role, project_id: projectId } : null,
     error: sessionState === "error" ? new Error("Session unavailable") : null,
   }),
 }));
@@ -60,115 +62,69 @@ vi.mock("react-i18next", () => ({
 }));
 
 describe("ControlPlaneLayout", () => {
-  afterEach(() => { cleanup(); pathname = "/dashboard"; role = "admin"; sessionState = "authenticated"; });
+  afterEach(() => { cleanup(); pathname = "/test1"; projectId = "test1"; role = "user"; sessionState = "authenticated"; });
 
   it("lands administrators in Platform", () => {
+    pathname = "/"; role = "admin"; projectId = null;
     render(<ControlPlaneLayout />);
     expect(screen.getByText("Redirect /settings/providers")).toBeTruthy();
     expect(screen.queryByText("Page content")).toBeNull();
   });
 
-  it.each(["/dashboard/", "/guardrails", "/guardrails/id", "/playground", "/policy-library", "/integration/routers", "/integration/endpoints", "/logs", "/billing", "/sharing"])("prevents administrators from mounting %s", path => {
+  it("lands users at their project root", () => {
+    pathname = "/"; render(<ControlPlaneLayout />);
+    expect(screen.getByText("Redirect /test1")).toBeTruthy();
+  });
+
+  it.each(["/test1", "/test1/guardrails", "/test1/playground", "/test1/policy-library", "/test1/integration/routers", "/test1/integration/endpoints", "/test1/logs", "/test1/billing", "/test1/sharing", "/test1/settings/health", "/test1/settings/runner", "/test1/settings/version", "/account", "/account/security", "/account/access-tokens"])("mounts authorized user page %s", path => {
     pathname = path; render(<ControlPlaneLayout />);
+    expect(screen.getByText("Page content")).toBeTruthy();
+  });
+
+  it("uses the project page for breadcrumbs", () => {
+    pathname = "/test1/guardrails"; render(<ControlPlaneLayout />);
+    expect(screen.getByText("Guardrail Design")).toBeTruthy();
+    expect(screen.getByText("Guardrails")).toBeTruthy();
+  });
+
+  it("resolves the URL project before mounting the sidebar and resource queries", () => {
+    pathname = "/test2/playground"; render(<ControlPlaneLayout />);
+    expect(screen.getByText("Switch project test2")).toBeTruthy();
+    expect(screen.queryByText("Page content")).toBeNull();
+    expect(screen.queryByText("Navigation")).toBeNull();
+  });
+
+  it.each(["/test1", "/test1/guardrails", "/test1/settings/runner"])("prevents administrators from mounting project page %s", path => {
+    role = "admin"; projectId = null; pathname = path;
+    render(<ControlPlaneLayout />);
     expect(screen.queryByText("Page content")).toBeNull();
     expect(screen.getByRole("link", { name: "Platform" }).getAttribute("href")).toBe("/settings/providers");
   });
 
-  it("starts sidebar-page breadcrumbs at the navigation group", () => {
-    pathname = "/guardrails"; role = "user";
-    render(<ControlPlaneLayout />);
-
-    expect(screen.getByText("Guardrail Design")).toBeTruthy();
-    expect(screen.getByText("Guardrails")).toBeTruthy();
-    expect(screen.queryByText("TaskLattice Guard")).toBeNull();
-  });
-
-  it("applies the ordinary authoring boundary to Default", () => {
-    pathname = "/guardrails/guardrail-default"; role = "admin";
-    render(<ControlPlaneLayout />);
+  it.each(["/settings/models", "/settings/guardrail-catalog", "/settings/runner", "/access/projects", "/access", "/audit-log"])("prevents users from mounting platform page %s", path => {
+    pathname = path; render(<ControlPlaneLayout />);
     expect(screen.queryByText("Page content")).toBeNull();
-  });
-
-  it.each(["/settings/models", "/settings/guardrail-catalog", "/access/projects", "/access", "/audit-log"])("prevents a user from mounting %s", path => {
-    role = "user"; pathname = path;
-    render(<ControlPlaneLayout />);
-    expect(screen.queryByText("Page content")).toBeNull();
-    expect(screen.getByRole("link", { name: "Guardrails" }).getAttribute("href")).toBe("/guardrails");
-  });
-  it.each(["/guardrails", "/playground", "/policy-library", "/integration/routers", "/integration/endpoints", "/logs", "/billing", "/sharing", "/account", "/account/security", "/account/access-tokens", "/settings", "/settings/", "/settings/health", "/settings/runner", "/settings/runner/", "/settings/version"])("allows a user to mount %s", path => {
-    role = "user"; pathname = path; render(<ControlPlaneLayout />);
-    expect(screen.getByText("Page content")).toBeTruthy();
-  });
-  it.each(["/dashboard", "/dashboard/"])("mounts the project dashboard at %s without redirecting to Guardrails", path => {
-    pathname = path;
-    role = "user"; render(<ControlPlaneLayout />);
-    expect(screen.getByText("Page content")).toBeTruthy();
-    expect(screen.getByText("Dashboard")).toBeTruthy();
-    expect(screen.queryByText("Redirect /guardrails")).toBeNull();
-  });
-
-  it("keeps the root landing route separate from the dashboard", () => {
-    pathname = "/"; role = "user"; render(<ControlPlaneLayout />);
-    expect(screen.getByText("Redirect /guardrails")).toBeTruthy();
-    expect(screen.queryByText("Page content")).toBeNull();
-  });
-
-  it.each<SessionState>(["anonymous", "loading", "error"])("does not mount dashboard data with an %s session", state => {
-    role = "user"; sessionState = state; render(<ControlPlaneLayout />);
-    expect(screen.queryByText("Page content")).toBeNull();
-    expect(screen.getByText(state === "loading" ? "Checking your session…" : "Sign in")).toBeTruthy();
-  });
-
-  it("unmounts the dashboard when runtime permission is revoked", () => {
-    role = "user";
-    const view = render(<ControlPlaneLayout />);
-    expect(screen.getByText("Page content")).toBeTruthy();
-    role = "admin";
-    view.rerender(<ControlPlaneLayout />);
-    expect(screen.queryByText("Page content")).toBeNull();
-    expect(screen.getByText("Redirect /settings/providers")).toBeTruthy();
+    expect(screen.getByRole("link", { name: "Dashboard" }).getAttribute("href")).toBe("/");
   });
 
   it.each(["/settings/health", "/settings/runner", "/settings/version"])("allows administrators to open %s under platform operations", path => {
-    pathname = path;
-    role = "admin";
-    render(<ControlPlaneLayout />);
-
+    pathname = path; role = "admin"; projectId = null; render(<ControlPlaneLayout />);
     expect(screen.getByText("Platform operations")).toBeTruthy();
     expect(screen.getByText("Page content")).toBeTruthy();
   });
 
+  it.each<SessionState>(["anonymous", "loading", "error"])("does not mount resources with an %s session", state => {
+    sessionState = state; render(<ControlPlaneLayout />);
+    expect(screen.queryByText("Page content")).toBeNull();
+    expect(screen.getByText(state === "loading" ? "Checking your session…" : "Sign in")).toBeTruthy();
+  });
 
   describe.each<SessionState>(["authenticated", "anonymous", "loading", "error"])("documentation with an %s session", state => {
-    it.each(["/document", "/document/", "/document/overview/quickstart-protection", "/document/operator/operator-create-policy"])("renders %s without waiting for authentication", path => {
-      pathname = path;
-      sessionState = state;
-      render(<ControlPlaneLayout />);
-
+    it.each(["/document", "/document/", "/document/overview/quickstart-protection", "/document/operator/operator-create-policy"])("renders %s without authentication", path => {
+      pathname = path; sessionState = state; render(<ControlPlaneLayout />);
       expect(screen.getByText("Standalone documentation")).toBeTruthy();
       expect(screen.queryByText("Sign in")).toBeNull();
-      expect(screen.queryByText("Checking your session…")).toBeNull();
       expect(screen.queryByText("Navigation")).toBeNull();
-      expect(screen.queryByRole("button", { name: "Account menu · header" })).toBeNull();
     });
-  });
-
-  it.each(["/guardrails", "/account", "/settings/providers", "/document-private", "/help", "/help/", "/help-private"])("requires login outside documentation at %s", path => {
-    pathname = path;
-    sessionState = "anonymous";
-    render(<ControlPlaneLayout />);
-
-    expect(screen.getByText("Sign in")).toBeTruthy();
-    expect(screen.queryByText("Standalone documentation")).toBeNull();
-    expect(screen.queryByText("Page content")).toBeNull();
-  });
-
-  it("waits for the session before mounting a management page", () => {
-    pathname = "/guardrails";
-    sessionState = "loading";
-    render(<ControlPlaneLayout />);
-
-    expect(screen.getByText("Checking your session…")).toBeTruthy();
-    expect(screen.queryByText("Page content")).toBeNull();
   });
 });

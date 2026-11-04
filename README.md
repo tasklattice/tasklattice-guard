@@ -123,6 +123,8 @@ See [Keycloak development bootstrap](charts/tali-guard/README.md#keycloak-develo
 Both commands build the local images, install or upgrade the development deployment,
 and wait for workload readiness. Open [the console](http://localhost:38081)
 and sign in with `admin` / `password` or `user` / `password`.
+The local `user` joins `test1` automatically, using the default shared Runner
+and the Project's published Default Guardrail.
 All environments use username/password authentication through Better Auth.
 Initialization overwrites configured bootstrap accounts and revokes old sessions;
 account Secrets contain Base64-decodable initial passwords for debugging.

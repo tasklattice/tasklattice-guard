@@ -105,19 +105,16 @@ export function UsersPage() {
               key={item.id}
               className="user-directory-columns user-directory-row"
               onClick={() => setSelected(item.id)}
-              aria-label={`${t("users.editTitle")} · ${item.display_name}`}
+              aria-label={`${t("users.editTitle")} · ${item.username}`}
             >
               <span className="flex min-w-0 items-center gap-3">
                 <Avatar className="size-8">
-                  <AvatarFallback>{initials(item.display_name)}</AvatarFallback>
+                  <AvatarFallback>{initials(item.username)}</AvatarFallback>
                 </Avatar>
                 <span className="min-w-0">
                   <strong className="block truncate text-sm font-medium">
-                    {item.display_name}
-                  </strong>
-                  <span className="mt-1 block truncate text-xs text-muted-foreground">
                     {item.username}
-                  </span>
+                  </strong>
                 </span>
                 {item.id === currentUser?.id && (
                   <Badge variant="secondary">{t("users.currentUser")}</Badge>
@@ -238,14 +235,12 @@ function CreateUserSheet({
   onCreated: () => void;
 }) {
   const { t } = useTranslation();
-  const [displayName, setDisplayName] = useState("");
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [role, setRole] = useState<IdentityRole>("user");
   const [language, setLanguage] = useState<"en" | "zh-CN">("en");
   useEffect(() => {
     if (open) {
-      setDisplayName("");
       setUsername("");
       setPassword("");
       setRole("user");
@@ -255,7 +250,6 @@ function CreateUserSheet({
   const mutation = useMutation({
     mutationFn: () =>
       createUser({
-        display_name: displayName,
         username,
         password,
         role,
@@ -284,7 +278,6 @@ function CreateUserSheet({
           </Button>
           <Button
             disabled={
-              !displayName.trim() ||
               !username.trim() ||
               password.length < 8 ||
               mutation.isPending
@@ -298,17 +291,10 @@ function CreateUserSheet({
       }
     >
       <div className="grid gap-5">
-        <Field label={t("auth.displayName")}>
-          <Input
-            autoFocus
-            autoComplete="name"
-            value={displayName}
-            onChange={(event) => setDisplayName(event.target.value)}
-          />
-        </Field>
         <Field label={t("auth.username")}>
           <Input
             type="text"
+            autoFocus
             autoComplete="username"
             value={username}
             onChange={(event) => setUsername(event.target.value)}
@@ -373,13 +359,11 @@ function EditUserSheet({
 }) {
   const user = detail.user;
   const { t, i18n } = useTranslation();
-  const [displayName, setDisplayName] = useState("");
   const [role, setRole] = useState<IdentityRole>("user");
   const [enabled, setEnabled] = useState(true);
   const [password, setPassword] = useState("");
   useEffect(() => {
     if (user) {
-      setDisplayName(user.display_name);
       setRole(user.role);
       setEnabled(user.enabled);
       setPassword("");
@@ -388,7 +372,6 @@ function EditUserSheet({
   const mutation = useMutation({
     mutationFn: () =>
       updateUser(user!.id, {
-        display_name: displayName,
         enabled,
         ...(detail.source === "local"
           ? { role, password: password || undefined }
@@ -419,7 +402,6 @@ function EditUserSheet({
           </Button>
           <Button
             disabled={
-              !displayName.trim() ||
               (password.length > 0 && password.length < 8) ||
               mutation.isPending
             }
@@ -433,22 +415,12 @@ function EditUserSheet({
       <div className="grid gap-5">
         <div className="flex items-center gap-3 rounded-xl border bg-muted/30 p-4">
           <Avatar className="size-10">
-            <AvatarFallback>{initials(user.display_name)}</AvatarFallback>
+            <AvatarFallback>{initials(user.username)}</AvatarFallback>
           </Avatar>
           <div className="min-w-0">
-            <p className="truncate text-sm font-medium">{user.display_name}</p>
-            <p className="truncate text-xs text-muted-foreground">
-              {user.username}
-            </p>
+            <p className="truncate text-sm font-medium">{user.username}</p>
           </div>
         </div>
-        <Field label={t("auth.displayName")}>
-          <Input
-            autoFocus
-            value={displayName}
-            onChange={(event) => setDisplayName(event.target.value)}
-          />
-        </Field>
         <Field label={t("common.role")}>
           <Select
             disabled={detail.source !== "local"}

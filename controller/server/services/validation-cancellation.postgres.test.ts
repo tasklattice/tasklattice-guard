@@ -25,7 +25,7 @@ describe.skipIf(!url)("durable test cancellation", () => {
   beforeAll(async () => {
     database = await createTestDatabase(url!, "test_cancel");
     service = new ControlPlaneService(database.db, {} as ControllerConfig);
-    await database.pool.query(`INSERT INTO auth_user (id, name, email) VALUES ('actor', 'Tester', 'tester@example.test')`);
+    await database.pool.query(`INSERT INTO auth_user (id, username, email) VALUES ('actor', 'Tester', 'tester@example.test')`);
   });
   afterAll(async () => { await database?.drop(); });
 
