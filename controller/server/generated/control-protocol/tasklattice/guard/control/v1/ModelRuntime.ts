@@ -29,9 +29,14 @@ export interface ModelRuntime {
    */
   'rateLimitAttempts'?: (number);
   /**
-   * Decision-model operating band; unset uses 0.1 and 0.9. Zero is valid.
+   * Inclusive negative decision boundary; unset uses 0.1. Zero is valid.
+   * Must be nonnegative and less than upper_threshold.
    */
   'lowerThreshold'?: (number | string);
+  /**
+   * Inclusive positive decision boundary; unset uses 0.9.
+   * Must exceed lower_threshold and be at most 1.
+   */
   'upperThreshold'?: (number | string);
   '_lowerThreshold'?: "lowerThreshold";
   '_upperThreshold'?: "upperThreshold";
@@ -65,9 +70,14 @@ export interface ModelRuntime__Output {
    */
   'rateLimitAttempts': (number);
   /**
-   * Decision-model operating band; unset uses 0.1 and 0.9. Zero is valid.
+   * Inclusive negative decision boundary; unset uses 0.1. Zero is valid.
+   * Must be nonnegative and less than upper_threshold.
    */
   'lowerThreshold'?: (number);
+  /**
+   * Inclusive positive decision boundary; unset uses 0.9.
+   * Must exceed lower_threshold and be at most 1.
+   */
   'upperThreshold'?: (number);
   '_lowerThreshold'?: "lowerThreshold";
   '_upperThreshold'?: "upperThreshold";

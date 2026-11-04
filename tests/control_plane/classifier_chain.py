@@ -71,6 +71,8 @@ async def scan(plan, probabilities, *, content="An ordinary synthetic request.",
         config.runtimes.extend(topic.runtimes)
     for runtime in config.runtimes:
         runtime.model = backend.model
+        runtime.lower_threshold = .1
+        runtime.upper_threshold = .85
     credentials = {"provider-1":"synthetic"}
     if review is not None and reviewer_binding:
         from runner.toolkit.nemo.evaluators.classifier_review import REVIEW_CONTRACT
@@ -113,7 +115,7 @@ async def scan(plan, probabilities, *, content="An ordinary synthetic request.",
             key: {"type": "noul", "noul": probabilities.get(capability, .01)} for key in keys}})
 
     providers = action_providers(*dynamic_runtime_action_providers(config, credentials,
-        transport=httpx.MockTransport(respond), **{backend.threshold_option: (.1, .85)}))
+        transport=httpx.MockTransport(respond)))
     previews = DraftPreviewRuntime(DefaultRunnerCompiler(), providers)
     failures = []
     # Reporting verbosity does not change online execution.
