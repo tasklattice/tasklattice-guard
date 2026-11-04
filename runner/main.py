@@ -32,6 +32,8 @@ from .synchronization import RuntimeSynchronizationMiddleware
 from .distributed_rate_admission import RedisRateAdmission
 from .group_rate_admission import RedisGroupRateAdmission
 from .admission_metrics import ProjectAdmissionMetrics
+from .health import OperationalMiddleware, readiness_response
+from .software_version import SOFTWARE_VERSION
 
 
 def create_app(settings: RunnerSettings | None = None) -> FastAPI:
@@ -153,6 +155,7 @@ def create_app(settings: RunnerSettings | None = None) -> FastAPI:
         try:
             yield
         finally:
+            _app.state.stopping = True
             await watchdog.stop()
             await control.stop()
             await telemetry.stop()
@@ -181,31 +184,57 @@ def create_app(settings: RunnerSettings | None = None) -> FastAPI:
     )
     app.include_router(runtime_api.router)
     app.add_middleware(RuntimeSynchronizationMiddleware, control=control)
+    app.add_middleware(OperationalMiddleware)
+    app.state.stopping = False
 
+    @app.head("/health/live", include_in_schema=False)
     @app.get("/health/live")
     async def live():
         return {"status": "ok", "component": "guard-runner"}
 
+    @app.head("/healthz", include_in_schema=False)
+    @app.get("/healthz")
+    @app.head("/health/ready", include_in_schema=False)
     @app.get("/health/ready")
     async def ready():
-        detail = registry.readiness()
+        if app.state.stopping:
+            return readiness_response(False, "stopping", "Runner is stopping.")
         # A cached generation cannot attest that this pool still owns its
         # Endpoints after a group allocation change. Disconnect fences serving
         # until the new control stream verifies current desired state. The
         # opt-in lease consumer additionally requires an unexpired grant.
-        ready_now = control.synchronized and bool(detail["ready"])
-        response = {
-            **detail,
-            "ready": ready_now,
-            "component": "guard-runner",
-            "controller_connected": control.connected,
-            "desired_state_synchronized": control.synchronized,
-            "applied_generation": store.generation,
-            "compiler_capable": configured.compiler_capable,
-        }
-        if not ready_now:
-            raise HTTPException(status_code=503, detail=response)
-        return response
+        try:
+            detail = registry.readiness()
+            synchronized = control.synchronized
+            connected = control.connected
+        except Exception:
+            return readiness_response(False, "readiness_check_failed", "Runner readiness could not be determined.")
+        registry_ready = bool(detail.pop("ready"))
+        ready_now = synchronized and registry_ready
+        registry_reason = detail.pop("reason")
+        detail.pop("status")
+        if ready_now:
+            reason = "ready"
+        elif not synchronized:
+            reason = "controller_unsynchronized" if connected else "controller_disconnected"
+        else:
+            reason = registry_reason
+        message = {
+            "controller_disconnected": "Runner is disconnected from the Controller.",
+            "controller_unsynchronized": "Runner requires synchronized state and a valid serving lease when enabled.",
+            "registry_closed": "Runner runtime registry is closed.",
+            "missing_prewarmed_guardrail_versions": "Active Guardrail versions are not prewarmed.",
+        }.get(reason)
+        return readiness_response(ready_now, reason, message, **detail,
+                                  controller_connected=connected,
+                                  desired_state_synchronized=synchronized,
+                                  applied_generation=store.generation,
+                                  compiler_capable=configured.compiler_capable)
+
+    @app.head("/version", include_in_schema=False)
+    @app.get("/version")
+    async def version():
+        return {"component": "guard-runner", **SOFTWARE_VERSION}
 
     @app.get("/metrics")
     async def prometheus_metrics(authorization: str | None = Header(default=None)):

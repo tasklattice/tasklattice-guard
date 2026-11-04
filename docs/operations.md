@@ -4,6 +4,75 @@ This guide covers account and runtime identities, protected data, capacity, and
 observability. Use the [Helm deployment guide](../charts/tali-guard/README.md) for
 installation, dependency settings, and production Secrets.
 
+## Health and version endpoints
+
+Controller and Runner expose the same public operational routes on their HTTP
+ports (8080 and 8091 in the container images). All responses use JSON and
+`Cache-Control: no-store`; `HEAD` returns the same status and headers without a
+body. These routes do not require a session or token.
+
+| Route | Meaning | HTTP status |
+| --- | --- | --- |
+| `/health/live` | The process can serve HTTP; no dependency checks | 200 with `status: "ok"` |
+| `/health/ready` | The instance can accept work | 200 ready, 503 not ready |
+| `/healthz` | Alias of `/health/ready`, including its dependency checks | 200 ready, 503 not ready |
+| `/version` | Local startup build identity, without database or network lookups | 200, including when build metadata is unknown |
+
+Keep Kubernetes startup and liveness probes on `/health/live`, and readiness
+probes on `/health/ready`. `/healthz` is suitable for load-balancer readiness;
+using it as liveness would restart instances for dependency outages.
+
+Both readiness routes return top-level `component`, `status`, `ready`, `reason`,
+and `error`. A successful check has `status: "ready"`, `ready: true`,
+`reason: "ready"`, and `error: null`. An unsuccessful check always returns 503
+with the same envelope, for example:
+
+```json
+{
+  "component": "guard-controller",
+  "status": "not_ready",
+  "ready": false,
+  "reason": "storage_unavailable",
+  "error": {
+    "code": "storage_unavailable",
+    "message": "Controller storage is not ready."
+  }
+}
+```
+
+Controller checks that its database and initialized state are readable, with a
+750 ms deadline covering connection checkout and the query. Concurrent probes
+share one check. A transaction-local PostgreSQL statement timeout also bounds
+server work. Timed-out queries discard their connection; late checkouts are
+released without issuing SQL. Reasons include `storage_unavailable`,
+`storage_uninitialized`, `storage_timeout`, and `stopping`.
+
+Runner requires synchronized Controller state, a valid serving lease when
+enabled, and all active Guardrail versions prewarmed. Failure reasons include
+`controller_disconnected`, `controller_unsynchronized`, `registry_closed`,
+`missing_prewarmed_guardrail_versions`, `readiness_check_failed`, and `stopping`.
+Runtime counts and synchronization observations remain in the response. Failed
+checks use the top-level envelope, without FastAPI's former `detail` wrapper.
+Liveness and local version queries remain available during dependency failures
+and shutdown while the HTTP listener is still accepting requests.
+
+`/version` returns `component`, `version`, `commit`, `branch`, `dirty`, and `source`.
+It uses the startup snapshot of `TALI_BUILD_INFO` or Git metadata, with `unknown`
+and null fields when metadata is absent. It does not re-run Git per request.
+`/api/v1/system/version` remains the authenticated, database-backed fleet
+inventory; use each Pod's `/version` for dependency-independent diagnostics.
+
+Unknown paths beneath `/health`, `/healthz`, or `/version`, and unsupported
+methods on these operational routes, return JSON 404 with
+`error.code: "not_found"`. They never fall through to the Controller UI.
+
+```bash
+curl -i http://127.0.0.1:8080/healthz
+curl -i http://127.0.0.1:8091/health/ready
+curl http://127.0.0.1:8080/version
+curl http://127.0.0.1:8091/version
+```
+
 ## Identity and security
 
 - Human authentication, sessions, password hashing, password changes, roles,

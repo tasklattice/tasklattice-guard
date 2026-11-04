@@ -181,3 +181,10 @@ Images without metadata and without Git report an unknown source state, never a
 clean workspace. Older Runners retain their reported version with unknown Git
 metadata until rebuilt and restarted. The authenticated
 `GET /api/v1/system/version` endpoint accepts the `runners:read` token permission.
+
+Both Controller and Runner also expose public `GET /version`, which returns that
+process's startup build identity and `component` without authentication, database
+queries, or calls to another service. Use it to identify a Pod during an outage;
+the authenticated management endpoint remains the project-scoped fleet inventory.
+See [operational endpoints](docs/operations.md#health-and-version-endpoints) for
+the health probe contract and examples.

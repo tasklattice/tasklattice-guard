@@ -25,7 +25,7 @@ if TYPE_CHECKING:
 
 
 _LOGGER = logging.getLogger(__name__)
-_EXCLUDED_HTTP_URLS = r".*/metrics,.*/health/live,.*/health/ready"
+_EXCLUDED_HTTP_URLS = r".*/metrics,.*/health/live,.*/health/ready,.*/healthz,.*/version"
 
 
 @dataclass(slots=True)

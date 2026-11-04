@@ -52,6 +52,7 @@ import { canonicalArtifactContent } from "../control-channel/artifact-codec.js";
 import { programmablePolicyProtection } from "../policy-studio/protection.js";
 import { queryRuntimeMetrics, type MetricScope } from "./runtime-metrics.js";
 import { boundedRead } from '../db/read-budget.js';
+import { createDatabaseReadiness } from "../db/readiness.js";
 import { asText, findingSeverity, securityFinding, increment, jsonAggregate, jsonArrayLength, jsonElements, jsonObject, jsonText, jsonValue, literal, rowValue, scalar, timestampValue } from '../db/postgres-expressions.js';
 import { advisoryTransactionLock } from '../db/postgres-locks.js';
 
@@ -295,6 +296,12 @@ export class ControlPlaneService {
   async desiredGeneration(): Promise<number> {
     const [state] = await this.db.select().from(controllerState).where(eq(controllerState.id, "singleton"));
     return state?.desiredGeneration ?? 0;
+  }
+
+  private readinessProbe: (() => Promise<number>) | undefined;
+  readiness(): Promise<number> {
+    this.readinessProbe ??= createDatabaseReadiness(this.db.$client);
+    return this.readinessProbe();
   }
 
   async listGuardrailProfiles() {

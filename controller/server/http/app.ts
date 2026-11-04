@@ -12,6 +12,8 @@ import { testingReportsQuery } from "../services/testing-reports.js";
 import { runtimeLogOutcomes } from "../../shared/runtime-outcome.js";
 import { readSoftwareVersion } from "../services/software-version.js";
 import { parseSoftwareVersion } from "../../shared/software-version.js";
+import { ReadinessTimeoutError, StorageNotInitializedError } from "../db/readiness.js";
+import { isOperationalPath, readinessBody } from "./health.js";
 import { auditQuerySchema } from "../../shared/audit-query.js";
 import { pathTestSchema, parseHttpRequest, requestSource } from "../../shared/playground-path.js";
 import { openApiDocument, apiReferenceHtml, apiAgentIndex } from "./openapi.js";
@@ -288,13 +290,17 @@ export function createHttpApp(input: {
   app.use("*", logger());
   app.use("*", secureHeaders());
   app.use("*", async (context, next) => {
-    if (input.isStopping?.() && context.req.path !== "/health/live" && context.req.path !== "/metrics") {
+    if (isOperationalPath(context.req.path)) context.header("Cache-Control", "no-store");
+    return next();
+  });
+  app.use("*", async (context, next) => {
+    if (input.isStopping?.() && !isOperationalPath(context.req.path) && context.req.path !== "/metrics") {
       return context.json({ error: { code: "controller_stopping", message: "Controller is stopping. Retry on another instance." } }, 503);
     }
     return next();
   });
   app.use("*", (context, next) => {
-    if (context.req.path === "/metrics" || context.req.path.startsWith("/health/")) {
+    if (context.req.path === "/metrics" || isOperationalPath(context.req.path)) {
       return next();
     }
     return registerMetrics(context, next);
@@ -308,10 +314,27 @@ export function createHttpApp(input: {
   app.get("/api/llms.txt", context => context.text(apiAgentIndex()));
 
   app.get("/health/live", (context) => context.json({ status: "ok", component: "guard-controller" }));
-  app.get("/health/ready", async (context) => {
-    const desiredGeneration = await input.service.desiredGeneration();
-    return context.json({ status: "ready", component: "guard-controller", desiredGeneration });
-  });
+  const ready = async (context: Context) => {
+    const stopping = () => context.json(readinessBody(false, "stopping", "Controller is stopping."), 503);
+    if (input.isStopping?.()) return stopping();
+    try {
+      const desiredGeneration = await input.service.readiness();
+      if (input.isStopping?.()) return stopping();
+      return context.json(readinessBody(true, "ready", null, { desiredGeneration }));
+    } catch (error) {
+      if (input.isStopping?.()) return stopping();
+      const reason = error instanceof ReadinessTimeoutError ? "storage_timeout"
+        : error instanceof StorageNotInitializedError ? "storage_uninitialized" : "storage_unavailable";
+      return context.json(readinessBody(false, reason, "Controller storage is not ready."), 503);
+    }
+  };
+  app.get("/health/ready", ready);
+  app.get("/healthz", ready);
+  app.get("/version", context => context.json({ component: "guard-controller", ...controllerVersion }));
+  // Reserve operational paths before the SPA catch-all, including unknown
+  // subpaths and unsupported methods. A typo must never look healthy.
+  app.use("*", async (context, next) => isOperationalPath(context.req.path)
+    ? context.json({ error: { code: "not_found", message: "Route not found." } }, 404) : next());
   app.get("/metrics", metricsAuthentication(input.config.metricsToken), async (context) => context.text(
     await input.metrics.render(input.service),
     200,
