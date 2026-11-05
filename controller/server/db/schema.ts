@@ -854,27 +854,6 @@ export const runtimeEvents = pgTable("runtime_event", {
   index("runtime_event_endpoint_final_time_idx").on(table.endpointId, table.occurredAt).where(sql`${table.metadata}->>'streamFinalCheck'='true'`),
 ]);
 
-export const runnerTelemetryWals = pgTable("runner_telemetry_wal", {
-  runnerId: text("runner_id").primaryKey(),
-  poolId: text("pool_id").notNull().references(() => runnerPools.id),
-  walId: text("wal_id").notNull().unique(),
-  acknowledgedCursor: bigint("acknowledged_cursor", { mode: "number" }).notNull().default(0),
-  producedCursor: bigint("produced_cursor", { mode: "number" }).notNull().default(0),
-  lastBatchId: text("last_batch_id"),
-  lastBatchDigest: text("last_batch_digest"),
-  lastBatchFirst: bigint("last_batch_first", { mode: "number" }),
-  lastBatchLast: bigint("last_batch_last", { mode: "number" }),
-  receivedAt: timestamp("received_at", { withTimezone: true }),
-  caughtUpAt: timestamp("caught_up_at", { withTimezone: true }),
-});
-
-export const runnerTelemetryCapabilities = pgTable("runner_telemetry_capability", {
-  controlSessionId: text("control_session_id").primaryKey().references(() => runnerControlSessions.id),
-  walId: text("wal_id").notNull().references(() => runnerTelemetryWals.walId),
-  capabilityHash: text("capability_hash").notNull().unique(),
-  issuedAt: timestamp("issued_at", { withTimezone: true }).notNull().defaultNow(),
-});
-
 export const telemetryWatermarks = pgTable("telemetry_watermark", {
   runnerId: text("runner_id").primaryKey(),
   lastEventOccurredAt: timestamp("last_event_occurred_at", { withTimezone: true }),

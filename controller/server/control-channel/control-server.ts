@@ -545,20 +545,10 @@ export class RunnerControlServer {
       this.connections.set(connection.runnerId, connection);
       this.metrics.controlConnection(connection.poolId, true);
       try {
-        const telemetry = registration.telemetryWalId ? await (async () => {
-          if (!this.config.runnerTelemetryProgress || !this.config.runnerScopedTelemetry || !connection.poolAuthenticated) {
-            throw new Error("Authenticated telemetry progress is unavailable for this registration.");
-          }
-          return this.service.telemetryProgress.issue({ sessionId, runnerId: connection.runnerId,
-            bootId: connection.bootId, poolId: connection.poolId }, registration.telemetryWalId!);
-        })() : null;
         this.write(stream, {
           registrationAccepted: {
             desiredGeneration: String(desiredGeneration),
             heartbeatIntervalSeconds: this.config.heartbeatIntervalSeconds,
-            ...(telemetry ? { telemetryUploadAuthorization: { walId: telemetry.walId, capability: telemetry.capability,
-              acknowledgedCursor: String(telemetry.acknowledgedCursor), producedCursor: String(telemetry.producedCursor),
-              lastBatchId: telemetry.lastBatchId, lastBatchDigest: telemetry.lastBatchDigest } } : {}),
           },
         });
         await this.reconcile(connection);

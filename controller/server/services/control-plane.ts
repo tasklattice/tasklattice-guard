@@ -11,7 +11,6 @@ import { artifactExecutionContractIssue } from "../domain/artifact-execution-con
 import { writeRuntimeEvent } from "./runtime-event-write.js";
 import { issueEndpointTelemetryContexts, lockEndpointTelemetryContextReaders, pruneEndpointTelemetryContexts as pruneEndpointContexts } from "./endpoint-telemetry-contexts.js";
 import { ProjectAdmissionMonitor } from "./admission-monitor.js";
-import { RunnerTelemetryProgress } from "./telemetry-progress.js";
 import { localBaseline } from "../../shared/local-baseline.js";
 import bundledDefault from "../domain/default-baseline.json" with { type: "json" };
 import { querySecurityEvents } from "./security-events.js";
@@ -169,7 +168,6 @@ export class ControlPlaneService {
   private lastPlaygroundInvocationCleanup = 0;
   readonly projectGroups: ProjectGroupService;
   readonly runnerControlSessions: RunnerControlSessionStore;
-  readonly telemetryProgress: RunnerTelemetryProgress;
   readonly admissionMonitor: ProjectAdmissionMonitor;
   databasePoolState() { return databasePoolState(this.db); }
   readonly pricing: ModelPricingService;
@@ -230,7 +228,6 @@ export class ControlPlaneService {
     this.users = new UserDirectory(db);
     this.runners = new RunnerDirectory(db, config.heartbeatIntervalSeconds);
     this.runnerControlSessions = new RunnerControlSessionStore(db);
-    this.telemetryProgress = new RunnerTelemetryProgress(db);
     this.admissionMonitor = new ProjectAdmissionMonitor(db, { staleAfterMs: config.heartbeatIntervalSeconds * 3000 });
     this.trafficRouting = new TrafficRoutingService(db, config.runnerScopedTelemetry);
     this.groupRouting = new ProjectGroupRouting(db, config);

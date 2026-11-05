@@ -25,7 +25,6 @@ controlSecret:
 poolAuthentication:
   enabled: false
   scopedTelemetry: false
-  telemetryProgress: false
   controllerSecret: ''
   controllerKey: pool-tokens.json
   runnerSecrets: {}

@@ -68,8 +68,6 @@ class RunnerSettings:
     # Sliding-window starts across replicas of this pool, not concurrency.
     distributed_rate_admission: DistributedRateConfiguration | None = None
     group_rate_admission: GroupRateConfiguration | None = None
-    telemetry_progress_enabled: bool = False
-    telemetry_progress_state_path: Path | None = None
     call_context_compress_plans: bool = False
     call_context_capacity_fallback: bool = False
     call_context_ttl_seconds: int = 300
@@ -115,11 +113,8 @@ class RunnerSettings:
         scoped_telemetry = _boolean("GUARD_RUNNER_SCOPED_TELEMETRY", False)
         if scoped_telemetry and not control_token:
             raise ValueError("GUARD_RUNNER_SCOPED_TELEMETRY requires GUARD_RUNNER_CONTROL_TOKEN.")
-        telemetry_progress_enabled = _boolean("GUARD_RUNNER_TELEMETRY_PROGRESS_ENABLED", False)
-        if telemetry_progress_enabled and not scoped_telemetry:
-            raise ValueError("GUARD_RUNNER_TELEMETRY_PROGRESS_ENABLED requires scoped telemetry and a pool control token.")
-        if telemetry_progress_enabled and _positive_int("GUARD_RUNNER_TELEMETRY_BATCH_SIZE", 100) > 1000:
-            raise ValueError("Authenticated telemetry progress batch size must not exceed 1000.")
+        if _positive_int("GUARD_RUNNER_TELEMETRY_BATCH_SIZE", 100) > 1000:
+            raise ValueError("Telemetry batch size must not exceed 1000.")
         if legacy_token is None:
             if not (control_token and controller_http_token and scoped_telemetry):
                 raise ValueError("GUARD_CONTROLLER_TOKEN is required unless pool control, distinct Controller HTTP authentication and scoped telemetry are all configured.")
@@ -200,9 +195,6 @@ class RunnerSettings:
             control_token=control_token,
             controller_http_token=controller_http_token,
             scoped_telemetry=scoped_telemetry,
-            telemetry_progress_enabled=telemetry_progress_enabled,
-            telemetry_progress_state_path=Path(os.environ.get("GUARD_RUNNER_TELEMETRY_PROGRESS_PATH", "").strip()
-                or os.environ.get("GUARD_RUNNER_STATE_PATH", "/var/lib/tasklattice/guard-runner")),
             experimental_lease_enforcement=experimental_lease_enforcement,
             project_admission=project_admission,
             distributed_rate_admission=distributed_rate_admission,

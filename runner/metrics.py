@@ -456,6 +456,11 @@ class RunnerMetrics:
             "guard_runner_telemetry_wal_write_failures_total", "Local telemetry WAL write failures.",
             ["operation"], registry=self.registry,
         )
+        self.telemetry_quarantined = Counter(
+            "guard_runner_telemetry_quarantined_events_total",
+            "Runtime telemetry events quarantined or stranded by the upload contract.",
+            ["reason"], registry=self.registry,
+        )
 
     @contextmanager
     def request(
@@ -901,6 +906,9 @@ class RunnerMetrics:
 
     def observe_telemetry_write_failure(self, operation: str) -> None:
         self.telemetry_write_failures.labels(operation=operation).inc()
+
+    def observe_telemetry_quarantine(self, reason: str) -> None:
+        self.telemetry_quarantined.labels(reason=reason).inc()
 
     def heartbeat(self) -> protocol.RunnerLoad:
         now = time.monotonic()

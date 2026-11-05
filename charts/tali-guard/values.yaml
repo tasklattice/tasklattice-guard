@@ -240,7 +240,6 @@ security:
   # poolAuthentication: # optional: references only; never put token values here
   #   enabled: true
   #   scopedTelemetry: false # opt-in quarantine/freshness limitations; see README
-  #   telemetryProgress: false # opt-in authenticated progress; WAL uses Runner state
   #   controllerSecret: guard-pool-token-map
   #   controllerKey: pool-tokens.json
   #   runnerSecrets:

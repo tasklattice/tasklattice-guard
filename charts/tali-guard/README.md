@@ -163,13 +163,11 @@ Active model configuration remains platform-wide, and safe reassignment has
 additional requirements. Separate credential references do not change any
 defaults.
 
-Authenticated telemetry progress is a further opt-in:
-`security.poolAuthentication.telemetryProgress: true` requires pool credentials,
-and `scopedTelemetry: true`. Its WAL shares the Runner's existing ephemeral
-state directory, `/var/lib/tasklattice/guard-runner`, with the artifact cache;
+Runtime telemetry uses a local WAL in the Runner's existing ephemeral state
+directory, `/var/lib/tasklattice/guard-runner`, shared with the artifact cache;
 no additional volume or PVC is created. `runner.state.sizeLimit` bounds the
 shared volume. Container restarts reuse the local WAL. Pod recreation loses
-unsent telemetry, and the new Runner boot starts a new WAL with fresh cursors;
+unsent telemetry.
 previous upload capabilities are revoked. Progress remains separate from
 freshness-based deletion.
 

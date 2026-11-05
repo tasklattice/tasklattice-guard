@@ -1,9 +1,6 @@
 import { PASSWORD_MAX_LENGTH } from "../../shared/password-policy.js";
 import { directoryQuerySchema } from "../../shared/directory.js";
 import { hasPermission, isAccountRole } from "../../shared/rbac.js";
-import { createHash } from "node:crypto";
-import { telemetryProgressInput } from "../services/telemetry-progress.js";
-import { guardrailTelemetryFilter } from "../services/guardrail-operational-data.js";
 import { TelemetryUploadAdmission, readBoundedTelemetryBody } from "./telemetry-upload-budget.js";
 import { modelReadiness } from "../../shared/model-readiness.js";
 import { pricingRuleSchema, costQuerySchema } from "../../shared/model-pricing.js";
@@ -208,9 +205,8 @@ const runtimeEventBatchInput = z.object({
   events: z.array(z.union([routingEventSchema, runtimeEventInput])).max(1_000),
   runnerId: z.string().min(1).optional(),
   observedAt: z.coerce.date().optional(),
-  progress: telemetryProgressInput.optional(),
 }).superRefine((value, context) => {
-  if (value.events.length === 0 && !value.runnerId && !value.progress) {
+  if (value.events.length === 0 && !value.runnerId) {
     context.addIssue({ code: "custom", path: ["runnerId"], message: "runnerId is required for an empty telemetry batch." });
   }
 });
@@ -1395,22 +1391,6 @@ export function createHttpApp(input: {
     try {
       const routing = body.events.filter(event => "eventType" in event);
       const runtime = body.events.filter(event => "requestId" in event);
-      if (body.progress) {
-        if (!input.config.runnerTelemetryProgress || authenticatedPoolId === undefined) throw new ControllerError(
-          "Authenticated telemetry progress is unavailable.", 403, "telemetry_progress_unavailable");
-        if (body.runnerId || body.observedAt) throw new ValidationError("Progress batches cannot supply a legacy watermark identity.");
-        const progress = await input.service.telemetryProgress.ingest(authenticatedPoolId,
-          context.req.header("x-tasklattice-telemetry-capability"), body.progress,
-          createHash("sha256").update(rawBody).digest("hex"), body.events, async tx => {
-            // Lock the combined sorted Guardrail set before either writer
-            // acquires the shared Endpoint-context lifecycle lock.
-            await guardrailTelemetryFilter(tx, body.events.map(event => event.guardrailId));
-            if (routing.length) await input.service.trafficRouting.recordEvents(routing, true, authenticatedPoolId, tx);
-            await input.service.recordRuntimeEvents(runtime, authenticatedPoolId, tx);
-          });
-        input.metrics.observeTelemetryBatch?.("accepted", body.events.map(event => event.occurredAt), body.events.length);
-        return context.json({ accepted: body.events.length, progress }, 202);
-      }
       if (authenticatedPoolId === undefined) {
         if (routing.length) await input.service.trafficRouting.recordEvents(routing);
         await input.service.recordRuntimeEvents(runtime);

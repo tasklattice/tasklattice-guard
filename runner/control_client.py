@@ -135,9 +135,7 @@ class RunnerControlClient:
         """A per-serving-period fence; reconnect never clears an older fence."""
         return self._serving_lease.synchronization_lost if self._serving_lease is not None else self._synchronization_lost
 
-    def _revoke_synchronization(self, *, clear_telemetry: bool = True) -> None:
-        if clear_telemetry and self._telemetry is not None:
-            self._telemetry.clear_progress_authorization()
+    def _revoke_synchronization(self) -> None:
         self._synchronization_epoch += 1
         self._synchronized.clear()
         self._synchronization_lost.set()
@@ -338,8 +336,6 @@ class RunnerControlClient:
     async def _handle(self, message: protocol.ControllerMessage) -> None:
         body = message.WhichOneof("body")
         if body == "registration_accepted":
-            if self._telemetry is not None and self._telemetry.progress_wal_id is not None:
-                await self._telemetry.authorize_progress(message.registration_accepted.telemetry_upload_authorization)
             self._heartbeat_interval = max(2, message.registration_accepted.heartbeat_interval_seconds)
             self._metrics.set_desired_generation(message.registration_accepted.desired_generation)
         elif body == "protection_state":
@@ -421,10 +417,9 @@ class RunnerControlClient:
         # through ordinary updates. A prior stream may never reopen serving.
         group_rate = getattr(self._settings, "group_rate_admission", None)
         if self._serving_lease is not None or group_rate is not None:
-            # Upload capability belongs to the current control session and
-            # must survive an ordinary allocation/snapshot refresh. The WAL
-            # can contain delayed events while serving itself is fenced.
-            self._revoke_synchronization(clear_telemetry=False)
+            # An ordinary allocation/snapshot refresh must not fence serving;
+            # the WAL can contain delayed events while serving itself is fenced.
+            self._revoke_synchronization()
         synchronization_epoch = self._synchronization_epoch
         started = time.perf_counter()
         self._metrics.set_desired_generation(desired_state.generation)
@@ -1073,8 +1068,6 @@ class RunnerControlClient:
                 compiler_capable=self._settings.compiler_capable,
                 applied_generation=self._store.generation,
                 applied_protection_generation=self._store.protection_generation,
-                **({"telemetry_wal_id": self._telemetry.progress_wal_id}
-                   if self._telemetry is not None and self._telemetry.progress_wal_id is not None else {}),
             ),
         )
 

@@ -60,7 +60,6 @@ import type { RuntimeTraceStep as _tasklattice_guard_control_v1_RuntimeTraceStep
 import type { ServingLeaseRequest as _tasklattice_guard_control_v1_ServingLeaseRequest, ServingLeaseRequest__Output as _tasklattice_guard_control_v1_ServingLeaseRequest__Output } from './tasklattice/guard/control/v1/ServingLeaseRequest.js';
 import type { ServingLeaseResponse as _tasklattice_guard_control_v1_ServingLeaseResponse, ServingLeaseResponse__Output as _tasklattice_guard_control_v1_ServingLeaseResponse__Output } from './tasklattice/guard/control/v1/ServingLeaseResponse.js';
 import type { StringPair as _tasklattice_guard_control_v1_StringPair, StringPair__Output as _tasklattice_guard_control_v1_StringPair__Output } from './tasklattice/guard/control/v1/StringPair.js';
-import type { TelemetryUploadAuthorization as _tasklattice_guard_control_v1_TelemetryUploadAuthorization, TelemetryUploadAuthorization__Output as _tasklattice_guard_control_v1_TelemetryUploadAuthorization__Output } from './tasklattice/guard/control/v1/TelemetryUploadAuthorization.js';
 import type { TrafficCondition as _tasklattice_guard_control_v1_TrafficCondition, TrafficCondition__Output as _tasklattice_guard_control_v1_TrafficCondition__Output } from './tasklattice/guard/control/v1/TrafficCondition.js';
 import type { TrafficScope as _tasklattice_guard_control_v1_TrafficScope, TrafficScope__Output as _tasklattice_guard_control_v1_TrafficScope__Output } from './tasklattice/guard/control/v1/TrafficScope.js';
 import type { ValidationCancelRequest as _tasklattice_guard_control_v1_ValidationCancelRequest, ValidationCancelRequest__Output as _tasklattice_guard_control_v1_ValidationCancelRequest__Output } from './tasklattice/guard/control/v1/ValidationCancelRequest.js';
@@ -170,7 +169,6 @@ export interface ProtoGrpcType {
           ServingLeaseResponse: MessageTypeDefinition<_tasklattice_guard_control_v1_ServingLeaseResponse, _tasklattice_guard_control_v1_ServingLeaseResponse__Output>
           StringPair: MessageTypeDefinition<_tasklattice_guard_control_v1_StringPair, _tasklattice_guard_control_v1_StringPair__Output>
           TargetSource: EnumTypeDefinition
-          TelemetryUploadAuthorization: MessageTypeDefinition<_tasklattice_guard_control_v1_TelemetryUploadAuthorization, _tasklattice_guard_control_v1_TelemetryUploadAuthorization__Output>
           TrafficCombinator: EnumTypeDefinition
           TrafficCondition: MessageTypeDefinition<_tasklattice_guard_control_v1_TrafficCondition, _tasklattice_guard_control_v1_TrafficCondition__Output>
           TrafficOperator: EnumTypeDefinition

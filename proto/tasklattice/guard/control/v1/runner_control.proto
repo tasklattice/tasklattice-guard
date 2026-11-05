@@ -155,8 +155,7 @@ message RunnerRegistration {
   // Last atomically activated desired-state generation, or zero before first sync.
   int64 applied_generation = 9;
   int64 applied_protection_generation = 10;
-  // Stable disk WAL identity for the optional authenticated delivery protocol.
-  optional string telemetry_wal_id = 11;
+  reserved 11;
 }
 
 // Registration acknowledgement and heartbeat contract returned by Controller.
@@ -165,21 +164,8 @@ message RegistrationAccepted {
   int64 desired_generation = 1;
   // Maximum interval in seconds between Runner heartbeats.
   int32 heartbeat_interval_seconds = 2;
-  reserved 3, 4;
-  reserved "validation_report_gzip", "validation_report_chunks";
-  // Secret dispatched only to this current pool-authenticated control stream.
-  TelemetryUploadAuthorization telemetry_upload_authorization = 5;
-}
-
-// Authenticates HTTP delivery from this registration, not physical workload
-// attestation. Never project the capability into public APIs, logs or metrics.
-message TelemetryUploadAuthorization {
-  string wal_id = 1;
-  string capability = 2;
-  int64 acknowledged_cursor = 3;
-  int64 produced_cursor = 4;
-  string last_batch_id = 5;
-  string last_batch_digest = 6;
+  reserved 3, 4, 5;
+  reserved "validation_report_gzip", "validation_report_chunks", "telemetry_upload_authorization";
 }
 
 // Monotonic liveness, convergence, and load observation for one Runner boot.

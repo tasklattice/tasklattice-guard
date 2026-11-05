@@ -61,7 +61,6 @@ const environmentSchema = z.object({
   // Experimental: scope Playground telemetry by authenticated pool. Other
   // origins are quarantined until their allocation provenance is available.
   CONTROLLER_RUNNER_SCOPED_TELEMETRY: z.enum(["true", "false"]).default("false").transform(value => value === "true"),
-  CONTROLLER_RUNNER_TELEMETRY_PROGRESS: z.enum(["true", "false"]).default("false").transform(value => value === "true"),
   CONTROLLER_ENDPOINT_CONTEXT_MAX_ROWS_PER_POOL: z.coerce.number().int().positive().max(1_000_000).default(defaultEndpointContextStorageLimits.maxRowsPerPool),
   CONTROLLER_ENDPOINT_CONTEXT_MAX_ROWS_GLOBAL: z.coerce.number().int().positive().max(1_000_000).default(defaultEndpointContextStorageLimits.maxRowsGlobal),
   CONTROLLER_ENDPOINT_CONTEXT_MAX_PAYLOAD_BYTES_PER_CONTEXT: z.coerce.number().int().positive().max(2_147_483_647).default(defaultEndpointContextStorageLimits.maxPayloadBytesPerContext),
@@ -208,9 +207,6 @@ export function loadConfig(environment: NodeJS.ProcessEnv = process.env) {
   if (parsed.CONTROLLER_RUNNER_SCOPED_TELEMETRY && !runnerPoolTokens) {
     throw new Error("CONTROLLER_RUNNER_SCOPED_TELEMETRY requires CONTROLLER_RUNNER_POOL_TOKENS_JSON.");
   }
-  if (parsed.CONTROLLER_RUNNER_TELEMETRY_PROGRESS && !parsed.CONTROLLER_RUNNER_SCOPED_TELEMETRY) {
-    throw new Error("CONTROLLER_RUNNER_TELEMETRY_PROGRESS requires scoped telemetry and pool authentication.");
-  }
   if (parsed.CONTROLLER_EXPERIMENTAL_RUNNER_LEASE_GRANTS && !runnerPoolTokens) {
     throw new Error("CONTROLLER_EXPERIMENTAL_RUNNER_LEASE_GRANTS requires CONTROLLER_RUNNER_POOL_TOKENS_JSON.");
   }
@@ -244,7 +240,6 @@ export function loadConfig(environment: NodeJS.ProcessEnv = process.env) {
     runnerPoolTokens,
     runnerHttpTokens,
     runnerScopedTelemetry: parsed.CONTROLLER_RUNNER_SCOPED_TELEMETRY,
-    runnerTelemetryProgress: parsed.CONTROLLER_RUNNER_TELEMETRY_PROGRESS,
     endpointContextStorage: validateEndpointContextStorageLimits({
       maxRowsPerPool: parsed.CONTROLLER_ENDPOINT_CONTEXT_MAX_ROWS_PER_POOL,
       maxRowsGlobal: parsed.CONTROLLER_ENDPOINT_CONTEXT_MAX_ROWS_GLOBAL,

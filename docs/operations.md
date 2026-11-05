@@ -337,6 +337,46 @@ release retention, and availability boundaries. See
 [gateway integration](gateway-integration.md) for stream failure handling and
 the distinction between enforce, dry run, and fail-open behavior.
 
+## Runtime telemetry quarantine runbook
+
+When a retained Runner event cannot fit the Controller upload contract even
+after emit-level splitting, the Runner telemetry WAL neither drops it nor
+blocks later evidence. It moves the raw event out of `runtime-events.wal` into
+`runtime-events.rejected.wal` (same state directory,
+`/var/lib/tasklattice/guard-runner` in the chart) and increments
+`guard_runner_telemetry_quarantined_events_total{reason}`. The
+`TaskLatticeGuardTelemetryEventQuarantined` alert fires on any increase within
+five minutes; treat it as evidence loss until the file is reconciled.
+
+1. **Preserve before anything restarts.** The state volume is `emptyDir`, so a
+   Pod replacement discards both WALs. Copy the file to a secure host, for
+   example
+   `kubectl cp <namespace>/<runner-pod>:/var/lib/tasklattice/guard-runner/runtime-events.rejected.wal ./rejected.wal`
+   (repeat per Runner replica). The file holds one raw event JSON per line with
+   protected payload metadata; handle it like production evidence.
+2. **Inspect the reason.** `kubectl logs <runner-pod>` records the quarantined
+   event `id` and the failure. Typical causes are an event whose
+   `metadata.usage` carries more than 64 model calls (the Controller per-event
+   work budget), an upload body over the byte budget, or a structure/depth
+   limit. Verify the Runner runs a current image: emit-level splitting keeps
+   every event at or below 64 model calls and ships the remaining calls as
+   deterministic cost-only companions.
+3. **Restore delivery.** Replay the lines against the Controller ingest API with
+   a Runner credential. For a file that fits a single upload (the same bounds
+   the Runner uses: at most 64 model calls per event and 256 per request, at
+   most 1000 events, and the configured body budget), a request body of
+   `{"events":[...]}` with `authorization: Bearer $CONTROLLER_RUNNER_TOKEN`
+   works; otherwise split the lines into several requests. Runtime event and
+   cost identities are deterministic, so replaying events the Controller
+   already holds is idempotent. A `202` receipt whose `accepted` equals the
+   sent count means every event is durable; only then delete the local copy.
+4. **Escalate a real overflow.** If a current Runner still quarantines an event,
+   capture the image digest, the rejected event `id`, and its metadata shape.
+   The quarantine file is bounded at 64 MiB; when the bound is reached the
+   Runner stops quarantining and leaves the events in the main WAL, which trips
+   the backlog alert. Do not hand-edit `runtime-events.wal`.
+
+
 ## Deployment profiles
 
 - [Configuration reference](../charts/tali-guard/values.yaml): deployment defaults

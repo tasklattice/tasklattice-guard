@@ -1089,29 +1089,6 @@ describe("Runner model-configuration convergence", () => {
   });
 });
 
-it("dispatches telemetry authorization only to the current pool-authenticated registration", async () => {
-  const walId = "a5c05b54-85cd-4cb8-9ea1-b75a50b59b16";
-  const issued = { walId, capability: "a".repeat(64), acknowledgedCursor: 7, producedCursor: 9,
-    lastBatchId: "last-batch", lastBatchDigest: "b".repeat(64) };
-  const issue = vi.fn().mockResolvedValue(issued);
-  const service = { ...serviceMock(), telemetryProgress: { issue } };
-  const enabled = { ...config, runnerScopedTelemetry: true, runnerTelemetryProgress: true };
-  const server = new RunnerControlServer(enabled, service as unknown as ControlPlaneService,
-    metricsMock() as unknown as ControllerMetrics, { activeConfiguration: vi.fn().mockResolvedValue(null) } as unknown as ModelConfigurationService);
-  const hello = { registration: { ...registration("progress-runner").registration, telemetryWalId: walId } };
-  const stream = streamMock();
-  await handle(server, stream, hello, null, "default");
-  const accepted = stream.write.mock.calls.map(([message]) => message.registrationAccepted).find(Boolean);
-  expect(accepted.telemetryUploadAuthorization).toEqual({ ...issued, acknowledgedCursor: "7", producedCursor: "9" });
-  expect(issue).toHaveBeenCalledWith(expect.objectContaining({ runnerId: "progress-runner", bootId: "boot-progress-runner",
-    poolId: "default", sessionId: expect.any(String) }), walId);
-  const denied = streamMock();
-  await expect(handle(server, denied, { registration: { ...hello.registration, runnerId: "legacy-progress" } }, null))
-    .rejects.toThrow("Authenticated telemetry progress is unavailable");
-  expect(issue).toHaveBeenCalledTimes(1);
-  expect(denied.write).not.toHaveBeenCalled();
-});
-
 it.each([{ epoch: 0, groupId: "foreign" }, { epoch: 1, groupId: "default" }])("does not dispatch stale allocation metadata %j", async allocation => {
   const service = serviceMock();
   service.runnerControlSessions.dispatchedAllocation.mockResolvedValue(allocation);

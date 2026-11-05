@@ -87,8 +87,6 @@ def create_app(settings: RunnerSettings | None = None) -> FastAPI:
         configured.telemetry_batch_size,
         configured.runner_id,
         metrics,
-        progress_enabled=configured.telemetry_progress_enabled,
-        progress_state_path=configured.telemetry_progress_state_path,
     )
     compiler = DefaultRunnerCompiler() if configured.compiler_capable else None
     draft_previews = DraftPreviewRuntime(

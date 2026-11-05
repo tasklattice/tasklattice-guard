@@ -77,9 +77,6 @@ spec:
             {{- if .Values.security.poolAuthentication.scopedTelemetry }}
             - { name: GUARD_RUNNER_SCOPED_TELEMETRY, value: "true" }
             {{- end }}
-            {{- if .Values.security.poolAuthentication.telemetryProgress }}
-            - { name: GUARD_RUNNER_TELEMETRY_PROGRESS_ENABLED, value: "true" }
-            {{- end }}
             {{- if .Values.security.poolAuthentication.enabled }}
             {{- $poolSecret := get .Values.security.poolAuthentication.runnerSecrets "default" }}
             - name: GUARD_RUNNER_CONTROL_TOKEN

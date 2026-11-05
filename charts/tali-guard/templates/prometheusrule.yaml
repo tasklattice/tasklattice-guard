@@ -298,6 +298,13 @@ spec:
           annotations:
             summary: Runner telemetry WAL is not draining
             description: Runtime evidence has remained unacknowledged beyond the configured pipeline budget.
+        - alert: TaskLatticeGuardTelemetryEventQuarantined
+          expr: sum(increase(guard_runner_telemetry_quarantined_events_total{ {{ $selector }} }[5m])) > 0
+          for: 0m
+          labels: { severity: critical, category: evidence }
+          annotations:
+            summary: Runner quarantined runtime telemetry that cannot fit the upload contract
+            description: An event exceeded the Controller per-event work, structure, byte, or depth budget even after emit-level splitting. Runtime evidence is preserved in runtime-events.rejected.wal on the Runner volume but is missing from the Portal; follow the Runtime telemetry quarantine runbook.
         - alert: TaskLatticeGuardOutboxStalled
           expr: guard_controller_outbox_oldest_age_seconds{ {{ $selector }} } > {{ .Values.observability.slo.pipelineMaxAgeSeconds }}
           for: 2m

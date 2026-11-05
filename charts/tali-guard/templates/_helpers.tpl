@@ -277,16 +277,11 @@ app.kubernetes.io/part-of: tasklattice-guard
 {{- end -}}
 {{- end -}}
 {{- $poolAuth := .Values.security.poolAuthentication -}}
-{{- range $name := list "enabled" "scopedTelemetry" "telemetryProgress" -}}
+{{- range $name := list "enabled" "scopedTelemetry" -}}
 {{- if not (kindIs "bool" (get $poolAuth $name)) -}}{{- fail (printf "security.poolAuthentication.%s must be a boolean" $name) -}}{{- end -}}
 {{- end -}}
 {{- if and $poolAuth.scopedTelemetry (not $poolAuth.enabled) -}}
 {{- fail "security.poolAuthentication.scopedTelemetry requires enabled=true" -}}
-{{- end -}}
-{{- if $poolAuth.telemetryProgress -}}
-{{- if or (not $poolAuth.enabled) (not $poolAuth.scopedTelemetry) -}}
-{{- fail "security.poolAuthentication.telemetryProgress requires enabled=true and scopedTelemetry=true" -}}
-{{- end -}}
 {{- end -}}
 {{- if $poolAuth.enabled -}}
 {{- if or (not $poolAuth.controllerSecret) (not $poolAuth.controllerKey) -}}
@@ -410,7 +405,6 @@ data:
   CONTROLLER_RUNNER_SYNC_CONCURRENCY: {{ .Values.controller.runnerSyncConcurrency | quote }}
   CONTROLLER_GRPC_TRANSPORT: {{ ternary "mtls" "plaintext" .Values.security.controlTls.enabled | quote }}
   CONTROLLER_RUNNER_SCOPED_TELEMETRY: {{ .Values.security.poolAuthentication.scopedTelemetry | quote }}
-  CONTROLLER_RUNNER_TELEMETRY_PROGRESS: {{ .Values.security.poolAuthentication.telemetryProgress | quote }}
   {{- with .Values.controller.endpointContextStorage }}
   CONTROLLER_ENDPOINT_CONTEXT_MAX_ROWS_PER_POOL: {{ .maxRowsPerPool | int64 | quote }}
   CONTROLLER_ENDPOINT_CONTEXT_MAX_ROWS_GLOBAL: {{ .maxRowsGlobal | int64 | quote }}

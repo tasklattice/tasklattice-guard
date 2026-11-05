@@ -203,23 +203,6 @@ async def test_group_mode_rejects_allocation_change_and_missing_fields_without_r
     assert not client.synchronized
 
 
-@pytest.mark.asyncio
-@pytest.mark.parametrize("lease", [False, True])
-async def test_snapshot_refresh_preserves_session_telemetry_authorization(lease, monkeypatch):
-    configured = policy(group_id="group", pool_limits={"default": 2}, pool_epochs={"default": 7})
-    from unittest.mock import Mock
-    from runner.serving_lease import ServingLease
-    monkeypatch.setattr("runner.control_client.ServingLease", lambda duration: ServingLease(duration, clock=lambda: 100.0))
-    exporter = SimpleNamespace(clear_progress_authorization=Mock(), progress_wal_id=None)
-    settings = SimpleNamespace(**vars(_settings()), group_rate_admission=configured,
-        experimental_lease_enforcement=lease, control_token="pool-token")
-    client = RunnerControlClient(settings, Store(), Metrics(), telemetry=exporter)
-    await client._apply_desired_state(protocol.DesiredState(generation=1, snapshot_nonce="snapshot",
-        allocation_group_id="group", allocation_epoch=7))
-    exporter.clear_progress_authorization.assert_not_called()
-    client._revoke_synchronization()
-    exporter.clear_progress_authorization.assert_called_once()
-
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("response", [None, [0, 0], [1, "bad"], [True, 0], [-1, 0]])
