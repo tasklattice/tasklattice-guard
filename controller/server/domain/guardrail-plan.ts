@@ -265,6 +265,9 @@ export function buildGuardrailPlan(input: {
   const modules: Array<Record<string, unknown>> = [];
   const previousModule: Partial<Record<"input" | "output", string>> = {};
   const hasCustomFlows = programmable.some(({ policy }) => policy.source !== "built_in");
+  if (hasCustomFlows) {
+    throw new Error("Rank Mode does not support custom Colang flows; expand them into declarative Rules before publishing.");
+  }
   const executable = resolved.flatMap(item => {
     // A custom flow is an ordering barrier for the whole plan, including
     // mixed-action Rules inside an older catalog Policy.

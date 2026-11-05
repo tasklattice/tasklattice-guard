@@ -76,10 +76,8 @@ describe("Controller Guardrail plan", () => {
       outputDelivery: "full_buffered" as const, policyBindings: [binding] };
     const before = structuredClone({ snapshot, draft });
     const build = () => buildGuardrailPlan({ guardrailId: "parameters", guardrailVersion: "v1", draft, programmablePolicies: [snapshot] });
-    expect(build().policy_bindings).toEqual([expect.objectContaining({ parameter_values: [["label", "banking"], ["optional", ""]] })]);
+    expect(build).toThrow(/Rank Mode does not support custom Colang flows/);
     expect({ snapshot, draft }).toEqual(before);
-    Object.assign(binding.parameterValues, { label: "securities" });
-    expect(build().policy_bindings).toEqual([expect.objectContaining({ parameter_values: [["label", "securities"], ["optional", ""]] })]);
   });
 
   it.each([
@@ -392,7 +390,7 @@ describe("Controller Guardrail plan", () => {
       source: "custom", owner: "test", checksum: "test", published_at: "2026-10-23",
     };
     const order = ["pattern/email", "pattern/us_phone"];
-    const plan = buildGuardrailPlan({
+    expect(() => buildGuardrailPlan({
       guardrailId: "custom-barrier", guardrailVersion: "20261023-000000.001Z",
       policies, programmablePolicies: [snapshot],
       draft: {
@@ -405,14 +403,7 @@ describe("Controller Guardrail plan", () => {
             enabledRails: ["input"] },
         ],
       },
-    });
-    const steps = plan.steps as Array<{ parameters: Array<[string, string]> }>;
-    expect(steps).toHaveLength(1);
-    const params = Object.fromEntries(steps[0]!.parameters);
-    expect(JSON.parse(params.enabled_rules_json!)[contact.id]).toEqual(order);
-    expect(JSON.parse(params.rule_order_json!)[contact.id]).toEqual(order);
-    expect(params.execution_schedule).toBe("local-first");
-    expect(params.evaluation_view).toBe("previous_output");
+    })).toThrow(/Rank Mode does not support custom Colang flows/);
   });
 
   it("honors native Policy Rule overrides independently for input and output", () => {
