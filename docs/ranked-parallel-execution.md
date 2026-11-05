@@ -9,8 +9,10 @@ Deployed to the OrbStack `tali` release and verified with the CLI:
 
 - Default Guardrail local-only: 748/748 passed, 0 model invocations, p95 873 ms.
 - All local Policy package suites: 1150 passed, 18 not run.
-- Full Python control-plane suite: 3792 passed after the Rank Mode cleanup.
-- Full Python data-plane suite: uses the authored output/phrase order.
+- Full Python control-plane suite: 3792 passed.
+- Full Python data-plane suite: 1423 passed, 35 skipped.
+- Python e2e suite: 16 passed, 3 skipped.
+- Controller Rank Mode plan tests: 35 passed.
 - Every step reads `previous_output`; the executed order is the authored Policy
   order and the Rule order inside each Policy.
 - A candidate currently covers a contiguous run of Rules with the same action.
