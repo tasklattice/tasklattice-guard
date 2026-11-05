@@ -488,3 +488,28 @@ function nativeBinding(policyId: string) {
     reasoningPolicy: null,
   };
 }
+
+
+it("accepts a disabled Rule retained in ruleOrder and keeps its rank slot", () => {
+  const policies = PolicyCatalog.load(resolve("../runner/toolkit/policy_library/assets")).list();
+  const policy = policies.find(item => item.id === "local-contact-data")!;
+  const [disabled, first, second] = policy.rules.map(rule => rule.id);
+  const plan = buildGuardrailPlan({
+    guardrailId: "disabled-order", guardrailVersion: "20261106-000000.001Z", policies,
+    draft: {
+      allowedTopics: [], restrictedTopics: [], safetyLevel: "balanced", outputDelivery: "full_buffered",
+      policyBindings: [{
+        policyId: policy.id, policyVersion: policy.version, action: null, parameterValues: {},
+        enabledRuleIds: [first!, second!], ruleOrder: [disabled!, first!, second!],
+        ruleActions: {}, enabledRails: [...policy.rails], reasoningPolicy: null,
+      }],
+    },
+  });
+  const steps = plan.steps as Array<{ parameters: Array<[string, string]> }>;
+  const params = steps.map(step => Object.fromEntries(step.parameters));
+  expect(params.filter(item => item.policy_id === policy.id).length).toBeGreaterThan(0);
+  expect(params.find(item => item.policy_id === policy.id)?.rule_rank).toBe("1");
+  expect(plan.policy_bindings).toEqual([
+    expect.objectContaining({ rule_order: [disabled, first, second] }),
+  ]);
+});

@@ -312,10 +312,11 @@ export function buildGuardrailPlan(input: {
     const phases = phasesFor(definition, binding, declarative).filter((phase) => !nativePolicy || nativePolicy.rail_bindings.some((rail) => (
       rail.rail_type === phase && binding.enabledRuleIds.includes(flowRuleId(phase, rail.flow_name))
     ))).filter((phase) => !catalogRule || (binding.enabledRuleIds.includes(catalogRule.id) && catalogRule.rails.includes(phase)));
-    const policyRank = Math.max(0, bindings.findIndex((item) =>
-      item.policyId === binding.policyId && item.policyVersion === binding.policyVersion));
+    const orderBinding = bindings.find((item) =>
+      item.policyId === binding.policyId && item.policyVersion === binding.policyVersion) ?? binding;
+    const policyRank = Math.max(0, bindings.indexOf(orderBinding));
     const allRuleIds = policy?.rules.map(rule => rule.id) ?? binding.enabledRuleIds;
-    const explicitRuleIds = (binding.ruleOrder ?? []).filter(id => allRuleIds.includes(id));
+    const explicitRuleIds = (orderBinding.ruleOrder ?? []).filter(id => allRuleIds.includes(id));
     const effectiveRuleIds = [...explicitRuleIds, ...allRuleIds.filter(id =>
       binding.enabledRuleIds.includes(id) && !explicitRuleIds.includes(id))];
     const ruleRank = Math.max(0, effectiveRuleIds.indexOf(binding.enabledRuleIds[0] ?? ""));
