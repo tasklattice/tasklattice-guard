@@ -120,7 +120,7 @@ def _ordered_plan() -> dict[str, object]:
     credentials = policy("local-credentials")
     definition = replace(contacts, id="fixture-redactions", rules=(
         next(r for r in contacts.rules if r.id == "pattern/email"),
-        next(r for r in credentials.rules if r.id == "pattern/generic_api_key"),
+        next(r for r in credentials.rules if r.id == "credentials-api-keys/generic_api_key"),
     ))
     plan = _plan()
     redactions = {
@@ -135,8 +135,8 @@ def _ordered_plan() -> dict[str, object]:
             ["policy_ids", "fixture-redactions"],
             ["policy_versions_json", json.dumps({definition.id: definition.version})],
             ["policy_definitions_json", json.dumps({definition.id: asdict(definition)}, ensure_ascii=False)],
-            ["enabled_rules_json", json.dumps({"fixture-redactions": ["pattern/email", "pattern/generic_api_key"]})],
-            ["rule_actions_json", json.dumps({"fixture-redactions": {"pattern/email": "transform", "pattern/generic_api_key": "transform"}})],
+            ["enabled_rules_json", json.dumps({"fixture-redactions": ["pattern/email", "credentials-api-keys/generic_api_key"]})],
+            ["rule_actions_json", json.dumps({"fixture-redactions": {"pattern/email": "transform", "credentials-api-keys/generic_api_key": "transform"}})],
         ],
     }
     plan["steps"][0]["parameters"] = [["evaluation_view", "previous_output"], ["precedence", "1"]]

@@ -95,7 +95,9 @@ async def test_catalog_rule_action_reaches_real_nemo_and_preserves_later_policie
             assert any(f.policy_id == "local-contact-data" and f.rule_id == "pattern/email" for f in result.findings)
             action_policies = [step.policy_id for step in result.trace if step.kind == "action"]
             assert "builtin-pii" in action_policies
-            assert action_policies.index("local-contact-data") < action_policies.index("builtin-pii")
+            # Rank Mode executes the authored Policy order. The PII observer
+            # reads the authored snapshot before the later local redaction.
+            assert action_policies.index("builtin-pii") < action_policies.index("local-contact-data")
             continue_steps = [step for step in catalog_plans[f"{phase}:continue"]["steps"] if dict(step["parameters"]).get("policy_id") == "builtin-pii"]
             assert continue_steps and all(step["on_unsafe"] == "allow" for step in continue_steps)
             return

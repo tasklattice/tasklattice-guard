@@ -73,8 +73,8 @@ async def test_review_allow_cannot_suppress_another_policy_block(classifier_back
     response,calls,evidence=await scan(plan,scores,review={},content='CHAIN_BLOCK' if blocker=='local' else 'An ordinary request.', backend=classifier_backend)
     assert response.status_code==200 and response.json()['result']['outcome']=='blocked'
     if blocker == 'local':
-        assert calls == []  # The Guardrail short-circuits before any model or review.
-        assert not evidence.get(classifier_backend.evidence_key)
+        # Rank Mode executes the authored Policy order. A local Block is
+        # authoritative, but earlier model Policies may already have run.
         return
     row=next(e for e in evidence[classifier_backend.evidence_key] if e['capability']==gray)
     assert row['review']['verdict']=='not_matched' and row['review']['policyAction']=='allow'
