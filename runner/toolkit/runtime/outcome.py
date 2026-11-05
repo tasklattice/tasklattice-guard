@@ -142,7 +142,7 @@ def finalize_decision(decision: ProtectionDecision, *, purpose: ExecutionPurpose
         status, reason = "bypassed", "bypass"
     elif decision.protection_mode == "monitor":
         status, reason = ("degraded" if diagnostics else "complete"), "monitor"
-    elif terminal and purpose == "online":
+    elif terminal:
         status, reason = "complete", decision.termination_reason
     elif fatal_diagnostics or fail_closed:
         status = "timeout" if any(d.code == "timeout" for d in fatal_diagnostics) else "error"
