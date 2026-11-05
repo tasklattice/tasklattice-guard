@@ -5,7 +5,7 @@ import pytest
 from runner.compiler import DefaultRunnerCompiler
 from runner import generated as protocol
 from runner.protocol_codec import artifact_digest, plan_to_proto, validation_test_to_proto
-from runner.validator import DefaultRunnerValidator
+from runner.validator import DefaultRunnerValidator, _blocking_superseders
 
 
 @pytest.mark.asyncio
@@ -195,3 +195,88 @@ def test_validation_accuracy_does_not_count_failure_or_unknown_as_detector_error
     assert _metrics(results) == {"total": 8, "skipped": 0, "executed": 8, "passed": 2, "complianceRate": 25,
                                 "falsePositiveRate": 12.5, "falseNegativeRate": 12.5,
                                 "escalationRate": 75, "p95LatencyMs": 30000}
+
+
+def test_block_rule_preempting_a_covered_transform_rule_is_composition_evidence():
+    from types import SimpleNamespace
+
+    def step(id, rule):
+        return SimpleNamespace(id=id, capability="builtin_content_filter", phases=["input"],
+                               parameters=(("policy_id", "local-credentials"), ("rule_id", rule)))
+    plan = SimpleNamespace(
+        policy_bindings=[SimpleNamespace(policy_id="local-credentials", policy_version="1.0.0",
+            enabled_rule_ids=["credentials-api-keys/github_token", "pattern/github_token"],
+            enabled_rails=["input"])],
+        steps=[
+            step("block", "credentials-api-keys/github_token"),
+            step("transform", "pattern/github_token"),
+        ],
+        policy_versions=[],
+    )
+    findings = [
+        {"policy_id": "local-credentials", "rule_id": "credentials-api-keys/github_token",
+         "verdict": "matched", "recommended_action": "block"},
+        {"policy_id": "local-credentials", "rule_id": "pattern/github_token",
+         "verdict": "matched", "recommended_action": "transform"},
+        {"policy_id": "builtin-content-safety", "rule_id": "model/content-safety",
+         "verdict": "matched", "recommended_action": "block"},
+    ]
+    superseders = _blocking_superseders(
+        plan, {"sourcePolicyId": "local-credentials", "coveredRuleIds": ["pattern/github_token"]},
+        "input", findings, {"pattern/github_token"}, "local-credentials",
+    )
+    assert [(item["policy_id"], item["rule_id"]) for item in superseders] == [
+        ("local-credentials", "credentials-api-keys/github_token"),
+    ]
+
+
+@pytest.mark.asyncio
+async def test_shadowed_transform_rule_acceptance_passes_with_block_precedence():
+    from types import SimpleNamespace
+    from runner.toolkit.runtime.contracts import ProtectionDecision, RiskFinding
+
+    def step(id, rule):
+        return SimpleNamespace(
+            id=id, capability="builtin_content_filter", phases=["input"],
+            parameters=(("policy_id", "local-credentials"), ("rule_id", rule)),
+            trigger=SimpleNamespace(type="always", verdicts=[]),
+        )
+    plan = SimpleNamespace(
+        guardrail_id="guardrail-1", guardrail_version="v1", output_delivery="full_buffered",
+        policy_bindings=[SimpleNamespace(
+            policy_id="local-credentials", policy_version="1.0.0",
+            enabled_rule_ids=["credentials-api-keys/github_token", "pattern/github_token"],
+            enabled_rails=["input"], action="transform", rule_actions=(),
+        )],
+        steps=[
+            step("block", "credentials-api-keys/github_token"),
+            step("transform", "pattern/github_token"),
+        ],
+        policy_versions=[], modules=[],
+    )
+    case = {
+        "id": "case", "policyId": "local-credentials", "sourcePolicyId": "local-credentials",
+        "sourcePolicyVersion": "1.0.0", "phase": "input", "content": "ghp_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "expectedDecision": "transform", "caseType": "rule_acceptance",
+        "coveredRuleIds": ["pattern/github_token"], "required": True,
+        "trustedInstruction": "", "targetSource": "user_input",
+    }
+    findings = (
+        RiskFinding(risk="builtin_content_filter", taxonomy_id="TALI-PRIVACY-CREDENTIAL",
+            verdict="matched", confidence=None, evidence="block", recommended_action="block",
+            policy_id="local-credentials", rule_id="credentials-api-keys/github_token"),
+        RiskFinding(risk="builtin_content_filter", taxonomy_id="TALI-PRIVACY-CREDENTIAL",
+            verdict="matched", confidence=None, evidence="transform", recommended_action="transform",
+            policy_id="local-credentials", rule_id="pattern/github_token"),
+    )
+
+    class Runtime:
+        async def evaluate(self, _request):
+            return ProtectionDecision(decision="block", action="block", reason="blocked", findings=findings)
+
+    result = await DefaultRunnerValidator(DefaultRunnerCompiler())._evaluate(Runtime(), plan, case)
+    assert result["passed"] is True
+    assert result["actualDecision"] == "block"
+    assert result["expectedDecision"] == "transform"
+    assert result["supersededBy"] == [{"policyId": "local-credentials", "ruleId": "credentials-api-keys/github_token"}]
+    assert "local block-first composition" in result["reason"]
