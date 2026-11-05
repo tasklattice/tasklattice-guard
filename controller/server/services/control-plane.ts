@@ -1113,7 +1113,8 @@ export class ControlPlaneService {
   }
 
   async listTestCases(guardrailId: string) {
-    const [guardrail] = await this.db.select({ excludedTestCaseIds: guardrails.excludedTestCaseIds, draftConfig: guardrails.draftConfig })
+    const [guardrail] = await this.db.select({ projectId: guardrails.projectId,
+      excludedTestCaseIds: guardrails.excludedTestCaseIds, draftConfig: guardrails.draftConfig })
       .from(guardrails).where(and(
         eq(guardrails.id, guardrailId), isNull(guardrails.deletedAt),
         resourceReadPredicate("guardrail", guardrails.id, guardrails.projectId),
@@ -1122,7 +1123,10 @@ export class ControlPlaneService {
     const excluded = new Set(guardrail.excludedTestCaseIds);
     const rows = await this.db.select().from(testCases).where(eq(testCases.guardrailId, guardrailId))
       .orderBy(asc(testCases.origin), asc(testCases.name), asc(testCases.id));
-    if (currentProjectId()) {
+    // The owner selected these Policies and owns the generated cases. Only a
+    // shared reader needs the frozen-Policy proof; requiring a published
+    // version here also broke brand-new drafts before their first version.
+    if (currentProjectId() && guardrail.projectId !== currentProjectId()) {
       const generated = rows.filter(row => row.origin === "generated");
       if (generated.length) {
         const snapshots = await this.db.select({ policies: guardrailVersions.policies, plan: guardrailVersions.plan })

@@ -37,14 +37,14 @@ describe.skipIf(!url)("Full-feature Profile creation and deletion", () => {
     expect(stored.draftConfig).toEqual(config);
     expect(stored.draftConfig.profileOrigin?.version).toBe("1.0.0");
     expect(stored.draftConfig.policyBindings).toHaveLength(14);
-    expect((await service.listTestCases(created.id)).length).toBeGreaterThan(500);
+    expect((await withTestProject(() => service.listTestCases(created.id))).length).toBeGreaterThan(500);
     const reduced = structuredClone(stored.draftConfig);
     reduced.policyBindings = reduced.policyBindings.filter(binding => binding.policyId !== "local-government-identifiers");
     await service.updateGuardrail({ id: created.id, actorId: "admin", draftConfig: reduced, expectedDraftRevision: stored.draftRevision });
     const saved = await service.getGuardrail(created.id);
     expect(saved.draftConfig.profileOrigin).toEqual(config.profileOrigin);
     expect(Object.keys(saved.draftConfig.policyBindings.find(binding => binding.policyId === "local-contact-data")!.testCaseOverrides!)).toHaveLength(25);
-    const tests = await service.listTestCases(created.id);
+    const tests = await withTestProject(() => service.listTestCases(created.id));
     expect(tests.some(test => test.sourcePolicyId === "local-government-identifiers")).toBe(false);
     expect(tests.some(test => test.sourcePolicyId === "local-contact-data")).toBe(true);
   });
@@ -57,7 +57,7 @@ describe.skipIf(!url)("Full-feature Profile creation and deletion", () => {
     const saved = await service.getGuardrail(created.id);
     const plan = buildGuardrailPlan({ guardrailId: created.id, guardrailVersion: "test", draft: saved.draftConfig, policies: await service.listPolicies() });
     expect(publishedProtectionCoverage(plan)?.requiredModelBindings).toEqual([]);
-    const tests = await service.listTestCases(created.id);
+    const tests = await withTestProject(() => service.listTestCases(created.id));
     expect(tests.some(test => removed.includes(test.sourcePolicyId!))).toBe(false);
     expect(tests.some(test => test.sourcePolicyId === "builtin-memory-poisoning" && test.targetSource === "tool_output")).toBe(true);
     expect(tests.some(test => test.sourcePolicyId === "builtin-indirect-prompt-injection" && test.targetSource === "retrieved_content")).toBe(true);

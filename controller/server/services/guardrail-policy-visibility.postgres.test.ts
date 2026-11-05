@@ -86,6 +86,17 @@ describe.skipIf(!url)("Guardrail version Policy-content visibility", () => {
     await database.pool.query("DELETE FROM resource_share WHERE id='detail-policy-share'");
     await expect(asProject("projectB", () => service.getValidationRun("private-run"))).rejects.toMatchObject({ code: "not_found" });
   });
+  it("lets the owner read generated draft cases before the first version but not a shared reader", async () => {
+    await database.pool.query(`INSERT INTO guardrail(id,project_id,name,draft_config) VALUES ('draft-guard','projectA','Draft','{}')`);
+    await database.pool.query(`INSERT INTO guardrail_test_case(id,guardrail_id,name,policy_id,phase,content,expected_decision,origin,source_policy_id,source_policy_version)
+      VALUES ('draft-generated','draft-guard','Private draft case','private-policy','input','PRIVATE DRAFT','block','generated','private-policy','1')`);
+    const owner = await asProject("projectA", () => service.listTestCases("draft-guard"));
+    expect(owner.map(item => item.content)).toEqual(["PRIVATE DRAFT"]);
+    await database.pool.query(`INSERT INTO resource_share(id,owner_project_id,recipient_project_id,resource_type,resource_id)
+      VALUES ('draft-share','projectA','projectB','guardrail','draft-guard')`);
+    await expect(asProject("projectB", () => service.listTestCases("draft-guard"))).rejects.toMatchObject({ code: "not_found" });
+  });
+
   it("rejects divergent plan projections and Artifact plans even for a readable Policy", async () => {
     const altered = { ...plan, policy_versions: [{ ...plan.policy_versions[0], sources: [{ path: "private.co", content: "OTHER PRIVATE SOURCE" }] }] };
     await database.pool.query("UPDATE guardrail_version SET plan=$1 WHERE guardrail_id='shared-guard'", [JSON.stringify(altered)]);
