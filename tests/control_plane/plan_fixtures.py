@@ -54,6 +54,7 @@ def _controller_plans() -> dict[str, dict]:
       console.log(JSON.stringify({
         grouped: plan([grouped]),
         mix: plan([policyWith('mix', [rule('r-mask', 'transform', '[MASK]'), rule('r-block', 'block'), rule('r-observe', 'allow')])]),
+        blockfirst: plan([policyWith('blockfirst', [rule('r-block', 'block'), rule('r-mask', 'transform', '[MASK]'), rule('r-observe', 'allow')])]),
         views: plan([policyWith('views', [rule('r-observe', 'allow'), rule('r-mask', 'transform', '[MASK]')])]),
         shadowed: plan([policyWith('shadowed', [rule('r-first', 'transform', '[FIRST]'), rule('r-second', 'transform', '[SECOND]'), rule('r-observe', 'allow')])]),
         ...Object.fromEntries(['allow', 'block', 'transform'].flatMap(a =>

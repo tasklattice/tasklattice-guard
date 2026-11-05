@@ -90,7 +90,7 @@ async def send(client, adapter, direction, text="alpha beta", **flags):
 async def test_both_adapters_stop_after_block_regardless_of_http_flags_or_snapshot(
     plans, direction, flag_only, verbose, capture, failure,
 ):
-    async with online_app(plans["mix"], capture=capture, recorder=Recorder(failure=failure)) as (app, _, recorder, telemetry):
+    async with online_app(plans["blockfirst"], capture=capture, recorder=Recorder(failure=failure)) as (app, _, recorder, telemetry):
         async with httpx.AsyncClient(transport=httpx.ASGITransport(app), base_url="http://runner") as client:
             scan = await send(client, "scan", direction, flagOnly=flag_only, verbose=verbose)
             lite = await send(client, "lite", direction)
@@ -142,7 +142,7 @@ async def test_resource_modes_belong_to_guardrails_for_both_adapters(plans, mode
 
 
 async def test_terminal_block_stops_remaining_content_items(plans):
-    async with online_app(plans["mix"]) as (_, service, recorder, _):
+    async with online_app(plans["blockfirst"]) as (_, service, recorder, _):
         result = await service.evaluate(ProtectionRequest(phase="input", texts=("alpha", "alpha"),
             context=RequestContext(protocol="litellm", endpoint_id=LITELLM_ENDPOINT_ID)))
         assert result.execution_status == "complete" and result.decision == "block"
@@ -153,7 +153,7 @@ async def test_terminal_block_stops_remaining_content_items(plans):
 
 @pytest.mark.parametrize("failure", ["buffer", "encrypt"])
 async def test_snapshot_failure_does_not_change_guardrail_result(plans, monkeypatch, failure):
-    async with online_app(plans["mix"], capture="debug") as (app, _, recorder, telemetry):
+    async with online_app(plans["blockfirst"], capture="debug") as (app, _, recorder, telemetry):
         if failure == "buffer":
             async def broken(*args, **kwargs):
                 raise ConnectionError("snapshot storage unavailable")

@@ -1989,14 +1989,11 @@ def _decision(
         required_modules_total=len(modules),
     )
     block_match = _terminal_block_match(runtime_results) if decision == "block" else None
-    enforced_block = decision == "block" and any(
-        step.kind == "action" and step.verdict == "matched" and step.route == "enforce"
-        for step in trace)
     policy_unknown = decision == "block" and any(
         item.result.verdict == "unknown" and item.result.unknown_reason == "uncertain"
         and _runtime_action(item) == "block" for item in _terminal_runtime_results(runtime_results)
     )
-    terminal_reason = ("policy_block" if block_match is not None or enforced_block or decision == "block" and native_risk
+    terminal_reason = ("policy_block" if block_match is not None or decision == "block" and native_risk
                        else "policy_unknown" if policy_unknown else None)
     if block_match is not None:
         reason = block_match.result.reason or "A terminal Policy match blocked the interaction."
