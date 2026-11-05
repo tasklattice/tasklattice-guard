@@ -2,6 +2,25 @@
 
 Status: proposed implementation specification for review. No runtime code has been changed.
 
+
+## 0. Implementation status (2026-11-05)
+
+Deployed to the OrbStack `tali` release and verified with the CLI:
+
+- Default Guardrail local-only: 748/748 passed, 0 model invocations, p95 863 ms.
+- All local Policy package suites: 1150 passed, 18 not run.
+- Every step reads `previous_output`; the executed order is the authored Policy
+  order and the Rule order inside each Policy.
+- A candidate currently covers a contiguous run of Rules with the same action.
+  The content-filter Action applies those Rules sequentially, so continuous
+  Transform and later-Block semantics are preserved, but the trace has one
+  Action entry per run rather than one per Rule.
+- Segment parallelism is not enabled in this first deployment. The phase is
+  sequential; the rank and evaluation view are visible in trace detail as
+  `[rank=N, view=previous_output]`.
+- Streaming still uses the existing buffered/incremental delivery decision; the
+  Rank Mode streaming adapter is not yet implemented.
+
 ## 1. Purpose
 
 Rank Mode is the only execution mode for Guardrail checks.
