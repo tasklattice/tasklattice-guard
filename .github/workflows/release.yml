@@ -13,11 +13,58 @@ permissions:
   contents: read
 
 jobs:
-  quality:
-    name: Quality gate
-    uses: ./.github/workflows/ci.yml
+  verify:
+    name: Verify main CI for this commit
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
     permissions:
+      actions: read
       contents: read
+    steps:
+      - name: Require a successful main CI run for the tagged commit
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          sha="$GITHUB_SHA"
+          deadline=$((SECONDS + 5400))
+          no_run_since=""
+          while (( SECONDS < deadline )); do
+            if ! runs=$(gh run list --repo "$GITHUB_REPOSITORY" --workflow=ci.yml \
+                --commit "$sha" --limit 20 --json status,conclusion,event,headBranch); then
+              echo "Could not query CI runs; retrying in 20s." >&2
+              sleep 20
+              continue
+            fi
+            main_runs=$(jq -c '[.[] | select(.event == "push" and .headBranch == "main")]' <<<"$runs")
+            if jq -e 'any(.[]; .conclusion == "success")' <<<"$main_runs" >/dev/null; then
+              echo "Main CI already succeeded for $sha."
+              exit 0
+            fi
+            if jq -e 'any(.[]; .status != "completed")' <<<"$main_runs" >/dev/null; then
+              echo "Waiting for the main CI run on $sha to finish."
+              no_run_since=""
+              sleep 20
+              continue
+            fi
+            if jq -e 'length > 0' <<<"$main_runs" >/dev/null; then
+              echo "Main CI for $sha completed without success:" >&2
+              jq -r '.[] | "\(.status) \(.conclusion // "-")"' <<<"$main_runs" >&2
+              exit 1
+            fi
+            # A tag may be pushed before Actions registers the main-branch run.
+            if [[ -z "$no_run_since" ]]; then no_run_since=$SECONDS; fi
+            if (( SECONDS - no_run_since >= 300 )); then
+              echo "No main CI run exists for $sha." >&2
+              echo "Push the commit to main and let CI pass before creating the release tag." >&2
+              exit 1
+            fi
+            echo "No main CI run registered yet; waiting."
+            sleep 15
+          done
+          echo "Timed out waiting for main CI on $sha." >&2
+          exit 1
 
   version:
     name: Resolve release version
@@ -41,7 +88,7 @@ jobs:
   publish-platforms:
     name: Build ${{ matrix.component }} ${{ matrix.architecture }} image
     needs:
-      - quality
+      - verify
       - version
     runs-on: ${{ matrix.runner }}
     permissions:

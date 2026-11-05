@@ -152,8 +152,9 @@ jobs:
           platforms: linux/${{ matrix.architecture }}
           load: true
           tags: tali-guard-runner:guardctl-ci
-          cache-from: type=gha,scope=guardctl-runner-${{ matrix.architecture }}
-          cache-to: type=gha,mode=max,scope=guardctl-runner-${{ matrix.architecture }}
+          # Shared with the release workflow so a tag reuses the tested layers.
+          cache-from: type=gha,scope=tali-guard-runner-${{ matrix.architecture }}
+          cache-to: type=gha,mode=max,scope=tali-guard-runner-${{ matrix.architecture }}
 
       - name: Test the shipped CLI and Runner runtime
         shell: bash
