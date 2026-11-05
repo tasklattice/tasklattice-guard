@@ -3,7 +3,7 @@ import type {DirectoryPage} from "../../shared/directory";
 import { requestController } from "@/lib/controller-api";
 
 export type ShareableResource = {
-  resourceType: "policy" | "guardrail" | "endpoint" | "router" | "model";
+  resourceType: "policy" | "endpoint" | "router" | "model";
   resourceId: string;
   name: string;
 };

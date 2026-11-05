@@ -128,6 +128,9 @@ export function resourceReadPredicate(
 ): SQL | undefined {
   const projectId = currentProjectId();
   if (!projectId) return undefined;
+  // Guardrails are Project-scoped resources; the generic share table must not
+  // grant another Project read access to a Guardrail or any of its evidence.
+  if (kind === "guardrail") return eq(ownerColumn, projectId);
   const access = currentAccountRole() === "admin" ? eq(ownerColumn, projectId) : or(
     eq(ownerColumn, projectId),
     // Match the current owner too, so a stale grant cannot follow a moved ID.
@@ -181,7 +184,7 @@ export async function assertResourceReadAccess(db: ControllerDatabase, kind: Sha
   const ownerProjectId = await resourceOwner(db, kind, id);
   if (!ownerProjectId) throw new NotFoundError(kind, id);
   if (ownerProjectId === projectId) return;
-  if (currentAccountRole() === "admin") throw new NotFoundError(kind, id);
+  if (kind === "guardrail" || currentAccountRole() === "admin") throw new NotFoundError(kind, id);
   const [grant] = await db.select({ id: resourceShares.id }).from(resourceShares).where(and(
     eq(resourceShares.ownerProjectId, ownerProjectId),
     eq(resourceShares.recipientProjectId, projectId),

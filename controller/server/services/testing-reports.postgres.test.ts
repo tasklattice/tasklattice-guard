@@ -55,19 +55,4 @@ describe.skipIf(!url)("Bounded testing report reads", () => {
     await expect(queryTestingReports(database.db, { cursor: "invalid" })).rejects.toThrow("cursor");
   });
 
-  it("does not disclose version evidence for a guessed Guardrail ID without an active share", async () => {
-    await database.pool.query("INSERT INTO project_group(id,name) VALUES ('group-c','Group C'); UPDATE project SET group_id='group-c' WHERE id='projectC'");
-    const asProject = <T>(projectId: string, work: () => T) => runWithProjectContext({ projectId }, work);
-    const reports = (projectId: string) => asProject(projectId, () => queryTestingReports(database.db, { guardrailId: "guard" }));
-    expect((await reports("projectA")).versionReports.map(item => item.id).sort()).toEqual(["run-01", "run-29", "run-30"]);
-    for (const project of ["projectB", "projectC"]) {
-      expect(await reports(project)).toMatchObject({ items: [], count: 0, versionReports: [] });
-    }
-    await database.pool.query(`INSERT INTO resource_share(id,owner_project_id,recipient_project_id,resource_type,resource_id)
-      VALUES ('guard-share','projectA','projectB','guardrail','guard')`);
-    expect((await reports("projectB")).versionReports.map(item => item.id).sort()).toEqual(["run-01", "run-29", "run-30"]);
-    expect(await reports("projectC")).toMatchObject({ items: [], count: 0, versionReports: [] });
-    await database.pool.query("DELETE FROM resource_share WHERE id='guard-share'");
-    expect(await reports("projectB")).toMatchObject({ items: [], count: 0, versionReports: [] });
-  }, 30000);
 });

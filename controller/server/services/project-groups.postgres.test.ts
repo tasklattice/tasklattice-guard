@@ -323,22 +323,6 @@ describe.skipIf(!url)("Project Group persistence and safe allocation in PostgreS
     await expect(control.desiredStateForPool("unregistered")).rejects.toMatchObject({ code: "runner_pool_group_unavailable" });
   });
 
-  it("includes an explicitly shared Guardrail dependency without its owner's Endpoints and fails closed on revocation", async () => {
-    const { snapshot } = await seedAllocatedRuntime();
-    await database.pool.query(`INSERT INTO resource_share(id,owner_project_id,recipient_project_id,resource_type,resource_id)
-      VALUES ('a-to-b','projectA','projectB','guardrail','guard-a')`);
-    await database.pool.query("UPDATE traffic_router SET active_snapshot=$1 WHERE id='router-b'", [snapshot("guard-a")]);
-    const shared = await control.desiredStateForPool("pool-b");
-    expect(shared.artifacts.map(item => item.id).sort()).toEqual(["artifact-a", "artifact-b"]);
-    expect(shared.routerRevisions[0]!.routes[0]!.targets[0]).toMatchObject({ guardrailId: "guard-a", artifactId: "artifact-a" });
-    expect(shared.endpoints.map(item => item.endpointId)).toEqual(["endpoint-b"]);
-    await database.pool.query("DELETE FROM resource_share WHERE id='a-to-b'");
-    const revoked = await control.desiredStateForPool("pool-b");
-    expect(revoked.artifacts.map(item => item.id)).toEqual(["artifact-b"]);
-    expect(revoked.routerRevisions).toEqual([]);
-    expect(revoked.endpoints[0]!.trafficRouterId).toBeNull();
-  });
-
   it("moves a dedicated pool with its Project without combining another Project's state", async () => {
     await seedAllocatedRuntime();
     await asAdmin(() => service.assignProject("projectA", { groupId: "team-b", expectedGroupId: "team-a" }, actor));

@@ -21,16 +21,16 @@ describe.skipIf(!url)("Guardrail evidence ownership", () => {
     await database.pool.query("INSERT INTO guardrail(id,project_id,name,draft_config) VALUES ('owned-evidence','projectA','Owned','{}')");
     await database.pool.query(`INSERT INTO guardrail_version(guardrail_id,version,generation,status,runtime_profile,plan,policies,test_suite,released_at)
       VALUES ('owned-evidence',$1,1,'ready','auto','{}','[]',$2,now())`, [version, JSON.stringify([{ id: "case", content: "OWNED CASE" }])]);
-    await database.pool.query(`INSERT INTO resource_share(id,owner_project_id,recipient_project_id,resource_type,resource_id)
-      VALUES ('owned-share','projectA','projectB','guardrail','owned-evidence')`);
   }, 30000);
   afterAll(async () => { await database?.drop(); });
 
-  it("keeps version plans, frozen suites and reports with the Guardrail", async () => {
-    const detail = await asProject("projectB", () => service.getGuardrail("owned-evidence"));
+  it("keeps version plans, frozen suites and reports inside the owning Project", async () => {
+    const detail = await asProject("projectA", () => service.getGuardrail("owned-evidence"));
     expect(detail.versions[0]).toMatchObject({ testSuiteCount: 1, plan: {}, policies: [] });
-    const suite = await asProject("projectB", () => service.guardrailVersionTestSuite("owned-evidence", version));
+    const suite = await asProject("projectA", () => service.guardrailVersionTestSuite("owned-evidence", version));
     expect(suite.items).toEqual([{ id: "case", content: "OWNED CASE" }]);
-    await expect(asProject("projectC", () => service.getGuardrail("owned-evidence"))).rejects.toMatchObject({ code: "not_found" });
+    // Guardrails are Project-scoped: there is no share path to another project.
+    await expect(asProject("projectB", () => service.getGuardrail("owned-evidence"))).rejects.toMatchObject({ code: "not_found" });
+    await expect(asProject("projectB", () => service.guardrailVersionTestSuite("owned-evidence", version))).rejects.toMatchObject({ code: "not_found" });
   });
 });

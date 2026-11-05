@@ -212,7 +212,7 @@ const runtimeEventBatchInput = z.object({
 });
 const modelCredentialRefsInput = z.object({ refs: z.array(z.string().uuid()).max(64), leaseId: z.string().uuid().optional() });
 const shareInput = z.object({
-  resourceType: z.enum(["guardrail", "router", "endpoint", "policy", "model"]),
+  resourceType: z.enum(["router", "endpoint", "policy", "model"]),
   resourceId: z.string().trim().min(1).max(256),
   recipientProjectId: z.string().trim().min(1).max(128),
 });

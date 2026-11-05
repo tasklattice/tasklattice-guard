@@ -43,11 +43,16 @@ describe("project share HTTP boundary", () => {
     expect(await list.json()).toMatchObject({ items: [{ projectId: "projectB" }] });
     const create = await app.request("/api/v1/account/shares", {
       method: "POST", headers: { "content-type": "application/json" },
-      body: JSON.stringify({ resourceType: "guardrail", resourceId: "guard", recipientProjectId: "projectC" }),
+      body: JSON.stringify({ resourceType: "router", resourceId: "router", recipientProjectId: "projectC" }),
     });
     expect(create.status).toBe(201);
-    expect(createShare).toHaveBeenCalledWith({ resourceType: "guardrail", resourceId: "guard", recipientProjectId: "projectC" }, "actor-b");
+    expect(createShare).toHaveBeenCalledWith({ resourceType: "router", resourceId: "router", recipientProjectId: "projectC" }, "actor-b");
     expect(await create.json()).toMatchObject({ share: { projectId: "projectB" } });
+    const guardrail = await app.request("/api/v1/account/shares", {
+      method: "POST", headers: { "content-type": "application/json" },
+      body: JSON.stringify({ resourceType: "guardrail", resourceId: "guard", recipientProjectId: "projectC" }),
+    });
+    expect(guardrail.status).toBe(400);
   });
 
   it.each([undefined, "", " ", " projectA"])("fails closed when the persisted session project is %j", async projectId => {

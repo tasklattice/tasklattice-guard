@@ -38,7 +38,7 @@ describe("request project context", () => {
     runWithProjectContext({ role: "user", projectId: "explicit-project" }, () => expect(currentAuthorityScope()).toBe("project"));
   });
 
-  it("requires matching ownership or an owner-bound share in resource reads", async () => {
+  it("requires Project ownership for Guardrail reads and never consults the share table", async () => {
     const pool = new Pool({ connectionString: "postgres://unused:unused@localhost/unused" });
     try {
       const db = drizzle(pool, { schema });
@@ -47,9 +47,8 @@ describe("request project context", () => {
         .where(resourceReadPredicate("guardrail", schema.guardrails.id, schema.guardrails.projectId))
         .toSQL());
       expect(read.sql).toContain('"guardrail"."project_id" =');
-      expect(read.sql).toContain('from "resource_share"');
-      expect(read.sql).toContain('"resource_share"."owner_project_id" = "guardrail"."project_id"');
-      expect(read.params).toEqual(["projectB", "guardrail", "projectB"]);
+      expect(read.sql).not.toContain('"resource_share"');
+      expect(read.params).toEqual(["projectB"]);
 
       const write = runWithProjectContext({ projectId: "projectB" }, () => db.select()
         .from(schema.guardrails)

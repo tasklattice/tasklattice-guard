@@ -46,10 +46,7 @@ export class ProtectionModeService {
       .innerJoin(runnerPools, eq(runnerPools.id, runnerInstances.poolId));
     if (!guardrail) return rows.map(r => r.runner);
     if (guardrail.projectId === null) return rows.filter(r => r.runner.poolId === "default").map(r => r.runner);
-    const shares = await db.select({ recipientProjectId: resourceShares.recipientProjectId }).from(resourceShares)
-      .where(and(eq(resourceShares.resourceType, "guardrail"), eq(resourceShares.resourceId, guardrail.id),
-        eq(resourceShares.ownerProjectId, guardrail.projectId)));
-    const ids = [guardrail.projectId, ...shares.map(share => share.recipientProjectId)];
+    const ids = [guardrail.projectId];
     const pools = await db.select({ id: runnerPools.id }).from(projects).innerJoin(runnerPools, projectPoolAllocation)
       .where(and(inArray(projects.id, ids), projectScoped && currentProjectId() ? eq(projects.id,currentProjectId()!) : undefined));
     const allowed = new Set(pools.map(pool => pool.id));
@@ -103,12 +100,7 @@ export class ProtectionModeService {
       if (poolId && !pool) throw new NotFoundError("Runner pool", poolId);
       const members = pool ? await tx.select({ id: projects.id }).from(projects).innerJoin(runnerPools,projectPoolAllocation).where(eq(runnerPools.id,poolId!)) : [];
       const memberIds = members.map(member => member.id);
-      const visible = pool ? (memberIds.length ? or(
-        inArray(guardrails.projectId, memberIds),
-        sql`exists (select 1 from ${resourceShares} where ${resourceShares.resourceType} = 'guardrail'
-          and ${resourceShares.resourceId} = ${guardrails.id} and ${resourceShares.ownerProjectId} = ${guardrails.projectId}
-          and ${resourceShares.recipientProjectId} in (${sql.join(memberIds.map(id => sql`${id}`), sql`, `)}))`,
-      ) : sql`false`) : undefined;
+      const visible = pool ? (memberIds.length ? inArray(guardrails.projectId, memberIds) : sql`false`) : undefined;
       const rows = await tx.select({ id: guardrails.id, mode: guardrails.protectionMode }).from(guardrails)
         .where(and(isNull(guardrails.deletedAt), eq(guardrails.status, "active"), visible));
       return { generation: state?.generation ?? 0, modes: Object.fromEntries(rows.map(r => [r.id, r.mode])) };

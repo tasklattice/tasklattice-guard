@@ -617,23 +617,17 @@ export class TrafficRoutingService {
       artifactId: guardrailVersions.artifactId, ownerProjectId: guardrails.projectId,
     }).from(guardrailVersions).innerJoin(guardrails, eq(guardrails.id, guardrailVersions.guardrailId))
       .where(and(inArray(guardrailVersions.guardrailId, ids), isNull(guardrails.deletedAt))) : [];
-    const shares = ids.length ? await tx.select().from(resourceShares).where(and(
-      eq(resourceShares.resourceType, "guardrail"), inArray(resourceShares.resourceId, ids),
-      inArray(resourceShares.recipientProjectId, [...projectIds]),
-    )) : [];
     return published.flatMap(router => {
       const versionsForTarget = (target: { guardrailId: string; guardrailVersion: string }) =>
         versions.find(version => version.guardrailId === target.guardrailId && version.version === target.guardrailVersion);
-      // A stale/deleted target or revoked share must not keep serving through
-      // last-known-good state. Omit the entire Router so its Endpoints become
-      // unbound in this accepted snapshot; never fall through to another Route.
+      // A stale/deleted target must not keep serving through last-known-good
+      // state. Omit the entire Router so its Endpoints become unbound in this
+      // accepted snapshot; never fall through to another Route.
       const invalid = router.activeSnapshot!.routes.some(route => route.targets.some(target => {
         const version = versionsForTarget(target);
         if (!version) return target.weightBps > 0;
         return (target.weightBps > 0 && !version.artifactId)
-          || version.ownerProjectId !== router.projectId && !shares.some(share =>
-            share.resourceId === target.guardrailId && share.ownerProjectId === version.ownerProjectId
-            && share.recipientProjectId === router.projectId);
+          || version.ownerProjectId !== router.projectId;
       }));
       if (invalid) return [];
       return [{ routerId: router.id, revision: router.activeRevision!,

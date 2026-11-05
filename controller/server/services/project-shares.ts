@@ -40,9 +40,8 @@ export class ProjectShareService {
 
   async listOwnedResources() {
     const projectId = this.projectId();
-    const [policies, guardrailRows, endpointRows, routerRows, models, declarative, imported] = await Promise.all([
+    const [policies, endpointRows, routerRows, models, declarative, imported] = await Promise.all([
       this.db.select({ resourceId: policyRecords.id, name: policyRecords.name }).from(policyRecords).where(eq(policyRecords.projectId, projectId)),
-      this.db.select({ resourceId: guardrails.id, name: guardrails.name }).from(guardrails).where(and(eq(guardrails.projectId, projectId), isNull(guardrails.deletedAt))),
       this.db.select({ resourceId: endpoints.id, name: endpoints.name }).from(endpoints).where(and(eq(endpoints.projectId, projectId), isNull(endpoints.deletedAt))),
       this.db.select({ resourceId: trafficRouters.id, name: trafficRouters.name }).from(trafficRouters).where(and(eq(trafficRouters.projectId, projectId), isNull(trafficRouters.deletedAt))),
       this.db.select({ resourceId: modelDefinitions.id, name: modelDefinitions.name }).from(modelDefinitions).where(eq(modelDefinitions.projectId, projectId)),
@@ -53,7 +52,6 @@ export class ProjectShareService {
       ...imported.map(row => ({ resourceId: row.resourceId, name: typeof row.definition.name === "string" ? row.definition.name : row.resourceId, resourceType: "policy" as const })),
       ...declarative.map(row => ({ resourceId: row.resourceId, name: row.name.metadata.name, resourceType: "policy" as const })),
       ...policies.map(row => ({ ...row, resourceType: "policy" as const })),
-      ...guardrailRows.map(row => ({ ...row, resourceType: "guardrail" as const })),
       ...endpointRows.map(row => ({ ...row, resourceType: "endpoint" as const })),
       ...routerRows.map(row => ({ ...row, resourceType: "router" as const })),
       ...models.map(row => ({ ...row, resourceType: "model" as const })),
@@ -68,10 +66,13 @@ export class ProjectShareService {
       resourceId: resourceShares.resourceId,
       recipientProjectId: resourceShares.recipientProjectId,
       createdAt: resourceShares.createdAt,
-    }).from(resourceShares).where(eq(resourceShares.ownerProjectId, this.projectId())).orderBy(asc(resourceShares.createdAt));
+    }).from(resourceShares).where(and(eq(resourceShares.ownerProjectId, this.projectId()), ne(resourceShares.resourceType, "guardrail"))).orderBy(asc(resourceShares.createdAt));
   }
 
   async createShare(input: ShareInput, actorId: string) {
+    // Guardrails are Project-scoped resources in this product; they are not
+    // part of the generic sharing surface.
+    if (input.resourceType === "guardrail") throw new ValidationError("Guardrails are Project-scoped and cannot be shared.");
     const ownerProjectId = this.projectId();
     if (input.recipientProjectId === ownerProjectId) throw new ValidationError("A project cannot share a resource with itself.");
     await assertResourceOwner(this.db, input.resourceType, input.resourceId);
@@ -109,15 +110,6 @@ export class ProjectShareService {
         eq(resourceShares.id, id), eq(resourceShares.ownerProjectId, ownerProjectId),
       )).for("update");
       if (!grant) throw new NotFoundError("Share", id);
-      if (grant.resourceType === "guardrail") {
-        const published = await tx.select({ activeSnapshot: trafficRouters.activeSnapshot }).from(trafficRouters).where(and(
-          eq(trafficRouters.projectId, grant.recipientProjectId), isNull(trafficRouters.deletedAt),
-        ));
-        if (published.some(router => router.activeSnapshot?.routes.some(route =>
-          route.targets.some(target => target.guardrailId === grant.resourceId)))) {
-          throw new ConflictError("Remove this Guardrail from the recipient's active Routers before revoking its share.", "share_in_use");
-        }
-      }
       if (grant.resourceType === "policy") {
         const versions = await tx.select({ sourceSnapshot: guardrailVersions.sourceSnapshot })
           .from(guardrailVersions).innerJoin(guardrails, eq(guardrails.id, guardrailVersions.guardrailId))

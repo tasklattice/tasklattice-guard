@@ -67,33 +67,6 @@ describe.skipIf(!url)("shared Router reference visibility", () => {
     expect(data).toContain("[restricted]");
   }
 
-  it("does not transitively reveal private Endpoints or Guardrails through a Router share", async () => {
-    expectNoPrivate(await asA(views));
-    expectNoPrivate(await asA(() => service.list()));
-    await expect(asC(() => service.get("router-b"))).rejects.toMatchObject({ code: "not_found" });
-    const owner = serialized(await asB(views));
-    expect(owner).toContain("endpoint-private");
-    expect(owner).toContain("Private Guardrail");
-    expect(owner).toContain("Own Guardrail");
-    const admin = serialized(await asAdmin(views));
-    expect(admin).toContain("Private Endpoint");
-    expect(admin).toContain("endpoint-missing");
-    expect(admin).toContain("Private Guardrail");
-  });
-
-  it("reveals only explicitly shared references and redacts them again on revocation", async () => {
-    await database.pool.query(`INSERT INTO resource_share (id,owner_project_id,recipient_project_id,resource_type,resource_id) VALUES
-      ('endpoint-share','projectB','projectA','endpoint','endpoint-private'),
-      ('guard-share','projectB','projectA','guardrail','guard-private')`);
-    const shared = serialized(await asA(views));
-    expect(shared).toContain("endpoint-private");
-    expect(shared).toContain("Private Endpoint");
-    expect(shared).toContain("guard-private");
-    expect(shared).toContain("Private Guardrail");
-    await database.pool.query("DELETE FROM resource_share WHERE id IN ('endpoint-share','guard-share')");
-    expectNoPrivate(await asA(views));
-  });
-
   it("does not reveal a revoked Guardrail ID through Router publication validation", async () => {
     await database.pool.query("DELETE FROM resource_share WHERE id='guard-owner-share'");
     try {

@@ -196,56 +196,6 @@ describe.skipIf(!url)("Guardrail release packages between isolated environments"
     expect(JSON.stringify(parsed)).not.toMatch(/uat-runner-0|resultsDigest/);
   });
 
-  it("does not export private Policy source transitively through a shared Guardrail", async () => {
-    const asProject = <T>(projectId: string, fn: () => T) => runWithProjectContext({ projectId, role: "user" }, fn);
-    await uatDb.pool.query("INSERT INTO resource_share(id,owner_project_id,recipient_project_id,resource_type,resource_id) VALUES ('package-guardrail-share','projectA','projectB','guardrail',$1)", [guardrailId]);
-    try {
-      const owned = await asProject("projectA", () => uat.packages.exportPackage(guardrailId, [published[0]!]));
-      expect(parsePackage(owned.bytes).policies.some(policy => policy.id === STUDIO)).toBe(true);
-      await expect(asProject("projectB", () => uat.packages.exportPackage(guardrailId, [published[0]!]))).rejects.toMatchObject({ code: "guardrail_package_policy_export_forbidden" });
-      await expect(asProject("projectC", () => uat.packages.exportPackage(guardrailId, [published[0]!]))).rejects.toMatchObject({ code: "not_found" });
-      await uatDb.pool.query("INSERT INTO resource_share(id,owner_project_id,recipient_project_id,resource_type,resource_id) VALUES ('package-policy-share','projectA','projectB','policy',$1)", [STUDIO]);
-      // A Policy read share still does not grant onward redistribution.
-      await expect(asProject("projectB", () => uat.packages.exportPackage(guardrailId, [published[0]!]))).rejects.toMatchObject({ code: "guardrail_package_policy_export_forbidden" });
-      expect(parsePackage((await uat.packages.exportPackage(guardrailId, [published[0]!])).bytes).policies.some(policy => policy.id === STUDIO)).toBe(true);
-      // Reusing an ID/version for different content must not transfer old
-      // frozen Policy source to the apparent current owner.
-      const [original] = (await uatDb.pool.query("SELECT snapshot FROM policy_version WHERE policy_id=$1 AND version=1", [STUDIO])).rows;
-      try {
-        await uatDb.pool.query("UPDATE policy_version SET snapshot=jsonb_set(snapshot,'{name}', '\"replacement\"'::jsonb) WHERE policy_id=$1 AND version=1", [STUDIO]);
-        await expect(asProject("projectA", () => uat.packages.exportPackage(guardrailId, [published[0]!]))).rejects.toMatchObject({ code: "guardrail_package_policy_export_forbidden" });
-      } finally {
-        await uatDb.pool.query("UPDATE policy_version SET snapshot=$2 WHERE policy_id=$1 AND version=1", [STUDIO, original.snapshot]);
-      }
-      await uatDb.pool.query("DELETE FROM resource_share WHERE id='package-guardrail-share'");
-      await expect(asProject("projectB", () => uat.packages.exportPackage(guardrailId, [published[0]!]))).rejects.toMatchObject({ code: "not_found" });
-    } finally {
-      await uatDb.pool.query("DELETE FROM resource_share WHERE id IN ('package-guardrail-share','package-policy-share')");
-    }
-  });
-
-  it("allows exporting a shared Guardrail built exclusively from matching shipped catalog Policies", async () => {
-    const created = await withTestProject(async () => uat.createGuardrail({ name: "Public policy composition", draftConfig: defaultGuardrailDraft(PolicyCatalog.load(catalogDir).list()), runtimeProfile: "auto", actorId: "admin" }));
-    const version = await testAndPublish(created.id, 1, false);
-    await uatDb.pool.query("INSERT INTO resource_share(id,owner_project_id,recipient_project_id,resource_type,resource_id) VALUES ('public-package-share','projectA','projectB','guardrail',$1)", [created.id]);
-    try {
-      const bytes = await runWithProjectContext({ projectId: "projectB", role: "user" }, () => uat.packages.exportPackage(created.id, [version.version]));
-      expect(parsePackage(bytes.bytes).policies.every(policy => policy.kind === "catalog")).toBe(true);
-      const [original] = (await uatDb.pool.query("SELECT policies FROM guardrail_version WHERE guardrail_id=$1 AND version=$2", [created.id, version.version])).rows;
-      const changed = structuredClone(original.policies);
-      changed[0].definition.name = "foreign private catalog content";
-      try {
-        await uatDb.pool.query("UPDATE guardrail_version SET policies=$3 WHERE guardrail_id=$1 AND version=$2", [created.id, version.version, JSON.stringify(changed)]);
-        await expect(runWithProjectContext({ projectId: "projectB", role: "user" }, () => uat.packages.exportPackage(created.id, [version.version])))
-          .rejects.toMatchObject({ code: "guardrail_package_policy_export_forbidden", message: "This package contains Policy content that cannot be exported under your current ownership." });
-      } finally {
-        await uatDb.pool.query("UPDATE guardrail_version SET policies=$3 WHERE guardrail_id=$1 AND version=$2", [created.id, version.version, JSON.stringify(original.policies)]);
-      }
-    } finally {
-      await uatDb.pool.query("DELETE FROM resource_share WHERE id='public-package-share'");
-    }
-  });
-
   it("does not export Artifact Policy source when the frozen leaf list is missing", async () => {
     const version = published[0]!;
     const [original] = (await uatDb.pool.query("SELECT policies FROM guardrail_version WHERE guardrail_id=$1 AND version=$2", [guardrailId, version])).rows;
@@ -422,61 +372,6 @@ describe.skipIf(!url)("Guardrail release packages between isolated environments"
     // A later failure does not revoke the release.
     await testHere(guardrailId, version, "failed");
     expect((await prodDb.pool.query("SELECT status FROM guardrail_version WHERE guardrail_id = $1 AND version = $2", [guardrailId, version])).rows[0].status).toBe("ready");
-  });
-
-  it("routes an imported version only after Runners here confirm they can load it", async () => {
-    await prodDb.pool.query("INSERT INTO auth_user (id, username, email, role) VALUES ('approver', 'Approver', 'approver@example.test', 'admin')");
-    const version = published[1]!;
-    const router = await withTestProject(async () => prod.trafficRouting.create("Bank traffic", "", { routes: [{ id: "fallback", name: "Fallback", kind: "fallback", enabled: true,
-      selector: { expression: { combinator: "and", conditions: [] } },
-      targets: [{ id: "target", guardrailId, guardrailVersion: version, weightBps: 10000 }] }] }, "admin"));
-    const submit = async () => {
-      const review = await prod.trafficRouting.preview(router.id, 1);
-      await prod.packages.checkRoutedImports(review.snapshot);
-      return prod.trafficRouting.submitChange(router.id, { expectedDraftRevision: 1, reviewedSnapshot: review.snapshot, reviewedEndpointIds: review.endpointIds, reason: "CR-1", ticket: "CR-1" }, "admin");
-    };
-    // No Runner answered: not yet a verdict, so traffic cannot move.
-    await expect(submit()).rejects.toMatchObject({ code: "guardrail_version_environment_unverified", detail: { environment: { status: "pending" } } });
-    // A Runner that cannot serve the content blocks it with the reason.
-    const answer = (admitted: boolean) => async () => [{ poolId: "default", runnerId: "prod-runner-0", admitted, unavailable: false,
-      reason: admitted ? "" : "NeMo Action providers are unavailable for: GuardContentFilterAction@1.0.0.", nemoVersion: "0.24.0", modelRevisionId: "" }];
-    prod.setArtifactAdmission(answer(false));
-    await expect(submit()).rejects.toMatchObject({ code: "guardrail_version_environment_unverified", detail: { environment: { status: "missing" } } });
-    const { rows: [stored] } = await prodDb.pool.query("SELECT environment_check FROM guardrail_version WHERE version = $1", [version]);
-    expect(stored.environment_check.pools[0].reason).toContain("GuardContentFilterAction");
-
-    prod.setArtifactAdmission(answer(true));
-    const generation = await prod.desiredGeneration();
-    const change = await submit();
-    // Passing the load check lets the default pool hold the version, so it can
-    // be tried in Playground before any Router serves it.
-    expect(await prod.desiredGeneration()).toBe(generation + 1);
-    expect((await prod.desiredStateForPool("default")).artifacts.filter(item => item.guardrailId === guardrailId).map(item => item.guardrailVersion)).toEqual([version]);
-    await prod.packages.checkRoutedImports(change.snapshot);
-    await prod.trafficRouting.approveChange(router.id, change.id, "approver", {});
-    const desired = await prod.desiredStateForPool("default");
-    expect(desired.artifacts.filter(item => item.guardrailId === guardrailId).map(item => [item.guardrailVersion, item.checksum])).toEqual([[version, expect.stringMatching(/^[0-9a-f]{64}$/)]]);
-    // What a published Router pins is delivered whatever its row says: Runners
-    // reject a desired state with a missing target, which would stop all traffic.
-    const { rows: [release] } = await prodDb.pool.query("SELECT released_at, validation_run_id FROM guardrail_version WHERE guardrail_id = $1 AND version = $2", [guardrailId, version]);
-    await prodDb.pool.query("UPDATE guardrail_version SET status = 'pending', released_at = NULL WHERE guardrail_id = $1 AND version = $2", [guardrailId, version]);
-    expect((await prod.desiredStateForPool("default")).artifacts.filter(item => item.guardrailId === guardrailId).map(item => item.guardrailVersion)).toEqual([version]);
-    await prodDb.pool.query("UPDATE guardrail_version SET status = 'ready', released_at = $3, validation_run_id = $4 WHERE guardrail_id = $1 AND version = $2", [guardrailId, version, release.released_at, release.validation_run_id]);
-    // Sharing permits composition with imported content, while explicit checks
-    // remain owner-only; automatic admission is a runtime infrastructure step.
-    await prodDb.pool.query("INSERT INTO auth_user (id,username,email,role) SELECT id,name,email,role FROM (VALUES ('project-b-operator','B','b@example.test','user','projectB'),('project-b-approver','B approver','b-approver@example.test','user','projectB')) AS fixture(id,name,email,role,project_id)");
-    await prodDb.pool.query("INSERT INTO resource_share(id,owner_project_id,recipient_project_id,resource_type,resource_id) VALUES ('imported-guardrail-share','projectA','projectB','guardrail',$1)", [guardrailId]);
-    const asB = <T>(callback: () => T) => runWithProjectContext({ projectId: "projectB", actorId: "project-b-operator", role: "user" }, callback);
-    await expect(asB(() => prod.packages.checkVersionEnvironment(guardrailId, version))).rejects.toMatchObject({ code: "not_found" });
-    const sharedRouter = await asB(() => withTestProject(async () => prod.trafficRouting.create("B imported target", "", { routes: [{ id: "fallback", name: "Fallback", kind: "fallback", enabled: true,
-      selector: { expression: { combinator: "and", conditions: [] } }, targets: [{ id: "target", guardrailId, guardrailVersion: version, weightBps: 10000 }] }] }, "project-b-operator")));
-    const review = await asB(() => prod.trafficRouting.preview(sharedRouter.id, 1));
-    await asB(() => prod.packages.checkRoutedImports(review.snapshot));
-    const sharedChange = await asB(() => prod.trafficRouting.submitChange(sharedRouter.id, { expectedDraftRevision: 1, reviewedSnapshot: review.snapshot, reviewedEndpointIds: review.endpointIds, reason: "Shared import", ticket: "B-1" }, "project-b-operator"));
-    await runWithProjectContext({ projectId: "projectB", actorId: "project-b-approver", role: "user" }, () => prod.trafficRouting.approveChange(sharedRouter.id, sharedChange.id, "project-b-approver", {}));
-    await prodDb.pool.query("UPDATE traffic_router SET deleted_at=now() WHERE id=$1", [sharedRouter.id]);
-
-
   });
 
   it("prevents Project packages from replacing a Platform deployment preset", async () => {

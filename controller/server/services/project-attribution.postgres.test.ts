@@ -14,8 +14,7 @@ describe.skipIf(!url)("project attribution for asynchronous Runner telemetry", (
   beforeAll(async () => {
     database = await createTestDatabase(url!, "project_attribution");
     service = new ControlPlaneService(database.db, {} as ControllerConfig);
-    await database.pool.query(`INSERT INTO guardrail (id,project_id,name,draft_config) VALUES ('shared-c','projectC','Shared','{}');
-      INSERT INTO resource_share (id,owner_project_id,recipient_project_id,resource_type,resource_id) VALUES ('share-c-a','projectC','projectA','guardrail','shared-c');
+    await database.pool.query(`INSERT INTO guardrail (id,project_id,name,draft_config) VALUES ('shared-c','projectA','Owned','{}');
       INSERT INTO traffic_router (id,project_id,name,draft) VALUES ('router-a','projectA','A','{}'), ('router-c','projectC','C','{}');
       INSERT INTO resource_share (id,owner_project_id,recipient_project_id,resource_type,resource_id) VALUES ('share-router-c-a','projectC','projectA','router','router-c');
       INSERT INTO endpoint (id,project_id,name,adapter) VALUES ('endpoint-a','projectA','A','litellm-generic-guardrail'), ('endpoint-c','projectC','C','litellm-generic-guardrail'), ('playground','projectB','Prefix collision','litellm-generic-guardrail');`);
@@ -26,8 +25,8 @@ describe.skipIf(!url)("project attribution for asynchronous Runner telemetry", (
     return { id, requestId, occurredAt: new Date(), runnerId: "runner", guardrailId: "shared-c", guardrailVersion: "v1", direction: "incoming", decision: "allow", durationMs: 1,
       metadata: { protocol: "playground", usage: { model_calls: [{ call_id: "model-call", provider: "synthetic", model: "synthetic", usage_known: true, input_tokens: 1, output_tokens: 1 }] } }, ...extra };
   }
-  it("attributes a shared Playground invocation and model costs to the Controller-recorded caller", async () => {
-    expect((await asProject("projectA", () => service.getGuardrail("shared-c"))).projectId).toBe("projectC");
+  it("attributes a Playground invocation and model costs to the Controller-recorded caller", async () => {
+    expect((await asProject("projectA", () => service.getGuardrail("shared-c"))).projectId).toBe("projectA");
     await service.registerPlaygroundInvocation({ callId: "playground:trusted", projectId: "projectA", guardrailId: "shared-c", guardrailVersion: "v1", poolId: "pool-a", groupId: "group-a" });
     expect((await database.pool.query("SELECT pool_id, group_id FROM playground_invocation WHERE call_id='playground:trusted'")).rows)
       .toEqual([{ pool_id: "pool-a", group_id: "group-a" }]);

@@ -88,7 +88,6 @@ import {
   runnerControlSessions,
   runnerPools,
   runnerPoolLeaseEpochs,
-  resourceShares,
   runtimeEvents,
   projectGroups,
   projects,
@@ -1047,13 +1046,7 @@ export class ControlPlaneService {
         const runners = await tx.select({ ...getTableColumns(runnerInstances) }).from(runnerInstances)
           .innerJoin(runnerPools, eq(runnerPools.id, runnerInstances.poolId))
           .where(sql`exists (select 1 from ${projects}
-            where ${projectPoolAllocation} and (
-              ${projects.id} = ${guardrail.projectId}
-              or exists (select 1 from ${resourceShares}
-                where ${resourceShares.resourceType} = 'guardrail'
-                  and ${resourceShares.resourceId} = ${guardrail.id}
-                  and ${resourceShares.ownerProjectId} = ${guardrail.projectId}
-                  and ${resourceShares.recipientProjectId} = ${projects.id})))`);
+            where ${projectPoolAllocation} and ${projects.id} = ${guardrail.projectId})`);
         const online = runners.filter(r => r.lastHeartbeatAt && Date.now() - r.lastHeartbeatAt.getTime() < 60_000);
         if (online.some(r => r.appliedGeneration < generation)) blockers.push({ code: "runner_sync" });
       }
@@ -2360,14 +2353,7 @@ export class ControlPlaneService {
     // Routed Artifacts are always included. Other visible versions need a
     // compatible Runner load check before being preloaded for Playground.
     const referencedArtifactIds = new Set(routerRevisions.flatMap((router) => router.routes.flatMap((route) => route.targets.map((target) => target.artifactId).filter(Boolean))));
-    const visibleGuardrail = projectIds.length ? or(
-      inArray(guardrails.projectId, projectIds),
-      sql`exists (select 1 from ${resourceShares}
-        where ${resourceShares.resourceType} = 'guardrail'
-          and ${resourceShares.resourceId} = ${guardrails.id}
-          and ${resourceShares.ownerProjectId} = ${guardrails.projectId}
-          and ${inArray(resourceShares.recipientProjectId, projectIds)})`,
-    ) : sql`false`;
+    const visibleGuardrail = projectIds.length ? inArray(guardrails.projectId, projectIds) : sql`false`;
     const readyArtifacts = await tx.select({ artifact: artifacts }).from(guardrailVersions)
       .innerJoin(guardrails, and(eq(guardrails.id, guardrailVersions.guardrailId), isNull(guardrails.deletedAt)))
       .innerJoin(artifacts, eq(artifacts.id, guardrailVersions.artifactId))
