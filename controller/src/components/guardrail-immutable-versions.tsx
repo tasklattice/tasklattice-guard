@@ -181,17 +181,15 @@ export function ImmutableVersionView({ openRequested, onOpenRequestHandled, deta
           <span className="px-1 text-xs tabular-nums text-muted-foreground">{t("immutableVersions.position", { current: selectedIndex + 1, total: ordered.length })}</span>
           <Button variant="ghost" className="size-11" aria-label={t("immutableVersions.next")} disabled={selectedIndex < 0 || selectedIndex >= ordered.length - 1} onClick={() => navigateVersion(selectedIndex + 1)}><ChevronRight /></Button>
         </div>
-        <div className="flex items-center gap-2">{compareOptions.length > 0 && !comparisonActive ? <Button variant="outline" className="min-h-11" disabled={!currentDetail || currentDetail.policy_content_accessible === false || Boolean(detailError)} onClick={onStartCompare}><GitCompareArrows />{t("immutableVersions.compare")}</Button> : null}{menu(selectedVersion, true)}</div>
+        <div className="flex items-center gap-2">{compareOptions.length > 0 && !comparisonActive ? <Button variant="outline" className="min-h-11" disabled={!currentDetail || Boolean(detailError)} onClick={onStartCompare}><GitCompareArrows />{t("immutableVersions.compare")}</Button> : null}{menu(selectedVersion, true)}</div>
       </div>
       <div className="min-h-0 flex-1 overflow-y-auto py-5">
         {detailError ? <RetryNotice error={detailError} onRetry={onRetry} />
             : detailLoading && !currentDetail ? <div role="status"><p className="mb-4 text-sm text-muted-foreground">{t("immutableVersions.loadingDetail")}</p><Skeleton className="h-64" /></div>
               : !currentDetail ? <RetryNotice error={new Error(t("immutableVersions.noDetail"))} onRetry={onRetry} />
-                : currentDetail.policy_content_accessible === false ? <p role="status" className="border p-4 text-sm">{t("immutableVersions.policyContentUnavailable")}</p>
                 : comparisonActive ? comparisonError ? <div className="space-y-4"><Button variant="outline" onClick={onCloseCompare}>{t("guardrails.backToVersionDetail")}</Button><RetryNotice error={comparisonError} onRetry={onRetryComparison} /></div>
                   : comparisonLoading || !comparisonDetail ? <div className="space-y-4"><Button variant="outline" onClick={onCloseCompare}>{t("guardrails.backToVersionDetail")}</Button><Skeleton className="h-64" /></div>
-                    : comparisonDetail.policy_content_accessible === false ? <div className="space-y-4"><Button variant="outline" onClick={onCloseCompare}>{t("guardrails.backToVersionDetail")}</Button><p role="status" className="border p-4 text-sm">{t("immutableVersions.policyContentUnavailable")}</p></div>
-                      : <GuardrailVersionComparison base={comparisonDetail} target={currentDetail} baseOptions={compareOptions} onBaseChange={onCompareBaseChange} onClose={onCloseCompare} />
+                    : <GuardrailVersionComparison base={comparisonDetail} target={currentDetail} baseOptions={compareOptions} onBaseChange={onCompareBaseChange} onClose={onCloseCompare} />
                   : <Tabs value={tab} onValueChange={setTab} className="flex h-full min-h-0 flex-col">
                     <TabsList className="shrink-0" aria-label={t("immutableVersions.views")}>
                       <TabsTrigger value="overview">{t("immutableVersions.overview")}</TabsTrigger>

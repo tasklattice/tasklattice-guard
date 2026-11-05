@@ -1,5 +1,4 @@
 export const immutableVersionsEn = {
-  policyContentUnavailable: "Version details are unavailable because access to a Policy or its recorded provenance is missing.",
   capacity: "{{count}}/{{limit}} immutable versions",
   capacityReached: "All {{limit}} immutable-version slots are in use. Delete an unused version before publishing or importing another. Existing versions can still be tested and released.",
   chooseTestTarget: "Run tests for the current draft or an immutable version. Each run creates a test report.",
@@ -62,7 +61,6 @@ export const immutableVersionsEn = {
 };
 
 export const immutableVersionsZh: typeof immutableVersionsEn = {
-  policyContentUnavailable: "由于缺少 Policy 的访问权限或记录的来源信息，无法显示版本详情。",
   capacity: "{{count}}/{{limit}} 个不可变版本",
   capacityReached: "已达到 {{limit}} 个不可变版本的上限。请先删除不再使用的版本，再发布或导入新版本。已有版本仍可测试和发布。",
   chooseTestTarget: "对当前草稿或不可变版本运行测试。每次运行都会生成一份测试报告。",

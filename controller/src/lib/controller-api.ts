@@ -178,8 +178,6 @@ export type Guardrail = {
 };
 
 export type GuardrailVersion = {
-  /** False when independent Policy read access or frozen provenance is missing. */
-  policyContentAccessible?: boolean;
   publication?: import("../../shared/guardrail-publication").GuardrailPublication | null;
   testWaiver?: import("../../shared/default-release").DefaultTestWaiver | null;
   sourceValidationRunId?: string | null;

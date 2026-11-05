@@ -17,7 +17,6 @@ import { querySecurityEvents } from "./security-events.js";
 import type { SecurityEventsQuery } from "../../shared/security-events.js";
 import { ModelPricingService, modelUsageCostRecorder } from "./model-pricing.js";
 import { telemetryBatches, telemetryWatermarkBatch } from "./telemetry-batches.js";
-import { mayReadFrozenPolicyContent } from "./guardrail-policy-visibility.js";
 import { pruneTestingReports } from "./testing-report-retention.js";
 import { limitValidationWrite } from "./validation-write-limits.js";
 import { databasePoolState, reportSaveStage, withReportSaveDiagnostics } from "../db/diagnostics.js";
@@ -632,13 +631,10 @@ export class ControlPlaneService {
 
   /** The Test Cases frozen into one version: part of its definition, read only. */
   async guardrailVersionTestSuite(guardrailId: string, version: string) {
-    const [row] = await this.db.select({ testSuite: guardrailVersions.testSuite, policies: guardrailVersions.policies, plan: guardrailVersions.plan }).from(guardrailVersions)
+    const [row] = await this.db.select({ testSuite: guardrailVersions.testSuite }).from(guardrailVersions)
       .innerJoin(guardrails, and(eq(guardrails.id, guardrailVersions.guardrailId), isNull(guardrails.deletedAt)))
       .where(and(eq(guardrailVersions.guardrailId, guardrailId), eq(guardrailVersions.version, version), resourceReadPredicate("guardrail", guardrails.id, guardrails.projectId)));
     if (!row) throw new NotFoundError("Guardrail version", `${guardrailId}@${version}`);
-    if (!await mayReadFrozenPolicyContent(this.db, row.policies, row.plan, this.policyCatalog().list())) {
-      throw new NotFoundError("Guardrail version test suite", `${guardrailId}@${version}`);
-    }
     const items = row.testSuite ?? [];
     return { guardrailId, version, recorded: row.testSuite !== null, digest: row.testSuite ? testSuiteDigest(row.testSuite) : null, items, count: items.length };
   }
@@ -653,31 +649,17 @@ export class ControlPlaneService {
     const artifactRows = await this.db.select().from(artifacts).where(eq(artifacts.guardrailId, id));
     const artifactsById = new Map(artifactRows.map((artifact) => [artifact.id, artifact]));
     const provenanceRows = await this.db.select().from(guardrailVersionProvenance).where(eq(guardrailVersionProvenance.guardrailId, id));
-    const visibleVersions = await Promise.all(versions.map(version => {
-      const artifact = version.artifactId ? artifactsById.get(version.artifactId) : undefined;
-      // A readable leaves list must not authorize a different Artifact plan.
-      if (currentProjectId() && artifact && canonicalJson(artifact.plan) !== canonicalJson(version.plan)) return false;
-      return mayReadFrozenPolicyContent(this.db, version.policies, version.plan, this.policyCatalog().list());
-    }));
     return {
       ...await this.guardrailSummary(guardrail),
       // The test suite can be large; it has its own read (guardrailVersionTestSuite).
-      versions: versions.map(({ sourceSnapshot, testSuite, ...version }, index) => {
+      versions: versions.map(({ sourceSnapshot, testSuite, ...version }) => {
         const provenance = provenanceRows.find(item => item.version === version.version);
-        const policyContentAccessible = visibleVersions[index]!;
         return {
           ...version,
-          plan: policyContentAccessible ? version.plan : {},
-          policies: policyContentAccessible ? version.policies : null,
-          inspection: policyContentAccessible ? version.inspection : null,
-          environmentCheck: policyContentAccessible ? version.environmentCheck : null,
-          testingEvidence: policyContentAccessible ? version.testingEvidence : null,
-          testWaiver: policyContentAccessible ? version.testWaiver : null,
-          policyContentAccessible,
           hasSourceSnapshot: Boolean(sourceSnapshot),
-          testSuiteCount: policyContentAccessible ? testSuite?.length ?? null : null,
-          artifact: policyContentAccessible && version.artifactId ? artifactsById.get(version.artifactId) ?? null : null,
-          provenance: policyContentAccessible && provenance ? {
+          testSuiteCount: testSuite?.length ?? null,
+          artifact: version.artifactId ? artifactsById.get(version.artifactId) ?? null : null,
+          provenance: provenance ? {
             sourceId: provenance.sourceId, sourceKeyId: provenance.sourceKeyId, contentDigest: provenance.contentDigest,
             packageId: provenance.packageId, importedAt: provenance.importedAt, importedBy: provenance.importedBy,
             requirements: provenance.requirements,
@@ -815,13 +797,11 @@ export class ControlPlaneService {
       if (input.sourceDraftRevision !== undefined) {
         if (source.draftRevision !== input.sourceDraftRevision) throw new ConflictError("The source draft changed. Reload before copying.", "guardrail_draft_conflict");
         snapshot = { draftConfig: source.draftConfig, runtimeProfile: source.runtimeProfile, loggingLevel: source.loggingLevel, excludedTestCaseIds: source.excludedTestCaseIds, testCases: await tx.select().from(testCases).where(eq(testCases.guardrailId, input.id)) };
-        await this.assertSharedGuardrailSnapshotReadable(tx, source, snapshot);
       } else {
         if (!sourceVersion) throw new ValidationError("Choose a source draft revision or a published Guardrail Version.");
         const [version] = await tx.select().from(guardrailVersions).where(and(eq(guardrailVersions.guardrailId, input.id), eq(guardrailVersions.version, sourceVersion)));
         if (!version?.sourceSnapshot) throw new ConflictError("This version has no complete source snapshot. Choose the current draft explicitly, or publish a new version before copying.", "source_snapshot_unavailable");
         snapshot = version.sourceSnapshot;
-        await this.assertSharedGuardrailSnapshotReadable(tx, source, snapshot, version);
       }
       const copiedId = randomUUID();
       const copyOrigin = { sourceGuardrailId: input.id, sourceName: source.name, sourceVersion: sourceVersion ?? null, sourceDraftRevision: input.sourceDraftRevision ?? null, copiedAt: new Date().toISOString(), contentDigest: createHash("sha256").update(canonicalJson(snapshot)).digest("hex"), requestDigest };
@@ -889,9 +869,7 @@ export class ControlPlaneService {
       const cases = await tx.select().from(testCases).where(eq(testCases.guardrailId, id));
       const current: DraftSnapshot = { draftConfig: guardrail.draftConfig, runtimeProfile: guardrail.runtimeProfile,
         loggingLevel: guardrail.loggingLevel, excludedTestCaseIds: guardrail.excludedTestCaseIds, testCases: cases };
-      await this.assertSharedGuardrailSnapshotReadable(tx, guardrail, current);
       const snapshot = baseline?.sourceSnapshot;
-      if (snapshot) await this.assertSharedGuardrailSnapshotReadable(tx, guardrail, snapshot, baseline);
       const complete = Boolean(snapshot?.testCases);
       const hasUnpublishedChanges = snapshot && complete ? !sameDraftContent(snapshot, current)
         : !baseline || baseline.sourceDraftRevision !== guardrail.draftRevision;
@@ -901,35 +879,6 @@ export class ControlPlaneService {
         changes: hasUnpublishedChanges && (!baseline || complete) ? describeDraftChanges(snapshot ?? null, current) : [],
       };
     });
-  }
-
-  /** Copying or diffing raw snapshots must not turn a Guardrail-only share
-   * into owner access to embedded private Policy test source or overrides. */
-  private async assertSharedGuardrailSnapshotReadable(tx: Transaction,
-    guardrail: { id: string; projectId: string | null }, snapshot: DraftSnapshot,
-    frozenVersion?: Pick<typeof guardrailVersions.$inferSelect, "policies" | "plan"> | null): Promise<void> {
-    if (!currentProjectId() || currentProjectId() === guardrail.projectId) return;
-    const bindings = normalizeGuardrailDraft(snapshot.draftConfig).policyBindings;
-    const generated = snapshot.testCases?.filter(item => item.origin === "generated") ?? [];
-    if (generated.some(item => !item.sourcePolicyId || !item.sourcePolicyVersion)) {
-      throw new NotFoundError("Guardrail source", guardrail.id);
-    }
-    const references = [...bindings.map(binding => ({ id: binding.policyId, version: binding.policyVersion })),
-      ...generated.map(item => ({ id: item.sourcePolicyId!, version: item.sourcePolicyVersion! }))];
-    if (!references.length) return;
-    const candidates = frozenVersion ? [frozenVersion] : await tx.select({ policies: guardrailVersions.policies, plan: guardrailVersions.plan })
-      .from(guardrailVersions).where(eq(guardrailVersions.guardrailId, guardrail.id));
-    const shipped = this.policyCatalog().list();
-    const access: boolean[] = [];
-    for (const candidate of candidates) access.push(await mayReadFrozenPolicyContent(tx, candidate.policies, candidate.plan, shipped));
-    const publicVersions = shipped.flatMap(policy => [policy, ...(policy.published_versions ?? [])]);
-    if (references.some(reference => !candidates.some((candidate, index) => access[index] && candidate.policies?.some(node =>
-      node.id === reference.id && node.version === reference.version)) &&
-      // An unfrozen draft uses the installation's current public catalog.
-      // A published snapshot must establish its own exact frozen definition.
-      !(frozenVersion === undefined && publicVersions.some(policy => policy.id === reference.id && policy.version === reference.version)))) {
-      throw new NotFoundError("Guardrail source", guardrail.id);
-    }
   }
 
   async discardGuardrailDraft(input: { id: string; actorId: string; expectedDraftRevision: number; expectedBaselineVersion: string }) {
@@ -1230,12 +1179,7 @@ export class ControlPlaneService {
 
   async queryValidationRuns(query: z.input<typeof testingReportsQuery>) {
     if (query.guardrailId) await assertResourceReadAccess(this.db, "guardrail", query.guardrailId);
-    const result = await queryTestingReports(this.db, query);
-    if (!currentProjectId()) return result;
-    return { ...result,
-      items: await Promise.all(result.items.map(run => this.visibleValidationSummary(run))),
-      versionReports: await Promise.all(result.versionReports.map(run => this.visibleValidationSummary(run))),
-    };
+    return queryTestingReports(this.db, query);
   }
 
   async listValidationRuns(guardrailId?: string | undefined) {
@@ -1262,32 +1206,12 @@ export class ControlPlaneService {
       .from(validationRuns).where(eq(validationRuns.id, id));
     if (!run) throw new NotFoundError("Validation Run", id);
     await assertResourceReadAccess(this.db, "guardrail", run.guardrailId);
-    if (currentProjectId() && !await this.validationPolicyContentAccessible(run)) throw new NotFoundError("Validation Run", id);
     if (run.status === "cancelled") {
       const [delivery] = await this.db.select({ requestedAt: outboxEvents.createdAt, acknowledgedAt: outboxEvents.processedAt })
         .from(outboxEvents).where(eq(outboxEvents.id, `cancel-${id}`));
       return { ...run, ...(delivery ? { cancellation: delivery } : {}) };
     }
     return run;
-  }
-
-  private async validationPolicyContentAccessible(run: { id: string; guardrailId: string; guardrailVersion: string; subject: string }) {
-    const [source] = await this.db.select({ policies: validationSnapshotColumns.candidatePolicies, candidate: validationSnapshotColumns.candidateArtifact,
-      inspection: validationSnapshotColumns.candidateInspection }).from(validationRuns).where(eq(validationRuns.id, run.id));
-    const [version] = run.subject === "version" ? await this.db.select({ plan: guardrailVersions.plan }).from(guardrailVersions)
-      .where(and(eq(guardrailVersions.guardrailId, run.guardrailId), eq(guardrailVersions.version, run.guardrailVersion))) : [];
-    const bindings = source?.inspection?.draftConfig?.policyBindings;
-    if (source?.candidate && version && canonicalJson(source.candidate.plan) !== canonicalJson(version.plan)) return false;
-    const plan = source?.candidate?.plan ?? version?.plan ?? (bindings ? { policy_bindings: bindings.map(binding => ({ policy_id: binding.policyId, policy_version: binding.policyVersion })) } : {});
-    return Boolean(source && await mayReadFrozenPolicyContent(this.db, source.policies, plan, this.policyCatalog().list()));
-  }
-
-  private async visibleValidationSummary<T extends { id: string; guardrailId: string; guardrailVersion: string; subject: string;
-    failureReason: string | null; excludedCaseIds: string[]; testScope: unknown }>(run: T): Promise<T> {
-    if (!currentProjectId() || await this.validationPolicyContentAccessible(run)) return run;
-    // Failed test messages, skip explanations and case IDs can contain frozen
-    // Policy source. Status/counts remain useful without disclosing that text.
-    return { ...run, failureReason: null, excludedCaseIds: [], testScope: null };
   }
 
   /** Cancellation intent and delivery are durable; late results cannot undo it. */
@@ -2909,32 +2833,16 @@ export class ControlPlaneService {
       ...publicRow } = row;
     const { requestDigest: _requestDigest, ...publicOrigin } = copyOrigin ?? {};
     const draftConfig = normalizeGuardrailDraft(row.draftConfig);
-    let visibleDraftConfig = draftConfig;
-    let visibleExcludedTestCaseIds = row.excludedTestCaseIds;
-    if (currentProjectId() && currentProjectId() !== row.projectId
-        && (row.excludedTestCaseIds.length || draftConfig.policyBindings.some(binding => Object.keys(binding.testCaseOverrides ?? {}).length))) {
-      // Reviewed expectations can copy a Policy's source Test Case verbatim.
-      // A read-only Guardrail share must not reveal that source through the
-      // mutable draft after the Policy's independent read grant is revoked.
-      const snapshots = await this.db.select({ policies: guardrailVersions.policies, plan: guardrailVersions.plan })
-        .from(guardrailVersions).where(eq(guardrailVersions.guardrailId, row.id));
-      const access = await Promise.all(snapshots.map(snapshot => mayReadFrozenPolicyContent(this.db, snapshot.policies, snapshot.plan, this.policyCatalog().list())));
-      const readable = (binding: { policyId: string; policyVersion: string }) => snapshots.some((snapshot, index) =>
-        access[index] && snapshot.policies?.some(node => node.id === binding.policyId && node.version === binding.policyVersion));
-      visibleDraftConfig = { ...draftConfig, policyBindings: draftConfig.policyBindings.map(binding => readable(binding)
-        ? binding : { ...binding, testCaseOverrides: {} }) };
-      if (!draftConfig.policyBindings.length || !draftConfig.policyBindings.every(readable)) visibleExcludedTestCaseIds = [];
-    }
     return {
       ...publicRow,
       readiness: released > 0 && row.status !== "disabled" ? "ready" as const : "not_ready" as const,
       protection: await this.protectionModes.summary(row, released > 0 && row.status !== "disabled"),
       versionSummary,
       copyOrigin: copyOrigin ? publicOrigin : null,
-      draftConfig: visibleDraftConfig,
-      excludedTestCaseIds: visibleExcludedTestCaseIds,
-      latestValidationRun: latestValidation ? await this.visibleValidationSummary(latestValidation) : null,
-      latestTestingReport: latestTestingReport ? await this.visibleValidationSummary(latestTestingReport) : null,
+      draftConfig,
+      excludedTestCaseIds: row.excludedTestCaseIds,
+      latestValidationRun: latestValidation ?? null,
+      latestTestingReport: latestTestingReport ?? null,
       testCaseCount: caseCount?.value ?? 0,
       excludedTestCaseCount: row.excludedTestCaseIds.length,
       // The draft revision the last publication came from; null before any.
