@@ -52,6 +52,12 @@ def local_test_plan(plan: dict[str, Any]) -> tuple[dict[str, Any], list[dict[str
                 skipped[key] = "Custom or unclassified Rule cannot be verified as model-independent."
     # A Rule requiring both local and model steps is excluded as a whole.
     scoped["steps"] = [s for s in scoped.get("steps", []) if s["id"] not in removed]
+    # A model-only member can disappear from a parallel segment. Drop the
+    # segment metadata for the local-only test projection; the remaining local
+    # checks are still executed in authored rank order.
+    for step in scoped["steps"]:
+        step["parameters"] = [item for item in step.get("parameters", [])
+                              if not item[0].startswith(("parallel_group_", "parallel_leader_"))]
     ids = {s["id"] for s in scoped["steps"]}
     scoped["modules"] = [m for m in scoped.get("modules", []) if any(s in ids for s in m["step_ids"])]
     modules = {m["id"] for m in scoped["modules"]}
