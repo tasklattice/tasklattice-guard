@@ -62,14 +62,15 @@ describe.skipIf(!url)("Guardrail version Policy-content visibility", () => {
     await expect(asProject("projectA", () => service.guardrailVersionTestSuite("shared-guard", version))).rejects.toMatchObject({ code: "not_found" });
     await database.pool.query("UPDATE guardrail_version SET policies=$1 WHERE guardrail_id='shared-guard'", [JSON.stringify(nodes)]);
   });
-  it("protects generated draft cases and validation results with the same independent Policy grant", async () => {
+  it("keeps validation results behind the independent Policy grant while draft cases follow the Guardrail", async () => {
     await database.pool.query(`INSERT INTO guardrail_test_case(id,guardrail_id,name,policy_id,phase,content,expected_decision,origin,source_policy_id,source_policy_version)
       VALUES ('generated-private','shared-guard','Private case','private-policy','input','PRIVATE CASE','block','generated','private-policy','1')`);
     const snapshotDigest = await storeValidationSnapshot(database.db, { candidateArtifact: null, candidatePolicies: nodes as never, candidateInspection: null, testSuite: null });
     await database.pool.query(`INSERT INTO guardrail_validation_run(id,guardrail_id,guardrail_version,source_draft_revision,subject,snapshot_digest,failure_reason,excluded_case_ids,test_scope)
       VALUES ('private-run','shared-guard',$1,1,'version',$2,'PRIVATE FAILURE',$3,$4)`, [version, snapshotDigest,
       JSON.stringify(["PRIVATE CASE ID"]), JSON.stringify({ skippedRules: [{ reason: "PRIVATE SKIP" }] })]);
-    await expect(asProject("projectB", () => service.listTestCases("shared-guard"))).rejects.toMatchObject({ code: "not_found" });
+    // Test cases belong to the Guardrail; the Guardrail share is sufficient.
+    expect((await asProject("projectB", () => service.listTestCases("shared-guard")))[0]?.content).toBe("PRIVATE CASE");
     await expect(asProject("projectB", () => service.getValidationRun("private-run"))).rejects.toMatchObject({ code: "not_found" });
     await expect(asProject("projectB", () => service.authorizeReportRead("private-run"))).rejects.toMatchObject({ code: "not_found" });
     const reports = await asProject("projectB", () => service.queryValidationRuns({ guardrailId: "shared-guard" }));
@@ -86,7 +87,7 @@ describe.skipIf(!url)("Guardrail version Policy-content visibility", () => {
     await database.pool.query("DELETE FROM resource_share WHERE id='detail-policy-share'");
     await expect(asProject("projectB", () => service.getValidationRun("private-run"))).rejects.toMatchObject({ code: "not_found" });
   });
-  it("lets the owner read generated draft cases before the first version but not a shared reader", async () => {
+  it("lets a Guardrail reader list generated draft cases before the first version", async () => {
     await database.pool.query(`INSERT INTO guardrail(id,project_id,name,draft_config) VALUES ('draft-guard','projectA','Draft','{}')`);
     await database.pool.query(`INSERT INTO guardrail_test_case(id,guardrail_id,name,policy_id,phase,content,expected_decision,origin,source_policy_id,source_policy_version)
       VALUES ('draft-generated','draft-guard','Private draft case','private-policy','input','PRIVATE DRAFT','block','generated','private-policy','1')`);
@@ -94,7 +95,8 @@ describe.skipIf(!url)("Guardrail version Policy-content visibility", () => {
     expect(owner.map(item => item.content)).toEqual(["PRIVATE DRAFT"]);
     await database.pool.query(`INSERT INTO resource_share(id,owner_project_id,recipient_project_id,resource_type,resource_id)
       VALUES ('draft-share','projectA','projectB','guardrail','draft-guard')`);
-    await expect(asProject("projectB", () => service.listTestCases("draft-guard"))).rejects.toMatchObject({ code: "not_found" });
+    // The test suite is part of the Guardrail, not a separate Policy grant.
+    expect((await asProject("projectB", () => service.listTestCases("draft-guard")))[0]?.content).toBe("PRIVATE DRAFT");
   });
 
   it("rejects divergent plan projections and Artifact plans even for a readable Policy", async () => {

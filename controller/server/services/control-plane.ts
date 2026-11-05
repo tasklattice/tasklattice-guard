@@ -1113,33 +1113,18 @@ export class ControlPlaneService {
   }
 
   async listTestCases(guardrailId: string) {
-    const [guardrail] = await this.db.select({ projectId: guardrails.projectId,
-      excludedTestCaseIds: guardrails.excludedTestCaseIds, draftConfig: guardrails.draftConfig })
+    const [guardrail] = await this.db.select({ excludedTestCaseIds: guardrails.excludedTestCaseIds,
+      draftConfig: guardrails.draftConfig })
       .from(guardrails).where(and(
         eq(guardrails.id, guardrailId), isNull(guardrails.deletedAt),
         resourceReadPredicate("guardrail", guardrails.id, guardrails.projectId),
       ));
     if (!guardrail) throw new NotFoundError("Guardrail", guardrailId);
     const excluded = new Set(guardrail.excludedTestCaseIds);
+    // Test cases belong to this Guardrail. Its read predicate above is the
+    // complete authority; source Policy snapshots are not a second gate.
     const rows = await this.db.select().from(testCases).where(eq(testCases.guardrailId, guardrailId))
       .orderBy(asc(testCases.origin), asc(testCases.name), asc(testCases.id));
-    // The owner selected these Policies and owns the generated cases. Only a
-    // shared reader needs the frozen-Policy proof; requiring a published
-    // version here also broke brand-new drafts before their first version.
-    if (currentProjectId() && guardrail.projectId !== currentProjectId()) {
-      const generated = rows.filter(row => row.origin === "generated");
-      if (generated.length) {
-        const snapshots = await this.db.select({ policies: guardrailVersions.policies, plan: guardrailVersions.plan })
-          .from(guardrailVersions).where(eq(guardrailVersions.guardrailId, guardrailId));
-        const access = await Promise.all(snapshots.map(snapshot => mayReadFrozenPolicyContent(this.db, snapshot.policies, snapshot.plan, this.policyCatalog().list())));
-        // Generated content can be a Policy's test source. A legacy/unpublished
-        // case without a verifiable frozen Policy node is not safe to disclose.
-        if (generated.some(row => !row.sourcePolicyId || !row.sourcePolicyVersion || !snapshots.some((snapshot, index) =>
-          access[index] && snapshot.policies?.some(node => node.id === row.sourcePolicyId && node.version === row.sourcePolicyVersion)))) {
-          throw new NotFoundError("Guardrail test cases", guardrailId);
-        }
-      }
-    }
     return applyValidationOverrides(rows, guardrail.draftConfig).map((item) => ({ ...item, excluded: excluded.has(item.id) }));
   }
 
