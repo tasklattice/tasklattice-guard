@@ -348,27 +348,9 @@ class DefaultRunnerValidator:
                 assertion_failures.append("The reviewed expectation is invalid or stale.")
             if "expectedOutputContent" in override and output_content != override["expectedOutputContent"]:
                 assertion_failures.append("Output content does not match the reviewed complete-output assertion.")
-        # A transform Rule can be shadowed by a Block Rule in the same Policy.
-        # Local composition intentionally runs Block Rules first. The
-        # rule-acceptance case proves the covered Rule matched; the stronger
-        # Block action is the correct Guardrail decision, not a Rule failure.
-        superseders = (
-            _blocking_superseders(plan, case, phase, findings, covered, source_policy_id)
-            if not override and expected == "transform" and decision.decision == "block"
-            and rule_contract and case.get("caseType") == "rule_acceptance" else []
-        )
-        shadowed_acceptance = bool(superseders)
-        if shadowed_acceptance:
-            evidence["supersededBy"] = _merge_matches(superseders)
-            evidence["reason"] = (
-                "The covered Transform Rule matched, but a Block Rule in the same "
-                "Policy took precedence under local block-first composition."
-            )
         if not rule_contract:
             assertion_failures.append("Expected Policy/Rule evidence was not observed.")
-        if decision.decision != expected and not shadowed_acceptance and not (
-            expected == "intervene" and decision.decision != "allow"
-        ):
+        if decision.decision != expected and not (expected == "intervene" and decision.decision != "allow"):
             assertion_failures.append(f"Expected {expected}; received {decision.decision}.")
         if actual_failure != expected_failure and not execution_warning:
             assertion_failures.append(f"Expected infrastructure failure {expected_failure}; received {actual_failure}.")
@@ -392,7 +374,7 @@ class DefaultRunnerValidator:
             for step in plan.steps
         )
         passed = (
-            (decision.decision != "allow" if expected == "intervene" else decision.decision == expected or shadowed_acceptance)
+            (decision.decision != "allow" if expected == "intervene" else decision.decision == expected)
             and (expected_failure is None or expected_failure == actual_failure)
             and rule_contract
             and (expected_reasoning is None or expected_reasoning == actual_reasoning)
@@ -410,7 +392,6 @@ class DefaultRunnerValidator:
             "reason": "; ".join([
                 decision.reason or "",
                 *([f"Reviewed composition expectation: {_string(override.get('reason'))}"] if override else []),
-                *([evidence["reason"]] if shadowed_acceptance else []),
                 *_evidence_reason(evidence),
                 *assertion_failures,
             ]).strip("; "),
@@ -451,20 +432,6 @@ class DefaultRunnerValidator:
                 decision.usage.model_invocations if decision.usage is not None else 0
             ),
         }
-
-
-def _blocking_superseders(plan, case, phase, findings, covered, source_policy_id):
-    """Block Rules in the same Policy that preempt a covered Rule's action."""
-    if source_policy_id is None:
-        return []
-    return [
-        item for item in findings
-        if item.get("verdict") == "matched"
-        and item.get("recommended_action") == "block"
-        and item.get("policy_id") == source_policy_id
-        and item.get("rule_id") not in covered
-        and _declared_rule(plan, item.get("policy_id"), item.get("rule_id"), phase)
-    ]
 
 
 def _terminal_target_block(plan, case, phase, findings, trace):
