@@ -342,3 +342,63 @@ async def test_unhandled_execution_error_preserves_captured_request(monkeypatch)
     output = json.loads(case.output_content)
     assert output["error"]["type"] == "ValueError"
     assert "received before crash" in output["model_exchanges"][0]["response"]["body"]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("behavior,expected_class", [
+    ("always-safe", "capability"), ("http-error", "endpoint"), ("malformed", "protocol"),
+])
+async def test_failed_cases_attribute_a_cause_without_changing_the_outcome(behavior, expected_class):
+    """Attribution is evidence, not a verdict: pass/fail stays exactly as before."""
+    async def respond(_request):
+        if behavior == "http-error":
+            return httpx.Response(503, text="unavailable")
+        content = "Safety: Safe\nCategories: None" if behavior == "always-safe" else "invalid"
+        return httpx.Response(200, json={"choices": [{"message": {"content": content}}]})
+
+    result = await validate_capability(candidate(), {"provider-1": "synthetic-secret"},
+                                       transport=httpx.MockTransport(respond))
+    assert not result.passed
+    failed = [item for item in result.cases if not item.passed]
+    assert failed
+    assert {json.loads(item.output_content)["failure_class"] for item in failed} == {expected_class}
+    if expected_class in {"endpoint", "protocol"}:
+        assert all(json.loads(item.output_content)["error"]["type"] for item in failed)
+    for item in result.cases:
+        assert json.loads(item.output_content)["failure_class"] == (None if item.passed else expected_class)
+
+
+@pytest.mark.asyncio
+async def test_gray_area_is_attributed_to_the_threshold_not_the_model(classifier_backend):
+    def respond(request):
+        body = json.loads(request.content)
+        probability = 0.84 if UNSAFE_CONTENT in str(body["state"]) else 0.01
+        return httpx.Response(200, json={"model": classifier_backend.model, "answers": {
+            key: {"type": "noul", "noul": probability} for key in body["questions"]}})
+
+    result = await validate_capability(candidate(profile=classifier_backend.profile),
+                                       {"provider-1": "synthetic-secret"},
+                                       transport=httpx.MockTransport(respond))
+    assert not result.passed
+    unsafe = result.cases[1]
+    assert unsafe.actual_decision == "block" and unsafe.expected_decision == "block"
+    output = json.loads(unsafe.output_content)
+    # The policy fallback blocked an uncertain result; that is not a correct judgement.
+    assert output["failure_class"] == "threshold"
+    assert not output["findings"]
+
+
+def test_validation_capture_keeps_the_most_recent_calls_when_the_limit_is_reached():
+    from runner.model_validation_diagnostics import ValidationDiagnostics
+
+    session = ValidationDiagnostics({}, ())
+    for index in range(20):
+        exchange = session.request(method="POST", url=f"https://model.test/{index}", headers={},
+                                   body={"index": index})
+        session.response(exchange, status=200, headers={}, body={"ok": index})
+
+    assert len(session.exchanges) == 16
+    assert session.dropped_exchanges == 4
+    assert session.exchanges[0]["request"]["url"] == "https://model.test/4"
+    assert session.exchanges[-1]["request"]["url"] == "https://model.test/19"
+    assert all(isinstance(item["duration_ms"], int) for item in session.exchanges)

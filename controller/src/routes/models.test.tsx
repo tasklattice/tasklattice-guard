@@ -842,6 +842,32 @@ describe("Models and Protection Capabilities", { timeout: 30_000 }, () => {
     expect(screen.queryByRole("dialog")).toBeNull();
   });
 
+  it("tests every platform Model one after another and summarizes callability", async () => {
+    const third = { ...chatModel, id: "third-model", name: "Third model" };
+    vi.mocked(getModelConfiguration).mockResolvedValue({ ...view, models: [chatModel, safetyModel, third] });
+    const calls: string[] = [];
+    let releaseFirst!: () => void;
+    vi.mocked(testModelConnection).mockImplementation((id: string) => {
+      calls.push(id);
+      if (calls.length === 1) return new Promise((resolve) => { releaseFirst = () => resolve({ ...chatModel, connectionStatus: "validated" }); });
+      if (id === "safety-model") return Promise.resolve({ ...safetyModel, connectionStatus: "failed" });
+      return Promise.resolve({ ...third, connectionStatus: "validated" });
+    });
+    renderPage(<ModelsPage />);
+    fireEvent.click(await screen.findByRole("button", { name: "modelSettings.testAllModels" }));
+    await waitFor(() => expect(calls).toEqual(["chat-model"]));
+    await waitFor(() => expect(screen.getByRole("button", { name: "modelSettings.actions Qwen Guard" })).toHaveProperty("disabled", true));
+    expect(screen.getByRole("status").textContent).toBe("modelSettings.batchTestProgress");
+    await act(async () => { releaseFirst(); });
+    await waitFor(() => expect(calls).toEqual(["chat-model", "safety-model", "third-model"]));
+    const report = await screen.findByRole("region", { name: "modelSettings.batchTestReport" });
+    await waitFor(() => expect(within(report).getByText("modelSettings.batchTestSummaryFailed")).toBeTruthy());
+    expect(within(report).getByText("Qwen Guard")).toBeTruthy();
+    expect(toast.error).toHaveBeenCalledWith("modelSettings.batchTestSummaryFailed");
+    expect(screen.getByRole("button", { name: "modelSettings.testAllModels" })).toHaveProperty("disabled", false);
+    expect(screen.getByRole("button", { name: "modelSettings.actions Qwen Guard" })).toHaveProperty("disabled", false);
+  });
+
   it("retests a Provider only after right-drawer confirmation", async () => {
     renderPage(<ProvidersPage />);
     fireEvent.click(await screen.findByRole("button", { name: "modelSettings.manageProvider Mock provider" }));

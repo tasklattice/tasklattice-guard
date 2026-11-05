@@ -424,6 +424,35 @@ They cover successful recovery, exhausted retries, deadlines, cancellation,
 authentication failures, invalid responses, certificate and DNS errors, and
 sanitized failure logs. They verify reliability, not model accuracy.
 
+## Validation evidence attribution
+
+Every capability probe case keeps its captured HTTP exchanges and one
+`failure_class`, whether it passed or failed. The Runner derives the class from
+the trace steps it already records, never from the allow/block outcome alone:
+
+| `failure_class` | Source signal | Who owns it |
+| --- | --- | --- |
+| `configuration` | `error_source=configuration` or `authentication`/`permission`/`not_found`/`request_rejected` | Operator configuration |
+| `endpoint` | `timeout`, `connection`, `unavailable`, `rate_limit`, `deadline`, or a transport/timeout exception class | Platform, network or provider availability |
+| `protocol` | `json_decode`, `response_schema`, or a response-validation exception class | Adapter or deployment mismatch |
+| `threshold` | A valid `unknown` detector verdict | Configured operating point |
+| `capability` | A valid `matched`/`not_matched` verdict in the wrong direction | Model judgement |
+| `platform` | `error_source=guard` or `internal` | Runner or Guard |
+| `unknown` | Nothing conclusive was captured | Undetermined |
+
+Attribution is evidence only: `passed` is computed exactly as before, so a
+gray-area block stays a failed sample. A policy fallback that blocks without a
+matched finding reports `capability`, `threshold` or the underlying error class
+rather than a confirmed detection. The Controller renders one badge per sample
+(passed / inconclusive / failed / execution error) and shows the class in
+**Failure attribution**; older records without the field fall back to
+passed/failed.
+
+Capture limit: a case retains the **most recent** 16 exchanges, so a retried
+model's final attempt is never discarded, and `dropped_model_exchanges` counts
+the earlier ones. Full response bodies are exported without truncation by
+design (`body_limit=None`); only the warning log truncates to 512 bytes.
+
 ## Global prices and Guardrail usage costs
 
 **Settings → Models → Model prices** manages estimated model costs globally for

@@ -14,7 +14,7 @@ Default needs no detection model. It uses reviewed local Rules. Model-backed Pol
 1. Register the service address and credential under [Providers](/settings/providers).
 2. Check connectivity. Private-CA and TLS settings apply only to that Provider.
 3. Register the physical model under [Models](/settings/models) and set its concurrency limit, which defaults to 2.
-4. Make a real test call. Model discovery alone does not prove callability.
+4. Make a real test call. Model discovery alone does not prove callability. Use **Test all models** to run that call for each registered Model in sequence and get one reachability summary.
 5. Assign the Model to a compatible capability under [Protection Capabilities](/settings/protection-capabilities).
 6. Save the binding, then review and apply the configuration. Validation is optional.
 7. Inspect application progress under [platform health](/settings/health).
@@ -37,6 +37,22 @@ You can update concurrency for an assigned model in model settings. Saving distr
 Remote detector modules have a maximum execution budget of 30 seconds. Capability probes use the same upper bound. A longer Model timeout does not extend this budget. Timeouts cannot count as passing inspection evidence.
 
 For Grounding through NVIDIA's hosted `nvidia/nemotron-3.5-lightning-30b-a3b`, the adapter disables optional thinking. This setting applies to that adapter only. It does not modify portable Policy definitions.
+
+<a id="platform-model-evidence" />
+### Read validation evidence before assigning blame
+
+Every Validate run keeps the captured request and response for each sample, whether it passed or failed. Open **Failed evidence** or **Pass evidence** to inspect the exact endpoint, request body, request headers, response body, status, duration, prompt revision and configured thresholds. Credentials are redacted; the export keeps the full JSON.
+
+A failed sample reports one attribution instead of a bare "failed":
+
+- **Capability** — the protocol was answered correctly but the direction was wrong.
+- **Threshold** — the score fell inside the configured gray area. The operating point did not confirm a judgement, and this is not a model-quality finding.
+- **Protocol** — the response did not match the agreed schema or labels. Treat it as an adapter or deployment mismatch, not detection quality.
+- **Endpoint** — the call failed or timed out before a usable response. This is a platform, network or provider-availability question.
+- **Configuration** — the credential, permission, endpoint or model ID did not allow the call.
+- **Platform** — the Runner or Guard failed while evaluating.
+
+Attribution is derived from captured evidence. It never changes the pass/fail result, and two smoke samples still cannot establish detection quality for a whole capability. A gray-area sample therefore stays unvalidated even when the Policy fallback blocks it.
 
 <a id="platform-model-boundary" />
 ## Distinguish capabilities from Policies

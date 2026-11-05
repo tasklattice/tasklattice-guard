@@ -43,10 +43,29 @@ export function validationEvidenceDocument(check: ValidationCheck, subject: stri
   };
 }
 
+/** Failure attribution classes reported by the Runner. Never inferred from allow/block. */
+export const failureClasses = ["configuration", "endpoint", "protocol", "threshold", "capability", "platform", "unknown"] as const;
+export type FailureClass = typeof failureClasses[number];
+export const failureClass = (value: unknown): FailureClass | "" => {
+  const item = text(value);
+  return (failureClasses as readonly string[]).includes(item) ? item as FailureClass : "";
+};
+/** Per-sample attribution; older records carry none and fall back to passed/failed. */
+export const caseFailureClass = (sample: { outputContent?: string }): FailureClass | "" =>
+  failureClass(parse(sample.outputContent).failure_class);
+
 export function resultEvidence(output: EvidenceRecord) {
-  const evaluations = list(output.evaluation_evidence).map(record).map(item => ({ ...item, verdict: item.verdict, data: parse(item.evidence) }));
+  const evaluations: (EvidenceRecord & { verdict: unknown; data: EvidenceRecord })[] = list(output.evaluation_evidence)
+    .map(value => {
+      const item = record(value);
+      return { ...item, verdict: item.verdict, data: parse(item.evidence) };
+    });
   const findings = list(output.findings).map(record);
   const actions = list(output.detector_evidence).map(record);
+  const error = record(output.error);
+  // Evaluator-level failures return a verdict instead of raising, so the type
+  // lives on the evaluation step rather than in the top-level error object.
+  const errorType = text(error.type) || evaluations.map(item => text(item.error_type)).filter(Boolean).at(-1) || "";
   const verdict = evaluations.map(item => text(item.verdict)).filter(Boolean).at(-1) || actions.map(item => text(item.verdict)).filter(Boolean).at(-1) || text(findings[0]?.verdict);
   const native = evaluations.map(item => item.data).filter(item => item.native_verdict != null || item.topic_verdict != null);
   // Native NeMo topic rails expose their normalized verdict in the rail trace.
@@ -59,6 +78,8 @@ export function resultEvidence(output: EvidenceRecord) {
   return {
     evaluations,
     verdict,
+    errorType,
+    failureClass: failureClass(output.failure_class),
     judgments: evaluations.flatMap(item => Object.entries(record(item.data.judgments)).map(([question, value]) => ({ question, answer: record(value).answer, probability: record(value).probability, thresholds: record(item.data.thresholds) }))),
     answers: evaluations.flatMap(item => Object.entries(record(item.data.answers)).map(([question, answer]) => ({ question, answer }))),
     native,

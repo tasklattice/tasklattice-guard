@@ -78,9 +78,12 @@ class ValidationDiagnostics:
         return self.clean(urlunsplit((parsed.scheme, parsed.netloc.rsplit("@", 1)[-1], parsed.path, urlencode(query), "")))
 
     def request(self, *, method: str, url: str, headers: Any, body: Any) -> dict[str, Any] | None:
-        if len(self.exchanges) >= _EXCHANGE_LIMIT:
+        # Keep the most recent attempts: a retried model usually fails on its last
+        # attempt, so dropping the tail would discard the evidence an operator needs.
+        while len(self.exchanges) >= _EXCHANGE_LIMIT:
+            oldest = self.exchanges.pop(0)
+            self.started.pop(id(oldest), None)
             self.dropped_exchanges += 1
-            return None
         exchange = {"started_at": datetime.now(timezone.utc).isoformat(),
                     "request": {"method": method, "url": self.url(url), "headers": self.headers(headers), **self.body(body)}, "response": None}
         self.exchanges.append(exchange)
@@ -90,10 +93,14 @@ class ValidationDiagnostics:
     def response(self, exchange: dict[str, Any] | None, *, status: int, headers: Any, body: Any) -> None:
         if exchange is not None:
             exchange["response"] = {"status": status, "headers": self.headers(headers), **self.body(body)}
-            exchange["duration_ms"] = round((time.perf_counter() - self.started[id(exchange)]) * 1000)
+            started = self.started.pop(id(exchange), None)
+            # The response may be recorded twice (headers first, body second).
+            if started is not None:
+                exchange["duration_ms"] = round((time.perf_counter() - started) * 1000)
 
-    def failure(self, *, expected: str, actual: str, reason: str) -> None:
-        detail = self.clean({**self.identity, "expected_decision": expected, "actual_decision": actual, "reason": reason})
+    def failure(self, *, expected: str, actual: str, reason: str, failure_class: str | None = None) -> None:
+        detail = self.clean({**self.identity, "expected_decision": expected, "actual_decision": actual,
+                             "failure_class": failure_class, "reason": reason})
         logger.warning("%s", json.dumps({"event": "rail_validation_case_failed", **detail, "exchange_count": len(self.exchanges), "dropped_exchanges": self.dropped_exchanges}, ensure_ascii=False))
         for index, exchange in enumerate(self.exchanges):
             # Exports retain full bodies; keep log events bounded.
@@ -135,7 +142,9 @@ def record_validation_error(error: BaseException) -> None:
     if diagnostics is not None and diagnostics.exchanges:
         exchange = diagnostics.exchanges[-1]
         exchange["error"] = diagnostics.clean({"type": type(error).__name__, "message": str(error)})
-        exchange["duration_ms"] = round((time.perf_counter() - diagnostics.started[id(exchange)]) * 1000)
+        started = diagnostics.started.pop(id(exchange), None)
+        if started is not None:
+            exchange["duration_ms"] = round((time.perf_counter() - started) * 1000)
 
 
 async def _httpx_request(request: httpx.Request) -> None:

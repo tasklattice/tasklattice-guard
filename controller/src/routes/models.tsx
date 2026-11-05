@@ -690,11 +690,17 @@ function ModelOption({ model }: { model: ModelDefinition }) {
   return <span className="flex min-w-0 items-center gap-2"><ProviderMark provider={model.providerName} kind={model.providerKind} model={model.model} size="sm" /><span className="truncate">{model.name} · {model.providerName}</span></span>;
 }
 
+type BatchTestResult = { id: string; name: string; status: "passed" | "failed"; message: string | null };
+type BatchTestRun = { running: boolean; total: number; current: { id: string; name: string } | null; results: BatchTestResult[] };
+
 function ResourceManagement({ resource, view, administrator, onChanged }: { resource: "provider" | "model"; view: ModelConfigurationView; administrator: boolean; onChanged: () => Promise<void> }) {
   const { t } = useTranslation();
   const ownsModel = (model: ModelDefinition) => model.projectId == null;
   const ownedModels = view.models.filter(ownsModel);
   const isMobile = useIsMobile();
+  const queryClient = useQueryClient();
+  const [batchTest, setBatchTest] = useState<BatchTestRun | null>(null);
+  const batchTestRunning = useRef(false);
   const [createMode, setCreateMode] = useState<"provider" | "model" | null>(null);
   const [initialProviderId, setInitialProviderId] = useState<string>();
   const [providerTargetId, setProviderTargetId] = useState<string | null>(null);
@@ -718,8 +724,43 @@ function ResourceManagement({ resource, view, administrator, onChanged }: { reso
     onSuccess: async () => { setRemoveTarget(null); toast.success(t("modelSettings.resourceRemoved")); await onChanged(); },
     onError: (error) => toast.error(errorMessage(error)),
   });
-  const pending = probeMutation.isPending || deleteMutation.isPending;
+  const pending = probeMutation.isPending || deleteMutation.isPending || Boolean(batchTest?.running);
+  // One upstream call at a time: a batch is a reachability sweep, not a load
+  // test, and Provider rate limits are shared by every registered Model.
+  const runBatchTest = async (targets: ModelDefinition[]) => {
+    if (batchTestRunning.current || probeMutation.isPending || deleteMutation.isPending || !targets.length) return;
+    batchTestRunning.current = true;
+    const results: BatchTestResult[] = [];
+    const progress = (current: ModelDefinition | null): BatchTestRun => ({
+      running: true, total: targets.length, current: current ? { id: current.id, name: current.name } : null, results: [...results],
+    });
+    for (const target of targets) {
+      setBatchTest(progress(target));
+      try {
+        const updated = await testModelConnection(target.id);
+        results.push({
+          id: updated.id, name: updated.name,
+          status: updated.connectionStatus === "validated" ? "passed" : "failed",
+          message: updated.connectionMessage ?? null,
+        });
+        // Refresh this row immediately instead of waiting for the poll.
+        queryClient.setQueryData<ModelConfigurationView>(configurationKey, (previous) => previous
+          ? { ...previous, models: previous.models.map((model) => model.id === updated.id ? updated : model) }
+          : previous);
+      } catch (error) {
+        results.push({ id: target.id, name: target.name, status: "failed", message: errorMessage(error) });
+      }
+    }
+    batchTestRunning.current = false;
+    setBatchTest({ running: false, total: targets.length, current: null, results });
+    await onChanged();
+    const failed = results.filter((result) => result.status === "failed").length;
+    toast[failed ? "error" : "success"](t(failed ? "modelSettings.batchTestSummaryFailed" : "modelSettings.batchTestSummaryPassed",
+      { passed: results.length - failed, failed, count: results.length }));
+  };
   const removalModelIds = new Set(removeTarget ? [removeTarget.id] : []);
+  const isTesting = (id: string) => Boolean((probeMutation.isPending && probeMutation.variables?.id === id)
+    || (batchTest?.running && batchTest.current?.id === id));
   const topicControlDraftUse = Boolean(view.draft?.assignments.bindings["topic_control.input"] && removalModelIds.has(view.draft?.assignments.bindings["topic_control.input"]));
   const topicControlActiveUse = Boolean(view.active?.assignments.bindings["topic_control.input"] && removalModelIds.has(view.active.assignments.bindings["topic_control.input"]));
   const topicControlUse = topicControlDraftUse || topicControlActiveUse;
@@ -783,8 +824,20 @@ function ResourceManagement({ resource, view, administrator, onChanged }: { reso
         title={t("modelSettings.models")}
         description={t("modelSettings.modelsDescription")}
         helpLabel={t("modelSettings.modelCallsHelp")}
-        action={<div className="flex flex-wrap gap-2"><ModelProtocolSettings models={ownedModels} disabled={!administrator || pending} onChanged={onChanged} /><Button type="button" variant="create" className="h-11" disabled={!administrator} onClick={() => { setInitialProviderId(undefined); setCreateMode("model"); }}><Plus />{t("modelSettings.addModel")}</Button></div>}
+        action={<div className="flex flex-wrap gap-2">
+          <Button type="button" variant="testing" className="h-11" disabled={!administrator || pending || !ownedModels.length} onClick={() => void runBatchTest(ownedModels)}>
+            {batchTest?.running ? <LoaderCircle className="animate-spin motion-reduce:animate-none" /> : <TestTube2 />}
+            {t(batchTest?.running ? "modelSettings.testingAllModels" : "modelSettings.testAllModels", { done: batchTest?.results.length ?? 0, total: batchTest?.total ?? ownedModels.length })}
+          </Button>
+          <ModelProtocolSettings models={ownedModels} disabled={!administrator || pending} onChanged={onChanged} />
+          <Button type="button" variant="create" className="h-11" disabled={!administrator} onClick={() => { setInitialProviderId(undefined); setCreateMode("model"); }}><Plus />{t("modelSettings.addModel")}</Button>
+        </div>}
       >
+        {batchTest ? <BatchTestReport
+          run={batchTest}
+          onDismiss={() => setBatchTest(null)}
+          onRetestFailed={() => void runBatchTest(ownedModels.filter((model) => batchTest.results.some((result) => result.id === model.id && result.status === "failed")))}
+        /> : null}
         {view.models.length ? (
           <Table className="min-w-[56rem] table-fixed">
             <colgroup><col className="w-[28%]" /><col className="w-[23%]" /><col /><col className="w-24" /><col className="w-24" /></colgroup>
@@ -795,9 +848,9 @@ function ResourceManagement({ resource, view, administrator, onChanged }: { reso
                 <TableRow key={model.id}>
                   <TableCell className="pl-5"><div><p className="font-medium">{model.name}</p><code className="mt-1 block max-w-80 truncate text-xs text-muted-foreground" title={model.model}>{model.model}</code><ProjectResourceBadge ownerProjectId={model.projectId} /></div></TableCell>
                   <TableCell><div className="flex items-start gap-3"><ProviderMark provider={model.providerName} kind={model.providerKind} model={model.model} /><div><p className="mb-1.5 font-medium">{model.providerName}</p>{provider ? <ValidationEvidence kind="provider" status={provider.status} checkedAt={provider.validatedAt} latencyMs={provider.validationLatencyMs} message={provider.validationMessage} /> : <StateBadge state="unavailable" label={t("modelSettings.providerUnavailable")} />}</div></div></TableCell>
-                  <TableCell><ModelCallEvidence model={model} checking={probeMutation.isPending && probeMutation.variables?.id === model.id} /></TableCell>
+                  <TableCell><ModelCallEvidence model={model} checking={isTesting(model.id)} /></TableCell>
                   <TableCell className="text-right tabular-nums">{model.maxConcurrency ?? 2}</TableCell>
-                  <TableCell className="pr-5">{ownsModel(model) ? <ResourceActions kind="model" name={model.name} checking={probeMutation.isPending && probeMutation.variables?.id === model.id} pending={pending || !administrator} onRetest={() => probeMutation.mutate({ id: model.id })} onRemove={() => setRemoveTarget({ id: model.id, name: model.name })} /> : null}</TableCell>
+                  <TableCell className="pr-5">{ownsModel(model) ? <ResourceActions kind="model" name={model.name} checking={isTesting(model.id)} pending={pending || !administrator} onRetest={() => probeMutation.mutate({ id: model.id })} onRemove={() => setRemoveTarget({ id: model.id, name: model.name })} /> : null}</TableCell>
                 </TableRow>
               );
             })}</TableBody>
@@ -856,6 +909,33 @@ function ResourceManagement({ resource, view, administrator, onChanged }: { reso
       </ConfirmationSheet>
     </>
   );
+}
+
+function BatchTestReport({ run, onDismiss, onRetestFailed }: { run: BatchTestRun; onDismiss: () => void; onRetestFailed: () => void }) {
+  const { t } = useTranslation();
+  const failed = run.results.filter((result) => result.status === "failed");
+  const passed = run.results.length - failed.length;
+  const percent = run.total ? Math.round((run.results.length / run.total) * 100) : 0;
+  return <section aria-label={t("modelSettings.batchTestReport")} className="border-b bg-muted/30 px-5 py-3" aria-live="polite">
+    {run.running ? <div className="flex flex-wrap items-center gap-3">
+      <LoaderCircle className="size-4 shrink-0 animate-spin motion-reduce:animate-none" aria-hidden="true" />
+      <p role="status" className="text-sm">{t("modelSettings.batchTestProgress", { name: run.current?.name ?? "", done: run.results.length, total: run.total })}</p>
+      <div role="progressbar" aria-label={t("modelSettings.batchTestProgressLabel")} aria-valuemin={0} aria-valuemax={run.total} aria-valuenow={run.results.length}
+        className="h-1.5 w-40 overflow-hidden rounded-full bg-border"><div className="h-full rounded-full bg-primary transition-[width] duration-300" style={{ width: `${percent}%` }} /></div>
+    </div> : <div className="space-y-2">
+      <div className="flex flex-wrap items-center gap-3">
+        <p role="status" className={`text-sm font-medium ${failed.length ? "text-destructive" : "text-emerald-700 dark:text-emerald-400"}`}>
+          {failed.length ? t("modelSettings.batchTestSummaryFailed", { passed, failed: failed.length }) : t("modelSettings.batchTestSummaryPassed", { count: passed })}
+        </p>
+        {failed.length ? <Button type="button" variant="ghost" size="sm" className="h-8 px-2" onClick={onRetestFailed}><RefreshCw className="size-4" />{t("modelSettings.batchTestRetestFailed", { count: failed.length })}</Button> : null}
+        <Button type="button" variant="ghost" size="sm" className="h-8 px-2" onClick={onDismiss}>{t("modelSettings.batchTestDismiss")}</Button>
+      </div>
+      {failed.length ? <ul className="space-y-1 text-xs text-muted-foreground">{failed.map((result) => {
+        const message = result.message && result.message.length > 160 ? `${result.message.slice(0, 160)}…` : result.message;
+        return <li key={result.id} className="[overflow-wrap:anywhere]"><span className="font-medium text-foreground">{result.name}</span>{message ? <span> — {message}</span> : null}</li>;
+      })}</ul> : null}
+    </div>}
+  </section>;
 }
 
 function ResourceSection({ title, description, helpLabel, action, children }: { title: string; description: string; helpLabel: string; action: ReactNode; children: ReactNode }) {

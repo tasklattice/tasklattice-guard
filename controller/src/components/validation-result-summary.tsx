@@ -23,6 +23,7 @@ export function ValidationResultSummary({ sample, output }: { sample: NonNullabl
   const policy = record(output.formal_policy);
   const error = record(output.error);
   const reason = sample.reason || text(output.reason) || text(error.message);
+  const cause = data.failureClass ? t(key + "cause" + data.failureClass.charAt(0).toUpperCase() + data.failureClass.slice(1)) : "";
   const probability = data.judgments.some(item => typeof item.probability === "number");
   const thresholds = data.judgments.some(item => Object.keys(item.thresholds).length > 0);
   const pii = context.profile === "tali.openai-compatible-pii.v1";
@@ -31,7 +32,8 @@ export function ValidationResultSummary({ sample, output }: { sample: NonNullabl
       <EvidenceField label={t(key + "expected")} value={sample.expectedDecision} />
       <EvidenceField label={t(key + "actual")} value={sample.actualDecision} />
       <EvidenceField label={t(key + "verdict")} value={data.verdict} />
-      <EvidenceField label={t(key + "errorType")} value={error.type} />
+      <EvidenceField label={t(key + "attribution")} value={sample.passed ? "" : cause} />
+      <EvidenceField label={t(key + "errorType")} value={data.errorType} />
     </dl>
     {reason ? <p className={`border-l-2 py-2 pl-3 leading-6 whitespace-pre-wrap [overflow-wrap:anywhere] ${sample.passed ? "border-border" : "border-destructive bg-destructive/5"}`}>{reason}</p> : null}
     <Section title={t(key + "input")}><p className="bg-muted/30 px-3 py-2 leading-6 whitespace-pre-wrap [overflow-wrap:anywhere]">{sample.inputContent}</p></Section>

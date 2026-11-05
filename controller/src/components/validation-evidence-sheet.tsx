@@ -8,7 +8,7 @@ import { StateBadge } from "./product-shell";
 import { ValidationResultSummary, EvidenceField } from "./validation-result-summary";
 import { ValidationHttpInspector } from "./validation-http-inspector";
 import { downloadLogFile } from "@/lib/http-log-content";
-import { exchanges, parse, record, resultEvidence, text, validationEvidenceDocument, type ValidationCheck } from "@/lib/validation-evidence";
+import { caseFailureClass, exchanges, parse, record, resultEvidence, text, validationEvidenceDocument, type ValidationCheck } from "@/lib/validation-evidence";
 
 export { validationEvidenceDocument } from "@/lib/validation-evidence";
 const key = "modelSettings.evidence.";
@@ -28,7 +28,18 @@ export function ValidationEvidenceSheet({ check, subject, label }: { check: Vali
   const caseName = (id: string) => t(key + (id.split(":").at(-1) === "safe" ? formal ? "validSample" : "safeSample" : id.split(":").at(-1) === "unsafe" ? formal ? "invalidSample" : "unsafeSample" : "sample"), { id });
   const passed = check.status === "passed";
   const evidenceLabel = t(key + (passed ? "passedEvidence" : "failedEvidence"));
-  const badge = <StateBadge state={check.status === "passed" ? "ready" : "failed"} label={label} />;
+  // A gray-area result is a failed validation sample, but it is not a wrong
+  // judgement. Keep the platform/model/threshold distinction visible here.
+  const sampleState = (item: NonNullable<ValidationCheck["cases"]>[number]) => {
+    const cause = caseFailureClass(item);
+    if (item.passed) return { state: "ready", label: t(key + "passed") };
+    if (cause === "threshold") return { state: "unknown", label: t(key + "inconclusive") };
+    if (cause && cause !== "capability") return { state: "failed", label: t(key + "caseError") };
+    return { state: "failed", label: t(key + "failed") };
+  };
+  const failedCauses = cases.filter(item => !item.passed).map(caseFailureClass);
+  const inconclusive = !passed && failedCauses.length > 0 && failedCauses.every(item => item === "threshold");
+  const badge = <StateBadge state={passed ? "ready" : inconclusive ? "unknown" : "failed"} label={inconclusive ? t(key + "inconclusive") : label} />;
   return <Sheet open={open} onOpenChange={value => { setOpen(value); if (value) setSelectedId(undefined); }}>
     <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
       <SheetTrigger asChild><Button variant="ghost" size="sm"
@@ -52,11 +63,11 @@ export function ValidationEvidenceSheet({ check, subject, label }: { check: Vali
       <div className="min-h-0 flex-1 overflow-y-auto">
         {cases.length && selected ? <>
           <nav aria-label={t(key + "samples")} className="flex flex-wrap gap-2 border-b px-6 py-3">
-            {cases.map(item => <button key={item.id} type="button" aria-current={item.id === selected.id ? "true" : undefined}
+            {cases.map(item => { const state = sampleState(item); return <button key={item.id} type="button" aria-current={item.id === selected.id ? "true" : undefined}
               className={`flex items-center gap-3 border-b-2 px-3 py-2 text-sm focus-visible:outline-2 focus-visible:outline-ring ${item.id === selected.id ? "border-primary bg-muted" : "border-transparent hover:bg-muted/40"}`}
               onClick={() => setSelectedId(item.id)}>
-              <span className="font-medium">{caseName(item.id)}</span><StateBadge state={item.passed ? "ready" : "failed"} label={t(key + (item.passed ? "passed" : "failed"))} />
-            </button>)}
+              <span className="font-medium">{caseName(item.id)}</span><StateBadge state={state.state} label={state.label} />
+            </button>; })}
           </nav>
           <div key={selected.id} className="min-w-0 px-6 pb-6">
             <details className="border-b py-3 text-sm">

@@ -116,3 +116,31 @@ it("never presents a fallback block as a confirmed topic classification", () => 
   fireEvent.click(screen.getByRole("tab",{name:/HTTP calls/}));
   expect(screen.getByText("No model HTTP requests were captured for this sample.")).toBeTruthy();
 });
+
+it("separates a gray-area sample from a wrong judgement and names the cause", () => {
+  const gray = {
+    failure_class: "threshold",
+    evaluation_evidence: [{ verdict: "unknown", evidence: JSON.stringify({ judgments: { unsafe_content: { probability: 0.84, answer: "unknown" } }, thresholds: { lower: 0.1, upper: 0.9 } }) }],
+    model_exchanges: [],
+  };
+  open({...check, status: "failed", cases: [check.cases![0], {...check.cases![1], passed: false, actualDecision: "block", reason: "", outputContent: JSON.stringify(gray)}]});
+  // Check badge and sample badge both report an unconfirmed judgement, not a wrong one.
+  expect(screen.getAllByText("Inconclusive (gray area)")).toHaveLength(2);
+  expect(screen.getByText("Threshold — the score fell inside the configured gray area; the operating point did not confirm a judgement.")).toBeTruthy();
+  expect(screen.getByText("0.84")).toBeTruthy();
+  fireEvent.click(screen.getByRole("button", {name:/Safe sample/}));
+  expect(screen.queryByText("Failure attribution")).toBeNull();
+});
+
+it("surfaces the evaluator error type and calls a protocol mismatch an execution error", () => {
+  open({...check, status: "failed", cases: [{...check.cases![1], passed: false, actualDecision: "error", outputContent: JSON.stringify({
+    failure_class: "protocol",
+    evaluation_evidence: [{ verdict: "error", error_type: "ModelResponseError", evidence: JSON.stringify({}) }],
+    model_exchanges: [],
+  })}]});
+  expect(screen.getByText("ModelResponseError")).toBeTruthy();
+  expect(screen.getByText("Protocol — the response did not follow the agreed schema or labels; adapter or deployment mismatch, not detection quality.")).toBeTruthy();
+  // A broken protocol response is an execution error, not a wrong model judgement.
+  expect(screen.getByText("Execution error")).toBeTruthy();
+  expect(screen.queryByText("Failed")).toBeNull();
+});
