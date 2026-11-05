@@ -351,34 +351,6 @@
   parameter_names: []
   group: Protection contract
   scope: rule
-- id: gdpr-eu-pii-protection/rule-gdpr-eu-financial-data/eu_iban_enhanced-acceptance
-  name: Trigger IBAN (Enhanced EU Format)
-  description: Proves that the published regex implementation for IBAN (Enhanced EU Format) activates this
-    Rule.
-  phase: input
-  content: 'Acceptance sample: AA00AAAA0000000A'
-  expected_decision: transform
-  covered_rule_ids:
-  - gdpr-eu-financial-data/eu_iban_enhanced
-  kind: rule_acceptance
-  required: true
-  parameter_names: []
-  group: Rule acceptance
-  scope: rule
-- id: gdpr-eu-pii-protection/rule-gdpr-eu-financial-data/iban-acceptance
-  name: Trigger IBAN (International Bank Account Number)
-  description: Proves that the published regex implementation for IBAN (International Bank Account Number)
-    activates this Rule.
-  phase: input
-  content: 'Acceptance sample: AA11AAAAAAAAAAA'
-  expected_decision: transform
-  covered_rule_ids:
-  - gdpr-eu-financial-data/iban
-  kind: rule_acceptance
-  required: true
-  parameter_names: []
-  group: Rule acceptance
-  scope: rule
 - id: pattern-matching/accept/credit_card
   name: Detect Credit Card (Any)
   description: Required acceptance case for Payment Card Patterns.
@@ -509,19 +481,6 @@
   parameter_names: []
   group: Rule acceptance
   scope: rule
-- id: pdpa-singapore/rule-sg-pdpa-financial-data/sg_bank_account-acceptance
-  name: Trigger Bank Account (Singapore)
-  description: Proves that the published regex implementation for Bank Account (Singapore) activates this Rule.
-  phase: input
-  content: 'Acceptance sample: bank account 111-11111-1'
-  expected_decision: transform
-  covered_rule_ids:
-  - sg-pdpa-financial-data/sg_bank_account
-  kind: rule_acceptance
-  required: true
-  parameter_names: []
-  group: Rule acceptance
-  scope: rule
 - id: pdpa-singapore/rule-sg-pdpa-financial-data/credit_card-acceptance
   name: Trigger Credit Card (Any)
   description: Proves that the published regex implementation for Credit Card (Any) activates this Rule.
@@ -534,84 +493,6 @@
   required: true
   parameter_names: []
   group: Rule acceptance
-  scope: rule
-- id: singapore-customer-identifiers/rule-sg-pdpa-financial-data/sg_bank_account-acceptance/input
-  name: Trigger Bank Account (Singapore)
-  description: Proves that the published regex implementation for Bank Account (Singapore) activates this Rule.
-  phase: input
-  content: 'Acceptance sample: bank account 111-11111-1'
-  expected_decision: transform
-  covered_rule_ids:
-  - sg-pdpa-financial-data/sg_bank_account
-  kind: rule_acceptance
-  required: true
-  parameter_names: []
-  group: Rule acceptance
-  scope: rule
-- id: singapore-customer-identifiers/rule-sg-pdpa-financial-data/sg_bank_account-acceptance/output
-  name: Trigger Bank Account (Singapore)
-  description: Proves that the published regex implementation for Bank Account (Singapore) activates this Rule.
-  phase: output
-  content: 'Acceptance sample: bank account 111-11111-1'
-  expected_decision: transform
-  covered_rule_ids:
-  - sg-pdpa-financial-data/sg_bank_account
-  kind: rule_acceptance
-  required: true
-  parameter_names: []
-  group: Rule acceptance
-  scope: rule
-- id: singapore-customer-identifiers/benign-en/input
-  name: benign-en
-  description: Synthetic, deterministic text fixture; no external action is performed.
-  phase: input
-  content: Please explain the account opening process and its fees.
-  expected_decision: allow
-  covered_rule_ids:
-  - sg-pdpa-financial-data/sg_bank_account
-  kind: scenario
-  required: true
-  parameter_names: []
-  group: Protection contract
-  scope: rule
-- id: singapore-customer-identifiers/benign-en/output
-  name: benign-en
-  description: Synthetic, deterministic text fixture; no external action is performed.
-  phase: output
-  content: Please explain the account opening process and its fees.
-  expected_decision: allow
-  covered_rule_ids:
-  - sg-pdpa-financial-data/sg_bank_account
-  kind: scenario
-  required: true
-  parameter_names: []
-  group: Protection contract
-  scope: rule
-- id: singapore-customer-identifiers/benign-zh/input
-  name: benign-zh
-  description: Synthetic, deterministic text fixture; no external action is performed.
-  phase: input
-  content: 请介绍账户开户流程以及相关费用。
-  expected_decision: allow
-  covered_rule_ids:
-  - sg-pdpa-financial-data/sg_bank_account
-  kind: scenario
-  required: true
-  parameter_names: []
-  group: Protection contract
-  scope: rule
-- id: singapore-customer-identifiers/benign-zh/output
-  name: benign-zh
-  description: Synthetic, deterministic text fixture; no external action is performed.
-  phase: output
-  content: 请介绍账户开户流程以及相关费用。
-  expected_decision: allow
-  covered_rule_ids:
-  - sg-pdpa-financial-data/sg_bank_account
-  kind: scenario
-  required: true
-  parameter_names: []
-  group: Protection contract
   scope: rule
 - id: uae-regulatory-compliance/rule-uae-data-protection-pii/iban-acceptance
   name: Trigger IBAN (International Bank Account Number)

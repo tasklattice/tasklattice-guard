@@ -13471,7 +13471,7 @@
         "name": "uri-user-only",
         "description": "Synthetic non-secret/reference regression.",
         "phase": "input",
-        "content": "https://user@example.com/path",
+        "content": "https://user@localhost/path",
         "expected_decision": "allow",
         "covered_rule_ids": [
           "credentials-api-keys/aws_access_key",
@@ -14973,7 +14973,7 @@
         "name": "uri-user-only",
         "description": "Synthetic non-secret/reference regression.",
         "phase": "output",
-        "content": "https://user@example.com/path",
+        "content": "https://user@localhost/path",
         "expected_decision": "allow",
         "covered_rule_ids": [
           "credentials-api-keys/aws_access_key",
@@ -19319,36 +19319,6 @@
         "group": "Protection contract"
       },
       {
-        "id": "gdpr-eu-pii-protection/rule-gdpr-eu-financial-data/eu_iban_enhanced-acceptance",
-        "name": "Trigger IBAN (Enhanced EU Format)",
-        "description": "Proves that the published regex implementation for IBAN (Enhanced EU Format) activates this Rule.",
-        "phase": "input",
-        "content": "Acceptance sample: AA00AAAA0000000A",
-        "expected_decision": "transform",
-        "covered_rule_ids": [
-          "gdpr-eu-financial-data/eu_iban_enhanced"
-        ],
-        "kind": "rule_acceptance",
-        "required": true,
-        "parameter_names": [],
-        "group": "Rule acceptance"
-      },
-      {
-        "id": "gdpr-eu-pii-protection/rule-gdpr-eu-financial-data/iban-acceptance",
-        "name": "Trigger IBAN (International Bank Account Number)",
-        "description": "Proves that the published regex implementation for IBAN (International Bank Account Number) activates this Rule.",
-        "phase": "input",
-        "content": "Acceptance sample: AA11AAAAAAAAAAA",
-        "expected_decision": "transform",
-        "covered_rule_ids": [
-          "gdpr-eu-financial-data/iban"
-        ],
-        "kind": "rule_acceptance",
-        "required": true,
-        "parameter_names": [],
-        "group": "Rule acceptance"
-      },
-      {
         "id": "pattern-matching/accept/credit_card",
         "name": "Detect Credit Card (Any)",
         "description": "Required acceptance case for Payment Card Patterns.",
@@ -19499,21 +19469,6 @@
         "group": "Rule acceptance"
       },
       {
-        "id": "pdpa-singapore/rule-sg-pdpa-financial-data/sg_bank_account-acceptance",
-        "name": "Trigger Bank Account (Singapore)",
-        "description": "Proves that the published regex implementation for Bank Account (Singapore) activates this Rule.",
-        "phase": "input",
-        "content": "Acceptance sample: bank account 111-11111-1",
-        "expected_decision": "transform",
-        "covered_rule_ids": [
-          "sg-pdpa-financial-data/sg_bank_account"
-        ],
-        "kind": "rule_acceptance",
-        "required": true,
-        "parameter_names": [],
-        "group": "Rule acceptance"
-      },
-      {
         "id": "pdpa-singapore/rule-sg-pdpa-financial-data/credit_card-acceptance",
         "name": "Trigger Credit Card (Any)",
         "description": "Proves that the published regex implementation for Credit Card (Any) activates this Rule.",
@@ -19527,96 +19482,6 @@
         "required": true,
         "parameter_names": [],
         "group": "Rule acceptance"
-      },
-      {
-        "id": "singapore-customer-identifiers/rule-sg-pdpa-financial-data/sg_bank_account-acceptance/input",
-        "name": "Trigger Bank Account (Singapore)",
-        "description": "Proves that the published regex implementation for Bank Account (Singapore) activates this Rule.",
-        "phase": "input",
-        "content": "Acceptance sample: bank account 111-11111-1",
-        "expected_decision": "transform",
-        "covered_rule_ids": [
-          "sg-pdpa-financial-data/sg_bank_account"
-        ],
-        "kind": "rule_acceptance",
-        "required": true,
-        "parameter_names": [],
-        "group": "Rule acceptance"
-      },
-      {
-        "id": "singapore-customer-identifiers/rule-sg-pdpa-financial-data/sg_bank_account-acceptance/output",
-        "name": "Trigger Bank Account (Singapore)",
-        "description": "Proves that the published regex implementation for Bank Account (Singapore) activates this Rule.",
-        "phase": "output",
-        "content": "Acceptance sample: bank account 111-11111-1",
-        "expected_decision": "transform",
-        "covered_rule_ids": [
-          "sg-pdpa-financial-data/sg_bank_account"
-        ],
-        "kind": "rule_acceptance",
-        "required": true,
-        "parameter_names": [],
-        "group": "Rule acceptance"
-      },
-      {
-        "id": "singapore-customer-identifiers/benign-en/input",
-        "name": "benign-en",
-        "description": "Synthetic, deterministic text fixture; no external action is performed.",
-        "phase": "input",
-        "content": "Please explain the account opening process and its fees.",
-        "expected_decision": "allow",
-        "covered_rule_ids": [
-          "sg-pdpa-financial-data/sg_bank_account"
-        ],
-        "kind": "scenario",
-        "required": true,
-        "parameter_names": [],
-        "group": "Protection contract"
-      },
-      {
-        "id": "singapore-customer-identifiers/benign-en/output",
-        "name": "benign-en",
-        "description": "Synthetic, deterministic text fixture; no external action is performed.",
-        "phase": "output",
-        "content": "Please explain the account opening process and its fees.",
-        "expected_decision": "allow",
-        "covered_rule_ids": [
-          "sg-pdpa-financial-data/sg_bank_account"
-        ],
-        "kind": "scenario",
-        "required": true,
-        "parameter_names": [],
-        "group": "Protection contract"
-      },
-      {
-        "id": "singapore-customer-identifiers/benign-zh/input",
-        "name": "benign-zh",
-        "description": "Synthetic, deterministic text fixture; no external action is performed.",
-        "phase": "input",
-        "content": "请介绍账户开户流程以及相关费用。",
-        "expected_decision": "allow",
-        "covered_rule_ids": [
-          "sg-pdpa-financial-data/sg_bank_account"
-        ],
-        "kind": "scenario",
-        "required": true,
-        "parameter_names": [],
-        "group": "Protection contract"
-      },
-      {
-        "id": "singapore-customer-identifiers/benign-zh/output",
-        "name": "benign-zh",
-        "description": "Synthetic, deterministic text fixture; no external action is performed.",
-        "phase": "output",
-        "content": "请介绍账户开户流程以及相关费用。",
-        "expected_decision": "allow",
-        "covered_rule_ids": [
-          "sg-pdpa-financial-data/sg_bank_account"
-        ],
-        "kind": "scenario",
-        "required": true,
-        "parameter_names": [],
-        "group": "Protection contract"
       },
       {
         "id": "uae-regulatory-compliance/rule-uae-data-protection-pii/iban-acceptance",
@@ -20047,62 +19912,6 @@
         "redaction": "[cn_bank_card_REDACTED]"
       },
       {
-        "id": "gdpr-eu-financial-data/eu_iban_enhanced",
-        "name": "IBAN (Enhanced EU Format)",
-        "description": "Enhanced IBAN detection with more specific format validation (2 letter country + 2 check digits + 4 char bank code + 7 digit account base + optional 0-16 alphanumeric)",
-        "detector": {
-          "ref": "text/regex",
-          "version": "1.0.0"
-        },
-        "effect": "transform",
-        "risk_severity": "high",
-        "rails": [
-          "input"
-        ],
-        "implementation": {
-          "engine": "nemo-guardrails",
-          "detector": "regex",
-          "flow_name": null,
-          "action_name": "GuardContentFilterAction",
-          "execution": "local",
-          "binding_id": "local-payment-data",
-          "implementation_rule_id": "gdpr-eu-financial-data/eu_iban_enhanced"
-        },
-        "expression": "\\b[A-Z]{2}[0-9]{2}[A-Z0-9]{4}[0-9]{7}[A-Z0-9]{0,16}\\b",
-        "taxonomy_ids": [
-          "TALI-PRIVACY-FINANCIAL"
-        ],
-        "redaction": "[IBAN_REDACTED]"
-      },
-      {
-        "id": "gdpr-eu-financial-data/iban",
-        "name": "IBAN (International Bank Account Number)",
-        "description": "Detects IBANs (2 letter country code + 2 check digits + 4 char bank code + 7 digit base + optional 0-16 alphanumeric)",
-        "detector": {
-          "ref": "text/regex",
-          "version": "1.0.0"
-        },
-        "effect": "transform",
-        "risk_severity": "high",
-        "rails": [
-          "input"
-        ],
-        "implementation": {
-          "engine": "nemo-guardrails",
-          "detector": "regex",
-          "flow_name": null,
-          "action_name": "GuardContentFilterAction",
-          "execution": "local",
-          "binding_id": "local-payment-data",
-          "implementation_rule_id": "gdpr-eu-financial-data/iban"
-        },
-        "expression": "\\b[A-Z]{2}\\d{2}[A-Z0-9]{11,30}\\b",
-        "taxonomy_ids": [
-          "TALI-PRIVACY-FINANCIAL"
-        ],
-        "redaction": "[IBAN_REDACTED]"
-      },
-      {
         "id": "pattern/eu_iban_enhanced",
         "name": "IBAN (Enhanced EU Format)",
         "description": "Enhanced IBAN detection with more specific format validation (2 letter country + 2 check digits + 4 char bank code + 7 digit account base + optional 0-16 alphanumeric)",
@@ -20130,36 +19939,6 @@
           "TALI-PRIVACY-FINANCIAL"
         ],
         "redaction": "[eu_iban_enhanced_REDACTED]"
-      },
-      {
-        "id": "sg-pdpa-financial-data/sg_bank_account",
-        "name": "Bank Account (Singapore)",
-        "description": "Detects Singapore bank account numbers (XXX-XXXXX(X)-X(XX) format for DBS/POSB/OCBC/UOB)",
-        "detector": {
-          "ref": "text/regex",
-          "version": "1.0.0"
-        },
-        "effect": "transform",
-        "risk_severity": "high",
-        "rails": [
-          "input",
-          "output"
-        ],
-        "implementation": {
-          "engine": "nemo-guardrails",
-          "detector": "regex",
-          "flow_name": null,
-          "action_name": "GuardContentFilterAction",
-          "execution": "local",
-          "binding_id": "local-payment-data",
-          "implementation_rule_id": "sg-pdpa-financial-data/sg_bank_account"
-        },
-        "expression": "\\b\\d{3}-\\d{5,6}-\\d{1,3}\\b",
-        "context_expression": "\\b(?:bank\\s*account|account\\s*number|DBS|OCBC|UOB|POSB|savings|current\\s*account|bank\\s*statement)\\b",
-        "taxonomy_ids": [
-          "TALI-PRIVACY-FINANCIAL"
-        ],
-        "redaction": "[sg_bank_account_REDACTED]"
       },
       {
         "id": "financial-pii/visa",
@@ -21473,66 +21252,6 @@
         "group": "Rule acceptance"
       },
       {
-        "id": "advanced-au-pii-protection/rule-international-pii-identifiers/nl_bsn_contextual-acceptance",
-        "name": "Trigger BSN (Dutch Citizen Service Number)",
-        "description": "Proves that the published regex implementation for BSN (Dutch Citizen Service Number) activates this Rule.",
-        "phase": "input",
-        "content": "Acceptance sample: BSN 000000000",
-        "expected_decision": "transform",
-        "covered_rule_ids": [
-          "international-pii-identifiers/nl_bsn_contextual"
-        ],
-        "kind": "rule_acceptance",
-        "required": true,
-        "parameter_names": [],
-        "group": "Rule acceptance"
-      },
-      {
-        "id": "advanced-au-pii-protection/rule-international-pii-identifiers/br_cpf-acceptance",
-        "name": "Trigger CPF - Brazilian Personal Tax ID (Formatted)",
-        "description": "Proves that the published regex implementation for CPF - Brazilian Personal Tax ID (Formatted) activates this Rule.",
-        "phase": "input",
-        "content": "Acceptance sample: 111.111.111-11",
-        "expected_decision": "transform",
-        "covered_rule_ids": [
-          "international-pii-identifiers/br_cpf"
-        ],
-        "kind": "rule_acceptance",
-        "required": true,
-        "parameter_names": [],
-        "group": "Rule acceptance"
-      },
-      {
-        "id": "advanced-au-pii-protection/rule-international-pii-identifiers/br_cpf_unformatted-acceptance",
-        "name": "Trigger CPF - Brazilian Personal Tax ID (Unformatted)",
-        "description": "Proves that the published regex implementation for CPF - Brazilian Personal Tax ID (Unformatted) activates this Rule.",
-        "phase": "input",
-        "content": "Acceptance sample: 11111111111",
-        "expected_decision": "transform",
-        "covered_rule_ids": [
-          "international-pii-identifiers/br_cpf_unformatted"
-        ],
-        "kind": "rule_acceptance",
-        "required": true,
-        "parameter_names": [],
-        "group": "Rule acceptance"
-      },
-      {
-        "id": "advanced-au-pii-protection/rule-international-pii-identifiers/br_rg-acceptance",
-        "name": "Trigger RG - Brazilian National Identity Card (SP, RJ, MG)",
-        "description": "Proves that the published regex implementation for RG - Brazilian National Identity Card (SP, RJ, MG) activates this Rule.",
-        "phase": "input",
-        "content": "Acceptance sample: 1.111.111-1",
-        "expected_decision": "transform",
-        "covered_rule_ids": [
-          "international-pii-identifiers/br_rg"
-        ],
-        "kind": "rule_acceptance",
-        "required": true,
-        "parameter_names": [],
-        "group": "Rule acceptance"
-      },
-      {
         "id": "advanced-au-pii-protection/rule-international-pii-identifiers/br_cnpj-acceptance",
         "name": "Trigger CNPJ - Brazilian Company Tax ID",
         "description": "Proves that the published regex implementation for CNPJ - Brazilian Company Tax ID activates this Rule.",
@@ -21726,36 +21445,6 @@
         "required": true,
         "parameter_names": [],
         "group": "Protection contract"
-      },
-      {
-        "id": "gdpr-eu-pii-protection/rule-gdpr-eu-national-identifiers/fr_nir-acceptance",
-        "name": "Trigger NIR/INSEE (French Social Security Number)",
-        "description": "Proves that the published regex implementation for NIR/INSEE (French Social Security Number) activates this Rule.",
-        "phase": "input",
-        "content": "Acceptance sample: 100010000000000",
-        "expected_decision": "transform",
-        "covered_rule_ids": [
-          "gdpr-eu-national-identifiers/fr_nir"
-        ],
-        "kind": "rule_acceptance",
-        "required": true,
-        "parameter_names": [],
-        "group": "Rule acceptance"
-      },
-      {
-        "id": "gdpr-eu-pii-protection/rule-gdpr-eu-business-identifiers/eu_vat-acceptance",
-        "name": "Trigger VAT Number (EU)",
-        "description": "Proves that the published regex implementation for VAT Number (EU) activates this Rule.",
-        "phase": "input",
-        "content": "Acceptance sample: VAT AT00000000",
-        "expected_decision": "transform",
-        "covered_rule_ids": [
-          "gdpr-eu-business-identifiers/eu_vat"
-        ],
-        "kind": "rule_acceptance",
-        "required": true,
-        "parameter_names": [],
-        "group": "Rule acceptance"
       },
       {
         "id": "pattern-matching/accept/us_ssn",
@@ -22426,21 +22115,6 @@
         "expected_decision": "transform",
         "covered_rule_ids": [
           "pattern/sg_nric"
-        ],
-        "kind": "rule_acceptance",
-        "required": true,
-        "parameter_names": [],
-        "group": "Rule acceptance"
-      },
-      {
-        "id": "pdpa-singapore/rule-sg-pdpa-business-identifiers/sg_uen-acceptance",
-        "name": "Trigger UEN (Singapore Unique Entity Number)",
-        "description": "Proves that the published regex implementation for UEN (Singapore Unique Entity Number) activates this Rule.",
-        "phase": "input",
-        "content": "Acceptance sample: UEN 11111111A",
-        "expected_decision": "transform",
-        "covered_rule_ids": [
-          "sg-pdpa-business-identifiers/sg_uen"
         ],
         "kind": "rule_acceptance",
         "required": true,
@@ -23246,119 +22920,6 @@
         "redaction": "[uoft_utorid_REDACTED]"
       },
       {
-        "id": "international-pii-identifiers/nl_bsn_contextual",
-        "name": "BSN (Dutch Citizen Service Number)",
-        "description": "Detects Dutch BSN numbers with contextual keywords",
-        "detector": {
-          "ref": "text/regex",
-          "version": "1.0.0"
-        },
-        "effect": "transform",
-        "risk_severity": "medium",
-        "rails": [
-          "input"
-        ],
-        "implementation": {
-          "engine": "nemo-guardrails",
-          "detector": "regex",
-          "flow_name": null,
-          "action_name": "GuardContentFilterAction",
-          "execution": "local",
-          "binding_id": "local-government-identifiers",
-          "implementation_rule_id": "international-pii-identifiers/nl_bsn_contextual"
-        },
-        "expression": "\\b[0-9]{9}\\b",
-        "context_expression": "(?:\\b(?:BSN|B\\.S\\.N\\.|burgerservicenummer|burger\\s*service\\s*nummer|sofi\\s*nummer|sofinummer|persoonsnummer|identificatienummer|citizen\\s*service\\s*number)\\b|8\\s*5\\s*\\|\\\\\\|)",
-        "taxonomy_ids": [
-          "TALI-PRIVACY-PII"
-        ],
-        "redaction": "[nl_bsn_contextual_REDACTED]"
-      },
-      {
-        "id": "international-pii-identifiers/br_cpf",
-        "name": "CPF - Brazilian Personal Tax ID (Formatted)",
-        "description": "Detects Brazilian CPF numbers (XXX.XXX.XXX-XX or XXX.XXX.XXX/XX format)",
-        "detector": {
-          "ref": "text/regex",
-          "version": "1.0.0"
-        },
-        "effect": "transform",
-        "risk_severity": "medium",
-        "rails": [
-          "input"
-        ],
-        "implementation": {
-          "engine": "nemo-guardrails",
-          "detector": "regex",
-          "flow_name": null,
-          "action_name": "GuardContentFilterAction",
-          "execution": "local",
-          "binding_id": "local-government-identifiers",
-          "implementation_rule_id": "international-pii-identifiers/br_cpf"
-        },
-        "expression": "\\d{3}\\.\\d{3}\\.\\d{3}(-|/)\\d{2}",
-        "taxonomy_ids": [
-          "TALI-PRIVACY-PII"
-        ],
-        "redaction": "[br_cpf_REDACTED]"
-      },
-      {
-        "id": "international-pii-identifiers/br_cpf_unformatted",
-        "name": "CPF - Brazilian Personal Tax ID (Unformatted)",
-        "description": "Detects Brazilian CPF numbers without formatting (11 digits)",
-        "detector": {
-          "ref": "text/regex",
-          "version": "1.0.0"
-        },
-        "effect": "transform",
-        "risk_severity": "medium",
-        "rails": [
-          "input"
-        ],
-        "implementation": {
-          "engine": "nemo-guardrails",
-          "detector": "regex",
-          "flow_name": null,
-          "action_name": "GuardContentFilterAction",
-          "execution": "local",
-          "binding_id": "local-government-identifiers",
-          "implementation_rule_id": "international-pii-identifiers/br_cpf_unformatted"
-        },
-        "expression": "\\b\\d{11}\\b",
-        "taxonomy_ids": [
-          "TALI-PRIVACY-PII"
-        ],
-        "redaction": "[br_cpf_unformatted_REDACTED]"
-      },
-      {
-        "id": "international-pii-identifiers/br_rg",
-        "name": "RG - Brazilian National Identity Card (SP, RJ, MG)",
-        "description": "Detects Brazilian RG identity card numbers (common pattern for SP, RJ, MG states)",
-        "detector": {
-          "ref": "text/regex",
-          "version": "1.0.0"
-        },
-        "effect": "transform",
-        "risk_severity": "medium",
-        "rails": [
-          "input"
-        ],
-        "implementation": {
-          "engine": "nemo-guardrails",
-          "detector": "regex",
-          "flow_name": null,
-          "action_name": "GuardContentFilterAction",
-          "execution": "local",
-          "binding_id": "local-government-identifiers",
-          "implementation_rule_id": "international-pii-identifiers/br_rg"
-        },
-        "expression": "\\b\\d{1,2}\\.\\d{3}\\.\\d{3}-[\\dXx]\\b",
-        "taxonomy_ids": [
-          "TALI-PRIVACY-PII"
-        ],
-        "redaction": "[br_rg_REDACTED]"
-      },
-      {
         "id": "cn-business-identifier/unified-social-credit-code",
         "name": "Contextual Unified Social Credit Code",
         "description": "Redacts an 18-character candidate only when a nearby Chinese label is present and the GB 32100 checksum is valid. It does not verify registration or organization status.",
@@ -23474,92 +23035,6 @@
           "TALI-PRIVACY-PII"
         ],
         "redaction": "[cn_resident_id_REDACTED]"
-      },
-      {
-        "id": "gdpr-eu-national-identifiers/fr_nir",
-        "name": "NIR/INSEE (French Social Security Number)",
-        "description": "Detects French National Identification Number (Numéro d'Inscription au Répertoire) - 15 digits with specific format: sex + year + month + department + commune + order + key",
-        "detector": {
-          "ref": "text/regex",
-          "version": "1.0.0"
-        },
-        "effect": "transform",
-        "risk_severity": "medium",
-        "rails": [
-          "input"
-        ],
-        "implementation": {
-          "engine": "nemo-guardrails",
-          "detector": "regex",
-          "flow_name": null,
-          "action_name": "GuardContentFilterAction",
-          "execution": "local",
-          "binding_id": "local-government-identifiers",
-          "implementation_rule_id": "gdpr-eu-national-identifiers/fr_nir"
-        },
-        "expression": "\\b[12][0-9]{2}(0[1-9]|1[0-2])[0-9]{2}[0-9]{3}[0-9]{3}[0-9]{2}\\b",
-        "taxonomy_ids": [
-          "TALI-PRIVACY-PII"
-        ],
-        "redaction": "[fr_nir_REDACTED]"
-      },
-      {
-        "id": "gdpr-eu-business-identifiers/eu_vat",
-        "name": "VAT Number (EU)",
-        "description": "Detects EU VAT identification numbers (2-letter country code + 8-12 alphanumeric characters covering all EU member states)",
-        "detector": {
-          "ref": "text/regex",
-          "version": "1.0.0"
-        },
-        "effect": "transform",
-        "risk_severity": "medium",
-        "rails": [
-          "input"
-        ],
-        "implementation": {
-          "engine": "nemo-guardrails",
-          "detector": "regex",
-          "flow_name": null,
-          "action_name": "GuardContentFilterAction",
-          "execution": "local",
-          "binding_id": "local-government-identifiers",
-          "implementation_rule_id": "gdpr-eu-business-identifiers/eu_vat"
-        },
-        "expression": "\\b(AT|BE|BG|CY|CZ|DE|DK|EE|EL|ES|FI|FR|HR|HU|IE|IT|LT|LU|LV|MT|NL|PL|PT|RO|SE|SI|SK)[0-9A-Z]{8,12}\\b",
-        "context_expression": "\\b(?:VAT|V\\.A\\.T\\.|TVA|IVA|BTW|MWST|value\\s*added\\s*tax|tax\\s*number|tax\\s*id|fiscal\\s*number|fiscal\\s*code)\\b",
-        "taxonomy_ids": [
-          "TALI-PRIVACY-PII"
-        ],
-        "redaction": "[VAT_NUMBER_REDACTED]"
-      },
-      {
-        "id": "sg-pdpa-business-identifiers/sg_uen",
-        "name": "UEN (Singapore Unique Entity Number)",
-        "description": "Detects Singapore Unique Entity Numbers for business registration (various formats: 8/9 digits + letter, or T/R prefix)",
-        "detector": {
-          "ref": "text/regex",
-          "version": "1.0.0"
-        },
-        "effect": "transform",
-        "risk_severity": "low",
-        "rails": [
-          "input"
-        ],
-        "implementation": {
-          "engine": "nemo-guardrails",
-          "detector": "regex",
-          "flow_name": null,
-          "action_name": "GuardContentFilterAction",
-          "execution": "local",
-          "binding_id": "local-government-identifiers",
-          "implementation_rule_id": "sg-pdpa-business-identifiers/sg_uen"
-        },
-        "expression": "\\b(?:\\d{8}[A-Z]|\\d{9}[A-Z]|[TR]\\d{2}[A-Z]{2}\\d{4}[A-Z])\\b",
-        "context_expression": "\\b(?:UEN|company\\s*registration|business\\s*registration|ACRA|entity\\s*number|ROC|ROS)\\b",
-        "taxonomy_ids": [
-          "TALI-BUSINESS-POLICY"
-        ],
-        "redaction": "[UEN_REDACTED]"
       }
     ]
   },
@@ -24344,21 +23819,6 @@
         "group": "Protection contract"
       },
       {
-        "id": "advanced-au-pii-protection/rule-au-pii-passports/passport_australia-acceptance",
-        "name": "Trigger Passport (Australia)",
-        "description": "Proves that the published regex implementation for Passport (Australia) activates this Rule.",
-        "phase": "input",
-        "content": "Acceptance sample: A0000000",
-        "expected_decision": "transform",
-        "covered_rule_ids": [
-          "au-pii-passports/passport_australia"
-        ],
-        "kind": "rule_acceptance",
-        "required": true,
-        "parameter_names": [],
-        "group": "Rule acceptance"
-      },
-      {
         "id": "advanced-au-pii-protection/rule-international-pii-identifiers/passport_us-acceptance",
         "name": "Trigger Passport (US)",
         "description": "Proves that the published regex implementation for Passport (US) activates this Rule.",
@@ -24487,21 +23947,6 @@
         "expected_decision": "transform",
         "covered_rule_ids": [
           "pattern/passport_canada"
-        ],
-        "kind": "rule_acceptance",
-        "required": true,
-        "parameter_names": [],
-        "group": "Rule acceptance"
-      },
-      {
-        "id": "gdpr-eu-pii-protection/rule-gdpr-eu-national-identifiers/eu_passport_generic-acceptance",
-        "name": "Trigger Passport Number (EU Generic)",
-        "description": "Proves that the published regex implementation for Passport Number (EU Generic) activates this Rule.",
-        "phase": "input",
-        "content": "Acceptance sample: passport 00AA00000",
-        "expected_decision": "transform",
-        "covered_rule_ids": [
-          "gdpr-eu-national-identifiers/eu_passport_generic"
         ],
         "kind": "rule_acceptance",
         "required": true,
@@ -24652,21 +24097,6 @@
         "expected_decision": "transform",
         "covered_rule_ids": [
           "international-pii-identifiers/passport_japan"
-        ],
-        "kind": "rule_acceptance",
-        "required": true,
-        "parameter_names": [],
-        "group": "Rule acceptance"
-      },
-      {
-        "id": "pattern-matching/accept/eu_passport_generic",
-        "name": "Detect Passport Number (EU Generic)",
-        "description": "Required acceptance case for EU PII Patterns.",
-        "phase": "input",
-        "content": "Acceptance sample: passport 00AA00000",
-        "expected_decision": "transform",
-        "covered_rule_ids": [
-          "pattern/eu_passport_generic"
         ],
         "kind": "rule_acceptance",
         "required": true,
@@ -24839,21 +24269,6 @@
         "group": "Rule acceptance"
       },
       {
-        "id": "pattern-matching/accept/eu_passport_generic/output",
-        "name": "Detect Passport Number (EU Generic)",
-        "description": "Required acceptance case for EU PII Patterns.",
-        "phase": "output",
-        "content": "Acceptance sample: passport 00AA00000",
-        "expected_decision": "transform",
-        "covered_rule_ids": [
-          "pattern/eu_passport_generic"
-        ],
-        "kind": "rule_acceptance",
-        "required": true,
-        "parameter_names": [],
-        "group": "Rule acceptance"
-      },
-      {
         "id": "pattern-matching/accept/passport_singapore/output",
         "name": "Detect Passport (Singapore)",
         "description": "Required acceptance case for Singapore PII Patterns.",
@@ -24862,21 +24277,6 @@
         "expected_decision": "transform",
         "covered_rule_ids": [
           "pattern/passport_singapore"
-        ],
-        "kind": "rule_acceptance",
-        "required": true,
-        "parameter_names": [],
-        "group": "Rule acceptance"
-      },
-      {
-        "id": "pdpa-singapore/rule-sg-pdpa-pii-identifiers/passport_singapore-acceptance",
-        "name": "Trigger Passport (Singapore)",
-        "description": "Proves that the published regex implementation for Passport (Singapore) activates this Rule.",
-        "phase": "input",
-        "content": "Acceptance sample: passport E1111111",
-        "expected_decision": "transform",
-        "covered_rule_ids": [
-          "sg-pdpa-pii-identifiers/passport_singapore"
         ],
         "kind": "rule_acceptance",
         "required": true,
@@ -25149,34 +24549,6 @@
         "redaction": "[REDACTED]"
       },
       {
-        "id": "au-pii-passports/passport_australia",
-        "name": "Passport (Australia)",
-        "description": "Australian passport numbers (1 letter + 7 digits)",
-        "detector": {
-          "ref": "text/regex",
-          "version": "1.0.0"
-        },
-        "effect": "transform",
-        "risk_severity": "medium",
-        "rails": [
-          "input"
-        ],
-        "implementation": {
-          "engine": "nemo-guardrails",
-          "detector": "regex",
-          "flow_name": null,
-          "action_name": "GuardContentFilterAction",
-          "execution": "local",
-          "binding_id": "local-passports",
-          "implementation_rule_id": "au-pii-passports/passport_australia"
-        },
-        "expression": "\\b[A-Z][0-9]{7}\\b",
-        "taxonomy_ids": [
-          "TALI-PRIVACY-PII"
-        ],
-        "redaction": "[PASSPORT_REDACTED]"
-      },
-      {
         "id": "international-pii-identifiers/passport_uk",
         "name": "Passport (UK)",
         "description": "UK passport numbers (9 digits)",
@@ -25235,35 +24607,6 @@
         "redaction": "[passport_japan_REDACTED]"
       },
       {
-        "id": "gdpr-eu-national-identifiers/eu_passport_generic",
-        "name": "Passport Number (EU Generic)",
-        "description": "Detects generic EU passport format (2 digits + 2 letters + 5 digits) - covers France and similar EU formats",
-        "detector": {
-          "ref": "text/regex",
-          "version": "1.0.0"
-        },
-        "effect": "transform",
-        "risk_severity": "medium",
-        "rails": [
-          "input"
-        ],
-        "implementation": {
-          "engine": "nemo-guardrails",
-          "detector": "regex",
-          "flow_name": null,
-          "action_name": "GuardContentFilterAction",
-          "execution": "local",
-          "binding_id": "local-passports",
-          "implementation_rule_id": "gdpr-eu-national-identifiers/eu_passport_generic"
-        },
-        "expression": "\\b[0-9]{2}[A-Z]{2}[0-9]{5}\\b",
-        "context_expression": "\\b(?:passport|passeport|travel\\s*document|document\\s*number|reisepass|paspoort|paszport)\\b",
-        "taxonomy_ids": [
-          "TALI-PRIVACY-PII"
-        ],
-        "redaction": "[eu_passport_generic_REDACTED]"
-      },
-      {
         "id": "pattern/passport_australia",
         "name": "Passport (Australia)",
         "description": "Australian passport numbers (1 letter + 7 digits)",
@@ -25291,66 +24634,6 @@
           "TALI-PRIVACY-PII"
         ],
         "redaction": "[passport_australia_REDACTED]"
-      },
-      {
-        "id": "pattern/eu_passport_generic",
-        "name": "Passport Number (EU Generic)",
-        "description": "Detects generic EU passport format (2 digits + 2 letters + 5 digits) - covers France and similar EU formats",
-        "detector": {
-          "ref": "text/regex",
-          "version": "1.0.0"
-        },
-        "effect": "transform",
-        "risk_severity": "medium",
-        "rails": [
-          "input",
-          "output"
-        ],
-        "implementation": {
-          "engine": "nemo-guardrails",
-          "detector": "regex",
-          "flow_name": null,
-          "action_name": "GuardContentFilterAction",
-          "execution": "local",
-          "binding_id": "local-passports",
-          "implementation_rule_id": "pattern/eu_passport_generic"
-        },
-        "expression": "\\b[0-9]{2}[A-Z]{2}[0-9]{5}\\b",
-        "context_expression": "\\b(?:passport|passeport|travel\\s*document|document\\s*number|reisepass|paspoort|paszport)\\b",
-        "context_max_gap_words": 1,
-        "taxonomy_ids": [
-          "TALI-PRIVACY-PII"
-        ],
-        "redaction": "[eu_passport_generic_REDACTED]"
-      },
-      {
-        "id": "sg-pdpa-pii-identifiers/passport_singapore",
-        "name": "Passport (Singapore)",
-        "description": "Detects Singapore passport numbers (E/K prefix + 7 digits)",
-        "detector": {
-          "ref": "text/regex",
-          "version": "1.0.0"
-        },
-        "effect": "transform",
-        "risk_severity": "medium",
-        "rails": [
-          "input"
-        ],
-        "implementation": {
-          "engine": "nemo-guardrails",
-          "detector": "regex",
-          "flow_name": null,
-          "action_name": "GuardContentFilterAction",
-          "execution": "local",
-          "binding_id": "local-passports",
-          "implementation_rule_id": "sg-pdpa-pii-identifiers/passport_singapore"
-        },
-        "expression": "\\b[EK]\\d{7}\\b",
-        "context_expression": "\\b(?:passport|travel\\s*document|document\\s*number|immigration|ICA)\\b",
-        "taxonomy_ids": [
-          "TALI-PRIVACY-PII"
-        ],
-        "redaction": "[passport_singapore_REDACTED]"
       }
     ]
   },
@@ -26220,21 +25503,6 @@
         "group": "Rule acceptance"
       },
       {
-        "id": "gdpr-eu-pii-protection/rule-gdpr-eu-contact-information/fr_postal_code-acceptance",
-        "name": "Trigger Postal Code (France)",
-        "description": "Proves that the published regex implementation for Postal Code (France) activates this Rule.",
-        "phase": "input",
-        "content": "Acceptance sample: code postal 00000",
-        "expected_decision": "transform",
-        "covered_rule_ids": [
-          "gdpr-eu-contact-information/fr_postal_code"
-        ],
-        "kind": "rule_acceptance",
-        "required": true,
-        "parameter_names": [],
-        "group": "Rule acceptance"
-      },
-      {
         "id": "pattern-matching/accept/email",
         "name": "Detect Email Address",
         "description": "Required acceptance case for PII Patterns.",
@@ -26603,21 +25871,6 @@
         "expected_decision": "transform",
         "covered_rule_ids": [
           "pattern/sg_phone"
-        ],
-        "kind": "rule_acceptance",
-        "required": true,
-        "parameter_names": [],
-        "group": "Rule acceptance"
-      },
-      {
-        "id": "pdpa-singapore/rule-sg-pdpa-contact-information/sg_postal_code-acceptance",
-        "name": "Trigger Postal Code (Singapore)",
-        "description": "Proves that the published regex implementation for Postal Code (Singapore) activates this Rule.",
-        "phase": "input",
-        "content": "Acceptance sample: postal code 011111",
-        "expected_decision": "transform",
-        "covered_rule_ids": [
-          "sg-pdpa-contact-information/sg_postal_code"
         ],
         "kind": "rule_acceptance",
         "required": true,
@@ -27692,64 +26945,6 @@
         "redaction": "[cn_mobile_REDACTED]"
       },
       {
-        "id": "gdpr-eu-contact-information/fr_postal_code",
-        "name": "Postal Code (France)",
-        "description": "Detects French postal codes (5 digits)",
-        "detector": {
-          "ref": "text/regex",
-          "version": "1.0.0"
-        },
-        "effect": "transform",
-        "risk_severity": "medium",
-        "rails": [
-          "input"
-        ],
-        "implementation": {
-          "engine": "nemo-guardrails",
-          "detector": "regex",
-          "flow_name": null,
-          "action_name": "GuardContentFilterAction",
-          "execution": "local",
-          "binding_id": "local-contact-data",
-          "implementation_rule_id": "gdpr-eu-contact-information/fr_postal_code"
-        },
-        "expression": "\\b[0-9]{5}\\b",
-        "context_expression": "\\b(?:code\\s*postal|postal\\s*code|CP|zip\\s*code|postcode)\\b",
-        "taxonomy_ids": [
-          "TALI-PRIVACY-PII"
-        ],
-        "redaction": "[fr_postal_code_REDACTED]"
-      },
-      {
-        "id": "sg-pdpa-contact-information/sg_postal_code",
-        "name": "Postal Code (Singapore)",
-        "description": "Detects Singapore 6-digit postal codes (ranges 01xxxx to 83xxxx)",
-        "detector": {
-          "ref": "text/regex",
-          "version": "1.0.0"
-        },
-        "effect": "transform",
-        "risk_severity": "medium",
-        "rails": [
-          "input"
-        ],
-        "implementation": {
-          "engine": "nemo-guardrails",
-          "detector": "regex",
-          "flow_name": null,
-          "action_name": "GuardContentFilterAction",
-          "execution": "local",
-          "binding_id": "local-contact-data",
-          "implementation_rule_id": "sg-pdpa-contact-information/sg_postal_code"
-        },
-        "expression": "\\b[0-8]\\d{5}\\b",
-        "context_expression": "\\b(?:postal\\s*code|postcode|zip\\s*code|Singapore\\s*\\d|blk|block|address|HDB|flat|unit)\\b",
-        "taxonomy_ids": [
-          "TALI-PRIVACY-PII"
-        ],
-        "redaction": "[sg_postal_code_REDACTED]"
-      },
-      {
         "id": "uae-data-protection-pii/uae_po_box",
         "name": "UAE Po Box",
         "description": "Custom regular-expression rule.",
@@ -27968,36 +27163,6 @@
         "group": "Protection contract"
       },
       {
-        "id": "advanced-au-pii-protection/rule-network-infrastructure-pii/ipv4-acceptance",
-        "name": "Trigger IP Address (IPv4)",
-        "description": "Proves that the published regex implementation for IP Address (IPv4) activates this Rule.",
-        "phase": "input",
-        "content": "Acceptance sample: 250.250.250.250",
-        "expected_decision": "transform",
-        "covered_rule_ids": [
-          "network-infrastructure-pii/ipv4"
-        ],
-        "kind": "rule_acceptance",
-        "required": true,
-        "parameter_names": [],
-        "group": "Rule acceptance"
-      },
-      {
-        "id": "advanced-au-pii-protection/rule-network-infrastructure-pii/ipv6-acceptance",
-        "name": "Trigger IP Address (IPv6)",
-        "description": "Proves that the published regex implementation for IP Address (IPv6) activates this Rule.",
-        "phase": "input",
-        "content": "Acceptance sample: 0:0:0:0:0:0:0:0",
-        "expected_decision": "transform",
-        "covered_rule_ids": [
-          "network-infrastructure-pii/ipv6"
-        ],
-        "kind": "rule_acceptance",
-        "required": true,
-        "parameter_names": [],
-        "group": "Rule acceptance"
-      },
-      {
         "id": "pattern-matching/accept/ipv4",
         "name": "Detect IP Address (IPv4)",
         "description": "Required acceptance case for Network Patterns.",
@@ -28175,62 +27340,6 @@
           "TALI-BUSINESS-POLICY"
         ],
         "redaction": "[url_REDACTED]"
-      },
-      {
-        "id": "network-infrastructure-pii/ipv4",
-        "name": "IP Address (IPv4)",
-        "description": "Detects IPv4 addresses",
-        "detector": {
-          "ref": "text/regex",
-          "version": "1.0.0"
-        },
-        "effect": "transform",
-        "risk_severity": "medium",
-        "rails": [
-          "input"
-        ],
-        "implementation": {
-          "engine": "nemo-guardrails",
-          "detector": "regex",
-          "flow_name": null,
-          "action_name": "GuardContentFilterAction",
-          "execution": "local",
-          "binding_id": "local-network-addresses",
-          "implementation_rule_id": "network-infrastructure-pii/ipv4"
-        },
-        "expression": "\\b(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\\b",
-        "taxonomy_ids": [
-          "TALI-PRIVACY-PII"
-        ],
-        "redaction": "[INTERNAL_IP_REDACTED]"
-      },
-      {
-        "id": "network-infrastructure-pii/ipv6",
-        "name": "IP Address (IPv6)",
-        "description": "Detects IPv6 addresses",
-        "detector": {
-          "ref": "text/regex",
-          "version": "1.0.0"
-        },
-        "effect": "transform",
-        "risk_severity": "medium",
-        "rails": [
-          "input"
-        ],
-        "implementation": {
-          "engine": "nemo-guardrails",
-          "detector": "regex",
-          "flow_name": null,
-          "action_name": "GuardContentFilterAction",
-          "execution": "local",
-          "binding_id": "local-network-addresses",
-          "implementation_rule_id": "network-infrastructure-pii/ipv6"
-        },
-        "expression": "(?<![0-9a-fA-F:])(?:(?:[0-9a-fA-F]{1,4}:){7}[0-9a-fA-F]{1,4}|(?:[0-9a-fA-F]{1,4}:){1,7}:|:(?::[0-9a-fA-F]{1,4}){1,7}|::|(?:[0-9a-fA-F]{1,4}:){1,6}:[0-9a-fA-F]{1,4}|(?:[0-9a-fA-F]{1,4}:){1,5}(?::[0-9a-fA-F]{1,4}){1,2}|(?:[0-9a-fA-F]{1,4}:){1,4}(?::[0-9a-fA-F]{1,4}){1,3}|(?:[0-9a-fA-F]{1,4}:){1,3}(?::[0-9a-fA-F]{1,4}){1,4}|(?:[0-9a-fA-F]{1,4}:){1,2}(?::[0-9a-fA-F]{1,4}){1,5}|[0-9a-fA-F]{1,4}:(?::[0-9a-fA-F]{1,4}){1,6})(?![0-9a-fA-F:])",
-        "taxonomy_ids": [
-          "TALI-PRIVACY-PII"
-        ],
-        "redaction": "[INTERNAL_IP_REDACTED]"
       }
     ]
   },
@@ -28833,126 +27942,6 @@
         "group": "Rule acceptance"
       },
       {
-        "id": "advanced-au-pii-protection/rule-protected-class-information/gender_sexual_orientation-acceptance",
-        "name": "Trigger Gender & Sexual Orientation (Protected Class)",
-        "description": "Proves that the published regex implementation for Gender & Sexual Orientation (Protected Class) activates this Rule.",
-        "phase": "input",
-        "content": "Acceptance sample: non-binary",
-        "expected_decision": "transform",
-        "covered_rule_ids": [
-          "protected-class-information/gender_sexual_orientation"
-        ],
-        "kind": "rule_acceptance",
-        "required": true,
-        "parameter_names": [],
-        "group": "Rule acceptance"
-      },
-      {
-        "id": "advanced-au-pii-protection/rule-protected-class-information/race_ethnicity_national_origin-acceptance",
-        "name": "Trigger Race, Ethnicity & National Origin (Protected Class)",
-        "description": "Proves that the published regex implementation for Race, Ethnicity & National Origin (Protected Class) activates this Rule.",
-        "phase": "input",
-        "content": "Acceptance sample: caucasian",
-        "expected_decision": "transform",
-        "covered_rule_ids": [
-          "protected-class-information/race_ethnicity_national_origin"
-        ],
-        "kind": "rule_acceptance",
-        "required": true,
-        "parameter_names": [],
-        "group": "Rule acceptance"
-      },
-      {
-        "id": "advanced-au-pii-protection/rule-protected-class-information/religion-acceptance",
-        "name": "Trigger Religion & Creed (Protected Class)",
-        "description": "Proves that the published regex implementation for Religion & Creed (Protected Class) activates this Rule.",
-        "phase": "input",
-        "content": "Acceptance sample: christians",
-        "expected_decision": "transform",
-        "covered_rule_ids": [
-          "protected-class-information/religion"
-        ],
-        "kind": "rule_acceptance",
-        "required": true,
-        "parameter_names": [],
-        "group": "Rule acceptance"
-      },
-      {
-        "id": "advanced-au-pii-protection/rule-protected-class-information/age_discrimination-acceptance",
-        "name": "Trigger Age-Related Terms (Protected Class)",
-        "description": "Proves that the published regex implementation for Age-Related Terms (Protected Class) activates this Rule.",
-        "phase": "input",
-        "content": "Acceptance sample: elderly",
-        "expected_decision": "transform",
-        "covered_rule_ids": [
-          "protected-class-information/age_discrimination"
-        ],
-        "kind": "rule_acceptance",
-        "required": true,
-        "parameter_names": [],
-        "group": "Rule acceptance"
-      },
-      {
-        "id": "advanced-au-pii-protection/rule-protected-class-information/disability-acceptance",
-        "name": "Trigger Disability Status (Protected Class)",
-        "description": "Proves that the published regex implementation for Disability Status (Protected Class) activates this Rule.",
-        "phase": "input",
-        "content": "Acceptance sample: disabled",
-        "expected_decision": "transform",
-        "covered_rule_ids": [
-          "protected-class-information/disability"
-        ],
-        "kind": "rule_acceptance",
-        "required": true,
-        "parameter_names": [],
-        "group": "Rule acceptance"
-      },
-      {
-        "id": "advanced-au-pii-protection/rule-protected-class-information/marital_family_status-acceptance",
-        "name": "Trigger Marital & Family Status (Protected Class)",
-        "description": "Proves that the published regex implementation for Marital & Family Status (Protected Class) activates this Rule.",
-        "phase": "input",
-        "content": "Acceptance sample: married",
-        "expected_decision": "transform",
-        "covered_rule_ids": [
-          "protected-class-information/marital_family_status"
-        ],
-        "kind": "rule_acceptance",
-        "required": true,
-        "parameter_names": [],
-        "group": "Rule acceptance"
-      },
-      {
-        "id": "advanced-au-pii-protection/rule-protected-class-information/military_status-acceptance",
-        "name": "Trigger Military Status (Protected Class)",
-        "description": "Proves that the published regex implementation for Military Status (Protected Class) activates this Rule.",
-        "phase": "input",
-        "content": "Acceptance sample: veterans",
-        "expected_decision": "transform",
-        "covered_rule_ids": [
-          "protected-class-information/military_status"
-        ],
-        "kind": "rule_acceptance",
-        "required": true,
-        "parameter_names": [],
-        "group": "Rule acceptance"
-      },
-      {
-        "id": "advanced-au-pii-protection/rule-protected-class-information/public_assistance-acceptance",
-        "name": "Trigger Public Assistance Status (Protected Class)",
-        "description": "Proves that the published regex implementation for Public Assistance Status (Protected Class) activates this Rule.",
-        "phase": "input",
-        "content": "Acceptance sample: welfare",
-        "expected_decision": "transform",
-        "covered_rule_ids": [
-          "protected-class-information/public_assistance"
-        ],
-        "kind": "rule_acceptance",
-        "required": true,
-        "parameter_names": [],
-        "group": "Rule acceptance"
-      },
-      {
         "id": "regression/ordinary-add-0/input",
         "name": "Ordinary add 0",
         "description": "Behavior regression for reviewed policy 4.1.0; synthetic content, not a benchmark row.",
@@ -29303,230 +28292,6 @@
           "TALI-PRIVACY-SENSITIVE-ATTRIBUTE"
         ],
         "redaction": "[public_assistance_REDACTED]"
-      },
-      {
-        "id": "protected-class-information/gender_sexual_orientation",
-        "name": "Gender & Sexual Orientation (Protected Class)",
-        "description": "Detects gender identity and sexual orientation terms - protected under fair lending regulations",
-        "detector": {
-          "ref": "text/regex",
-          "version": "1.0.0"
-        },
-        "effect": "transform",
-        "risk_severity": "medium",
-        "rails": [
-          "input"
-        ],
-        "implementation": {
-          "engine": "nemo-guardrails",
-          "detector": "regex",
-          "flow_name": null,
-          "action_name": "GuardContentFilterAction",
-          "execution": "local",
-          "binding_id": "local-sensitive-attribute-terms",
-          "implementation_rule_id": "protected-class-information/gender_sexual_orientation"
-        },
-        "expression": "\\b(non-?binary|enby|genderqueer|genderfluid|gender-?fluid|agender|bigender|pangender|two-?spirit|trans(gender|sexual|masc|fem)?|cis(gender)?|intersex|MTF|FTM|AMAB|AFAB|assigned\\s+(male|female)\\s+at\\s+birth|gay|lesbian|bisexual|pansexual|omnisexual|polysexual|asexual|aromantic|demisexual|heterosexual|homosexual|queer|LGBTQ\\+?|LGBT\\+?|LGBTQIA\\+?|same-?sex|opposite-?sex|sexual\\s+orientation|sexual\\s+preference|gender\\s+identity|sex\\s+change|gender\\s+reassignment|gender\\s+confirmation|sexual\\s+minority|he\\/him|she\\/her|they\\/them|xe\\/xem|ze\\/zir|wom[ae]ns?|females?|males?)\\b",
-        "taxonomy_ids": [
-          "TALI-PRIVACY-SENSITIVE-ATTRIBUTE"
-        ],
-        "redaction": "[PROTECTED_CLASS_INFO_REDACTED]"
-      },
-      {
-        "id": "protected-class-information/race_ethnicity_national_origin",
-        "name": "Race, Ethnicity & National Origin (Protected Class)",
-        "description": "Detects race, ethnicity and national origin terms - protected under ECOA and Fair Housing Act",
-        "detector": {
-          "ref": "text/regex",
-          "version": "1.0.0"
-        },
-        "effect": "transform",
-        "risk_severity": "medium",
-        "rails": [
-          "input"
-        ],
-        "implementation": {
-          "engine": "nemo-guardrails",
-          "detector": "regex",
-          "flow_name": null,
-          "action_name": "GuardContentFilterAction",
-          "execution": "local",
-          "binding_id": "local-sensitive-attribute-terms",
-          "implementation_rule_id": "protected-class-information/race_ethnicity_national_origin"
-        },
-        "expression": "\\b(caucasian|african[- ]?american|black|white|asian|hispanic|latino|latina|latinx|pacific\\s+islander|native\\s+american|indigenous|first\\s+nations|aboriginal|mestizo|mulatto|biracial|multiracial|mixed[- ]?race|person\\s+of\\s+colou?r|POC|BIPOC|ethnic(ity)?|racial|race|arab|middle\\s+eastern|south\\s+asian|east\\s+asian|southeast\\s+asian|european|african|caribbean|west\\s+indian|haitian|jamaican|cuban|puerto\\s+rican|mexican|dominican|salvadoran|guatemalan|honduran|colombian|venezuelan|peruvian|brazilian|chinese|japanese|korean|vietnamese|filipino|filipina|indian|pakistani|bangladeshi|sri\\s+lankan|nepali|thai|indonesian|malaysian|burmese|cambodian|laotian|hmong|somali|ethiopian|nigerian|ghanaian|kenyan|south\\s+african|egyptian|moroccan|algerian|iranian|iraqi|syrian|lebanese|palestinian|israeli|turkish|afghan|uzbek|kazakh|russian|ukrainian|polish|german|italian|irish|british|french|spanish|portuguese|greek|albanian|serbian|croatian|bosnian|romani|roma|gypsy|jewish|ashkenazi|sephardic|mizrahi|native\\s+hawaiian|samoan|tongan|fijian|guamanian|chamorro|inuit|aleut|metis|maori|aboriginal\\s+australian|torres\\s+strait)\\b",
-        "taxonomy_ids": [
-          "TALI-PRIVACY-SENSITIVE-ATTRIBUTE"
-        ],
-        "redaction": "[PROTECTED_CLASS_INFO_REDACTED]"
-      },
-      {
-        "id": "protected-class-information/religion",
-        "name": "Religion & Creed (Protected Class)",
-        "description": "Detects religious affiliation and practice terms - protected under ECOA",
-        "detector": {
-          "ref": "text/regex",
-          "version": "1.0.0"
-        },
-        "effect": "transform",
-        "risk_severity": "medium",
-        "rails": [
-          "input"
-        ],
-        "implementation": {
-          "engine": "nemo-guardrails",
-          "detector": "regex",
-          "flow_name": null,
-          "action_name": "GuardContentFilterAction",
-          "execution": "local",
-          "binding_id": "local-sensitive-attribute-terms",
-          "implementation_rule_id": "protected-class-information/religion"
-        },
-        "expression": "\\b(christians?|catholics?|protestants?|baptists?|methodists?|lutherans?|presbyterians?|episcopal|pentecostal|evangelicals?|orthodox\\s+christian|mormons?|latter[- ]?day\\s+saint|LDS|jehovah'?s?\\s+witness(es)?|seventh[- ]?day\\s+adventist|amish|mennonite|quakers?|jewish|jews?|judaism|orthodox\\s+jew|hasidic|muslims?|islam(ic)?|sunni|shia|shiite|sufi|nation\\s+of\\s+islam|hindus?(ism)?|buddhists?|buddhism|sikhs?(ism)?|jains?(ism)?|shinto|taoists?|taoism|confucian|zoroastrian|baha'?i|rastafari(an)?|pagans?|wiccans?|druids?|satanist|scientolog(y|ist)|unitarian|agnostics?|atheists?|secular|non-?religious|spiritual\\s+but\\s+not\\s+religious|religious\\s+belief|religious\\s+practice|place\\s+of\\s+worship|church|mosque|synagogue|temple|gurdwara|kosher|halal|sabbath|shabbat|ramadan|lent|yom\\s+kippur|rosh\\s+hashanah|diwali|eid|hijab|yarmulke|kippah|turban|religious\\s+head\\s*covering)\\b",
-        "taxonomy_ids": [
-          "TALI-PRIVACY-SENSITIVE-ATTRIBUTE"
-        ],
-        "redaction": "[PROTECTED_CLASS_INFO_REDACTED]"
-      },
-      {
-        "id": "protected-class-information/age_discrimination",
-        "name": "Age-Related Terms (Protected Class)",
-        "description": "Detects age-related terms - protected under ECOA for applicants 62+",
-        "detector": {
-          "ref": "text/regex",
-          "version": "1.0.0"
-        },
-        "effect": "transform",
-        "risk_severity": "medium",
-        "rails": [
-          "input"
-        ],
-        "implementation": {
-          "engine": "nemo-guardrails",
-          "detector": "regex",
-          "flow_name": null,
-          "action_name": "GuardContentFilterAction",
-          "execution": "local",
-          "binding_id": "local-sensitive-attribute-terms",
-          "implementation_rule_id": "protected-class-information/age_discrimination"
-        },
-        "expression": "\\b(elderly|senior\\s+citizens?|seniors?|old\\s+age|aged\\s+\\d+|retirees?|retired|pensioners?|baby\\s+boomers?|boomers?|geriatric|over\\s+the\\s+hill|too\\s+old|too\\s+young|young\\s+person|millennials?|gen[- ]?z|junior|age\\s+discrimination|ageism|years?\\s+old|\\d+\\s*years?\\s*old|over\\s+\\d+|under\\s+\\d+|older\\s+workers?|older\\s+employees?|older\\s+candidates?|in\\s+their\\s+\\d{2}s?|date\\s+of\\s+birth|DOB|birth\\s*date|born\\s+in\\s+\\d{4}|age\\s+\\d{2,3})\\b",
-        "taxonomy_ids": [
-          "TALI-PRIVACY-SENSITIVE-ATTRIBUTE"
-        ],
-        "redaction": "[PROTECTED_CLASS_INFO_REDACTED]"
-      },
-      {
-        "id": "protected-class-information/disability",
-        "name": "Disability Status (Protected Class)",
-        "description": "Detects disability-related terms - protected under ECOA and ADA",
-        "detector": {
-          "ref": "text/regex",
-          "version": "1.0.0"
-        },
-        "effect": "transform",
-        "risk_severity": "medium",
-        "rails": [
-          "input"
-        ],
-        "implementation": {
-          "engine": "nemo-guardrails",
-          "detector": "regex",
-          "flow_name": null,
-          "action_name": "GuardContentFilterAction",
-          "execution": "local",
-          "binding_id": "local-sensitive-attribute-terms",
-          "implementation_rule_id": "protected-class-information/disability"
-        },
-        "expression": "\\b(disabled|disabilit(y|ies)|handicap(ped)?|impair(ed|ment|ments)?|wheelchair|blind(ness)?|deaf(ness)?|hard\\s+of\\s+hearing|hearing\\s+impaired|visually\\s+impaired|mute|paralyz(ed|is)|quadriplegic|paraplegic|amputee|prosthetic|cripple[d]?|mentally\\s+ill|mental\\s+illness|mental\\s+disorder|psychiatric|schizophren(ia|ic)|bipolar|depression|depressed|anxiety\\s+disorder|PTSD|autis(m|tic)|asperger'?s?|ADHD|(?-i:ADD)|attention[\\s-]+deficit\\s+disorder|dyslexia|dyslexic|learning\\s+disabilit(y|ies)|intellectual\\s+disabilit(y|ies)|down'?s?\\s+syndrome|cerebral\\s+palsy|epilep(sy|tic)|seizure\\s+disorder|multiple\\s+sclerosis|MS\\s+patient|parkinson'?s?|alzheimer'?s?|dementia|chronic\\s+illness|chronic\\s+pain|fibromyalgia|lupus|crohn'?s?|cancer\\s+patient|HIV|AIDS|diabetic|diabetes|SSI|SSDI|disability\\s+benefits|disability\\s+income|ADA|reasonable\\s+accommodation|special\\s+needs|service\\s+animal|service\\s+dog|guide\\s+dog)\\b",
-        "taxonomy_ids": [
-          "TALI-PRIVACY-SENSITIVE-ATTRIBUTE"
-        ],
-        "redaction": "[PROTECTED_CLASS_INFO_REDACTED]"
-      },
-      {
-        "id": "protected-class-information/marital_family_status",
-        "name": "Marital & Family Status (Protected Class)",
-        "description": "Detects marital and family status terms - protected under ECOA",
-        "detector": {
-          "ref": "text/regex",
-          "version": "1.0.0"
-        },
-        "effect": "transform",
-        "risk_severity": "medium",
-        "rails": [
-          "input"
-        ],
-        "implementation": {
-          "engine": "nemo-guardrails",
-          "detector": "regex",
-          "flow_name": null,
-          "action_name": "GuardContentFilterAction",
-          "execution": "local",
-          "binding_id": "local-sensitive-attribute-terms",
-          "implementation_rule_id": "protected-class-information/marital_family_status"
-        },
-        "expression": "\\b(married|unmarried|single|divorced|separated|widowed|widow|widower|spouse|husband|wife|domestic\\s+partner|civil\\s+union|common[- ]?law|marital\\s+status|maiden\\s+name|alimony|child\\s+support|custody|pregnant|pregnancy|maternity|paternity|expecting|family\\s+status|number\\s+of\\s+children|dependents|childless|child[- ]?free|single\\s+parent|single\\s+mother|single\\s+father|unwed|out\\s+of\\s+wedlock|illegitimate|family\\s+planning|birth\\s+control|fertility|IVF|adoption|adopted|foster\\s+parent|guardian)\\b",
-        "taxonomy_ids": [
-          "TALI-PRIVACY-SENSITIVE-ATTRIBUTE"
-        ],
-        "redaction": "[PROTECTED_CLASS_INFO_REDACTED]"
-      },
-      {
-        "id": "protected-class-information/military_status",
-        "name": "Military Status (Protected Class)",
-        "description": "Detects military status terms - protected under SCRA and MLA",
-        "detector": {
-          "ref": "text/regex",
-          "version": "1.0.0"
-        },
-        "effect": "transform",
-        "risk_severity": "medium",
-        "rails": [
-          "input"
-        ],
-        "implementation": {
-          "engine": "nemo-guardrails",
-          "detector": "regex",
-          "flow_name": null,
-          "action_name": "GuardContentFilterAction",
-          "execution": "local",
-          "binding_id": "local-sensitive-attribute-terms",
-          "implementation_rule_id": "protected-class-information/military_status"
-        },
-        "expression": "\\b(veterans?|military|armed\\s+forces|army|navy|air\\s+force|marines?(?:\\s+corps)?|coast\\s+guard|national\\s+guard|reserves?(?:ist)?|active\\s+duty|router|deployed|enlisted|commissioned|honorable\\s+discharge|dishonorable\\s+discharge|VA\\s+benefits|GI\\s+bill|military\\s+service|service\\s+members?|servicemembers?|SCRA|MLA|military\\s+lending)\\b",
-        "taxonomy_ids": [
-          "TALI-PRIVACY-SENSITIVE-ATTRIBUTE"
-        ],
-        "redaction": "[PROTECTED_CLASS_INFO_REDACTED]"
-      },
-      {
-        "id": "protected-class-information/public_assistance",
-        "name": "Public Assistance Status (Protected Class)",
-        "description": "Detects public assistance terms - protected under ECOA",
-        "detector": {
-          "ref": "text/regex",
-          "version": "1.0.0"
-        },
-        "effect": "transform",
-        "risk_severity": "medium",
-        "rails": [
-          "input"
-        ],
-        "implementation": {
-          "engine": "nemo-guardrails",
-          "detector": "regex",
-          "flow_name": null,
-          "action_name": "GuardContentFilterAction",
-          "execution": "local",
-          "binding_id": "local-sensitive-attribute-terms",
-          "implementation_rule_id": "protected-class-information/public_assistance"
-        },
-        "expression": "\\b(welfare|public\\s+assistance|food\\s+stamps|SNAP|WIC|TANF|medicaid|section\\s+8|housing\\s+voucher|subsidized\\s+housing|public\\s+housing|government\\s+benefits|social\\s+services|unemployment\\s+(benefits|insurance)|UI\\s+benefits|EBT|benefit\\s+recipient)\\b",
-        "taxonomy_ids": [
-          "TALI-PRIVACY-SENSITIVE-ATTRIBUTE"
-        ],
-        "redaction": "[PROTECTED_CLASS_INFO_REDACTED]"
       }
     ]
   },

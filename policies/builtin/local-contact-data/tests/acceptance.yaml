@@ -701,19 +701,6 @@
   parameter_names: []
   group: Rule acceptance
   scope: rule
-- id: gdpr-eu-pii-protection/rule-gdpr-eu-contact-information/fr_postal_code-acceptance
-  name: Trigger Postal Code (France)
-  description: Proves that the published regex implementation for Postal Code (France) activates this Rule.
-  phase: input
-  content: 'Acceptance sample: code postal 00000'
-  expected_decision: transform
-  covered_rule_ids:
-  - gdpr-eu-contact-information/fr_postal_code
-  kind: rule_acceptance
-  required: true
-  parameter_names: []
-  group: Rule acceptance
-  scope: rule
 - id: pattern-matching/accept/email
   name: Detect Email Address
   description: Required acceptance case for PII Patterns.
@@ -1034,19 +1021,6 @@
   expected_decision: transform
   covered_rule_ids:
   - pattern/sg_phone
-  kind: rule_acceptance
-  required: true
-  parameter_names: []
-  group: Rule acceptance
-  scope: rule
-- id: pdpa-singapore/rule-sg-pdpa-contact-information/sg_postal_code-acceptance
-  name: Trigger Postal Code (Singapore)
-  description: Proves that the published regex implementation for Postal Code (Singapore) activates this Rule.
-  phase: input
-  content: 'Acceptance sample: postal code 011111'
-  expected_decision: transform
-  covered_rule_ids:
-  - sg-pdpa-contact-information/sg_postal_code
   kind: rule_acceptance
   required: true
   parameter_names: []

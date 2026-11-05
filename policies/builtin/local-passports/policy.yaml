@@ -53,12 +53,8 @@ rules:
 - rules/pattern--passport_canada.yaml
 - rules/pattern--passport_india.yaml
 - rules/identity--passport.yaml
-- rules/au-pii-passports--passport_australia.yaml
 - rules/international-pii-identifiers--passport_uk.yaml
 - rules/international-pii-identifiers--passport_japan.yaml
-- rules/gdpr-eu-national-identifiers--eu_passport_generic.yaml
 - rules/pattern--passport_australia.yaml
-- rules/pattern--eu_passport_generic.yaml
-- rules/sg-pdpa-pii-identifiers--passport_singapore.yaml
 tests:
 - tests/acceptance.yaml

@@ -1003,62 +1003,6 @@
   parameter_names: []
   group: Rule acceptance
   scope: rule
-- id: advanced-au-pii-protection/rule-international-pii-identifiers/nl_bsn_contextual-acceptance
-  name: Trigger BSN (Dutch Citizen Service Number)
-  description: Proves that the published regex implementation for BSN (Dutch Citizen Service Number) activates
-    this Rule.
-  phase: input
-  content: 'Acceptance sample: BSN 000000000'
-  expected_decision: transform
-  covered_rule_ids:
-  - international-pii-identifiers/nl_bsn_contextual
-  kind: rule_acceptance
-  required: true
-  parameter_names: []
-  group: Rule acceptance
-  scope: rule
-- id: advanced-au-pii-protection/rule-international-pii-identifiers/br_cpf-acceptance
-  name: Trigger CPF - Brazilian Personal Tax ID (Formatted)
-  description: Proves that the published regex implementation for CPF - Brazilian Personal Tax ID (Formatted)
-    activates this Rule.
-  phase: input
-  content: 'Acceptance sample: 111.111.111-11'
-  expected_decision: transform
-  covered_rule_ids:
-  - international-pii-identifiers/br_cpf
-  kind: rule_acceptance
-  required: true
-  parameter_names: []
-  group: Rule acceptance
-  scope: rule
-- id: advanced-au-pii-protection/rule-international-pii-identifiers/br_cpf_unformatted-acceptance
-  name: Trigger CPF - Brazilian Personal Tax ID (Unformatted)
-  description: Proves that the published regex implementation for CPF - Brazilian Personal Tax ID (Unformatted)
-    activates this Rule.
-  phase: input
-  content: 'Acceptance sample: 11111111111'
-  expected_decision: transform
-  covered_rule_ids:
-  - international-pii-identifiers/br_cpf_unformatted
-  kind: rule_acceptance
-  required: true
-  parameter_names: []
-  group: Rule acceptance
-  scope: rule
-- id: advanced-au-pii-protection/rule-international-pii-identifiers/br_rg-acceptance
-  name: Trigger RG - Brazilian National Identity Card (SP, RJ, MG)
-  description: Proves that the published regex implementation for RG - Brazilian National Identity Card (SP,
-    RJ, MG) activates this Rule.
-  phase: input
-  content: 'Acceptance sample: 1.111.111-1'
-  expected_decision: transform
-  covered_rule_ids:
-  - international-pii-identifiers/br_rg
-  kind: rule_acceptance
-  required: true
-  parameter_names: []
-  group: Rule acceptance
-  scope: rule
 - id: advanced-au-pii-protection/rule-international-pii-identifiers/br_cnpj-acceptance
   name: Trigger CNPJ - Brazilian Company Tax ID
   description: Proves that the published regex implementation for CNPJ - Brazilian Company Tax ID activates
@@ -1231,33 +1175,6 @@
   required: true
   parameter_names: []
   group: Protection contract
-  scope: rule
-- id: gdpr-eu-pii-protection/rule-gdpr-eu-national-identifiers/fr_nir-acceptance
-  name: Trigger NIR/INSEE (French Social Security Number)
-  description: Proves that the published regex implementation for NIR/INSEE (French Social Security Number)
-    activates this Rule.
-  phase: input
-  content: 'Acceptance sample: 100010000000000'
-  expected_decision: transform
-  covered_rule_ids:
-  - gdpr-eu-national-identifiers/fr_nir
-  kind: rule_acceptance
-  required: true
-  parameter_names: []
-  group: Rule acceptance
-  scope: rule
-- id: gdpr-eu-pii-protection/rule-gdpr-eu-business-identifiers/eu_vat-acceptance
-  name: Trigger VAT Number (EU)
-  description: Proves that the published regex implementation for VAT Number (EU) activates this Rule.
-  phase: input
-  content: 'Acceptance sample: VAT AT00000000'
-  expected_decision: transform
-  covered_rule_ids:
-  - gdpr-eu-business-identifiers/eu_vat
-  kind: rule_acceptance
-  required: true
-  parameter_names: []
-  group: Rule acceptance
   scope: rule
 - id: pattern-matching/accept/us_ssn
   name: Detect SSN (Social Security Number)
@@ -1840,20 +1757,6 @@
   expected_decision: transform
   covered_rule_ids:
   - pattern/sg_nric
-  kind: rule_acceptance
-  required: true
-  parameter_names: []
-  group: Rule acceptance
-  scope: rule
-- id: pdpa-singapore/rule-sg-pdpa-business-identifiers/sg_uen-acceptance
-  name: Trigger UEN (Singapore Unique Entity Number)
-  description: Proves that the published regex implementation for UEN (Singapore Unique Entity Number) activates
-    this Rule.
-  phase: input
-  content: 'Acceptance sample: UEN 11111111A'
-  expected_decision: transform
-  covered_rule_ids:
-  - sg-pdpa-business-identifiers/sg_uen
   kind: rule_acceptance
   required: true
   parameter_names: []

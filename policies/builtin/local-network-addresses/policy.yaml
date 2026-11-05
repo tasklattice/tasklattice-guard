@@ -31,7 +31,5 @@ rules:
 - rules/pattern--ipv4.yaml
 - rules/pattern--ipv6.yaml
 - rules/pattern--url.yaml
-- rules/network-infrastructure-pii--ipv4.yaml
-- rules/network-infrastructure-pii--ipv6.yaml
 tests:
 - tests/acceptance.yaml

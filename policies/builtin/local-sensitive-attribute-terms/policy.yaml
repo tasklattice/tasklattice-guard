@@ -36,14 +36,6 @@ rules:
 - rules/pattern--marital_family_status.yaml
 - rules/pattern--military_status.yaml
 - rules/pattern--public_assistance.yaml
-- rules/protected-class-information--gender_sexual_orientation.yaml
-- rules/protected-class-information--race_ethnicity_national_origin.yaml
-- rules/protected-class-information--religion.yaml
-- rules/protected-class-information--age_discrimination.yaml
-- rules/protected-class-information--disability.yaml
-- rules/protected-class-information--marital_family_status.yaml
-- rules/protected-class-information--military_status.yaml
-- rules/protected-class-information--public_assistance.yaml
 tests:
 - tests/acceptance.yaml
 - tests/attribute-contexts.yaml

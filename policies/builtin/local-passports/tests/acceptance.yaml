@@ -648,19 +648,6 @@
   parameter_names: []
   group: Protection contract
   scope: rule
-- id: advanced-au-pii-protection/rule-au-pii-passports/passport_australia-acceptance
-  name: Trigger Passport (Australia)
-  description: Proves that the published regex implementation for Passport (Australia) activates this Rule.
-  phase: input
-  content: 'Acceptance sample: A0000000'
-  expected_decision: transform
-  covered_rule_ids:
-  - au-pii-passports/passport_australia
-  kind: rule_acceptance
-  required: true
-  parameter_names: []
-  group: Rule acceptance
-  scope: rule
 - id: advanced-au-pii-protection/rule-international-pii-identifiers/passport_us-acceptance
   name: Trigger Passport (US)
   description: Proves that the published regex implementation for Passport (US) activates this Rule.
@@ -773,20 +760,6 @@
   expected_decision: transform
   covered_rule_ids:
   - pattern/passport_canada
-  kind: rule_acceptance
-  required: true
-  parameter_names: []
-  group: Rule acceptance
-  scope: rule
-- id: gdpr-eu-pii-protection/rule-gdpr-eu-national-identifiers/eu_passport_generic-acceptance
-  name: Trigger Passport Number (EU Generic)
-  description: Proves that the published regex implementation for Passport Number (EU Generic) activates this
-    Rule.
-  phase: input
-  content: 'Acceptance sample: passport 00AA00000'
-  expected_decision: transform
-  covered_rule_ids:
-  - gdpr-eu-national-identifiers/eu_passport_generic
   kind: rule_acceptance
   required: true
   parameter_names: []
@@ -917,19 +890,6 @@
   expected_decision: transform
   covered_rule_ids:
   - international-pii-identifiers/passport_japan
-  kind: rule_acceptance
-  required: true
-  parameter_names: []
-  group: Rule acceptance
-  scope: rule
-- id: pattern-matching/accept/eu_passport_generic
-  name: Detect Passport Number (EU Generic)
-  description: Required acceptance case for EU PII Patterns.
-  phase: input
-  content: 'Acceptance sample: passport 00AA00000'
-  expected_decision: transform
-  covered_rule_ids:
-  - pattern/eu_passport_generic
   kind: rule_acceptance
   required: true
   parameter_names: []
@@ -1078,19 +1038,6 @@
   parameter_names: []
   group: Rule acceptance
   scope: rule
-- id: pattern-matching/accept/eu_passport_generic/output
-  name: Detect Passport Number (EU Generic)
-  description: Required acceptance case for EU PII Patterns.
-  phase: output
-  content: 'Acceptance sample: passport 00AA00000'
-  expected_decision: transform
-  covered_rule_ids:
-  - pattern/eu_passport_generic
-  kind: rule_acceptance
-  required: true
-  parameter_names: []
-  group: Rule acceptance
-  scope: rule
 - id: pattern-matching/accept/passport_singapore/output
   name: Detect Passport (Singapore)
   description: Required acceptance case for Singapore PII Patterns.
@@ -1099,19 +1046,6 @@
   expected_decision: transform
   covered_rule_ids:
   - pattern/passport_singapore
-  kind: rule_acceptance
-  required: true
-  parameter_names: []
-  group: Rule acceptance
-  scope: rule
-- id: pdpa-singapore/rule-sg-pdpa-pii-identifiers/passport_singapore-acceptance
-  name: Trigger Passport (Singapore)
-  description: Proves that the published regex implementation for Passport (Singapore) activates this Rule.
-  phase: input
-  content: 'Acceptance sample: passport E1111111'
-  expected_decision: transform
-  covered_rule_ids:
-  - sg-pdpa-pii-identifiers/passport_singapore
   kind: rule_acceptance
   required: true
   parameter_names: []

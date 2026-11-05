@@ -80,14 +80,7 @@ rules:
 - rules/pattern--br_rg.yaml
 - rules/pattern--sg_nric.yaml
 - rules/pattern--uoft_utorid.yaml
-- rules/international-pii-identifiers--nl_bsn_contextual.yaml
-- rules/international-pii-identifiers--br_cpf.yaml
-- rules/international-pii-identifiers--br_cpf_unformatted.yaml
-- rules/international-pii-identifiers--br_rg.yaml
 - rules/cn-business-identifier--unified-social-credit-code.yaml
 - rules/cn-personal-information--resident-identity-card.yaml
-- rules/gdpr-eu-national-identifiers--fr_nir.yaml
-- rules/gdpr-eu-business-identifiers--eu_vat.yaml
-- rules/sg-pdpa-business-identifiers--sg_uen.yaml
 tests:
 - tests/acceptance.yaml

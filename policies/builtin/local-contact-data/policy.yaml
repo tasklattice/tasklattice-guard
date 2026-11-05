@@ -77,8 +77,6 @@ rules:
 - rules/pattern--email.yaml
 - rules/pattern--us_phone.yaml
 - rules/cn-personal-information--mainland-mobile.yaml
-- rules/gdpr-eu-contact-information--fr_postal_code.yaml
-- rules/sg-pdpa-contact-information--sg_postal_code.yaml
 - rules/uae-data-protection-pii--uae_po_box.yaml
 tests:
 - tests/acceptance.yaml

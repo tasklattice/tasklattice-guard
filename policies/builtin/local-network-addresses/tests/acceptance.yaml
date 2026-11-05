@@ -136,32 +136,6 @@
   parameter_names: []
   group: Protection contract
   scope: rule
-- id: advanced-au-pii-protection/rule-network-infrastructure-pii/ipv4-acceptance
-  name: Trigger IP Address (IPv4)
-  description: Proves that the published regex implementation for IP Address (IPv4) activates this Rule.
-  phase: input
-  content: 'Acceptance sample: 250.250.250.250'
-  expected_decision: transform
-  covered_rule_ids:
-  - network-infrastructure-pii/ipv4
-  kind: rule_acceptance
-  required: true
-  parameter_names: []
-  group: Rule acceptance
-  scope: rule
-- id: advanced-au-pii-protection/rule-network-infrastructure-pii/ipv6-acceptance
-  name: Trigger IP Address (IPv6)
-  description: Proves that the published regex implementation for IP Address (IPv6) activates this Rule.
-  phase: input
-  content: 'Acceptance sample: 0:0:0:0:0:0:0:0'
-  expected_decision: transform
-  covered_rule_ids:
-  - network-infrastructure-pii/ipv6
-  kind: rule_acceptance
-  required: true
-  parameter_names: []
-  group: Rule acceptance
-  scope: rule
 - id: pattern-matching/accept/ipv4
   name: Detect IP Address (IPv4)
   description: Required acceptance case for Network Patterns.
