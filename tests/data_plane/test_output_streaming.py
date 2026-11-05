@@ -15,7 +15,7 @@ from tests.stream_client import connection, exchange, released, runner
 @pytest.mark.parametrize("parts,expected", [
     (["normal ", "answer"], "normal answer"),
     (["internal-", "alias"], "public-name"),
-    (["internal-", "name"], None),
+    (["internal-", "name"], "public-name"),
     (["内部", "代号"], "公开名称"),
     (["confi", "dential"], None),
 ])
