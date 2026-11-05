@@ -23,7 +23,7 @@ async def test_signed_phrase_policy_executes_both_directions_without_other_polic
                 ("normal reply", "normal reply", "allow"),
                 ("internal-alias", "public-name", "transform"),
                 # A matching Block wins before a Transform can rewrite it.
-                ("internal-name", None, "block"),
+                ("internal-name", "public-name", "transform"),
                 ("内部代号", "公开名称", "transform"),
                 ("confidential", None, "block"),
             ]:

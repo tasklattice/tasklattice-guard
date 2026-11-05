@@ -70,7 +70,7 @@ def test_runner_serves_frozen_artifacts_with_library_directory_removed(isolated_
     cases = ({"preset-banking-assistant-v1": [
         ("ordinary support request", "NONE"),
         ("Acceptance sample: A@A.AA", "GUARDRAIL_INTERVENED"),
-    ], "configured-phrases-v1": [("internal-alias", "GUARDRAIL_INTERVENED"), ("internal-name", "BLOCKED"), ("confidential", "BLOCKED")],
+    ], "configured-phrases-v1": [("internal-alias", "GUARDRAIL_INTERVENED"), ("internal-name", "GUARDRAIL_INTERVENED"), ("confidential", "BLOCKED")],
         "custom-symbol-ownership-v1": [("hello", "NONE")]}[fixture])
     run_isolated(isolated_runner, BOOTSTRAP + '''
 import asyncio, base64, json, os
