@@ -20,6 +20,9 @@ Deployed to the OrbStack `tali` release and verified with the CLI:
   candidates read the rewritten content. A model Policy authored after a local
   Transform receives the redacted content (covered by
   `test_default_model_runtime.py`).
+- Trace evidence carries `rank`, `policyRank`, `ruleRank` and
+  `view=previous_output`. Disabled Rules retained in `ruleOrder` keep their
+  rank slot; enabled candidates do not renumber around them.
 - Custom Colang flows are rejected at compilation. They have no expandable Rule
   rank; declarative Rules must be used instead.
 - Streaming still uses the existing buffered/incremental delivery decision; the
