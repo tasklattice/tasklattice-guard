@@ -7,7 +7,7 @@ Status: proposed implementation specification for review. No runtime code has be
 
 Deployed to the OrbStack `tali` release and verified with the CLI:
 
-- Default Guardrail local-only: 748/748 passed, 0 model invocations, p95 863 ms.
+- Default Guardrail local-only: 748/748 passed, 0 model invocations, p95 793 ms.
 - All local Policy package suites: 1150 passed, 18 not run.
 - Every step reads `previous_output`; the executed order is the authored Policy
   order and the Rule order inside each Policy.
@@ -15,11 +15,15 @@ Deployed to the OrbStack `tali` release and verified with the CLI:
   The content-filter Action applies those Rules sequentially, so continuous
   Transform and later-Block semantics are preserved, but the trace has one
   Action entry per run rather than one per Rule.
-- Segment parallelism is not enabled in this first deployment. The phase is
-  sequential; the rank and evaluation view are visible in trace detail as
-  `[rank=N, view=previous_output]`.
+- Independent Allow/Block candidates in the same content version share a
+  parallel segment. A Transform-capable candidate is a segment barrier; later
+  candidates read the rewritten content. A model Policy authored after a local
+  Transform receives the redacted content (covered by
+  `test_default_model_runtime.py`).
+- Custom Colang flows are rejected at compilation. They have no expandable Rule
+  rank; declarative Rules must be used instead.
 - Streaming still uses the existing buffered/incremental delivery decision; the
-  Rank Mode streaming adapter is not yet implemented.
+  dedicated Rank Mode streaming adapter is not yet separate from that path.
 
 ## 1. Purpose
 
