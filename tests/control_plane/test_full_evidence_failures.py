@@ -13,7 +13,7 @@ from runner.toolkit.nemo.actions.content_filter import ContentFilterActionProvid
 from runner.toolkit.nemo.actions.contracts import ActionResult
 from runner.toolkit.runtime.contracts import ProtectionRequest, RequestContext
 from runner.validator import DefaultRunnerValidator
-from tests.control_plane.test_schedule_invariance import _controller_plans, reschedule
+from tests.control_plane.plan_fixtures import _controller_plans, reschedule
 
 
 @pytest.fixture(scope="module")

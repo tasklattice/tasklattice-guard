@@ -7,7 +7,7 @@ import httpx
 import pytest
 
 from tests.control_plane.test_scan_evidence_scope import online_app, send, Recorder
-from tests.control_plane.test_schedule_invariance import _controller_plans
+from tests.control_plane.plan_fixtures import _controller_plans
 from tests.tcp import tcp_server
 
 

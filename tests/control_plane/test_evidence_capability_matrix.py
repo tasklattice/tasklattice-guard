@@ -23,7 +23,7 @@ from runner.toolkit.runtime.contracts import OutputDeliveryMode, ProtectionReque
 from runner.validator import DefaultRunnerValidator
 # The plan shape is generated once, by the module that also proves schedule
 # invariance, so both suites exercise the real Controller output.
-from tests.control_plane.test_schedule_invariance import _controller_plans
+from tests.control_plane.plan_fixtures import _controller_plans
 
 
 @pytest.fixture(scope="module")

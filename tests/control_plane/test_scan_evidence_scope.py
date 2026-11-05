@@ -16,7 +16,7 @@ from runner.toolkit.nemo.actions.content_filter import ContentFilterActionProvid
 from runner.toolkit.nemo.actions.contracts import ActionResult
 from runner.toolkit.runtime.contracts import PlanResolution, ProtectionRequest, RequestContext
 from runner.toolkit.runtime.service import GuardrailRuntimeService
-from tests.control_plane.test_schedule_invariance import _controller_plans
+from tests.control_plane.plan_fixtures import _controller_plans
 from tests.data_plane.test_scan import Store, SCAN_URL, LITELLM_ENDPOINT_ID
 
 LITE_URL = f"/runtime/v1/endpoints/{LITELLM_ENDPOINT_ID}/beta/litellm_basic_guardrail_api"
