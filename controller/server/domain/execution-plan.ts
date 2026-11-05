@@ -75,25 +75,49 @@ export function scheduleChecks<T extends Step>(steps: T[], modules: Module[], cu
 }
 
 /** Rank Mode: preserve authored Policy/Rule order and the content produced by
- * every preceding Transform. No latency reordering and no parallel groups. */
+ * every preceding Transform. Independent read-only checks inside the same
+ * content version share a parallel group; Transform-capable steps end the
+ * segment. No latency reordering and no cross-segment parallelism. */
 export function scheduleRankedChecks<T extends Step>(steps: T[], modules: Module[]): void {
   for (const phase of ["input", "output"] as const) {
     const phaseModules = modules.filter(m => m.phase === phase).sort((a, b) =>
       Math.min(...(a.step_ids as string[]).map(id => steps.findIndex(s => s.id === id))) -
       Math.min(...(b.step_ids as string[]).map(id => steps.findIndex(s => s.id === id))));
+    const owner = new Map<string, Module>();
+    for (const module of phaseModules) for (const id of module.step_ids as string[]) owner.set(id, module);
+    const eligible = (module: Module): boolean => {
+      const ids = module.step_ids as string[];
+      if (ids.length !== 1) return false;
+      const step = steps.find(item => item.id === ids[0]);
+      if (!step || step.trigger.type !== "always" || !["allow", "block"].includes(step.on_unsafe)) return false;
+      const params = Object.fromEntries(step.parameters);
+      return params.on_unknown !== "transform";
+    };
     let previous: string[] = [];
-    for (const module of phaseModules) {
-      module.depends_on = [...previous];
-      module.input_view = "previous_output";
-      const stepsInModule = (module.step_ids as string[]).map(id => steps.find(s => s.id === id)!);
-      const stage = stepsInModule.some(remote) ? "model" : "local";
-      for (const step of stepsInModule) {
-        step.parameters = step.parameters.filter(([key]) =>
-          key !== "execution_schedule" && key !== `execution_stage_${phase}`
-          && key !== `parallel_group_${phase}` && key !== `parallel_leader_${phase}`);
-        step.parameters.push(["execution_schedule", "local-first"], [`execution_stage_${phase}`, stage]);
+    let index = 0;
+    while (index < phaseModules.length) {
+      let end = index + 1;
+      if (eligible(phaseModules[index]!)) {
+        while (end < phaseModules.length && eligible(phaseModules[end]!)) end++;
       }
-      previous = [module.id as string];
+      const members = phaseModules.slice(index, end);
+      const group = members.length > 1 ? `ranked:${phase}:${index}` : null;
+      for (const [memberIndex, module] of members.entries()) {
+        module.depends_on = [...previous];
+        module.input_view = "previous_output";
+        for (const id of module.step_ids as string[]) {
+          const step = steps.find(item => item.id === id)!;
+          step.parameters = step.parameters.filter(([key]) =>
+            key !== "execution_schedule" && key !== `execution_stage_${phase}`
+            && key !== `parallel_group_${phase}` && key !== `parallel_leader_${phase}`);
+          const stage = remote(step) ? "model" : "local";
+          step.parameters.push(["execution_schedule", "local-first"], [`execution_stage_${phase}`, stage]);
+          if (group) step.parameters.push([`parallel_group_${phase}`, group],
+            [`parallel_leader_${phase}`, String(memberIndex === 0)]);
+        }
+      }
+      previous = members.map(module => module.id as string);
+      index = end;
     }
   }
   for (const step of steps) {

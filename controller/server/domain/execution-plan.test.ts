@@ -1,5 +1,5 @@
 import { expect, it } from "vitest";
-import { scheduleChecks } from "./execution-plan.js";
+import { scheduleChecks, scheduleRankedChecks } from "./execution-plan.js";
 const step = (id: string, action: string, remote = false, after?: string) => ({ id, capability: remote ? "content_safety" : "pii", contract_ref: remote ? "tali.guard.content-safety.v1" : "local", phases: ["input", "output"], on_unsafe: action, trigger: after ? { type: "on_result", step_ref: after } : { type: "always" }, parameters: [] as Array<[string, string]> });
 const modules = (steps: ReturnType<typeof step>[]) => ["input", "output"].flatMap(phase => steps.map((s, i) => ({ id: `${s.id}:${phase}`, phase, step_ids: [s.id], depends_on: i ? [`${steps[i - 1]!.id}:${phase}`] : [], input_view: "previous_output" })));
 it("runs local checks before model checks, prioritizing Block within each stage", () => {
@@ -49,4 +49,44 @@ it("uses declared model dependencies and recognizes classifier review", () => {
  const steps = [customModel, review, step("local", "allow")]; scheduleChecks(steps, modules(steps), false);
  expect(steps.map(s => s.id)).toEqual(["local", "custom-model", "review"]);
  expect(Object.fromEntries(steps[1]!.parameters).parallel_group_input).toBe(Object.fromEntries(steps[2]!.parameters).parallel_group_input);
+});
+
+
+it("Rank Mode groups read-only checks and starts a new segment after Transform", () => {
+  const steps = [step("a", "block"), step("b", "allow"), step("t", "transform"), step("c", "block"), step("d", "block")];
+  const mods = modules(steps);
+  scheduleRankedChecks(steps, mods);
+  expect(steps.map(item => item.id)).toEqual(["a", "b", "t", "c", "d"]);
+  const params = steps.map(item => Object.fromEntries(item.parameters));
+  expect(params[0]!.parallel_group_input).toBe(params[1]!.parallel_group_input);
+  expect(params[0]!.parallel_leader_input).toBe("true");
+  expect(params[1]!.parallel_leader_input).toBe("false");
+  expect(params[2]!.parallel_group_input).toBeUndefined();
+  expect(params[3]!.parallel_group_input).toBe(params[4]!.parallel_group_input);
+  expect(params[3]!.parallel_group_input).not.toBe(params[0]!.parallel_group_input);
+  for (const item of params) expect(item.evaluation_view).toBe("previous_output");
+  expect(mods.find(item => item.id === "t:input")?.depends_on).toEqual(["a:input", "b:input"]);
+  expect(mods.find(item => item.id === "c:input")?.depends_on).toEqual(["t:input"]);
+});
+
+it("Rank Mode runs local and model read-only checks in the same content segment", () => {
+  const steps = [step("local", "block"), step("model", "block", true), step("next", "block")];
+  const mods = modules(steps);
+  scheduleRankedChecks(steps, mods);
+  const params = steps.map(item => Object.fromEntries(item.parameters));
+  expect(params[0]!.parallel_group_input).toBe(params[1]!.parallel_group_input);
+  expect(params[0]!.parallel_group_input).toBe(params[2]!.parallel_group_input);
+  expect(params[0]!.execution_stage_input).toBe("local");
+  expect(params[1]!.execution_stage_input).toBe("model");
+});
+
+it("Rank Mode treats an unknown-to-Transform fallback as a segment barrier", () => {
+  const steps = [step("a", "allow"), step("b", "allow"), step("c", "block")];
+  steps[1]!.parameters.push(["on_unknown", "transform"]);
+  const mods = modules(steps);
+  scheduleRankedChecks(steps, mods);
+  const params = steps.map(item => Object.fromEntries(item.parameters));
+  expect(params[0]!.parallel_group_input).toBeUndefined();
+  expect(params[1]!.parallel_group_input).toBeUndefined();
+  expect(params[2]!.parallel_group_input).toBeUndefined();
 });

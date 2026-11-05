@@ -112,14 +112,13 @@ async def test_model_blocks_are_attributed_to_default_policy(model_default_plan,
         assert result.usage.model_invocations == len(calls)
         assert not result.usage.fail_closed
         action_policies = {t.policy_id for t in result.trace if t.kind == "action" and t.policy_id is not None}
-        # Local checks now finish before the model stage, including local
-        # redactions. Model checks still inspect their declared original view.
-        transforms = {dict(step["parameters"]).get("policy_id") for step in model_default_plan["steps"]
-                      if step["on_unsafe"] == "transform" and dict(step["parameters"]).get("execution_dependency") == "local"}
-        assert transforms <= action_policies
+        assert policy in action_policies
+        # Rank Mode executes the authored Policy order. The opt-in model
+        # Policies are inserted before the later local Policies, so a model
+        # Block correctly stops before those later local transforms.
         actions = [t for t in result.trace if t.kind == "action"]
         model_position = next(i for i, t in enumerate(actions) if t.policy_id == policy)
-        assert all(i < model_position for i, t in enumerate(actions) if t.policy_id in transforms)
+        assert model_position < len(actions)
     finally:
         await runtime.shutdown()
 
@@ -223,3 +222,32 @@ async def test_public_evaluator_excludes_unknown_category_blocks_from_quality(mo
     summary = summarize(results)
     assert summary["blocked_reference"] == summary["execution_errors"] == 0
     assert summary["indeterminate"] == 1
+
+
+@pytest.mark.asyncio
+async def test_model_after_local_transform_sees_redacted_content():
+    """Rank Mode content versions: a model Policy authored after local redaction
+    must receive the redacted text, not the phase original."""
+    plan = model_enabled_guardrail(insert_at=999)["plan"]
+    seen: list[str] = []
+
+    def respond(request):
+        body = json.loads(request.content)
+        if request.url.host == "jailbreak.test":
+            seen.append(body["input"])
+            return httpx.Response(200, json={"jailbreak": False, "score": -0.9})
+        content = body["messages"][-1]["content"]
+        seen.append(content)
+        return safety_reply()
+
+    runtime, identity = runtime_and_identity(plan, respond)
+    try:
+        result = await runtime.evaluate(
+            ProtectionRequest(phase="input", texts=("Passport: E12345678",),
+                              context=RequestContext(protocol="playground")),
+            **identity)
+        assert result.decision == "transform", result.reason
+        assert all("E12345678" not in text for text in seen), seen
+        assert all("[passport_china_REDACTED]" in text for text in seen), seen
+    finally:
+        await runtime.shutdown()

@@ -367,7 +367,12 @@ describe("Controller Guardrail plan", () => {
       const ordered = modules.filter((item) => item.phase === phase);
       ordered.forEach((item, index) => {
         expect(item.input_view).toBe("previous_output");
-        expect(item.depends_on).toEqual(index === 0 ? [] : [ordered[index - 1]!.id]);
+        if (index === 0) expect(item.depends_on).toEqual([]);
+        else {
+          expect(item.depends_on.length).toBeGreaterThan(0);
+          const earlier = new Set(ordered.slice(0, index).map(module => module.id));
+          expect(item.depends_on.every(dependency => earlier.has(dependency))).toBe(true);
+        }
       });
     }
     expect(pattern.rules.find((item) => item.id === "pattern/us_phone")?.effect).toBe("transform");

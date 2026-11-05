@@ -73,7 +73,15 @@ def composition_plans():
         cwd=Path(__file__).resolve().parents[2] / "controller",
         capture_output=True, text=True, check=True, timeout=30,
     )
-    return json.loads(result.stdout)
+    plans = json.loads(result.stdout)
+    # This matrix is the sequential reference oracle for action composition.
+    # Parallel segments are covered by test_parallel_checks.py; remove the
+    # compiler's parallel-group metadata so each step is observable here.
+    for plan in plans.values():
+        for step in plan["steps"]:
+            step["parameters"] = [item for item in step["parameters"]
+                                  if not item[0].startswith(("parallel_group_", "parallel_leader_"))]
+    return plans
 
 
 class RecordedLocalChecks(ContentFilterActionProvider):

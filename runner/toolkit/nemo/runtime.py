@@ -307,6 +307,10 @@ class NeMoActionBridge:
             if payload["modified"]:
                 raise ValueError("A parallel check attempted to transform content.")
             return payload
+        def rank_of(binding) -> int:
+            value = _trace_precedence(binding)
+            return value if value is not None else 1 << 30
+
         tasks = {asyncio.create_task(check(b)): b for b in members}
         pending = set(tasks)
         completed = {}
@@ -326,8 +330,16 @@ class NeMoActionBridge:
                         failures[tasks[task].id] = error
                     else:
                         completed[tasks[task].id] = task.result()
-                if not self._full_evidence() and any(p["blocked"] for p in completed.values()):
-                    break
+                if not self._full_evidence():
+                    blocked = [p for p in completed.values() if p["blocked"]]
+                    if blocked:
+                        # A smaller rank may still return a Block and become the
+                        # authoritative blocking candidate. Wait for it before
+                        # cancelling greater-rank work.
+                        threshold = min(rank_of(b) for b in members
+                                        if b.id in completed and completed[b.id]["blocked"])
+                        if not any(not task.done() and rank_of(tasks[task]) < threshold for task in tasks):
+                            break
                 if failures:
                     raise next(iter(failures.values()))
                 if any(task.cancelled() for task in done):
@@ -344,7 +356,9 @@ class NeMoActionBridge:
             elif error := task.exception(): failures[binding.id] = error
             else: completed[binding.id] = task.result()
         results = [completed[b.id] for b in members if b.id in completed]
-        winner = next((p for p in results if p["blocked"]), results[0])
+        blocked = [p for p in results if p["blocked"]]
+        winner = min(blocked, key=lambda p: next(
+            rank_of(b) for b in members if b.id == p["step_id"])) if blocked else results[0]
         cancellation_trace = tuple(RuntimeTraceStep(
             id=f"nemo:action:{b.id}:cancelled", kind="action", name=b.action_name,
             status="cancelled" if b.id in started else "skipped",
@@ -1439,7 +1453,11 @@ def _trace_rank_suffix(binding: "NeMoActionBinding") -> str:
     if precedence is None:
         return ""
     view = binding.parameter("evaluation_view") or "previous_output"
-    return f" [rank={precedence}, view={view}]"
+    policy_rank = binding.parameter("policy_rank")
+    rule_rank = binding.parameter("rule_rank")
+    ranks = f"rank={precedence}" + (f", policyRank={policy_rank}" if policy_rank is not None else "") + (
+        f", ruleRank={rule_rank}" if rule_rank is not None else "")
+    return f" [{ranks}, view={view}]"
 
 
 def _action_evidence(value: Any) -> Any:
