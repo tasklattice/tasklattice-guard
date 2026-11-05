@@ -51,7 +51,7 @@ async def test_jev_logs_failed_cases_with_actual_systemone_payload_and_response(
     logged = events(caplog)
     if behavior == "correct":
         assert logged == []
-        assert all("model_exchanges" not in json.loads(case.output_content) for case in result.cases)
+        assert all(len(json.loads(case.output_content)["model_exchanges"]) == 1 for case in result.cases)
         return
     exchanges = failed_exchanges(result)
     assert exchanges
@@ -74,25 +74,25 @@ async def test_jev_logs_failed_cases_with_actual_systemone_payload_and_response(
     assert SECRET not in "".join(case.output_content for case in result.cases)
 
 
-@pytest.mark.parametrize("behavior", ["correct", "always-safe", "malformed", "non-json", "http-error"])
+@pytest.mark.parametrize("behavior", ["correct", "recovered", "always-safe", "malformed", "non-json", "http-error"])
 async def test_native_nvidia_validation_captures_wire_parameters_and_raw_error_body(behavior, caplog, monkeypatch):
     caplog.set_level(logging.WARNING, logger=LOGGER)
     original_config = NativeRailModel.runtime_config
 
-    def no_retries(self):
+    def retry_config(self):
         config = original_config(self)
-        config["parameters"]["max_attempts"] = 1
+        config["parameters"]["max_attempts"] = 2 if behavior == "recovered" else 1
         return config
 
-    monkeypatch.setattr(NativeRailModel, "runtime_config", no_retries)
+    monkeypatch.setattr(NativeRailModel, "runtime_config", retry_config)
     requests = []
 
     class Handler(BaseHTTPRequestHandler):
         def do_POST(self):
             body = json.loads(self.rfile.read(int(self.headers["Content-Length"])))
             requests.append(body)
-            label = "off-topic" if behavior == "correct" and "cake" in body["messages"][-1]["content"] else "on-topic"
-            status = 500 if behavior == "http-error" else 200
+            label = "off-topic" if behavior in {"correct", "recovered"} and "cake" in body["messages"][-1]["content"] else "on-topic"
+            status = 500 if behavior == "http-error" or (behavior == "recovered" and len(requests) % 2) else 200
             payload = (f"CUDA illegal memory access {SECRET}" if status == 500 else
                        "not a chat response" if behavior == "non-json" else
                        json.dumps({"choices": [{"message": {"content": "maybe" if behavior == "malformed" else label}}]})).encode()
@@ -117,10 +117,19 @@ async def test_native_nvidia_validation_captures_wire_parameters_and_raw_error_b
         server.server_close()
         worker.join(timeout=5)
 
-    assert len(requests) == 2
-    assert result.passed is (behavior == "correct"), result.message
-    if behavior == "correct":
+    assert len(requests) == (4 if behavior == "recovered" else 2)
+    assert result.passed is (behavior in {"correct", "recovered"}), result.message
+    if behavior in {"correct", "recovered"}:
         assert events(caplog) == []
+        assert len(result.cases) == 2
+        for case, body in zip(result.cases, requests[1::2] if behavior == "recovered" else requests, strict=True):
+            output = json.loads(case.output_content)
+            exchanges = output["model_exchanges"]
+            actions = [item for item in output["detector_evidence"] if item["capability"] == "topic_control"]
+            assert actions[-1]["verdict"] == ("not_matched" if case.expected_decision == "allow" else "matched")
+            assert [exchange["response"]["status"] for exchange in exchanges] == ([500, 200] if behavior == "recovered" else [200])
+            assert json.loads(exchanges[0]["request"]["body"]) == body
+            assert SECRET not in case.output_content
         return
     exchanges = failed_exchanges(result)
     assert exchanges
@@ -194,3 +203,15 @@ async def test_outside_validation_no_body_capture_or_diagnostic_logs(caplog):
         response = await client.post("https://model.test/v1", json={"content": "ordinary runtime request"})
     assert "tasklattice.validation_exchange" not in response.request.extensions
     assert events(caplog) == []
+
+
+def test_repeated_headers_are_preserved_and_each_credential_is_redacted():
+    from runner.model_validation_diagnostics import ValidationDiagnostics
+    diagnostics = ValidationDiagnostics({}, ())
+    captured = diagnostics.headers(httpx.Headers([
+        ("x-trace", "first"), ("x-trace", "second"),
+        ("set-cookie", "first-secret"), ("set-cookie", "second-secret"),
+    ]))
+    assert captured == [["x-trace", "first"], ["x-trace", "second"],
+                        ["set-cookie", "[REDACTED]"], ["set-cookie", "[REDACTED]"]]
+    assert diagnostics.body("first-secret second-secret")["body"] == "[REDACTED] [REDACTED]"

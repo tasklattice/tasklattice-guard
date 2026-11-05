@@ -8,7 +8,7 @@ import httpx
 from ...runtime.failures import model_response
 
 from runner.model_validation_diagnostics import record_validation_error, validation_http_hooks
-from ...runtime.contracts import RiskFinding
+from ...runtime.contracts import RiskFinding, RuntimeTraceStep
 from ...safety.taxonomy import taxonomy_for_evaluator
 from .contracts import ActionRequest, ActionResult, action_result
 from .model_call import action_usage, observe_model_call
@@ -129,9 +129,17 @@ class ChatTopicEvaluator:
         # violation of the configured topic boundary, not an allowed-keyword hit.
         verdict = {"safe": "not_matched", "unsafe": "matched", "uncertain": "unknown"}[payload["verdict"]]
         reason = str(payload.get("reason", "Topic decision returned without a reason."))
+        trace = (RuntimeTraceStep(
+            id=f"{request.binding.id}:topic", kind="evaluation", name="Topic classification",
+            status="completed", detail=reason, verdict=verdict, capability=request.capability,
+            evaluator_id=self.id, model_name=self._model, provider_name=self._provider_id,
+            evidence=json.dumps({"topic_verdict": {"safe": "on-topic", "unsafe": "off-topic", "uncertain": "unknown"}[payload["verdict"]],
+                                 "requested_model": self._model, "response_model": raw_payload.get("model")}),
+        ),)
         if verdict == "not_matched":
             return action_result(
                 request, "not_matched", request.content, reason=reason,
+                trace=trace,
                 usage=action_usage(call, len(request.content)),
             )
         findings = () if verdict == "unknown" else (
@@ -149,6 +157,7 @@ class ChatTopicEvaluator:
             verdict,  # type: ignore[arg-type]
             request.content,
             findings=findings,
+            trace=trace,
             reason=reason,
             usage=action_usage(call, len(request.content)),
         )

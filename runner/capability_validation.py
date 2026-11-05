@@ -4,6 +4,7 @@ from __future__ import annotations
 import asyncio
 import json
 from dataclasses import asdict
+from datetime import datetime, timezone
 import time
 
 import httpx
@@ -11,6 +12,7 @@ import httpx
 from . import generated as protocol
 from .model_http_evidence import capture_model_http_evidence, failed_model_http_evidence
 from .model_validation_diagnostics import ValidationDiagnostics, capture_validation_case
+from .software_version import SOFTWARE_VERSION
 from .providers import dynamic_runtime_action_providers
 from .toolkit.compiler.nemo_compiler import NeMoConfigCompiler
 from .toolkit.nemo.action_registry import action_providers
@@ -55,11 +57,13 @@ async def validate_capability(
     credentials: dict[str, str],
     *,
     transport: httpx.AsyncBaseTransport | None = None,
+    runner_id: str | None = None,
 ) -> protocol.CapabilityValidationResult:
     started = time.perf_counter()
     result = protocol.CapabilityValidationResult(request_id=request.request_id)
     runtime = None
-    diagnostic_session = ValidationDiagnostics({}, ())
+    diagnostic_session = ValidationDiagnostics({}, tuple(value for value in credentials.values() if value), body_limit=None)
+    pending_case = None
     try:
         config = request.configuration
         if len(config.bindings) != 1 or len(config.runtimes) != 1:
@@ -127,12 +131,27 @@ async def validate_capability(
                         GuardContentBlock(id="question", text=formal.query, role="query", trust="untrusted", source="request", qualifiers=("query",)),
                     ), "answer")
                 case_id = f"{contract}:{phase}:{name}"
+                case_started = time.perf_counter()
+                context = {
+                    "schema_version": 1, "validation_id": request.request_id,
+                    "recorded_at": datetime.now(timezone.utc).isoformat(),
+                    "runner_id": runner_id, "runner_build": SOFTWARE_VERSION,
+                    "runtime_profile": snapshot.runtime_profile, "binding_id": binding.binding_id,
+                    "model_id": model.id, "model": model.model, "profile": model.profile_ref,
+                    "provider_id": model.provider_id, "provider_name": model.provider_name,
+                    "base_url": diagnostic_session.url(model.base_url),
+                    "timeout_seconds": model.timeout_seconds, "max_tokens": model.max_tokens,
+                    "skip_tls_verify": model.skip_tls_verify,
+                    "parameters": dict(step.parameters),
+                    "input_context": [asdict(block) for block in view.blocks if block.id != view.active_block_id] if view else [],
+                }
+                pending_case = (case_id, text, expected, context, case_started)
                 with capture_model_http_evidence():
                     with capture_validation_case(enabled=True, secrets=tuple(credentials.values()), session=diagnostic_session,
                                                  validation_id=request.request_id, binding_id=binding.binding_id, case_id=case_id,
                                                  model=model.model, profile=model.profile_ref, provider_id=model.provider_id, expected_decision=expected) as diagnostics:
                         decision = await runtime.evaluate(EngineRequest(phase=phase, text=text, plan=plan,
-                                                      content_view=view, execution_purpose="validation", evidence_scope="full" if formal else "interventions",
+                                                      content_view=view, execution_purpose="validation", evidence_scope="full",
                                                       target_source="assistant_output" if phase == "output" else "user_input",
                                                       context_messages=({"role": "user", "content": "Please answer my question."},) if phase == "output" else ()))
                     model_http_evidence = failed_model_http_evidence()
@@ -151,16 +170,20 @@ async def validate_capability(
                     diagnostics.failure(expected=expected, actual=decision.decision, reason=case_reason)
                 result.cases.add(id=case_id, expected_decision=expected,
                                  actual_decision=decision.decision, passed=passed,
-                                 input_content=text, output_content=json.dumps({
+                                 input_content=text, output_content=json.dumps(diagnostic_session.clean({
+                                     "validation_context": context,
+                                     "duration_ms": round((time.perf_counter() - case_started) * 1000),
                                      "decision": decision.decision, "action": decision.action,
                                      "texts": decision.texts, "reason": decision.reason,
                                      "findings": [asdict(item) for item in decision.findings],
                                      "evaluation_evidence": [asdict(item) for item in decision.trace if item.kind == "evaluation"],
+                                     "detector_evidence": [asdict(item) for item in decision.trace if item.kind in {"action", "rail"}],
                                      **({"model_http_evidence": model_http_evidence} if model_http_evidence else {}),
-                                     **({"model_exchanges": diagnostics.exchanges, "dropped_model_exchanges": diagnostics.dropped_exchanges} if not passed and diagnostics is not None else {}),
+                                     **({"model_exchanges": diagnostics.exchanges, "dropped_model_exchanges": diagnostics.dropped_exchanges} if diagnostics is not None else {}),
                                      **({"formal_policy": asdict(plan.reasoning_policies[0]), "query": formal.query} if formal else {}),
-                                 }, ensure_ascii=False, indent=2),
-                                 reason=case_reason)
+                                 }), ensure_ascii=False, indent=2),
+                                 reason=diagnostic_session.clean(case_reason))
+                pending_case = None
                 if not passed:
                     result.message += f"{phase}/{name}: expected {expected}, received {decision.decision}. {case_reason}\n"
             await runtime.shutdown()
@@ -171,6 +194,17 @@ async def validate_capability(
     except Exception as error:
         result.passed = False
         result.message = f"Rail execution validation failed: {error}"
+        if pending_case is not None:
+            case_id, text, expected, context, case_started = pending_case
+            result.cases.add(id=case_id, input_content=text, expected_decision=expected,
+                             actual_decision="error", passed=False, reason=str(error),
+                             output_content=json.dumps(diagnostic_session.clean({
+                                 "validation_context": context,
+                                 "duration_ms": round((time.perf_counter() - case_started) * 1000),
+                                 "error": {"type": type(error).__name__, "message": str(error)},
+                                 "model_exchanges": diagnostic_session.exchanges,
+                                 "dropped_model_exchanges": diagnostic_session.dropped_exchanges,
+                             }), ensure_ascii=False, indent=2))
     finally:
         if runtime is not None:
             await runtime.shutdown()

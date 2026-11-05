@@ -3,6 +3,8 @@ from __future__ import annotations
 
 import json
 import logging
+import time
+from datetime import datetime, timezone
 from contextlib import asynccontextmanager, contextmanager
 from contextvars import ContextVar
 from dataclasses import dataclass, field
@@ -16,10 +18,10 @@ from .model_http_evidence import httpx_request, httpx_response, active_model_htt
 logger = logging.getLogger("uvicorn.error.tasklattice.model_validation")
 _CURRENT: ContextVar["ValidationDiagnostics | None"] = ContextVar("model_validation_diagnostics", default=None)
 _BODY_LIMIT = 32_768
+_LOG_BODY_LIMIT = 512
 _EXCHANGE_LIMIT = 16
 _REDACTED = "[REDACTED]"
 _SENSITIVE_KEYS = frozenset({"authorization", "proxyauthorization", "cookie", "setcookie", "apikey", "xapikey", "password", "secret", "clientsecret", "token", "accesstoken", "refreshtoken", "credential", "signature"})
-_HEADERS = frozenset({"content-type", "accept", "x-request-id", "request-id", "traceparent"})
 _REQUEST_EXTENSION = "tasklattice.validation_exchange"
 
 
@@ -31,8 +33,10 @@ def _sensitive(key: str) -> bool:
 class ValidationDiagnostics:
     identity: dict[str, str]
     secrets: tuple[str, ...]
+    body_limit: int | None = _BODY_LIMIT
     exchanges: list[dict[str, Any]] = field(default_factory=list)
     dropped_exchanges: int = 0
+    started: dict[int, float] = field(default_factory=dict, repr=False)
 
     def clean(self, value: Any) -> Any:
         if isinstance(value, str):
@@ -55,11 +59,17 @@ class ValidationDiagnostics:
                 pass
         value = self.clean(value)
         text = value if isinstance(value, str) else json.dumps(value, ensure_ascii=False)
-        return {"body": text[:_BODY_LIMIT], "body_truncated": len(text) > _BODY_LIMIT}
+        return {"body": text[:self.body_limit], "body_truncated": self.body_limit is not None and len(text) > self.body_limit}
 
-    def headers(self, values: Any) -> dict[str, str]:
-        return {str(key): _REDACTED if _sensitive(str(key)) else self.clean(str(value))
-                for key, value in values.items() if str(key).lower() in _HEADERS or _sensitive(str(key))}
+    def headers(self, values: Any) -> dict[str, str] | list[list[str]]:
+        # Learn response credentials too, so an echoed cookie/token in a body
+        # cannot leak through a successful validation export.
+        pairs = list(values.multi_items() if hasattr(values, "multi_items") else values.items())
+        sensitive_values = [str(value) for key, value in pairs if _sensitive(str(key)) and value]
+        self.secrets = tuple(sorted(set(self.secrets).union(sensitive_values), key=len, reverse=True))
+        cleaned = [[str(key), _REDACTED if _sensitive(str(key)) else self.clean(str(value))] for key, value in pairs]
+        # Retain repeated field names without changing the common single-value shape.
+        return cleaned if len({key.casefold() for key, _ in cleaned}) < len(cleaned) else dict(cleaned)
 
     def url(self, value: str) -> str:
         parsed = urlsplit(value)
@@ -71,19 +81,29 @@ class ValidationDiagnostics:
         if len(self.exchanges) >= _EXCHANGE_LIMIT:
             self.dropped_exchanges += 1
             return None
-        exchange = {"request": {"method": method, "url": self.url(url), "headers": self.headers(headers), **self.body(body)}, "response": None}
+        exchange = {"started_at": datetime.now(timezone.utc).isoformat(),
+                    "request": {"method": method, "url": self.url(url), "headers": self.headers(headers), **self.body(body)}, "response": None}
         self.exchanges.append(exchange)
+        self.started[id(exchange)] = time.perf_counter()
         return exchange
 
     def response(self, exchange: dict[str, Any] | None, *, status: int, headers: Any, body: Any) -> None:
         if exchange is not None:
             exchange["response"] = {"status": status, "headers": self.headers(headers), **self.body(body)}
+            exchange["duration_ms"] = round((time.perf_counter() - self.started[id(exchange)]) * 1000)
 
     def failure(self, *, expected: str, actual: str, reason: str) -> None:
         detail = self.clean({**self.identity, "expected_decision": expected, "actual_decision": actual, "reason": reason})
         logger.warning("%s", json.dumps({"event": "rail_validation_case_failed", **detail, "exchange_count": len(self.exchanges), "dropped_exchanges": self.dropped_exchanges}, ensure_ascii=False))
         for index, exchange in enumerate(self.exchanges):
-            logger.warning("%s", json.dumps({"event": "rail_validation_model_exchange", **detail, "exchange_index": index + 1, **exchange}, ensure_ascii=False))
+            # Exports retain full bodies; keep log events bounded.
+            preview = {**exchange}
+            for part in ("request", "response"):
+                if exchange.get(part):
+                    value = exchange[part]
+                    preview[part] = {**value, "body": value["body"][:_LOG_BODY_LIMIT],
+                                     "body_truncated": value["body_truncated"] or len(value["body"]) > _LOG_BODY_LIMIT}
+            logger.warning("%s", json.dumps(self.clean({"event": "rail_validation_model_exchange", **detail, "exchange_index": index + 1, **preview}), ensure_ascii=False))
 
 
 @contextmanager
@@ -97,6 +117,7 @@ def capture_validation_case(*, enabled: bool, secrets: tuple[str, ...], session:
         diagnostics.secrets = tuple(sorted((item for item in secrets if item), key=len, reverse=True))
         diagnostics.exchanges = []
         diagnostics.dropped_exchanges = 0
+        diagnostics.started = {}
     token = _CURRENT.set(diagnostics)
     try:
         yield diagnostics
@@ -112,7 +133,9 @@ def capture_validation_case(*, enabled: bool, secrets: tuple[str, ...], session:
 def record_validation_error(error: BaseException) -> None:
     diagnostics = _CURRENT.get()
     if diagnostics is not None and diagnostics.exchanges:
-        diagnostics.exchanges[-1]["error"] = diagnostics.clean({"type": type(error).__name__, "message": str(error)})
+        exchange = diagnostics.exchanges[-1]
+        exchange["error"] = diagnostics.clean({"type": type(error).__name__, "message": str(error)})
+        exchange["duration_ms"] = round((time.perf_counter() - diagnostics.started[id(exchange)]) * 1000)
 
 
 async def _httpx_request(request: httpx.Request) -> None:
@@ -149,13 +172,29 @@ class _ObservedAiohttpSession:
     async def request(self, method, url, **kwargs):
         call = active_model_http_call()
         exchange = call.request(method, url, kwargs.get("headers", {}), kwargs.get("json", kwargs.get("data", b""))) if call else None
-        response = await self._delegate.request(method, url, **kwargs)
-        if call:
-            exchange["request"]["headers"] = call.headers(response.request_info.headers)
-            call.response(exchange, response.status, response.headers, b"")
-            exchange["response"]["bodyComplete"] = False
-            call.response(exchange, response.status, response.headers, await response.read())
-        return response
+        diagnostics = _CURRENT.get()
+        captured = diagnostics.request(method=method, url=str(url), headers=kwargs.get("headers", {}), body=kwargs.get("json", kwargs.get("data", b""))) if diagnostics is not None else None
+        try:
+            response = await self._delegate.request(method, url, **kwargs)
+            if call is None and diagnostics is None:
+                return response
+            if diagnostics is not None:
+                if captured is not None:
+                    captured["request"]["headers"] = diagnostics.headers(response.request_info.headers)
+                diagnostics.response(captured, status=response.status, headers=response.headers, body="")
+            if call:
+                exchange["request"]["headers"] = call.headers(response.request_info.headers)
+                call.response(exchange, response.status, response.headers, b"")
+                exchange["response"]["bodyComplete"] = False
+            body = await response.read()
+            if diagnostics is not None:
+                diagnostics.response(captured, status=response.status, headers=response.headers, body=body)
+            if call:
+                call.response(exchange, response.status, response.headers, body)
+            return response
+        except BaseException as error:
+            record_validation_error(error)
+            raise
 
 
 class _ObservedRetryClient:
@@ -169,15 +208,8 @@ class _ObservedRetryClient:
 
     @asynccontextmanager
     async def post(self, url: str, **kwargs: Any):
-        diagnostics = _CURRENT.get()
-        exchange = diagnostics.request(method="POST", url=str(url), headers=kwargs.get("headers", {}), body=kwargs.get("json")) if diagnostics is not None else None
         try:
             async with self._delegate.post(url, **kwargs) as response:
-                if diagnostics is not None:
-                    # aiohttp caches read(), so NeMo's status/JSON checks still see
-                    # the original response, including non-JSON error bodies.
-                    diagnostics.response(exchange, status=response.status, headers=response.headers, body="")
-                    diagnostics.response(exchange, status=response.status, headers=response.headers, body=await response.read())
                 yield response
         except BaseException as error:
             record_validation_error(error)

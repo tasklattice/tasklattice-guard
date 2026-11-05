@@ -306,12 +306,12 @@ describe("Capability configuration after registration", () => {
     expect(await service.bindValidationLease(leaseId, "pool-a")).toBe(false);
   });
 
-  it("retains failed sample evidence in assignment validation reports", async () => {
+  it.each([true, false])("retains all sample evidence in assignment validation reports (passed=%s)", async (passed) => {
     const { service } = setup("draft", true);
-    const cases = [{ id: "unsafe", passed: false, inputContent: "Unsafe input", outputContent: "Allowed output", expectedDecision: "block", actualDecision: "allow", reason: "Missed unsafe content" }];
-    service.setRailValidator(async () => ({ passed: false, message: "Sample failed", latencyMs: 2, cases }));
+    const cases = [{ id: "unsafe", passed, inputContent: "Unsafe input", outputContent: JSON.stringify({validation_context:{runner_id:"runner-a"},model_exchanges:[{request:{body:"prompt"},response:{body:"response"}}]}), expectedDecision: "block", actualDecision: passed ? "block" : "allow", reason: passed ? "Matched" : "Missed unsafe content" }];
+    service.setRailValidator(async () => ({ passed, message: "Sample result", latencyMs: 2, cases }));
     const revision = await service.validateAssignment("content_safety.input", "admin", { modelId: id });
-    expect(revision.validationReport?.checks).toContainEqual(expect.objectContaining({ status: "failed", cases }));
+    expect(revision.validationReport?.checks).toContainEqual(expect.objectContaining({ status: passed ? "passed" : "failed", cases }));
   });
 
   it("rejects validation when the saved model differs from the requested model", async () => {

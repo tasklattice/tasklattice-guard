@@ -28,8 +28,7 @@ import { toast } from "@/components/ui/notifications";
 
 import { ConfirmationSheet } from "@/components/confirmation-sheet";
 import { ErrorNotice, PageHeader, StateBadge } from "@/components/product-shell";
-import { ValidationFailureEvidence } from "@/components/validation-failure-evidence";
-import { ModelValidationEvidence, validationOutputPreview } from "@/components/runtime-model-evidence";
+import { ValidationEvidenceSheet } from "@/components/validation-evidence-sheet";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -678,29 +677,11 @@ function AssignmentValidationStatus({ target, model, report, dirty, binding }: {
   if (!model) return <StateBadge state="unconfigured" label={t("modelSettings.notAssigned")} />;
   void dirty;
   const result = report?.checks.find((check) => check.id === `probe:${target}:${model.id}`);
-  if (result?.status === "passed" && (target === "control_plane" || result.evidenceKind === "nemo-rail-v1")) return <div><StateBadge state="ready" label={t(target === "control_plane" ? "modelSettings.detectorValidated" : "modelSettings.railSamplesPassed")} />{result.latencyMs ? <p className="mt-1 text-xs text-muted-foreground">{result.latencyMs} ms</p> : null}</div>;
-  if (result?.status === "failed") return <ValidationFailureEvidence
-    label={t("modelSettings.probeFailed")}
-    title={t("modelSettings.validationErrorTitle")}
+  if (result && (result.status === "failed" || (result.status === "passed" && (target === "control_plane" || result.evidenceKind === "nemo-rail-v1")))) return <ValidationEvidenceSheet
+    key={`${result.id}:${report?.checkedAt}`}
+    check={result}
+    label={t(result.status === "failed" ? target === "control_plane" ? "modelSettings.probeFailed" : "modelSettings.evidence.validationFailed" : target === "control_plane" ? "modelSettings.detectorValidated" : "modelSettings.railSamplesPassed")}
     subject={`${target === "control_plane" ? t("modelSettings.controlPlaneModel") : binding ? capabilityTitle(t, binding) : target} · ${model.name}`}
-    message={result.message}
-    examples={result.cases?.filter((item) => !item.passed).map((item) => ({
-      id: item.id,
-      evidence: <ModelValidationEvidence id={item.id} outputContent={item.outputContent} />,
-      fields: [
-        { label: t("modelSettings.exampleInput"), value: item.inputContent },
-        { label: t("modelSettings.exampleOutput"), value: item.outputContent || t("modelSettings.noExampleOutput"), displayValue: item.outputContent ? validationOutputPreview(item.outputContent) : undefined },
-        { label: t("modelSettings.actualDecision"), value: item.actualDecision },
-        { label: t("modelSettings.expectedDecision"), value: item.expectedDecision },
-        ...(item.reason ? [{ label: t("modelSettings.validationErrorDetail"), value: item.reason }] : []),
-      ],
-    }))}
-    hint={t("modelSettings.validationErrorHint")}
-    detailLabel={t("modelSettings.validationErrorDetail")}
-    copyLabel={t("modelSettings.copyValidationError")}
-    copiedMessage={t("modelSettings.validationErrorCopied")}
-    copyFailedMessage={t("modelSettings.validationErrorCopyFailed")}
-    closeLabel={t("common.close")}
   />;
   return <StateBadge state="needs_validation" label={t("modelSettings.notChecked")} />;
 }

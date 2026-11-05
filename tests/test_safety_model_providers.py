@@ -293,7 +293,7 @@ async def test_native_classification_trace_preserves_labels_and_response_model_w
     assert result.verdict == verdict
     assert step.evaluator_id == "model-safety" and step.verdict == verdict
     assert step.model_name == "response-model"
-    assert json.loads(step.evidence) == {"native_verdict": label, "requested_model": "requested-model", "response_model": "response-model"}
+    assert json.loads(step.evidence) == {"native_verdict": label, "native_categories": ["Violence"], "requested_model": "requested-model", "response_model": "response-model"}
     assert "private" not in step.evidence
 
 

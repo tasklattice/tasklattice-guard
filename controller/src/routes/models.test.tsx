@@ -204,7 +204,7 @@ describe("Models and Protection Capabilities", { timeout: 30_000 }, () => {
     expect(await catalogAction(safety, "modelSettings.saveAssignment")).toHaveProperty("disabled", true);
     for (const stage of ["input", "output"]) {
       const result = within(safety).getByRole("group", { name: `modelSettings.detectors.content_safety.title · modelSettings.stage.${stage}` });
-      expect(within(result).getByText("modelSettings.railSamplesPassed")).toBeTruthy();
+      expect(within(result).getByText("modelSettings.evidence.passedEvidence")).toBeTruthy();
     }
     const jailbreak = within(runner).getByLabelText("modelSettings.detectors.jailbreak_detection.title", { selector: "tr" });
     expect(within(jailbreak).queryByText("modelSettings.stage.output")).toBeNull();
@@ -240,7 +240,7 @@ describe("Models and Protection Capabilities", { timeout: 30_000 }, () => {
     await waitFor(() => expect(validateModelAssignment).toHaveBeenCalledTimes(2));
     expect(validateModelAssignment).toHaveBeenNthCalledWith(1, "content_safety.input", "replacement");
     expect(validateModelAssignment).toHaveBeenNthCalledWith(2, "content_safety.output", "replacement");
-    await waitFor(() => expect(within(row).getAllByText("modelSettings.railSamplesPassed")).toHaveLength(2));
+    await waitFor(() => expect(within(row).getAllByText("modelSettings.evidence.passedEvidence")).toHaveLength(2));
     fireEvent.click(await catalogAction(row, "modelSettings.saveAssignment"));
     await waitFor(() => expect(saveModelAssignment).toHaveBeenCalledTimes(2));
     expect(saveModelAssignment).toHaveBeenNthCalledWith(1, "content_safety.input", "replacement", "receipt-content_safety.input");
@@ -282,7 +282,7 @@ describe("Models and Protection Capabilities", { timeout: 30_000 }, () => {
       bindingIds: ["content_safety.input", "content_safety.output"], expectedDraftToken: "saved-content_safety.output", expectedActiveId: "active-config",
     }));
     expect(validateModelAssignment).not.toHaveBeenCalled();
-    expect(within(row).queryByText("modelSettings.railSamplesPassed")).toBeNull();
+    expect(within(row).queryByText("modelSettings.evidence.passedEvidence")).toBeNull();
   });
 
   it("preserves unequal saved assignments and requires an explicit choice when returning to shared mode", async () => {
@@ -332,11 +332,11 @@ describe("Models and Protection Capabilities", { timeout: 30_000 }, () => {
     await waitFor(() => expect(validateSavedModelAssignment).toHaveBeenCalledTimes(2));
     const input = within(row).getByRole("group", { name: "modelSettings.detectors.content_safety.title · modelSettings.stage.input" });
     const output = within(row).getByRole("group", { name: "modelSettings.detectors.content_safety.title · modelSettings.stage.output" });
-    expect(within(input).queryByText("modelSettings.railSamplesPassed")).toBeNull();
-    expect(within(output).getByText("modelSettings.railSamplesPassed")).toBeTruthy();
+    expect(within(input).queryByText("modelSettings.evidence.passedEvidence")).toBeNull();
+    expect(within(output).getByText("modelSettings.evidence.passedEvidence")).toBeTruthy();
     expect(await catalogAction(row, "modelSettings.saveAssignment")).toHaveProperty("disabled", true);
     expect(saveModelAssignment).not.toHaveBeenCalled();
-    fireEvent.click(within(input).getByRole("button", { name: /modelSettings.probeFailed/ }));
+    fireEvent.click(within(input).getByRole("button", { name: /modelSettings.evidence.failedEvidence/ }));
     expect(within(screen.getByRole("dialog")).getByText("Input service unavailable")).toBeTruthy();
     expect(toast.success).not.toHaveBeenCalled();
   });
@@ -660,7 +660,7 @@ describe("Models and Protection Capabilities", { timeout: 30_000 }, () => {
     const review = await screen.findByRole("dialog");
     expect(within(review).getByRole("button", { name: "modelSettings.activateRevisionAction" }).hasAttribute("disabled")).toBe(false);
     expect(within(review).getByText("modelSettings.reviewNeedsValidation")).toBeTruthy();
-    expect(screen.queryByText("modelSettings.railSamplesPassed")).toBeNull();
+    expect(screen.queryByText("modelSettings.evidence.passedEvidence")).toBeNull();
   });
 
   it("validates only the selected detector without a global Catalog action", async () => {
@@ -709,7 +709,7 @@ describe("Models and Protection Capabilities", { timeout: 30_000 }, () => {
     expect(activateModelConfiguration).not.toHaveBeenCalled();
   });
 
-  it("keeps a failed validation response behind the red status control", async () => {
+  it("opens failed validation evidence and lets users inspect the passing sample too", async () => {
     const message = "Model probe returned HTTP 500 with a complete upstream diagnostic response.";
     vi.mocked(getModelConfiguration).mockResolvedValue({
       ...view,
@@ -729,14 +729,16 @@ describe("Models and Protection Capabilities", { timeout: 30_000 }, () => {
     renderPage(<GuardrailCatalogPage />);
     const row = await screen.findByLabelText("modelSettings.detectors.content_safety.title", { selector: "tr" });
     expect(within(row).queryByText(message)).toBeNull();
-    fireEvent.click(within(row).getAllByRole("button", { name: /modelSettings.probeFailed/ })[0]!);
-    const inspector = screen.getByRole("dialog", { name: "modelSettings.validationErrorTitle" });
+    fireEvent.click(within(row).getAllByRole("button", { name: /modelSettings.evidence.failedEvidence/ })[0]!);
+    const inspector = screen.getByRole("dialog", { name: "modelSettings.evidence.title" });
     expect(within(inspector).getByText("Unsafe example input")).toBeTruthy();
     expect(within(inspector).getByText("Unexpected output")).toBeTruthy();
     expect(within(inspector).getByText("block")).toBeTruthy();
     expect(within(inspector).getByText("allow")).toBeTruthy();
     expect(within(inspector).queryByText("Passing example hidden")).toBeNull();
     expect(within(inspector).getByText(message)).toBeTruthy();
+    fireEvent.click(within(inspector).getByRole("button", { name: /modelSettings.evidence.safeSample/ }));
+    expect(within(inspector).getByText("Passing example hidden")).toBeTruthy();
   });
 
   it("blocks removal in the shared right drawer and clearly identifies Topic Control use", async () => {

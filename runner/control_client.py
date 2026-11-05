@@ -713,7 +713,7 @@ class RunnerControlClient:
                 raise ValueError("This Runner is not compiler-capable.")
             async with asyncio.timeout(90):
                 credentials = await self._model_credentials(request.configuration, request.credential_lease_id)
-                result = await validate_capability(request, credentials)
+                result = await validate_capability(request, credentials, runner_id=self._settings.runner_id)
         except Exception as error:
             result = protocol.CapabilityValidationResult(request_id=request.request_id,
                 message=f"Rail validation could not complete ({type(error).__name__}). Check Runner availability and retry.")

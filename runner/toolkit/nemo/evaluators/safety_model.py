@@ -202,7 +202,10 @@ class SafetyModelEvaluator:
             provider_name=assessment.provider_id if assessment else None,
             model_call_id=classification_call.call_id if category and classification_call else None,
             evidence=json.dumps({"requested_model": requested, "response_model": response,
-                                 "native_verdict": assessment.verdict if assessment else None}),
+                                 "native_verdict": assessment.verdict if assessment else None,
+                                 "native_categories": assessment.categories if assessment else (),
+                                 **({"jailbreak": assessment.payload["jailbreak"], "score": assessment.payload["score"]}
+                                    if assessment and assessment.adapter == "nemoguard_jailbreak_detect" and assessment.payload else {})}),
         )
 
     async def _first_success(

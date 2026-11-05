@@ -64,6 +64,11 @@ async def test_jailbreak_profiles_receive_the_same_cases_and_require_real_classi
     if behavior == "correct":
         findings = json.loads(result.cases[1].output_content)["findings"]
         assert any(item["verdict"] == "matched" for item in findings)
+        if profile == "tali.nemoguard-jailbreak-detect.v1":
+            safe_output = json.loads(result.cases[0].output_content)
+            native = [json.loads(item["evidence"]) for item in safe_output["evaluation_evidence"] if "native_verdict" in item["evidence"]]
+            assert native[0]["score"] == -0.9
+            assert native[0]["jailbreak"] is False
     assert "synthetic-secret" not in result.message
 
 
@@ -150,7 +155,7 @@ async def test_classifier_catalog_retains_scores_and_does_not_pass_unknown_block
                 key: {"type": "noul", "noul": probability} for key in body["questions"]}})
 
     result = await validate_capability(candidate(phase, profile=classifier_backend.profile), {"provider-1": secret},
-                                       transport=httpx.MockTransport(respond))
+                                       transport=httpx.MockTransport(respond), runner_id="test-runner")
     assert result.passed is (unsafe_probability == 0.99), result.message
     assert seen_states == [SAFE_CONTENT, UNSAFE_CONTENT]
     assert result.cases[0].passed
@@ -163,6 +168,20 @@ async def test_classifier_catalog_retains_scores_and_does_not_pass_unknown_block
     assert evidence["judgments"]["unsafe_content"]["probability"] == unsafe_probability
     assert evidence["thresholds"] == {"lower": 0.1, "upper": 0.9}
     assert evaluation["verdict"] == ("matched" if unsafe_probability == 0.99 else "unknown")
+    for case, state in zip(result.cases, seen_states, strict=True):
+        captured = json.loads(case.output_content)
+        assert captured["validation_context"]["runner_id"] == "test-runner"
+        assert captured["validation_context"]["binding_id"] == f"content_safety.{phase}"
+        assert captured["validation_context"]["runner_build"]["version"]
+        assert captured["duration_ms"] >= 0
+        assert len(captured["model_exchanges"]) == 1
+        exchange = captured["model_exchanges"][0]
+        assert state in exchange["request"]["body"]
+        assert exchange["request"]["headers"]["authorization"] == "[REDACTED]"
+        assert exchange["response"]["headers"]["set-cookie"] == "[REDACTED]"
+        assert exchange["duration_ms"] >= 0
+        assert exchange["started_at"]
+        assert secret not in case.output_content
     if unsafe_probability == 0.84:
         assert not output["findings"]
         assert "without a matched finding" in unsafe.reason
@@ -238,6 +257,12 @@ async def test_grounding_binding_uses_source_context_and_configured_budget(respo
     # than the published Guardrail's 30 second remote-Detector deadline.
     assert deadlines and all(deadline == 30_000 for deadline in deadlines)
     assert result.passed is (response_kind == "scored"), result.message
+    if response_kind == "scored":
+        safe_output = json.loads(result.cases[0].output_content)
+        assert safe_output["findings"][0]["grounding"][0]["score"] == 1.0
+        assert safe_output["findings"][0]["grounding"][0]["detected"] is False
+        assert safe_output["validation_context"]["input_context"][1]["text"] == "The product warranty lasts one year."
+        assert len(safe_output["model_exchanges"]) == 1
 
 
 @pytest.mark.asyncio
@@ -276,3 +301,44 @@ async def test_formal_binding_without_policy_context_never_probes_a_fabricated_p
     result = await validate_capability(request, {"provider-1": "synthetic-secret"}, transport=httpx.MockTransport(respond))
     assert not result.passed
     assert "existing formal policy" in result.message
+
+
+async def test_successful_validation_exports_complete_bodies_and_redacts_response_credentials():
+    response_secret = "synthetic-response-token"
+    def respond(request):
+        body = json.loads(request.content)
+        unsafe = body["state"] == UNSAFE_CONTENT
+        return httpx.Response(200, headers={"x-api-key": response_secret}, json={
+            "model": "english", "debug": "x" * 70_000 + response_secret,
+            "answers": {name: {"type": "noul", "noul": 0.99 if unsafe else 0.01} for name in body["questions"]},
+        })
+    result = await validate_capability(candidate(profile="tali.laya.v1"), {"provider-1": "synthetic-secret"}, transport=httpx.MockTransport(respond))
+    assert result.passed, result.message
+    for case in result.cases:
+        output = json.loads(case.output_content)
+        response = output["model_exchanges"][0]["response"]
+        assert len(response["body"]) > 70_000
+        assert response["body_truncated"] is False
+        assert response_secret not in case.output_content
+        assert json.loads(response["body"])["debug"].endswith("[REDACTED]")
+
+
+async def test_unhandled_execution_error_preserves_captured_request(monkeypatch):
+    from runner.model_validation_diagnostics import validation_http_hooks
+    from runner.toolkit.nemo.runtime import NeMoRuntime
+
+    async def crash(self, request):
+        async with httpx.AsyncClient(event_hooks=validation_http_hooks(), transport=httpx.MockTransport(
+                lambda _: httpx.Response(200, json={"debug": "received before crash"}))) as client:
+            await client.post("https://model.test/v1/systemone", json={"state": request.text})
+        raise ValueError("unexpected parser failure")
+
+    monkeypatch.setattr(NeMoRuntime, "evaluate", crash)
+    result = await validate_capability(candidate(profile="tali.laya.v1"), {"provider-1": "synthetic-secret"})
+    assert not result.passed
+    assert len(result.cases) == 1
+    case = result.cases[0]
+    assert case.actual_decision == "error"
+    output = json.loads(case.output_content)
+    assert output["error"]["type"] == "ValueError"
+    assert "received before crash" in output["model_exchanges"][0]["response"]["body"]
