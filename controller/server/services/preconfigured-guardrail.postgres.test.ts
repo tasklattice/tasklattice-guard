@@ -34,7 +34,7 @@ describe.skipIf(!url)("Preconfigured Guardrail lifecycle", () => {
   it("seeds once, preserves edits and mode across restarts, and never restores deletion", async () => {
     let service = new ControlPlaneService(database.db, config);
     await service.initialize();
-    id = (await database.pool.query("SELECT guardrail_id FROM deployment_preset")).rows[0].guardrail_id;
+    id = (await database.pool.query("SELECT guardrail_id FROM default_guardrail_provisioning")).rows[0].guardrail_id;
     expect(id).not.toBe("guardrail-default");
     const initial = await service.getGuardrail(id);
     expect(initial.draftConfig.policyBindings).toHaveLength(12);

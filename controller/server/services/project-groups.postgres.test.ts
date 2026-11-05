@@ -39,7 +39,7 @@ describe.skipIf(!url)("Project Group persistence and safe allocation in PostgreS
     await database.pool.query(`
       DELETE FROM controller_outbox; DELETE FROM audit_event; DELETE FROM runner_serving_grant; DELETE FROM runner_pool_lease_epoch; DELETE FROM runner_instance;
       DELETE FROM endpoint; DELETE FROM traffic_router;
-      DELETE FROM deployment_preset; DELETE FROM guardrail_version; DELETE FROM guardrail_artifact; DELETE FROM guardrail;
+      DELETE FROM default_guardrail_provisioning; DELETE FROM guardrail_version; DELETE FROM guardrail_artifact; DELETE FROM guardrail;
       DELETE FROM runner_pool; DELETE FROM project WHERE id LIKE 'pool-project-%'; UPDATE project SET group_id='default'; DELETE FROM project_group WHERE id<>'default';
       INSERT INTO controller_state(id,desired_generation) VALUES ('singleton',0) ON CONFLICT(id) DO UPDATE SET desired_generation=0;
       INSERT INTO runner_pool(id,name,is_default) VALUES ('default','runner-default',true);`);

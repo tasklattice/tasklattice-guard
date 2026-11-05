@@ -443,9 +443,9 @@ export const guardrails = pgTable("guardrail", {
   updatedAt,
 }, (table) => [index("guardrail_status_idx").on(table.status), index("guardrail_project_idx").on(table.projectId)]);
 
-/** One record per provisioned preset in this project's Controller database. */
-export const deploymentPresets = pgTable("deployment_preset", {
-  key: text("key").primaryKey(),
+/** Idempotency ledger for the platform and per-Project Default Guardrails. */
+export const defaultGuardrailProvisioning = pgTable("default_guardrail_provisioning", {
+  scopeKey: text("scope_key").primaryKey(),
   guardrailId: text("guardrail_id").notNull(),
   profileId: text("profile_id").notNull(),
   profileVersion: text("profile_version").notNull(),
@@ -925,7 +925,7 @@ export const schema = {
   modelConfigurationRevisions,
   runnerPools,
   guardrails,
-  deploymentPresets,
+  defaultGuardrailProvisioning,
   guardrailVersions,
   testCases,
   validationRuns,

@@ -65,7 +65,7 @@ import {
   artifacts,
   auditEvents,
   controllerState,
-  deploymentPresets,
+  defaultGuardrailProvisioning,
   guardrails,
   guardrailVersionProvenance,
   guardrailVersions,
@@ -262,8 +262,8 @@ export class ControlPlaneService {
     assertPlatformAuthority();
     while (true) {
       const batch = await this.db.select({ id: projects.id }).from(projects)
-        .where(sql`not exists (select 1 from ${deploymentPresets}
-          where ${deploymentPresets.key} = 'project-default:' || ${projects.id})`)
+        .where(sql`not exists (select 1 from ${defaultGuardrailProvisioning}
+          where ${defaultGuardrailProvisioning.scopeKey} = 'project:' || ${projects.id})`)
         .orderBy(projects.id).limit(25);
       if (!batch.length) return;
       for (const project of batch) await this.db.transaction(tx => this.initializeProject(tx, project.id));
@@ -272,7 +272,7 @@ export class ControlPlaneService {
 
   async initializeProject(tx: Transaction, projectId: string): Promise<void> {
     assertPlatformAuthority();
-    await advisoryTransactionLock(tx, `project-default:${projectId}`);
+    await advisoryTransactionLock(tx, `default-guardrail:${projectId}`);
     await runWithProjectContext({ projectId }, () => this.ensureDefaultGuardrail(tx, projectId));
   }
 
@@ -2719,8 +2719,8 @@ export class ControlPlaneService {
   }
 
   private async ensureDefaultGuardrail(tx: Transaction, projectId?: string): Promise<void> {
-    const key = projectId ? `project-default:${projectId}` : "initial-guardrail";
-    const [installed] = await tx.select().from(deploymentPresets).where(eq(deploymentPresets.key, key));
+    const scopeKey = projectId ? `project:${projectId}` : "platform";
+    const [installed] = await tx.select().from(defaultGuardrailProvisioning).where(eq(defaultGuardrailProvisioning.scopeKey, scopeKey));
     if (installed) return;
     const catalog = this.policyCatalog().list();
     const draft = profileDraft(localBaseline, catalog);
@@ -2738,7 +2738,7 @@ export class ControlPlaneService {
       sourceDraftRevision: guardrail.draftRevision, candidateArtifact: content, candidateDigest: artifactContentDigest(content),
       candidateInspection: guardrailInspection({ name: guardrail.name, runtimeProfile: guardrail.runtimeProfile, draftConfig: draft, catalog, programmablePolicies: [], testSuite: suite }),
       candidatePolicies: guardrailPolicyNodes(draft.policyBindings, catalog, []), testSuite: suite }, null);
-    await tx.insert(deploymentPresets).values({ key, guardrailId: guardrail.id, profileId: localBaseline.id, profileVersion: localBaseline.version });
+    await tx.insert(defaultGuardrailProvisioning).values({ scopeKey, guardrailId: guardrail.id, profileId: localBaseline.id, profileVersion: localBaseline.version });
   }
 
   private async validateGuardrailDraft(draft: GuardrailDraftConfig, db: Pick<ControllerDatabase, "select"> = this.db, previous?: GuardrailDraftConfig) {

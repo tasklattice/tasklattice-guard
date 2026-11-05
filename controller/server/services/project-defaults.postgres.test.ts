@@ -69,7 +69,7 @@ describe.skipIf(!url)("Project Default Guardrail provisioning", () => {
     await expect(failing.create("admin", { name: "failed-project" })).rejects.toThrow("Abort provisioning");
     expect((await database.pool.query("SELECT id FROM project WHERE id='failed-project'")).rowCount).toBe(0);
     expect((await database.pool.query("SELECT id FROM guardrail WHERE project_id='failed-project'")).rowCount).toBe(0);
-    expect((await database.pool.query("SELECT key FROM deployment_preset WHERE key='project-default:failed-project'")).rowCount).toBe(0);
+    expect((await database.pool.query("SELECT scope_key FROM default_guardrail_provisioning WHERE scope_key='project:failed-project'")).rowCount).toBe(0);
   });
 
   it("bootstraps a local user into its configured shared Project and preserves resources on restart", async () => {

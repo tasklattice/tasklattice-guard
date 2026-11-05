@@ -128,7 +128,7 @@ describe.skipIf(!url)("Guardrail release packages between isolated environments"
 
   it("starts production with the same features as UAT: a complete bundled Default baseline without model configuration", async () => {
     await prod.initialize();
-    const defaultId = (await prodDb.pool.query("SELECT guardrail_id FROM deployment_preset")).rows[0].guardrail_id;
+    const defaultId = (await prodDb.pool.query("SELECT guardrail_id FROM default_guardrail_provisioning")).rows[0].guardrail_id;
     // A platform release does not claim that installation tests have passed.
     expect((await prodDb.pool.query("SELECT origin FROM guardrail WHERE id = $1", [defaultId])).rows).toEqual([{ origin: "local" }]);
     expect((await prod.getGuardrail(defaultId)).readiness).toBe("ready");
@@ -375,7 +375,7 @@ describe.skipIf(!url)("Guardrail release packages between isolated environments"
   });
 
   it("prevents Project packages from replacing a Platform deployment preset", async () => {
-    const defaultId = (await prodDb.pool.query("SELECT guardrail_id FROM deployment_preset")).rows[0].guardrail_id;
+    const defaultId = (await prodDb.pool.query("SELECT guardrail_id FROM default_guardrail_provisioning")).rows[0].guardrail_id;
     const parsed = parsePackage((await uat.packages.exportPackage(guardrailId, [published[0]!])).bytes);
     const versions = parsed.versions.map(item => rebuilt(parsed, item, { ...item.content, guardrailId: defaultId, plan: { ...item.content.plan, guardrail_id: defaultId } }));
     const bytes = buildPackage({ source: { id: "bank-uat-system", name: "UAT system baseline" }, guardrail: { id: defaultId, name: "Default Guardrail" },
