@@ -38,7 +38,8 @@ controller/scripts/.openapi-inputs-*.ts
 /controller/server/domain/default-baseline.json
 # Tool-generated contracts and catalog assets. Generate with `npm run generate`.
 /controller/server/generated/
-/runner/generated/
+/runner/generated/*
+!/runner/generated/__init__.py
 /controller/shared/enforcement-action.generated.ts
 /runner/toolkit/runtime/enforcement_action_generated.py
 /runner/toolkit/policy_library/assets/detectors.generated.json
