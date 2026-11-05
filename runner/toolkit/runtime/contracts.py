@@ -140,6 +140,8 @@ class RuntimeTraceStep:
     finished_offset_ms: int | None = None
     evaluator_id: str | None = None
     profile_ref: str | None = None
+    precedence: int | None = None
+    evaluation_view: str | None = None
 
 
 @dataclass(frozen=True, slots=True)

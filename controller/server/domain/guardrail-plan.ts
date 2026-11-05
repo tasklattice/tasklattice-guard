@@ -5,7 +5,7 @@ import type { ProgrammablePolicySnapshot } from "../policy-studio/model.js";
 import { flowRuleId } from "../policy-studio/model.js";
 import { PHRASE_PARAMETER, PHRASE_POLICY_ID, parsePhraseEntries } from "../../shared/phrase-policy.js";
 import { materializePolicyRules } from "./policy-rules.js";
-import { scheduleChecks } from "./execution-plan.js";
+import { scheduleRankedChecks } from "./execution-plan.js";
 import { frozenBuiltInDefinition, planPolicyVersion } from "./policy-node.js";
 import { isSplitTopicPolicy, TOPIC_ALLOW_RULE, TOPIC_DENY_RULE, topicMissingParameters, topicPolicyValues } from "../../shared/topic-policy.js";
 import {
@@ -269,13 +269,27 @@ export function buildGuardrailPlan(input: {
     // A custom flow is an ordering barrier for the whole plan, including
     // mixed-action Rules inside an older catalog Policy.
     if (hasCustomFlows || !item.policy || item.authoredRule) return [{ ...item, actionGroup: "" }];
-    const actions = new Map<EnforcementAction, string[]>();
-    for (const rule of item.policy.rules.filter(r => item.binding.enabledRuleIds.includes(r.id))) {
-      const action = item.binding.ruleActions[rule.id] ?? item.binding.action ?? rule.effect as EnforcementAction;
-      actions.set(action, [...actions.get(action) ?? [], rule.id]);
+    const enabled = item.policy.rules.filter(rule => item.binding.enabledRuleIds.includes(rule.id));
+    const byId = new Map(enabled.map(rule => [rule.id, rule]));
+    const explicit = (item.binding.ruleOrder ?? []).filter(id => byId.has(id));
+    const ordered = [...explicit, ...enabled.map(rule => rule.id).filter(id => !explicit.includes(id))]
+      .map(id => byId.get(id)!);
+    const actionOf = (rule: typeof ordered[number]) =>
+      item.binding.ruleActions[rule.id] ?? item.binding.action ?? rule.effect as EnforcementAction;
+    // Keep contiguous same-action Rules in one candidate. This preserves their
+    // authored order while avoiding one NeMo Action per Rule; the action still
+    // evaluates the Rules sequentially and applies each Transform before the
+    // next Rule. Mixed-action sequences remain separate candidates.
+    const runs: Array<{ action: EnforcementAction; rules: typeof ordered }> = [];
+    for (const rule of ordered) {
+      const action = actionOf(rule);
+      const last = runs.at(-1);
+      if (last && last.action === action) last.rules.push(rule);
+      else runs.push({ action, rules: [rule] });
     }
-    return [...actions].map(([action, ids]) => ({ ...item, actionGroup: actions.size > 1 ? `:${action}` : "",
-      binding: { ...item.binding, action, enabledRuleIds: ids, ruleOrder: (item.binding.ruleOrder ?? []).filter(id => ids.includes(id)) } }));
+    return runs.map((run, index) => ({ ...item, actionGroup: `:${run.action}:${index}`,
+      binding: { ...item.binding, action: run.action, enabledRuleIds: run.rules.map(rule => rule.id),
+        ruleOrder: run.rules.map(rule => rule.id) } }));
   });
   for (const { capability: definition, binding, policy, authoredRule, authoredParameters, actionGroup } of executable) {
     // Never coalesce separate Policies by capability: a later Policy must see
@@ -357,29 +371,17 @@ export function buildGuardrailPlan(input: {
       previousModule[phase] = id;
     }
   }
-  // Compilation may reorder execution for latency, but it must not change what a
-  // check inspects. Record the authored precedence (reporting and evidence
-  // arbitration never infer "earlier" from execution order) and the declared
-  // evaluation view of each step: a read-only check inspects the phase input,
-  // while a mutating step and every step of its trigger chain inspect the text
-  // produced by the preceding Transform steps.
-  const stepById = new Map(steps.map((step) => [step.id, step]));
+  // Rank Mode records the authored order as the execution order. Every step
+  // reads the content produced by the preceding Transform, not the original
+  // phase request.
   const authoredIndex = new Map(steps.map((step, index) => [step.id, index]));
-  const inheritsMutation = (step: PlanStep, seen = new Set<string>()): boolean => {
-    if (step.on_unsafe === "transform") return true;
-    const prerequisite = step.trigger.type === "on_result" ? step.trigger.step_ref : undefined;
-    if (prerequisite === undefined || seen.has(prerequisite)) return false;
-    seen.add(prerequisite);
-    const source = stepById.get(prerequisite);
-    return source !== undefined && inheritsMutation(source, seen);
-  };
   for (const step of steps) {
     step.parameters = [...step.parameters,
       ["precedence", String(authoredIndex.get(step.id)!)],
-      ["evaluation_view", hasCustomFlows || inheritsMutation(step) ? "previous_output" : "original"],
+      ["evaluation_view", "previous_output"],
     ];
   }
-  scheduleChecks(steps, modules, hasCustomFlows, draft.outputDelivery === "full_buffered");
+  scheduleRankedChecks(steps, modules);
   const reasoningPolicies = bindings.flatMap((binding) => binding.reasoningPolicy ? [{
     id: `automated-reasoning:${binding.reasoningPolicy.policyId}:${binding.reasoningPolicy.policyVersion}`,
     policy_id: binding.reasoningPolicy.policyId,

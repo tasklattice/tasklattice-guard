@@ -91,10 +91,10 @@ describe("portable Policy authoring", () => {
     expect(steps).toHaveLength(2);
     // Local blocking checks run before model calls, retaining each Rule's contract.
     expect(steps.map(step => step.contract_ref)).toEqual([
-      "tali.guard.content-filter.rules.v1", "tali.guard.content-safety.v1",
+      "tali.guard.content-safety.v1", "tali.guard.content-filter.rules.v1",
     ]);
-    expect(JSON.parse(Object.fromEntries(steps[0]!.parameters).enabled_rules_json!)).toEqual({ "independent-policy": ["second"] });
-    expect(Object.fromEntries(steps[1]!.parameters)).toMatchObject({ policy_id: "independent-policy", rule_id: "first", declarative_rule: "true" });
+    expect(JSON.parse(Object.fromEntries(steps[1]!.parameters).enabled_rules_json!)).toEqual({ "independent-policy": ["second"] });
+    expect(Object.fromEntries(steps[0]!.parameters)).toMatchObject({ policy_id: "independent-policy", rule_id: "first", declarative_rule: "true" });
   });
   it("preserves Topic Rule configuration when a shipped definition is renamed and exported", () => {
     const definition = compiler.shipped("builtin-topic-safety")!;

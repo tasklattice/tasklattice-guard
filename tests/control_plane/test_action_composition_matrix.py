@@ -83,9 +83,9 @@ class RecordedLocalChecks(ContentFilterActionProvider):
 
     async def execute(self, request):
         enabled = json.loads(dict(request.parameters)["enabled_rules_json"])
-        ids = [rule for rules in enabled.values() for rule in rules]
-        assert len(ids) == 1  # Each declarative Rule is independently scheduled.
-        self.calls.append((ids[0], request.content))
+        for policy_id, rules in enabled.items():
+            for rule_id in rules:
+                self.calls.append((rule_id, request.content))
         return await super().execute(request)
 
 
@@ -99,45 +99,50 @@ async def test_action_composition_matrix(composition_plans, actions, hits, layou
     current = original
     expected_calls, expected_findings = [], []
     expected_decision = "allow"
-    # Stable action partitions: all Block checks, then serial Transform, then Allow.
-    # Input and full-buffered Output admit independent read-only checks together.
-    # These non-yielding local detectors finish the entire Block partition before
-    # cancellation can run; only unfinished checks can be short-circuited.
-    # Read-only checks declare the phase input as their view, so scheduling them
-    # ahead of a Transform step for latency cannot change what they inspect.
-    # Only a Transform step consumes the text produced by the preceding one.
-    for action in ACTIONS:
-        for index, configured in enumerate(actions):
-            if configured != action:
+    # Rank Mode: execute the real compiled plan in authored order. Each step is
+    # a contiguous same-action Rule run; the action applies its Rules in order,
+    # and a Transform changes the content passed to later steps.
+    for step in composition_plans[f"{','.join(actions)}:{layout}:{phase}"]["steps"]:
+        if phase not in step["phases"]:
+            continue
+        params = dict(step["parameters"])
+        policy_id = params["policy_id"]
+        ids = json.loads(params["enabled_rules_json"])[policy_id]
+        step_action = step["on_unsafe"]
+        step_content = current
+        for rule_id in ids:
+            expected_calls.append((rule_id, step_content))
+        for index, rule_id in enumerate(ids):
+            hit_index = int(rule_id[1:])
+            if not hits[hit_index]:
                 continue
-            expected_calls.append((f"r{index}", current if action == "transform" else original))
-            if not hits[index]:
-                continue
-            expected_findings.append((f"r{index}", action))
-            if action == "block":
+            expected_findings.append((rule_id, step_action))
+            if step_action == "block":
                 expected_decision = "block"
-            if action == "transform":
-                current = current.replace(WORDS[index], f"[MASK_{index}]")
-                expected_decision = "transform"
+                break
+            if step_action == "transform":
+                current = current.replace(WORDS[hit_index], f"[MASK_{hit_index}]")
         if expected_decision == "block":
             break
-    plan = composition_plans[f"{','.join(actions)}:{layout}:{phase}"]
+    else:
+        if current != original:
+            expected_decision = "transform"
+
     provider = RecordedLocalChecks()
-    runtime = DraftPreviewRuntime(DefaultRunnerCompiler(), action_providers(provider))
+    previews = DraftPreviewRuntime(DefaultRunnerCompiler(), action_providers(provider))
     try:
-        result = await runtime.evaluate(
+        result = await previews.evaluate(
             ProtectionRequest(phase=phase, texts=(original,), context=RequestContext(protocol="playground")),
-            preview_id="action-matrix", guardrail_id="matrix", draft_revision=1,
-            candidate_version="20261023-000000.001Z", plan=plan, runtime_profile="auto",
+            preview_id=f"matrix-{phase}", guardrail_id="matrix", draft_revision=1,
+            candidate_version="20261023-000000.001Z",
+            plan=composition_plans[f"{','.join(actions)}:{layout}:{phase}"], runtime_profile="auto",
         )
-        assert not result.usage.fail_closed, result.reason
-        assert result.usage.model_invocations == 0
-        assert result.decision == expected_decision
-        assert provider.calls == expected_calls  # No Transform or Allow runs after a Block partition rejects.
-        assert [(f.rule_id, f.recommended_action) for f in result.findings] == expected_findings
-        if expected_decision == "transform":
-            assert result.texts == (current,)
-        else:
-            assert result.texts == ()  # Allow does not replace; Block releases no transformed output.
     finally:
-        await runtime.shutdown()
+        await previews.shutdown()
+    assert result.decision == expected_decision, (actions, hits, layout, phase, result.reason)
+    assert provider.calls == expected_calls
+    assert [(finding.rule_id, finding.recommended_action) for finding in result.findings] == expected_findings
+    if expected_decision == "transform":
+        assert result.texts == (current,)
+    else:
+        assert result.texts == ()

@@ -150,7 +150,12 @@ describe("Controller Guardrail plan", () => {
     expect(second).not.toEqual(first);
     const steps = second.steps as Array<{ parameters: Array<[string, string]> }>;
     const configured = steps.map((step) => Object.fromEntries(step.parameters)).find((item) => item.policy_ids === binding.policyId)!;
-    expect(JSON.parse(configured.rule_order_json!)).toEqual({ "local-contact-data": ["pattern/us_phone", "pattern/email"] });
+    const contact = policies.find(item => item.id === "local-contact-data")!;
+    const effectiveOrder = [
+      ...binding.ruleOrder,
+      ...contact.rules.map(rule => rule.id).filter(id => binding.enabledRuleIds.includes(id) && !binding.ruleOrder!.includes(id)),
+    ];
+    expect(JSON.parse(configured.rule_order_json!)).toEqual({ "local-contact-data": effectiveOrder });
     expect((second.policy_bindings as Array<{ policy_id: string; rule_order?: string[] }>).find((item) => item.policy_id === binding.policyId)?.rule_order).toEqual(binding.ruleOrder);
     const previousOrder = draft.policyBindings.map((item) => item.policyId);
     draft.policyBindings.reverse();
@@ -347,21 +352,22 @@ describe("Controller Guardrail plan", () => {
     }] });
     const steps = plan.steps as Array<{ parameters: Array<[string, string]>; phases: string[] }>;
     expect(steps.map((item) => Object.fromEntries(item.parameters).policy_id)).toEqual([
-      "local-contact-data", "builtin-secrets", "keyword-blocking", "local-contact-data",
+      "local-contact-data", "local-contact-data", "local-contact-data", "builtin-secrets", "keyword-blocking",
     ]);
-    const actions = JSON.parse(Object.fromEntries(steps[0]!.parameters).rule_actions_json!)[pattern.id];
-    expect(actions["pattern/email"]).toBeUndefined();
-    expect(JSON.parse(Object.fromEntries(steps[3]!.parameters).rule_actions_json!)[pattern.id]["pattern/email"]).toBe("transform");
-    expect(actions["pattern/us_phone"]).toBe("block");
-    expect(steps[2]!.phases).toEqual(["output"]);
+    // The authored Rule order puts the email transform after the Block run.
+    const emailStep = steps.find((item) => {
+      const params = Object.fromEntries(item.parameters);
+      return JSON.parse(params.rule_actions_json!)[pattern.id]?.["pattern/email"] === "transform";
+    })!;
+    expect(emailStep).toBeDefined();
+    expect(Object.fromEntries(emailStep.parameters).policy_id).toBe("local-contact-data");
+    expect(steps[2]!.phases).toEqual(["input", "output"]);
     const modules = plan.modules as Array<{ id: string; phase: string; depends_on: string[]; input_view: string }>;
     for (const phase of ["input", "output"]) {
       const ordered = modules.filter((item) => item.phase === phase);
       ordered.forEach((item, index) => {
         expect(item.input_view).toBe("previous_output");
-        // Independent local Blocks share the first group; the Transform waits
-        // for every member of that group, not just its last authored sibling.
-        expect(item.depends_on).toEqual(index === ordered.length - 1 ? ordered.slice(0, -1).map(m => m.id) : []);
+        expect(item.depends_on).toEqual(index === 0 ? [] : [ordered[index - 1]!.id]);
       });
     }
     expect(pattern.rules.find((item) => item.id === "pattern/us_phone")?.effect).toBe("transform");
@@ -400,7 +406,7 @@ describe("Controller Guardrail plan", () => {
     const params = Object.fromEntries(steps[0]!.parameters);
     expect(JSON.parse(params.enabled_rules_json!)[contact.id]).toEqual(order);
     expect(JSON.parse(params.rule_order_json!)[contact.id]).toEqual(order);
-    expect(params.execution_schedule).toBeUndefined();
+    expect(params.execution_schedule).toBe("local-first");
     expect(params.evaluation_view).toBe("previous_output");
   });
 
@@ -429,8 +435,8 @@ describe("Controller Guardrail plan", () => {
       draft: { allowedTopics: [], restrictedTopics: [], safetyLevel: "balanced", outputDelivery: "full_buffered", policyBindings: [binding] },
     });
     expect(build().steps).toEqual([
-      expect.objectContaining({ phases: ["output"], on_unsafe: "transform" }),
       expect.objectContaining({ phases: ["input"], on_unsafe: "allow" }),
+      expect.objectContaining({ phases: ["output"], on_unsafe: "transform" }),
     ]);
     binding.enabledRuleIds = ["flow/output/check_output"];
     expect(build().steps).toEqual([expect.objectContaining({ phases: ["output"], on_unsafe: "transform" })]);
@@ -464,12 +470,13 @@ describe("Compiled evaluation views", () => {
           enabledRuleIds: ["mask", "block"], ruleOrder: ["mask", "block"], ruleActions: {}, enabledRails: ["input", "output"],
           reasoningPolicy: null }] } });
     const parameters = Object.fromEntries(plan.steps.map((step) => [step.id.split(":")[2]!, Object.fromEntries(step.parameters)]));
-    // Block is scheduled first for latency, yet its authored precedence stays last.
-    expect(plan.steps.map((step) => step.on_unsafe)).toEqual(["block", "transform"]);
+    // Rank Mode executes authored Rule order and every step reads the content
+    // produced by preceding Transforms.
+    expect(plan.steps.map((step) => step.on_unsafe)).toEqual(["transform", "block"]);
     expect(parameters.mask).toMatchObject({ precedence: "0", evaluation_view: "previous_output" });
-    expect(parameters.block).toMatchObject({ precedence: "1", evaluation_view: "original" });
-    expect(parameters.mask!.execution_schedule).toBe("local-first-v2");
-    expect(parameters.block!.execution_schedule).toBe("local-first-v2");
+    expect(parameters.block).toMatchObject({ precedence: "1", evaluation_view: "previous_output" });
+    expect(parameters.mask!.execution_schedule).toBe("local-first");
+    expect(parameters.block!.execution_schedule).toBe("local-first");
   });
 });
 

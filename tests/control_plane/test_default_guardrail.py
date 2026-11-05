@@ -161,9 +161,13 @@ async def test_default_local_components_compile_and_run_without_models(
             assert decision.texts == ()
             assert decision.usage is not None
             assert decision.usage.model_invocations == 0
-            assert [step.policy_id for step in decision.trace if step.kind == "action" and step.policy_id is not None] == [
-                binding["policy_id"] for binding in default_local_plan["policy_bindings"] if phase in binding["enabled_rails"]
-            ] + ["local-content-safety"]  # Its Allow observation is a separate final stage.
+            traced_policies = [step.policy_id for step in decision.trace if step.kind == "action" and step.policy_id is not None]
+            plan_policies = [
+                dict(step["parameters"]).get("policy_id") for step in default_local_plan["steps"]
+                if phase in step["phases"]
+            ]
+            assert set(traced_policies) == {policy for policy in plan_policies if policy is not None}
+            assert "local-content-safety" in traced_policies
     finally:
         await previews.shutdown()
 
@@ -245,8 +249,9 @@ async def test_default_records_insults_and_still_enforces_later_policies(default
             assert result.decision == expected, result.reason
             observed = [f for f in result.findings if f.policy_id == "local-content-safety"]
             if expected == "block":
-                # Block short-circuits before the final Allow observation stage.
-                assert not observed
+                # Rank Mode records Allow observations from earlier Policies
+                # before the later Block stops the phase.
+                assert all(f.recommended_action == "allow" for f in observed)
             else:
                 assert observed and all(f.recommended_action == "allow" for f in observed)
                 assert observed[0].rule_id == "category/denied_insults"

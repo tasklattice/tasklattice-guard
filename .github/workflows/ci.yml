@@ -64,7 +64,7 @@ jobs:
             controller/package-lock.json
 
       - name: Install dependencies
-        run: uv sync --all-extras --frozen && npm ci --no-audit --no-fund && npm ci --prefix controller --no-audit --no-fund
+        run: uv sync --all-extras --frozen && npm ci --no-audit --no-fund && npm ci --prefix controller --no-audit --no-fund && npm run generate
 
       - name: Test developer commands
         if: matrix.shard == 1
@@ -259,7 +259,7 @@ jobs:
             controller/package-lock.json
 
       - name: Install dependencies
-        run: uv sync --all-extras --frozen && npm ci --no-audit --no-fund && npm ci --prefix controller --no-audit --no-fund
+        run: uv sync --all-extras --frozen && npm ci --no-audit --no-fund && npm ci --prefix controller --no-audit --no-fund && npm run generate
 
       - name: Test TypeScript Controller to Python Runner and ACK/NACK lifecycle
         run: npm run test:e2e
@@ -298,7 +298,7 @@ jobs:
           version: v4.0.0
 
       - name: Install dependencies
-        run: uv sync --all-extras --frozen && npm ci --no-audit --no-fund && npm ci --prefix controller --no-audit --no-fund
+        run: uv sync --all-extras --frozen && npm ci --no-audit --no-fund && npm ci --prefix controller --no-audit --no-fund && npm run generate
 
       - name: Verify protocol, suite boundaries, and deployment contracts
         run: npm run test:contracts

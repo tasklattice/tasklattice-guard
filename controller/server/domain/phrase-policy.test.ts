@@ -17,8 +17,8 @@ describe("Policy-owned phrase configuration", () => {
     const plan = buildGuardrailPlan({ guardrailId: "phrases", guardrailVersion: "20260906-010000.001Z", draft, policies });
     const steps = plan.steps as Array<{ parameters: Array<[string, string]>; phases: string[]; on_unsafe: string }>;
     expect(steps).toHaveLength(2);
-    expect(steps.map(step => step.on_unsafe)).toEqual(["block", "transform"]);
-    for (const [index, entry] of [entries[1]!, entries[0]!].entries()) {
+    expect(steps.map(step => step.on_unsafe)).toEqual(["transform", "block"]);
+    for (const [index, entry] of [entries[0]!, entries[1]!].entries()) {
       const step = steps[index]!;
       expect(step.phases).toEqual(["input", "output"]);
       const params = Object.fromEntries(step.parameters);

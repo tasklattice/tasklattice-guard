@@ -52,6 +52,10 @@ async function images(component) {
   if (component && !['controller', 'runner'].includes(component)) throw new Error(`Unknown image component: ${component}`);
   const buildInfo = JSON.stringify(gitBuildInfo());
   if (!component || component === 'controller') {
+    await run('.venv/bin/python', ['scripts/generate_control_protocol.py']);
+    await run('.venv/bin/python', ['scripts/generate_enforcement_action_contract.py']);
+    await run('.venv/bin/python', ['scripts/policy_sources.py'], ['build']);
+    await run('.venv/bin/python', ['scripts/generate_default_baseline.py']);
     await pack();
     await run('docker', ['build', '--build-arg', `TALI_BUILD_INFO=${buildInfo}`, '-f', 'Dockerfile.controller', '-t', env.CONTROLLER_IMAGE ?? `${env.CONTROLLER_REPOSITORY ?? 'ghcr.io/tasklattice/tali-guard-controller'}:dev`, '.']);
   }

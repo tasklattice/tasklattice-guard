@@ -73,3 +73,32 @@ export function scheduleChecks<T extends Step>(steps: T[], modules: Module[], cu
   modules.sort((a, b) => Math.min(...(a.step_ids as string[]).map(id => steps.findIndex(s => s.id === id))) -
     Math.min(...(b.step_ids as string[]).map(id => steps.findIndex(s => s.id === id))));
 }
+
+/** Rank Mode: preserve authored Policy/Rule order and the content produced by
+ * every preceding Transform. No latency reordering and no parallel groups. */
+export function scheduleRankedChecks<T extends Step>(steps: T[], modules: Module[]): void {
+  for (const phase of ["input", "output"] as const) {
+    const phaseModules = modules.filter(m => m.phase === phase).sort((a, b) =>
+      Math.min(...(a.step_ids as string[]).map(id => steps.findIndex(s => s.id === id))) -
+      Math.min(...(b.step_ids as string[]).map(id => steps.findIndex(s => s.id === id))));
+    let previous: string[] = [];
+    for (const module of phaseModules) {
+      module.depends_on = [...previous];
+      module.input_view = "previous_output";
+      const stepsInModule = (module.step_ids as string[]).map(id => steps.find(s => s.id === id)!);
+      const stage = stepsInModule.some(remote) ? "model" : "local";
+      for (const step of stepsInModule) {
+        step.parameters = step.parameters.filter(([key]) =>
+          key !== "execution_schedule" && key !== `execution_stage_${phase}`
+          && key !== `parallel_group_${phase}` && key !== `parallel_leader_${phase}`);
+        step.parameters.push(["execution_schedule", "local-first"], [`execution_stage_${phase}`, stage]);
+      }
+      previous = [module.id as string];
+    }
+  }
+  for (const step of steps) {
+    step.parameters = step.parameters.filter(([key]) => key !== "evaluation_view");
+    step.parameters.push(["evaluation_view", "previous_output"]);
+  }
+  for (const step of steps) step.parameters = [...new Map(step.parameters)];
+}

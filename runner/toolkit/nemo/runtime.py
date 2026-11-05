@@ -1429,6 +1429,19 @@ def _colang1_results(
     return ordered, payloads
 
 
+def _trace_precedence(binding: "NeMoActionBinding") -> int | None:
+    value = binding.parameter("precedence")
+    return int(value) if value is not None and str(value).isdigit() else None
+
+
+def _trace_rank_suffix(binding: "NeMoActionBinding") -> str:
+    precedence = _trace_precedence(binding)
+    if precedence is None:
+        return ""
+    view = binding.parameter("evaluation_view") or "previous_output"
+    return f" [rank={precedence}, view={view}]"
+
+
 def _action_evidence(value: Any) -> Any:
     if isinstance(value, RailOutcome):
         return value.metadata.get("tasklattice_result")
@@ -2200,7 +2213,8 @@ def _trace(
                     name=f"{selected_binding.policy_id}@{selected_binding.policy_version}",
                     status=policy_status,
                     outcome=policy_status,
-                    detail="Executed the immutable Policy binding inside an official NeMo Rail.",
+                    detail="Executed the immutable Policy binding inside an official NeMo Rail."
+                    + _trace_rank_suffix(selected_binding),
                     duration_ms=sum(item.latency_ms for item in selected),
                     parent_id=rail_id,
                     verdict=policy_verdict,
@@ -2208,6 +2222,8 @@ def _trace(
                     capability=selected_binding.capability,
                     policy_id=selected_binding.policy_id,
                     policy_version=selected_binding.policy_version,
+                    precedence=_trace_precedence(selected_binding),
+                    evaluation_view=selected_binding.parameter("evaluation_view"),
                     rail_type=request.phase,
                     flow_name=(
                         selected_binding.flow_name
@@ -2414,7 +2430,7 @@ def _trace(
                 name=binding.action_name or binding.id,
                 status=item.result.verdict,
                 outcome=item.result.verdict,
-                detail=item.result.reason or "NeMo Action completed.",
+                detail=(item.result.reason or "NeMo Action completed.") + _trace_rank_suffix(binding),
                 evidence=json.dumps({
                     "policy_action": (
                         "block" if item.result.verdict == "error" and _binding_fails_closed(request, binding)
@@ -2434,6 +2450,8 @@ def _trace(
                     or root_id
                 ),
                 contract_ref=binding.contract_ref,
+                precedence=_trace_precedence(binding),
+                evaluation_view=binding.parameter("evaluation_view"),
                 verdict=item.result.verdict,
                 route=(
                     "enforce" if item.result.verdict == "matched" and _runtime_action(item) != "allow" else
