@@ -11,14 +11,13 @@ from tests.control_plane.plan_fixtures import _controller_plans
 from tests.tcp import tcp_server
 
 
-@pytest.fixture(scope="module")
-def plan():
-    return _controller_plans()["mix"]
-
-
 @pytest.mark.parametrize("direction", ["request", "response"])
-@pytest.mark.parametrize("fail_rule,status", [("r-mask", 200), ("r-block", 503)])
-async def test_network_adapters_preserve_core_disposition_and_execution_status(plan, direction, fail_rule, status):
+@pytest.mark.parametrize("plan_key,fail_rule,status", [
+    ("blockfirst", "r-mask", 200),   # Block before the failing check: 200.
+    ("mix", "r-block", 503),         # Failing check is reached first: 503.
+])
+async def test_network_adapters_preserve_core_disposition_and_execution_status(plan_key, direction, fail_rule, status):
+    plan = _controller_plans()[plan_key]
     async with online_app(plan, capture="trace", recorder=Recorder(fail_rule)) as (app, _, recorder, telemetry):
         async with tcp_server(app) as url:
             async with httpx.AsyncClient(base_url=url) as client:
