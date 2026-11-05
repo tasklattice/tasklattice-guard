@@ -7,8 +7,10 @@ Status: proposed implementation specification for review. No runtime code has be
 
 Deployed to the OrbStack `tali` release and verified with the CLI:
 
-- Default Guardrail local-only: 748/748 passed, 0 model invocations, p95 793 ms.
+- Default Guardrail local-only: 748/748 passed, 0 model invocations, p95 873 ms.
 - All local Policy package suites: 1150 passed, 18 not run.
+- Full Python control-plane suite: 3792 passed after the Rank Mode cleanup.
+- Full Python data-plane suite: uses the authored output/phrase order.
 - Every step reads `previous_output`; the executed order is the authored Policy
   order and the Rule order inside each Policy.
 - A candidate currently covers a contiguous run of Rules with the same action.
@@ -20,13 +22,21 @@ Deployed to the OrbStack `tali` release and verified with the CLI:
   candidates read the rewritten content. A model Policy authored after a local
   Transform receives the redacted content (covered by
   `test_default_model_runtime.py`).
+- Output parallel groups are emitted only for `full_buffered` delivery. A
+  `window_buffered` or `interruptible` plan cannot carry output groups; it stays
+  sequential and the compiler rejects any contradictory group metadata.
 - Trace evidence carries `rank`, `policyRank`, `ruleRank` and
   `view=previous_output`. Disabled Rules retained in `ruleOrder` keep their
   rank slot; enabled candidates do not renumber around them.
+- Full-evidence terminal Block proof accepts authored `previous_output` views.
+  An independent diagnostic failure cannot invalidate a verified target Block.
 - Custom Colang flows are rejected at compilation. They have no expandable Rule
   rank; declarative Rules must be used instead.
-- Streaming still uses the existing buffered/incremental delivery decision; the
-  dedicated Rank Mode streaming adapter is not yet separate from that path.
+- Streaming uses the existing complete-response/Incremental delivery contract.
+  Fully buffered output applies Rank Mode transforms before release.
+- Configured phrase entries follow authored order: a matching earlier mask can
+  make a later Block literal unreachable, and the artifact/surface tests reflect
+  that behavior.
 
 ## 1. Purpose
 
