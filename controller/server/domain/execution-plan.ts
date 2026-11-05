@@ -78,7 +78,7 @@ export function scheduleChecks<T extends Step>(steps: T[], modules: Module[], cu
  * every preceding Transform. Independent read-only checks inside the same
  * content version share a parallel group; Transform-capable steps end the
  * segment. No latency reordering and no cross-segment parallelism. */
-export function scheduleRankedChecks<T extends Step>(steps: T[], modules: Module[]): void {
+export function scheduleRankedChecks<T extends Step>(steps: T[], modules: Module[], parallelOutput = true): void {
   for (const phase of ["input", "output"] as const) {
     const phaseModules = modules.filter(m => m.phase === phase).sort((a, b) =>
       Math.min(...(a.step_ids as string[]).map(id => steps.findIndex(s => s.id === id))) -
@@ -97,7 +97,7 @@ export function scheduleRankedChecks<T extends Step>(steps: T[], modules: Module
     let index = 0;
     while (index < phaseModules.length) {
       let end = index + 1;
-      if (eligible(phaseModules[index]!)) {
+      if ((phase !== "output" || parallelOutput) && eligible(phaseModules[index]!)) {
         while (end < phaseModules.length && eligible(phaseModules[end]!)) end++;
       }
       const members = phaseModules.slice(index, end);

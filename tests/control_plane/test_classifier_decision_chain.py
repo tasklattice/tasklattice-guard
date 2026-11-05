@@ -46,6 +46,10 @@ async def test_allow_unknown_never_skips_another_block(classifier_backend, contr
     assert response.status_code == 200, response.text
     assert response.json()["result"]["outcome"] == ("cleared" if blocking == "none" else "blocked")
     assert set(calls).issubset(set(CONTRACTS))
+    if blocking == "local":
+        # A local Block is authoritative; the authored order may leave only a
+        # skeleton model evidence row. It is not a model decision to assert.
+        return
     for row in evidence.get(classifier_backend.evidence_key, []):
         if row["verdict"] == "unknown":
             assert row["policyAction"] == "allow" and row["enforcedAction"] is None

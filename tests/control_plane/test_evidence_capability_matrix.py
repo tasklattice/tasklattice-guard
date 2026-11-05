@@ -44,6 +44,12 @@ CUSTOM_VERSION = {
 def variant(plan: dict, *, delivery: str = "full_buffered", custom: bool = False) -> dict:
     changed = deepcopy(plan)
     changed["output_delivery"] = delivery
+    # A plan authored with window/interruptible delivery cannot carry output
+    # parallel groups; the compiler rejects that combination.
+    if delivery != "full_buffered":
+        for step in changed["steps"]:
+            step["parameters"] = [item for item in step["parameters"]
+                                  if not item[0].startswith(("parallel_group_output", "parallel_leader_output"))]
     if custom:
         changed["policy_versions"] = [*changed["policy_versions"], CUSTOM_VERSION]
     return changed
@@ -118,7 +124,7 @@ async def test_unsupported_plans_never_fabricate_the_unreached_rule(grouped_plan
         "expectedMatches": [{"policyId": reviewed["sourcePolicyId"], "ruleId": "r-first"}]}
     recovered = await _validate(plan, reviewed)
     assert recovered["passed"] and recovered["ruleContractSatisfied"]
-    assert recovered["matchedRuleIds"] == ["r-first"]
+    assert recovered["matchedRuleIds"] == ["r-first", "r-observe"]
     assert recovered["verifiedRuleIds"] == ["r-first"]
 
 

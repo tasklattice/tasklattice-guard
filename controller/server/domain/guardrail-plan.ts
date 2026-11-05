@@ -394,7 +394,7 @@ export function buildGuardrailPlan(input: {
       ["evaluation_view", "previous_output"],
     ];
   }
-  scheduleRankedChecks(steps, modules);
+  scheduleRankedChecks(steps, modules, draft.outputDelivery === "full_buffered");
   const reasoningPolicies = bindings.flatMap((binding) => binding.reasoningPolicy ? [{
     id: `automated-reasoning:${binding.reasoningPolicy.policyId}:${binding.reasoningPolicy.policyVersion}`,
     policy_id: binding.reasoningPolicy.policyId,
