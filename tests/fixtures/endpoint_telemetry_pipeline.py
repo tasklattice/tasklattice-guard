@@ -85,7 +85,7 @@ async def exercise(endpoint: str, token: str, scenario: str) -> dict:
             async def record(response):
                 uploads.append(response.status_code)
 
-            async with httpx.AsyncClient(event_hooks={"response": [record]}) as client:
+            async with httpx.AsyncClient(timeout=httpx.Timeout(30.0), event_hooks={"response": [record]}) as client:
                 # A fixed bound also exposes the pre-fix repeated-413 stall.
                 for _ in range(10):
                     try:
