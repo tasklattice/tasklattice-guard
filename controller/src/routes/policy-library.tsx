@@ -1,5 +1,4 @@
 import { projectParams } from "@/lib/project-paths";
-import { ProjectResourceBadge } from "@/components/project-resource-badge";
 import { hasPermission } from "../../shared/rbac";
 import { SecuritySeverityBadge } from "@/components/security-severity";
 import { useEffect, useMemo, useRef, useState, type ReactNode, type RefObject } from "react";
@@ -422,7 +421,7 @@ export function PolicyCard({ policy, projectId, onOpen, onExport, onDelete, noti
       <div className="flex min-w-0 items-start justify-between gap-3">
         <h3 className="line-clamp-2 min-w-0 flex-1 text-sm leading-5 font-semibold">{policy.name}</h3>
         {policy.version === "0" ? <Badge variant="outline">Draft</Badge> : null}
-        <ProjectResourceBadge ownerProjectId={policy.project_id} activeProjectId={projectId} />
+        
       </div>
       <p className="mt-2 line-clamp-2 min-h-10 text-xs leading-5 text-muted-foreground">{policy.description}</p>
       <div className="mt-3 flex flex-wrap gap-1.5">

@@ -10,7 +10,7 @@ describe("Controller authorization recovery", () => {
     const fetch = vi.fn().mockResolvedValue(new Response(JSON.stringify({error: {code: "project_changed", message: "Refresh before continuing"}}), {status: 409}));
     vi.stubGlobal("fetch", fetch);
     const dispatch = vi.spyOn(window, "dispatchEvent");
-    await expect(requestController("/api/v1/account/shares", {method: "POST", body: "{}"})).rejects.toThrow("Refresh before continuing");
+    await expect(requestController("/api/v1/guardrails", {method: "POST", body: "{}"})).rejects.toThrow("Refresh before continuing");
     expect((fetch.mock.calls[0]![1].headers as Headers).get("x-project-id")).toBe("project-a");
     expect(fetch).toHaveBeenCalledTimes(1);
     expect(dispatch.mock.calls.some(([event]) => event.type === "tasklattice:unauthorized")).toBe(true);

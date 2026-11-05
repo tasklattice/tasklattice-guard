@@ -101,9 +101,8 @@ describe.skipIf(!url)("global model prices and immutable Guardrail costs", () =>
   it("keeps global pricing controls platform-only and scopes project Model prices", async () => {
     await database.pool.query("INSERT INTO model_definition(id,project_id,provider_id,name,model,profile) VALUES ('model-b','projectB','provider-1','B Safety','llama-guard-3-8b','generic-chat')");
     await database.pool.query("UPDATE model_definition SET project_id='projectA' WHERE id='model-2'");
-    await database.pool.query("INSERT INTO resource_share(id,owner_project_id,recipient_project_id,resource_type,resource_id) VALUES ('share-model-2','projectA','projectB','model','model-2')");
     const view = await runWithProjectContext({ projectId: 'projectB', role: 'user' }, () => pricing.view());
-    expect(new Set(view.models.map(model => model.modelId))).toEqual(new Set(['model-b', 'model-2']));
+    expect(new Set(view.models.map(model => model.modelId))).toEqual(new Set(['model-b', 'model-1']));
     for (const projectId of ['projectA', 'projectB']) {
       await expect(runWithProjectContext({ projectId, role: 'user' }, () => pricing.configure('model-b',
         { mode: 'manual', rates: { unit: 'free', currency: 'USD' } }, 'user'))).rejects.toMatchObject({ code: 'forbidden' });

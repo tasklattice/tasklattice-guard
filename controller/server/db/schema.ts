@@ -66,22 +66,6 @@ export const projects = pgTable("project", {
   createdAt,
 }, table => [index("project_group_idx").on(table.groupId, table.id), uniqueIndex("project_name_idx").on(table.name)]);
 
-/** A grant permits the recipient to read a resource and its child history.
- * Draft changes, publication, credential operations and deletion remain owner-only.
- */
-export const resourceShares = pgTable("resource_share", {
-  id: text("id").primaryKey(),
-  ownerProjectId: text("owner_project_id").notNull().references(() => projects.id, { onDelete: "cascade" }),
-  recipientProjectId: text("recipient_project_id").notNull().references(() => projects.id, { onDelete: "cascade" }),
-  resourceType: text("resource_type").notNull(),
-  resourceId: text("resource_id").notNull(),
-  createdBy: text("created_by").references(() => user.id),
-  createdAt,
-}, (table) => [
-  uniqueIndex("resource_share_unique_idx").on(table.ownerProjectId, table.recipientProjectId, table.resourceType, table.resourceId),
-  index("resource_share_owner_idx").on(table.ownerProjectId, table.resourceType, table.resourceId),
-]);
-
 export const policyResources = pgTable("policy_resource", {
   projectId: text("project_id").notNull().references(() => projects.id),
   id: text("id").primaryKey(),
@@ -931,7 +915,6 @@ export const outboxEvents = pgTable("controller_outbox", {
 export const schema = {
   projectGroups,
   projects,
-  resourceShares,
   user,
   session,
   account,

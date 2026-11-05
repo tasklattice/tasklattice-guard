@@ -1,7 +1,6 @@
 import { projectParams } from "@/lib/project-paths";
 import { GuardrailRequestRate } from "./guardrail-request-rate";
 import type { GuardrailRequestRates } from "@/lib/observability-api";
-import { ProjectResourceBadge } from "@/components/project-resource-badge";
 import { hasPermission } from "../../shared/rbac";
 import { GuardrailRowActions } from "./guardrail-row-actions";
 import { Link } from "@tanstack/react-router";
@@ -58,7 +57,7 @@ export function GuardrailRegistry({
                 >
                   <ShieldCheck aria-hidden="true" />
                   <span>{guardrail.name}</span>
-                  <ProjectResourceBadge ownerProjectId={guardrail.project_id} activeProjectId={user?.project_id} />
+                  
                 </Link>
               </TableCell>
               <TableCell><StateBadge state={guardrail.status} />

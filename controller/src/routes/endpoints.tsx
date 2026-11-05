@@ -1,5 +1,4 @@
 import { projectParams } from "@/lib/project-paths";
-import { ProjectResourceBadge } from "@/components/project-resource-badge";
 import { hasPermission } from "../../shared/rbac";
 import { EndpointRouterLink } from "@/components/endpoint-router-link";
 import { EndpointSetupBadge } from "@/components/endpoint-setup-badge";
@@ -209,7 +208,7 @@ function EndpointRow({ endpoint, onOpen }: { endpoint: Endpoint; onOpen: () => v
   return <TableRow className="resource-row" onClick={onOpen}>
     <TableCell>
       <button type="button" className="resource-name" onClick={event => { event.stopPropagation(); onOpen(); }} aria-label={t("endpoints.openEndpoint", { name: endpoint.name })}>
-        <EndpointProtocolIcon protocol={endpoint.protocol} size="sm" /><span>{endpoint.name}</span><ProjectResourceBadge ownerProjectId={endpoint.project_id} activeProjectId={user?.project_id} />
+        <EndpointProtocolIcon protocol={endpoint.protocol} size="sm" /><span>{endpoint.name}</span>
       </button>
       <span className="resource-secondary" title={`${t(`endpoints.adapters.${endpoint.adapter_id}`)} · ${endpoint.id}`}>{t(`endpoints.protocolShort.${endpoint.protocol}`)} · {shortId(endpoint.id)}</span>
     </TableCell>
@@ -391,7 +390,7 @@ function EndpointDetailContent({
                 <p className="mt-1 text-xs text-muted-foreground">{t("endpoints.createdAt", { date: formatDate(endpoint.created_at, i18n.language) })}</p>
               </div>
               <EndpointSetupBadge status={endpoint.setup_status} />
-              <ProjectResourceBadge ownerProjectId={endpoint.project_id} activeProjectId={auth.user?.project_id} />
+              
             </div>
             <Button asChild variant="testing"><Link params={projectParams()} to="/$projectId/playground" search={{ mode: "advanced", endpoint: endpoint.id }}><FlaskConical />{t("endpoints.testEndpoint")}</Link></Button>
           </div>

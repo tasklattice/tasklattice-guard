@@ -267,17 +267,6 @@ describe("Router detail workflow", () => {
     }
     expect(screen.queryByLabelText("Route name")).toBeNull();
   });
-  it("keeps shared Routers read-only across routing and endpoint workspaces", async () => {
-    mount({ ...router, projectId: "projectA" });
-    expect(await screen.findByText("Shared from projectA · read-only")).toBeTruthy();
-    fireEvent.click(screen.getByRole("tab", { name: "Routing", exact: true }));
-    expect(screen.queryByRole("button", { name: "Edit routing", exact: true })).toBeNull();
-    expect(screen.queryByRole("button", { name: "Review & submit", exact: true })).toBeNull();
-    fireEvent.click(screen.getByRole("tab", { name: "Endpoints", exact: true }));
-    expect(screen.queryByRole("button", { name: "Bind Endpoints", exact: true })).toBeNull();
-    expect(save).not.toHaveBeenCalled();
-    expect(publish).not.toHaveBeenCalled();
-  });
   it("writes tab changes to the URL and restores externally changed search without remounting", async () => {
     navigation.search = { tab: "monitoring", routeId: "partner" };
     mount();

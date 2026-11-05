@@ -1,5 +1,4 @@
 import { projectParams } from "@/lib/project-paths";
-import { ProjectResourceBadge } from "@/components/project-resource-badge";
 import { hasPermission } from "../../shared/rbac";
 import { useTranslation } from "react-i18next";
 import { discardRouterDraft } from "@/components/traffic-routing/discard-router-draft";
@@ -240,7 +239,7 @@ export function RouterWorkspace({ router }: { router: api.TrafficRouter }) {
 
         </div>}
       />
-      <ProjectResourceBadge ownerProjectId={router.projectId} activeProjectId={auth.user?.project_id} />
+      
       <div className="router-workspace-status">
         <RouterRolloutBadge router={router} revision={revisions.data?.items.find(revision => revision.revision === router.activeRevision)} />
         <p className="text-muted-foreground">

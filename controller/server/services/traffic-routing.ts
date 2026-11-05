@@ -6,7 +6,7 @@ import { isDeepStrictEqual } from "node:util";
 import { randomUUID } from "node:crypto";
 import { and, asc, desc, eq, getTableColumns, gte, inArray, isNull, lte, lt, ne, or, sql } from "drizzle-orm";
 import type { ControllerDatabase } from "../db/client.js";
-import { auditEvents, controllerState, endpoints, guardrails, guardrailVersions, resourceShares, routeAssignments, runnerInstances, runnerPools, telemetryWatermarks, projects, trafficRouterChangeRequests, trafficRouters, trafficRouterRevisions, user, type RouterRevisionContext } from "../db/schema.js";
+import { auditEvents, controllerState, endpoints, guardrails, guardrailVersions, routeAssignments, runnerInstances, runnerPools, telemetryWatermarks, projects, trafficRouterChangeRequests, trafficRouters, trafficRouterRevisions, user, type RouterRevisionContext } from "../db/schema.js";
 import { ConflictError, ControllerError, NotFoundError, ValidationError } from "../domain/errors.js";
 import { capabilityIssues, routingIssues, type RouterChangeRequest, type RouterDraft, type SelectorExpression } from "../../shared/traffic-routing.js";
 import { advisoryTransactionLock } from "../db/postgres-locks.js";

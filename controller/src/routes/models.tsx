@@ -1,5 +1,4 @@
 import { usePageUpdateBlocker } from "@/lib/page-updates";
-import { ProjectResourceBadge } from "@/components/project-resource-badge";
 import { isPlatformAdministrator } from "../../shared/rbac";
 import { useNavigate, useSearch } from "@tanstack/react-router";
 import { ModelPricingPanel } from "@/components/model-pricing";
@@ -846,7 +845,7 @@ function ResourceManagement({ resource, view, administrator, onChanged }: { reso
               const provider = view.providers.find((item) => item.id === model.providerId);
               return (
                 <TableRow key={model.id}>
-                  <TableCell className="pl-5"><div><p className="font-medium">{model.name}</p><code className="mt-1 block max-w-80 truncate text-xs text-muted-foreground" title={model.model}>{model.model}</code><ProjectResourceBadge ownerProjectId={model.projectId} /></div></TableCell>
+                  <TableCell className="pl-5"><div><p className="font-medium">{model.name}</p><code className="mt-1 block max-w-80 truncate text-xs text-muted-foreground" title={model.model}>{model.model}</code></div></TableCell>
                   <TableCell><div className="flex items-start gap-3"><ProviderMark provider={model.providerName} kind={model.providerKind} model={model.model} /><div><p className="mb-1.5 font-medium">{model.providerName}</p>{provider ? <ValidationEvidence kind="provider" status={provider.status} checkedAt={provider.validatedAt} latencyMs={provider.validationLatencyMs} message={provider.validationMessage} /> : <StateBadge state="unavailable" label={t("modelSettings.providerUnavailable")} />}</div></div></TableCell>
                   <TableCell><ModelCallEvidence model={model} checking={isTesting(model.id)} /></TableCell>
                   <TableCell className="text-right tabular-nums">{model.maxConcurrency ?? 2}</TableCell>

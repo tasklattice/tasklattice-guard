@@ -46,7 +46,7 @@ type Transaction = Parameters<
 >[0];
 const bindingsLock = "traffic-router-bindings";
 
-/** Platform allocation, independent of project read-sharing and resource ownership. */
+/** Platform allocation, independent of project resource ownership. */
 export class ProjectGroupService {
   constructor(
     private readonly db: ControllerDatabase,

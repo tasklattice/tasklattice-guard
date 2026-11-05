@@ -18,7 +18,6 @@ describe("Project navigation", () => {
     ["/test1/integration/endpoints", "/$projectId/integration/endpoints", {}],
     ["/test1/logs", "/$projectId/logs", {}],
     ["/test1/billing", "/$projectId/billing", {}],
-    ["/test1/sharing", "/$projectId/sharing", {}],
     ["/test1/settings/health", "/$projectId/settings/health", {}],
     ["/test1/settings/runner", "/$projectId/settings/runner", {}],
     ["/test1/settings/version", "/$projectId/settings/version", {}],

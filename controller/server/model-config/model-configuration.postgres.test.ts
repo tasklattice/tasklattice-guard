@@ -30,7 +30,6 @@ describe.skipIf(!url)("Current model configuration PostgreSQL semantics", () => 
     await database?.drop();
   });
   beforeEach(async () => {
-    await pool.query('DELETE FROM resource_share');
     await pool.query('DELETE FROM model_definition WHERE id <> $1', [modelId]);
     await pool.query('DELETE FROM model_provider WHERE id <> $1', [providerId]);
     await pool.query('DELETE FROM model_configuration_revision');
@@ -51,7 +50,7 @@ describe.skipIf(!url)("Current model configuration PostgreSQL semantics", () => 
     expect(await service.modelHealth([])).toEqual({ status: "healthy", reason: "not_required", bindings: [] });
   });
 
-  it('isolates project Models, exposes global Provider metadata, and makes shared Models read-only', async () => {
+  it('isolates project Models and exposes global Provider metadata', async () => {
     const projectBModelId = randomUUID();
     await pool.query("UPDATE model_definition SET project_id='projectA' WHERE id=$1", [modelId]);
     await pool.query("UPDATE model_provider SET credential_hint='private-key-hint',validation_message='internal connection details' WHERE id=$1", [providerId]);
@@ -77,17 +76,6 @@ describe.skipIf(!url)("Current model configuration PostgreSQL semantics", () => 
     await expect(runWithProjectContext({ projectId: 'projectB', role: 'user' }, () =>
       service.revalidateModel(modelId, 'group_b'))).rejects.toMatchObject({ code: 'not_found' });
 
-    await pool.query("INSERT INTO resource_share (id,owner_project_id,recipient_project_id,resource_type,resource_id) VALUES ($1,'projectA','projectB','model',$2)",
-      [randomUUID(), modelId]);
-    const sharedView = await runWithProjectContext({ projectId: 'projectB', role: 'user' }, () => service.view());
-    expect(new Set(sharedView.models.map((item) => item.id))).toEqual(new Set([modelId, projectBModelId]));
-    for (const mutate of [() => service.revalidateModel(modelId, 'group_b'),
-      () => service.testModelConnection(modelId, 'group_b'),
-      () => service.configureModel(modelId, { profile: 'generic-chat', timeoutSeconds: 20, maxTokens: 128 }, 'group_b'),
-      () => service.configureRuntimeSettings(modelId, { maxConcurrency: 4 }, 'group_b'),
-      () => service.deleteModel(modelId, 'group_b')]) {
-      await expect(runWithProjectContext({ projectId: 'projectB', role: 'user' }, mutate)).rejects.toMatchObject({ code: 'not_found' });
-    }
     const owned = await runWithProjectContext({ projectId: 'projectB', role: 'user' }, () =>
       service.configureModel(projectBModelId, { profile: 'generic-chat', timeoutSeconds: 45, maxTokens: 256 }, 'group_b'));
     expect(owned).toMatchObject({ projectId: 'projectB', timeoutSeconds: 45, maxTokens: 256 });
@@ -98,32 +86,11 @@ describe.skipIf(!url)("Current model configuration PostgreSQL semantics", () => 
     await runWithProjectContext({ projectId: 'projectB', role: 'user' }, () => service.deleteModel(projectBModelId, 'group_b'));
     expect((await pool.query('SELECT id FROM model_definition WHERE id=$1', [projectBModelId])).rows).toHaveLength(0);
 
-    await pool.query("DELETE FROM resource_share WHERE recipient_project_id='projectB'");
-    const revokedView = await runWithProjectContext({ projectId: 'projectB', role: 'user' }, () => service.view());
-    expect(revokedView.providers.map((item) => item.id)).toEqual([providerId]);
-    expect(revokedView.models).toEqual([]);
+    const projectBAfter = await runWithProjectContext({ projectId: 'projectB', role: 'user' }, () => service.view());
+    expect(projectBAfter.providers.map((item) => item.id)).toEqual([providerId]);
+    expect(projectBAfter.models).toEqual([]);
   });
 
-  it('preserves global detector readiness without exposing private Model identifiers or names', async () => {
-    const revisionId = await seed(true);
-    const checkedAt = new Date().toISOString();
-    await pool.query("UPDATE model_configuration_revision SET state='active',validation_report=$2 WHERE id=$1", [revisionId,
-      { valid: true, checkedAt, checks: [{ id: `probe:content_safety.input:${modelId}`, status: 'passed', scope: 'capability', evidenceKind: 'nemo-rail-v1', message: 'Passed' }], contractCoverage: [], policies: [] }]);
-    const privateReadiness = await runWithProjectContext({ projectId: 'projectB', role: 'user' }, () => service.readinessView());
-    const privateJson = JSON.stringify(privateReadiness);
-    expect(privateJson).not.toContain(modelId);
-    expect(privateJson).not.toContain('Synthetic');
-    const hiddenId = privateReadiness.active!.assignments.bindings['content_safety.input'];
-    expect(privateReadiness.models).toContainEqual({ id: hiddenId, name: 'Configured detector' });
-    expect(privateReadiness.active!.validationReport!.checks).toContainEqual({ id: `probe:content_safety.input:${hiddenId}`, status: 'passed', evidenceKind: 'nemo-rail-v1' });
-    expect((await runWithProjectContext({ projectId: 'projectB', role: 'user' }, () => service.activeConfiguration()))!.revisionId).toBe(revisionId);
-
-    await pool.query("INSERT INTO resource_share (id,owner_project_id,recipient_project_id,resource_type,resource_id) VALUES ($1,'projectA','projectB','model',$2)", [randomUUID(), modelId]);
-    const sharedReadiness = await runWithProjectContext({ projectId: 'projectB', role: 'user' }, () => service.readinessView());
-    // A stale project-owned grant cannot make a platform-owned Model readable.
-    expect(sharedReadiness.active!.assignments.bindings['content_safety.input']).not.toBe(modelId);
-    expect(JSON.stringify(sharedReadiness)).not.toContain('Synthetic');
-  });
 
   it('lets projects independently register and configure the same platform Model', async () => {
     const fetcher = vi.fn(async () => Response.json({ choices: [{ message: { content: 'Safe' } }] }));
@@ -140,8 +107,9 @@ describe.skipIf(!url)("Current model configuration PostgreSQL semantics", () => 
     await runWithProjectContext({ projectId: 'projectB', role: 'user' }, () => registration.configureModel(ownedB.id,
       { profile: 'generic-chat', timeoutSeconds: 45, maxTokens: 256 }, 'group_b'));
     const other = await runWithProjectContext({ projectId: 'projectC', role: 'user' }, () => registration.view());
-    expect(other.models).toHaveLength(1);
-    expect(other.models[0]).toMatchObject({ id: ownedC.id, projectId: 'projectC', profile: input.profile, timeoutSeconds: 20 });
+    expect(other.models).toHaveLength(2);
+    expect(other.models).toContainEqual(expect.objectContaining({ id: modelId, projectId: null }));
+    expect(other.models).toContainEqual(expect.objectContaining({ id: ownedC.id, projectId: 'projectC', profile: input.profile, timeoutSeconds: 20 }));
     expect((await pool.query('SELECT DISTINCT project_id FROM audit_event WHERE resource_id=$1', [ownedB.id])).rows)
       .toEqual([{ project_id: 'projectB' }]);
     await expect(runWithProjectContext({ projectId: 'projectB', role: 'user' }, () => registration.deleteModel(ownedC.id, 'group_b')))
@@ -157,7 +125,7 @@ describe.skipIf(!url)("Current model configuration PostgreSQL semantics", () => 
     expect(platformView.models.map(model => model.id)).toEqual([modelId]);
     expect(platformView.models[0]).toMatchObject({ projectId: null, protocolEditable: true });
     const projectView = await runWithProjectContext({ projectId: 'projectB', role: 'user' }, () => service.view());
-    expect(projectView.models.map(model => model.id)).toEqual([privateId]);
+    expect(new Set(projectView.models.map(model => model.id))).toEqual(new Set([modelId, privateId]));
     for (const mutate of [() => service.revalidateModel(privateId, 'admin'),
       () => service.testModelConnection(privateId, 'admin'),
       () => service.configureModel(privateId, { profile: 'generic-chat', timeoutSeconds: 20, maxTokens: 128 }, 'admin'),

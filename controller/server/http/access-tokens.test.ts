@@ -138,9 +138,8 @@ describe("Access token HTTP authority", () => {
     expect(await (await request("GET", "/account/identity")).json()).toMatchObject({ effectivePermissions: { audit: "read" } });
   });
   it.each([["GET", "/account/access-tokens"], ["POST", "/account/access-tokens"], ["DELETE", "/account/access-tokens/another"],
-    ["GET", "/account/projects"], ["GET", "/account/shareable-resources"], ["GET", "/account/shares"],
-    ["POST", "/account/shares"], ["DELETE", "/account/shares/another"],
-  ])("tokens cannot manage account credentials or sharing: %s %s", async (method, path) => {
+    ["GET", "/account/projects"],
+  ])("tokens cannot manage account credentials: %s %s", async (method, path) => {
     const { request, accessTokens } = setup();
     expect((await request(method!, path!, "Bearer test", method === "POST" ? {} : undefined)).status).toBe(403);
     expect(accessTokens.create).not.toHaveBeenCalled(); expect(accessTokens.list).not.toHaveBeenCalled(); expect(accessTokens.revoke).not.toHaveBeenCalled();

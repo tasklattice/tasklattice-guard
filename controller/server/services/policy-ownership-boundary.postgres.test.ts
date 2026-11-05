@@ -20,16 +20,14 @@ describe.skipIf(!url)("Policy child ownership across representations", () => {
     await database.pool.query(`INSERT INTO policy_resource_validation (id,policy_id,revision,status,tests)
       VALUES ('private-report','policy-conflict',1,'passed','[]');
       INSERT INTO policy_resource_version (policy_id,version,revision,definition,view,digest)
-      VALUES ('policy-conflict','v1',1,'{}','{"id":"policy-conflict","version":"v1"}','digest');
-      INSERT INTO resource_share (id,owner_project_id,recipient_project_id,resource_type,resource_id)
-      VALUES ('share-policy','projectA','projectB','policy','policy-conflict');`);
+      VALUES ('policy-conflict','v1',1,'{}','{"id":"policy-conflict","version":"v1"}','digest');`);
   }, 30000);
   afterAll(async () => { await database?.drop(); });
 
-  it("permits the owner and an explicit recipient but rejects unrelated projects and recipient writes", async () => {
+  it("permits the owner but rejects unrelated projects and recipient writes", async () => {
     await expect(asProject("projectA", () => service.report("policy-conflict"))).resolves.toMatchObject({ id: "private-report" });
-    await expect(asProject("projectB", () => service.report("policy-conflict"))).resolves.toMatchObject({ id: "private-report" });
-    await expect(asProject("projectB", () => service.get("policy-conflict"))).resolves.toMatchObject({ published_version: "v1" });
+    await expect(asProject("projectB", () => service.report("policy-conflict"))).rejects.toMatchObject({ code: "not_found" });
+    await expect(asProject("projectB", () => service.get("policy-conflict"))).rejects.toMatchObject({ code: "not_found" });
     await expect(asProject("projectC", () => service.report("policy-conflict"))).rejects.toMatchObject({ code: "not_found" });
     await expect(asProject("projectB", () => service.publish("policy-conflict", 1, "actor"))).rejects.toMatchObject({ code: "not_found" });
     // Shipped definitions are intentionally platform catalog content.
@@ -52,7 +50,7 @@ describe.skipIf(!url)("Policy child ownership across representations", () => {
     expect((await database.pool.query("SELECT revision FROM policy_resource WHERE id='policy-conflict'")).rows[0].revision).toBe(1);
     expect((await database.pool.query("SELECT count(*)::int AS n FROM policy_resource_version WHERE policy_id='policy-conflict'")).rows[0].n).toBe(1);
     await database.pool.query("DELETE FROM policy_imported_version WHERE policy_id='policy-conflict'");
-    await expect(asProject("projectB", () => service.report("policy-conflict"))).resolves.toMatchObject({ id: "private-report" });
+    await expect(asProject("projectB", () => service.report("policy-conflict"))).rejects.toMatchObject({ code: "not_found" });
     await database.pool.query(`INSERT INTO policy_record (id,project_id,name,owner,draft)
       VALUES ('policy-conflict','projectC','Legacy','Owner','{}')`);
     await expect(asProject("projectA", () => service.report("policy-conflict"))).rejects.toMatchObject({ code: "not_found" });

@@ -29,6 +29,13 @@
       "when": 1793800000000,
       "tag": "0003_drop_telemetry_progress",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1793900000000,
+      "tag": "0004_drop_resource_shares",
+      "breakpoints": true
     }
   ]
 }

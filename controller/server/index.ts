@@ -15,7 +15,6 @@ import { ControllerMetrics } from "./metrics.js";
 import { BootstrapAccountSynchronizer } from "./bootstrap.js";
 import { RunnerPlaygroundClient } from "./playground/service.js";
 import { ModelConfigurationService } from "./model-config/service.js";
-import { ProjectShareService } from "./services/project-shares.js";
 import { RunnerLeaseLedger } from "./services/runner-lease-ledger.js";
 
 const config = loadConfig();
@@ -64,7 +63,6 @@ const app = createHttpApp({
   ssoHandler: createSsoHandler(config, db),
   accessTokens: new AccessTokenService(db),
   projects,
-  projectShares: new ProjectShareService(db),
   service,
   runnerControl,
   metrics,

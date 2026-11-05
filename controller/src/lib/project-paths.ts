@@ -1,7 +1,7 @@
 import { currentProjectId } from "./project-context";
 import { reservedProjectPaths } from "../../shared/console-paths";
 
-const projectRoots = ["/", "/guardrails", "/policy-library", "/playground", "/integration/routers", "/integration/endpoints", "/logs", "/billing", "/sharing"];
+const projectRoots = ["/", "/guardrails", "/policy-library", "/playground", "/integration/routers", "/integration/endpoints", "/logs", "/billing"];
 const projectSettings = ["/settings", "/settings/runner", "/settings/health", "/settings/version"];
 
 /** Resource paths used to identify project pages in the shell. */

@@ -69,7 +69,6 @@ import {
 } from "../playground/service.js";
 import { isGuardrailVersionId } from "../../shared/guardrail-version.js";
 import { SSO_PROVIDER_ID } from "../sso-config.js";
-import { ProjectShareService } from "../services/project-shares.js";
 import { runWithProjectReadContext, runWithUserContext, runWithProjectContext } from "../services/project-context.js";
 import type { PlatformStatusSnapshot } from "../../shared/platform-status.js";
 import { protectionDirectories } from "../../shared/protection-map.js";
@@ -211,19 +210,12 @@ const runtimeEventBatchInput = z.object({
   }
 });
 const modelCredentialRefsInput = z.object({ refs: z.array(z.string().uuid()).max(64), leaseId: z.string().uuid().optional() });
-const shareInput = z.object({
-  resourceType: z.enum(["router", "endpoint", "policy", "model"]),
-  resourceId: z.string().trim().min(1).max(256),
-  recipientProjectId: z.string().trim().min(1).max(128),
-});
-
 export function createHttpApp(input: {
   config: ControllerConfig;
   auth: ControllerAuth;
   ssoHandler?: (request: Request) => Promise<Response>;
   accessTokens?: AccessTokenService;
   projects?: ProjectService;
-  projectShares?: ProjectShareService;
   service: ControlPlaneService;
   runnerControl: RunnerControlServer;
   metrics: ControllerMetrics;
@@ -490,26 +482,6 @@ export function createHttpApp(input: {
       effectivePermissions: actor.permissions ? effectiveTokenPermissions(actor.permissions, actor.role) : null });
   });
 
-  const shareService = () => {
-    if (!input.projectShares) throw new ControllerError("Project sharing is unavailable.", 503, "sharing_unavailable");
-    return input.projectShares;
-  };
-  app.get("/api/v1/account/share-recipients", authenticated, projectUser, browserSession, async context =>
-    context.json(await shareService().listProjects(directoryQuerySchema.parse(context.req.query()))));
-  app.get("/api/v1/account/shareable-resources", authenticated, projectUser, browserSession, async context =>
-    context.json({ items: await shareService().listOwnedResources() }));
-  app.get("/api/v1/account/shares", authenticated, projectUser, browserSession, async context =>
-    context.json({ items: await shareService().listShares() }));
-  app.post("/api/v1/account/shares", authenticated, projectUser, browserSession, async context => {
-    const body = shareInput.parse(await context.req.json());
-    return context.json({ share: await shareService().createShare(body, context.get("actor").id) }, 201);
-  });
-  app.delete("/api/v1/account/shares/:id", authenticated, projectUser, browserSession, async context => {
-    await shareService().revokeShare(context.req.param("id"), context.get("actor").id);
-    return context.body(null, 204);
-  });
-
-
   app.get("/api/v1/model-pricing", authenticated, async context => context.json(await input.service.pricing.view()));
   app.get("/api/v1/model-pricing/catalog", authenticated, async context => {
     const query = z.object({ q: z.string().trim().min(2).max(256) }).parse(context.req.query());
@@ -772,7 +744,6 @@ export function createHttpApp(input: {
     return context.json({ items, count: items.length });
   });
   app.post("/api/v1/playground/guardrails/:guardrailId/draft-previews", authenticated, async (context) => {
-    if (input.projectShares) await input.projectShares.assertOwner("guardrail", context.req.param("guardrailId"));
     const playgroundModel = await currentPlaygroundModel();
     if (!playgroundModel || !playgroundRunner) {
       throw new ControllerError("Guardrail Playground has no model connection configured.", 503, "playground_unavailable");
@@ -808,7 +779,6 @@ export function createHttpApp(input: {
     }
   });
   app.post("/api/v1/playground/guardrails/:guardrailId/draft-interactions", authenticated, async (context) => {
-    if (input.projectShares) await input.projectShares.assertOwner("guardrail", context.req.param("guardrailId"));
     const playgroundModel = await currentPlaygroundModel();
     if (!playgroundModel || !playgroundRunner) {
       throw new ControllerError("Guardrail Playground has no model connection configured.", 503, "playground_unavailable");
@@ -1289,10 +1259,6 @@ export function createHttpApp(input: {
             note: "Draft matching only. Target weights are candidates; no runtime assignment or GuardRail execution." } });
       }
       if (!router.activeRevision || router.activeRevision !== body.expectedRevision) throw new ValidationError("Published Router revision changed. Reload before testing.");
-      if (input.projectShares) {
-        await input.projectShares.assertOwner("router", body.targetId);
-        await input.projectShares.assertOwner("endpoint", body.endpointId);
-      }
       if (!router.endpointIds.includes(body.endpointId)) throw new ValidationError("Select an Endpoint bound to this Router.");
       routingInputSchema.parse({ endpointId: body.endpointId, fields: body.fields, business_request: businessRequest, endpoint_request: body.endpointRequest });
     } else {
@@ -1303,7 +1269,6 @@ export function createHttpApp(input: {
         await input.service.verifyScanTestCredential(body.targetId, body.credential);
       }
       if (body.configuration !== "published" || body.action !== "execute") throw new ValidationError("Endpoint tests execute the deployed configuration.");
-      if (input.projectShares) await input.projectShares.assertOwner("endpoint", body.targetId);
     }
     if (!playgroundRunner) throw new ControllerError("Runner is not configured.", 503, "playground_runner_unavailable");
     return context.json(await (await runnerForProject(requireProjectId(context.get("actor").projectId))).testPath(body, endpointAdapter));
@@ -1589,10 +1554,9 @@ function authentication(auth: ControllerAuth, tokens?: AccessTokenService, proje
     if (role === "user" && projectId && projects && !accountRecovery && !await projects.runnerInitialized(projectId))
       return context.json({error: {code: "project_not_initialized", message: "This project's Runner environment has not been initialized. Contact an administrator."}}, 403);
     const permission = requiredAccountPermission(context.req.method, context.req.path);
-    if (membership?.access === "read" && (permission?.action === "write"
-      || (!['GET', 'HEAD'].includes(context.req.method) && context.req.path.startsWith("/api/v1/account/shares"))))
+    if (membership?.access === "read" && permission?.action === "write")
       return context.json({ error: { code: "project_read_only", message: "Your Keycloak role grants read-only project access." } }, 403);
-    const accountRoute = /^\/api\/v1\/account\/(?:identity|projects?|share-recipients|project-access(?:\/refresh)?|access-tokens(?:\/[^/]+)?|shareable-resources|shares(?:\/[^/]+)?)$/.test(context.req.path);
+    const accountRoute = /^\/api\/v1\/account\/(?:identity|projects?|project-access(?:\/refresh)?|access-tokens(?:\/[^/]+)?)$/.test(context.req.path);
     if ((!permission && !accountRoute) || (permission && !hasPermission(role, permission.resource, permission.action)))
       return context.json({ error: { code: "forbidden", message: "Your account role does not allow this operation." } }, 403);
     await runAsActor(context, { id: session.user.id, role, projectId, sessionId: session.session?.id }, next);

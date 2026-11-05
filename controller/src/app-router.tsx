@@ -19,7 +19,6 @@ import { PolicyLibraryPage } from "@/routes/policy-library";
 import { AccountPage } from "@/routes/account";
 import { HelpPage, DocumentNotFound } from "@/routes/help";
 import { getHelpContent } from "@/features/help-content";
-import { SharingPage } from "@/routes/sharing";
 import { AuditLogPage } from "@/routes/audit-log";
 import { VersionPage } from "@/routes/version";
 import { HealthPage } from "@/routes/status";
@@ -37,7 +36,6 @@ const projectRoute = createRoute({ getParentRoute: () => rootRoute, path: "/$pro
   if (!projectIdSchema.safeParse(params.projectId).success || reservedProjectPaths.has(params.projectId)) throw notFound();
 } });
 const dashboardRoute = createRoute({ getParentRoute: () => projectRoute, path: "/", component: DashboardPage });
-const sharingRoute = createRoute({ getParentRoute: () => projectRoute, path: "sharing", component: SharingPage });
 const guardrailsRoute = createRoute({ getParentRoute: () => projectRoute, path: "guardrails", component: GuardrailsPage });
 const guardrailDetailRoute = createRoute({ getParentRoute: () => projectRoute, path: "guardrails/$guardrailId", validateSearch: (search: Record<string, unknown>): { tab?: string; report?: string; version?: string; compare?: string; window?: "1h" | "24h" | "7d" | "15d" | "30d"; severity?: string; pageSize?: 25 | 50; metric?: RuntimeMetricKey } => ({
   version: typeof search.version === "string" && search.version ? search.version : undefined,
@@ -131,7 +129,6 @@ export const routeTree = rootRoute.addChildren([
   indexRoute,
   projectRoute.addChildren([
     dashboardRoute,
-    sharingRoute,
     guardrailsRoute,
     guardrailDetailRoute,
     policyLibraryRoute,

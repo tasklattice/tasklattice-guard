@@ -63,7 +63,6 @@ export function pagePermission(pathname: string): { resource: PermissionResource
     ["/guardrails", "guardrails", "write"], ["/policy-library", "policies", "write"],
     ["/playground", "playground", "write"], ["/integration/routers", "routers", "write"],
     ["/integration/endpoints", "endpoints", "write"],
-    ["/sharing", "guardrails", "write"],
   ];
   const route = routes.find(([prefix]) => path === prefix || path.startsWith(`${prefix}/`));
   return route ? { resource: route[1], action: route[2] } : null;

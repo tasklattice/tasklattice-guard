@@ -13,7 +13,6 @@ import type { RouterDraft } from "../../shared/traffic-routing.js";
 import { ControlPlaneService } from "./control-plane.js";
 import { routingEventSchema, type RoutingEvent } from "./traffic-routing.js";
 import { runWithProjectContext } from "./project-context.js";
-import { ProjectShareService } from "./project-shares.js";
 import { PolicyCatalog } from "../policy-catalog/catalog.js";
 import { defaultGuardrailDraft } from "../domain/defaults.js";
 import { canonicalJson } from "../../shared/canonical-json.js";

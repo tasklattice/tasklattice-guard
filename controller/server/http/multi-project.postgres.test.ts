@@ -18,7 +18,6 @@ import type { ControllerMetrics } from "../metrics.js";
 import { ProjectService } from "../services/projects.js";
 import { AccessTokenService } from "../services/access-tokens.js";
 import { ControlPlaneService } from "../services/control-plane.js";
-import { ProjectShareService } from "../services/project-shares.js";
 import { emptyPolicyDefinition } from "../../shared/policy-definition.js";
 import { createHttpApp } from "./app.js";
 
@@ -81,7 +80,6 @@ describe.skipIf(!url)("multi-project password authentication and sharing in Post
       auth,
       accessTokens: new AccessTokenService(db),
       projects: new ProjectService(db, (tx, id) => service.initializeProject(tx, id), config.runtimeServiceUrl),
-      projectShares: new ProjectShareService(db),
       service,
       runnerControl: { distributionStatus: async () => ({}) } as RunnerControlServer,
       metrics: { registry: new Registry() } as ControllerMetrics,
@@ -127,85 +125,6 @@ describe.skipIf(!url)("multi-project password authentication and sharing in Post
     expect((await app.request("/api/v1/users", {headers:{cookie:memberCookie}})).status).toBe(403);
   });
 
-  it("isolates project inventories, shares an endpoint read-only, then revokes access", async () => {
-    async function signIn(identity: "projectA" | "projectB" | "projectC") {
-      const response = await app.request("/api/auth/sign-in/username", {
-        method: "POST",
-        headers: { "content-type": "application/json", origin: "http://localhost:8080" },
-        body: JSON.stringify({ username: `fixture-${identity.toLowerCase()}`, password: "test-password-only" }),
-      });
-      expect(response.status).toBe(200);
-      const cookie = response.headers.get("set-cookie")?.match(/tali-guard\.session_token=[^;]+/)?.[0];
-      expect(cookie).toBeTruthy();
-      return (path: string, init?: RequestInit) => app.request(path, {
-        ...init,
-        headers: { cookie: cookie!, ...init?.headers },
-      });
-    }
-
-    const projectA = await signIn("projectA");
-    const projectB = await signIn("projectB");
-    const projectC = await signIn("projectC");
-    for (const [identity, request] of [["projectA", projectA], ["projectB", projectB], ["projectC", projectC]] as const) {
-      const session = await request("/api/v1/account/identity");
-      expect(session.status).toBe(200);
-      expect(await session.json()).toMatchObject({ projectId: identity, role: "user", authentication: "session" });
-      const stale = await request("/api/v1/endpoints", { headers: { "x-project-id": "projectC" } });
-      expect(stale.status).toBe(identity === "projectC" ? 200 : 409);
-      const endpoints = await request("/api/v1/endpoints?projectId=projectC", { headers: { "x-role": "admin" } });
-      expect(endpoints.status).toBe(200);
-      expect((await endpoints.json()).items.map((item: { id: string }) => item.id)).toEqual([fixtureEndpoint(identity)]);
-      const shareable = await request("/api/v1/account/shareable-resources");
-      expect(shareable.status).toBe(200);
-      expect((await shareable.json()).items.filter((item: { resourceType: string }) => item.resourceType === "endpoint"))
-        .toMatchObject([{ resourceType: "endpoint", resourceId: fixtureEndpoint(identity) }]);
-    }
-
-    const issuedToken = await projectB("/api/v1/account/access-tokens", {
-      method: "POST", headers: { "content-type": "application/json", origin: "http://localhost:8080" },
-      body: JSON.stringify({ name: "Project B inventory", expiresInDays: 7, permissions: { endpoints: "read" } }),
-    });
-    expect(issuedToken.status).toBe(201);
-    const { secret } = await issuedToken.json() as { secret: string };
-    const patHeaders = { authorization: `Bearer ${secret}`, "x-project-id": "projectC", "x-role": "admin" };
-    expect(await (await app.request("/api/v1/account/identity", { headers: patHeaders })).json())
-      .toMatchObject({ projectId: "projectB", role: "user", authentication: "access_token" });
-    expect((await (await app.request("/api/v1/endpoints", { headers: patHeaders })).json()).items.map((item: { id: string }) => item.id))
-      .toEqual([fixtureEndpoint("projectB")]);
-    expect((await app.request("/api/v1/account/shares", { headers: patHeaders })).status).toBe(403);
-
-    const share = await projectA("/api/v1/account/shares", {
-      method: "POST", headers: { "content-type": "application/json", origin: "http://localhost:8080" },
-      body: JSON.stringify({ resourceType: "endpoint", resourceId: fixtureEndpoint("projectA"), recipientProjectId: "projectB" }),
-    });
-    expect(share.status).toBe(201);
-    const shareId = (await share.json()).share.id as string;
-    expect((await (await projectB("/api/v1/endpoints")).json()).items.map((item: { id: string }) => item.id).sort())
-      .toEqual([fixtureEndpoint("projectA"), fixtureEndpoint("projectB")]);
-    expect((await projectB(`/api/v1/endpoints/${fixtureEndpoint("projectA")}`)).status).toBe(200);
-    expect((await projectC(`/api/v1/endpoints/${fixtureEndpoint("projectA")}`)).status).toBe(404);
-
-    const edit = await projectB(`/api/v1/endpoints/${fixtureEndpoint("projectA")}`, {
-      method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ enabled: true }),
-    });
-    expect(edit.status).toBe(404);
-    const reShare = await projectB("/api/v1/account/shares", {
-      method: "POST", headers: { "content-type": "application/json" },
-      body: JSON.stringify({ resourceType: "endpoint", resourceId: fixtureEndpoint("projectA"), recipientProjectId: "projectC" }),
-    });
-    expect(reShare.status).toBe(404);
-
-    expect((await projectA(`/api/v1/account/shares/${shareId}`, { method: "DELETE", headers: { origin: "http://localhost:8080" } })).status).toBe(204);
-    expect((await projectB(`/api/v1/endpoints/${fixtureEndpoint("projectA")}`)).status).toBe(404);
-    expect((await (await projectB("/api/v1/endpoints")).json()).items.map((item: { id: string }) => item.id))
-      .toEqual([fixtureEndpoint("projectB")]);
-    expect((await (await projectA("/api/v1/account/shares")).json()).items).toEqual([]);
-    const audit = await pool.query("SELECT kind, project_id FROM audit_event WHERE resource_id=$1 ORDER BY occurred_at", [fixtureEndpoint("projectA")]);
-    expect(audit.rows).toEqual([
-      { kind: "resource.shared", project_id: "projectA" },
-      { kind: "resource.share_revoked", project_id: "projectA" },
-    ]);
-  });
 
   it("issues administrator entity tokens and isolates list/detail reads to the explicit project", async () => {
     await auth.api.createUser({ body: { email: "scope-admin@test.example", password: "test-password-only", name: "Scope admin", role: "admin", data: { username: "scope-admin" } } });
@@ -226,9 +145,6 @@ describe.skipIf(!url)("multi-project password authentication and sharing in Post
       const definition = emptyPolicyDefinition(); definition.metadata.id = `scoped-policy-${project}`; definition.metadata.name = `${project} policy`;
       await pool.query("INSERT INTO policy_resource (id,project_id,definition,maintainer) VALUES ($1,$2,$3,'fixture')", [definition.metadata.id, project, definition]);
     }
-    // Even an explicit share must not widen administrative inspection beyond the selected owner project.
-    await pool.query("INSERT INTO resource_share(id,owner_project_id,recipient_project_id,resource_type,resource_id) VALUES ('admin-inspection-share','projectA','projectB','endpoint',$1)", [fixtureEndpoint("projectA")]);
-    try {
       for (const path of ["/guardrails", "/routers", "/endpoints", "/policies"]) {
         expect((await request(path)).status).toBe(400);
         expect((await request(path, "missing")).status).toBe(404);
@@ -255,9 +171,6 @@ describe.skipIf(!url)("multi-project password authentication and sharing in Post
       expect((await request("/users")).status).toBe(403);
       const audit = await pool.query("SELECT detail FROM audit_event WHERE kind='access_token.request' AND detail->>'route'='/api/v1/projects'");
       expect(audit.rows).toContainEqual({ detail: expect.objectContaining({ method: "POST", status: 201 }) });
-    } finally {
-      await pool.query("DELETE FROM resource_share WHERE id='admin-inspection-share'");
-    }
   }, 30_000);
 
   it("switches only to member projects and keeps personal credentials bound to their issued project", async () => {

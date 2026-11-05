@@ -76,7 +76,7 @@ describe("ControlPlaneLayout", () => {
     expect(screen.getByText("Redirect /test1")).toBeTruthy();
   });
 
-  it.each(["/test1", "/test1/guardrails", "/test1/playground", "/test1/policy-library", "/test1/integration/routers", "/test1/integration/endpoints", "/test1/logs", "/test1/billing", "/test1/sharing", "/test1/settings/health", "/test1/settings/runner", "/test1/settings/version", "/account", "/account/security", "/account/access-tokens"])("mounts authorized user page %s", path => {
+  it.each(["/test1", "/test1/guardrails", "/test1/playground", "/test1/policy-library", "/test1/integration/routers", "/test1/integration/endpoints", "/test1/logs", "/test1/billing", "/test1/settings/health", "/test1/settings/runner", "/test1/settings/version", "/account", "/account/security", "/account/access-tokens"])("mounts authorized user page %s", path => {
     pathname = path; render(<ControlPlaneLayout />);
     expect(screen.getByText("Page content")).toBeTruthy();
   });

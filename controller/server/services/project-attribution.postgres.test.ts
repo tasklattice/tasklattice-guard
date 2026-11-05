@@ -16,7 +16,6 @@ describe.skipIf(!url)("project attribution for asynchronous Runner telemetry", (
     service = new ControlPlaneService(database.db, {} as ControllerConfig);
     await database.pool.query(`INSERT INTO guardrail (id,project_id,name,draft_config) VALUES ('shared-c','projectA','Owned','{}');
       INSERT INTO traffic_router (id,project_id,name,draft) VALUES ('router-a','projectA','A','{}'), ('router-c','projectC','C','{}');
-      INSERT INTO resource_share (id,owner_project_id,recipient_project_id,resource_type,resource_id) VALUES ('share-router-c-a','projectC','projectA','router','router-c');
       INSERT INTO endpoint (id,project_id,name,adapter) VALUES ('endpoint-a','projectA','A','litellm-generic-guardrail'), ('endpoint-c','projectC','C','litellm-generic-guardrail'), ('playground','projectB','Prefix collision','litellm-generic-guardrail');`);
   }, 30000);
   afterAll(async () => { await database?.drop(); });

@@ -11,13 +11,12 @@ import {
   policyRecords,
   policyResources,
   playgroundInvocations,
-  resourceShares,
   trafficRouters,
 } from "../db/schema.js";
 import type { AccountRole, AuthorityContext, AuthorityScope } from "../../shared/rbac.js";
 import { ControllerError, NotFoundError, ValidationError } from "../domain/errors.js";
 
-export type ShareableResourceType = "guardrail" | "router" | "endpoint" | "policy" | "model";
+export type ResourceType = "guardrail" | "router" | "endpoint" | "policy" | "model";
 
 export type ProjectContext = { projectId: string | null; actorId?: string; role?: AccountRole };
 
@@ -66,8 +65,7 @@ export function projectOwnerForCreate(): string {
 }
 
 /** Resolve provenance from an Endpoint or a Controller-minted invocation.
- * Missing or conflicting provenance is NULL (visible only to platform operators).
- * A Guardrail's owner is not necessarily the caller when it is shared. */
+ * Missing or conflicting provenance is NULL (visible only to platform operators). */
 export function runtimeEventProjectId(event: { requestId: string; occurredAt: Date; endpointId?: string | null | undefined; routerId?: string | null | undefined; guardrailId?: string | null | undefined; guardrailVersion?: string | null | undefined; allocationContextId?: string | null | undefined; metadata: Record<string, unknown> }, authenticatedPoolId?: string): SQL<string | null> {
   const endpointId = event.endpointId ?? null;
   const routerId = event.routerId ?? null;
@@ -122,27 +120,19 @@ export function runtimeEventProjectId(event: { requestId: string; occurredAt: Da
 }
 
 export function resourceReadPredicate(
-  kind: ShareableResourceType,
+  kind: ResourceType,
   idColumn: AnyColumn,
   ownerColumn: AnyColumn,
 ): SQL | undefined {
   const projectId = currentProjectId();
   if (!projectId) return undefined;
-  // Guardrails are Project-scoped resources; the generic share table must not
-  // grant another Project read access to a Guardrail or any of its evidence.
-  if (kind === "guardrail") return eq(ownerColumn, projectId);
-  const access = currentAccountRole() === "admin" ? eq(ownerColumn, projectId) : or(
-    eq(ownerColumn, projectId),
-    // Match the current owner too, so a stale grant cannot follow a moved ID.
-    sql`exists (select 1 from ${resourceShares}
-      where ${resourceShares.resourceType} = ${kind}
-        and ${resourceShares.resourceId} = ${idColumn}
-        and ${resourceShares.ownerProjectId} = ${ownerColumn}
-        and ${resourceShares.recipientProjectId} = ${projectId})`,
-  );
-  // A Policy ID can exist in several current/legacy root tables. A share or
-  // ownership of just one root must not expose another owner's identity.
-  return kind === "policy" ? and(access, policyOwnershipPredicate(idColumn, ownerColumn)) : access;
+  const owned = eq(ownerColumn, projectId);
+  // Platform-configured Models have no Project owner and are readable by every
+  // Project; they remain read-only because write predicates require ownership.
+  if (kind === "model") return or(owned, isNull(ownerColumn));
+  // A Policy ID can exist in several current/legacy root tables. Ownership of
+  // just one root must not expose another owner's identity.
+  return kind === "policy" ? and(owned, policyOwnershipPredicate(idColumn, ownerColumn)) : owned;
 }
 
 /** All existing Policy representations must agree with this root's owner. */
@@ -166,35 +156,30 @@ export function resourceWritePredicate(ownerColumn: AnyColumn): SQL | undefined 
   return projectId ? eq(ownerColumn, projectId) : undefined;
 }
 
-export async function assertResourceOwner(db: ControllerDatabase, kind: ShareableResourceType, id: string): Promise<void> {
+export async function assertResourceOwner(db: ControllerDatabase, kind: ResourceType, id: string): Promise<void> {
   const projectId = currentProjectId();
-  if (!projectId) throw new ValidationError("Project context is required to manage shares.");
+  if (!projectId) throw new ValidationError("Project context is required to manage resources.");
   const owner = await resourceOwner(db, kind, id);
   if (owner !== projectId) throw new NotFoundError(kind, id);
 }
 
-export async function assertResourceWriteAccess(db: ControllerDatabase, kind: ShareableResourceType, id: string): Promise<void> {
+export async function assertResourceWriteAccess(db: ControllerDatabase, kind: ResourceType, id: string): Promise<void> {
   const projectId = currentProjectId();
   if (projectId && await resourceOwner(db, kind, id) !== projectId) throw new NotFoundError(kind, id);
 }
 
-export async function assertResourceReadAccess(db: ControllerDatabase, kind: ShareableResourceType, id: string): Promise<void> {
+export async function assertResourceReadAccess(db: ControllerDatabase, kind: ResourceType, id: string): Promise<void> {
   const projectId = currentProjectId();
   if (!projectId) return;
   const ownerProjectId = await resourceOwner(db, kind, id);
-  if (!ownerProjectId) throw new NotFoundError(kind, id);
-  if (ownerProjectId === projectId) return;
-  if (kind === "guardrail" || currentAccountRole() === "admin") throw new NotFoundError(kind, id);
-  const [grant] = await db.select({ id: resourceShares.id }).from(resourceShares).where(and(
-    eq(resourceShares.ownerProjectId, ownerProjectId),
-    eq(resourceShares.recipientProjectId, projectId),
-    eq(resourceShares.resourceType, kind),
-    eq(resourceShares.resourceId, id),
-  )).limit(1);
-  if (!grant) throw new NotFoundError(kind, id);
+  if (!ownerProjectId) {
+    if (kind === "model") return; // Platform-configured Model
+    throw new NotFoundError(kind, id);
+  }
+  if (ownerProjectId !== projectId) throw new NotFoundError(kind, id);
 }
 
-export async function resourceOwner(db: ControllerDatabase, kind: ShareableResourceType, id: string): Promise<string | null> {
+export async function resourceOwner(db: ControllerDatabase, kind: ResourceType, id: string): Promise<string | null> {
   switch (kind) {
     case "guardrail": return (await db.select({ projectId: guardrails.projectId }).from(guardrails).where(and(eq(guardrails.id, id), isNull(guardrails.deletedAt))).limit(1))[0]?.projectId ?? null;
     case "router": return (await db.select({ projectId: trafficRouters.projectId }).from(trafficRouters).where(and(eq(trafficRouters.id, id), isNull(trafficRouters.deletedAt))).limit(1))[0]?.projectId ?? null;

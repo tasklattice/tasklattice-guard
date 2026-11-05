@@ -78,7 +78,7 @@ describe("Authenticated cache boundaries", () => {
   it.each(["login", "logout"])("clears every identity-scoped cache and mutation on %s", async (action) => {
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     client.setQueryData(queryKeys.auth, { authenticated: true, user });
-    for (const key of [["sharing", "owned-resources"], ["identity", "users"], ["resources", "model-configuration"], ["provider-discovery"]]) client.setQueryData(key, { private: "projectA" });
+    for (const key of [["identity", "users"], ["resources", "model-configuration"], ["provider-discovery"]]) client.setQueryData(key, { private: "projectA" });
     client.getMutationCache().build(client, { mutationKey: ["old-project-operation"], mutationFn: async () => ({ private: "projectA" }) });
     mocks.login.mockResolvedValue({ user: { ...user, id: "second", role: "user", project_id: "projectB" } });
     mocks.logout.mockResolvedValue(undefined);

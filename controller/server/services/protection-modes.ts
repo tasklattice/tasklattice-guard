@@ -3,7 +3,7 @@ import { currentProjectId, resourceReadPredicate, resourceWritePredicate } from 
 import { randomUUID } from "node:crypto";
 import { and, eq, gt, inArray, isNull, lte, ne, or, sql } from "drizzle-orm";
 import type { ControllerDatabase } from "../db/client.js";
-import { artifacts, auditEvents, controllerState, guardrails, guardrailVersions, outboxEvents, resourceShares, runnerInstances, runnerPools, projects, user } from "../db/schema.js";
+import { artifacts, auditEvents, controllerState, guardrails, guardrailVersions, outboxEvents, runnerInstances, runnerPools, projects, user } from "../db/schema.js";
 import { increment } from "../db/postgres-expressions.js";
 import { ConflictError, NotFoundError } from "../domain/errors.js";
 import { PROTECTION_MODE_CAPABILITY, type ProtectionMode, type ProtectionModeSettings } from "../../shared/protection-mode.js";

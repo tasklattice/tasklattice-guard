@@ -16,8 +16,6 @@ describe.skipIf(!url)("audit project attribution", () => {
       INSERT INTO policy_resource (id,project_id,definition,maintainer) VALUES ('conflicted-policy','projectA','{}','A');
       INSERT INTO policy_imported_version (policy_id,project_id,version,digest,definition,source_id)
         VALUES ('conflicted-policy','projectB','v1','digest','{}','test');
-      INSERT INTO resource_share (id,owner_project_id,recipient_project_id,resource_type,resource_id)
-        VALUES ('share-c-b','projectC','projectB','guardrail','guard-c');
       INSERT INTO personal_access_token (id,project_id,user_id,name,prefix,token_hash,permissions,expires_at) VALUES
         ('token-user','projectB','user-b','B token','prefix','hash-b','{}',now()+interval '1 day'),
         ('token-admin',NULL,'admin-a','Admin token','prefix','hash-admin','{}',now()+interval '1 day');
@@ -54,7 +52,7 @@ describe.skipIf(!url)("audit project attribution", () => {
     });
   });
 
-  it("keeps private and platform audit details out of other projects even when a resource is shared", async () => {
+  it("keeps private and platform audit details out of other projects", async () => {
     const visible = async (projectId: string) => runWithProjectContext({ projectId, role: "user" }, () => queryAuditEvents(database.db, { window: "all", limit: 100 }));
     expect((await visible("projectA")).items.map(row => row.id)).toEqual(["user-own-a"]);
     expect(new Set((await visible("projectB")).items.map(row => row.id))).toEqual(new Set(["project-model-audit", "token-own"]));

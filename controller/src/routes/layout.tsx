@@ -30,7 +30,6 @@ import { HelpLayout } from "@/routes/help-layout";
 
 const names: Record<string, { group?: string; page: string }> = {
   "/": { page: "nav.dashboard" },
-  "/sharing": { page: "nav.sharing" },
   "/guardrails": { group: "nav.guardrailDesign", page: "nav.guardrails" },
   "/policy-library": { group: "nav.guardrailDesign", page: "nav.policyLibrary" },
   "/playground": { group: "nav.guardrailDesign", page: "nav.playground" },
