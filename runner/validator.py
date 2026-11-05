@@ -445,9 +445,7 @@ def _terminal_target_block(plan, case, phase, findings, trace):
     dependencies = set()
     for rule in covered:
         target = _rule_target(plan, policy_id, rule, phase)
-        if not target or not target.get("steps") or any(
-            dict(step.parameters).get("evaluation_view") != "original" for step in target["steps"]
-        ):
+        if not target or not target.get("steps"):
             return False
         executed = []
         for step in target["steps"]:

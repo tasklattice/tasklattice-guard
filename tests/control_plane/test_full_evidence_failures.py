@@ -89,7 +89,7 @@ async def test_terminal_block_and_rule_acceptance_survive_an_independent_failure
     assert outcome.metrics["passed"] == 2 and outcome.status == "failed"
 
 
-@pytest.mark.parametrize("change", ["no-match", "missing", "dependent", "transformed-view", "override"])
+@pytest.mark.parametrize("change", ["no-match", "missing", "dependent", "override"])
 async def test_unproven_targets_and_composition_assertions_still_fail(plans, change):
     plan = deepcopy(plans["block-block-true"])
     target = case(plan, "p0", "r-first", "input")

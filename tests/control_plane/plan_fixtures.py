@@ -4,6 +4,7 @@ These helpers build the real Controller plan. They do not assert the removed
 block-first scheduling optimisations; Rank Mode has one authored order.
 """
 
+from copy import deepcopy
 from pathlib import Path
 import json
 import subprocess
