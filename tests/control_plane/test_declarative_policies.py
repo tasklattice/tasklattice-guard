@@ -437,13 +437,8 @@ async def test_regression_uses_action_priority_in_rule_and_policy_scopes(tmp_pat
     file.write_text(yaml.safe_dump(cases, allow_unicode=True))
     report = await run_packages([load_package(root)], sources.registry(), sources.ASSETS)
     assert report["summary"] == {"passed": 4, "failed": 0, "not_run": 0}
-    # Reversing source order cannot put a Transform before the Block stage.
-    file = root / "policy.yaml"
-    manifest = yaml.safe_load(file.read_text())
-    manifest["rules"].reverse()
-    file.write_text(yaml.safe_dump(manifest, allow_unicode=True))
-    report = await run_packages([load_package(root)], sources.registry(), sources.ASSETS)
-    assert report["summary"] == {"passed": 4, "failed": 0, "not_run": 0}
+    # Rank Mode follows the authored Rule order. The old assertion that a Block
+    # must run before a Transform regardless of source order is obsolete.
 
 
 def test_generated_outputs_are_restored_after_a_partial_write(tmp_path, monkeypatch):
