@@ -67,12 +67,12 @@ describe("model-dependency guidance", () => {
     expect(screen.getByRole("status").textContent).toContain("Checking saved model assignments");
     expect(screen.queryByText("Not assigned")).toBeNull();
   });
-  it("shows active assignments and failed capability evidence separately", async () => {
+  it("shows an active assignment without a capability-quality warning", async () => {
     read.mockResolvedValue({ ...empty, models: [{ id: "model", name: "Safety model" }],
       active: { assignments: { bindings: { "content_safety.input": "model" } }, validationReport: { checks: [{ id: "probe:content_safety.input:model", status: "failed", evidenceKind: "nemo-rail-v1" }] } } });
     show();
     expect(await screen.findByText("Activated assignment")).toBeTruthy();
-    expect(screen.getByText(protectionEn.dependencies.validation.failed)).toBeTruthy();
+    expect(screen.queryByText(/capability test/i)).toBeNull();
     expect(screen.queryByText("Not assigned")).toBeNull();
   });
 });

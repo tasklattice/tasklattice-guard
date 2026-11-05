@@ -23,15 +23,11 @@ export function useGuardrailValidationReadiness({ bindings, policies, enabled = 
     const assignment = dependencyAssignment(item.id, query.data);
     return assignment.state === "active" ? [] : [{ ...item, ...assignment }];
   }) : [];
-  const warnings = policiesReady && !unavailable && query.data ? dependencies.required.flatMap(item => {
-    const assignment = dependencyAssignment(item.id, query.data);
-    return assignment.state === "active" && assignment.validation !== "passed" ? [{ ...item, ...assignment }] : [];
-  }) : [];
   const blocked = checking || unavailable || blockers.length > 0;
   const hasTopicBlocker = blockers.some(item => item.id === "topic_control.input");
   const reason = checking ? t("protection.validationReadiness.checking") : unavailable ? t("protection.validationReadiness.unavailable")
     : blockers.length ? t(hasTopicBlocker ? "protection.validationReadiness.topicFix" : "protection.validationReadiness.fix") : null;
-  return { checking, unavailable, blockers, warnings, blocked, hasTopicBlocker, reason, unknownPolicies: dependencies.unknownPolicies,
+  return { checking, unavailable, blockers, blocked, hasTopicBlocker, reason, unknownPolicies: dependencies.unknownPolicies,
     refreshing: query.isFetching, refresh: () => void query.refetch() };
 }
 
@@ -40,7 +36,7 @@ export function GuardrailValidationReadiness({ readiness, onEdit, onRetry, onRem
 }) {
   const { t } = useTranslation();
   const administrator = isPlatformAdministrator(useAuth().user?.role);
-  if (!readiness.blocked && !readiness.warnings.length && !readiness.unknownPolicies.length) return null;
+  if (!readiness.blocked && !readiness.unknownPolicies.length) return null;
   const error = readiness.blockers.length > 0;
   return <Alert variant={error ? "destructive" : readiness.checking ? "default" : "warning"} role={error ? "alert" : "status"}>
     {error ? <CircleAlert /> : readiness.checking ? <LoaderCircle className="animate-spin motion-reduce:animate-none" /> : <TriangleAlert />}
@@ -53,11 +49,6 @@ export function GuardrailValidationReadiness({ readiness, onEdit, onRetry, onRem
             <span> — {t(`protection.validationReadiness.states.${item.state}`)}</span>
             <span className="block text-xs leading-5">{t("protection.validationReadiness.policies", { names: item.policyNames.join(" · ") })}</span>
           </li>;
-        })}</ul> : null}
-        {!error && readiness.warnings.length ? <ul className="space-y-2">{readiness.warnings.map(item => {
-          const [capability, rail] = item.id.split(".");
-          return <li key={item.id}><strong>{t(`protection.dependencies.capabilities.${capability}`)} · {t(`protection.${rail}`)}</strong>
-            <span> — {t(`protection.dependencies.validation.${item.validation}`)}</span></li>;
         })}</ul> : null}
         {!readiness.checking && readiness.reason ? <p>{readiness.reason}</p> : null}
         {!readiness.checking && !readiness.unavailable && readiness.unknownPolicies.length ? <p>{t("protection.dependencies.unknownPolicy", { policies: readiness.unknownPolicies.join(", ") })}</p> : null}

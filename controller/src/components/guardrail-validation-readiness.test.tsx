@@ -43,9 +43,10 @@ it.each(["unverified", "failed", "validated", "activating"])("blocks %s assignme
 });
 it.each(["failed", "skipped"])("allows retesting an active model with %s capability evidence", async status => {
   read.mockResolvedValue({ ...empty, active: revision(status) }); show();
-  await screen.findByText(protectionEn.dependencies.validation[status === "failed" ? "failed" : "unverified"], { exact: false });
-  expect(screen.getByRole("button", { name: "Run tests" }).hasAttribute("disabled")).toBe(false);
+  await waitFor(() => expect(screen.getByRole("button", { name: "Run tests" }).hasAttribute("disabled")).toBe(false));
   expect(screen.queryByRole("alert")).toBeNull();
+  // Capability quality is not a Guardrail dependency: an active assignment is enough.
+  expect(screen.queryByText(/capability test/i)).toBeNull();
 });
 it("identifies the independent missing Jailbreak binding and recovers after applying it", async () => {
   const policies = [
