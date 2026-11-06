@@ -44,6 +44,12 @@ describe("Protection Capabilities capability binding profiles", () => {
     expect(assignmentTargetAcceptsModel("topic_control.input", "tali.laya-topic.v1", "laya")).toBe(true);
     expect(assignmentTargetAcceptsModel("jailbreak.input", "tali.laya-topic.v1", "laya")).toBe(false);
   });
+  it("allows an OpenAI-compatible chat model to serve the grounding judge", () => {
+    expect(providerAcceptsProfile("deepseek", "tali.grounding-judge.v1")).toBe(true);
+    expect(assignmentTargetAcceptsModel("contextual_grounding.output", "tali.grounding-judge.v1", "deepseek")).toBe(true);
+    expect(providerAcceptsProfile("openai", "tali.automated-reasoning.v1")).toBe(true);
+    expect(assignmentTargetAcceptsModel("automated_reasoning.output", "tali.automated-reasoning.v1", "openai")).toBe(true);
+  });
   it("supports JEV input/output content safety while keeping its other contracts scoped", () => {
     const profile = "tali.typesafe-jev.v1";
     expect(profileTransports[profile]).toBe("typesafe_systemone");

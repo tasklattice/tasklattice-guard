@@ -8,7 +8,8 @@ export type ImplementedGuardrailRailType = (typeof implementedGuardrailRailTypes
 // detectors still require their own compatible protocols and provider support.
 export function isDataPlaneProviderKindAllowed(kind: string, bindingId?: CapabilityBindingId): boolean {
   return kind !== "deepseek" || bindingId === "classifier_review.input" || bindingId === "classifier_review.output"
-    || bindingId === "pii_semantic.input" || bindingId === "pii_semantic.output";
+    || bindingId === "pii_semantic.input" || bindingId === "pii_semantic.output"
+    || bindingId === "contextual_grounding.output";
 }
 
 export const guardrailCategoryIds = [

@@ -259,7 +259,8 @@ export function providerAcceptsProfile(providerKind: ModelProviderKind, profile:
   }
   return isDataPlaneProviderKindAllowed(providerKind)
     || profile === "generic-chat" || profile === "tali.classifier-review.v1"
-    || profile === "tali.openai-compatible-pii.v1";
+    || profile === "tali.openai-compatible-pii.v1"
+    || profile === "tali.grounding-judge.v1";
 }
 
 export { localGuardrailContracts } from "../../shared/protection-dependencies.js";
