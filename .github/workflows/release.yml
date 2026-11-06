@@ -128,16 +128,21 @@ jobs:
         id: git-build
         run: echo "info=$(node scripts/git-build-info.mjs)" >> "$GITHUB_OUTPUT"
 
+      - name: Set up Node.js for contract generation
+        uses: actions/setup-node@v7
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: controller/package-lock.json
+
       - name: Generate bundled Default artifact
         shell: bash
         run: |
           set -euo pipefail
           python3 -m pip install --disable-pip-version-check uv
           uv sync --all-extras --frozen
-          .venv/bin/python scripts/generate_control_protocol.py
-          .venv/bin/python scripts/generate_enforcement_action_contract.py
-          .venv/bin/python scripts/policy_sources.py build
-          .venv/bin/python scripts/generate_default_baseline.py
+          npm ci --prefix controller --no-audit --no-fund
+          npm run generate
 
       - name: Set up Helm
         uses: azure/setup-helm@v5.0.1

@@ -134,6 +134,18 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@v7
 
+      - name: Set up Python for contract generation
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.13"
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v10.0.1
+        with:
+          version: "0.11.32"
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+
       - name: Set up Node.js for contract generation
         uses: actions/setup-node@v7
         with:
@@ -142,7 +154,10 @@ jobs:
           cache-dependency-path: controller/package-lock.json
 
       - name: Install contract generation dependencies
-        run: npm ci --prefix controller --no-audit --no-fund
+        run: uv sync --all-extras --frozen && npm ci --prefix controller --no-audit --no-fund
+
+      - name: Generate contracts for the CLI smoke test
+        run: npm run generate
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v4.2.0
@@ -225,9 +240,11 @@ jobs:
         uses: actions/setup-node@v7
         with:
           node-version: "24"
+          cache: npm
+          cache-dependency-path: controller/package-lock.json
 
       - name: Install dependencies
-        run: uv sync --all-extras --frozen
+        run: uv sync --all-extras --frozen && npm ci --prefix controller --no-audit --no-fund && npm run generate
 
       - name: Execute precompiled artifacts in Runner
         env:

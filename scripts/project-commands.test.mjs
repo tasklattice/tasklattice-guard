@@ -29,25 +29,34 @@ function fixture(t) {
     calls: () => readFileSync(log, 'utf8').trim().split('\n').map(JSON.parse),
   };
 }
+const generation = [
+  ['python', ['scripts/generate_control_protocol.py']],
+  ['python', ['scripts/generate_enforcement_action_contract.py']],
+  ['python', ['scripts/policy_sources.py', 'build']],
+  ['python', ['scripts/generate_default_baseline.py']],
+];
+const generationCommands = generation.map(([command]) => command);
+
 for (const action of ['helm-deploy', 'helm-deploy-debug']) {
-  test(`${action} builds images before Helm and preserves argument boundaries`, t => {
+  test(`${action} generates contracts and builds images before Helm and preserves argument boundaries`, t => {
     const f = fixture(t);
     const result = f.run(action, ['--values', '/tmp/values with spaces.yaml'], { HELM_ROLLOUT_REVISION: 'regression', HELM_TIMEOUT: '5m' });
     assert.equal(result.status, 0, result.stderr);
     const calls = f.calls();
-    assert.deepEqual(calls.map(c => c.command), ['bash', 'docker', 'docker', 'bash']);
-    assert.equal(calls[0].args[0], 'scripts/package-runtime-chart.sh');
-    assert.deepEqual(calls[3].args.slice(0, 5), ['scripts/helm-upgrade.sh', 'tali-guard', 'charts/tali-guard', 'test-context', 'test-namespace']);
-    assert.deepEqual(calls[3].args.slice(-2), ['--values', '/tmp/values with spaces.yaml']);
-    assert.ok(calls[3].args.includes('--wait'));
-    assert.equal(calls[3].args[calls[3].args.indexOf('--timeout') + 1], '5m');
-    assert.ok(calls[3].args.includes('rolloutRevision=regression'));
-    assert.deepEqual(calls[3].args.filter((arg, index, args) => args[index - 1] === '--values'), ['charts/tali-guard/values-dev-uat.yaml', '/tmp/values with spaces.yaml']);
-    assert.equal(calls[3].args.includes('observability.performanceDebug.enabled=true'), action.endsWith('debug'));
+    assert.deepEqual(calls.map(c => c.command), [...generationCommands, 'bash', 'docker', 'docker', 'bash']);
+    assert.equal(calls[4].args[0], 'scripts/package-runtime-chart.sh');
+    const helm = calls.at(-1);
+    assert.deepEqual(helm.args.slice(0, 5), ['scripts/helm-upgrade.sh', 'tali-guard', 'charts/tali-guard', 'test-context', 'test-namespace']);
+    assert.deepEqual(helm.args.slice(-2), ['--values', '/tmp/values with spaces.yaml']);
+    assert.ok(helm.args.includes('--wait'));
+    assert.equal(helm.args[helm.args.indexOf('--timeout') + 1], '5m');
+    assert.ok(helm.args.includes('rolloutRevision=regression'));
+    assert.deepEqual(helm.args.filter((arg, index, args) => args[index - 1] === '--values'), ['charts/tali-guard/values-dev-uat.yaml', '/tmp/values with spaces.yaml']);
+    assert.equal(helm.args.includes('observability.performanceDebug.enabled=true'), action.endsWith('debug'));
     if (action.endsWith('debug')) {
-      assert.ok(calls[3].args.includes('observability.tracing.otlpEndpoint=http://tempo.monitoring.svc.cluster.local:4318'));
-      assert.ok(calls[3].args.includes('observability.profiling.serverAddress=http://pyroscope.monitoring.svc.cluster.local:4040'));
-      assert.ok(calls[3].args.includes('observability.serviceMonitor.labels.release=monitoring'));
+      assert.ok(helm.args.includes('observability.tracing.otlpEndpoint=http://tempo.monitoring.svc.cluster.local:4318'));
+      assert.ok(helm.args.includes('observability.profiling.serverAddress=http://pyroscope.monitoring.svc.cluster.local:4040'));
+      assert.ok(helm.args.includes('observability.serviceMonitor.labels.release=monitoring'));
     }
     assert.equal(calls.some(call => call.args.includes('create') && call.args.includes('secret')), false);
   });
@@ -61,15 +70,16 @@ test('image builds package the release version and pass repository overrides', t
   assert.equal(result.status, 0, result.stderr);
   const calls = f.calls();
   assert.deepEqual(calls.map(call => [call.command, call.args.filter((arg, index, args) => arg !== '--build-arg' && args[index - 1] !== '--build-arg')]), [
+    ...generation,
     ['bash', ['scripts/package-runtime-chart.sh', '0.0.0-test']],
     ['docker', ['build', '-f', 'Dockerfile.controller', '-t', 'registry.test/controller:dev', '.']],
     ['docker', ['build', '-f', 'Dockerfile.runner', '-t', 'registry.test/runner:dev', '.']],
   ]);
-  const buildInfo = JSON.parse(calls[1].args.find(arg => arg.startsWith('TALI_BUILD_INFO=')).slice('TALI_BUILD_INFO='.length));
+  const buildInfo = JSON.parse(calls[5].args.find(arg => arg.startsWith('TALI_BUILD_INFO=')).slice('TALI_BUILD_INFO='.length));
   assert.equal(buildInfo.source, 'build');
   assert.match(buildInfo.commit, /^[0-9a-f]{40}$/);
-  assert.equal(calls[0].controllerRepository, 'registry.test/controller');
-  assert.equal(calls[0].runnerRepository, 'registry.test/runner');
+  assert.equal(calls[4].controllerRepository, 'registry.test/controller');
+  assert.equal(calls[4].runnerRepository, 'registry.test/runner');
 });
 const pinnedLitellm = /^litellm-provider:\n(?:\s+.*\n)*?\s+tag:\s*"([^"]+)"/m.exec(readFileSync(new URL('../charts/tali-guard/values.yaml', import.meta.url), 'utf8'))[1];
 test('litellm-deploy uses the preloaded chart-pinned image, verifies its protocol, wires Guard, then enables the provider in the Guard release', t => {
@@ -134,12 +144,12 @@ test('litellm-deploy-full deploys Guard exactly like helm-deploy before LiteLLM'
   const result = f.run('litellm-deploy-full', [], { HELM_ROLLOUT_REVISION: 'regression', LITELLM_SKIP_SMOKE: '1' });
   assert.equal(result.status, 0, result.stderr);
   const calls = f.calls();
-  assert.deepEqual(calls.map(c => c.command), ['bash', 'docker', 'docker', 'bash', 'docker', 'python', 'node', 'helm']);
-  assert.deepEqual(calls[3].args.slice(0, 3), ['scripts/helm-upgrade.sh', 'tali-guard', 'charts/tali-guard']);
-  assert.ok(calls[3].args.includes('rolloutRevision=regression'));
-  assert.deepEqual(calls[4].args, ['image', 'inspect', `ghcr.io/tasklattice/tali-litellm:${pinnedLitellm}`]);
-  assert.deepEqual(calls[7].args.slice(0, 3), ['upgrade', 'tali-guard', 'charts/tali-guard']);
-  assert.ok(calls[3].args.includes('litellm-provider.enabled=false'));
+  assert.deepEqual(calls.map(c => c.command), [...generationCommands, 'bash', 'docker', 'docker', 'bash', 'docker', 'python', 'node', 'helm']);
+  assert.deepEqual(calls[7].args.slice(0, 3), ['scripts/helm-upgrade.sh', 'tali-guard', 'charts/tali-guard']);
+  assert.ok(calls[7].args.includes('rolloutRevision=regression'));
+  assert.deepEqual(calls[8].args, ['image', 'inspect', `ghcr.io/tasklattice/tali-litellm:${pinnedLitellm}`]);
+  assert.deepEqual(calls[11].args.slice(0, 3), ['upgrade', 'tali-guard', 'charts/tali-guard']);
+  assert.ok(calls[7].args.includes('litellm-provider.enabled=false'));
 });
 test('helm-deploy does not enable LiteLLM or inspect its image', t => {
   const f = fixture(t);
@@ -150,7 +160,7 @@ test('build failure prevents deployment', t => {
   const f = fixture(t);
   const result = f.run('helm-deploy', [], { FAIL_COMMAND: 'docker' });
   assert.equal(result.status, 1);
-  assert.deepEqual(f.calls().map(c => c.command), ['bash', 'docker']);
+  assert.deepEqual(f.calls().map(c => c.command), [...generationCommands, 'bash', 'docker']);
 });
 test('render does not build images or call the cluster', t => {
   const f = fixture(t);
@@ -168,7 +178,7 @@ test('development values and debug backend overrides reach Helm before explicit 
     HELM_MONITORING_RELEASE: 'uat-monitoring',
   });
   assert.equal(result.status, 0, result.stderr);
-  const args = f.calls()[3].args;
+  const args = f.calls().at(-1).args;
   assert.deepEqual(args.filter((arg, index) => args[index - 1] === '--values'), ['/tmp/custom uat.yaml']);
   assert.ok(args.includes('observability.tracing.otlpEndpoint=http://collector:4318'));
   assert.ok(args.includes('observability.profiling.serverAddress=http://profiler:4040'));
@@ -204,7 +214,7 @@ test('helm-deploy-keycloak adds the dev realm overlay and waits for Project init
   const result = f.run('helm-deploy-keycloak');
   assert.equal(result.status, 0, result.stderr);
   const calls = f.calls();
-  assert.deepEqual(calls.map(call => call.command), ['bash', 'docker', 'docker', 'bash']);
+  assert.deepEqual(calls.map(call => call.command), [...generationCommands, 'bash', 'docker', 'docker', 'bash']);
   const deploy = calls.at(-1);
   assert.ok(deploy.args.includes('charts/tali-guard/values-dev-keycloak.yaml'));
   assert.ok(deploy.args.includes('--wait-for-jobs'));
