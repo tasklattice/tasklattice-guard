@@ -1,4 +1,4 @@
-import { defaultGuardrailProfiles } from "../../shared/guardrail-profiles.js";
+import { defaultGuardrailProfiles, targetGuardrailProfiles } from "../../shared/guardrail-profiles.js";
 import { expandProtectionPreset } from "../policy-catalog/presets.js";
 import { resolve } from "node:path";
 
@@ -61,6 +61,29 @@ describe("Policy catalog HTTP compatibility", () => {
     const response = await app.request("/api/v1/policies");
 
     expect(response.status).toBe(401);
+  });
+
+  it("serves the 20-Policy target catalog in target mode", async () => {
+    const targetConfig = loadConfig({
+      NODE_ENV: "test",
+      CONTROLLER_DATABASE_URL: "postgresql://controller:controller@localhost/controller",
+      CONTROLLER_RUNNER_TOKEN: "runner-token-that-is-at-least-32-characters",
+      CONTROLLER_ARTIFACT_SIGNING_KEY_PATH: "/tmp/controller-signing-key.pem",
+      CONTROLLER_POLICY_CATALOG_MODE: "target",
+      BETTER_AUTH_SECRET: "better-auth-secret-that-is-at-least-32-characters",
+    });
+    const targetPolicies = PolicyCatalog.load(targetConfig.policyCatalogDir);
+    const app = appWithSession(
+      { session: { id: "fixture-session", activeProjectId: "projectA" }, user: { id: "member-1", role: "user", projectId: "projectA" } },
+      { listGuardrailProfiles: vi.fn().mockResolvedValue(targetGuardrailProfiles.map(profile => ({ ...profile, policyBindings: expandProtectionPreset(profile, targetPolicies.list()) }))) },
+      targetConfig,
+    );
+    const response = await app.request("/api/v1/policies");
+    const collection = await response.json() as { count: number; items: Array<{ id: string }> };
+    expect(collection.count).toBe(20);
+    expect(collection.items.map(item => item.id)).toContain("payment-data");
+    const profiles = await (await app.request("/api/v1/guardrail-profiles")).json() as { items: Array<{ id: string }> };
+    expect(profiles.items.map(item => item.id)).toEqual(["default", "full-feature", "sg-bank", "cn-financial-services", "cn-internet"]);
   });
 
   it("serves the normalized collection and a Policy detail", async () => {
@@ -127,14 +150,15 @@ describe("Policy catalog HTTP compatibility", () => {
   });
 });
 
-function appWithSession(session: { user: { id: string; role: string; projectId?: string } } | null, overrides: Partial<ControlPlaneService> = {}) {
+function appWithSession(session: { user: { id: string; role: string; projectId?: string } } | null, overrides: Partial<ControlPlaneService> = {}, activeConfig = config) {
   const auth = {
     api: { getSession: vi.fn().mockResolvedValue(session) },
     handler: vi.fn(),
   } as unknown as ControllerAuth;
-  const policies = PolicyCatalog.load(config.policyCatalogDir);
+  const policies = PolicyCatalog.load(activeConfig.policyCatalogDir);
+  const profileSeeds = activeConfig.policyCatalogMode === "target" ? targetGuardrailProfiles : defaultGuardrailProfiles;
   const service = {
-    listGuardrailProfiles: vi.fn().mockResolvedValue(defaultGuardrailProfiles.map(profile => ({ ...profile, policyBindings: expandProtectionPreset(profile, policies.list()) }))),
+    listGuardrailProfiles: vi.fn().mockResolvedValue(profileSeeds.map(profile => ({ ...profile, policyBindings: expandProtectionPreset(profile, policies.list()) }))),
     listPolicies: vi.fn().mockResolvedValue(policies.list()),
     getPolicy: vi.fn(async (id: string) => {
       const item = policies.get(id);
@@ -144,7 +168,7 @@ function appWithSession(session: { user: { id: string; role: string; projectId?:
     ...overrides,
   } as unknown as ControlPlaneService;
   return createHttpApp({
-    config,
+    config: activeConfig,
     auth,
     service,
     runnerControl: {} as RunnerControlServer,
