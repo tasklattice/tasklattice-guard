@@ -98,6 +98,8 @@ class PolicyRuleSpec:
     always_block: tuple[tuple[str, str], ...] = ()
     exceptions: tuple[str, ...] = ()
     phrase_patterns: tuple[str, ...] = ()
+    binding_id: str | None = None
+    variant_id: str | None = None
 
 
 @dataclass(frozen=True, slots=True)

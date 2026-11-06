@@ -34,6 +34,7 @@ class PolicyManifest(StrictModel):
     parameters: list[ParameterDefinition] = Field(default_factory=list)
     execution: ExecutionDefinition = Field(default_factory=ExecutionDefinition)
     rules: list[str] = Field(min_length=1)
+    bindings: list[dict[str, Any]] | None = None
     tests: list[str] = Field(min_length=1)
     resources: list[str] = Field(default_factory=list)
     documents: list[str] = Field(default_factory=list)

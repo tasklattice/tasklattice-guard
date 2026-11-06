@@ -24,6 +24,7 @@ export const policyDefinitionSchema = z.object({
     output_delivery: z.enum(["interruptible", "window_buffered", "full_buffered"]).default("full_buffered"),
   }).strict(),
   parameters: z.array(z.object({ name: identifier, label: z.string().default(""), kind: z.string(), required: z.boolean(), placeholder: z.string().default(""), description: z.string().default(""), default: z.string().nullable().default(null) })).max(128).default([]),
+  bindings: z.array(z.object({ binding_id: identifier, rule_id: identifier, variant_id: identifier.nullable().optional(), order: z.number().int().optional(), action: action.nullable().optional(), parameters: z.record(z.string(), z.unknown()).default({}), rails: z.array(phase).max(2).nullable().optional() }).strict()).max(512).nullable().optional(),
   rules: z.array(z.object({
     id: identifier, name: z.string().max(160), description: z.string().max(2000).default(""),
     stages: z.array(phase).max(2),
@@ -31,6 +32,7 @@ export const policyDefinitionSchema = z.object({
     on_match: z.object({ action, replacement: z.string().nullable().optional() }).strict(),
     risk_level: z.enum(riskSeverities),
     metadata: z.object({ taxonomy_ids: z.array(z.string().regex(/^TALI(?:-[A-Z0-9]+)+$/)).min(1) }).strict(),
+    variants: z.array(z.object({ variant_id: identifier, replacement: z.string().min(1), description: z.string().max(2000).default("") }).strict()).max(32).default([]),
     expand: z.object({ parameter: identifier, text_field: identifier, action_field: identifier, replacement_field: identifier }).nullable().optional(),
   }).strict()).max(512),
   tests: z.array(z.object({

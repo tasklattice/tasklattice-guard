@@ -488,6 +488,10 @@ function parametersFor(
       ["policy_definitions_json", JSON.stringify(Object.fromEntries(declarative.map(({ policy }) => [policy.id, frozenBuiltInDefinition(policy)])))],
       ["policy_ids", declarative.map((item) => item.binding.policyId).join("\n")],
       ["enabled_rules_json", JSON.stringify(Object.fromEntries(declarative.map((item) => [item.binding.policyId, item.binding.enabledRuleIds])))],
+      ["binding_ids_json", JSON.stringify(Object.fromEntries(declarative.map((item) => [
+        item.binding.policyId,
+        item.binding.enabledRuleIds.map((id) => `${item.binding.policyId}/${id}`),
+      ])))],
       ["rule_order_json", JSON.stringify(Object.fromEntries(declarative.map((item) => [item.binding.policyId, item.binding.ruleOrder ?? []])))],
       // Resolve action inheritance per Rule, without modifying the library or
       // replacing the authored Policy/Rule overrides in policy_bindings.

@@ -62,6 +62,12 @@ class DiscoveryTag(StrictModel):
     source: Literal["declared", "derived"] = "declared"
 
 
+class RuleVariant(StrictModel):
+    variant_id: str = Field(min_length=1, pattern=r"^[A-Za-z0-9][A-Za-z0-9._/-]*$")
+    replacement: str = Field(min_length=1)
+    description: str = ""
+
+
 class RuleDefinition(StrictModel):
     id: str = Field(min_length=1)
     name: str = Field(min_length=1)
@@ -71,6 +77,7 @@ class RuleDefinition(StrictModel):
     on_match: Handling
     risk_level: Literal["critical", "high", "medium", "low", "informational"]
     metadata: RuleMetadata
+    variants: list[RuleVariant] = Field(default_factory=list)
     expand: dict[str, str] | None = None
     # Existing built-in provenance is retained for stable signed versions.
     # New imported definitions derive these identities from Policy/Rule IDs.
@@ -138,12 +145,23 @@ class ExecutionDefinition(StrictModel):
     stop_on: Literal["block"] = "block"
 
 
+class PolicyRuleBinding(StrictModel):
+    binding_id: str = Field(min_length=1, pattern=r"^[A-Za-z0-9][A-Za-z0-9._/-]*$")
+    rule_id: str = Field(min_length=1)
+    variant_id: str | None = None
+    order: int = 0
+    action: EnforcementAction | None = None
+    parameters: dict[str, Any] = Field(default_factory=dict)
+    rails: list[Literal["input", "output"]] | None = None
+
+
 class PolicyDefinition(StrictModel):
     schema_version: Literal[1]
     kind: Literal["Policy"]
     metadata: PolicyMetadata
     parameters: list[ParameterDefinition] = Field(default_factory=list)
     rules: list[RuleDefinition] = Field(min_length=1)
+    bindings: list[PolicyRuleBinding] | None = None
     tests: list[TestDefinition] = Field(default_factory=list)
     execution: ExecutionDefinition = Field(default_factory=ExecutionDefinition)
 
@@ -159,6 +177,22 @@ class PolicyDefinition(StrictModel):
         if len(tests) != len(set(tests)):
             raise ValueError("Test IDs must be unique")
         by_id = {rule.id: rule for rule in self.rules}
+        for rule in self.rules:
+            variants = [variant.variant_id for variant in rule.variants]
+            if len(variants) != len(set(variants)):
+                raise ValueError(f"Rule {rule.id}: variant IDs must be unique")
+        if self.bindings is not None:
+            bindings = [binding.binding_id for binding in self.bindings]
+            if len(bindings) != len(set(bindings)):
+                raise ValueError("Binding IDs must be unique within a Policy")
+            for binding in self.bindings:
+                rule = by_id.get(binding.rule_id)
+                if rule is None:
+                    raise ValueError(f"Binding {binding.binding_id} references unknown Rule")
+                if binding.variant_id is not None and binding.variant_id not in {v.variant_id for v in rule.variants}:
+                    raise ValueError(f"Binding {binding.binding_id} references unknown Rule variant")
+                if binding.rails and any(stage not in rule.stages for stage in binding.rails):
+                    raise ValueError(f"Binding {binding.binding_id} targets an unsupported Rule stage")
         for test in self.tests:
             if test.scope == "rule" and not test.covered_rule_ids:
                 raise ValueError(f"Rule test {test.id} must select covered_rule_ids")
@@ -219,6 +253,7 @@ def compile_policy(definition: PolicyDefinition, registry: dict[str, Any]) -> di
     result["parameters"] = [item.model_dump(exclude_unset=bundled) for item in definition.parameters]
     result["test_cases"] = [item.model_dump(exclude_unset=bundled, exclude={"expected_text", "expected_matched_rules", "scope"} | ({"context"} if item.context is None else set())) for item in definition.tests]
     result["rules"] = []
+    compiled_rules: dict[str, dict[str, Any]] = {}
     for rule in definition.rules:
         detector = registry["detectors"].get(rule.detector.ref)
         if detector is None or detector["version"] != rule.detector.version:
@@ -275,6 +310,24 @@ def compile_policy(definition: PolicyDefinition, registry: dict[str, Any]) -> di
             compiled["rule_expansion"] = rule.expand
         if "replacement" in rule.on_match.model_fields_set:
             compiled["redaction"] = rule.on_match.replacement
+        compiled_rules[rule.id] = compiled
+    bindings = definition.bindings or [
+        PolicyRuleBinding(binding_id=rule.id, rule_id=rule.id, order=index)
+        for index, rule in enumerate(definition.rules)
+    ]
+    for binding in sorted(bindings, key=lambda item: (item.order, item.binding_id)):
+        compiled = deepcopy(compiled_rules[binding.rule_id])
+        compiled["binding_id"] = f"{definition.metadata.id}/{binding.binding_id}"
+        if binding.action is not None:
+            compiled["effect"] = binding.action
+        if binding.rails is not None:
+            compiled["rails"] = binding.rails
+        if binding.variant_id is not None:
+            variant = next(item for item in next(rule for rule in definition.rules if rule.id == binding.rule_id).variants if item.variant_id == binding.variant_id)
+            compiled["variant_id"] = variant.variant_id
+            compiled["redaction"] = variant.replacement
+        if binding.parameters:
+            compiled.update(binding.parameters)
         result["rules"].append(compiled)
     # Authoring and catalog loading must enforce the same taxonomy, discovery,
     # parameter and acceptance-coverage contract.

@@ -1457,7 +1457,18 @@ def _trace_rank_suffix(binding: "NeMoActionBinding") -> str:
     rule_rank = binding.parameter("rule_rank")
     ranks = f"rank={precedence}" + (f", policyRank={policy_rank}" if policy_rank is not None else "") + (
         f", ruleRank={rule_rank}" if rule_rank is not None else "")
-    return f" [{ranks}, view={view}]"
+    binding_ids = binding.parameter("binding_ids_json")
+    binding_suffix = ""
+    if binding_ids:
+        try:
+            values = [item for group in json.loads(binding_ids).values() for item in group]
+        except (TypeError, ValueError, AttributeError):
+            values = []
+        if len(values) == 1:
+            binding_suffix = f", bindingId={values[0]}"
+        elif values:
+            binding_suffix = ", bindingIds=" + ",".join(values)
+    return f" [{ranks}{binding_suffix}, view={view}]"
 
 
 def _action_evidence(value: Any) -> Any:
@@ -2470,6 +2481,10 @@ def _trace(
                 contract_ref=binding.contract_ref,
                 precedence=_trace_precedence(binding),
                 evaluation_view=binding.parameter("evaluation_view"),
+                binding_id=(
+                    json.loads(binding.parameter("binding_ids_json") or "{}").get(binding.policy_id, [None])[0]
+                    if binding.parameter("binding_ids_json") else None
+                ),
                 verdict=item.result.verdict,
                 route=(
                     "enforce" if item.result.verdict == "matched" and _runtime_action(item) != "allow" else

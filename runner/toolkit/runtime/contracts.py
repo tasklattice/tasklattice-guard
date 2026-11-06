@@ -142,6 +142,7 @@ class RuntimeTraceStep:
     profile_ref: str | None = None
     precedence: int | None = None
     evaluation_view: str | None = None
+    binding_id: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
