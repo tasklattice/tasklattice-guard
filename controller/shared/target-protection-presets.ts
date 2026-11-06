@@ -475,8 +475,8 @@ export const targetProtectionPresets: readonly ProtectionPreset[] = [
         "action": null,
         "ruleActions": {},
         "reasoningPolicy": {
-          "policyId": "benchmark-reasoning",
-          "policyVersion": "1.0.0",
+          "policyId": "warranty-duration",
+          "policyVersion": "1",
           "confidenceThreshold": 0.8
         },
         "enabledRuleIds": [
