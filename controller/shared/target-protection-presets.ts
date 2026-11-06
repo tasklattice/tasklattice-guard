@@ -1421,25 +1421,6 @@ export const targetProtectionPresets: readonly ProtectionPreset[] = [
         "testCaseOverrides": {}
       },
       {
-        "policyId": "pii-semantic",
-        "policyVersion": "1.0.0",
-        "enabledRails": [
-          "input",
-          "output"
-        ],
-        "parameterValues": {},
-        "action": null,
-        "ruleActions": {},
-        "reasoningPolicy": null,
-        "enabledRuleIds": [
-          "model/pii"
-        ],
-        "ruleOrder": [
-          "model/pii"
-        ],
-        "testCaseOverrides": {}
-      },
-      {
         "policyId": "content-safety-local",
         "policyVersion": "1.0.0",
         "enabledRails": [
@@ -1485,28 +1466,6 @@ export const targetProtectionPresets: readonly ProtectionPreset[] = [
         "testCaseOverrides": {}
       },
       {
-        "policyId": "content-safety-model",
-        "policyVersion": "1.0.0",
-        "enabledRails": [
-          "input",
-          "output"
-        ],
-        "parameterValues": {
-          "on_unknown": "block",
-          "review_unknown": "false"
-        },
-        "action": null,
-        "ruleActions": {},
-        "reasoningPolicy": null,
-        "enabledRuleIds": [
-          "model/content-safety"
-        ],
-        "ruleOrder": [
-          "model/content-safety"
-        ],
-        "testCaseOverrides": {}
-      },
-      {
         "policyId": "prompt-instruction-attacks",
         "policyVersion": "1.0.0",
         "enabledRails": [
@@ -1521,7 +1480,6 @@ export const targetProtectionPresets: readonly ProtectionPreset[] = [
         "ruleActions": {},
         "reasoningPolicy": null,
         "enabledRuleIds": [
-          "model/jailbreak",
           "prompt-injection-blocker/blocked-word-1",
           "prompt-injection-blocker/blocked-word-2",
           "prompt-injection-blocker/blocked-word-3",
@@ -1547,7 +1505,6 @@ export const targetProtectionPresets: readonly ProtectionPreset[] = [
           "claims-system-override-filter/claims_system_override"
         ],
         "ruleOrder": [
-          "model/jailbreak",
           "prompt-injection-blocker/blocked-word-1",
           "prompt-injection-blocker/blocked-word-2",
           "prompt-injection-blocker/blocked-word-3",
@@ -1709,16 +1666,12 @@ export const targetProtectionPresets: readonly ProtectionPreset[] = [
         "ruleActions": {},
         "reasoningPolicy": null,
         "enabledRuleIds": [
-          "topic/denylist",
-          "topic/allowlist",
           "claims-medical-advice-filter/claims_medical_advice",
           "category/denied_financial_advice",
           "category/denied_legal_advice",
           "category/denied_medical_advice"
         ],
         "ruleOrder": [
-          "topic/denylist",
-          "topic/allowlist",
           "claims-medical-advice-filter/claims_medical_advice",
           "category/denied_financial_advice",
           "category/denied_legal_advice",
@@ -1959,25 +1912,6 @@ export const targetProtectionPresets: readonly ProtectionPreset[] = [
         "testCaseOverrides": {}
       },
       {
-        "policyId": "pii-semantic",
-        "policyVersion": "1.0.0",
-        "enabledRails": [
-          "input",
-          "output"
-        ],
-        "parameterValues": {},
-        "action": null,
-        "ruleActions": {},
-        "reasoningPolicy": null,
-        "enabledRuleIds": [
-          "model/pii"
-        ],
-        "ruleOrder": [
-          "model/pii"
-        ],
-        "testCaseOverrides": {}
-      },
-      {
         "policyId": "content-safety-local",
         "policyVersion": "1.0.0",
         "enabledRails": [
@@ -2023,28 +1957,6 @@ export const targetProtectionPresets: readonly ProtectionPreset[] = [
         "testCaseOverrides": {}
       },
       {
-        "policyId": "content-safety-model",
-        "policyVersion": "1.0.0",
-        "enabledRails": [
-          "input",
-          "output"
-        ],
-        "parameterValues": {
-          "on_unknown": "block",
-          "review_unknown": "false"
-        },
-        "action": null,
-        "ruleActions": {},
-        "reasoningPolicy": null,
-        "enabledRuleIds": [
-          "model/content-safety"
-        ],
-        "ruleOrder": [
-          "model/content-safety"
-        ],
-        "testCaseOverrides": {}
-      },
-      {
         "policyId": "prompt-instruction-attacks",
         "policyVersion": "1.0.0",
         "enabledRails": [
@@ -2059,7 +1971,6 @@ export const targetProtectionPresets: readonly ProtectionPreset[] = [
         "ruleActions": {},
         "reasoningPolicy": null,
         "enabledRuleIds": [
-          "model/jailbreak",
           "prompt-injection-blocker/blocked-word-1",
           "prompt-injection-blocker/blocked-word-2",
           "prompt-injection-blocker/blocked-word-3",
@@ -2085,7 +1996,6 @@ export const targetProtectionPresets: readonly ProtectionPreset[] = [
           "claims-system-override-filter/claims_system_override"
         ],
         "ruleOrder": [
-          "model/jailbreak",
           "prompt-injection-blocker/blocked-word-1",
           "prompt-injection-blocker/blocked-word-2",
           "prompt-injection-blocker/blocked-word-3",
@@ -2247,16 +2157,12 @@ export const targetProtectionPresets: readonly ProtectionPreset[] = [
         "ruleActions": {},
         "reasoningPolicy": null,
         "enabledRuleIds": [
-          "topic/denylist",
-          "topic/allowlist",
           "claims-medical-advice-filter/claims_medical_advice",
           "category/denied_financial_advice",
           "category/denied_legal_advice",
           "category/denied_medical_advice"
         ],
         "ruleOrder": [
-          "topic/denylist",
-          "topic/allowlist",
           "claims-medical-advice-filter/claims_medical_advice",
           "category/denied_financial_advice",
           "category/denied_legal_advice",
@@ -2468,25 +2374,6 @@ export const targetProtectionPresets: readonly ProtectionPreset[] = [
         "testCaseOverrides": {}
       },
       {
-        "policyId": "pii-semantic",
-        "policyVersion": "1.0.0",
-        "enabledRails": [
-          "input",
-          "output"
-        ],
-        "parameterValues": {},
-        "action": null,
-        "ruleActions": {},
-        "reasoningPolicy": null,
-        "enabledRuleIds": [
-          "model/pii"
-        ],
-        "ruleOrder": [
-          "model/pii"
-        ],
-        "testCaseOverrides": {}
-      },
-      {
         "policyId": "content-safety-local",
         "policyVersion": "1.0.0",
         "enabledRails": [
@@ -2532,28 +2419,6 @@ export const targetProtectionPresets: readonly ProtectionPreset[] = [
         "testCaseOverrides": {}
       },
       {
-        "policyId": "content-safety-model",
-        "policyVersion": "1.0.0",
-        "enabledRails": [
-          "input",
-          "output"
-        ],
-        "parameterValues": {
-          "on_unknown": "block",
-          "review_unknown": "false"
-        },
-        "action": null,
-        "ruleActions": {},
-        "reasoningPolicy": null,
-        "enabledRuleIds": [
-          "model/content-safety"
-        ],
-        "ruleOrder": [
-          "model/content-safety"
-        ],
-        "testCaseOverrides": {}
-      },
-      {
         "policyId": "prompt-instruction-attacks",
         "policyVersion": "1.0.0",
         "enabledRails": [
@@ -2568,7 +2433,6 @@ export const targetProtectionPresets: readonly ProtectionPreset[] = [
         "ruleActions": {},
         "reasoningPolicy": null,
         "enabledRuleIds": [
-          "model/jailbreak",
           "prompt-injection-blocker/blocked-word-1",
           "prompt-injection-blocker/blocked-word-2",
           "prompt-injection-blocker/blocked-word-3",
@@ -2594,7 +2458,6 @@ export const targetProtectionPresets: readonly ProtectionPreset[] = [
           "claims-system-override-filter/claims_system_override"
         ],
         "ruleOrder": [
-          "model/jailbreak",
           "prompt-injection-blocker/blocked-word-1",
           "prompt-injection-blocker/blocked-word-2",
           "prompt-injection-blocker/blocked-word-3",
@@ -2731,16 +2594,12 @@ export const targetProtectionPresets: readonly ProtectionPreset[] = [
         "ruleActions": {},
         "reasoningPolicy": null,
         "enabledRuleIds": [
-          "topic/denylist",
-          "topic/allowlist",
           "claims-medical-advice-filter/claims_medical_advice",
           "category/denied_financial_advice",
           "category/denied_legal_advice",
           "category/denied_medical_advice"
         ],
         "ruleOrder": [
-          "topic/denylist",
-          "topic/allowlist",
           "claims-medical-advice-filter/claims_medical_advice",
           "category/denied_financial_advice",
           "category/denied_legal_advice",
