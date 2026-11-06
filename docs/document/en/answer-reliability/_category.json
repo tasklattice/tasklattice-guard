@@ -1,0 +1,5 @@
+{
+  "title": "Answer reliability",
+  "description": "Check whether a model answer is grounded in supplied evidence or consistent with versioned formal rules.",
+  "order": 5
+}

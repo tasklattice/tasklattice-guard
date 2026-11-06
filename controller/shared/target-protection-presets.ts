@@ -460,35 +460,11 @@ export const targetProtectionPresets: readonly ProtectionPreset[] = [
     "id": "full-feature",
     "version": "1.0.0",
     "name": "Full-feature",
-    "description": "All target Policies and Rules; benchmark only.",
+    "description": "All target Policies and Rules except advanced Answer Reliability; benchmark only.",
     "industry": "general",
     "jurisdictions": [],
     "benchmarkOnly": true,
     "policies": [
-      {
-        "policyId": "answer-reliability",
-        "policyVersion": "1.0.0",
-        "enabledRails": [
-          "output"
-        ],
-        "parameterValues": {},
-        "action": null,
-        "ruleActions": {},
-        "reasoningPolicy": {
-          "policyId": "warranty-duration",
-          "policyVersion": "1",
-          "confidenceThreshold": 0.8
-        },
-        "enabledRuleIds": [
-          "model/automated-reasoning",
-          "model/contextual-grounding"
-        ],
-        "ruleOrder": [
-          "model/automated-reasoning",
-          "model/contextual-grounding"
-        ],
-        "testCaseOverrides": {}
-      },
       {
         "policyId": "application-injection",
         "policyVersion": "1.0.0",

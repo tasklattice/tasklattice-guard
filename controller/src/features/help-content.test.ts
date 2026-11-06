@@ -13,13 +13,13 @@ const section = (locale: HelpLocale, id: string) => getHelpContent(locale).docum
 describe("repository documentation", () => {
   it.each(locales)("loads %s categories and articles from directory names", locale => {
     const content = getHelpContent(locale);
-    expect(content.categories.map(category => category.id)).toEqual(["overview", "operator", "admin", "developer", "api"]);
+    expect(content.categories.map(category => category.id)).toEqual(["overview", "operator", "admin", "developer", "api", "answer-reliability"]);
     expect(content.categories.every(category => category.articles.length >= 2)).toBe(true);
-    expect(content.documents).toHaveLength(22);
+    expect(content.documents).toHaveLength(24);
     expect(content.documents[0].id).toBe("quickstart-protection");
     expect(content.categories[1].articles[0].id).toBe("user-lifecycle");
     expect(content.categories[2].articles[0].id).toBe("platform-runtime");
-    expect(content.categories.at(-1)?.id).toBe("api");
+    expect(content.categories.at(-1)?.id).toBe("answer-reliability");
     expect(article(locale, "term-guardrail").categoryId).toBe("overview");
     expect(content.categories[0].articles.map(document => document.id)).toEqual([
       "quickstart-protection", "term-guardrail", "glossary-definition",

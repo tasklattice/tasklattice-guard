@@ -1,0 +1,124 @@
+---
+id: "formal-reasoning"
+title: "Formal reasoning"
+summary: "Check whether a model answer is consistent with a versioned formal policy, not whether prose has sources."
+order: 1
+---
+
+Formal reasoning checks **Output** only. It answers one question:
+
+> Is the logical conclusion in the answer consistent with a versioned formal policy?
+
+It uses a separate formal proof service, not a generic chat model.
+
+<a id="reasoning-boundary" />
+
+## Protection object and boundary
+
+| Item | Description |
+| --- | --- |
+| Protected object | The final model answer |
+| Evidence | Formal policy ID, version and the complete answer |
+| Not responsible for | Source support, document retrieval, open-world facts |
+| Execution stage | Output |
+
+A formal policy is separate from a Policy Studio Policy. The Rule's formal policy ID and version refer to the proof service catalog, not to the Guardrail Policy.
+
+<a id="reasoning-service" />
+
+## Proof service requirements
+
+The service must expose two operations on the same `baseUrl`. The base URL should point directly to `/evaluate`.
+
+<a id="reasoning-health" />
+
+### Health
+
+```http
+GET {baseUrl}
+Authorization: Bearer <credential>
+```
+
+```json
+{
+  "protocol": "tali.automated-reasoning.v1",
+  "ready": true
+}
+```
+
+Additional `solver` and `policies` fields are allowed. `protocol` and `ready` are required.
+
+<a id="reasoning-proof" />
+
+### Proof
+
+```http
+POST {baseUrl}
+Authorization: Bearer <credential>
+Content-Type: application/json
+```
+
+```json
+{
+  "policy": {"id": "warranty-duration", "version": "1"},
+  "query_content": "How long is the warranty?",
+  "guard_content": "The warranty lasts ten years.",
+  "confidence_threshold": 0.8
+}
+```
+
+<a id="reasoning-response" />
+
+## Proof response
+
+```json
+{
+  "findings": [
+    {
+      "id": "proof-1",
+      "result": "invalid",
+      "confidence": 1.0,
+      "translation": {
+        "premises": ["warranty_years == 1"],
+        "claims": ["warranty_years == 10"],
+        "untranslated": []
+      },
+      "contradicting_rules": [
+        {"id": "warranty-term", "expression": "warranty_years == 1", "description": "The warranty lasts exactly one year."}
+      ],
+      "claims_false_scenario": {"variable_values": {"warranty_years": "1"}},
+      "message": "The policy contradicts the answer."
+    }
+  ],
+  "solver": {"name": "Z3", "version": "4.16.0", "policy_sha256": "..."}
+}
+```
+
+`findings` must be nonempty and contain at most 100 entries. Finding IDs must be unique.
+
+Result semantics:
+
+| Result | Meaning | Typical handling |
+| --- | --- | --- |
+| `valid` | The policy entails the answer | allow |
+| `invalid` | The answer contradicts the policy | block |
+| `satisfiable` | The answer is compatible but not entailed | apply threshold |
+| `impossible` | The formal policy is inconsistent | fail closed |
+| `translation_ambiguous` | The claim cannot be translated clearly | fail closed |
+| `no_translations` | No claim could be translated | fail closed |
+| `too_complex` | The proof exceeds the solver budget | fail closed |
+
+Only `valid` is a clear pass signal. Service errors, missing policies, translation failures and proof errors fail closed.
+
+<a id="reasoning-config" />
+
+## Configuration
+
+1. Deploy a proof service reachable from the inspection environment.
+2. Register a `custom-openai-compatible` Provider whose base URL points to `/evaluate`.
+3. Register a Model with `tali.automated-reasoning.v1`.
+4. Select it for `automated_reasoning.output` in Protection Capabilities.
+5. Validate it with one known-valid and one known-invalid answer.
+6. Enable `service/formal-verification` on Output only.
+
+The capability needs a stable proof service and a versioned formal policy. The Full-feature default Profile does not enable it.
