@@ -13,6 +13,14 @@ metadata:
   - namespace: collection
     value: target-policies
     label: Target Policies
+  - namespace: framework
+    value: eu-ai-act
+    label: EU AI Act
+    source: declared
+  - namespace: jurisdiction
+    value: eu
+    label: European Union
+    source: declared
   safety_level: balanced
   output_delivery: full_buffered
 parameters: []

@@ -5,7 +5,14 @@ import yaml
 from runner.toolkit.policy_library.package import load_package
 from runner.toolkit.policy_library.rules import RuleRegistry
 from runner.toolkit.policy_library.declarative import PolicyDefinition, TestDefinition
+from runner.toolkit.policy_library.frameworks import framework_tags_for_policy
 from runner.toolkit.policy_library.package import PolicyManifest
+
+# The Library keeps three independent navigation groups: protection map,
+# frameworks and regulations, and jurisdictions. A target Policy aggregates
+# Rules from several source Policies, so it inherits the discovery tags those
+# sources declare instead of losing the framework/region classification.
+DISCOVERY_NAMESPACES=('framework','jurisdiction')
 
 ROOT=Path('policies'); TARGET=ROOT/'target'
 rows=list(csv.DictReader(open('docs/policy-rule-mapping.csv')))
@@ -36,6 +43,7 @@ for target, entries in sorted(by_target.items()):
     pid=target_ids[target]
     pdir=TARGET/pid; (pdir/'tests').mkdir(parents=True)
     refs=[]; seen=set(); params={}; tests=[]; testing={}
+    discovery={}
     source_ids=set()
     for entry in entries:
         source_ids.add(entry['current_policy_id'])
@@ -44,6 +52,11 @@ for target, entries in sorted(by_target.items()):
             refs.append({'id':entry['rule_id'],'version':'1.0.0'}); seen.add(key)
     for sid in sorted(source_ids):
         pkg=source[sid]
+        for tag in (*framework_tags_for_policy(sid), *pkg.definition.metadata.tags):
+            if tag.namespace not in DISCOVERY_NAMESPACES:
+                continue
+            discovery.setdefault(f'{tag.namespace}:{tag.value}', {
+                'namespace':tag.namespace,'value':tag.value,'label':tag.label,'source':tag.source})
         for param in pkg.definition.parameters:
             params.setdefault(param.name,param.model_dump())
         testing.update(pkg.manifest.testing.parameters)
@@ -80,7 +93,8 @@ for target, entries in sorted(by_target.items()):
       'metadata':{'id':pid,'name':target,'description':f'Target taxonomy Policy: {target}.',
         'source':'built_in','version':'1.0.0',
         'tags':[{'namespace':'protection','value':directory,'label':directory.replace('_',' ').title()},
-                {'namespace':'collection','value':'target-policies','label':'Target Policies'}],
+                {'namespace':'collection','value':'target-policies','label':'Target Policies'},
+                *[discovery[key] for key in sorted(discovery, key=lambda key: (DISCOVERY_NAMESPACES.index(discovery[key]['namespace']), discovery[key]['label']))]],
         'safety_level':'balanced','output_delivery':'full_buffered'},
       'parameters':list(params.values()),'rules':[],'rule_refs':refs,
       'tests':['tests/acceptance.yaml']}

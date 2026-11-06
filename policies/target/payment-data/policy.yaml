@@ -13,6 +13,42 @@ metadata:
   - namespace: collection
     value: target-policies
     label: Target Policies
+  - namespace: framework
+    value: gdpr
+    label: GDPR
+    source: declared
+  - namespace: framework
+    value: owasp-llm-2025
+    label: OWASP LLM 2025
+    source: declared
+  - namespace: framework
+    value: pipl-cn
+    label: PIPL (China)
+    source: declared
+  - namespace: framework
+    value: pdpa
+    label: Singapore PDPA
+    source: declared
+  - namespace: jurisdiction
+    value: au
+    label: Australia
+    source: declared
+  - namespace: jurisdiction
+    value: cn
+    label: China mainland
+    source: declared
+  - namespace: jurisdiction
+    value: eu
+    label: European Union
+    source: declared
+  - namespace: jurisdiction
+    value: sg
+    label: Singapore
+    source: declared
+  - namespace: jurisdiction
+    value: uae
+    label: United Arab Emirates
+    source: declared
   safety_level: balanced
   output_delivery: full_buffered
 parameters: []

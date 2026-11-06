@@ -15,6 +15,12 @@
         "namespace": "collection",
         "value": "target-policies",
         "label": "Target Policies"
+      },
+      {
+        "namespace": "framework",
+        "value": "owasp-llm-2025",
+        "label": "OWASP LLM 2025",
+        "source": "declared"
       }
     ],
     "safety_level": "balanced",
@@ -148,6 +154,12 @@
             "namespace": "collection",
             "value": "target-policies",
             "label": "Target Policies",
+            "source": "declared"
+          },
+          {
+            "namespace": "framework",
+            "value": "owasp-llm-2025",
+            "label": "OWASP LLM 2025",
             "source": "declared"
           }
         ],
@@ -287,6 +299,18 @@
         "namespace": "collection",
         "value": "target-policies",
         "label": "Target Policies"
+      },
+      {
+        "namespace": "framework",
+        "value": "owasp-llm-2025",
+        "label": "OWASP LLM 2025",
+        "source": "declared"
+      },
+      {
+        "namespace": "jurisdiction",
+        "value": "cn",
+        "label": "China mainland",
+        "source": "declared"
       }
     ],
     "safety_level": "balanced",
@@ -1885,6 +1909,18 @@
             "namespace": "collection",
             "value": "target-policies",
             "label": "Target Policies",
+            "source": "declared"
+          },
+          {
+            "namespace": "framework",
+            "value": "owasp-llm-2025",
+            "label": "OWASP LLM 2025",
+            "source": "declared"
+          },
+          {
+            "namespace": "jurisdiction",
+            "value": "cn",
+            "label": "China mainland",
             "source": "declared"
           }
         ],
@@ -5724,6 +5760,60 @@
         "namespace": "collection",
         "value": "target-policies",
         "label": "Target Policies"
+      },
+      {
+        "namespace": "framework",
+        "value": "gdpr",
+        "label": "GDPR",
+        "source": "declared"
+      },
+      {
+        "namespace": "framework",
+        "value": "owasp-llm-2025",
+        "label": "OWASP LLM 2025",
+        "source": "declared"
+      },
+      {
+        "namespace": "framework",
+        "value": "pipl-cn",
+        "label": "PIPL (China)",
+        "source": "declared"
+      },
+      {
+        "namespace": "framework",
+        "value": "pdpa",
+        "label": "Singapore PDPA",
+        "source": "declared"
+      },
+      {
+        "namespace": "jurisdiction",
+        "value": "au",
+        "label": "Australia",
+        "source": "declared"
+      },
+      {
+        "namespace": "jurisdiction",
+        "value": "cn",
+        "label": "China mainland",
+        "source": "declared"
+      },
+      {
+        "namespace": "jurisdiction",
+        "value": "eu",
+        "label": "European Union",
+        "source": "declared"
+      },
+      {
+        "namespace": "jurisdiction",
+        "value": "sg",
+        "label": "Singapore",
+        "source": "declared"
+      },
+      {
+        "namespace": "jurisdiction",
+        "value": "uae",
+        "label": "United Arab Emirates",
+        "source": "declared"
       }
     ],
     "safety_level": "balanced",
@@ -7674,6 +7764,60 @@
             "namespace": "collection",
             "value": "target-policies",
             "label": "Target Policies",
+            "source": "declared"
+          },
+          {
+            "namespace": "framework",
+            "value": "gdpr",
+            "label": "GDPR",
+            "source": "declared"
+          },
+          {
+            "namespace": "framework",
+            "value": "owasp-llm-2025",
+            "label": "OWASP LLM 2025",
+            "source": "declared"
+          },
+          {
+            "namespace": "framework",
+            "value": "pipl-cn",
+            "label": "PIPL (China)",
+            "source": "declared"
+          },
+          {
+            "namespace": "framework",
+            "value": "pdpa",
+            "label": "Singapore PDPA",
+            "source": "declared"
+          },
+          {
+            "namespace": "jurisdiction",
+            "value": "au",
+            "label": "Australia",
+            "source": "declared"
+          },
+          {
+            "namespace": "jurisdiction",
+            "value": "cn",
+            "label": "China mainland",
+            "source": "declared"
+          },
+          {
+            "namespace": "jurisdiction",
+            "value": "eu",
+            "label": "European Union",
+            "source": "declared"
+          },
+          {
+            "namespace": "jurisdiction",
+            "value": "sg",
+            "label": "Singapore",
+            "source": "declared"
+          },
+          {
+            "namespace": "jurisdiction",
+            "value": "uae",
+            "label": "United Arab Emirates",
             "source": "declared"
           }
         ],
@@ -10655,6 +10799,18 @@
         "namespace": "collection",
         "value": "target-policies",
         "label": "Target Policies"
+      },
+      {
+        "namespace": "jurisdiction",
+        "value": "au",
+        "label": "Australia",
+        "source": "declared"
+      },
+      {
+        "namespace": "jurisdiction",
+        "value": "uae",
+        "label": "United Arab Emirates",
+        "source": "declared"
       }
     ],
     "safety_level": "balanced",
@@ -16208,6 +16364,18 @@
             "namespace": "collection",
             "value": "target-policies",
             "label": "Target Policies",
+            "source": "declared"
+          },
+          {
+            "namespace": "jurisdiction",
+            "value": "au",
+            "label": "Australia",
+            "source": "declared"
+          },
+          {
+            "namespace": "jurisdiction",
+            "value": "uae",
+            "label": "United Arab Emirates",
             "source": "declared"
           }
         ],
@@ -22090,6 +22258,18 @@
         "namespace": "collection",
         "value": "target-policies",
         "label": "Target Policies"
+      },
+      {
+        "namespace": "framework",
+        "value": "owasp-llm-2025",
+        "label": "OWASP LLM 2025",
+        "source": "declared"
+      },
+      {
+        "namespace": "jurisdiction",
+        "value": "au",
+        "label": "Australia",
+        "source": "declared"
       }
     ],
     "safety_level": "balanced",
@@ -24996,6 +25176,18 @@
             "namespace": "collection",
             "value": "target-policies",
             "label": "Target Policies",
+            "source": "declared"
+          },
+          {
+            "namespace": "framework",
+            "value": "owasp-llm-2025",
+            "label": "OWASP LLM 2025",
+            "source": "declared"
+          },
+          {
+            "namespace": "jurisdiction",
+            "value": "au",
+            "label": "Australia",
             "source": "declared"
           }
         ],
@@ -28337,6 +28529,24 @@
         "namespace": "collection",
         "value": "target-policies",
         "label": "Target Policies"
+      },
+      {
+        "namespace": "framework",
+        "value": "jr-t-0221-2021",
+        "label": "JR/T 0221-2021",
+        "source": "declared"
+      },
+      {
+        "namespace": "framework",
+        "value": "owasp-llm-2025",
+        "label": "OWASP LLM 2025",
+        "source": "declared"
+      },
+      {
+        "namespace": "jurisdiction",
+        "value": "cn",
+        "label": "China mainland",
+        "source": "declared"
       }
     ],
     "safety_level": "balanced",
@@ -28689,6 +28899,24 @@
             "namespace": "collection",
             "value": "target-policies",
             "label": "Target Policies",
+            "source": "declared"
+          },
+          {
+            "namespace": "framework",
+            "value": "jr-t-0221-2021",
+            "label": "JR/T 0221-2021",
+            "source": "declared"
+          },
+          {
+            "namespace": "framework",
+            "value": "owasp-llm-2025",
+            "label": "OWASP LLM 2025",
+            "source": "declared"
+          },
+          {
+            "namespace": "jurisdiction",
+            "value": "cn",
+            "label": "China mainland",
             "source": "declared"
           }
         ],
@@ -29074,6 +29302,24 @@
         "namespace": "collection",
         "value": "target-policies",
         "label": "Target Policies"
+      },
+      {
+        "namespace": "framework",
+        "value": "jr-t-0221-2021",
+        "label": "JR/T 0221-2021",
+        "source": "declared"
+      },
+      {
+        "namespace": "framework",
+        "value": "owasp-llm-2025",
+        "label": "OWASP LLM 2025",
+        "source": "declared"
+      },
+      {
+        "namespace": "jurisdiction",
+        "value": "cn",
+        "label": "China mainland",
+        "source": "declared"
       }
     ],
     "safety_level": "balanced",
@@ -29906,6 +30152,24 @@
             "namespace": "collection",
             "value": "target-policies",
             "label": "Target Policies",
+            "source": "declared"
+          },
+          {
+            "namespace": "framework",
+            "value": "jr-t-0221-2021",
+            "label": "JR/T 0221-2021",
+            "source": "declared"
+          },
+          {
+            "namespace": "framework",
+            "value": "owasp-llm-2025",
+            "label": "OWASP LLM 2025",
+            "source": "declared"
+          },
+          {
+            "namespace": "jurisdiction",
+            "value": "cn",
+            "label": "China mainland",
             "source": "declared"
           }
         ],
@@ -30781,6 +31045,60 @@
         "namespace": "collection",
         "value": "target-policies",
         "label": "Target Policies"
+      },
+      {
+        "namespace": "framework",
+        "value": "gdpr",
+        "label": "GDPR",
+        "source": "declared"
+      },
+      {
+        "namespace": "framework",
+        "value": "owasp-llm-2025",
+        "label": "OWASP LLM 2025",
+        "source": "declared"
+      },
+      {
+        "namespace": "framework",
+        "value": "pipl-cn",
+        "label": "PIPL (China)",
+        "source": "declared"
+      },
+      {
+        "namespace": "framework",
+        "value": "pdpa",
+        "label": "Singapore PDPA",
+        "source": "declared"
+      },
+      {
+        "namespace": "jurisdiction",
+        "value": "au",
+        "label": "Australia",
+        "source": "declared"
+      },
+      {
+        "namespace": "jurisdiction",
+        "value": "cn",
+        "label": "China mainland",
+        "source": "declared"
+      },
+      {
+        "namespace": "jurisdiction",
+        "value": "eu",
+        "label": "European Union",
+        "source": "declared"
+      },
+      {
+        "namespace": "jurisdiction",
+        "value": "sg",
+        "label": "Singapore",
+        "source": "declared"
+      },
+      {
+        "namespace": "jurisdiction",
+        "value": "uae",
+        "label": "United Arab Emirates",
+        "source": "declared"
       }
     ],
     "safety_level": "balanced",
@@ -34663,6 +34981,60 @@
             "namespace": "collection",
             "value": "target-policies",
             "label": "Target Policies",
+            "source": "declared"
+          },
+          {
+            "namespace": "framework",
+            "value": "gdpr",
+            "label": "GDPR",
+            "source": "declared"
+          },
+          {
+            "namespace": "framework",
+            "value": "owasp-llm-2025",
+            "label": "OWASP LLM 2025",
+            "source": "declared"
+          },
+          {
+            "namespace": "framework",
+            "value": "pipl-cn",
+            "label": "PIPL (China)",
+            "source": "declared"
+          },
+          {
+            "namespace": "framework",
+            "value": "pdpa",
+            "label": "Singapore PDPA",
+            "source": "declared"
+          },
+          {
+            "namespace": "jurisdiction",
+            "value": "au",
+            "label": "Australia",
+            "source": "declared"
+          },
+          {
+            "namespace": "jurisdiction",
+            "value": "cn",
+            "label": "China mainland",
+            "source": "declared"
+          },
+          {
+            "namespace": "jurisdiction",
+            "value": "eu",
+            "label": "European Union",
+            "source": "declared"
+          },
+          {
+            "namespace": "jurisdiction",
+            "value": "sg",
+            "label": "Singapore",
+            "source": "declared"
+          },
+          {
+            "namespace": "jurisdiction",
+            "value": "uae",
+            "label": "United Arab Emirates",
             "source": "declared"
           }
         ],
@@ -38952,6 +39324,12 @@
         "namespace": "collection",
         "value": "target-policies",
         "label": "Target Policies"
+      },
+      {
+        "namespace": "jurisdiction",
+        "value": "au",
+        "label": "Australia",
+        "source": "declared"
       }
     ],
     "safety_level": "balanced",
@@ -39261,6 +39639,12 @@
             "namespace": "collection",
             "value": "target-policies",
             "label": "Target Policies",
+            "source": "declared"
+          },
+          {
+            "namespace": "jurisdiction",
+            "value": "au",
+            "label": "Australia",
             "source": "declared"
           }
         ],
@@ -39599,6 +39983,60 @@
         "namespace": "collection",
         "value": "target-policies",
         "label": "Target Policies"
+      },
+      {
+        "namespace": "framework",
+        "value": "gdpr",
+        "label": "GDPR",
+        "source": "declared"
+      },
+      {
+        "namespace": "framework",
+        "value": "owasp-llm-2025",
+        "label": "OWASP LLM 2025",
+        "source": "declared"
+      },
+      {
+        "namespace": "framework",
+        "value": "pipl-cn",
+        "label": "PIPL (China)",
+        "source": "declared"
+      },
+      {
+        "namespace": "framework",
+        "value": "pdpa",
+        "label": "Singapore PDPA",
+        "source": "declared"
+      },
+      {
+        "namespace": "jurisdiction",
+        "value": "au",
+        "label": "Australia",
+        "source": "declared"
+      },
+      {
+        "namespace": "jurisdiction",
+        "value": "cn",
+        "label": "China mainland",
+        "source": "declared"
+      },
+      {
+        "namespace": "jurisdiction",
+        "value": "eu",
+        "label": "European Union",
+        "source": "declared"
+      },
+      {
+        "namespace": "jurisdiction",
+        "value": "sg",
+        "label": "Singapore",
+        "source": "declared"
+      },
+      {
+        "namespace": "jurisdiction",
+        "value": "uae",
+        "label": "United Arab Emirates",
+        "source": "declared"
       }
     ],
     "safety_level": "balanced",
@@ -40608,6 +41046,60 @@
             "namespace": "collection",
             "value": "target-policies",
             "label": "Target Policies",
+            "source": "declared"
+          },
+          {
+            "namespace": "framework",
+            "value": "gdpr",
+            "label": "GDPR",
+            "source": "declared"
+          },
+          {
+            "namespace": "framework",
+            "value": "owasp-llm-2025",
+            "label": "OWASP LLM 2025",
+            "source": "declared"
+          },
+          {
+            "namespace": "framework",
+            "value": "pipl-cn",
+            "label": "PIPL (China)",
+            "source": "declared"
+          },
+          {
+            "namespace": "framework",
+            "value": "pdpa",
+            "label": "Singapore PDPA",
+            "source": "declared"
+          },
+          {
+            "namespace": "jurisdiction",
+            "value": "au",
+            "label": "Australia",
+            "source": "declared"
+          },
+          {
+            "namespace": "jurisdiction",
+            "value": "cn",
+            "label": "China mainland",
+            "source": "declared"
+          },
+          {
+            "namespace": "jurisdiction",
+            "value": "eu",
+            "label": "European Union",
+            "source": "declared"
+          },
+          {
+            "namespace": "jurisdiction",
+            "value": "sg",
+            "label": "Singapore",
+            "source": "declared"
+          },
+          {
+            "namespace": "jurisdiction",
+            "value": "uae",
+            "label": "United Arab Emirates",
             "source": "declared"
           }
         ],
@@ -41718,6 +42210,12 @@
         "namespace": "collection",
         "value": "target-policies",
         "label": "Target Policies"
+      },
+      {
+        "namespace": "framework",
+        "value": "owasp-llm-2025",
+        "label": "OWASP LLM 2025",
+        "source": "declared"
       }
     ],
     "safety_level": "balanced",
@@ -41889,6 +42387,12 @@
             "namespace": "collection",
             "value": "target-policies",
             "label": "Target Policies",
+            "source": "declared"
+          },
+          {
+            "namespace": "framework",
+            "value": "owasp-llm-2025",
+            "label": "OWASP LLM 2025",
             "source": "declared"
           }
         ],
@@ -42079,6 +42583,18 @@
         "namespace": "collection",
         "value": "target-policies",
         "label": "Target Policies"
+      },
+      {
+        "namespace": "framework",
+        "value": "owasp-llm-2025",
+        "label": "OWASP LLM 2025",
+        "source": "declared"
+      },
+      {
+        "namespace": "jurisdiction",
+        "value": "cn",
+        "label": "China mainland",
+        "source": "declared"
       }
     ],
     "safety_level": "balanced",
@@ -44727,6 +45243,18 @@
             "namespace": "collection",
             "value": "target-policies",
             "label": "Target Policies",
+            "source": "declared"
+          },
+          {
+            "namespace": "framework",
+            "value": "owasp-llm-2025",
+            "label": "OWASP LLM 2025",
+            "source": "declared"
+          },
+          {
+            "namespace": "jurisdiction",
+            "value": "cn",
+            "label": "China mainland",
             "source": "declared"
           }
         ],
@@ -47515,6 +48043,18 @@
         "namespace": "collection",
         "value": "target-policies",
         "label": "Target Policies"
+      },
+      {
+        "namespace": "framework",
+        "value": "eu-ai-act",
+        "label": "EU AI Act",
+        "source": "declared"
+      },
+      {
+        "namespace": "jurisdiction",
+        "value": "eu",
+        "label": "European Union",
+        "source": "declared"
       }
     ],
     "safety_level": "balanced",
@@ -48971,6 +49511,18 @@
             "namespace": "collection",
             "value": "target-policies",
             "label": "Target Policies",
+            "source": "declared"
+          },
+          {
+            "namespace": "framework",
+            "value": "eu-ai-act",
+            "label": "EU AI Act",
+            "source": "declared"
+          },
+          {
+            "namespace": "jurisdiction",
+            "value": "eu",
+            "label": "European Union",
             "source": "declared"
           }
         ],
@@ -50435,6 +50987,24 @@
         "namespace": "collection",
         "value": "target-policies",
         "label": "Target Policies"
+      },
+      {
+        "namespace": "framework",
+        "value": "owasp-llm-2025",
+        "label": "OWASP LLM 2025",
+        "source": "declared"
+      },
+      {
+        "namespace": "framework",
+        "value": "pdpa",
+        "label": "Singapore PDPA",
+        "source": "declared"
+      },
+      {
+        "namespace": "jurisdiction",
+        "value": "sg",
+        "label": "Singapore",
+        "source": "declared"
       }
     ],
     "safety_level": "balanced",
@@ -51496,6 +52066,24 @@
             "namespace": "collection",
             "value": "target-policies",
             "label": "Target Policies",
+            "source": "declared"
+          },
+          {
+            "namespace": "framework",
+            "value": "owasp-llm-2025",
+            "label": "OWASP LLM 2025",
+            "source": "declared"
+          },
+          {
+            "namespace": "framework",
+            "value": "pdpa",
+            "label": "Singapore PDPA",
+            "source": "declared"
+          },
+          {
+            "namespace": "jurisdiction",
+            "value": "sg",
+            "label": "Singapore",
             "source": "declared"
           }
         ],
@@ -52595,6 +53183,18 @@
         "namespace": "collection",
         "value": "target-policies",
         "label": "Target Policies"
+      },
+      {
+        "namespace": "jurisdiction",
+        "value": "au",
+        "label": "Australia",
+        "source": "declared"
+      },
+      {
+        "namespace": "jurisdiction",
+        "value": "uae",
+        "label": "United Arab Emirates",
+        "source": "declared"
       }
     ],
     "safety_level": "balanced",
@@ -52883,6 +53483,18 @@
             "namespace": "collection",
             "value": "target-policies",
             "label": "Target Policies",
+            "source": "declared"
+          },
+          {
+            "namespace": "jurisdiction",
+            "value": "au",
+            "label": "Australia",
+            "source": "declared"
+          },
+          {
+            "namespace": "jurisdiction",
+            "value": "uae",
+            "label": "United Arab Emirates",
             "source": "declared"
           }
         ],
@@ -54788,6 +55400,12 @@
         "namespace": "collection",
         "value": "target-policies",
         "label": "Target Policies"
+      },
+      {
+        "namespace": "jurisdiction",
+        "value": "au",
+        "label": "Australia",
+        "source": "declared"
       }
     ],
     "safety_level": "balanced",
@@ -55557,6 +56175,12 @@
             "namespace": "collection",
             "value": "target-policies",
             "label": "Target Policies",
+            "source": "declared"
+          },
+          {
+            "namespace": "jurisdiction",
+            "value": "au",
+            "label": "Australia",
             "source": "declared"
           }
         ],
