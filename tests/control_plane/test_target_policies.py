@@ -13,7 +13,7 @@ def test_target_policy_catalog_contains_20_policies_and_all_shared_rules():
         package = load_package(path.parent, rules)
         compiled.append(compile_policy(package.definition, registry()))
     assert len(compiled) == 20
-    assert sum(len(policy["rules"]) for policy in compiled) == 202
+    assert sum(len(policy["rules"]) for policy in compiled) == 199
     ids = {policy["id"] for policy in compiled}
     assert "payment-data" in ids
     assert "regional-compliance-sg-pdpa" in ids

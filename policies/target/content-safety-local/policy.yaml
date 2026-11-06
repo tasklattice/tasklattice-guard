@@ -38,13 +38,7 @@ rule_refs:
   version: 1.0.0
 - id: category/bias_sexual_orientation
   version: 1.0.0
-- id: nsfw-filter-spanish/harm_toxic_abuse_es
-  version: 1.0.0
-- id: nsfw-filter-french/harm_toxic_abuse_fr
-  version: 1.0.0
-- id: nsfw-filter-german/harm_toxic_abuse_de
-  version: 1.0.0
-- id: nsfw-filter-australian/harm_toxic_abuse_au
+- id: nsfw-filter-multilingual/harm_toxic_abuse
   version: 1.0.0
 tests:
 - tests/acceptance.yaml

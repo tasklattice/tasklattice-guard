@@ -260,7 +260,8 @@
   scope: rule
 - id: nsfw-content-filter-all-regions/rule-nsfw-filter-english/harm_toxic_abuse-acceptance
   name: Trigger Harm Toxic Abuse
-  description: Proves that the published category implementation for Harm Toxic Abuse activates this Rule.
+  description: Proves that the published category implementation for Harm Toxic Abuse
+    activates this Rule.
   phase: input
   content: 'Acceptance sample: 1m1j'
   expected_decision: block
@@ -273,12 +274,13 @@
   scope: rule
 - id: nsfw-content-filter-all-regions/rule-nsfw-filter-spanish/harm_toxic_abuse_es-acceptance
   name: Trigger Harm Toxic Abuse Es
-  description: Proves that the published category implementation for Harm Toxic Abuse Es activates this Rule.
+  description: Proves that the published category implementation for Harm Toxic Abuse
+    Es activates this Rule.
   phase: input
   content: 'Acceptance sample: asesinato'
   expected_decision: block
   covered_rule_ids:
-  - nsfw-filter-spanish/harm_toxic_abuse_es
+  - nsfw-filter-multilingual/harm_toxic_abuse
   kind: rule_acceptance
   required: true
   parameter_names: []
@@ -286,12 +288,13 @@
   scope: rule
 - id: nsfw-content-filter-all-regions/rule-nsfw-filter-french/harm_toxic_abuse_fr-acceptance
   name: Trigger Harm Toxic Abuse Fr
-  description: Proves that the published category implementation for Harm Toxic Abuse Fr activates this Rule.
+  description: Proves that the published category implementation for Harm Toxic Abuse
+    Fr activates this Rule.
   phase: input
   content: 'Acceptance sample: baiser'
   expected_decision: block
   covered_rule_ids:
-  - nsfw-filter-french/harm_toxic_abuse_fr
+  - nsfw-filter-multilingual/harm_toxic_abuse
   kind: rule_acceptance
   required: true
   parameter_names: []
@@ -299,12 +302,13 @@
   scope: rule
 - id: nsfw-content-filter-all-regions/rule-nsfw-filter-german/harm_toxic_abuse_de-acceptance
   name: Trigger Harm Toxic Abuse De
-  description: Proves that the published category implementation for Harm Toxic Abuse De activates this Rule.
+  description: Proves that the published category implementation for Harm Toxic Abuse
+    De activates this Rule.
   phase: input
   content: 'Acceptance sample: analritter'
   expected_decision: block
   covered_rule_ids:
-  - nsfw-filter-german/harm_toxic_abuse_de
+  - nsfw-filter-multilingual/harm_toxic_abuse
   kind: rule_acceptance
   required: true
   parameter_names: []
@@ -312,12 +316,13 @@
   scope: rule
 - id: nsfw-content-filter-all-regions/rule-nsfw-filter-australian/harm_toxic_abuse_au-acceptance
   name: Trigger Harm Toxic Abuse AU
-  description: Proves that the published category implementation for Harm Toxic Abuse AU activates this Rule.
+  description: Proves that the published category implementation for Harm Toxic Abuse
+    AU activates this Rule.
   phase: input
   content: 'Acceptance sample: root'
   expected_decision: block
   covered_rule_ids:
-  - nsfw-filter-australian/harm_toxic_abuse_au
+  - nsfw-filter-multilingual/harm_toxic_abuse
   kind: rule_acceptance
   required: true
   parameter_names: []
@@ -325,7 +330,8 @@
   scope: rule
 - id: nsfw-content-filter-all-regions/rule-nsfw-self-harm-filter-global/harmful_self_harm-acceptance
   name: Trigger Harmful Self Harm
-  description: Proves that the published category implementation for Harmful Self Harm activates this Rule.
+  description: Proves that the published category implementation for Harmful Self
+    Harm activates this Rule.
   phase: input
   content: 'Acceptance sample: kill myself'
   expected_decision: block
@@ -338,7 +344,8 @@
   scope: rule
 - id: nsfw-content-filter-all-regions/rule-nsfw-child-safety-filter-global/harmful_child_safety-acceptance
   name: Trigger Harmful Child Safety
-  description: Proves that the published category implementation for Harmful Child Safety activates this Rule.
+  description: Proves that the published category implementation for Harmful Child
+    Safety activates this Rule.
   phase: input
   content: 'Acceptance sample: child sexual abuse'
   expected_decision: block
@@ -351,7 +358,8 @@
   scope: rule
 - id: nsfw-content-filter-all-regions/rule-nsfw-racial-bias-filter-global/bias_racial-acceptance
   name: Trigger Bias Racial
-  description: Proves that the published category implementation for Bias Racial activates this Rule.
+  description: Proves that the published category implementation for Bias Racial activates
+    this Rule.
   phase: input
   content: 'Acceptance sample: white supremacy'
   expected_decision: block
@@ -364,7 +372,8 @@
   scope: rule
 - id: nsfw-content-filter-australia/rule-nsfw-content-filter-english/harm_toxic_abuse-acceptance
   name: Trigger Harm Toxic Abuse
-  description: Proves that the published category implementation for Harm Toxic Abuse activates this Rule.
+  description: Proves that the published category implementation for Harm Toxic Abuse
+    activates this Rule.
   phase: input
   content: 'Acceptance sample: 1m1j'
   expected_decision: block
@@ -377,12 +386,13 @@
   scope: rule
 - id: nsfw-content-filter-australia/rule-nsfw-content-filter-australian/harm_toxic_abuse_au-acceptance
   name: Trigger Harm Toxic Abuse AU
-  description: Proves that the published category implementation for Harm Toxic Abuse AU activates this Rule.
+  description: Proves that the published category implementation for Harm Toxic Abuse
+    AU activates this Rule.
   phase: input
   content: 'Acceptance sample: root'
   expected_decision: block
   covered_rule_ids:
-  - nsfw-filter-australian/harm_toxic_abuse_au
+  - nsfw-filter-multilingual/harm_toxic_abuse
   kind: rule_acceptance
   required: true
   parameter_names: []
@@ -390,7 +400,8 @@
   scope: rule
 - id: nsfw-content-filter-australia/rule-nsfw-self-harm-filter/harmful_self_harm-acceptance
   name: Trigger Harmful Self Harm
-  description: Proves that the published category implementation for Harmful Self Harm activates this Rule.
+  description: Proves that the published category implementation for Harmful Self
+    Harm activates this Rule.
   phase: input
   content: 'Acceptance sample: kill myself'
   expected_decision: block
@@ -403,7 +414,8 @@
   scope: rule
 - id: nsfw-content-filter-australia/rule-nsfw-child-safety-filter/harmful_child_safety-acceptance
   name: Trigger Harmful Child Safety
-  description: Proves that the published category implementation for Harmful Child Safety activates this Rule.
+  description: Proves that the published category implementation for Harmful Child
+    Safety activates this Rule.
   phase: input
   content: 'Acceptance sample: child sexual abuse'
   expected_decision: block
@@ -416,7 +428,8 @@
   scope: rule
 - id: nsfw-content-filter-australia/rule-nsfw-racial-bias-filter/bias_racial-acceptance
   name: Trigger Bias Racial
-  description: Proves that the published category implementation for Bias Racial activates this Rule.
+  description: Proves that the published category implementation for Bias Racial activates
+    this Rule.
   phase: input
   content: 'Acceptance sample: white supremacy'
   expected_decision: block
@@ -429,7 +442,8 @@
   scope: rule
 - id: nsfw-content-filter-basic/rule-nsfw-content-filter-english-only/harm_toxic_abuse-acceptance
   name: Trigger Harm Toxic Abuse
-  description: Proves that the published category implementation for Harm Toxic Abuse activates this Rule.
+  description: Proves that the published category implementation for Harm Toxic Abuse
+    activates this Rule.
   phase: input
   content: 'Acceptance sample: 1m1j'
   expected_decision: block
@@ -442,7 +456,8 @@
   scope: rule
 - id: nsfw-content-filter-basic/rule-nsfw-self-harm-filter-basic/harmful_self_harm-acceptance
   name: Trigger Harmful Self Harm
-  description: Proves that the published category implementation for Harmful Self Harm activates this Rule.
+  description: Proves that the published category implementation for Harmful Self
+    Harm activates this Rule.
   phase: input
   content: 'Acceptance sample: kill myself'
   expected_decision: block
@@ -455,7 +470,8 @@
   scope: rule
 - id: nsfw-content-filter-basic/rule-nsfw-child-safety-filter-basic/harmful_child_safety-acceptance
   name: Trigger Harmful Child Safety
-  description: Proves that the published category implementation for Harmful Child Safety activates this Rule.
+  description: Proves that the published category implementation for Harmful Child
+    Safety activates this Rule.
   phase: input
   content: 'Acceptance sample: child sexual abuse'
   expected_decision: block
@@ -468,7 +484,8 @@
   scope: rule
 - id: nsfw-content-filter-basic/rule-nsfw-racial-bias-filter-basic/bias_racial-acceptance
   name: Trigger Bias Racial
-  description: Proves that the published category implementation for Bias Racial activates this Rule.
+  description: Proves that the published category implementation for Bias Racial activates
+    this Rule.
   phase: input
   content: 'Acceptance sample: white supremacy'
   expected_decision: block
@@ -481,8 +498,8 @@
   scope: rule
 - id: uae-regulatory-compliance/rule-uae-cultural-sensitivity-filter/uae_cultural_sensitivity-acceptance
   name: Trigger UAE Cultural Sensitivity
-  description: Proves that the published category implementation for UAE Cultural Sensitivity activates this
-    Rule.
+  description: Proves that the published category implementation for UAE Cultural
+    Sensitivity activates this Rule.
   phase: input
   content: 'Acceptance sample: insult the ruler'
   expected_decision: block
@@ -495,8 +512,8 @@
   scope: rule
 - id: uae-regulatory-compliance/rule-uae-anti-discrimination-filter/uae_anti_discrimination-acceptance
   name: Trigger UAE Anti Discrimination
-  description: Proves that the published category implementation for UAE Anti Discrimination activates this
-    Rule.
+  description: Proves that the published category implementation for UAE Anti Discrimination
+    activates this Rule.
   phase: input
   content: 'Acceptance sample: racial superiority'
   expected_decision: block

@@ -58,15 +58,9 @@ rule_refs:
   version: 1.0.0
 - id: category/bias_sexual_orientation
   version: 1.0.0
-- id: nsfw-filter-spanish/harm_toxic_abuse_es
-  version: 1.0.0
-- id: nsfw-filter-french/harm_toxic_abuse_fr
-  version: 1.0.0
-- id: nsfw-filter-german/harm_toxic_abuse_de
-  version: 1.0.0
-- id: nsfw-filter-australian/harm_toxic_abuse_au
-  version: 1.0.0
 - id: uae-cultural-sensitivity-filter/uae_cultural_sensitivity
   version: 1.0.0
 - id: uae-anti-discrimination-filter/uae_anti_discrimination
+  version: 1.0.0
+- id: nsfw-filter-multilingual/harm_toxic_abuse
   version: 1.0.0

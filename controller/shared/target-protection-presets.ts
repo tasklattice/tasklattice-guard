@@ -170,10 +170,7 @@ export const targetProtectionPresets: readonly ProtectionPreset[] = [
           "category/bias_racial",
           "category/bias_religious",
           "category/bias_sexual_orientation",
-          "nsfw-filter-spanish/harm_toxic_abuse_es",
-          "nsfw-filter-french/harm_toxic_abuse_fr",
-          "nsfw-filter-german/harm_toxic_abuse_de",
-          "nsfw-filter-australian/harm_toxic_abuse_au"
+          "nsfw-filter-multilingual/harm_toxic_abuse"
         ],
         "ruleOrder": [
           "category/denied_insults",
@@ -186,10 +183,7 @@ export const targetProtectionPresets: readonly ProtectionPreset[] = [
           "category/bias_racial",
           "category/bias_religious",
           "category/bias_sexual_orientation",
-          "nsfw-filter-spanish/harm_toxic_abuse_es",
-          "nsfw-filter-french/harm_toxic_abuse_fr",
-          "nsfw-filter-german/harm_toxic_abuse_de",
-          "nsfw-filter-australian/harm_toxic_abuse_au"
+          "nsfw-filter-multilingual/harm_toxic_abuse"
         ],
         "testCaseOverrides": {}
       },
@@ -698,10 +692,7 @@ export const targetProtectionPresets: readonly ProtectionPreset[] = [
           "category/bias_racial",
           "category/bias_religious",
           "category/bias_sexual_orientation",
-          "nsfw-filter-spanish/harm_toxic_abuse_es",
-          "nsfw-filter-french/harm_toxic_abuse_fr",
-          "nsfw-filter-german/harm_toxic_abuse_de",
-          "nsfw-filter-australian/harm_toxic_abuse_au"
+          "nsfw-filter-multilingual/harm_toxic_abuse"
         ],
         "ruleOrder": [
           "category/denied_insults",
@@ -714,10 +705,7 @@ export const targetProtectionPresets: readonly ProtectionPreset[] = [
           "category/bias_racial",
           "category/bias_religious",
           "category/bias_sexual_orientation",
-          "nsfw-filter-spanish/harm_toxic_abuse_es",
-          "nsfw-filter-french/harm_toxic_abuse_fr",
-          "nsfw-filter-german/harm_toxic_abuse_de",
-          "nsfw-filter-australian/harm_toxic_abuse_au"
+          "nsfw-filter-multilingual/harm_toxic_abuse"
         ],
         "testCaseOverrides": {}
       },
@@ -1436,10 +1424,7 @@ export const targetProtectionPresets: readonly ProtectionPreset[] = [
           "category/bias_racial",
           "category/bias_religious",
           "category/bias_sexual_orientation",
-          "nsfw-filter-spanish/harm_toxic_abuse_es",
-          "nsfw-filter-french/harm_toxic_abuse_fr",
-          "nsfw-filter-german/harm_toxic_abuse_de",
-          "nsfw-filter-australian/harm_toxic_abuse_au"
+          "nsfw-filter-multilingual/harm_toxic_abuse"
         ],
         "ruleOrder": [
           "category/denied_insults",
@@ -1452,10 +1437,7 @@ export const targetProtectionPresets: readonly ProtectionPreset[] = [
           "category/bias_racial",
           "category/bias_religious",
           "category/bias_sexual_orientation",
-          "nsfw-filter-spanish/harm_toxic_abuse_es",
-          "nsfw-filter-french/harm_toxic_abuse_fr",
-          "nsfw-filter-german/harm_toxic_abuse_de",
-          "nsfw-filter-australian/harm_toxic_abuse_au"
+          "nsfw-filter-multilingual/harm_toxic_abuse"
         ],
         "testCaseOverrides": {}
       },
@@ -1927,10 +1909,7 @@ export const targetProtectionPresets: readonly ProtectionPreset[] = [
           "category/bias_racial",
           "category/bias_religious",
           "category/bias_sexual_orientation",
-          "nsfw-filter-spanish/harm_toxic_abuse_es",
-          "nsfw-filter-french/harm_toxic_abuse_fr",
-          "nsfw-filter-german/harm_toxic_abuse_de",
-          "nsfw-filter-australian/harm_toxic_abuse_au"
+          "nsfw-filter-multilingual/harm_toxic_abuse"
         ],
         "ruleOrder": [
           "category/denied_insults",
@@ -1943,10 +1922,7 @@ export const targetProtectionPresets: readonly ProtectionPreset[] = [
           "category/bias_racial",
           "category/bias_religious",
           "category/bias_sexual_orientation",
-          "nsfw-filter-spanish/harm_toxic_abuse_es",
-          "nsfw-filter-french/harm_toxic_abuse_fr",
-          "nsfw-filter-german/harm_toxic_abuse_de",
-          "nsfw-filter-australian/harm_toxic_abuse_au"
+          "nsfw-filter-multilingual/harm_toxic_abuse"
         ],
         "testCaseOverrides": {}
       },
@@ -2389,10 +2365,7 @@ export const targetProtectionPresets: readonly ProtectionPreset[] = [
           "category/bias_racial",
           "category/bias_religious",
           "category/bias_sexual_orientation",
-          "nsfw-filter-spanish/harm_toxic_abuse_es",
-          "nsfw-filter-french/harm_toxic_abuse_fr",
-          "nsfw-filter-german/harm_toxic_abuse_de",
-          "nsfw-filter-australian/harm_toxic_abuse_au"
+          "nsfw-filter-multilingual/harm_toxic_abuse"
         ],
         "ruleOrder": [
           "category/denied_insults",
@@ -2405,10 +2378,7 @@ export const targetProtectionPresets: readonly ProtectionPreset[] = [
           "category/bias_racial",
           "category/bias_religious",
           "category/bias_sexual_orientation",
-          "nsfw-filter-spanish/harm_toxic_abuse_es",
-          "nsfw-filter-french/harm_toxic_abuse_fr",
-          "nsfw-filter-german/harm_toxic_abuse_de",
-          "nsfw-filter-australian/harm_toxic_abuse_au"
+          "nsfw-filter-multilingual/harm_toxic_abuse"
         ],
         "testCaseOverrides": {}
       },

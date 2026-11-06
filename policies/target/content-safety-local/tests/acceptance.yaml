@@ -280,7 +280,7 @@
   content: 'Acceptance sample: asesinato'
   expected_decision: block
   covered_rule_ids:
-  - nsfw-filter-spanish/harm_toxic_abuse_es
+  - nsfw-filter-multilingual/harm_toxic_abuse
   kind: rule_acceptance
   required: true
   parameter_names: []
@@ -294,7 +294,7 @@
   content: 'Acceptance sample: baiser'
   expected_decision: block
   covered_rule_ids:
-  - nsfw-filter-french/harm_toxic_abuse_fr
+  - nsfw-filter-multilingual/harm_toxic_abuse
   kind: rule_acceptance
   required: true
   parameter_names: []
@@ -308,7 +308,7 @@
   content: 'Acceptance sample: analritter'
   expected_decision: block
   covered_rule_ids:
-  - nsfw-filter-german/harm_toxic_abuse_de
+  - nsfw-filter-multilingual/harm_toxic_abuse
   kind: rule_acceptance
   required: true
   parameter_names: []
@@ -322,7 +322,7 @@
   content: 'Acceptance sample: root'
   expected_decision: block
   covered_rule_ids:
-  - nsfw-filter-australian/harm_toxic_abuse_au
+  - nsfw-filter-multilingual/harm_toxic_abuse
   kind: rule_acceptance
   required: true
   parameter_names: []
@@ -392,7 +392,7 @@
   content: 'Acceptance sample: root'
   expected_decision: block
   covered_rule_ids:
-  - nsfw-filter-australian/harm_toxic_abuse_au
+  - nsfw-filter-multilingual/harm_toxic_abuse
   kind: rule_acceptance
   required: true
   parameter_names: []
