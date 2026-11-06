@@ -17,7 +17,7 @@ const directory = resolve("../runner/toolkit/policy_library/assets");
 const compiler = new DeclarativeCompiler(directory);
 export function fixture() {
   const definition = emptyPolicyDefinition(); definition.metadata.id = "independent-policy"; definition.metadata.name = "Independent Policy"; definition.metadata.version = "1";
-  definition.rules = ["first", "second"].map(id => ({ id, name: id, description: "", stages: ["input"], detector: { ref: "text/keyword", version: "1.0.0", parameters: { detector_options: { terms: [id] } } }, on_match: { action: "block" }, risk_level: "medium", metadata: { taxonomy_ids: ["TALI-BUSINESS-POLICY"] } }));
+  definition.rules = ["first", "second"].map(id => ({ id, version: "1.0.0", variants: [], name: id, description: "", stages: ["input"], detector: { ref: "text/keyword", version: "1.0.0", parameters: { detector_options: { terms: [id] } } }, on_match: { action: "block" }, risk_level: "medium", metadata: { taxonomy_ids: ["TALI-BUSINESS-POLICY"] } }));
   definition.tests = definition.rules.map(rule => ({ id: `test-${rule.id}`, name: rule.name, description: "", phase: "input", content: rule.id, expected_decision: "block", covered_rule_ids: [rule.id], kind: "rule_acceptance", scope: "rule", required: true, group: "Tests", parameter_names: [] }));
   return definition;
 }
