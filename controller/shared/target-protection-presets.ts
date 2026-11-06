@@ -19,9 +19,9 @@ export const targetProtectionPresets: readonly ProtectionPreset[] = [
           "output"
         ],
         "parameterValues": {
-          "blocked_languages": "PROFILE_PLACEHOLDER",
-          "confidence_threshold": "PROFILE_PLACEHOLDER",
-          "detect_execution_intent": "PROFILE_PLACEHOLDER"
+          "blocked_languages": "python",
+          "confidence_threshold": "0.8",
+          "detect_execution_intent": "true"
         },
         "action": null,
         "ruleActions": {},
@@ -78,8 +78,8 @@ export const targetProtectionPresets: readonly ProtectionPreset[] = [
           "output"
         ],
         "parameterValues": {
-          "allowed_topics": "PROFILE_PLACEHOLDER",
-          "denied_topics": "PROFILE_PLACEHOLDER",
+          "allowed_topics": "Customer support",
+          "denied_topics": "Investment advice",
           "topic_mode": "permissive",
           "on_unknown": "block",
           "review_unknown": "false"
@@ -168,10 +168,10 @@ export const targetProtectionPresets: readonly ProtectionPreset[] = [
           "output"
         ],
         "parameterValues": {
-          "brand_name": "PROFILE_PLACEHOLDER",
-          "competitors": "PROFILE_PLACEHOLDER",
-          "phrase_entries": "PROFILE_PLACEHOLDER",
-          "blocked_words": "PROFILE_PLACEHOLDER"
+          "brand_name": "TaskLattice",
+          "competitors": "ExampleCompetitor",
+          "phrase_entries": "[{\"id\": \"secret\", \"phrase\": \"INTERNAL_SECRET\", \"action\": \"block\"}]",
+          "blocked_words": "INTERNAL_SECRET"
         },
         "action": null,
         "ruleActions": {},
@@ -681,9 +681,9 @@ export const targetProtectionPresets: readonly ProtectionPreset[] = [
           "output"
         ],
         "parameterValues": {
-          "blocked_languages": "PROFILE_PLACEHOLDER",
-          "confidence_threshold": "PROFILE_PLACEHOLDER",
-          "detect_execution_intent": "PROFILE_PLACEHOLDER"
+          "blocked_languages": "python",
+          "confidence_threshold": "0.8",
+          "detect_execution_intent": "true"
         },
         "action": null,
         "ruleActions": {},
@@ -740,8 +740,8 @@ export const targetProtectionPresets: readonly ProtectionPreset[] = [
           "output"
         ],
         "parameterValues": {
-          "allowed_topics": "PROFILE_PLACEHOLDER",
-          "denied_topics": "PROFILE_PLACEHOLDER",
+          "allowed_topics": "Customer support",
+          "denied_topics": "Investment advice",
           "topic_mode": "permissive",
           "on_unknown": "block",
           "review_unknown": "false"
@@ -834,10 +834,10 @@ export const targetProtectionPresets: readonly ProtectionPreset[] = [
           "output"
         ],
         "parameterValues": {
-          "brand_name": "PROFILE_PLACEHOLDER",
-          "competitors": "PROFILE_PLACEHOLDER",
-          "phrase_entries": "PROFILE_PLACEHOLDER",
-          "blocked_words": "PROFILE_PLACEHOLDER"
+          "brand_name": "TaskLattice",
+          "competitors": "ExampleCompetitor",
+          "phrase_entries": "[{\"id\": \"secret\", \"phrase\": \"INTERNAL_SECRET\", \"action\": \"block\"}]",
+          "blocked_words": "INTERNAL_SECRET"
         },
         "action": null,
         "ruleActions": {},
@@ -1944,9 +1944,9 @@ export const targetProtectionPresets: readonly ProtectionPreset[] = [
           "output"
         ],
         "parameterValues": {
-          "blocked_languages": "PROFILE_PLACEHOLDER",
-          "confidence_threshold": "PROFILE_PLACEHOLDER",
-          "detect_execution_intent": "PROFILE_PLACEHOLDER"
+          "blocked_languages": "python",
+          "confidence_threshold": "0.8",
+          "detect_execution_intent": "true"
         },
         "action": null,
         "ruleActions": {},
@@ -2061,8 +2061,8 @@ export const targetProtectionPresets: readonly ProtectionPreset[] = [
           "output"
         ],
         "parameterValues": {
-          "allowed_topics": "PROFILE_PLACEHOLDER",
-          "denied_topics": "PROFILE_PLACEHOLDER",
+          "allowed_topics": "Customer support",
+          "denied_topics": "Investment advice",
           "topic_mode": "permissive",
           "on_unknown": "block",
           "review_unknown": "false"
@@ -2096,10 +2096,10 @@ export const targetProtectionPresets: readonly ProtectionPreset[] = [
           "output"
         ],
         "parameterValues": {
-          "brand_name": "PROFILE_PLACEHOLDER",
-          "competitors": "PROFILE_PLACEHOLDER",
-          "phrase_entries": "PROFILE_PLACEHOLDER",
-          "blocked_words": "PROFILE_PLACEHOLDER"
+          "brand_name": "TaskLattice",
+          "competitors": "ExampleCompetitor",
+          "phrase_entries": "[{\"id\": \"secret\", \"phrase\": \"INTERNAL_SECRET\", \"action\": \"block\"}]",
+          "blocked_words": "INTERNAL_SECRET"
         },
         "action": null,
         "ruleActions": {},
@@ -2664,9 +2664,9 @@ export const targetProtectionPresets: readonly ProtectionPreset[] = [
           "output"
         ],
         "parameterValues": {
-          "blocked_languages": "PROFILE_PLACEHOLDER",
-          "confidence_threshold": "PROFILE_PLACEHOLDER",
-          "detect_execution_intent": "PROFILE_PLACEHOLDER"
+          "blocked_languages": "python",
+          "confidence_threshold": "0.8",
+          "detect_execution_intent": "true"
         },
         "action": null,
         "ruleActions": {},
@@ -2781,8 +2781,8 @@ export const targetProtectionPresets: readonly ProtectionPreset[] = [
           "output"
         ],
         "parameterValues": {
-          "allowed_topics": "PROFILE_PLACEHOLDER",
-          "denied_topics": "PROFILE_PLACEHOLDER",
+          "allowed_topics": "Customer support",
+          "denied_topics": "Investment advice",
           "topic_mode": "permissive",
           "on_unknown": "block",
           "review_unknown": "false"
@@ -2816,10 +2816,10 @@ export const targetProtectionPresets: readonly ProtectionPreset[] = [
           "output"
         ],
         "parameterValues": {
-          "brand_name": "PROFILE_PLACEHOLDER",
-          "competitors": "PROFILE_PLACEHOLDER",
-          "phrase_entries": "PROFILE_PLACEHOLDER",
-          "blocked_words": "PROFILE_PLACEHOLDER"
+          "brand_name": "TaskLattice",
+          "competitors": "ExampleCompetitor",
+          "phrase_entries": "[{\"id\": \"secret\", \"phrase\": \"INTERNAL_SECRET\", \"action\": \"block\"}]",
+          "blocked_words": "INTERNAL_SECRET"
         },
         "action": null,
         "ruleActions": {},
@@ -3355,9 +3355,9 @@ export const targetProtectionPresets: readonly ProtectionPreset[] = [
           "output"
         ],
         "parameterValues": {
-          "blocked_languages": "PROFILE_PLACEHOLDER",
-          "confidence_threshold": "PROFILE_PLACEHOLDER",
-          "detect_execution_intent": "PROFILE_PLACEHOLDER"
+          "blocked_languages": "python",
+          "confidence_threshold": "0.8",
+          "detect_execution_intent": "true"
         },
         "action": null,
         "ruleActions": {},
@@ -3447,8 +3447,8 @@ export const targetProtectionPresets: readonly ProtectionPreset[] = [
           "output"
         ],
         "parameterValues": {
-          "allowed_topics": "PROFILE_PLACEHOLDER",
-          "denied_topics": "PROFILE_PLACEHOLDER",
+          "allowed_topics": "Customer support",
+          "denied_topics": "Investment advice",
           "topic_mode": "permissive",
           "on_unknown": "block",
           "review_unknown": "false"
@@ -3482,10 +3482,10 @@ export const targetProtectionPresets: readonly ProtectionPreset[] = [
           "output"
         ],
         "parameterValues": {
-          "brand_name": "PROFILE_PLACEHOLDER",
-          "competitors": "PROFILE_PLACEHOLDER",
-          "phrase_entries": "PROFILE_PLACEHOLDER",
-          "blocked_words": "PROFILE_PLACEHOLDER"
+          "brand_name": "TaskLattice",
+          "competitors": "ExampleCompetitor",
+          "phrase_entries": "[{\"id\": \"secret\", \"phrase\": \"INTERNAL_SECRET\", \"action\": \"block\"}]",
+          "blocked_words": "INTERNAL_SECRET"
         },
         "action": null,
         "ruleActions": {},

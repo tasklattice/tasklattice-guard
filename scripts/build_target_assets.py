@@ -24,6 +24,7 @@ def build() -> Path:
         package = load_package(path.parent, shared)
         compiled = compile_policy(package.definition, registry())
         compiled["rails"] = sorted({rail for rule in compiled["rules"] for rail in rule["rails"]})
+        compiled["testing"] = package.manifest.testing.parameters
         policies.append(compiled)
     (ASSETS / "detectors.generated.json").write_bytes((ROOT / "runner/toolkit/policy_library/assets/detectors.generated.json").read_bytes())
     (ASSETS / "policy-definitions.generated.json").write_bytes((ROOT / "runner/toolkit/policy_library/assets/policy-definitions.generated.json").read_bytes())

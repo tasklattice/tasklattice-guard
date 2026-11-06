@@ -170,7 +170,8 @@
     ],
     "rails": [
       "output"
-    ]
+    ],
+    "testing": {}
   },
   {
     "id": "application-injection",
@@ -1989,7 +1990,12 @@
     "rails": [
       "input",
       "output"
-    ]
+    ],
+    "testing": {
+      "blocked_languages": "python",
+      "confidence_threshold": "0.8",
+      "detect_execution_intent": "true"
+    }
   },
   {
     "id": "business-topics-advice",
@@ -3041,7 +3047,11 @@
     "rails": [
       "input",
       "output"
-    ]
+    ],
+    "testing": {
+      "allowed_topics": "Customer support",
+      "denied_topics": "Investment advice"
+    }
   },
   {
     "id": "contact-data",
@@ -5395,7 +5405,8 @@
     "rails": [
       "input",
       "output"
-    ]
+    ],
+    "testing": {}
   },
   {
     "id": "content-filters",
@@ -6184,7 +6195,13 @@
     "rails": [
       "input",
       "output"
-    ]
+    ],
+    "testing": {
+      "brand_name": "TaskLattice",
+      "competitors": "ExampleCompetitor",
+      "phrase_entries": "[{\"id\": \"secret\", \"phrase\": \"INTERNAL_SECRET\", \"action\": \"block\"}]",
+      "blocked_words": "INTERNAL_SECRET"
+    }
   },
   {
     "id": "content-safety-local",
@@ -12659,7 +12676,8 @@
     "rails": [
       "input",
       "output"
-    ]
+    ],
+    "testing": {}
   },
   {
     "id": "content-safety-model",
@@ -12773,7 +12791,8 @@
     "rails": [
       "input",
       "output"
-    ]
+    ],
+    "testing": {}
   },
   {
     "id": "credentials-secrets",
@@ -20776,7 +20795,8 @@
     "rails": [
       "input",
       "output"
-    ]
+    ],
+    "testing": {}
   },
   {
     "id": "financial-market-misconduct",
@@ -21189,7 +21209,8 @@
     "rails": [
       "input",
       "output"
-    ]
+    ],
+    "testing": {}
   },
   {
     "id": "fraud-account-abuse",
@@ -22130,7 +22151,8 @@
     "rails": [
       "input",
       "output"
-    ]
+    ],
+    "testing": {}
   },
   {
     "id": "identity-documents",
@@ -26716,7 +26738,8 @@
     "rails": [
       "input",
       "output"
-    ]
+    ],
+    "testing": {}
   },
   {
     "id": "network-identifiers",
@@ -27090,7 +27113,8 @@
     "rails": [
       "input",
       "output"
-    ]
+    ],
+    "testing": {}
   },
   {
     "id": "payment-data",
@@ -28285,7 +28309,8 @@
     "rails": [
       "input",
       "output"
-    ]
+    ],
+    "testing": {}
   },
   {
     "id": "pii-semantic",
@@ -28453,7 +28478,8 @@
     "rails": [
       "input",
       "output"
-    ]
+    ],
+    "testing": {}
   },
   {
     "id": "prompt-instruction-attacks",
@@ -31452,7 +31478,8 @@
     "rails": [
       "input",
       "output"
-    ]
+    ],
+    "testing": {}
   },
   {
     "id": "regional-compliance-eu-ai-act",
@@ -33115,7 +33142,8 @@
     ],
     "rails": [
       "input"
-    ]
+    ],
+    "testing": {}
   },
   {
     "id": "regional-compliance-sg-pdpa",
@@ -34399,7 +34427,8 @@
     "rails": [
       "input",
       "output"
-    ]
+    ],
+    "testing": {}
   },
   {
     "id": "regional-compliance-uae-content-standards",
@@ -35100,7 +35129,8 @@
     ],
     "rails": [
       "input"
-    ]
+    ],
+    "testing": {}
   },
   {
     "id": "risk-content-terms",
@@ -35954,7 +35984,8 @@
     "rails": [
       "input",
       "output"
-    ]
+    ],
+    "testing": {}
   },
   {
     "id": "sensitive-attributes",
@@ -36946,6 +36977,7 @@
     "rails": [
       "input",
       "output"
-    ]
+    ],
+    "testing": {}
   }
 ]

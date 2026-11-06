@@ -9,8 +9,9 @@ def policy_selection(ids, local_only=False):
   rules=[r for r in p['rules'] if not local_only or r['detector']['ref'] not in MODEL]
   if not rules: continue
   params={}
+  testing=p.get('testing',{})
   for param in p['parameters']:
-   value=param.get('default')
+   value=testing.get(param['name'], param.get('default'))
    if value is None or str(value).strip()=='': value='PROFILE_PLACEHOLDER'
    params[param['name']]=value
   rails=sorted({rail for r in rules for rail in r['rails']})

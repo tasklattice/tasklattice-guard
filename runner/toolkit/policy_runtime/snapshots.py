@@ -26,10 +26,6 @@ def pinned_definitions(value: str) -> Mapping[str, PolicySpec]:
             if not rule.id or rule.id in seen:
                 raise ValueError("Pinned Policy Rule IDs must be nonempty and unique")
             seen.add(rule.id)
-            if rule.implementation.execution != "local" or rule.implementation.detector not in {
-                "regex", "keyword", "conditions", "code_block",
-            }:
-                raise ValueError("Pinned local Policy definitions require supported local detectors")
             if rule.detector.version != "1.0.0":
                 raise ValueError(f"Unsupported detector version: {rule.detector.ref}@{rule.detector.version}")
             if rule.effect not in ENFORCEMENT_ACTIONS:
@@ -57,4 +53,14 @@ def definitions_from_parameters(parameters: Mapping[str, str]) -> Mapping[str, P
                 raise ValueError(f"{name} requires Rule ID lists")
             if len(ids) != len(set(ids)) or set(ids) - {rule.id for rule in definitions[key].rules}:
                 raise ValueError(f"{name} references duplicate or unavailable Rules")
+    for key, ids in json.loads(parameters.get("enabled_rules_json", "{}")).items():
+        selected = {rule.id: rule for rule in definitions[key].rules}
+        for rule_id in ids:
+            rule = selected[rule_id]
+            agent_boundary = rule.detector.ref in {"agent/indirect-injection", "agent/memory-poisoning"}
+            if rule.implementation.execution != "local" or (
+                rule.implementation.detector not in {"regex", "keyword", "conditions", "code_block"}
+                and not agent_boundary
+            ):
+                raise ValueError("Pinned local Policy definitions require supported local detectors")
     return definitions
