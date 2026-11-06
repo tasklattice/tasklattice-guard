@@ -63,6 +63,8 @@ export type ProtectionPreset = {
   description: string;
   industry: "general" | "banking" | "securities" | "internet";
   jurisdictions: string[];
+  benchmarkOnly?: boolean;
+  parameterPacks?: Array<{ id: string; version: string; values: Record<string, string> }>;
   /** Ordered ordinary Policy references, not nested executable Policies. */
   policies: Array<{
     policyId: string;
@@ -74,7 +76,10 @@ export type ProtectionPreset = {
     reasoningPolicy?: { policyId: string; policyVersion: string; confidenceThreshold: number } | null;
     /** Omit to select the complete capability; built-in Profiles pin reviewed Rules. */
     enabledRuleIds?: string[];
+    /** Binding-aware selection; resolves to the bound Rule IDs. */
+    enabledBindingIds?: string[];
     ruleOrder?: string[];
+    bindingOrder?: string[];
     testCaseOverrides?: Record<string, {
       sourcePolicyVersion: string;
       reason: string;

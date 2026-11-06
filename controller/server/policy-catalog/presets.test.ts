@@ -27,6 +27,25 @@ describe("Protection presets", () => {
     expect(china.find(b => b.policyId === identifiers.policyId)!.enabledRuleIds).toHaveLength(1);
   });
 
+
+  it("selects a Rule by binding identity and applies a parameter pack", () => {
+    const preset = {
+      ...protectionPresets[0]!,
+      parameterPacks: [{ id: "profile-pack", version: "1.0.0", values: { blocked_words: "PROFILE_TERM" } }],
+      policies: [{
+        policyId: "keyword-blocking", policyVersion: "1.0.0",
+        enabledBindingIds: ["keyword-blocking/keyword/blocked-words"],
+        bindingOrder: ["keyword-blocking/keyword/blocked-words"],
+        enabledRails: ["input" as const], parameterValues: {},
+      }],
+    };
+    const expanded = expandProtectionPreset(preset, policies);
+    expect(expanded).toHaveLength(1);
+    expect(expanded[0]!.enabledRuleIds).toEqual(["keyword/blocked-words"]);
+    expect(expanded[0]!.ruleOrder).toEqual(["keyword/blocked-words"]);
+    expect(expanded[0]!.parameterValues).toMatchObject({ blocked_words: "PROFILE_TERM" });
+  });
+
   it("selects regional identifiers explicitly without enabling every identifier format", () => {
     const china = expandProtectionPreset(regionalPreset(["cn-personal-information/resident-identity-card"]), policies);
     const identifiers = china.find(b => b.policyId === "local-government-identifiers")!;

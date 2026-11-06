@@ -1,7 +1,7 @@
 import { normalizeGuardrailDraft, type GuardrailDraftConfig, type GuardrailPolicyBindingConfig } from "../domain/guardrail-plan.js";
 import type { ProtectionPreset } from "../../shared/protection-map.js";
 import { appendProfileRules } from "../../shared/profile-rule-selection.js";
-type ProfilePolicy = { id: string; version: string; rails: readonly string[]; parameters: readonly { name: string; required?: boolean; default?: string | null | undefined }[]; rules: readonly { id: string }[]; published_versions?: readonly ProfilePolicy[] };
+type ProfilePolicy = { id: string; version: string; rails: readonly string[]; parameters: readonly { name: string; required?: boolean; default?: string | null | undefined }[]; rules: readonly { id: string; binding_id?: string | null }[]; published_versions?: readonly ProfilePolicy[] };
 
 /** Validate a preset against this exact installed catalog, never best-effort. */
 export function expandProtectionPreset(preset: ProtectionPreset, policies: readonly ProfilePolicy[], current: readonly GuardrailPolicyBindingConfig[] = []): GuardrailPolicyBindingConfig[] {
@@ -17,13 +17,21 @@ export function expandProtectionPreset(preset: ProtectionPreset, policies: reado
       throw new Error(`Profile ${preset.id}: Policy ${policy.id} has unsupported Rails.`);
     }
     const parameterValues = Object.fromEntries(policy.parameters.flatMap((parameter) => parameter.default == null ? [] : [[parameter.name, parameter.default]]));
+    for (const pack of preset.parameterPacks ?? []) Object.assign(parameterValues, pack.values);
     Object.assign(parameterValues, reference.parameterValues);
     for (const parameter of policy.parameters) {
       if (parameter.required && !parameterValues[parameter.name]?.trim()) throw new Error(`Profile ${preset.id}: Policy ${policy.id} needs ${parameter.name}.`);
     }
     const knownRules = new Set(policy.rules.map(rule => rule.id));
-    const enabledRuleIds = reference.enabledRuleIds ?? policy.rules.map(rule => rule.id);
-    const ruleOrder = reference.ruleOrder ?? [];
+    const bindingRules = new Map(policy.rules.map(rule => [rule.binding_id ?? rule.id, rule.id]));
+    const selectedRules = reference.enabledBindingIds?.map(bindingId => bindingRules.get(bindingId)).filter((id): id is string => id !== undefined);
+    if (reference.enabledBindingIds && selectedRules?.length !== reference.enabledBindingIds.length) {
+      throw new Error(`Profile ${preset.id}: Policy ${policy.id} has an unknown binding selection.`);
+    }
+    const enabledRuleIds = selectedRules ?? reference.enabledRuleIds ?? policy.rules.map(rule => rule.id);
+    const ruleOrder = reference.bindingOrder
+      ? reference.bindingOrder.map(bindingId => bindingRules.get(bindingId)).filter((id): id is string => id !== undefined)
+      : reference.ruleOrder ?? [];
     if (!enabledRuleIds.length || new Set(enabledRuleIds).size !== enabledRuleIds.length || enabledRuleIds.some(id => !knownRules.has(id))) {
       throw new Error(`Profile ${preset.id}: Policy ${policy.id} has an invalid Rule selection.`);
     }
