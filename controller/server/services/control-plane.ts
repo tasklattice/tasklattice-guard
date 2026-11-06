@@ -12,6 +12,7 @@ import { writeRuntimeEvent } from "./runtime-event-write.js";
 import { issueEndpointTelemetryContexts, lockEndpointTelemetryContextReaders, pruneEndpointTelemetryContexts as pruneEndpointContexts } from "./endpoint-telemetry-contexts.js";
 import { ProjectAdmissionMonitor } from "./admission-monitor.js";
 import { localBaseline } from "../../shared/local-baseline.js";
+import { exportTargetProfilePackage, importTargetProfilePackage } from "../domain/target-profile-package.js";
 import bundledDefault from "../domain/default-baseline.json" with { type: "json" };
 import { querySecurityEvents } from "./security-events.js";
 import type { SecurityEventsQuery } from "../../shared/security-events.js";
@@ -308,6 +309,16 @@ export class ControlPlaneService {
       ? profiles.filter(profile => TARGET_PROFILE_IDS.has(profile.id))
       : profiles;
     return selectable.map(profile => previewProtectionProfile(profile, policies));
+  }
+
+  async exportGuardrailProfilePackage(id: string) {
+    const profile = (await readGuardrailProfiles(this.db)).find(item => item.id === id);
+    if (!profile) throw new NotFoundError("Guardrail Profile", id);
+    return exportTargetProfilePackage(profile, this.policyCatalog().list());
+  }
+
+  async verifyGuardrailProfilePackage(value: unknown) {
+    return importTargetProfilePackage(value, this.policyCatalog().list());
   }
 
   async listPolicies() {

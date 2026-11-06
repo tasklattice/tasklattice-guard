@@ -647,6 +647,9 @@ export function createHttpApp(input: {
     const items = await input.service.listGuardrailProfiles();
     return context.json({ directories: protectionDirectories, items, count: items.length });
   });
+  app.get("/api/v1/guardrail-profiles/:id/package", authenticated, async (context) => {
+    return context.json(await input.service.exportGuardrailProfilePackage(context.req.param("id")));
+  });
   // Compatibility route for existing API clients; both paths read the database.
   app.get("/api/v1/policy-catalog/protection-presets", authenticated, async (context) => {
     const items = await input.service.listGuardrailProfiles();
