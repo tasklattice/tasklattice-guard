@@ -1,7 +1,6 @@
 import { defaultGuardrailProfiles, targetGuardrailProfiles } from "../../shared/guardrail-profiles.js";
 import type { ControllerDatabase } from "./client.js";
 import { guardrailProfiles } from "./schema.js";
-import { inArray } from "drizzle-orm";
 
 type SeedDb = Pick<ControllerDatabase, "insert" | "update">;
 type SeedMode = "legacy" | "target";
@@ -23,11 +22,8 @@ export async function seedProfiles(db: Pick<ControllerDatabase, "insert">, mode:
  * User-created Profiles are untouched; only the reviewed legacy seeds are disabled.
  */
 export async function syncTargetProfiles(db: SeedDb): Promise<void> {
-  const targetIds = targetGuardrailProfiles.map(profile => profile.id);
-  const legacyIds = defaultGuardrailProfiles.map(profile => profile.id).filter(id => !targetIds.includes(id));
-  if (legacyIds.length) {
-    await db.update(guardrailProfiles).set({ enabled: false }).where(inArray(guardrailProfiles.id, legacyIds));
-  }
+  // Keep legacy seeds available for pinned historical Guardrails. The target
+  // Profile picker filters them out; readGuardrailProfiles still resolves them.
   for (const [sortOrder, row] of rows(targetGuardrailProfiles).entries()) {
     await db.insert(guardrailProfiles).values({ ...row, enabled: true })
       .onConflictDoUpdate({ target: guardrailProfiles.id, set: {

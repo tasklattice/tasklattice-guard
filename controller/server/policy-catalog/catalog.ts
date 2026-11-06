@@ -185,39 +185,53 @@ const OWASP_LLM_2025_POLICY_IDS = new Set([
 export class PolicyCatalog {
   private constructor(
     private readonly policiesById: ReadonlyMap<string, PolicyDto>,
+    private readonly legacyById: ReadonlyMap<string, PolicyDto> = new Map(),
   ) {}
 
-  static load(directory: string): PolicyCatalog {
-    const merged = new Map<string, PolicyDto>();
-    const contractPath = join(directory, "protection-contracts.json");
-    let contracts: ProtectionContracts;
-    try {
-      contracts = protectionContractsSchema.parse(JSON.parse(readFileSync(contractPath, "utf8")));
-    } catch (error) {
-      throw new Error(`Unable to load protection contract ${contractPath}: ${error instanceof Error ? error.message : String(error)}`);
-    }
-    for (const fileName of POLICY_CATALOG_FILE_NAMES) {
-      const path = join(directory, fileName);
-      if (!existsSync(path)) continue;
-      for (const policy of readPolicyAssets(path)) {
-        if (fileName === "custom_policies.json" && (policy.source !== "custom" || merged.has(policy.id) || contracts.nativePolicies[policy.id] || policy.compliance != null || policy.rules.some(rule => rule.implementation.execution !== "local"))) {
-          throw new Error(`Invalid imported Policy origin or identity: ${policy.id}`);
-        }
-        if (merged.has(policy.id)) throw new Error(`Duplicate bundled Policy ID: ${policy.id}`);
-        merged.set(policy.id, normalizePolicy(policy, contracts, fileName));
-      }
-    }
-    return new PolicyCatalog(merged);
+  static load(directory: string, legacyDirectory?: string): PolicyCatalog {
+    const active = loadCatalogDirectory(directory);
+    const legacy = legacyDirectory ? loadCatalogDirectory(legacyDirectory) : new Map<string, PolicyDto>();
+    for (const policy of active.values()) legacy.delete(policy.id);
+    return new PolicyCatalog(active, legacy);
   }
 
+  /** Active catalog only: target mode must not offer legacy Policies to new Guardrails. */
   list(): PolicyDto[] {
     return [...this.policiesById.values()];
   }
 
+  /** Existing Guardrails may still resolve their pinned legacy Policy for read/compile. */
   get(policyId: string): PolicyDto | undefined {
-    return this.policiesById.get(policyId);
+    return this.policiesById.get(policyId) ?? this.legacyById.get(policyId);
   }
 
+  isLegacy(policyId: string): boolean {
+    return !this.policiesById.has(policyId) && this.legacyById.has(policyId);
+  }
+
+}
+
+function loadCatalogDirectory(directory: string): Map<string, PolicyDto> {
+  const merged = new Map<string, PolicyDto>();
+  const contractPath = join(directory, "protection-contracts.json");
+  let contracts: ProtectionContracts;
+  try {
+    contracts = protectionContractsSchema.parse(JSON.parse(readFileSync(contractPath, "utf8")));
+  } catch (error) {
+    throw new Error(`Unable to load protection contract ${contractPath}: ${error instanceof Error ? error.message : String(error)}`);
+  }
+  for (const fileName of POLICY_CATALOG_FILE_NAMES) {
+    const path = join(directory, fileName);
+    if (!existsSync(path)) continue;
+    for (const policy of readPolicyAssets(path)) {
+      if (fileName === "custom_policies.json" && (policy.source !== "custom" || merged.has(policy.id) || contracts.nativePolicies[policy.id] || policy.compliance != null || policy.rules.some(rule => rule.implementation.execution !== "local"))) {
+        throw new Error(`Invalid imported Policy origin or identity: ${policy.id}`);
+      }
+      if (merged.has(policy.id)) throw new Error(`Duplicate bundled Policy ID: ${policy.id}`);
+      merged.set(policy.id, normalizePolicy(policy, contracts, fileName));
+    }
+  }
+  return merged;
 }
 
 function readPolicyAssets(path: string): PolicyAsset[] {

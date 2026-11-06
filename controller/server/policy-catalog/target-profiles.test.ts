@@ -25,6 +25,18 @@ describe("Target Profile baseline", () => {
     expect(profileRequiresModels(byId.get("full-feature")!, policyView)).toBe(true);
   });
 
+  it("keeps legacy Policies readable without exposing them in the active list", () => {
+    const catalog = PolicyCatalog.load(
+      resolve("../runner/toolkit/policy_library/assets_target"),
+      resolve("../runner/toolkit/policy_library/assets"),
+    );
+    expect(catalog.list()).toHaveLength(20);
+    expect(catalog.list().some(policy => policy.id === "local-contact-data")).toBe(false);
+    expect(catalog.get("local-contact-data")?.id).toBe("local-contact-data");
+    expect(catalog.isLegacy("local-contact-data")).toBe(true);
+    expect(catalog.isLegacy("payment-data")).toBe(false);
+  });
+
   it("industry Profiles use their regional compliance selection", () => {
     const byId = new Map(targetProtectionPresets.map(profile => [profile.id, profile]));
     const sg = expandProtectionPreset(byId.get("sg-bank")!, policyView);

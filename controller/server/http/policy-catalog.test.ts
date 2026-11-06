@@ -82,6 +82,7 @@ describe("Policy catalog HTTP compatibility", () => {
     const collection = await response.json() as { count: number; items: Array<{ id: string }> };
     expect(collection.count).toBe(20);
     expect(collection.items.map(item => item.id)).toContain("payment-data");
+    expect((await app.request("/api/v1/policies/local-contact-data")).status).toBe(200);
     const profiles = await (await app.request("/api/v1/guardrail-profiles")).json() as { items: Array<{ id: string }> };
     expect(profiles.items.map(item => item.id)).toEqual(["default", "full-feature", "sg-bank", "cn-financial-services", "cn-internet"]);
   });
@@ -155,7 +156,7 @@ function appWithSession(session: { user: { id: string; role: string; projectId?:
     api: { getSession: vi.fn().mockResolvedValue(session) },
     handler: vi.fn(),
   } as unknown as ControllerAuth;
-  const policies = PolicyCatalog.load(activeConfig.policyCatalogDir);
+  const policies = PolicyCatalog.load(activeConfig.policyCatalogDir, activeConfig.policyFallbackDir ?? undefined);
   const profileSeeds = activeConfig.policyCatalogMode === "target" ? targetGuardrailProfiles : defaultGuardrailProfiles;
   const service = {
     listGuardrailProfiles: vi.fn().mockResolvedValue(profileSeeds.map(profile => ({ ...profile, policyBindings: expandProtectionPreset(profile, policies.list()) }))),

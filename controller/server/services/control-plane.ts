@@ -155,6 +155,8 @@ type RunnerRegistration = {
   appliedGeneration: number;
 };
 
+const TARGET_PROFILE_IDS = new Set(["default", "full-feature", "sg-bank", "cn-financial-services", "cn-internet"]);
+
 export class ControlPlaneService {
   readonly users: UserDirectory;
   readonly runners: RunnerDirectory;
@@ -302,7 +304,10 @@ export class ControlPlaneService {
   async listGuardrailProfiles() {
     const profiles = await readGuardrailProfiles(this.db);
     const policies = await this.listPolicies();
-    return profiles.map(profile => previewProtectionProfile(profile, policies));
+    const selectable = this.config.policyCatalogMode === "target"
+      ? profiles.filter(profile => TARGET_PROFILE_IDS.has(profile.id))
+      : profiles;
+    return selectable.map(profile => previewProtectionProfile(profile, policies));
   }
 
   async listPolicies() {
@@ -2714,7 +2719,7 @@ export class ControlPlaneService {
   }
 
   private policyCatalog(): PolicyCatalog {
-    this.catalog ??= PolicyCatalog.load(this.config.policyCatalogDir);
+    this.catalog ??= PolicyCatalog.load(this.config.policyCatalogDir, this.config.policyFallbackDir ?? undefined);
     return this.catalog;
   }
 

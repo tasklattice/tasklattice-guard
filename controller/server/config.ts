@@ -53,6 +53,10 @@ const environmentSchema = z.object({
     .string()
     .min(1)
     .default("../runner/toolkit/policy_library/assets_target"),
+  CONTROLLER_LEGACY_POLICY_CATALOG_DIR: z
+    .string()
+    .min(1)
+    .default("../runner/toolkit/policy_library/assets"),
   CONTROLLER_PROTO_PATH: z
     .string()
     .default("../proto/tasklattice/guard/control/v1/runner_control.proto"),
@@ -242,6 +246,9 @@ export function loadConfig(environment: NodeJS.ProcessEnv = process.env) {
     policyCatalogDir: parsed.CONTROLLER_POLICY_CATALOG_MODE === "target"
       ? parsed.CONTROLLER_TARGET_POLICY_CATALOG_DIR
       : parsed.CONTROLLER_POLICY_CATALOG_DIR,
+    policyFallbackDir: parsed.CONTROLLER_POLICY_CATALOG_MODE === "target"
+      ? parsed.CONTROLLER_LEGACY_POLICY_CATALOG_DIR
+      : null,
     protoPath: parsed.CONTROLLER_PROTO_PATH,
     migrationsPath: parsed.CONTROLLER_MIGRATIONS_PATH,
     runnerToken: parsed.CONTROLLER_RUNNER_TOKEN,
