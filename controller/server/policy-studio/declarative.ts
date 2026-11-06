@@ -49,7 +49,8 @@ export class DeclarativeCompiler {
   compile(definition: PolicyDefinition): PolicyDto {
     const issues = modelParameterDeclarationIssues(definition);
     if (issues.length) throw new ValidationError(issues.join("\n"));
-    const rules = definition.rules.map(rule => {
+    const compiledRules = new Map<string, PolicyDto["rules"][number]>();
+    for (const rule of definition.rules) {
       const detector = this.detectors[rule.detector.ref];
       if (!detector || detector.version !== rule.detector.version) throw new ValidationError(`Detector ${rule.detector.ref}@${rule.detector.version} is unavailable.`);
       const params = rule.detector.parameters;
@@ -62,11 +63,26 @@ export class DeclarativeCompiler {
       if (!adapter) throw new ValidationError(`Unknown detector profile ${String(params.profile)}.`);
       if (rule.on_match.action === "transform" && !detector.supports_replacement && adapter.execution === "local") throw new ValidationError(`Detector ${rule.detector.ref} cannot replace text.`);
       const { profile: _profile, ...values } = params;
-      return { id: rule.id, name: rule.name || rule.id, description: rule.description, rails: rule.stages,
+      compiledRules.set(rule.id, { id: rule.id, binding_id: `${definition.metadata.id}/${rule.id}`, rule_id: rule.id,
+        variant_id: null, name: rule.name || rule.id, description: rule.description, rails: rule.stages,
         detector: { ref: rule.detector.ref, version: rule.detector.version }, effect: rule.on_match.action, risk_severity: rule.risk_level,
         implementation: { ...adapter, binding_id: definition.metadata.id, implementation_rule_id: rule.id },
-        ...values, ...(params.profile ? { detector_options: { profile: params.profile } } : {}), redaction: rule.on_match.replacement ?? null, rule_expansion: rule.expand ?? null, taxonomy_ids: rule.metadata.taxonomy_ids };
-    });
+        ...values, ...(params.profile ? { detector_options: { profile: params.profile } } : {}), redaction: rule.on_match.replacement ?? null, rule_expansion: rule.expand ?? null, taxonomy_ids: rule.metadata.taxonomy_ids } as unknown as PolicyDto["rules"][number]);
+    }
+    const bindings = definition.bindings;
+    const rules = bindings
+      ? bindings.map(binding => {
+        const base = compiledRules.get(binding.rule_id);
+        if (!base) throw new ValidationError(`Binding ${binding.binding_id} references unknown Rule ${binding.rule_id}.`);
+        const source = definition.rules.find(rule => rule.id === binding.rule_id)!;
+        const variant = binding.variant_id ? source.variants.find(item => item.variant_id === binding.variant_id) : undefined;
+        if (binding.variant_id && !variant) throw new ValidationError(`Binding ${binding.binding_id} references unknown Rule variant ${binding.variant_id}.`);
+        if (binding.rails?.some(rail => !source.stages.includes(rail))) throw new ValidationError(`Binding ${binding.binding_id} targets an unsupported Rule stage.`);
+        return { ...base, id: `${definition.metadata.id}/${binding.binding_id}`, binding_id: `${definition.metadata.id}/${binding.binding_id}`,
+          rule_id: binding.rule_id, variant_id: variant?.variant_id ?? null, effect: binding.action ?? base.effect,
+          rails: binding.rails ?? base.rails, ...(variant ? { redaction: variant.replacement } : {}), ...binding.parameters };
+      })
+      : [...compiledRules.values()];
     // Previous executable catalog fields are confined to this adapter. The authoring contract has no origin or engine identity.
     const asset = policyAssetSchema.parse({ ...definition.metadata, source: "custom", rules, parameters: definition.parameters, test_cases: definition.tests });
     const rails = [...new Set(asset.rules.flatMap(r => r.rails))];

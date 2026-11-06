@@ -110,6 +110,8 @@ class PolicyLibraryRegistry:
                     f"Policy {item.id!r} contains duplicate Rule {rule.id!r}."
                 )
             rule_ids.add(rule.id)
+            if rule.rule_id is not None:
+                rule_ids.add(rule.rule_id)
             if not rule.taxonomy_ids:
                 raise ValueError(
                     f"Policy {item.id!r} Rule {rule.id!r} has no TALI Taxonomy category."
@@ -174,7 +176,10 @@ class PolicyLibraryRegistry:
             if case.required and case.kind == "rule_acceptance":
                 accepted_rules.update(case.covered_rule_ids)
 
-        uncovered = sorted(rule_ids.difference(accepted_rules))
+        uncovered = sorted(
+            rule.id for rule in item.rules
+            if rule.id not in accepted_rules and rule.rule_id not in accepted_rules
+        )
         if uncovered:
             raise ValueError(
                 f"Policy {item.id!r} Rules lack required acceptance tests: "

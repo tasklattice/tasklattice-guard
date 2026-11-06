@@ -55,6 +55,9 @@ const implementationSchema = z.object({
 const stringPairSchema = z.tuple([z.string(), z.string()]);
 const ruleSchema = z.object({
   id: z.string().min(1),
+  binding_id: z.string().nullable().default(null),
+  rule_id: z.string().nullable().default(null),
+  variant_id: z.string().nullable().default(null),
   name: z.string().min(1),
   description: z.string(),
   detector: detectorReferenceSchema,

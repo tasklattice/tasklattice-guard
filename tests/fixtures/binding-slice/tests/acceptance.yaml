@@ -1,0 +1,11 @@
+- id: binding-slice-block
+  name: Binding slice blocks base topic
+  description: Base topic blocks through the shared Rule.
+  phase: input
+  content: BASE_TOPIC
+  expected_decision: block
+  covered_rule_ids:
+  - shared/topic-check
+  kind: rule_acceptance
+  required: true
+  scope: rule

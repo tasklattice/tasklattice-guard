@@ -48,3 +48,20 @@ async def test_runtime_trace_exposes_binding_identity():
         step.kind == "action" and "bindingIds=grouped/" in (step.detail or "")
         for step in result.trace
     )
+
+
+def test_one_rule_can_be_bound_twice_with_distinct_variants():
+    from runner.toolkit.policy_library.declarative import compile_policy
+    from runner.toolkit.policy_library.package import load_package
+    from tests.control_plane.test_declarative_policies import sources
+
+    package = load_package(Path("tests/fixtures/binding-slice"))
+    compiled = compile_policy(package.definition, sources.registry())
+    rules = {rule["binding_id"]: rule for rule in compiled["rules"]}
+    assert set(rules) == {"binding-slice/denylist", "binding-slice/allowlist"}
+    assert {rule["rule_id"] for rule in rules.values()} == {"shared/topic-check"}
+    assert rules["binding-slice/denylist"]["redaction"] == "[TOPIC_REDACTED]"
+    assert rules["binding-slice/allowlist"]["variant_id"] == "allow"
+    assert rules["binding-slice/allowlist"]["redaction"] == "[ALLOW_REDACTED]"
+    assert rules["binding-slice/denylist"]["keywords"] == [["DENY_TOPIC", "high"]]
+    assert rules["binding-slice/allowlist"]["keywords"] == [["ALLOW_TOPIC", "medium"]]

@@ -294,6 +294,7 @@ def compile_policy(definition: PolicyDefinition, registry: dict[str, Any]) -> di
         }
         compiled = {
             "id": rule.id, "name": rule.name, "description": rule.description,
+            "rule_id": rule.id,
             "detector": {"ref": rule.detector.ref, "version": rule.detector.version}, "effect": rule.on_match.action,
             "risk_severity": rule.risk_level, "rails": rule.stages,
             "implementation": {**adapter, **identity},
@@ -311,6 +312,7 @@ def compile_policy(definition: PolicyDefinition, registry: dict[str, Any]) -> di
         if "replacement" in rule.on_match.model_fields_set:
             compiled["redaction"] = rule.on_match.replacement
         compiled_rules[rule.id] = compiled
+    explicit_bindings = definition.bindings is not None
     bindings = definition.bindings or [
         PolicyRuleBinding(binding_id=rule.id, rule_id=rule.id, order=index)
         for index, rule in enumerate(definition.rules)
@@ -318,6 +320,11 @@ def compile_policy(definition: PolicyDefinition, registry: dict[str, Any]) -> di
     for binding in sorted(bindings, key=lambda item: (item.order, item.binding_id)):
         compiled = deepcopy(compiled_rules[binding.rule_id])
         compiled["binding_id"] = f"{definition.metadata.id}/{binding.binding_id}"
+        if explicit_bindings:
+            # An explicitly bound Rule is an executable binding resource. Keep a
+            # unique Rule ID while preserving the source Rule ID for evidence.
+            compiled["id"] = compiled["binding_id"]
+            compiled["rule_id"] = binding.rule_id
         if binding.action is not None:
             compiled["effect"] = binding.action
         if binding.rails is not None:

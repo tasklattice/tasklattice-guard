@@ -1,0 +1,37 @@
+schema_version: 1
+kind: Policy
+metadata:
+  id: binding-slice
+  name: Binding Slice
+  description: One Rule resource bound twice with different variants.
+  source: built_in
+  version: 1.0.0
+  tags:
+  - namespace: protection
+    value: content_filters
+    label: Words & content filters
+  - namespace: collection
+    value: local-content-filter
+    label: Local Content Filter
+rules:
+- rules/shared-topic.yaml
+bindings:
+- binding_id: denylist
+  rule_id: shared/topic-check
+  order: 0
+  action: block
+  parameters:
+    keywords:
+    - - DENY_TOPIC
+      - high
+- binding_id: allowlist
+  rule_id: shared/topic-check
+  variant_id: allow
+  order: 1
+  action: block
+  parameters:
+    keywords:
+    - - ALLOW_TOPIC
+      - medium
+tests:
+- tests/acceptance.yaml

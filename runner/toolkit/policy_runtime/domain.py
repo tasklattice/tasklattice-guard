@@ -99,6 +99,7 @@ class PolicyRuleSpec:
     exceptions: tuple[str, ...] = ()
     phrase_patterns: tuple[str, ...] = ()
     binding_id: str | None = None
+    rule_id: str | None = None
     variant_id: str | None = None
 
 
