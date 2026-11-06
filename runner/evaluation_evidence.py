@@ -83,15 +83,16 @@ def evaluation_evidence(decision: ProtectionDecision) -> str:
     # Keep Laya evidence separate: JEV consumers must not label it as JEV.
     families = (
         ("evaluations", ":jev", {"typesafe-jev-jailbreak": "jailbreak", "typesafe-jev-content-safety": "content_safety",
-                                 "typesafe-jev-topic": "topic_control"},
+                                 "typesafe-jev-topic": "topic_control", "typesafe-jev-pii": "pii"},
          {"tali.typesafe-jev.v1", "tali.typesafe-jev-topic.v1"}, None,
          {"jailbreak": {"jailbreak_attempt", "unsafe_pretext"}, "content_safety": {"unsafe_content"},
-          "topic_control": {"denied_task", "unlisted_task"}}),
+          "topic_control": {"denied_task", "unlisted_task"}, "pii": {"contains_pii"}}),
         ("layaEvaluations", ":laya", {"laya-jailbreak": "jailbreak", "laya-content-safety": "content_safety",
-                                     "laya-topic": "topic_control"},
+                                     "laya-topic": "topic_control", "laya-pii": "pii"},
          {"tali.laya.v1", "tali.laya-topic.v1"}, "laya",
          {"jailbreak": {"jailbreak_attempt", "unsafe_pretext", "task_hijack", "answer_planting"},
-          "content_safety": {"unsafe_content"}, "topic_control": {"denied_task", "unlisted_task"}}),
+          "content_safety": {"unsafe_content"}, "topic_control": {"denied_task", "unlisted_task"},
+          "pii": {"name", "actual_identifier", "address", "dob"}}),
     )
     for collection, suffix, evaluator_capabilities, profiles, decision_model, probability_keys in families:
         traces = [s for s in decision.trace if s.kind == "evaluation"

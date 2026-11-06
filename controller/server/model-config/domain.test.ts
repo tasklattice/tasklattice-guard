@@ -30,13 +30,14 @@ describe("Laya request mode resolution", () => {
 describe("Protection Capabilities capability binding profiles", () => {
   it("supports Laya output content safety while keeping its other contracts scoped", () => {
     expect(profileTransports["tali.laya.v1"]).toBe("laya_systemone");
-    for (const target of ["content_safety.input", "content_safety.output", "jailbreak.input", "topic_control.input"] as const) {
+    for (const target of ["content_safety.input", "content_safety.output", "jailbreak.input", "topic_control.input",
+      "pii_semantic.input", "pii_semantic.output"] as const) {
       expect(assignmentTargetAcceptsModel(target, "tali.laya.v1", "laya")).toBe(true);
       expect(capabilityBindingContracts(target, "tali.laya.v1")).toHaveLength(1);
       expect(assignmentTargetAcceptsModel(target, "tali.laya.v1", "typesafe")).toBe(false);
       expect(assignmentTargetAcceptsModel(target, "tali.typesafe-jev.v1", "laya")).toBe(false);
     }
-    for (const target of ["control_plane", "pii_semantic.input", "pii_semantic.output", "classifier_review.input", "classifier_review.output"] as const) {
+    for (const target of ["control_plane", "classifier_review.input", "classifier_review.output"] as const) {
       expect(assignmentTargetAcceptsModel(target, "tali.laya.v1", "laya")).toBe(false);
     }
     expect(providerAcceptsProfile("laya", "generic-chat")).toBe(false);
@@ -53,11 +54,11 @@ describe("Protection Capabilities capability binding profiles", () => {
   it("supports JEV input/output content safety while keeping its other contracts scoped", () => {
     const profile = "tali.typesafe-jev.v1";
     expect(profileTransports[profile]).toBe("typesafe_systemone");
-    for (const [target, contract] of [["topic_control.input", "tali.guard.topic-control.semantic.v1"], ["jailbreak.input", "tali.guard.jailbreak.v1"], ["content_safety.input", "tali.guard.content-safety.v1"], ["content_safety.output", "tali.guard.content-safety.v1"]] as const) {
+    for (const [target, contract] of [["topic_control.input", "tali.guard.topic-control.semantic.v1"], ["jailbreak.input", "tali.guard.jailbreak.v1"], ["content_safety.input", "tali.guard.content-safety.v1"], ["content_safety.output", "tali.guard.content-safety.v1"], ["pii_semantic.input", "tali.guard.pii.semantic.v1"], ["pii_semantic.output", "tali.guard.pii.semantic.v1"]] as const) {
       expect(assignmentTargetAcceptsModel(target, profile, "typesafe")).toBe(true);
       expect(capabilityBindingContracts(target, profile)).toEqual([contract]);
     }
-    for (const target of ["control_plane", "pii_semantic.input", "pii_semantic.output", "classifier_review.output"] as const) {
+    for (const target of ["control_plane", "classifier_review.output"] as const) {
       expect(assignmentTargetAcceptsModel(target, profile, "typesafe")).toBe(false);
     }
     expect(providerAcceptsProfile("custom-openai-compatible", profile)).toBe(false);
@@ -124,7 +125,9 @@ describe("Protection Capabilities capability binding profiles", () => {
     expect(assignmentTargetAcceptsModel("topic_control.input", "tali.taxonomy-judge.v1", "deepseek")).toBe(false);
     expect(assignmentTargetAcceptsModel("content_safety.output", "tali.qwen3guard.v1", "qwen")).toBe(true);
     expect(providerAcceptsProfile("deepseek", "generic-chat")).toBe(true);
-    expect(providerAcceptsProfile("deepseek", "tali.grounding-judge.v1")).toBe(false);
+    // Generic chat models may serve the grounding judge; see
+    // "feat(models): allow chat grounding judge".
+    expect(providerAcceptsProfile("deepseek", "tali.grounding-judge.v1")).toBe(true);
   });
 
   it("allows DeepSeek PII on both rails only with the explicit PII protocol", () => {

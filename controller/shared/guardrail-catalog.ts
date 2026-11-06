@@ -74,7 +74,7 @@ export const capabilityProfileRefs = {
     "tali.nemoguard-jailbreak-detect.v1",
   ],
   topic_control: ["tali.taxonomy-judge.v1", "tali.nemoguard-topic-control.v1", ...typeSafeProfileRefs, ...layaProfileRefs],
-  pii_semantic: ["tali.openai-compatible-pii.v1", "tali.qwen3guard.v1"],
+  pii_semantic: ["tali.openai-compatible-pii.v1", "tali.qwen3guard.v1", "tali.typesafe-jev.v1", "tali.laya.v1"],
   contextual_grounding: ["tali.grounding-judge.v1"],
   automated_reasoning: ["tali.automated-reasoning.v1"],
 } as const satisfies Record<ModelCapabilityId, readonly string[]>;
@@ -100,7 +100,7 @@ export const capabilityProfilePreference = {
     "tali.qwen3guard.v1",
   ],
   topic_control: ["tali.nemoguard-topic-control.v1", "tali.taxonomy-judge.v1", ...typeSafeProfileRefs, ...layaProfileRefs],
-  pii_semantic: ["tali.openai-compatible-pii.v1", "tali.qwen3guard.v1"],
+  pii_semantic: ["tali.openai-compatible-pii.v1", "tali.qwen3guard.v1", "tali.typesafe-jev.v1", "tali.laya.v1"],
   contextual_grounding: ["tali.grounding-judge.v1"],
   automated_reasoning: ["tali.automated-reasoning.v1"],
 } as const satisfies Record<ModelCapabilityId, readonly string[]>;

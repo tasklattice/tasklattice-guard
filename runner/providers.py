@@ -24,8 +24,11 @@ from runner.toolkit.nemo.evaluators.laya import LAYA_PROFILE, LAYA_PROFILES, LAY
 from runner.toolkit.nemo.evaluators.laya_topic import LayaTopicEvaluator
 from runner.toolkit.nemo.evaluators.laya_jailbreak import LayaJailbreakEvaluator
 from runner.toolkit.nemo.evaluators.laya_content_safety import LayaContentSafetyEvaluator
+from runner.toolkit.nemo.evaluators.jev_pii import JevPiiEvaluator
+from runner.toolkit.nemo.evaluators.laya_pii import LayaPiiEvaluator
 from runner.toolkit.evaluation.contracts import (
     CONTRACT_PII_EXACT,
+    CONTRACT_PII_SEMANTIC,
     MODEL_SAFETY_CONTRACT_BY_CAPABILITY,
 )
 from runner.toolkit.nemo.evaluators.safety_model import SafetyModelEvaluator
@@ -52,11 +55,12 @@ def dynamic_runtime_action_providers(
             if binding.profile_ref == JEV_PROFILE:
                 allowed["jailbreak"] = JevJailbreakEvaluator.contracts
                 allowed["content_safety"] = JevContentSafetyEvaluator.contracts
+                allowed["pii_semantic"] = JevPiiEvaluator.contracts
             if (binding.profile_ref not in JEV_PROFILES or source_profiles.get(binding.model_ref) != binding.profile_ref
                 or binding.capability_ref not in allowed or binding.binding_id != f"{binding.capability_ref}.{phase}"
-                or (phase == "output" and binding.capability_ref != "content_safety")
+                or (phase == "output" and binding.capability_ref not in {"content_safety", "pii_semantic"})
                 or tuple(binding.contract_refs) != tuple(allowed.get(binding.capability_ref, ()))):
-                scope = "input Topic Control" if binding.profile_ref == JEV_TOPIC_PROFILE else "input Topic Control, input Jailbreak detection or input/output Content Safety"
+                scope = "input Topic Control" if binding.profile_ref == JEV_TOPIC_PROFILE else "input Topic Control, input Jailbreak detection, input/output Content Safety or input/output Semantic PII"
                 raise ValueError(f"Jev supports only {scope} with matching capability, contract and runtime profile.")
         if LAYA_PROFILES.intersection({binding.profile_ref, source_profiles.get(binding.model_ref)}):
             phase = _rail_name(binding.rail_type)
@@ -64,11 +68,12 @@ def dynamic_runtime_action_providers(
             if binding.profile_ref == LAYA_PROFILE:
                 allowed["jailbreak"] = LayaJailbreakEvaluator.contracts
                 allowed["content_safety"] = LayaContentSafetyEvaluator.contracts
+                allowed["pii_semantic"] = LayaPiiEvaluator.contracts
             if (binding.profile_ref not in LAYA_PROFILES or source_profiles.get(binding.model_ref) != binding.profile_ref
                 or binding.capability_ref not in allowed or binding.binding_id != f"{binding.capability_ref}.{phase}"
-                or (phase == "output" and binding.capability_ref != "content_safety")
+                or (phase == "output" and binding.capability_ref not in {"content_safety", "pii_semantic"})
                 or tuple(binding.contract_refs) != tuple(allowed.get(binding.capability_ref, ()))):
-                scope = "input Topic Control" if binding.profile_ref == LAYA_TOPIC_PROFILE else "input Topic Control, input Jailbreak detection or input/output Content Safety"
+                scope = "input Topic Control" if binding.profile_ref == LAYA_TOPIC_PROFILE else "input Topic Control, input Jailbreak detection, input/output Content Safety or input/output Semantic PII"
                 raise ValueError(f"Laya supports only {scope} with matching capability, contract and runtime profile.")
     runtimes = {
         item.id: ModelRuntimeConfig(
@@ -177,6 +182,23 @@ def dynamic_runtime_action_providers(
             rate_limit_attempts=runtime.rate_limit_attempts, request_mode=runtime.laya_request_mode,
         )
         routes.append(EvaluationRoute(capability, next(iter(evaluator.contracts)), evaluator))
+    for profile, evaluator_type in ((JEV_PROFILE, JevPiiEvaluator), (LAYA_PROFILE, LayaPiiEvaluator)):
+        for phase in ("input", "output"):
+            binding = bindings.get(f"pii_semantic.{phase}")
+            if binding is None or binding.profile_ref != profile:
+                continue
+            runtime = _assigned_runtime(binding.model_ref, runtimes)
+            options = dict(
+                base_url=runtime.base_url, model=runtime.model, api_key=runtime.api_key or "",
+                provider_id=runtime.id, timeout_seconds=runtime.timeout_seconds,
+                skip_tls_verify=runtime.skip_tls_verify, transport=transports[runtime.id],
+                reviewer=reviewers.get(phase), rail_type=phase,
+                lower_threshold=runtime.lower_threshold, upper_threshold=runtime.upper_threshold,
+                rate_limit_attempts=runtime.rate_limit_attempts,
+            )
+            if evaluator_type is LayaPiiEvaluator:
+                options["request_mode"] = runtime.laya_request_mode
+            routes.append(EvaluationRoute("pii", CONTRACT_PII_SEMANTIC, evaluator_type(**options)))
     providers: list[ActionProvider] = [
         *local_providers,
         EvaluationActionProvider(tuple(routes)),

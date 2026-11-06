@@ -429,7 +429,7 @@ describe("Models and Protection Capabilities", { timeout: 30_000 }, () => {
     expect(screen.getByRole("option", { name: /Qwen Guard/ })).toBeTruthy();
   });
 
-  it.each(["input", "output"] as const)("offers Laya content safety on the %s Rail without exposing it as PII", async (rail) => {
+  it.each(["input", "output"] as const)("offers Laya content safety and semantic PII on the %s Rail", async (rail) => {
     vi.mocked(getModelConfiguration).mockResolvedValue({ ...view, models: [
       ...view.models, { ...chatModel, id: "laya-model", name: "Laya Auto", providerKind: "laya", providerName: "Laya", profile: "tali.laya.v1" },
     ] });
@@ -443,7 +443,7 @@ describe("Models and Protection Capabilities", { timeout: 30_000 }, () => {
     const pii = screen.getByLabelText(`modelSettings.detectors.pii_detection.title`, { selector: "tr" });
     fireEvent.click(within(pii).getByRole("button", { name: "modelSettings.configureByStage" }));
     fireEvent.keyDown(within(pii).getByRole("combobox", { name: `modelSettings.stage.${rail}` }), { key: "ArrowDown" });
-    expect(screen.queryByRole("option", { name: /Laya Auto/ })).toBeNull();
+    expect(await screen.findByRole("option", { name: /Laya Auto/ })).toBeTruthy();
   });
 
   it.each(["input", "output"] as const)("offers DeepSeek with the explicit PII protocol on the %s Rail", async (rail) => {

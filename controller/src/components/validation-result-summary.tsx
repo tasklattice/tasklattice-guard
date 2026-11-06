@@ -26,7 +26,8 @@ export function ValidationResultSummary({ sample, output }: { sample: NonNullabl
   const cause = data.failureClass ? t(key + "cause" + data.failureClass.charAt(0).toUpperCase() + data.failureClass.slice(1)) : "";
   const probability = data.judgments.some(item => typeof item.probability === "number");
   const thresholds = data.judgments.some(item => Object.keys(item.thresholds).length > 0);
-  const pii = context.profile === "tali.openai-compatible-pii.v1";
+  const pii = String(context.binding_id ?? "").startsWith("pii_semantic.")
+    || context.profile === "tali.openai-compatible-pii.v1";
   return <div className="space-y-5 text-sm">
     <dl className="flex flex-wrap gap-x-12 gap-y-3">
       <EvidenceField label={t(key + "expected")} value={sample.expectedDecision} />

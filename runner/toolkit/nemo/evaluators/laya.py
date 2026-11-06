@@ -163,6 +163,14 @@ class LayaNoulEvaluator:
         return ("matched" if any(p >= self._upper for p in probabilities.values()) else
                 "not_matched" if all(p <= self._lower for p in probabilities.values()) else "unknown")
 
+    def result_content(self, request: EvaluationRequest, verdict: str) -> str:
+        """Content returned by a successful classification; PII may transform it."""
+        return request.content
+
+    def result_replacement(self, request: EvaluationRequest, verdict: str) -> str | None:
+        """Replacement recorded on a matched finding, if the action is transform."""
+        return None
+
     def _trace(self, request: EvaluationRequest, verdict: str, reason: str,
                probabilities: dict[str, float], actual_model: str | None = None,
                error_type: str | None = None, model_metadata: dict | None = None,
@@ -270,10 +278,12 @@ class LayaNoulEvaluator:
         findings = () if verdict != "matched" else (RiskFinding(
             risk=request.capability, taxonomy_id=taxonomy_for_evaluator(request.capability), verdict="matched",
             confidence=None, evidence=reason, recommended_action=request.proposed_action,
+            replacement=self.result_replacement(request, verdict),
             provider_evidence=(ProviderEvidence(provider_id=self._provider_id, model=actual_model or self._model,
                                                native_verdict=trace.evidence),),
         ),)
-        result = evaluation_result(request, verdict, request.content, reason=reason, findings=findings,
+        result = evaluation_result(request, verdict, self.result_content(request, verdict),
+                                 reason=reason, findings=findings,
                                  trace=(trace,), unknown_reason="uncertain",
                                  usage=action_usage(call, len(request.content)) if call is not None else EvaluationUsage())
         return result
