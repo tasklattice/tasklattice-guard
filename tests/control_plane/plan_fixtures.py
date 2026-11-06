@@ -72,6 +72,41 @@ def _controller_plans() -> dict[str, dict]:
     return json.loads(result.stdout)
 
 
+def _binding_plan() -> dict:
+    """Build a real Controller plan from one Rule resource bound twice."""
+    source = """
+      import { DeclarativeCompiler } from '../controller/server/policy-studio/declarative.ts';
+      import { buildGuardrailPlan } from '../controller/server/domain/guardrail-plan.ts';
+      const compiler = new DeclarativeCompiler('../runner/toolkit/policy_library/assets');
+      const template = compiler.shipped('keyword-blocking');
+      const definition = structuredClone(template);
+      definition.metadata.id = 'binding-slice'; definition.metadata.version = '1.0.0';
+      definition.parameters = []; delete definition.testing; definition.tests = [];
+      definition.rules = [{
+        ...structuredClone(template.rules[0]), id: 'shared/topic-check', name: 'Shared topic check',
+        stages: ['input'], detector: { ref: 'text/keyword', version: '1.0.0', parameters: { keywords: [['BASE', 'low']] } },
+        on_match: { action: 'block' }, variants: [{ variant_id: 'allow', replacement: '[ALLOW_REDACTED]', description: '' }],
+      }];
+      definition.bindings = [
+        { binding_id: 'denylist', rule_id: 'shared/topic-check', order: 0, action: 'block', parameters: { keywords: [['DENY_TOPIC', 'high']] } },
+        { binding_id: 'allowlist', rule_id: 'shared/topic-check', variant_id: 'allow', order: 1, action: 'block', parameters: { keywords: [['ALLOW_TOPIC', 'medium']] } },
+      ];
+      const policy = compiler.compile(definition);
+      const plan = buildGuardrailPlan({
+        guardrailId: 'binding-slice', guardrailVersion: '20261023-000000.001Z', policies: [policy],
+        draft: { allowedTopics: [], restrictedTopics: [], safetyLevel: 'balanced', outputDelivery: 'full_buffered',
+          policyBindings: [{ policyId: policy.id, policyVersion: policy.version, parameterValues: {},
+            enabledRuleIds: policy.rules.map(item => item.id), ruleOrder: policy.rules.map(item => item.id),
+            ruleActions: {}, enabledRails: ['input'], reasoningPolicy: null }] } });
+      console.log(JSON.stringify(plan));
+    """
+    result = subprocess.run(
+        ["node", "--import", "tsx", "--input-type=module", "-e", source],
+        cwd=ROOT / "controller", capture_output=True, text=True, check=True, timeout=60,
+    )
+    return json.loads(result.stdout)
+
+
 @pytest.fixture(scope="module")
 def plans() -> dict[str, dict]:
     return _controller_plans()

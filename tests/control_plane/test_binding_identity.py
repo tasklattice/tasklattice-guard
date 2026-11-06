@@ -65,3 +65,29 @@ def test_one_rule_can_be_bound_twice_with_distinct_variants():
     assert rules["binding-slice/allowlist"]["redaction"] == "[ALLOW_REDACTED]"
     assert rules["binding-slice/denylist"]["keywords"] == [["DENY_TOPIC", "high"]]
     assert rules["binding-slice/allowlist"]["keywords"] == [["ALLOW_TOPIC", "medium"]]
+
+
+async def test_explicit_binding_plan_executes_and_reports_binding_identity():
+    from runner.compiler import DefaultRunnerCompiler
+    from runner.draft_preview import DraftPreviewRuntime
+    from runner.toolkit.nemo.action_registry import action_providers
+    from runner.toolkit.nemo.actions import local_action_providers
+    from runner.toolkit.runtime.contracts import ProtectionRequest, RequestContext
+    from tests.control_plane.plan_fixtures import _binding_plan
+
+    plan = _binding_plan()
+    runtime = DraftPreviewRuntime(DefaultRunnerCompiler(), action_providers(*local_action_providers()))
+    try:
+        result = await runtime.evaluate(
+            ProtectionRequest(phase="input", texts=("DENY_TOPIC",),
+                              context=RequestContext(protocol="playground")),
+            preview_id="binding-slice", guardrail_id=plan["guardrail_id"],
+            draft_revision=1, candidate_version=plan["guardrail_version"],
+            plan=plan, runtime_profile="auto")
+    finally:
+        await runtime.shutdown()
+    assert result.decision == "block"
+    assert any(
+        step.kind == "action" and "bindingId=binding-slice/denylist" in (step.detail or "")
+        for step in result.trace
+    )
