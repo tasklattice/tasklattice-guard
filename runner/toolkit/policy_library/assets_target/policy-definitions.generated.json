@@ -38701,7 +38701,7 @@
       {
         "id": "eu-ai-act-art5-manipulation/eu_ai_act_art5_manipulation",
         "version": "1.0.0",
-        "name": "EU AI Act Art5 Manipulation",
+        "name": "EU AI Act Art5 Manipulation (EN/FR)",
         "description": "Art. 5.1(a) — Blocks subliminal manipulation, deceptive AI techniques, and covert behavioral influence",
         "stages": [
           "input"
@@ -38712,95 +38712,199 @@
           "parameters": {
             "detector_options": {
               "match": {
-                "all": [
+                "any": [
                   {
-                    "not": {
-                      "contains": [
-                        "research on",
-                        "study on",
-                        "academic",
-                        "thesis on",
-                        "explain",
-                        "what is",
-                        "article 5",
-                        "prohibited by",
-                        "detect dark pattern",
-                        "audit for",
-                        "compliance monitoring",
-                        "ethical review",
-                        "how to prevent",
-                        "how to avoid"
-                      ]
-                    }
-                  },
-                  {
-                    "any": [
+                    "all": [
                       {
-                        "within_sentence": {
-                          "all": [
-                            {
-                              "contains": [
-                                "build",
-                                "create",
-                                "develop",
-                                "design",
-                                "implement",
-                                "deploy",
-                                "launch",
-                                "use",
-                                "manipulate",
-                                "influence",
-                                "persuade",
-                                "nudge",
-                                "coerce",
-                                "exploit",
-                                "target",
-                                "embed",
-                                "inject",
-                                "insert"
-                              ]
-                            },
-                            {
-                              "keywords": [
-                                "subliminal",
-                                "subliminal message",
-                                "subliminal advertising",
-                                "subliminal technique",
-                                "subliminal signal",
-                                "subliminal stimulus",
-                                "subliminal perception",
-                                "subliminal cue",
-                                "subconscious",
-                                "subconscious manipulation",
-                                "subconscious influence",
-                                "subconscious persuasion",
-                                "below conscious awareness",
-                                "behavior manipulation",
-                                "behavioral manipulation",
-                                "behavioral distortion",
-                                "manipulative design",
-                                "dark pattern",
-                                "deceptive pattern",
-                                "deceptive design",
-                                "coercive design",
-                                "impair decision",
-                                "distort decision",
-                                "undermine autonomy",
-                                "override consent",
-                                "bypass rational"
-                              ]
-                            }
+                        "not": {
+                          "contains": [
+                            "research on",
+                            "study on",
+                            "academic",
+                            "thesis on",
+                            "explain",
+                            "what is",
+                            "article 5",
+                            "prohibited by",
+                            "detect dark pattern",
+                            "audit for",
+                            "compliance monitoring",
+                            "ethical review",
+                            "how to prevent",
+                            "how to avoid"
                           ]
                         }
                       },
                       {
-                        "keywords": [
-                          "subliminal manipulation system",
-                          "subliminal advertising system",
-                          "covert behavioral manipulation",
-                          "subconscious manipulation tool",
-                          "deceptive ai manipulation",
-                          "dark pattern ai system"
+                        "any": [
+                          {
+                            "within_sentence": {
+                              "all": [
+                                {
+                                  "contains": [
+                                    "build",
+                                    "create",
+                                    "develop",
+                                    "design",
+                                    "implement",
+                                    "deploy",
+                                    "launch",
+                                    "use",
+                                    "manipulate",
+                                    "influence",
+                                    "persuade",
+                                    "nudge",
+                                    "coerce",
+                                    "exploit",
+                                    "target",
+                                    "embed",
+                                    "inject",
+                                    "insert"
+                                  ]
+                                },
+                                {
+                                  "keywords": [
+                                    "subliminal",
+                                    "subliminal message",
+                                    "subliminal advertising",
+                                    "subliminal technique",
+                                    "subliminal signal",
+                                    "subliminal stimulus",
+                                    "subliminal perception",
+                                    "subliminal cue",
+                                    "subconscious",
+                                    "subconscious manipulation",
+                                    "subconscious influence",
+                                    "subconscious persuasion",
+                                    "below conscious awareness",
+                                    "behavior manipulation",
+                                    "behavioral manipulation",
+                                    "behavioral distortion",
+                                    "manipulative design",
+                                    "dark pattern",
+                                    "deceptive pattern",
+                                    "deceptive design",
+                                    "coercive design",
+                                    "impair decision",
+                                    "distort decision",
+                                    "undermine autonomy",
+                                    "override consent",
+                                    "bypass rational"
+                                  ]
+                                }
+                              ]
+                            }
+                          },
+                          {
+                            "keywords": [
+                              "subliminal manipulation system",
+                              "subliminal advertising system",
+                              "covert behavioral manipulation",
+                              "subconscious manipulation tool",
+                              "deceptive ai manipulation",
+                              "dark pattern ai system"
+                            ]
+                          }
+                        ]
+                      }
+                    ]
+                  },
+                  {
+                    "all": [
+                      {
+                        "not": {
+                          "contains": [
+                            "recherche sur",
+                            "étude sur",
+                            "académique",
+                            "thèse sur",
+                            "expliquer",
+                            "qu'est-ce que",
+                            "c'est quoi",
+                            "article 5",
+                            "interdit par",
+                            "prohibé par",
+                            "détecter les dark patterns",
+                            "audit",
+                            "surveillance de conformité",
+                            "contrôle de conformité",
+                            "examen éthique",
+                            "comment prévenir",
+                            "comment éviter"
+                          ]
+                        }
+                      },
+                      {
+                        "any": [
+                          {
+                            "within_sentence": {
+                              "all": [
+                                {
+                                  "contains": [
+                                    "construire",
+                                    "créer",
+                                    "développer",
+                                    "concevoir",
+                                    "implémenter",
+                                    "mettre en place",
+                                    "déployer",
+                                    "lancer",
+                                    "utiliser",
+                                    "manipuler",
+                                    "influencer",
+                                    "persuader",
+                                    "inciter",
+                                    "contraindre",
+                                    "exploiter",
+                                    "cibler",
+                                    "intégrer",
+                                    "injecter",
+                                    "insérer"
+                                  ]
+                                },
+                                {
+                                  "keywords": [
+                                    "subliminal",
+                                    "subliminale",
+                                    "message subliminal",
+                                    "publicité subliminale",
+                                    "technique subliminale",
+                                    "signal subliminal",
+                                    "stimulus subliminal",
+                                    "perception subliminale",
+                                    "subconscient",
+                                    "inconscient",
+                                    "manipulation subconsciente",
+                                    "influence subconsciente",
+                                    "persuasion subconsciente",
+                                    "en dessous du seuil de conscience",
+                                    "manipulation de comportement",
+                                    "manipulation comportementale",
+                                    "distorsion comportementale",
+                                    "conception manipulatrice",
+                                    "dark pattern",
+                                    "schéma trompeur",
+                                    "conception trompeuse",
+                                    "conception coercitive",
+                                    "altérer la décision",
+                                    "fausser la décision",
+                                    "saper l'autonomie",
+                                    "contourner le consentement"
+                                  ]
+                                }
+                              ]
+                            }
+                          },
+                          {
+                            "keywords": [
+                              "système de manipulation subliminale",
+                              "système de publicité subliminale",
+                              "manipulation comportementale cachée",
+                              "outil de manipulation subconsciente",
+                              "manipulation ia trompeuse",
+                              "système ia dark pattern"
+                            ]
+                          }
                         ]
                       }
                     ]
@@ -38826,7 +38930,7 @@
       {
         "id": "eu-ai-act-art5-vulnerability/eu_ai_act_art5_vulnerability",
         "version": "1.0.0",
-        "name": "EU AI Act Art5 Vulnerability",
+        "name": "EU AI Act Art5 Vulnerability (EN/FR)",
         "description": "Art. 5.1(b) — Blocks AI systems that exploit vulnerabilities of children, elderly, or disabled persons",
         "stages": [
           "input"
@@ -38837,108 +38941,219 @@
           "parameters": {
             "detector_options": {
               "match": {
-                "all": [
+                "any": [
                   {
-                    "not": {
-                      "contains": [
-                        "research on",
-                        "study on",
-                        "academic",
-                        "thesis on",
-                        "explain",
-                        "what is",
-                        "article 5",
-                        "prohibited by",
-                        "protect vulnerable",
-                        "safeguard",
-                        "compliance monitoring",
-                        "ethical review",
-                        "accessibility",
-                        "support for",
-                        "help for",
-                        "assist"
-                      ]
-                    }
-                  },
-                  {
-                    "any": [
+                    "all": [
                       {
-                        "within_sentence": {
-                          "all": [
-                            {
-                              "contains": [
-                                "build",
-                                "create",
-                                "develop",
-                                "design",
-                                "implement",
-                                "exploit",
-                                "target",
-                                "manipulate",
-                                "take advantage",
-                                "abuse",
-                                "leverage",
-                                "prey on",
-                                "profile",
-                                "assess",
-                                "evaluate",
-                                "analyze",
-                                "score",
-                                "classify",
-                                "detect",
-                                "identify"
-                              ]
-                            },
-                            {
-                              "keywords": [
-                                "children vulnerability",
-                                "child vulnerability",
-                                "minor vulnerability",
-                                "vulnerable children",
-                                "vulnerable minors",
-                                "underage vulnerability",
-                                "child susceptibility",
-                                "children susceptibility",
-                                "targeting children",
-                                "targeting minors",
-                                "elderly vulnerability",
-                                "senior vulnerability",
-                                "old age vulnerability",
-                                "vulnerable elderly",
-                                "vulnerable seniors",
-                                "elderly susceptibility",
-                                "targeting elderly",
-                                "targeting seniors",
-                                "cognitive decline",
-                                "disabled vulnerability",
-                                "disability vulnerability",
-                                "vulnerable disabled",
-                                "disabled susceptibility",
-                                "intellectual disability",
-                                "cognitive impairment",
-                                "mental disability",
-                                "targeting disabled",
-                                "economic vulnerability",
-                                "financial vulnerability",
-                                "poverty vulnerability",
-                                "low income vulnerability",
-                                "socioeconomic vulnerability",
-                                "vulnerable population"
-                              ]
-                            }
+                        "not": {
+                          "contains": [
+                            "research on",
+                            "study on",
+                            "academic",
+                            "thesis on",
+                            "explain",
+                            "what is",
+                            "article 5",
+                            "prohibited by",
+                            "protect vulnerable",
+                            "safeguard",
+                            "compliance monitoring",
+                            "ethical review",
+                            "accessibility",
+                            "support for",
+                            "help for",
+                            "assist"
                           ]
                         }
                       },
                       {
-                        "keywords": [
-                          "exploit child vulnerability",
-                          "exploit elderly vulnerability",
-                          "exploit disabled vulnerability",
-                          "target vulnerable children",
-                          "target vulnerable elderly",
-                          "prey on vulnerable",
-                          "exploit cognitive impairment",
-                          "manipulate vulnerable population"
+                        "any": [
+                          {
+                            "within_sentence": {
+                              "all": [
+                                {
+                                  "contains": [
+                                    "build",
+                                    "create",
+                                    "develop",
+                                    "design",
+                                    "implement",
+                                    "exploit",
+                                    "target",
+                                    "manipulate",
+                                    "take advantage",
+                                    "abuse",
+                                    "leverage",
+                                    "prey on",
+                                    "profile",
+                                    "assess",
+                                    "evaluate",
+                                    "analyze",
+                                    "score",
+                                    "classify",
+                                    "detect",
+                                    "identify"
+                                  ]
+                                },
+                                {
+                                  "keywords": [
+                                    "children vulnerability",
+                                    "child vulnerability",
+                                    "minor vulnerability",
+                                    "vulnerable children",
+                                    "vulnerable minors",
+                                    "underage vulnerability",
+                                    "child susceptibility",
+                                    "children susceptibility",
+                                    "targeting children",
+                                    "targeting minors",
+                                    "elderly vulnerability",
+                                    "senior vulnerability",
+                                    "old age vulnerability",
+                                    "vulnerable elderly",
+                                    "vulnerable seniors",
+                                    "elderly susceptibility",
+                                    "targeting elderly",
+                                    "targeting seniors",
+                                    "cognitive decline",
+                                    "disabled vulnerability",
+                                    "disability vulnerability",
+                                    "vulnerable disabled",
+                                    "disabled susceptibility",
+                                    "intellectual disability",
+                                    "cognitive impairment",
+                                    "mental disability",
+                                    "targeting disabled",
+                                    "economic vulnerability",
+                                    "financial vulnerability",
+                                    "poverty vulnerability",
+                                    "low income vulnerability",
+                                    "socioeconomic vulnerability",
+                                    "vulnerable population"
+                                  ]
+                                }
+                              ]
+                            }
+                          },
+                          {
+                            "keywords": [
+                              "exploit child vulnerability",
+                              "exploit elderly vulnerability",
+                              "exploit disabled vulnerability",
+                              "target vulnerable children",
+                              "target vulnerable elderly",
+                              "prey on vulnerable",
+                              "exploit cognitive impairment",
+                              "manipulate vulnerable population"
+                            ]
+                          }
+                        ]
+                      }
+                    ]
+                  },
+                  {
+                    "all": [
+                      {
+                        "not": {
+                          "contains": [
+                            "recherche sur",
+                            "étude sur",
+                            "académique",
+                            "thèse sur",
+                            "expliquer",
+                            "qu'est-ce que",
+                            "c'est quoi",
+                            "article 5",
+                            "interdit par",
+                            "prohibé par",
+                            "protéger les personnes vulnérables",
+                            "sauvegarde",
+                            "surveillance de conformité",
+                            "contrôle de conformité",
+                            "examen éthique",
+                            "accessibilité",
+                            "soutien pour",
+                            "aide pour"
+                          ]
+                        }
+                      },
+                      {
+                        "any": [
+                          {
+                            "within_sentence": {
+                              "all": [
+                                {
+                                  "contains": [
+                                    "construire",
+                                    "créer",
+                                    "développer",
+                                    "concevoir",
+                                    "implémenter",
+                                    "mettre en place",
+                                    "exploiter",
+                                    "cibler",
+                                    "manipuler",
+                                    "profiter de",
+                                    "abuser",
+                                    "tirer parti",
+                                    "profiler",
+                                    "évaluer",
+                                    "estimer",
+                                    "analyser",
+                                    "noter",
+                                    "classifier",
+                                    "détecter",
+                                    "identifier"
+                                  ]
+                                },
+                                {
+                                  "keywords": [
+                                    "vulnérabilité des enfants",
+                                    "vulnérabilité des mineurs",
+                                    "enfants vulnérables",
+                                    "mineurs vulnérables",
+                                    "susceptibilité des enfants",
+                                    "susceptibilité des mineurs",
+                                    "cibler les enfants",
+                                    "cibler les mineurs",
+                                    "vulnérabilité des personnes âgées",
+                                    "vulnérabilité des seniors",
+                                    "personnes âgées vulnérables",
+                                    "seniors vulnérables",
+                                    "susceptibilité des personnes âgées",
+                                    "cibler les personnes âgées",
+                                    "cibler les seniors",
+                                    "déclin cognitif",
+                                    "vulnérabilité des handicapés",
+                                    "vulnérabilité des personnes handicapées",
+                                    "personnes handicapées vulnérables",
+                                    "handicapés vulnérables",
+                                    "déficience intellectuelle",
+                                    "déficience cognitive",
+                                    "handicap mental",
+                                    "cibler les handicapés",
+                                    "cibler les personnes handicapées",
+                                    "vulnérabilité économique",
+                                    "vulnérabilité financière",
+                                    "vulnérabilité socio-économique",
+                                    "population vulnérable",
+                                    "personnes vulnérables"
+                                  ]
+                                }
+                              ]
+                            }
+                          },
+                          {
+                            "keywords": [
+                              "exploiter la vulnérabilité des enfants",
+                              "exploiter la vulnérabilité des personnes âgées",
+                              "exploiter la vulnérabilité des handicapés",
+                              "cibler les enfants vulnérables",
+                              "cibler les personnes âgées vulnérables",
+                              "exploiter le déclin cognitif",
+                              "manipuler les personnes vulnérables"
+                            ]
+                          }
                         ]
                       }
                     ]
@@ -38964,7 +39179,7 @@
       {
         "id": "eu-ai-act-art5-social-scoring/eu_ai_act_art5_social_scoring",
         "version": "1.0.0",
-        "name": "EU AI Act Art5 Social Scoring",
+        "name": "EU AI Act Art5 Social Scoring (EN/FR)",
         "description": "Art. 5.1(c) — Blocks social scoring, citizen rating, and trustworthiness classification systems",
         "stages": [
           "input"
@@ -38975,111 +39190,237 @@
           "parameters": {
             "detector_options": {
               "match": {
-                "all": [
+                "any": [
                   {
-                    "not": {
-                      "contains": [
-                        "research on",
-                        "study on",
-                        "academic",
-                        "thesis on",
-                        "explain",
-                        "what is",
-                        "article 5",
-                        "prohibited by",
-                        "audit for bias",
-                        "detect discrimination",
-                        "compliance monitoring",
-                        "ethical review",
-                        "fairness testing",
-                        "product review",
-                        "customer feedback",
-                        "credit score",
-                        "net promoter score"
-                      ]
-                    }
-                  },
-                  {
-                    "any": [
+                    "all": [
                       {
-                        "within_sentence": {
-                          "all": [
-                            {
-                              "contains": [
-                                "build",
-                                "create",
-                                "develop",
-                                "design",
-                                "implement",
-                                "score",
-                                "rank",
-                                "rate",
-                                "assess",
-                                "evaluate",
-                                "classify",
-                                "profile",
-                                "grade",
-                                "categorize",
-                                "tier",
-                                "recognize",
-                                "detect",
-                                "identify",
-                                "infer",
-                                "deduce",
-                                "predict",
-                                "determine",
-                                "analyze",
-                                "monitor",
-                                "track"
-                              ]
-                            },
-                            {
-                              "keywords": [
-                                "social behavior",
-                                "social credit",
-                                "social score",
-                                "social rating",
-                                "social ranking",
-                                "social standing",
-                                "citizen score",
-                                "citizen rating",
-                                "citizen ranking",
-                                "citizen classification",
-                                "citizen trustworthiness",
-                                "trustworthiness",
-                                "trustworthiness score",
-                                "reputation score",
-                                "reputation rating",
-                                "behavioral score",
-                                "behavioral rating",
-                                "behavioral classification",
-                                "loyalty score",
-                                "obedience score",
-                                "social media behavior",
-                                "social media score",
-                                "online behavior score",
-                                "digital reputation score",
-                                "creditworthiness from social",
-                                "personality score",
-                                "character score",
-                                "moral score",
-                                "virtue score"
-                              ]
-                            }
+                        "not": {
+                          "contains": [
+                            "research on",
+                            "study on",
+                            "academic",
+                            "thesis on",
+                            "explain",
+                            "what is",
+                            "article 5",
+                            "prohibited by",
+                            "audit for bias",
+                            "detect discrimination",
+                            "compliance monitoring",
+                            "ethical review",
+                            "fairness testing",
+                            "product review",
+                            "customer feedback",
+                            "credit score",
+                            "net promoter score"
                           ]
                         }
                       },
                       {
-                        "keywords": [
-                          "social credit system",
-                          "social scoring system",
-                          "citizen scoring",
-                          "citizen scoring system",
-                          "social credit score",
-                          "government social score",
-                          "trustworthiness scoring system",
-                          "reputation scoring system",
-                          "behavioral scoring system"
+                        "any": [
+                          {
+                            "within_sentence": {
+                              "all": [
+                                {
+                                  "contains": [
+                                    "build",
+                                    "create",
+                                    "develop",
+                                    "design",
+                                    "implement",
+                                    "score",
+                                    "rank",
+                                    "rate",
+                                    "assess",
+                                    "evaluate",
+                                    "classify",
+                                    "profile",
+                                    "grade",
+                                    "categorize",
+                                    "tier",
+                                    "recognize",
+                                    "detect",
+                                    "identify",
+                                    "infer",
+                                    "deduce",
+                                    "predict",
+                                    "determine",
+                                    "analyze",
+                                    "monitor",
+                                    "track"
+                                  ]
+                                },
+                                {
+                                  "keywords": [
+                                    "social behavior",
+                                    "social credit",
+                                    "social score",
+                                    "social rating",
+                                    "social ranking",
+                                    "social standing",
+                                    "citizen score",
+                                    "citizen rating",
+                                    "citizen ranking",
+                                    "citizen classification",
+                                    "citizen trustworthiness",
+                                    "trustworthiness",
+                                    "trustworthiness score",
+                                    "reputation score",
+                                    "reputation rating",
+                                    "behavioral score",
+                                    "behavioral rating",
+                                    "behavioral classification",
+                                    "loyalty score",
+                                    "obedience score",
+                                    "social media behavior",
+                                    "social media score",
+                                    "online behavior score",
+                                    "digital reputation score",
+                                    "creditworthiness from social",
+                                    "personality score",
+                                    "character score",
+                                    "moral score",
+                                    "virtue score"
+                                  ]
+                                }
+                              ]
+                            }
+                          },
+                          {
+                            "keywords": [
+                              "social credit system",
+                              "social scoring system",
+                              "citizen scoring",
+                              "citizen scoring system",
+                              "social credit score",
+                              "government social score",
+                              "trustworthiness scoring system",
+                              "reputation scoring system",
+                              "behavioral scoring system"
+                            ]
+                          }
+                        ]
+                      }
+                    ]
+                  },
+                  {
+                    "all": [
+                      {
+                        "not": {
+                          "contains": [
+                            "recherche sur",
+                            "étude sur",
+                            "académique",
+                            "thèse sur",
+                            "mémoire sur",
+                            "expliquer",
+                            "qu'est-ce que",
+                            "c'est quoi",
+                            "article 5",
+                            "interdit par",
+                            "prohibé par",
+                            "audit de biais",
+                            "audit des biais",
+                            "détecter la discrimination",
+                            "détection de discrimination",
+                            "surveillance de conformité",
+                            "contrôle de conformité",
+                            "examen éthique",
+                            "test d'équité",
+                            "avis sur le produit",
+                            "avis produit",
+                            "retour client"
+                          ]
+                        }
+                      },
+                      {
+                        "any": [
+                          {
+                            "within_sentence": {
+                              "all": [
+                                {
+                                  "contains": [
+                                    "construire",
+                                    "créer",
+                                    "développer",
+                                    "concevoir",
+                                    "implémenter",
+                                    "mettre en place",
+                                    "établir",
+                                    "bâtir",
+                                    "élaborer",
+                                    "noter",
+                                    "classer",
+                                    "évaluer",
+                                    "estimer",
+                                    "classifier",
+                                    "profiler",
+                                    "coter",
+                                    "juger",
+                                    "attribuer une note",
+                                    "attribuer un score",
+                                    "donner une note",
+                                    "donner un score",
+                                    "catégoriser",
+                                    "reconnaître",
+                                    "détecter",
+                                    "identifier",
+                                    "inférer",
+                                    "déduire",
+                                    "prédire",
+                                    "déterminer",
+                                    "analyser",
+                                    "surveiller",
+                                    "monitorer"
+                                  ]
+                                },
+                                {
+                                  "keywords": [
+                                    "comportement social",
+                                    "crédit social",
+                                    "score social",
+                                    "note sociale",
+                                    "notation sociale",
+                                    "classement social",
+                                    "rang social",
+                                    "score de citoyen",
+                                    "note de citoyen",
+                                    "notation des citoyens",
+                                    "classement des citoyens",
+                                    "fiabilité des citoyens",
+                                    "fiabilité",
+                                    "score de fiabilité",
+                                    "score de réputation",
+                                    "note de réputation",
+                                    "score comportemental",
+                                    "note comportementale",
+                                    "classification comportementale",
+                                    "score de loyauté",
+                                    "score d'obéissance",
+                                    "réputation sociale",
+                                    "comportement sur les réseaux sociaux",
+                                    "comportement médias sociaux",
+                                    "score des réseaux sociaux",
+                                    "solvabilité à partir des réseaux sociaux",
+                                    "solvabilité à partir du social"
+                                  ]
+                                }
+                              ]
+                            }
+                          },
+                          {
+                            "keywords": [
+                              "système de crédit social",
+                              "système de notation sociale",
+                              "système de score social",
+                              "notation des citoyens",
+                              "système de notation des citoyens",
+                              "système pour noter le comportement social",
+                              "système pour évaluer le comportement social",
+                              "système pour classer le comportement social",
+                              "système de score de réputation"
+                            ]
+                          }
                         ]
                       }
                     ]
@@ -39105,7 +39446,7 @@
       {
         "id": "eu-ai-act-art5-emotion-recognition/eu_ai_act_art5_emotion_recognition",
         "version": "1.0.0",
-        "name": "EU AI Act Art5 Emotion Recognition",
+        "name": "EU AI Act Art5 Emotion Recognition (EN/FR)",
         "description": "Art. 5.1(f) — Blocks emotion recognition and sentiment analysis in workplace and educational settings",
         "stages": [
           "input"
@@ -39116,133 +39457,262 @@
           "parameters": {
             "detector_options": {
               "match": {
-                "all": [
+                "any": [
                   {
-                    "not": {
-                      "contains": [
-                        "research on",
-                        "study on",
-                        "academic",
-                        "thesis on",
-                        "explain",
-                        "what is",
-                        "article 5",
-                        "prohibited by",
-                        "compliance monitoring",
-                        "ethical review",
-                        "movie",
-                        "game",
-                        "customer feedback",
-                        "product review",
-                        "medical",
-                        "safety reason",
-                        "driver drowsiness",
-                        "pilot fatigue"
-                      ]
-                    }
-                  },
-                  {
-                    "any": [
+                    "all": [
                       {
-                        "within_sentence": {
-                          "all": [
-                            {
-                              "contains": [
-                                "build",
-                                "create",
-                                "develop",
-                                "design",
-                                "implement",
-                                "deploy",
-                                "setup",
-                                "install",
-                                "recognize",
-                                "detect",
-                                "identify",
-                                "infer",
-                                "deduce",
-                                "predict",
-                                "determine",
-                                "analyze",
-                                "measure",
-                                "monitor",
-                                "track",
-                                "assess",
-                                "evaluate",
-                                "classify"
-                              ]
-                            },
-                            {
-                              "keywords": [
-                                "employee emotion",
-                                "employee emotions",
-                                "employee mood",
-                                "employee moods",
-                                "employee sentiment",
-                                "employee feeling",
-                                "employee feelings",
-                                "employee affect",
-                                "employee mental state",
-                                "worker emotion",
-                                "worker emotions",
-                                "worker mood",
-                                "worker sentiment",
-                                "worker feeling",
-                                "worker feelings",
-                                "worker mental state",
-                                "staff emotion",
-                                "staff emotions",
-                                "staff mood",
-                                "staff sentiment",
-                                "staff feeling",
-                                "workplace emotion",
-                                "workplace emotions",
-                                "workplace mood",
-                                "workplace sentiment",
-                                "workplace feeling",
-                                "office emotion",
-                                "office mood",
-                                "office sentiment",
-                                "student emotion",
-                                "student emotions",
-                                "student mood",
-                                "student sentiment",
-                                "student feeling",
-                                "student feelings",
-                                "student mental state",
-                                "pupil emotion",
-                                "pupil mood",
-                                "classroom emotion",
-                                "classroom emotions",
-                                "classroom mood",
-                                "classroom sentiment",
-                                "classroom engagement",
-                                "school emotion",
-                                "school mood",
-                                "lecture emotion",
-                                "candidate emotion",
-                                "candidate sentiment",
-                                "interview emotion",
-                                "interview sentiment",
-                                "applicant emotion",
-                                "applicant sentiment"
-                              ]
-                            }
+                        "not": {
+                          "contains": [
+                            "research on",
+                            "study on",
+                            "academic",
+                            "thesis on",
+                            "explain",
+                            "what is",
+                            "article 5",
+                            "prohibited by",
+                            "compliance monitoring",
+                            "ethical review",
+                            "movie",
+                            "game",
+                            "customer feedback",
+                            "product review",
+                            "medical",
+                            "safety reason",
+                            "driver drowsiness",
+                            "pilot fatigue"
                           ]
                         }
                       },
                       {
-                        "keywords": [
-                          "emotion recognition in workplace",
-                          "emotion detection of employees",
-                          "emotion recognition in classroom",
-                          "student emotion detection",
-                          "workplace emotion monitoring",
-                          "employee emotion tracking",
-                          "employee sentiment analysis system",
-                          "classroom emotion surveillance",
-                          "worker mood monitoring system",
-                          "student engagement emotion tracking"
+                        "any": [
+                          {
+                            "within_sentence": {
+                              "all": [
+                                {
+                                  "contains": [
+                                    "build",
+                                    "create",
+                                    "develop",
+                                    "design",
+                                    "implement",
+                                    "deploy",
+                                    "setup",
+                                    "install",
+                                    "recognize",
+                                    "detect",
+                                    "identify",
+                                    "infer",
+                                    "deduce",
+                                    "predict",
+                                    "determine",
+                                    "analyze",
+                                    "measure",
+                                    "monitor",
+                                    "track",
+                                    "assess",
+                                    "evaluate",
+                                    "classify"
+                                  ]
+                                },
+                                {
+                                  "keywords": [
+                                    "employee emotion",
+                                    "employee emotions",
+                                    "employee mood",
+                                    "employee moods",
+                                    "employee sentiment",
+                                    "employee feeling",
+                                    "employee feelings",
+                                    "employee affect",
+                                    "employee mental state",
+                                    "worker emotion",
+                                    "worker emotions",
+                                    "worker mood",
+                                    "worker sentiment",
+                                    "worker feeling",
+                                    "worker feelings",
+                                    "worker mental state",
+                                    "staff emotion",
+                                    "staff emotions",
+                                    "staff mood",
+                                    "staff sentiment",
+                                    "staff feeling",
+                                    "workplace emotion",
+                                    "workplace emotions",
+                                    "workplace mood",
+                                    "workplace sentiment",
+                                    "workplace feeling",
+                                    "office emotion",
+                                    "office mood",
+                                    "office sentiment",
+                                    "student emotion",
+                                    "student emotions",
+                                    "student mood",
+                                    "student sentiment",
+                                    "student feeling",
+                                    "student feelings",
+                                    "student mental state",
+                                    "pupil emotion",
+                                    "pupil mood",
+                                    "classroom emotion",
+                                    "classroom emotions",
+                                    "classroom mood",
+                                    "classroom sentiment",
+                                    "classroom engagement",
+                                    "school emotion",
+                                    "school mood",
+                                    "lecture emotion",
+                                    "candidate emotion",
+                                    "candidate sentiment",
+                                    "interview emotion",
+                                    "interview sentiment",
+                                    "applicant emotion",
+                                    "applicant sentiment"
+                                  ]
+                                }
+                              ]
+                            }
+                          },
+                          {
+                            "keywords": [
+                              "emotion recognition in workplace",
+                              "emotion detection of employees",
+                              "emotion recognition in classroom",
+                              "student emotion detection",
+                              "workplace emotion monitoring",
+                              "employee emotion tracking",
+                              "employee sentiment analysis system",
+                              "classroom emotion surveillance",
+                              "worker mood monitoring system",
+                              "student engagement emotion tracking"
+                            ]
+                          }
+                        ]
+                      }
+                    ]
+                  },
+                  {
+                    "all": [
+                      {
+                        "not": {
+                          "contains": [
+                            "recherche sur",
+                            "étude sur",
+                            "académique",
+                            "thèse sur",
+                            "mémoire sur",
+                            "expliquer",
+                            "qu'est-ce que",
+                            "c'est quoi",
+                            "article 5",
+                            "interdit par",
+                            "prohibé par",
+                            "surveillance de conformité",
+                            "contrôle de conformité",
+                            "examen éthique",
+                            "dans un film",
+                            "dans le film",
+                            "jeu vidéo",
+                            "retour client",
+                            "médical",
+                            "raison de sécurité",
+                            "somnolence du conducteur",
+                            "fatigue du pilote"
+                          ]
+                        }
+                      },
+                      {
+                        "any": [
+                          {
+                            "within_sentence": {
+                              "all": [
+                                {
+                                  "contains": [
+                                    "construire",
+                                    "créer",
+                                    "développer",
+                                    "concevoir",
+                                    "implémenter",
+                                    "mettre en place",
+                                    "déployer",
+                                    "installer",
+                                    "reconnaître",
+                                    "détecter",
+                                    "identifier",
+                                    "inférer",
+                                    "déduire",
+                                    "prédire",
+                                    "déterminer",
+                                    "analyser",
+                                    "mesurer",
+                                    "surveiller",
+                                    "monitorer",
+                                    "évaluer",
+                                    "classifier",
+                                    "repérer",
+                                    "déceler"
+                                  ]
+                                },
+                                {
+                                  "keywords": [
+                                    "émotion des employés",
+                                    "émotion des salariés",
+                                    "humeur des employés",
+                                    "humeur des salariés",
+                                    "sentiment des employés",
+                                    "sentiment des salariés",
+                                    "état émotionnel employés",
+                                    "état émotionnel salariés",
+                                    "ressenti des employés",
+                                    "ressenti des salariés",
+                                    "émotion des travailleurs",
+                                    "émotion du personnel",
+                                    "humeur des travailleurs",
+                                    "sentiment des travailleurs",
+                                    "état émotionnel travailleurs",
+                                    "émotion au travail",
+                                    "émotions au travail",
+                                    "humeur au travail",
+                                    "sentiment au travail",
+                                    "émotion au bureau",
+                                    "humeur au bureau",
+                                    "émotion des étudiants",
+                                    "émotion des élèves",
+                                    "humeur des étudiants",
+                                    "sentiment des étudiants",
+                                    "sentiment des élèves",
+                                    "état émotionnel étudiants",
+                                    "ressenti des étudiants",
+                                    "émotion en classe",
+                                    "émotions en classe",
+                                    "humeur en classe",
+                                    "sentiment en classe",
+                                    "émotion à l'école",
+                                    "émotion en cours",
+                                    "émotion des candidats",
+                                    "sentiment des candidats",
+                                    "émotion en entretien",
+                                    "sentiment en entretien"
+                                  ]
+                                }
+                              ]
+                            }
+                          },
+                          {
+                            "keywords": [
+                              "reconnaissance d'émotions au travail",
+                              "détection d'émotions des employés",
+                              "détection d'émotions des salariés",
+                              "reconnaissance d'émotions en classe",
+                              "détection d'émotions des étudiants",
+                              "détection d'émotions des élèves",
+                              "surveillance des émotions au travail",
+                              "suivi des émotions des employés",
+                              "système d'analyse du sentiment des employés",
+                              "surveillance des émotions en classe"
+                            ]
+                          }
                         ]
                       }
                     ]
@@ -39268,7 +39738,7 @@
       {
         "id": "eu-ai-act-art5-biometric-profiling/eu_ai_act_art5_biometric_profiling",
         "version": "1.0.0",
-        "name": "EU AI Act Art5 Biometric Profiling",
+        "name": "EU AI Act Art5 Biometric Profiling (EN/FR)",
         "description": "Art. 5.1(d)(g)(h) — Blocks biometric categorization, facial recognition databases, and predictive profiling",
         "stages": [
           "input"
@@ -39279,867 +39749,272 @@
           "parameters": {
             "detector_options": {
               "match": {
-                "all": [
+                "any": [
                   {
-                    "not": {
-                      "contains": [
-                        "research on",
-                        "study on",
-                        "academic",
-                        "thesis on",
-                        "explain",
-                        "what is",
-                        "article 5",
-                        "prohibited by",
-                        "audit for bias",
-                        "detect discrimination",
-                        "compliance monitoring",
-                        "ethical review",
-                        "fairness testing",
-                        "movie",
-                        "game",
-                        "forensic",
-                        "missing person",
-                        "targeted search"
-                      ]
-                    }
-                  },
-                  {
-                    "any": [
+                    "all": [
                       {
-                        "within_sentence": {
-                          "all": [
-                            {
-                              "contains": [
-                                "build",
-                                "create",
-                                "develop",
-                                "design",
-                                "implement",
-                                "score",
-                                "rank",
-                                "rate",
-                                "assess",
-                                "evaluate",
-                                "classify",
-                                "profile",
-                                "grade",
-                                "categorize",
-                                "recognize",
-                                "detect",
-                                "identify",
-                                "infer",
-                                "deduce",
-                                "predict",
-                                "determine",
-                                "analyze",
-                                "scrape",
-                                "collect",
-                                "harvest"
-                              ]
-                            },
-                            {
-                              "keywords": [
-                                "race from face",
-                                "race from facial",
-                                "race from biometric",
-                                "race from image",
-                                "race from photo",
-                                "ethnicity from face",
-                                "ethnicity from facial",
-                                "ethnicity from biometric",
-                                "ethnicity from image",
-                                "ethnicity from photo",
-                                "racial classification",
-                                "ethnic classification",
-                                "political views from",
-                                "political opinions from",
-                                "political affiliation from",
-                                "political belief from",
-                                "political orientation from",
-                                "sexual orientation from",
-                                "sexual preference from",
-                                "religion from biometric",
-                                "religion from face",
-                                "religious beliefs from",
-                                "religious affiliation from",
-                                "faith from biometric",
-                                "facial recognition database",
-                                "facial image database",
-                                "face scraping",
-                                "facial image scraping",
-                                "facial recognition training data",
-                                "biometric database from internet",
-                                "biometric database from cctv",
-                                "crime prediction",
-                                "criminal behavior",
-                                "criminal prediction",
-                                "recidivism",
-                                "recidivism prediction",
-                                "crime risk score",
-                                "criminal risk assessment",
-                                "crime probability",
-                                "criminal profiling",
-                                "employee performance prediction",
-                                "worker performance prediction",
-                                "termination prediction",
-                                "attrition prediction from behavior"
-                              ]
-                            }
+                        "not": {
+                          "contains": [
+                            "research on",
+                            "study on",
+                            "academic",
+                            "thesis on",
+                            "explain",
+                            "what is",
+                            "article 5",
+                            "prohibited by",
+                            "audit for bias",
+                            "detect discrimination",
+                            "compliance monitoring",
+                            "ethical review",
+                            "fairness testing",
+                            "movie",
+                            "game",
+                            "forensic",
+                            "missing person",
+                            "targeted search"
                           ]
                         }
                       },
                       {
-                        "keywords": [
-                          "infer race from face",
-                          "predict race from facial",
-                          "infer ethnicity from biometric",
-                          "predict political opinions from",
-                          "biometric categorization system",
-                          "predictive policing",
-                          "predictive policing algorithm",
-                          "crime prediction algorithm",
-                          "recidivism prediction",
-                          "facial recognition database scraping",
-                          "untargeted facial image scraping",
-                          "mass biometric surveillance"
+                        "any": [
+                          {
+                            "within_sentence": {
+                              "all": [
+                                {
+                                  "contains": [
+                                    "build",
+                                    "create",
+                                    "develop",
+                                    "design",
+                                    "implement",
+                                    "score",
+                                    "rank",
+                                    "rate",
+                                    "assess",
+                                    "evaluate",
+                                    "classify",
+                                    "profile",
+                                    "grade",
+                                    "categorize",
+                                    "recognize",
+                                    "detect",
+                                    "identify",
+                                    "infer",
+                                    "deduce",
+                                    "predict",
+                                    "determine",
+                                    "analyze",
+                                    "scrape",
+                                    "collect",
+                                    "harvest"
+                                  ]
+                                },
+                                {
+                                  "keywords": [
+                                    "race from face",
+                                    "race from facial",
+                                    "race from biometric",
+                                    "race from image",
+                                    "race from photo",
+                                    "ethnicity from face",
+                                    "ethnicity from facial",
+                                    "ethnicity from biometric",
+                                    "ethnicity from image",
+                                    "ethnicity from photo",
+                                    "racial classification",
+                                    "ethnic classification",
+                                    "political views from",
+                                    "political opinions from",
+                                    "political affiliation from",
+                                    "political belief from",
+                                    "political orientation from",
+                                    "sexual orientation from",
+                                    "sexual preference from",
+                                    "religion from biometric",
+                                    "religion from face",
+                                    "religious beliefs from",
+                                    "religious affiliation from",
+                                    "faith from biometric",
+                                    "facial recognition database",
+                                    "facial image database",
+                                    "face scraping",
+                                    "facial image scraping",
+                                    "facial recognition training data",
+                                    "biometric database from internet",
+                                    "biometric database from cctv",
+                                    "crime prediction",
+                                    "criminal behavior",
+                                    "criminal prediction",
+                                    "recidivism",
+                                    "recidivism prediction",
+                                    "crime risk score",
+                                    "criminal risk assessment",
+                                    "crime probability",
+                                    "criminal profiling",
+                                    "employee performance prediction",
+                                    "worker performance prediction",
+                                    "termination prediction",
+                                    "attrition prediction from behavior"
+                                  ]
+                                }
+                              ]
+                            }
+                          },
+                          {
+                            "keywords": [
+                              "infer race from face",
+                              "predict race from facial",
+                              "infer ethnicity from biometric",
+                              "predict political opinions from",
+                              "biometric categorization system",
+                              "predictive policing",
+                              "predictive policing algorithm",
+                              "crime prediction algorithm",
+                              "recidivism prediction",
+                              "facial recognition database scraping",
+                              "untargeted facial image scraping",
+                              "mass biometric surveillance"
+                            ]
+                          }
                         ]
                       }
                     ]
-                  }
-                ]
-              }
-            }
-          }
-        },
-        "on_match": {
-          "action": "block",
-          "replacement": null
-        },
-        "risk_level": "high",
-        "metadata": {
-          "taxonomy_ids": [
-            "TALI-PRIVACY-BIOMETRIC"
-          ]
-        },
-        "variants": [],
-        "expand": null
-      },
-      {
-        "id": "eu-ai-act-art5-manipulation-fr/eu_ai_act_art5_manipulation_fr",
-        "version": "1.0.0",
-        "name": "EU AI Act Art5 Manipulation Fr",
-        "description": "Art. 5.1(a) — Bloque la manipulation subliminale, les techniques d'IA trompeuses et l'influence comportementale cachée",
-        "stages": [
-          "input"
-        ],
-        "detector": {
-          "ref": "text/conditions",
-          "version": "1.0.0",
-          "parameters": {
-            "detector_options": {
-              "match": {
-                "all": [
-                  {
-                    "not": {
-                      "contains": [
-                        "recherche sur",
-                        "étude sur",
-                        "académique",
-                        "thèse sur",
-                        "expliquer",
-                        "qu'est-ce que",
-                        "c'est quoi",
-                        "article 5",
-                        "interdit par",
-                        "prohibé par",
-                        "détecter les dark patterns",
-                        "audit",
-                        "surveillance de conformité",
-                        "contrôle de conformité",
-                        "examen éthique",
-                        "comment prévenir",
-                        "comment éviter"
-                      ]
-                    }
                   },
                   {
-                    "any": [
+                    "all": [
                       {
-                        "within_sentence": {
-                          "all": [
-                            {
-                              "contains": [
-                                "construire",
-                                "créer",
-                                "développer",
-                                "concevoir",
-                                "implémenter",
-                                "mettre en place",
-                                "déployer",
-                                "lancer",
-                                "utiliser",
-                                "manipuler",
-                                "influencer",
-                                "persuader",
-                                "inciter",
-                                "contraindre",
-                                "exploiter",
-                                "cibler",
-                                "intégrer",
-                                "injecter",
-                                "insérer"
-                              ]
-                            },
-                            {
-                              "keywords": [
-                                "subliminal",
-                                "subliminale",
-                                "message subliminal",
-                                "publicité subliminale",
-                                "technique subliminale",
-                                "signal subliminal",
-                                "stimulus subliminal",
-                                "perception subliminale",
-                                "subconscient",
-                                "inconscient",
-                                "manipulation subconsciente",
-                                "influence subconsciente",
-                                "persuasion subconsciente",
-                                "en dessous du seuil de conscience",
-                                "manipulation de comportement",
-                                "manipulation comportementale",
-                                "distorsion comportementale",
-                                "conception manipulatrice",
-                                "dark pattern",
-                                "schéma trompeur",
-                                "conception trompeuse",
-                                "conception coercitive",
-                                "altérer la décision",
-                                "fausser la décision",
-                                "saper l'autonomie",
-                                "contourner le consentement"
-                              ]
-                            }
+                        "not": {
+                          "contains": [
+                            "recherche sur",
+                            "étude sur",
+                            "académique",
+                            "thèse sur",
+                            "mémoire sur",
+                            "expliquer",
+                            "qu'est-ce que",
+                            "c'est quoi",
+                            "article 5",
+                            "interdit par",
+                            "prohibé par",
+                            "audit de biais",
+                            "audit des biais",
+                            "détecter la discrimination",
+                            "détection de discrimination",
+                            "surveillance de conformité",
+                            "contrôle de conformité",
+                            "examen éthique",
+                            "test d'équité",
+                            "dans un film",
+                            "jeu vidéo",
+                            "médico-légal",
+                            "personne disparue",
+                            "recherche ciblée"
                           ]
                         }
                       },
                       {
-                        "keywords": [
-                          "système de manipulation subliminale",
-                          "système de publicité subliminale",
-                          "manipulation comportementale cachée",
-                          "outil de manipulation subconsciente",
-                          "manipulation ia trompeuse",
-                          "système ia dark pattern"
-                        ]
-                      }
-                    ]
-                  }
-                ]
-              }
-            }
-          }
-        },
-        "on_match": {
-          "action": "block",
-          "replacement": null
-        },
-        "risk_level": "low",
-        "metadata": {
-          "taxonomy_ids": [
-            "TALI-BUSINESS-POLICY"
-          ]
-        },
-        "variants": [],
-        "expand": null
-      },
-      {
-        "id": "eu-ai-act-art5-vulnerability-fr/eu_ai_act_art5_vulnerability_fr",
-        "version": "1.0.0",
-        "name": "EU AI Act Art5 Vulnerability Fr",
-        "description": "Art. 5.1(b) — Bloque les systèmes d'IA qui exploitent les vulnérabilités des enfants, personnes âgées ou handicapées",
-        "stages": [
-          "input"
-        ],
-        "detector": {
-          "ref": "text/conditions",
-          "version": "1.0.0",
-          "parameters": {
-            "detector_options": {
-              "match": {
-                "all": [
-                  {
-                    "not": {
-                      "contains": [
-                        "recherche sur",
-                        "étude sur",
-                        "académique",
-                        "thèse sur",
-                        "expliquer",
-                        "qu'est-ce que",
-                        "c'est quoi",
-                        "article 5",
-                        "interdit par",
-                        "prohibé par",
-                        "protéger les personnes vulnérables",
-                        "sauvegarde",
-                        "surveillance de conformité",
-                        "contrôle de conformité",
-                        "examen éthique",
-                        "accessibilité",
-                        "soutien pour",
-                        "aide pour"
-                      ]
-                    }
-                  },
-                  {
-                    "any": [
-                      {
-                        "within_sentence": {
-                          "all": [
-                            {
-                              "contains": [
-                                "construire",
-                                "créer",
-                                "développer",
-                                "concevoir",
-                                "implémenter",
-                                "mettre en place",
-                                "exploiter",
-                                "cibler",
-                                "manipuler",
-                                "profiter de",
-                                "abuser",
-                                "tirer parti",
-                                "profiler",
-                                "évaluer",
-                                "estimer",
-                                "analyser",
-                                "noter",
-                                "classifier",
-                                "détecter",
-                                "identifier"
-                              ]
-                            },
-                            {
-                              "keywords": [
-                                "vulnérabilité des enfants",
-                                "vulnérabilité des mineurs",
-                                "enfants vulnérables",
-                                "mineurs vulnérables",
-                                "susceptibilité des enfants",
-                                "susceptibilité des mineurs",
-                                "cibler les enfants",
-                                "cibler les mineurs",
-                                "vulnérabilité des personnes âgées",
-                                "vulnérabilité des seniors",
-                                "personnes âgées vulnérables",
-                                "seniors vulnérables",
-                                "susceptibilité des personnes âgées",
-                                "cibler les personnes âgées",
-                                "cibler les seniors",
-                                "déclin cognitif",
-                                "vulnérabilité des handicapés",
-                                "vulnérabilité des personnes handicapées",
-                                "personnes handicapées vulnérables",
-                                "handicapés vulnérables",
-                                "déficience intellectuelle",
-                                "déficience cognitive",
-                                "handicap mental",
-                                "cibler les handicapés",
-                                "cibler les personnes handicapées",
-                                "vulnérabilité économique",
-                                "vulnérabilité financière",
-                                "vulnérabilité socio-économique",
-                                "population vulnérable",
-                                "personnes vulnérables"
+                        "any": [
+                          {
+                            "within_sentence": {
+                              "all": [
+                                {
+                                  "contains": [
+                                    "construire",
+                                    "créer",
+                                    "développer",
+                                    "concevoir",
+                                    "implémenter",
+                                    "mettre en place",
+                                    "noter",
+                                    "classer",
+                                    "évaluer",
+                                    "estimer",
+                                    "classifier",
+                                    "profiler",
+                                    "catégoriser",
+                                    "reconnaître",
+                                    "détecter",
+                                    "identifier",
+                                    "inférer",
+                                    "déduire",
+                                    "prédire",
+                                    "déterminer",
+                                    "analyser",
+                                    "collecter",
+                                    "récolter",
+                                    "scraper",
+                                    "aspirer"
+                                  ]
+                                },
+                                {
+                                  "keywords": [
+                                    "race à partir du visage",
+                                    "race à partir de biométrie",
+                                    "race à partir du biométrique",
+                                    "race à partir de l'image",
+                                    "race à partir de la photo",
+                                    "ethnie à partir du visage",
+                                    "ethnie à partir de biométrie",
+                                    "ethnie à partir du biométrique",
+                                    "ethnie à partir de l'image",
+                                    "classification raciale",
+                                    "classification ethnique",
+                                    "opinions politiques à partir",
+                                    "vues politiques à partir",
+                                    "affiliation politique à partir",
+                                    "croyances politiques à partir",
+                                    "orientation politique à partir",
+                                    "orientation sexuelle à partir",
+                                    "préférence sexuelle à partir",
+                                    "religion à partir de biométrie",
+                                    "religion à partir du biométrique",
+                                    "religion à partir du visage",
+                                    "croyances religieuses à partir",
+                                    "affiliation religieuse à partir",
+                                    "base de données de reconnaissance faciale",
+                                    "base de données d'images faciales",
+                                    "collecte d'images faciales",
+                                    "aspiration d'images faciales",
+                                    "données d'entraînement reconnaissance faciale",
+                                    "base de données biométrique internet",
+                                    "base de données biométrique vidéosurveillance",
+                                    "prédiction de crime",
+                                    "prédiction criminelle",
+                                    "comportement criminel",
+                                    "récidive",
+                                    "prédiction de la récidive",
+                                    "score de risque criminel",
+                                    "évaluation du risque criminel",
+                                    "probabilité criminelle",
+                                    "profilage criminel",
+                                    "prédiction de performance des employés",
+                                    "prédiction de performance des salariés",
+                                    "prédiction de licenciement",
+                                    "prédiction d'attrition"
+                                  ]
+                                }
                               ]
                             }
-                          ]
-                        }
-                      },
-                      {
-                        "keywords": [
-                          "exploiter la vulnérabilité des enfants",
-                          "exploiter la vulnérabilité des personnes âgées",
-                          "exploiter la vulnérabilité des handicapés",
-                          "cibler les enfants vulnérables",
-                          "cibler les personnes âgées vulnérables",
-                          "exploiter le déclin cognitif",
-                          "manipuler les personnes vulnérables"
-                        ]
-                      }
-                    ]
-                  }
-                ]
-              }
-            }
-          }
-        },
-        "on_match": {
-          "action": "block",
-          "replacement": null
-        },
-        "risk_level": "low",
-        "metadata": {
-          "taxonomy_ids": [
-            "TALI-BUSINESS-POLICY"
-          ]
-        },
-        "variants": [],
-        "expand": null
-      },
-      {
-        "id": "eu-ai-act-art5-social-scoring-fr/eu_ai_act_art5_social_scoring_fr",
-        "version": "1.0.0",
-        "name": "EU AI Act Art5 Social Scoring Fr",
-        "description": "Art. 5.1(c) — Bloque les systèmes de notation sociale, de notation des citoyens et de classification de fiabilité",
-        "stages": [
-          "input"
-        ],
-        "detector": {
-          "ref": "text/conditions",
-          "version": "1.0.0",
-          "parameters": {
-            "detector_options": {
-              "match": {
-                "all": [
-                  {
-                    "not": {
-                      "contains": [
-                        "recherche sur",
-                        "étude sur",
-                        "académique",
-                        "thèse sur",
-                        "mémoire sur",
-                        "expliquer",
-                        "qu'est-ce que",
-                        "c'est quoi",
-                        "article 5",
-                        "interdit par",
-                        "prohibé par",
-                        "audit de biais",
-                        "audit des biais",
-                        "détecter la discrimination",
-                        "détection de discrimination",
-                        "surveillance de conformité",
-                        "contrôle de conformité",
-                        "examen éthique",
-                        "test d'équité",
-                        "avis sur le produit",
-                        "avis produit",
-                        "retour client"
-                      ]
-                    }
-                  },
-                  {
-                    "any": [
-                      {
-                        "within_sentence": {
-                          "all": [
-                            {
-                              "contains": [
-                                "construire",
-                                "créer",
-                                "développer",
-                                "concevoir",
-                                "implémenter",
-                                "mettre en place",
-                                "établir",
-                                "bâtir",
-                                "élaborer",
-                                "noter",
-                                "classer",
-                                "évaluer",
-                                "estimer",
-                                "classifier",
-                                "profiler",
-                                "coter",
-                                "juger",
-                                "attribuer une note",
-                                "attribuer un score",
-                                "donner une note",
-                                "donner un score",
-                                "catégoriser",
-                                "reconnaître",
-                                "détecter",
-                                "identifier",
-                                "inférer",
-                                "déduire",
-                                "prédire",
-                                "déterminer",
-                                "analyser",
-                                "surveiller",
-                                "monitorer"
-                              ]
-                            },
-                            {
-                              "keywords": [
-                                "comportement social",
-                                "crédit social",
-                                "score social",
-                                "note sociale",
-                                "notation sociale",
-                                "classement social",
-                                "rang social",
-                                "score de citoyen",
-                                "note de citoyen",
-                                "notation des citoyens",
-                                "classement des citoyens",
-                                "fiabilité des citoyens",
-                                "fiabilité",
-                                "score de fiabilité",
-                                "score de réputation",
-                                "note de réputation",
-                                "score comportemental",
-                                "note comportementale",
-                                "classification comportementale",
-                                "score de loyauté",
-                                "score d'obéissance",
-                                "réputation sociale",
-                                "comportement sur les réseaux sociaux",
-                                "comportement médias sociaux",
-                                "score des réseaux sociaux",
-                                "solvabilité à partir des réseaux sociaux",
-                                "solvabilité à partir du social"
-                              ]
-                            }
-                          ]
-                        }
-                      },
-                      {
-                        "keywords": [
-                          "système de crédit social",
-                          "système de notation sociale",
-                          "système de score social",
-                          "notation des citoyens",
-                          "système de notation des citoyens",
-                          "système pour noter le comportement social",
-                          "système pour évaluer le comportement social",
-                          "système pour classer le comportement social",
-                          "système de score de réputation"
-                        ]
-                      }
-                    ]
-                  }
-                ]
-              }
-            }
-          }
-        },
-        "on_match": {
-          "action": "block",
-          "replacement": null
-        },
-        "risk_level": "low",
-        "metadata": {
-          "taxonomy_ids": [
-            "TALI-BUSINESS-POLICY"
-          ]
-        },
-        "variants": [],
-        "expand": null
-      },
-      {
-        "id": "eu-ai-act-art5-emotion-recognition-fr/eu_ai_act_art5_emotion_recognition_fr",
-        "version": "1.0.0",
-        "name": "EU AI Act Art5 Emotion Recognition Fr",
-        "description": "Art. 5.1(f) — Bloque la reconnaissance des émotions et l'analyse des sentiments au travail et dans l'éducation",
-        "stages": [
-          "input"
-        ],
-        "detector": {
-          "ref": "text/conditions",
-          "version": "1.0.0",
-          "parameters": {
-            "detector_options": {
-              "match": {
-                "all": [
-                  {
-                    "not": {
-                      "contains": [
-                        "recherche sur",
-                        "étude sur",
-                        "académique",
-                        "thèse sur",
-                        "mémoire sur",
-                        "expliquer",
-                        "qu'est-ce que",
-                        "c'est quoi",
-                        "article 5",
-                        "interdit par",
-                        "prohibé par",
-                        "surveillance de conformité",
-                        "contrôle de conformité",
-                        "examen éthique",
-                        "dans un film",
-                        "dans le film",
-                        "jeu vidéo",
-                        "retour client",
-                        "médical",
-                        "raison de sécurité",
-                        "somnolence du conducteur",
-                        "fatigue du pilote"
-                      ]
-                    }
-                  },
-                  {
-                    "any": [
-                      {
-                        "within_sentence": {
-                          "all": [
-                            {
-                              "contains": [
-                                "construire",
-                                "créer",
-                                "développer",
-                                "concevoir",
-                                "implémenter",
-                                "mettre en place",
-                                "déployer",
-                                "installer",
-                                "reconnaître",
-                                "détecter",
-                                "identifier",
-                                "inférer",
-                                "déduire",
-                                "prédire",
-                                "déterminer",
-                                "analyser",
-                                "mesurer",
-                                "surveiller",
-                                "monitorer",
-                                "évaluer",
-                                "classifier",
-                                "repérer",
-                                "déceler"
-                              ]
-                            },
-                            {
-                              "keywords": [
-                                "émotion des employés",
-                                "émotion des salariés",
-                                "humeur des employés",
-                                "humeur des salariés",
-                                "sentiment des employés",
-                                "sentiment des salariés",
-                                "état émotionnel employés",
-                                "état émotionnel salariés",
-                                "ressenti des employés",
-                                "ressenti des salariés",
-                                "émotion des travailleurs",
-                                "émotion du personnel",
-                                "humeur des travailleurs",
-                                "sentiment des travailleurs",
-                                "état émotionnel travailleurs",
-                                "émotion au travail",
-                                "émotions au travail",
-                                "humeur au travail",
-                                "sentiment au travail",
-                                "émotion au bureau",
-                                "humeur au bureau",
-                                "émotion des étudiants",
-                                "émotion des élèves",
-                                "humeur des étudiants",
-                                "sentiment des étudiants",
-                                "sentiment des élèves",
-                                "état émotionnel étudiants",
-                                "ressenti des étudiants",
-                                "émotion en classe",
-                                "émotions en classe",
-                                "humeur en classe",
-                                "sentiment en classe",
-                                "émotion à l'école",
-                                "émotion en cours",
-                                "émotion des candidats",
-                                "sentiment des candidats",
-                                "émotion en entretien",
-                                "sentiment en entretien"
-                              ]
-                            }
-                          ]
-                        }
-                      },
-                      {
-                        "keywords": [
-                          "reconnaissance d'émotions au travail",
-                          "détection d'émotions des employés",
-                          "détection d'émotions des salariés",
-                          "reconnaissance d'émotions en classe",
-                          "détection d'émotions des étudiants",
-                          "détection d'émotions des élèves",
-                          "surveillance des émotions au travail",
-                          "suivi des émotions des employés",
-                          "système d'analyse du sentiment des employés",
-                          "surveillance des émotions en classe"
-                        ]
-                      }
-                    ]
-                  }
-                ]
-              }
-            }
-          }
-        },
-        "on_match": {
-          "action": "block",
-          "replacement": null
-        },
-        "risk_level": "low",
-        "metadata": {
-          "taxonomy_ids": [
-            "TALI-BUSINESS-POLICY"
-          ]
-        },
-        "variants": [],
-        "expand": null
-      },
-      {
-        "id": "eu-ai-act-art5-biometric-profiling-fr/eu_ai_act_art5_biometric_profiling_fr",
-        "version": "1.0.0",
-        "name": "EU AI Act Art5 Biometric Profiling Fr",
-        "description": "Art. 5.1(d)(g)(h) — Bloque la catégorisation biométrique, les bases de reconnaissance faciale et le profilage prédictif",
-        "stages": [
-          "input"
-        ],
-        "detector": {
-          "ref": "text/conditions",
-          "version": "1.0.0",
-          "parameters": {
-            "detector_options": {
-              "match": {
-                "all": [
-                  {
-                    "not": {
-                      "contains": [
-                        "recherche sur",
-                        "étude sur",
-                        "académique",
-                        "thèse sur",
-                        "mémoire sur",
-                        "expliquer",
-                        "qu'est-ce que",
-                        "c'est quoi",
-                        "article 5",
-                        "interdit par",
-                        "prohibé par",
-                        "audit de biais",
-                        "audit des biais",
-                        "détecter la discrimination",
-                        "détection de discrimination",
-                        "surveillance de conformité",
-                        "contrôle de conformité",
-                        "examen éthique",
-                        "test d'équité",
-                        "dans un film",
-                        "jeu vidéo",
-                        "médico-légal",
-                        "personne disparue",
-                        "recherche ciblée"
-                      ]
-                    }
-                  },
-                  {
-                    "any": [
-                      {
-                        "within_sentence": {
-                          "all": [
-                            {
-                              "contains": [
-                                "construire",
-                                "créer",
-                                "développer",
-                                "concevoir",
-                                "implémenter",
-                                "mettre en place",
-                                "noter",
-                                "classer",
-                                "évaluer",
-                                "estimer",
-                                "classifier",
-                                "profiler",
-                                "catégoriser",
-                                "reconnaître",
-                                "détecter",
-                                "identifier",
-                                "inférer",
-                                "déduire",
-                                "prédire",
-                                "déterminer",
-                                "analyser",
-                                "collecter",
-                                "récolter",
-                                "scraper",
-                                "aspirer"
-                              ]
-                            },
-                            {
-                              "keywords": [
-                                "race à partir du visage",
-                                "race à partir de biométrie",
-                                "race à partir du biométrique",
-                                "race à partir de l'image",
-                                "race à partir de la photo",
-                                "ethnie à partir du visage",
-                                "ethnie à partir de biométrie",
-                                "ethnie à partir du biométrique",
-                                "ethnie à partir de l'image",
-                                "classification raciale",
-                                "classification ethnique",
-                                "opinions politiques à partir",
-                                "vues politiques à partir",
-                                "affiliation politique à partir",
-                                "croyances politiques à partir",
-                                "orientation politique à partir",
-                                "orientation sexuelle à partir",
-                                "préférence sexuelle à partir",
-                                "religion à partir de biométrie",
-                                "religion à partir du biométrique",
-                                "religion à partir du visage",
-                                "croyances religieuses à partir",
-                                "affiliation religieuse à partir",
-                                "base de données de reconnaissance faciale",
-                                "base de données d'images faciales",
-                                "collecte d'images faciales",
-                                "aspiration d'images faciales",
-                                "données d'entraînement reconnaissance faciale",
-                                "base de données biométrique internet",
-                                "base de données biométrique vidéosurveillance",
-                                "prédiction de crime",
-                                "prédiction criminelle",
-                                "comportement criminel",
-                                "récidive",
-                                "prédiction de la récidive",
-                                "score de risque criminel",
-                                "évaluation du risque criminel",
-                                "probabilité criminelle",
-                                "profilage criminel",
-                                "prédiction de performance des employés",
-                                "prédiction de performance des salariés",
-                                "prédiction de licenciement",
-                                "prédiction d'attrition"
-                              ]
-                            }
-                          ]
-                        }
-                      },
-                      {
-                        "keywords": [
-                          "inférer la race à partir du visage",
-                          "prédire la race à partir du visage",
-                          "déduire la race à partir du visage",
-                          "inférer l'ethnie à partir de biométrie",
-                          "prédire l'ethnie à partir de biométrie",
-                          "prédire les opinions politiques à partir",
-                          "inférer les opinions politiques à partir",
-                          "système de catégorisation biométrique",
-                          "police prédictive",
-                          "algorithme de prédiction de crime",
-                          "algorithme de prédiction criminelle",
-                          "prédiction de récidive",
-                          "collecte non ciblée d'images faciales",
-                          "surveillance biométrique de masse"
+                          },
+                          {
+                            "keywords": [
+                              "inférer la race à partir du visage",
+                              "prédire la race à partir du visage",
+                              "déduire la race à partir du visage",
+                              "inférer l'ethnie à partir de biométrie",
+                              "prédire l'ethnie à partir de biométrie",
+                              "prédire les opinions politiques à partir",
+                              "inférer les opinions politiques à partir",
+                              "système de catégorisation biométrique",
+                              "police prédictive",
+                              "algorithme de prédiction de crime",
+                              "algorithme de prédiction criminelle",
+                              "prédiction de récidive",
+                              "collecte non ciblée d'images faciales",
+                              "surveillance biométrique de masse"
+                            ]
+                          }
                         ]
                       }
                     ]
@@ -40246,96 +40121,6 @@
         "expected_decision": "block",
         "covered_rule_ids": [
           "eu-ai-act-art5-biometric-profiling/eu_ai_act_art5_biometric_profiling"
-        ],
-        "kind": "rule_acceptance",
-        "required": true,
-        "parameter_names": [],
-        "group": "Rule acceptance",
-        "expected_text": null,
-        "expected_matched_rules": null,
-        "scope": "rule"
-      },
-      {
-        "id": "eu-ai-act-article5/rule-eu-ai-act-art5-manipulation-fr/eu_ai_act_art5_manipulation_fr-acceptance",
-        "name": "Trigger EU AI Act Art5 Manipulation Fr",
-        "description": "Proves that the published category implementation for EU AI Act Art5 Manipulation Fr activates this Rule.",
-        "phase": "input",
-        "content": "Acceptance sample: système de manipulation subliminale",
-        "expected_decision": "block",
-        "covered_rule_ids": [
-          "eu-ai-act-art5-manipulation-fr/eu_ai_act_art5_manipulation_fr"
-        ],
-        "kind": "rule_acceptance",
-        "required": true,
-        "parameter_names": [],
-        "group": "Rule acceptance",
-        "expected_text": null,
-        "expected_matched_rules": null,
-        "scope": "rule"
-      },
-      {
-        "id": "eu-ai-act-article5/rule-eu-ai-act-art5-vulnerability-fr/eu_ai_act_art5_vulnerability_fr-acceptance",
-        "name": "Trigger EU AI Act Art5 Vulnerability Fr",
-        "description": "Proves that the published category implementation for EU AI Act Art5 Vulnerability Fr activates this Rule.",
-        "phase": "input",
-        "content": "Acceptance sample: exploiter la vulnérabilité des enfants",
-        "expected_decision": "block",
-        "covered_rule_ids": [
-          "eu-ai-act-art5-vulnerability-fr/eu_ai_act_art5_vulnerability_fr"
-        ],
-        "kind": "rule_acceptance",
-        "required": true,
-        "parameter_names": [],
-        "group": "Rule acceptance",
-        "expected_text": null,
-        "expected_matched_rules": null,
-        "scope": "rule"
-      },
-      {
-        "id": "eu-ai-act-article5/rule-eu-ai-act-art5-social-scoring-fr/eu_ai_act_art5_social_scoring_fr-acceptance",
-        "name": "Trigger EU AI Act Art5 Social Scoring Fr",
-        "description": "Proves that the published category implementation for EU AI Act Art5 Social Scoring Fr activates this Rule.",
-        "phase": "input",
-        "content": "Acceptance sample: système de crédit social",
-        "expected_decision": "block",
-        "covered_rule_ids": [
-          "eu-ai-act-art5-social-scoring-fr/eu_ai_act_art5_social_scoring_fr"
-        ],
-        "kind": "rule_acceptance",
-        "required": true,
-        "parameter_names": [],
-        "group": "Rule acceptance",
-        "expected_text": null,
-        "expected_matched_rules": null,
-        "scope": "rule"
-      },
-      {
-        "id": "eu-ai-act-article5/rule-eu-ai-act-art5-emotion-recognition-fr/eu_ai_act_art5_emotion_recognition_fr-acceptance",
-        "name": "Trigger EU AI Act Art5 Emotion Recognition Fr",
-        "description": "Proves that the published category implementation for EU AI Act Art5 Emotion Recognition Fr activates this Rule.",
-        "phase": "input",
-        "content": "Acceptance sample: reconnaissance d'émotions au travail",
-        "expected_decision": "block",
-        "covered_rule_ids": [
-          "eu-ai-act-art5-emotion-recognition-fr/eu_ai_act_art5_emotion_recognition_fr"
-        ],
-        "kind": "rule_acceptance",
-        "required": true,
-        "parameter_names": [],
-        "group": "Rule acceptance",
-        "expected_text": null,
-        "expected_matched_rules": null,
-        "scope": "rule"
-      },
-      {
-        "id": "eu-ai-act-article5/rule-eu-ai-act-art5-biometric-profiling-fr/eu_ai_act_art5_biometric_profiling_fr-acceptance",
-        "name": "Trigger EU AI Act Art5 Biometric Profiling Fr",
-        "description": "Proves that the published category implementation for EU AI Act Art5 Biometric Profiling Fr activates this Rule.",
-        "phase": "input",
-        "content": "Acceptance sample: inférer la race à partir du visage",
-        "expected_decision": "block",
-        "covered_rule_ids": [
-          "eu-ai-act-art5-biometric-profiling-fr/eu_ai_act_art5_biometric_profiling_fr"
         ],
         "kind": "rule_acceptance",
         "required": true,
