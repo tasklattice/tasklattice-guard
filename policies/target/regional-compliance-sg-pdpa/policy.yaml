@@ -1,0 +1,34 @@
+schema_version: 1
+kind: Policy
+metadata:
+  id: regional-compliance-sg-pdpa
+  name: 'Regional Compliance: SG PDPA'
+  description: 'Target taxonomy Policy: Regional Compliance: SG PDPA.'
+  source: built_in
+  version: 1.0.0
+  tags:
+  - namespace: protection
+    value: privacy
+    label: Privacy
+  - namespace: collection
+    value: target-policies
+    label: Target Policies
+  safety_level: balanced
+  output_delivery: full_buffered
+parameters: []
+rules: []
+rule_refs:
+- id: claims-phi-disclosure-filter/claims_phi_disclosure
+  version: 1.0.0
+- id: sg-pdpa-personal-identifiers/sg_pdpa_personal_identifiers
+  version: 1.0.0
+- id: sg-pdpa-sensitive-data/sg_pdpa_sensitive_data
+  version: 1.0.0
+- id: sg-pdpa-do-not-call/sg_pdpa_do_not_call
+  version: 1.0.0
+- id: sg-pdpa-data-transfer/sg_pdpa_data_transfer
+  version: 1.0.0
+- id: sg-pdpa-profiling-automated-decisions/sg_pdpa_profiling_automated_decisions
+  version: 1.0.0
+tests:
+- tests/acceptance.yaml

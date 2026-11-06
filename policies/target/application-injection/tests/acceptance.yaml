@@ -1,0 +1,934 @@
+- id: block-code-execution/accept/code-execution
+  name: 'block-code-execution: Block an executable Python request'
+  description: Required acceptance case for executable fenced code.
+  phase: input
+  content: 'Please run this code:
+
+    ```python
+
+    print(''hello'')
+
+    ```'
+  expected_decision: block
+  covered_rule_ids:
+  - code/execution
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: block-code-execution/accept/code-execution/output
+  name: 'block-code-execution: Block an executable Python request'
+  description: Required acceptance case for executable fenced code.
+  phase: output
+  content: 'Please run this code:
+
+    ```python
+
+    print(''hello'')
+
+    ```'
+  expected_decision: block
+  covered_rule_ids:
+  - code/execution
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: block-code-execution/accept/explicit-execution
+  name: 'block-code-execution: Block an explicit execution request'
+  description: A plain execution request is detected independently of its handling
+    action.
+  phase: input
+  content: Please run the tests
+  expected_decision: block
+  covered_rule_ids:
+  - code/execution-request
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: General
+  scope: rule
+- id: local-injection-protection/local-sql-injection/rule-sql-injection-blocker/blocked-word-1-acceptance/input
+  name: 'local-injection-protection: Trigger DROP TABLE'
+  description: Proves that the published keyword implementation for DROP TABLE activates
+    this Rule.
+  phase: input
+  content: 'Acceptance sample: DROP TABLE'
+  expected_decision: block
+  covered_rule_ids:
+  - sql-injection-blocker/blocked-word-1
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: local-injection-protection/local-sql-injection/rule-sql-injection-blocker/blocked-word-1-acceptance/output
+  name: 'local-injection-protection: Trigger DROP TABLE'
+  description: Proves that the published keyword implementation for DROP TABLE activates
+    this Rule.
+  phase: output
+  content: 'Acceptance sample: DROP TABLE'
+  expected_decision: block
+  covered_rule_ids:
+  - sql-injection-blocker/blocked-word-1
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: local-injection-protection/local-sql-injection/rule-sql-injection-blocker/blocked-word-2-acceptance/input
+  name: 'local-injection-protection: Trigger DELETE FROM'
+  description: Proves that the published keyword implementation for DELETE FROM activates
+    this Rule.
+  phase: input
+  content: 'Acceptance sample: DELETE FROM'
+  expected_decision: block
+  covered_rule_ids:
+  - sql-injection-blocker/blocked-word-2
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: local-injection-protection/local-sql-injection/rule-sql-injection-blocker/blocked-word-2-acceptance/output
+  name: 'local-injection-protection: Trigger DELETE FROM'
+  description: Proves that the published keyword implementation for DELETE FROM activates
+    this Rule.
+  phase: output
+  content: 'Acceptance sample: DELETE FROM'
+  expected_decision: block
+  covered_rule_ids:
+  - sql-injection-blocker/blocked-word-2
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: local-injection-protection/local-sql-injection/rule-sql-injection-blocker/blocked-word-3-acceptance/input
+  name: 'local-injection-protection: Trigger INSERT INTO'
+  description: Proves that the published keyword implementation for INSERT INTO activates
+    this Rule.
+  phase: input
+  content: 'Acceptance sample: INSERT INTO'
+  expected_decision: block
+  covered_rule_ids:
+  - sql-injection-blocker/blocked-word-3
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: local-injection-protection/local-sql-injection/rule-sql-injection-blocker/blocked-word-3-acceptance/output
+  name: 'local-injection-protection: Trigger INSERT INTO'
+  description: Proves that the published keyword implementation for INSERT INTO activates
+    this Rule.
+  phase: output
+  content: 'Acceptance sample: INSERT INTO'
+  expected_decision: block
+  covered_rule_ids:
+  - sql-injection-blocker/blocked-word-3
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: local-injection-protection/local-sql-injection/rule-sql-injection-blocker/blocked-word-4-acceptance/input
+  name: 'local-injection-protection: Trigger UNION SELECT'
+  description: Proves that the published keyword implementation for UNION SELECT activates
+    this Rule.
+  phase: input
+  content: 'Acceptance sample: UNION SELECT'
+  expected_decision: block
+  covered_rule_ids:
+  - sql-injection-blocker/blocked-word-4
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: local-injection-protection/local-sql-injection/rule-sql-injection-blocker/blocked-word-4-acceptance/output
+  name: 'local-injection-protection: Trigger UNION SELECT'
+  description: Proves that the published keyword implementation for UNION SELECT activates
+    this Rule.
+  phase: output
+  content: 'Acceptance sample: UNION SELECT'
+  expected_decision: block
+  covered_rule_ids:
+  - sql-injection-blocker/blocked-word-4
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: local-injection-protection/local-sql-injection/rule-sql-injection-blocker/blocked-word-5-acceptance/input
+  name: 'local-injection-protection: Trigger OR 1=1'
+  description: Proves that the published keyword implementation for OR 1=1 activates
+    this Rule.
+  phase: input
+  content: 'Acceptance sample: OR 1=1'
+  expected_decision: block
+  covered_rule_ids:
+  - sql-injection-blocker/blocked-word-5
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: local-injection-protection/local-sql-injection/rule-sql-injection-blocker/blocked-word-5-acceptance/output
+  name: 'local-injection-protection: Trigger OR 1=1'
+  description: Proves that the published keyword implementation for OR 1=1 activates
+    this Rule.
+  phase: output
+  content: 'Acceptance sample: OR 1=1'
+  expected_decision: block
+  covered_rule_ids:
+  - sql-injection-blocker/blocked-word-5
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: local-injection-protection/local-sql-injection/rule-sql-injection-blocker/blocked-word-6-acceptance/input
+  name: 'local-injection-protection: Trigger ''; --'
+  description: Proves that the published keyword implementation for '; -- activates
+    this Rule.
+  phase: input
+  content: 'Acceptance sample: ''; --'
+  expected_decision: block
+  covered_rule_ids:
+  - sql-injection-blocker/blocked-word-6
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: local-injection-protection/local-sql-injection/rule-sql-injection-blocker/blocked-word-6-acceptance/output
+  name: 'local-injection-protection: Trigger ''; --'
+  description: Proves that the published keyword implementation for '; -- activates
+    this Rule.
+  phase: output
+  content: 'Acceptance sample: ''; --'
+  expected_decision: block
+  covered_rule_ids:
+  - sql-injection-blocker/blocked-word-6
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: local-injection-protection/local-sql-injection/rule-sql-injection-blocker/blocked-word-7-acceptance/input
+  name: 'local-injection-protection: Trigger 1=1; --'
+  description: Proves that the published keyword implementation for 1=1; -- activates
+    this Rule.
+  phase: input
+  content: 'Acceptance sample: 1=1; --'
+  expected_decision: block
+  covered_rule_ids:
+  - sql-injection-blocker/blocked-word-7
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: local-injection-protection/local-sql-injection/rule-sql-injection-blocker/blocked-word-7-acceptance/output
+  name: 'local-injection-protection: Trigger 1=1; --'
+  description: Proves that the published keyword implementation for 1=1; -- activates
+    this Rule.
+  phase: output
+  content: 'Acceptance sample: 1=1; --'
+  expected_decision: block
+  covered_rule_ids:
+  - sql-injection-blocker/blocked-word-7
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: local-injection-protection/local-sql-injection/rule-sql-injection-blocker/blocked-word-8-acceptance/input
+  name: 'local-injection-protection: Trigger SELECT * FROM'
+  description: Proves that the published keyword implementation for SELECT * FROM
+    activates this Rule.
+  phase: input
+  content: 'Acceptance sample: SELECT * FROM'
+  expected_decision: block
+  covered_rule_ids:
+  - sql-injection-blocker/blocked-word-8
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: local-injection-protection/local-sql-injection/rule-sql-injection-blocker/blocked-word-8-acceptance/output
+  name: 'local-injection-protection: Trigger SELECT * FROM'
+  description: Proves that the published keyword implementation for SELECT * FROM
+    activates this Rule.
+  phase: output
+  content: 'Acceptance sample: SELECT * FROM'
+  expected_decision: block
+  covered_rule_ids:
+  - sql-injection-blocker/blocked-word-8
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: local-injection-protection/local-sql-injection/benign-en/input
+  name: 'local-injection-protection: benign-en'
+  description: Synthetic, deterministic text fixture; no external action is performed.
+  phase: input
+  content: Please explain the account opening process and its fees.
+  expected_decision: allow
+  covered_rule_ids:
+  - sql-injection-blocker/blocked-word-1
+  - sql-injection-blocker/blocked-word-2
+  - sql-injection-blocker/blocked-word-3
+  - sql-injection-blocker/blocked-word-4
+  - sql-injection-blocker/blocked-word-5
+  - sql-injection-blocker/blocked-word-6
+  - sql-injection-blocker/blocked-word-7
+  - sql-injection-blocker/blocked-word-8
+  kind: scenario
+  required: true
+  parameter_names: []
+  group: Protection contract
+  scope: rule
+- id: local-injection-protection/local-sql-injection/benign-en/output
+  name: 'local-injection-protection: benign-en'
+  description: Synthetic, deterministic text fixture; no external action is performed.
+  phase: output
+  content: Please explain the account opening process and its fees.
+  expected_decision: allow
+  covered_rule_ids:
+  - sql-injection-blocker/blocked-word-1
+  - sql-injection-blocker/blocked-word-2
+  - sql-injection-blocker/blocked-word-3
+  - sql-injection-blocker/blocked-word-4
+  - sql-injection-blocker/blocked-word-5
+  - sql-injection-blocker/blocked-word-6
+  - sql-injection-blocker/blocked-word-7
+  - sql-injection-blocker/blocked-word-8
+  kind: scenario
+  required: true
+  parameter_names: []
+  group: Protection contract
+  scope: rule
+- id: local-injection-protection/local-sql-injection/benign-zh/input
+  name: 'local-injection-protection: benign-zh'
+  description: Synthetic, deterministic text fixture; no external action is performed.
+  phase: input
+  content: 请介绍账户开户流程以及相关费用。
+  expected_decision: allow
+  covered_rule_ids:
+  - sql-injection-blocker/blocked-word-1
+  - sql-injection-blocker/blocked-word-2
+  - sql-injection-blocker/blocked-word-3
+  - sql-injection-blocker/blocked-word-4
+  - sql-injection-blocker/blocked-word-5
+  - sql-injection-blocker/blocked-word-6
+  - sql-injection-blocker/blocked-word-7
+  - sql-injection-blocker/blocked-word-8
+  kind: scenario
+  required: true
+  parameter_names: []
+  group: Protection contract
+  scope: rule
+- id: local-injection-protection/local-sql-injection/benign-zh/output
+  name: 'local-injection-protection: benign-zh'
+  description: Synthetic, deterministic text fixture; no external action is performed.
+  phase: output
+  content: 请介绍账户开户流程以及相关费用。
+  expected_decision: allow
+  covered_rule_ids:
+  - sql-injection-blocker/blocked-word-1
+  - sql-injection-blocker/blocked-word-2
+  - sql-injection-blocker/blocked-word-3
+  - sql-injection-blocker/blocked-word-4
+  - sql-injection-blocker/blocked-word-5
+  - sql-injection-blocker/blocked-word-6
+  - sql-injection-blocker/blocked-word-7
+  - sql-injection-blocker/blocked-word-8
+  kind: scenario
+  required: true
+  parameter_names: []
+  group: Protection contract
+  scope: rule
+- id: local-injection-protection/local-code-injection/rule-code-injection-blocker/blocked-word-3-acceptance/input
+  name: 'local-injection-protection: Trigger eval('
+  description: Proves that the published keyword implementation for eval( activates
+    this Rule.
+  phase: input
+  content: 'Acceptance sample: eval('
+  expected_decision: block
+  covered_rule_ids:
+  - code-injection-blocker/blocked-word-3
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: local-injection-protection/local-code-injection/rule-code-injection-blocker/blocked-word-3-acceptance/output
+  name: 'local-injection-protection: Trigger eval('
+  description: Proves that the published keyword implementation for eval( activates
+    this Rule.
+  phase: output
+  content: 'Acceptance sample: eval('
+  expected_decision: block
+  covered_rule_ids:
+  - code-injection-blocker/blocked-word-3
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: local-injection-protection/local-code-injection/rule-code-injection-blocker/blocked-word-4-acceptance/input
+  name: 'local-injection-protection: Trigger exec('
+  description: Proves that the published keyword implementation for exec( activates
+    this Rule.
+  phase: input
+  content: 'Acceptance sample: exec('
+  expected_decision: block
+  covered_rule_ids:
+  - code-injection-blocker/blocked-word-4
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: local-injection-protection/local-code-injection/rule-code-injection-blocker/blocked-word-4-acceptance/output
+  name: 'local-injection-protection: Trigger exec('
+  description: Proves that the published keyword implementation for exec( activates
+    this Rule.
+  phase: output
+  content: 'Acceptance sample: exec('
+  expected_decision: block
+  covered_rule_ids:
+  - code-injection-blocker/blocked-word-4
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: local-injection-protection/local-code-injection/rule-code-injection-blocker/blocked-word-5-acceptance/input
+  name: 'local-injection-protection: Trigger __import__'
+  description: Proves that the published keyword implementation for __import__ activates
+    this Rule.
+  phase: input
+  content: 'Acceptance sample: __import__'
+  expected_decision: block
+  covered_rule_ids:
+  - code-injection-blocker/blocked-word-5
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: local-injection-protection/local-code-injection/rule-code-injection-blocker/blocked-word-5-acceptance/output
+  name: 'local-injection-protection: Trigger __import__'
+  description: Proves that the published keyword implementation for __import__ activates
+    this Rule.
+  phase: output
+  content: 'Acceptance sample: __import__'
+  expected_decision: block
+  covered_rule_ids:
+  - code-injection-blocker/blocked-word-5
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: local-injection-protection/local-code-injection/rule-code-injection-blocker/blocked-word-6-acceptance/input
+  name: 'local-injection-protection: Trigger os.system('
+  description: Proves that the published keyword implementation for os.system( activates
+    this Rule.
+  phase: input
+  content: 'Acceptance sample: os.system('
+  expected_decision: block
+  covered_rule_ids:
+  - code-injection-blocker/blocked-word-6
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: local-injection-protection/local-code-injection/rule-code-injection-blocker/blocked-word-6-acceptance/output
+  name: 'local-injection-protection: Trigger os.system('
+  description: Proves that the published keyword implementation for os.system( activates
+    this Rule.
+  phase: output
+  content: 'Acceptance sample: os.system('
+  expected_decision: block
+  covered_rule_ids:
+  - code-injection-blocker/blocked-word-6
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: local-injection-protection/local-code-injection/rule-code-injection-blocker/blocked-word-7-acceptance/input
+  name: 'local-injection-protection: Trigger subprocess.call('
+  description: Proves that the published keyword implementation for subprocess.call(
+    activates this Rule.
+  phase: input
+  content: 'Acceptance sample: subprocess.call('
+  expected_decision: block
+  covered_rule_ids:
+  - code-injection-blocker/blocked-word-7
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: local-injection-protection/local-code-injection/rule-code-injection-blocker/blocked-word-7-acceptance/output
+  name: 'local-injection-protection: Trigger subprocess.call('
+  description: Proves that the published keyword implementation for subprocess.call(
+    activates this Rule.
+  phase: output
+  content: 'Acceptance sample: subprocess.call('
+  expected_decision: block
+  covered_rule_ids:
+  - code-injection-blocker/blocked-word-7
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: local-injection-protection/local-code-injection/benign-en/input
+  name: 'local-injection-protection: benign-en'
+  description: Synthetic, deterministic text fixture; no external action is performed.
+  phase: input
+  content: Please explain the account opening process and its fees.
+  expected_decision: allow
+  covered_rule_ids:
+  - code-injection-blocker/blocked-word-3
+  - code-injection-blocker/blocked-word-4
+  - code-injection-blocker/blocked-word-5
+  - code-injection-blocker/blocked-word-6
+  - code-injection-blocker/blocked-word-7
+  kind: scenario
+  required: true
+  parameter_names: []
+  group: Protection contract
+  scope: rule
+- id: local-injection-protection/local-code-injection/benign-en/output
+  name: 'local-injection-protection: benign-en'
+  description: Synthetic, deterministic text fixture; no external action is performed.
+  phase: output
+  content: Please explain the account opening process and its fees.
+  expected_decision: allow
+  covered_rule_ids:
+  - code-injection-blocker/blocked-word-3
+  - code-injection-blocker/blocked-word-4
+  - code-injection-blocker/blocked-word-5
+  - code-injection-blocker/blocked-word-6
+  - code-injection-blocker/blocked-word-7
+  kind: scenario
+  required: true
+  parameter_names: []
+  group: Protection contract
+  scope: rule
+- id: local-injection-protection/local-code-injection/benign-zh/input
+  name: 'local-injection-protection: benign-zh'
+  description: Synthetic, deterministic text fixture; no external action is performed.
+  phase: input
+  content: 请介绍账户开户流程以及相关费用。
+  expected_decision: allow
+  covered_rule_ids:
+  - code-injection-blocker/blocked-word-3
+  - code-injection-blocker/blocked-word-4
+  - code-injection-blocker/blocked-word-5
+  - code-injection-blocker/blocked-word-6
+  - code-injection-blocker/blocked-word-7
+  kind: scenario
+  required: true
+  parameter_names: []
+  group: Protection contract
+  scope: rule
+- id: local-injection-protection/local-code-injection/benign-zh/output
+  name: 'local-injection-protection: benign-zh'
+  description: Synthetic, deterministic text fixture; no external action is performed.
+  phase: output
+  content: 请介绍账户开户流程以及相关费用。
+  expected_decision: allow
+  covered_rule_ids:
+  - code-injection-blocker/blocked-word-3
+  - code-injection-blocker/blocked-word-4
+  - code-injection-blocker/blocked-word-5
+  - code-injection-blocker/blocked-word-6
+  - code-injection-blocker/blocked-word-7
+  kind: scenario
+  required: true
+  parameter_names: []
+  group: Protection contract
+  scope: rule
+- id: local-injection-protection/local-rendered-content-injection/application/active-html/en/input
+  name: 'local-injection-protection: application/active-html/en'
+  description: Synthetic, deterministic text fixture; no external action is performed.
+  phase: input
+  content: <script>/* synthetic fixture */</script>
+  expected_decision: block
+  covered_rule_ids:
+  - application/active-html
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Protection contract
+  scope: rule
+- id: local-injection-protection/local-rendered-content-injection/application/active-html/en/output
+  name: 'local-injection-protection: application/active-html/en'
+  description: Synthetic, deterministic text fixture; no external action is performed.
+  phase: output
+  content: <script>/* synthetic fixture */</script>
+  expected_decision: block
+  covered_rule_ids:
+  - application/active-html
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Protection contract
+  scope: rule
+- id: local-injection-protection/local-rendered-content-injection/application/active-html/zh/input
+  name: 'local-injection-protection: application/active-html/zh'
+  description: Synthetic, deterministic text fixture; no external action is performed.
+  phase: input
+  content: 不要执行这段：<img onerror=synthetic()>
+  expected_decision: block
+  covered_rule_ids:
+  - application/active-html
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Protection contract
+  scope: rule
+- id: local-injection-protection/local-rendered-content-injection/application/active-html/zh/output
+  name: 'local-injection-protection: application/active-html/zh'
+  description: Synthetic, deterministic text fixture; no external action is performed.
+  phase: output
+  content: 不要执行这段：<img onerror=synthetic()>
+  expected_decision: block
+  covered_rule_ids:
+  - application/active-html
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Protection contract
+  scope: rule
+- id: local-injection-protection/local-rendered-content-injection/application/template-traversal/en/input
+  name: 'local-injection-protection: application/template-traversal/en'
+  description: Synthetic, deterministic text fixture; no external action is performed.
+  phase: input
+  content: '{{ fixture.__class__ }}'
+  expected_decision: block
+  covered_rule_ids:
+  - application/template-traversal
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Protection contract
+  scope: rule
+- id: local-injection-protection/local-rendered-content-injection/application/template-traversal/en/output
+  name: 'local-injection-protection: application/template-traversal/en'
+  description: Synthetic, deterministic text fixture; no external action is performed.
+  phase: output
+  content: '{{ fixture.__class__ }}'
+  expected_decision: block
+  covered_rule_ids:
+  - application/template-traversal
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Protection contract
+  scope: rule
+- id: local-injection-protection/local-rendered-content-injection/application/template-traversal/zh/input
+  name: 'local-injection-protection: application/template-traversal/zh'
+  description: Synthetic, deterministic text fixture; no external action is performed.
+  phase: input
+  content: 模板样例：{{ fixture.__globals__ }}
+  expected_decision: block
+  covered_rule_ids:
+  - application/template-traversal
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Protection contract
+  scope: rule
+- id: local-injection-protection/local-rendered-content-injection/application/template-traversal/zh/output
+  name: 'local-injection-protection: application/template-traversal/zh'
+  description: Synthetic, deterministic text fixture; no external action is performed.
+  phase: output
+  content: 模板样例：{{ fixture.__globals__ }}
+  expected_decision: block
+  covered_rule_ids:
+  - application/template-traversal
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Protection contract
+  scope: rule
+- id: local-injection-protection/local-rendered-content-injection/benign-en/input
+  name: 'local-injection-protection: benign-en'
+  description: Synthetic, deterministic text fixture; no external action is performed.
+  phase: input
+  content: Please explain the account opening process and its fees.
+  expected_decision: allow
+  covered_rule_ids:
+  - application/active-html
+  - application/template-traversal
+  kind: scenario
+  required: true
+  parameter_names: []
+  group: Protection contract
+  scope: rule
+- id: local-injection-protection/local-rendered-content-injection/benign-en/output
+  name: 'local-injection-protection: benign-en'
+  description: Synthetic, deterministic text fixture; no external action is performed.
+  phase: output
+  content: Please explain the account opening process and its fees.
+  expected_decision: allow
+  covered_rule_ids:
+  - application/active-html
+  - application/template-traversal
+  kind: scenario
+  required: true
+  parameter_names: []
+  group: Protection contract
+  scope: rule
+- id: local-injection-protection/local-rendered-content-injection/benign-zh/input
+  name: 'local-injection-protection: benign-zh'
+  description: Synthetic, deterministic text fixture; no external action is performed.
+  phase: input
+  content: 请介绍账户开户流程以及相关费用。
+  expected_decision: allow
+  covered_rule_ids:
+  - application/active-html
+  - application/template-traversal
+  kind: scenario
+  required: true
+  parameter_names: []
+  group: Protection contract
+  scope: rule
+- id: local-injection-protection/local-rendered-content-injection/benign-zh/output
+  name: 'local-injection-protection: benign-zh'
+  description: Synthetic, deterministic text fixture; no external action is performed.
+  phase: output
+  content: 请介绍账户开户流程以及相关费用。
+  expected_decision: allow
+  covered_rule_ids:
+  - application/active-html
+  - application/template-traversal
+  kind: scenario
+  required: true
+  parameter_names: []
+  group: Protection contract
+  scope: rule
+- id: local-injection-protection/prompt-injection-protection/rule-sql-injection-blocker/blocked-word-1-acceptance
+  name: 'local-injection-protection: Trigger DROP TABLE'
+  description: Proves that the published keyword implementation for DROP TABLE activates
+    this Rule.
+  phase: input
+  content: 'Acceptance sample: DROP TABLE'
+  expected_decision: block
+  covered_rule_ids:
+  - sql-injection-blocker/blocked-word-1
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: local-injection-protection/prompt-injection-protection/rule-sql-injection-blocker/blocked-word-2-acceptance
+  name: 'local-injection-protection: Trigger DELETE FROM'
+  description: Proves that the published keyword implementation for DELETE FROM activates
+    this Rule.
+  phase: input
+  content: 'Acceptance sample: DELETE FROM'
+  expected_decision: block
+  covered_rule_ids:
+  - sql-injection-blocker/blocked-word-2
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: local-injection-protection/prompt-injection-protection/rule-sql-injection-blocker/blocked-word-3-acceptance
+  name: 'local-injection-protection: Trigger INSERT INTO'
+  description: Proves that the published keyword implementation for INSERT INTO activates
+    this Rule.
+  phase: input
+  content: 'Acceptance sample: INSERT INTO'
+  expected_decision: block
+  covered_rule_ids:
+  - sql-injection-blocker/blocked-word-3
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: local-injection-protection/prompt-injection-protection/rule-sql-injection-blocker/blocked-word-4-acceptance
+  name: 'local-injection-protection: Trigger UNION SELECT'
+  description: Proves that the published keyword implementation for UNION SELECT activates
+    this Rule.
+  phase: input
+  content: 'Acceptance sample: UNION SELECT'
+  expected_decision: block
+  covered_rule_ids:
+  - sql-injection-blocker/blocked-word-4
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: local-injection-protection/prompt-injection-protection/rule-sql-injection-blocker/blocked-word-5-acceptance
+  name: 'local-injection-protection: Trigger OR 1=1'
+  description: Proves that the published keyword implementation for OR 1=1 activates
+    this Rule.
+  phase: input
+  content: 'Acceptance sample: OR 1=1'
+  expected_decision: block
+  covered_rule_ids:
+  - sql-injection-blocker/blocked-word-5
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: local-injection-protection/prompt-injection-protection/rule-sql-injection-blocker/blocked-word-6-acceptance
+  name: 'local-injection-protection: Trigger ''; --'
+  description: Proves that the published keyword implementation for '; -- activates
+    this Rule.
+  phase: input
+  content: 'Acceptance sample: ''; --'
+  expected_decision: block
+  covered_rule_ids:
+  - sql-injection-blocker/blocked-word-6
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: local-injection-protection/prompt-injection-protection/rule-sql-injection-blocker/blocked-word-7-acceptance
+  name: 'local-injection-protection: Trigger 1=1; --'
+  description: Proves that the published keyword implementation for 1=1; -- activates
+    this Rule.
+  phase: input
+  content: 'Acceptance sample: 1=1; --'
+  expected_decision: block
+  covered_rule_ids:
+  - sql-injection-blocker/blocked-word-7
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: local-injection-protection/prompt-injection-protection/rule-sql-injection-blocker/blocked-word-8-acceptance
+  name: 'local-injection-protection: Trigger SELECT * FROM'
+  description: Proves that the published keyword implementation for SELECT * FROM
+    activates this Rule.
+  phase: input
+  content: 'Acceptance sample: SELECT * FROM'
+  expected_decision: block
+  covered_rule_ids:
+  - sql-injection-blocker/blocked-word-8
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: local-injection-protection/prompt-injection-protection/rule-code-injection-blocker/blocked-word-1-acceptance
+  name: 'local-injection-protection: Trigger <script>'
+  description: Proves that the published keyword implementation for <script> activates
+    this Rule.
+  phase: input
+  content: 'Acceptance sample: <script>'
+  expected_decision: block
+  covered_rule_ids:
+  - code-injection-blocker/blocked-word-1
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: local-injection-protection/prompt-injection-protection/rule-code-injection-blocker/blocked-word-2-acceptance
+  name: 'local-injection-protection: Trigger javascript:'
+  description: 'Proves that the published keyword implementation for javascript: activates
+    this Rule.'
+  phase: input
+  content: 'Acceptance sample: javascript:'
+  expected_decision: block
+  covered_rule_ids:
+  - code-injection-blocker/blocked-word-2
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: local-injection-protection/prompt-injection-protection/rule-code-injection-blocker/blocked-word-3-acceptance
+  name: 'local-injection-protection: Trigger eval('
+  description: Proves that the published keyword implementation for eval( activates
+    this Rule.
+  phase: input
+  content: 'Acceptance sample: eval('
+  expected_decision: block
+  covered_rule_ids:
+  - code-injection-blocker/blocked-word-3
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: local-injection-protection/prompt-injection-protection/rule-code-injection-blocker/blocked-word-4-acceptance
+  name: 'local-injection-protection: Trigger exec('
+  description: Proves that the published keyword implementation for exec( activates
+    this Rule.
+  phase: input
+  content: 'Acceptance sample: exec('
+  expected_decision: block
+  covered_rule_ids:
+  - code-injection-blocker/blocked-word-4
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: local-injection-protection/prompt-injection-protection/rule-code-injection-blocker/blocked-word-5-acceptance
+  name: 'local-injection-protection: Trigger __import__'
+  description: Proves that the published keyword implementation for __import__ activates
+    this Rule.
+  phase: input
+  content: 'Acceptance sample: __import__'
+  expected_decision: block
+  covered_rule_ids:
+  - code-injection-blocker/blocked-word-5
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: local-injection-protection/prompt-injection-protection/rule-code-injection-blocker/blocked-word-6-acceptance
+  name: 'local-injection-protection: Trigger os.system('
+  description: Proves that the published keyword implementation for os.system( activates
+    this Rule.
+  phase: input
+  content: 'Acceptance sample: os.system('
+  expected_decision: block
+  covered_rule_ids:
+  - code-injection-blocker/blocked-word-6
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: local-injection-protection/prompt-injection-protection/rule-code-injection-blocker/blocked-word-7-acceptance
+  name: 'local-injection-protection: Trigger subprocess.call('
+  description: Proves that the published keyword implementation for subprocess.call(
+    activates this Rule.
+  phase: input
+  content: 'Acceptance sample: subprocess.call('
+  expected_decision: block
+  covered_rule_ids:
+  - code-injection-blocker/blocked-word-7
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule

@@ -1,0 +1,77 @@
+schema_version: 1
+kind: Policy
+metadata:
+  id: business-topics-advice
+  name: Business Topics & Advice
+  description: 'Target taxonomy Policy: Business Topics & Advice.'
+  source: built_in
+  version: 1.0.0
+  tags:
+  - namespace: protection
+    value: business_topics
+    label: Business Topics
+  - namespace: collection
+    value: target-policies
+    label: Target Policies
+  safety_level: balanced
+  output_delivery: full_buffered
+parameters:
+- name: allowed_topics
+  label: Allowed topics
+  kind: textarea
+  required: false
+  placeholder: ''
+  description: Topics for the Allowlist Rule, one per line.
+  default: ''
+- name: denied_topics
+  label: Denied topics
+  kind: textarea
+  required: false
+  placeholder: ''
+  description: Topics for the Denylist Rule, one per line.
+  default: ''
+- name: topic_mode
+  label: Allowlist mode
+  kind: text
+  required: false
+  placeholder: ''
+  description: strict or permissive. Applies only when the Allowlist Rule is enabled.
+  default: permissive
+- name: on_unknown
+  label: Uncertain result action
+  kind: text
+  required: false
+  placeholder: block or allow
+  description: block (default) blocks valid uncertain results; allow continues this
+    Rule without skipping other Policies. Matches, errors and missing context keep
+    their own handling.
+  default: block
+- name: review_unknown
+  label: Review uncertain input results
+  kind: text
+  required: false
+  placeholder: true or false
+  description: When true, a valid JEV input gray-area result is reviewed by the separately
+    validated classifier_review.input binding. Output, matches, errors and missing
+    context keep their handling.
+  default: 'false'
+rules: []
+rule_refs:
+- id: topic/denylist
+  version: 1.0.0
+- id: topic/allowlist
+  version: 1.0.0
+- id: claims-medical-advice-filter/claims_medical_advice
+  version: 1.0.0
+- id: category/denied_financial_advice
+  version: 1.0.0
+- id: category/denied_legal_advice
+  version: 1.0.0
+- id: category/denied_medical_advice
+  version: 1.0.0
+tests:
+- tests/acceptance.yaml
+testing:
+  parameters:
+    allowed_topics: Customer support
+    denied_topics: Investment advice

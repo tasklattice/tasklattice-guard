@@ -1,0 +1,92 @@
+schema_version: 1
+kind: Policy
+metadata:
+  id: prompt-instruction-attacks
+  name: Prompt & Instruction Attacks
+  description: 'Target taxonomy Policy: Prompt & Instruction Attacks.'
+  source: built_in
+  version: 1.0.0
+  tags:
+  - namespace: protection
+    value: attacks_and_abuse
+    label: Attacks And Abuse
+  - namespace: collection
+    value: target-policies
+    label: Target Policies
+  safety_level: balanced
+  output_delivery: full_buffered
+parameters:
+- name: on_unknown
+  label: Uncertain result action
+  kind: text
+  required: false
+  placeholder: block or allow
+  description: block (default) blocks valid uncertain results; allow continues this
+    Rule without skipping other Policies. Matches, errors and missing context keep
+    their own handling.
+  default: block
+- name: review_unknown
+  label: Review uncertain input results
+  kind: text
+  required: false
+  placeholder: true or false
+  description: When true, a valid JEV input gray-area result is reviewed by the separately
+    validated classifier_review.input binding. Output, matches, errors and missing
+    context keep their handling.
+  default: 'false'
+rules: []
+rule_refs:
+- id: boundary/indirect-injection
+  version: 1.0.0
+- id: model/jailbreak
+  version: 1.0.0
+- id: boundary/memory-poisoning
+  version: 1.0.0
+- id: prompt-injection-blocker/blocked-word-1
+  version: 1.0.0
+- id: prompt-injection-blocker/blocked-word-2
+  version: 1.0.0
+- id: prompt-injection-blocker/blocked-word-3
+  version: 1.0.0
+- id: prompt-injection-blocker/blocked-word-4
+  version: 1.0.0
+- id: prompt-injection-blocker/blocked-word-5
+  version: 1.0.0
+- id: prompt-injection-blocker/blocked-word-6
+  version: 1.0.0
+- id: prompt-injection-blocker/blocked-word-7
+  version: 1.0.0
+- id: prompt-injection-blocker/blocked-word-8
+  version: 1.0.0
+- id: prompt-injection-blocker/blocked-word-9
+  version: 1.0.0
+- id: prompt-injection-blocker/blocked-word-10
+  version: 1.0.0
+- id: prompt-injection-blocker/blocked-word-11
+  version: 1.0.0
+- id: prompt-injection-blocker/blocked-word-12
+  version: 1.0.0
+- id: prompt-injection-blocker/blocked-word-13
+  version: 1.0.0
+- id: prompt-injection-blocker/blocked-word-14
+  version: 1.0.0
+- id: category/prompt_injection_jailbreak
+  version: 1.0.0
+- id: category/prompt_injection_data_exfiltration
+  version: 1.0.0
+- id: category/prompt_injection_sql
+  version: 1.0.0
+- id: category/prompt_injection_malicious_code
+  version: 1.0.0
+- id: category/prompt_injection_system_prompt
+  version: 1.0.0
+- id: cn-prompt-security/instruction-override
+  version: 1.0.0
+- id: cn-prompt-security/prompt-extraction
+  version: 1.0.0
+- id: cn-prompt-security/unrestricted-mode
+  version: 1.0.0
+- id: claims-system-override-filter/claims_system_override
+  version: 1.0.0
+tests:
+- tests/acceptance.yaml

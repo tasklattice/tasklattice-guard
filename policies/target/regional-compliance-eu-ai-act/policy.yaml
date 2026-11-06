@@ -1,0 +1,42 @@
+schema_version: 1
+kind: Policy
+metadata:
+  id: regional-compliance-eu-ai-act
+  name: 'Regional Compliance: EU AI Act'
+  description: 'Target taxonomy Policy: Regional Compliance: EU AI Act.'
+  source: built_in
+  version: 1.0.0
+  tags:
+  - namespace: protection
+    value: privacy
+    label: Privacy
+  - namespace: collection
+    value: target-policies
+    label: Target Policies
+  safety_level: balanced
+  output_delivery: full_buffered
+parameters: []
+rules: []
+rule_refs:
+- id: eu-ai-act-art5-manipulation/eu_ai_act_art5_manipulation
+  version: 1.0.0
+- id: eu-ai-act-art5-vulnerability/eu_ai_act_art5_vulnerability
+  version: 1.0.0
+- id: eu-ai-act-art5-social-scoring/eu_ai_act_art5_social_scoring
+  version: 1.0.0
+- id: eu-ai-act-art5-emotion-recognition/eu_ai_act_art5_emotion_recognition
+  version: 1.0.0
+- id: eu-ai-act-art5-biometric-profiling/eu_ai_act_art5_biometric_profiling
+  version: 1.0.0
+- id: eu-ai-act-art5-manipulation-fr/eu_ai_act_art5_manipulation_fr
+  version: 1.0.0
+- id: eu-ai-act-art5-vulnerability-fr/eu_ai_act_art5_vulnerability_fr
+  version: 1.0.0
+- id: eu-ai-act-art5-social-scoring-fr/eu_ai_act_art5_social_scoring_fr
+  version: 1.0.0
+- id: eu-ai-act-art5-emotion-recognition-fr/eu_ai_act_art5_emotion_recognition_fr
+  version: 1.0.0
+- id: eu-ai-act-art5-biometric-profiling-fr/eu_ai_act_art5_biometric_profiling_fr
+  version: 1.0.0
+tests:
+- tests/acceptance.yaml

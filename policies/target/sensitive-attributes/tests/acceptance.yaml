@@ -1,0 +1,652 @@
+- id: local-sensitive-attribute-terms/accept/gender_sexual_orientation/input
+  name: 'local-sensitive-attribute-terms: Detect Gender & Sexual Orientation (Protected
+    Class)'
+  description: Required acceptance case for Protected Class - Fair Lending.
+  phase: input
+  content: 'Acceptance sample: non-binary'
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/gender_sexual_orientation
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: local-sensitive-attribute-terms/accept/gender_sexual_orientation/output
+  name: 'local-sensitive-attribute-terms: Detect Gender & Sexual Orientation (Protected
+    Class)'
+  description: Required acceptance case for Protected Class - Fair Lending.
+  phase: output
+  content: 'Acceptance sample: non-binary'
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/gender_sexual_orientation
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: local-sensitive-attribute-terms/accept/race_ethnicity_national_origin/input
+  name: 'local-sensitive-attribute-terms: Detect Race, Ethnicity & National Origin
+    (Protected Class)'
+  description: Required acceptance case for Protected Class - Fair Lending.
+  phase: input
+  content: 'Acceptance sample: caucasian'
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/race_ethnicity_national_origin
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: local-sensitive-attribute-terms/accept/race_ethnicity_national_origin/output
+  name: 'local-sensitive-attribute-terms: Detect Race, Ethnicity & National Origin
+    (Protected Class)'
+  description: Required acceptance case for Protected Class - Fair Lending.
+  phase: output
+  content: 'Acceptance sample: caucasian'
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/race_ethnicity_national_origin
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: local-sensitive-attribute-terms/accept/religion/input
+  name: 'local-sensitive-attribute-terms: Detect Religion & Creed (Protected Class)'
+  description: Required acceptance case for Protected Class - Fair Lending.
+  phase: input
+  content: 'Acceptance sample: christians'
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/religion
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: local-sensitive-attribute-terms/accept/religion/output
+  name: 'local-sensitive-attribute-terms: Detect Religion & Creed (Protected Class)'
+  description: Required acceptance case for Protected Class - Fair Lending.
+  phase: output
+  content: 'Acceptance sample: christians'
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/religion
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: local-sensitive-attribute-terms/accept/age_discrimination/input
+  name: 'local-sensitive-attribute-terms: Detect Age-Related Terms (Protected Class)'
+  description: Required acceptance case for Protected Class - Fair Lending.
+  phase: input
+  content: 'Acceptance sample: elderly'
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/age_discrimination
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: local-sensitive-attribute-terms/accept/age_discrimination/output
+  name: 'local-sensitive-attribute-terms: Detect Age-Related Terms (Protected Class)'
+  description: Required acceptance case for Protected Class - Fair Lending.
+  phase: output
+  content: 'Acceptance sample: elderly'
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/age_discrimination
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: local-sensitive-attribute-terms/accept/disability/input
+  name: 'local-sensitive-attribute-terms: Detect Disability Status (Protected Class)'
+  description: Required acceptance case for Protected Class - Fair Lending.
+  phase: input
+  content: 'Acceptance sample: disabled'
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/disability
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: local-sensitive-attribute-terms/accept/disability/output
+  name: 'local-sensitive-attribute-terms: Detect Disability Status (Protected Class)'
+  description: Required acceptance case for Protected Class - Fair Lending.
+  phase: output
+  content: 'Acceptance sample: disabled'
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/disability
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: local-sensitive-attribute-terms/accept/marital_family_status/input
+  name: 'local-sensitive-attribute-terms: Detect Marital & Family Status (Protected
+    Class)'
+  description: Required acceptance case for Protected Class - Fair Lending.
+  phase: input
+  content: 'Acceptance sample: married'
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/marital_family_status
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: local-sensitive-attribute-terms/accept/marital_family_status/output
+  name: 'local-sensitive-attribute-terms: Detect Marital & Family Status (Protected
+    Class)'
+  description: Required acceptance case for Protected Class - Fair Lending.
+  phase: output
+  content: 'Acceptance sample: married'
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/marital_family_status
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: local-sensitive-attribute-terms/accept/military_status/input
+  name: 'local-sensitive-attribute-terms: Detect Military Status (Protected Class)'
+  description: Required acceptance case for Protected Class - Fair Lending.
+  phase: input
+  content: 'Acceptance sample: veterans'
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/military_status
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: local-sensitive-attribute-terms/accept/military_status/output
+  name: 'local-sensitive-attribute-terms: Detect Military Status (Protected Class)'
+  description: Required acceptance case for Protected Class - Fair Lending.
+  phase: output
+  content: 'Acceptance sample: veterans'
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/military_status
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: local-sensitive-attribute-terms/accept/public_assistance/input
+  name: 'local-sensitive-attribute-terms: Detect Public Assistance Status (Protected
+    Class)'
+  description: Required acceptance case for Protected Class - Fair Lending.
+  phase: input
+  content: 'Acceptance sample: welfare'
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/public_assistance
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: local-sensitive-attribute-terms/accept/public_assistance/output
+  name: 'local-sensitive-attribute-terms: Detect Public Assistance Status (Protected
+    Class)'
+  description: Required acceptance case for Protected Class - Fair Lending.
+  phase: output
+  content: 'Acceptance sample: welfare'
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/public_assistance
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: local-sensitive-attribute-terms/benign-en/input
+  name: 'local-sensitive-attribute-terms: benign-en'
+  description: Synthetic, deterministic text fixture; no external action is performed.
+  phase: input
+  content: Please explain the account opening process and its fees.
+  expected_decision: allow
+  covered_rule_ids:
+  - pattern/gender_sexual_orientation
+  - pattern/race_ethnicity_national_origin
+  - pattern/religion
+  - pattern/age_discrimination
+  - pattern/disability
+  - pattern/marital_family_status
+  - pattern/military_status
+  - pattern/public_assistance
+  kind: scenario
+  required: true
+  parameter_names: []
+  group: Protection contract
+  scope: rule
+- id: local-sensitive-attribute-terms/benign-en/output
+  name: 'local-sensitive-attribute-terms: benign-en'
+  description: Synthetic, deterministic text fixture; no external action is performed.
+  phase: output
+  content: Please explain the account opening process and its fees.
+  expected_decision: allow
+  covered_rule_ids:
+  - pattern/gender_sexual_orientation
+  - pattern/race_ethnicity_national_origin
+  - pattern/religion
+  - pattern/age_discrimination
+  - pattern/disability
+  - pattern/marital_family_status
+  - pattern/military_status
+  - pattern/public_assistance
+  kind: scenario
+  required: true
+  parameter_names: []
+  group: Protection contract
+  scope: rule
+- id: local-sensitive-attribute-terms/benign-zh/input
+  name: 'local-sensitive-attribute-terms: benign-zh'
+  description: Synthetic, deterministic text fixture; no external action is performed.
+  phase: input
+  content: 请介绍账户开户流程以及相关费用。
+  expected_decision: allow
+  covered_rule_ids:
+  - pattern/gender_sexual_orientation
+  - pattern/race_ethnicity_national_origin
+  - pattern/religion
+  - pattern/age_discrimination
+  - pattern/disability
+  - pattern/marital_family_status
+  - pattern/military_status
+  - pattern/public_assistance
+  kind: scenario
+  required: true
+  parameter_names: []
+  group: Protection contract
+  scope: rule
+- id: local-sensitive-attribute-terms/benign-zh/output
+  name: 'local-sensitive-attribute-terms: benign-zh'
+  description: Synthetic, deterministic text fixture; no external action is performed.
+  phase: output
+  content: 请介绍账户开户流程以及相关费用。
+  expected_decision: allow
+  covered_rule_ids:
+  - pattern/gender_sexual_orientation
+  - pattern/race_ethnicity_national_origin
+  - pattern/religion
+  - pattern/age_discrimination
+  - pattern/disability
+  - pattern/marital_family_status
+  - pattern/military_status
+  - pattern/public_assistance
+  kind: scenario
+  required: true
+  parameter_names: []
+  group: Protection contract
+  scope: rule
+- id: local-sensitive-attribute-terms/pattern-matching/accept/gender_sexual_orientation
+  name: 'local-sensitive-attribute-terms: Detect Gender & Sexual Orientation (Protected
+    Class)'
+  description: Required acceptance case for Protected Class - Fair Lending.
+  phase: input
+  content: 'Acceptance sample: non-binary'
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/gender_sexual_orientation
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: local-sensitive-attribute-terms/pattern-matching/accept/race_ethnicity_national_origin
+  name: 'local-sensitive-attribute-terms: Detect Race, Ethnicity & National Origin
+    (Protected Class)'
+  description: Required acceptance case for Protected Class - Fair Lending.
+  phase: input
+  content: 'Acceptance sample: caucasian'
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/race_ethnicity_national_origin
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: local-sensitive-attribute-terms/pattern-matching/accept/religion
+  name: 'local-sensitive-attribute-terms: Detect Religion & Creed (Protected Class)'
+  description: Required acceptance case for Protected Class - Fair Lending.
+  phase: input
+  content: 'Acceptance sample: christians'
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/religion
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: local-sensitive-attribute-terms/pattern-matching/accept/age_discrimination
+  name: 'local-sensitive-attribute-terms: Detect Age-Related Terms (Protected Class)'
+  description: Required acceptance case for Protected Class - Fair Lending.
+  phase: input
+  content: 'Acceptance sample: elderly'
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/age_discrimination
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: local-sensitive-attribute-terms/pattern-matching/accept/disability
+  name: 'local-sensitive-attribute-terms: Detect Disability Status (Protected Class)'
+  description: Required acceptance case for Protected Class - Fair Lending.
+  phase: input
+  content: 'Acceptance sample: disabled'
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/disability
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: local-sensitive-attribute-terms/pattern-matching/accept/marital_family_status
+  name: 'local-sensitive-attribute-terms: Detect Marital & Family Status (Protected
+    Class)'
+  description: Required acceptance case for Protected Class - Fair Lending.
+  phase: input
+  content: 'Acceptance sample: married'
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/marital_family_status
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: local-sensitive-attribute-terms/pattern-matching/accept/military_status
+  name: 'local-sensitive-attribute-terms: Detect Military Status (Protected Class)'
+  description: Required acceptance case for Protected Class - Fair Lending.
+  phase: input
+  content: 'Acceptance sample: veterans'
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/military_status
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: local-sensitive-attribute-terms/pattern-matching/accept/public_assistance
+  name: 'local-sensitive-attribute-terms: Detect Public Assistance Status (Protected
+    Class)'
+  description: Required acceptance case for Protected Class - Fair Lending.
+  phase: input
+  content: 'Acceptance sample: welfare'
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/public_assistance
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: local-sensitive-attribute-terms/pattern-matching/accept/gender_sexual_orientation/output
+  name: 'local-sensitive-attribute-terms: Detect Gender & Sexual Orientation (Protected
+    Class)'
+  description: Required acceptance case for Protected Class - Fair Lending.
+  phase: output
+  content: 'Acceptance sample: non-binary'
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/gender_sexual_orientation
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: local-sensitive-attribute-terms/pattern-matching/accept/race_ethnicity_national_origin/output
+  name: 'local-sensitive-attribute-terms: Detect Race, Ethnicity & National Origin
+    (Protected Class)'
+  description: Required acceptance case for Protected Class - Fair Lending.
+  phase: output
+  content: 'Acceptance sample: caucasian'
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/race_ethnicity_national_origin
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: local-sensitive-attribute-terms/pattern-matching/accept/religion/output
+  name: 'local-sensitive-attribute-terms: Detect Religion & Creed (Protected Class)'
+  description: Required acceptance case for Protected Class - Fair Lending.
+  phase: output
+  content: 'Acceptance sample: christians'
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/religion
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: local-sensitive-attribute-terms/pattern-matching/accept/age_discrimination/output
+  name: 'local-sensitive-attribute-terms: Detect Age-Related Terms (Protected Class)'
+  description: Required acceptance case for Protected Class - Fair Lending.
+  phase: output
+  content: 'Acceptance sample: elderly'
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/age_discrimination
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: local-sensitive-attribute-terms/pattern-matching/accept/disability/output
+  name: 'local-sensitive-attribute-terms: Detect Disability Status (Protected Class)'
+  description: Required acceptance case for Protected Class - Fair Lending.
+  phase: output
+  content: 'Acceptance sample: disabled'
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/disability
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: local-sensitive-attribute-terms/pattern-matching/accept/marital_family_status/output
+  name: 'local-sensitive-attribute-terms: Detect Marital & Family Status (Protected
+    Class)'
+  description: Required acceptance case for Protected Class - Fair Lending.
+  phase: output
+  content: 'Acceptance sample: married'
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/marital_family_status
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: local-sensitive-attribute-terms/pattern-matching/accept/military_status/output
+  name: 'local-sensitive-attribute-terms: Detect Military Status (Protected Class)'
+  description: Required acceptance case for Protected Class - Fair Lending.
+  phase: output
+  content: 'Acceptance sample: veterans'
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/military_status
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: local-sensitive-attribute-terms/pattern-matching/accept/public_assistance/output
+  name: 'local-sensitive-attribute-terms: Detect Public Assistance Status (Protected
+    Class)'
+  description: Required acceptance case for Protected Class - Fair Lending.
+  phase: output
+  content: 'Acceptance sample: welfare'
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/public_assistance
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: local-sensitive-attribute-terms/regression/ordinary-add-0/input
+  name: 'local-sensitive-attribute-terms: Ordinary add 0'
+  description: Behavior regression for reviewed policy 4.1.0; synthetic content, not
+    a benchmark row.
+  phase: input
+  content: Please add credibility to the dialogue.
+  expected_decision: allow
+  covered_rule_ids: []
+  kind: scenario
+  required: true
+  parameter_names: []
+  group: General
+  expected_matched_rules: []
+  scope: policy
+- id: local-sensitive-attribute-terms/regression/ordinary-add-0/output
+  name: 'local-sensitive-attribute-terms: Ordinary add 0'
+  description: Behavior regression for reviewed policy 4.1.0; synthetic content, not
+    a benchmark row.
+  phase: output
+  content: Please add credibility to the dialogue.
+  expected_decision: allow
+  covered_rule_ids: []
+  kind: scenario
+  required: true
+  parameter_names: []
+  group: General
+  expected_matched_rules: []
+  scope: policy
+- id: local-sensitive-attribute-terms/regression/ordinary-add-1/input
+  name: 'local-sensitive-attribute-terms: Ordinary add 1'
+  description: Behavior regression for reviewed policy 4.1.0; synthetic content, not
+    a benchmark row.
+  phase: input
+  content: Add two numbers.
+  expected_decision: allow
+  covered_rule_ids: []
+  kind: scenario
+  required: true
+  parameter_names: []
+  group: General
+  expected_matched_rules: []
+  scope: policy
+- id: local-sensitive-attribute-terms/regression/ordinary-add-1/output
+  name: 'local-sensitive-attribute-terms: Ordinary add 1'
+  description: Behavior regression for reviewed policy 4.1.0; synthetic content, not
+    a benchmark row.
+  phase: output
+  content: Add two numbers.
+  expected_decision: allow
+  covered_rule_ids: []
+  kind: scenario
+  required: true
+  parameter_names: []
+  group: General
+  expected_matched_rules: []
+  scope: policy
+- id: local-sensitive-attribute-terms/regression/ordinary-add-2/input
+  name: 'local-sensitive-attribute-terms: Ordinary add 2'
+  description: Behavior regression for reviewed policy 4.1.0; synthetic content, not
+    a benchmark row.
+  phase: input
+  content: We add a new column.
+  expected_decision: allow
+  covered_rule_ids: []
+  kind: scenario
+  required: true
+  parameter_names: []
+  group: General
+  expected_matched_rules: []
+  scope: policy
+- id: local-sensitive-attribute-terms/regression/ordinary-add-2/output
+  name: 'local-sensitive-attribute-terms: Ordinary add 2'
+  description: Behavior regression for reviewed policy 4.1.0; synthetic content, not
+    a benchmark row.
+  phase: output
+  content: We add a new column.
+  expected_decision: allow
+  covered_rule_ids: []
+  kind: scenario
+  required: true
+  parameter_names: []
+  group: General
+  expected_matched_rules: []
+  scope: policy
+- id: local-sensitive-attribute-terms/regression/uppercase-medical-add/input
+  name: 'local-sensitive-attribute-terms: Uppercase medical add'
+  description: Behavior regression for reviewed policy 4.1.0; synthetic content, not
+    a benchmark row.
+  phase: input
+  content: The patient was diagnosed with ADD.
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/disability
+  kind: scenario
+  required: true
+  parameter_names: []
+  group: General
+  scope: policy
+- id: local-sensitive-attribute-terms/regression/uppercase-medical-add/output
+  name: 'local-sensitive-attribute-terms: Uppercase medical add'
+  description: Behavior regression for reviewed policy 4.1.0; synthetic content, not
+    a benchmark row.
+  phase: output
+  content: The patient was diagnosed with ADD.
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/disability
+  kind: scenario
+  required: true
+  parameter_names: []
+  group: General
+  scope: policy
+- id: local-sensitive-attribute-terms/regression/expanded-disability/input
+  name: 'local-sensitive-attribute-terms: Expanded disability'
+  description: Behavior regression for reviewed policy 4.1.0; synthetic content, not
+    a benchmark row.
+  phase: input
+  content: The patient has attention deficit disorder.
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/disability
+  kind: scenario
+  required: true
+  parameter_names: []
+  group: General
+  scope: policy
+- id: local-sensitive-attribute-terms/regression/expanded-disability/output
+  name: 'local-sensitive-attribute-terms: Expanded disability'
+  description: Behavior regression for reviewed policy 4.1.0; synthetic content, not
+    a benchmark row.
+  phase: output
+  content: The patient has attention deficit disorder.
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/disability
+  kind: scenario
+  required: true
+  parameter_names: []
+  group: General
+  scope: policy

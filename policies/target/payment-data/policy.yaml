@@ -1,0 +1,42 @@
+schema_version: 1
+kind: Policy
+metadata:
+  id: payment-data
+  name: Payment Data
+  description: 'Target taxonomy Policy: Payment Data.'
+  source: built_in
+  version: 1.0.0
+  tags:
+  - namespace: protection
+    value: privacy
+    label: Privacy
+  - namespace: collection
+    value: target-policies
+    label: Target Policies
+  safety_level: balanced
+  output_delivery: full_buffered
+parameters: []
+rules: []
+rule_refs:
+- id: financial-pii/credit_card
+  version: 1.0.0
+- id: financial-pii/iban
+  version: 1.0.0
+- id: pattern/ca_bank_account
+  version: 1.0.0
+- id: pattern/sg_bank_account
+  version: 1.0.0
+- id: cn-personal-information/unionpay-card
+  version: 1.0.0
+- id: pattern/eu_iban_enhanced
+  version: 1.0.0
+- id: financial-pii/visa
+  version: 1.0.0
+- id: financial-pii/mastercard
+  version: 1.0.0
+- id: financial-pii/amex
+  version: 1.0.0
+- id: financial-pii/discover
+  version: 1.0.0
+tests:
+- tests/acceptance.yaml

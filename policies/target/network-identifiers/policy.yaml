@@ -1,0 +1,28 @@
+schema_version: 1
+kind: Policy
+metadata:
+  id: network-identifiers
+  name: Network Identifiers
+  description: 'Target taxonomy Policy: Network Identifiers.'
+  source: built_in
+  version: 1.0.0
+  tags:
+  - namespace: protection
+    value: privacy
+    label: Privacy
+  - namespace: collection
+    value: target-policies
+    label: Target Policies
+  safety_level: balanced
+  output_delivery: full_buffered
+parameters: []
+rules: []
+rule_refs:
+- id: pattern/ipv4
+  version: 1.0.0
+- id: pattern/ipv6
+  version: 1.0.0
+- id: pattern/url
+  version: 1.0.0
+tests:
+- tests/acceptance.yaml

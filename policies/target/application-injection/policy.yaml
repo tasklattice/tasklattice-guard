@@ -1,0 +1,86 @@
+schema_version: 1
+kind: Policy
+metadata:
+  id: application-injection
+  name: Application Injection
+  description: 'Target taxonomy Policy: Application Injection.'
+  source: built_in
+  version: 1.0.0
+  tags:
+  - namespace: protection
+    value: application_injection
+    label: Application Injection
+  - namespace: collection
+    value: target-policies
+    label: Target Policies
+  safety_level: balanced
+  output_delivery: full_buffered
+parameters:
+- name: blocked_languages
+  label: Blocked languages
+  kind: textarea
+  required: false
+  placeholder: Blank for all, or one language per line
+  description: Language aliases such as py, js, sh, and ts are normalized.
+  default: null
+- name: confidence_threshold
+  label: Confidence threshold
+  kind: text
+  required: false
+  placeholder: '0.5'
+  description: A value from 0 to 1; blank uses 0.5.
+  default: null
+- name: detect_execution_intent
+  label: Require execution intent on input
+  kind: text
+  required: false
+  placeholder: 'true'
+  description: Blank defaults to true. Output code is always enforced.
+  default: null
+rules: []
+rule_refs:
+- id: code/execution
+  version: 1.0.0
+- id: code/execution-request
+  version: 1.0.0
+- id: sql-injection-blocker/blocked-word-1
+  version: 1.0.0
+- id: sql-injection-blocker/blocked-word-2
+  version: 1.0.0
+- id: sql-injection-blocker/blocked-word-3
+  version: 1.0.0
+- id: sql-injection-blocker/blocked-word-4
+  version: 1.0.0
+- id: sql-injection-blocker/blocked-word-5
+  version: 1.0.0
+- id: sql-injection-blocker/blocked-word-6
+  version: 1.0.0
+- id: sql-injection-blocker/blocked-word-7
+  version: 1.0.0
+- id: sql-injection-blocker/blocked-word-8
+  version: 1.0.0
+- id: code-injection-blocker/blocked-word-3
+  version: 1.0.0
+- id: code-injection-blocker/blocked-word-4
+  version: 1.0.0
+- id: code-injection-blocker/blocked-word-5
+  version: 1.0.0
+- id: code-injection-blocker/blocked-word-6
+  version: 1.0.0
+- id: code-injection-blocker/blocked-word-7
+  version: 1.0.0
+- id: application/active-html
+  version: 1.0.0
+- id: application/template-traversal
+  version: 1.0.0
+- id: code-injection-blocker/blocked-word-1
+  version: 1.0.0
+- id: code-injection-blocker/blocked-word-2
+  version: 1.0.0
+tests:
+- tests/acceptance.yaml
+testing:
+  parameters:
+    blocked_languages: python
+    confidence_threshold: '0.8'
+    detect_execution_intent: 'true'

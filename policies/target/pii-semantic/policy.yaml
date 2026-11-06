@@ -1,0 +1,24 @@
+schema_version: 1
+kind: Policy
+metadata:
+  id: pii-semantic
+  name: PII (Semantic)
+  description: 'Target taxonomy Policy: PII (Semantic).'
+  source: built_in
+  version: 1.0.0
+  tags:
+  - namespace: protection
+    value: privacy
+    label: Privacy
+  - namespace: collection
+    value: target-policies
+    label: Target Policies
+  safety_level: balanced
+  output_delivery: full_buffered
+parameters: []
+rules: []
+rule_refs:
+- id: model/pii
+  version: 1.0.0
+tests:
+- tests/acceptance.yaml
