@@ -24,11 +24,18 @@ Profile       industry/use-case composition + parameter packs + tests
 
 | Layer | Current | Target |
 |---|---:|---:|
-| Rule | 208 | about 190 |
+| Rule resources | 208 | about 198-200; 190 is aspirational |
+| Policy Rule bindings | 208 | 208 unless behavior changes |
+| Local / platform Rules | 200 / 8 | preserve the split |
 | Policy | 27 | 20 |
 | Mandatory baseline Profiles | 5 | 2 |
 | Industry Profiles | 3-4 | 3 baseline, optional 4 |
-| Claims | none | optional Profile pack |
+| Claims | none | optional Profile selection |
+
+The Rule resource count and the binding count are different. Merging two identical
+Rule resources into one resource with two bindings lowers the resource count, not the
+number of executions. A reduction in effective Rule executions requires a reviewed
+behavior change and new tests.
 
 ### Baseline Profile decision
 
@@ -61,18 +68,24 @@ detector:
   version: 1.0.0
   parameters: {}
 default_action: transform
-replacement: "[email_REDACTED]"
+variants:
+  - variantId: default
+    replacement: "[email_REDACTED]"
+    taxonomyIds: []
 rails: [input, output]
 risk_level: medium
 tests:
   - tests/acceptance.yaml
-metadata:
-  taxonomy_ids: []
 ```
 
-Rules are immutable once referenced by a published Policy version.
+A Rule resource is immutable once referenced by a published Policy version. A Rule may
+declare multiple output variants when the same detector has different replacement
+text, taxonomy identity or evidence labels.
 
 ### 2.2 Policy
+
+The Policy does not bind a Rule directly. It binds a **Rule binding**, which is the
+unit of order, action, parameters and tests:
 
 ```yaml
 id: contact-data
@@ -80,23 +93,44 @@ version: 1.0.0
 protection_topic: contact_data
 jurisdictions: [global]
 frameworks: []
-rules:
-  - id: privacy/contact/email
-    version: 1.0.0
+bindings:
+  - bindingId: email
+    rule:
+      id: privacy/contact/email
+      version: 1.0.0
+    variantId: default
     order: 0
     action: transform
-  - id: privacy/contact/phone
-    version: 1.0.0
+    parameters: {}
+    rails: [input, output]
+  - bindingId: phone
+    rule:
+      id: privacy/contact/phone
+      version: 1.0.0
+    variantId: default
     order: 1
     action: transform
+    parameters: {}
+    rails: [input, output]
 tests:
   - tests/policy-composition.yaml
 ```
 
-A Policy pins exact Rule versions. A Policy may override action, parameters and rails at
-the binding, but it may not mutate the Rule.
+Rules:
+
+- `bindingId` is unique inside the Policy version.
+- Rule selection, ordering, action override and Policy tests reference `bindingId`.
+- Evidence records both `bindingId` and the Rule resource ID/version.
+- One Rule resource may be bound multiple times with different parameters. This is
+  required for Topic allowlist and denylist, which share the same detector resource but
+  have different injected parameters and execution semantics.
+- A shared Rule resource does not reduce the number of executions: each binding remains
+  a separate candidate.
 
 ### 2.3 Profile
+
+A Profile selects Policy versions and Rule bindings, and may apply versioned parameter
+packs. It does not own Rules.
 
 ```yaml
 id: sg-bank
@@ -104,21 +138,70 @@ version: 1.0.0
 industry: banking
 jurisdictions: [sg]
 frameworks: [MAS, PDPA]
-requiresModels: true
 benchmarkOnly: false
 policyBindings:
   - policyId: payment-data
     policyVersion: 1.0.0
+    ruleBindings:
+      - bindingId: card-number
+        enabled: true
+      - bindingId: iban
+        enabled: true
   - policyId: contact-data
     policyVersion: 1.0.0
+    ruleBindings:
+      - bindingId: email
+        enabled: true
+      - bindingId: phone
+        enabled: true
+        parameters:
+          regions: [sg]
 parameterPacks:
-  - sg-bank-phrases@1.0.0
+  - id: sg-bank-phrases
+    version: 1.0.0
+    scope:
+      - policyId: fraud-account-abuse
+        bindingId: misleading-return
+    values:
+      phrases: [...]
 tests:
   - tests/profile-regression.yaml
 ```
 
-Profiles pin Policy versions and parameter-pack versions.
+Profile expansion rules:
 
+1. The Profile selects exact Policy versions.
+2. It may disable a Policy binding, set its order, action, rails or parameters.
+3. Parameter packs are versioned and scoped to a Policy binding.
+4. The effective bindings are expanded into ordinary Guardrail bindings.
+5. Rank Mode receives the resulting ordered candidates; it never reads a mutable
+   Profile or Rule directory at runtime.
+
+#### Parameter precedence
+
+Use one explicit order:
+
+```text
+locked compliance value
+  > Guardrail user binding
+  > Profile parameter pack
+  > Policy binding
+  > Rule default
+```
+
+A `locked` value cannot be overridden by a user or Profile.
+
+#### `requiresModels` derivation
+
+`requiresModels` is derived from the **effective compiled plan**, not from a test run:
+
+- true if any effective Rule binding has `execution_dependency=model`, a model
+  detector, a model contract, or a required platform model binding;
+- false only when every effective binding is local;
+- `modelInvocations=0` in one test suite is not proof, because an earlier Block may
+  have stopped execution before model candidates were reached.
+
+## 3. Rule adjustment plan
 ## 3. Rule adjustment plan
 
 ### 3.1 Extraction
@@ -138,34 +221,55 @@ policies/rules/<rule-id>/<version>/tests/
 
 ### 3.2 Consolidation
 
-Target: 208 source Rules -> about 190 Rule resources.
+Target: **about 198-200 Rule resources**, with 208 Policy Rule bindings.
 
-Conservative merges:
+### Safe resource consolidation
 
-| Family | Reduction |
-|---|---:|
-| Exact duplicate groups | -2 |
-| Passport India/Australia shared detector | -1 |
-| TFN duplicate | -1 |
-| SSN formatted/no-dash | -1 |
-| CPF formatted/unformatted | -1 |
-| Generic + branded cards | -4 |
-| Generic + enhanced IBAN | -1 |
-| EU AI Act EN/FR article variants | -5 |
-| Toxicity language variants | -3 |
+These merges can reduce resource duplication without changing the effective binding
+count or detection behavior:
 
-Do not fold all 33 overlap families into one Rule. That would reduce the count to
-about 100 but would destroy Rule-level evidence and attribution. Each merge must
-preserve detector spans, actions, replacements, evidence and tests.
+| Family | Resource reduction | Condition |
+|---|---:|---|
+| Exact duplicate groups | -2 | same detector; bindings stay separate |
+| EU AI Act EN/FR article variants | -5 | same Article 5 semantics; locale patterns in one Rule |
+| Toxicity language variants | -3 | same replacement/action/taxonomy; locale patterns in one Rule |
 
-### 3.3 Rule invariants
+This produces about **198 resources**.
+
+### Conditional merges requiring variants
+
+These cannot be plain merges because the outputs or semantics differ:
+
+| Family | Difference | Required model |
+|---|---|---|
+| Generic + branded cards | `[credit_card_REDACTED]` vs `[visa_REDACTED]` etc. | Keep separate, or add Rule variants with binding-level variant selection. |
+| Passport India/Australia | Same expression; different replacement and identity/taxonomy | Keep separate, or variants with identity metadata. |
+| SSN formatted/no-dash | Different validation conditions | Keep separate unless one validated detector replaces both. |
+| CPF formatted/unformatted | Different replacement/format behavior | Keep separate unless variants are introduced. |
+| TFN aliases | Different context/validation; verify before merge | Keep separate until proven equivalent. |
+
+A Rule `variants` model can reduce resource count while preserving output differences.
+It must preserve:
+
+- replacement text
+- taxonomy/identity
+- action
+- evidence and attribution
+- Rule tests
+
+The `about 190` figure is therefore aspirational, not an acceptance criterion.
+
+### Rule and binding invariants
 
 - A Rule ID is canonical and versioned.
-- A Policy pins exact Rule versions.
-- Two Rules inside one Policy must not match the same span unless a reviewed
-  fallback contract exists.
-- Cross-Policy overlap must be explicit in the Profile composition and tests.
-- Rule tests remain owned by the Rule; Policy tests focus on composition.
+- A Policy pins exact Rule resource versions.
+- A Policy binds via `bindingId`; one Rule resource may have multiple bindings.
+- Known overlapping bindings inside one Policy must have documented order, precedence
+  and tests. "No overlap at all" is not a hard invariant because keywords, phrases,
+  competitor terms and model detections can legitimately overlap.
+- Every observed overlap must be explainable through bindingId, Rule ID/version,
+  content span/evidence and the effective action.
+- Rule tests remain owned by the Rule; Policy tests focus on binding composition.
 
 ## 4. Policy adjustment plan
 
@@ -176,7 +280,7 @@ Its Rules are redistributed:
 
 - generic fraud -> `Fraud & Account Abuse`
 - financial-market conduct -> `Financial Market Misconduct`
-- claims-specific -> Claims Profile pack
+- claims-specific -> remains in its topic Policy; Claims Profile selects it
 - SG PDPA -> `Regional Compliance: SG PDPA`
 - EU AI Act -> `Regional Compliance: EU AI Act`
 - professional advice -> `Business Topics & Advice`
@@ -201,28 +305,34 @@ Its Rules are redistributed:
 | `local-contact-data` | Contact Data |
 | `local-content-safety` | Content Safety (Local) + UAE Content Standards |
 | `local-credentials` | Credentials & Secrets |
-| `local-data-use-boundaries` | SG PDPA + Claims Profile |
-| `local-fraud-prevention` | Fraud & Account Abuse + Financial Market Misconduct + Claims Profile |
+| `local-data-use-boundaries` | Regional Compliance: SG PDPA (claims PHI remains in the Policy) |
+| `local-fraud-prevention` | Fraud & Account Abuse + Financial Market Misconduct (claims Rules stay in Fraud & Account Abuse) |
 | `local-government-identifiers` | Identity Documents |
-| `local-injection-protection` | Prompt & Instruction Attacks + Application Injection + Claims Profile |
+| `local-injection-protection` | Prompt & Instruction Attacks + Application Injection (claims override stays in Prompt) |
 | `local-network-addresses` | Network Identifiers |
 | `local-passports` | Identity Documents |
 | `local-payment-data` | Payment Data |
-| `local-professional-advice` | Business Topics & Advice + Claims Profile |
+| `local-professional-advice` | Business Topics & Advice (claims medical stays in Business Topics) |
 | `local-prohibited-practices` | Regional Compliance: EU AI Act |
 | `local-risk-content-terms` | Risk Content Terms |
 | `local-sensitive-attribute-terms` | Sensitive Attributes |
 
 ### 4.3 Internal overlap cleanup
 
-- Merge generic and branded card Rules into `payment/card-number`.
-- Merge generic and enhanced IBAN Rules into `payment/iban`.
-- Merge phone variants into `contact/phone`; preserve country metadata.
-- Merge person-name and address variants only where context is mutually exclusive.
-- Merge TFN, SSN, CPF and passport aliases into identity Rule families.
-- Merge generic/provider credentials into canonical credential families.
-- Merge toxicity language variants.
-- Merge EU AI Act EN/FR variants per Article 5 practice.
+- Merge only exact duplicate resources or language variants with identical
+  replacement/action/taxonomy and tests.
+- Generic and branded cards must stay separate or become Rule variants with explicit
+  replacement variants; do not plain-merge.
+- Passport India/Australia must stay separate or use identity variants; the
+  replacement text differs.
+- TFN, SSN and CPF variants must stay separate until validation conditions are
+  proven equivalent.
+- Phone variants may merge only when locale metadata and replacement behavior are
+  preserved.
+- Credential provider variants may merge only when the generic Rule is proven to
+  cover the same spans and outputs.
+- Merge EU AI Act EN/FR variants per Article 5 practice when the replacement and
+  taxonomy are identical.
 - Keep `Risk Content Terms` separate from Content Safety to preserve transform vs
   block semantics.
 - Move UAE cultural/anti-discrimination Rules to regional compliance.
@@ -235,12 +345,14 @@ Its Rules are redistributed:
 |---|---|---|---|---|
 | Default | general | global | none | no |
 | Full-feature | general | global | all model capabilities | yes |
-| Singapore Bank | banking | SG | required by default | no |
-| China Financial Services | banking + securities | CN | required by default | no |
-| China Internet | internet | CN | required by default | no |
+| Singapore Bank | banking | SG | derived from effective plan | no |
+| China Financial Services | banking + securities | CN | derived from effective plan | no |
+| China Internet | internet | CN | derived from effective plan | no |
 
-`Default` must be verified with `modelInvocations=0`.
-`Full-feature` must contain every Policy and Rule and is not a production default.
+`Default` must be verified with zero model dependencies derived from its effective
+compiled plan, not merely `modelInvocations=0` in one test run.
+`Full-feature` must contain all 20 Policies and all 208 Rule bindings and is not a
+production default.
 
 ### 5.2 Six-Profile alternative
 
@@ -289,29 +401,54 @@ The old presets must not remain selectable in the Policy Library.
 
 ## 6. Technical phases
 
-### Phase 0: Freeze contracts
+### Phase 0: Freeze composition contracts
 
-- Approve 5 vs 6 Profiles.
-- Approve Claims handling.
-- Freeze Rule/Policy/Profile schemas.
-- Freeze Rule ID naming.
+- Freeze Rule resource identity, `bindingId`, variant model, Policy binding and
+  parameter-pack scope.
+- Freeze parameter precedence and locked-value behavior.
+- Freeze Rule/Policy/Profile schemas and Rule ID naming.
+- Define compile-time Artifact pinning; runtime never resolves mutable directories.
+- Approve 5 vs 6 Profiles and Claims handling.
 
-### Phase 1: Rule resource model
+### Phase 1: One end-to-end vertical slice
+
+Implement one complete path before extracting all resources:
+
+```text
+one Rule resource
+  -> one Policy binding
+  -> one Profile
+  -> one Guardrail binding
+  -> one compiled Artifact
+  -> Runner execution
+  -> evidence with Rule ID, bindingId and variant
+```
+
+Validate:
+
+- binding identity and duplicate bindings of one Rule;
+- parameter precedence;
+- artifact pinning/checksum;
+- Rank Mode execution;
+- Default no-model derivation.
+
+### Phase 2: Rule extraction
 
 - Add Rule resource directories and loader.
-- Add Rule version pinning and checksum validation.
+- Add Rule version pinning, variants and checksum validation.
 - Add a generated Rule catalog.
 - Keep existing Policy loader working through an adapter.
 - Add Rule-level tests.
 
-### Phase 2: Rule consolidation
+### Phase 3: Rule consolidation
 
-- Merge exact and semantic duplicates in small batches.
+- Merge exact duplicates and safe language variants in small batches.
+- Add variants only where replacement/taxonomy differences require them.
 - Run Rule/Policy golden tests after each batch.
-- Target about 190 Rules.
 - Do not perform a single bulk rewrite.
+- Target about 198-200 Rule resources; 190 is aspirational.
 
-### Phase 3: Policy refactor
+### Phase 4: Policy refactor
 
 - Create the 20 target Policies.
 - Add Rule bindings and remove inline Rule ownership.
@@ -319,14 +456,15 @@ The old presets must not remain selectable in the Policy Library.
 - Remove `business_rules`.
 - Add Policy composition tests.
 
-### Phase 4: Profile refactor
+### Phase 5: Profile refactor
 
 - Create Default and Full-feature first.
 - Create Singapore Bank, China Financial Services, China Internet.
-- Add model flags, benchmark flag, parameter packs and regression tests.
-- Optionally split China Bank/China Securities or add Claims.
+- Add binding selection, parameter packs, model derivation, benchmark flag and
+  regression tests.
+- Optionally split China Bank/China Securities or add Claims selection.
 
-### Phase 5: API and UI
+### Phase 6: API and UI
 
 - Add Rule/Policy/Profile DTOs and catalog endpoints.
 - Policy Library displays Policies only.
@@ -334,39 +472,47 @@ The old presets must not remain selectable in the Policy Library.
 - Add Benchmark and No models badges.
 - Add import/export entry points.
 
-### Phase 6: Import/export
+### Phase 7: Import/export
 
-- Policy package includes pinned Rule closure.
-- Profile package includes pinned Policy closure and parameter packs.
+- Policy package includes pinned Rule closure and exact bindings.
+- Profile package includes pinned Policy closure, parameter packs and model metadata.
 - Reject missing or checksum-conflicting dependencies.
 - Round-trip tests in a clean environment.
 
-### Phase 7: Validation and deployment
+### Phase 8: Validation and deployment
 
 - Run Rule, Policy, Profile, control-plane, data-plane and e2e suites.
 - Deploy to `tali` with `npm run helm:deploy:dev`.
-- Verify Default with CLI and zero model calls.
+- Verify Default with CLI and zero model invocations.
 - Verify Full-feature benchmark.
 - Verify industry Profiles.
 
 ## 7. Acceptance criteria
 
-- Rule count is about 190, not 208.
-- No two Rules in one Policy match the same span without a documented fallback.
-- Policy count is 20.
-- `business_rules` is gone.
-- Default Profile: zero model invocations.
-- Full-feature Profile: all 20 Policies; benchmark only.
+Acceptance is behavior-focused; counts are targets, not the primary gate.
+
+- Rule resources are about 198-200; Policy Rule bindings remain 208 unless a
+  reviewed behavior change reduces them.
+- Every known overlap has a documented precedence, order and test; no unclassified
+  overlap.
+- Policy count is 20 and `business_rules` is gone.
+- Every Policy binding has a unique `bindingId`; evidence records Rule ID/version and
+  bindingId.
+- Default Profile has no model dependencies, derived from the effective compiled plan.
+- Full-feature includes all 20 Policies and all 208 Rule bindings.
 - Profile count is 5 (or 6 if China financial is split).
-- Policy/Profile import-export round-trips preserve Rule versions and checksums.
+- Policy/Profile import-export round-trips preserve Rule versions, bindings and
+  checksums.
+- Coverage, false-positive behavior, replacement output and attribution are verified.
 - `tali` deployment passes with the existing CLI workflow.
 
 ## 8. Open decisions
 
 1. Five Profiles (combined China Financial Services) or six Profiles (China Bank and
    China Securities separate)?
-2. Is Claims a sixth/seventh Profile or Full-feature-only?
+2. Is Claims a sixth/seventh Profile or a selection overlay only?
 3. Are industry Profiles model-required, or should they have local-only variants?
 4. Does `Content Safety` remain split into Local/Model/Risk Terms, or become one
    Policy with optional model Rules?
 5. Does `PII (Semantic)` remain separate from Contact/Identity/Payment?
+6. Which conditional Rule families get variants, and which stay separate?

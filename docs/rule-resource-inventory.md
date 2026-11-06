@@ -14,8 +14,6 @@ current `policies/builtin` source; no Policy or Rule behavior was changed.
   specific (`banking/`, `cn-banking/`, `securities/`, `internet/`, `claims-*`).
 - Region and framework are Policy-level attributes; they are repeated per Rule
   here for traceability.
-- The current Rule IDs are Policy-local. A canonical Rule ID/version scheme is not
-  assigned yet; this inventory is the input for that decision.
 
 ## Summary
 
@@ -26,10 +24,7 @@ current `policies/builtin` source; no Policy or Rule behavior was changed.
 - Extra exact duplicate records: **2**
 - Detector-shared groups: **3**
 - Industry/claims candidates: **15** across **4** Policies
-- Policy records under the `business_rules` catch-all: **32** Rules across **4** Policies
-- Industry Profiles in the live catalog: **3** (`Bank`, `Securities`, `Internet`)
-- Technical baseline Profiles: **2** (`Default`, `Full-feature baseline`)
-- Local Rules: **198**; model Rules: **10**
+- Local Rules: **200**; platform Rules: **8**
 
 ### Rules by protection topic
 
