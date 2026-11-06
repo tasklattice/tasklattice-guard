@@ -36,7 +36,7 @@ export const policyDefinitionSchema = z.object({
     expand: z.object({ parameter: identifier, text_field: identifier, action_field: identifier, replacement_field: identifier }).nullable().optional(),
   }).strict()).max(512),
   tests: z.array(z.object({
-    id: identifier, version: z.string().min(1).max(100).default("1.0.0"), name: z.string().max(160), description: z.string().max(2000).default(""),
+    id: identifier, name: z.string().max(160), description: z.string().max(2000).default(""),
     phase, content: text, expected_decision: z.enum(["allow", "block", "transform", "intervene"]),
     covered_rule_ids: z.array(identifier).max(512),
     kind: z.enum(["rule_acceptance", "scenario"]).default("rule_acceptance"),

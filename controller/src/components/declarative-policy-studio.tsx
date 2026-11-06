@@ -100,7 +100,7 @@ export function DeclarativePolicyStudio({ policyId, imported, onClose, onSaved, 
   }
   function addRule() {
     const id = `rule-${uid()}`;
-    change({ ...definition, rules: [...definition.rules, { id, name: l("newRule"), description: "", stages: ["input"], detector: { ref: "text/keyword", version: "1.0.0", parameters: { detector_options: { terms: [] } } }, on_match: { action: "block" }, risk_level: "medium", metadata: { taxonomy_ids: ["TALI-BUSINESS-POLICY"] } }] });
+    change({ ...definition, rules: [...definition.rules, { id, version: "1.0.0", name: l("newRule"), description: "", stages: ["input"], detector: { ref: "text/keyword", version: "1.0.0", parameters: { detector_options: { terms: [] } } }, on_match: { action: "block" }, risk_level: "medium", metadata: { taxonomy_ids: ["TALI-BUSINESS-POLICY"] }, variants: [] }] });
     setSelected(definition.rules.length);
   }
   function addTest(stage: "input" | "output") {
