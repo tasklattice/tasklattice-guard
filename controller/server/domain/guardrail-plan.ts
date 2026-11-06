@@ -514,7 +514,10 @@ function parametersFor(
         item.binding.policyId,
         item.binding.enabledRuleIds.map((id) => item.policy.rules.find((rule) => rule.id === id)?.binding_id ?? `${item.binding.policyId}/${id}`),
       ])))],
-      ["rule_order_json", JSON.stringify(Object.fromEntries(declarative.map((item) => [item.binding.policyId, item.binding.ruleOrder ?? []])))],
+      ["rule_order_json", JSON.stringify(Object.fromEntries(declarative.map((item) => [
+        item.binding.policyId,
+        (item.binding.ruleOrder ?? []).filter((id) => item.binding.enabledRuleIds.includes(id)),
+      ])))],
       // Resolve action inheritance per Rule, without modifying the library or
       // replacing the authored Policy/Rule overrides in policy_bindings.
       ["rule_actions_json", JSON.stringify(Object.fromEntries(declarative.map(({ binding: item, policy }) => [
