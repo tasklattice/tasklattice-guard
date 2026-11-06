@@ -23,7 +23,7 @@ export const defaultGuardrailProfiles: readonly GuardrailProfile[] = [
 // Opt-in target baseline. Selected by CONTROLLER_POLICY_CATALOG_MODE=target.
 export const targetGuardrailProfiles: readonly GuardrailProfile[] = targetProtectionPresets.map(profile => ({
   ...profile,
-  category: profile.benchmarkOnly ? "benchmark" : `target_${profile.industry}`,
+  category: profile.benchmarkOnly ? "target_benchmark" : `target_${profile.id.replaceAll("-", "_")}`,
   categoryName: profile.benchmarkOnly ? "Benchmark" : profile.name,
   isDefault: true,
 }));
