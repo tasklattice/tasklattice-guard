@@ -480,7 +480,11 @@ export const targetProtectionPresets: readonly ProtectionPreset[] = [
         "parameterValues": {},
         "action": null,
         "ruleActions": {},
-        "reasoningPolicy": null,
+        "reasoningPolicy": {
+          "policyId": "benchmark-reasoning",
+          "policyVersion": "1.0.0",
+          "confidenceThreshold": 0.8
+        },
         "enabledRuleIds": [
           "model/automated-reasoning",
           "model/contextual-grounding"
