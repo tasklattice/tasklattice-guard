@@ -321,6 +321,25 @@ export class ControlPlaneService {
     return importTargetProfilePackage(value, this.policyCatalog().list());
   }
 
+  async importGuardrailProfilePackage(value: unknown, actorId: string, replace = false) {
+    const profile = importTargetProfilePackage(value, this.policyCatalog().list());
+    const existing = await this.db.select().from(guardrailProfiles).where(eq(guardrailProfiles.id, profile.id));
+    if (existing.length && !replace) throw new ConflictError("A Guardrail Profile with this ID already exists.", "guardrail_profile_exists");
+    const nextRows = await this.db.select({ next: sql`coalesce(max(${guardrailProfiles.sortOrder}), -1) + 1` }).from(guardrailProfiles);
+    const next = nextRows[0]?.next ?? 0;
+    const { id: _id, ...definition } = profile;
+    const row = {
+      id: profile.id, category: "imported", categoryName: "Imported", isDefault: false,
+      enabled: true, sortOrder: Number(next), definition,
+    };
+    if (existing.length) {
+      await this.db.update(guardrailProfiles).set({ ...row, updatedAt: new Date() }).where(eq(guardrailProfiles.id, profile.id));
+    } else {
+      await this.db.insert(guardrailProfiles).values(row);
+    }
+    return profile;
+  }
+
   async listPolicies() {
     const custom = await this.db.select().from(policyRecords)
       .where(resourceReadPredicate("policy", policyRecords.id, policyRecords.projectId))
