@@ -1411,6 +1411,7 @@ export function createHttpApp(input: {
     if (error instanceof z.ZodError) {
       return context.json({ error: { code: "invalid_request", message: "Request validation failed.", detail: error.flatten() } }, 400);
     }
+    if (process.env.CONTROLLER_DEBUG_ERRORS === "true") console.error(error);
     logDatabaseFailure("controller.http_error", error, input.service.databasePoolState?.() ?? null, {
       method: context.req.method, route: context.req.routePath,
     });

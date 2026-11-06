@@ -25,6 +25,8 @@ def build() -> Path:
         compiled = compile_policy(package.definition, registry())
         compiled["rails"] = sorted({rail for rule in compiled["rules"] for rail in rule["rails"]})
         policies.append(compiled)
+    (ASSETS / "detectors.generated.json").write_bytes((ROOT / "runner/toolkit/policy_library/assets/detectors.generated.json").read_bytes())
+    (ASSETS / "policy-definitions.generated.json").write_bytes((ROOT / "runner/toolkit/policy_library/assets/policy-definitions.generated.json").read_bytes())
     output = ASSETS / "target_policies.json"
     output.parent.mkdir(parents=True, exist_ok=True)
     output.write_text(json.dumps(policies, ensure_ascii=False, indent=2) + "\n")

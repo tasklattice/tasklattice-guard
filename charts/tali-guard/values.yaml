@@ -56,6 +56,7 @@ controller:
   runnerSyncConcurrency: 4
   # legacy: current 27-Policy catalog; target: approved 20-Policy catalog.
   policyCatalogMode: legacy
+  debugErrors: false
   # Singleton UI/API service. Image tags default to Chart.appVersion.
   image:
     repository: ghcr.io/tasklattice/tali-guard-controller

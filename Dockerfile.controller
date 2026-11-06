@@ -19,6 +19,7 @@ ENV NODE_ENV=production \
     CONTROLLER_UI_DIST=/opt/tasklattice/guard-controller/dist \
     CONTROLLER_POLICY_CATALOG_DIR=/opt/tasklattice/guard-controller/policy-catalog \
     CONTROLLER_TARGET_POLICY_CATALOG_DIR=/opt/tasklattice/guard-controller/policy-catalog-target \
+    CONTROLLER_LEGACY_POLICY_CATALOG_DIR=/opt/tasklattice/guard-controller/policy-catalog \
     CONTROLLER_MIGRATIONS_PATH=/opt/tasklattice/guard-controller/server/db/migrations \
     CONTROLLER_PROTO_PATH=/opt/tasklattice/guard-controller/proto/tasklattice/guard/control/v1/runner_control.proto \
     TALI_HELM_CHART=/opt/tali/helm/tali-guard.tgz

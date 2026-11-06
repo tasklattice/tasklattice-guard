@@ -404,6 +404,7 @@ data:
   CONTROLLER_DATABASE_IDLE_TRANSACTION_TIMEOUT_MS: {{ .Values.controller.databaseTimeouts.idleTransactionMs | quote }}
   CONTROLLER_RUNNER_SYNC_CONCURRENCY: {{ .Values.controller.runnerSyncConcurrency | quote }}
   CONTROLLER_POLICY_CATALOG_MODE: {{ .Values.controller.policyCatalogMode | default "legacy" | quote }}
+  CONTROLLER_DEBUG_ERRORS: {{ .Values.controller.debugErrors | default false | quote }}
   CONTROLLER_GRPC_TRANSPORT: {{ ternary "mtls" "plaintext" .Values.security.controlTls.enabled | quote }}
   CONTROLLER_RUNNER_SCOPED_TELEMETRY: {{ .Values.security.poolAuthentication.scopedTelemetry | quote }}
   {{- with .Values.controller.endpointContextStorage }}
