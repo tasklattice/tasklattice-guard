@@ -3,8 +3,9 @@ kind: Policy
 metadata:
   id: local-passports
   name: Passport identifiers
-  description: Redact reviewed international passport formats and context-labelled passport identifiers. Format
-    matching does not establish document validity or issuing jurisdiction.
+  description: Redact reviewed international passport formats and context-labelled
+    passport identifiers. Format matching does not establish document validity or
+    issuing jurisdiction.
   source: built_in
   version: 1.0.0
   tags:
@@ -43,18 +44,31 @@ execution:
   mode: sequential
   input: previous_output
   stop_on: block
-rules:
-- rules/pattern--passport_singapore.yaml
-- rules/pattern--passport_china.yaml
-- rules/pattern--passport_us.yaml
-- rules/pattern--passport_germany.yaml
-- rules/pattern--passport_france.yaml
-- rules/pattern--passport_netherlands.yaml
-- rules/pattern--passport_canada.yaml
-- rules/pattern--passport_india.yaml
-- rules/identity--passport.yaml
-- rules/international-pii-identifiers--passport_uk.yaml
-- rules/international-pii-identifiers--passport_japan.yaml
-- rules/pattern--passport_australia.yaml
+rules: []
 tests:
 - tests/acceptance.yaml
+rule_refs:
+- id: pattern/passport_singapore
+  version: 1.0.0
+- id: pattern/passport_china
+  version: 1.0.0
+- id: pattern/passport_us
+  version: 1.0.0
+- id: pattern/passport_germany
+  version: 1.0.0
+- id: pattern/passport_france
+  version: 1.0.0
+- id: pattern/passport_netherlands
+  version: 1.0.0
+- id: pattern/passport_canada
+  version: 1.0.0
+- id: pattern/passport_india
+  version: 1.0.0
+- id: identity/passport
+  version: 1.0.0
+- id: international-pii-identifiers/passport_uk
+  version: 1.0.0
+- id: international-pii-identifiers/passport_japan
+  version: 1.0.0
+- id: pattern/passport_australia
+  version: 1.0.0

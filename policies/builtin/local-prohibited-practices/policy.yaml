@@ -3,8 +3,8 @@ kind: Policy
 metadata:
   id: local-prohibited-practices
   name: High-risk Practice Restrictions
-  description: Local patterns for manipulation, exploitation, social scoring, biometric and other prohibited-practice
-    requests. Profiles select the relevant scope.
+  description: Local patterns for manipulation, exploitation, social scoring, biometric
+    and other prohibited-practice requests. Profiles select the relevant scope.
   source: built_in
   version: 1.0.0
   tags:
@@ -31,16 +31,27 @@ execution:
   mode: sequential
   input: previous_output
   stop_on: block
-rules:
-- rules/eu-ai-act-art5-manipulation--eu_ai_act_art5_manipulation.yaml
-- rules/eu-ai-act-art5-vulnerability--eu_ai_act_art5_vulnerability.yaml
-- rules/eu-ai-act-art5-social-scoring--eu_ai_act_art5_social_scoring.yaml
-- rules/eu-ai-act-art5-emotion-recognition--eu_ai_act_art5_emotion_recognition.yaml
-- rules/eu-ai-act-art5-biometric-profiling--eu_ai_act_art5_biometric_profiling.yaml
-- rules/eu-ai-act-art5-manipulation-fr--eu_ai_act_art5_manipulation_fr.yaml
-- rules/eu-ai-act-art5-vulnerability-fr--eu_ai_act_art5_vulnerability_fr.yaml
-- rules/eu-ai-act-art5-social-scoring-fr--eu_ai_act_art5_social_scoring_fr.yaml
-- rules/eu-ai-act-art5-emotion-recognition-fr--eu_ai_act_art5_emotion_recognition_fr.yaml
-- rules/eu-ai-act-art5-biometric-profiling-fr--eu_ai_act_art5_biometric_profiling_fr.yaml
+rules: []
 tests:
 - tests/acceptance.yaml
+rule_refs:
+- id: eu-ai-act-art5-manipulation/eu_ai_act_art5_manipulation
+  version: 1.0.0
+- id: eu-ai-act-art5-vulnerability/eu_ai_act_art5_vulnerability
+  version: 1.0.0
+- id: eu-ai-act-art5-social-scoring/eu_ai_act_art5_social_scoring
+  version: 1.0.0
+- id: eu-ai-act-art5-emotion-recognition/eu_ai_act_art5_emotion_recognition
+  version: 1.0.0
+- id: eu-ai-act-art5-biometric-profiling/eu_ai_act_art5_biometric_profiling
+  version: 1.0.0
+- id: eu-ai-act-art5-manipulation-fr/eu_ai_act_art5_manipulation_fr
+  version: 1.0.0
+- id: eu-ai-act-art5-vulnerability-fr/eu_ai_act_art5_vulnerability_fr
+  version: 1.0.0
+- id: eu-ai-act-art5-social-scoring-fr/eu_ai_act_art5_social_scoring_fr
+  version: 1.0.0
+- id: eu-ai-act-art5-emotion-recognition-fr/eu_ai_act_art5_emotion_recognition_fr
+  version: 1.0.0
+- id: eu-ai-act-art5-biometric-profiling-fr/eu_ai_act_art5_biometric_profiling_fr
+  version: 1.0.0

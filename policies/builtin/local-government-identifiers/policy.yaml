@@ -3,9 +3,9 @@ kind: Policy
 metadata:
   id: local-government-identifiers
   name: Government, tax & health identifiers
-  description: Redact reviewed government, tax, health and institutional identifier formats, including spaced
-    Australian tax and Medicare numbers. Broad numeric formats can overlap; this is format screening, not identity
-    verification.
+  description: Redact reviewed government, tax, health and institutional identifier
+    formats, including spaced Australian tax and Medicare numbers. Broad numeric formats
+    can overlap; this is format screening, not identity verification.
   source: built_in
   version: 1.0.0
   tags:
@@ -56,31 +56,57 @@ execution:
   mode: sequential
   input: previous_output
   stop_on: block
-rules:
-- rules/au-pii-tax-identifiers--au_tfn.yaml
-- rules/au-pii-tax-identifiers--au_abn.yaml
-- rules/au-pii-tax-identifiers--au_medicare.yaml
-- rules/pattern--uae_emirates_id.yaml
-- rules/pattern--ca_on_drivers_licence.yaml
-- rules/pattern--ca_immigration_doc.yaml
-- rules/pattern--fr_nir.yaml
-- rules/pattern--uoft_tcard.yaml
-- rules/pattern--sg_uen.yaml
-- rules/pattern--ca_ohip.yaml
-- rules/pattern--ca_sin.yaml
-- rules/pattern--eu_vat.yaml
-- rules/pattern--nl_bsn_contextual.yaml
-- rules/pattern--au_tfn.yaml
-- rules/pattern--uoft_student_id.yaml
-- rules/pattern--us_ssn.yaml
-- rules/pattern--us_ssn_no_dash.yaml
-- rules/pattern--br_cpf.yaml
-- rules/pattern--br_cpf_unformatted.yaml
-- rules/pattern--br_cnpj.yaml
-- rules/pattern--br_rg.yaml
-- rules/pattern--sg_nric.yaml
-- rules/pattern--uoft_utorid.yaml
-- rules/cn-business-identifier--unified-social-credit-code.yaml
-- rules/cn-personal-information--resident-identity-card.yaml
+rules: []
 tests:
 - tests/acceptance.yaml
+rule_refs:
+- id: au-pii-tax-identifiers/au_tfn
+  version: 1.0.0
+- id: au-pii-tax-identifiers/au_abn
+  version: 1.0.0
+- id: au-pii-tax-identifiers/au_medicare
+  version: 1.0.0
+- id: pattern/uae_emirates_id
+  version: 1.0.0
+- id: pattern/ca_on_drivers_licence
+  version: 1.0.0
+- id: pattern/ca_immigration_doc
+  version: 1.0.0
+- id: pattern/fr_nir
+  version: 1.0.0
+- id: pattern/uoft_tcard
+  version: 1.0.0
+- id: pattern/sg_uen
+  version: 1.0.0
+- id: pattern/ca_ohip
+  version: 1.0.0
+- id: pattern/ca_sin
+  version: 1.0.0
+- id: pattern/eu_vat
+  version: 1.0.0
+- id: pattern/nl_bsn_contextual
+  version: 1.0.0
+- id: pattern/au_tfn
+  version: 1.0.0
+- id: pattern/uoft_student_id
+  version: 1.0.0
+- id: pattern/us_ssn
+  version: 1.0.0
+- id: pattern/us_ssn_no_dash
+  version: 1.0.0
+- id: pattern/br_cpf
+  version: 1.0.0
+- id: pattern/br_cpf_unformatted
+  version: 1.0.0
+- id: pattern/br_cnpj
+  version: 1.0.0
+- id: pattern/br_rg
+  version: 1.0.0
+- id: pattern/sg_nric
+  version: 1.0.0
+- id: pattern/uoft_utorid
+  version: 1.0.0
+- id: cn-business-identifier/unified-social-credit-code
+  version: 1.0.0
+- id: cn-personal-information/resident-identity-card
+  version: 1.0.0

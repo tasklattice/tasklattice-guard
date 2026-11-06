@@ -3,7 +3,8 @@ kind: Policy
 metadata:
   id: local-professional-advice
   name: Professional Advice Restrictions
-  description: Local financial, medical and legal advice boundaries. Select the Rules appropriate to the application.
+  description: Local financial, medical and legal advice boundaries. Select the Rules
+    appropriate to the application.
   source: built_in
   version: 1.0.0
   tags:
@@ -22,10 +23,15 @@ execution:
   mode: sequential
   input: previous_output
   stop_on: block
-rules:
-- rules/claims-medical-advice-filter--claims_medical_advice.yaml
-- rules/category--denied_financial_advice.yaml
-- rules/category--denied_legal_advice.yaml
-- rules/category--denied_medical_advice.yaml
+rules: []
 tests:
 - tests/acceptance.yaml
+rule_refs:
+- id: claims-medical-advice-filter/claims_medical_advice
+  version: 1.0.0
+- id: category/denied_financial_advice
+  version: 1.0.0
+- id: category/denied_legal_advice
+  version: 1.0.0
+- id: category/denied_medical_advice
+  version: 1.0.0

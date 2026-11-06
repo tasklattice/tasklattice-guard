@@ -1,0 +1,23 @@
+id: sql-injection-blocker/blocked-word-1
+version: 1.0.0
+name: DROP TABLE
+description: SQL injection
+stages:
+- input
+- output
+detector:
+  ref: text/keyword
+  version: 1.0.0
+  parameters:
+    keywords:
+    - - DROP TABLE
+      - medium
+on_match:
+  action: block
+risk_level: high
+metadata:
+  taxonomy_ids:
+  - TALI-TOOL-SECURITY-UNAUTHORIZED-EXECUTION
+runtime_adapter:
+  binding_id: local-injection-protection
+  implementation_rule_id: sql-injection-blocker/blocked-word-1

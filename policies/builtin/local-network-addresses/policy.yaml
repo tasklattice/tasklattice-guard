@@ -3,8 +3,8 @@ kind: Policy
 metadata:
   id: local-network-addresses
   name: Network addresses & URLs
-  description: Redact IPv4, IPv6 and URL formats, including public addresses. This is a disclosure filter,
-    not an SSRF defense or a network access policy.
+  description: Redact IPv4, IPv6 and URL formats, including public addresses. This
+    is a disclosure filter, not an SSRF defense or a network access policy.
   source: built_in
   version: 1.0.0
   tags:
@@ -27,9 +27,13 @@ execution:
   mode: sequential
   input: previous_output
   stop_on: block
-rules:
-- rules/pattern--ipv4.yaml
-- rules/pattern--ipv6.yaml
-- rules/pattern--url.yaml
+rules: []
 tests:
 - tests/acceptance.yaml
+rule_refs:
+- id: pattern/ipv4
+  version: 1.0.0
+- id: pattern/ipv6
+  version: 1.0.0
+- id: pattern/url
+  version: 1.0.0

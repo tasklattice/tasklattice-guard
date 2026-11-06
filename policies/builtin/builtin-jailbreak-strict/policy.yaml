@@ -32,9 +32,11 @@ parameters:
   label: Review uncertain input results
   kind: text
   required: false
-  default: "false"
+  default: 'false'
   placeholder: true or false
-  description: When true, a valid JEV input gray-area result is reviewed by the separately validated classifier_review.input binding. Output, matches, errors and missing context keep their handling.
+  description: When true, a valid JEV input gray-area result is reviewed by the separately
+    validated classifier_review.input binding. Output, matches, errors and missing
+    context keep their handling.
 rules:
 - rules/model-jailbreak.yaml
 tests:

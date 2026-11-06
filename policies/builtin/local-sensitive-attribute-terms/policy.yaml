@@ -3,8 +3,9 @@ kind: Policy
 metadata:
   id: local-sensitive-attribute-terms
   name: Sensitive attribute terms
-  description: Redact configured demographic and protected-attribute words, including benign mentions. This
-    optional vocabulary filter does not detect discrimination, infer a person's attributes or determine legality.
+  description: Redact configured demographic and protected-attribute words, including
+    benign mentions. This optional vocabulary filter does not detect discrimination,
+    infer a person's attributes or determine legality.
   source: built_in
   version: 1.0.0
   tags:
@@ -27,17 +28,26 @@ execution:
   mode: sequential
   input: previous_output
   stop_on: block
-rules:
-- rules/pattern--gender_sexual_orientation.yaml
-- rules/pattern--race_ethnicity_national_origin.yaml
-- rules/pattern--religion.yaml
-- rules/pattern--age_discrimination.yaml
-- rules/pattern--disability.yaml
-- rules/pattern--marital_family_status.yaml
-- rules/pattern--military_status.yaml
-- rules/pattern--public_assistance.yaml
+rules: []
 tests:
 - tests/acceptance.yaml
 - tests/attribute-contexts.yaml
 documents:
 - docs/attribute-contexts.md
+rule_refs:
+- id: pattern/gender_sexual_orientation
+  version: 1.0.0
+- id: pattern/race_ethnicity_national_origin
+  version: 1.0.0
+- id: pattern/religion
+  version: 1.0.0
+- id: pattern/age_discrimination
+  version: 1.0.0
+- id: pattern/disability
+  version: 1.0.0
+- id: pattern/marital_family_status
+  version: 1.0.0
+- id: pattern/military_status
+  version: 1.0.0
+- id: pattern/public_assistance
+  version: 1.0.0

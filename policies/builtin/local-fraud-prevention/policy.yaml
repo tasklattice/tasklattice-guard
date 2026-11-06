@@ -3,8 +3,8 @@ kind: Policy
 metadata:
   id: local-fraud-prevention
   name: Fraud & Account Abuse
-  description: Local identity-check evasion, credential solicitation, phishing, financial misrepresentation,
-    market manipulation and claims-fraud patterns.
+  description: Local identity-check evasion, credential solicitation, phishing, financial
+    misrepresentation, market manipulation and claims-fraud patterns.
   source: built_in
   version: 1.0.0
   tags:
@@ -31,18 +31,31 @@ execution:
   mode: sequential
   input: previous_output
   stop_on: block
-rules:
-- rules/banking--identity-evasion.yaml
-- rules/banking--return-guarantee.yaml
-- rules/cn-banking--verification-code-theft.yaml
-- rules/cn-banking--sensitive-credential-solicitation.yaml
-- rules/cn-banking--identity-check-evasion.yaml
-- rules/cn-banking--misleading-return-guarantee.yaml
-- rules/claims-fraud-coaching-filter--claims_fraud_coaching.yaml
-- rules/claims-prior-auth-gaming-filter--claims_prior_auth_gaming.yaml
-- rules/internet--phishing.yaml
-- rules/internet--session-theft.yaml
-- rules/securities--inside-information.yaml
-- rules/securities--manipulation.yaml
+rules: []
 tests:
 - tests/acceptance.yaml
+rule_refs:
+- id: banking/identity-evasion
+  version: 1.0.0
+- id: banking/return-guarantee
+  version: 1.0.0
+- id: cn-banking/verification-code-theft
+  version: 1.0.0
+- id: cn-banking/sensitive-credential-solicitation
+  version: 1.0.0
+- id: cn-banking/identity-check-evasion
+  version: 1.0.0
+- id: cn-banking/misleading-return-guarantee
+  version: 1.0.0
+- id: claims-fraud-coaching-filter/claims_fraud_coaching
+  version: 1.0.0
+- id: claims-prior-auth-gaming-filter/claims_prior_auth_gaming
+  version: 1.0.0
+- id: internet/phishing
+  version: 1.0.0
+- id: internet/session-theft
+  version: 1.0.0
+- id: securities/inside-information
+  version: 1.0.0
+- id: securities/manipulation
+  version: 1.0.0

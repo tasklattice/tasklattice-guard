@@ -18,7 +18,9 @@ metadata:
     label: Agentic Security
     source: declared
 parameters: []
-rules:
-- rules/boundary.yaml
+rules: []
 tests:
 - tests/acceptance.yaml
+rule_refs:
+- id: boundary/memory-poisoning
+  version: 1.0.0

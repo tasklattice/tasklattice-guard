@@ -1,11 +1,10 @@
-# yaml-language-server: $schema=../../schemas/policy.schema.json
 schema_version: 1
 kind: Policy
 metadata:
   id: builtin-topic-safety
   name: Model Topic Control
-  description: Configure independent allowlist and denylist Rules. Denied tasks take precedence; Intention
-    analysis helps fill these Policy settings.
+  description: Configure independent allowlist and denylist Rules. Denied tasks take
+    precedence; Intention analysis helps fill these Policy settings.
   source: built_in
   version: 1.0.0
   tags:
@@ -49,15 +48,20 @@ parameters:
   label: Review uncertain input results
   kind: text
   required: false
-  default: "false"
+  default: 'false'
   placeholder: true or false
-  description: When true, a valid JEV input gray-area result is reviewed by the separately validated classifier_review.input binding. Output, matches, errors and missing context keep their handling.
-rules:
-- rules/topic-denylist.yaml
-- rules/topic-allowlist.yaml
+  description: When true, a valid JEV input gray-area result is reviewed by the separately
+    validated classifier_review.input binding. Output, matches, errors and missing
+    context keep their handling.
+rules: []
 tests:
 - tests/acceptance.yaml
 testing:
   parameters:
     allowed_topics: Customer support
     denied_topics: Investment advice
+rule_refs:
+- id: topic/denylist
+  version: 1.0.0
+- id: topic/allowlist
+  version: 1.0.0

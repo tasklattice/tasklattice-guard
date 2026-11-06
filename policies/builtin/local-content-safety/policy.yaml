@@ -3,8 +3,8 @@ kind: Policy
 metadata:
   id: local-content-safety
   name: Local Content Safety
-  description: Local harmful-content, child-safety, bias and multilingual abuse checks. Individual Rules retain
-    their own matching conditions and exceptions.
+  description: Local harmful-content, child-safety, bias and multilingual abuse checks.
+    Individual Rules retain their own matching conditions and exceptions.
   source: built_in
   version: 1.0.0
   tags:
@@ -31,25 +31,42 @@ execution:
   mode: sequential
   input: previous_output
   stop_on: block
-rules:
-- rules/category--denied_insults.yaml
-- rules/category--harm_toxic_abuse.yaml
-- rules/category--harmful_violence.yaml
-- rules/category--harmful_self_harm.yaml
-- rules/category--harmful_child_safety.yaml
-- rules/category--harmful_illegal_weapons.yaml
-- rules/category--bias_gender.yaml
-- rules/category--bias_racial.yaml
-- rules/category--bias_religious.yaml
-- rules/category--bias_sexual_orientation.yaml
-- rules/nsfw-filter-spanish--harm_toxic_abuse_es.yaml
-- rules/nsfw-filter-french--harm_toxic_abuse_fr.yaml
-- rules/nsfw-filter-german--harm_toxic_abuse_de.yaml
-- rules/nsfw-filter-australian--harm_toxic_abuse_au.yaml
-- rules/uae-cultural-sensitivity-filter--uae_cultural_sensitivity.yaml
-- rules/uae-anti-discrimination-filter--uae_anti_discrimination.yaml
+rules: []
 tests:
 - tests/acceptance.yaml
 - tests/word-boundaries.yaml
 documents:
 - docs/word-boundaries.md
+rule_refs:
+- id: category/denied_insults
+  version: 1.0.0
+- id: category/harm_toxic_abuse
+  version: 1.0.0
+- id: category/harmful_violence
+  version: 1.0.0
+- id: category/harmful_self_harm
+  version: 1.0.0
+- id: category/harmful_child_safety
+  version: 1.0.0
+- id: category/harmful_illegal_weapons
+  version: 1.0.0
+- id: category/bias_gender
+  version: 1.0.0
+- id: category/bias_racial
+  version: 1.0.0
+- id: category/bias_religious
+  version: 1.0.0
+- id: category/bias_sexual_orientation
+  version: 1.0.0
+- id: nsfw-filter-spanish/harm_toxic_abuse_es
+  version: 1.0.0
+- id: nsfw-filter-french/harm_toxic_abuse_fr
+  version: 1.0.0
+- id: nsfw-filter-german/harm_toxic_abuse_de
+  version: 1.0.0
+- id: nsfw-filter-australian/harm_toxic_abuse_au
+  version: 1.0.0
+- id: uae-cultural-sensitivity-filter/uae_cultural_sensitivity
+  version: 1.0.0
+- id: uae-anti-discrimination-filter/uae_anti_discrimination
+  version: 1.0.0

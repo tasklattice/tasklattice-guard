@@ -3,8 +3,8 @@ kind: Policy
 metadata:
   id: block-code-execution
   name: Block Code Execution
-  description: Detects executable fenced code and explicit execution requests while allowing explanation
-    and review intent.
+  description: Detects executable fenced code and explicit execution requests while
+    allowing explanation and review intent.
   source: built_in
   version: 1.0.0
   tags:
@@ -53,9 +53,7 @@ parameters:
   required: false
   placeholder: 'true'
   description: Blank defaults to true. Output code is always enforced.
-rules:
-- rules/code-execution.yaml
-- rules/execution-request.yaml
+rules: []
 tests:
 - tests/acceptance.yaml
 testing:
@@ -63,3 +61,8 @@ testing:
     blocked_languages: python
     confidence_threshold: '0.8'
     detect_execution_intent: 'true'
+rule_refs:
+- id: code/execution
+  version: 1.0.0
+- id: code/execution-request
+  version: 1.0.0

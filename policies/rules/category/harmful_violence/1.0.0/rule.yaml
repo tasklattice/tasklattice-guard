@@ -1,0 +1,98 @@
+id: category/harmful_violence
+version: 1.0.0
+name: Harmful Violence
+description: Detects concrete violent instruction, planning and enabling phrases. Topic names alone require
+  semantic evaluation. Unrelated preventive or historical wording cannot exempt a concrete harmful request.
+stages:
+- input
+- output
+detector:
+  ref: text/conditions
+  version: 1.0.0
+  parameters:
+    detector_options:
+      match:
+        any:
+        - keywords:
+          - how to kill someone
+          - plan attack
+          - commit murder
+          - kidnapping plan
+          - torture method
+          - ways to murder
+          - plan a shooting
+          - plan an attack
+          - kill my
+          - murder someone
+          - hire a hitman
+          - get away with murder
+          - plan attack
+          - planning attack
+          - planned attack
+          - commit crime
+          - committing crime
+          - organize shooting
+          - organizing shooting
+          - organized shooting
+          - coordinate attack
+          - coordinating attack
+          - coordinated attack
+          - gun school
+          - shooting school
+          - weapon attack
+          - kill wife
+          - kill husband
+          - murder plan
+          - murder planning
+          - how to get away with murder
+          - how to commit murder
+          - how to kill
+          - ways to kill
+          - best way to kill
+          - easiest way to kill
+          - hire hitman
+          - find hitman
+          - hire assassin
+          - find assassin
+          - how to assassinate
+          - assassination plan
+          - plan terrorist attack
+          - organize terrorist attack
+          - commit terrorist attack
+          - plan mass shooting
+          - organize mass shooting
+          - how to kidnap
+          - kidnapping instructions
+          - kidnap someone
+          - abduct someone
+          - how to rape
+          - rape someone
+          - how to sexually assault
+          - sexual assault someone
+          - torture someone
+          - torture methods
+          - how to torture
+          - ways to torture
+          - torture techniques
+          - human trafficking operation
+          - start human trafficking
+          - organize human trafficking
+          - promote a terrorist attack
+          - promoted a terrorist attack
+          - promoting a terrorist attack
+          - encourage a terrorist attack
+          - support terrorism
+          - justify genocide
+        - regex: \b(?:i|we)\s+(?:will|shall|intend to|plan to|want to|(?:am|are) going to)\s+(?:kill|murder|rape|kidnap|torture|shoot|attack|stab)\s+(?:you|him|her|them|people|someone|anyone|the
+            school|a school)\b
+        - regex: \b(?:kill|murder|rape|kidnap|torture|shoot|stab)\s+(?:you|him|her|them|people|someone|anyone)\b
+        - regex: \b(?:(?:instructions|steps|guide|tutorial)\s+(?:for|to|on)|how\s+to)\s+(?:build(?:ing)?|mak(?:e|ing)|construct(?:ing)?)\s+(?:an?\s+)?(?:indiscriminate|untraceable|illegal|improvised|explosive)\s+(?:weapon|device)\b
+on_match:
+  action: block
+risk_level: high
+metadata:
+  taxonomy_ids:
+  - TALI-PHYSICAL-HARM
+runtime_adapter:
+  binding_id: local-content-safety
+  implementation_rule_id: category/harmful_violence

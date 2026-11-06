@@ -3,8 +3,8 @@ kind: Policy
 metadata:
   id: local-risk-content-terms
   name: Risk-related content terms
-  description: Redact configured weapon, violence, self-harm and abuse terms. Benign reporting can also match;
-    this vocabulary filter is not a semantic safety classifier.
+  description: Redact configured weapon, violence, self-harm and abuse terms. Benign
+    reporting can also match; this vocabulary filter is not a semantic safety classifier.
   source: built_in
   version: 1.0.0
   tags:
@@ -23,14 +23,23 @@ execution:
   mode: sequential
   input: previous_output
   stop_on: block
-rules:
-- rules/pattern--explosives.yaml
-- rules/pattern--weapons_firearms.yaml
-- rules/pattern--weapons_other.yaml
-- rules/pattern--violence_threats.yaml
-- rules/pattern--terrorism.yaml
-- rules/pattern--self_harm_suicide.yaml
-- rules/pattern--illegal_activities.yaml
-- rules/pattern--harassment_hate.yaml
+rules: []
 tests:
 - tests/acceptance.yaml
+rule_refs:
+- id: pattern/explosives
+  version: 1.0.0
+- id: pattern/weapons_firearms
+  version: 1.0.0
+- id: pattern/weapons_other
+  version: 1.0.0
+- id: pattern/violence_threats
+  version: 1.0.0
+- id: pattern/terrorism
+  version: 1.0.0
+- id: pattern/self_harm_suicide
+  version: 1.0.0
+- id: pattern/illegal_activities
+  version: 1.0.0
+- id: pattern/harassment_hate
+  version: 1.0.0

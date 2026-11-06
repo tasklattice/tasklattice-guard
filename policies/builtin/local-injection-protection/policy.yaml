@@ -3,8 +3,8 @@ kind: Policy
 metadata:
   id: local-injection-protection
   name: Local Injection Protection
-  description: Instruction manipulation, prompt extraction, SQL, code and rendered-content injection patterns
-    in English and Chinese.
+  description: Instruction manipulation, prompt extraction, SQL, code and rendered-content
+    injection patterns in English and Chinese.
   source: built_in
   version: 1.0.0
   tags:
@@ -27,46 +27,87 @@ execution:
   mode: sequential
   input: previous_output
   stop_on: block
-rules:
-- rules/prompt-injection-blocker--blocked-word-1.yaml
-- rules/prompt-injection-blocker--blocked-word-2.yaml
-- rules/prompt-injection-blocker--blocked-word-3.yaml
-- rules/prompt-injection-blocker--blocked-word-4.yaml
-- rules/prompt-injection-blocker--blocked-word-5.yaml
-- rules/prompt-injection-blocker--blocked-word-6.yaml
-- rules/prompt-injection-blocker--blocked-word-7.yaml
-- rules/prompt-injection-blocker--blocked-word-8.yaml
-- rules/prompt-injection-blocker--blocked-word-9.yaml
-- rules/prompt-injection-blocker--blocked-word-10.yaml
-- rules/prompt-injection-blocker--blocked-word-11.yaml
-- rules/prompt-injection-blocker--blocked-word-12.yaml
-- rules/prompt-injection-blocker--blocked-word-13.yaml
-- rules/prompt-injection-blocker--blocked-word-14.yaml
-- rules/sql-injection-blocker--blocked-word-1.yaml
-- rules/sql-injection-blocker--blocked-word-2.yaml
-- rules/sql-injection-blocker--blocked-word-3.yaml
-- rules/sql-injection-blocker--blocked-word-4.yaml
-- rules/sql-injection-blocker--blocked-word-5.yaml
-- rules/sql-injection-blocker--blocked-word-6.yaml
-- rules/sql-injection-blocker--blocked-word-7.yaml
-- rules/sql-injection-blocker--blocked-word-8.yaml
-- rules/code-injection-blocker--blocked-word-3.yaml
-- rules/code-injection-blocker--blocked-word-4.yaml
-- rules/code-injection-blocker--blocked-word-5.yaml
-- rules/code-injection-blocker--blocked-word-6.yaml
-- rules/code-injection-blocker--blocked-word-7.yaml
-- rules/application--active-html.yaml
-- rules/application--template-traversal.yaml
-- rules/category--prompt_injection_jailbreak.yaml
-- rules/category--prompt_injection_data_exfiltration.yaml
-- rules/category--prompt_injection_sql.yaml
-- rules/category--prompt_injection_malicious_code.yaml
-- rules/category--prompt_injection_system_prompt.yaml
-- rules/cn-prompt-security--instruction-override.yaml
-- rules/cn-prompt-security--prompt-extraction.yaml
-- rules/cn-prompt-security--unrestricted-mode.yaml
-- rules/claims-system-override-filter--claims_system_override.yaml
-- rules/code-injection-blocker--blocked-word-1.yaml
-- rules/code-injection-blocker--blocked-word-2.yaml
+rules: []
 tests:
 - tests/acceptance.yaml
+rule_refs:
+- id: prompt-injection-blocker/blocked-word-1
+  version: 1.0.0
+- id: prompt-injection-blocker/blocked-word-2
+  version: 1.0.0
+- id: prompt-injection-blocker/blocked-word-3
+  version: 1.0.0
+- id: prompt-injection-blocker/blocked-word-4
+  version: 1.0.0
+- id: prompt-injection-blocker/blocked-word-5
+  version: 1.0.0
+- id: prompt-injection-blocker/blocked-word-6
+  version: 1.0.0
+- id: prompt-injection-blocker/blocked-word-7
+  version: 1.0.0
+- id: prompt-injection-blocker/blocked-word-8
+  version: 1.0.0
+- id: prompt-injection-blocker/blocked-word-9
+  version: 1.0.0
+- id: prompt-injection-blocker/blocked-word-10
+  version: 1.0.0
+- id: prompt-injection-blocker/blocked-word-11
+  version: 1.0.0
+- id: prompt-injection-blocker/blocked-word-12
+  version: 1.0.0
+- id: prompt-injection-blocker/blocked-word-13
+  version: 1.0.0
+- id: prompt-injection-blocker/blocked-word-14
+  version: 1.0.0
+- id: sql-injection-blocker/blocked-word-1
+  version: 1.0.0
+- id: sql-injection-blocker/blocked-word-2
+  version: 1.0.0
+- id: sql-injection-blocker/blocked-word-3
+  version: 1.0.0
+- id: sql-injection-blocker/blocked-word-4
+  version: 1.0.0
+- id: sql-injection-blocker/blocked-word-5
+  version: 1.0.0
+- id: sql-injection-blocker/blocked-word-6
+  version: 1.0.0
+- id: sql-injection-blocker/blocked-word-7
+  version: 1.0.0
+- id: sql-injection-blocker/blocked-word-8
+  version: 1.0.0
+- id: code-injection-blocker/blocked-word-3
+  version: 1.0.0
+- id: code-injection-blocker/blocked-word-4
+  version: 1.0.0
+- id: code-injection-blocker/blocked-word-5
+  version: 1.0.0
+- id: code-injection-blocker/blocked-word-6
+  version: 1.0.0
+- id: code-injection-blocker/blocked-word-7
+  version: 1.0.0
+- id: application/active-html
+  version: 1.0.0
+- id: application/template-traversal
+  version: 1.0.0
+- id: category/prompt_injection_jailbreak
+  version: 1.0.0
+- id: category/prompt_injection_data_exfiltration
+  version: 1.0.0
+- id: category/prompt_injection_sql
+  version: 1.0.0
+- id: category/prompt_injection_malicious_code
+  version: 1.0.0
+- id: category/prompt_injection_system_prompt
+  version: 1.0.0
+- id: cn-prompt-security/instruction-override
+  version: 1.0.0
+- id: cn-prompt-security/prompt-extraction
+  version: 1.0.0
+- id: cn-prompt-security/unrestricted-mode
+  version: 1.0.0
+- id: claims-system-override-filter/claims_system_override
+  version: 1.0.0
+- id: code-injection-blocker/blocked-word-1
+  version: 1.0.0
+- id: code-injection-blocker/blocked-word-2
+  version: 1.0.0

@@ -1,0 +1,22 @@
+id: pattern/passport_australia
+version: 1.0.0
+name: Passport (Australia)
+description: Australian passport numbers (1 letter + 7 digits)
+stages:
+- input
+- output
+detector:
+  ref: text/regex
+  version: 1.0.0
+  parameters:
+    expression: \b[A-Z][0-9]{7}\b
+on_match:
+  action: transform
+  replacement: '[passport_australia_REDACTED]'
+risk_level: medium
+metadata:
+  taxonomy_ids:
+  - TALI-PRIVACY-PII
+runtime_adapter:
+  binding_id: local-passports
+  implementation_rule_id: pattern/passport_australia

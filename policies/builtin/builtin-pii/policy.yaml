@@ -1,4 +1,3 @@
-# yaml-language-server: $schema=../../schemas/policy.schema.json
 schema_version: 1
 kind: Policy
 metadata:
@@ -19,7 +18,9 @@ metadata:
     label: PII Detection
     source: declared
 parameters: []
-rules:
-- rules/model-pii.yaml
+rules: []
 tests:
 - tests/acceptance.yaml
+rule_refs:
+- id: model/pii
+  version: 1.0.0

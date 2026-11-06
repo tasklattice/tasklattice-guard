@@ -1,0 +1,22 @@
+id: financial-pii/amex
+version: 1.0.0
+name: Credit Card (American Express)
+description: Detects American Express credit card numbers
+stages:
+- input
+- output
+detector:
+  ref: text/regex
+  version: 1.0.0
+  parameters:
+    expression: \b3[47]\d{2}[\s\-]?\d{6}[\s\-]?\d{5}\b
+on_match:
+  action: transform
+  replacement: '[amex_REDACTED]'
+risk_level: high
+metadata:
+  taxonomy_ids:
+  - TALI-PRIVACY-FINANCIAL
+runtime_adapter:
+  binding_id: local-payment-data
+  implementation_rule_id: financial-pii/amex

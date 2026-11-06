@@ -1,0 +1,23 @@
+id: prompt-injection-blocker/blocked-word-4
+version: 1.0.0
+name: disregard all prior
+description: Prompt injection attempt
+stages:
+- input
+- output
+detector:
+  ref: text/keyword
+  version: 1.0.0
+  parameters:
+    keywords:
+    - - disregard all prior
+      - medium
+on_match:
+  action: block
+risk_level: high
+metadata:
+  taxonomy_ids:
+  - TALI-MODEL-SECURITY-PROMPT-INJECTION
+runtime_adapter:
+  binding_id: local-injection-protection
+  implementation_rule_id: prompt-injection-blocker/blocked-word-4

@@ -31,10 +31,12 @@ parameters:
   placeholder: ''
   description: Entries run in order within this Policy. Replacement text continues
     to the next entry; a block ends execution.
-rules:
-- rules/configured-phrases.yaml
+rules: []
 tests:
 - tests/acceptance.yaml
 testing:
   parameters:
     phrase_entries: '[{"id": "secret", "phrase": "INTERNAL_SECRET", "action": "block"}]'
+rule_refs:
+- id: configured/phrases
+  version: 1.0.0

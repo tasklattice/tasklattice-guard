@@ -1,4 +1,3 @@
-# yaml-language-server: $schema=../../schemas/policy.schema.json
 schema_version: 1
 kind: Policy
 metadata:
@@ -17,7 +16,9 @@ metadata:
     label: Hallucinations & Fact-Checking
     source: declared
 parameters: []
-rules:
-- rules/model-contextual-grounding.yaml
+rules: []
 tests:
 - tests/acceptance.yaml
+rule_refs:
+- id: model/contextual-grounding
+  version: 1.0.0

@@ -1,0 +1,22 @@
+id: pattern/passport_china
+version: 1.0.0
+name: Passport (China)
+description: Chinese passport numbers (E/G prefix + 8 digits)
+stages:
+- input
+- output
+detector:
+  ref: text/regex
+  version: 1.0.0
+  parameters:
+    expression: \b[EeGg][0-9]{8}\b
+on_match:
+  action: transform
+  replacement: '[passport_china_REDACTED]'
+risk_level: medium
+metadata:
+  taxonomy_ids:
+  - TALI-PRIVACY-PII
+runtime_adapter:
+  binding_id: local-passports
+  implementation_rule_id: pattern/passport_china
