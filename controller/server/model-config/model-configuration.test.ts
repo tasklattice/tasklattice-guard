@@ -171,8 +171,28 @@ describe("Capability configuration after registration", () => {
     expect(result.validationReport?.checks.some(c => c.id === `probe:jailbreak.input:${id}` && c.status === "passed")).toBe(true);
     expect(JSON.stringify(railValidator.mock.calls)).toContain("tali.laya.v1");
     expect(JSON.stringify(railValidator.mock.calls)).toContain("tali.guard.jailbreak.v1");
+    // A legacy row without a stored mode still tells the Runner which shape to send.
+    expect(railValidator).toHaveBeenCalledWith(expect.objectContaining({
+      configuration: expect.objectContaining({ runtimes: [expect.objectContaining({ id, layaRequestMode: "compatible" })] }),
+    }));
     expect(fetcher).not.toHaveBeenCalled();
     expect(rows.get(modelConfigurationRevisions)?.filter(r => r.state === "active")).toEqual([]);
+  });
+
+  it("projects a legacy Laya mode as compatible in the active configuration", async () => {
+    const { service, rows } = setup("active");
+    rows.get(modelProviders)![0]!.kind = "laya";
+    Object.assign(rows.get(modelDefinitions)![0]!, { profile: "tali.laya.v1", model: "laya", layaRequestMode: null });
+    rows.get(modelConfigurationRevisions)![0]!.assignments = { ...emptyModelAssignments(), bindings: { ...emptyModelAssignments().bindings, "content_safety.input": id } };
+    expect((await service.activeConfiguration())?.models[0]).toMatchObject({ id, profile: "tali.laya.v1", layaRequestMode: "compatible" });
+  });
+
+  it("omits the Laya mode from non-Laya active runtimes", async () => {
+    const { service, rows } = setup("active");
+    rows.get(modelConfigurationRevisions)![0]!.assignments = { ...emptyModelAssignments(), bindings: { ...emptyModelAssignments().bindings, "content_safety.input": id } };
+    const runtime = (await service.activeConfiguration())?.models[0];
+    expect(runtime).toMatchObject({ id, profile: "tali.qwen3guard.v1" });
+    expect(runtime).not.toHaveProperty("layaRequestMode");
   });
   it("discovers TypeSafe's native model catalog and calls System One for connection evidence", async () => {
     const { service, rows, fetcher } = setup();

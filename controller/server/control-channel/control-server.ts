@@ -947,6 +947,7 @@ export class RunnerControlServer {
             skipTlsVerify: model.skipTlsVerify ?? false,
             model: model.model,
             profileRef: model.profile,
+            ...(model.layaRequestMode ? { layaRequestMode: model.layaRequestMode } : {}),
             timeoutSeconds: model.timeoutSeconds,
             maxTokens: model.maxTokens,
             maxConcurrency: model.maxConcurrency ?? 2,

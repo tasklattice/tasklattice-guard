@@ -50,6 +50,7 @@ class ModelRuntimeConfig:
     lower_threshold: float = 0.1
     upper_threshold: float = 0.9
     skip_tls_verify: bool = False
+    laya_request_mode: str = "compatible"
 
     def __post_init__(self) -> None:
         if not self.id.strip() or not self.model.strip():
@@ -66,6 +67,8 @@ class ModelRuntimeConfig:
             raise ValueError("Expected 0 <= lower_threshold < upper_threshold <= 1.")
         if self.timeout_seconds <= 0 or self.max_tokens <= 0:
             raise ValueError("Model Runtime timeout and max_tokens must be positive.")
+        if not isinstance(self.laya_request_mode, str) or self.laya_request_mode not in {"", "native", "compatible"}:
+            raise ValueError("Laya request mode must be native or compatible.")
 
 
 @dataclass(frozen=True, slots=True)

@@ -29,6 +29,12 @@ message ModelRuntime {
   // Inclusive positive decision boundary; unset uses 0.9.
   // Must exceed lower_threshold and be at most 1.
   optional double upper_threshold = 14;
+  // Laya only. Determines the System One request body without per-request
+  // negotiation: "native" sends max_len and head_max_len; "compatible" sends
+  // max_len only for strict wrappers such as 1Panel-dev/laya-server. The
+  // Controller determines it during the model connection probe. Empty means
+  // "compatible" so an older Controller cannot force a rejected request.
+  string laya_request_mode = 15;
 }
 
 // Bind one stable product capability on one Rail surface to a registered

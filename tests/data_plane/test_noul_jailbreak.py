@@ -37,7 +37,8 @@ async def test_jailbreak_has_independent_question_probability_evidence_and_nativ
             key: {"type": "noul", "noul": probability} for key in body["questions"]},
             "usage": {"input_tokens": 40, "output_tokens": 7}})
 
-    service = classifier_backend.evaluator("jailbreak", respond)
+    service = classifier_backend.evaluator("jailbreak", respond,
+        **({"request_mode": "native"} if classifier_backend.name == "laya" else {}))
     result = await service.evaluate(request)
     assert result.verdict == verdict and result.content == request.content
     assert result.unknown_reason == "uncertain"

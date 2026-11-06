@@ -51,7 +51,9 @@ import {
   providerRegistrationSchema,
   providerUpdateSchema,
   profileTransports,
+  resolveLayaRequestMode,
   type ActiveModelConfiguration,
+  type LayaRequestMode,
   type ModelAssignments,
   type ModelAssignmentTarget,
   type ModelProfile,
@@ -117,6 +119,7 @@ export class ModelConfigurationService {
     if (target === "control_plane") return this.probeModel(provider, model);
     if (!this.railValidator) return { passed: false, message: "Runner Rail validation is unavailable. A model connection check cannot validate an Input/Output Rail.", latencyMs: 0 };
     const binding = capabilityBindingDefinitions.find((item) => item.id === target)!;
+    const layaRequestMode = resolveLayaRequestMode(model.profile, model.layaRequestMode);
     const leaseId = randomUUID();
     let leased = false;
     try {
@@ -126,6 +129,7 @@ export class ModelConfigurationService {
         configuration: { revisionId: `validation:${leaseId}`, revision: 0,
           runtimes: [{ id: model.id, providerId: provider.id, providerName: provider.name, baseUrl: provider.baseUrl,
             credentialRef: provider.id, model: model.model, profileRef: model.profile,
+            ...(layaRequestMode ? { layaRequestMode } : {}),
             timeoutSeconds: model.timeoutSeconds, maxTokens: model.maxTokens, maxConcurrency: model.maxConcurrency ?? 2,
             rateLimitAttempts: model.rateLimitAttempts ?? 3, lowerThreshold: model.lowerThreshold ?? 0.1, upperThreshold: model.upperThreshold ?? 0.9, skipTlsVerify: provider.skipTlsVerify }],
           bindings: [{ bindingId: target, capabilityRef: binding.capabilityRef,
@@ -291,6 +295,10 @@ export class ModelConfigurationService {
         await tx.update(modelDefinitions).set({
           status: "pending", validationMessage: "Provider connection settings changed. Validate the affected detectors in Protection Capabilities.", validatedAt: null, validationLatencyMs: null,
           connectionStatus: "pending", connectionMessage: "Provider connection settings changed. Test the model call again.", connectionCheckedAt: null, connectionLatencyMs: null,
+          // The request shape belongs to the previous deployment; the next
+          // connection test re-detects it instead of sending a shape that may
+          // now be rejected before inference.
+          layaRequestMode: null,
           updatedAt: new Date(),
         }).where(eq(modelDefinitions.providerId, id));
         const revisions = await tx.select().from(modelConfigurationRevisions).where(inArray(modelConfigurationRevisions.state, ["draft", "validated"]));
@@ -307,6 +315,7 @@ export class ModelConfigurationService {
     if (target) {
       await this.db.update(modelDefinitions).set({ ...connectionEvidence(validation), updatedAt: new Date() })
         .where(eq(modelDefinitions.id, target.id));
+      await this.reloadDesiredStateForDetectedMode(target, validation.layaRequestMode);
     }
     await this.invalidateModelsForProvider(id, validation.passed ? null : validation.message);
     await this.audit(actorId, "model_provider.updated", "model_provider", id, { status: updated.status, skipTlsVerify });
@@ -333,6 +342,7 @@ export class ModelConfigurationService {
     if (target) {
       await this.db.update(modelDefinitions).set({ ...connectionEvidence(validation), updatedAt: new Date() })
         .where(eq(modelDefinitions.id, target.id));
+      await this.reloadDesiredStateForDetectedMode(target, validation.layaRequestMode);
     }
     await this.invalidateModelsForProvider(id, validation.passed ? null : validation.message);
     await this.audit(actorId, "model_provider.validated", "model_provider", id, { status: updated.status });
@@ -459,10 +469,22 @@ export class ModelConfigurationService {
     const model = await this.model(id);
     const provider = await this.provider(model.providerId);
     const connection = connectionEvidence(await this.probeModel(provider, model, "connection"));
-    const [updated] = await this.db.update(modelDefinitions).set({ ...connection, updatedAt: new Date() })
-      .where(and(eq(modelDefinitions.id, id), modelOwnerPredicate())).returning();
-    if (!updated) throw new NotFoundError("Model", id);
-    await this.audit(actorId, "model_definition.connection_tested", "model_definition", id, { status: connection.connectionStatus });
+    const updated = await this.db.transaction(async (tx) => {
+      const [saved] = await tx.update(modelDefinitions).set({ ...connection, updatedAt: new Date() })
+        .where(and(eq(modelDefinitions.id, id), modelOwnerPredicate())).returning();
+      if (!saved) throw new NotFoundError("Model", id);
+      // A re-detected Laya mode changes the projected plan even though capability
+      // evidence stays valid, so reload Runner desired state and drop the cache.
+      if (connection.layaRequestMode !== undefined && connection.layaRequestMode !== model.layaRequestMode) {
+        await this.reloadDesiredStateForModel(tx, id);
+      }
+      await tx.insert(auditEvents).values({
+        id: randomUUID(), projectId: currentProjectId(), actorId, kind: "model_definition.connection_tested",
+        resourceType: "model_definition", resourceId: id, detail: { status: connection.connectionStatus },
+      });
+      return saved;
+    });
+    this.activeCache = null;
     return publicModel(updated, provider);
   }
 
@@ -471,17 +493,43 @@ export class ModelConfigurationService {
     const model = await this.model(id);
     const provider = await this.provider(model.providerId);
     const validation = await this.probeModel(provider, model);
-    const [updated] = await this.db.update(modelDefinitions).set({
-      status: validation.passed ? "validated" : "failed",
-      validationMessage: validation.message,
-      validationLatencyMs: validation.latencyMs,
-      validatedAt: new Date(),
-      updatedAt: new Date(),
-    }).where(and(eq(modelDefinitions.id, id), modelOwnerPredicate())).returning();
-    if (!updated) throw new NotFoundError("Model", id);
-    await this.audit(actorId, "model_definition.validated", "model_definition", id, { status: updated.status });
+    const updated = await this.db.transaction(async (tx) => {
+      const [saved] = await tx.update(modelDefinitions).set({
+        status: validation.passed ? "validated" : "failed",
+        validationMessage: validation.message,
+        validationLatencyMs: validation.latencyMs,
+        validatedAt: new Date(),
+        updatedAt: new Date(),
+        ...(validation.layaRequestMode ? { layaRequestMode: validation.layaRequestMode } : {}),
+      }).where(and(eq(modelDefinitions.id, id), modelOwnerPredicate())).returning();
+      if (!saved) throw new NotFoundError("Model", id);
+      if (validation.layaRequestMode !== undefined && validation.layaRequestMode !== model.layaRequestMode) {
+        await this.reloadDesiredStateForModel(tx, id);
+      }
+      await tx.insert(auditEvents).values({
+        id: randomUUID(), projectId: currentProjectId(), actorId, kind: "model_definition.validated",
+        resourceType: "model_definition", resourceId: id, detail: { status: saved.status },
+      });
+      return saved;
+    });
     this.activeCache = null;
     return publicModel(updated, provider);
+  }
+
+  /** A provider-level probe can re-detect the mode of its representative Model. */
+  private async reloadDesiredStateForDetectedMode(target: ModelRow, mode: LayaRequestMode | undefined) {
+    if (mode === undefined || mode === target.layaRequestMode) return;
+    await this.db.transaction(async (tx) => this.reloadDesiredStateForModel(tx, target.id));
+    this.activeCache = null;
+  }
+
+  /** Reload Runner desired state after a transport-only Model change. */
+  private async reloadDesiredStateForModel(tx: GroupModelTransaction, modelId: string) {
+    const [state] = await tx.update(controllerState).set({ desiredGeneration: sql`${controllerState.desiredGeneration} + 1`, updatedAt: new Date() })
+      .where(eq(controllerState.id, "singleton")).returning();
+    if (!state) throw new Error("Controller desired state is unavailable.");
+    await tx.insert(outboxEvents).values({ id: randomUUID(), kind: "runner.desired_state_changed", aggregateId: modelId,
+      payload: { resourceType: "model_definition", modelId, generation: state.desiredGeneration } });
   }
 
   async configureRuntimeSettings(id: string, raw: unknown, actorId: string) {
@@ -527,6 +575,9 @@ export class ModelConfigurationService {
       const [model] = await tx.update(modelDefinitions).set({
         ...input, status: "pending", validationMessage: "Protocol configured. Validate it in Protection Capabilities.",
         validatedAt: null, validationLatencyMs: null, updatedAt: new Date(),
+        // A protocol change invalidates the detected transport detail too; the
+        // next connection test re-detects it (NULL projects as compatible).
+        layaRequestMode: null,
         connectionStatus: "pending", connectionMessage: "Protocol changed. Test the model call again.", connectionCheckedAt: null, connectionLatencyMs: null,
       }).where(and(eq(modelDefinitions.id, id), modelOwnerPredicate())).returning();
       if (!model) throw new NotFoundError("Model", id);
@@ -919,6 +970,7 @@ export class ModelConfigurationService {
       models: models.map((model) => {
         const provider = byProvider.get(model.providerId);
         if (!provider) throw new Error(`Model Provider ${model.providerId} is unavailable.`);
+        const layaRequestMode = resolveLayaRequestMode(model.profile, model.layaRequestMode);
         return {
           id: model.id,
           providerId: provider.id,
@@ -926,6 +978,7 @@ export class ModelConfigurationService {
           baseUrl: provider.baseUrl,
           credentialRef: provider.id,
           skipTlsVerify: provider.skipTlsVerify,
+          ...(layaRequestMode ? { layaRequestMode } : {}),
           model: model.model,
           profile: model.profile,
           timeoutSeconds: model.timeoutSeconds,
@@ -1356,20 +1409,42 @@ export class ModelConfigurationService {
       }
     }
     if (profileTransports[model.profile] === "laya_systemone") {
-      try {
+      // Negotiation happens only here, at registration / connection test time:
+      // the native System One shape is tried first and the compatible shape is
+      // sent only for the exactly matching strict-schema rejection.
+      const requestBody = (native: boolean) => ({
+        model: model.model,
+        state: "Hello",
+        questions: { greeting: { type: "noul", instructions: "Does the text contain a greeting?" } },
+        max_len: 1024,
+        ...(native ? { head_max_len: 512 } : {}),
+      });
+      const send = async (native: boolean) => {
         const response = await fetcher(`${normalizeBaseUrl(provider.baseUrl)}/systemone`, {
           method: "POST",
           headers: { authorization: `Bearer ${credential}`, "content-type": "application/json" },
-          body: JSON.stringify({ model: model.model, state: "Hello", questions: {
-            greeting: { type: "noul", instructions: "Does the text contain a greeting?" },
-          } }),
+          body: JSON.stringify(requestBody(native)),
           signal: AbortSignal.timeout(model.timeoutSeconds * 1_000),
         });
-        if (!response.ok) throw new Error(`returned HTTP ${response.status}${await layaResponseErrorDetail(response, credential)}`);
-        z.object({ model: z.string().trim().min(1), answers: z.object({
-          greeting: z.object({ type: z.literal("noul"), noul: z.number().min(0).max(1) }),
-        }).strict() }).parse(await response.json());
-        return probe(true, `${model.model} returned a valid Noul response. Validate each selected input detector in Protection Capabilities.`, started);
+        if (response.ok) {
+          z.object({ model: z.string().trim().min(1), answers: z.object({
+            greeting: z.object({ type: z.literal("noul"), noul: z.number().min(0).max(1) }),
+          }).strict() }).parse(await response.json());
+          return { passed: true as const };
+        }
+        const diagnostic = await layaResponseDiagnostic(response, credential);
+        return { passed: false as const, message: `returned HTTP ${response.status}${diagnostic.detail}`,
+          strictHeadMaxLenRejection: diagnostic.strictHeadMaxLenRejection };
+      };
+      try {
+        const nativeProbe = await send(true);
+        if (nativeProbe.passed) {
+          return probe(true, `${model.model} returned a valid Noul response using the native Laya request shape. Validate each selected input detector in Protection Capabilities.`, started, "native");
+        }
+        if (!nativeProbe.strictHeadMaxLenRejection) throw new Error(nativeProbe.message);
+        const compatibleProbe = await send(false);
+        if (!compatibleProbe.passed) throw new Error(compatibleProbe.message);
+        return probe(true, `${model.model} returned a valid Noul response using the compatible Laya request shape (the native head_max_len field is rejected by this deployment). Validate each selected input detector in Protection Capabilities.`, started, "compatible");
       } catch (error) {
         return probe(false, probeError("Laya model call failed", error), started);
       }
@@ -1605,8 +1680,9 @@ function normalizeBaseUrl(value: string): string {
   return value.trim().replace(/\/+$/, "");
 }
 
-function probe(passed: boolean, message: string, started: number) {
-  return { passed, message, latencyMs: Math.max(0, Math.round(performance.now() - started)) };
+function probe(passed: boolean, message: string, started: number, layaRequestMode?: LayaRequestMode) {
+  return { passed, message, latencyMs: Math.max(0, Math.round(performance.now() - started)),
+    ...(layaRequestMode ? { layaRequestMode } : {}) };
 }
 
 function connectionEvidence(result: ReturnType<typeof probe>) {
@@ -1615,6 +1691,8 @@ function connectionEvidence(result: ReturnType<typeof probe>) {
     connectionMessage: result.message,
     connectionLatencyMs: result.latencyMs,
     connectionCheckedAt: new Date(),
+    // A failed or non-Laya probe carries no mode, so the stored row is untouched.
+    ...(result.layaRequestMode ? { layaRequestMode: result.layaRequestMode } : {}),
   };
 }
 
@@ -1781,11 +1859,16 @@ async function responseErrorDetail(response: Response): Promise<string> {
   }
 }
 
-async function layaResponseErrorDetail(response: Response, credential: string): Promise<string> {
+async function layaResponseDiagnostic(response: Response, credential: string): Promise<{ detail: string; strictHeadMaxLenRejection: boolean }> {
   try {
-    let detail = await response.text();
+    // Read the body once: the same text drives the redacted error detail and
+    // the strict-schema rejection decision below.
+    const raw = await response.text();
+    let detail = raw;
+    let errors: unknown[] | null = null;
+    let envelopeCode: unknown;
     try {
-      const payload: unknown = JSON.parse(detail);
+      const payload: unknown = JSON.parse(raw);
       const upstream = z.object({ detail: z.unknown() }).safeParse(payload);
       const value = upstream.success ? upstream.data.detail : undefined;
       if (typeof value === "string") {
@@ -1794,7 +1877,8 @@ async function layaResponseErrorDetail(response: Response, credential: string): 
         const envelope = z.object({
           code: z.string().optional(), message: z.string().optional(), errors: z.array(z.unknown()).optional(),
         }).safeParse(value);
-        const errors = Array.isArray(value) ? value : envelope.success ? envelope.data.errors : undefined;
+        errors = Array.isArray(value) ? value : envelope.success ? envelope.data.errors ?? null : null;
+        envelopeCode = envelope.success ? envelope.data.code : undefined;
         // FastAPI errors may echo the entire submitted body in `input` or
         // exception objects in `ctx`. Surface the rejected field and reason only.
         const fieldError = z.object({
@@ -1819,10 +1903,23 @@ async function layaResponseErrorDetail(response: Response, credential: string): 
     }
     if (credential) detail = detail.split(credential).join("[REDACTED]");
     detail = detail.replace(/\s+/g, " ").trim().slice(0, 320);
-    return detail ? `: ${detail}` : "";
+    return { detail: detail ? `: ${detail}` : "", strictHeadMaxLenRejection: response.status === 422 && isStrictHeadMaxLenRejection(errors, envelopeCode) };
   } catch {
-    return "";
+    return { detail: "", strictHeadMaxLenRejection: false };
   }
+}
+
+/** Exactly the strict wrapper schema rejection: every field error rejects
+ * `body.head_max_len` as an extra field. Anything else (server busy, an
+ * unavailable model, mixed validation errors) must not trigger a retry. */
+function isStrictHeadMaxLenRejection(errors: unknown[] | null, envelopeCode: unknown): boolean {
+  if (!errors?.length) return false;
+  if (envelopeCode !== undefined && envelopeCode !== "VALIDATION_ERROR") return false;
+  return errors.every((item) => {
+    const parsed = z.object({ loc: z.array(z.union([z.string(), z.number()])), type: z.string() }).safeParse(item);
+    return parsed.success && parsed.data.type === "extra_forbidden"
+      && parsed.data.loc.length === 2 && parsed.data.loc[0] === "body" && parsed.data.loc[1] === "head_max_len";
+  });
 }
 
 function uniqueContractCoverage<T extends { contract: string; railType?: string | null; bindingId?: string | null }>(items: T[]): T[] {

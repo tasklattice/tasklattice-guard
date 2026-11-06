@@ -12,7 +12,20 @@ import {
   profileContracts,
   profileTransports,
   providerAcceptsProfile,
+  resolveLayaRequestMode,
 } from "./domain.js";
+
+describe("Laya request mode resolution", () => {
+  it("keeps the mode Laya-only and defaults legacy NULL rows to compatible", () => {
+    expect(resolveLayaRequestMode("tali.laya.v1", null)).toBe("compatible");
+    expect(resolveLayaRequestMode("tali.laya-topic.v1", undefined)).toBe("compatible");
+    expect(resolveLayaRequestMode("tali.laya.v1", "native")).toBe("native");
+    expect(resolveLayaRequestMode("tali.laya.v1", "compatible")).toBe("compatible");
+    for (const profile of ["generic-chat", "tali.typesafe-jev.v1", "tali.qwen3guard.v1"] as const) {
+      expect(resolveLayaRequestMode(profile, "native")).toBeUndefined();
+    }
+  });
+});
 
 describe("Protection Capabilities capability binding profiles", () => {
   it("supports Laya output content safety while keeping its other contracts scoped", () => {

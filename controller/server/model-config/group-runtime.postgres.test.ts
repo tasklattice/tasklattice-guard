@@ -132,6 +132,19 @@ describe.skipIf(!url)("explicit group runtime Model grants", () => {
     expect((await models.configurationForPool("pool-c"))?.models[0]).toMatchObject(settings);
   });
 
+  it("freezes the resolved Laya request mode, defaulting legacy NULL rows to compatible", async () => {
+    await database.pool.query("UPDATE model_provider SET kind='laya' WHERE id=$1", [providerC]);
+    await database.pool.query("UPDATE model_definition SET profile='tali.laya.v1', model='laya' WHERE id=$1", [modelC]);
+    fingerprintC = await validateSource(sourceC, modelC);
+    await grant("group-c", 0, sourceC, fingerprintC);
+    expect((await models.configurationForPool("pool-c"))?.models[0]).toMatchObject({ id: modelC, layaRequestMode: "compatible" });
+    await database.pool.query("UPDATE model_definition SET laya_request_mode='native' WHERE id=$1", [modelC]);
+    // Transport detail is not part of the validation fingerprint, so the mode
+    // refresh only needs a new grant, not a new capability validation.
+    await grant("group-c", 1, sourceC, fingerprintC);
+    expect((await models.configurationForPool("pool-c"))?.models[0]).toMatchObject({ id: modelC, layaRequestMode: "native" });
+  });
+
   it("revokes into blocked mode and rejects platform inheritance for custom groups", async () => {
     await grant();
     const blocked = await models.groupRuntime.update("group-c", { mode: "blocked", expectedVersion: 1 }, "group-model-admin", true);

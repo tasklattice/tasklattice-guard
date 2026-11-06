@@ -20,6 +20,7 @@ it("updates concurrency for an assigned model without rewriting its locked proto
   const concurrency = screen.getByLabelText("modelSettings.maxConcurrency");
   expect((concurrency as HTMLInputElement).disabled).toBe(false);
   expect(screen.queryByLabelText("modelSettings.lowerThreshold")).toBeNull();
+  expect(screen.queryByText("providerRegistration.layaRequestMode")).toBeNull();
   fireEvent.change(concurrency, { target: { value: "3" } });
   fireEvent.click(screen.getByRole("button", { name: "common.save" }));
   await waitFor(() => expect(configureModelRuntimeSettings).toHaveBeenCalledWith("registered-model", { maxConcurrency: 3, rateLimitAttempts: 3, lowerThreshold: 0.1, upperThreshold: 0.9 }));
@@ -49,5 +50,38 @@ it("validates a decision model's threshold pair and saves zero with independent 
     maxConcurrency: 2, rateLimitAttempts: 1, lowerThreshold: 0, upperThreshold: 0.85,
   }));
   expect(configureModelDefinition).not.toHaveBeenCalled();
+  client.clear();
+});
+
+it("shows the stored Laya request mode read-only while the protocol stays locked", async () => {
+  vi.stubGlobal("ResizeObserver", class { observe() {} unobserve() {} disconnect() {} });
+  const model = { id: "laya", name: "Laya", providerName: "Provider", providerKind: "laya", model: "auto", profile: "tali.laya.v1", timeoutSeconds: 20, maxTokens: 512, maxConcurrency: 2, protocolEditable: false, layaRequestMode: "native" } as ModelDefinition;
+  vi.mocked(configureModelRuntimeSettings).mockResolvedValue(model);
+  const client = new QueryClient({ defaultOptions: { mutations: { retry: false } } });
+  render(<QueryClientProvider client={client}><ModelProtocolSettings models={[model]} disabled={false} onChanged={async () => {}} /></QueryClientProvider>);
+  fireEvent.click(screen.getByRole("button", { name: "providerRegistration.configureModel" }));
+  fireEvent.click(screen.getByRole("combobox"));
+  fireEvent.click(await screen.findByRole("option", { name: "Laya · Provider" }));
+  expect(screen.getByText("providerRegistration.layaRequestMode")).toBeTruthy();
+  expect(screen.getByText("providerRegistration.layaRequestModeNative")).toBeTruthy();
+  expect(screen.getByText("providerRegistration.layaRequestModeHint")).toBeTruthy();
+  expect(screen.queryByText("providerRegistration.layaRequestModeNotDetected")).toBeNull();
+  expect(screen.getAllByRole("combobox")[1]!.hasAttribute("disabled")).toBe(true);
+  client.clear();
+});
+
+it("explains that a Laya request mode is not detected yet and is refreshed by Test call", async () => {
+  vi.stubGlobal("ResizeObserver", class { observe() {} unobserve() {} disconnect() {} });
+  const model = { id: "laya-null", name: "Laya", providerName: "Provider", providerKind: "laya", model: "auto", profile: "tali.laya-topic.v1", timeoutSeconds: 20, maxTokens: 512, maxConcurrency: 2, protocolEditable: true, layaRequestMode: null } as ModelDefinition;
+  vi.mocked(configureModelDefinition).mockResolvedValue(model);
+  const client = new QueryClient({ defaultOptions: { mutations: { retry: false } } });
+  render(<QueryClientProvider client={client}><ModelProtocolSettings models={[model]} disabled={false} onChanged={async () => {}} /></QueryClientProvider>);
+  fireEvent.click(screen.getByRole("button", { name: "providerRegistration.configureModel" }));
+  fireEvent.click(screen.getByRole("combobox"));
+  fireEvent.click(await screen.findByRole("option", { name: "Laya · Provider" }));
+  expect(screen.getByText("providerRegistration.layaRequestModeNotDetected")).toBeTruthy();
+  expect(screen.getByText(/providerRegistration\.layaRequestModeNotDetectedHint/)).toBeTruthy();
+  expect(screen.getByText("providerRegistration.layaRequestModeHint")).toBeTruthy();
+  expect(screen.queryByText("providerRegistration.layaRequestModeNative")).toBeNull();
   client.clear();
 });

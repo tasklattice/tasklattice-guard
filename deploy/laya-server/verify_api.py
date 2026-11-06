@@ -52,9 +52,10 @@ async def verify(args):
 
     exchanges = []
     evaluator = LayaContentSafetyEvaluator(base_url=args.base_url, model="auto", api_key=key,
-        timeout_seconds=20, transport=EvidenceTransport(exchanges))
+        timeout_seconds=20, transport=EvidenceTransport(exchanges), request_mode="compatible")
     for name, content, expected_statuses in (
-        ("first", "Hello, have a nice day!", [422, 200]),
+        # The strict deployment never receives head_max_len, in any call.
+        ("first", "Hello, have a nice day!", [200]),
         ("cached", "Hello, have a nice day!", [200]),
         ("truncated", "Please help me reset my account password. " * 2000, [200]),
     ):

@@ -110,6 +110,44 @@ describe("Relay registration workflow", () => {
     }));
   });
 
+  it("shows the Laya request mode detected during registration", async () => {
+    const layaProvider: ModelProvider = { ...provider, kind: "laya", name: "Laya", baseUrl: "https://laya.test/v1" };
+    vi.mocked(registerProviderModels).mockResolvedValue({
+      provider: layaProvider,
+      models: [{ ...ready, id: "model-laya", name: "Laya", model: "auto", profile: "tali.laya.v1", providerKind: "laya", providerName: "Laya", layaRequestMode: "native" }],
+      failures: [],
+    });
+    mount("add-provider");
+    await chooseProvider("Laya");
+    fireEvent.change(screen.getByLabelText("Base URL"), { target: { value: "https://laya.test/v1" } });
+    fireEvent.change(screen.getByLabelText("API key"), { target: { value: "synthetic-laya-key" } });
+    fireEvent.click(screen.getByRole("button", { name: "Choose models" }));
+    await screen.findByText("Choose a Laya decision model");
+    fireEvent.click(screen.getByRole("button", { name: /^Register 1 model/ }));
+    await screen.findByText("Registration complete");
+    expect(screen.getByText(/Laya request mode/).textContent).toBe("Laya request mode · Native laya-serve");
+  });
+
+  it("shows a Laya request mode that is not detected yet and refreshes it after the Test call", async () => {
+    const layaProvider: ModelProvider = { ...provider, kind: "laya", name: "Laya", baseUrl: "https://laya.test/v1" };
+    const pending: ModelDefinition = { ...ready, id: "model-laya", name: "Laya", model: "auto", profile: "tali.laya.v1", providerKind: "laya", providerName: "Laya", connectionStatus: "pending", layaRequestMode: null };
+    vi.mocked(registerProviderModels).mockResolvedValue({ provider: layaProvider, models: [pending], failures: [] });
+    vi.mocked(testModelConnection).mockResolvedValue({ ...pending, connectionStatus: "validated", layaRequestMode: "native" });
+    mount("add-provider");
+    await chooseProvider("Laya");
+    fireEvent.change(screen.getByLabelText("Base URL"), { target: { value: "https://laya.test/v1" } });
+    fireEvent.change(screen.getByLabelText("API key"), { target: { value: "synthetic-laya-key" } });
+    fireEvent.click(screen.getByRole("button", { name: "Choose models" }));
+    await screen.findByText("Choose a Laya decision model");
+    fireEvent.click(screen.getByRole("button", { name: /^Register 1 model/ }));
+    await screen.findByText("Registration complete");
+    expect(screen.getByText(/Laya request mode/).textContent).toBe("Laya request mode · Not detected yet · Run Test call to detect the request mode.");
+    expect(screen.queryByText("Native laya-serve")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Test call Laya" }));
+    expect(await screen.findByText(/Native laya-serve/)).toBeTruthy();
+    expect(screen.queryByText(/Not detected yet/)).toBeNull();
+  });
+
   it("keeps the provider catalog grouped and supports search and keyboard selection", async () => {
     mount("add-provider");
     const picker = screen.getByRole("combobox", { name: "Select Provider" });

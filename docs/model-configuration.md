@@ -99,6 +99,17 @@ frozen settings until explicitly refreshed. Redis call-context TTL, compression
 and capacity fallback remain deployment settings because they govern shared
 context storage, not an individual model.
 
+Laya Models additionally show a read-only **Laya request mode** in the same
+sheet. The Controller detects it once during model registration or **Test call**
+and stores it per Model: `native` sends `max_len` and `head_max_len` to a native
+`laya-serve`, while `compatible` sends only `max_len` for strict wrappers such as
+1Panel-dev/laya-server. Rerun the model Test call after changing the Laya
+deployment; changing the protocol to a Laya profile clears the stored mode until
+the next connection test. The Runner sends exactly one request body derived from
+the mode and never retries a `head_max_len` rejection at request time. Legacy or
+not-yet-detected Models are projected as `compatible` and show "not detected yet"
+until a Test call persists the detected mode.
+
 ## Data-plane scheduling and model concurrency
 
 Newly compiled Guardrails run independent local checks before model-dependent

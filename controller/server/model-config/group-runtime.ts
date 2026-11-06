@@ -10,7 +10,8 @@ import { auditEvents, controllerState, groupModelConfigurations as policies, mod
 import { ConflictError, ControllerError, NotFoundError, ValidationError } from "../domain/errors.js";
 import { assertPlatformAuthority } from "../services/project-context.js";
 import { assignmentInputSchema, assignmentTargetAcceptsModel, capabilityBindings, emptyModelAssignments,
-  modelRuntimeSettingsObjectSchema, modelProfiles, normalizeModelAssignments, type ActiveModelConfiguration } from "./domain.js";
+  layaRequestModes, modelRuntimeSettingsObjectSchema, modelProfiles, normalizeModelAssignments, resolveLayaRequestMode,
+  type ActiveModelConfiguration, type ActiveModelRuntime } from "./domain.js";
 import { decryptModelCredential } from "./secret-crypto.js";
 import { modelBindingValidationFingerprint, modelRuntimeValidationFingerprint } from "./runtime-fingerprint.js";
 
@@ -20,7 +21,11 @@ const snapshotSchema = z.object({ revisionId: z.string().min(1).max(256), revisi
   generation: z.number().int().nonnegative().nullable(), assignments: assignmentInputSchema,
   models: z.array(z.object({ id: z.string().uuid(), providerId: z.string().uuid(), providerName: z.string(),
     baseUrl: z.string().url(), credentialRef: z.string().uuid(), skipTlsVerify: z.boolean().default(false),
-    model: z.string().min(1), profile: z.enum(modelProfiles), timeoutSeconds: z.number().positive(), maxTokens: z.number().int().positive(),
+    model: z.string().min(1), profile: z.enum(modelProfiles),
+    // Optional so snapshots frozen before the column existed still validate;
+    // they project as compatible through the resolver.
+    layaRequestMode: z.enum(layaRequestModes).optional(),
+    timeoutSeconds: z.number().positive(), maxTokens: z.number().int().positive(),
     ...modelRuntimeSettingsObjectSchema.shape })).max(64),
 });
 const ciphertextsSchema = z.record(z.string().uuid(), z.string().max(20_000));
@@ -161,9 +166,11 @@ export class GroupRuntimeModelService {
         throw new ConflictError("Every selected runtime binding requires matching passed Rail validation.", "group_model_validation_required");
     }
     const configuration: ActiveModelConfiguration = { revisionId: prefix + id, revision: version, generation, assignments,
-      models: models.map(model => { const provider = byProvider.get(model.providerId)!; return {
+      models: models.map(model => { const provider = byProvider.get(model.providerId)!;
+        const layaRequestMode = resolveLayaRequestMode(model.profile, model.layaRequestMode); return {
         id: model.id, providerId: provider.id, providerName: provider.name, baseUrl: provider.baseUrl, credentialRef: provider.id,
-        skipTlsVerify: provider.skipTlsVerify, model: model.model, profile: model.profile, timeoutSeconds: model.timeoutSeconds, maxTokens: model.maxTokens, maxConcurrency: model.maxConcurrency ?? 2,
+        skipTlsVerify: provider.skipTlsVerify, ...(layaRequestMode ? { layaRequestMode } : {}),
+        model: model.model, profile: model.profile, timeoutSeconds: model.timeoutSeconds, maxTokens: model.maxTokens, maxConcurrency: model.maxConcurrency ?? 2,
           rateLimitAttempts: model.rateLimitAttempts ?? 3, lowerThreshold: model.lowerThreshold ?? 0.1, upperThreshold: model.upperThreshold ?? 0.9,
       }; }) };
     const credentials = Object.fromEntries(providers.map(provider => [provider.id, provider.credentialCiphertext]));
@@ -182,7 +189,13 @@ export class GroupRuntimeModelService {
     if (configuration.data.models.length !== selected.size || new Set(configuration.data.models.map(model => model.id)).size !== selected.size || configuration.data.models.some(model =>
       !selected.has(model.id) || model.providerId !== model.credentialRef) || refs.size !== Object.keys(credentials.data).length
       || [...refs].some(ref => !Object.hasOwn(credentials.data, ref))) throw unavailable();
-    return { configuration: configuration.data, credentials: credentials.data };
+    // Snapshots frozen before the request-mode column existed resolve through
+    // the same default as live rows and omit the field for non-Laya profiles.
+    const models: ActiveModelRuntime[] = configuration.data.models.map(({ layaRequestMode: stored, ...model }) => {
+      const layaRequestMode = resolveLayaRequestMode(model.profile, stored);
+      return { ...model, ...(layaRequestMode ? { layaRequestMode } : {}) };
+    });
+    return { configuration: { ...configuration.data, models }, credentials: credentials.data };
   }
 
   private publicPolicy(groupId: string, policy?: Policy): GroupModelConfigurationView {

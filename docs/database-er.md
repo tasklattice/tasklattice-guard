@@ -364,6 +364,7 @@ erDiagram
         integer rate_limit_attempts
         double lower_threshold
         double upper_threshold
+        text laya_request_mode
     }
     model_price_revision {
         text id PK

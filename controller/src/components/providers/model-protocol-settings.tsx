@@ -8,8 +8,9 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { configureModelDefinition, configureModelRuntimeSettings, type ModelDefinition } from "@/lib/controller-api";
+import { cn } from "@/lib/utils";
 import { isTypeSafeProfile, isLayaProfile } from "../../../shared/guardrail-catalog";
-import { profiles } from "./model-selection";
+import { profiles, layaRequestModeLabelKey } from "./model-selection";
 
 // Referenced protocols remain immutable; runtime settings are distributed to Runners.
 export function ModelProtocolSettings({ models, disabled, onChanged }: {
@@ -76,6 +77,14 @@ export function ModelProtocolSettings({ models, disabled, onChanged }: {
             <div className="space-y-2"><Label htmlFor="model-timeout">{t("modelSettings.timeout")}</Label><Input id="model-timeout" type="number" className="field:h-11" required min={1} max={120} value={model.timeoutSeconds} onChange={(event) => setModel({ ...model, timeoutSeconds: Number(event.target.value) })} /></div>
             {!isTypeSafeProfile(model.profile) && !isLayaProfile(model.profile) ? <div className="space-y-2"><Label htmlFor="model-token-limit">{t("modelSettings.maxTokens")}</Label><Input id="model-token-limit" type="number" className="field:h-11" required min={1} max={32768} value={model.maxTokens} onChange={(event) => setModel({ ...model, maxTokens: Number(event.target.value) })} /></div> : null}
           </fieldset> : null}
+          {model && isLayaProfile(model.profile) ? <div className="space-y-2">
+            <span className="text-sm font-medium">{t("providerRegistration.layaRequestMode")}</span>
+            <p className="flex min-h-11 items-center gap-1 rounded-md border bg-muted/30 px-3 text-sm">
+              <span className={cn("font-medium", model.layaRequestMode ? undefined : "text-muted-foreground")}>{t(layaRequestModeLabelKey(model.layaRequestMode))}</span>
+              {model.layaRequestMode ? null : <span className="text-xs text-muted-foreground">{" · "}{t("providerRegistration.layaRequestModeNotDetectedHint")}</span>}
+            </p>
+            <p className="text-xs leading-5 text-muted-foreground">{t("providerRegistration.layaRequestModeHint")}</p>
+          </div> : null}
           {model ? <div className="space-y-2"><Label htmlFor="model-concurrency">{t("modelSettings.maxConcurrency")}</Label><Input id="model-concurrency" type="number" className="field:h-11" required min={1} max={64} disabled={disabled || save.isPending} value={model.maxConcurrency ?? 2} onChange={(event) => setModel({ ...model, maxConcurrency: Number(event.target.value) })} /><p className="text-xs leading-5 text-muted-foreground">{t("modelSettings.maxConcurrencyHint")}</p></div> : null}
           {model ? <div className="space-y-2">
             <Label htmlFor="model-rate-limit-attempts">{t("modelSettings.rateLimitAttempts")}</Label>

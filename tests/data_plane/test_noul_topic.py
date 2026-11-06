@@ -32,7 +32,8 @@ async def test_typed_answers_preserve_probabilities_without_inventing_confidence
             assert body["state"] == {"current_input": request.content, "context_messages": list(request.context_messages)}
         assert set(body["questions"]) == {"denied_task", "unlisted_task"}
         return classifier_backend.response(denied_task=denied, unlisted_task=unlisted)
-    result = await TopicJudgeActionProvider(evaluator=classifier_backend.evaluator("topic_control", respond)).execute(request)
+    result = await TopicJudgeActionProvider(evaluator=classifier_backend.evaluator("topic_control", respond,
+        **({"request_mode": "native"} if classifier_backend.name == "laya" else {}))).execute(request)
     assert result.verdict == expected and result.content == request.content
     assert result.confidence is None
     assert bool(result.findings) is (expected == "matched")

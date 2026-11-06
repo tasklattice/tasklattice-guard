@@ -58,7 +58,8 @@ async def test_short_native_questions_explicit_budget_and_no_label_leakage(capab
         else:
             assert body["state"] == item.content
         return reply(body)
-    service = factory(base_url="https://laya.test/v1", model="auto", api_key="secret", transport=httpx.MockTransport(respond))
+    service = factory(base_url="https://laya.test/v1", model="auto", api_key="secret", transport=httpx.MockTransport(respond),
+                      request_mode="native")
     result = await service.evaluate(item)
     assert result.verdict == "not_matched"
     evidence = json.loads(result.trace[0].evidence)

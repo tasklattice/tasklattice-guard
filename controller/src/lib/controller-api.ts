@@ -71,6 +71,8 @@ export type ModelDefinition = {
   rateLimitAttempts?: number;
   lowerThreshold?: number;
   upperThreshold?: number;
+  /** Laya only: transport determined once at registration / connection test. Null on legacy rows. */
+  layaRequestMode?: "native" | "compatible" | null;
   status: "pending" | "validated" | "failed";
   validationMessage: string | null;
   validationLatencyMs: number | null;

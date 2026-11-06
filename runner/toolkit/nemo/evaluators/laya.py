@@ -27,6 +27,20 @@ DEFAULT_UPPER_THRESHOLD = 0.9
 # dynamic policy/context stays in state where truncation is observable.
 MODEL_MAX_LEN = 1024
 MODEL_HEAD_MAX_LEN = 512
+# The Controller declares the deployment once at model registration. The
+# Runner sends the matching body and never probes or rewrites the schema.
+LAYA_REQUEST_MODES = frozenset({"native", "compatible"})
+DEFAULT_REQUEST_MODE = "compatible"
+
+
+def normalize_request_mode(request_mode: str) -> str:
+    """Resolve the declared Controller mode; an empty value means compatible."""
+    if not isinstance(request_mode, str):
+        raise ValueError(f"Laya request mode must be native or compatible, got {request_mode!r}.")
+    mode = request_mode or DEFAULT_REQUEST_MODE
+    if mode not in LAYA_REQUEST_MODES:
+        raise ValueError(f"Laya request mode must be native or compatible, got {request_mode!r}.")
+    return mode
 
 
 def admission_rejected(response: httpx.Response) -> bool:
@@ -43,29 +57,6 @@ def admission_rejected(response: httpx.Response) -> bool:
     except ValueError:
         return False
     return isinstance(payload, dict) and payload.get("detail") == "server busy, try again later"
-
-
-def head_max_len_rejected(response: httpx.Response) -> bool:
-    """Accept only an explicit schema rejection of the optional head budget.
-
-    Native FastAPI and wrappers use different error envelopes. Mixed errors
-    (especially an unsupported model) must remain visible to the operator.
-    """
-    if response.status_code != 422:
-        return False
-    try:
-        payload = response.json()
-    except ValueError:
-        return False
-    errors = payload.get("detail") if isinstance(payload, dict) else None
-    if isinstance(errors, dict):
-        if errors.get("code") != "VALIDATION_ERROR":
-            return False
-        errors = errors.get("errors")
-    return isinstance(errors, list) and bool(errors) and all(
-        isinstance(error, dict) and error.get("loc") == ["body", "head_max_len"]
-        and error.get("type") == "extra_forbidden" for error in errors
-    )
 
 
 class LayaInputTruncatedError(ModelResponseError):
@@ -116,8 +107,8 @@ class LayaNoulEvaluator:
                  lower_threshold: float = DEFAULT_LOWER_THRESHOLD,
                  upper_threshold: float = DEFAULT_UPPER_THRESHOLD,
                  transport: httpx.AsyncBaseTransport | None = None,
-                 skip_tls_verify: bool = False, profile_ref: str, reviewer=None,
-                 rail_type: str | None = None) -> None:
+                 skip_tls_verify: bool = False, request_mode: str = DEFAULT_REQUEST_MODE,
+                 profile_ref: str, reviewer=None, rail_type: str | None = None) -> None:
         if not 0 <= lower_threshold < upper_threshold <= 1:
             raise ValueError("Expected 0 <= lower_threshold < upper_threshold <= 1.")
         self._url = base_url.rstrip("/") + "/systemone"
@@ -127,9 +118,16 @@ class LayaNoulEvaluator:
         self._lower, self._upper = lower_threshold, upper_threshold
         self._profile_ref = profile_ref
         self._reviewer = reviewer
-        # Capability belongs to this configured evaluator, never to other
-        # providers/models. Recreating it probes support again after upgrades.
-        self._head_max_len_supported = True
+        # The wire budget is fixed once by the Controller's declared deployment
+        # mode and recorded verbatim as evidence; it is never negotiated.
+        self._request_mode = normalize_request_mode(request_mode)
+        self._request_budget = {"max_len": MODEL_MAX_LEN}
+        if self._request_mode == "native":
+            self._request_budget["head_max_len"] = MODEL_HEAD_MAX_LEN
+        self._model_metadata = {"laya_request_mode": self._request_mode}
+        if self._request_mode == "compatible":
+            # The strict server applies its own head budget when the field is absent.
+            self._model_metadata["head_max_len_source"] = "server_default"
         if rail_type is not None:
             if rail_type not in self.rails:
                 raise ValueError(f"Laya {self.id} does not support {rail_type}.")
@@ -171,13 +169,13 @@ class LayaNoulEvaluator:
                request_budget: dict[str, int] | None = None) -> RuntimeTraceStep:
         judgments = {key: {"probability": p, "answer": "yes" if p >= self._upper else "no" if p <= self._lower else "uncertain"}
                      for key, p in probabilities.items()}
+        metadata = {**self._model_metadata, **(model_metadata or {})}
         evidence = json.dumps({"decision_model": "laya", "profile": self._profile_ref, "question_revision": self.revision(request),
                                "decision_rule": self.decision_rule,
                                "requested_model": self._model, "response_model": actual_model,
                                "thresholds": {"lower": self._lower, "upper": self._upper},
-                               "request_budget": request_budget if request_budget is not None else {
-                                   "max_len": MODEL_MAX_LEN, "head_max_len": MODEL_HEAD_MAX_LEN},
-                               "model_metadata": model_metadata or {},
+                               "request_budget": request_budget if request_budget is not None else dict(self._request_budget),
+                               "model_metadata": metadata,
                                "judgments": judgments}, sort_keys=True)
         return RuntimeTraceStep(id=f"{request.binding.id}:laya", kind="evaluation", name=self.display_name,
                                 status="error" if verdict == "error" else "completed", detail=reason,
@@ -218,11 +216,7 @@ class LayaNoulEvaluator:
         probabilities: dict[str, float] = {}
         actual_model: str | None = None
         model_metadata = {}
-        request_budget = {"max_len": MODEL_MAX_LEN}
-        if self._head_max_len_supported:
-            request_budget["head_max_len"] = MODEL_HEAD_MAX_LEN
-        else:
-            model_metadata["head_max_len_source"] = "server_default"
+        request_budget = dict(self._request_budget)
         try:
             questions = self.questions(request)
             if questions:
@@ -243,26 +237,11 @@ class LayaNoulEvaluator:
                             **request_budget,
                         }
                         async def send() -> httpx.Response:
-                            return await client.post(self._url, headers={"authorization": f"Bearer {self._api_key}"}, json=body)
-
-                        async def guarded() -> httpx.Response:
-                            attempt = await send()
-                            if "head_max_len" in body and head_max_len_rejected(attempt):
-                                # Validation rejected the request before inference.
-                                # Mutating this call's body bounds negotiation to
-                                # once, including any later admission retries.
-                                self._head_max_len_supported = False
-                                body.pop("head_max_len")
-                                request_budget.pop("head_max_len")
-                                model_metadata["head_max_len_source"] = "server_default"
-                                if time.monotonic() >= deadline:
-                                    raise TimeoutError("Model call deadline exceeded")
-                                call.retries += 1
-                                attempt = await send()
+                            attempt = await client.post(self._url, headers={"authorization": f"Bearer {self._api_key}"}, json=body)
                             attempt.raise_for_status()
                             return attempt
 
-                        response = await with_connection_retry(guarded, deadline=deadline, call=call, rate_limit_attempts=self._rate_limit_attempts,
+                        response = await with_connection_retry(send, deadline=deadline, call=call, rate_limit_attempts=self._rate_limit_attempts,
                                                                retryable_rejection=admission_rejected)
                         with model_response():
                             payload = response.json()

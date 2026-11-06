@@ -43,6 +43,13 @@
       "when": 1794000000000,
       "tag": "0005_rename_default_guardrail_provisioning",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1794100000000,
+      "tag": "0006_laya_request_mode",
+      "breakpoints": true
     }
   ]
 }

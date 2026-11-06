@@ -122,10 +122,11 @@ JSON 的 `detail`、实际请求体及服务版本/镜像名，移除密钥。�
 展示字段路径、原因和类型，省略校验对象的 `input` / `ctx` 并遮蔽调用密钥。
 这项诊断改动需要更新 Controller 后生效。
 
-连接探针只发送 `model`、文本 `state` 和包含 `greeting` Noul 问题的 `questions`；
-实际 Runner 首次还会发送 `max_len=1024`、`head_max_len=512`，话题等检测也会使用
-结构化状态。当前连接探针不发送 `head_max_len`；如果注册期间出现该字段的错误，
-需核对实际发布版本和发起调用的阶段，不能只依据页面名称判断请求来源。
+连接探针发送完整原生形状：`model`、文本 `state`、包含 `greeting` Noul 问题的
+`questions`，以及 `max_len=1024`、`head_max_len=512`；探针结果同时确定该模型后续使用的
+Laya 请求模式（见下节）。话题等检测仍使用结构化状态。注册期间若出现 `head_max_len`
+字段错误，按下节的严格 422 判据区分严格 schema 拒绝与其他错误，不能只依据页面名称
+判断请求来源。
 
 ### 原生与封装服务的兼容
 
@@ -135,21 +136,33 @@ JSON 的 `detail`、实际请求体及服务版本/镜像名，移除密钥。�
 仍调用官方 `laya.Router`。这说明 API 封装可以不同于原生 `laya-serve`，不代表权重需要转换。
 实际可用模型仍取决于镜像安装的 checkpoint；接受某个枚举值不保证对应模型已安装。
 
-Runner 只在 HTTP 422 的全部字段错误均为 `loc=["body","head_max_len"]`、
-`type=extra_forbidden` 时，省略该参数重试一次。支持 FastAPI `detail` 数组和
-`code=VALIDATION_ERROR` 的嵌套 `errors` 数组；混合模型错误、其他字段错误、
-普通文本 422 或推理异常均不触发这项兼容。模型 ID、状态、问题、`max_len` 保持原样。
-重试共享原截止时间，取消立即向上传播，并计入调用重试次数。
+两种部署的请求体差异只在 Laya 传输模式，且该模式在注册阶段一次性确定，不在请求时协商。
+Controller 的模型连接探针先发送原生形状（`max_len=1024` 与 `head_max_len=512`），只有响应
+恰好是 `head_max_len` 的严格 schema 拒绝时才重试兼容形状（`max_len=1024`，不带
+`head_max_len`）。严格拒绝指 HTTP 422 且全部字段错误均为 `loc=["body","head_max_len"]`、
+`type=extra_forbidden`，支持 FastAPI `detail` 数组与 `code=VALIDATION_ERROR` 的嵌套
+`errors` 数组。混合模型错误、其他字段错误、普通文本 422 或推理异常都不会触发兼容重试，
+也不会改写已保存的模式。
 
-不支持该字段的能力仅记在当前配置对应的 evaluator 实例，后续调用省略该字段，
-不同实例互不影响，实例重建后重新探测。若服务升级后支持了该参数，可重建运行时或
-重启 Runner 以重新探测。原生服务继续收到 `head_max_len=512`。
-兼容调用的证据只列出实际发送的 `request_budget`，并标记
+探测器在注册、模型测试调用和能力重新验证时运行，并把结果按模型持久化为
+`model_definition.laya_request_mode`：首次即成功记作 `native`，兼容重试后成功记作
+`compatible`；两者都失败时保留原有失败语义且不改变已保存的模式。将协议改为 Laya
+profile 会先清空该字段，直到下一次连接测试重新检测。该列可空，历史行保持 `NULL`；
+Controller 在向 Runner 投影时把 `NULL` 解析为 `compatible`，因此旧模型默认可用，但需要
+执行一次模型 **测试调用** 才会记录为 `native`。
+
+Runner 只按下发的 `laya_request_mode` 构造唯一一份请求体：`native` 发送 `max_len` 与
+`head_max_len`，`compatible` 只发送 `max_len`。没有请求时的 422 回退、没有进程内缓存，
+也不会为了探测 schema 发送第二次请求。模式只影响传输，不改模型 ID、状态、问题、
+`max_len` 或严格 Noul 解析。调用证据中的 `request_budget` 反映实际请求体预算；
+`model_metadata.laya_request_mode` 记录本次模式，`compatible` 时另有
 `model_metadata.head_max_len_source=server_default`，不把服务默认值记作 512。
 
-注册默认值及错误展示需更新 Controller，运行时兼容需更新 Runner，无数据库迁移。
-严格 Noul 解析、输入截断检查和阈值保持原有行为；服务默认问题预算及实际路由模型
-仍需用目标服务验证。模拟 HTTP 契约通过不等于真实模型检测质量通过。
+复用同一 Provider 的 Laya 模型可分别保存两种模式；同一模型每次注册/测试调用的检测结果
+会覆盖旧值。部署变更后（例如原生 `laya-serve` 更换为 1Panel `laya-server`，或反向替换），
+在 **配置模型** 中查看只读的 Laya 请求模式，并执行一次模型 **测试调用** 重新检测；页面不
+提供手工修改模式。严格 Noul 解析、输入截断检查和阈值保持原有行为；服务默认问题预算及
+实际路由模型仍需用目标服务验证。模拟 HTTP 契约通过不等于真实模型检测质量通过。
 
 2026-11-03 本地兼容验证：相关 Runner 测试 190 项、Controller 测试 82 项、
 注册界面测试 21 项通过，前后端 TypeScript 检查通过。桌面实际操作确认 `auto`
@@ -159,7 +172,9 @@ Runner 只在 HTTP 422 的全部字段错误均为 `loc=["body","head_max_len"]`
 
 同日已将兼容版 Controller/Runner 部署到本地开发栈，将 Z790 18080 替换为固定源码的
 `1Panel-dev/laya-server`，复用原多语言权重并更新现有 Provider 密钥。真实接口已复现
-截图中的两项 422，兼容后成功；长输入截断仍产生错误。新服务采用默认多语言模式，
+截图中的两项 422，当时的运行时兼容逻辑随后省略该字段并调用成功；该请求时回退已于
+2026-11-05 移除，改由注册期确定的请求模式（见文末记录）。长输入截断仍产生错误。
+新服务采用默认多语言模式，
 实际路由与原生自动路由不同。34 条纯模型对照中新服务为 18 正确、15 灰区、1 误判，
 原生为 22 正确、12 灰区。Catalog 越狱探针通过，输入/输出内容安全和话题探针未通过。
 完整部署版本、证据位置和回滚步骤见 [Z790 Laya Server 部署](../deploy/laya-server/README.md)。
@@ -234,3 +249,31 @@ Output 为 278/279，无执行异常，commit hash 误拦已修正。仍失败�
 Catalog 选择 Runner 的逻辑也与完整 Guard 测试统一到 Default ordinal 0，避免按连接顺序落到旧版或实验编译器；主实例不在线时明确报告不可用。验证失败现在保留评估 trace 中的原始概率、阈值、修订及脱敏模型 HTTP 证据。若动作是 block 但没有 matched finding，错误说明明确指出缺少确定的违规检测，仍判未通过。
 
 本次相关 Python 测试 198 项、Controller 测试 29 项通过，同一套 72 条真实模型组合回归全部通过，其中 44 条使用复核。单模型仍会在中文、安全拒绝等样本上返回灰区，Catalog 的双侧烟雾测试通过不等于完整检测质量达标。此轮没有重新执行全量 696 项 Guard 测试；上述全量报告属于前一运行时修订。记录保存在 `output/laya-catalog-output/catalog-validation.json` 和 `regression-results.json`。
+
+### Laya 请求模式注册期确定（实现记录，2026-11-05）
+
+2026-11-05 起，Laya 传输模式不再由 Runner 在请求时通过 422 回退探测，而是由 Controller
+在模型连接探针中一次性确定并按模型持久化：
+
+- 新增可空列 `model_definition.laya_request_mode`（迁移
+  `controller/server/db/migrations/0006_laya_request_mode.sql`）。取值 `native` 或
+  `compatible`；非 Laya 配置不投影该字段。
+- 探针先发送原生形状；仅当响应是严格的 `head_max_len` schema 拒绝时，才发送一次兼容
+  形状。注册、模型测试调用和能力重新验证都会写入检测结果，连接消息说明本次使用的形状；
+  两种形状都失败时保留原有失败语义，不改变已保存的模式。协议改为 Laya profile 会清空
+  该列，等待下一次连接测试。
+- 历史行保持 `NULL`，Controller 投影时解析为 `compatible`；旧的 Laya 模型需要执行一次
+  模型测试调用才会记录为 `native`。数据库升级本身不发送模型请求。
+- Runner 只按 `laya_request_mode` 构造唯一请求体：`native` 发送 `max_len` 与
+  `head_max_len`，`compatible` 只发送 `max_len`；请求时的 422 回退、`head_max_len`
+  支持缓存及相关重试均已移除。证据字段为 `request_budget`、
+  `model_metadata.laya_request_mode`，`compatible` 时另有
+  `model_metadata.head_max_len_source=server_default`。
+- 桌面端注册结果与 **配置模型** 展示只读的请求模式；未检测或历史 `NULL` 显示
+  “尚未检测”，提示运行测试调用。部署变更后无需手工修改模式。
+- 回归与部署验证脚本使用显式的 `--request-mode compatible` / 固定 compatible 构造，
+  不再依赖也不再期望 `head_max_len` 的运行时 422 协商；原始服务契约的 422 断言保留。
+
+本记录对应 Controller 与 Runner 的代码、单元测试及文档更新；真实目标服务仍需在部署变更
+后执行一次模型测试调用，并复核调用证据中的模式与请求预算。此前的历史验收记录保持原样，
+仅更正已失效的请求时协商描述。

@@ -23,6 +23,7 @@ import { sql } from "drizzle-orm";
 import type { GuardrailDraftConfig } from "../domain/guardrail-plan.js";
 import type { ValidationCaseResult, ValidationMetrics } from "../domain/models.js";
 import type {
+  LayaRequestMode,
   ModelAssignments,
   ModelProfile,
   ModelProviderKind,
@@ -283,6 +284,9 @@ export const modelDefinitions = pgTable("model_definition", {
   name: text("name").notNull(),
   model: text("model").notNull(),
   profile: text("profile").$type<ModelProfile>().notNull().default("generic-chat"),
+  // Laya System One transport detail detected by the model probe. NULL on legacy
+  // rows (and non-Laya rows) resolves to the broad "compatible" default.
+  layaRequestMode: text("laya_request_mode").$type<LayaRequestMode>(),
   timeoutSeconds: integer("timeout_seconds").notNull().default(20),
   maxTokens: integer("max_tokens").notNull().default(512),
   maxConcurrency: integer("max_concurrency").notNull().default(2),

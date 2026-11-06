@@ -109,8 +109,8 @@ class LayaTopicEvaluator(LayaNoulEvaluator):
         if result.verdict == "error" or not self.questions(request):
             return result
         configured = dict(request.parameters)
-        # Coverage decisions describe the same inference, including any
-        # negotiated server budget, rather than a new native request.
+        # Coverage decisions describe the same inference, including the
+        # mode-derived request budget, rather than a new native request.
         request_budget = json.loads(result.trace[0].evidence)["request_budget"]
         # The native encoder does not reliably evaluate the union of a list:
         # both confident false positives and false negatives were observed.

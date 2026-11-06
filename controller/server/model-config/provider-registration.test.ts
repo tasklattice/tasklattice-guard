@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import type { ControllerDatabase } from "../db/client.js";
-import { auditEvents, modelDefinitions, modelProviders } from "../db/schema.js";
+import { auditEvents, controllerState, modelDefinitions, modelProviders, outboxEvents } from "../db/schema.js";
 import { decryptModelCredential } from "./secret-crypto.js";
 import { ModelConfigurationService } from "./service.js";
 import { providerRegistrationSchema } from "./domain.js";
@@ -12,16 +12,39 @@ const secret = "test-root-secret";
 
 function setup(failCatalog = false) {
   const rows = new Map<unknown, Array<Record<string, unknown>>>();
-  const tx = { insert: vi.fn((table: unknown) => ({
-    values: (values: Record<string, unknown> | Array<Record<string, unknown>>) => {
-      const added = Array.isArray(values) ? values : [values];
-      rows.set(table, [...(rows.get(table) ?? []), ...added]);
-      return { returning: async () => added };
-    },
-  })) };
+  rows.set(controllerState, [{ id: "singleton", desiredGeneration: 0 }]);
+  const query = (table: unknown) => {
+    const result = rows.get(table) ?? [];
+    return Object.assign(Promise.resolve(result), {
+      where: () => query(table), orderBy: () => query(table), limit: () => Promise.resolve(result),
+    });
+  };
+  const select = () => ({ from: query });
+  const tx = {
+    select,
+    execute: vi.fn(async () => {}),
+    update: vi.fn((table: unknown) => ({
+      set: (patch: Record<string, unknown>) => ({ where: () => {
+        // The service increments the singleton through a SQL expression; emulate
+        // that increment instead of copying the raw patch value.
+        const updated = table === controllerState
+          ? [{ ...(rows.get(controllerState)?.[0] ?? { id: "singleton" }),
+            desiredGeneration: Number(rows.get(controllerState)?.[0]?.desiredGeneration ?? 0) + 1, updatedAt: patch.updatedAt }]
+          : (rows.get(table) ?? []).map((row) => ({ ...row, ...patch }));
+        rows.set(table, updated);
+        return Object.assign(Promise.resolve(updated), { returning: async () => updated });
+      } }),
+    })),
+    insert: vi.fn((table: unknown) => ({
+      values: (values: Record<string, unknown> | Array<Record<string, unknown>>) => {
+        const added = Array.isArray(values) ? values : [values];
+        rows.set(table, [...(rows.get(table) ?? []), ...added]);
+        return { returning: async () => added };
+      },
+    })),
+  };
   const db = {
     ...tx,
-    select: () => ({ from: (table: unknown) => ({ where: async () => rows.get(table) ?? [], orderBy: async () => rows.get(table) ?? [] }) }),
     transaction: vi.fn(async (run: (value: typeof tx) => unknown) => run(tx)),
   };
   const fetcher = vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
@@ -33,6 +56,14 @@ function setup(failCatalog = false) {
       : new Response(JSON.stringify({ choices: [{ message: { content: "OK" } }] }), { status: 200 });
   });
   return { rows, db, fetcher, service: new ModelConfigurationService(db as unknown as ControllerDatabase, secret, "", fetcher as typeof fetch) };
+}
+
+/** Desired-state generation plus the outbox events that asked Runners to reload. */
+function desiredState(rows: Map<unknown, Array<Record<string, unknown>>>) {
+  return {
+    generation: Number(rows.get(controllerState)?.[0]?.desiredGeneration ?? 0),
+    events: rows.get(outboxEvents) ?? [],
+  };
 }
 
 describe("Relay-style Provider registration", () => {
@@ -51,7 +82,7 @@ describe("Relay-style Provider registration", () => {
     expect(platform[0]).toHaveProperty("credentialConfigured", true);
   });
 
-  it.each(["tali.laya.v1", "tali.laya-topic.v1"] as const)("registers Laya through its own System One profile %s", async profile => {
+  it.each(["tali.laya.v1", "tali.laya-topic.v1"] as const)("registers Laya through its own System One profile %s and stores the native request mode", async profile => {
     const { service, fetcher } = setup();
     fetcher.mockImplementation(async (_url, init) => {
       const request = JSON.parse(String(init?.body));
@@ -62,12 +93,13 @@ describe("Relay-style Provider registration", () => {
       models: [{ ...model("laya"), profile }],
     }, "admin");
     expect(result.provider.kind).toBe("laya");
-    expect(result.models[0]).toMatchObject({ model: "laya", profile, connectionStatus: "validated", status: "pending" });
+    expect(result.models[0]).toMatchObject({ model: "laya", profile, connectionStatus: "validated", status: "pending", layaRequestMode: "native" });
+    expect(result.models[0]?.connectionMessage).toContain("native");
     expect(fetcher).toHaveBeenCalledOnce();
     expect(fetcher.mock.calls[0]?.[0]).toBe("https://laya.test/v1/systemone");
     expect(JSON.parse(String(fetcher.mock.calls[0]?.[1]?.body))).toEqual({ model: "laya", state: "Hello", questions: {
       greeting: { type: "noul", instructions: "Does the text contain a greeting?" },
-    } });
+    }, max_len: 1024, head_max_len: 512 });
   });
 
   it("discovers the independent Laya catalog without probing or persisting models", async () => {
@@ -110,20 +142,66 @@ describe("Relay-style Provider registration", () => {
     expect(JSON.stringify(result)).not.toContain(connection.apiKey);
   });
 
-  it.each(["tali.laya.v1", "tali.laya-topic.v1"] as const)("registers auto against a strict Laya server using %s", async profile => {
+  it.each(["tali.laya.v1", "tali.laya-topic.v1"] as const)("registers auto against a strict Laya server using %s after exactly one compatible retry", async profile => {
     const { service, fetcher } = setup();
+    const bodies: Array<Record<string, unknown>> = [];
     fetcher.mockImplementation(async (_url, init) => {
-      const body = JSON.parse(String(init?.body));
-      expect(Object.keys(body).sort()).toEqual(["model", "questions", "state"]);
+      const body = JSON.parse(String(init?.body)) as Record<string, unknown>;
+      bodies.push(body);
+      if (bodies.length === 1) return Response.json({ detail: [{
+        loc: ["body", "head_max_len"], type: "extra_forbidden", msg: "Extra inputs are not permitted",
+      }] }, { status: 422 });
+      expect(Object.keys(body).sort()).toEqual(["max_len", "model", "questions", "state"]);
       expect(body.model).toBe("auto");
-      expect(body.questions.greeting.instructions).toEqual(expect.any(String));
+      expect(body.questions).toHaveProperty("greeting.instructions");
       return Response.json({ model: "multilingual", answers: { greeting: { type: "noul", noul: 0.95 } } });
     });
     const result = await service.registerProviderModels({
       connection: { ...connection, kind: "laya" }, models: [{ ...model("auto"), profile }],
     }, "admin");
-    expect(result.models[0]).toMatchObject({ model: "auto", connectionStatus: "validated", status: "pending" });
-    expect(fetcher).toHaveBeenCalledOnce();
+    expect(result.models[0]).toMatchObject({ model: "auto", connectionStatus: "validated", status: "pending", layaRequestMode: "compatible" });
+    expect(result.models[0]?.connectionMessage).toContain("compatible");
+    expect(fetcher).toHaveBeenCalledTimes(2);
+    expect(bodies[0]).toMatchObject({ model: "auto", max_len: 1024, head_max_len: 512 });
+    expect(bodies[1]).not.toHaveProperty("head_max_len");
+  });
+
+  it("retries with the compatible shape only for the strict 1Panel VALIDATION_ERROR envelope", async () => {
+    const { service, fetcher } = setup();
+    const bodies: Array<Record<string, unknown>> = [];
+    fetcher.mockImplementation(async (_url, init) => {
+      bodies.push(JSON.parse(String(init?.body)) as Record<string, unknown>);
+      if (bodies.length === 1) return Response.json({ detail: { code: "VALIDATION_ERROR", message: "Request validation failed", errors: [
+        { loc: ["body", "head_max_len"], type: "extra_forbidden", message: "Extra inputs are not permitted" },
+      ] } }, { status: 422 });
+      return Response.json({ model: "laya", answers: { greeting: { type: "noul", noul: 0.9 } } });
+    });
+    const result = await service.registerProviderModels({
+      connection: { ...connection, kind: "laya" }, models: [{ ...model("laya"), profile: "tali.laya.v1" }],
+    }, "admin");
+    expect(result.models[0]).toMatchObject({ layaRequestMode: "compatible", connectionStatus: "validated" });
+    expect(fetcher).toHaveBeenCalledTimes(2);
+    expect(bodies[0]).toHaveProperty("head_max_len", 512);
+    expect(bodies[1]).not.toHaveProperty("head_max_len");
+  });
+
+  it("keeps the failed result and stores no mode when the compatible probe also fails", async () => {
+    const { service, fetcher, rows } = setup();
+    fetcher.mockImplementation(async (_url, init) => {
+      const body = JSON.parse(String(init?.body)) as Record<string, unknown>;
+      if (body.head_max_len !== undefined) return Response.json({ detail: [{
+        loc: ["body", "head_max_len"], type: "extra_forbidden", msg: "Extra inputs are not permitted",
+      }] }, { status: 422 });
+      return Response.json({ detail: { code: "MODEL_NOT_AVAILABLE", message: `Only multilingual is installed; credential=${connection.apiKey}` } }, { status: 422 });
+    });
+    const result = await service.registerProviderModels({
+      connection: { ...connection, kind: "laya" }, models: [{ ...model("english"), profile: "tali.laya.v1" }],
+    }, "admin");
+    expect(fetcher).toHaveBeenCalledTimes(2);
+    expect(result.models[0]).toMatchObject({ connectionStatus: "failed", status: "pending" });
+    expect(result.models[0]?.connectionMessage).toContain("MODEL_NOT_AVAILABLE");
+    expect(JSON.stringify(result)).not.toContain(connection.apiKey);
+    expect(rows.get(modelDefinitions)?.[0]).not.toHaveProperty("layaRequestMode");
   });
 
   it("shows nested Laya server validation errors without silently remapping the model", async () => {
@@ -143,6 +221,7 @@ describe("Relay-style Provider registration", () => {
     expect(JSON.stringify(result)).not.toContain("private-input");
     expect(JSON.stringify(result)).not.toContain(connection.apiKey);
     expect(fetcher).toHaveBeenCalledOnce();
+    expect(result.models[0]).not.toHaveProperty("layaRequestMode");
   });
 
   it("preserves nested model-unavailable errors and redacts their message", async () => {
@@ -155,6 +234,135 @@ describe("Relay-style Provider registration", () => {
     }, "admin");
     expect(result.models[0]?.connectionMessage).toContain("MODEL_NOT_AVAILABLE: Only multilingual is installed");
     expect(JSON.stringify(result)).not.toContain(connection.apiKey);
+    expect(fetcher).toHaveBeenCalledOnce();
+  });
+
+  it.each(["native", "compatible"] as const)("re-detects and persists the %s Laya request mode on a connection test", async mode => {
+    const { service, rows, fetcher } = setup();
+    const providerId = "fe3671e8-a707-4d9b-a6a4-ea804ae76ec4", modelId = "7471c0eb-a533-449a-8814-98c3bc23aa98";
+    rows.set(modelProviders, [{ id: providerId, name: "Laya", kind: "laya", baseUrl: "https://laya.test/v1",
+      credentialCiphertext: "", skipTlsVerify: false }]);
+    rows.set(modelDefinitions, [{ id: modelId, projectId: null, providerId, name: "laya", model: "laya",
+      profile: "tali.laya.v1", timeoutSeconds: 20, maxTokens: 64, layaRequestMode: mode === "native" ? "compatible" : "native" }]);
+    let calls = 0;
+    fetcher.mockImplementation(async (_url, init) => {
+      calls += 1;
+      const body = JSON.parse(String(init?.body)) as Record<string, unknown>;
+      if (mode === "compatible" && body.head_max_len !== undefined) return Response.json({ detail: [{
+        loc: ["body", "head_max_len"], type: "extra_forbidden", msg: "Extra inputs are not permitted",
+      }] }, { status: 422 });
+      return Response.json({ model: "laya", answers: { greeting: { type: "noul", noul: 0.9 } } });
+    });
+    const result = await service.testModelConnection(modelId, "admin");
+    expect(result).toMatchObject({ connectionStatus: "validated", layaRequestMode: mode });
+    expect(result.connectionMessage).toContain(mode);
+    expect(fetcher).toHaveBeenCalledTimes(mode === "native" ? 1 : 2);
+    expect(rows.get(modelDefinitions)?.[0]?.layaRequestMode).toBe(mode);
+    // A changed transport mode must reload Runner desired state once.
+    const { generation, events } = desiredState(rows);
+    expect(generation).toBe(1);
+    expect(events).toHaveLength(1);
+    expect(events[0]).toMatchObject({ kind: "runner.desired_state_changed", aggregateId: modelId });
+    expect(events[0]?.payload).toMatchObject({ resourceType: "model_definition", modelId, generation: 1 });
+  });
+
+  it("does not downgrade a stored Laya mode or retry after an unrelated probe failure", async () => {
+    const { service, rows, fetcher } = setup();
+    const providerId = "fe3671e8-a707-4d9b-a6a4-ea804ae76ec4", modelId = "7471c0eb-a533-449a-8814-98c3bc23aa98";
+    rows.set(modelProviders, [{ id: providerId, name: "Laya", kind: "laya", baseUrl: "https://laya.test/v1",
+      credentialCiphertext: "", skipTlsVerify: false }]);
+    rows.set(modelDefinitions, [{ id: modelId, projectId: null, providerId, name: "laya", model: "laya",
+      profile: "tali.laya.v1", timeoutSeconds: 20, maxTokens: 64, connectionStatus: "validated", layaRequestMode: "native" }]);
+    fetcher.mockResolvedValue(new Response("Server busy", { status: 503 }));
+    const result = await service.testModelConnection(modelId, "admin");
+    expect(result).toMatchObject({ connectionStatus: "failed" });
+    expect(fetcher).toHaveBeenCalledOnce();
+    expect(rows.get(modelDefinitions)?.[0]?.layaRequestMode).toBe("native");
+  });
+
+  it.each(["native", "compatible"] as const)("persists the detected %s Laya mode through revalidation", async mode => {
+    const { service, rows, fetcher } = setup();
+    const providerId = "fe3671e8-a707-4d9b-a6a4-ea804ae76ec4", modelId = "7471c0eb-a533-449a-8814-98c3bc23aa98";
+    rows.set(modelProviders, [{ id: providerId, name: "Laya", kind: "laya", baseUrl: "https://laya.test/v1",
+      credentialCiphertext: "", skipTlsVerify: false }]);
+    rows.set(modelDefinitions, [{ id: modelId, projectId: null, providerId, name: "laya", model: "laya",
+      profile: "tali.laya.v1", timeoutSeconds: 20, maxTokens: 64, status: "pending", layaRequestMode: null }]);
+    fetcher.mockImplementation(async (_url, init) => {
+      const body = JSON.parse(String(init?.body)) as Record<string, unknown>;
+      if (mode === "compatible" && body.head_max_len !== undefined) return Response.json({ detail: [{
+        loc: ["body", "head_max_len"], type: "extra_forbidden", msg: "Extra inputs are not permitted",
+      }] }, { status: 422 });
+      return Response.json({ model: "laya", answers: { greeting: { type: "noul", noul: 0.9 } } });
+    });
+    const result = await service.revalidateModel(modelId, "admin");
+    expect(result).toMatchObject({ status: "validated", layaRequestMode: mode });
+    expect(rows.get(modelDefinitions)?.[0]?.layaRequestMode).toBe(mode);
+    // A changed transport mode must reload Runner desired state once.
+    const { generation, events } = desiredState(rows);
+    expect(generation).toBe(1);
+    expect(events).toHaveLength(1);
+    expect(events[0]).toMatchObject({ kind: "runner.desired_state_changed", aggregateId: modelId });
+    expect(events[0]?.payload).toMatchObject({ resourceType: "model_definition", modelId, generation: 1 });
+  });
+
+  it.each(["connection test", "revalidation"] as const)("does not reload Runner desired state when %s re-detects the same Laya mode", async operation => {
+    const { service, rows, fetcher } = setup();
+    const providerId = "fe3671e8-a707-4d9b-a6a4-ea804ae76ec4", modelId = "7471c0eb-a533-449a-8814-98c3bc23aa98";
+    rows.set(modelProviders, [{ id: providerId, name: "Laya", kind: "laya", baseUrl: "https://laya.test/v1",
+      credentialCiphertext: "", skipTlsVerify: false }]);
+    rows.set(modelDefinitions, [{ id: modelId, projectId: null, providerId, name: "laya", model: "laya",
+      profile: "tali.laya.v1", timeoutSeconds: 20, maxTokens: 64, status: "validated", connectionStatus: "validated",
+      layaRequestMode: "native" }]);
+    fetcher.mockImplementation(async () => Response.json({ model: "laya", answers: { greeting: { type: "noul", noul: 0.9 } } }));
+    if (operation === "connection test") await service.testModelConnection(modelId, "admin");
+    else await service.revalidateModel(modelId, "admin");
+    expect(fetcher).toHaveBeenCalledOnce();
+    expect(rows.get(modelDefinitions)?.[0]?.layaRequestMode).toBe("native");
+    // Native -> native changes nothing in the plan, so no reload is needed.
+    expect(desiredState(rows).generation).toBe(0);
+    expect(rows.get(outboxEvents) ?? []).toEqual([]);
+  });
+
+  it("clears the detected Laya mode and reloads desired state when Provider connection settings change", async () => {
+    const { service, rows, fetcher } = setup();
+    const providerId = "fe3671e8-a707-4d9b-a6a4-ea804ae76ec4", modelId = "7471c0eb-a533-449a-8814-98c3bc23aa98";
+    rows.set(modelProviders, [{ id: providerId, name: "Laya", kind: "laya", baseUrl: "https://laya.test/v1",
+      credentialCiphertext: "", skipTlsVerify: false, status: "validated" }]);
+    rows.set(modelDefinitions, [{ id: modelId, projectId: null, providerId, name: "laya", model: "laya",
+      profile: "tali.laya.v1", timeoutSeconds: 20, maxTokens: 64, connectionStatus: "validated", layaRequestMode: "native" }]);
+    // A failed probe leaves the mode undetected, so the stale native shape is cleared.
+    fetcher.mockResolvedValue(new Response("Unavailable", { status: 503 }));
+    await service.updateProvider(providerId, { baseUrl: "https://laya-new.test/v1" }, "admin");
+    expect(fetcher).toHaveBeenCalledOnce();
+    expect(rows.get(modelDefinitions)?.[0]?.layaRequestMode).toBeNull();
+    const { generation, events } = desiredState(rows);
+    expect(generation).toBe(1);
+    expect(events).toHaveLength(1);
+    expect(events[0]).toMatchObject({ kind: "runner.desired_state_changed", aggregateId: providerId });
+    expect(events[0]?.payload).toMatchObject({ resourceType: "model_provider", providerId, generation: 1 });
+  });
+
+  it("creates a Laya model with the probed request mode", async () => {
+    const { service, rows, fetcher } = setup();
+    const providerId = "a2b3c4d5-1111-4444-8888-123456789012";
+    rows.set(modelProviders, [{ id: providerId, name: "Laya", kind: "laya", baseUrl: "https://laya.test/v1",
+      credentialCiphertext: "", skipTlsVerify: false }]);
+    fetcher.mockImplementation(async () => Response.json({ model: "laya", answers: { greeting: { type: "noul", noul: 0.9 } } }));
+    const created = await service.createModel({ providerId, ...model("laya"), profile: "tali.laya.v1" }, "admin");
+    expect(created).toMatchObject({ profile: "tali.laya.v1", connectionStatus: "validated", layaRequestMode: "native" });
+    expect(rows.get(modelDefinitions)?.[0]?.layaRequestMode).toBe("native");
+  });
+
+  it("clears the detected Laya mode when the model protocol is reconfigured", async () => {
+    const { service, rows } = setup();
+    const providerId = "fe3671e8-a707-4d9b-a6a4-ea804ae76ec4", modelId = "7471c0eb-a533-449a-8814-98c3bc23aa98";
+    rows.set(modelProviders, [{ id: providerId, name: "Laya", kind: "laya", baseUrl: "https://laya.test/v1",
+      credentialCiphertext: "", skipTlsVerify: false }]);
+    rows.set(modelDefinitions, [{ id: modelId, projectId: null, providerId, name: "laya", model: "laya",
+      profile: "tali.laya.v1", timeoutSeconds: 20, maxTokens: 64, layaRequestMode: "native" }]);
+    const result = await service.configureModel(modelId, { profile: "tali.laya-topic.v1", timeoutSeconds: 30, maxTokens: 512 }, "admin");
+    expect(result).toMatchObject({ profile: "tali.laya-topic.v1", layaRequestMode: null, connectionStatus: "pending" });
+    expect(rows.get(modelDefinitions)?.[0]?.layaRequestMode).toBeNull();
   });
 
   it("includes NVIDIA's dedicated security endpoint as a candidate without claiming a successful call", async () => {

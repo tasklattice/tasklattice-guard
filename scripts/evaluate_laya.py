@@ -84,7 +84,8 @@ async def replay(args):
             max_tokens=512, transport=EvidenceTransport(exchanges), rail_type=sample.get("rail_type", "input")) if args.review_model else None
         factory, _ = EVALUATORS[sample["capability"]]
         evaluator = factory(base_url=args.base_url, model=args.model, api_key=key, timeout_seconds=20,
-            reviewer=reviewer, transport=EvidenceTransport(exchanges), rail_type=sample.get("rail_type", "input"))
+            reviewer=reviewer, transport=EvidenceTransport(exchanges), rail_type=sample.get("rail_type", "input"),
+            request_mode=args.request_mode)
         request = evaluation_request(sample, review=reviewer is not None)
         started = time.monotonic()
         result = await evaluator.evaluate(request)
@@ -96,6 +97,7 @@ async def replay(args):
             "trace": [asdict(step) for step in result.trace], "usage": asdict(result.usage), "exchanges": exchanges}
         rows.append(row)
         report = {"thresholds": {"lower": .1, "upper": .9}, "review_model": args.review_model,
+            "request_mode": args.request_mode,
             "total": len(rows), "outcomes": dict(outcomes), "cases": rows}
         args.output.parent.mkdir(parents=True, exist_ok=True)
         encoded = json.dumps(report, ensure_ascii=False, indent=2)
@@ -112,6 +114,8 @@ def main():
     parser.add_argument("--samples", type=Path, default=Path("tests/fixtures/laya-regression.json"))
     parser.add_argument("--base-url", required=True)
     parser.add_argument("--model", default="auto")
+    parser.add_argument("--request-mode", choices=("native", "compatible"), default="compatible",
+                        help="Declaration of the target Laya deployment's System One schema.")
     parser.add_argument("--key-file", type=Path, required=True)
     parser.add_argument("--review-model")
     parser.add_argument("--review-base-url")

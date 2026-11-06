@@ -49,6 +49,11 @@ export type ModelTransport = "openai_chat" | "nemoguard_jailbreak_detect" | "typ
 export type ModelResourceStatus = "pending" | "validated" | "failed";
 export type ModelRevisionState = "draft" | "validated" | "activating" | "active" | "superseded" | "failed";
 
+/** Laya System One request shapes. "native" sends max_len + head_max_len, while
+ * "compatible" sends max_len only for strict wrappers such as 1Panel-dev/laya-server. */
+export const layaRequestModes = ["native", "compatible"] as const;
+export type LayaRequestMode = (typeof layaRequestModes)[number];
+
 export const retiredModelIds = new Set(["nvidia/nvidia-nemotron-nano-9b-v2"]);
 
 export function isRetiredModel(modelId: string): boolean {
@@ -184,6 +189,16 @@ export const profileTransports: Record<ModelProfile, ModelTransport> = {
 
 export const controlPlaneProfiles: readonly ModelProfile[] = controlPlaneProfileRefs;
 
+/** The resolved request mode for Laya runtimes only; legacy NULL rows resolve to
+ * the broad "compatible" shape so an older registration keeps working. */
+export function resolveLayaRequestMode(
+  profile: ModelProfile,
+  stored: LayaRequestMode | null | undefined,
+): LayaRequestMode | undefined {
+  if (profileTransports[profile] !== "laya_systemone") return undefined;
+  return stored === "native" || stored === "compatible" ? stored : "compatible";
+}
+
 export function normalizeModelAssignments(
   value: Partial<{
     controlPlane: string | null;
@@ -292,6 +307,8 @@ export type ActiveModelRuntime = {
   skipTlsVerify?: boolean;
   model: string;
   profile: ModelProfile;
+  /** Present only for Laya profiles; transport detail, never part of a fingerprint. */
+  layaRequestMode?: LayaRequestMode;
   timeoutSeconds: number;
   maxTokens: number;
   maxConcurrency?: number;

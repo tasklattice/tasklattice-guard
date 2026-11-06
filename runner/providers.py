@@ -83,6 +83,7 @@ def dynamic_runtime_action_providers(
             lower_threshold=item.lower_threshold if item.HasField("lower_threshold") else 0.1,
             upper_threshold=item.upper_threshold if item.HasField("upper_threshold") else 0.9,
             skip_tls_verify=item.skip_tls_verify,
+            laya_request_mode=item.laya_request_mode,
         )
         for item in configuration.runtimes
     }
@@ -173,7 +174,7 @@ def dynamic_runtime_action_providers(
             skip_tls_verify=runtime.skip_tls_verify, transport=transports[runtime.id],
             reviewer=reviewers.get(phase), rail_type=phase,
             lower_threshold=runtime.lower_threshold, upper_threshold=runtime.upper_threshold,
-            rate_limit_attempts=runtime.rate_limit_attempts,
+            rate_limit_attempts=runtime.rate_limit_attempts, request_mode=runtime.laya_request_mode,
         )
         routes.append(EvaluationRoute(capability, next(iter(evaluator.contracts)), evaluator))
     providers: list[ActionProvider] = [
@@ -206,6 +207,7 @@ def dynamic_runtime_action_providers(
                 lower_threshold=runtime.lower_threshold, upper_threshold=runtime.upper_threshold,
                 rate_limit_attempts=runtime.rate_limit_attempts,
                 reviewer=reviewers.get("input"),
+                request_mode=runtime.laya_request_mode,
             )
         else:
             if topic.profile_ref not in {"tali.taxonomy-judge.v1", "tali.nemoguard-topic-control.v1"}:

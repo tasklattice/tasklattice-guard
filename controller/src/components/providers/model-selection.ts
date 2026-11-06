@@ -1,4 +1,5 @@
-import type { ModelProfile } from "@/lib/controller-api";
+import type { ModelDefinition, ModelProfile } from "@/lib/controller-api";
+import { isLayaProfile } from "../../../shared/guardrail-catalog";
 
 export const profiles: ModelProfile[] = [
   "generic-chat",
@@ -35,4 +36,16 @@ export function suggestedProfile(modelId: string): ModelProfile {
 
 export function displayNameForModel(modelId: string) {
   return modelId.split("/").at(-1)?.replaceAll("-", " ").replace(/\b\w/g, (letter) => letter.toUpperCase()) ?? modelId;
+}
+
+/** Only Laya models persist a request mode; it is absent or null for every other profile. */
+export function isLayaModel(model: Pick<ModelDefinition, "providerKind" | "profile">) {
+  return model.providerKind === "laya" || isLayaProfile(model.profile);
+}
+
+/** Localized label for a Laya request mode, including legacy rows that were never detected. */
+export function layaRequestModeLabelKey(mode: ModelDefinition["layaRequestMode"]) {
+  return mode === "native" ? "providerRegistration.layaRequestModeNative"
+    : mode === "compatible" ? "providerRegistration.layaRequestModeCompatible"
+    : "providerRegistration.layaRequestModeNotDetected";
 }

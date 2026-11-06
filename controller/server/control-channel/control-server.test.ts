@@ -37,7 +37,7 @@ const assignments = {
   },
 };
 
-const activeConfiguration = (revisionId: string, revision: number) => ({
+const activeConfiguration = (revisionId: string, revision: number, layaRequestMode?: "native" | "compatible") => ({
   revisionId,
   revision,
   generation: 9,
@@ -49,8 +49,9 @@ const activeConfiguration = (revisionId: string, revision: number) => ({
     baseUrl: "https://models.mock/v1",
     skipTlsVerify: true,
     credentialRef: "provider-1",
-    model: "Qwen/Qwen3Guard-Gen-8B",
-    profile: "tali.qwen3guard.v1" as const,
+    model: layaRequestMode ? "laya" : "Qwen/Qwen3Guard-Gen-8B",
+    profile: (layaRequestMode ? "tali.laya.v1" : "tali.qwen3guard.v1") as "tali.laya.v1" | "tali.qwen3guard.v1",
+    ...(layaRequestMode ? { layaRequestMode } : {}),
     timeoutSeconds: 20,
     maxTokens: 128,
   }, {
@@ -1041,6 +1042,8 @@ describe("Runner model-configuration convergence", () => {
     expect(dispatched?.runtimes).toEqual([
       expect.objectContaining({ id: "safety-model", skipTlsVerify: true }),
     ]);
+    // Non-Laya runtimes never carry a Laya transport detail on the wire.
+    expect(dispatched?.runtimes?.[0]).not.toHaveProperty("layaRequestMode");
     expect(dispatched?.runtimes).not.toEqual(expect.arrayContaining([
       expect.objectContaining({ id: "control-model" }),
     ]));
@@ -1052,6 +1055,22 @@ describe("Runner model-configuration convergence", () => {
     expect(models.finalizeActivation).toHaveBeenCalledOnce();
     expect(models.finalizeActivation).toHaveBeenCalledWith("revision-9", "default");
     expect(models.failActivation).not.toHaveBeenCalled();
+  });
+
+  it("carries the resolved Laya request mode for Laya data-plane runtimes on the desired-state wire", async () => {
+    const models = { activeConfiguration: vi.fn().mockResolvedValue(activeConfiguration("revision-9", 9, "native")),
+      finalizeActivation: vi.fn(), failActivation: vi.fn() };
+    const server = new RunnerControlServer(config, serviceMock() as unknown as ControlPlaneService,
+      metricsMock() as unknown as ControllerMetrics, models as unknown as ModelConfigurationService);
+    const stream = streamMock();
+    await handle(server, stream, registration("laya-runner"), null);
+    const dispatched = stream.write.mock.calls
+      .map(([message]) => message.desiredState?.modelConfiguration)
+      .find(Boolean);
+    expect(dispatched?.runtimes).toEqual([
+      expect.objectContaining({ id: "safety-model", profileRef: "tali.laya.v1", layaRequestMode: "native" }),
+    ]);
+    await server.stop();
   });
 
   it("NACKs the candidate and immediately reconciles the old active revision", async () => {
