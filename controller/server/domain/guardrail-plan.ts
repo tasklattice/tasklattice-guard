@@ -299,7 +299,7 @@ export function buildGuardrailPlan(input: {
   for (const { capability: definition, binding, policy, fullPolicy, authoredRule, authoredParameters, actionGroup } of executable) {
     // Never coalesce separate Policies by capability: a later Policy must see
     // the content produced by every earlier Policy, even across module types.
-    const declarative = policy ? [{ binding, policy: fullPolicy ?? policy }] : [];
+    const declarative = policy ? [{ binding, policy: fullPolicy ?? policy, executionPolicy: policy }] : [];
     const nativePolicy = programmableByKey.get(`${binding.policyId}@${binding.policyVersion}`);
     const catalogNative = !authoredRule && !policy && !nativePolicy ? policyById.get(`${binding.policyId}@${binding.policyVersion}`) : undefined;
     const splitTopic = !authoredRule && isSplitTopicPolicy(binding.policyId, binding.policyVersion);
@@ -476,12 +476,23 @@ function nativeClassifierParameters(policy: PolicyDto, rule: PolicyDto["rules"][
   return values;
 }
 
-/** Execution definitions never need authoring tests or duplicate source rules. */
-function compactDefinitions(definitions: Record<string, Record<string, unknown>>): Record<string, unknown> {
-  if (JSON.stringify(definitions).length <= 256_000) return definitions;
-  return Object.fromEntries(Object.entries(definitions).map(([id, definition]) => {
+/**
+ * Small plans keep the complete Policy node for package identity. Large plans
+ * send one selected Rule per step, without authoring tests or duplicate source
+ * rules, so target Profiles remain below the Runner's gRPC message limit.
+ */
+function planDefinitions(
+  declarative: Array<{ policy: PolicyDto; executionPolicy?: PolicyDto }>,
+): Record<string, unknown> {
+  const full = Object.fromEntries(declarative.map(({ policy }) => [policy.id, frozenBuiltInDefinition(policy)]));
+  const needsCompact = declarative.some(({ policy }) =>
+    policy.rules.length > 8 || JSON.stringify(frozenBuiltInDefinition(policy)).length > 100_000);
+  if (!needsCompact && JSON.stringify(full).length <= 1_000_000) return full;
+  return Object.fromEntries(declarative.map(({ policy, executionPolicy }) => {
+    const selected = executionPolicy ?? policy;
+    const definition = frozenBuiltInDefinition(selected);
     const { definition: _source, test_cases: _tests, ...execution } = definition;
-    return [id, execution];
+    return [selected.id, execution];
   }));
 }
 
@@ -489,14 +500,14 @@ function parametersFor(
   capabilityId: string,
   binding: GuardrailPolicyBindingConfig,
   draft: GuardrailDraftConfig,
-  declarative: Array<{ binding: GuardrailPolicyBindingConfig; policy: PolicyDto }>,
+  declarative: Array<{ binding: GuardrailPolicyBindingConfig; policy: PolicyDto; executionPolicy?: PolicyDto }>,
 ): Array<[string, string]> {
   if (capabilityId === "builtin_content_filter") {
     return [
       ["policy_versions_json", JSON.stringify(Object.fromEntries(declarative.map((item) => [item.binding.policyId, item.policy.version])))],
       // A published Guardrail owns its Rule definitions. Catalog changes or
       // custom package replacement must not mutate an already compiled plan.
-      ["policy_definitions_json", JSON.stringify(compactDefinitions(Object.fromEntries(declarative.map(({ policy }) => [policy.id, frozenBuiltInDefinition(policy)]))))],
+      ["policy_definitions_json", JSON.stringify(planDefinitions(declarative))],
       ["policy_ids", declarative.map((item) => item.binding.policyId).join("\n")],
       ["enabled_rules_json", JSON.stringify(Object.fromEntries(declarative.map((item) => [item.binding.policyId, item.binding.enabledRuleIds])))],
       ["binding_ids_json", JSON.stringify(Object.fromEntries(declarative.map((item) => [
@@ -535,7 +546,7 @@ function parametersFor(
 function phasesFor(
   capability: RuntimeCapability,
   binding: GuardrailPolicyBindingConfig,
-  declarative: Array<{ binding: GuardrailPolicyBindingConfig; policy: PolicyDto }>,
+  declarative: Array<{ binding: GuardrailPolicyBindingConfig; policy: PolicyDto; executionPolicy?: PolicyDto }>,
 ): Array<"input" | "output"> {
   if (capability.capability === "builtin_content_filter") {
     const selected = new Set(declarative.flatMap(({ binding: item, policy }) => {
