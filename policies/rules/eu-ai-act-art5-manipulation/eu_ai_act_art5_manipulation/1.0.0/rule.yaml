@@ -1,7 +1,8 @@
 id: eu-ai-act-art5-manipulation/eu_ai_act_art5_manipulation
 version: 1.0.0
-name: EU AI Act Art5 Manipulation
-description: Art. 5.1(a) — Blocks subliminal manipulation, deceptive AI techniques, and covert behavioral influence
+name: EU AI Act Art5 Manipulation (EN/FR)
+description: Art. 5.1(a) — Blocks subliminal manipulation, deceptive AI techniques,
+  and covert behavioral influence
 stages:
 - input
 detector:
@@ -10,79 +11,157 @@ detector:
   parameters:
     detector_options:
       match:
-        all:
-        - not:
-            contains:
-            - research on
-            - study on
-            - academic
-            - thesis on
-            - explain
-            - what is
-            - article 5
-            - prohibited by
-            - detect dark pattern
-            - audit for
-            - compliance monitoring
-            - ethical review
-            - how to prevent
-            - how to avoid
-        - any:
-          - within_sentence:
-              all:
-              - contains:
-                - build
-                - create
-                - develop
-                - design
-                - implement
-                - deploy
-                - launch
-                - use
-                - manipulate
-                - influence
-                - persuade
-                - nudge
-                - coerce
-                - exploit
-                - target
-                - embed
-                - inject
-                - insert
-              - keywords:
-                - subliminal
-                - subliminal message
-                - subliminal advertising
-                - subliminal technique
-                - subliminal signal
-                - subliminal stimulus
-                - subliminal perception
-                - subliminal cue
-                - subconscious
-                - subconscious manipulation
-                - subconscious influence
-                - subconscious persuasion
-                - below conscious awareness
-                - behavior manipulation
-                - behavioral manipulation
-                - behavioral distortion
-                - manipulative design
-                - dark pattern
-                - deceptive pattern
-                - deceptive design
-                - coercive design
-                - impair decision
-                - distort decision
-                - undermine autonomy
-                - override consent
-                - bypass rational
-          - keywords:
-            - subliminal manipulation system
-            - subliminal advertising system
-            - covert behavioral manipulation
-            - subconscious manipulation tool
-            - deceptive ai manipulation
-            - dark pattern ai system
+        any:
+        - all:
+          - not:
+              contains:
+              - research on
+              - study on
+              - academic
+              - thesis on
+              - explain
+              - what is
+              - article 5
+              - prohibited by
+              - detect dark pattern
+              - audit for
+              - compliance monitoring
+              - ethical review
+              - how to prevent
+              - how to avoid
+          - any:
+            - within_sentence:
+                all:
+                - contains:
+                  - build
+                  - create
+                  - develop
+                  - design
+                  - implement
+                  - deploy
+                  - launch
+                  - use
+                  - manipulate
+                  - influence
+                  - persuade
+                  - nudge
+                  - coerce
+                  - exploit
+                  - target
+                  - embed
+                  - inject
+                  - insert
+                - keywords:
+                  - subliminal
+                  - subliminal message
+                  - subliminal advertising
+                  - subliminal technique
+                  - subliminal signal
+                  - subliminal stimulus
+                  - subliminal perception
+                  - subliminal cue
+                  - subconscious
+                  - subconscious manipulation
+                  - subconscious influence
+                  - subconscious persuasion
+                  - below conscious awareness
+                  - behavior manipulation
+                  - behavioral manipulation
+                  - behavioral distortion
+                  - manipulative design
+                  - dark pattern
+                  - deceptive pattern
+                  - deceptive design
+                  - coercive design
+                  - impair decision
+                  - distort decision
+                  - undermine autonomy
+                  - override consent
+                  - bypass rational
+            - keywords:
+              - subliminal manipulation system
+              - subliminal advertising system
+              - covert behavioral manipulation
+              - subconscious manipulation tool
+              - deceptive ai manipulation
+              - dark pattern ai system
+        - all:
+          - not:
+              contains:
+              - recherche sur
+              - étude sur
+              - académique
+              - thèse sur
+              - expliquer
+              - qu'est-ce que
+              - c'est quoi
+              - article 5
+              - interdit par
+              - prohibé par
+              - détecter les dark patterns
+              - audit
+              - surveillance de conformité
+              - contrôle de conformité
+              - examen éthique
+              - comment prévenir
+              - comment éviter
+          - any:
+            - within_sentence:
+                all:
+                - contains:
+                  - construire
+                  - créer
+                  - développer
+                  - concevoir
+                  - implémenter
+                  - mettre en place
+                  - déployer
+                  - lancer
+                  - utiliser
+                  - manipuler
+                  - influencer
+                  - persuader
+                  - inciter
+                  - contraindre
+                  - exploiter
+                  - cibler
+                  - intégrer
+                  - injecter
+                  - insérer
+                - keywords:
+                  - subliminal
+                  - subliminale
+                  - message subliminal
+                  - publicité subliminale
+                  - technique subliminale
+                  - signal subliminal
+                  - stimulus subliminal
+                  - perception subliminale
+                  - subconscient
+                  - inconscient
+                  - manipulation subconsciente
+                  - influence subconsciente
+                  - persuasion subconsciente
+                  - en dessous du seuil de conscience
+                  - manipulation de comportement
+                  - manipulation comportementale
+                  - distorsion comportementale
+                  - conception manipulatrice
+                  - dark pattern
+                  - schéma trompeur
+                  - conception trompeuse
+                  - conception coercitive
+                  - altérer la décision
+                  - fausser la décision
+                  - saper l'autonomie
+                  - contourner le consentement
+            - keywords:
+              - système de manipulation subliminale
+              - système de publicité subliminale
+              - manipulation comportementale cachée
+              - outil de manipulation subconsciente
+              - manipulation ia trompeuse
+              - système ia dark pattern
 on_match:
   action: block
 risk_level: low

@@ -1111,24 +1111,14 @@ export const targetProtectionPresets: readonly ProtectionPreset[] = [
           "eu-ai-act-art5-vulnerability/eu_ai_act_art5_vulnerability",
           "eu-ai-act-art5-social-scoring/eu_ai_act_art5_social_scoring",
           "eu-ai-act-art5-emotion-recognition/eu_ai_act_art5_emotion_recognition",
-          "eu-ai-act-art5-biometric-profiling/eu_ai_act_art5_biometric_profiling",
-          "eu-ai-act-art5-manipulation-fr/eu_ai_act_art5_manipulation_fr",
-          "eu-ai-act-art5-vulnerability-fr/eu_ai_act_art5_vulnerability_fr",
-          "eu-ai-act-art5-social-scoring-fr/eu_ai_act_art5_social_scoring_fr",
-          "eu-ai-act-art5-emotion-recognition-fr/eu_ai_act_art5_emotion_recognition_fr",
-          "eu-ai-act-art5-biometric-profiling-fr/eu_ai_act_art5_biometric_profiling_fr"
+          "eu-ai-act-art5-biometric-profiling/eu_ai_act_art5_biometric_profiling"
         ],
         "ruleOrder": [
           "eu-ai-act-art5-manipulation/eu_ai_act_art5_manipulation",
           "eu-ai-act-art5-vulnerability/eu_ai_act_art5_vulnerability",
           "eu-ai-act-art5-social-scoring/eu_ai_act_art5_social_scoring",
           "eu-ai-act-art5-emotion-recognition/eu_ai_act_art5_emotion_recognition",
-          "eu-ai-act-art5-biometric-profiling/eu_ai_act_art5_biometric_profiling",
-          "eu-ai-act-art5-manipulation-fr/eu_ai_act_art5_manipulation_fr",
-          "eu-ai-act-art5-vulnerability-fr/eu_ai_act_art5_vulnerability_fr",
-          "eu-ai-act-art5-social-scoring-fr/eu_ai_act_art5_social_scoring_fr",
-          "eu-ai-act-art5-emotion-recognition-fr/eu_ai_act_art5_emotion_recognition_fr",
-          "eu-ai-act-art5-biometric-profiling-fr/eu_ai_act_art5_biometric_profiling_fr"
+          "eu-ai-act-art5-biometric-profiling/eu_ai_act_art5_biometric_profiling"
         ],
         "testCaseOverrides": {}
       },

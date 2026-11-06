@@ -21,7 +21,7 @@ describe("Target Profile baseline", () => {
 
     const full = expandProtectionPreset(byId.get("full-feature")!, policyView);
     expect(full).toHaveLength(20);
-    expect(full.reduce((count, binding) => count + binding.enabledRuleIds.length, 0)).toBe(207);
+    expect(full.reduce((count, binding) => count + binding.enabledRuleIds.length, 0)).toBe(202);
     expect(profileRequiresModels(byId.get("full-feature")!, policyView)).toBe(true);
   });
 
