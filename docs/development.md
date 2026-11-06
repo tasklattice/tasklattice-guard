@@ -194,9 +194,13 @@ Each vendor still runs against its own evaluator, profile, thresholds, prompt
 revision, and evidence collection. Vendor isolation tests remain separate.
 Provider-independent checks run once rather than once per vendor.
 
-Generated Runner fixture freshness belongs to the Python control-plane suite;
-generated protobuf freshness belongs to the Python contract suite. CLI helper
-tests belong to `test:cli`. Aggregate commands and CI invoke each check once.
+Generated Runner fixture freshness is an explicit maintenance gate:
+`npm run fixtures:check` regenerates every checked-in signed Artifact and
+compares its checksum. It is skipped in ordinary test runs because it costs
+seconds and Node subprocesses per run; CI runs it once in the first Control plane
+shard. Generated protobuf freshness belongs to the Python contract suite, and
+CLI helper tests belong to `test:cli`. Aggregate commands and CI invoke each
+check once.
 
 In addition to development dependencies, the contract checks require Helm and
 jq. CI supplies disposable PostgreSQL 17 and Redis services and enables their

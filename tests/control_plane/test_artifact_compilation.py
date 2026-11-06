@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -112,6 +113,14 @@ def test_rail_and_enforcement_flags_survive_compilation(
     assert binding["timeout_ms"] == 750
 
 
+# Regenerating every signed Artifact fixture and comparing its checksum costs
+# several seconds and multiple Node subprocesses. It is a fixture-maintenance
+# gate, not a per-run regression: run it explicitly with `npm run fixtures:check`
+# (CI runs it once) so ordinary test runs do not repeat that work.
+@pytest.mark.skipif(
+    os.environ.get("GUARD_VERIFY_TEST_FIXTURES") != "1",
+    reason="Set GUARD_VERIFY_TEST_FIXTURES=1 (or run npm run fixtures:check) to regenerate and verify checked-in Artifact fixtures.",
+)
 def test_checked_in_runner_fixture_is_the_current_compiler_output() -> None:
     result = subprocess.run(
         [sys.executable, "scripts/generate_test_artifacts.py", "--check"],

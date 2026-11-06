@@ -30,6 +30,7 @@
     "test:runner-cli": "bash scripts/test-runner-guardctl.sh",
     "test:control-plane": "npm run test:control-plane:artifacts && npm run test:control-plane:python && npm run test:control-plane --prefix controller",
     "test:control-plane:artifacts": "npm run policies:check && npm run policies:regression && .venv/bin/python -m scripts.generate_default_baseline --check",
+    "fixtures:check": "GUARD_VERIFY_TEST_FIXTURES=1 .venv/bin/python -m pytest -q tests/control_plane/test_artifact_compilation.py -k checked_in_runner_fixture",
     "test:control-plane:python": ".venv/bin/python -m pytest -q -m control_plane",
     "test:data-plane": ".venv/bin/python -m pytest -q -m data_plane",
     "test:e2e": ".venv/bin/python -m pytest -q -m e2e",

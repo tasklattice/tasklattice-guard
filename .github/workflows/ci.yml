@@ -74,6 +74,10 @@ jobs:
         if: matrix.shard == 1
         run: npm run test:control-plane:artifacts
 
+      - name: Verify checked-in Runner artifact fixtures
+        if: matrix.shard == 1
+        run: npm run fixtures:check
+
       - name: Test control-plane Python shard
         run: npm run test:control-plane:python -- --control-plane-shard=${{ matrix.shard }}/2
 
