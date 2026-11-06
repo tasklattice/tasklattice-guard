@@ -510,8 +510,6 @@ export const targetProtectionPresets: readonly ProtectionPreset[] = [
         "ruleActions": {},
         "reasoningPolicy": null,
         "enabledRuleIds": [
-          "boundary/indirect-injection",
-          "boundary/memory-poisoning",
           "prompt-injection-blocker/blocked-word-1",
           "prompt-injection-blocker/blocked-word-2",
           "prompt-injection-blocker/blocked-word-3",
@@ -537,8 +535,6 @@ export const targetProtectionPresets: readonly ProtectionPreset[] = [
           "claims-system-override-filter/claims_system_override"
         ],
         "ruleOrder": [
-          "boundary/indirect-injection",
-          "boundary/memory-poisoning",
           "prompt-injection-blocker/blocked-word-1",
           "prompt-injection-blocker/blocked-word-2",
           "prompt-injection-blocker/blocked-word-3",
@@ -1217,9 +1213,7 @@ export const targetProtectionPresets: readonly ProtectionPreset[] = [
         "ruleActions": {},
         "reasoningPolicy": null,
         "enabledRuleIds": [
-          "boundary/indirect-injection",
           "model/jailbreak",
-          "boundary/memory-poisoning",
           "prompt-injection-blocker/blocked-word-1",
           "prompt-injection-blocker/blocked-word-2",
           "prompt-injection-blocker/blocked-word-3",
@@ -1245,9 +1239,7 @@ export const targetProtectionPresets: readonly ProtectionPreset[] = [
           "claims-system-override-filter/claims_system_override"
         ],
         "ruleOrder": [
-          "boundary/indirect-injection",
           "model/jailbreak",
-          "boundary/memory-poisoning",
           "prompt-injection-blocker/blocked-word-1",
           "prompt-injection-blocker/blocked-word-2",
           "prompt-injection-blocker/blocked-word-3",
@@ -1879,9 +1871,7 @@ export const targetProtectionPresets: readonly ProtectionPreset[] = [
         "ruleActions": {},
         "reasoningPolicy": null,
         "enabledRuleIds": [
-          "boundary/indirect-injection",
           "model/jailbreak",
-          "boundary/memory-poisoning",
           "prompt-injection-blocker/blocked-word-1",
           "prompt-injection-blocker/blocked-word-2",
           "prompt-injection-blocker/blocked-word-3",
@@ -1907,9 +1897,7 @@ export const targetProtectionPresets: readonly ProtectionPreset[] = [
           "claims-system-override-filter/claims_system_override"
         ],
         "ruleOrder": [
-          "boundary/indirect-injection",
           "model/jailbreak",
-          "boundary/memory-poisoning",
           "prompt-injection-blocker/blocked-word-1",
           "prompt-injection-blocker/blocked-word-2",
           "prompt-injection-blocker/blocked-word-3",
@@ -2599,9 +2587,7 @@ export const targetProtectionPresets: readonly ProtectionPreset[] = [
         "ruleActions": {},
         "reasoningPolicy": null,
         "enabledRuleIds": [
-          "boundary/indirect-injection",
           "model/jailbreak",
-          "boundary/memory-poisoning",
           "prompt-injection-blocker/blocked-word-1",
           "prompt-injection-blocker/blocked-word-2",
           "prompt-injection-blocker/blocked-word-3",
@@ -2627,9 +2613,7 @@ export const targetProtectionPresets: readonly ProtectionPreset[] = [
           "claims-system-override-filter/claims_system_override"
         ],
         "ruleOrder": [
-          "boundary/indirect-injection",
           "model/jailbreak",
-          "boundary/memory-poisoning",
           "prompt-injection-blocker/blocked-word-1",
           "prompt-injection-blocker/blocked-word-2",
           "prompt-injection-blocker/blocked-word-3",
@@ -3290,9 +3274,7 @@ export const targetProtectionPresets: readonly ProtectionPreset[] = [
         "ruleActions": {},
         "reasoningPolicy": null,
         "enabledRuleIds": [
-          "boundary/indirect-injection",
           "model/jailbreak",
-          "boundary/memory-poisoning",
           "prompt-injection-blocker/blocked-word-1",
           "prompt-injection-blocker/blocked-word-2",
           "prompt-injection-blocker/blocked-word-3",
@@ -3318,9 +3300,7 @@ export const targetProtectionPresets: readonly ProtectionPreset[] = [
           "claims-system-override-filter/claims_system_override"
         ],
         "ruleOrder": [
-          "boundary/indirect-injection",
           "model/jailbreak",
-          "boundary/memory-poisoning",
           "prompt-injection-blocker/blocked-word-1",
           "prompt-injection-blocker/blocked-word-2",
           "prompt-injection-blocker/blocked-word-3",

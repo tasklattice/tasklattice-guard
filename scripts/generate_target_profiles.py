@@ -7,6 +7,10 @@ def policy_selection(ids, local_only=False):
  for pid in ids:
   p=policies[pid]
   rules=[r for r in p['rules'] if not local_only or r['detector']['ref'] not in MODEL]
+  # Agent boundary Rules use dedicated NeMo actions and cannot execute in a
+  # mixed ContentFilter action group yet; keep them out of the current Profile
+  # baseline until the boundary Policy is split out.
+  rules=[r for r in rules if not r['detector']['ref'].startswith('agent/')]
   if not rules: continue
   params={}
   testing=p.get('testing',{})
