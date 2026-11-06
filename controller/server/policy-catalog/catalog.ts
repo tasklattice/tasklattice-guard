@@ -1,5 +1,6 @@
 import { policyTestContextSchema } from "../../shared/policy-definition.js";
 import { readFileSync } from "node:fs";
+import { existsSync } from "node:fs";
 import { join } from "node:path";
 
 import { z } from "zod";
@@ -154,6 +155,7 @@ export const POLICY_CATALOG_FILE_NAMES = [
   "focused_policies.json",
   "china_policies.json",
   "configurable_policies.json",
+  "target_policies.json",
   "custom_policies.json",
 ] as const;
 
@@ -196,6 +198,7 @@ export class PolicyCatalog {
     }
     for (const fileName of POLICY_CATALOG_FILE_NAMES) {
       const path = join(directory, fileName);
+      if (!existsSync(path)) continue;
       for (const policy of readPolicyAssets(path)) {
         if (fileName === "custom_policies.json" && (policy.source !== "custom" || merged.has(policy.id) || contracts.nativePolicies[policy.id] || policy.compliance != null || policy.rules.some(rule => rule.implementation.execution !== "local"))) {
           throw new Error(`Invalid imported Policy origin or identity: ${policy.id}`);

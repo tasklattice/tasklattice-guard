@@ -1,13 +1,10 @@
-import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import { targetProtectionPresets } from "../../shared/target-protection-presets.js";
 import { expandProtectionPreset, profileRequiresModels } from "./presets.js";
+import { PolicyCatalog } from "./catalog.js";
 
-const targetPolicies = JSON.parse(readFileSync(resolve("../runner/toolkit/policy_library/assets_target/target_policies.json"), "utf8"));
-const policyView = targetPolicies.map((policy: any) => ({
-  id: policy.id, version: policy.version, rails: policy.rails, parameters: policy.parameters, rules: policy.rules,
-}));
+const policyView = PolicyCatalog.load(resolve("../runner/toolkit/policy_library/assets_target")).list();
 
 describe("Target Profile baseline", () => {
   it("has the five approved Profiles", () => {
