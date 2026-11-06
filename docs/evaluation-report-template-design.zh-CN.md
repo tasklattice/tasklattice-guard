@@ -239,7 +239,7 @@ Guard Controller：配置、版本、发布、证据管理（与同步检查路�
 | --- | --- | --- |
 | [Validation 协议](../proto/tasklattice/guard/control/v1/validation.proto)与[组合规则](guardrail-policies.md) | 预期/实际 Decision、完整变换、Rule 命中、失败分类、Trace、冻结 override | 大规模独立盲测、生产分布、最终应用成功 |
 | [holdout 入口](../scripts/evaluate_model_holdout.py) | 版本/checksum/model evidence、分组 FP/FN、错误与缺失隔离 | 当前限定 allow/block 且要求模型调用证据；不能直接覆盖本地-only、transform、真实生成、流式和端到端 ASR |
-| [runtime profile benchmark](../benchmarks/nemo_runtime_profiles.py) | HTTP 时延分位数、吞吐、Action/provider 时间、语义比较 | 比较的是 NeMo runtime profiles；不是已有 Basic/Advanced 产品档位，也不是完整业务 LLM 延迟、流式体验或成本评测 |
+| 历史 runtime profile benchmark（`benchmarks/nemo_runtime_profiles.py`，当前源码树已移除） | HTTP 时延分位数、吞吐、Action/provider 时间、语义比较 | 历史测量比较的是 NeMo runtime profiles；不能作为当前可执行基准，也不是已有 Basic/Advanced 产品档位或完整业务 LLM 延迟、流式体验、成本评测 |
 | [架构中的签名与 effective release](architecture.md) | 受测配置身份和运行版本对齐 | 已签名的运行 artifact 不自动说明评估 PDF 已签名或获得第三方认证 |
 
 适合逐步建立四层证据：

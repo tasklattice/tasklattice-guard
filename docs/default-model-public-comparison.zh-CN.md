@@ -80,7 +80,7 @@ Runner 会传递历史，但当前 Nemotron input 提示词只使用最后一条
 - 预检 5 条产生 8 次 HTTP 调用；首次批量尝试因记录器共享连接生命周期错误中止，12 条不完整结果产生 12 次 HTTP 调用。这额外 20 次调用独立存档，均不进入上述分数。修正的是记录工具，被测 Runner、策略、适配器和模型提示词均未修改。
 - 旧版去模型后的计划与本次本地组件计划哈希相同；Runner 与 Policy 源码也与旧版冻结快照一致。模型配置、脚本、运行依赖、源码、输入／标签、模型原生响应均保留校验材料；凭据不写入工件。
 
-证据根目录：[`output/default-public-evaluation/live-20261019`](../output/default-public-evaluation/live-20261019/)。主要工件：`manifest.json`、`models.json`、`plan.json`、`implementation.zip`、`http.jsonl`、`content/results.jsonl`、`jailbreak/results.jsonl`、`comparison.json`、`checksums.json`。`run.py` 保留完整执行方法；复核命令：
+历史证据根目录：`output/default-public-evaluation/live-20261019/`（本地生成材料，当前源码检出不包含）。主要工件：`manifest.json`、`models.json`、`plan.json`、`implementation.zip`、`http.jsonl`、`content/results.jsonl`、`jailbreak/results.jsonl`、`comparison.json`、`checksums.json`。复核需要先恢复完整历史证据包，再运行其中保留的脚本：
 
 ```bash
 .venv/bin/python output/default-public-evaluation/live-20261019/compare.py

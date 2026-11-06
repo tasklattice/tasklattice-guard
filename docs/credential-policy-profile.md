@@ -1,6 +1,6 @@
 # Local PII credential testing
 
-Use the `local-credentials` Policy for passwords, private keys and API/auth credentials. It belongs to PII detection and has no model dependency. The 4.2.0 [format changes and limitations](../policies/builtin/local-credentials/docs/4.2.0.md) are versioned with the Policy.
+Use the `local-credentials` Policy for passwords, private keys and API/auth credentials. It belongs to PII detection and has no model dependency. Its [token boundaries](../policies/builtin/local-credentials/docs/token-boundaries.md) and [credential contexts](../policies/builtin/local-credentials/docs/credential-contexts.md) document the current formats and limitations.
 
 ## Configure a dedicated test path
 
