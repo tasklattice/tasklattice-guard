@@ -133,6 +133,22 @@ These must have explicit precedence and justification in any Profile that select
 A Profile must not silently select two Policies whose Rules detect the same span with
 different actions.
 
+## MAS / PIPL / regional compliance treatment
+
+Region and framework are attributes on a Policy, not a reason to duplicate every
+data-type Rule.
+
+- Generic identifiers stay in `Identity Documents`, `Contact Data`, `Payment Data`
+  and `Credentials & Secrets` with `jurisdiction` and `framework` tags.
+- Create a `Regional Compliance` Policy only when there is an executable obligation
+  that is not covered by a generic data-type Rule, for example consent, retention,
+  transfer, profiling or data-use boundaries.
+- SG PDPA is executable today and maps to `Regional Compliance: SG PDPA`.
+- EU AI Act Art. 5 is executable today and maps to `Regional Compliance: EU AI Act`.
+- A future MAS resident-information or CN PIPL control should become a
+  `Regional Compliance` Policy only when it has real Rules and tests. Otherwise it
+  belongs in Profile compliance metadata, not in a fake Policy.
+
 ## Industry-specific treatment
 
 | Current source | Destination |
