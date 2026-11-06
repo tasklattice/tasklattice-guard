@@ -100,6 +100,7 @@ class PolicyRuleSpec:
     phrase_patterns: tuple[str, ...] = ()
     binding_id: str | None = None
     rule_id: str | None = None
+    rule_version: str | None = None
     variant_id: str | None = None
 
 

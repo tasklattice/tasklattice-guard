@@ -131,6 +131,12 @@
       "title": "Id",
       "type": "string"
     },
+    "version": {
+      "default": "1.0.0",
+      "minLength": 1,
+      "title": "Version",
+      "type": "string"
+    },
     "name": {
       "minLength": 1,
       "title": "Name",

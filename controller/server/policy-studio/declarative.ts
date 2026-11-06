@@ -79,7 +79,7 @@ export class DeclarativeCompiler {
         if (binding.variant_id && !variant) throw new ValidationError(`Binding ${binding.binding_id} references unknown Rule variant ${binding.variant_id}.`);
         if (binding.rails?.some(rail => !source.stages.includes(rail))) throw new ValidationError(`Binding ${binding.binding_id} targets an unsupported Rule stage.`);
         return { ...base, id: `${definition.metadata.id}/${binding.binding_id}`, binding_id: `${definition.metadata.id}/${binding.binding_id}`,
-          rule_id: binding.rule_id, variant_id: variant?.variant_id ?? null, effect: binding.action ?? base.effect,
+          rule_id: binding.rule_id, rule_version: source.version, variant_id: variant?.variant_id ?? null, effect: binding.action ?? base.effect,
           rails: binding.rails ?? base.rails, ...(variant ? { redaction: variant.replacement } : {}), ...binding.parameters };
       })
       : [...compiledRules.values()];

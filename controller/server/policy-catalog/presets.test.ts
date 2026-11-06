@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import { protectionPresets } from "../../shared/protection-presets.js";
 import { buildGuardrailPlan } from "../domain/guardrail-plan.js";
 import { PolicyCatalog } from "./catalog.js";
-import { expandProtectionPreset } from "./presets.js";
+import { expandProtectionPreset, profileRequiresModels } from "./presets.js";
 
 const policies = PolicyCatalog.load(resolve("../runner/toolkit/policy_library/assets")).list();
 
@@ -27,6 +27,18 @@ describe("Protection presets", () => {
     expect(china.find(b => b.policyId === identifiers.policyId)!.enabledRuleIds).toHaveLength(1);
   });
 
+
+  it("derives model dependency from selected Rule detectors", () => {
+    const keyword = policies.find(policy => policy.id === "keyword-blocking")!;
+    const preset = {
+      ...protectionPresets[0]!,
+      policies: [{ policyId: keyword.id, policyVersion: keyword.version, enabledRuleIds: [keyword.rules[0]!.id],
+        ruleOrder: [keyword.rules[0]!.id], enabledRails: ["input" as const], parameterValues: {} }],
+    };
+    expect(profileRequiresModels(preset, policies)).toBe(false);
+    const modeled = { ...keyword, rules: [{ ...keyword.rules[0]!, detector: { ref: "model/classifier" } }] };
+    expect(profileRequiresModels(preset, [modeled])).toBe(true);
+  });
 
   it("selects a Rule by binding identity and applies a parameter pack", () => {
     const preset = {

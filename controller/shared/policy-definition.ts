@@ -24,9 +24,9 @@ export const policyDefinitionSchema = z.object({
     output_delivery: z.enum(["interruptible", "window_buffered", "full_buffered"]).default("full_buffered"),
   }).strict(),
   parameters: z.array(z.object({ name: identifier, label: z.string().default(""), kind: z.string(), required: z.boolean(), placeholder: z.string().default(""), description: z.string().default(""), default: z.string().nullable().default(null) })).max(128).default([]),
-  bindings: z.array(z.object({ binding_id: identifier, rule_id: identifier, variant_id: identifier.nullable().optional(), order: z.number().int().optional(), action: action.nullable().optional(), parameters: z.record(z.string(), z.unknown()).default({}), rails: z.array(phase).max(2).nullable().optional() }).strict()).max(512).nullable().optional(),
+  bindings: z.array(z.object({ binding_id: identifier, rule_id: identifier, rule_version: z.string().min(1).max(100).nullable().optional(), variant_id: identifier.nullable().optional(), order: z.number().int().optional(), action: action.nullable().optional(), parameters: z.record(z.string(), z.unknown()).default({}), rails: z.array(phase).max(2).nullable().optional() }).strict()).max(512).nullable().optional(),
   rules: z.array(z.object({
-    id: identifier, name: z.string().max(160), description: z.string().max(2000).default(""),
+    id: identifier, version: z.string().min(1).max(100).default("1.0.0"), name: z.string().max(160), description: z.string().max(2000).default(""),
     stages: z.array(phase).max(2),
     detector: z.object({ ref: z.enum(detectorRefs), version: z.literal("1.0.0"), parameters: z.record(z.string(), z.unknown()).default({}) }).strict(),
     on_match: z.object({ action, replacement: z.string().nullable().optional() }).strict(),
@@ -36,7 +36,7 @@ export const policyDefinitionSchema = z.object({
     expand: z.object({ parameter: identifier, text_field: identifier, action_field: identifier, replacement_field: identifier }).nullable().optional(),
   }).strict()).max(512),
   tests: z.array(z.object({
-    id: identifier, name: z.string().max(160), description: z.string().max(2000).default(""),
+    id: identifier, version: z.string().min(1).max(100).default("1.0.0"), name: z.string().max(160), description: z.string().max(2000).default(""),
     phase, content: text, expected_decision: z.enum(["allow", "block", "transform", "intervene"]),
     covered_rule_ids: z.array(identifier).max(512),
     kind: z.enum(["rule_acceptance", "scenario"]).default("rule_acceptance"),

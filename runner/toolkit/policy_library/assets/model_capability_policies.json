@@ -59,6 +59,7 @@
         "name": "Jailbreak detector",
         "description": "Reject jailbreak attempts before model execution.",
         "rule_id": "model/jailbreak",
+        "rule_version": "1.0.0",
         "detector": {
           "ref": "model/classifier",
           "version": "1.0.0"
@@ -169,6 +170,7 @@
         "name": "Jailbreak detector",
         "description": "Reject jailbreak attempts before model execution.",
         "rule_id": "model/jailbreak",
+        "rule_version": "1.0.0",
         "detector": {
           "ref": "model/classifier",
           "version": "1.0.0"
@@ -271,6 +273,7 @@
         "name": "Content safety classifier",
         "description": "Reject content classified as unsafe.",
         "rule_id": "model/content-safety",
+        "rule_version": "1.0.0",
         "detector": {
           "ref": "model/classifier",
           "version": "1.0.0"
@@ -363,6 +366,7 @@
         "name": "Reasoning verifier",
         "description": "Block output that violates the pinned reasoning policy.",
         "rule_id": "model/automated-reasoning",
+        "rule_version": "1.0.0",
         "detector": {
           "ref": "service/formal-verification",
           "version": "1.0.0"
@@ -453,6 +457,7 @@
         "name": "Grounding judge",
         "description": "Block output that is unsupported by the source context.",
         "rule_id": "model/contextual-grounding",
+        "rule_version": "1.0.0",
         "detector": {
           "ref": "model/grounding",
           "version": "1.0.0"
@@ -591,6 +596,7 @@
         "name": "PII detector",
         "description": "Redact detected PII before forwarding or release.",
         "rule_id": "model/pii",
+        "rule_version": "1.0.0",
         "detector": {
           "ref": "model/classifier",
           "version": "1.0.0"
@@ -716,6 +722,7 @@
         "name": "Denylist",
         "description": "Block a request when any task matches a denied topic. Evaluated before the Allowlist Rule.",
         "rule_id": "topic/denylist",
+        "rule_version": "1.0.0",
         "detector": {
           "ref": "model/classifier",
           "version": "1.0.0"
@@ -749,6 +756,7 @@
         "name": "Allowlist",
         "description": "In strict mode, redirect tasks outside the allowed topics. In permissive mode, unmatched tasks may continue.",
         "rule_id": "topic/allowlist",
+        "rule_version": "1.0.0",
         "detector": {
           "ref": "model/classifier",
           "version": "1.0.0"

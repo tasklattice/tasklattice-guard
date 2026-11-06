@@ -70,6 +70,7 @@ class RuleVariant(StrictModel):
 
 class RuleDefinition(StrictModel):
     id: str = Field(min_length=1)
+    version: str = Field(default="1.0.0", min_length=1)
     name: str = Field(min_length=1)
     description: str = ""
     stages: list[Literal["input", "output"]] = Field(min_length=1)
@@ -148,6 +149,7 @@ class ExecutionDefinition(StrictModel):
 class PolicyRuleBinding(StrictModel):
     binding_id: str = Field(min_length=1, pattern=r"^[A-Za-z0-9][A-Za-z0-9._/-]*$")
     rule_id: str = Field(min_length=1)
+    rule_version: str | None = None
     variant_id: str | None = None
     order: int = 0
     action: EnforcementAction | None = None
@@ -189,6 +191,8 @@ class PolicyDefinition(StrictModel):
                 rule = by_id.get(binding.rule_id)
                 if rule is None:
                     raise ValueError(f"Binding {binding.binding_id} references unknown Rule")
+                if binding.rule_version is not None and binding.rule_version != rule.version:
+                    raise ValueError(f"Binding {binding.binding_id} references the wrong Rule version")
                 if binding.variant_id is not None and binding.variant_id not in {v.variant_id for v in rule.variants}:
                     raise ValueError(f"Binding {binding.binding_id} references unknown Rule variant")
                 if binding.rails and any(stage not in rule.stages for stage in binding.rails):
@@ -294,7 +298,7 @@ def compile_policy(definition: PolicyDefinition, registry: dict[str, Any]) -> di
         }
         compiled = {
             "id": rule.id, "name": rule.name, "description": rule.description,
-            "rule_id": rule.id,
+            "rule_id": rule.id, "rule_version": rule.version,
             "detector": {"ref": rule.detector.ref, "version": rule.detector.version}, "effect": rule.on_match.action,
             "risk_severity": rule.risk_level, "rails": rule.stages,
             "implementation": {**adapter, **identity},

@@ -1,7 +1,7 @@
 import { normalizeGuardrailDraft, type GuardrailDraftConfig, type GuardrailPolicyBindingConfig } from "../domain/guardrail-plan.js";
 import type { ProtectionPreset } from "../../shared/protection-map.js";
 import { appendProfileRules } from "../../shared/profile-rule-selection.js";
-type ProfilePolicy = { id: string; version: string; rails: readonly string[]; parameters: readonly { name: string; required?: boolean; default?: string | null | undefined }[]; rules: readonly { id: string; binding_id?: string | null }[]; published_versions?: readonly ProfilePolicy[] };
+type ProfilePolicy = { id: string; version: string; rails: readonly string[]; parameters: readonly { name: string; required?: boolean; default?: string | null | undefined }[]; rules: readonly { id: string; binding_id?: string | null; detector?: { ref: string } }[]; published_versions?: readonly ProfilePolicy[] };
 
 /** Validate a preset against this exact installed catalog, never best-effort. */
 export function expandProtectionPreset(preset: ProtectionPreset, policies: readonly ProfilePolicy[], current: readonly GuardrailPolicyBindingConfig[] = []): GuardrailPolicyBindingConfig[] {
@@ -55,6 +55,22 @@ export function expandProtectionPreset(preset: ProtectionPreset, policies: reado
     });
   }
   return result;
+}
+
+export function profileRequiresModels(preset: ProtectionPreset, policies: readonly ProfilePolicy[]): boolean {
+  const modelDetectors = new Set(["model/classifier", "model/grounding", "service/formal-verification"]);
+  const byId = new Map(policies.map(policy => [policy.id, policy]));
+  for (const reference of preset.policies) {
+    const policy = byId.get(reference.policyId);
+    if (!policy) continue;
+    const selected = reference.enabledBindingIds
+      ? policy.rules.filter(rule => reference.enabledBindingIds!.includes(rule.binding_id ?? rule.id))
+      : reference.enabledRuleIds
+        ? policy.rules.filter(rule => reference.enabledRuleIds!.includes(rule.id))
+        : policy.rules;
+    if (selected.some(rule => rule.detector && modelDetectors.has(rule.detector.ref))) return true;
+  }
+  return false;
 }
 
 export function profileDraft(profile: ProtectionPreset, policies: readonly ProfilePolicy[]): GuardrailDraftConfig {

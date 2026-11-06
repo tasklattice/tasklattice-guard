@@ -79,6 +79,7 @@
         "name": "Configured phrase sequence",
         "description": "Materialize one ordinary keyword Rule per configured entry, with its own handling and risk level.",
         "rule_id": "configured/phrases",
+        "rule_version": "1.0.0",
         "detector": {
           "ref": "text/keyword",
           "version": "1.0.0"
