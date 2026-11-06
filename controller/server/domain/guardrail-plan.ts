@@ -476,6 +476,15 @@ function nativeClassifierParameters(policy: PolicyDto, rule: PolicyDto["rules"][
   return values;
 }
 
+/** Execution definitions never need authoring tests or duplicate source rules. */
+function compactDefinitions(definitions: Record<string, Record<string, unknown>>): Record<string, unknown> {
+  if (JSON.stringify(definitions).length <= 256_000) return definitions;
+  return Object.fromEntries(Object.entries(definitions).map(([id, definition]) => {
+    const { definition: _source, test_cases: _tests, ...execution } = definition;
+    return [id, execution];
+  }));
+}
+
 function parametersFor(
   capabilityId: string,
   binding: GuardrailPolicyBindingConfig,
@@ -487,7 +496,7 @@ function parametersFor(
       ["policy_versions_json", JSON.stringify(Object.fromEntries(declarative.map((item) => [item.binding.policyId, item.policy.version])))],
       // A published Guardrail owns its Rule definitions. Catalog changes or
       // custom package replacement must not mutate an already compiled plan.
-      ["policy_definitions_json", JSON.stringify(Object.fromEntries(declarative.map(({ policy }) => [policy.id, frozenBuiltInDefinition(policy)])))],
+      ["policy_definitions_json", JSON.stringify(compactDefinitions(Object.fromEntries(declarative.map(({ policy }) => [policy.id, frozenBuiltInDefinition(policy)]))))],
       ["policy_ids", declarative.map((item) => item.binding.policyId).join("\n")],
       ["enabled_rules_json", JSON.stringify(Object.fromEntries(declarative.map((item) => [item.binding.policyId, item.binding.enabledRuleIds])))],
       ["binding_ids_json", JSON.stringify(Object.fromEntries(declarative.map((item) => [
