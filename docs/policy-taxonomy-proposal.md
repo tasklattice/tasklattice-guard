@@ -204,16 +204,78 @@ The full 208-row mapping is in [policy-rule-mapping.csv](policy-rule-mapping.csv
 Columns: current Policy, current topic, region/framework, Rule ID, action, new category,
 new Policy, disposition (`keep`, `merge`, `move`, `split`, `profile`), overlap group and note.
 
-## Profile direction
+## Profile catalog after compression
+
+Rule compression changes the number of backing Rules, not the number of Profiles.
+Profile count is a product decision.
+
+### Minimum required Profiles
+
+| Profile | Purpose | Model dependency |
+|---|---|---|
+| `Default` | Local-only baseline; must remain model-independent | **No model** |
+| `Full-feature` | Benchmark/regression profile; maximum Policy and Rule coverage | All local + model capabilities |
+| `Singapore Bank` | SG banking and MAS/PDPA-oriented composition | Configurable; model optional |
+| `China Financial Services` | CN bank + securities umbrella | Configurable; model optional |
+| `China Internet` | CN internet platform support | Configurable; model optional |
+
+This is **5 Profiles total**: 2 mandatory baselines + 3 industry Profiles.
+
+### If China Bank and China Securities must be separate
+
+Keep SG Bank and China Internet, then split the CN financial Profile:
+
+| Profile | Industry | Jurisdiction |
+|---|---|---|
+| `Singapore Bank` | banking | SG |
+| `China Bank` | banking | CN |
+| `China Securities` | securities | CN |
+| `China Internet` | internet | CN |
+
+This is **6 Profiles total**: 2 baselines + 4 industry Profiles.
+
+### Claims
+
+`Claims Profile` was proposed to hold the 5 insurance-claims-specific Rules.
+It is not one of the requested 2-3 industry Profiles.
+
+Options:
+
+1. Add `Claims` as a sixth/seventh Profile if insurance claims is a target segment.
+2. Keep the 5 claims Rules in the `Full-feature` benchmark only until a Claims
+   Profile is approved.
+3. Fold claims-specific parts into a future `Insurance` Profile rather than
+   exposing a Claims Policy.
+
+### Composition direction
 
 | Profile | Composition direction |
 |---|---|
-| Bank | Payment Data + Contact Data + Identity Documents + Credentials + Fraud & Account Abuse + Financial Market Misconduct + regional privacy/compliance |
-| Securities | Payment Data + Contact Data + Identity Documents + Credentials + Financial Market Misconduct + Fraud & Account Abuse |
-| Internet | Contact Data + Payment Data + Credentials + Fraud & Account Abuse + Prompt & Instruction Attacks + Application Injection + Content Filters |
-| Claims | Claims-specific Rules from fraud/data-use/professional-advice/injection + privacy/data-governance Policies |
-| Default / Full-feature | Technical baselines, not Policy categories |
+| Default | Local-only privacy, contact, identity, payment, credentials, fraud, prompt/application injection, content safety, content filters, answer reliability local components. **No model Policies.** |
+| Full-feature | All 20 Policies and all Rules, including model-dependent PII, content safety, jailbreak, grounding and formal reasoning. Benchmark only. |
+| Singapore Bank | Payment Data + Contact Data + Identity Documents + Credentials + Fraud & Account Abuse + Financial Market Misconduct + SG PDPA/MAS compliance where executable |
+| China Financial Services | Payment Data + Contact Data + Identity Documents + Credentials + Fraud & Account Abuse + Financial Market Misconduct + CN PIPL/JR-T compliance where executable |
+| China Internet | Contact Data + Payment Data + Credentials + Fraud & Account Abuse + Prompt & Instruction Attacks + Application Injection + Content Filters + CN privacy compliance where executable |
 
+### Profile metadata
+
+Each Profile should declare:
+
+```text
+id
+name
+industry              # banking, securities, internet, general
+jurisdictions          # SG, CN, ...
+frameworks             # MAS, PDPA, PIPL, JR/T ...
+requiresModels         # false for Default
+benchmarkOnly          # true for Full-feature
+policyBindings         # pinned Policy versions
+parameterPacks         # industry phrase packs
+tests                  # Profile regression suite
+```
+
+`Full-feature` must be marked `benchmarkOnly=true`; it is not a production
+recommendation. `Default` must be validated to have zero model dependencies.
 ## Open decisions before implementation
 
 1. Should `PII (Semantic)` stay a separate Policy from local contact/identity/payment Policies?
@@ -221,6 +283,8 @@ new Policy, disposition (`keep`, `merge`, `move`, `split`, `profile`), overlap g
 3. Should Claims be a new Profile, or a parameter pack reused by Bank/Insurance Profiles?
 4. Should `UAE Content Standards` be a regional-compliance Policy or a content-safety Policy with a UAE tag?
 5. Should the two jailbreak model Policies remain separate (one strict variant) or merge into one Policy with a strict parameter?
+6. Should CN banking and CN securities be one `China Financial Services` Profile (5 total) or two Profiles (6 total)?
+7. Is insurance claims a target segment requiring a Claims Profile, or should those 5 Rules stay in the Full-feature benchmark only?
 
 ## Computed overlap groups
 
