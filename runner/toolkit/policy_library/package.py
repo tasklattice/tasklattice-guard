@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 from contextlib import contextmanager
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 import hashlib
 import json
 from pathlib import Path, PurePosixPath
@@ -17,6 +17,7 @@ from .declarative import (
     ExecutionDefinition, ParameterDefinition, PolicyDefinition, PolicyMetadata,
     RuleDefinition, StrictModel, TestDefinition, parse_yaml,
 )
+from .rules import RuleRegistry, RuleResource
 
 MAX_FILE_BYTES = 2_000_000
 MAX_PACKAGE_BYTES = 32_000_000
@@ -27,13 +28,19 @@ class TestSettings(StrictModel):
     parameters: dict[str, str] = Field(default_factory=dict)
 
 
+class RuleReference(StrictModel):
+    id: str = Field(min_length=1)
+    version: str = Field(min_length=1)
+
+
 class PolicyManifest(StrictModel):
     schema_version: Literal[1]
     kind: Literal["Policy"]
     metadata: PolicyMetadata
     parameters: list[ParameterDefinition] = Field(default_factory=list)
     execution: ExecutionDefinition = Field(default_factory=ExecutionDefinition)
-    rules: list[str] = Field(min_length=1)
+    rules: list[str] = Field(default_factory=list)
+    rule_refs: list[RuleReference] = Field(default_factory=list)
     bindings: list[dict[str, Any]] | None = None
     tests: list[str] = Field(min_length=1)
     resources: list[str] = Field(default_factory=list)
@@ -72,13 +79,17 @@ class PolicyPackage:
     manifest: PolicyManifest
     definition: PolicyDefinition
     files: dict[str, bytes]
+    rule_dependencies: dict[str, str] = field(default_factory=dict)
 
     @property
     def checksum(self) -> str:
-        return digest(json.dumps({p: digest(data) for p, data in sorted(self.files.items())}, sort_keys=True).encode())
+        return digest(json.dumps({
+            "files": {p: digest(data) for p, data in sorted(self.files.items())},
+            "rules": dict(sorted(self.rule_dependencies.items())),
+        }, sort_keys=True).encode())
 
 
-def load_package(root: Path) -> PolicyPackage:
+def load_package(root: Path, rule_registry: RuleRegistry | None = None) -> PolicyPackage:
     if not root.is_dir() or root.is_symlink():
         raise ValueError("A Policy must be a directory containing policy.yaml")
     root = root.resolve()
@@ -142,11 +153,23 @@ def load_package(root: Path) -> PolicyPackage:
         cases = resolve(parse_yaml(files[relative].decode()))
         TypeAdapter(list[TestDefinition]).validate_python(cases)
         tests.extend(cases)
+    if manifest.rule_refs and rule_registry is None and manifest.metadata.source == "built_in":
+        shared = root.parent.parent / "rules"
+        if shared.is_dir():
+            rule_registry = RuleRegistry.load(shared)
+    resolved_rules = list(rules)
+    dependencies: dict[str, str] = {}
+    for reference in manifest.rule_refs:
+        if rule_registry is None:
+            raise ValueError("Rule references require a Rule registry")
+        resource: RuleResource = rule_registry.resolve(reference.id, reference.version)
+        resolved_rules.append(resource.definition)
+        dependencies[f"{reference.id}@{reference.version}"] = resource.checksum
     definition = PolicyDefinition.model_validate({
-        **manifest.model_dump(exclude_unset=True, exclude={"resources", "documents", "testing"}),
-        "schema_version": 1, "rules": rules, "tests": tests,
+        **manifest.model_dump(exclude_unset=True, exclude={"resources", "documents", "testing", "rule_refs"}),
+        "schema_version": 1, "rules": resolved_rules, "tests": tests,
     })
-    return PolicyPackage(root, manifest, definition, files)
+    return PolicyPackage(root, manifest, definition, files, dependencies)
 
 
 def detector_dependencies(package: PolicyPackage, registry: dict) -> dict:

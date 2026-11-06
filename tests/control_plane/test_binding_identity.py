@@ -91,3 +91,16 @@ async def test_explicit_binding_plan_executes_and_reports_binding_identity():
         step.kind == "action" and "bindingId=binding-slice/denylist" in (step.detail or "")
         for step in result.trace
     )
+
+
+def test_shared_rule_resource_is_pinned_into_the_policy_package():
+    from runner.toolkit.policy_library.package import load_package
+    from runner.toolkit.policy_library.rules import RuleRegistry
+
+    registry = RuleRegistry.load(Path("policies/rules"))
+    package = load_package(Path("policies/builtin/keyword-blocking"), registry)
+    assert [rule.id for rule in package.definition.rules] == ["keyword/blocked-words"]
+    assert package.rule_dependencies == {
+        "keyword/blocked-words@1.0.0": registry.resolve("keyword/blocked-words", "1.0.0").checksum
+    }
+    assert package.manifest.rule_refs[0].id == "keyword/blocked-words"

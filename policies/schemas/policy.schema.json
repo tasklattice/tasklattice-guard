@@ -206,6 +206,27 @@
       "title": "PolicyMetadata",
       "type": "object"
     },
+    "RuleReference": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "minLength": 1,
+          "title": "Id",
+          "type": "string"
+        },
+        "version": {
+          "minLength": 1,
+          "title": "Version",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "version"
+      ],
+      "title": "RuleReference",
+      "type": "object"
+    },
     "TestSettings": {
       "additionalProperties": false,
       "properties": {
@@ -250,8 +271,14 @@
       "items": {
         "type": "string"
       },
-      "minItems": 1,
       "title": "Rules",
+      "type": "array"
+    },
+    "rule_refs": {
+      "items": {
+        "$ref": "#/$defs/RuleReference"
+      },
+      "title": "Rule Refs",
       "type": "array"
     },
     "bindings": {
@@ -300,7 +327,6 @@
     "schema_version",
     "kind",
     "metadata",
-    "rules",
     "tests"
   ],
   "title": "PolicyManifest",

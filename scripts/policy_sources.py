@@ -15,6 +15,7 @@ sys.path.insert(0, str(ROOT))
 from pydantic import TypeAdapter
 from runner.toolkit.policy_library.declarative import RuleDefinition, TestDefinition, compile_policy, parse_yaml
 from runner.toolkit.policy_library.package import PolicyManifest, PolicyPackage, export_archive, load_package, open_package
+from runner.toolkit.policy_library.rules import RuleRegistry
 
 SOURCE = ROOT / "policies"
 ASSETS = ROOT / "runner/toolkit/policy_library/assets"
@@ -66,12 +67,13 @@ def package_paths() -> list[tuple[str, Path]]:
 
 def build() -> dict[Path, str]:
     detectors = registry()
+    rule_registry = RuleRegistry.load(SOURCE / "rules")
     compiled = {item["asset"]: [] for item in collections()}
     identities = set()
     current_ids = set()
     definitions = {}
     for asset, path in package_paths():
-        package = load_package(path)
+        package = load_package(path, rule_registry)
         definition = package.definition
         custom = asset == "custom_policies.json"
         if (definition.metadata.source == "custom") != custom:

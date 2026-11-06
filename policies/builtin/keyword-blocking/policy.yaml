@@ -42,8 +42,10 @@ parameters:
   required: true
   placeholder: One word or phrase per line
   description: The reviewed local deny-list for this Guardrail binding.
-rules:
-- rules/keyword-blocked-words.yaml
+rules: []
+rule_refs:
+- id: keyword/blocked-words
+  version: 1.0.0
 tests:
 - tests/acceptance.yaml
 testing:
