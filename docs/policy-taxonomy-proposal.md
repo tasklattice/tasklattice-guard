@@ -73,6 +73,43 @@ Industry is not a Policy category. Bank, Securities, Internet and Claims are Pro
 - Source Rules mapped: **208** (203 Policy-bound + 5 Claims Profile)
 - Overlap groups: **33**
 
+## Rule count impact
+
+Reclassification and Rule consolidation are separate steps.
+
+| Step | Rule resources |
+|---|---:|
+| Current source Rules | 208 |
+| Reclassify/move only, no merge | 208 |
+| Remove the two exact duplicate groups | 206 |
+| Conservative overlap consolidation | **~189-190** |
+| Aggressive family folding of every overlap group | ~100 |
+
+The conservative target assumes only clearly redundant resources are merged:
+
+- 2 exact duplicate records (jailbreak variant; topic role variant may stay separate)
+- Passport India/Australia shared detector: -1
+- Australian TFN duplicate: -1
+- US SSN formatted/no-dash: -1
+- Brazilian CPF formatted/unformatted: -1
+- Generic card + four brand Rules: -4, only if coverage tests prove the generic Rule covers them
+- Generic IBAN + enhanced IBAN: -1
+- EU AI Act English/French article pairs: -5
+- Toxicity language variants: -3
+
+This is an estimate, not a commitment. The exact count depends on whether the merged
+Rule still preserves spans, evidence, action and test behavior.
+
+The aggressive ~100 figure is **not recommended**. It would fold families such as all
+prompt keywords, all passports and all credentials into single Rules, reducing
+resource count while losing granular Rule evidence and making failures harder to
+attribute.
+
+Also note: merging patterns into one Rule does not necessarily reduce the number of
+actual detector evaluations. If one Rule carries 22 alternatives, the Rule count
+falls but the runtime may still test 22 patterns. The real performance gain comes
+only from removing genuinely redundant detection work.
+
 ## Rules by proposed category
 
 | Category | Rules |
