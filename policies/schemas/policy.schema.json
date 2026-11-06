@@ -254,6 +254,22 @@
       "title": "Rules",
       "type": "array"
     },
+    "bindings": {
+      "anyOf": [
+        {
+          "items": {
+            "additionalProperties": true,
+            "type": "object"
+          },
+          "type": "array"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Bindings"
+    },
     "tests": {
       "items": {
         "type": "string"

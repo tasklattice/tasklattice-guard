@@ -75,6 +75,33 @@
       "title": "RuleMetadata",
       "type": "object"
     },
+    "RuleVariant": {
+      "additionalProperties": false,
+      "properties": {
+        "variant_id": {
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._/-]*$",
+          "title": "Variant Id",
+          "type": "string"
+        },
+        "replacement": {
+          "minLength": 1,
+          "title": "Replacement",
+          "type": "string"
+        },
+        "description": {
+          "default": "",
+          "title": "Description",
+          "type": "string"
+        }
+      },
+      "required": [
+        "variant_id",
+        "replacement"
+      ],
+      "title": "RuleVariant",
+      "type": "object"
+    },
     "RuntimeIdentity": {
       "additionalProperties": false,
       "properties": {
@@ -145,6 +172,13 @@
     },
     "metadata": {
       "$ref": "#/$defs/RuleMetadata"
+    },
+    "variants": {
+      "items": {
+        "$ref": "#/$defs/RuleVariant"
+      },
+      "title": "Variants",
+      "type": "array"
     },
     "expand": {
       "anyOf": [
