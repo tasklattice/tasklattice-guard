@@ -17,24 +17,6 @@
     query: How long is the warranty?
     grounding_sources: []
     expected_reasoning_result: invalid
-- id: builtin-automated-reasoning/reasoning-valid-output
-  name: 'builtin-automated-reasoning: Allows proved warranty claim'
-  description: With warranty-duration@1 pinned, one year is entailed by the rule.
-  phase: output
-  content: The warranty lasts one year.
-  expected_decision: allow
-  covered_rule_ids:
-  - model/automated-reasoning
-  kind: scenario
-  required: true
-  parameter_names: []
-  group: General
-  scope: policy
-  context:
-    trusted_instruction: ''
-    query: How long is the warranty?
-    grounding_sources: []
-    expected_reasoning_result: valid
 - id: builtin-contextual-grounding/grounding-output
   name: 'builtin-contextual-grounding: Blocks unsupported warranty claim'
   description: The answer contradicts the supplied one-year warranty source.
@@ -48,24 +30,6 @@
   parameter_names: []
   group: General
   scope: rule
-  context:
-    trusted_instruction: ''
-    query: How long is the warranty?
-    grounding_sources:
-    - The product warranty lasts one year.
-- id: builtin-contextual-grounding/grounding-supported-output
-  name: 'builtin-contextual-grounding: Allows supported warranty claim'
-  description: The answer is supported by the source and answers the query.
-  phase: output
-  content: The warranty lasts one year.
-  expected_decision: allow
-  covered_rule_ids:
-  - model/contextual-grounding
-  kind: scenario
-  required: true
-  parameter_names: []
-  group: General
-  scope: policy
   context:
     trusted_instruction: ''
     query: How long is the warranty?

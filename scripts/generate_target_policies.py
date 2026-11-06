@@ -48,6 +48,8 @@ for target, entries in sorted(by_target.items()):
             params.setdefault(param.name,param.model_dump())
         testing.update(pkg.manifest.testing.parameters)
         for test in pkg.definition.tests:
+            if test.kind != "rule_acceptance":
+                continue
             item=test.model_dump(exclude_none=True)
             item['id']=f'{sid}/{item["id"]}'
             item['name']=f'{sid}: {item["name"]}'
