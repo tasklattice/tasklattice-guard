@@ -306,7 +306,7 @@ export class ControlPlaneService {
     const profiles = await readGuardrailProfiles(this.db);
     const policies = await this.listPolicies();
     const selectable = this.config.policyCatalogMode === "target"
-      ? profiles.filter(profile => TARGET_PROFILE_IDS.has(profile.id))
+      ? profiles.filter(profile => TARGET_PROFILE_IDS.has(profile.id) || profile.category === "imported")
       : profiles;
     return selectable.map(profile => previewProtectionProfile(profile, policies));
   }
