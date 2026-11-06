@@ -282,6 +282,7 @@ function normalizePolicy(policy: PolicyAsset, contracts: ProtectionContracts, so
     rails: RAIL_ORDER.filter((rail) => configuredRails.has(rail)),
     effects,
     detectors,
+    ...(policy.definition ? { definition: policy.definition } : {}),
     rules: policy.rules,
     test_cases: policy.test_cases,
     test_count: policy.test_cases.length,

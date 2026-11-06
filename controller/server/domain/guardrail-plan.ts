@@ -161,7 +161,7 @@ export function buildGuardrailPlan(input: {
   const authoredReasoningPolicies: Array<{ id: string; policy_id: string; policy_version: string; confidence_threshold: number }> = [];
   if (!bindings.length) throw new Error("Select at least one Policy before compiling a Guardrail.");
 
-  const resolved: Array<{ capability: RuntimeCapability; binding: GuardrailPolicyBindingConfig; policy?: PolicyDto; authoredRule?: PolicyDto["rules"][number]; authoredParameters?: Array<[string, string]> }> = [];
+  const resolved: Array<{ capability: RuntimeCapability; binding: GuardrailPolicyBindingConfig; policy?: PolicyDto; fullPolicy?: PolicyDto; authoredRule?: PolicyDto["rules"][number]; authoredParameters?: Array<[string, string]> }> = [];
   const programmable: Array<{ binding: GuardrailPolicyBindingConfig; policy: ProgrammablePolicySnapshot }> = [];
   for (const binding of bindings) {
     const programmablePolicy = programmableByKey.get(`${binding.policyId}@${binding.policyVersion}`);
@@ -206,7 +206,9 @@ export function buildGuardrailPlan(input: {
             defaultAction: "block", evaluations: [always("boundary", boundaryDetector[1])], module: "interaction_safety" },
             binding: scoped, authoredRule: rule, authoredParameters: [["rule_id", rule.id]] });
         } else if (rule.implementation.execution === "local") {
-          resolved.push({ capability: { capability: "builtin_content_filter", policyId: "", defaultPhases: ["input", "output"], defaultAction: "block", evaluations: [always("rules", contracts.contentFilter)], module: "interaction_safety" }, binding: scoped, policy, authoredRule: rule });
+          // One action group per authored Rule: mixing local ContentFilter Rules
+          // with model/boundary Rules in the same Policy is not executable.
+          resolved.push({ capability: { capability: "builtin_content_filter", policyId: "", defaultPhases: ["input", "output"], defaultAction: "block", evaluations: [always("rules", contracts.contentFilter)], module: "interaction_safety" }, binding: scoped, policy: { ...policy, rules: [rule] }, fullPolicy: policy, authoredRule: rule });
         } else {
           const profile = String(rule.detector_options.profile ?? "");
           const adapter = rule.detector.ref === "model/classifier" ? ({
@@ -294,10 +296,10 @@ export function buildGuardrailPlan(input: {
       binding: { ...item.binding, action: run.action, enabledRuleIds: run.rules.map(rule => rule.id),
         ruleOrder: run.rules.map(rule => rule.id) } }));
   });
-  for (const { capability: definition, binding, policy, authoredRule, authoredParameters, actionGroup } of executable) {
+  for (const { capability: definition, binding, policy, fullPolicy, authoredRule, authoredParameters, actionGroup } of executable) {
     // Never coalesce separate Policies by capability: a later Policy must see
     // the content produced by every earlier Policy, even across module types.
-    const declarative = policy ? [{ binding, policy }] : [];
+    const declarative = policy ? [{ binding, policy: fullPolicy ?? policy }] : [];
     const nativePolicy = programmableByKey.get(`${binding.policyId}@${binding.policyVersion}`);
     const catalogNative = !authoredRule && !policy && !nativePolicy ? policyById.get(`${binding.policyId}@${binding.policyVersion}`) : undefined;
     const splitTopic = !authoredRule && isSplitTopicPolicy(binding.policyId, binding.policyVersion);
