@@ -64,6 +64,7 @@ export const tokenRoutePermissions: ReadonlyArray<readonly [string, string, Toke
   ["GET", "/api/v1/policies", "policies", "read"],
   ["GET", "/api/v1/guardrail-profiles", "policies", "read"],
   ["GET", "/api/v1/guardrail-profiles/:id/package", "policies", "read"],
+  ["POST", "/api/v1/guardrail-profiles/import", "policies", "write"],
   ["GET", "/api/v1/policy-catalog/protection-presets", "policies", "read"],
   ["GET", "/api/v1/policies/:id", "policies", "read"],
   ["POST", "/api/v1/policies", "policies", "write"],

@@ -83,6 +83,20 @@ const packageVersionsQuery = z.string().max(4_000).optional()
   .transform(value => value?.split(",").map(item => item.trim()).filter(Boolean) ?? [])
   .pipe(z.array(z.string().refine(isGuardrailVersionId, "Guardrail Version must be a canonical UTC timestamp.")).max(64));
 const packageImportInput = z.object({ versions: z.array(z.string().refine(isGuardrailVersionId, "Guardrail Version must be a canonical UTC timestamp.")).max(64).optional(), restoreDeleted: z.boolean().optional() });
+const profileImportBodySchema = z.object({
+  package: z.object({
+    schemaVersion: z.literal(1),
+    profile: z.record(z.string(), z.unknown()),
+    policies: z.array(z.object({
+      id: z.string().min(1),
+      version: z.string().min(1),
+      checksum: z.string().regex(/^[a-f0-9]{64}$/),
+      rules: z.array(z.object({ id: z.string().min(1), bindingId: z.string().nullable(), ruleVersion: z.string().nullable() })),
+    })),
+  }),
+  replace: z.boolean().optional(),
+});
+
 // Multipart framing adds a little to the archive itself.
 const packageUploadLimit = bodyLimit({ maxSize: PACKAGE_UPLOAD_LIMIT_BYTES + 64 * 1024, onError: () => {
   throw new ControllerError("The package exceeds the 32 MiB upload limit.", 413, "guardrail_package_too_large");
@@ -649,6 +663,10 @@ export function createHttpApp(input: {
   });
   app.get("/api/v1/guardrail-profiles/:id/package", authenticated, async (context) => {
     return context.json(await input.service.exportGuardrailProfilePackage(context.req.param("id")));
+  });
+  app.post("/api/v1/guardrail-profiles/import", authenticated, async (context) => {
+    const body = profileImportBodySchema.parse(await context.req.json());
+    return context.json(await input.service.importGuardrailProfilePackage(body.package, context.get("actor").id, body.replace === true));
   });
   // Compatibility route for existing API clients; both paths read the database.
   app.get("/api/v1/policy-catalog/protection-presets", authenticated, async (context) => {
