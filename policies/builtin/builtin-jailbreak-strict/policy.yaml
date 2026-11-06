@@ -37,7 +37,9 @@ parameters:
   description: When true, a valid JEV input gray-area result is reviewed by the separately
     validated classifier_review.input binding. Output, matches, errors and missing
     context keep their handling.
-rules:
-- rules/model-jailbreak.yaml
+rules: []
 tests:
 - tests/acceptance.yaml
+rule_refs:
+- id: model/jailbreak
+  version: 1.0.0

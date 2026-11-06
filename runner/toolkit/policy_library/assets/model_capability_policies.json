@@ -186,8 +186,8 @@
           "flow_name": "tasklattice jailbreak",
           "action_name": "GuardEvaluateAction",
           "execution": "platform",
-          "binding_id": "builtin-jailbreak-strict",
-          "implementation_rule_id": "model/jailbreak"
+          "binding_id": "jailbreak",
+          "implementation_rule_id": "jailbreak"
         },
         "detector_options": {
           "profile": "jailbreak-classification",
