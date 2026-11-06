@@ -57,6 +57,10 @@ def definitions_from_parameters(parameters: Mapping[str, str]) -> Mapping[str, P
         selected = {rule.id: rule for rule in definitions[key].rules}
         for rule_id in ids:
             rule = selected[rule_id]
+            if rule.implementation.execution == "platform":
+                if rule.detector.ref not in {"model/classifier", "model/grounding", "service/formal-verification"}:
+                    raise ValueError("Pinned platform Rules require a supported platform detector")
+                continue
             agent_boundary = rule.detector.ref in {"agent/indirect-injection", "agent/memory-poisoning"}
             if rule.implementation.execution != "local" or (
                 rule.implementation.detector not in {"regex", "keyword", "conditions", "code_block"}

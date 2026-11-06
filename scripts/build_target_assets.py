@@ -25,6 +25,15 @@ def build() -> Path:
         compiled = compile_policy(package.definition, registry())
         compiled["rails"] = sorted({rail for rule in compiled["rules"] for rail in rule["rails"]})
         compiled["testing"] = package.manifest.testing.parameters
+        definition = package.definition.model_dump()
+        definition["metadata"].pop("source", None)
+        definition["metadata"].pop("compliance", None)
+        for rule in definition["rules"]:
+            rule.pop("runtime_adapter", None)
+        for test in definition["tests"]:
+            if test.get("context") is None:
+                test.pop("context", None)
+        compiled["definition"] = definition
         policies.append(compiled)
     (ASSETS / "detectors.generated.json").write_bytes((ROOT / "runner/toolkit/policy_library/assets/detectors.generated.json").read_bytes())
     (ASSETS / "policy-definitions.generated.json").write_bytes((ROOT / "runner/toolkit/policy_library/assets/policy-definitions.generated.json").read_bytes())

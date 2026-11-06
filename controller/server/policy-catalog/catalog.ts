@@ -1,4 +1,4 @@
-import { policyTestContextSchema } from "../../shared/policy-definition.js";
+import { policyDefinitionSchema, policyTestContextSchema } from "../../shared/policy-definition.js";
 import { readFileSync } from "node:fs";
 import { existsSync } from "node:fs";
 import { join } from "node:path";
@@ -111,6 +111,7 @@ export const policyAssetSchema = z.object({
   test_cases: z.array(testCaseSchema).default([]),
   safety_level: z.enum(["balanced", "strict"]).default("balanced"),
   output_delivery: z.enum(["interruptible", "window_buffered", "full_buffered"]).default("window_buffered"),
+  definition: policyDefinitionSchema.optional(),
 });
 
 type PolicyAsset = z.output<typeof policyAssetSchema>;
