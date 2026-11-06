@@ -11,6 +11,12 @@ const requiredEnvironment = {
 };
 
 describe("Controller config", () => {
+  it("selects the target Policy catalog only in target mode", () => {
+    expect(loadConfig(requiredEnvironment).policyCatalogMode).toBe("legacy");
+    const target = loadConfig({ ...requiredEnvironment, CONTROLLER_POLICY_CATALOG_MODE: "target" });
+    expect(target.policyCatalogMode).toBe("target");
+    expect(target.policyCatalogDir).toContain("assets_target");
+  });
   it("bounds Endpoint provenance rows and logical payload independently of database disk quotas", () => {
     expect(loadConfig(requiredEnvironment).endpointContextStorage).toEqual({ maxRowsPerPool: 256, maxRowsGlobal: 2048,
       maxPayloadBytesPerContext: 65536, maxPayloadBytesPerPool: 16777216, maxPayloadBytesGlobal: 67108864 });

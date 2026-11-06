@@ -1,7 +1,7 @@
 // @vitest-environment node
 import { resolve } from "node:path";
-import { expect, it } from "vitest";
-import { defaultGuardrailProfiles } from "../../shared/guardrail-profiles.js";
+import { describe, expect, it } from "vitest";
+import { defaultGuardrailProfiles, targetGuardrailProfiles } from "../../shared/guardrail-profiles.js";
 import { PolicyCatalog } from "../policy-catalog/catalog.js";
 import { expandProtectionPreset } from "../policy-catalog/presets.js";
 
@@ -29,4 +29,14 @@ it("ships database Profile seeds that match current capability selections and un
       expect(binding.enabledRuleIds.every(id => policy!.rules.some(rule => rule.id === id))).toBe(true);
     }
   }
+});
+
+
+describe("Target Profile seeds", () => {
+  it("provides exactly the five approved target Profiles", () => {
+    expect(targetGuardrailProfiles.map(profile => profile.id)).toEqual([
+      "default", "full-feature", "sg-bank", "cn-financial-services", "cn-internet",
+    ]);
+    expect(targetGuardrailProfiles.find(profile => profile.id === "full-feature")?.benchmarkOnly).toBe(true);
+  });
 });
