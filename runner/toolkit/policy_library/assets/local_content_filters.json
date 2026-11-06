@@ -120,6 +120,7 @@
         "id": "code/execution",
         "name": "Executable code and execution intent",
         "description": "Detects fenced executable code and explicit requests to execute commands.",
+        "rule_id": "code/execution",
         "detector": {
           "ref": "code/fenced-block",
           "version": "1.0.0"
@@ -190,12 +191,14 @@
         "taxonomy_ids": [
           "TALI-TOOL-SECURITY-UNAUTHORIZED-EXECUTION"
         ],
-        "redaction": "[CODE_BLOCK_REDACTED]"
+        "redaction": "[CODE_BLOCK_REDACTED]",
+        "binding_id": "block-code-execution/code/execution"
       },
       {
         "id": "code/execution-request",
         "name": "Explicit execution request",
         "description": "Detect a request to execute commands, even without a fenced code block.",
+        "rule_id": "code/execution-request",
         "detector": {
           "ref": "text/conditions",
           "version": "1.0.0"
@@ -261,7 +264,8 @@
         },
         "taxonomy_ids": [
           "TALI-TOOL-SECURITY-UNAUTHORIZED-EXECUTION"
-        ]
+        ],
+        "binding_id": "block-code-execution/code/execution-request"
       }
     ]
   },
@@ -747,6 +751,7 @@
         "id": "competitor/intent",
         "name": "Competitor entity and comparison intent",
         "description": "Normalizes aliases and obfuscation, then distinguishes competitor intent from destination and operational context.",
+        "rule_id": "competitor/intent",
         "detector": {
           "ref": "text/conditions",
           "version": "1.0.0"
@@ -908,7 +913,8 @@
         "taxonomy_ids": [
           "TALI-BUSINESS-POLICY-OFF-TOPIC"
         ],
-        "redaction": "[COMPETITOR_CONTENT_REDACTED]"
+        "redaction": "[COMPETITOR_CONTENT_REDACTED]",
+        "binding_id": "competitor-mention-detection/competitor/intent"
       }
     ]
   },
@@ -1009,6 +1015,7 @@
         "id": "keyword/blocked-words",
         "name": "Reviewed blocked words",
         "description": "Matches the configured line-separated keyword list.",
+        "rule_id": "keyword/blocked-words",
         "detector": {
           "ref": "text/keyword",
           "version": "1.0.0"
@@ -1037,7 +1044,8 @@
         "taxonomy_ids": [
           "TALI-BUSINESS-POLICY"
         ],
-        "redaction": "[KEYWORD_REDACTED]"
+        "redaction": "[KEYWORD_REDACTED]",
+        "binding_id": "keyword-blocking/keyword/blocked-words"
       }
     ]
   }

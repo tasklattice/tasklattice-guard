@@ -78,6 +78,7 @@
         "id": "configured/phrases",
         "name": "Configured phrase sequence",
         "description": "Materialize one ordinary keyword Rule per configured entry, with its own handling and risk level.",
+        "rule_id": "configured/phrases",
         "detector": {
           "ref": "text/keyword",
           "version": "1.0.0"
@@ -105,7 +106,8 @@
           "text_field": "phrase",
           "action_field": "action",
           "replacement_field": "replacement"
-        }
+        },
+        "binding_id": "configured-phrase-filter/configured/phrases"
       }
     ]
   }

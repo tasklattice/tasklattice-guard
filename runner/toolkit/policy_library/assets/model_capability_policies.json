@@ -58,6 +58,7 @@
         "id": "model/jailbreak",
         "name": "Jailbreak detector",
         "description": "Reject jailbreak attempts before model execution.",
+        "rule_id": "model/jailbreak",
         "detector": {
           "ref": "model/classifier",
           "version": "1.0.0"
@@ -83,7 +84,8 @@
         },
         "taxonomy_ids": [
           "TALI-MODEL-SECURITY-JAILBREAK"
-        ]
+        ],
+        "binding_id": "builtin-jailbreak/model/jailbreak"
       }
     ]
   },
@@ -166,6 +168,7 @@
         "id": "model/jailbreak",
         "name": "Jailbreak detector",
         "description": "Reject jailbreak attempts before model execution.",
+        "rule_id": "model/jailbreak",
         "detector": {
           "ref": "model/classifier",
           "version": "1.0.0"
@@ -191,7 +194,8 @@
         },
         "taxonomy_ids": [
           "TALI-MODEL-SECURITY-JAILBREAK"
-        ]
+        ],
+        "binding_id": "builtin-jailbreak-strict/model/jailbreak"
       }
     ]
   },
@@ -266,6 +270,7 @@
         "id": "model/content-safety",
         "name": "Content safety classifier",
         "description": "Reject content classified as unsafe.",
+        "rule_id": "model/content-safety",
         "detector": {
           "ref": "model/classifier",
           "version": "1.0.0"
@@ -292,7 +297,8 @@
         },
         "taxonomy_ids": [
           "TALI-PHYSICAL-HARM"
-        ]
+        ],
+        "binding_id": "builtin-content-safety/model/content-safety"
       }
     ]
   },
@@ -356,6 +362,7 @@
         "id": "model/automated-reasoning",
         "name": "Reasoning verifier",
         "description": "Block output that violates the pinned reasoning policy.",
+        "rule_id": "model/automated-reasoning",
         "detector": {
           "ref": "service/formal-verification",
           "version": "1.0.0"
@@ -376,7 +383,8 @@
         },
         "taxonomy_ids": [
           "TALI-RESPONSE-INTEGRITY"
-        ]
+        ],
+        "binding_id": "builtin-automated-reasoning/model/automated-reasoning"
       }
     ]
   },
@@ -444,6 +452,7 @@
         "id": "model/contextual-grounding",
         "name": "Grounding judge",
         "description": "Block output that is unsupported by the source context.",
+        "rule_id": "model/contextual-grounding",
         "detector": {
           "ref": "model/grounding",
           "version": "1.0.0"
@@ -464,7 +473,8 @@
         },
         "taxonomy_ids": [
           "TALI-RESPONSE-INTEGRITY-UNGROUNDED"
-        ]
+        ],
+        "binding_id": "builtin-contextual-grounding/model/contextual-grounding"
       }
     ]
   },
@@ -580,6 +590,7 @@
         "id": "model/pii",
         "name": "PII detector",
         "description": "Redact detected PII before forwarding or release.",
+        "rule_id": "model/pii",
         "detector": {
           "ref": "model/classifier",
           "version": "1.0.0"
@@ -604,7 +615,8 @@
         },
         "taxonomy_ids": [
           "TALI-PRIVACY-PII"
-        ]
+        ],
+        "binding_id": "builtin-pii/model/pii"
       }
     ]
   },
@@ -703,6 +715,7 @@
         "id": "topic/denylist",
         "name": "Denylist",
         "description": "Block a request when any task matches a denied topic. Evaluated before the Allowlist Rule.",
+        "rule_id": "topic/denylist",
         "detector": {
           "ref": "model/classifier",
           "version": "1.0.0"
@@ -728,12 +741,14 @@
         },
         "taxonomy_ids": [
           "TALI-BUSINESS-POLICY-OFF-TOPIC"
-        ]
+        ],
+        "binding_id": "builtin-topic-safety/topic/denylist"
       },
       {
         "id": "topic/allowlist",
         "name": "Allowlist",
         "description": "In strict mode, redirect tasks outside the allowed topics. In permissive mode, unmatched tasks may continue.",
+        "rule_id": "topic/allowlist",
         "detector": {
           "ref": "model/classifier",
           "version": "1.0.0"
@@ -759,7 +774,8 @@
         },
         "taxonomy_ids": [
           "TALI-BUSINESS-POLICY-OFF-TOPIC"
-        ]
+        ],
+        "binding_id": "builtin-topic-safety/topic/allowlist"
       }
     ]
   }
