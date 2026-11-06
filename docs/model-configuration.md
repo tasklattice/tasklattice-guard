@@ -68,12 +68,18 @@ to review valid JEV/Laya gray-area input results or content-safety output result
 Each enabled Rail requires its own review binding. Errors and missing context do
 not trigger review; see [gray-area review](classifier-gray-review.md).
 
-Laya's `tali.laya.v1` profile supports both content-safety Rails, plus input
-jailbreak and topic checks. Output classification uses only the current assistant
-response; its independent reviewer also receives conversation context and explicit
-safe-refusal criteria. It does not implement semantic PII. A single-model Validate
-can report an uncertain result even when a separately configured review resolves
-it; validate the complete Guardrail as well as each individual binding.
+Laya's `tali.laya.v1` profile supports both content-safety Rails, input
+jailbreak, topic checks, and input/output semantic PII. Output classification uses
+only the current assistant response; its independent reviewer also receives
+conversation context and explicit safe-refusal criteria. Laya PII asks four short
+questions (name, actual personal identifier, address, date of birth); the
+two-sample capability probe passes at 0.1 / 0.9, but this is a smoke test. On a
+44-sample synthetic regression it transformed 10/20 PII samples, conservatively
+blocked 10/20, and blocked 11/24 benign samples. Keep the independent PII
+regression, local exact Rules and a canary rollout; Validate passing is not a
+quality claim. A single-model Validate can report an uncertain result even when a
+separately configured review resolves it; validate the complete Guardrail as well
+as each individual binding.
 
 The current executable Rail surface is Input and Output. Retrieval, Dialog, and
 Execution are reserved manifest values for later expansion; adding them extends
@@ -241,7 +247,7 @@ Assign the same registered model independently to **Protection Capabilities → 
 **Jailbreak detection**, and **Content Safety**, validate each candidate, save, then activate through the existing revision workflow. Registration
 checks callability; each binding validation executes its own benign and off-topic
 or unsafe samples through NeMo. The multi-purpose profile supports `tali.guard.topic-control.semantic.v1`,
-`tali.guard.jailbreak.v1`, and `tali.guard.content-safety.v1` on input, plus content safety on output. It does not advertise output jailbreak/topic detection or PII.
+`tali.guard.jailbreak.v1`, and `tali.guard.content-safety.v1` on input, plus content safety on output. It does not advertise output jailbreak/topic detection. It also supports input and output semantic PII with the category-list question described under Generic semantic PII.
 Content Safety uses its own `unsafe_content` question and the same 23-category taxonomy as the NVIDIA
 Safety Guard v3 adapter. Direct harmful requests do not need a jailbreak mechanism to match.
 The versioned question and native probability are retained in evidence. Probabilities between 0.1 and 0.9
@@ -388,6 +394,17 @@ skipping a personal name in the same block. A semantic transform replaces the
 whole target block with `[PII_REDACTED]`; it does not claim accurate model-generated
 character spans. The complete semantic check adds a model call per evaluated
 block. Qwen3Guard remains available as an alternative PII profile.
+
+JEV (`tali.typesafe-jev.v1`) and Laya (`tali.laya.v1`) also implement both PII
+bindings through their native Noul decision protocol. JEV asks one category-list
+question; Laya asks four short questions (name, actual personal identifier,
+address, date of birth). Both pass the two-sample capability probe on input and
+output at the default `0.1 / 0.9` thresholds. That probe is a smoke test, not an accuracy measurement:
+on the frozen 44-sample synthetic regression Laya transformed 10/20 PII samples,
+conservatively blocked the other 10, and blocked 11/24 benign samples (2 more were
+over-redacted). JEV at `0.1 / 0.8` transformed 19/20 and left 2/24 benign samples
+gray. Keep local exact Rules, run the independent PII regression, and canary the
+binding; do not treat a green Validate as evidence of detection quality.
 
 The PII and Company adapters disable optional thinking for hosted NVIDIA
 Lightning, as does the Grounding adapter. Other judges retain their validated

@@ -1,13 +1,13 @@
 # Laya Decision Model
 
-Laya 是独立的 Decision Model 适配，覆盖输入/输出内容安全、输入越狱检测、话题控制，以及外部内容/记忆中的越狱判定。适配保留 `/systemone` 与 Noul 概率协议，使用针对小型编码器的短问题、明确的请求预算及独立话题字段，不再直接复制 JEV 的长提示词。内容安全和话题的后续修订增加了表述一致性与策略覆盖检查。两款模型的概率分布和检测质量需要分别验收。
+Laya 是独立的 Decision Model 适配，覆盖输入/输出内容安全、输入越狱检测、话题控制、输入/输出语义 PII，以及外部内容/记忆中的越狱判定。适配保留 `/systemone` 与 Noul 概率协议，使用针对小型编码器的短问题、明确的请求预算及独立话题字段，不再直接复制 JEV 的长提示词。内容安全和话题的后续修订增加了表述一致性与策略覆盖检查。两款模型的概率分布和检测质量需要分别验收。
 
 ## 独立配置
 
 | 项目 | JEV | Laya |
 | --- | --- | --- |
 | Provider kind | `typesafe` | `laya` |
-| 通用判定协议 | `tali.typesafe-jev.v1`（输入） | `tali.laya.v1`（输入及内容安全输出） |
+| 通用判定协议 | `tali.typesafe-jev.v1`（输入、内容安全输出及 PII） | `tali.laya.v1`（输入、内容安全输出及 PII） |
 | 仅话题协议 | `tali.typesafe-jev-topic.v1` | `tali.laya-topic.v1` |
 | Transport | `typesafe_systemone` | `laya_systemone` |
 | 模型 ID | 用户注册的 JEV 版本 | 初始建议为 `auto`，可填写服务支持的模型 ID |
@@ -57,7 +57,11 @@ Laya 服务的 `usage.truncated` 只报告状态截断，不报告问题截断�
 
 `review_unknown` 与 JEV 一样可选。开启时复核合法灰区及上述覆盖不足，使用完整的规范问题与原始内容/历史；不发送第一阶段概率或测试标签。规范问题比 v2 初判问题更完整，内容安全仍包含 23 类及良性例外。第一阶段传输、格式、截断错误不进入复核。复核需当前 Rail 独立的 `classifier_review.input` 或 `classifier_review.output` 绑定。具体规则见 [灰区复核](classifier-gray-review.md)。
 
-`tali.laya.v1` 支持 `content_safety.input`、`content_safety.output`、`jailbreak.input`、`topic_control.input`。仅话题协议只支持 `topic_control.input`。两者均不实现 PII 或控制面用途，JEV Provider 也不能绑定 Laya 协议。
+`tali.laya.v1` 支持 `content_safety.input`、`content_safety.output`、`jailbreak.input`、`topic_control.input`、`pii_semantic.input`、`pii_semantic.output`。仅话题协议只支持 `topic_control.input`。两者仍不实现控制面用途；JEV Provider 也不能绑定 Laya 协议。
+
+PII 使用四个原生短问题（`name`、`actual_identifier`、`address`、`dob`），命中时整块替换为 `[PII_REDACTED]`，revision 为 `laya-pii-input.v1` / `laya-pii-output.v1`；初判 state 固定为 `current_input` 或 `current_output` 加空的 `context_messages`，只检查当前块，不把无关对话历史带入 PII 分数；灰区复核仍使用包含真实上下文的 `state()`。默认 `0.1 / 0.9` 下控制面双例 Validate 在输入和输出都可以通过：安全样本四问为 `0.0862 / 0.0742 / 0.0395 / 0.0000`，违规样本为 `1.0000 / 0.9846 / 0.1128 / 0.6728`，重复 6 次结果一致。
+
+这是烟雾测试，不代表检测质量。44 条合成回归中该设计明确命中 10/20 条 PII、灰区保守 block 10/20 条，24 条正常文本中 11 条被 block、2 条被误脱敏；地址、生日、薪资等仍可能落灰区。PII 的 `unknown` 在 Runtime 中会 block，因此部署前必须用独立回归和灰度确认误拦率；不要把 Validate 通过当作准确率。
 
 输出内容安全使用 `laya-content-safety-output.v3`，以 `Does this text contain unsafe content?` 配合上述辅助检查；输入修订为 `laya-content-safety-input.v4`。原生状态只包含当前助手文本，避免把用户的危险提问混入助手判定。它不能独立完成上下文相关的输出检查。灰区复核使用完整类别、原始输出及历史，并明确区分有害协助与安全拒绝。单模型 Validate 不会隐式借用复核模型；若样本落在灰区，会如实显示未通过，需要结合开启复核的 Guardrail 测试判断组合能力。
 
