@@ -2,6 +2,8 @@
 
 **Configurable input and output protection for AI applications and gateways.**
 
+**Learning the code? Start with [the source reading path](START-HERE.md).** It explains the TypeScript/Python split, the active folders, and one request from UI to runtime.
+
 TaskLattice Guard helps teams control what reaches their AI models and what
 comes back to users. It checks prompts and responses against your policies,
 then returns an allow, block, or text-replacement result for your application
@@ -159,7 +161,10 @@ for explicit views, Rule evidence, and execution limits.
 | Deploy and operate Guard | [Helm deployment](charts/tali-guard/README.md), [operations and security](docs/operations.md), and [observability](docs/observability.md) |
 | Learn guardctl and inspect the control plane | [guardctl command-line manual](bin/README.md) |
 | Configure models and publish a Default copy through APIs | [guardctl configuration](docs/guardctl-configuration.md) |
+| Learn the code from the beginning | [Start here: folder map and seven-step source path](START-HERE.md) |
 | Develop or understand the internals | [Development and tests](docs/development.md) and [architecture](docs/architecture.md) |
+| Understand multi-tenancy and remaining work | [Current status and milestones](docs/multi-tenancy-status.md) and [tenant groups](docs/tenant-groups.md) |
+| Run the local tenant isolation experiment | [Load lab controls and measurements](docs/tenant-load-lab.md) and [current Kubernetes deployment](docs/local-k8s-runtime-2026-11-05.md) |
 
 A running Controller also serves an interactive API reference at `/api/docs`,
 its OpenAPI contract at `/api/openapi.json`, and an agent-oriented index at
