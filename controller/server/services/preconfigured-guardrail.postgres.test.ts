@@ -37,9 +37,9 @@ describe.skipIf(!url)("Preconfigured Guardrail lifecycle", () => {
     id = (await database.pool.query("SELECT guardrail_id FROM default_guardrail_provisioning")).rows[0].guardrail_id;
     expect(id).not.toBe("guardrail-default");
     const initial = await service.getGuardrail(id);
-    expect(initial.draftConfig.policyBindings).toHaveLength(12);
+    expect(initial.draftConfig.policyBindings).toHaveLength(17);
     expect(initial.versions).toHaveLength(1);
-    expect(initial.versions[0]!.testSuiteCount).toBe(748);
+    expect(initial.versions[0]!.testSuiteCount).toBe(746);
     expect(initial.versions[0]!.validationRunId).toBeNull();
     const artifact = initial.versions[0]!.artifact!;
     expect(verify(null, Buffer.from(artifact.checksum, "utf8"), key.publicKey, Buffer.from(artifact.signature, "base64"))).toBe(true);

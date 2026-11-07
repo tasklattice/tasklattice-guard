@@ -11,7 +11,11 @@ import type { Artifact__Output } from "../generated/control-protocol/tasklattice
 import { artifactContent, artifactContentDigest, type ArtifactContent } from "./artifact-content.js";
 import { deriveRequirements } from "./artifact-requirements.js";
 import { assertSelfContained, buildPackage, parsePackage, verifyPackageVersion } from "./guardrail-package.js";
-import { planBuiltInDefinitions, planCustomVersions, planPolicyEdges, planPolicyVersion, policyNodeDigest, snapshotChecksum, type PolicyNode } from "./policy-node.js";
+import { guardrailPolicyNodes, planBuiltInDefinitions, planCustomVersions, planPolicyEdges, planPolicyVersion, policyNodeDigest, snapshotChecksum, type PolicyNode } from "./policy-node.js";
+import { PolicyCatalog } from "../policy-catalog/catalog.js";
+import { defaultGuardrailDraft } from "./defaults.js";
+import { buildGuardrailPlan } from "./guardrail-plan.js";
+import bundledDefault from "./default-baseline.json" with { type: "json" };
 import type { ProgrammablePolicySnapshot } from "../policy-studio/model.js";
 import { freezeTestSuite, testSuiteDigest, type FrozenTestCase } from "./test-suite.js";
 import { readZip, writeZip } from "./zip.js";
@@ -66,6 +70,36 @@ describe("Artifact content digest", () => {
 });
 
 describe("Guardrail release package", () => {
+  it("round-trips the current Default with compact per-Rule definitions and full Policy leaves", () => {
+    const content = canonicalize(bundledDefault as unknown as ArtifactContent);
+    const policies = PolicyCatalog.load(resolve("../runner/toolkit/policy_library/assets")).list();
+    const nodes = guardrailPolicyNodes(defaultGuardrailDraft(policies).policyBindings, policies, []);
+    const parsed = parsePackage(packageOf(content, suite, nodes));
+    expect(verifyPackageVersion(parsed, parsed.versions[0]!, canonicalize)).toBe(artifactContentDigest(content));
+  });
+
+  it("rejects a changed earlier Rule projection even when later copies of that Policy are valid", () => {
+    const content = canonicalize(bundledDefault as unknown as ArtifactContent);
+    const policies = PolicyCatalog.load(resolve("../runner/toolkit/policy_library/assets")).list();
+    const draft = defaultGuardrailDraft(policies);
+    const binding = draft.policyBindings[0]!;
+    binding.ruleActions[binding.enabledRuleIds[0]!] = "allow";
+    content.plan = canonicalize({ ...content, plan: buildGuardrailPlan({
+      guardrailId: content.guardrailId, guardrailVersion: content.guardrailVersion, draft, policies,
+    }) }).plan;
+    const nodes = guardrailPolicyNodes(draft.policyBindings, policies, []);
+    const steps = content.plan.steps as Array<{ parameters: Array<[string, string]> }>;
+    const copies = steps.flatMap(step => step.parameters.filter(([key]) => key === "policy_definitions_json"));
+    const first = copies[0]!;
+    const definitions = JSON.parse(first[1]);
+    const id = Object.keys(definitions)[0]!;
+    expect(copies.slice(1).some(([, value]) => Object.hasOwn(JSON.parse(value), id))).toBe(true);
+    definitions[id].rules[0].expression = "tampered";
+    first[1] = JSON.stringify(definitions);
+    const parsed = parsePackage(packageOf(content, suite, nodes));
+    expect(() => verifyPackageVersion(parsed, parsed.versions[0]!, canonicalize)).toThrow(/different definition of Policy/);
+  });
+
   it.each(["default-local-v1", "configured-phrases-v1", "topic-control-native-v1"])("round-trips %s with its Policy nodes, requirements and test suite", name => {
     const { content } = fixture(name);
     const parsed = parsePackage(packageOf(content));

@@ -1,5 +1,5 @@
 import { guardrailProfiles as guardrailProfileSeeds } from "../../shared/guardrail-profiles.js";
-import { inArray } from "drizzle-orm";
+import { inArray, sql } from "drizzle-orm";
 import type { ControllerDatabase } from "./client.js";
 import { guardrailProfiles } from "./schema.js";
 
@@ -28,6 +28,10 @@ export async function syncProfiles(db: SeedDb): Promise<void> {
       .onConflictDoUpdate({ target: guardrailProfiles.id, set: {
         category: row.category, categoryName: row.categoryName, isDefault: row.isDefault,
         enabled: true, sortOrder, definition: row.definition, updatedAt: new Date(),
-      } });
+      }, setWhere: sql`(${guardrailProfiles.category}, ${guardrailProfiles.categoryName},
+        ${guardrailProfiles.isDefault}, ${guardrailProfiles.enabled},
+        ${guardrailProfiles.sortOrder}, ${guardrailProfiles.definition}) IS DISTINCT FROM
+        (excluded.category, excluded.category_name, excluded.is_default,
+        excluded.enabled, excluded.sort_order, excluded.definition)` });
   }
 }

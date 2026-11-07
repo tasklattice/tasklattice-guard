@@ -13,6 +13,17 @@ const node = {
 };
 
 describe("Policy nodes", () => {
+  it("accepts compact Rule selections while rejecting altered or unknown Rules", () => {
+    const source = { ...node, definition: { kind: "Policy" } };
+    const { definition: _definition, test_cases: _tests, ...compact } = source;
+    const selected = { ...compact, rules: [rule("pattern/fixed")] };
+    expect(derivesFromCatalogNode(source, selected)).toBe(true);
+    expect(derivesFromCatalogNode(source, { ...selected, description: "changed" })).toBe(false);
+    expect(derivesFromCatalogNode(source, { ...selected, rules: [rule("pattern/fixed", { effect: "allow" })] })).toBe(false);
+    expect(derivesFromCatalogNode(source, { ...selected, rules: [rule("unknown")] })).toBe(false);
+    expect(derivesFromCatalogNode(source, { ...selected, rules: [] })).toBe(false);
+  });
+
   it("accepts an Artifact copy whose phrase Rule expanded per binding, and nothing else", () => {
     const expanded = { ...node,
       rules: [rule("phrase/entries/1", { name: "alpha" }), rule("phrase/entries/2", { name: "beta" }), rule("pattern/fixed")],

@@ -50,7 +50,7 @@ describe.skipIf(!url)("Project Default Guardrail provisioning", () => {
       const guardrail = await inProject(row.project_id, () => service.getGuardrail(row.id));
       expect(guardrail.readiness).toBe("ready");
       expect(guardrail.versions).toHaveLength(1);
-      expect(guardrail.versions[0]!.testSuiteCount).toBe(748);
+      expect(guardrail.versions[0]!.testSuiteCount).toBe(746);
       const artifact = guardrail.versions[0]!.artifact!;
       expect(verify(null, Buffer.from(artifact.checksum, "utf8"), keys.publicKey, Buffer.from(artifact.signature, "base64"))).toBe(true);
     }

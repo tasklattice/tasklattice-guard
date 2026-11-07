@@ -371,7 +371,10 @@ export class ControlPlaneService {
       const compiled = row.definition.definition
         ? this.policyResources.compiler.compile(this.policyResources.compiler.fromSnapshot(row.definition))
         : builtInPolicyView(row.definition);
-      const view = { ...compiled, origin: "imported", source_id: row.sourceId } as unknown as PolicyDto;
+      // Keep the frozen executable fields byte-identical across import and
+      // republication. Recompilation only supplies derived Library metadata.
+      const view = { ...compiled, ...builtInPolicyView(row.definition), source: compiled.source,
+        origin: "imported", source_id: row.sourceId } as unknown as PolicyDto;
       imported.set(row.policyId, [...imported.get(row.policyId) ?? [], view]);
     }
     const newestFirst = (items: PolicyDto[]) => [...items].sort((left, right) => right.version.localeCompare(left.version, undefined, { numeric: true }));

@@ -49,7 +49,7 @@ async def main():
     )
     client = RunnerControlClient(SimpleNamespace(runner_id="runner-default-0", pool_id="default", compiler_capable=True), Store(), Metrics())
     task = asyncio.create_task(client._validate(request))
-    count, raw_bytes, wire_bytes, parts = 0, 0, 0, 0
+    count, raw_bytes, wire_bytes, parts, execution_errors = 0, 0, 0, 0, 0
     with Path(sys.argv[2]).open("wb") as output:
         while True:
             message = await asyncio.wait_for(client._outgoing.get(), 90)
@@ -59,6 +59,8 @@ async def main():
             raw = gzip.decompress(chunk.gzip_result)
             result = protocol.ValidationResult.FromString(raw)
             count += len(result.results)
+            execution_errors += sum(bool(item.actual_failure) or item.execution_status == "error"
+                                    for item in result.results)
             encoded = message.SerializeToString()
             output.write(struct.pack(">I", len(encoded)))
             output.write(encoded)
@@ -72,7 +74,10 @@ async def main():
     await asyncio.wait_for(task, 30)
     assert result.accepted and count == len(request.test_cases)
     assert result.test_scope.model_invocations == 0
-    print(json.dumps({"cases": count, "status": protocol.ValidationStatus.Name(result.status), "rawBytes": raw_bytes, "wireBytes": wire_bytes, "parts": parts}))
+    print(json.dumps({"cases": count, "status": protocol.ValidationStatus.Name(result.status),
+                      "passed": result.metrics.passed, "executed": result.metrics.executed,
+                      "executionErrors": execution_errors,
+                      "rawBytes": raw_bytes, "wireBytes": wire_bytes, "parts": parts}))
     for spool in client._report_spools.values():
         spool.close()
 

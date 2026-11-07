@@ -91,7 +91,12 @@ export function planPolicyEdges(plan: Record<string, unknown>): Array<{ id: stri
 
 /** Built-in definitions frozen into a plan's content filter steps, keyed by Policy ID. */
 export function planBuiltInDefinitions(plan: Record<string, unknown>): Map<string, Record<string, unknown>> {
-  const found = new Map<string, Record<string, unknown>>();
+  return new Map(planBuiltInDefinitionEntries(plan));
+}
+
+/** Every step's copy must be checked, including repeated per-Rule projections. */
+export function planBuiltInDefinitionEntries(plan: Record<string, unknown>): Array<[string, Record<string, unknown>]> {
+  const found: Array<[string, Record<string, unknown>]> = [];
   for (const step of records(plan.steps)) {
     if (step.capability !== "builtin_content_filter") continue;
     const parameters = new Map((Array.isArray(step.parameters) ? step.parameters : []).filter(Array.isArray).map(pair => [String(pair[0]), String(pair[1] ?? "")]));
@@ -102,7 +107,7 @@ export function planBuiltInDefinitions(plan: Record<string, unknown>): Map<strin
       continue;
     }
     for (const [id, definition] of Object.entries(frozen && typeof frozen === "object" ? frozen : {})) {
-      if (definition && typeof definition === "object" && !Array.isArray(definition)) found.set(id, definition as Record<string, unknown>);
+      if (definition && typeof definition === "object" && !Array.isArray(definition)) found.push([id, definition as Record<string, unknown>]);
     }
   }
   return found;
@@ -140,11 +145,15 @@ export function builtInPolicyView(definition: Record<string, unknown>) {
  * Whether a plan's frozen catalog definition was built from this node: it is
  * equal, except that a phrase Rule (rule_expansion) expands into one Rule per
  * entry the binding supplies, and Test Cases then cover the expanded Rules.
+ * Compact execution copies omit authoring source/tests and carry only the
+ * selected Rules. Each retained Rule must still match its source node.
  */
 export function derivesFromCatalogNode(node: Record<string, unknown>, frozen: Record<string, unknown>): boolean {
   const { rules: nodeRules, test_cases: nodeTests, ...nodeRest } = node;
   const { rules: frozenRules, test_cases: frozenTests, ...frozenRest } = frozen;
-  if (canonicalJson(nodeRest) !== canonicalJson(frozenRest)) return false;
+  const compact = !Object.hasOwn(frozen, "test_cases") && !Object.hasOwn(frozen, "definition");
+  const { definition: _source, ...nodeMetadata } = nodeRest;
+  if (canonicalJson(compact ? nodeMetadata : nodeRest) !== canonicalJson(frozenRest)) return false;
   const own = new Map(records(nodeRules).map(rule => [text(rule.id), rule]));
   const expanding = [...own.values()].filter(rule => rule.rule_expansion);
   const kept = new Set<string>();
@@ -157,6 +166,7 @@ export function derivesFromCatalogNode(node: Record<string, unknown>, frozen: Re
       return false;
     }
   }
+  if (compact) return records(frozenRules).length > 0;
   if ([...own.values()].some(rule => !rule.rule_expansion && !kept.has(text(rule.id)))) return false;
   const withoutCoverage = (value: unknown) => records(value).map(({ covered_rule_ids: _covered, ...test }) => canonicalJson(test));
   return canonicalJson(withoutCoverage(nodeTests)) === canonicalJson(withoutCoverage(frozenTests));

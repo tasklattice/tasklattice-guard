@@ -44,18 +44,38 @@ describe.skipIf(!url)("Current database schema baseline", () => {
     expect((await pool.query("SELECT count(*)::int AS n FROM guardrail_profile")).rows[0].n).toBe(5);
     expect((await pool.query("SELECT count(*)::int AS n FROM drizzle.__drizzle_migrations")).rows[0].n).toBe(migrationCount);
     expect((await pool.query("SELECT to_regclass('validation_report_state') AS report")).rows[0].report).toBe("validation_report_state");
-    await expect(pool.query("INSERT INTO guardrail_profile(id,category,category_name,is_default,enabled,definition) SELECT 'duplicate',category,category_name,true,true,definition FROM guardrail_profile WHERE id='banking-assistant'"))
+    await expect(pool.query("INSERT INTO guardrail_profile(id,category,category_name,is_default,enabled,definition) SELECT 'duplicate',category,category_name,true,true,definition FROM guardrail_profile WHERE id='default'"))
       .rejects.toMatchObject({ code: "23505" });
     expect(pool.waitingCount).toBe(0);
   });
-  it("preserves current installed data, edited Profiles and migration history on restart", async () => {
+  it("preserves user-created Profiles and migration history on restart", async () => {
     await migrate();
-    await pool.query("UPDATE guardrail_profile SET enabled=false,definition=jsonb_set(definition,'{name}','\"User-owned\"') WHERE id='banking-assistant'");
+    await pool.query(`INSERT INTO guardrail_profile(id,category,category_name,is_default,enabled,definition)
+      SELECT 'user-owned','custom','Custom',false,false,jsonb_set(definition,'{name}','"User-owned"')
+      FROM guardrail_profile WHERE id='default'`);
     await pool.query("UPDATE drizzle.__drizzle_migrations SET hash='current-v1-baseline'");
     const before = (await pool.query("SELECT * FROM guardrail_profile ORDER BY id")).rows;
     await migrate();
     expect((await pool.query("SELECT * FROM guardrail_profile ORDER BY id")).rows).toEqual(before);
     expect((await pool.query("SELECT hash FROM drizzle.__drizzle_migrations")).rows).toEqual(Array.from({ length: migrationCount }, () => ({ hash: "current-v1-baseline" })));
+  });
+  it("refreshes managed seeds and removes retired Profiles without rewriting unchanged rows", async () => {
+    await migrate();
+    const original = (await pool.query("SELECT * FROM guardrail_profile WHERE id='default'")).rows[0];
+    await pool.query(`INSERT INTO guardrail_profile(id,category,category_name,is_default,enabled,definition)
+      SELECT 'banking-assistant','legacy','Legacy',false,true,definition
+      FROM guardrail_profile WHERE id='default'`);
+    await pool.query(`UPDATE guardrail_profile SET enabled=false,
+      definition=jsonb_set(definition,'{name}','"Outdated seed"'),updated_at='2000-01-01'
+      WHERE id='default'`);
+    await migrate();
+    const refreshed = (await pool.query("SELECT * FROM guardrail_profile WHERE id='default'")).rows[0];
+    expect(refreshed).toEqual({ ...original, updated_at: expect.any(Date) });
+    expect(refreshed.updated_at.getTime()).toBeGreaterThan(new Date("2000-01-01").getTime());
+    expect((await pool.query("SELECT id FROM guardrail_profile WHERE id='banking-assistant'")).rows).toEqual([]);
+    const before = (await pool.query("SELECT * FROM guardrail_profile ORDER BY id")).rows;
+    await migrate();
+    expect((await pool.query("SELECT * FROM guardrail_profile ORDER BY id")).rows).toEqual(before);
   });
   it("creates only the current Project model, without upgrade scaffolding or sample tenants", async () => {
     await migrate();

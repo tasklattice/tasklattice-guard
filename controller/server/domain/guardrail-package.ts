@@ -8,7 +8,7 @@ import { ControllerError } from "./errors.js";
 import type { GuardrailDraftConfig } from "./guardrail-plan.js";
 import {
   derivesFromCatalogNode,
-  planBuiltInDefinitions,
+  planBuiltInDefinitionEntries,
   planCustomVersions,
   planPolicyEdges,
   planPolicyVersion,
@@ -274,13 +274,17 @@ export function verifyPackageVersion(
   if (bound.size !== edges.size || [...bound].some(key => !edges.has(key))) throw fail("its Policy versions differ from the ones the Artifact executes.");
   // And the Artifact was built from those nodes, not merely from their names.
   const nodes = new Map(parsed.policies.map(node => [nodeKey(node), node]));
-  const frozen = planBuiltInDefinitions(content.plan);
+  const frozen = new Map<string, Record<string, unknown>[]>();
+  for (const [id, copy] of planBuiltInDefinitionEntries(content.plan)) {
+    const copies = frozen.get(id) ?? [];
+    copies.push(copy);
+    frozen.set(id, copies);
+  }
   const projections = planCustomVersions(content.plan);
   for (const key of edges) {
     const node = nodes.get(key)!;
     if (node.kind === "catalog") {
-      const copy = frozen.get(node.id);
-      if (copy && !derivesFromCatalogNode(node.definition, copy)) throw fail(`the Artifact executes a different definition of Policy ${key}.`);
+      if (frozen.get(node.id)?.some(copy => !derivesFromCatalogNode(node.definition, copy))) throw fail(`the Artifact executes a different definition of Policy ${key}.`);
     } else {
       const snapshot = node.definition as unknown as ProgrammablePolicySnapshot;
       const projection = projections.get(key);
