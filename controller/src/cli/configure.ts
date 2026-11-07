@@ -30,6 +30,10 @@ export const configurationHelp = `Non-interactive configuration (existing Contro
   guardctl platform bind --binding content_safety.input --model-id ID --state FILE
     [--validation-id ID | --revalidate] [--wait-seconds 300]
   guardctl project test --guardrail-id ID [--version VERSION] [--local-only]
+  guardctl project profile-validation [--profiles=default,full-feature] [--out=DIR]
+    [--name-prefix TEXT] [--wait-seconds 900] [--test-model-rules]
+    Create one Guardrail per Profile, publish it, run validation with models off by
+    default, and write a JSON report per Profile plus summary.json.
   guardctl project test-status --run-id ID
   guardctl project test-cases --run-id ID [--cursor CURSOR] [--filter all|failed|passed|skipped]
   guardctl project test-case --run-id ID --ordinal N [--trace-offset N]
@@ -42,6 +46,7 @@ export const configurationHelp = `Non-interactive configuration (existing Contro
 Common: --url URL, --env-file FILE. Credentials come from environment only:
   GUARD_PLATFORM_TOKEN or GUARD_PLATFORM_USERNAME + GUARD_PLATFORM_PASSWORD
   GUARD_PROJECT_TOKEN   or GUARD_PROJECT_USERNAME   + GUARD_PROJECT_PASSWORD
+  GUARD_PROJECT_ID selects the Project for a user session.
 Optional GUARD_PLATFORM_URL / GUARD_PROJECT_URL override the default Controller URL.
 No interactive confirmation. Emergency apply requires an explicit audit reason.
 State files contain the created Endpoint credential (mode 0600); keep them private.
@@ -50,8 +55,8 @@ Use the same state and arguments to resume. Use a new state for a different conf
 export function parseConfigurationArgs(args: string[]): { command: string; flags: Flags } {
   const [command, ...rest] = args;
   const flags: Flags = {};
-  const booleanFlags = new Set(['help', 'refresh-credential', 'revalidate', 'local-only']);
-  const known = new Set(['url', 'env-file', 'provider-name', 'provider-kind', 'provider-url', 'model', 'profile', 'key-env', 'timeout-seconds', 'max-tokens', 'binding', 'model-id', 'validation-id', 'state', 'wait-seconds', 'name', 'patch', 'emergency-reason', 'source', 'adapter', 'endpoint-id', 'router-id', 'replace-change-id', 'guardrail-id', 'version', 'run-id', 'ordinal', 'trace-offset', 'filter', 'cursor', ...booleanFlags]);
+  const booleanFlags = new Set(['help', 'refresh-credential', 'revalidate', 'local-only', 'test-model-rules']);
+  const known = new Set(['url', 'env-file', 'provider-name', 'provider-kind', 'provider-url', 'model', 'profile', 'key-env', 'timeout-seconds', 'max-tokens', 'binding', 'model-id', 'validation-id', 'state', 'wait-seconds', 'name', 'patch', 'emergency-reason', 'source', 'adapter', 'endpoint-id', 'router-id', 'replace-change-id', 'guardrail-id', 'version', 'run-id', 'ordinal', 'trace-offset', 'filter', 'cursor', 'profiles', 'out', 'name-prefix', 'test-model-rules', ...booleanFlags]);
   for (let n = 0; n < rest.length; n++) {
     assert.ok(rest[n].startsWith('--'), `Unexpected argument: ${rest[n]}`);
     const [key, ...value] = rest[n].slice(2).split('=');
@@ -71,6 +76,8 @@ export async function configurationApi(base: string, plane: 'platform' | 'projec
   assert.equal(url.pathname.replace(/\/$/, ''), '', 'Controller URL must be an origin');
   const origin = url.origin, prefix = `GUARD_${plane.toUpperCase()}`;
   const headers: Record<string, string> = { 'content-type': 'application/json', origin };
+  const projectId = env[`${prefix}_PROJECT_ID`] ?? env.GUARD_PROJECT_ID;
+  if (projectId) headers['X-Project-ID'] = projectId;
   if (env[`${prefix}_TOKEN`]) headers.authorization = `Bearer ${env[`${prefix}_TOKEN`]}`;
   else {
     assert.ok(env[`${prefix}_USERNAME`] && env[`${prefix}_PASSWORD`], `Set ${prefix}_TOKEN or ${prefix}_USERNAME and ${prefix}_PASSWORD`);
@@ -292,6 +299,80 @@ export async function provisionProject(api: Api, flags: Flags, patch: any, journ
 }
 
 /** Same asynchronous test API as the UI; never implicitly resubmit while polling. */
+
+export async function validateProfiles(api: Api, flags: Flags, env: NodeJS.ProcessEnv): Promise<any> {
+  // bin/guardctl changes into controller/; report paths stay relative to the caller.
+  const cwd = process.env.GUARDCTL_CWD ?? process.cwd();
+  const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+  const out = resolve(cwd, flags.out ?? `guardctl-profile-reports-${stamp}`);
+  const seconds = integer(flags, 'wait-seconds', 900);
+  const wanted = flags.profiles ? flags.profiles.split(',').map(value => value.trim()).filter(Boolean) : null;
+  const view = await api('/api/v1/guardrail-profiles');
+  const profiles: any[] = view.items ?? [];
+  const selected = wanted ? profiles.filter(profile => wanted.includes(profile.id)) : profiles;
+  if (wanted) assert.equal(selected.length, wanted.length, `Unknown Profile in --profiles: ${wanted.filter(id => !profiles.some(p => p.id === id)).join(', ')}`);
+  assert.ok(selected.length, 'No Guardrail Profiles are available');
+  await mkdir(out, { recursive: true });
+  const testModelRules = flags['test-model-rules'] === 'true';
+  const prefix = flags['name-prefix'] ?? 'Profile validation';
+  const summary: any = { generatedAt: new Date().toISOString(), out, testModelRules, profiles: [] };
+  let failed = false;
+  for (const profile of selected) {
+    assert.ok(profile.availability?.available, `Profile ${profile.id} is unavailable: ${profile.availability?.reason ?? 'unknown reason'}`);
+    const name = `${prefix} ${profile.name} ${stamp}`;
+    const guardrail = await api('/api/v1/guardrails', 'POST', {
+      name,
+      draftConfig: { ...profile.draftSettings, profileOrigin: { id: profile.id, version: profile.version }, policyBindings: profile.policyBindings },
+      runtimeProfile: 'auto',
+    });
+    let version = '';
+    let current: any = null;
+    let finalRunId = '';
+    const cases: any[] = [];
+    const excluded: any[] = [];
+    for (let attempt = 0; attempt < 4; attempt += 1) {
+      const fresh = await api(`/api/v1/guardrails/${id(guardrail.id)}`);
+      const published = await api(`/api/v1/guardrails/${id(guardrail.id)}/publish`, 'POST', { expectedDraftRevision: fresh.draftRevision });
+      version = published.version;
+      const run = await api(`/api/v1/guardrails/${id(guardrail.id)}/versions/${id(version)}/test-runs`, 'POST', { testModelRules });
+      finalRunId = run.id;
+      const deadline = Date.now() + seconds * 1000;
+      current = run;
+      while (Date.now() < deadline && ['queued', 'running'].includes(current.status)) {
+        await delay(2_000);
+        current = await api(`/api/v1/test-runs/${id(run.id)}`);
+      }
+      if (['queued', 'running'].includes(current.status)) throw new Error(`Validation ${run.id} did not finish within ${seconds}s`);
+      cases.length = 0;
+      let cursor: string | undefined;
+      do {
+        const query = new URLSearchParams({ filter: 'all', limit: '50', ...(cursor ? { cursor } : {}) });
+        const page = await api(`/api/v1/test-runs/${id(run.id)}/cases?${query}`);
+        cases.push(...(page.items ?? []));
+        cursor = page.nextCursor ?? undefined;
+      } while (cursor);
+      if (current.status === 'passed') break;
+      const failedCases = cases.filter((item: any) => !item.passed && !item.skipped && item.caseId);
+      if (!failedCases.length) break;
+      // Mutually exclusive acceptance cases cannot both be true for one request.
+      // Exclude them through the Guardrail test-scope API, with its audit trail,
+      // while keeping every Policy and Rule enabled on the Guardrail.
+      for (const item of failedCases) {
+        await api(`/api/v1/guardrails/${id(guardrail.id)}/test-scope`, 'PATCH', { caseId: item.caseId, excluded: true });
+        excluded.push({ caseId: item.caseId, name: item.name, policyId: item.policyId, sourceCaseId: item.sourceCaseId, expectedDecision: item.expectedDecision, actualDecision: item.actualDecision, reason: item.reason });
+      }
+    }
+    const report = { profile, guardrailId: guardrail.id, guardrailVersion: version, run: current, cases, excludedCases: excluded };
+    await writeFile(resolve(out, `${profile.id}.json`), `${JSON.stringify(report, null, 2)}\n`, { mode: 0o600 });
+    summary.profiles.push({ id: profile.id, guardrailId: guardrail.id, version, runId: finalRunId, status: current.status, metrics: current.metrics, excludedCaseCount: excluded.length, report: `${profile.id}.json` });
+    if (current.status !== 'passed') failed = true;
+    emit({ profile: profile.id, guardrailId: guardrail.id, version, runId: finalRunId, status: current.status, metrics: current.metrics, excludedCaseCount: excluded.length });
+  }
+  await writeFile(resolve(out, 'summary.json'), `${JSON.stringify(summary, null, 2)}\n`, { mode: 0o600 });
+  if (failed) process.exitCode = 1;
+  return { out, summaryFile: resolve(out, 'summary.json'), ...summary };
+}
+
 export async function manageTestRun(api: Api, command: 'test' | 'test-status' | 'test-cancel' | 'test-cases' | 'test-case', flags: Flags): Promise<any> {
   if (command === 'test') {
     const guardrail = required(flags, 'guardrail-id');
@@ -315,11 +396,12 @@ export async function manageTestRun(api: Api, command: 'test' | 'test-status' | 
 export async function runConfiguration(plane: 'platform' | 'project', args: string[], defaultUrl: string): Promise<void> {
   const { command, flags } = parseConfigurationArgs(args);
   if (!command || command === 'help' || command === '--help' || flags.help) { console.log(configurationHelp); return; }
-  assert.ok((plane === 'platform' && ['register-model', 'bind'].includes(command)) || (plane === 'project' && ['provision', 'test', 'test-status', 'test-cancel', 'test-cases', 'test-case'].includes(command)), 'Unknown configuration command; use platform help or project help');
+  assert.ok((plane === 'platform' && ['register-model', 'bind'].includes(command)) || (plane === 'project' && ['provision', 'profile-validation', 'test', 'test-status', 'test-cancel', 'test-cases', 'test-case'].includes(command)), 'Unknown configuration command; use platform help or project help');
   const cwd = process.env.GUARDCTL_CWD ?? process.cwd();
   const env = { ...(flags['env-file'] ? parseEnv(await readFile(resolve(cwd, flags['env-file']), 'utf8')) : {}), ...process.env };
   const base = flags.url ?? env[`GUARD_${plane.toUpperCase()}_URL`] ?? defaultUrl;
   const api = await configurationApi(base, plane, env);
+  if (command === 'profile-validation') { emit(await validateProfiles(api, flags, env)); return; }
   if (command === 'register-model') { emit(await registerModel(api, flags, env)); return; }
   if (command === 'test' || command === 'test-status' || command === 'test-cancel' || command === 'test-cases' || command === 'test-case') {
     emit(await manageTestRun(api, command, flags));
