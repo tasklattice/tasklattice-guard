@@ -84,7 +84,7 @@ describe("production Controller gRPC transport budget", () => {
   });
 
   it.each([false,true])("preserves bounded chunks and enforces the wire ceiling (oversized=%s)",async oversized=>{
-    const evidence="synthetic evidence ".repeat(2200),count=950,received:Array<{caseId:string;outputContent:string}>=[];
+    const evidence="synthetic evidence ".repeat(2200),count=1900,received:Array<{caseId:string;outputContent:string}>=[];
     const desiredId="disabled-"+"d".repeat(5*1024*1024);
     const service={runnerControlSessions:{isCurrent:vi.fn().mockResolvedValue(true),dispatched:vi.fn().mockResolvedValue(true),dispatchedAllocation:vi.fn().mockResolvedValue({epoch:0,groupId:"default"}),acknowledged:vi.fn().mockResolvedValue(true)},registerRunner:vi.fn().mockResolvedValue(1),disconnectRunner:vi.fn(),completeValidation:vi.fn(),
       reportResults:{stage:vi.fn(async(chunk:{results:typeof received;final:boolean})=>{received.push(...chunk.results);return chunk.final;})},
@@ -113,7 +113,7 @@ describe("production Controller gRPC transport budget", () => {
         const parts:Buffer[]=[];
         for(let offset=0;offset<count;offset+=20)parts.push(codec.serialize({runnerId:"transport-runner-0",runId:"large-validation",results:Array.from({length:Math.min(20,count-offset)},(_,i)=>({caseId:`case-${offset+i}`,passed:true,outputContent:evidence,action:"ENFORCEMENT_ACTION_ALLOW",actualDecision:"VALIDATION_DECISION_ALLOW"}))}));
         parts.push(codec.serialize({runnerId:"transport-runner-0",runId:"large-validation",accepted:true,status:"VALIDATION_STATUS_PASSED",metrics:{total:count,passed:count}}));
-        expect(parts.reduce((sum,b)=>sum+b.length,0)).toBeGreaterThan(CONTROL_MESSAGE_MAX_BYTES);
+        expect(parts.reduce((sum,b)=>sum+b.length,0)).toBeGreaterThan(64 * 1024 * 1024);
         const hashes=parts.map(b=>createHash("sha256").update(b).digest("hex")),manifest=createHash("sha256").update(hashes.join("\n")).digest("hex");
         for(const [sequence,bytes] of parts.entries()){
           expect(bytes.length).toBeLessThan(1024*1024);
