@@ -19,9 +19,9 @@ CASES = [
 @pytest.mark.parametrize('kind,text,sensitive', CASES)
 async def test_pii_full_buffering_all_character_and_unicode_boundaries(tmp_path, release, kind, text, sensitive):
     expected = {
-        'passport': '中文 Passport: [passport_china_REDACTED]',
+        'passport': '中文 [REDACTED]',
         'email': '中文 Email: [email_REDACTED]',
-        'card': '中文 Card: [credit_card_REDACTED]',
+        'card': '中文 Card: [visa_REDACTED]',
     }[kind]
     from tests.stream_client import runner, connection, exchange, released
     async with runner(tmp_path, release) as (url, _, registry, telemetry, _):

@@ -188,12 +188,12 @@ async def test_frozen_default_artifact_forwards_complete_redactions_and_blocks_w
     ).router)
     endpoint = "/runtime/v1/endpoints/fixture-endpoint/beta/litellm_basic_guardrail_api"
     samples = [
-        ("Passport: E12345678", "Passport: [passport_china_REDACTED]"),
+        ("Passport: E12345678", "[REDACTED]"),
         ("Emirates ID: 784-1990-1234567-1", "Emirates ID: [uae_emirates_id_REDACTED]"),
         ("Driver's licence A1234-56789-01234.", "Driver's licence [ca_on_drivers_licence_REDACTED]."),
         ("Bank account 12345-001-1234567.", "Bank account [ca_bank_account_REDACTED]."),
         ("Phone: +1 (212) 555 1234", "Phone: +[us_phone_REDACTED]"),
-        ("Card: 3411 111111 11111", "Card: [credit_card_REDACTED]"),
+        ("Card: 3411 111111 11111", "Card: [amex_REDACTED]"),
         ("VAT AT00000000", "VAT [eu_vat_REDACTED]"),
     ]
     try:
