@@ -80,6 +80,13 @@ it("does not fetch or block local-only Policies", () => {
   expect(read).not.toHaveBeenCalled();
   expect(screen.getByRole("button", { name: "Run tests" }).hasAttribute("disabled")).toBe(false);
 });
+it("does not show a test warning or block testing when only dependency metadata is unknown", () => {
+  show([{ ...policy, protection: { ...policy.protection!, execution: "custom", modelCapabilities: [] } }]);
+  expect(read).not.toHaveBeenCalled();
+  expect(screen.queryByRole("status")).toBeNull();
+  expect(screen.queryByRole("alert")).toBeNull();
+  expect(screen.getByRole("button", { name: "Run tests" }).hasAttribute("disabled")).toBe(false);
+});
 it("distinguishes pending and failed reads from missing models, and retries", async () => {
   read.mockRejectedValueOnce(new Error("offline")).mockResolvedValue({ ...empty, active: revision() }); show();
   expect(screen.getByRole("status").textContent).toContain("Checking draft");

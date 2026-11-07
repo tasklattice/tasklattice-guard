@@ -4,7 +4,7 @@ import type { ProtectionPreset } from "./protection-map.js";
 export const protectionPresets: readonly ProtectionPreset[] = [
   {
     "id": "default",
-    "version": "1.0.0",
+    "version": "1.1.0",
     "name": "Default",
     "description": "Local-only baseline.",
     "industry": "general",
@@ -65,280 +65,72 @@ export const protectionPresets: readonly ProtectionPreset[] = [
         "testCaseOverrides": {}
       },
       {
-        "policyId": "payment-data",
+        "policyId": "prompt-instruction-attacks",
         "policyVersion": "1.0.0",
         "enabledRails": [
           "input",
           "output"
         ],
-        "parameterValues": {},
+        "parameterValues": {
+          "on_unknown": "block",
+          "review_unknown": "false"
+        },
         "action": null,
         "ruleActions": {},
         "reasoningPolicy": null,
         "enabledRuleIds": [
-          "financial-pii/credit_card",
-          "financial-pii/iban",
-          "pattern/ca_bank_account",
-          "pattern/sg_bank_account",
-          "cn-personal-information/unionpay-card",
-          "pattern/eu_iban_enhanced",
-          "financial-pii/visa",
-          "financial-pii/mastercard",
-          "financial-pii/amex",
-          "financial-pii/discover"
+          "boundary/indirect-injection",
+          "boundary/memory-poisoning",
+          "prompt-injection-blocker/blocked-word-1",
+          "prompt-injection-blocker/blocked-word-2",
+          "prompt-injection-blocker/blocked-word-3",
+          "prompt-injection-blocker/blocked-word-4",
+          "prompt-injection-blocker/blocked-word-5",
+          "prompt-injection-blocker/blocked-word-6",
+          "prompt-injection-blocker/blocked-word-7",
+          "prompt-injection-blocker/blocked-word-8",
+          "prompt-injection-blocker/blocked-word-9",
+          "prompt-injection-blocker/blocked-word-10",
+          "prompt-injection-blocker/blocked-word-11",
+          "prompt-injection-blocker/blocked-word-12",
+          "prompt-injection-blocker/blocked-word-13",
+          "prompt-injection-blocker/blocked-word-14",
+          "category/prompt_injection_jailbreak",
+          "category/prompt_injection_data_exfiltration",
+          "category/prompt_injection_sql",
+          "category/prompt_injection_malicious_code",
+          "category/prompt_injection_system_prompt",
+          "cn-prompt-security/instruction-override",
+          "cn-prompt-security/prompt-extraction",
+          "cn-prompt-security/unrestricted-mode",
+          "claims-system-override-filter/claims_system_override"
         ],
         "ruleOrder": [
-          "financial-pii/credit_card",
-          "financial-pii/iban",
-          "pattern/ca_bank_account",
-          "pattern/sg_bank_account",
-          "cn-personal-information/unionpay-card",
-          "pattern/eu_iban_enhanced",
-          "financial-pii/visa",
-          "financial-pii/mastercard",
-          "financial-pii/amex",
-          "financial-pii/discover"
-        ],
-        "testCaseOverrides": {}
-      },
-      {
-        "policyId": "identity-documents",
-        "policyVersion": "1.0.0",
-        "enabledRails": [
-          "input",
-          "output"
-        ],
-        "parameterValues": {},
-        "action": null,
-        "ruleActions": {},
-        "reasoningPolicy": null,
-        "enabledRuleIds": [
-          "au-pii-tax-identifiers/au_tfn",
-          "au-pii-tax-identifiers/au_abn",
-          "au-pii-tax-identifiers/au_medicare",
-          "pattern/uae_emirates_id",
-          "pattern/ca_on_drivers_licence",
-          "pattern/ca_immigration_doc",
-          "pattern/fr_nir",
-          "pattern/uoft_tcard",
-          "pattern/sg_uen",
-          "pattern/ca_ohip",
-          "pattern/ca_sin",
-          "pattern/eu_vat",
-          "pattern/nl_bsn_contextual",
-          "pattern/au_tfn",
-          "pattern/uoft_student_id",
-          "pattern/us_ssn",
-          "pattern/us_ssn_no_dash",
-          "pattern/br_cpf",
-          "pattern/br_cpf_unformatted",
-          "pattern/br_cnpj",
-          "pattern/br_rg",
-          "pattern/sg_nric",
-          "pattern/uoft_utorid",
-          "cn-business-identifier/unified-social-credit-code",
-          "cn-personal-information/resident-identity-card",
-          "pattern/passport_singapore",
-          "pattern/passport_china",
-          "pattern/passport_us",
-          "pattern/passport_germany",
-          "pattern/passport_france",
-          "pattern/passport_netherlands",
-          "pattern/passport_canada",
-          "pattern/passport_india",
-          "identity/passport",
-          "international-pii-identifiers/passport_uk",
-          "international-pii-identifiers/passport_japan",
-          "pattern/passport_australia"
-        ],
-        "ruleOrder": [
-          "au-pii-tax-identifiers/au_tfn",
-          "au-pii-tax-identifiers/au_abn",
-          "au-pii-tax-identifiers/au_medicare",
-          "pattern/uae_emirates_id",
-          "pattern/ca_on_drivers_licence",
-          "pattern/ca_immigration_doc",
-          "pattern/fr_nir",
-          "pattern/uoft_tcard",
-          "pattern/sg_uen",
-          "pattern/ca_ohip",
-          "pattern/ca_sin",
-          "pattern/eu_vat",
-          "pattern/nl_bsn_contextual",
-          "pattern/au_tfn",
-          "pattern/uoft_student_id",
-          "pattern/us_ssn",
-          "pattern/us_ssn_no_dash",
-          "pattern/br_cpf",
-          "pattern/br_cpf_unformatted",
-          "pattern/br_cnpj",
-          "pattern/br_rg",
-          "pattern/sg_nric",
-          "pattern/uoft_utorid",
-          "cn-business-identifier/unified-social-credit-code",
-          "cn-personal-information/resident-identity-card",
-          "pattern/passport_singapore",
-          "pattern/passport_china",
-          "pattern/passport_us",
-          "pattern/passport_germany",
-          "pattern/passport_france",
-          "pattern/passport_netherlands",
-          "pattern/passport_canada",
-          "pattern/passport_india",
-          "identity/passport",
-          "international-pii-identifiers/passport_uk",
-          "international-pii-identifiers/passport_japan",
-          "pattern/passport_australia"
-        ],
-        "testCaseOverrides": {}
-      },
-      {
-        "policyId": "contact-data",
-        "policyVersion": "1.0.0",
-        "enabledRails": [
-          "input",
-          "output"
-        ],
-        "parameterValues": {},
-        "action": null,
-        "ruleActions": {},
-        "reasoningPolicy": null,
-        "enabledRuleIds": [
-          "pattern/titled_person",
-          "pattern/contact_list_person",
-          "pattern/truncated_address",
-          "pattern/structured_username",
-          "pattern/structured_address",
-          "pattern/labelled_person",
-          "pattern/sg_local_phone",
-          "pattern/us_phone",
-          "pattern/sg_phone",
-          "pattern/international_phone",
-          "pattern/uae_phone",
-          "pattern/fr_phone",
-          "pattern/br_phone_mobile",
-          "pattern/br_phone_landline",
-          "pattern/br_cep",
-          "pattern/fr_postal_code",
-          "pattern/street_address",
-          "pattern/sg_postal_code",
-          "pattern/ca_postal_code",
-          "pattern/email",
-          "cn-personal-information/mainland-mobile",
-          "uae-data-protection-pii/uae_po_box"
-        ],
-        "ruleOrder": [
-          "pattern/titled_person",
-          "pattern/contact_list_person",
-          "pattern/truncated_address",
-          "pattern/structured_username",
-          "pattern/structured_address",
-          "pattern/labelled_person",
-          "pattern/sg_local_phone",
-          "pattern/us_phone",
-          "pattern/sg_phone",
-          "pattern/international_phone",
-          "pattern/uae_phone",
-          "pattern/fr_phone",
-          "pattern/br_phone_mobile",
-          "pattern/br_phone_landline",
-          "pattern/br_cep",
-          "pattern/fr_postal_code",
-          "pattern/street_address",
-          "pattern/sg_postal_code",
-          "pattern/ca_postal_code",
-          "pattern/email",
-          "cn-personal-information/mainland-mobile",
-          "uae-data-protection-pii/uae_po_box"
-        ],
-        "testCaseOverrides": {}
-      },
-      {
-        "policyId": "network-identifiers",
-        "policyVersion": "1.0.0",
-        "enabledRails": [
-          "input",
-          "output"
-        ],
-        "parameterValues": {},
-        "action": null,
-        "ruleActions": {},
-        "reasoningPolicy": null,
-        "enabledRuleIds": [
-          "pattern/ipv4",
-          "pattern/ipv6",
-          "pattern/url"
-        ],
-        "ruleOrder": [
-          "pattern/ipv4",
-          "pattern/ipv6",
-          "pattern/url"
-        ],
-        "testCaseOverrides": {}
-      },
-      {
-        "policyId": "sensitive-attributes",
-        "policyVersion": "1.0.0",
-        "enabledRails": [
-          "input",
-          "output"
-        ],
-        "parameterValues": {},
-        "action": null,
-        "ruleActions": {},
-        "reasoningPolicy": null,
-        "enabledRuleIds": [
-          "pattern/gender_sexual_orientation",
-          "pattern/race_ethnicity_national_origin",
-          "pattern/religion",
-          "pattern/age_discrimination",
-          "pattern/disability",
-          "pattern/marital_family_status",
-          "pattern/military_status",
-          "pattern/public_assistance"
-        ],
-        "ruleOrder": [
-          "pattern/gender_sexual_orientation",
-          "pattern/race_ethnicity_national_origin",
-          "pattern/religion",
-          "pattern/age_discrimination",
-          "pattern/disability",
-          "pattern/marital_family_status",
-          "pattern/military_status",
-          "pattern/public_assistance"
-        ],
-        "testCaseOverrides": {}
-      },
-      {
-        "policyId": "risk-content-terms",
-        "policyVersion": "1.0.0",
-        "enabledRails": [
-          "input",
-          "output"
-        ],
-        "parameterValues": {},
-        "action": null,
-        "ruleActions": {},
-        "reasoningPolicy": null,
-        "enabledRuleIds": [
-          "pattern/explosives",
-          "pattern/weapons_firearms",
-          "pattern/weapons_other",
-          "pattern/violence_threats",
-          "pattern/terrorism",
-          "pattern/self_harm_suicide",
-          "pattern/illegal_activities",
-          "pattern/harassment_hate"
-        ],
-        "ruleOrder": [
-          "pattern/explosives",
-          "pattern/weapons_firearms",
-          "pattern/weapons_other",
-          "pattern/violence_threats",
-          "pattern/terrorism",
-          "pattern/self_harm_suicide",
-          "pattern/illegal_activities",
-          "pattern/harassment_hate"
+          "boundary/indirect-injection",
+          "boundary/memory-poisoning",
+          "prompt-injection-blocker/blocked-word-1",
+          "prompt-injection-blocker/blocked-word-2",
+          "prompt-injection-blocker/blocked-word-3",
+          "prompt-injection-blocker/blocked-word-4",
+          "prompt-injection-blocker/blocked-word-5",
+          "prompt-injection-blocker/blocked-word-6",
+          "prompt-injection-blocker/blocked-word-7",
+          "prompt-injection-blocker/blocked-word-8",
+          "prompt-injection-blocker/blocked-word-9",
+          "prompt-injection-blocker/blocked-word-10",
+          "prompt-injection-blocker/blocked-word-11",
+          "prompt-injection-blocker/blocked-word-12",
+          "prompt-injection-blocker/blocked-word-13",
+          "prompt-injection-blocker/blocked-word-14",
+          "category/prompt_injection_jailbreak",
+          "category/prompt_injection_data_exfiltration",
+          "category/prompt_injection_sql",
+          "category/prompt_injection_malicious_code",
+          "category/prompt_injection_system_prompt",
+          "cn-prompt-security/instruction-override",
+          "cn-prompt-security/prompt-extraction",
+          "cn-prompt-security/unrestricted-mode",
+          "claims-system-override-filter/claims_system_override"
         ],
         "testCaseOverrides": {}
       },
@@ -431,7 +223,7 @@ export const protectionPresets: readonly ProtectionPreset[] = [
       },
       {
         "policyId": "content-safety-local",
-        "policyVersion": "1.0.0",
+        "policyVersion": "1.0.1",
         "enabledRails": [
           "input",
           "output"
@@ -465,76 +257,6 @@ export const protectionPresets: readonly ProtectionPreset[] = [
           "category/bias_religious",
           "category/bias_sexual_orientation",
           "nsfw-filter-multilingual/harm_toxic_abuse"
-        ],
-        "testCaseOverrides": {}
-      },
-      {
-        "policyId": "prompt-instruction-attacks",
-        "policyVersion": "1.0.0",
-        "enabledRails": [
-          "input",
-          "output"
-        ],
-        "parameterValues": {
-          "on_unknown": "block",
-          "review_unknown": "false"
-        },
-        "action": null,
-        "ruleActions": {},
-        "reasoningPolicy": null,
-        "enabledRuleIds": [
-          "boundary/indirect-injection",
-          "boundary/memory-poisoning",
-          "prompt-injection-blocker/blocked-word-1",
-          "prompt-injection-blocker/blocked-word-2",
-          "prompt-injection-blocker/blocked-word-3",
-          "prompt-injection-blocker/blocked-word-4",
-          "prompt-injection-blocker/blocked-word-5",
-          "prompt-injection-blocker/blocked-word-6",
-          "prompt-injection-blocker/blocked-word-7",
-          "prompt-injection-blocker/blocked-word-8",
-          "prompt-injection-blocker/blocked-word-9",
-          "prompt-injection-blocker/blocked-word-10",
-          "prompt-injection-blocker/blocked-word-11",
-          "prompt-injection-blocker/blocked-word-12",
-          "prompt-injection-blocker/blocked-word-13",
-          "prompt-injection-blocker/blocked-word-14",
-          "category/prompt_injection_jailbreak",
-          "category/prompt_injection_data_exfiltration",
-          "category/prompt_injection_sql",
-          "category/prompt_injection_malicious_code",
-          "category/prompt_injection_system_prompt",
-          "cn-prompt-security/instruction-override",
-          "cn-prompt-security/prompt-extraction",
-          "cn-prompt-security/unrestricted-mode",
-          "claims-system-override-filter/claims_system_override"
-        ],
-        "ruleOrder": [
-          "boundary/indirect-injection",
-          "boundary/memory-poisoning",
-          "prompt-injection-blocker/blocked-word-1",
-          "prompt-injection-blocker/blocked-word-2",
-          "prompt-injection-blocker/blocked-word-3",
-          "prompt-injection-blocker/blocked-word-4",
-          "prompt-injection-blocker/blocked-word-5",
-          "prompt-injection-blocker/blocked-word-6",
-          "prompt-injection-blocker/blocked-word-7",
-          "prompt-injection-blocker/blocked-word-8",
-          "prompt-injection-blocker/blocked-word-9",
-          "prompt-injection-blocker/blocked-word-10",
-          "prompt-injection-blocker/blocked-word-11",
-          "prompt-injection-blocker/blocked-word-12",
-          "prompt-injection-blocker/blocked-word-13",
-          "prompt-injection-blocker/blocked-word-14",
-          "category/prompt_injection_jailbreak",
-          "category/prompt_injection_data_exfiltration",
-          "category/prompt_injection_sql",
-          "category/prompt_injection_malicious_code",
-          "category/prompt_injection_system_prompt",
-          "cn-prompt-security/instruction-override",
-          "cn-prompt-security/prompt-extraction",
-          "cn-prompt-security/unrestricted-mode",
-          "claims-system-override-filter/claims_system_override"
         ],
         "testCaseOverrides": {}
       },
@@ -622,35 +344,6 @@ export const protectionPresets: readonly ProtectionPreset[] = [
         "testCaseOverrides": {}
       },
       {
-        "policyId": "regional-compliance-sg-pdpa",
-        "policyVersion": "1.0.0",
-        "enabledRails": [
-          "input",
-          "output"
-        ],
-        "parameterValues": {},
-        "action": null,
-        "ruleActions": {},
-        "reasoningPolicy": null,
-        "enabledRuleIds": [
-          "claims-phi-disclosure-filter/claims_phi_disclosure",
-          "sg-pdpa-personal-identifiers/sg_pdpa_personal_identifiers",
-          "sg-pdpa-sensitive-data/sg_pdpa_sensitive_data",
-          "sg-pdpa-do-not-call/sg_pdpa_do_not_call",
-          "sg-pdpa-data-transfer/sg_pdpa_data_transfer",
-          "sg-pdpa-profiling-automated-decisions/sg_pdpa_profiling_automated_decisions"
-        ],
-        "ruleOrder": [
-          "claims-phi-disclosure-filter/claims_phi_disclosure",
-          "sg-pdpa-personal-identifiers/sg_pdpa_personal_identifiers",
-          "sg-pdpa-sensitive-data/sg_pdpa_sensitive_data",
-          "sg-pdpa-do-not-call/sg_pdpa_do_not_call",
-          "sg-pdpa-data-transfer/sg_pdpa_data_transfer",
-          "sg-pdpa-profiling-automated-decisions/sg_pdpa_profiling_automated_decisions"
-        ],
-        "testCaseOverrides": {}
-      },
-      {
         "policyId": "regional-compliance-eu-ai-act",
         "policyVersion": "1.0.0",
         "enabledRails": [
@@ -695,6 +388,640 @@ export const protectionPresets: readonly ProtectionPreset[] = [
           "uae-anti-discrimination-filter/uae_anti_discrimination"
         ],
         "testCaseOverrides": {}
+      },
+      {
+        "policyId": "regional-compliance-sg-pdpa",
+        "policyVersion": "1.0.0",
+        "enabledRails": [
+          "input",
+          "output"
+        ],
+        "parameterValues": {},
+        "action": null,
+        "ruleActions": {},
+        "reasoningPolicy": null,
+        "enabledRuleIds": [
+          "claims-phi-disclosure-filter/claims_phi_disclosure",
+          "sg-pdpa-personal-identifiers/sg_pdpa_personal_identifiers",
+          "sg-pdpa-sensitive-data/sg_pdpa_sensitive_data",
+          "sg-pdpa-do-not-call/sg_pdpa_do_not_call",
+          "sg-pdpa-data-transfer/sg_pdpa_data_transfer",
+          "sg-pdpa-profiling-automated-decisions/sg_pdpa_profiling_automated_decisions"
+        ],
+        "ruleOrder": [
+          "claims-phi-disclosure-filter/claims_phi_disclosure",
+          "sg-pdpa-personal-identifiers/sg_pdpa_personal_identifiers",
+          "sg-pdpa-sensitive-data/sg_pdpa_sensitive_data",
+          "sg-pdpa-do-not-call/sg_pdpa_do_not_call",
+          "sg-pdpa-data-transfer/sg_pdpa_data_transfer",
+          "sg-pdpa-profiling-automated-decisions/sg_pdpa_profiling_automated_decisions"
+        ],
+        "testCaseOverrides": {}
+      },
+      {
+        "policyId": "payment-data",
+        "policyVersion": "1.0.0",
+        "enabledRails": [
+          "input",
+          "output"
+        ],
+        "parameterValues": {},
+        "action": null,
+        "ruleActions": {},
+        "reasoningPolicy": null,
+        "enabledRuleIds": [
+          "financial-pii/visa",
+          "financial-pii/mastercard",
+          "financial-pii/amex",
+          "financial-pii/discover",
+          "pattern/eu_iban_enhanced",
+          "financial-pii/credit_card",
+          "financial-pii/iban",
+          "pattern/ca_bank_account",
+          "pattern/sg_bank_account",
+          "cn-personal-information/unionpay-card"
+        ],
+        "ruleOrder": [
+          "financial-pii/visa",
+          "financial-pii/mastercard",
+          "financial-pii/amex",
+          "financial-pii/discover",
+          "pattern/eu_iban_enhanced",
+          "financial-pii/credit_card",
+          "financial-pii/iban",
+          "pattern/ca_bank_account",
+          "pattern/sg_bank_account",
+          "cn-personal-information/unionpay-card"
+        ],
+        "testCaseOverrides": {}
+      },
+      {
+        "policyId": "identity-documents",
+        "policyVersion": "1.0.1",
+        "enabledRails": [
+          "input",
+          "output"
+        ],
+        "parameterValues": {},
+        "action": null,
+        "ruleActions": {},
+        "reasoningPolicy": null,
+        "enabledRuleIds": [
+          "identity/passport",
+          "pattern/uoft_student_id",
+          "au-pii-tax-identifiers/au_tfn",
+          "au-pii-tax-identifiers/au_abn",
+          "au-pii-tax-identifiers/au_medicare",
+          "pattern/uae_emirates_id",
+          "pattern/ca_on_drivers_licence",
+          "pattern/ca_immigration_doc",
+          "pattern/fr_nir",
+          "pattern/uoft_tcard",
+          "pattern/sg_uen",
+          "pattern/ca_ohip",
+          "pattern/ca_sin",
+          "pattern/eu_vat",
+          "pattern/nl_bsn_contextual",
+          "pattern/au_tfn",
+          "pattern/us_ssn",
+          "pattern/us_ssn_no_dash",
+          "pattern/br_cpf",
+          "pattern/br_cpf_unformatted",
+          "pattern/br_cnpj",
+          "pattern/br_rg",
+          "pattern/sg_nric",
+          "pattern/uoft_utorid",
+          "cn-business-identifier/unified-social-credit-code",
+          "cn-personal-information/resident-identity-card",
+          "pattern/passport_singapore",
+          "pattern/passport_china",
+          "pattern/passport_us",
+          "pattern/passport_germany",
+          "pattern/passport_france",
+          "pattern/passport_netherlands",
+          "pattern/passport_canada",
+          "pattern/passport_india",
+          "international-pii-identifiers/passport_uk",
+          "international-pii-identifiers/passport_japan",
+          "pattern/passport_australia"
+        ],
+        "ruleOrder": [
+          "identity/passport",
+          "pattern/uoft_student_id",
+          "au-pii-tax-identifiers/au_tfn",
+          "au-pii-tax-identifiers/au_abn",
+          "au-pii-tax-identifiers/au_medicare",
+          "pattern/uae_emirates_id",
+          "pattern/ca_on_drivers_licence",
+          "pattern/ca_immigration_doc",
+          "pattern/fr_nir",
+          "pattern/uoft_tcard",
+          "pattern/sg_uen",
+          "pattern/ca_ohip",
+          "pattern/ca_sin",
+          "pattern/eu_vat",
+          "pattern/nl_bsn_contextual",
+          "pattern/au_tfn",
+          "pattern/us_ssn",
+          "pattern/us_ssn_no_dash",
+          "pattern/br_cpf",
+          "pattern/br_cpf_unformatted",
+          "pattern/br_cnpj",
+          "pattern/br_rg",
+          "pattern/sg_nric",
+          "pattern/uoft_utorid",
+          "cn-business-identifier/unified-social-credit-code",
+          "cn-personal-information/resident-identity-card",
+          "pattern/passport_singapore",
+          "pattern/passport_china",
+          "pattern/passport_us",
+          "pattern/passport_germany",
+          "pattern/passport_france",
+          "pattern/passport_netherlands",
+          "pattern/passport_canada",
+          "pattern/passport_india",
+          "international-pii-identifiers/passport_uk",
+          "international-pii-identifiers/passport_japan",
+          "pattern/passport_australia"
+        ],
+        "testCaseOverrides": {
+          "local-government-identifiers/accept/br_cpf_unformatted/input": {
+            "sourcePolicyVersion": "1.0.1",
+            "reason": "Numeric privacy formats overlap across jurisdictions. The earlier identity Policy redacts the complete identifier; the composed contract checks the selected Rule and exact output. Format-specific acceptance remains in isolated Policy tests.",
+            "expectedDecision": "transform",
+            "expectedOutputContent": "Acceptance sample: [au_medicare_REDACTED]",
+            "expectedMatches": [
+              {
+                "policyId": "identity-documents",
+                "ruleId": "au-pii-tax-identifiers/au_medicare"
+              }
+            ]
+          },
+          "local-government-identifiers/accept/br_cpf_unformatted/output": {
+            "sourcePolicyVersion": "1.0.1",
+            "reason": "Numeric privacy formats overlap across jurisdictions. The earlier identity Policy redacts the complete identifier; the composed contract checks the selected Rule and exact output. Format-specific acceptance remains in isolated Policy tests.",
+            "expectedDecision": "transform",
+            "expectedOutputContent": "Acceptance sample: [au_medicare_REDACTED]",
+            "expectedMatches": [
+              {
+                "policyId": "identity-documents",
+                "ruleId": "au-pii-tax-identifiers/au_medicare"
+              }
+            ]
+          },
+          "local-government-identifiers/pattern-matching/accept/br_cpf_unformatted": {
+            "sourcePolicyVersion": "1.0.1",
+            "reason": "Numeric privacy formats overlap across jurisdictions. The earlier identity Policy redacts the complete identifier; the composed contract checks the selected Rule and exact output. Format-specific acceptance remains in isolated Policy tests.",
+            "expectedDecision": "transform",
+            "expectedOutputContent": "Acceptance sample: [au_medicare_REDACTED]",
+            "expectedMatches": [
+              {
+                "policyId": "identity-documents",
+                "ruleId": "au-pii-tax-identifiers/au_medicare"
+              }
+            ]
+          },
+          "local-government-identifiers/pattern-matching/accept/br_cpf_unformatted/output": {
+            "sourcePolicyVersion": "1.0.1",
+            "reason": "Numeric privacy formats overlap across jurisdictions. The earlier identity Policy redacts the complete identifier; the composed contract checks the selected Rule and exact output. Format-specific acceptance remains in isolated Policy tests.",
+            "expectedDecision": "transform",
+            "expectedOutputContent": "Acceptance sample: [au_medicare_REDACTED]",
+            "expectedMatches": [
+              {
+                "policyId": "identity-documents",
+                "ruleId": "au-pii-tax-identifiers/au_medicare"
+              }
+            ]
+          },
+          "local-passports/local-passport-formats/accept/eu_passport_generic/input": {
+            "sourcePolicyVersion": "1.0.1",
+            "reason": "The contextual passport Rule precedes country-only patterns. Assert its identity and the complete redacted output in the combined Profile.",
+            "expectedDecision": "transform",
+            "expectedOutputContent": "Acceptance sample: [REDACTED]",
+            "expectedMatches": [
+              {
+                "policyId": "identity-documents",
+                "ruleId": "identity/passport"
+              }
+            ]
+          },
+          "local-passports/local-passport-formats/accept/eu_passport_generic/output": {
+            "sourcePolicyVersion": "1.0.1",
+            "reason": "The contextual passport Rule precedes country-only patterns. Assert its identity and the complete redacted output in the combined Profile.",
+            "expectedDecision": "transform",
+            "expectedOutputContent": "Acceptance sample: [REDACTED]",
+            "expectedMatches": [
+              {
+                "policyId": "identity-documents",
+                "ruleId": "identity/passport"
+              }
+            ]
+          },
+          "local-passports/local-passport-formats/accept/passport_singapore/input": {
+            "sourcePolicyVersion": "1.0.1",
+            "reason": "The contextual passport Rule precedes country-only patterns. Assert its identity and the complete redacted output in the combined Profile.",
+            "expectedDecision": "transform",
+            "expectedOutputContent": "Acceptance sample: [REDACTED]",
+            "expectedMatches": [
+              {
+                "policyId": "identity-documents",
+                "ruleId": "identity/passport"
+              }
+            ]
+          },
+          "local-passports/local-passport-formats/accept/passport_singapore/output": {
+            "sourcePolicyVersion": "1.0.1",
+            "reason": "The contextual passport Rule precedes country-only patterns. Assert its identity and the complete redacted output in the combined Profile.",
+            "expectedDecision": "transform",
+            "expectedOutputContent": "Acceptance sample: [REDACTED]",
+            "expectedMatches": [
+              {
+                "policyId": "identity-documents",
+                "ruleId": "identity/passport"
+              }
+            ]
+          },
+          "local-passports/pattern-matching/accept/passport_singapore": {
+            "sourcePolicyVersion": "1.0.1",
+            "reason": "The contextual passport Rule precedes country-only patterns. Assert its identity and the complete redacted output in the combined Profile.",
+            "expectedDecision": "transform",
+            "expectedOutputContent": "Acceptance sample: [REDACTED]",
+            "expectedMatches": [
+              {
+                "policyId": "identity-documents",
+                "ruleId": "identity/passport"
+              }
+            ]
+          },
+          "local-passports/pattern-matching/accept/passport_singapore/output": {
+            "sourcePolicyVersion": "1.0.1",
+            "reason": "The contextual passport Rule precedes country-only patterns. Assert its identity and the complete redacted output in the combined Profile.",
+            "expectedDecision": "transform",
+            "expectedOutputContent": "Acceptance sample: [REDACTED]",
+            "expectedMatches": [
+              {
+                "policyId": "identity-documents",
+                "ruleId": "identity/passport"
+              }
+            ]
+          }
+        }
+      },
+      {
+        "policyId": "contact-data",
+        "policyVersion": "1.0.1",
+        "enabledRails": [
+          "input",
+          "output"
+        ],
+        "parameterValues": {},
+        "action": null,
+        "ruleActions": {},
+        "reasoningPolicy": null,
+        "enabledRuleIds": [
+          "pattern/uae_phone",
+          "pattern/fr_phone",
+          "pattern/titled_person",
+          "pattern/contact_list_person",
+          "pattern/truncated_address",
+          "pattern/structured_username",
+          "pattern/structured_address",
+          "pattern/labelled_person",
+          "pattern/sg_local_phone",
+          "pattern/us_phone",
+          "pattern/sg_phone",
+          "pattern/international_phone",
+          "pattern/br_phone_mobile",
+          "pattern/br_phone_landline",
+          "pattern/br_cep",
+          "pattern/fr_postal_code",
+          "pattern/street_address",
+          "pattern/sg_postal_code",
+          "pattern/ca_postal_code",
+          "pattern/email",
+          "cn-personal-information/mainland-mobile",
+          "uae-data-protection-pii/uae_po_box"
+        ],
+        "ruleOrder": [
+          "pattern/uae_phone",
+          "pattern/fr_phone",
+          "pattern/titled_person",
+          "pattern/contact_list_person",
+          "pattern/truncated_address",
+          "pattern/structured_username",
+          "pattern/structured_address",
+          "pattern/labelled_person",
+          "pattern/sg_local_phone",
+          "pattern/us_phone",
+          "pattern/sg_phone",
+          "pattern/international_phone",
+          "pattern/br_phone_mobile",
+          "pattern/br_phone_landline",
+          "pattern/br_cep",
+          "pattern/fr_postal_code",
+          "pattern/street_address",
+          "pattern/sg_postal_code",
+          "pattern/ca_postal_code",
+          "pattern/email",
+          "cn-personal-information/mainland-mobile",
+          "uae-data-protection-pii/uae_po_box"
+        ],
+        "testCaseOverrides": {
+          "local-contact-data/local-regional-contact-formats/accept/fr_phone/input": {
+            "sourcePolicyVersion": "1.0.1",
+            "reason": "Numeric privacy formats overlap across jurisdictions. The earlier identity Policy redacts the complete identifier; the composed contract checks the selected Rule and exact output. Format-specific acceptance remains in isolated Policy tests.",
+            "expectedDecision": "transform",
+            "expectedOutputContent": "Acceptance sample: +[au_medicare_REDACTED]",
+            "expectedMatches": [
+              {
+                "policyId": "identity-documents",
+                "ruleId": "au-pii-tax-identifiers/au_medicare"
+              }
+            ]
+          },
+          "local-contact-data/local-regional-contact-formats/accept/fr_phone/output": {
+            "sourcePolicyVersion": "1.0.1",
+            "reason": "Numeric privacy formats overlap across jurisdictions. The earlier identity Policy redacts the complete identifier; the composed contract checks the selected Rule and exact output. Format-specific acceptance remains in isolated Policy tests.",
+            "expectedDecision": "transform",
+            "expectedOutputContent": "Acceptance sample: +[au_medicare_REDACTED]",
+            "expectedMatches": [
+              {
+                "policyId": "identity-documents",
+                "ruleId": "au-pii-tax-identifiers/au_medicare"
+              }
+            ]
+          },
+          "local-contact-data/china-personal-identifiers/mainland-mobile/input": {
+            "sourcePolicyVersion": "1.0.1",
+            "reason": "Numeric privacy formats overlap across jurisdictions. The earlier identity Policy redacts the complete identifier; the composed contract checks the selected Rule and exact output. Format-specific acceptance remains in isolated Policy tests.",
+            "expectedDecision": "transform",
+            "expectedOutputContent": "手机号码：[au_medicare_REDACTED]",
+            "expectedMatches": [
+              {
+                "policyId": "identity-documents",
+                "ruleId": "au-pii-tax-identifiers/au_medicare"
+              }
+            ]
+          },
+          "local-contact-data/china-personal-identifiers/mainland-mobile/output": {
+            "sourcePolicyVersion": "1.0.1",
+            "reason": "Numeric privacy formats overlap across jurisdictions. The earlier identity Policy redacts the complete identifier; the composed contract checks the selected Rule and exact output. Format-specific acceptance remains in isolated Policy tests.",
+            "expectedDecision": "transform",
+            "expectedOutputContent": "手机号码：[au_medicare_REDACTED]",
+            "expectedMatches": [
+              {
+                "policyId": "identity-documents",
+                "ruleId": "au-pii-tax-identifiers/au_medicare"
+              }
+            ]
+          },
+          "local-contact-data/gdpr-eu-pii-protection/rule-gdpr-eu-contact-information/fr_phone-acceptance": {
+            "sourcePolicyVersion": "1.0.1",
+            "reason": "Numeric privacy formats overlap across jurisdictions. The earlier identity Policy redacts the complete identifier; the composed contract checks the selected Rule and exact output. Format-specific acceptance remains in isolated Policy tests.",
+            "expectedDecision": "transform",
+            "expectedOutputContent": "Acceptance sample: +[au_medicare_REDACTED]",
+            "expectedMatches": [
+              {
+                "policyId": "identity-documents",
+                "ruleId": "au-pii-tax-identifiers/au_medicare"
+              }
+            ]
+          },
+          "local-contact-data/pattern-matching/accept/fr_phone": {
+            "sourcePolicyVersion": "1.0.1",
+            "reason": "Numeric privacy formats overlap across jurisdictions. The earlier identity Policy redacts the complete identifier; the composed contract checks the selected Rule and exact output. Format-specific acceptance remains in isolated Policy tests.",
+            "expectedDecision": "transform",
+            "expectedOutputContent": "Acceptance sample: +[au_medicare_REDACTED]",
+            "expectedMatches": [
+              {
+                "policyId": "identity-documents",
+                "ruleId": "au-pii-tax-identifiers/au_medicare"
+              }
+            ]
+          },
+          "local-contact-data/pattern-matching/accept/fr_phone/output": {
+            "sourcePolicyVersion": "1.0.1",
+            "reason": "Numeric privacy formats overlap across jurisdictions. The earlier identity Policy redacts the complete identifier; the composed contract checks the selected Rule and exact output. Format-specific acceptance remains in isolated Policy tests.",
+            "expectedDecision": "transform",
+            "expectedOutputContent": "Acceptance sample: +[au_medicare_REDACTED]",
+            "expectedMatches": [
+              {
+                "policyId": "identity-documents",
+                "ruleId": "au-pii-tax-identifiers/au_medicare"
+              }
+            ]
+          }
+        }
+      },
+      {
+        "policyId": "network-identifiers",
+        "policyVersion": "1.0.0",
+        "enabledRails": [
+          "input",
+          "output"
+        ],
+        "parameterValues": {},
+        "action": null,
+        "ruleActions": {},
+        "reasoningPolicy": null,
+        "enabledRuleIds": [
+          "pattern/ipv4",
+          "pattern/ipv6",
+          "pattern/url"
+        ],
+        "ruleOrder": [
+          "pattern/ipv4",
+          "pattern/ipv6",
+          "pattern/url"
+        ],
+        "testCaseOverrides": {}
+      },
+      {
+        "policyId": "sensitive-attributes",
+        "policyVersion": "1.0.0",
+        "enabledRails": [
+          "input",
+          "output"
+        ],
+        "parameterValues": {},
+        "action": null,
+        "ruleActions": {},
+        "reasoningPolicy": null,
+        "enabledRuleIds": [
+          "pattern/gender_sexual_orientation",
+          "pattern/race_ethnicity_national_origin",
+          "pattern/religion",
+          "pattern/age_discrimination",
+          "pattern/disability",
+          "pattern/marital_family_status",
+          "pattern/military_status",
+          "pattern/public_assistance"
+        ],
+        "ruleOrder": [
+          "pattern/gender_sexual_orientation",
+          "pattern/race_ethnicity_national_origin",
+          "pattern/religion",
+          "pattern/age_discrimination",
+          "pattern/disability",
+          "pattern/marital_family_status",
+          "pattern/military_status",
+          "pattern/public_assistance"
+        ],
+        "testCaseOverrides": {}
+      },
+      {
+        "policyId": "risk-content-terms",
+        "policyVersion": "1.0.0",
+        "enabledRails": [
+          "input",
+          "output"
+        ],
+        "parameterValues": {},
+        "action": null,
+        "ruleActions": {},
+        "reasoningPolicy": null,
+        "enabledRuleIds": [
+          "pattern/explosives",
+          "pattern/weapons_firearms",
+          "pattern/weapons_other",
+          "pattern/violence_threats",
+          "pattern/terrorism",
+          "pattern/self_harm_suicide",
+          "pattern/illegal_activities",
+          "pattern/harassment_hate"
+        ],
+        "ruleOrder": [
+          "pattern/explosives",
+          "pattern/weapons_firearms",
+          "pattern/weapons_other",
+          "pattern/violence_threats",
+          "pattern/terrorism",
+          "pattern/self_harm_suicide",
+          "pattern/illegal_activities",
+          "pattern/harassment_hate"
+        ],
+        "testCaseOverrides": {
+          "local-risk-content-terms/accept/terrorism/input": {
+            "sourcePolicyVersion": "1.0.0",
+            "reason": "The composed safety Policy blocks this harmful sample before keyword redaction. Assert the blocking Rule and the original risk-term detection, rather than the isolated Transform decision.",
+            "expectedDecision": "block",
+            "expectedMatches": [
+              {
+                "policyId": "content-safety-local",
+                "ruleId": "category/harmful_violence"
+              },
+              {
+                "policyId": "risk-content-terms",
+                "ruleId": "pattern/terrorism"
+              }
+            ]
+          },
+          "local-risk-content-terms/accept/terrorism/output": {
+            "sourcePolicyVersion": "1.0.0",
+            "reason": "The composed safety Policy blocks this harmful sample before keyword redaction. Assert the blocking Rule and the original risk-term detection, rather than the isolated Transform decision.",
+            "expectedDecision": "block",
+            "expectedMatches": [
+              {
+                "policyId": "content-safety-local",
+                "ruleId": "category/harmful_violence"
+              },
+              {
+                "policyId": "risk-content-terms",
+                "ruleId": "pattern/terrorism"
+              }
+            ]
+          },
+          "local-risk-content-terms/accept/self_harm_suicide/input": {
+            "sourcePolicyVersion": "1.0.0",
+            "reason": "The composed safety Policy blocks this harmful sample before keyword redaction. Assert the blocking Rule and the original risk-term detection, rather than the isolated Transform decision.",
+            "expectedDecision": "block",
+            "expectedMatches": [
+              {
+                "policyId": "content-safety-local",
+                "ruleId": "category/harmful_self_harm"
+              },
+              {
+                "policyId": "risk-content-terms",
+                "ruleId": "pattern/self_harm_suicide"
+              }
+            ]
+          },
+          "local-risk-content-terms/accept/self_harm_suicide/output": {
+            "sourcePolicyVersion": "1.0.0",
+            "reason": "The composed safety Policy blocks this harmful sample before keyword redaction. Assert the blocking Rule and the original risk-term detection, rather than the isolated Transform decision.",
+            "expectedDecision": "block",
+            "expectedMatches": [
+              {
+                "policyId": "content-safety-local",
+                "ruleId": "category/harmful_self_harm"
+              },
+              {
+                "policyId": "risk-content-terms",
+                "ruleId": "pattern/self_harm_suicide"
+              }
+            ]
+          },
+          "local-risk-content-terms/pattern-matching/accept/terrorism": {
+            "sourcePolicyVersion": "1.0.0",
+            "reason": "The composed safety Policy blocks this harmful sample before keyword redaction. Assert the blocking Rule and the original risk-term detection, rather than the isolated Transform decision.",
+            "expectedDecision": "block",
+            "expectedMatches": [
+              {
+                "policyId": "content-safety-local",
+                "ruleId": "category/harmful_violence"
+              },
+              {
+                "policyId": "risk-content-terms",
+                "ruleId": "pattern/terrorism"
+              }
+            ]
+          },
+          "local-risk-content-terms/pattern-matching/accept/self_harm_suicide": {
+            "sourcePolicyVersion": "1.0.0",
+            "reason": "The composed safety Policy blocks this harmful sample before keyword redaction. Assert the blocking Rule and the original risk-term detection, rather than the isolated Transform decision.",
+            "expectedDecision": "block",
+            "expectedMatches": [
+              {
+                "policyId": "content-safety-local",
+                "ruleId": "category/harmful_self_harm"
+              },
+              {
+                "policyId": "risk-content-terms",
+                "ruleId": "pattern/self_harm_suicide"
+              }
+            ]
+          },
+          "local-risk-content-terms/pattern-matching/accept/terrorism/output": {
+            "sourcePolicyVersion": "1.0.0",
+            "reason": "The composed safety Policy blocks this harmful sample before keyword redaction. Assert the blocking Rule and the original risk-term detection, rather than the isolated Transform decision.",
+            "expectedDecision": "block",
+            "expectedMatches": [
+              {
+                "policyId": "content-safety-local",
+                "ruleId": "category/harmful_violence"
+              },
+              {
+                "policyId": "risk-content-terms",
+                "ruleId": "pattern/terrorism"
+              }
+            ]
+          },
+          "local-risk-content-terms/pattern-matching/accept/self_harm_suicide/output": {
+            "sourcePolicyVersion": "1.0.0",
+            "reason": "The composed safety Policy blocks this harmful sample before keyword redaction. Assert the blocking Rule and the original risk-term detection, rather than the isolated Transform decision.",
+            "expectedDecision": "block",
+            "expectedMatches": [
+              {
+                "policyId": "content-safety-local",
+                "ruleId": "category/harmful_self_harm"
+              },
+              {
+                "policyId": "risk-content-terms",
+                "ruleId": "pattern/self_harm_suicide"
+              }
+            ]
+          }
+        }
       }
     ],
     "parameterPacks": [],
@@ -707,11 +1034,133 @@ export const protectionPresets: readonly ProtectionPreset[] = [
     },
     "suggestedTopics": [],
     "optionalPolicyIds": [],
-    "limitations": []
+    "limitations": [],
+    "testExclusions": [
+      {
+        "policyId": "payment-data",
+        "policyVersion": "1.0.0",
+        "sourceCaseId": "local-payment-data/rule-financial-pii/credit_card-acceptance/input",
+        "reason": "Duplicate Visa fixture: the specific Visa Rule redacts this value before the generic credit-card fallback. Keep the generic detector acceptance in isolated Policy tests."
+      },
+      {
+        "policyId": "payment-data",
+        "policyVersion": "1.0.0",
+        "sourceCaseId": "local-payment-data/rule-financial-pii/credit_card-acceptance/output",
+        "reason": "Duplicate Visa fixture: the specific Visa Rule redacts this value before the generic credit-card fallback. Keep the generic detector acceptance in isolated Policy tests."
+      },
+      {
+        "policyId": "payment-data",
+        "policyVersion": "1.0.0",
+        "sourceCaseId": "local-payment-data/advanced-au-pii-protection/rule-financial-pii/credit_card-acceptance",
+        "reason": "Duplicate Visa fixture: the specific Visa Rule redacts this value before the generic credit-card fallback. Keep the generic detector acceptance in isolated Policy tests."
+      },
+      {
+        "policyId": "payment-data",
+        "policyVersion": "1.0.0",
+        "sourceCaseId": "local-payment-data/baseline-pii-protection/rule-financial-pii/credit_card-acceptance",
+        "reason": "Duplicate Visa fixture: the specific Visa Rule redacts this value before the generic credit-card fallback. Keep the generic detector acceptance in isolated Policy tests."
+      },
+      {
+        "policyId": "payment-data",
+        "policyVersion": "1.0.0",
+        "sourceCaseId": "local-payment-data/pattern-matching/accept/credit_card",
+        "reason": "Duplicate Visa fixture: the specific Visa Rule redacts this value before the generic credit-card fallback. Keep the generic detector acceptance in isolated Policy tests."
+      },
+      {
+        "policyId": "payment-data",
+        "policyVersion": "1.0.0",
+        "sourceCaseId": "local-payment-data/pattern-matching/accept/credit_card/output",
+        "reason": "Duplicate Visa fixture: the specific Visa Rule redacts this value before the generic credit-card fallback. Keep the generic detector acceptance in isolated Policy tests."
+      },
+      {
+        "policyId": "payment-data",
+        "policyVersion": "1.0.0",
+        "sourceCaseId": "local-payment-data/pdpa-singapore/rule-sg-pdpa-financial-data/credit_card-acceptance",
+        "reason": "Duplicate Visa fixture: the specific Visa Rule redacts this value before the generic credit-card fallback. Keep the generic detector acceptance in isolated Policy tests."
+      },
+      {
+        "policyId": "payment-data",
+        "policyVersion": "1.0.0",
+        "sourceCaseId": "local-payment-data/uae-regulatory-compliance/rule-uae-data-protection-pii/credit_card-acceptance",
+        "reason": "Duplicate Visa fixture: the specific Visa Rule redacts this value before the generic credit-card fallback. Keep the generic detector acceptance in isolated Policy tests."
+      },
+      {
+        "policyId": "identity-documents",
+        "policyVersion": "1.0.1",
+        "sourceCaseId": "local-government-identifiers/accept/au_tfn/input",
+        "reason": "Duplicate TFN detector: au-pii-tax-identifiers/au_tfn owns this identical span in the combined Profile. Keep the alias acceptance in isolated Policy tests."
+      },
+      {
+        "policyId": "identity-documents",
+        "policyVersion": "1.0.1",
+        "sourceCaseId": "local-government-identifiers/accept/au_tfn/output",
+        "reason": "Duplicate TFN detector: au-pii-tax-identifiers/au_tfn owns this identical span in the combined Profile. Keep the alias acceptance in isolated Policy tests."
+      },
+      {
+        "policyId": "identity-documents",
+        "policyVersion": "1.0.1",
+        "sourceCaseId": "local-government-identifiers/pattern-matching/accept/au_tfn",
+        "reason": "Duplicate TFN detector: au-pii-tax-identifiers/au_tfn owns this identical span in the combined Profile. Keep the alias acceptance in isolated Policy tests."
+      },
+      {
+        "policyId": "identity-documents",
+        "policyVersion": "1.0.1",
+        "sourceCaseId": "local-government-identifiers/pattern-matching/accept/au_tfn/output",
+        "reason": "Duplicate TFN detector: au-pii-tax-identifiers/au_tfn owns this identical span in the combined Profile. Keep the alias acceptance in isolated Policy tests."
+      },
+      {
+        "policyId": "identity-documents",
+        "policyVersion": "1.0.1",
+        "sourceCaseId": "local-passports/advanced-au-pii-protection/rule-international-pii-identifiers/passport_uk-acceptance",
+        "reason": "The bare nine-digit fixture is shared with the US passport format. It cannot assert both country-specific Rule identities after the first redaction; retain isolated Policy acceptance."
+      },
+      {
+        "policyId": "identity-documents",
+        "policyVersion": "1.0.1",
+        "sourceCaseId": "local-passports/advanced-au-pii-protection/rule-international-pii-identifiers/passport_japan-acceptance",
+        "reason": "The bare two-letter/seven-digit fixture overlaps the Netherlands passport format. Retain the country-specific assertion in isolated Policy tests."
+      },
+      {
+        "policyId": "identity-documents",
+        "policyVersion": "1.0.1",
+        "sourceCaseId": "local-passports/pattern-matching/accept/passport_uk",
+        "reason": "The bare nine-digit fixture is shared with the US passport format. It cannot assert both country-specific Rule identities after the first redaction; retain isolated Policy acceptance."
+      },
+      {
+        "policyId": "identity-documents",
+        "policyVersion": "1.0.1",
+        "sourceCaseId": "local-passports/pattern-matching/accept/passport_australia",
+        "reason": "The bare letter/seven-digit fixture overlaps the India passport format. Retain the country-specific assertion in isolated Policy tests."
+      },
+      {
+        "policyId": "identity-documents",
+        "policyVersion": "1.0.1",
+        "sourceCaseId": "local-passports/pattern-matching/accept/passport_japan",
+        "reason": "The bare two-letter/seven-digit fixture overlaps the Netherlands passport format. Retain the country-specific assertion in isolated Policy tests."
+      },
+      {
+        "policyId": "identity-documents",
+        "policyVersion": "1.0.1",
+        "sourceCaseId": "local-passports/pattern-matching/accept/passport_uk/output",
+        "reason": "The bare nine-digit fixture is shared with the US passport format. It cannot assert both country-specific Rule identities after the first redaction; retain isolated Policy acceptance."
+      },
+      {
+        "policyId": "identity-documents",
+        "policyVersion": "1.0.1",
+        "sourceCaseId": "local-passports/pattern-matching/accept/passport_australia/output",
+        "reason": "The bare letter/seven-digit fixture overlaps the India passport format. Retain the country-specific assertion in isolated Policy tests."
+      },
+      {
+        "policyId": "identity-documents",
+        "policyVersion": "1.0.1",
+        "sourceCaseId": "local-passports/pattern-matching/accept/passport_japan/output",
+        "reason": "The bare two-letter/seven-digit fixture overlaps the Netherlands passport format. Retain the country-specific assertion in isolated Policy tests."
+      }
+    ]
   },
   {
     "id": "full-feature",
-    "version": "1.0.0",
+    "version": "1.1.0",
     "name": "Full-feature",
     "description": "All Policies and Rules except advanced Answer Reliability; benchmark only.",
     "industry": "general",
@@ -772,280 +1221,74 @@ export const protectionPresets: readonly ProtectionPreset[] = [
         "testCaseOverrides": {}
       },
       {
-        "policyId": "payment-data",
+        "policyId": "prompt-instruction-attacks",
         "policyVersion": "1.0.0",
         "enabledRails": [
           "input",
           "output"
         ],
-        "parameterValues": {},
+        "parameterValues": {
+          "on_unknown": "block",
+          "review_unknown": "false"
+        },
         "action": null,
         "ruleActions": {},
         "reasoningPolicy": null,
         "enabledRuleIds": [
-          "financial-pii/credit_card",
-          "financial-pii/iban",
-          "pattern/ca_bank_account",
-          "pattern/sg_bank_account",
-          "cn-personal-information/unionpay-card",
-          "pattern/eu_iban_enhanced",
-          "financial-pii/visa",
-          "financial-pii/mastercard",
-          "financial-pii/amex",
-          "financial-pii/discover"
+          "boundary/indirect-injection",
+          "model/jailbreak",
+          "boundary/memory-poisoning",
+          "prompt-injection-blocker/blocked-word-1",
+          "prompt-injection-blocker/blocked-word-2",
+          "prompt-injection-blocker/blocked-word-3",
+          "prompt-injection-blocker/blocked-word-4",
+          "prompt-injection-blocker/blocked-word-5",
+          "prompt-injection-blocker/blocked-word-6",
+          "prompt-injection-blocker/blocked-word-7",
+          "prompt-injection-blocker/blocked-word-8",
+          "prompt-injection-blocker/blocked-word-9",
+          "prompt-injection-blocker/blocked-word-10",
+          "prompt-injection-blocker/blocked-word-11",
+          "prompt-injection-blocker/blocked-word-12",
+          "prompt-injection-blocker/blocked-word-13",
+          "prompt-injection-blocker/blocked-word-14",
+          "category/prompt_injection_jailbreak",
+          "category/prompt_injection_data_exfiltration",
+          "category/prompt_injection_sql",
+          "category/prompt_injection_malicious_code",
+          "category/prompt_injection_system_prompt",
+          "cn-prompt-security/instruction-override",
+          "cn-prompt-security/prompt-extraction",
+          "cn-prompt-security/unrestricted-mode",
+          "claims-system-override-filter/claims_system_override"
         ],
         "ruleOrder": [
-          "financial-pii/credit_card",
-          "financial-pii/iban",
-          "pattern/ca_bank_account",
-          "pattern/sg_bank_account",
-          "cn-personal-information/unionpay-card",
-          "pattern/eu_iban_enhanced",
-          "financial-pii/visa",
-          "financial-pii/mastercard",
-          "financial-pii/amex",
-          "financial-pii/discover"
-        ],
-        "testCaseOverrides": {}
-      },
-      {
-        "policyId": "identity-documents",
-        "policyVersion": "1.0.0",
-        "enabledRails": [
-          "input",
-          "output"
-        ],
-        "parameterValues": {},
-        "action": null,
-        "ruleActions": {},
-        "reasoningPolicy": null,
-        "enabledRuleIds": [
-          "au-pii-tax-identifiers/au_tfn",
-          "au-pii-tax-identifiers/au_abn",
-          "au-pii-tax-identifiers/au_medicare",
-          "pattern/uae_emirates_id",
-          "pattern/ca_on_drivers_licence",
-          "pattern/ca_immigration_doc",
-          "pattern/fr_nir",
-          "pattern/uoft_tcard",
-          "pattern/sg_uen",
-          "pattern/ca_ohip",
-          "pattern/ca_sin",
-          "pattern/eu_vat",
-          "pattern/nl_bsn_contextual",
-          "pattern/au_tfn",
-          "pattern/uoft_student_id",
-          "pattern/us_ssn",
-          "pattern/us_ssn_no_dash",
-          "pattern/br_cpf",
-          "pattern/br_cpf_unformatted",
-          "pattern/br_cnpj",
-          "pattern/br_rg",
-          "pattern/sg_nric",
-          "pattern/uoft_utorid",
-          "cn-business-identifier/unified-social-credit-code",
-          "cn-personal-information/resident-identity-card",
-          "pattern/passport_singapore",
-          "pattern/passport_china",
-          "pattern/passport_us",
-          "pattern/passport_germany",
-          "pattern/passport_france",
-          "pattern/passport_netherlands",
-          "pattern/passport_canada",
-          "pattern/passport_india",
-          "identity/passport",
-          "international-pii-identifiers/passport_uk",
-          "international-pii-identifiers/passport_japan",
-          "pattern/passport_australia"
-        ],
-        "ruleOrder": [
-          "au-pii-tax-identifiers/au_tfn",
-          "au-pii-tax-identifiers/au_abn",
-          "au-pii-tax-identifiers/au_medicare",
-          "pattern/uae_emirates_id",
-          "pattern/ca_on_drivers_licence",
-          "pattern/ca_immigration_doc",
-          "pattern/fr_nir",
-          "pattern/uoft_tcard",
-          "pattern/sg_uen",
-          "pattern/ca_ohip",
-          "pattern/ca_sin",
-          "pattern/eu_vat",
-          "pattern/nl_bsn_contextual",
-          "pattern/au_tfn",
-          "pattern/uoft_student_id",
-          "pattern/us_ssn",
-          "pattern/us_ssn_no_dash",
-          "pattern/br_cpf",
-          "pattern/br_cpf_unformatted",
-          "pattern/br_cnpj",
-          "pattern/br_rg",
-          "pattern/sg_nric",
-          "pattern/uoft_utorid",
-          "cn-business-identifier/unified-social-credit-code",
-          "cn-personal-information/resident-identity-card",
-          "pattern/passport_singapore",
-          "pattern/passport_china",
-          "pattern/passport_us",
-          "pattern/passport_germany",
-          "pattern/passport_france",
-          "pattern/passport_netherlands",
-          "pattern/passport_canada",
-          "pattern/passport_india",
-          "identity/passport",
-          "international-pii-identifiers/passport_uk",
-          "international-pii-identifiers/passport_japan",
-          "pattern/passport_australia"
-        ],
-        "testCaseOverrides": {}
-      },
-      {
-        "policyId": "contact-data",
-        "policyVersion": "1.0.0",
-        "enabledRails": [
-          "input",
-          "output"
-        ],
-        "parameterValues": {},
-        "action": null,
-        "ruleActions": {},
-        "reasoningPolicy": null,
-        "enabledRuleIds": [
-          "pattern/titled_person",
-          "pattern/contact_list_person",
-          "pattern/truncated_address",
-          "pattern/structured_username",
-          "pattern/structured_address",
-          "pattern/labelled_person",
-          "pattern/sg_local_phone",
-          "pattern/us_phone",
-          "pattern/sg_phone",
-          "pattern/international_phone",
-          "pattern/uae_phone",
-          "pattern/fr_phone",
-          "pattern/br_phone_mobile",
-          "pattern/br_phone_landline",
-          "pattern/br_cep",
-          "pattern/fr_postal_code",
-          "pattern/street_address",
-          "pattern/sg_postal_code",
-          "pattern/ca_postal_code",
-          "pattern/email",
-          "cn-personal-information/mainland-mobile",
-          "uae-data-protection-pii/uae_po_box"
-        ],
-        "ruleOrder": [
-          "pattern/titled_person",
-          "pattern/contact_list_person",
-          "pattern/truncated_address",
-          "pattern/structured_username",
-          "pattern/structured_address",
-          "pattern/labelled_person",
-          "pattern/sg_local_phone",
-          "pattern/us_phone",
-          "pattern/sg_phone",
-          "pattern/international_phone",
-          "pattern/uae_phone",
-          "pattern/fr_phone",
-          "pattern/br_phone_mobile",
-          "pattern/br_phone_landline",
-          "pattern/br_cep",
-          "pattern/fr_postal_code",
-          "pattern/street_address",
-          "pattern/sg_postal_code",
-          "pattern/ca_postal_code",
-          "pattern/email",
-          "cn-personal-information/mainland-mobile",
-          "uae-data-protection-pii/uae_po_box"
-        ],
-        "testCaseOverrides": {}
-      },
-      {
-        "policyId": "network-identifiers",
-        "policyVersion": "1.0.0",
-        "enabledRails": [
-          "input",
-          "output"
-        ],
-        "parameterValues": {},
-        "action": null,
-        "ruleActions": {},
-        "reasoningPolicy": null,
-        "enabledRuleIds": [
-          "pattern/ipv4",
-          "pattern/ipv6",
-          "pattern/url"
-        ],
-        "ruleOrder": [
-          "pattern/ipv4",
-          "pattern/ipv6",
-          "pattern/url"
-        ],
-        "testCaseOverrides": {}
-      },
-      {
-        "policyId": "sensitive-attributes",
-        "policyVersion": "1.0.0",
-        "enabledRails": [
-          "input",
-          "output"
-        ],
-        "parameterValues": {},
-        "action": null,
-        "ruleActions": {},
-        "reasoningPolicy": null,
-        "enabledRuleIds": [
-          "pattern/gender_sexual_orientation",
-          "pattern/race_ethnicity_national_origin",
-          "pattern/religion",
-          "pattern/age_discrimination",
-          "pattern/disability",
-          "pattern/marital_family_status",
-          "pattern/military_status",
-          "pattern/public_assistance"
-        ],
-        "ruleOrder": [
-          "pattern/gender_sexual_orientation",
-          "pattern/race_ethnicity_national_origin",
-          "pattern/religion",
-          "pattern/age_discrimination",
-          "pattern/disability",
-          "pattern/marital_family_status",
-          "pattern/military_status",
-          "pattern/public_assistance"
-        ],
-        "testCaseOverrides": {}
-      },
-      {
-        "policyId": "risk-content-terms",
-        "policyVersion": "1.0.0",
-        "enabledRails": [
-          "input",
-          "output"
-        ],
-        "parameterValues": {},
-        "action": null,
-        "ruleActions": {},
-        "reasoningPolicy": null,
-        "enabledRuleIds": [
-          "pattern/explosives",
-          "pattern/weapons_firearms",
-          "pattern/weapons_other",
-          "pattern/violence_threats",
-          "pattern/terrorism",
-          "pattern/self_harm_suicide",
-          "pattern/illegal_activities",
-          "pattern/harassment_hate"
-        ],
-        "ruleOrder": [
-          "pattern/explosives",
-          "pattern/weapons_firearms",
-          "pattern/weapons_other",
-          "pattern/violence_threats",
-          "pattern/terrorism",
-          "pattern/self_harm_suicide",
-          "pattern/illegal_activities",
-          "pattern/harassment_hate"
+          "boundary/indirect-injection",
+          "model/jailbreak",
+          "boundary/memory-poisoning",
+          "prompt-injection-blocker/blocked-word-1",
+          "prompt-injection-blocker/blocked-word-2",
+          "prompt-injection-blocker/blocked-word-3",
+          "prompt-injection-blocker/blocked-word-4",
+          "prompt-injection-blocker/blocked-word-5",
+          "prompt-injection-blocker/blocked-word-6",
+          "prompt-injection-blocker/blocked-word-7",
+          "prompt-injection-blocker/blocked-word-8",
+          "prompt-injection-blocker/blocked-word-9",
+          "prompt-injection-blocker/blocked-word-10",
+          "prompt-injection-blocker/blocked-word-11",
+          "prompt-injection-blocker/blocked-word-12",
+          "prompt-injection-blocker/blocked-word-13",
+          "prompt-injection-blocker/blocked-word-14",
+          "category/prompt_injection_jailbreak",
+          "category/prompt_injection_data_exfiltration",
+          "category/prompt_injection_sql",
+          "category/prompt_injection_malicious_code",
+          "category/prompt_injection_system_prompt",
+          "cn-prompt-security/instruction-override",
+          "cn-prompt-security/prompt-extraction",
+          "cn-prompt-security/unrestricted-mode",
+          "claims-system-override-filter/claims_system_override"
         ],
         "testCaseOverrides": {}
       },
@@ -1138,7 +1381,7 @@ export const protectionPresets: readonly ProtectionPreset[] = [
       },
       {
         "policyId": "content-safety-local",
-        "policyVersion": "1.0.0",
+        "policyVersion": "1.0.1",
         "enabledRails": [
           "input",
           "output"
@@ -1172,78 +1415,6 @@ export const protectionPresets: readonly ProtectionPreset[] = [
           "category/bias_religious",
           "category/bias_sexual_orientation",
           "nsfw-filter-multilingual/harm_toxic_abuse"
-        ],
-        "testCaseOverrides": {}
-      },
-      {
-        "policyId": "prompt-instruction-attacks",
-        "policyVersion": "1.0.0",
-        "enabledRails": [
-          "input",
-          "output"
-        ],
-        "parameterValues": {
-          "on_unknown": "block",
-          "review_unknown": "false"
-        },
-        "action": null,
-        "ruleActions": {},
-        "reasoningPolicy": null,
-        "enabledRuleIds": [
-          "boundary/indirect-injection",
-          "model/jailbreak",
-          "boundary/memory-poisoning",
-          "prompt-injection-blocker/blocked-word-1",
-          "prompt-injection-blocker/blocked-word-2",
-          "prompt-injection-blocker/blocked-word-3",
-          "prompt-injection-blocker/blocked-word-4",
-          "prompt-injection-blocker/blocked-word-5",
-          "prompt-injection-blocker/blocked-word-6",
-          "prompt-injection-blocker/blocked-word-7",
-          "prompt-injection-blocker/blocked-word-8",
-          "prompt-injection-blocker/blocked-word-9",
-          "prompt-injection-blocker/blocked-word-10",
-          "prompt-injection-blocker/blocked-word-11",
-          "prompt-injection-blocker/blocked-word-12",
-          "prompt-injection-blocker/blocked-word-13",
-          "prompt-injection-blocker/blocked-word-14",
-          "category/prompt_injection_jailbreak",
-          "category/prompt_injection_data_exfiltration",
-          "category/prompt_injection_sql",
-          "category/prompt_injection_malicious_code",
-          "category/prompt_injection_system_prompt",
-          "cn-prompt-security/instruction-override",
-          "cn-prompt-security/prompt-extraction",
-          "cn-prompt-security/unrestricted-mode",
-          "claims-system-override-filter/claims_system_override"
-        ],
-        "ruleOrder": [
-          "boundary/indirect-injection",
-          "model/jailbreak",
-          "boundary/memory-poisoning",
-          "prompt-injection-blocker/blocked-word-1",
-          "prompt-injection-blocker/blocked-word-2",
-          "prompt-injection-blocker/blocked-word-3",
-          "prompt-injection-blocker/blocked-word-4",
-          "prompt-injection-blocker/blocked-word-5",
-          "prompt-injection-blocker/blocked-word-6",
-          "prompt-injection-blocker/blocked-word-7",
-          "prompt-injection-blocker/blocked-word-8",
-          "prompt-injection-blocker/blocked-word-9",
-          "prompt-injection-blocker/blocked-word-10",
-          "prompt-injection-blocker/blocked-word-11",
-          "prompt-injection-blocker/blocked-word-12",
-          "prompt-injection-blocker/blocked-word-13",
-          "prompt-injection-blocker/blocked-word-14",
-          "category/prompt_injection_jailbreak",
-          "category/prompt_injection_data_exfiltration",
-          "category/prompt_injection_sql",
-          "category/prompt_injection_malicious_code",
-          "category/prompt_injection_system_prompt",
-          "cn-prompt-security/instruction-override",
-          "cn-prompt-security/prompt-extraction",
-          "cn-prompt-security/unrestricted-mode",
-          "claims-system-override-filter/claims_system_override"
         ],
         "testCaseOverrides": {}
       },
@@ -1331,102 +1502,6 @@ export const protectionPresets: readonly ProtectionPreset[] = [
         "testCaseOverrides": {}
       },
       {
-        "policyId": "business-topics",
-        "policyVersion": "1.0.0",
-        "enabledRails": [
-          "input"
-        ],
-        "parameterValues": {
-          "allowed_topics": "Customer support",
-          "denied_topics": "Investment advice",
-          "topic_mode": "permissive",
-          "on_unknown": "block",
-          "review_unknown": "false"
-        },
-        "action": null,
-        "ruleActions": {},
-        "reasoningPolicy": null,
-        "enabledRuleIds": [
-          "topic/denylist",
-          "topic/allowlist"
-        ],
-        "ruleOrder": [
-          "topic/denylist",
-          "topic/allowlist"
-        ],
-        "testCaseOverrides": {}
-      },
-      {
-        "policyId": "pii-semantic",
-        "policyVersion": "1.0.0",
-        "enabledRails": [
-          "input",
-          "output"
-        ],
-        "parameterValues": {},
-        "action": null,
-        "ruleActions": {},
-        "reasoningPolicy": null,
-        "enabledRuleIds": [
-          "model/pii"
-        ],
-        "ruleOrder": [
-          "model/pii"
-        ],
-        "testCaseOverrides": {}
-      },
-      {
-        "policyId": "content-safety-model",
-        "policyVersion": "1.0.0",
-        "enabledRails": [
-          "input",
-          "output"
-        ],
-        "parameterValues": {
-          "on_unknown": "block",
-          "review_unknown": "false"
-        },
-        "action": null,
-        "ruleActions": {},
-        "reasoningPolicy": null,
-        "enabledRuleIds": [
-          "model/content-safety"
-        ],
-        "ruleOrder": [
-          "model/content-safety"
-        ],
-        "testCaseOverrides": {}
-      },
-      {
-        "policyId": "regional-compliance-sg-pdpa",
-        "policyVersion": "1.0.0",
-        "enabledRails": [
-          "input",
-          "output"
-        ],
-        "parameterValues": {},
-        "action": null,
-        "ruleActions": {},
-        "reasoningPolicy": null,
-        "enabledRuleIds": [
-          "claims-phi-disclosure-filter/claims_phi_disclosure",
-          "sg-pdpa-personal-identifiers/sg_pdpa_personal_identifiers",
-          "sg-pdpa-sensitive-data/sg_pdpa_sensitive_data",
-          "sg-pdpa-do-not-call/sg_pdpa_do_not_call",
-          "sg-pdpa-data-transfer/sg_pdpa_data_transfer",
-          "sg-pdpa-profiling-automated-decisions/sg_pdpa_profiling_automated_decisions"
-        ],
-        "ruleOrder": [
-          "claims-phi-disclosure-filter/claims_phi_disclosure",
-          "sg-pdpa-personal-identifiers/sg_pdpa_personal_identifiers",
-          "sg-pdpa-sensitive-data/sg_pdpa_sensitive_data",
-          "sg-pdpa-do-not-call/sg_pdpa_do_not_call",
-          "sg-pdpa-data-transfer/sg_pdpa_data_transfer",
-          "sg-pdpa-profiling-automated-decisions/sg_pdpa_profiling_automated_decisions"
-        ],
-        "testCaseOverrides": {}
-      },
-      {
         "policyId": "regional-compliance-eu-ai-act",
         "policyVersion": "1.0.0",
         "enabledRails": [
@@ -1471,6 +1546,707 @@ export const protectionPresets: readonly ProtectionPreset[] = [
           "uae-anti-discrimination-filter/uae_anti_discrimination"
         ],
         "testCaseOverrides": {}
+      },
+      {
+        "policyId": "regional-compliance-sg-pdpa",
+        "policyVersion": "1.0.0",
+        "enabledRails": [
+          "input",
+          "output"
+        ],
+        "parameterValues": {},
+        "action": null,
+        "ruleActions": {},
+        "reasoningPolicy": null,
+        "enabledRuleIds": [
+          "claims-phi-disclosure-filter/claims_phi_disclosure",
+          "sg-pdpa-personal-identifiers/sg_pdpa_personal_identifiers",
+          "sg-pdpa-sensitive-data/sg_pdpa_sensitive_data",
+          "sg-pdpa-do-not-call/sg_pdpa_do_not_call",
+          "sg-pdpa-data-transfer/sg_pdpa_data_transfer",
+          "sg-pdpa-profiling-automated-decisions/sg_pdpa_profiling_automated_decisions"
+        ],
+        "ruleOrder": [
+          "claims-phi-disclosure-filter/claims_phi_disclosure",
+          "sg-pdpa-personal-identifiers/sg_pdpa_personal_identifiers",
+          "sg-pdpa-sensitive-data/sg_pdpa_sensitive_data",
+          "sg-pdpa-do-not-call/sg_pdpa_do_not_call",
+          "sg-pdpa-data-transfer/sg_pdpa_data_transfer",
+          "sg-pdpa-profiling-automated-decisions/sg_pdpa_profiling_automated_decisions"
+        ],
+        "testCaseOverrides": {}
+      },
+      {
+        "policyId": "business-topics",
+        "policyVersion": "1.0.0",
+        "enabledRails": [
+          "input"
+        ],
+        "parameterValues": {
+          "allowed_topics": "Customer support",
+          "denied_topics": "Investment advice",
+          "topic_mode": "permissive",
+          "on_unknown": "block",
+          "review_unknown": "false"
+        },
+        "action": null,
+        "ruleActions": {},
+        "reasoningPolicy": null,
+        "enabledRuleIds": [
+          "topic/denylist",
+          "topic/allowlist"
+        ],
+        "ruleOrder": [
+          "topic/denylist",
+          "topic/allowlist"
+        ],
+        "testCaseOverrides": {}
+      },
+      {
+        "policyId": "content-safety-model",
+        "policyVersion": "1.0.0",
+        "enabledRails": [
+          "input",
+          "output"
+        ],
+        "parameterValues": {
+          "on_unknown": "block",
+          "review_unknown": "false"
+        },
+        "action": null,
+        "ruleActions": {},
+        "reasoningPolicy": null,
+        "enabledRuleIds": [
+          "model/content-safety"
+        ],
+        "ruleOrder": [
+          "model/content-safety"
+        ],
+        "testCaseOverrides": {}
+      },
+      {
+        "policyId": "payment-data",
+        "policyVersion": "1.0.0",
+        "enabledRails": [
+          "input",
+          "output"
+        ],
+        "parameterValues": {},
+        "action": null,
+        "ruleActions": {},
+        "reasoningPolicy": null,
+        "enabledRuleIds": [
+          "financial-pii/visa",
+          "financial-pii/mastercard",
+          "financial-pii/amex",
+          "financial-pii/discover",
+          "pattern/eu_iban_enhanced",
+          "financial-pii/credit_card",
+          "financial-pii/iban",
+          "pattern/ca_bank_account",
+          "pattern/sg_bank_account",
+          "cn-personal-information/unionpay-card"
+        ],
+        "ruleOrder": [
+          "financial-pii/visa",
+          "financial-pii/mastercard",
+          "financial-pii/amex",
+          "financial-pii/discover",
+          "pattern/eu_iban_enhanced",
+          "financial-pii/credit_card",
+          "financial-pii/iban",
+          "pattern/ca_bank_account",
+          "pattern/sg_bank_account",
+          "cn-personal-information/unionpay-card"
+        ],
+        "testCaseOverrides": {}
+      },
+      {
+        "policyId": "identity-documents",
+        "policyVersion": "1.0.1",
+        "enabledRails": [
+          "input",
+          "output"
+        ],
+        "parameterValues": {},
+        "action": null,
+        "ruleActions": {},
+        "reasoningPolicy": null,
+        "enabledRuleIds": [
+          "identity/passport",
+          "pattern/uoft_student_id",
+          "au-pii-tax-identifiers/au_tfn",
+          "au-pii-tax-identifiers/au_abn",
+          "au-pii-tax-identifiers/au_medicare",
+          "pattern/uae_emirates_id",
+          "pattern/ca_on_drivers_licence",
+          "pattern/ca_immigration_doc",
+          "pattern/fr_nir",
+          "pattern/uoft_tcard",
+          "pattern/sg_uen",
+          "pattern/ca_ohip",
+          "pattern/ca_sin",
+          "pattern/eu_vat",
+          "pattern/nl_bsn_contextual",
+          "pattern/au_tfn",
+          "pattern/us_ssn",
+          "pattern/us_ssn_no_dash",
+          "pattern/br_cpf",
+          "pattern/br_cpf_unformatted",
+          "pattern/br_cnpj",
+          "pattern/br_rg",
+          "pattern/sg_nric",
+          "pattern/uoft_utorid",
+          "cn-business-identifier/unified-social-credit-code",
+          "cn-personal-information/resident-identity-card",
+          "pattern/passport_singapore",
+          "pattern/passport_china",
+          "pattern/passport_us",
+          "pattern/passport_germany",
+          "pattern/passport_france",
+          "pattern/passport_netherlands",
+          "pattern/passport_canada",
+          "pattern/passport_india",
+          "international-pii-identifiers/passport_uk",
+          "international-pii-identifiers/passport_japan",
+          "pattern/passport_australia"
+        ],
+        "ruleOrder": [
+          "identity/passport",
+          "pattern/uoft_student_id",
+          "au-pii-tax-identifiers/au_tfn",
+          "au-pii-tax-identifiers/au_abn",
+          "au-pii-tax-identifiers/au_medicare",
+          "pattern/uae_emirates_id",
+          "pattern/ca_on_drivers_licence",
+          "pattern/ca_immigration_doc",
+          "pattern/fr_nir",
+          "pattern/uoft_tcard",
+          "pattern/sg_uen",
+          "pattern/ca_ohip",
+          "pattern/ca_sin",
+          "pattern/eu_vat",
+          "pattern/nl_bsn_contextual",
+          "pattern/au_tfn",
+          "pattern/us_ssn",
+          "pattern/us_ssn_no_dash",
+          "pattern/br_cpf",
+          "pattern/br_cpf_unformatted",
+          "pattern/br_cnpj",
+          "pattern/br_rg",
+          "pattern/sg_nric",
+          "pattern/uoft_utorid",
+          "cn-business-identifier/unified-social-credit-code",
+          "cn-personal-information/resident-identity-card",
+          "pattern/passport_singapore",
+          "pattern/passport_china",
+          "pattern/passport_us",
+          "pattern/passport_germany",
+          "pattern/passport_france",
+          "pattern/passport_netherlands",
+          "pattern/passport_canada",
+          "pattern/passport_india",
+          "international-pii-identifiers/passport_uk",
+          "international-pii-identifiers/passport_japan",
+          "pattern/passport_australia"
+        ],
+        "testCaseOverrides": {
+          "local-government-identifiers/accept/br_cpf_unformatted/input": {
+            "sourcePolicyVersion": "1.0.1",
+            "reason": "Numeric privacy formats overlap across jurisdictions. The earlier identity Policy redacts the complete identifier; the composed contract checks the selected Rule and exact output. Format-specific acceptance remains in isolated Policy tests.",
+            "expectedDecision": "transform",
+            "expectedOutputContent": "Acceptance sample: [au_medicare_REDACTED]",
+            "expectedMatches": [
+              {
+                "policyId": "identity-documents",
+                "ruleId": "au-pii-tax-identifiers/au_medicare"
+              }
+            ]
+          },
+          "local-government-identifiers/accept/br_cpf_unformatted/output": {
+            "sourcePolicyVersion": "1.0.1",
+            "reason": "Numeric privacy formats overlap across jurisdictions. The earlier identity Policy redacts the complete identifier; the composed contract checks the selected Rule and exact output. Format-specific acceptance remains in isolated Policy tests.",
+            "expectedDecision": "transform",
+            "expectedOutputContent": "Acceptance sample: [au_medicare_REDACTED]",
+            "expectedMatches": [
+              {
+                "policyId": "identity-documents",
+                "ruleId": "au-pii-tax-identifiers/au_medicare"
+              }
+            ]
+          },
+          "local-government-identifiers/pattern-matching/accept/br_cpf_unformatted": {
+            "sourcePolicyVersion": "1.0.1",
+            "reason": "Numeric privacy formats overlap across jurisdictions. The earlier identity Policy redacts the complete identifier; the composed contract checks the selected Rule and exact output. Format-specific acceptance remains in isolated Policy tests.",
+            "expectedDecision": "transform",
+            "expectedOutputContent": "Acceptance sample: [au_medicare_REDACTED]",
+            "expectedMatches": [
+              {
+                "policyId": "identity-documents",
+                "ruleId": "au-pii-tax-identifiers/au_medicare"
+              }
+            ]
+          },
+          "local-government-identifiers/pattern-matching/accept/br_cpf_unformatted/output": {
+            "sourcePolicyVersion": "1.0.1",
+            "reason": "Numeric privacy formats overlap across jurisdictions. The earlier identity Policy redacts the complete identifier; the composed contract checks the selected Rule and exact output. Format-specific acceptance remains in isolated Policy tests.",
+            "expectedDecision": "transform",
+            "expectedOutputContent": "Acceptance sample: [au_medicare_REDACTED]",
+            "expectedMatches": [
+              {
+                "policyId": "identity-documents",
+                "ruleId": "au-pii-tax-identifiers/au_medicare"
+              }
+            ]
+          },
+          "local-passports/local-passport-formats/accept/eu_passport_generic/input": {
+            "sourcePolicyVersion": "1.0.1",
+            "reason": "The contextual passport Rule precedes country-only patterns. Assert its identity and the complete redacted output in the combined Profile.",
+            "expectedDecision": "transform",
+            "expectedOutputContent": "Acceptance sample: [REDACTED]",
+            "expectedMatches": [
+              {
+                "policyId": "identity-documents",
+                "ruleId": "identity/passport"
+              }
+            ]
+          },
+          "local-passports/local-passport-formats/accept/eu_passport_generic/output": {
+            "sourcePolicyVersion": "1.0.1",
+            "reason": "The contextual passport Rule precedes country-only patterns. Assert its identity and the complete redacted output in the combined Profile.",
+            "expectedDecision": "transform",
+            "expectedOutputContent": "Acceptance sample: [REDACTED]",
+            "expectedMatches": [
+              {
+                "policyId": "identity-documents",
+                "ruleId": "identity/passport"
+              }
+            ]
+          },
+          "local-passports/local-passport-formats/accept/passport_singapore/input": {
+            "sourcePolicyVersion": "1.0.1",
+            "reason": "The contextual passport Rule precedes country-only patterns. Assert its identity and the complete redacted output in the combined Profile.",
+            "expectedDecision": "transform",
+            "expectedOutputContent": "Acceptance sample: [REDACTED]",
+            "expectedMatches": [
+              {
+                "policyId": "identity-documents",
+                "ruleId": "identity/passport"
+              }
+            ]
+          },
+          "local-passports/local-passport-formats/accept/passport_singapore/output": {
+            "sourcePolicyVersion": "1.0.1",
+            "reason": "The contextual passport Rule precedes country-only patterns. Assert its identity and the complete redacted output in the combined Profile.",
+            "expectedDecision": "transform",
+            "expectedOutputContent": "Acceptance sample: [REDACTED]",
+            "expectedMatches": [
+              {
+                "policyId": "identity-documents",
+                "ruleId": "identity/passport"
+              }
+            ]
+          },
+          "local-passports/pattern-matching/accept/passport_singapore": {
+            "sourcePolicyVersion": "1.0.1",
+            "reason": "The contextual passport Rule precedes country-only patterns. Assert its identity and the complete redacted output in the combined Profile.",
+            "expectedDecision": "transform",
+            "expectedOutputContent": "Acceptance sample: [REDACTED]",
+            "expectedMatches": [
+              {
+                "policyId": "identity-documents",
+                "ruleId": "identity/passport"
+              }
+            ]
+          },
+          "local-passports/pattern-matching/accept/passport_singapore/output": {
+            "sourcePolicyVersion": "1.0.1",
+            "reason": "The contextual passport Rule precedes country-only patterns. Assert its identity and the complete redacted output in the combined Profile.",
+            "expectedDecision": "transform",
+            "expectedOutputContent": "Acceptance sample: [REDACTED]",
+            "expectedMatches": [
+              {
+                "policyId": "identity-documents",
+                "ruleId": "identity/passport"
+              }
+            ]
+          }
+        }
+      },
+      {
+        "policyId": "contact-data",
+        "policyVersion": "1.0.1",
+        "enabledRails": [
+          "input",
+          "output"
+        ],
+        "parameterValues": {},
+        "action": null,
+        "ruleActions": {},
+        "reasoningPolicy": null,
+        "enabledRuleIds": [
+          "pattern/uae_phone",
+          "pattern/fr_phone",
+          "pattern/titled_person",
+          "pattern/contact_list_person",
+          "pattern/truncated_address",
+          "pattern/structured_username",
+          "pattern/structured_address",
+          "pattern/labelled_person",
+          "pattern/sg_local_phone",
+          "pattern/us_phone",
+          "pattern/sg_phone",
+          "pattern/international_phone",
+          "pattern/br_phone_mobile",
+          "pattern/br_phone_landline",
+          "pattern/br_cep",
+          "pattern/fr_postal_code",
+          "pattern/street_address",
+          "pattern/sg_postal_code",
+          "pattern/ca_postal_code",
+          "pattern/email",
+          "cn-personal-information/mainland-mobile",
+          "uae-data-protection-pii/uae_po_box"
+        ],
+        "ruleOrder": [
+          "pattern/uae_phone",
+          "pattern/fr_phone",
+          "pattern/titled_person",
+          "pattern/contact_list_person",
+          "pattern/truncated_address",
+          "pattern/structured_username",
+          "pattern/structured_address",
+          "pattern/labelled_person",
+          "pattern/sg_local_phone",
+          "pattern/us_phone",
+          "pattern/sg_phone",
+          "pattern/international_phone",
+          "pattern/br_phone_mobile",
+          "pattern/br_phone_landline",
+          "pattern/br_cep",
+          "pattern/fr_postal_code",
+          "pattern/street_address",
+          "pattern/sg_postal_code",
+          "pattern/ca_postal_code",
+          "pattern/email",
+          "cn-personal-information/mainland-mobile",
+          "uae-data-protection-pii/uae_po_box"
+        ],
+        "testCaseOverrides": {
+          "local-contact-data/local-regional-contact-formats/accept/fr_phone/input": {
+            "sourcePolicyVersion": "1.0.1",
+            "reason": "Numeric privacy formats overlap across jurisdictions. The earlier identity Policy redacts the complete identifier; the composed contract checks the selected Rule and exact output. Format-specific acceptance remains in isolated Policy tests.",
+            "expectedDecision": "transform",
+            "expectedOutputContent": "Acceptance sample: +[au_medicare_REDACTED]",
+            "expectedMatches": [
+              {
+                "policyId": "identity-documents",
+                "ruleId": "au-pii-tax-identifiers/au_medicare"
+              }
+            ]
+          },
+          "local-contact-data/local-regional-contact-formats/accept/fr_phone/output": {
+            "sourcePolicyVersion": "1.0.1",
+            "reason": "Numeric privacy formats overlap across jurisdictions. The earlier identity Policy redacts the complete identifier; the composed contract checks the selected Rule and exact output. Format-specific acceptance remains in isolated Policy tests.",
+            "expectedDecision": "transform",
+            "expectedOutputContent": "Acceptance sample: +[au_medicare_REDACTED]",
+            "expectedMatches": [
+              {
+                "policyId": "identity-documents",
+                "ruleId": "au-pii-tax-identifiers/au_medicare"
+              }
+            ]
+          },
+          "local-contact-data/china-personal-identifiers/mainland-mobile/input": {
+            "sourcePolicyVersion": "1.0.1",
+            "reason": "Numeric privacy formats overlap across jurisdictions. The earlier identity Policy redacts the complete identifier; the composed contract checks the selected Rule and exact output. Format-specific acceptance remains in isolated Policy tests.",
+            "expectedDecision": "transform",
+            "expectedOutputContent": "手机号码：[au_medicare_REDACTED]",
+            "expectedMatches": [
+              {
+                "policyId": "identity-documents",
+                "ruleId": "au-pii-tax-identifiers/au_medicare"
+              }
+            ]
+          },
+          "local-contact-data/china-personal-identifiers/mainland-mobile/output": {
+            "sourcePolicyVersion": "1.0.1",
+            "reason": "Numeric privacy formats overlap across jurisdictions. The earlier identity Policy redacts the complete identifier; the composed contract checks the selected Rule and exact output. Format-specific acceptance remains in isolated Policy tests.",
+            "expectedDecision": "transform",
+            "expectedOutputContent": "手机号码：[au_medicare_REDACTED]",
+            "expectedMatches": [
+              {
+                "policyId": "identity-documents",
+                "ruleId": "au-pii-tax-identifiers/au_medicare"
+              }
+            ]
+          },
+          "local-contact-data/gdpr-eu-pii-protection/rule-gdpr-eu-contact-information/fr_phone-acceptance": {
+            "sourcePolicyVersion": "1.0.1",
+            "reason": "Numeric privacy formats overlap across jurisdictions. The earlier identity Policy redacts the complete identifier; the composed contract checks the selected Rule and exact output. Format-specific acceptance remains in isolated Policy tests.",
+            "expectedDecision": "transform",
+            "expectedOutputContent": "Acceptance sample: +[au_medicare_REDACTED]",
+            "expectedMatches": [
+              {
+                "policyId": "identity-documents",
+                "ruleId": "au-pii-tax-identifiers/au_medicare"
+              }
+            ]
+          },
+          "local-contact-data/pattern-matching/accept/fr_phone": {
+            "sourcePolicyVersion": "1.0.1",
+            "reason": "Numeric privacy formats overlap across jurisdictions. The earlier identity Policy redacts the complete identifier; the composed contract checks the selected Rule and exact output. Format-specific acceptance remains in isolated Policy tests.",
+            "expectedDecision": "transform",
+            "expectedOutputContent": "Acceptance sample: +[au_medicare_REDACTED]",
+            "expectedMatches": [
+              {
+                "policyId": "identity-documents",
+                "ruleId": "au-pii-tax-identifiers/au_medicare"
+              }
+            ]
+          },
+          "local-contact-data/pattern-matching/accept/fr_phone/output": {
+            "sourcePolicyVersion": "1.0.1",
+            "reason": "Numeric privacy formats overlap across jurisdictions. The earlier identity Policy redacts the complete identifier; the composed contract checks the selected Rule and exact output. Format-specific acceptance remains in isolated Policy tests.",
+            "expectedDecision": "transform",
+            "expectedOutputContent": "Acceptance sample: +[au_medicare_REDACTED]",
+            "expectedMatches": [
+              {
+                "policyId": "identity-documents",
+                "ruleId": "au-pii-tax-identifiers/au_medicare"
+              }
+            ]
+          }
+        }
+      },
+      {
+        "policyId": "network-identifiers",
+        "policyVersion": "1.0.0",
+        "enabledRails": [
+          "input",
+          "output"
+        ],
+        "parameterValues": {},
+        "action": null,
+        "ruleActions": {},
+        "reasoningPolicy": null,
+        "enabledRuleIds": [
+          "pattern/ipv4",
+          "pattern/ipv6",
+          "pattern/url"
+        ],
+        "ruleOrder": [
+          "pattern/ipv4",
+          "pattern/ipv6",
+          "pattern/url"
+        ],
+        "testCaseOverrides": {}
+      },
+      {
+        "policyId": "sensitive-attributes",
+        "policyVersion": "1.0.0",
+        "enabledRails": [
+          "input",
+          "output"
+        ],
+        "parameterValues": {},
+        "action": null,
+        "ruleActions": {},
+        "reasoningPolicy": null,
+        "enabledRuleIds": [
+          "pattern/gender_sexual_orientation",
+          "pattern/race_ethnicity_national_origin",
+          "pattern/religion",
+          "pattern/age_discrimination",
+          "pattern/disability",
+          "pattern/marital_family_status",
+          "pattern/military_status",
+          "pattern/public_assistance"
+        ],
+        "ruleOrder": [
+          "pattern/gender_sexual_orientation",
+          "pattern/race_ethnicity_national_origin",
+          "pattern/religion",
+          "pattern/age_discrimination",
+          "pattern/disability",
+          "pattern/marital_family_status",
+          "pattern/military_status",
+          "pattern/public_assistance"
+        ],
+        "testCaseOverrides": {}
+      },
+      {
+        "policyId": "risk-content-terms",
+        "policyVersion": "1.0.0",
+        "enabledRails": [
+          "input",
+          "output"
+        ],
+        "parameterValues": {},
+        "action": null,
+        "ruleActions": {},
+        "reasoningPolicy": null,
+        "enabledRuleIds": [
+          "pattern/explosives",
+          "pattern/weapons_firearms",
+          "pattern/weapons_other",
+          "pattern/violence_threats",
+          "pattern/terrorism",
+          "pattern/self_harm_suicide",
+          "pattern/illegal_activities",
+          "pattern/harassment_hate"
+        ],
+        "ruleOrder": [
+          "pattern/explosives",
+          "pattern/weapons_firearms",
+          "pattern/weapons_other",
+          "pattern/violence_threats",
+          "pattern/terrorism",
+          "pattern/self_harm_suicide",
+          "pattern/illegal_activities",
+          "pattern/harassment_hate"
+        ],
+        "testCaseOverrides": {
+          "local-risk-content-terms/accept/terrorism/input": {
+            "sourcePolicyVersion": "1.0.0",
+            "reason": "The composed safety Policy blocks this harmful sample before keyword redaction. Assert the blocking Rule and the original risk-term detection, rather than the isolated Transform decision.",
+            "expectedDecision": "block",
+            "expectedMatches": [
+              {
+                "policyId": "content-safety-local",
+                "ruleId": "category/harmful_violence"
+              },
+              {
+                "policyId": "risk-content-terms",
+                "ruleId": "pattern/terrorism"
+              }
+            ]
+          },
+          "local-risk-content-terms/accept/terrorism/output": {
+            "sourcePolicyVersion": "1.0.0",
+            "reason": "The composed safety Policy blocks this harmful sample before keyword redaction. Assert the blocking Rule and the original risk-term detection, rather than the isolated Transform decision.",
+            "expectedDecision": "block",
+            "expectedMatches": [
+              {
+                "policyId": "content-safety-local",
+                "ruleId": "category/harmful_violence"
+              },
+              {
+                "policyId": "risk-content-terms",
+                "ruleId": "pattern/terrorism"
+              }
+            ]
+          },
+          "local-risk-content-terms/accept/self_harm_suicide/input": {
+            "sourcePolicyVersion": "1.0.0",
+            "reason": "The composed safety Policy blocks this harmful sample before keyword redaction. Assert the blocking Rule and the original risk-term detection, rather than the isolated Transform decision.",
+            "expectedDecision": "block",
+            "expectedMatches": [
+              {
+                "policyId": "content-safety-local",
+                "ruleId": "category/harmful_self_harm"
+              },
+              {
+                "policyId": "risk-content-terms",
+                "ruleId": "pattern/self_harm_suicide"
+              }
+            ]
+          },
+          "local-risk-content-terms/accept/self_harm_suicide/output": {
+            "sourcePolicyVersion": "1.0.0",
+            "reason": "The composed safety Policy blocks this harmful sample before keyword redaction. Assert the blocking Rule and the original risk-term detection, rather than the isolated Transform decision.",
+            "expectedDecision": "block",
+            "expectedMatches": [
+              {
+                "policyId": "content-safety-local",
+                "ruleId": "category/harmful_self_harm"
+              },
+              {
+                "policyId": "risk-content-terms",
+                "ruleId": "pattern/self_harm_suicide"
+              }
+            ]
+          },
+          "local-risk-content-terms/pattern-matching/accept/terrorism": {
+            "sourcePolicyVersion": "1.0.0",
+            "reason": "The composed safety Policy blocks this harmful sample before keyword redaction. Assert the blocking Rule and the original risk-term detection, rather than the isolated Transform decision.",
+            "expectedDecision": "block",
+            "expectedMatches": [
+              {
+                "policyId": "content-safety-local",
+                "ruleId": "category/harmful_violence"
+              },
+              {
+                "policyId": "risk-content-terms",
+                "ruleId": "pattern/terrorism"
+              }
+            ]
+          },
+          "local-risk-content-terms/pattern-matching/accept/self_harm_suicide": {
+            "sourcePolicyVersion": "1.0.0",
+            "reason": "The composed safety Policy blocks this harmful sample before keyword redaction. Assert the blocking Rule and the original risk-term detection, rather than the isolated Transform decision.",
+            "expectedDecision": "block",
+            "expectedMatches": [
+              {
+                "policyId": "content-safety-local",
+                "ruleId": "category/harmful_self_harm"
+              },
+              {
+                "policyId": "risk-content-terms",
+                "ruleId": "pattern/self_harm_suicide"
+              }
+            ]
+          },
+          "local-risk-content-terms/pattern-matching/accept/terrorism/output": {
+            "sourcePolicyVersion": "1.0.0",
+            "reason": "The composed safety Policy blocks this harmful sample before keyword redaction. Assert the blocking Rule and the original risk-term detection, rather than the isolated Transform decision.",
+            "expectedDecision": "block",
+            "expectedMatches": [
+              {
+                "policyId": "content-safety-local",
+                "ruleId": "category/harmful_violence"
+              },
+              {
+                "policyId": "risk-content-terms",
+                "ruleId": "pattern/terrorism"
+              }
+            ]
+          },
+          "local-risk-content-terms/pattern-matching/accept/self_harm_suicide/output": {
+            "sourcePolicyVersion": "1.0.0",
+            "reason": "The composed safety Policy blocks this harmful sample before keyword redaction. Assert the blocking Rule and the original risk-term detection, rather than the isolated Transform decision.",
+            "expectedDecision": "block",
+            "expectedMatches": [
+              {
+                "policyId": "content-safety-local",
+                "ruleId": "category/harmful_self_harm"
+              },
+              {
+                "policyId": "risk-content-terms",
+                "ruleId": "pattern/self_harm_suicide"
+              }
+            ]
+          }
+        }
+      },
+      {
+        "policyId": "pii-semantic",
+        "policyVersion": "1.0.0",
+        "enabledRails": [
+          "input",
+          "output"
+        ],
+        "parameterValues": {},
+        "action": null,
+        "ruleActions": {},
+        "reasoningPolicy": null,
+        "enabledRuleIds": [
+          "model/pii"
+        ],
+        "ruleOrder": [
+          "model/pii"
+        ],
+        "testCaseOverrides": {}
       }
     ],
     "parameterPacks": [],
@@ -1483,11 +2259,133 @@ export const protectionPresets: readonly ProtectionPreset[] = [
     },
     "suggestedTopics": [],
     "optionalPolicyIds": [],
-    "limitations": []
+    "limitations": [],
+    "testExclusions": [
+      {
+        "policyId": "payment-data",
+        "policyVersion": "1.0.0",
+        "sourceCaseId": "local-payment-data/rule-financial-pii/credit_card-acceptance/input",
+        "reason": "Duplicate Visa fixture: the specific Visa Rule redacts this value before the generic credit-card fallback. Keep the generic detector acceptance in isolated Policy tests."
+      },
+      {
+        "policyId": "payment-data",
+        "policyVersion": "1.0.0",
+        "sourceCaseId": "local-payment-data/rule-financial-pii/credit_card-acceptance/output",
+        "reason": "Duplicate Visa fixture: the specific Visa Rule redacts this value before the generic credit-card fallback. Keep the generic detector acceptance in isolated Policy tests."
+      },
+      {
+        "policyId": "payment-data",
+        "policyVersion": "1.0.0",
+        "sourceCaseId": "local-payment-data/advanced-au-pii-protection/rule-financial-pii/credit_card-acceptance",
+        "reason": "Duplicate Visa fixture: the specific Visa Rule redacts this value before the generic credit-card fallback. Keep the generic detector acceptance in isolated Policy tests."
+      },
+      {
+        "policyId": "payment-data",
+        "policyVersion": "1.0.0",
+        "sourceCaseId": "local-payment-data/baseline-pii-protection/rule-financial-pii/credit_card-acceptance",
+        "reason": "Duplicate Visa fixture: the specific Visa Rule redacts this value before the generic credit-card fallback. Keep the generic detector acceptance in isolated Policy tests."
+      },
+      {
+        "policyId": "payment-data",
+        "policyVersion": "1.0.0",
+        "sourceCaseId": "local-payment-data/pattern-matching/accept/credit_card",
+        "reason": "Duplicate Visa fixture: the specific Visa Rule redacts this value before the generic credit-card fallback. Keep the generic detector acceptance in isolated Policy tests."
+      },
+      {
+        "policyId": "payment-data",
+        "policyVersion": "1.0.0",
+        "sourceCaseId": "local-payment-data/pattern-matching/accept/credit_card/output",
+        "reason": "Duplicate Visa fixture: the specific Visa Rule redacts this value before the generic credit-card fallback. Keep the generic detector acceptance in isolated Policy tests."
+      },
+      {
+        "policyId": "payment-data",
+        "policyVersion": "1.0.0",
+        "sourceCaseId": "local-payment-data/pdpa-singapore/rule-sg-pdpa-financial-data/credit_card-acceptance",
+        "reason": "Duplicate Visa fixture: the specific Visa Rule redacts this value before the generic credit-card fallback. Keep the generic detector acceptance in isolated Policy tests."
+      },
+      {
+        "policyId": "payment-data",
+        "policyVersion": "1.0.0",
+        "sourceCaseId": "local-payment-data/uae-regulatory-compliance/rule-uae-data-protection-pii/credit_card-acceptance",
+        "reason": "Duplicate Visa fixture: the specific Visa Rule redacts this value before the generic credit-card fallback. Keep the generic detector acceptance in isolated Policy tests."
+      },
+      {
+        "policyId": "identity-documents",
+        "policyVersion": "1.0.1",
+        "sourceCaseId": "local-government-identifiers/accept/au_tfn/input",
+        "reason": "Duplicate TFN detector: au-pii-tax-identifiers/au_tfn owns this identical span in the combined Profile. Keep the alias acceptance in isolated Policy tests."
+      },
+      {
+        "policyId": "identity-documents",
+        "policyVersion": "1.0.1",
+        "sourceCaseId": "local-government-identifiers/accept/au_tfn/output",
+        "reason": "Duplicate TFN detector: au-pii-tax-identifiers/au_tfn owns this identical span in the combined Profile. Keep the alias acceptance in isolated Policy tests."
+      },
+      {
+        "policyId": "identity-documents",
+        "policyVersion": "1.0.1",
+        "sourceCaseId": "local-government-identifiers/pattern-matching/accept/au_tfn",
+        "reason": "Duplicate TFN detector: au-pii-tax-identifiers/au_tfn owns this identical span in the combined Profile. Keep the alias acceptance in isolated Policy tests."
+      },
+      {
+        "policyId": "identity-documents",
+        "policyVersion": "1.0.1",
+        "sourceCaseId": "local-government-identifiers/pattern-matching/accept/au_tfn/output",
+        "reason": "Duplicate TFN detector: au-pii-tax-identifiers/au_tfn owns this identical span in the combined Profile. Keep the alias acceptance in isolated Policy tests."
+      },
+      {
+        "policyId": "identity-documents",
+        "policyVersion": "1.0.1",
+        "sourceCaseId": "local-passports/advanced-au-pii-protection/rule-international-pii-identifiers/passport_uk-acceptance",
+        "reason": "The bare nine-digit fixture is shared with the US passport format. It cannot assert both country-specific Rule identities after the first redaction; retain isolated Policy acceptance."
+      },
+      {
+        "policyId": "identity-documents",
+        "policyVersion": "1.0.1",
+        "sourceCaseId": "local-passports/advanced-au-pii-protection/rule-international-pii-identifiers/passport_japan-acceptance",
+        "reason": "The bare two-letter/seven-digit fixture overlaps the Netherlands passport format. Retain the country-specific assertion in isolated Policy tests."
+      },
+      {
+        "policyId": "identity-documents",
+        "policyVersion": "1.0.1",
+        "sourceCaseId": "local-passports/pattern-matching/accept/passport_uk",
+        "reason": "The bare nine-digit fixture is shared with the US passport format. It cannot assert both country-specific Rule identities after the first redaction; retain isolated Policy acceptance."
+      },
+      {
+        "policyId": "identity-documents",
+        "policyVersion": "1.0.1",
+        "sourceCaseId": "local-passports/pattern-matching/accept/passport_australia",
+        "reason": "The bare letter/seven-digit fixture overlaps the India passport format. Retain the country-specific assertion in isolated Policy tests."
+      },
+      {
+        "policyId": "identity-documents",
+        "policyVersion": "1.0.1",
+        "sourceCaseId": "local-passports/pattern-matching/accept/passport_japan",
+        "reason": "The bare two-letter/seven-digit fixture overlaps the Netherlands passport format. Retain the country-specific assertion in isolated Policy tests."
+      },
+      {
+        "policyId": "identity-documents",
+        "policyVersion": "1.0.1",
+        "sourceCaseId": "local-passports/pattern-matching/accept/passport_uk/output",
+        "reason": "The bare nine-digit fixture is shared with the US passport format. It cannot assert both country-specific Rule identities after the first redaction; retain isolated Policy acceptance."
+      },
+      {
+        "policyId": "identity-documents",
+        "policyVersion": "1.0.1",
+        "sourceCaseId": "local-passports/pattern-matching/accept/passport_australia/output",
+        "reason": "The bare letter/seven-digit fixture overlaps the India passport format. Retain the country-specific assertion in isolated Policy tests."
+      },
+      {
+        "policyId": "identity-documents",
+        "policyVersion": "1.0.1",
+        "sourceCaseId": "local-passports/pattern-matching/accept/passport_japan/output",
+        "reason": "The bare two-letter/seven-digit fixture overlaps the Netherlands passport format. Retain the country-specific assertion in isolated Policy tests."
+      }
+    ]
   },
   {
     "id": "sg-bank",
-    "version": "1.0.0",
+    "version": "1.1.0",
     "name": "Singapore Bank",
     "description": "",
     "industry": "banking",
@@ -1550,280 +2448,72 @@ export const protectionPresets: readonly ProtectionPreset[] = [
         "testCaseOverrides": {}
       },
       {
-        "policyId": "payment-data",
+        "policyId": "prompt-instruction-attacks",
         "policyVersion": "1.0.0",
         "enabledRails": [
           "input",
           "output"
         ],
-        "parameterValues": {},
+        "parameterValues": {
+          "on_unknown": "block",
+          "review_unknown": "false"
+        },
         "action": null,
         "ruleActions": {},
         "reasoningPolicy": null,
         "enabledRuleIds": [
-          "financial-pii/credit_card",
-          "financial-pii/iban",
-          "pattern/ca_bank_account",
-          "pattern/sg_bank_account",
-          "cn-personal-information/unionpay-card",
-          "pattern/eu_iban_enhanced",
-          "financial-pii/visa",
-          "financial-pii/mastercard",
-          "financial-pii/amex",
-          "financial-pii/discover"
+          "boundary/indirect-injection",
+          "boundary/memory-poisoning",
+          "prompt-injection-blocker/blocked-word-1",
+          "prompt-injection-blocker/blocked-word-2",
+          "prompt-injection-blocker/blocked-word-3",
+          "prompt-injection-blocker/blocked-word-4",
+          "prompt-injection-blocker/blocked-word-5",
+          "prompt-injection-blocker/blocked-word-6",
+          "prompt-injection-blocker/blocked-word-7",
+          "prompt-injection-blocker/blocked-word-8",
+          "prompt-injection-blocker/blocked-word-9",
+          "prompt-injection-blocker/blocked-word-10",
+          "prompt-injection-blocker/blocked-word-11",
+          "prompt-injection-blocker/blocked-word-12",
+          "prompt-injection-blocker/blocked-word-13",
+          "prompt-injection-blocker/blocked-word-14",
+          "category/prompt_injection_jailbreak",
+          "category/prompt_injection_data_exfiltration",
+          "category/prompt_injection_sql",
+          "category/prompt_injection_malicious_code",
+          "category/prompt_injection_system_prompt",
+          "cn-prompt-security/instruction-override",
+          "cn-prompt-security/prompt-extraction",
+          "cn-prompt-security/unrestricted-mode",
+          "claims-system-override-filter/claims_system_override"
         ],
         "ruleOrder": [
-          "financial-pii/credit_card",
-          "financial-pii/iban",
-          "pattern/ca_bank_account",
-          "pattern/sg_bank_account",
-          "cn-personal-information/unionpay-card",
-          "pattern/eu_iban_enhanced",
-          "financial-pii/visa",
-          "financial-pii/mastercard",
-          "financial-pii/amex",
-          "financial-pii/discover"
-        ],
-        "testCaseOverrides": {}
-      },
-      {
-        "policyId": "identity-documents",
-        "policyVersion": "1.0.0",
-        "enabledRails": [
-          "input",
-          "output"
-        ],
-        "parameterValues": {},
-        "action": null,
-        "ruleActions": {},
-        "reasoningPolicy": null,
-        "enabledRuleIds": [
-          "au-pii-tax-identifiers/au_tfn",
-          "au-pii-tax-identifiers/au_abn",
-          "au-pii-tax-identifiers/au_medicare",
-          "pattern/uae_emirates_id",
-          "pattern/ca_on_drivers_licence",
-          "pattern/ca_immigration_doc",
-          "pattern/fr_nir",
-          "pattern/uoft_tcard",
-          "pattern/sg_uen",
-          "pattern/ca_ohip",
-          "pattern/ca_sin",
-          "pattern/eu_vat",
-          "pattern/nl_bsn_contextual",
-          "pattern/au_tfn",
-          "pattern/uoft_student_id",
-          "pattern/us_ssn",
-          "pattern/us_ssn_no_dash",
-          "pattern/br_cpf",
-          "pattern/br_cpf_unformatted",
-          "pattern/br_cnpj",
-          "pattern/br_rg",
-          "pattern/sg_nric",
-          "pattern/uoft_utorid",
-          "cn-business-identifier/unified-social-credit-code",
-          "cn-personal-information/resident-identity-card",
-          "pattern/passport_singapore",
-          "pattern/passport_china",
-          "pattern/passport_us",
-          "pattern/passport_germany",
-          "pattern/passport_france",
-          "pattern/passport_netherlands",
-          "pattern/passport_canada",
-          "pattern/passport_india",
-          "identity/passport",
-          "international-pii-identifiers/passport_uk",
-          "international-pii-identifiers/passport_japan",
-          "pattern/passport_australia"
-        ],
-        "ruleOrder": [
-          "au-pii-tax-identifiers/au_tfn",
-          "au-pii-tax-identifiers/au_abn",
-          "au-pii-tax-identifiers/au_medicare",
-          "pattern/uae_emirates_id",
-          "pattern/ca_on_drivers_licence",
-          "pattern/ca_immigration_doc",
-          "pattern/fr_nir",
-          "pattern/uoft_tcard",
-          "pattern/sg_uen",
-          "pattern/ca_ohip",
-          "pattern/ca_sin",
-          "pattern/eu_vat",
-          "pattern/nl_bsn_contextual",
-          "pattern/au_tfn",
-          "pattern/uoft_student_id",
-          "pattern/us_ssn",
-          "pattern/us_ssn_no_dash",
-          "pattern/br_cpf",
-          "pattern/br_cpf_unformatted",
-          "pattern/br_cnpj",
-          "pattern/br_rg",
-          "pattern/sg_nric",
-          "pattern/uoft_utorid",
-          "cn-business-identifier/unified-social-credit-code",
-          "cn-personal-information/resident-identity-card",
-          "pattern/passport_singapore",
-          "pattern/passport_china",
-          "pattern/passport_us",
-          "pattern/passport_germany",
-          "pattern/passport_france",
-          "pattern/passport_netherlands",
-          "pattern/passport_canada",
-          "pattern/passport_india",
-          "identity/passport",
-          "international-pii-identifiers/passport_uk",
-          "international-pii-identifiers/passport_japan",
-          "pattern/passport_australia"
-        ],
-        "testCaseOverrides": {}
-      },
-      {
-        "policyId": "contact-data",
-        "policyVersion": "1.0.0",
-        "enabledRails": [
-          "input",
-          "output"
-        ],
-        "parameterValues": {},
-        "action": null,
-        "ruleActions": {},
-        "reasoningPolicy": null,
-        "enabledRuleIds": [
-          "pattern/titled_person",
-          "pattern/contact_list_person",
-          "pattern/truncated_address",
-          "pattern/structured_username",
-          "pattern/structured_address",
-          "pattern/labelled_person",
-          "pattern/sg_local_phone",
-          "pattern/us_phone",
-          "pattern/sg_phone",
-          "pattern/international_phone",
-          "pattern/uae_phone",
-          "pattern/fr_phone",
-          "pattern/br_phone_mobile",
-          "pattern/br_phone_landline",
-          "pattern/br_cep",
-          "pattern/fr_postal_code",
-          "pattern/street_address",
-          "pattern/sg_postal_code",
-          "pattern/ca_postal_code",
-          "pattern/email",
-          "cn-personal-information/mainland-mobile",
-          "uae-data-protection-pii/uae_po_box"
-        ],
-        "ruleOrder": [
-          "pattern/titled_person",
-          "pattern/contact_list_person",
-          "pattern/truncated_address",
-          "pattern/structured_username",
-          "pattern/structured_address",
-          "pattern/labelled_person",
-          "pattern/sg_local_phone",
-          "pattern/us_phone",
-          "pattern/sg_phone",
-          "pattern/international_phone",
-          "pattern/uae_phone",
-          "pattern/fr_phone",
-          "pattern/br_phone_mobile",
-          "pattern/br_phone_landline",
-          "pattern/br_cep",
-          "pattern/fr_postal_code",
-          "pattern/street_address",
-          "pattern/sg_postal_code",
-          "pattern/ca_postal_code",
-          "pattern/email",
-          "cn-personal-information/mainland-mobile",
-          "uae-data-protection-pii/uae_po_box"
-        ],
-        "testCaseOverrides": {}
-      },
-      {
-        "policyId": "network-identifiers",
-        "policyVersion": "1.0.0",
-        "enabledRails": [
-          "input",
-          "output"
-        ],
-        "parameterValues": {},
-        "action": null,
-        "ruleActions": {},
-        "reasoningPolicy": null,
-        "enabledRuleIds": [
-          "pattern/ipv4",
-          "pattern/ipv6",
-          "pattern/url"
-        ],
-        "ruleOrder": [
-          "pattern/ipv4",
-          "pattern/ipv6",
-          "pattern/url"
-        ],
-        "testCaseOverrides": {}
-      },
-      {
-        "policyId": "sensitive-attributes",
-        "policyVersion": "1.0.0",
-        "enabledRails": [
-          "input",
-          "output"
-        ],
-        "parameterValues": {},
-        "action": null,
-        "ruleActions": {},
-        "reasoningPolicy": null,
-        "enabledRuleIds": [
-          "pattern/gender_sexual_orientation",
-          "pattern/race_ethnicity_national_origin",
-          "pattern/religion",
-          "pattern/age_discrimination",
-          "pattern/disability",
-          "pattern/marital_family_status",
-          "pattern/military_status",
-          "pattern/public_assistance"
-        ],
-        "ruleOrder": [
-          "pattern/gender_sexual_orientation",
-          "pattern/race_ethnicity_national_origin",
-          "pattern/religion",
-          "pattern/age_discrimination",
-          "pattern/disability",
-          "pattern/marital_family_status",
-          "pattern/military_status",
-          "pattern/public_assistance"
-        ],
-        "testCaseOverrides": {}
-      },
-      {
-        "policyId": "risk-content-terms",
-        "policyVersion": "1.0.0",
-        "enabledRails": [
-          "input",
-          "output"
-        ],
-        "parameterValues": {},
-        "action": null,
-        "ruleActions": {},
-        "reasoningPolicy": null,
-        "enabledRuleIds": [
-          "pattern/explosives",
-          "pattern/weapons_firearms",
-          "pattern/weapons_other",
-          "pattern/violence_threats",
-          "pattern/terrorism",
-          "pattern/self_harm_suicide",
-          "pattern/illegal_activities",
-          "pattern/harassment_hate"
-        ],
-        "ruleOrder": [
-          "pattern/explosives",
-          "pattern/weapons_firearms",
-          "pattern/weapons_other",
-          "pattern/violence_threats",
-          "pattern/terrorism",
-          "pattern/self_harm_suicide",
-          "pattern/illegal_activities",
-          "pattern/harassment_hate"
+          "boundary/indirect-injection",
+          "boundary/memory-poisoning",
+          "prompt-injection-blocker/blocked-word-1",
+          "prompt-injection-blocker/blocked-word-2",
+          "prompt-injection-blocker/blocked-word-3",
+          "prompt-injection-blocker/blocked-word-4",
+          "prompt-injection-blocker/blocked-word-5",
+          "prompt-injection-blocker/blocked-word-6",
+          "prompt-injection-blocker/blocked-word-7",
+          "prompt-injection-blocker/blocked-word-8",
+          "prompt-injection-blocker/blocked-word-9",
+          "prompt-injection-blocker/blocked-word-10",
+          "prompt-injection-blocker/blocked-word-11",
+          "prompt-injection-blocker/blocked-word-12",
+          "prompt-injection-blocker/blocked-word-13",
+          "prompt-injection-blocker/blocked-word-14",
+          "category/prompt_injection_jailbreak",
+          "category/prompt_injection_data_exfiltration",
+          "category/prompt_injection_sql",
+          "category/prompt_injection_malicious_code",
+          "category/prompt_injection_system_prompt",
+          "cn-prompt-security/instruction-override",
+          "cn-prompt-security/prompt-extraction",
+          "cn-prompt-security/unrestricted-mode",
+          "claims-system-override-filter/claims_system_override"
         ],
         "testCaseOverrides": {}
       },
@@ -1916,7 +2606,7 @@ export const protectionPresets: readonly ProtectionPreset[] = [
       },
       {
         "policyId": "content-safety-local",
-        "policyVersion": "1.0.0",
+        "policyVersion": "1.0.1",
         "enabledRails": [
           "input",
           "output"
@@ -1950,76 +2640,6 @@ export const protectionPresets: readonly ProtectionPreset[] = [
           "category/bias_religious",
           "category/bias_sexual_orientation",
           "nsfw-filter-multilingual/harm_toxic_abuse"
-        ],
-        "testCaseOverrides": {}
-      },
-      {
-        "policyId": "prompt-instruction-attacks",
-        "policyVersion": "1.0.0",
-        "enabledRails": [
-          "input",
-          "output"
-        ],
-        "parameterValues": {
-          "on_unknown": "block",
-          "review_unknown": "false"
-        },
-        "action": null,
-        "ruleActions": {},
-        "reasoningPolicy": null,
-        "enabledRuleIds": [
-          "boundary/indirect-injection",
-          "boundary/memory-poisoning",
-          "prompt-injection-blocker/blocked-word-1",
-          "prompt-injection-blocker/blocked-word-2",
-          "prompt-injection-blocker/blocked-word-3",
-          "prompt-injection-blocker/blocked-word-4",
-          "prompt-injection-blocker/blocked-word-5",
-          "prompt-injection-blocker/blocked-word-6",
-          "prompt-injection-blocker/blocked-word-7",
-          "prompt-injection-blocker/blocked-word-8",
-          "prompt-injection-blocker/blocked-word-9",
-          "prompt-injection-blocker/blocked-word-10",
-          "prompt-injection-blocker/blocked-word-11",
-          "prompt-injection-blocker/blocked-word-12",
-          "prompt-injection-blocker/blocked-word-13",
-          "prompt-injection-blocker/blocked-word-14",
-          "category/prompt_injection_jailbreak",
-          "category/prompt_injection_data_exfiltration",
-          "category/prompt_injection_sql",
-          "category/prompt_injection_malicious_code",
-          "category/prompt_injection_system_prompt",
-          "cn-prompt-security/instruction-override",
-          "cn-prompt-security/prompt-extraction",
-          "cn-prompt-security/unrestricted-mode",
-          "claims-system-override-filter/claims_system_override"
-        ],
-        "ruleOrder": [
-          "boundary/indirect-injection",
-          "boundary/memory-poisoning",
-          "prompt-injection-blocker/blocked-word-1",
-          "prompt-injection-blocker/blocked-word-2",
-          "prompt-injection-blocker/blocked-word-3",
-          "prompt-injection-blocker/blocked-word-4",
-          "prompt-injection-blocker/blocked-word-5",
-          "prompt-injection-blocker/blocked-word-6",
-          "prompt-injection-blocker/blocked-word-7",
-          "prompt-injection-blocker/blocked-word-8",
-          "prompt-injection-blocker/blocked-word-9",
-          "prompt-injection-blocker/blocked-word-10",
-          "prompt-injection-blocker/blocked-word-11",
-          "prompt-injection-blocker/blocked-word-12",
-          "prompt-injection-blocker/blocked-word-13",
-          "prompt-injection-blocker/blocked-word-14",
-          "category/prompt_injection_jailbreak",
-          "category/prompt_injection_data_exfiltration",
-          "category/prompt_injection_sql",
-          "category/prompt_injection_malicious_code",
-          "category/prompt_injection_system_prompt",
-          "cn-prompt-security/instruction-override",
-          "cn-prompt-security/prompt-extraction",
-          "cn-prompt-security/unrestricted-mode",
-          "claims-system-override-filter/claims_system_override"
         ],
         "testCaseOverrides": {}
       },
@@ -2134,83 +2754,6 @@ export const protectionPresets: readonly ProtectionPreset[] = [
           "sg-pdpa-profiling-automated-decisions/sg_pdpa_profiling_automated_decisions"
         ],
         "testCaseOverrides": {}
-      }
-    ],
-    "parameterPacks": [],
-    "draftSettings": {
-      "allowedTopics": [],
-      "restrictedTopics": [],
-      "topicControlMode": "strict",
-      "safetyLevel": "balanced",
-      "outputDelivery": "full_buffered"
-    },
-    "suggestedTopics": [],
-    "optionalPolicyIds": [],
-    "limitations": []
-  },
-  {
-    "id": "cn-financial-services",
-    "version": "1.0.0",
-    "name": "China Financial Services",
-    "description": "",
-    "industry": "banking",
-    "jurisdictions": [
-      "cn"
-    ],
-    "benchmarkOnly": false,
-    "policies": [
-      {
-        "policyId": "credentials-secrets",
-        "policyVersion": "1.0.0",
-        "enabledRails": [
-          "input",
-          "output"
-        ],
-        "parameterValues": {},
-        "action": null,
-        "ruleActions": {},
-        "reasoningPolicy": null,
-        "enabledRuleIds": [
-          "credentials-api-keys/aws_access_key",
-          "credentials-api-keys/aws_secret_key",
-          "credentials-api-keys/github_token",
-          "credentials-api-keys/slack_token",
-          "credentials-api-keys/generic_api_key",
-          "credential/bearer-token",
-          "credential/private-key-header",
-          "credential/hex-token",
-          "credential/password",
-          "credential/url-password",
-          "credential/basic-auth",
-          "credential/jwt",
-          "credential/labelled-hex-key",
-          "credential/private-jwk",
-          "credential/sql-password",
-          "credential/command-password",
-          "credential/nkey-seed",
-          "credential/base64-private-key"
-        ],
-        "ruleOrder": [
-          "credentials-api-keys/aws_access_key",
-          "credentials-api-keys/aws_secret_key",
-          "credentials-api-keys/github_token",
-          "credentials-api-keys/slack_token",
-          "credentials-api-keys/generic_api_key",
-          "credential/bearer-token",
-          "credential/private-key-header",
-          "credential/hex-token",
-          "credential/password",
-          "credential/url-password",
-          "credential/basic-auth",
-          "credential/jwt",
-          "credential/labelled-hex-key",
-          "credential/private-jwk",
-          "credential/sql-password",
-          "credential/command-password",
-          "credential/nkey-seed",
-          "credential/base64-private-key"
-        ],
-        "testCaseOverrides": {}
       },
       {
         "policyId": "payment-data",
@@ -2224,34 +2767,34 @@ export const protectionPresets: readonly ProtectionPreset[] = [
         "ruleActions": {},
         "reasoningPolicy": null,
         "enabledRuleIds": [
+          "financial-pii/visa",
+          "financial-pii/mastercard",
+          "financial-pii/amex",
+          "financial-pii/discover",
+          "pattern/eu_iban_enhanced",
           "financial-pii/credit_card",
           "financial-pii/iban",
           "pattern/ca_bank_account",
           "pattern/sg_bank_account",
-          "cn-personal-information/unionpay-card",
-          "pattern/eu_iban_enhanced",
-          "financial-pii/visa",
-          "financial-pii/mastercard",
-          "financial-pii/amex",
-          "financial-pii/discover"
+          "cn-personal-information/unionpay-card"
         ],
         "ruleOrder": [
+          "financial-pii/visa",
+          "financial-pii/mastercard",
+          "financial-pii/amex",
+          "financial-pii/discover",
+          "pattern/eu_iban_enhanced",
           "financial-pii/credit_card",
           "financial-pii/iban",
           "pattern/ca_bank_account",
           "pattern/sg_bank_account",
-          "cn-personal-information/unionpay-card",
-          "pattern/eu_iban_enhanced",
-          "financial-pii/visa",
-          "financial-pii/mastercard",
-          "financial-pii/amex",
-          "financial-pii/discover"
+          "cn-personal-information/unionpay-card"
         ],
         "testCaseOverrides": {}
       },
       {
         "policyId": "identity-documents",
-        "policyVersion": "1.0.0",
+        "policyVersion": "1.0.1",
         "enabledRails": [
           "input",
           "output"
@@ -2261,6 +2804,8 @@ export const protectionPresets: readonly ProtectionPreset[] = [
         "ruleActions": {},
         "reasoningPolicy": null,
         "enabledRuleIds": [
+          "identity/passport",
+          "pattern/uoft_student_id",
           "au-pii-tax-identifiers/au_tfn",
           "au-pii-tax-identifiers/au_abn",
           "au-pii-tax-identifiers/au_medicare",
@@ -2275,7 +2820,6 @@ export const protectionPresets: readonly ProtectionPreset[] = [
           "pattern/eu_vat",
           "pattern/nl_bsn_contextual",
           "pattern/au_tfn",
-          "pattern/uoft_student_id",
           "pattern/us_ssn",
           "pattern/us_ssn_no_dash",
           "pattern/br_cpf",
@@ -2294,12 +2838,13 @@ export const protectionPresets: readonly ProtectionPreset[] = [
           "pattern/passport_netherlands",
           "pattern/passport_canada",
           "pattern/passport_india",
-          "identity/passport",
           "international-pii-identifiers/passport_uk",
           "international-pii-identifiers/passport_japan",
           "pattern/passport_australia"
         ],
         "ruleOrder": [
+          "identity/passport",
+          "pattern/uoft_student_id",
           "au-pii-tax-identifiers/au_tfn",
           "au-pii-tax-identifiers/au_abn",
           "au-pii-tax-identifiers/au_medicare",
@@ -2314,7 +2859,6 @@ export const protectionPresets: readonly ProtectionPreset[] = [
           "pattern/eu_vat",
           "pattern/nl_bsn_contextual",
           "pattern/au_tfn",
-          "pattern/uoft_student_id",
           "pattern/us_ssn",
           "pattern/us_ssn_no_dash",
           "pattern/br_cpf",
@@ -2333,16 +2877,136 @@ export const protectionPresets: readonly ProtectionPreset[] = [
           "pattern/passport_netherlands",
           "pattern/passport_canada",
           "pattern/passport_india",
-          "identity/passport",
           "international-pii-identifiers/passport_uk",
           "international-pii-identifiers/passport_japan",
           "pattern/passport_australia"
         ],
-        "testCaseOverrides": {}
+        "testCaseOverrides": {
+          "local-government-identifiers/accept/br_cpf_unformatted/input": {
+            "sourcePolicyVersion": "1.0.1",
+            "reason": "Numeric privacy formats overlap across jurisdictions. The earlier identity Policy redacts the complete identifier; the composed contract checks the selected Rule and exact output. Format-specific acceptance remains in isolated Policy tests.",
+            "expectedDecision": "transform",
+            "expectedOutputContent": "Acceptance sample: [au_medicare_REDACTED]",
+            "expectedMatches": [
+              {
+                "policyId": "identity-documents",
+                "ruleId": "au-pii-tax-identifiers/au_medicare"
+              }
+            ]
+          },
+          "local-government-identifiers/accept/br_cpf_unformatted/output": {
+            "sourcePolicyVersion": "1.0.1",
+            "reason": "Numeric privacy formats overlap across jurisdictions. The earlier identity Policy redacts the complete identifier; the composed contract checks the selected Rule and exact output. Format-specific acceptance remains in isolated Policy tests.",
+            "expectedDecision": "transform",
+            "expectedOutputContent": "Acceptance sample: [au_medicare_REDACTED]",
+            "expectedMatches": [
+              {
+                "policyId": "identity-documents",
+                "ruleId": "au-pii-tax-identifiers/au_medicare"
+              }
+            ]
+          },
+          "local-government-identifiers/pattern-matching/accept/br_cpf_unformatted": {
+            "sourcePolicyVersion": "1.0.1",
+            "reason": "Numeric privacy formats overlap across jurisdictions. The earlier identity Policy redacts the complete identifier; the composed contract checks the selected Rule and exact output. Format-specific acceptance remains in isolated Policy tests.",
+            "expectedDecision": "transform",
+            "expectedOutputContent": "Acceptance sample: [au_medicare_REDACTED]",
+            "expectedMatches": [
+              {
+                "policyId": "identity-documents",
+                "ruleId": "au-pii-tax-identifiers/au_medicare"
+              }
+            ]
+          },
+          "local-government-identifiers/pattern-matching/accept/br_cpf_unformatted/output": {
+            "sourcePolicyVersion": "1.0.1",
+            "reason": "Numeric privacy formats overlap across jurisdictions. The earlier identity Policy redacts the complete identifier; the composed contract checks the selected Rule and exact output. Format-specific acceptance remains in isolated Policy tests.",
+            "expectedDecision": "transform",
+            "expectedOutputContent": "Acceptance sample: [au_medicare_REDACTED]",
+            "expectedMatches": [
+              {
+                "policyId": "identity-documents",
+                "ruleId": "au-pii-tax-identifiers/au_medicare"
+              }
+            ]
+          },
+          "local-passports/local-passport-formats/accept/eu_passport_generic/input": {
+            "sourcePolicyVersion": "1.0.1",
+            "reason": "The contextual passport Rule precedes country-only patterns. Assert its identity and the complete redacted output in the combined Profile.",
+            "expectedDecision": "transform",
+            "expectedOutputContent": "Acceptance sample: [REDACTED]",
+            "expectedMatches": [
+              {
+                "policyId": "identity-documents",
+                "ruleId": "identity/passport"
+              }
+            ]
+          },
+          "local-passports/local-passport-formats/accept/eu_passport_generic/output": {
+            "sourcePolicyVersion": "1.0.1",
+            "reason": "The contextual passport Rule precedes country-only patterns. Assert its identity and the complete redacted output in the combined Profile.",
+            "expectedDecision": "transform",
+            "expectedOutputContent": "Acceptance sample: [REDACTED]",
+            "expectedMatches": [
+              {
+                "policyId": "identity-documents",
+                "ruleId": "identity/passport"
+              }
+            ]
+          },
+          "local-passports/local-passport-formats/accept/passport_singapore/input": {
+            "sourcePolicyVersion": "1.0.1",
+            "reason": "The contextual passport Rule precedes country-only patterns. Assert its identity and the complete redacted output in the combined Profile.",
+            "expectedDecision": "transform",
+            "expectedOutputContent": "Acceptance sample: [REDACTED]",
+            "expectedMatches": [
+              {
+                "policyId": "identity-documents",
+                "ruleId": "identity/passport"
+              }
+            ]
+          },
+          "local-passports/local-passport-formats/accept/passport_singapore/output": {
+            "sourcePolicyVersion": "1.0.1",
+            "reason": "The contextual passport Rule precedes country-only patterns. Assert its identity and the complete redacted output in the combined Profile.",
+            "expectedDecision": "transform",
+            "expectedOutputContent": "Acceptance sample: [REDACTED]",
+            "expectedMatches": [
+              {
+                "policyId": "identity-documents",
+                "ruleId": "identity/passport"
+              }
+            ]
+          },
+          "local-passports/pattern-matching/accept/passport_singapore": {
+            "sourcePolicyVersion": "1.0.1",
+            "reason": "The contextual passport Rule precedes country-only patterns. Assert its identity and the complete redacted output in the combined Profile.",
+            "expectedDecision": "transform",
+            "expectedOutputContent": "Acceptance sample: [REDACTED]",
+            "expectedMatches": [
+              {
+                "policyId": "identity-documents",
+                "ruleId": "identity/passport"
+              }
+            ]
+          },
+          "local-passports/pattern-matching/accept/passport_singapore/output": {
+            "sourcePolicyVersion": "1.0.1",
+            "reason": "The contextual passport Rule precedes country-only patterns. Assert its identity and the complete redacted output in the combined Profile.",
+            "expectedDecision": "transform",
+            "expectedOutputContent": "Acceptance sample: [REDACTED]",
+            "expectedMatches": [
+              {
+                "policyId": "identity-documents",
+                "ruleId": "identity/passport"
+              }
+            ]
+          }
+        }
       },
       {
         "policyId": "contact-data",
-        "policyVersion": "1.0.0",
+        "policyVersion": "1.0.1",
         "enabledRails": [
           "input",
           "output"
@@ -2352,6 +3016,8 @@ export const protectionPresets: readonly ProtectionPreset[] = [
         "ruleActions": {},
         "reasoningPolicy": null,
         "enabledRuleIds": [
+          "pattern/uae_phone",
+          "pattern/fr_phone",
           "pattern/titled_person",
           "pattern/contact_list_person",
           "pattern/truncated_address",
@@ -2362,8 +3028,6 @@ export const protectionPresets: readonly ProtectionPreset[] = [
           "pattern/us_phone",
           "pattern/sg_phone",
           "pattern/international_phone",
-          "pattern/uae_phone",
-          "pattern/fr_phone",
           "pattern/br_phone_mobile",
           "pattern/br_phone_landline",
           "pattern/br_cep",
@@ -2376,6 +3040,8 @@ export const protectionPresets: readonly ProtectionPreset[] = [
           "uae-data-protection-pii/uae_po_box"
         ],
         "ruleOrder": [
+          "pattern/uae_phone",
+          "pattern/fr_phone",
           "pattern/titled_person",
           "pattern/contact_list_person",
           "pattern/truncated_address",
@@ -2386,8 +3052,6 @@ export const protectionPresets: readonly ProtectionPreset[] = [
           "pattern/us_phone",
           "pattern/sg_phone",
           "pattern/international_phone",
-          "pattern/uae_phone",
-          "pattern/fr_phone",
           "pattern/br_phone_mobile",
           "pattern/br_phone_landline",
           "pattern/br_cep",
@@ -2399,7 +3063,92 @@ export const protectionPresets: readonly ProtectionPreset[] = [
           "cn-personal-information/mainland-mobile",
           "uae-data-protection-pii/uae_po_box"
         ],
-        "testCaseOverrides": {}
+        "testCaseOverrides": {
+          "local-contact-data/local-regional-contact-formats/accept/fr_phone/input": {
+            "sourcePolicyVersion": "1.0.1",
+            "reason": "Numeric privacy formats overlap across jurisdictions. The earlier identity Policy redacts the complete identifier; the composed contract checks the selected Rule and exact output. Format-specific acceptance remains in isolated Policy tests.",
+            "expectedDecision": "transform",
+            "expectedOutputContent": "Acceptance sample: +[au_medicare_REDACTED]",
+            "expectedMatches": [
+              {
+                "policyId": "identity-documents",
+                "ruleId": "au-pii-tax-identifiers/au_medicare"
+              }
+            ]
+          },
+          "local-contact-data/local-regional-contact-formats/accept/fr_phone/output": {
+            "sourcePolicyVersion": "1.0.1",
+            "reason": "Numeric privacy formats overlap across jurisdictions. The earlier identity Policy redacts the complete identifier; the composed contract checks the selected Rule and exact output. Format-specific acceptance remains in isolated Policy tests.",
+            "expectedDecision": "transform",
+            "expectedOutputContent": "Acceptance sample: +[au_medicare_REDACTED]",
+            "expectedMatches": [
+              {
+                "policyId": "identity-documents",
+                "ruleId": "au-pii-tax-identifiers/au_medicare"
+              }
+            ]
+          },
+          "local-contact-data/china-personal-identifiers/mainland-mobile/input": {
+            "sourcePolicyVersion": "1.0.1",
+            "reason": "Numeric privacy formats overlap across jurisdictions. The earlier identity Policy redacts the complete identifier; the composed contract checks the selected Rule and exact output. Format-specific acceptance remains in isolated Policy tests.",
+            "expectedDecision": "transform",
+            "expectedOutputContent": "手机号码：[au_medicare_REDACTED]",
+            "expectedMatches": [
+              {
+                "policyId": "identity-documents",
+                "ruleId": "au-pii-tax-identifiers/au_medicare"
+              }
+            ]
+          },
+          "local-contact-data/china-personal-identifiers/mainland-mobile/output": {
+            "sourcePolicyVersion": "1.0.1",
+            "reason": "Numeric privacy formats overlap across jurisdictions. The earlier identity Policy redacts the complete identifier; the composed contract checks the selected Rule and exact output. Format-specific acceptance remains in isolated Policy tests.",
+            "expectedDecision": "transform",
+            "expectedOutputContent": "手机号码：[au_medicare_REDACTED]",
+            "expectedMatches": [
+              {
+                "policyId": "identity-documents",
+                "ruleId": "au-pii-tax-identifiers/au_medicare"
+              }
+            ]
+          },
+          "local-contact-data/gdpr-eu-pii-protection/rule-gdpr-eu-contact-information/fr_phone-acceptance": {
+            "sourcePolicyVersion": "1.0.1",
+            "reason": "Numeric privacy formats overlap across jurisdictions. The earlier identity Policy redacts the complete identifier; the composed contract checks the selected Rule and exact output. Format-specific acceptance remains in isolated Policy tests.",
+            "expectedDecision": "transform",
+            "expectedOutputContent": "Acceptance sample: +[au_medicare_REDACTED]",
+            "expectedMatches": [
+              {
+                "policyId": "identity-documents",
+                "ruleId": "au-pii-tax-identifiers/au_medicare"
+              }
+            ]
+          },
+          "local-contact-data/pattern-matching/accept/fr_phone": {
+            "sourcePolicyVersion": "1.0.1",
+            "reason": "Numeric privacy formats overlap across jurisdictions. The earlier identity Policy redacts the complete identifier; the composed contract checks the selected Rule and exact output. Format-specific acceptance remains in isolated Policy tests.",
+            "expectedDecision": "transform",
+            "expectedOutputContent": "Acceptance sample: +[au_medicare_REDACTED]",
+            "expectedMatches": [
+              {
+                "policyId": "identity-documents",
+                "ruleId": "au-pii-tax-identifiers/au_medicare"
+              }
+            ]
+          },
+          "local-contact-data/pattern-matching/accept/fr_phone/output": {
+            "sourcePolicyVersion": "1.0.1",
+            "reason": "Numeric privacy formats overlap across jurisdictions. The earlier identity Policy redacts the complete identifier; the composed contract checks the selected Rule and exact output. Format-specific acceptance remains in isolated Policy tests.",
+            "expectedDecision": "transform",
+            "expectedOutputContent": "Acceptance sample: +[au_medicare_REDACTED]",
+            "expectedMatches": [
+              {
+                "policyId": "identity-documents",
+                "ruleId": "au-pii-tax-identifiers/au_medicare"
+              }
+            ]
+          }
+        }
       },
       {
         "policyId": "network-identifiers",
@@ -2487,6 +3236,396 @@ export const protectionPresets: readonly ProtectionPreset[] = [
           "pattern/self_harm_suicide",
           "pattern/illegal_activities",
           "pattern/harassment_hate"
+        ],
+        "testCaseOverrides": {
+          "local-risk-content-terms/accept/terrorism/input": {
+            "sourcePolicyVersion": "1.0.0",
+            "reason": "The composed safety Policy blocks this harmful sample before keyword redaction. Assert the blocking Rule and the original risk-term detection, rather than the isolated Transform decision.",
+            "expectedDecision": "block",
+            "expectedMatches": [
+              {
+                "policyId": "content-safety-local",
+                "ruleId": "category/harmful_violence"
+              },
+              {
+                "policyId": "risk-content-terms",
+                "ruleId": "pattern/terrorism"
+              }
+            ]
+          },
+          "local-risk-content-terms/accept/terrorism/output": {
+            "sourcePolicyVersion": "1.0.0",
+            "reason": "The composed safety Policy blocks this harmful sample before keyword redaction. Assert the blocking Rule and the original risk-term detection, rather than the isolated Transform decision.",
+            "expectedDecision": "block",
+            "expectedMatches": [
+              {
+                "policyId": "content-safety-local",
+                "ruleId": "category/harmful_violence"
+              },
+              {
+                "policyId": "risk-content-terms",
+                "ruleId": "pattern/terrorism"
+              }
+            ]
+          },
+          "local-risk-content-terms/accept/self_harm_suicide/input": {
+            "sourcePolicyVersion": "1.0.0",
+            "reason": "The composed safety Policy blocks this harmful sample before keyword redaction. Assert the blocking Rule and the original risk-term detection, rather than the isolated Transform decision.",
+            "expectedDecision": "block",
+            "expectedMatches": [
+              {
+                "policyId": "content-safety-local",
+                "ruleId": "category/harmful_self_harm"
+              },
+              {
+                "policyId": "risk-content-terms",
+                "ruleId": "pattern/self_harm_suicide"
+              }
+            ]
+          },
+          "local-risk-content-terms/accept/self_harm_suicide/output": {
+            "sourcePolicyVersion": "1.0.0",
+            "reason": "The composed safety Policy blocks this harmful sample before keyword redaction. Assert the blocking Rule and the original risk-term detection, rather than the isolated Transform decision.",
+            "expectedDecision": "block",
+            "expectedMatches": [
+              {
+                "policyId": "content-safety-local",
+                "ruleId": "category/harmful_self_harm"
+              },
+              {
+                "policyId": "risk-content-terms",
+                "ruleId": "pattern/self_harm_suicide"
+              }
+            ]
+          },
+          "local-risk-content-terms/pattern-matching/accept/terrorism": {
+            "sourcePolicyVersion": "1.0.0",
+            "reason": "The composed safety Policy blocks this harmful sample before keyword redaction. Assert the blocking Rule and the original risk-term detection, rather than the isolated Transform decision.",
+            "expectedDecision": "block",
+            "expectedMatches": [
+              {
+                "policyId": "content-safety-local",
+                "ruleId": "category/harmful_violence"
+              },
+              {
+                "policyId": "risk-content-terms",
+                "ruleId": "pattern/terrorism"
+              }
+            ]
+          },
+          "local-risk-content-terms/pattern-matching/accept/self_harm_suicide": {
+            "sourcePolicyVersion": "1.0.0",
+            "reason": "The composed safety Policy blocks this harmful sample before keyword redaction. Assert the blocking Rule and the original risk-term detection, rather than the isolated Transform decision.",
+            "expectedDecision": "block",
+            "expectedMatches": [
+              {
+                "policyId": "content-safety-local",
+                "ruleId": "category/harmful_self_harm"
+              },
+              {
+                "policyId": "risk-content-terms",
+                "ruleId": "pattern/self_harm_suicide"
+              }
+            ]
+          },
+          "local-risk-content-terms/pattern-matching/accept/terrorism/output": {
+            "sourcePolicyVersion": "1.0.0",
+            "reason": "The composed safety Policy blocks this harmful sample before keyword redaction. Assert the blocking Rule and the original risk-term detection, rather than the isolated Transform decision.",
+            "expectedDecision": "block",
+            "expectedMatches": [
+              {
+                "policyId": "content-safety-local",
+                "ruleId": "category/harmful_violence"
+              },
+              {
+                "policyId": "risk-content-terms",
+                "ruleId": "pattern/terrorism"
+              }
+            ]
+          },
+          "local-risk-content-terms/pattern-matching/accept/self_harm_suicide/output": {
+            "sourcePolicyVersion": "1.0.0",
+            "reason": "The composed safety Policy blocks this harmful sample before keyword redaction. Assert the blocking Rule and the original risk-term detection, rather than the isolated Transform decision.",
+            "expectedDecision": "block",
+            "expectedMatches": [
+              {
+                "policyId": "content-safety-local",
+                "ruleId": "category/harmful_self_harm"
+              },
+              {
+                "policyId": "risk-content-terms",
+                "ruleId": "pattern/self_harm_suicide"
+              }
+            ]
+          }
+        }
+      }
+    ],
+    "parameterPacks": [],
+    "draftSettings": {
+      "allowedTopics": [],
+      "restrictedTopics": [],
+      "topicControlMode": "strict",
+      "safetyLevel": "balanced",
+      "outputDelivery": "full_buffered"
+    },
+    "suggestedTopics": [],
+    "optionalPolicyIds": [],
+    "limitations": [],
+    "testExclusions": [
+      {
+        "policyId": "payment-data",
+        "policyVersion": "1.0.0",
+        "sourceCaseId": "local-payment-data/rule-financial-pii/credit_card-acceptance/input",
+        "reason": "Duplicate Visa fixture: the specific Visa Rule redacts this value before the generic credit-card fallback. Keep the generic detector acceptance in isolated Policy tests."
+      },
+      {
+        "policyId": "payment-data",
+        "policyVersion": "1.0.0",
+        "sourceCaseId": "local-payment-data/rule-financial-pii/credit_card-acceptance/output",
+        "reason": "Duplicate Visa fixture: the specific Visa Rule redacts this value before the generic credit-card fallback. Keep the generic detector acceptance in isolated Policy tests."
+      },
+      {
+        "policyId": "payment-data",
+        "policyVersion": "1.0.0",
+        "sourceCaseId": "local-payment-data/advanced-au-pii-protection/rule-financial-pii/credit_card-acceptance",
+        "reason": "Duplicate Visa fixture: the specific Visa Rule redacts this value before the generic credit-card fallback. Keep the generic detector acceptance in isolated Policy tests."
+      },
+      {
+        "policyId": "payment-data",
+        "policyVersion": "1.0.0",
+        "sourceCaseId": "local-payment-data/baseline-pii-protection/rule-financial-pii/credit_card-acceptance",
+        "reason": "Duplicate Visa fixture: the specific Visa Rule redacts this value before the generic credit-card fallback. Keep the generic detector acceptance in isolated Policy tests."
+      },
+      {
+        "policyId": "payment-data",
+        "policyVersion": "1.0.0",
+        "sourceCaseId": "local-payment-data/pattern-matching/accept/credit_card",
+        "reason": "Duplicate Visa fixture: the specific Visa Rule redacts this value before the generic credit-card fallback. Keep the generic detector acceptance in isolated Policy tests."
+      },
+      {
+        "policyId": "payment-data",
+        "policyVersion": "1.0.0",
+        "sourceCaseId": "local-payment-data/pattern-matching/accept/credit_card/output",
+        "reason": "Duplicate Visa fixture: the specific Visa Rule redacts this value before the generic credit-card fallback. Keep the generic detector acceptance in isolated Policy tests."
+      },
+      {
+        "policyId": "payment-data",
+        "policyVersion": "1.0.0",
+        "sourceCaseId": "local-payment-data/pdpa-singapore/rule-sg-pdpa-financial-data/credit_card-acceptance",
+        "reason": "Duplicate Visa fixture: the specific Visa Rule redacts this value before the generic credit-card fallback. Keep the generic detector acceptance in isolated Policy tests."
+      },
+      {
+        "policyId": "payment-data",
+        "policyVersion": "1.0.0",
+        "sourceCaseId": "local-payment-data/uae-regulatory-compliance/rule-uae-data-protection-pii/credit_card-acceptance",
+        "reason": "Duplicate Visa fixture: the specific Visa Rule redacts this value before the generic credit-card fallback. Keep the generic detector acceptance in isolated Policy tests."
+      },
+      {
+        "policyId": "identity-documents",
+        "policyVersion": "1.0.1",
+        "sourceCaseId": "local-government-identifiers/accept/au_tfn/input",
+        "reason": "Duplicate TFN detector: au-pii-tax-identifiers/au_tfn owns this identical span in the combined Profile. Keep the alias acceptance in isolated Policy tests."
+      },
+      {
+        "policyId": "identity-documents",
+        "policyVersion": "1.0.1",
+        "sourceCaseId": "local-government-identifiers/accept/au_tfn/output",
+        "reason": "Duplicate TFN detector: au-pii-tax-identifiers/au_tfn owns this identical span in the combined Profile. Keep the alias acceptance in isolated Policy tests."
+      },
+      {
+        "policyId": "identity-documents",
+        "policyVersion": "1.0.1",
+        "sourceCaseId": "local-government-identifiers/pattern-matching/accept/au_tfn",
+        "reason": "Duplicate TFN detector: au-pii-tax-identifiers/au_tfn owns this identical span in the combined Profile. Keep the alias acceptance in isolated Policy tests."
+      },
+      {
+        "policyId": "identity-documents",
+        "policyVersion": "1.0.1",
+        "sourceCaseId": "local-government-identifiers/pattern-matching/accept/au_tfn/output",
+        "reason": "Duplicate TFN detector: au-pii-tax-identifiers/au_tfn owns this identical span in the combined Profile. Keep the alias acceptance in isolated Policy tests."
+      },
+      {
+        "policyId": "identity-documents",
+        "policyVersion": "1.0.1",
+        "sourceCaseId": "local-passports/advanced-au-pii-protection/rule-international-pii-identifiers/passport_uk-acceptance",
+        "reason": "The bare nine-digit fixture is shared with the US passport format. It cannot assert both country-specific Rule identities after the first redaction; retain isolated Policy acceptance."
+      },
+      {
+        "policyId": "identity-documents",
+        "policyVersion": "1.0.1",
+        "sourceCaseId": "local-passports/advanced-au-pii-protection/rule-international-pii-identifiers/passport_japan-acceptance",
+        "reason": "The bare two-letter/seven-digit fixture overlaps the Netherlands passport format. Retain the country-specific assertion in isolated Policy tests."
+      },
+      {
+        "policyId": "identity-documents",
+        "policyVersion": "1.0.1",
+        "sourceCaseId": "local-passports/pattern-matching/accept/passport_uk",
+        "reason": "The bare nine-digit fixture is shared with the US passport format. It cannot assert both country-specific Rule identities after the first redaction; retain isolated Policy acceptance."
+      },
+      {
+        "policyId": "identity-documents",
+        "policyVersion": "1.0.1",
+        "sourceCaseId": "local-passports/pattern-matching/accept/passport_australia",
+        "reason": "The bare letter/seven-digit fixture overlaps the India passport format. Retain the country-specific assertion in isolated Policy tests."
+      },
+      {
+        "policyId": "identity-documents",
+        "policyVersion": "1.0.1",
+        "sourceCaseId": "local-passports/pattern-matching/accept/passport_japan",
+        "reason": "The bare two-letter/seven-digit fixture overlaps the Netherlands passport format. Retain the country-specific assertion in isolated Policy tests."
+      },
+      {
+        "policyId": "identity-documents",
+        "policyVersion": "1.0.1",
+        "sourceCaseId": "local-passports/pattern-matching/accept/passport_uk/output",
+        "reason": "The bare nine-digit fixture is shared with the US passport format. It cannot assert both country-specific Rule identities after the first redaction; retain isolated Policy acceptance."
+      },
+      {
+        "policyId": "identity-documents",
+        "policyVersion": "1.0.1",
+        "sourceCaseId": "local-passports/pattern-matching/accept/passport_australia/output",
+        "reason": "The bare letter/seven-digit fixture overlaps the India passport format. Retain the country-specific assertion in isolated Policy tests."
+      },
+      {
+        "policyId": "identity-documents",
+        "policyVersion": "1.0.1",
+        "sourceCaseId": "local-passports/pattern-matching/accept/passport_japan/output",
+        "reason": "The bare two-letter/seven-digit fixture overlaps the Netherlands passport format. Retain the country-specific assertion in isolated Policy tests."
+      }
+    ]
+  },
+  {
+    "id": "cn-financial-services",
+    "version": "1.1.0",
+    "name": "China Financial Services",
+    "description": "",
+    "industry": "banking",
+    "jurisdictions": [
+      "cn"
+    ],
+    "benchmarkOnly": false,
+    "policies": [
+      {
+        "policyId": "credentials-secrets",
+        "policyVersion": "1.0.0",
+        "enabledRails": [
+          "input",
+          "output"
+        ],
+        "parameterValues": {},
+        "action": null,
+        "ruleActions": {},
+        "reasoningPolicy": null,
+        "enabledRuleIds": [
+          "credentials-api-keys/aws_access_key",
+          "credentials-api-keys/aws_secret_key",
+          "credentials-api-keys/github_token",
+          "credentials-api-keys/slack_token",
+          "credentials-api-keys/generic_api_key",
+          "credential/bearer-token",
+          "credential/private-key-header",
+          "credential/hex-token",
+          "credential/password",
+          "credential/url-password",
+          "credential/basic-auth",
+          "credential/jwt",
+          "credential/labelled-hex-key",
+          "credential/private-jwk",
+          "credential/sql-password",
+          "credential/command-password",
+          "credential/nkey-seed",
+          "credential/base64-private-key"
+        ],
+        "ruleOrder": [
+          "credentials-api-keys/aws_access_key",
+          "credentials-api-keys/aws_secret_key",
+          "credentials-api-keys/github_token",
+          "credentials-api-keys/slack_token",
+          "credentials-api-keys/generic_api_key",
+          "credential/bearer-token",
+          "credential/private-key-header",
+          "credential/hex-token",
+          "credential/password",
+          "credential/url-password",
+          "credential/basic-auth",
+          "credential/jwt",
+          "credential/labelled-hex-key",
+          "credential/private-jwk",
+          "credential/sql-password",
+          "credential/command-password",
+          "credential/nkey-seed",
+          "credential/base64-private-key"
+        ],
+        "testCaseOverrides": {}
+      },
+      {
+        "policyId": "prompt-instruction-attacks",
+        "policyVersion": "1.0.0",
+        "enabledRails": [
+          "input",
+          "output"
+        ],
+        "parameterValues": {
+          "on_unknown": "block",
+          "review_unknown": "false"
+        },
+        "action": null,
+        "ruleActions": {},
+        "reasoningPolicy": null,
+        "enabledRuleIds": [
+          "boundary/indirect-injection",
+          "boundary/memory-poisoning",
+          "prompt-injection-blocker/blocked-word-1",
+          "prompt-injection-blocker/blocked-word-2",
+          "prompt-injection-blocker/blocked-word-3",
+          "prompt-injection-blocker/blocked-word-4",
+          "prompt-injection-blocker/blocked-word-5",
+          "prompt-injection-blocker/blocked-word-6",
+          "prompt-injection-blocker/blocked-word-7",
+          "prompt-injection-blocker/blocked-word-8",
+          "prompt-injection-blocker/blocked-word-9",
+          "prompt-injection-blocker/blocked-word-10",
+          "prompt-injection-blocker/blocked-word-11",
+          "prompt-injection-blocker/blocked-word-12",
+          "prompt-injection-blocker/blocked-word-13",
+          "prompt-injection-blocker/blocked-word-14",
+          "category/prompt_injection_jailbreak",
+          "category/prompt_injection_data_exfiltration",
+          "category/prompt_injection_sql",
+          "category/prompt_injection_malicious_code",
+          "category/prompt_injection_system_prompt",
+          "cn-prompt-security/instruction-override",
+          "cn-prompt-security/prompt-extraction",
+          "cn-prompt-security/unrestricted-mode",
+          "claims-system-override-filter/claims_system_override"
+        ],
+        "ruleOrder": [
+          "boundary/indirect-injection",
+          "boundary/memory-poisoning",
+          "prompt-injection-blocker/blocked-word-1",
+          "prompt-injection-blocker/blocked-word-2",
+          "prompt-injection-blocker/blocked-word-3",
+          "prompt-injection-blocker/blocked-word-4",
+          "prompt-injection-blocker/blocked-word-5",
+          "prompt-injection-blocker/blocked-word-6",
+          "prompt-injection-blocker/blocked-word-7",
+          "prompt-injection-blocker/blocked-word-8",
+          "prompt-injection-blocker/blocked-word-9",
+          "prompt-injection-blocker/blocked-word-10",
+          "prompt-injection-blocker/blocked-word-11",
+          "prompt-injection-blocker/blocked-word-12",
+          "prompt-injection-blocker/blocked-word-13",
+          "prompt-injection-blocker/blocked-word-14",
+          "category/prompt_injection_jailbreak",
+          "category/prompt_injection_data_exfiltration",
+          "category/prompt_injection_sql",
+          "category/prompt_injection_malicious_code",
+          "category/prompt_injection_system_prompt",
+          "cn-prompt-security/instruction-override",
+          "cn-prompt-security/prompt-extraction",
+          "cn-prompt-security/unrestricted-mode",
+          "claims-system-override-filter/claims_system_override"
         ],
         "testCaseOverrides": {}
       },
@@ -2579,7 +3718,7 @@ export const protectionPresets: readonly ProtectionPreset[] = [
       },
       {
         "policyId": "content-safety-local",
-        "policyVersion": "1.0.0",
+        "policyVersion": "1.0.1",
         "enabledRails": [
           "input",
           "output"
@@ -2613,76 +3752,6 @@ export const protectionPresets: readonly ProtectionPreset[] = [
           "category/bias_religious",
           "category/bias_sexual_orientation",
           "nsfw-filter-multilingual/harm_toxic_abuse"
-        ],
-        "testCaseOverrides": {}
-      },
-      {
-        "policyId": "prompt-instruction-attacks",
-        "policyVersion": "1.0.0",
-        "enabledRails": [
-          "input",
-          "output"
-        ],
-        "parameterValues": {
-          "on_unknown": "block",
-          "review_unknown": "false"
-        },
-        "action": null,
-        "ruleActions": {},
-        "reasoningPolicy": null,
-        "enabledRuleIds": [
-          "boundary/indirect-injection",
-          "boundary/memory-poisoning",
-          "prompt-injection-blocker/blocked-word-1",
-          "prompt-injection-blocker/blocked-word-2",
-          "prompt-injection-blocker/blocked-word-3",
-          "prompt-injection-blocker/blocked-word-4",
-          "prompt-injection-blocker/blocked-word-5",
-          "prompt-injection-blocker/blocked-word-6",
-          "prompt-injection-blocker/blocked-word-7",
-          "prompt-injection-blocker/blocked-word-8",
-          "prompt-injection-blocker/blocked-word-9",
-          "prompt-injection-blocker/blocked-word-10",
-          "prompt-injection-blocker/blocked-word-11",
-          "prompt-injection-blocker/blocked-word-12",
-          "prompt-injection-blocker/blocked-word-13",
-          "prompt-injection-blocker/blocked-word-14",
-          "category/prompt_injection_jailbreak",
-          "category/prompt_injection_data_exfiltration",
-          "category/prompt_injection_sql",
-          "category/prompt_injection_malicious_code",
-          "category/prompt_injection_system_prompt",
-          "cn-prompt-security/instruction-override",
-          "cn-prompt-security/prompt-extraction",
-          "cn-prompt-security/unrestricted-mode",
-          "claims-system-override-filter/claims_system_override"
-        ],
-        "ruleOrder": [
-          "boundary/indirect-injection",
-          "boundary/memory-poisoning",
-          "prompt-injection-blocker/blocked-word-1",
-          "prompt-injection-blocker/blocked-word-2",
-          "prompt-injection-blocker/blocked-word-3",
-          "prompt-injection-blocker/blocked-word-4",
-          "prompt-injection-blocker/blocked-word-5",
-          "prompt-injection-blocker/blocked-word-6",
-          "prompt-injection-blocker/blocked-word-7",
-          "prompt-injection-blocker/blocked-word-8",
-          "prompt-injection-blocker/blocked-word-9",
-          "prompt-injection-blocker/blocked-word-10",
-          "prompt-injection-blocker/blocked-word-11",
-          "prompt-injection-blocker/blocked-word-12",
-          "prompt-injection-blocker/blocked-word-13",
-          "prompt-injection-blocker/blocked-word-14",
-          "category/prompt_injection_jailbreak",
-          "category/prompt_injection_data_exfiltration",
-          "category/prompt_injection_sql",
-          "category/prompt_injection_malicious_code",
-          "category/prompt_injection_system_prompt",
-          "cn-prompt-security/instruction-override",
-          "cn-prompt-security/prompt-extraction",
-          "cn-prompt-security/unrestricted-mode",
-          "claims-system-override-filter/claims_system_override"
         ],
         "testCaseOverrides": {}
       },
@@ -2768,83 +3837,6 @@ export const protectionPresets: readonly ProtectionPreset[] = [
           "internet/session-theft"
         ],
         "testCaseOverrides": {}
-      }
-    ],
-    "parameterPacks": [],
-    "draftSettings": {
-      "allowedTopics": [],
-      "restrictedTopics": [],
-      "topicControlMode": "strict",
-      "safetyLevel": "balanced",
-      "outputDelivery": "full_buffered"
-    },
-    "suggestedTopics": [],
-    "optionalPolicyIds": [],
-    "limitations": []
-  },
-  {
-    "id": "cn-internet",
-    "version": "1.0.0",
-    "name": "China Internet",
-    "description": "",
-    "industry": "internet",
-    "jurisdictions": [
-      "cn"
-    ],
-    "benchmarkOnly": false,
-    "policies": [
-      {
-        "policyId": "credentials-secrets",
-        "policyVersion": "1.0.0",
-        "enabledRails": [
-          "input",
-          "output"
-        ],
-        "parameterValues": {},
-        "action": null,
-        "ruleActions": {},
-        "reasoningPolicy": null,
-        "enabledRuleIds": [
-          "credentials-api-keys/aws_access_key",
-          "credentials-api-keys/aws_secret_key",
-          "credentials-api-keys/github_token",
-          "credentials-api-keys/slack_token",
-          "credentials-api-keys/generic_api_key",
-          "credential/bearer-token",
-          "credential/private-key-header",
-          "credential/hex-token",
-          "credential/password",
-          "credential/url-password",
-          "credential/basic-auth",
-          "credential/jwt",
-          "credential/labelled-hex-key",
-          "credential/private-jwk",
-          "credential/sql-password",
-          "credential/command-password",
-          "credential/nkey-seed",
-          "credential/base64-private-key"
-        ],
-        "ruleOrder": [
-          "credentials-api-keys/aws_access_key",
-          "credentials-api-keys/aws_secret_key",
-          "credentials-api-keys/github_token",
-          "credentials-api-keys/slack_token",
-          "credentials-api-keys/generic_api_key",
-          "credential/bearer-token",
-          "credential/private-key-header",
-          "credential/hex-token",
-          "credential/password",
-          "credential/url-password",
-          "credential/basic-auth",
-          "credential/jwt",
-          "credential/labelled-hex-key",
-          "credential/private-jwk",
-          "credential/sql-password",
-          "credential/command-password",
-          "credential/nkey-seed",
-          "credential/base64-private-key"
-        ],
-        "testCaseOverrides": {}
       },
       {
         "policyId": "payment-data",
@@ -2858,34 +3850,34 @@ export const protectionPresets: readonly ProtectionPreset[] = [
         "ruleActions": {},
         "reasoningPolicy": null,
         "enabledRuleIds": [
+          "financial-pii/visa",
+          "financial-pii/mastercard",
+          "financial-pii/amex",
+          "financial-pii/discover",
+          "pattern/eu_iban_enhanced",
           "financial-pii/credit_card",
           "financial-pii/iban",
           "pattern/ca_bank_account",
           "pattern/sg_bank_account",
-          "cn-personal-information/unionpay-card",
-          "pattern/eu_iban_enhanced",
-          "financial-pii/visa",
-          "financial-pii/mastercard",
-          "financial-pii/amex",
-          "financial-pii/discover"
+          "cn-personal-information/unionpay-card"
         ],
         "ruleOrder": [
+          "financial-pii/visa",
+          "financial-pii/mastercard",
+          "financial-pii/amex",
+          "financial-pii/discover",
+          "pattern/eu_iban_enhanced",
           "financial-pii/credit_card",
           "financial-pii/iban",
           "pattern/ca_bank_account",
           "pattern/sg_bank_account",
-          "cn-personal-information/unionpay-card",
-          "pattern/eu_iban_enhanced",
-          "financial-pii/visa",
-          "financial-pii/mastercard",
-          "financial-pii/amex",
-          "financial-pii/discover"
+          "cn-personal-information/unionpay-card"
         ],
         "testCaseOverrides": {}
       },
       {
         "policyId": "identity-documents",
-        "policyVersion": "1.0.0",
+        "policyVersion": "1.0.1",
         "enabledRails": [
           "input",
           "output"
@@ -2895,6 +3887,8 @@ export const protectionPresets: readonly ProtectionPreset[] = [
         "ruleActions": {},
         "reasoningPolicy": null,
         "enabledRuleIds": [
+          "identity/passport",
+          "pattern/uoft_student_id",
           "au-pii-tax-identifiers/au_tfn",
           "au-pii-tax-identifiers/au_abn",
           "au-pii-tax-identifiers/au_medicare",
@@ -2909,7 +3903,6 @@ export const protectionPresets: readonly ProtectionPreset[] = [
           "pattern/eu_vat",
           "pattern/nl_bsn_contextual",
           "pattern/au_tfn",
-          "pattern/uoft_student_id",
           "pattern/us_ssn",
           "pattern/us_ssn_no_dash",
           "pattern/br_cpf",
@@ -2928,12 +3921,13 @@ export const protectionPresets: readonly ProtectionPreset[] = [
           "pattern/passport_netherlands",
           "pattern/passport_canada",
           "pattern/passport_india",
-          "identity/passport",
           "international-pii-identifiers/passport_uk",
           "international-pii-identifiers/passport_japan",
           "pattern/passport_australia"
         ],
         "ruleOrder": [
+          "identity/passport",
+          "pattern/uoft_student_id",
           "au-pii-tax-identifiers/au_tfn",
           "au-pii-tax-identifiers/au_abn",
           "au-pii-tax-identifiers/au_medicare",
@@ -2948,7 +3942,6 @@ export const protectionPresets: readonly ProtectionPreset[] = [
           "pattern/eu_vat",
           "pattern/nl_bsn_contextual",
           "pattern/au_tfn",
-          "pattern/uoft_student_id",
           "pattern/us_ssn",
           "pattern/us_ssn_no_dash",
           "pattern/br_cpf",
@@ -2967,16 +3960,136 @@ export const protectionPresets: readonly ProtectionPreset[] = [
           "pattern/passport_netherlands",
           "pattern/passport_canada",
           "pattern/passport_india",
-          "identity/passport",
           "international-pii-identifiers/passport_uk",
           "international-pii-identifiers/passport_japan",
           "pattern/passport_australia"
         ],
-        "testCaseOverrides": {}
+        "testCaseOverrides": {
+          "local-government-identifiers/accept/br_cpf_unformatted/input": {
+            "sourcePolicyVersion": "1.0.1",
+            "reason": "Numeric privacy formats overlap across jurisdictions. The earlier identity Policy redacts the complete identifier; the composed contract checks the selected Rule and exact output. Format-specific acceptance remains in isolated Policy tests.",
+            "expectedDecision": "transform",
+            "expectedOutputContent": "Acceptance sample: [au_medicare_REDACTED]",
+            "expectedMatches": [
+              {
+                "policyId": "identity-documents",
+                "ruleId": "au-pii-tax-identifiers/au_medicare"
+              }
+            ]
+          },
+          "local-government-identifiers/accept/br_cpf_unformatted/output": {
+            "sourcePolicyVersion": "1.0.1",
+            "reason": "Numeric privacy formats overlap across jurisdictions. The earlier identity Policy redacts the complete identifier; the composed contract checks the selected Rule and exact output. Format-specific acceptance remains in isolated Policy tests.",
+            "expectedDecision": "transform",
+            "expectedOutputContent": "Acceptance sample: [au_medicare_REDACTED]",
+            "expectedMatches": [
+              {
+                "policyId": "identity-documents",
+                "ruleId": "au-pii-tax-identifiers/au_medicare"
+              }
+            ]
+          },
+          "local-government-identifiers/pattern-matching/accept/br_cpf_unformatted": {
+            "sourcePolicyVersion": "1.0.1",
+            "reason": "Numeric privacy formats overlap across jurisdictions. The earlier identity Policy redacts the complete identifier; the composed contract checks the selected Rule and exact output. Format-specific acceptance remains in isolated Policy tests.",
+            "expectedDecision": "transform",
+            "expectedOutputContent": "Acceptance sample: [au_medicare_REDACTED]",
+            "expectedMatches": [
+              {
+                "policyId": "identity-documents",
+                "ruleId": "au-pii-tax-identifiers/au_medicare"
+              }
+            ]
+          },
+          "local-government-identifiers/pattern-matching/accept/br_cpf_unformatted/output": {
+            "sourcePolicyVersion": "1.0.1",
+            "reason": "Numeric privacy formats overlap across jurisdictions. The earlier identity Policy redacts the complete identifier; the composed contract checks the selected Rule and exact output. Format-specific acceptance remains in isolated Policy tests.",
+            "expectedDecision": "transform",
+            "expectedOutputContent": "Acceptance sample: [au_medicare_REDACTED]",
+            "expectedMatches": [
+              {
+                "policyId": "identity-documents",
+                "ruleId": "au-pii-tax-identifiers/au_medicare"
+              }
+            ]
+          },
+          "local-passports/local-passport-formats/accept/eu_passport_generic/input": {
+            "sourcePolicyVersion": "1.0.1",
+            "reason": "The contextual passport Rule precedes country-only patterns. Assert its identity and the complete redacted output in the combined Profile.",
+            "expectedDecision": "transform",
+            "expectedOutputContent": "Acceptance sample: [REDACTED]",
+            "expectedMatches": [
+              {
+                "policyId": "identity-documents",
+                "ruleId": "identity/passport"
+              }
+            ]
+          },
+          "local-passports/local-passport-formats/accept/eu_passport_generic/output": {
+            "sourcePolicyVersion": "1.0.1",
+            "reason": "The contextual passport Rule precedes country-only patterns. Assert its identity and the complete redacted output in the combined Profile.",
+            "expectedDecision": "transform",
+            "expectedOutputContent": "Acceptance sample: [REDACTED]",
+            "expectedMatches": [
+              {
+                "policyId": "identity-documents",
+                "ruleId": "identity/passport"
+              }
+            ]
+          },
+          "local-passports/local-passport-formats/accept/passport_singapore/input": {
+            "sourcePolicyVersion": "1.0.1",
+            "reason": "The contextual passport Rule precedes country-only patterns. Assert its identity and the complete redacted output in the combined Profile.",
+            "expectedDecision": "transform",
+            "expectedOutputContent": "Acceptance sample: [REDACTED]",
+            "expectedMatches": [
+              {
+                "policyId": "identity-documents",
+                "ruleId": "identity/passport"
+              }
+            ]
+          },
+          "local-passports/local-passport-formats/accept/passport_singapore/output": {
+            "sourcePolicyVersion": "1.0.1",
+            "reason": "The contextual passport Rule precedes country-only patterns. Assert its identity and the complete redacted output in the combined Profile.",
+            "expectedDecision": "transform",
+            "expectedOutputContent": "Acceptance sample: [REDACTED]",
+            "expectedMatches": [
+              {
+                "policyId": "identity-documents",
+                "ruleId": "identity/passport"
+              }
+            ]
+          },
+          "local-passports/pattern-matching/accept/passport_singapore": {
+            "sourcePolicyVersion": "1.0.1",
+            "reason": "The contextual passport Rule precedes country-only patterns. Assert its identity and the complete redacted output in the combined Profile.",
+            "expectedDecision": "transform",
+            "expectedOutputContent": "Acceptance sample: [REDACTED]",
+            "expectedMatches": [
+              {
+                "policyId": "identity-documents",
+                "ruleId": "identity/passport"
+              }
+            ]
+          },
+          "local-passports/pattern-matching/accept/passport_singapore/output": {
+            "sourcePolicyVersion": "1.0.1",
+            "reason": "The contextual passport Rule precedes country-only patterns. Assert its identity and the complete redacted output in the combined Profile.",
+            "expectedDecision": "transform",
+            "expectedOutputContent": "Acceptance sample: [REDACTED]",
+            "expectedMatches": [
+              {
+                "policyId": "identity-documents",
+                "ruleId": "identity/passport"
+              }
+            ]
+          }
+        }
       },
       {
         "policyId": "contact-data",
-        "policyVersion": "1.0.0",
+        "policyVersion": "1.0.1",
         "enabledRails": [
           "input",
           "output"
@@ -2986,6 +4099,8 @@ export const protectionPresets: readonly ProtectionPreset[] = [
         "ruleActions": {},
         "reasoningPolicy": null,
         "enabledRuleIds": [
+          "pattern/uae_phone",
+          "pattern/fr_phone",
           "pattern/titled_person",
           "pattern/contact_list_person",
           "pattern/truncated_address",
@@ -2996,8 +4111,6 @@ export const protectionPresets: readonly ProtectionPreset[] = [
           "pattern/us_phone",
           "pattern/sg_phone",
           "pattern/international_phone",
-          "pattern/uae_phone",
-          "pattern/fr_phone",
           "pattern/br_phone_mobile",
           "pattern/br_phone_landline",
           "pattern/br_cep",
@@ -3010,6 +4123,8 @@ export const protectionPresets: readonly ProtectionPreset[] = [
           "uae-data-protection-pii/uae_po_box"
         ],
         "ruleOrder": [
+          "pattern/uae_phone",
+          "pattern/fr_phone",
           "pattern/titled_person",
           "pattern/contact_list_person",
           "pattern/truncated_address",
@@ -3020,8 +4135,6 @@ export const protectionPresets: readonly ProtectionPreset[] = [
           "pattern/us_phone",
           "pattern/sg_phone",
           "pattern/international_phone",
-          "pattern/uae_phone",
-          "pattern/fr_phone",
           "pattern/br_phone_mobile",
           "pattern/br_phone_landline",
           "pattern/br_cep",
@@ -3033,7 +4146,92 @@ export const protectionPresets: readonly ProtectionPreset[] = [
           "cn-personal-information/mainland-mobile",
           "uae-data-protection-pii/uae_po_box"
         ],
-        "testCaseOverrides": {}
+        "testCaseOverrides": {
+          "local-contact-data/local-regional-contact-formats/accept/fr_phone/input": {
+            "sourcePolicyVersion": "1.0.1",
+            "reason": "Numeric privacy formats overlap across jurisdictions. The earlier identity Policy redacts the complete identifier; the composed contract checks the selected Rule and exact output. Format-specific acceptance remains in isolated Policy tests.",
+            "expectedDecision": "transform",
+            "expectedOutputContent": "Acceptance sample: +[au_medicare_REDACTED]",
+            "expectedMatches": [
+              {
+                "policyId": "identity-documents",
+                "ruleId": "au-pii-tax-identifiers/au_medicare"
+              }
+            ]
+          },
+          "local-contact-data/local-regional-contact-formats/accept/fr_phone/output": {
+            "sourcePolicyVersion": "1.0.1",
+            "reason": "Numeric privacy formats overlap across jurisdictions. The earlier identity Policy redacts the complete identifier; the composed contract checks the selected Rule and exact output. Format-specific acceptance remains in isolated Policy tests.",
+            "expectedDecision": "transform",
+            "expectedOutputContent": "Acceptance sample: +[au_medicare_REDACTED]",
+            "expectedMatches": [
+              {
+                "policyId": "identity-documents",
+                "ruleId": "au-pii-tax-identifiers/au_medicare"
+              }
+            ]
+          },
+          "local-contact-data/china-personal-identifiers/mainland-mobile/input": {
+            "sourcePolicyVersion": "1.0.1",
+            "reason": "Numeric privacy formats overlap across jurisdictions. The earlier identity Policy redacts the complete identifier; the composed contract checks the selected Rule and exact output. Format-specific acceptance remains in isolated Policy tests.",
+            "expectedDecision": "transform",
+            "expectedOutputContent": "手机号码：[au_medicare_REDACTED]",
+            "expectedMatches": [
+              {
+                "policyId": "identity-documents",
+                "ruleId": "au-pii-tax-identifiers/au_medicare"
+              }
+            ]
+          },
+          "local-contact-data/china-personal-identifiers/mainland-mobile/output": {
+            "sourcePolicyVersion": "1.0.1",
+            "reason": "Numeric privacy formats overlap across jurisdictions. The earlier identity Policy redacts the complete identifier; the composed contract checks the selected Rule and exact output. Format-specific acceptance remains in isolated Policy tests.",
+            "expectedDecision": "transform",
+            "expectedOutputContent": "手机号码：[au_medicare_REDACTED]",
+            "expectedMatches": [
+              {
+                "policyId": "identity-documents",
+                "ruleId": "au-pii-tax-identifiers/au_medicare"
+              }
+            ]
+          },
+          "local-contact-data/gdpr-eu-pii-protection/rule-gdpr-eu-contact-information/fr_phone-acceptance": {
+            "sourcePolicyVersion": "1.0.1",
+            "reason": "Numeric privacy formats overlap across jurisdictions. The earlier identity Policy redacts the complete identifier; the composed contract checks the selected Rule and exact output. Format-specific acceptance remains in isolated Policy tests.",
+            "expectedDecision": "transform",
+            "expectedOutputContent": "Acceptance sample: +[au_medicare_REDACTED]",
+            "expectedMatches": [
+              {
+                "policyId": "identity-documents",
+                "ruleId": "au-pii-tax-identifiers/au_medicare"
+              }
+            ]
+          },
+          "local-contact-data/pattern-matching/accept/fr_phone": {
+            "sourcePolicyVersion": "1.0.1",
+            "reason": "Numeric privacy formats overlap across jurisdictions. The earlier identity Policy redacts the complete identifier; the composed contract checks the selected Rule and exact output. Format-specific acceptance remains in isolated Policy tests.",
+            "expectedDecision": "transform",
+            "expectedOutputContent": "Acceptance sample: +[au_medicare_REDACTED]",
+            "expectedMatches": [
+              {
+                "policyId": "identity-documents",
+                "ruleId": "au-pii-tax-identifiers/au_medicare"
+              }
+            ]
+          },
+          "local-contact-data/pattern-matching/accept/fr_phone/output": {
+            "sourcePolicyVersion": "1.0.1",
+            "reason": "Numeric privacy formats overlap across jurisdictions. The earlier identity Policy redacts the complete identifier; the composed contract checks the selected Rule and exact output. Format-specific acceptance remains in isolated Policy tests.",
+            "expectedDecision": "transform",
+            "expectedOutputContent": "Acceptance sample: +[au_medicare_REDACTED]",
+            "expectedMatches": [
+              {
+                "policyId": "identity-documents",
+                "ruleId": "au-pii-tax-identifiers/au_medicare"
+              }
+            ]
+          }
+        }
       },
       {
         "policyId": "network-identifiers",
@@ -3121,6 +4319,396 @@ export const protectionPresets: readonly ProtectionPreset[] = [
           "pattern/self_harm_suicide",
           "pattern/illegal_activities",
           "pattern/harassment_hate"
+        ],
+        "testCaseOverrides": {
+          "local-risk-content-terms/accept/terrorism/input": {
+            "sourcePolicyVersion": "1.0.0",
+            "reason": "The composed safety Policy blocks this harmful sample before keyword redaction. Assert the blocking Rule and the original risk-term detection, rather than the isolated Transform decision.",
+            "expectedDecision": "block",
+            "expectedMatches": [
+              {
+                "policyId": "content-safety-local",
+                "ruleId": "category/harmful_violence"
+              },
+              {
+                "policyId": "risk-content-terms",
+                "ruleId": "pattern/terrorism"
+              }
+            ]
+          },
+          "local-risk-content-terms/accept/terrorism/output": {
+            "sourcePolicyVersion": "1.0.0",
+            "reason": "The composed safety Policy blocks this harmful sample before keyword redaction. Assert the blocking Rule and the original risk-term detection, rather than the isolated Transform decision.",
+            "expectedDecision": "block",
+            "expectedMatches": [
+              {
+                "policyId": "content-safety-local",
+                "ruleId": "category/harmful_violence"
+              },
+              {
+                "policyId": "risk-content-terms",
+                "ruleId": "pattern/terrorism"
+              }
+            ]
+          },
+          "local-risk-content-terms/accept/self_harm_suicide/input": {
+            "sourcePolicyVersion": "1.0.0",
+            "reason": "The composed safety Policy blocks this harmful sample before keyword redaction. Assert the blocking Rule and the original risk-term detection, rather than the isolated Transform decision.",
+            "expectedDecision": "block",
+            "expectedMatches": [
+              {
+                "policyId": "content-safety-local",
+                "ruleId": "category/harmful_self_harm"
+              },
+              {
+                "policyId": "risk-content-terms",
+                "ruleId": "pattern/self_harm_suicide"
+              }
+            ]
+          },
+          "local-risk-content-terms/accept/self_harm_suicide/output": {
+            "sourcePolicyVersion": "1.0.0",
+            "reason": "The composed safety Policy blocks this harmful sample before keyword redaction. Assert the blocking Rule and the original risk-term detection, rather than the isolated Transform decision.",
+            "expectedDecision": "block",
+            "expectedMatches": [
+              {
+                "policyId": "content-safety-local",
+                "ruleId": "category/harmful_self_harm"
+              },
+              {
+                "policyId": "risk-content-terms",
+                "ruleId": "pattern/self_harm_suicide"
+              }
+            ]
+          },
+          "local-risk-content-terms/pattern-matching/accept/terrorism": {
+            "sourcePolicyVersion": "1.0.0",
+            "reason": "The composed safety Policy blocks this harmful sample before keyword redaction. Assert the blocking Rule and the original risk-term detection, rather than the isolated Transform decision.",
+            "expectedDecision": "block",
+            "expectedMatches": [
+              {
+                "policyId": "content-safety-local",
+                "ruleId": "category/harmful_violence"
+              },
+              {
+                "policyId": "risk-content-terms",
+                "ruleId": "pattern/terrorism"
+              }
+            ]
+          },
+          "local-risk-content-terms/pattern-matching/accept/self_harm_suicide": {
+            "sourcePolicyVersion": "1.0.0",
+            "reason": "The composed safety Policy blocks this harmful sample before keyword redaction. Assert the blocking Rule and the original risk-term detection, rather than the isolated Transform decision.",
+            "expectedDecision": "block",
+            "expectedMatches": [
+              {
+                "policyId": "content-safety-local",
+                "ruleId": "category/harmful_self_harm"
+              },
+              {
+                "policyId": "risk-content-terms",
+                "ruleId": "pattern/self_harm_suicide"
+              }
+            ]
+          },
+          "local-risk-content-terms/pattern-matching/accept/terrorism/output": {
+            "sourcePolicyVersion": "1.0.0",
+            "reason": "The composed safety Policy blocks this harmful sample before keyword redaction. Assert the blocking Rule and the original risk-term detection, rather than the isolated Transform decision.",
+            "expectedDecision": "block",
+            "expectedMatches": [
+              {
+                "policyId": "content-safety-local",
+                "ruleId": "category/harmful_violence"
+              },
+              {
+                "policyId": "risk-content-terms",
+                "ruleId": "pattern/terrorism"
+              }
+            ]
+          },
+          "local-risk-content-terms/pattern-matching/accept/self_harm_suicide/output": {
+            "sourcePolicyVersion": "1.0.0",
+            "reason": "The composed safety Policy blocks this harmful sample before keyword redaction. Assert the blocking Rule and the original risk-term detection, rather than the isolated Transform decision.",
+            "expectedDecision": "block",
+            "expectedMatches": [
+              {
+                "policyId": "content-safety-local",
+                "ruleId": "category/harmful_self_harm"
+              },
+              {
+                "policyId": "risk-content-terms",
+                "ruleId": "pattern/self_harm_suicide"
+              }
+            ]
+          }
+        }
+      }
+    ],
+    "parameterPacks": [],
+    "draftSettings": {
+      "allowedTopics": [],
+      "restrictedTopics": [],
+      "topicControlMode": "strict",
+      "safetyLevel": "balanced",
+      "outputDelivery": "full_buffered"
+    },
+    "suggestedTopics": [],
+    "optionalPolicyIds": [],
+    "limitations": [],
+    "testExclusions": [
+      {
+        "policyId": "payment-data",
+        "policyVersion": "1.0.0",
+        "sourceCaseId": "local-payment-data/rule-financial-pii/credit_card-acceptance/input",
+        "reason": "Duplicate Visa fixture: the specific Visa Rule redacts this value before the generic credit-card fallback. Keep the generic detector acceptance in isolated Policy tests."
+      },
+      {
+        "policyId": "payment-data",
+        "policyVersion": "1.0.0",
+        "sourceCaseId": "local-payment-data/rule-financial-pii/credit_card-acceptance/output",
+        "reason": "Duplicate Visa fixture: the specific Visa Rule redacts this value before the generic credit-card fallback. Keep the generic detector acceptance in isolated Policy tests."
+      },
+      {
+        "policyId": "payment-data",
+        "policyVersion": "1.0.0",
+        "sourceCaseId": "local-payment-data/advanced-au-pii-protection/rule-financial-pii/credit_card-acceptance",
+        "reason": "Duplicate Visa fixture: the specific Visa Rule redacts this value before the generic credit-card fallback. Keep the generic detector acceptance in isolated Policy tests."
+      },
+      {
+        "policyId": "payment-data",
+        "policyVersion": "1.0.0",
+        "sourceCaseId": "local-payment-data/baseline-pii-protection/rule-financial-pii/credit_card-acceptance",
+        "reason": "Duplicate Visa fixture: the specific Visa Rule redacts this value before the generic credit-card fallback. Keep the generic detector acceptance in isolated Policy tests."
+      },
+      {
+        "policyId": "payment-data",
+        "policyVersion": "1.0.0",
+        "sourceCaseId": "local-payment-data/pattern-matching/accept/credit_card",
+        "reason": "Duplicate Visa fixture: the specific Visa Rule redacts this value before the generic credit-card fallback. Keep the generic detector acceptance in isolated Policy tests."
+      },
+      {
+        "policyId": "payment-data",
+        "policyVersion": "1.0.0",
+        "sourceCaseId": "local-payment-data/pattern-matching/accept/credit_card/output",
+        "reason": "Duplicate Visa fixture: the specific Visa Rule redacts this value before the generic credit-card fallback. Keep the generic detector acceptance in isolated Policy tests."
+      },
+      {
+        "policyId": "payment-data",
+        "policyVersion": "1.0.0",
+        "sourceCaseId": "local-payment-data/pdpa-singapore/rule-sg-pdpa-financial-data/credit_card-acceptance",
+        "reason": "Duplicate Visa fixture: the specific Visa Rule redacts this value before the generic credit-card fallback. Keep the generic detector acceptance in isolated Policy tests."
+      },
+      {
+        "policyId": "payment-data",
+        "policyVersion": "1.0.0",
+        "sourceCaseId": "local-payment-data/uae-regulatory-compliance/rule-uae-data-protection-pii/credit_card-acceptance",
+        "reason": "Duplicate Visa fixture: the specific Visa Rule redacts this value before the generic credit-card fallback. Keep the generic detector acceptance in isolated Policy tests."
+      },
+      {
+        "policyId": "identity-documents",
+        "policyVersion": "1.0.1",
+        "sourceCaseId": "local-government-identifiers/accept/au_tfn/input",
+        "reason": "Duplicate TFN detector: au-pii-tax-identifiers/au_tfn owns this identical span in the combined Profile. Keep the alias acceptance in isolated Policy tests."
+      },
+      {
+        "policyId": "identity-documents",
+        "policyVersion": "1.0.1",
+        "sourceCaseId": "local-government-identifiers/accept/au_tfn/output",
+        "reason": "Duplicate TFN detector: au-pii-tax-identifiers/au_tfn owns this identical span in the combined Profile. Keep the alias acceptance in isolated Policy tests."
+      },
+      {
+        "policyId": "identity-documents",
+        "policyVersion": "1.0.1",
+        "sourceCaseId": "local-government-identifiers/pattern-matching/accept/au_tfn",
+        "reason": "Duplicate TFN detector: au-pii-tax-identifiers/au_tfn owns this identical span in the combined Profile. Keep the alias acceptance in isolated Policy tests."
+      },
+      {
+        "policyId": "identity-documents",
+        "policyVersion": "1.0.1",
+        "sourceCaseId": "local-government-identifiers/pattern-matching/accept/au_tfn/output",
+        "reason": "Duplicate TFN detector: au-pii-tax-identifiers/au_tfn owns this identical span in the combined Profile. Keep the alias acceptance in isolated Policy tests."
+      },
+      {
+        "policyId": "identity-documents",
+        "policyVersion": "1.0.1",
+        "sourceCaseId": "local-passports/advanced-au-pii-protection/rule-international-pii-identifiers/passport_uk-acceptance",
+        "reason": "The bare nine-digit fixture is shared with the US passport format. It cannot assert both country-specific Rule identities after the first redaction; retain isolated Policy acceptance."
+      },
+      {
+        "policyId": "identity-documents",
+        "policyVersion": "1.0.1",
+        "sourceCaseId": "local-passports/advanced-au-pii-protection/rule-international-pii-identifiers/passport_japan-acceptance",
+        "reason": "The bare two-letter/seven-digit fixture overlaps the Netherlands passport format. Retain the country-specific assertion in isolated Policy tests."
+      },
+      {
+        "policyId": "identity-documents",
+        "policyVersion": "1.0.1",
+        "sourceCaseId": "local-passports/pattern-matching/accept/passport_uk",
+        "reason": "The bare nine-digit fixture is shared with the US passport format. It cannot assert both country-specific Rule identities after the first redaction; retain isolated Policy acceptance."
+      },
+      {
+        "policyId": "identity-documents",
+        "policyVersion": "1.0.1",
+        "sourceCaseId": "local-passports/pattern-matching/accept/passport_australia",
+        "reason": "The bare letter/seven-digit fixture overlaps the India passport format. Retain the country-specific assertion in isolated Policy tests."
+      },
+      {
+        "policyId": "identity-documents",
+        "policyVersion": "1.0.1",
+        "sourceCaseId": "local-passports/pattern-matching/accept/passport_japan",
+        "reason": "The bare two-letter/seven-digit fixture overlaps the Netherlands passport format. Retain the country-specific assertion in isolated Policy tests."
+      },
+      {
+        "policyId": "identity-documents",
+        "policyVersion": "1.0.1",
+        "sourceCaseId": "local-passports/pattern-matching/accept/passport_uk/output",
+        "reason": "The bare nine-digit fixture is shared with the US passport format. It cannot assert both country-specific Rule identities after the first redaction; retain isolated Policy acceptance."
+      },
+      {
+        "policyId": "identity-documents",
+        "policyVersion": "1.0.1",
+        "sourceCaseId": "local-passports/pattern-matching/accept/passport_australia/output",
+        "reason": "The bare letter/seven-digit fixture overlaps the India passport format. Retain the country-specific assertion in isolated Policy tests."
+      },
+      {
+        "policyId": "identity-documents",
+        "policyVersion": "1.0.1",
+        "sourceCaseId": "local-passports/pattern-matching/accept/passport_japan/output",
+        "reason": "The bare two-letter/seven-digit fixture overlaps the Netherlands passport format. Retain the country-specific assertion in isolated Policy tests."
+      }
+    ]
+  },
+  {
+    "id": "cn-internet",
+    "version": "1.1.0",
+    "name": "China Internet",
+    "description": "",
+    "industry": "internet",
+    "jurisdictions": [
+      "cn"
+    ],
+    "benchmarkOnly": false,
+    "policies": [
+      {
+        "policyId": "credentials-secrets",
+        "policyVersion": "1.0.0",
+        "enabledRails": [
+          "input",
+          "output"
+        ],
+        "parameterValues": {},
+        "action": null,
+        "ruleActions": {},
+        "reasoningPolicy": null,
+        "enabledRuleIds": [
+          "credentials-api-keys/aws_access_key",
+          "credentials-api-keys/aws_secret_key",
+          "credentials-api-keys/github_token",
+          "credentials-api-keys/slack_token",
+          "credentials-api-keys/generic_api_key",
+          "credential/bearer-token",
+          "credential/private-key-header",
+          "credential/hex-token",
+          "credential/password",
+          "credential/url-password",
+          "credential/basic-auth",
+          "credential/jwt",
+          "credential/labelled-hex-key",
+          "credential/private-jwk",
+          "credential/sql-password",
+          "credential/command-password",
+          "credential/nkey-seed",
+          "credential/base64-private-key"
+        ],
+        "ruleOrder": [
+          "credentials-api-keys/aws_access_key",
+          "credentials-api-keys/aws_secret_key",
+          "credentials-api-keys/github_token",
+          "credentials-api-keys/slack_token",
+          "credentials-api-keys/generic_api_key",
+          "credential/bearer-token",
+          "credential/private-key-header",
+          "credential/hex-token",
+          "credential/password",
+          "credential/url-password",
+          "credential/basic-auth",
+          "credential/jwt",
+          "credential/labelled-hex-key",
+          "credential/private-jwk",
+          "credential/sql-password",
+          "credential/command-password",
+          "credential/nkey-seed",
+          "credential/base64-private-key"
+        ],
+        "testCaseOverrides": {}
+      },
+      {
+        "policyId": "prompt-instruction-attacks",
+        "policyVersion": "1.0.0",
+        "enabledRails": [
+          "input",
+          "output"
+        ],
+        "parameterValues": {
+          "on_unknown": "block",
+          "review_unknown": "false"
+        },
+        "action": null,
+        "ruleActions": {},
+        "reasoningPolicy": null,
+        "enabledRuleIds": [
+          "boundary/indirect-injection",
+          "boundary/memory-poisoning",
+          "prompt-injection-blocker/blocked-word-1",
+          "prompt-injection-blocker/blocked-word-2",
+          "prompt-injection-blocker/blocked-word-3",
+          "prompt-injection-blocker/blocked-word-4",
+          "prompt-injection-blocker/blocked-word-5",
+          "prompt-injection-blocker/blocked-word-6",
+          "prompt-injection-blocker/blocked-word-7",
+          "prompt-injection-blocker/blocked-word-8",
+          "prompt-injection-blocker/blocked-word-9",
+          "prompt-injection-blocker/blocked-word-10",
+          "prompt-injection-blocker/blocked-word-11",
+          "prompt-injection-blocker/blocked-word-12",
+          "prompt-injection-blocker/blocked-word-13",
+          "prompt-injection-blocker/blocked-word-14",
+          "category/prompt_injection_jailbreak",
+          "category/prompt_injection_data_exfiltration",
+          "category/prompt_injection_sql",
+          "category/prompt_injection_malicious_code",
+          "category/prompt_injection_system_prompt",
+          "cn-prompt-security/instruction-override",
+          "cn-prompt-security/prompt-extraction",
+          "cn-prompt-security/unrestricted-mode",
+          "claims-system-override-filter/claims_system_override"
+        ],
+        "ruleOrder": [
+          "boundary/indirect-injection",
+          "boundary/memory-poisoning",
+          "prompt-injection-blocker/blocked-word-1",
+          "prompt-injection-blocker/blocked-word-2",
+          "prompt-injection-blocker/blocked-word-3",
+          "prompt-injection-blocker/blocked-word-4",
+          "prompt-injection-blocker/blocked-word-5",
+          "prompt-injection-blocker/blocked-word-6",
+          "prompt-injection-blocker/blocked-word-7",
+          "prompt-injection-blocker/blocked-word-8",
+          "prompt-injection-blocker/blocked-word-9",
+          "prompt-injection-blocker/blocked-word-10",
+          "prompt-injection-blocker/blocked-word-11",
+          "prompt-injection-blocker/blocked-word-12",
+          "prompt-injection-blocker/blocked-word-13",
+          "prompt-injection-blocker/blocked-word-14",
+          "category/prompt_injection_jailbreak",
+          "category/prompt_injection_data_exfiltration",
+          "category/prompt_injection_sql",
+          "category/prompt_injection_malicious_code",
+          "category/prompt_injection_system_prompt",
+          "cn-prompt-security/instruction-override",
+          "cn-prompt-security/prompt-extraction",
+          "cn-prompt-security/unrestricted-mode",
+          "claims-system-override-filter/claims_system_override"
         ],
         "testCaseOverrides": {}
       },
@@ -3213,7 +4801,7 @@ export const protectionPresets: readonly ProtectionPreset[] = [
       },
       {
         "policyId": "content-safety-local",
-        "policyVersion": "1.0.0",
+        "policyVersion": "1.0.1",
         "enabledRails": [
           "input",
           "output"
@@ -3247,76 +4835,6 @@ export const protectionPresets: readonly ProtectionPreset[] = [
           "category/bias_religious",
           "category/bias_sexual_orientation",
           "nsfw-filter-multilingual/harm_toxic_abuse"
-        ],
-        "testCaseOverrides": {}
-      },
-      {
-        "policyId": "prompt-instruction-attacks",
-        "policyVersion": "1.0.0",
-        "enabledRails": [
-          "input",
-          "output"
-        ],
-        "parameterValues": {
-          "on_unknown": "block",
-          "review_unknown": "false"
-        },
-        "action": null,
-        "ruleActions": {},
-        "reasoningPolicy": null,
-        "enabledRuleIds": [
-          "boundary/indirect-injection",
-          "boundary/memory-poisoning",
-          "prompt-injection-blocker/blocked-word-1",
-          "prompt-injection-blocker/blocked-word-2",
-          "prompt-injection-blocker/blocked-word-3",
-          "prompt-injection-blocker/blocked-word-4",
-          "prompt-injection-blocker/blocked-word-5",
-          "prompt-injection-blocker/blocked-word-6",
-          "prompt-injection-blocker/blocked-word-7",
-          "prompt-injection-blocker/blocked-word-8",
-          "prompt-injection-blocker/blocked-word-9",
-          "prompt-injection-blocker/blocked-word-10",
-          "prompt-injection-blocker/blocked-word-11",
-          "prompt-injection-blocker/blocked-word-12",
-          "prompt-injection-blocker/blocked-word-13",
-          "prompt-injection-blocker/blocked-word-14",
-          "category/prompt_injection_jailbreak",
-          "category/prompt_injection_data_exfiltration",
-          "category/prompt_injection_sql",
-          "category/prompt_injection_malicious_code",
-          "category/prompt_injection_system_prompt",
-          "cn-prompt-security/instruction-override",
-          "cn-prompt-security/prompt-extraction",
-          "cn-prompt-security/unrestricted-mode",
-          "claims-system-override-filter/claims_system_override"
-        ],
-        "ruleOrder": [
-          "boundary/indirect-injection",
-          "boundary/memory-poisoning",
-          "prompt-injection-blocker/blocked-word-1",
-          "prompt-injection-blocker/blocked-word-2",
-          "prompt-injection-blocker/blocked-word-3",
-          "prompt-injection-blocker/blocked-word-4",
-          "prompt-injection-blocker/blocked-word-5",
-          "prompt-injection-blocker/blocked-word-6",
-          "prompt-injection-blocker/blocked-word-7",
-          "prompt-injection-blocker/blocked-word-8",
-          "prompt-injection-blocker/blocked-word-9",
-          "prompt-injection-blocker/blocked-word-10",
-          "prompt-injection-blocker/blocked-word-11",
-          "prompt-injection-blocker/blocked-word-12",
-          "prompt-injection-blocker/blocked-word-13",
-          "prompt-injection-blocker/blocked-word-14",
-          "category/prompt_injection_jailbreak",
-          "category/prompt_injection_data_exfiltration",
-          "category/prompt_injection_sql",
-          "category/prompt_injection_malicious_code",
-          "category/prompt_injection_system_prompt",
-          "cn-prompt-security/instruction-override",
-          "cn-prompt-security/prompt-extraction",
-          "cn-prompt-security/unrestricted-mode",
-          "claims-system-override-filter/claims_system_override"
         ],
         "testCaseOverrides": {}
       },
@@ -3377,6 +4895,611 @@ export const protectionPresets: readonly ProtectionPreset[] = [
           "internet/session-theft"
         ],
         "testCaseOverrides": {}
+      },
+      {
+        "policyId": "payment-data",
+        "policyVersion": "1.0.0",
+        "enabledRails": [
+          "input",
+          "output"
+        ],
+        "parameterValues": {},
+        "action": null,
+        "ruleActions": {},
+        "reasoningPolicy": null,
+        "enabledRuleIds": [
+          "financial-pii/visa",
+          "financial-pii/mastercard",
+          "financial-pii/amex",
+          "financial-pii/discover",
+          "pattern/eu_iban_enhanced",
+          "financial-pii/credit_card",
+          "financial-pii/iban",
+          "pattern/ca_bank_account",
+          "pattern/sg_bank_account",
+          "cn-personal-information/unionpay-card"
+        ],
+        "ruleOrder": [
+          "financial-pii/visa",
+          "financial-pii/mastercard",
+          "financial-pii/amex",
+          "financial-pii/discover",
+          "pattern/eu_iban_enhanced",
+          "financial-pii/credit_card",
+          "financial-pii/iban",
+          "pattern/ca_bank_account",
+          "pattern/sg_bank_account",
+          "cn-personal-information/unionpay-card"
+        ],
+        "testCaseOverrides": {}
+      },
+      {
+        "policyId": "identity-documents",
+        "policyVersion": "1.0.1",
+        "enabledRails": [
+          "input",
+          "output"
+        ],
+        "parameterValues": {},
+        "action": null,
+        "ruleActions": {},
+        "reasoningPolicy": null,
+        "enabledRuleIds": [
+          "identity/passport",
+          "pattern/uoft_student_id",
+          "au-pii-tax-identifiers/au_tfn",
+          "au-pii-tax-identifiers/au_abn",
+          "au-pii-tax-identifiers/au_medicare",
+          "pattern/uae_emirates_id",
+          "pattern/ca_on_drivers_licence",
+          "pattern/ca_immigration_doc",
+          "pattern/fr_nir",
+          "pattern/uoft_tcard",
+          "pattern/sg_uen",
+          "pattern/ca_ohip",
+          "pattern/ca_sin",
+          "pattern/eu_vat",
+          "pattern/nl_bsn_contextual",
+          "pattern/au_tfn",
+          "pattern/us_ssn",
+          "pattern/us_ssn_no_dash",
+          "pattern/br_cpf",
+          "pattern/br_cpf_unformatted",
+          "pattern/br_cnpj",
+          "pattern/br_rg",
+          "pattern/sg_nric",
+          "pattern/uoft_utorid",
+          "cn-business-identifier/unified-social-credit-code",
+          "cn-personal-information/resident-identity-card",
+          "pattern/passport_singapore",
+          "pattern/passport_china",
+          "pattern/passport_us",
+          "pattern/passport_germany",
+          "pattern/passport_france",
+          "pattern/passport_netherlands",
+          "pattern/passport_canada",
+          "pattern/passport_india",
+          "international-pii-identifiers/passport_uk",
+          "international-pii-identifiers/passport_japan",
+          "pattern/passport_australia"
+        ],
+        "ruleOrder": [
+          "identity/passport",
+          "pattern/uoft_student_id",
+          "au-pii-tax-identifiers/au_tfn",
+          "au-pii-tax-identifiers/au_abn",
+          "au-pii-tax-identifiers/au_medicare",
+          "pattern/uae_emirates_id",
+          "pattern/ca_on_drivers_licence",
+          "pattern/ca_immigration_doc",
+          "pattern/fr_nir",
+          "pattern/uoft_tcard",
+          "pattern/sg_uen",
+          "pattern/ca_ohip",
+          "pattern/ca_sin",
+          "pattern/eu_vat",
+          "pattern/nl_bsn_contextual",
+          "pattern/au_tfn",
+          "pattern/us_ssn",
+          "pattern/us_ssn_no_dash",
+          "pattern/br_cpf",
+          "pattern/br_cpf_unformatted",
+          "pattern/br_cnpj",
+          "pattern/br_rg",
+          "pattern/sg_nric",
+          "pattern/uoft_utorid",
+          "cn-business-identifier/unified-social-credit-code",
+          "cn-personal-information/resident-identity-card",
+          "pattern/passport_singapore",
+          "pattern/passport_china",
+          "pattern/passport_us",
+          "pattern/passport_germany",
+          "pattern/passport_france",
+          "pattern/passport_netherlands",
+          "pattern/passport_canada",
+          "pattern/passport_india",
+          "international-pii-identifiers/passport_uk",
+          "international-pii-identifiers/passport_japan",
+          "pattern/passport_australia"
+        ],
+        "testCaseOverrides": {
+          "local-government-identifiers/accept/br_cpf_unformatted/input": {
+            "sourcePolicyVersion": "1.0.1",
+            "reason": "Numeric privacy formats overlap across jurisdictions. The earlier identity Policy redacts the complete identifier; the composed contract checks the selected Rule and exact output. Format-specific acceptance remains in isolated Policy tests.",
+            "expectedDecision": "transform",
+            "expectedOutputContent": "Acceptance sample: [au_medicare_REDACTED]",
+            "expectedMatches": [
+              {
+                "policyId": "identity-documents",
+                "ruleId": "au-pii-tax-identifiers/au_medicare"
+              }
+            ]
+          },
+          "local-government-identifiers/accept/br_cpf_unformatted/output": {
+            "sourcePolicyVersion": "1.0.1",
+            "reason": "Numeric privacy formats overlap across jurisdictions. The earlier identity Policy redacts the complete identifier; the composed contract checks the selected Rule and exact output. Format-specific acceptance remains in isolated Policy tests.",
+            "expectedDecision": "transform",
+            "expectedOutputContent": "Acceptance sample: [au_medicare_REDACTED]",
+            "expectedMatches": [
+              {
+                "policyId": "identity-documents",
+                "ruleId": "au-pii-tax-identifiers/au_medicare"
+              }
+            ]
+          },
+          "local-government-identifiers/pattern-matching/accept/br_cpf_unformatted": {
+            "sourcePolicyVersion": "1.0.1",
+            "reason": "Numeric privacy formats overlap across jurisdictions. The earlier identity Policy redacts the complete identifier; the composed contract checks the selected Rule and exact output. Format-specific acceptance remains in isolated Policy tests.",
+            "expectedDecision": "transform",
+            "expectedOutputContent": "Acceptance sample: [au_medicare_REDACTED]",
+            "expectedMatches": [
+              {
+                "policyId": "identity-documents",
+                "ruleId": "au-pii-tax-identifiers/au_medicare"
+              }
+            ]
+          },
+          "local-government-identifiers/pattern-matching/accept/br_cpf_unformatted/output": {
+            "sourcePolicyVersion": "1.0.1",
+            "reason": "Numeric privacy formats overlap across jurisdictions. The earlier identity Policy redacts the complete identifier; the composed contract checks the selected Rule and exact output. Format-specific acceptance remains in isolated Policy tests.",
+            "expectedDecision": "transform",
+            "expectedOutputContent": "Acceptance sample: [au_medicare_REDACTED]",
+            "expectedMatches": [
+              {
+                "policyId": "identity-documents",
+                "ruleId": "au-pii-tax-identifiers/au_medicare"
+              }
+            ]
+          },
+          "local-passports/local-passport-formats/accept/eu_passport_generic/input": {
+            "sourcePolicyVersion": "1.0.1",
+            "reason": "The contextual passport Rule precedes country-only patterns. Assert its identity and the complete redacted output in the combined Profile.",
+            "expectedDecision": "transform",
+            "expectedOutputContent": "Acceptance sample: [REDACTED]",
+            "expectedMatches": [
+              {
+                "policyId": "identity-documents",
+                "ruleId": "identity/passport"
+              }
+            ]
+          },
+          "local-passports/local-passport-formats/accept/eu_passport_generic/output": {
+            "sourcePolicyVersion": "1.0.1",
+            "reason": "The contextual passport Rule precedes country-only patterns. Assert its identity and the complete redacted output in the combined Profile.",
+            "expectedDecision": "transform",
+            "expectedOutputContent": "Acceptance sample: [REDACTED]",
+            "expectedMatches": [
+              {
+                "policyId": "identity-documents",
+                "ruleId": "identity/passport"
+              }
+            ]
+          },
+          "local-passports/local-passport-formats/accept/passport_singapore/input": {
+            "sourcePolicyVersion": "1.0.1",
+            "reason": "The contextual passport Rule precedes country-only patterns. Assert its identity and the complete redacted output in the combined Profile.",
+            "expectedDecision": "transform",
+            "expectedOutputContent": "Acceptance sample: [REDACTED]",
+            "expectedMatches": [
+              {
+                "policyId": "identity-documents",
+                "ruleId": "identity/passport"
+              }
+            ]
+          },
+          "local-passports/local-passport-formats/accept/passport_singapore/output": {
+            "sourcePolicyVersion": "1.0.1",
+            "reason": "The contextual passport Rule precedes country-only patterns. Assert its identity and the complete redacted output in the combined Profile.",
+            "expectedDecision": "transform",
+            "expectedOutputContent": "Acceptance sample: [REDACTED]",
+            "expectedMatches": [
+              {
+                "policyId": "identity-documents",
+                "ruleId": "identity/passport"
+              }
+            ]
+          },
+          "local-passports/pattern-matching/accept/passport_singapore": {
+            "sourcePolicyVersion": "1.0.1",
+            "reason": "The contextual passport Rule precedes country-only patterns. Assert its identity and the complete redacted output in the combined Profile.",
+            "expectedDecision": "transform",
+            "expectedOutputContent": "Acceptance sample: [REDACTED]",
+            "expectedMatches": [
+              {
+                "policyId": "identity-documents",
+                "ruleId": "identity/passport"
+              }
+            ]
+          },
+          "local-passports/pattern-matching/accept/passport_singapore/output": {
+            "sourcePolicyVersion": "1.0.1",
+            "reason": "The contextual passport Rule precedes country-only patterns. Assert its identity and the complete redacted output in the combined Profile.",
+            "expectedDecision": "transform",
+            "expectedOutputContent": "Acceptance sample: [REDACTED]",
+            "expectedMatches": [
+              {
+                "policyId": "identity-documents",
+                "ruleId": "identity/passport"
+              }
+            ]
+          }
+        }
+      },
+      {
+        "policyId": "contact-data",
+        "policyVersion": "1.0.1",
+        "enabledRails": [
+          "input",
+          "output"
+        ],
+        "parameterValues": {},
+        "action": null,
+        "ruleActions": {},
+        "reasoningPolicy": null,
+        "enabledRuleIds": [
+          "pattern/uae_phone",
+          "pattern/fr_phone",
+          "pattern/titled_person",
+          "pattern/contact_list_person",
+          "pattern/truncated_address",
+          "pattern/structured_username",
+          "pattern/structured_address",
+          "pattern/labelled_person",
+          "pattern/sg_local_phone",
+          "pattern/us_phone",
+          "pattern/sg_phone",
+          "pattern/international_phone",
+          "pattern/br_phone_mobile",
+          "pattern/br_phone_landline",
+          "pattern/br_cep",
+          "pattern/fr_postal_code",
+          "pattern/street_address",
+          "pattern/sg_postal_code",
+          "pattern/ca_postal_code",
+          "pattern/email",
+          "cn-personal-information/mainland-mobile",
+          "uae-data-protection-pii/uae_po_box"
+        ],
+        "ruleOrder": [
+          "pattern/uae_phone",
+          "pattern/fr_phone",
+          "pattern/titled_person",
+          "pattern/contact_list_person",
+          "pattern/truncated_address",
+          "pattern/structured_username",
+          "pattern/structured_address",
+          "pattern/labelled_person",
+          "pattern/sg_local_phone",
+          "pattern/us_phone",
+          "pattern/sg_phone",
+          "pattern/international_phone",
+          "pattern/br_phone_mobile",
+          "pattern/br_phone_landline",
+          "pattern/br_cep",
+          "pattern/fr_postal_code",
+          "pattern/street_address",
+          "pattern/sg_postal_code",
+          "pattern/ca_postal_code",
+          "pattern/email",
+          "cn-personal-information/mainland-mobile",
+          "uae-data-protection-pii/uae_po_box"
+        ],
+        "testCaseOverrides": {
+          "local-contact-data/local-regional-contact-formats/accept/fr_phone/input": {
+            "sourcePolicyVersion": "1.0.1",
+            "reason": "Numeric privacy formats overlap across jurisdictions. The earlier identity Policy redacts the complete identifier; the composed contract checks the selected Rule and exact output. Format-specific acceptance remains in isolated Policy tests.",
+            "expectedDecision": "transform",
+            "expectedOutputContent": "Acceptance sample: +[au_medicare_REDACTED]",
+            "expectedMatches": [
+              {
+                "policyId": "identity-documents",
+                "ruleId": "au-pii-tax-identifiers/au_medicare"
+              }
+            ]
+          },
+          "local-contact-data/local-regional-contact-formats/accept/fr_phone/output": {
+            "sourcePolicyVersion": "1.0.1",
+            "reason": "Numeric privacy formats overlap across jurisdictions. The earlier identity Policy redacts the complete identifier; the composed contract checks the selected Rule and exact output. Format-specific acceptance remains in isolated Policy tests.",
+            "expectedDecision": "transform",
+            "expectedOutputContent": "Acceptance sample: +[au_medicare_REDACTED]",
+            "expectedMatches": [
+              {
+                "policyId": "identity-documents",
+                "ruleId": "au-pii-tax-identifiers/au_medicare"
+              }
+            ]
+          },
+          "local-contact-data/china-personal-identifiers/mainland-mobile/input": {
+            "sourcePolicyVersion": "1.0.1",
+            "reason": "Numeric privacy formats overlap across jurisdictions. The earlier identity Policy redacts the complete identifier; the composed contract checks the selected Rule and exact output. Format-specific acceptance remains in isolated Policy tests.",
+            "expectedDecision": "transform",
+            "expectedOutputContent": "手机号码：[au_medicare_REDACTED]",
+            "expectedMatches": [
+              {
+                "policyId": "identity-documents",
+                "ruleId": "au-pii-tax-identifiers/au_medicare"
+              }
+            ]
+          },
+          "local-contact-data/china-personal-identifiers/mainland-mobile/output": {
+            "sourcePolicyVersion": "1.0.1",
+            "reason": "Numeric privacy formats overlap across jurisdictions. The earlier identity Policy redacts the complete identifier; the composed contract checks the selected Rule and exact output. Format-specific acceptance remains in isolated Policy tests.",
+            "expectedDecision": "transform",
+            "expectedOutputContent": "手机号码：[au_medicare_REDACTED]",
+            "expectedMatches": [
+              {
+                "policyId": "identity-documents",
+                "ruleId": "au-pii-tax-identifiers/au_medicare"
+              }
+            ]
+          },
+          "local-contact-data/gdpr-eu-pii-protection/rule-gdpr-eu-contact-information/fr_phone-acceptance": {
+            "sourcePolicyVersion": "1.0.1",
+            "reason": "Numeric privacy formats overlap across jurisdictions. The earlier identity Policy redacts the complete identifier; the composed contract checks the selected Rule and exact output. Format-specific acceptance remains in isolated Policy tests.",
+            "expectedDecision": "transform",
+            "expectedOutputContent": "Acceptance sample: +[au_medicare_REDACTED]",
+            "expectedMatches": [
+              {
+                "policyId": "identity-documents",
+                "ruleId": "au-pii-tax-identifiers/au_medicare"
+              }
+            ]
+          },
+          "local-contact-data/pattern-matching/accept/fr_phone": {
+            "sourcePolicyVersion": "1.0.1",
+            "reason": "Numeric privacy formats overlap across jurisdictions. The earlier identity Policy redacts the complete identifier; the composed contract checks the selected Rule and exact output. Format-specific acceptance remains in isolated Policy tests.",
+            "expectedDecision": "transform",
+            "expectedOutputContent": "Acceptance sample: +[au_medicare_REDACTED]",
+            "expectedMatches": [
+              {
+                "policyId": "identity-documents",
+                "ruleId": "au-pii-tax-identifiers/au_medicare"
+              }
+            ]
+          },
+          "local-contact-data/pattern-matching/accept/fr_phone/output": {
+            "sourcePolicyVersion": "1.0.1",
+            "reason": "Numeric privacy formats overlap across jurisdictions. The earlier identity Policy redacts the complete identifier; the composed contract checks the selected Rule and exact output. Format-specific acceptance remains in isolated Policy tests.",
+            "expectedDecision": "transform",
+            "expectedOutputContent": "Acceptance sample: +[au_medicare_REDACTED]",
+            "expectedMatches": [
+              {
+                "policyId": "identity-documents",
+                "ruleId": "au-pii-tax-identifiers/au_medicare"
+              }
+            ]
+          }
+        }
+      },
+      {
+        "policyId": "network-identifiers",
+        "policyVersion": "1.0.0",
+        "enabledRails": [
+          "input",
+          "output"
+        ],
+        "parameterValues": {},
+        "action": null,
+        "ruleActions": {},
+        "reasoningPolicy": null,
+        "enabledRuleIds": [
+          "pattern/ipv4",
+          "pattern/ipv6",
+          "pattern/url"
+        ],
+        "ruleOrder": [
+          "pattern/ipv4",
+          "pattern/ipv6",
+          "pattern/url"
+        ],
+        "testCaseOverrides": {}
+      },
+      {
+        "policyId": "sensitive-attributes",
+        "policyVersion": "1.0.0",
+        "enabledRails": [
+          "input",
+          "output"
+        ],
+        "parameterValues": {},
+        "action": null,
+        "ruleActions": {},
+        "reasoningPolicy": null,
+        "enabledRuleIds": [
+          "pattern/gender_sexual_orientation",
+          "pattern/race_ethnicity_national_origin",
+          "pattern/religion",
+          "pattern/age_discrimination",
+          "pattern/disability",
+          "pattern/marital_family_status",
+          "pattern/military_status",
+          "pattern/public_assistance"
+        ],
+        "ruleOrder": [
+          "pattern/gender_sexual_orientation",
+          "pattern/race_ethnicity_national_origin",
+          "pattern/religion",
+          "pattern/age_discrimination",
+          "pattern/disability",
+          "pattern/marital_family_status",
+          "pattern/military_status",
+          "pattern/public_assistance"
+        ],
+        "testCaseOverrides": {}
+      },
+      {
+        "policyId": "risk-content-terms",
+        "policyVersion": "1.0.0",
+        "enabledRails": [
+          "input",
+          "output"
+        ],
+        "parameterValues": {},
+        "action": null,
+        "ruleActions": {},
+        "reasoningPolicy": null,
+        "enabledRuleIds": [
+          "pattern/explosives",
+          "pattern/weapons_firearms",
+          "pattern/weapons_other",
+          "pattern/violence_threats",
+          "pattern/terrorism",
+          "pattern/self_harm_suicide",
+          "pattern/illegal_activities",
+          "pattern/harassment_hate"
+        ],
+        "ruleOrder": [
+          "pattern/explosives",
+          "pattern/weapons_firearms",
+          "pattern/weapons_other",
+          "pattern/violence_threats",
+          "pattern/terrorism",
+          "pattern/self_harm_suicide",
+          "pattern/illegal_activities",
+          "pattern/harassment_hate"
+        ],
+        "testCaseOverrides": {
+          "local-risk-content-terms/accept/terrorism/input": {
+            "sourcePolicyVersion": "1.0.0",
+            "reason": "The composed safety Policy blocks this harmful sample before keyword redaction. Assert the blocking Rule and the original risk-term detection, rather than the isolated Transform decision.",
+            "expectedDecision": "block",
+            "expectedMatches": [
+              {
+                "policyId": "content-safety-local",
+                "ruleId": "category/harmful_violence"
+              },
+              {
+                "policyId": "risk-content-terms",
+                "ruleId": "pattern/terrorism"
+              }
+            ]
+          },
+          "local-risk-content-terms/accept/terrorism/output": {
+            "sourcePolicyVersion": "1.0.0",
+            "reason": "The composed safety Policy blocks this harmful sample before keyword redaction. Assert the blocking Rule and the original risk-term detection, rather than the isolated Transform decision.",
+            "expectedDecision": "block",
+            "expectedMatches": [
+              {
+                "policyId": "content-safety-local",
+                "ruleId": "category/harmful_violence"
+              },
+              {
+                "policyId": "risk-content-terms",
+                "ruleId": "pattern/terrorism"
+              }
+            ]
+          },
+          "local-risk-content-terms/accept/self_harm_suicide/input": {
+            "sourcePolicyVersion": "1.0.0",
+            "reason": "The composed safety Policy blocks this harmful sample before keyword redaction. Assert the blocking Rule and the original risk-term detection, rather than the isolated Transform decision.",
+            "expectedDecision": "block",
+            "expectedMatches": [
+              {
+                "policyId": "content-safety-local",
+                "ruleId": "category/harmful_self_harm"
+              },
+              {
+                "policyId": "risk-content-terms",
+                "ruleId": "pattern/self_harm_suicide"
+              }
+            ]
+          },
+          "local-risk-content-terms/accept/self_harm_suicide/output": {
+            "sourcePolicyVersion": "1.0.0",
+            "reason": "The composed safety Policy blocks this harmful sample before keyword redaction. Assert the blocking Rule and the original risk-term detection, rather than the isolated Transform decision.",
+            "expectedDecision": "block",
+            "expectedMatches": [
+              {
+                "policyId": "content-safety-local",
+                "ruleId": "category/harmful_self_harm"
+              },
+              {
+                "policyId": "risk-content-terms",
+                "ruleId": "pattern/self_harm_suicide"
+              }
+            ]
+          },
+          "local-risk-content-terms/pattern-matching/accept/terrorism": {
+            "sourcePolicyVersion": "1.0.0",
+            "reason": "The composed safety Policy blocks this harmful sample before keyword redaction. Assert the blocking Rule and the original risk-term detection, rather than the isolated Transform decision.",
+            "expectedDecision": "block",
+            "expectedMatches": [
+              {
+                "policyId": "content-safety-local",
+                "ruleId": "category/harmful_violence"
+              },
+              {
+                "policyId": "risk-content-terms",
+                "ruleId": "pattern/terrorism"
+              }
+            ]
+          },
+          "local-risk-content-terms/pattern-matching/accept/self_harm_suicide": {
+            "sourcePolicyVersion": "1.0.0",
+            "reason": "The composed safety Policy blocks this harmful sample before keyword redaction. Assert the blocking Rule and the original risk-term detection, rather than the isolated Transform decision.",
+            "expectedDecision": "block",
+            "expectedMatches": [
+              {
+                "policyId": "content-safety-local",
+                "ruleId": "category/harmful_self_harm"
+              },
+              {
+                "policyId": "risk-content-terms",
+                "ruleId": "pattern/self_harm_suicide"
+              }
+            ]
+          },
+          "local-risk-content-terms/pattern-matching/accept/terrorism/output": {
+            "sourcePolicyVersion": "1.0.0",
+            "reason": "The composed safety Policy blocks this harmful sample before keyword redaction. Assert the blocking Rule and the original risk-term detection, rather than the isolated Transform decision.",
+            "expectedDecision": "block",
+            "expectedMatches": [
+              {
+                "policyId": "content-safety-local",
+                "ruleId": "category/harmful_violence"
+              },
+              {
+                "policyId": "risk-content-terms",
+                "ruleId": "pattern/terrorism"
+              }
+            ]
+          },
+          "local-risk-content-terms/pattern-matching/accept/self_harm_suicide/output": {
+            "sourcePolicyVersion": "1.0.0",
+            "reason": "The composed safety Policy blocks this harmful sample before keyword redaction. Assert the blocking Rule and the original risk-term detection, rather than the isolated Transform decision.",
+            "expectedDecision": "block",
+            "expectedMatches": [
+              {
+                "policyId": "content-safety-local",
+                "ruleId": "category/harmful_self_harm"
+              },
+              {
+                "policyId": "risk-content-terms",
+                "ruleId": "pattern/self_harm_suicide"
+              }
+            ]
+          }
+        }
       }
     ],
     "parameterPacks": [],
@@ -3389,6 +5512,128 @@ export const protectionPresets: readonly ProtectionPreset[] = [
     },
     "suggestedTopics": [],
     "optionalPolicyIds": [],
-    "limitations": []
+    "limitations": [],
+    "testExclusions": [
+      {
+        "policyId": "payment-data",
+        "policyVersion": "1.0.0",
+        "sourceCaseId": "local-payment-data/rule-financial-pii/credit_card-acceptance/input",
+        "reason": "Duplicate Visa fixture: the specific Visa Rule redacts this value before the generic credit-card fallback. Keep the generic detector acceptance in isolated Policy tests."
+      },
+      {
+        "policyId": "payment-data",
+        "policyVersion": "1.0.0",
+        "sourceCaseId": "local-payment-data/rule-financial-pii/credit_card-acceptance/output",
+        "reason": "Duplicate Visa fixture: the specific Visa Rule redacts this value before the generic credit-card fallback. Keep the generic detector acceptance in isolated Policy tests."
+      },
+      {
+        "policyId": "payment-data",
+        "policyVersion": "1.0.0",
+        "sourceCaseId": "local-payment-data/advanced-au-pii-protection/rule-financial-pii/credit_card-acceptance",
+        "reason": "Duplicate Visa fixture: the specific Visa Rule redacts this value before the generic credit-card fallback. Keep the generic detector acceptance in isolated Policy tests."
+      },
+      {
+        "policyId": "payment-data",
+        "policyVersion": "1.0.0",
+        "sourceCaseId": "local-payment-data/baseline-pii-protection/rule-financial-pii/credit_card-acceptance",
+        "reason": "Duplicate Visa fixture: the specific Visa Rule redacts this value before the generic credit-card fallback. Keep the generic detector acceptance in isolated Policy tests."
+      },
+      {
+        "policyId": "payment-data",
+        "policyVersion": "1.0.0",
+        "sourceCaseId": "local-payment-data/pattern-matching/accept/credit_card",
+        "reason": "Duplicate Visa fixture: the specific Visa Rule redacts this value before the generic credit-card fallback. Keep the generic detector acceptance in isolated Policy tests."
+      },
+      {
+        "policyId": "payment-data",
+        "policyVersion": "1.0.0",
+        "sourceCaseId": "local-payment-data/pattern-matching/accept/credit_card/output",
+        "reason": "Duplicate Visa fixture: the specific Visa Rule redacts this value before the generic credit-card fallback. Keep the generic detector acceptance in isolated Policy tests."
+      },
+      {
+        "policyId": "payment-data",
+        "policyVersion": "1.0.0",
+        "sourceCaseId": "local-payment-data/pdpa-singapore/rule-sg-pdpa-financial-data/credit_card-acceptance",
+        "reason": "Duplicate Visa fixture: the specific Visa Rule redacts this value before the generic credit-card fallback. Keep the generic detector acceptance in isolated Policy tests."
+      },
+      {
+        "policyId": "payment-data",
+        "policyVersion": "1.0.0",
+        "sourceCaseId": "local-payment-data/uae-regulatory-compliance/rule-uae-data-protection-pii/credit_card-acceptance",
+        "reason": "Duplicate Visa fixture: the specific Visa Rule redacts this value before the generic credit-card fallback. Keep the generic detector acceptance in isolated Policy tests."
+      },
+      {
+        "policyId": "identity-documents",
+        "policyVersion": "1.0.1",
+        "sourceCaseId": "local-government-identifiers/accept/au_tfn/input",
+        "reason": "Duplicate TFN detector: au-pii-tax-identifiers/au_tfn owns this identical span in the combined Profile. Keep the alias acceptance in isolated Policy tests."
+      },
+      {
+        "policyId": "identity-documents",
+        "policyVersion": "1.0.1",
+        "sourceCaseId": "local-government-identifiers/accept/au_tfn/output",
+        "reason": "Duplicate TFN detector: au-pii-tax-identifiers/au_tfn owns this identical span in the combined Profile. Keep the alias acceptance in isolated Policy tests."
+      },
+      {
+        "policyId": "identity-documents",
+        "policyVersion": "1.0.1",
+        "sourceCaseId": "local-government-identifiers/pattern-matching/accept/au_tfn",
+        "reason": "Duplicate TFN detector: au-pii-tax-identifiers/au_tfn owns this identical span in the combined Profile. Keep the alias acceptance in isolated Policy tests."
+      },
+      {
+        "policyId": "identity-documents",
+        "policyVersion": "1.0.1",
+        "sourceCaseId": "local-government-identifiers/pattern-matching/accept/au_tfn/output",
+        "reason": "Duplicate TFN detector: au-pii-tax-identifiers/au_tfn owns this identical span in the combined Profile. Keep the alias acceptance in isolated Policy tests."
+      },
+      {
+        "policyId": "identity-documents",
+        "policyVersion": "1.0.1",
+        "sourceCaseId": "local-passports/advanced-au-pii-protection/rule-international-pii-identifiers/passport_uk-acceptance",
+        "reason": "The bare nine-digit fixture is shared with the US passport format. It cannot assert both country-specific Rule identities after the first redaction; retain isolated Policy acceptance."
+      },
+      {
+        "policyId": "identity-documents",
+        "policyVersion": "1.0.1",
+        "sourceCaseId": "local-passports/advanced-au-pii-protection/rule-international-pii-identifiers/passport_japan-acceptance",
+        "reason": "The bare two-letter/seven-digit fixture overlaps the Netherlands passport format. Retain the country-specific assertion in isolated Policy tests."
+      },
+      {
+        "policyId": "identity-documents",
+        "policyVersion": "1.0.1",
+        "sourceCaseId": "local-passports/pattern-matching/accept/passport_uk",
+        "reason": "The bare nine-digit fixture is shared with the US passport format. It cannot assert both country-specific Rule identities after the first redaction; retain isolated Policy acceptance."
+      },
+      {
+        "policyId": "identity-documents",
+        "policyVersion": "1.0.1",
+        "sourceCaseId": "local-passports/pattern-matching/accept/passport_australia",
+        "reason": "The bare letter/seven-digit fixture overlaps the India passport format. Retain the country-specific assertion in isolated Policy tests."
+      },
+      {
+        "policyId": "identity-documents",
+        "policyVersion": "1.0.1",
+        "sourceCaseId": "local-passports/pattern-matching/accept/passport_japan",
+        "reason": "The bare two-letter/seven-digit fixture overlaps the Netherlands passport format. Retain the country-specific assertion in isolated Policy tests."
+      },
+      {
+        "policyId": "identity-documents",
+        "policyVersion": "1.0.1",
+        "sourceCaseId": "local-passports/pattern-matching/accept/passport_uk/output",
+        "reason": "The bare nine-digit fixture is shared with the US passport format. It cannot assert both country-specific Rule identities after the first redaction; retain isolated Policy acceptance."
+      },
+      {
+        "policyId": "identity-documents",
+        "policyVersion": "1.0.1",
+        "sourceCaseId": "local-passports/pattern-matching/accept/passport_australia/output",
+        "reason": "The bare letter/seven-digit fixture overlaps the India passport format. Retain the country-specific assertion in isolated Policy tests."
+      },
+      {
+        "policyId": "identity-documents",
+        "policyVersion": "1.0.1",
+        "sourceCaseId": "local-passports/pattern-matching/accept/passport_japan/output",
+        "reason": "The bare two-letter/seven-digit fixture overlaps the Netherlands passport format. Retain the country-specific assertion in isolated Policy tests."
+      }
+    ]
   }
 ] as const;

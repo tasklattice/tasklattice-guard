@@ -9,6 +9,9 @@ import { loadConfig } from "../config.js";
 import { ControlPlaneService } from "./control-plane.js";
 import { ProjectService } from "./projects.js";
 import { runWithProjectContext } from "./project-context.js";
+import { protectionPresets } from "../../shared/protection-presets.js";
+import { PolicyCatalog } from "../policy-catalog/catalog.js";
+import { profileDraft } from "../policy-catalog/presets.js";
 import { createAuth } from "../auth.js";
 import { BootstrapAccountSynchronizer } from "../bootstrap.js";
 
@@ -50,11 +53,30 @@ describe.skipIf(!url)("Project Default Guardrail provisioning", () => {
       const guardrail = await inProject(row.project_id, () => service.getGuardrail(row.id));
       expect(guardrail.readiness).toBe("ready");
       expect(guardrail.versions).toHaveLength(1);
-      expect(guardrail.versions[0]!.testSuiteCount).toBe(746);
+      expect(guardrail.versions[0]!.testSuiteCount).toBe(726);
       const artifact = guardrail.versions[0]!.artifact!;
       expect(verify(null, Buffer.from(artifact.checksum, "utf8"), keys.publicKey, Buffer.from(artifact.signature, "base64"))).toBe(true);
     }
     await expect(inProject("projectA", () => service.getGuardrail(rows[1].id))).rejects.toMatchObject({ code: "not_found" });
+  });
+
+  it("copies reviewed Profile exclusions on creation and preserves later scope edits", async () => {
+    const profile = protectionPresets.find(p => p.id === "default")!;
+    const draft = profileDraft(profile, PolicyCatalog.load(resolve("../runner/toolkit/policy_library/assets")).list());
+    const created = await inProject("projectA", () => service.createGuardrail({ name: "Reviewed Profile", draftConfig: draft, runtimeProfile: "auto", actorId: "admin" }));
+    const [row] = (await database.pool.query("SELECT excluded_test_case_ids FROM guardrail WHERE id=$1", [created.id])).rows;
+    expect(row.excluded_test_case_ids).toHaveLength(20);
+    const [audit] = (await database.pool.query("SELECT detail FROM audit_event WHERE resource_id=$1 AND kind='guardrail.created'", [created.id])).rows;
+    expect(audit.detail.profileTestExclusions).toEqual(profile.testExclusions);
+    expect(audit.detail.excludedTestCaseIds).toEqual(row.excluded_test_case_ids);
+    // A saved Guardrail owns its scope; a restart must not reapply Profile defaults.
+    await database.pool.query("UPDATE guardrail SET excluded_test_case_ids='[]' WHERE id=$1", [created.id]);
+    await service.initializeProjects();
+    expect((await database.pool.query("SELECT excluded_test_case_ids FROM guardrail WHERE id=$1", [created.id])).rows[0].excluded_test_case_ids).toEqual([]);
+    await inProject("projectA", () => service.softDeleteGuardrail({ id: created.id, actorId: "admin", reason: "Test cleanup", confirmRecentTraffic: false }));
+    // Keep the shared fixture's resource inventory unchanged for following tests.
+    await database.pool.query("DELETE FROM guardrail_test_case WHERE guardrail_id=$1", [created.id]);
+    await database.pool.query("DELETE FROM guardrail WHERE id=$1", [created.id]);
   });
 
   it("creates a new Project and its published Default in one transaction", async () => {

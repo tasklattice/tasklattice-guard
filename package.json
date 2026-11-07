@@ -8,7 +8,7 @@
   },
   "scripts": {
     "policies:build": ".venv/bin/python scripts/policy_sources.py build",
-    "policies:check": ".venv/bin/python scripts/policy_sources.py check",
+    "policies:check": ".venv/bin/python scripts/policy_sources.py check && .venv/bin/python scripts/generate_profiles.py --check",
     "policies:validate": ".venv/bin/python scripts/policy_sources.py validate",
     "policies:test": ".venv/bin/python scripts/policy_sources.py test",
     "policies:import": ".venv/bin/python scripts/policy_sources.py import",
@@ -39,7 +39,7 @@
     "proto:check": ".venv/bin/python scripts/generate_control_protocol.py --check",
     "openapi:generate": "npm run openapi:generate --prefix controller",
     "openapi:check": "npm run openapi:check --prefix controller",
-    "generate": "npm run proto:generate && .venv/bin/python scripts/generate_enforcement_action_contract.py && .venv/bin/python scripts/policy_sources.py build && npm run generate:default-baseline",
+    "generate": "npm run proto:generate && .venv/bin/python scripts/generate_enforcement_action_contract.py && .venv/bin/python scripts/policy_sources.py build && .venv/bin/python scripts/generate_profiles.py && npm run generate:default-baseline",
     "generate:default-baseline": ".venv/bin/python scripts/generate_default_baseline.py",
     "images:build:dev": "node scripts/project-commands.mjs images",
     "images:build:dev:controller": "node scripts/project-commands.mjs images controller",

@@ -2,7 +2,8 @@ export const protectionEn = {
   topicRules: { commonRestrictions: "Common topic restrictions", commonRestrictionsHint: "Optional semantic restrictions for this Guardrail. Review and edit the topics before applying. Existing entries are retained.", addCommonRestrictions: "Add to denylist", allow: "Allowlist Rule", deny: "Denylist Rule", independent: "Enable each Rule independently. Denylist matches always take priority. Keep at least one Rule enabled, or remove this Policy.", denyHint: "Reject requests matching any denied topic, even if they also match the Allowlist.", allowHint: "Define allowed topics and choose how to handle unmatched requests.", disabled: "Disabled. This Rule is not executed; its configuration is retained for reuse.", helper: "Generate Rule configuration from intent or documents", helperHint: "Describe what is allowed and what is denied. AI suggestions only fill this Policy’s lists when applied; Rule switches and other Policies stay unchanged." },
   validationReadiness: {
     blockedTitle: "Draft cannot run tests: model dependencies are not ready",
-    warningTitle: "Draft dependency check needs attention",
+    warningTitle: "Could not check draft model dependencies",
+    unconfirmedPolicies: "Model dependencies could not be confirmed for these Policies: {{names}}.",
     checking: "Checking draft model dependencies…",
     unavailable: "Dependency status could not be verified. Retry before running tests; this does not mean the model is missing.",
     topicFix: "Assign and apply an input Topic Control model in Model settings, or remove the Policy and save. An applied model can run tests even if its earlier capability test failed.",
@@ -126,7 +127,8 @@ export const protectionZh = {
   topicRules: { commonRestrictions: "常用话题限制", commonRestrictionsHint: "当前 Guardrail 可选用的语义话题限制。应用前请检查并按业务调整，已有条目会保留。", addCommonRestrictions: "添加到黑名单", allow: "白名单 Rule", deny: "黑名单 Rule", independent: "两条 Rule 可独立启用，黑名单命中始终优先。至少启用一条 Rule，或移除这条 Policy。", denyHint: "命中任一拒绝话题时直接阻止，即使同时命中白名单。", allowHint: "定义允许的话题，并选择如何处理未匹配的请求。", disabled: "已关闭。不会执行此 Rule，保留配置供下次启用。", helper: "从意图或文档生成 Rule 配置", helperHint: "描述允许什么、拒绝什么。应用 AI 建议只填充当前 Policy 的名单，不会改变 Rule 开关或其他 Policy。" },
   validationReadiness: {
     blockedTitle: "当前草稿无法运行测试：模型依赖未就绪",
-    warningTitle: "当前草稿的依赖检查需要注意",
+    warningTitle: "无法检查草稿的模型依赖",
+    unconfirmedPolicies: "无法确认以下 Policy 的模型依赖：{{names}}。",
     checking: "正在检查草稿的模型依赖…",
     unavailable: "无法确认依赖状态，请重新检查后再运行测试。这不代表模型未配置。",
     topicFix: "请在模型设置中绑定并应用输入方向的话题控制模型，或者移除这条 Policy 后保存。模型已生效后，即使此前能力测试失败，也可以运行 Guardrail 测试。",

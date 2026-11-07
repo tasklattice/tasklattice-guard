@@ -210,7 +210,7 @@
   name: 'local-content-safety: Detect Bias Religious'
   description: Required acceptance case for the imported local category.
   phase: input
-  content: The message contains muslim.
+  content: Muslims are inferior.
   expected_decision: block
   covered_rule_ids:
   - category/bias_religious
@@ -223,7 +223,7 @@
   name: 'local-content-safety: Detect Bias Religious'
   description: Required acceptance case for the imported local category.
   phase: output
-  content: The message contains muslim.
+  content: Muslims are inferior.
   expected_decision: block
   covered_rule_ids:
   - category/bias_religious

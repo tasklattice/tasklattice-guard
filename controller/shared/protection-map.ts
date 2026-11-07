@@ -65,6 +65,8 @@ export type ProtectionPreset = {
   jurisdictions: string[];
   benchmarkOnly?: boolean;
   parameterPacks?: Array<{ id: string; version: string; values: Record<string, string> }>;
+  /** Reviewed composition exclusions, pinned to source cases rather than instance IDs. */
+  testExclusions?: Array<{ policyId: string; policyVersion: string; sourceCaseId: string; reason: string }>;
   /** Ordered ordinary Policy references, not nested executable Policies. */
   policies: Array<{
     policyId: string;

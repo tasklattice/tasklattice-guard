@@ -325,43 +325,28 @@ export async function validateProfiles(api: Api, flags: Flags, env: NodeJS.Proce
       draftConfig: { ...profile.draftSettings, profileOrigin: { id: profile.id, version: profile.version }, policyBindings: profile.policyBindings },
       runtimeProfile: 'auto',
     });
-    let version = '';
-    let current: any = null;
-    let finalRunId = '';
-    const cases: any[] = [];
-    const excluded: any[] = [];
-    for (let attempt = 0; attempt < 4; attempt += 1) {
-      const fresh = await api(`/api/v1/guardrails/${id(guardrail.id)}`);
-      const published = await api(`/api/v1/guardrails/${id(guardrail.id)}/publish`, 'POST', { expectedDraftRevision: fresh.draftRevision });
-      version = published.version;
-      const run = await api(`/api/v1/guardrails/${id(guardrail.id)}/versions/${id(version)}/test-runs`, 'POST', { testModelRules });
-      finalRunId = run.id;
-      const deadline = Date.now() + seconds * 1000;
-      current = run;
-      while (Date.now() < deadline && ['queued', 'running'].includes(current.status)) {
-        await delay(2_000);
-        current = await api(`/api/v1/test-runs/${id(run.id)}`);
-      }
-      if (['queued', 'running'].includes(current.status)) throw new Error(`Validation ${run.id} did not finish within ${seconds}s`);
-      cases.length = 0;
-      let cursor: string | undefined;
-      do {
-        const query = new URLSearchParams({ filter: 'all', limit: '50', ...(cursor ? { cursor } : {}) });
-        const page = await api(`/api/v1/test-runs/${id(run.id)}/cases?${query}`);
-        cases.push(...(page.items ?? []));
-        cursor = page.nextCursor ?? undefined;
-      } while (cursor);
-      if (current.status === 'passed') break;
-      const failedCases = cases.filter((item: any) => !item.passed && !item.skipped && item.caseId);
-      if (!failedCases.length) break;
-      // Mutually exclusive acceptance cases cannot both be true for one request.
-      // Exclude them through the Guardrail test-scope API, with its audit trail,
-      // while keeping every Policy and Rule enabled on the Guardrail.
-      for (const item of failedCases) {
-        await api(`/api/v1/guardrails/${id(guardrail.id)}/test-scope`, 'PATCH', { caseId: item.caseId, excluded: true });
-        excluded.push({ caseId: item.caseId, name: item.name, policyId: item.policyId, sourceCaseId: item.sourceCaseId, expectedDecision: item.expectedDecision, actualDecision: item.actualDecision, reason: item.reason });
-      }
+    const excluded = profile.testExclusions ?? [];
+    const fresh = await api(`/api/v1/guardrails/${id(guardrail.id)}`);
+    const published = await api(`/api/v1/guardrails/${id(guardrail.id)}/publish`, 'POST', { expectedDraftRevision: fresh.draftRevision });
+    const version = published.version;
+    const run = await api(`/api/v1/guardrails/${id(guardrail.id)}/versions/${id(version)}/test-runs`, 'POST', { testModelRules });
+    const finalRunId = run.id;
+    const deadline = Date.now() + seconds * 1000;
+    let current = run;
+    while (Date.now() < deadline && ['queued', 'running'].includes(current.status)) {
+      await delay(2_000);
+      current = await api(`/api/v1/test-runs/${id(run.id)}`);
     }
+    if (['queued', 'running'].includes(current.status)) throw new Error(`Validation ${run.id} did not finish within ${seconds}s`);
+    const cases: any[] = [];
+    let cursor: string | undefined;
+    do {
+      const query = new URLSearchParams({ filter: 'all', limit: '50', ...(cursor ? { cursor } : {}) });
+      const page = await api(`/api/v1/test-runs/${id(run.id)}/cases?${query}`);
+      cases.push(...(page.items ?? []));
+      cursor = page.nextCursor ?? undefined;
+    } while (cursor);
+    // Report failures without changing the reviewed Profile scope.
     const report = { profile, guardrailId: guardrail.id, guardrailVersion: version, run: current, cases, excludedCases: excluded };
     await writeFile(resolve(out, `${profile.id}.json`), `${JSON.stringify(report, null, 2)}\n`, { mode: 0o600 });
     summary.profiles.push({ id: profile.id, guardrailId: guardrail.id, version, runId: finalRunId, status: current.status, metrics: current.metrics, excludedCaseCount: excluded.length, report: `${profile.id}.json` });

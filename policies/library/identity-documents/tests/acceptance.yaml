@@ -31,7 +31,7 @@
   description: Proves that the published regex implementation for ABN (Australian
     Business Number) activates this Rule.
   phase: input
-  content: 'Acceptance sample: 11 111 111 111'
+  content: 'Acceptance sample: 51 824 753 556'
   expected_decision: transform
   covered_rule_ids:
   - au-pii-tax-identifiers/au_abn
@@ -45,7 +45,7 @@
   description: Proves that the published regex implementation for ABN (Australian
     Business Number) activates this Rule.
   phase: output
-  content: 'Acceptance sample: 11 111 111 111'
+  content: 'Acceptance sample: 51 824 753 556'
   expected_decision: transform
   covered_rule_ids:
   - au-pii-tax-identifiers/au_abn
@@ -296,7 +296,7 @@
   name: 'local-government-identifiers: Detect ABN (Australian Business Number)'
   description: Required acceptance case for PII Patterns.
   phase: input
-  content: 'Acceptance sample: 11 111 111 111'
+  content: 'Acceptance sample: 51 824 753 556'
   expected_decision: transform
   covered_rule_ids:
   - au-pii-tax-identifiers/au_abn
@@ -309,7 +309,7 @@
   name: 'local-government-identifiers: Detect ABN (Australian Business Number)'
   description: Required acceptance case for PII Patterns.
   phase: output
-  content: 'Acceptance sample: 11 111 111 111'
+  content: 'Acceptance sample: 51 824 753 556'
   expected_decision: transform
   covered_rule_ids:
   - au-pii-tax-identifiers/au_abn
@@ -681,7 +681,7 @@
   description: Proves that the published regex implementation for ABN (Australian
     Business Number) activates this Rule.
   phase: input
-  content: 'Acceptance sample: 11 111 111 111'
+  content: 'Acceptance sample: 51 824 753 556'
   expected_decision: transform
   covered_rule_ids:
   - au-pii-tax-identifiers/au_abn
@@ -765,7 +765,7 @@
   description: Proves that the published regex implementation for ABN (Australian
     Business Number) activates this Rule.
   phase: input
-  content: 'Acceptance sample: 11 111 111 111'
+  content: 'Acceptance sample: 51 824 753 556'
   expected_decision: transform
   covered_rule_ids:
   - au-pii-tax-identifiers/au_abn
@@ -951,7 +951,7 @@
   name: 'local-government-identifiers: Detect ABN (Australian Business Number)'
   description: Required acceptance case for PII Patterns.
   phase: input
-  content: 'Acceptance sample: 11 111 111 111'
+  content: 'Acceptance sample: 51 824 753 556'
   expected_decision: transform
   covered_rule_ids:
   - au-pii-tax-identifiers/au_abn
@@ -1241,7 +1241,7 @@
   name: 'local-government-identifiers: Detect ABN (Australian Business Number)'
   description: Required acceptance case for PII Patterns.
   phase: output
-  content: 'Acceptance sample: 11 111 111 111'
+  content: 'Acceptance sample: 51 824 753 556'
   expected_decision: transform
   covered_rule_ids:
   - au-pii-tax-identifiers/au_abn

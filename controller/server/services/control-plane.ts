@@ -32,7 +32,7 @@ import { queryAuditEvents } from "./audit-events.js";
 import type { AuditQuery } from "../../shared/audit-query.js";
 import type { EventSeverity } from "../../shared/security-severity.js";
 import { readGuardrailProfiles } from "./guardrail-profiles.js";
-import { previewProtectionProfile, profileDraft } from "../policy-catalog/presets.js";
+import { previewProtectionProfile, profileDraft, profileExcludedCaseIds } from "../policy-catalog/presets.js";
 import { TrafficRoutingService } from "./traffic-routing.js";
 import { ProjectGroupRouting } from "./project-group-routing.js";
 import { ProjectGroupService } from "./project-groups.js";
@@ -816,8 +816,16 @@ export class ControlPlaneService {
     const [created] = await tx.insert(guardrails).values({ id, projectId: input.platformPreset ? null : projectOwnerForCreate(), name: input.name, draftConfig: input.draftConfig, runtimeProfile: input.runtimeProfile, creationKey: input.creationKey, creationDigest: input.creationDigest }).returning();
     if (!created) throw new Error("Guardrail creation did not return the stored resource.");
     await this.syncGeneratedTestCases(tx, id, input.draftConfig);
+    const origin = input.draftConfig.profileOrigin;
+    const profile = origin && (await readGuardrailProfiles(tx)).find(p => p.id === origin.id && p.version === origin.version);
+    if (origin && !profile) throw new ValidationError("The selected Profile version is unavailable. Reload the Profile before creating a Guardrail.");
+    if (profile) {
+      const cases = await tx.select().from(testCases).where(eq(testCases.guardrailId, id));
+      created.excludedTestCaseIds = profileExcludedCaseIds(profile, cases);
+      await tx.update(guardrails).set({ excludedTestCaseIds: created.excludedTestCaseIds }).where(eq(guardrails.id, id));
+    }
     await tx.insert(auditEvents).values({ id: randomUUID(), kind: "guardrail.created", actorId: input.actorId,
-      resourceType: "guardrail", resourceId: id, detail: { name: input.name, profileOrigin: input.draftConfig.profileOrigin } });
+      resourceType: "guardrail", resourceId: id, detail: { name: input.name, profileOrigin: origin, profileTestExclusions: profile?.testExclusions ?? [], excludedTestCaseIds: created.excludedTestCaseIds } });
     return created;
   }
 
@@ -2783,7 +2791,7 @@ export class ControlPlaneService {
     if (canonicalJson(planToWire(content.plan)) !== canonicalJson(planToWire(plan)))
       throw new Error("Deployment Profile does not match its bundled Artifact. Regenerate before release.");
     const cases = await tx.select().from(testCases).where(eq(testCases.guardrailId, guardrail.id));
-    const suite = freezeTestSuite(applyValidationOverrides(cases, draft));
+    const suite = freezeTestSuite(applyValidationOverrides(cases, draft).filter(test => !guardrail.excludedTestCaseIds.includes(test.id)));
     await this.publishCandidate(tx, guardrail, { id: null, guardrailVersion: content.guardrailVersion,
       sourceDraftRevision: guardrail.draftRevision, candidateArtifact: content, candidateDigest: artifactContentDigest(content),
       candidateInspection: guardrailInspection({ name: guardrail.name, runtimeProfile: guardrail.runtimeProfile, draftConfig: draft, catalog, programmablePolicies: [], testSuite: suite }),

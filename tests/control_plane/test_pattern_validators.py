@@ -124,3 +124,21 @@ async def test_custom_checksum_rule_executes_through_controller_and_nemo(tmp_pat
         tests.write_text(yaml.safe_dump(cases, allow_unicode=True))
     report = await run_packages([load_package(path)], registry(), ASSETS)
     assert report["summary"] == {"passed": 5, "failed": 0, "not_run": 0}, report
+
+
+@pytest.mark.parametrize("value, valid", [
+    ("51 824 753 556", True), ("51824753556", True),
+    ("51 824 753 557", False), ("11111111111", False),
+    ("33100000000", False), ("19900000000", False), ("５１８２４７５３５５６", False),
+])
+def test_modulus_checksum_distinguishes_abn_from_unrelated_eleven_digit_numbers(value, valid):
+    validators = parse_pattern_validators([{"type": "modulus_checksum", "weights": [10, 1, 3, 5, 7, 9, 11, 13, 15, 17, 19], "offset": -10, "modulus": 89}])
+    assert valid_pattern_candidate(value, validators) is valid
+
+
+@pytest.mark.parametrize("invalid", [
+    {"weights": []}, {"weights": [True]}, {"weights": [-1]}, {"modulus": 0}, {"modulus": True}, {"offset": "-10"},
+])
+def test_modulus_checksum_rejects_invalid_configuration(invalid):
+    with pytest.raises(ValueError):
+        parse_pattern_validators([{"type": "modulus_checksum", "weights": [1], "modulus": 89, **invalid}])

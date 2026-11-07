@@ -16,6 +16,12 @@ describe("target Profile package", () => {
     expect(packageValue.policies.every(item => item.checksum.length === 64 && item.rules.length > 0)).toBe(true);
   });
 
+  it("rejects stale scope references even when Policy checksums are valid", () => {
+    const value = exportProfilePackage(profile, policies);
+    value.profile.testExclusions![0]!.policyVersion = "9.9.9";
+    expect(() => importProfilePackage(value, policies)).toThrow("invalid test exclusion");
+  });
+
   it("rejects a tampered Policy checksum or unknown Policy", () => {
     const packageValue = exportProfilePackage(profile, policies);
     const tampered = structuredClone(packageValue);

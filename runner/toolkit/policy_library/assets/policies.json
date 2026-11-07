@@ -3992,7 +3992,7 @@
     "name": "Contact Data",
     "description": "Target taxonomy Policy: Contact Data.",
     "source": "built_in",
-    "version": "1.0.0",
+    "version": "1.0.1",
     "tags": [
       {
         "namespace": "protection",
@@ -4518,7 +4518,7 @@
         "name": "local-contact-data: Trigger Brazilian Phone Number (Landline)",
         "description": "Proves that the published regex implementation for Brazilian Phone Number (Landline) activates this Rule.",
         "phase": "input",
-        "content": "Acceptance sample: (11) 91111-1111",
+        "content": "Acceptance sample: (11) 2345-6789",
         "expected_decision": "transform",
         "covered_rule_ids": [
           "pattern/br_phone_landline"
@@ -4668,7 +4668,7 @@
         "name": "local-contact-data: Detect Brazilian Phone Number (Landline)",
         "description": "Required acceptance case for Brazilian PII Patterns.",
         "phase": "input",
-        "content": "Acceptance sample: (11) 91111-1111",
+        "content": "Acceptance sample: (11) 2345-6789",
         "expected_decision": "transform",
         "covered_rule_ids": [
           "pattern/br_phone_landline"
@@ -4848,7 +4848,7 @@
         "name": "local-contact-data: Detect Brazilian Phone Number (Landline)",
         "description": "Required acceptance case for Brazilian PII Patterns.",
         "phase": "output",
-        "content": "Acceptance sample: (11) 91111-1111",
+        "content": "Acceptance sample: (11) 2345-6789",
         "expected_decision": "transform",
         "covered_rule_ids": [
           "pattern/br_phone_landline"
@@ -5756,7 +5756,7 @@
         "name": "Brazilian Phone Number (Landline)",
         "description": "Detects Brazilian landline phone numbers with optional area code",
         "rule_id": "pattern/br_phone_landline",
-        "rule_version": "1.0.0",
+        "rule_version": "1.0.1",
         "detector": {
           "ref": "text/regex",
           "version": "1.0.0"
@@ -5776,7 +5776,7 @@
           "binding_id": "local-contact-data",
           "implementation_rule_id": "pattern/br_phone_landline"
         },
-        "expression": "(?<!\\w)(?:\\(?\\d{2}\\)?\\s?)?(?:9\\d{4}|\\d{4})-?\\d{4}(?!\\w)",
+        "expression": "(?<![\\w(])(?:\\(?\\d{2}\\)?\\s?)?[2-5]\\d{3}-?\\d{4}(?!\\w)",
         "taxonomy_ids": [
           "TALI-PRIVACY-PII"
         ],
@@ -6057,7 +6057,7 @@
         "id": "contact-data",
         "name": "Contact Data",
         "description": "Target taxonomy Policy: Contact Data.",
-        "version": "1.0.0",
+        "version": "1.0.1",
         "tags": [
           {
             "namespace": "protection",
@@ -6535,7 +6535,7 @@
         },
         {
           "id": "pattern/br_phone_landline",
-          "version": "1.0.0",
+          "version": "1.0.1",
           "name": "Brazilian Phone Number (Landline)",
           "description": "Detects Brazilian landline phone numbers with optional area code",
           "stages": [
@@ -6546,7 +6546,7 @@
             "ref": "text/regex",
             "version": "1.0.0",
             "parameters": {
-              "expression": "(?<!\\w)(?:\\(?\\d{2}\\)?\\s?)?(?:9\\d{4}|\\d{4})-?\\d{4}(?!\\w)"
+              "expression": "(?<![\\w(])(?:\\(?\\d{2}\\)?\\s?)?[2-5]\\d{3}-?\\d{4}(?!\\w)"
             }
           },
           "on_match": {
@@ -7347,7 +7347,7 @@
           "name": "local-contact-data: Trigger Brazilian Phone Number (Landline)",
           "description": "Proves that the published regex implementation for Brazilian Phone Number (Landline) activates this Rule.",
           "phase": "input",
-          "content": "Acceptance sample: (11) 91111-1111",
+          "content": "Acceptance sample: (11) 2345-6789",
           "expected_decision": "transform",
           "covered_rule_ids": [
             "pattern/br_phone_landline"
@@ -7527,7 +7527,7 @@
           "name": "local-contact-data: Detect Brazilian Phone Number (Landline)",
           "description": "Required acceptance case for Brazilian PII Patterns.",
           "phase": "input",
-          "content": "Acceptance sample: (11) 91111-1111",
+          "content": "Acceptance sample: (11) 2345-6789",
           "expected_decision": "transform",
           "covered_rule_ids": [
             "pattern/br_phone_landline"
@@ -7743,7 +7743,7 @@
           "name": "local-contact-data: Detect Brazilian Phone Number (Landline)",
           "description": "Required acceptance case for Brazilian PII Patterns.",
           "phase": "output",
-          "content": "Acceptance sample: (11) 91111-1111",
+          "content": "Acceptance sample: (11) 2345-6789",
           "expected_decision": "transform",
           "covered_rule_ids": [
             "pattern/br_phone_landline"
@@ -9166,7 +9166,7 @@
     "name": "Content Safety (Local)",
     "description": "Target taxonomy Policy: Content Safety (Local).",
     "source": "built_in",
-    "version": "1.0.0",
+    "version": "1.0.1",
     "tags": [
       {
         "namespace": "protection",
@@ -9440,7 +9440,7 @@
         "name": "local-content-safety: Detect Bias Religious",
         "description": "Required acceptance case for the imported local category.",
         "phase": "input",
-        "content": "The message contains muslim.",
+        "content": "Muslims are inferior.",
         "expected_decision": "block",
         "covered_rule_ids": [
           "category/bias_religious"
@@ -9455,7 +9455,7 @@
         "name": "local-content-safety: Detect Bias Religious",
         "description": "Required acceptance case for the imported local category.",
         "phase": "output",
-        "content": "The message contains muslim.",
+        "content": "Muslims are inferior.",
         "expected_decision": "block",
         "covered_rule_ids": [
           "category/bias_religious"
@@ -12450,7 +12450,7 @@
         "name": "Harmful Illegal Weapons",
         "description": "Detects content related to illegal weapons, explosives, and dangerous materials",
         "rule_id": "category/harmful_illegal_weapons",
-        "rule_version": "1.0.0",
+        "rule_version": "1.0.1",
         "detector": {
           "ref": "text/conditions",
           "version": "1.0.0"
@@ -12472,168 +12472,146 @@
         },
         "detector_options": {
           "match": {
-            "all": [
-              {
-                "not": {
-                  "contains": [
-                    "bomb disposal",
-                    "bomb squad",
-                    "explosive ordnance disposal",
-                    "eod",
-                    "historical",
-                    "educational",
-                    "safety training",
-                    "weapons history",
-                    "weapons education",
-                    "explosive safety",
-                    "bomb detection",
-                    "bomb threat",
-                    "report bomb",
-                    "reporting bomb"
+            "within_sentence": {
+              "all": [
+                {
+                  "keywords": [
+                    "make a bomb",
+                    "build a bomb",
+                    "create explosive",
+                    "homemade bomb",
+                    "pipe bomb",
+                    "pressure cooker bomb",
+                    "fertilizer bomb",
+                    "car bomb",
+                    "suicide bomb",
+                    "explosive device",
+                    "bomb instructions",
+                    "bomb recipe",
+                    "bomb tutorial",
+                    "homemade explosive",
+                    "illegal firearm",
+                    "unregistered gun",
+                    "make poison",
+                    "create poison",
+                    "homemade poison",
+                    "lethal poison",
+                    "chemical weapon",
+                    "biological weapon",
+                    "ricin",
+                    "cyanide poison",
+                    "how to make a bomb",
+                    "how to build a bomb",
+                    "how to create explosive",
+                    "bomb making instructions",
+                    "bomb making tutorial",
+                    "homemade explosive recipe",
+                    "how to make poison",
+                    "how to create poison",
+                    "undetectable poison",
+                    "untraceable weapon",
+                    "3d print gun",
+                    "3d printed gun",
+                    "3d printing gun",
+                    "make bomb",
+                    "making bomb",
+                    "build explosive",
+                    "building explosive",
+                    "create weapon",
+                    "creating weapon",
+                    "manufacture explosive",
+                    "manufacturing explosive",
+                    "manufactured explosive",
+                    "construct bomb",
+                    "constructing bomb",
+                    "constructed bomb",
+                    "fertilizer explosive",
+                    "pressure cooker explosive",
+                    "pipe explosive",
+                    "homemade weapon",
+                    "ingredients bomb",
+                    "bomb ingredients",
+                    "instructions explosive",
+                    "explosive instructions",
+                    "improvised explosive device",
+                    "ied instructions",
+                    "make ied",
+                    "build ied",
+                    "nail bomb",
+                    "shrapnel bomb",
+                    "dirty bomb",
+                    "radiological weapon",
+                    "nuclear weapon",
+                    "molotov cocktail",
+                    "incendiary device",
+                    "fire bomb",
+                    "napalm recipe",
+                    "thermite recipe",
+                    "ammonium nitrate bomb",
+                    "anfo explosive",
+                    "c4 explosive",
+                    "semtex explosive",
+                    "tnt recipe",
+                    "dynamite recipe",
+                    "plastic explosive",
+                    "det cord",
+                    "detonator instructions",
+                    "remote detonator",
+                    "timer bomb",
+                    "time bomb",
+                    "letter bomb",
+                    "package bomb",
+                    "mail bomb",
+                    "anthrax weapon",
+                    "bioweapon",
+                    "weaponized anthrax",
+                    "weaponized smallpox",
+                    "nerve agent",
+                    "sarin gas",
+                    "vx gas",
+                    "mustard gas",
+                    "chlorine gas weapon",
+                    "poison gas",
+                    "ricin poison",
+                    "ricin extraction",
+                    "ricin recipe",
+                    "botulinum toxin weapon",
+                    "arsenic poison",
+                    "thallium poison",
+                    "polonium poison",
+                    "undetectable poison recipe",
+                    "untraceable poison",
+                    "silent weapon",
+                    "suppressor gun",
+                    "silencer gun",
+                    "homemade silencer",
+                    "homemade suppressor",
+                    "ghost gun",
+                    "unregistered weapon",
+                    "untraceable gun",
+                    "illegal gun",
+                    "black market gun",
+                    "black market weapons",
+                    "buy illegal gun",
+                    "buy illegal weapon",
+                    "automatic weapon conversion",
+                    "full auto conversion",
+                    "machine gun conversion",
+                    "bump stock",
+                    "binary trigger",
+                    "explosive ammunition",
+                    "armor piercing rounds",
+                    "cop killer bullets",
+                    "illegal ammunition"
                   ]
+                },
+                {
+                  "not": {
+                    "regex": "(?i)^\\s*(?:instructions|recipes|tutorials)\\s+(?:for|on)\\s+[^.!?]{1,100}\\s+(?:are|is)\\s+(?:prohibited|forbidden|banned)\\s*[.!?]?\\s*$"
+                  }
                 }
-              },
-              {
-                "keywords": [
-                  "make a bomb",
-                  "build a bomb",
-                  "create explosive",
-                  "homemade bomb",
-                  "pipe bomb",
-                  "pressure cooker bomb",
-                  "fertilizer bomb",
-                  "car bomb",
-                  "suicide bomb",
-                  "explosive device",
-                  "bomb instructions",
-                  "bomb recipe",
-                  "bomb tutorial",
-                  "homemade explosive",
-                  "illegal firearm",
-                  "unregistered gun",
-                  "make poison",
-                  "create poison",
-                  "homemade poison",
-                  "lethal poison",
-                  "chemical weapon",
-                  "biological weapon",
-                  "ricin",
-                  "cyanide poison",
-                  "how to make a bomb",
-                  "how to build a bomb",
-                  "how to create explosive",
-                  "bomb making instructions",
-                  "bomb making tutorial",
-                  "homemade explosive recipe",
-                  "how to make poison",
-                  "how to create poison",
-                  "undetectable poison",
-                  "untraceable weapon",
-                  "3d print gun",
-                  "3d printed gun",
-                  "3d printing gun",
-                  "make bomb",
-                  "making bomb",
-                  "build explosive",
-                  "building explosive",
-                  "create weapon",
-                  "creating weapon",
-                  "manufacture explosive",
-                  "manufacturing explosive",
-                  "manufactured explosive",
-                  "construct bomb",
-                  "constructing bomb",
-                  "constructed bomb",
-                  "fertilizer explosive",
-                  "pressure cooker explosive",
-                  "pipe explosive",
-                  "homemade weapon",
-                  "ingredients bomb",
-                  "bomb ingredients",
-                  "instructions explosive",
-                  "explosive instructions",
-                  "improvised explosive device",
-                  "ied instructions",
-                  "make ied",
-                  "build ied",
-                  "nail bomb",
-                  "shrapnel bomb",
-                  "dirty bomb",
-                  "radiological weapon",
-                  "nuclear weapon",
-                  "molotov cocktail",
-                  "incendiary device",
-                  "fire bomb",
-                  "napalm recipe",
-                  "thermite recipe",
-                  "ammonium nitrate bomb",
-                  "anfo explosive",
-                  "c4 explosive",
-                  "semtex explosive",
-                  "tnt recipe",
-                  "dynamite recipe",
-                  "plastic explosive",
-                  "det cord",
-                  "detonator instructions",
-                  "remote detonator",
-                  "timer bomb",
-                  "time bomb",
-                  "letter bomb",
-                  "package bomb",
-                  "mail bomb",
-                  "anthrax weapon",
-                  "bioweapon",
-                  "weaponized anthrax",
-                  "weaponized smallpox",
-                  "nerve agent",
-                  "sarin gas",
-                  "vx gas",
-                  "mustard gas",
-                  "chlorine gas weapon",
-                  "poison gas",
-                  "ricin poison",
-                  "ricin extraction",
-                  "ricin recipe",
-                  "botulinum toxin weapon",
-                  "arsenic poison",
-                  "thallium poison",
-                  "polonium poison",
-                  "undetectable poison recipe",
-                  "untraceable poison",
-                  "silent weapon",
-                  "suppressor gun",
-                  "silencer gun",
-                  "homemade silencer",
-                  "homemade suppressor",
-                  "ghost gun",
-                  "unregistered weapon",
-                  "untraceable gun",
-                  "illegal gun",
-                  "black market gun",
-                  "black market weapons",
-                  "buy illegal gun",
-                  "buy illegal weapon",
-                  "automatic weapon conversion",
-                  "full auto conversion",
-                  "machine gun conversion",
-                  "bump stock",
-                  "binary trigger",
-                  "explosive ammunition",
-                  "armor piercing rounds",
-                  "cop killer bullets",
-                  "illegal ammunition",
-                  "bomb",
-                  "explosive",
-                  "grenade",
-                  "landmine",
-                  "ammunition",
-                  "firearm",
-                  "gun",
-                  "rifle",
-                  "poison"
-                ]
-              }
-            ]
+              ]
+            }
           }
         },
         "taxonomy_ids": [
@@ -14087,7 +14065,7 @@
         "name": "Bias Religious",
         "description": "Detects religious discrimination, stereotypes, and biased content",
         "rule_id": "category/bias_religious",
-        "rule_version": "1.0.0",
+        "rule_version": "1.0.1",
         "detector": {
           "ref": "text/conditions",
           "version": "1.0.0"
@@ -14109,90 +14087,49 @@
         },
         "detector_options": {
           "match": {
-            "all": [
-              {
-                "not": {
-                  "contains": [
-                    "religious freedom",
-                    "religious tolerance",
-                    "religious discrimination",
-                    "religious persecution",
-                    "interfaith",
-                    "religious studies",
-                    "religious history",
-                    "combat islamophobia",
-                    "fight antisemitism",
-                    "religious diversity",
-                    "freedom of religion",
-                    "religious equality",
-                    "anti-muslim bias",
-                    "anti-semitism",
-                    "antisemitism",
-                    "religious bigotry",
-                    "theological",
-                    "scripture",
-                    "comparative religion",
-                    "protect muslims",
-                    "protect jews",
-                    "protect christians",
-                    "muslim rights",
-                    "jewish rights",
-                    "christian rights",
-                    "muslim community",
-                    "jewish community",
-                    "christian community",
-                    "muslim culture",
-                    "jewish culture",
-                    "christian culture",
-                    "islam teaches",
-                    "judaism teaches",
-                    "christianity teaches",
-                    "muslim faith",
-                    "jewish faith",
-                    "christian faith",
-                    "muslim americans",
-                    "jewish americans",
-                    "christian americans"
+            "within_sentence": {
+              "all": [
+                {
+                  "keywords": [
+                    "muslim",
+                    "muslims",
+                    "islam",
+                    "islamic",
+                    "jew",
+                    "jews",
+                    "jewish",
+                    "christian",
+                    "christians",
+                    "christianity",
+                    "atheist",
+                    "atheists",
+                    "hindu",
+                    "hindus",
+                    "hinduism",
+                    "buddhist",
+                    "buddhists",
+                    "buddhism",
+                    "sikh",
+                    "sikhs",
+                    "catholic",
+                    "catholics",
+                    "protestant",
+                    "protestants",
+                    "mormon",
+                    "mormons",
+                    "religious extremist",
+                    "religious fanatic",
+                    "infidel",
+                    "infidels",
+                    "jihad",
+                    "crusade"
                   ]
+                },
+                {
+                  "regex": "(?i)\\b(?:inferior|subhuman|vermin|hate|exterminate|deport|ban|kill|untrustworthy|unwelcome)\\b"
                 }
-              },
-              {
-                "keywords": [
-                  "muslim",
-                  "muslims",
-                  "islam",
-                  "islamic",
-                  "jew",
-                  "jews",
-                  "jewish",
-                  "christian",
-                  "christians",
-                  "christianity",
-                  "atheist",
-                  "atheists",
-                  "hindu",
-                  "hindus",
-                  "hinduism",
-                  "buddhist",
-                  "buddhists",
-                  "buddhism",
-                  "sikh",
-                  "sikhs",
-                  "catholic",
-                  "catholics",
-                  "protestant",
-                  "protestants",
-                  "mormon",
-                  "mormons",
-                  "religious extremist",
-                  "religious fanatic",
-                  "infidel",
-                  "infidels",
-                  "jihad",
-                  "crusade"
-                ]
-              }
-            ]
+              ]
+            }
           }
         },
         "taxonomy_ids": [
@@ -14730,7 +14667,7 @@
         "id": "content-safety-local",
         "name": "Content Safety (Local)",
         "description": "Target taxonomy Policy: Content Safety (Local).",
-        "version": "1.0.0",
+        "version": "1.0.1",
         "tags": [
           {
             "namespace": "protection",
@@ -17447,7 +17384,7 @@
         },
         {
           "id": "category/harmful_illegal_weapons",
-          "version": "1.0.0",
+          "version": "1.0.1",
           "name": "Harmful Illegal Weapons",
           "description": "Detects content related to illegal weapons, explosives, and dangerous materials",
           "stages": [
@@ -17460,168 +17397,146 @@
             "parameters": {
               "detector_options": {
                 "match": {
-                  "all": [
-                    {
-                      "not": {
-                        "contains": [
-                          "bomb disposal",
-                          "bomb squad",
-                          "explosive ordnance disposal",
-                          "eod",
-                          "historical",
-                          "educational",
-                          "safety training",
-                          "weapons history",
-                          "weapons education",
-                          "explosive safety",
-                          "bomb detection",
-                          "bomb threat",
-                          "report bomb",
-                          "reporting bomb"
+                  "within_sentence": {
+                    "all": [
+                      {
+                        "keywords": [
+                          "make a bomb",
+                          "build a bomb",
+                          "create explosive",
+                          "homemade bomb",
+                          "pipe bomb",
+                          "pressure cooker bomb",
+                          "fertilizer bomb",
+                          "car bomb",
+                          "suicide bomb",
+                          "explosive device",
+                          "bomb instructions",
+                          "bomb recipe",
+                          "bomb tutorial",
+                          "homemade explosive",
+                          "illegal firearm",
+                          "unregistered gun",
+                          "make poison",
+                          "create poison",
+                          "homemade poison",
+                          "lethal poison",
+                          "chemical weapon",
+                          "biological weapon",
+                          "ricin",
+                          "cyanide poison",
+                          "how to make a bomb",
+                          "how to build a bomb",
+                          "how to create explosive",
+                          "bomb making instructions",
+                          "bomb making tutorial",
+                          "homemade explosive recipe",
+                          "how to make poison",
+                          "how to create poison",
+                          "undetectable poison",
+                          "untraceable weapon",
+                          "3d print gun",
+                          "3d printed gun",
+                          "3d printing gun",
+                          "make bomb",
+                          "making bomb",
+                          "build explosive",
+                          "building explosive",
+                          "create weapon",
+                          "creating weapon",
+                          "manufacture explosive",
+                          "manufacturing explosive",
+                          "manufactured explosive",
+                          "construct bomb",
+                          "constructing bomb",
+                          "constructed bomb",
+                          "fertilizer explosive",
+                          "pressure cooker explosive",
+                          "pipe explosive",
+                          "homemade weapon",
+                          "ingredients bomb",
+                          "bomb ingredients",
+                          "instructions explosive",
+                          "explosive instructions",
+                          "improvised explosive device",
+                          "ied instructions",
+                          "make ied",
+                          "build ied",
+                          "nail bomb",
+                          "shrapnel bomb",
+                          "dirty bomb",
+                          "radiological weapon",
+                          "nuclear weapon",
+                          "molotov cocktail",
+                          "incendiary device",
+                          "fire bomb",
+                          "napalm recipe",
+                          "thermite recipe",
+                          "ammonium nitrate bomb",
+                          "anfo explosive",
+                          "c4 explosive",
+                          "semtex explosive",
+                          "tnt recipe",
+                          "dynamite recipe",
+                          "plastic explosive",
+                          "det cord",
+                          "detonator instructions",
+                          "remote detonator",
+                          "timer bomb",
+                          "time bomb",
+                          "letter bomb",
+                          "package bomb",
+                          "mail bomb",
+                          "anthrax weapon",
+                          "bioweapon",
+                          "weaponized anthrax",
+                          "weaponized smallpox",
+                          "nerve agent",
+                          "sarin gas",
+                          "vx gas",
+                          "mustard gas",
+                          "chlorine gas weapon",
+                          "poison gas",
+                          "ricin poison",
+                          "ricin extraction",
+                          "ricin recipe",
+                          "botulinum toxin weapon",
+                          "arsenic poison",
+                          "thallium poison",
+                          "polonium poison",
+                          "undetectable poison recipe",
+                          "untraceable poison",
+                          "silent weapon",
+                          "suppressor gun",
+                          "silencer gun",
+                          "homemade silencer",
+                          "homemade suppressor",
+                          "ghost gun",
+                          "unregistered weapon",
+                          "untraceable gun",
+                          "illegal gun",
+                          "black market gun",
+                          "black market weapons",
+                          "buy illegal gun",
+                          "buy illegal weapon",
+                          "automatic weapon conversion",
+                          "full auto conversion",
+                          "machine gun conversion",
+                          "bump stock",
+                          "binary trigger",
+                          "explosive ammunition",
+                          "armor piercing rounds",
+                          "cop killer bullets",
+                          "illegal ammunition"
                         ]
+                      },
+                      {
+                        "not": {
+                          "regex": "(?i)^\\s*(?:instructions|recipes|tutorials)\\s+(?:for|on)\\s+[^.!?]{1,100}\\s+(?:are|is)\\s+(?:prohibited|forbidden|banned)\\s*[.!?]?\\s*$"
+                        }
                       }
-                    },
-                    {
-                      "keywords": [
-                        "make a bomb",
-                        "build a bomb",
-                        "create explosive",
-                        "homemade bomb",
-                        "pipe bomb",
-                        "pressure cooker bomb",
-                        "fertilizer bomb",
-                        "car bomb",
-                        "suicide bomb",
-                        "explosive device",
-                        "bomb instructions",
-                        "bomb recipe",
-                        "bomb tutorial",
-                        "homemade explosive",
-                        "illegal firearm",
-                        "unregistered gun",
-                        "make poison",
-                        "create poison",
-                        "homemade poison",
-                        "lethal poison",
-                        "chemical weapon",
-                        "biological weapon",
-                        "ricin",
-                        "cyanide poison",
-                        "how to make a bomb",
-                        "how to build a bomb",
-                        "how to create explosive",
-                        "bomb making instructions",
-                        "bomb making tutorial",
-                        "homemade explosive recipe",
-                        "how to make poison",
-                        "how to create poison",
-                        "undetectable poison",
-                        "untraceable weapon",
-                        "3d print gun",
-                        "3d printed gun",
-                        "3d printing gun",
-                        "make bomb",
-                        "making bomb",
-                        "build explosive",
-                        "building explosive",
-                        "create weapon",
-                        "creating weapon",
-                        "manufacture explosive",
-                        "manufacturing explosive",
-                        "manufactured explosive",
-                        "construct bomb",
-                        "constructing bomb",
-                        "constructed bomb",
-                        "fertilizer explosive",
-                        "pressure cooker explosive",
-                        "pipe explosive",
-                        "homemade weapon",
-                        "ingredients bomb",
-                        "bomb ingredients",
-                        "instructions explosive",
-                        "explosive instructions",
-                        "improvised explosive device",
-                        "ied instructions",
-                        "make ied",
-                        "build ied",
-                        "nail bomb",
-                        "shrapnel bomb",
-                        "dirty bomb",
-                        "radiological weapon",
-                        "nuclear weapon",
-                        "molotov cocktail",
-                        "incendiary device",
-                        "fire bomb",
-                        "napalm recipe",
-                        "thermite recipe",
-                        "ammonium nitrate bomb",
-                        "anfo explosive",
-                        "c4 explosive",
-                        "semtex explosive",
-                        "tnt recipe",
-                        "dynamite recipe",
-                        "plastic explosive",
-                        "det cord",
-                        "detonator instructions",
-                        "remote detonator",
-                        "timer bomb",
-                        "time bomb",
-                        "letter bomb",
-                        "package bomb",
-                        "mail bomb",
-                        "anthrax weapon",
-                        "bioweapon",
-                        "weaponized anthrax",
-                        "weaponized smallpox",
-                        "nerve agent",
-                        "sarin gas",
-                        "vx gas",
-                        "mustard gas",
-                        "chlorine gas weapon",
-                        "poison gas",
-                        "ricin poison",
-                        "ricin extraction",
-                        "ricin recipe",
-                        "botulinum toxin weapon",
-                        "arsenic poison",
-                        "thallium poison",
-                        "polonium poison",
-                        "undetectable poison recipe",
-                        "untraceable poison",
-                        "silent weapon",
-                        "suppressor gun",
-                        "silencer gun",
-                        "homemade silencer",
-                        "homemade suppressor",
-                        "ghost gun",
-                        "unregistered weapon",
-                        "untraceable gun",
-                        "illegal gun",
-                        "black market gun",
-                        "black market weapons",
-                        "buy illegal gun",
-                        "buy illegal weapon",
-                        "automatic weapon conversion",
-                        "full auto conversion",
-                        "machine gun conversion",
-                        "bump stock",
-                        "binary trigger",
-                        "explosive ammunition",
-                        "armor piercing rounds",
-                        "cop killer bullets",
-                        "illegal ammunition",
-                        "bomb",
-                        "explosive",
-                        "grenade",
-                        "landmine",
-                        "ammunition",
-                        "firearm",
-                        "gun",
-                        "rifle",
-                        "poison"
-                      ]
-                    }
-                  ]
+                    ]
+                  }
                 }
               }
             }
@@ -19078,7 +18993,7 @@
         },
         {
           "id": "category/bias_religious",
-          "version": "1.0.0",
+          "version": "1.0.1",
           "name": "Bias Religious",
           "description": "Detects religious discrimination, stereotypes, and biased content",
           "stages": [
@@ -19091,90 +19006,49 @@
             "parameters": {
               "detector_options": {
                 "match": {
-                  "all": [
-                    {
-                      "not": {
-                        "contains": [
-                          "religious freedom",
-                          "religious tolerance",
-                          "religious discrimination",
-                          "religious persecution",
-                          "interfaith",
-                          "religious studies",
-                          "religious history",
-                          "combat islamophobia",
-                          "fight antisemitism",
-                          "religious diversity",
-                          "freedom of religion",
-                          "religious equality",
-                          "anti-muslim bias",
-                          "anti-semitism",
-                          "antisemitism",
-                          "religious bigotry",
-                          "theological",
-                          "scripture",
-                          "comparative religion",
-                          "protect muslims",
-                          "protect jews",
-                          "protect christians",
-                          "muslim rights",
-                          "jewish rights",
-                          "christian rights",
-                          "muslim community",
-                          "jewish community",
-                          "christian community",
-                          "muslim culture",
-                          "jewish culture",
-                          "christian culture",
-                          "islam teaches",
-                          "judaism teaches",
-                          "christianity teaches",
-                          "muslim faith",
-                          "jewish faith",
-                          "christian faith",
-                          "muslim americans",
-                          "jewish americans",
-                          "christian americans"
+                  "within_sentence": {
+                    "all": [
+                      {
+                        "keywords": [
+                          "muslim",
+                          "muslims",
+                          "islam",
+                          "islamic",
+                          "jew",
+                          "jews",
+                          "jewish",
+                          "christian",
+                          "christians",
+                          "christianity",
+                          "atheist",
+                          "atheists",
+                          "hindu",
+                          "hindus",
+                          "hinduism",
+                          "buddhist",
+                          "buddhists",
+                          "buddhism",
+                          "sikh",
+                          "sikhs",
+                          "catholic",
+                          "catholics",
+                          "protestant",
+                          "protestants",
+                          "mormon",
+                          "mormons",
+                          "religious extremist",
+                          "religious fanatic",
+                          "infidel",
+                          "infidels",
+                          "jihad",
+                          "crusade"
                         ]
+                      },
+                      {
+                        "regex": "(?i)\\b(?:inferior|subhuman|vermin|hate|exterminate|deport|ban|kill|untrustworthy|unwelcome)\\b"
                       }
-                    },
-                    {
-                      "keywords": [
-                        "muslim",
-                        "muslims",
-                        "islam",
-                        "islamic",
-                        "jew",
-                        "jews",
-                        "jewish",
-                        "christian",
-                        "christians",
-                        "christianity",
-                        "atheist",
-                        "atheists",
-                        "hindu",
-                        "hindus",
-                        "hinduism",
-                        "buddhist",
-                        "buddhists",
-                        "buddhism",
-                        "sikh",
-                        "sikhs",
-                        "catholic",
-                        "catholics",
-                        "protestant",
-                        "protestants",
-                        "mormon",
-                        "mormons",
-                        "religious extremist",
-                        "religious fanatic",
-                        "infidel",
-                        "infidels",
-                        "jihad",
-                        "crusade"
-                      ]
-                    }
-                  ]
+                    ]
+                  }
                 }
               }
             }
@@ -20001,7 +19875,7 @@
           "name": "local-content-safety: Detect Bias Religious",
           "description": "Required acceptance case for the imported local category.",
           "phase": "input",
-          "content": "The message contains muslim.",
+          "content": "Muslims are inferior.",
           "expected_decision": "block",
           "covered_rule_ids": [
             "category/bias_religious"
@@ -20019,7 +19893,7 @@
           "name": "local-content-safety: Detect Bias Religious",
           "description": "Required acceptance case for the imported local category.",
           "phase": "output",
-          "content": "The message contains muslim.",
+          "content": "Muslims are inferior.",
           "expected_decision": "block",
           "covered_rule_ids": [
             "category/bias_religious"
@@ -29412,7 +29286,7 @@
     "name": "Identity Documents",
     "description": "Target taxonomy Policy: Identity Documents.",
     "source": "built_in",
-    "version": "1.0.0",
+    "version": "1.0.1",
     "tags": [
       {
         "namespace": "protection",
@@ -29518,7 +29392,7 @@
         "name": "local-government-identifiers: Trigger ABN (Australian Business Number)",
         "description": "Proves that the published regex implementation for ABN (Australian Business Number) activates this Rule.",
         "phase": "input",
-        "content": "Acceptance sample: 11 111 111 111",
+        "content": "Acceptance sample: 51 824 753 556",
         "expected_decision": "transform",
         "covered_rule_ids": [
           "au-pii-tax-identifiers/au_abn"
@@ -29533,7 +29407,7 @@
         "name": "local-government-identifiers: Trigger ABN (Australian Business Number)",
         "description": "Proves that the published regex implementation for ABN (Australian Business Number) activates this Rule.",
         "phase": "output",
-        "content": "Acceptance sample: 11 111 111 111",
+        "content": "Acceptance sample: 51 824 753 556",
         "expected_decision": "transform",
         "covered_rule_ids": [
           "au-pii-tax-identifiers/au_abn"
@@ -29818,7 +29692,7 @@
         "name": "local-government-identifiers: Detect ABN (Australian Business Number)",
         "description": "Required acceptance case for PII Patterns.",
         "phase": "input",
-        "content": "Acceptance sample: 11 111 111 111",
+        "content": "Acceptance sample: 51 824 753 556",
         "expected_decision": "transform",
         "covered_rule_ids": [
           "au-pii-tax-identifiers/au_abn"
@@ -29833,7 +29707,7 @@
         "name": "local-government-identifiers: Detect ABN (Australian Business Number)",
         "description": "Required acceptance case for PII Patterns.",
         "phase": "output",
-        "content": "Acceptance sample: 11 111 111 111",
+        "content": "Acceptance sample: 51 824 753 556",
         "expected_decision": "transform",
         "covered_rule_ids": [
           "au-pii-tax-identifiers/au_abn"
@@ -30253,7 +30127,7 @@
         "name": "local-government-identifiers: Trigger ABN (Australian Business Number)",
         "description": "Proves that the published regex implementation for ABN (Australian Business Number) activates this Rule.",
         "phase": "input",
-        "content": "Acceptance sample: 11 111 111 111",
+        "content": "Acceptance sample: 51 824 753 556",
         "expected_decision": "transform",
         "covered_rule_ids": [
           "au-pii-tax-identifiers/au_abn"
@@ -30343,7 +30217,7 @@
         "name": "local-government-identifiers: Trigger ABN (Australian Business Number)",
         "description": "Proves that the published regex implementation for ABN (Australian Business Number) activates this Rule.",
         "phase": "input",
-        "content": "Acceptance sample: 11 111 111 111",
+        "content": "Acceptance sample: 51 824 753 556",
         "expected_decision": "transform",
         "covered_rule_ids": [
           "au-pii-tax-identifiers/au_abn"
@@ -30553,7 +30427,7 @@
         "name": "local-government-identifiers: Detect ABN (Australian Business Number)",
         "description": "Required acceptance case for PII Patterns.",
         "phase": "input",
-        "content": "Acceptance sample: 11 111 111 111",
+        "content": "Acceptance sample: 51 824 753 556",
         "expected_decision": "transform",
         "covered_rule_ids": [
           "au-pii-tax-identifiers/au_abn"
@@ -30883,7 +30757,7 @@
         "name": "local-government-identifiers: Detect ABN (Australian Business Number)",
         "description": "Required acceptance case for PII Patterns.",
         "phase": "output",
-        "content": "Acceptance sample: 11 111 111 111",
+        "content": "Acceptance sample: 51 824 753 556",
         "expected_decision": "transform",
         "covered_rule_ids": [
           "au-pii-tax-identifiers/au_abn"
@@ -32101,9 +31975,9 @@
       {
         "id": "au-pii-tax-identifiers/au_abn",
         "name": "ABN (Australian Business Number)",
-        "description": "Detects Australian Business Numbers (11 digits, optional spaces: XX XXX XXX XXX)",
+        "description": "Detects 11-digit Australian Business Numbers with a valid modulus-89 checksum; optional spaces are accepted. Does not verify registration.",
         "rule_id": "au-pii-tax-identifiers/au_abn",
-        "rule_version": "1.0.0",
+        "rule_version": "1.0.1",
         "detector": {
           "ref": "text/regex",
           "version": "1.0.0"
@@ -32124,6 +31998,26 @@
           "implementation_rule_id": "au-pii-tax-identifiers/au_abn"
         },
         "expression": "\\b\\d{2}\\s?\\d{3}\\s?\\d{3}\\s?\\d{3}\\b",
+        "validators": [
+          {
+            "type": "modulus_checksum",
+            "weights": [
+              10,
+              1,
+              3,
+              5,
+              7,
+              9,
+              11,
+              13,
+              15,
+              17,
+              19
+            ],
+            "modulus": 89,
+            "offset": -10
+          }
+        ],
         "taxonomy_ids": [
           "TALI-BUSINESS-POLICY"
         ],
@@ -33347,7 +33241,7 @@
         "id": "identity-documents",
         "name": "Identity Documents",
         "description": "Target taxonomy Policy: Identity Documents.",
-        "version": "1.0.0",
+        "version": "1.0.1",
         "tags": [
           {
             "namespace": "protection",
@@ -33453,9 +33347,9 @@
         },
         {
           "id": "au-pii-tax-identifiers/au_abn",
-          "version": "1.0.0",
+          "version": "1.0.1",
           "name": "ABN (Australian Business Number)",
-          "description": "Detects Australian Business Numbers (11 digits, optional spaces: XX XXX XXX XXX)",
+          "description": "Detects 11-digit Australian Business Numbers with a valid modulus-89 checksum; optional spaces are accepted. Does not verify registration.",
           "stages": [
             "input",
             "output"
@@ -33464,7 +33358,27 @@
             "ref": "text/regex",
             "version": "1.0.0",
             "parameters": {
-              "expression": "\\b\\d{2}\\s?\\d{3}\\s?\\d{3}\\s?\\d{3}\\b"
+              "expression": "\\b\\d{2}\\s?\\d{3}\\s?\\d{3}\\s?\\d{3}\\b",
+              "validators": [
+                {
+                  "type": "modulus_checksum",
+                  "weights": [
+                    10,
+                    1,
+                    3,
+                    5,
+                    7,
+                    9,
+                    11,
+                    13,
+                    15,
+                    17,
+                    19
+                  ],
+                  "modulus": 89,
+                  "offset": -10
+                }
+              ]
             }
           },
           "on_match": {
@@ -34623,7 +34537,7 @@
           "name": "local-government-identifiers: Trigger ABN (Australian Business Number)",
           "description": "Proves that the published regex implementation for ABN (Australian Business Number) activates this Rule.",
           "phase": "input",
-          "content": "Acceptance sample: 11 111 111 111",
+          "content": "Acceptance sample: 51 824 753 556",
           "expected_decision": "transform",
           "covered_rule_ids": [
             "au-pii-tax-identifiers/au_abn"
@@ -34641,7 +34555,7 @@
           "name": "local-government-identifiers: Trigger ABN (Australian Business Number)",
           "description": "Proves that the published regex implementation for ABN (Australian Business Number) activates this Rule.",
           "phase": "output",
-          "content": "Acceptance sample: 11 111 111 111",
+          "content": "Acceptance sample: 51 824 753 556",
           "expected_decision": "transform",
           "covered_rule_ids": [
             "au-pii-tax-identifiers/au_abn"
@@ -34983,7 +34897,7 @@
           "name": "local-government-identifiers: Detect ABN (Australian Business Number)",
           "description": "Required acceptance case for PII Patterns.",
           "phase": "input",
-          "content": "Acceptance sample: 11 111 111 111",
+          "content": "Acceptance sample: 51 824 753 556",
           "expected_decision": "transform",
           "covered_rule_ids": [
             "au-pii-tax-identifiers/au_abn"
@@ -35001,7 +34915,7 @@
           "name": "local-government-identifiers: Detect ABN (Australian Business Number)",
           "description": "Required acceptance case for PII Patterns.",
           "phase": "output",
-          "content": "Acceptance sample: 11 111 111 111",
+          "content": "Acceptance sample: 51 824 753 556",
           "expected_decision": "transform",
           "covered_rule_ids": [
             "au-pii-tax-identifiers/au_abn"
@@ -35505,7 +35419,7 @@
           "name": "local-government-identifiers: Trigger ABN (Australian Business Number)",
           "description": "Proves that the published regex implementation for ABN (Australian Business Number) activates this Rule.",
           "phase": "input",
-          "content": "Acceptance sample: 11 111 111 111",
+          "content": "Acceptance sample: 51 824 753 556",
           "expected_decision": "transform",
           "covered_rule_ids": [
             "au-pii-tax-identifiers/au_abn"
@@ -35613,7 +35527,7 @@
           "name": "local-government-identifiers: Trigger ABN (Australian Business Number)",
           "description": "Proves that the published regex implementation for ABN (Australian Business Number) activates this Rule.",
           "phase": "input",
-          "content": "Acceptance sample: 11 111 111 111",
+          "content": "Acceptance sample: 51 824 753 556",
           "expected_decision": "transform",
           "covered_rule_ids": [
             "au-pii-tax-identifiers/au_abn"
@@ -35865,7 +35779,7 @@
           "name": "local-government-identifiers: Detect ABN (Australian Business Number)",
           "description": "Required acceptance case for PII Patterns.",
           "phase": "input",
-          "content": "Acceptance sample: 11 111 111 111",
+          "content": "Acceptance sample: 51 824 753 556",
           "expected_decision": "transform",
           "covered_rule_ids": [
             "au-pii-tax-identifiers/au_abn"
@@ -36261,7 +36175,7 @@
           "name": "local-government-identifiers: Detect ABN (Australian Business Number)",
           "description": "Required acceptance case for PII Patterns.",
           "phase": "output",
-          "content": "Acceptance sample: 11 111 111 111",
+          "content": "Acceptance sample: 51 824 753 556",
           "expected_decision": "transform",
           "covered_rule_ids": [
             "au-pii-tax-identifiers/au_abn"

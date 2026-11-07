@@ -1,3 +1,4 @@
+import { expandProtectionPreset } from "../policy-catalog/presets.js";
 import { createHash } from "node:crypto";
 import { canonicalJson } from "../../shared/canonical-json.js";
 import type { ProtectionPreset } from "../../shared/protection-map.js";
@@ -76,5 +77,6 @@ export function importProfilePackage(
   if (refs.size !== input.policies.length || input.policies.some(pinned => !refs.has(`${pinned.id}@${pinned.version}`))) {
     throw new Error("Profile package dependency closure does not match the Profile bindings.");
   }
+  expandProtectionPreset(input.profile, policies);
   return structuredClone(input.profile);
 }

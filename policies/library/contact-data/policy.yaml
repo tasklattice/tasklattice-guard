@@ -5,7 +5,7 @@ metadata:
   name: Contact Data
   description: 'Target taxonomy Policy: Contact Data.'
   source: built_in
-  version: 1.0.0
+  version: 1.0.1
   tags:
   - namespace: protection
     value: privacy
@@ -81,7 +81,7 @@ rule_refs:
 - id: pattern/br_phone_mobile
   version: 1.0.0
 - id: pattern/br_phone_landline
-  version: 1.0.0
+  version: 1.0.1
 - id: pattern/br_cep
   version: 1.0.0
 - id: pattern/fr_postal_code

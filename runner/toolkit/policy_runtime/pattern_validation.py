@@ -45,11 +45,23 @@ class WeightedChecksumValidator(_Validator):
         return values
 
 
+class ModulusChecksumValidator(_Validator):
+    type: Literal["modulus_checksum"]
+    weights: list[int] = Field(min_length=1, max_length=256)
+    modulus: int = Field(ge=2, le=1_000_000)
+    offset: int = Field(default=0, ge=-1_000_000_000, le=1_000_000_000)
+
+    @field_validator("weights")
+    @classmethod
+    def valid_weights(cls, values: list[int]) -> list[int]:
+        return WeightedChecksumValidator.valid_weights(values)
+
+
 class LuhnValidator(_Validator):
     type: Literal["luhn"]
 
 
-PatternValidator = Annotated[DateValidator | WeightedChecksumValidator | LuhnValidator, Field(discriminator="type")]
+PatternValidator = Annotated[DateValidator | WeightedChecksumValidator | ModulusChecksumValidator | LuhnValidator, Field(discriminator="type")]
 _VALIDATORS = TypeAdapter(list[PatternValidator])
 
 
@@ -84,6 +96,12 @@ def _matches(value: str, validator: dict[str, Any]) -> bool:
                 return False
             checks = validator["check_characters"]
             return normalized[-1] == checks[total % len(checks)]
+        case "modulus_checksum":
+            digits = "".join(char for char in value if not char.isspace() and char != "-")
+            if not digits.isascii() or not digits.isdigit() or len(digits) != len(validator["weights"]):
+                return False
+            total = validator["offset"] + sum(int(digit) * weight for digit, weight in zip(digits, validator["weights"], strict=True))
+            return total % validator["modulus"] == 0
         case "luhn":
             digits = "".join(char for char in value if not char.isspace() and char != "-")
             if not digits or not digits.isascii() or not digits.isdigit():

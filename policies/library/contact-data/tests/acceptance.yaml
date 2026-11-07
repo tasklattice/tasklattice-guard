@@ -400,7 +400,7 @@
   description: Proves that the published regex implementation for Brazilian Phone
     Number (Landline) activates this Rule.
   phase: input
-  content: 'Acceptance sample: (11) 91111-1111'
+  content: 'Acceptance sample: (11) 2345-6789'
   expected_decision: transform
   covered_rule_ids:
   - pattern/br_phone_landline
@@ -535,7 +535,7 @@
   name: 'local-contact-data: Detect Brazilian Phone Number (Landline)'
   description: Required acceptance case for Brazilian PII Patterns.
   phase: input
-  content: 'Acceptance sample: (11) 91111-1111'
+  content: 'Acceptance sample: (11) 2345-6789'
   expected_decision: transform
   covered_rule_ids:
   - pattern/br_phone_landline
@@ -691,7 +691,7 @@
   name: 'local-contact-data: Detect Brazilian Phone Number (Landline)'
   description: Required acceptance case for Brazilian PII Patterns.
   phase: output
-  content: 'Acceptance sample: (11) 91111-1111'
+  content: 'Acceptance sample: (11) 2345-6789'
   expected_decision: transform
   covered_rule_ids:
   - pattern/br_phone_landline

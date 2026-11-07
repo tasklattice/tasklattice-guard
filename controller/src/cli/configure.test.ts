@@ -1,10 +1,37 @@
+import { mkdtemp, rm, readFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { describe, expect, it, vi } from 'vitest';
-import { bindModel, configurationApi, manageTestRun, parseConfigurationArgs, provisionProject, registerModel, type Api } from './configure.js';
+import { bindModel, configurationApi, manageTestRun, parseConfigurationArgs, provisionProject, registerModel, validateProfiles, type Api } from './configure.js';
 
 const journal = () => ({ data: {} as any, save: vi.fn(async () => {}) });
 const assignments = (model = 'nvidia') => ({ controlPlane: null, bindings: { 'content_safety.input': model, 'content_safety.output': 'nvidia', 'jailbreak.input': 'jev' } });
 
 describe('guardctl configuration', () => {
+  it('reports Profile failures without excluding cases or retrying to obtain a pass', async () => {
+    const out = await mkdtemp(join(tmpdir(), 'profile-validation-'));
+    const exitCode = process.exitCode;
+    const api = vi.fn(async (path: string, method = 'GET') => {
+      if (path === '/api/v1/guardrail-profiles') return { items: [{ id: 'default', name: 'Default', version: '1', availability: { available: true }, policyBindings: [], testExclusions: [] }] };
+      if (path.endsWith('/publish')) return { version: 'v1' };
+      if (path.endsWith('/test-runs')) return { id: 'run1', status: 'failed', metrics: { total: 1, passed: 0 } };
+      if (path.includes('/cases?')) return { items: [{ caseId: 'case1', passed: false }], nextCursor: null };
+      if (path.includes('/test-scope')) throw new Error('Must never hide failures');
+      return { id: 'guard1', draftRevision: 1 };
+    });
+    try {
+      const result = await validateProfiles(api, { out }, {});
+      expect(result.profiles[0]).toMatchObject({ status: 'failed', excludedCaseCount: 0 });
+      expect(process.exitCode).toBe(1);
+      expect(api.mock.calls.filter(([path]) => path.endsWith('/test-runs'))).toHaveLength(1);
+      expect(api.mock.calls.some(([path]) => path.includes('/test-scope'))).toBe(false);
+      expect(JSON.parse(await readFile(join(out, 'default.json'), 'utf8')).cases).toEqual([{ caseId: 'case1', passed: false }]);
+    } finally {
+      process.exitCode = exitCode;
+      await rm(out, { recursive: true, force: true });
+    }
+  });
+
   it('uses the same asynchronous test and cancellation routes as the UI without resubmitting', async () => {
     const api = vi.fn().mockResolvedValue({ id: 'run/1', status: 'queued' });
     await manageTestRun(api, 'test', { 'guardrail-id': 'guard/1' });

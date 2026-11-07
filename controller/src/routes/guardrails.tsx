@@ -400,7 +400,7 @@ export function GuardrailDetailPage() {
 
       {protectionActions.feedback}
 
-      {hasDraft ? <div className="mt-5"><GuardrailValidationReadiness readiness={validationReadiness} onEdit={canManageDraft ? () => setEditOpen(true) : undefined} onRetry={() => { void policiesQuery.refetch(); validationReadiness.refresh(); }} /></div> : null}
+      {hasDraft && canTestDraft && validationReadiness.blocked && !validationReadiness.checking ? <div className="mt-5"><GuardrailValidationReadiness readiness={validationReadiness} onEdit={() => setEditOpen(true)} onRetry={() => { void policiesQuery.refetch(); validationReadiness.refresh(); }} /></div> : null}
 
       <Tabs value={section} onValueChange={setSection} className="mt-7">
         <div className="overflow-x-auto">
@@ -828,7 +828,12 @@ export function EditGuardrailSheet({ guardrail, policies, open, onOpenChange, on
         {allowedTopicsMissing ? <p role="alert" className="mt-2 flex items-start gap-2 text-xs leading-5 text-destructive"><CircleAlert className="mt-0.5 size-4 shrink-0" />{t("guardrails.topicAllowlistRequired")}</p> : null}
       </section> : null}
       <RuntimePostureFields safetyLevel={level} outputDelivery={delivery} onSafetyLevelChange={setLevel} onOutputDeliveryChange={setDelivery} />
-      <section className="min-w-0"><h3 className="mb-3 text-sm font-semibold">{t("guardrails.policyBindings")}</h3><PolicyBindingEditor policies={policies} value={bindings} onChange={setBindings} unavailableReason={correctnessAvailability.reason} />{parameterErrors.length ? <p role="alert" className="mt-3 text-sm text-destructive">{parameterErrors.join(" ")}</p> : null}</section>
+      <section className="min-w-0">
+        <h3 className="mb-3 text-sm font-semibold">{t("guardrails.policyBindings")}</h3>
+        {editReadiness.unknownPolicies.length > 0 ? <p className="mb-3 text-sm text-muted-foreground">{t("protection.validationReadiness.unconfirmedPolicies", { names: editReadiness.unknownPolicies.join(" · ") })}</p> : null}
+        <PolicyBindingEditor policies={policies} value={bindings} onChange={setBindings} unavailableReason={correctnessAvailability.reason} />
+        {parameterErrors.length ? <p role="alert" className="mt-3 text-sm text-destructive">{parameterErrors.join(" ")}</p> : null}
+      </section>
     </div>
   </EntitySheet>;
 }

@@ -224,7 +224,7 @@ export function buildGuardrailPlan(input: {
         if (boundaryDetector) {
           resolved.push({ capability: { capability: boundaryDetector[0], policyId: "", defaultPhases: ["input"],
             defaultAction: "block", evaluations: [always("boundary", boundaryDetector[1])], module: "interaction_safety" },
-            binding: scoped, authoredRule: rule, authoredParameters: [["rule_id", rule.id]] });
+            binding: scoped, authoredRule: rule, authoredParameters: [["declarative_rule", "true"], ["rule_id", rule.id]] });
         } else if (rule.detector.ref === "model/classifier" && String(rule.detector_options.profile ?? "") === "topic-classification"
           && (rule.id === TOPIC_DENY_RULE || rule.id === TOPIC_ALLOW_RULE)) {
           const values = topicPolicyValues(binding.parameterValues);

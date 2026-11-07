@@ -17,6 +17,12 @@ export const patternValidatorSchema = z.discriminatedUnion("type", [
     weights: z.array(z.number().int().min(0).max(1_000_000_000)).min(1).max(256),
     check_characters: characters,
   }),
+  z.strictObject({
+    type: z.literal("modulus_checksum"),
+    weights: z.array(z.number().int().min(0).max(1_000_000_000)).min(1).max(256),
+    modulus: z.number().int().min(2).max(1_000_000),
+    offset: z.number().int().min(-1_000_000_000).max(1_000_000_000).default(0),
+  }),
   z.strictObject({ type: z.literal("luhn") }),
 ]);
 

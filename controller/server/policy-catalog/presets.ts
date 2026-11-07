@@ -3,7 +3,7 @@ import type { ProtectionPreset } from "../../shared/protection-map.js";
 import { appendProfileRules } from "../../shared/profile-rule-selection.js";
 import { activePolicyParameters } from "../../shared/policy-parameters.js";
 import type { PolicyDefinition } from "../../shared/policy-definition.js";
-type ProfilePolicy = { id: string; version: string; rails: readonly string[]; parameters: readonly { name: string; required?: boolean; default?: string | null | undefined }[]; rules: readonly { id: string; binding_id?: string | null; detector?: { ref: string } }[]; definition?: PolicyDefinition; published_versions?: readonly ProfilePolicy[] };
+type ProfilePolicy = { test_cases?: readonly { id: string; phase: string; covered_rule_ids: readonly string[] }[]; id: string; version: string; rails: readonly string[]; parameters: readonly { name: string; required?: boolean; default?: string | null | undefined }[]; rules: readonly { id: string; binding_id?: string | null; detector?: { ref: string } }[]; definition?: PolicyDefinition; published_versions?: readonly ProfilePolicy[] };
 
 /** Validate a preset against this exact installed catalog, never best-effort. */
 export function expandProtectionPreset(preset: ProtectionPreset, policies: readonly ProfilePolicy[], current: readonly GuardrailPolicyBindingConfig[] = []): GuardrailPolicyBindingConfig[] {
@@ -59,6 +59,7 @@ export function expandProtectionPreset(preset: ProtectionPreset, policies: reado
       testCaseOverrides: structuredClone(reference.testCaseOverrides ?? {}), ruleActions: structuredClone(reference.ruleActions ?? {}), enabledRails: [...reference.enabledRails], reasoningPolicy: structuredClone(reference.reasoningPolicy ?? null),
     });
   }
+  validateProfileTestExclusions(preset, policies);
   return result;
 }
 
@@ -95,4 +96,34 @@ export function previewProtectionProfile<T extends ProtectionPreset>(profile: T,
   } catch (error) {
     return { ...profile, policyBindings: [], availability: { available: false, reason: error instanceof Error ? error.message : "Profile is unavailable." } };
   }
+}
+
+/** Reject stale scope declarations before a Profile can be selected or imported. */
+export function validateProfileTestExclusions(profile: ProtectionPreset, policies: readonly ProfilePolicy[]): void {
+  const seen = new Set<string>();
+  for (const item of profile.testExclusions ?? []) {
+    const reference = profile.policies.find(p => p.policyId === item.policyId && p.policyVersion === item.policyVersion);
+    const head = policies.find(p => p.id === item.policyId);
+    const policy = head && [head, ...head.published_versions ?? []].find(p => p.version === item.policyVersion);
+    const test = policy?.test_cases?.find(test => test.id === item.sourceCaseId);
+    const key = JSON.stringify([item.policyId, item.policyVersion, item.sourceCaseId]);
+    const enabled = reference?.enabledBindingIds
+      ? policy?.rules.filter(rule => reference.enabledBindingIds!.includes(rule.binding_id ?? rule.id)).map(rule => rule.id) ?? []
+      : reference?.enabledRuleIds ?? policy?.rules.map(rule => rule.id) ?? [];
+    if (!reference || !test || !item.reason?.trim() || seen.has(key)
+      || !reference.enabledRails.includes(test.phase as "input" | "output")
+      || !test.covered_rule_ids.every(id => enabled.includes(id))) {
+      throw new Error(`Profile ${profile.id}: invalid test exclusion ${item.policyId}@${item.policyVersion}/${item.sourceCaseId}.`);
+    }
+    if (reference.testCaseOverrides?.[item.sourceCaseId]) throw new Error(`Profile ${profile.id}: a Test Case cannot be both excluded and overridden.`);
+    seen.add(key);
+  }
+}
+
+/** Apply defaults only to matching pins/cases in a newly created Guardrail. */
+export function profileExcludedCaseIds(profile: ProtectionPreset, cases: readonly {
+  id: string; sourcePolicyId: string | null; sourcePolicyVersion: string | null; sourceCaseId: string | null;
+}[]): string[] {
+  const keys = new Set((profile.testExclusions ?? []).map(item => JSON.stringify([item.policyId, item.policyVersion, item.sourceCaseId])));
+  return cases.filter(test => keys.has(JSON.stringify([test.sourcePolicyId, test.sourcePolicyVersion, test.sourceCaseId]))).map(test => test.id);
 }

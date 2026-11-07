@@ -5,7 +5,7 @@ metadata:
   name: Identity Documents
   description: 'Target taxonomy Policy: Identity Documents.'
   source: built_in
-  version: 1.0.0
+  version: 1.0.1
   tags:
   - namespace: protection
     value: privacy
@@ -57,7 +57,7 @@ rule_refs:
 - id: au-pii-tax-identifiers/au_tfn
   version: 1.0.0
 - id: au-pii-tax-identifiers/au_abn
-  version: 1.0.0
+  version: 1.0.1
 - id: au-pii-tax-identifiers/au_medicare
   version: 1.0.0
 - id: pattern/uae_emirates_id

@@ -36,13 +36,13 @@ export function GuardrailValidationReadiness({ readiness, onEdit, onRetry, onRem
 }) {
   const { t } = useTranslation();
   const administrator = isPlatformAdministrator(useAuth().user?.role);
-  if (!readiness.blocked && !readiness.unknownPolicies.length) return null;
+  if (!readiness.blocked) return null;
   const error = readiness.blockers.length > 0;
-  return <Alert variant={error ? "destructive" : readiness.checking ? "default" : "warning"} role={error ? "alert" : "status"}>
+  return <Alert className="guard-readiness-notification" variant={error ? "destructive" : readiness.checking ? "default" : "warning"} role={error ? "alert" : "status"}>
     {error ? <CircleAlert /> : readiness.checking ? <LoaderCircle className="animate-spin motion-reduce:animate-none" /> : <TriangleAlert />}
-    <AlertTitle className="leading-6">{t(`protection.validationReadiness.${error ? "blockedTitle" : readiness.checking ? "checking" : "warningTitle"}`)}</AlertTitle>
+    <AlertTitle>{t(`protection.validationReadiness.${error ? "blockedTitle" : readiness.checking ? "checking" : "warningTitle"}`)}</AlertTitle>
     <AlertDescription>
-      <div className="grid min-w-0 gap-3 pt-3 text-current leading-6">
+      <div className="grid min-w-0 gap-3 text-current leading-6">
         {readiness.blockers.length ? <ul className="space-y-2">{readiness.blockers.map(item => {
           const [capability, rail] = item.id.split(".");
           return <li key={item.id} className="break-words"><strong>{t(`protection.dependencies.capabilities.${capability}`)} · {t(`protection.${rail}`)}</strong>
@@ -51,7 +51,6 @@ export function GuardrailValidationReadiness({ readiness, onEdit, onRetry, onRem
           </li>;
         })}</ul> : null}
         {!readiness.checking && readiness.reason ? <p>{readiness.reason}</p> : null}
-        {!readiness.checking && !readiness.unavailable && readiness.unknownPolicies.length ? <p>{t("protection.dependencies.unknownPolicy", { policies: readiness.unknownPolicies.join(", ") })}</p> : null}
         {error && !administrator ? <p>{t("auth.platformSetupRequired")}</p> : null}
         {!readiness.checking && readiness.blocked ? <div className="flex flex-wrap gap-2">
           {error && administrator ? <a className="inline-flex min-h-11 items-center text-sm text-primary underline-offset-4 hover:underline" href="/settings/protection-capabilities" target="_blank" rel="noopener noreferrer">{t("protection.dependencies.configure")}</a> : null}

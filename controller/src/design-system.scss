@@ -357,6 +357,9 @@ svg.lucide {
   display: block;
   margin-bottom: 0.25rem;
 }
+.guard-readiness-notification .cds--actionable-notification__content {
+  display: block;
+}
 .cds--text-input__counter-alert:empty,
 .cds--text-area__counter-alert:empty {
   display: none;

@@ -1,7 +1,7 @@
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import { protectionPresets } from "../../shared/protection-presets.js";
-import { expandProtectionPreset, profileRequiresModels } from "./presets.js";
+import { expandProtectionPreset, profileRequiresModels, profileExcludedCaseIds } from "./presets.js";
 import { PolicyCatalog } from "./catalog.js";
 
 const policyView = PolicyCatalog.load(resolve("../runner/toolkit/policy_library/assets")).list();
@@ -23,6 +23,21 @@ describe("Target Profile baseline", () => {
     expect(full).toHaveLength(20);
     expect(full.reduce((count, binding) => count + binding.enabledRuleIds.length, 0)).toBe(198);
     expect(profileRequiresModels(byId.get("full-feature")!, policyView)).toBe(true);
+  });
+
+  it("validates pinned exclusions and applies them only to matching source cases", () => {
+    const profile = structuredClone(protectionPresets.find(p => p.id === "default")!);
+    const binding = profile.policies.find(p => p.policyId === "payment-data")!;
+    const source = policyView.find(p => p.id === binding.policyId)!.test_cases[0]!;
+    profile.testExclusions = [{ policyId: binding.policyId, policyVersion: binding.policyVersion, sourceCaseId: source.id, reason: "Overlapping composition contract." }];
+    expect(() => expandProtectionPreset(profile, policyView)).not.toThrow();
+    const test = { id: "instance-case", sourcePolicyId: binding.policyId, sourcePolicyVersion: binding.policyVersion, sourceCaseId: source.id };
+    expect(profileExcludedCaseIds(profile, [test, { ...test, id: "other", sourcePolicyVersion: "different" }])).toEqual([test.id]);
+    profile.testExclusions[0]!.reason = " ";
+    expect(() => expandProtectionPreset(profile, policyView)).toThrow("invalid test exclusion");
+    profile.testExclusions[0]!.reason = "Reviewed";
+    profile.testExclusions[0]!.sourceCaseId = "missing";
+    expect(() => expandProtectionPreset(profile, policyView)).toThrow("invalid test exclusion");
   });
 
   it("exposes only the compiled catalog", () => {
