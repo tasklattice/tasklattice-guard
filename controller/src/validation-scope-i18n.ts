@@ -1,4 +1,6 @@
 export const validationScopeEn = {
+  column: "Model tests",
+  included: "Included",
   toggle: "Test model rules",
   help: "When off, only local rules run. Model-dependent cases are Skipped. Published protection still includes model rules.",
   skipped: "Skipped",
@@ -9,6 +11,8 @@ export const validationScopeEn = {
   empty: "No skipped cases.",
 };
 export const validationScopeZh = {
+  column: "模型测试",
+  included: "已包含",
   toggle: "测试模型规则",
   help: "关闭时只执行本地规则，模型依赖用例标记为 Skipped。发布后的防护仍包含模型规则。",
   skipped: "Skipped（已跳过）",

@@ -1,5 +1,4 @@
 import { TestCaseEvidence } from "@/components/test-case-evidence";
-import { ModelCallStatus } from "@/components/model-call-status";
 import { TestModelRulesSwitch, ValidationScopeNotice } from "@/components/validation-model-scope";
 import { hasPermission } from "../../shared/rbac";
 import { EventPagination, useEventCursor } from "@/components/event-pagination";
@@ -75,7 +74,7 @@ export function ValidationPage() {
       {!runsQuery.isLoading && guardrails.length ? (
         <section className="mt-5 overflow-hidden rounded-xl border bg-card shadow-xs">
           <div className="grid gap-3 border-b bg-muted/20 p-4 sm:grid-cols-2 lg:grid-cols-[minmax(16rem,1fr)_minmax(14rem,18rem)_12rem_auto] lg:items-center"><label className="relative"><span className="sr-only">{t("validation.searchValidationRuns")}</span><Search className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" /><Input className="field:min-h-11 field:bg-card field:pl-9" value={search} onChange={(event) => setSearch(event.target.value)} placeholder={t("validation.searchValidationRuns")} /></label><Select value={guardrailId} onValueChange={setGuardrailId}><SelectTrigger className="field:min-h-11 min-w-0 field:bg-card" aria-label={t("validation.filterGuardrailId")}><SelectValue /></SelectTrigger><SelectContent><SelectItem value="all">{t("validation.allGuardrailIds")}</SelectItem>{guardrailIds.map((id) => <SelectItem key={id} value={id}>{guardrailNames.get(id) ? `${guardrailNames.get(id)} · ${id}` : id}</SelectItem>)}</SelectContent></Select><Select value={status} onValueChange={setStatus}><SelectTrigger className="field:min-h-11 field:bg-card" aria-label={t("validation.filterStatus")}><SelectValue /></SelectTrigger><SelectContent><SelectItem value="all">{t("validation.allStatuses")}</SelectItem><SelectItem value="passed">{t("states.passed")}</SelectItem><SelectItem value="failed">{t("states.failed")}</SelectItem><SelectItem value="cancelled">{t("states.cancelled")}</SelectItem><SelectItem value="incomplete">{t("states.incomplete")}</SelectItem></SelectContent></Select><p className="text-xs text-muted-foreground sm:text-right">{t("validation.validationRunCount", { count: runsQuery.data?.count ?? 0 })}</p></div>
-          {filtered.length ? <Table><TableHeader><TableRow className="hover:bg-transparent"><TableHead className="pl-4">{t("validation.validationRunColumn")}</TableHead><TableHead>{t("validation.guardrailColumn")}</TableHead><TableHead>{t("validation.targetColumn")}</TableHead><TableHead>{t("validation.casesColumn")}</TableHead><TableHead>{t("validation.statusColumn")}</TableHead><TableHead>{t("validation.passRateColumn")}</TableHead><TableHead>{t("validation.durationColumn")}</TableHead><TableHead>{t("validation.runAtColumn")}</TableHead><TableHead className="w-12"><span className="sr-only">{t("validation.openValidationRun")}</span></TableHead></TableRow></TableHeader><TableBody>{filtered.map((run) => <ValidationRow key={run.id} run={run} guardrailName={guardrailNames.get(run.guardrail_id)} locale={i18n.language} onOpen={() => setSelected(run)} />)}</TableBody></Table> : <EmptyState title={runs.length ? t("validation.noMatchingValidationRuns") : t("validation.noValidationRuns")} description={runs.length ? t("validation.noMatchingValidationRunsDescription") : t("validation.noValidationRunsDescription")} action={canManage && !runs.length ? <Button variant="testing" onClick={() => setCreateOpen(true)}><Plus />{t("validation.createValidationRun")}</Button> : undefined} />}
+          {filtered.length ? <Table><TableHeader><TableRow className="hover:bg-transparent"><TableHead className="pl-4">{t("validation.validationRunColumn")}</TableHead><TableHead>{t("validation.guardrailColumn")}</TableHead><TableHead>{t("validation.targetColumn")}</TableHead><TableHead>{t("validation.casesColumn")}</TableHead><TableHead>{t("validationScope.column")}</TableHead><TableHead>{t("validation.statusColumn")}</TableHead><TableHead>{t("validation.passRateColumn")}</TableHead><TableHead>{t("validation.durationColumn")}</TableHead><TableHead>{t("validation.runAtColumn")}</TableHead><TableHead className="w-12"><span className="sr-only">{t("validation.openValidationRun")}</span></TableHead></TableRow></TableHeader><TableBody>{filtered.map((run) => <ValidationRow key={run.id} run={run} guardrailName={guardrailNames.get(run.guardrail_id)} locale={i18n.language} onOpen={() => setSelected(run)} />)}</TableBody></Table> : <EmptyState title={runs.length ? t("validation.noMatchingValidationRuns") : t("validation.noValidationRuns")} description={runs.length ? t("validation.noMatchingValidationRunsDescription") : t("validation.noValidationRunsDescription")} action={canManage && !runs.length ? <Button variant="testing" onClick={() => setCreateOpen(true)}><Plus />{t("validation.createValidationRun")}</Button> : undefined} />}
           <EventPagination page={pagination.page} busy={runsQuery.isFetching} nextCursor={runsQuery.data?.nextCursor} onNext={pagination.next} onPrevious={pagination.previous} onLatest={pagination.latest} />
         </section>
       ) : null}
@@ -90,8 +89,7 @@ export function filterValidationRuns(runs: ValidationRun[], guardrailNames: Map<
   return runs.filter((run) => (guardrailId === "all" || run.guardrail_id === guardrailId) && (status === "all" || run.status === status) && (!query || `${run.id} ${guardrailNames.get(run.guardrail_id) ?? run.guardrail_id}`.toLowerCase().includes(query)));
 }
 
-export function GuardrailValidationHistory({ runs, loading, error, canManage, running, blockedReason, onRun, onOpen, onOpenTarget, description, emptyDescription, action, pagination }: {
-  description?: string;
+export function GuardrailValidationHistory({ runs, loading, error, canManage, running, blockedReason, onRun, onOpen, onOpenTarget, emptyDescription, action, pagination }: {
   emptyDescription?: string;
   action?: ReactNode;
   pagination?: ReactNode;
@@ -107,17 +105,16 @@ export function GuardrailValidationHistory({ runs, loading, error, canManage, ru
 }) {
   const { t, i18n } = useTranslation();
   const orderedRuns = useMemo(() => [...runs].sort((left, right) => Date.parse(right.created_at) - Date.parse(left.created_at)), [runs]);
-  return <section className="overflow-hidden rounded-xl border bg-card shadow-xs" aria-label={t("guardrails.validationHistoryTitle")}>
-    <header className="flex flex-wrap items-center justify-between gap-4 border-b bg-muted/20 px-4 py-3">
-      <details className="min-w-64 flex-1 text-xs leading-5 text-muted-foreground"><summary className="min-h-11 w-fit cursor-pointer content-center py-2 focus-visible:outline-2 focus-visible:outline-ring">{t("immutableVersions.reportRetention")}</summary><p className="max-w-3xl pb-2">{description ?? t("guardrails.validationHistoryDescription")}</p></details>
+  return <section className="overflow-hidden rounded-xl border bg-card shadow-xs [&>[data-slot=table-container]]:overflow-x-hidden" aria-label={t("guardrails.validationHistoryTitle")}>
+    {action || canManage ? <header className="flex items-center justify-end border-b bg-muted/20 px-4 py-3">
       {action ?? (canManage ? <Button variant="testing" className="shrink-0" disabled={running || Boolean(blockedReason)} title={blockedReason ?? undefined} onClick={onRun}>{running ? <LoaderCircle className="animate-spin" /> : <Play />}{t(running ? "guardrails.runningValidation" : "guardrails.runReviewed")}</Button> : null)}
-    </header>
+    </header> : null}
     {error ? <div className="p-4"><ErrorNotice error={error} /></div> : null}
     {loading ? <div className="p-4"><Skeleton className="h-72 rounded-lg" /></div> : null}
-    {!loading && !error && orderedRuns.length ? <div className="overflow-x-auto"><Table>
-      <TableHeader><TableRow className="hover:bg-transparent"><TableHead className="min-w-52 pl-4">{t("validation.validationRunColumn")}</TableHead><TableHead>{t("validation.targetColumn")}</TableHead><TableHead>{t("validation.casesColumn")}</TableHead><TableHead>{t("validation.statusColumn")}</TableHead><TableHead>{t("validation.passRateColumn")}</TableHead><TableHead>{t("validation.durationColumn")}</TableHead><TableHead>{t("validation.runAtColumn")}</TableHead><TableHead className="w-12"><span className="sr-only">{t("validation.openValidationRun")}</span></TableHead></TableRow></TableHeader>
+    {!loading && !error && orderedRuns.length ? <Table>
+      <TableHeader><TableRow className="hover:bg-transparent"><TableHead className="min-w-52 pl-4">{t("validation.validationRunColumn")}</TableHead><TableHead>{t("validation.targetColumn")}</TableHead><TableHead>{t("validation.casesColumn")}</TableHead><TableHead>{t("validationScope.column")}</TableHead><TableHead>{t("validation.statusColumn")}</TableHead><TableHead>{t("validation.passRateColumn")}</TableHead><TableHead>{t("validation.durationColumn")}</TableHead><TableHead>{t("validation.runAtColumn")}</TableHead><TableHead className="w-12"><span className="sr-only">{t("validation.openValidationRun")}</span></TableHead></TableRow></TableHeader>
       <TableBody>{orderedRuns.map((run) => <ValidationRow key={run.id} run={run} locale={i18n.language} showGuardrail={false} onOpen={() => onOpen(run)} onOpenTarget={() => onOpenTarget(run)} />)}</TableBody>
-    </Table></div> : null}
+    </Table> : null}
     {!loading && !error && !orderedRuns.length ? <EmptyState title={t("validation.noValidationRuns")} description={emptyDescription ?? t("validation.noValidationRunsDescription")} action={canManage && !action ? <Button variant="testing" disabled={running || Boolean(blockedReason)} title={blockedReason ?? undefined} onClick={onRun}><Play />{t("guardrails.runReviewed")}</Button> : undefined} /> : null}
     {pagination}
   </section>;
@@ -125,7 +122,7 @@ export function GuardrailValidationHistory({ runs, loading, error, canManage, ru
 
 function ValidationRow({ run, guardrailName, locale, showGuardrail = true, onOpen, onOpenTarget }: { run: ValidationRun; guardrailName?: string; locale: string; showGuardrail?: boolean; onOpen: () => void; onOpenTarget?: () => void }) {
   const { t } = useTranslation();
-  return <TableRow role="button" tabIndex={0} className="cursor-pointer" onClick={onOpen} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); onOpen(); } }}><TableCell className="pl-4"><strong className="block text-sm font-medium">{t("validation.validationRunNamed", { id: shortId(run.id) })}</strong><span className="mt-1 block max-w-52 truncate font-mono text-xs text-muted-foreground" title={reportNumber(run.id)}>{reportNumber(run.id)}</span>{run.test_model_rules === false ? <Badge variant="outline" className="mt-1">{t("validationScope.badge")}</Badge> : null}</TableCell>{showGuardrail ? <TableCell><strong className="block text-sm font-medium">{guardrailName ?? run.guardrail_id}</strong>{guardrailName ? <span className="mt-1 block font-mono text-xs text-muted-foreground">{run.guardrail_id}</span> : null}</TableCell> : null}<TableCell className="text-xs"><ValidationTarget run={run} onOpen={onOpenTarget} /></TableCell><TableCell className="font-mono text-xs">{run.metrics.total}</TableCell><TableCell className="testing-report-status whitespace-nowrap"><StateBadge state={isValidationRunning(run) ? "syncing" : run.status} label={isValidationRunning(run) ? t("guardrails.runningValidation") : undefined} /></TableCell><TableCell className="font-mono text-xs">{hasValidationReportResults(run) ? `${run.metrics.compliance_rate}%` : "—"}</TableCell><TableCell className="font-mono text-xs">{hasValidationReportResults(run) ? `P95 ${run.metrics.p95_latency_ms} ms` : "—"}</TableCell><TableCell className="whitespace-nowrap text-xs text-muted-foreground">{new Date(run.created_at).toLocaleString(locale)}</TableCell><TableCell><Button type="button" variant="ghost" size="icon" className="size-11" aria-label={t("validation.openValidationRun")} onClick={(event) => { event.stopPropagation(); onOpen(); }}><ChevronRight className="size-4 text-muted-foreground" /></Button></TableCell></TableRow>;
+  return <TableRow role="button" tabIndex={0} className="cursor-pointer" onClick={onOpen} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); onOpen(); } }}><TableCell className="pl-4"><strong className="block text-sm font-medium">{t("validation.validationRunNamed", { id: shortId(run.id) })}</strong><span className="mt-1 block max-w-52 truncate font-mono text-xs text-muted-foreground" title={reportNumber(run.id)}>{reportNumber(run.id)}</span></TableCell>{showGuardrail ? <TableCell><strong className="block text-sm font-medium">{guardrailName ?? run.guardrail_id}</strong>{guardrailName ? <span className="mt-1 block font-mono text-xs text-muted-foreground">{run.guardrail_id}</span> : null}</TableCell> : null}<TableCell className="text-xs"><ValidationTarget run={run} onOpen={onOpenTarget} /></TableCell><TableCell className="font-mono text-xs">{run.metrics.total}</TableCell><TableCell><StateBadge state={run.test_model_rules === false ? "waiting" : "enabled"} label={t(run.test_model_rules === false ? "validationScope.skipped" : "validationScope.included")} /></TableCell><TableCell className="testing-report-status whitespace-nowrap"><StateBadge state={isValidationRunning(run) ? "syncing" : run.status} label={isValidationRunning(run) ? t("guardrails.runningValidation") : undefined} /></TableCell><TableCell className="font-mono text-xs">{hasValidationReportResults(run) ? `${run.metrics.compliance_rate}%` : "—"}</TableCell><TableCell className="font-mono text-xs">{hasValidationReportResults(run) ? `P95 ${run.metrics.p95_latency_ms} ms` : "—"}</TableCell><TableCell className="whitespace-nowrap text-xs text-muted-foreground">{new Date(run.created_at).toLocaleString(locale)}</TableCell><TableCell><Button type="button" variant="ghost" size="icon" className="size-11" aria-label={t("validation.openValidationRun")} onClick={(event) => { event.stopPropagation(); onOpen(); }}><ChevronRight className="size-4 text-muted-foreground" /></Button></TableCell></TableRow>;
 }
 
 function ValidationTarget({ run, onOpen }: { run: ValidationRun; onOpen?: () => void }) {
@@ -194,11 +191,10 @@ export function ValidationDetailSheet({ run: selectedRun, guardrail, canManage, 
     </>}>
     <div className="space-y-4">
       <section className="overflow-hidden rounded-sm border bg-card">
-        <div className={cn("flex items-center justify-between gap-3 px-4 py-3", hasCaseResults && "border-b bg-muted/20")}>
+        <div className="flex items-center justify-between gap-3 px-4 py-3">
           <div><p className="text-xs text-muted-foreground">{t("validation.targetColumn")}</p><div className="mt-0.5 text-sm font-medium"><ValidationTarget run={run} onOpen={onOpenTarget ? () => onOpenTarget(run) : undefined} /></div></div>
-          {finished ? <StateBadge state={cancelled ? "cancelled" : run.status} /> : null}
+          {cancelled ? <StateBadge state="cancelled" /> : hasCaseResults ? <dl className="shrink-0 text-right"><dt className="text-xs text-muted-foreground">{t("guardrails.latency")}</dt><dd className="mt-1 font-mono text-sm tabular-nums">{run.metrics.p95_latency_ms} ms</dd></dl> : null}
         </div>
-        {hasCaseResults ? <dl className="grid grid-cols-4"><DetailFact label={t("validation.casesColumn")} value={String(run.metrics.total)} definition={t("validation.metricDefinitions.cases")} /><DetailFact label={t("validation.passRateColumn")} value={`${run.metrics.compliance_rate}%`} definition={t("validation.metricDefinitions.passRate")} /><DetailFact label={t("guardrails.falsePositive")} value={`${run.metrics.false_positive_rate}%`} definition={t("validation.metricDefinitions.falsePositive")} /><DetailFact label={t("guardrails.latency")} value={`${run.metrics.p95_latency_ms} ms`} definition={t("validation.metricDefinitions.p95Latency")} /></dl> : null}
       </section>
       {processing ? <>
         <div className="rounded-sm border bg-card px-4"><ValidationRunProgress run={run} startedAt={Date.parse(run.created_at)} interrupted={Boolean(detailQuery.error)} canCancel={canManage} showContext={false} /></div>
@@ -212,7 +208,16 @@ export function ValidationDetailSheet({ run: selectedRun, guardrail, canManage, 
       {reportReady ? <>
         <ValidationScopeNotice run={run} />
         {run.excluded_case_ids?.length ? <p className="text-xs text-muted-foreground">{t("validation.excludedScopeTitle", { count: run.excluded_case_ids.length })}</p> : null}
-        <details className="text-xs leading-5 text-muted-foreground"><summary className="min-h-11 w-fit cursor-pointer content-center py-2 focus-visible:outline-2 focus-visible:outline-ring">{t("validation.reportScopeHelp")}</summary><p className="pb-2">{t(versionRun ? "immutableVersions.localTestReportDescription" : "validation.versionTargetReservedDescription")}</p></details>
+        <details className="text-xs leading-5 text-muted-foreground">
+          <summary className="min-h-11 w-fit cursor-pointer content-center py-2 focus-visible:outline-2 focus-visible:outline-ring">{t("validation.reportScopeHelp")}</summary>
+          <p className="pb-2">{t(versionRun ? "immutableVersions.localTestReportDescription" : "validation.versionTargetReservedDescription")}</p>
+          {hasCaseResults ? <dl className="grid grid-cols-4">
+            <DetailFact label={t("validation.casesColumn")} value={String(run.metrics.total)} definition={t("validation.metricDefinitions.cases")} />
+            <DetailFact label={t("validation.passRateColumn")} value={`${run.metrics.compliance_rate}%`} definition={t("validation.metricDefinitions.passRate")} />
+            <DetailFact label={t("guardrails.falsePositive")} value={`${run.metrics.false_positive_rate}%`} definition={t("validation.metricDefinitions.falsePositive")} />
+            <DetailFact label={t("guardrails.latency")} value={`${run.metrics.p95_latency_ms} ms`} definition={t("validation.metricDefinitions.p95Latency")} />
+          </dl> : null}
+        </details>
       </> : null}
     </div>
   </EntitySheet>;
@@ -226,6 +231,8 @@ export function DetailFact({ label, value, definition }: { label: string; value:
 
 type CaseResultFilter = "all" | "failed" | "passed" | "skipped";
 
+const caseResultColumns = "grid grid-cols-[minmax(0,1fr)_6.5rem_6.5rem_4.5rem_1rem] items-center gap-3 border-l-2 border-l-transparent px-4";
+
 type CaseResultsProps = { runId: string; evidence?: boolean; defaultFilter?: CaseResultFilter; excludedCaseIds?: string[]; busyCaseId?: string | undefined; onValidationScopeChange?: ((caseId: string, action: "exclude" | "restore") => void) | undefined };
 export function ValidationCaseResults({ runId, defaultFilter = "all", excludedCaseIds = [], busyCaseId, onValidationScopeChange, evidence = false }: CaseResultsProps) {
   const { t } = useTranslation();
@@ -238,7 +245,10 @@ export function ValidationCaseResults({ runId, defaultFilter = "all", excludedCa
       {counts?.warnings ? <p className="mt-1 text-xs text-muted-foreground">{t("validation.executionWarningCount", { count: counts.warnings })}</p> : null}
       <div className="mt-2 flex gap-1" role="group" aria-label={t("validation.filterCaseResults")}>{(["all", "failed", "passed", "skipped"] as const).map(value => <Button key={value} type="button" size="sm" variant={filter === value ? "secondary" : "ghost"} className="min-h-11 px-3" aria-pressed={filter === value} onClick={() => setFilter(value)}>{t(value === "skipped" ? "validationScope.skipped" : `validation.caseFilters.${value}`)}<span className="font-mono text-xs">{counts?.[value] ?? "—"}</span></Button>)}</div>
     </header>
-    <div className="space-y-3 bg-background p-3" aria-busy={query.isFetching}>
+    <div className={cn(caseResultColumns, "min-h-10 border-b bg-card text-xs text-muted-foreground")} aria-hidden="true">
+      <span>{t("validation.comparison.case")}</span><span>{t("validation.comparison.expected")}</span><span>{t("validation.comparison.actual")}</span><span className="text-right">{t("validation.durationColumn")}</span><span />
+    </div>
+    <div className="bg-card" aria-busy={query.isFetching}>
       {query.isPending ? <Skeleton className="h-48" /> : query.error ? <><ErrorNotice error={query.error} /><Button variant="outline" onClick={() => void query.refetch()}>{t("common.retry")}</Button></> : !query.data?.items.length ? <p role="status" className="px-4 py-6 text-sm text-muted-foreground">{t(filter === "skipped" ? "validationScope.empty" : `validation.emptyCaseResults.${filter}`)}</p> : query.data.items.map(result => <TestCaseResultRow evidence={evidence} key={result.ordinal} result={result} runId={runId} ordinal={result.ordinal} excluded={excludedCaseIds.includes(result.case_id)} busy={busyCaseId === result.case_id} onValidationScopeChange={onValidationScopeChange} />)}
     </div>
     <EventPagination page={pagination.page} busy={query.isFetching} nextCursor={query.data?.nextCursor} onNext={pagination.next} onPrevious={pagination.previous} onLatest={pagination.latest} casePages itemCount={query.data?.items.length ?? 0} />
@@ -255,25 +265,25 @@ export function TestCaseResultRow({ result: summary, runId, ordinal, excluded = 
   const failed = !result.passed && !result.skipped;
   const sameRules = result.covered_rule_ids.length === result.matched_rule_ids.length
     && result.covered_rule_ids.every(id => result.matched_rule_ids.includes(id));
-  return <details open={open} onToggle={event => setOpen(event.currentTarget.open)} className={cn("group/case validation-case overflow-hidden rounded-sm border bg-card", failed && "border-l-2 border-l-destructive")}>
-    <summary className="grid min-h-18 cursor-pointer list-none grid-cols-[minmax(0,1fr)_100px_72px_20px] items-center gap-3 bg-muted/40 px-4 py-3 group-open/case:bg-muted/70 hover:bg-accent group-open/case:hover:bg-accent active:bg-muted group-open/case:active:bg-muted focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring [&::-webkit-details-marker]:hidden">
+  return <details open={open} onToggle={event => setOpen(event.currentTarget.open)} className="group/case validation-case overflow-hidden border-b bg-card last:border-b-0">
+    <summary className={cn(caseResultColumns, "min-h-18 cursor-pointer list-none py-3 hover:bg-accent group-open/case:bg-muted/30 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring [&::-webkit-details-marker]:hidden", failed && "border-l-destructive")}>
       <div className="min-w-0">
-        <div className="flex flex-wrap items-center gap-2">
-          <strong className="min-w-0 break-words text-base font-semibold leading-6 text-foreground [overflow-wrap:anywhere]">{result.name}</strong>
-          {!result.skipped ? <StateBadge state={result.passed ? "passed" : "failed"} label={executionWarning ? t("validation.executionWarningBadge") : undefined} /> : null}
-          {excluded ? <Badge variant="secondary">{t("guardrails.excludedFromValidation")}</Badge> : null}
-          <Badge variant="outline" className="shrink-0 font-normal">{testCaseTypeLabel(result.case_type, t)}</Badge>
-        </div>
-        <p className="mt-1 break-words text-xs text-muted-foreground [overflow-wrap:anywhere]">{humanize(result.policy_id)} · {humanize(result.phase)}</p>
+        <strong className="block break-words text-sm font-medium leading-5 text-foreground [overflow-wrap:anywhere]"><TestCaseName name={result.name} /></strong>
+        <p className="mt-1 break-words text-xs text-muted-foreground [overflow-wrap:anywhere]"><code className="font-mono text-[11px]">{result.policy_id}</code> · {humanize(result.phase)}</p>
+        {excluded ? <p className="mt-1 text-xs text-muted-foreground">{t("guardrails.excludedFromValidation")}</p> : null}
       </div>
-      <span className="justify-self-start">{result.skipped ? <Badge variant="secondary">{t("validationScope.skipped")}</Badge> : <StateBadge state={result.actual_decision} />}</span>
+      <span><span className="sr-only">{t("validation.comparison.expected")}: </span><StateBadge state={result.expected_decision} label={humanize(result.expected_decision)} /></span>
+      <div className="min-w-0">
+        <span className="sr-only">{t("validation.comparison.actual")}: </span>
+        <StateBadge state={result.skipped ? "waiting" : failed ? "failed" : result.actual_decision} label={result.skipped ? t("validationScope.skipped") : humanize(result.actual_decision)} title={failed ? t("validation.caseFilters.failed") : undefined} />
+        {failed ? <span className="sr-only"> · {t("validation.caseFilters.failed")}</span> : null}
+        {executionWarning ? <span className="mt-1 block text-xs leading-4 text-muted-foreground">{t("validation.comparison.warning")}</span> : null}
+      </div>
       <span className="whitespace-nowrap text-right font-mono text-xs tabular-nums text-muted-foreground">{result.skipped ? "—" : `${result.latency_ms} ms`}</span>
       <ChevronDown aria-hidden className="size-4 text-muted-foreground transition-transform group-open/case:rotate-180 motion-reduce:transition-none" />
     </summary>
     {runId && !open ? null : runId && !detail.data ? <div className="border-t p-4">{detail.error ? <><ErrorNotice error={detail.error} /><Button variant="outline" onClick={() => void detail.refetch()}>{t("common.retry")}</Button></> : <Skeleton className="h-32" />}</div> : <div className="space-y-4 border-t bg-card p-4">
       {evidence && runId && ordinal != null ? <TestCaseEvidence runId={runId} ordinal={ordinal} result={result} /> : null}
-      <ModelCallStatus status={result.model_status} />
-      {result.model_status === "ok" && failed && !isExecutionError(result) ? <p className="text-xs text-muted-foreground">{t("logs.modelQualitySeparate")}</p> : null}
       {failed ? <FailureDiagnosis result={result} /> : null}
       {executionWarning ? <Alert variant="warning">
         <AlertTitle>{t("validation.executionWarningTitle")}</AlertTitle>
@@ -288,11 +298,12 @@ export function TestCaseResultRow({ result: summary, runId, ordinal, excluded = 
       {result.source_policy_id ? <details className="border-t">
         <summary className="min-h-11 cursor-pointer content-center text-xs font-medium focus-visible:outline-2 focus-visible:outline-ring">{t("validation.acceptanceProvenance")}</summary>
         <dl className="grid grid-cols-2 gap-4 pb-3 text-xs">
+          <div className="col-span-2"><dt className="text-muted-foreground">{t("validation.comparison.caseType")}</dt><dd className="mt-1">{testCaseTypeLabel(result.case_type, t)}</dd></div>
           <div className="min-w-0"><dt className="text-muted-foreground">{t("validation.sourcePolicy")}</dt><dd className="mt-1 break-all font-mono">{result.source_policy_id}@{result.source_policy_version}</dd></div>
           <div className="min-w-0"><dt className="text-muted-foreground">{t("validation.sourceTestCase")}</dt><dd className="mt-1 break-all font-mono">{result.source_case_id}</dd></div>
-          {(!failed || result.rule_contract_satisfied) && (sameRules ? <div className="col-span-2 min-w-0"><dt className="text-muted-foreground">{t("validation.expectedAndMatchedRules")}</dt><dd className="mt-1 space-y-1">{result.covered_rule_ids.length ? result.covered_rule_ids.map(id => <code key={id} className="block break-all">{id}</code>) : t("validation.noCoveredRule")}</dd></div> : <>
-            <div className="min-w-0"><dt className="text-muted-foreground">{t("validation.coveredRules")}</dt><dd className="mt-1 space-y-1">{result.covered_rule_ids.length ? result.covered_rule_ids.map(id => <code key={id} className="block break-all">{id}</code>) : t("validation.noCoveredRule")}</dd></div>
-            <div className="min-w-0"><dt className="text-muted-foreground">{t("validation.matchedRules")}</dt><dd className="mt-1 space-y-1">{result.matched_rule_ids.length ? result.matched_rule_ids.map(id => <code key={id} className="block break-all">{id}</code>) : <span>{t("validation.noRulesMatched")}</span>}</dd></div>
+          {(!failed || result.rule_contract_satisfied) && (sameRules ? <div className="col-span-2 min-w-0"><dt className="text-muted-foreground">{t("validation.expectedAndMatchedRules")}</dt><dd className="mt-1 space-y-1">{result.covered_rule_ids.length ? result.covered_rule_ids.map(id => <code key={id} className="block break-all font-mono text-xs">{id}</code>) : t("validation.noCoveredRule")}</dd></div> : <>
+            <div className="min-w-0"><dt className="text-muted-foreground">{t("validation.coveredRules")}</dt><dd className="mt-1 space-y-1">{result.covered_rule_ids.length ? result.covered_rule_ids.map(id => <code key={id} className="block break-all font-mono text-xs">{id}</code>) : t("validation.noCoveredRule")}</dd></div>
+            <div className="min-w-0"><dt className="text-muted-foreground">{t("validation.matchedRules")}</dt><dd className="mt-1 space-y-1">{result.matched_rule_ids.length ? result.matched_rule_ids.map(id => <code key={id} className="block break-all font-mono text-xs">{id}</code>) : <span>{t("validation.noRulesMatched")}</span>}</dd></div>
           </>)}
         </dl>
       </details> : null}
@@ -304,6 +315,13 @@ export function TestCaseResultRow({ result: summary, runId, ordinal, excluded = 
       </section> : null}
     </div>}
   </details>;
+}
+
+function TestCaseName({ name }: { name: string }) {
+  const separator = name.indexOf(": ");
+  const prefix = name.slice(0, separator);
+  if (separator < 0 || !/^[a-z0-9]+(?:[-_./][a-z0-9]+)+$/.test(prefix)) return <>{name}</>;
+  return <><code className="font-mono text-xs font-normal text-muted-foreground">{prefix}: </code>{name.slice(separator + 2)}</>;
 }
 
 function FailureDiagnosis({ result }: { result: TestCaseResult }) {

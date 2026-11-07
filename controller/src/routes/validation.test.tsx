@@ -28,9 +28,9 @@ vi.mock("react-i18next", () => ({
       "validation.failuresFirst": "Failed cases are highlighted and listed first.",
       "validation.filterCaseResults": "Filter Case results",
       "validation.caseFilters.all": "All",
-      "validation.caseFilters.failed": "Failed",
-      "validation.caseFilters.passed": "Passed",
-      "validation.whyCaseFailed": "Why this Case failed",
+      "validation.caseFilters.failed": "Not as expected",
+      "validation.caseFilters.passed": "As expected",
+      "validation.whyCaseFailed": "Expectation differences",
       "validation.decisionMismatch": "Decision mismatch",
       "validation.ruleMismatch": "Rule contract mismatch",
       "validation.validationContractMismatch": "Test expectations mismatch",
@@ -114,15 +114,16 @@ function mockCases(rows:TestCaseResult[]) {
 }
 
 describe("Testing Report acceptance evidence", () => {
-  it("separates a valid model response from a failed policy expectation", () => {
-    render(<TestCaseResultRow result={{ ...result, model_status: "ok", execution_status: "complete", actual_decision: "allow" }} />);
-    expect(screen.getByText("logs.modelStatus.ok")).toBeTruthy();
-    expect(screen.getByText("logs.modelQualitySeparate")).toBeTruthy();
+  it.each(["ok", "not_called"] as const)("omits model status %s while keeping expectation differences", modelStatus => {
+    render(<TestCaseResultRow result={{ ...result, model_status: modelStatus, execution_status: "complete", actual_decision: "allow" }} />);
+    expect(screen.queryByText(`logs.modelStatus.${modelStatus}`)).toBeNull();
+    expect(screen.queryByText("logs.modelQualitySeparate")).toBeNull();
+    expect(screen.getByText("Decision mismatch")).toBeTruthy();
   });
 
   it("does not present a model transport failure as a quality mismatch", () => {
     render(<TestCaseResultRow result={{ ...result, model_status: "error", execution_status: "error", actual_failure: "provider_failure" }} />);
-    expect(screen.getByText("logs.modelStatus.error")).toBeTruthy();
+    expect(screen.getByText("validation.executionFailure")).toBeTruthy();
     expect(screen.queryByText("logs.modelQualitySeparate")).toBeNull();
   });
 
@@ -167,7 +168,7 @@ describe("Testing Report acceptance evidence", () => {
     await waitFor(() => expect(detail).toHaveBeenCalledExactlyOnceWith("bounded", 7, 0, expect.any(AbortSignal)));
     fireEvent.click(screen.getByRole("button", { name: "common.next" }));
     await waitFor(() => expect(cases).toHaveBeenLastCalledWith("bounded", "all", "page-two", expect.any(AbortSignal)));
-    fireEvent.click(screen.getByRole("button", { name: /Failed/ }));
+    fireEvent.click(screen.getByRole("button", { name: /Not as expected/ }));
     await waitFor(() => expect(cases).toHaveBeenLastCalledWith("bounded", "failed", undefined, expect.any(AbortSignal)));
     fireEvent.click(screen.getByRole("button", { name: /All/ }));
     await waitFor(() => expect(cases).toHaveBeenLastCalledWith("bounded", "all", undefined, expect.any(AbortSignal)));
@@ -342,7 +343,11 @@ describe("Testing Report acceptance evidence", () => {
     render(<TestCaseResultRow result={{ ...result, passed: false, expected_decision: "block", actual_decision: "block", matched_rule_ids: [],
       evidence_status: "preempted_by", evidence_detail: "Target Rule was not reached", rule_contract_satisfied: false,
       superseded_by: [{ policyId: "earlier-toxic-policy", ruleId: "toxic-rule" }] }} />);
-    fireEvent.click(document.querySelector("summary")!);
+    const summary = document.querySelector("summary")!;
+    expect(summary.textContent).not.toContain("validation.comparison.ruleMismatch");
+    expect(summary.textContent).toContain("Not as expected");
+    expect(summary.textContent).not.toMatch(/Passed|Failed/);
+    fireEvent.click(summary);
     expect(screen.getByText("validation.supersededTitle")).toBeTruthy();
     expect(screen.getByText("earlier-toxic-policy / toxic-rule")).toBeTruthy();
     expect(screen.getByText("Target Rule was not reached")).toBeTruthy();
@@ -369,6 +374,9 @@ describe("Testing Report acceptance evidence", () => {
     const { container } = render(<TestCaseResultRow result={result} />);
 
     expect(container.querySelector("details")?.hasAttribute("open")).toBe(false);
+    expect(container.querySelector("summary")?.textContent).not.toContain("Policy scenario");
+    expect(container.querySelector("summary")?.textContent).toContain("validation.comparison.expected: Block");
+    expect(container.querySelector("summary")?.textContent).toContain("validation.comparison.actual: Block");
     expect(screen.getByText("Policy scenario")).toBeTruthy();
     expect(screen.getByText("Acceptance provenance")).toBeTruthy();
     expect(screen.getByText("competitor-comparison-input-filter@1.95.0")).toBeTruthy();
@@ -390,12 +398,12 @@ describe("Testing Report acceptance evidence", () => {
     const row=container.querySelector("details")!;
     expect(row.open).toBe(false);row.open=true;fireEvent(row,new Event("toggle",{bubbles:true}));
     expect(await screen.findByText("validation.executionWarningTitle")).toBeTruthy();
-    expect(screen.getByText("validation.executionWarningBadge")).toBeTruthy();
+    expect(screen.getByText("validation.comparison.warning")).toBeTruthy();
     expect(screen.getByText("validation.executionWarningCount")).toBeTruthy();
-    expect(screen.queryByText("Why this Case failed")).toBeNull();
-    fireEvent.click(screen.getByRole("button", { name: /Failed/ }));
+    expect(screen.queryByText("Expectation differences")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: /Not as expected/ }));
     await waitFor(()=>expect(screen.queryByText(warning.name)).toBeNull());
-    fireEvent.click(screen.getByRole("button", { name: /Passed/ }));
+    fireEvent.click(screen.getByRole("button", { name: /As expected/ }));
     expect(await screen.findByText(warning.name)).toBeTruthy();
   });
 
@@ -421,7 +429,7 @@ describe("Testing Report acceptance evidence", () => {
     mockCases([{...result,passed:true}]);
     render(<ValidationCaseResults runId="empty-filter" />);
     await screen.findByText(result.name);
-    fireEvent.click(screen.getByRole("button", { name: /Failed/ }));
+    fireEvent.click(screen.getByRole("button", { name: /Not as expected/ }));
     expect((await screen.findByRole("status")).textContent).toBe("validation.emptyCaseResults.failed");
     expect(screen.queryByText(result.name)).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: /All/ }));
@@ -448,8 +456,10 @@ describe("Testing Report acceptance evidence", () => {
   it("marks a failed Case and explains decision and Rule-contract mismatches", () => {
     render(<TestCaseResultRow result={{ ...result, expected_decision: "block", actual_decision: "transform", covered_rule_ids: ["credentials/aws_access_key"], matched_rule_ids: ["contact/br_phone_landline"], rule_contract_satisfied: false }} />);
 
-    expect(screen.getByText(/^failed$/i)).toBeTruthy();
-    expect(screen.getByText("Why this Case failed")).toBeTruthy();
+    expect(screen.queryByText(/^failed$/i)).toBeNull();
+    expect(screen.getByText("Block")).toBeTruthy();
+    expect(screen.getByText("Transform")).toBeTruthy();
+    expect(screen.getByText("Expectation differences")).toBeTruthy();
     expect(screen.getByText("Decision mismatch")).toBeTruthy();
     expect(screen.getByText("Rule contract mismatch")).toBeTruthy();
     expect(screen.queryByText("Expected decision")).toBeNull();
@@ -485,11 +495,11 @@ describe("Explicit skipped model evidence", () => {
     mockCases([{...result,name:"Local failure"},skipped]);
     render(<ValidationCaseResults runId="skipped" />);
     await screen.findByText("Local failure");
-    fireEvent.click(screen.getByRole("button", { name: /Failed\s*1/ }));
+    fireEvent.click(screen.getByRole("button", { name: /Not as expected\s*1/ }));
     await waitFor(()=>expect(screen.queryByText("Model safety")).toBeNull());
     expect(await screen.findByText("Local failure")).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: /validationScope.skipped\s*1/ }));
     expect(await screen.findByText("Model safety")).toBeTruthy();
-    expect(screen.queryByText("Why this Case failed")).toBeNull();
+    expect(screen.queryByText("Expectation differences")).toBeNull();
   });
 });

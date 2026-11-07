@@ -463,7 +463,6 @@ export function GuardrailDetailPage() {
             onRun={openDraftReview}
             onOpen={openReport}
             onOpenTarget={openValidationTarget}
-            description={t("immutableVersions.testingDescription")}
             emptyDescription={t(hasDraft && !publishedVersions.length ? "resourceList.draftNextStep" : "immutableVersions.localTestingEmpty")}
             action={canTest ? <GuardrailVersionTestControl guardrailName={guardrail.name} versions={guardrailVersions} runs={versionReports} loading={versionsQuery.isPending || validationRunsQuery.isPending} error={versionsQuery.error || validationRunsQuery.error} submitting={versionTestMutation.isPending} onRun={(version, testModelRules) => versionTestMutation.mutateAsync({ version, testModelRules })} onRetry={() => { void versionsQuery.refetch(); void validationRunsQuery.refetch(); }} draft={canTestDraft ? { running: testingDraft, reason: validationReadiness.reason, onReview: testModelRules => { openDraftReview(); setDraftTestModelRules(testModelRules); } } : undefined} /> : undefined}
           />
