@@ -1,362 +1,317 @@
 #!/usr/bin/env node
-/** Local deployed-feature acceptance. Node 24, native dependencies only.
- * Uses existing synthetic fixtures; never edits Policies, groups or credentials.
- * Login sessions, runtime evidence and admission counters are created by tests.
- * Application traffic uses actual upstream LiteLLM gateways and a separately
- * deployed model service. This script never implements or serves an LLM.
+/** Standalone acceptance against an operator-configured Project deployment.
+ * Uses existing Project-scoped access tokens or browser sessions. Configuration
+ * and resources are read-only; gateway requests create runtime evidence only.
+ * No sign-in, fixture provisioning, SSO implementation or model server is here.
  */
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
-import { chmod, mkdir, readFile, rename, writeFile } from 'node:fs/promises';
+import { chmod, mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
 import { dirname, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { setTimeout as delay } from 'node:timers/promises';
 
-const tenants = ['tenantA', 'tenantB', 'tenantC'];
-const suffix = endpoint => `/runtime/v1/endpoints/${encodeURIComponent(endpoint)}/beta/litellm_basic_guardrail_api`;
-const defaults = '.local-secrets/tenant-runtime-20261104';
-
-export function localOrigin(raw) {
-  const url = new URL(raw);
-  assert(['127.0.0.1', 'localhost', '[::1]'].includes(url.hostname), 'Only loopback deployments are supported.');
-  assert(['http:', 'https:'].includes(url.protocol) && !url.username && !url.password && url.pathname === '/' && !url.search && !url.hash,
-    'Use an HTTP(S) origin without credentials, path, query or fragment.');
-  return url.origin;
+const resourceKinds = { endpointId: 'endpoints', routerId: 'routers', guardrailId: 'guardrails' };
+function requireValue(condition, message) { if (!condition) throw new Error(message); }
+function text(value, field, maximum = 256) {
+  requireValue(typeof value === 'string' && value.length > 0 && value.length <= maximum && value === value.trim()
+    && !/[\x00-\x1f\x7f]/.test(value), `${field} must be a bounded nonempty string without control characters.`);
+  return value;
 }
-
-export function signIn(identity) {
-  assert(identity && typeof identity.password === 'string' && identity.password, 'A private identity password is required.');
-  if (typeof identity.username === 'string' && identity.username) return {
-    path: '/api/auth/sign-in/username', body: { username: identity.username, password: identity.password },
-  };
-  // Compatibility for explicitly selected older local deployments only.
-  assert(typeof identity.email === 'string' && identity.email, 'A private username/password identity is required.');
-  return { path: '/api/auth/sign-in/email', body: { email: identity.email, password: identity.password } };
+function credential(value, field) {
+  requireValue(typeof value === 'string' && /^[\x21-\x7e]{1,8192}$/.test(value), `${field} must be a bounded ASCII header credential.`);
+  return value;
 }
-
-function redact(value, secrets) {
-  let text = String(value);
-  for (const secret of [...secrets].filter(Boolean).sort((a, b) => b.length - a.length)) text = text.replaceAll(secret, '[REDACTED]');
-  return text.replace(/\btg_[A-Za-z0-9_-]{43}\b/g, '[REDACTED]');
+function httpUrl(value, field, originOnly = false) {
+  let parsed; try { parsed = new URL(value); } catch { throw new Error(`${field} must be an HTTP(S) URL.`); }
+  requireValue(['http:', 'https:'].includes(parsed.protocol) && !parsed.username && !parsed.password && !parsed.search && !parsed.hash
+    && (!originOnly || parsed.pathname === '/'), `${field} must be an HTTP(S) ${originOnly ? 'origin' : 'URL'} without embedded credentials, query or fragment.`);
+  return originOnly ? parsed.origin : parsed.href.replace(/\/+$/, '');
 }
-
+function authentication(value, field) {
+  requireValue(value && typeof value === 'object' && !Array.isArray(value), `${field} must provide an existing access token or session cookie.`);
+  const keys = Object.keys(value);
+  requireValue(keys.length === 1 && ['bearerToken', 'sessionCookie'].includes(keys[0]), `${field} must contain exactly bearerToken or sessionCookie.`);
+  if (keys[0] === 'sessionCookie') {
+    const cookie = value.sessionCookie;
+    requireValue(typeof cookie === 'string' && /^[\x20-\x7e]{1,8192}$/.test(cookie) && cookie === cookie.trim(),
+      `${field} must contain a bounded Cookie header without control characters.`);
+    return { sessionCookie: cookie };
+  }
+  return { bearerToken: credential(value.bearerToken, field) };
+}
+export function validateConfiguration(raw) {
+  requireValue(raw && typeof raw === 'object' && !Array.isArray(raw), 'Project acceptance configuration is required.');
+  requireValue(raw.schemaVersion === undefined || raw.schemaVersion === 1, 'Unsupported configuration schemaVersion.');
+  const controllerBaseUrl = httpUrl(raw.controllerBaseUrl, 'controllerBaseUrl', true);
+  const timeoutMs = raw.timeoutMs ?? 120000;
+  requireValue(Number.isSafeInteger(timeoutMs) && timeoutMs >= 1000 && timeoutMs <= 600000, 'timeoutMs must be an integer from 1000 to 600000.');
+  requireValue(Array.isArray(raw.projects) && raw.projects.length >= 2 && raw.projects.length <= 8, 'Configure between two and eight existing Projects.');
+  const projects = raw.projects.map(item => {
+    requireValue(item && typeof item === 'object' && !Array.isArray(item), 'Each Project requires a configuration object.');
+    const id = text(item.id, 'Project id', 128);
+    requireValue(/^[A-Za-z0-9_-]+$/.test(id), 'Project ids must use letters, numbers, underscores or hyphens.');
+    requireValue(item.gateway && typeof item.gateway === 'object', 'Each Project requires a gateway configuration.');
+    requireValue(item.resources && typeof item.resources === 'object', 'Each Project requires existing resource identities.');
+    const resources = Object.fromEntries([...Object.keys(resourceKinds), 'guardrailVersion'].map(key => [key, text(item.resources[key], key)]));
+    if (item.resources.endpointCredential !== undefined) resources.endpointCredential = credential(item.resources.endpointCredential, 'Endpoint credential');
+    const gatewayUrl = new URL(httpUrl(item.gateway.baseUrl, 'Gateway baseUrl'));
+    if (gatewayUrl.pathname === '/') gatewayUrl.pathname = '/v1';
+    return { id, auth: authentication(item.auth, 'Project auth'), runnerBaseUrl: httpUrl(item.runnerBaseUrl, 'Runner baseUrl', true),
+      gateway: { baseUrl: gatewayUrl.href.replace(/\/+$/, ''), apiKey: credential(item.gateway.apiKey, 'Gateway API key'), model: text(item.gateway.model, 'Gateway model') },
+      resources, ...(item.expectedGroupId === undefined ? {} : { expectedGroupId: text(item.expectedGroupId, 'Expected group id') }),
+      ...(item.expectedPoolId === undefined ? {} : { expectedPoolId: text(item.expectedPoolId, 'Expected pool id') }) };
+  });
+  requireValue(new Set(projects.map(item => item.id)).size === projects.length, 'Project identities must be distinct.');
+  for (const key of Object.keys(resourceKinds)) requireValue(new Set(projects.map(item => item.resources[key])).size === projects.length,
+    'Use distinct Project-owned resource identities for isolation checks.');
+  requireValue(new Set(projects.map(item => JSON.stringify(Object.values(item.auth)))).size === projects.length, 'Use a distinct Project-bound credential for each Project.');
+  requireValue(new Set(projects.map(item => JSON.stringify([item.gateway.baseUrl, item.gateway.apiKey, item.gateway.model]))).size === projects.length,
+    'Use a distinct configured gateway binding for each Project.');
+  requireValue(raw.modelStatus === undefined || raw.modelStatus && typeof raw.modelStatus === 'object' && !Array.isArray(raw.modelStatus),
+    'modelStatus must provide an external counter URL and token.');
+  const modelStatus = raw.modelStatus === undefined ? null : { url: httpUrl(raw.modelStatus.url, 'Model status URL'),
+    token: credential(raw.modelStatus.token, 'Model status token') };
+  return { controllerBaseUrl, timeoutMs, projects, modelStatus,
+    administratorAuth: raw.administratorAuth === undefined ? null : authentication(raw.administratorAuth, 'Administrator auth'),
+    origin: raw.origin === undefined ? controllerBaseUrl : httpUrl(raw.origin, 'origin', true),
+    requestText: raw.requestText === undefined ? 'Hello.' : text(raw.requestText, 'requestText', 4096) };
+}
+function secretValues(config) {
+  return new Set([config.modelStatus?.token, ...Object.values(config.administratorAuth ?? {}), ...config.projects.flatMap(project =>
+    [...Object.values(project.auth), project.gateway.apiKey, project.resources.endpointCredential]),
+  ...[config.administratorAuth, ...config.projects.map(project => project.auth)].flatMap(auth => cookieSecrets(auth?.sessionCookie))].filter(Boolean));
+}
+function cookieSecrets(header) {
+  if (!header) return [];
+  return header.split(';').flatMap(part => {
+    const separator = part.indexOf('=');
+    if (separator < 1) return [];
+    const name = part.slice(0, separator).trim(), raw = part.slice(separator + 1).trim();
+    const value = raw.startsWith('"') && raw.endsWith('"') ? raw.slice(1, -1) : raw;
+    let decoded = value; try { decoded = decodeURIComponent(value); } catch {}
+    // Short, ordinary display preferences are not authentication secrets.
+    if (/^(?:locale|lang|language|theme|preference|preferences)$/i.test(name) && decoded.length < 8) return [];
+    return [raw, value, decoded].filter(Boolean);
+  });
+}
 function sanitize(value, secrets) {
-  if (typeof value === 'string') return redact(value, secrets);
+  if (typeof value === 'string') {
+    let result = value;
+    for (const secret of [...secrets].sort((a, b) => b.length - a.length)) result = result.replaceAll(secret, '[REDACTED]');
+    return result.replace(/\btg_[A-Za-z0-9_-]{43}\b/g, '[REDACTED]');
+  }
   if (Array.isArray(value)) return value.map(item => sanitize(item, secrets));
   if (value && typeof value === 'object') return Object.fromEntries(Object.entries(value).map(([key, item]) => [key, sanitize(item, secrets)]));
   return value;
 }
+async function responseJson(response) {
+  requireValue(response.body, 'HTTP response body is unavailable.');
+  const reader = response.body.getReader(), chunks = []; let size = 0;
+  try {
+    while (true) {
+      const { done, value } = await reader.read(); if (done) break;
+      size += value.byteLength; requireValue(size <= 2 * 1024 * 1024, 'HTTP response exceeds the acceptance response budget.'); chunks.push(value);
+    }
+  } finally { await reader.cancel().catch(() => {}); }
+  try { return JSON.parse(Buffer.concat(chunks).toString('utf8')); }
+  catch { throw new Error('HTTP response is not valid JSON.'); }
+}
+const authHeaders = auth => auth.bearerToken ? { authorization: `Bearer ${auth.bearerToken}` } : { cookie: auth.sessionCookie };
 
-export async function runAcceptance({ controller, runnerAB, runnerC, identities, admin, fixtures,
-  timeoutMs = 120000, origin = controller, fetcher = fetch, sleep = delay, save = async () => {},
-  gateways, modelStatusUrl, modelStatusToken }) {
-  for (const url of [controller, runnerAB, runnerC]) localOrigin(url);
-  assert.notEqual(runnerAB, runnerC, 'Use distinct ports for the shared A/B and isolated C Runner pools.');
-  assert(Number.isFinite(timeoutMs) && timeoutMs >= 1000 && timeoutMs <= 600000, 'Timeout must be between 1000 and 600000 ms.');
-  assert(fixtures?.fixtures && fixtures?.guardrail?.id && fixtures.guardrail.version, 'Use a completed private lab fixture file.');
-  assert(gateways && typeof gateways === 'object', 'Configure the three upstream LiteLLM gateway targets.');
-  for (const id of tenants) {
-    const target = gateways[id];
-    assert(target && typeof target.gatewayApiKey === 'string' && target.gatewayApiKey && typeof target.model === 'string' && target.model,
-      `Missing ${id} gateway configuration.`);
-    const gatewayUrl = new URL(target.gatewayBaseUrl);
-    localOrigin(gatewayUrl.origin);
-    assert(['/','/v1','/v1/'].includes(gatewayUrl.pathname) && !gatewayUrl.search && !gatewayUrl.hash && !gatewayUrl.username && !gatewayUrl.password,
-      'Use a loopback upstream gateway origin or /v1 base URL without embedded credentials.');
-  }
-  assert.equal(new Set(tenants.map(id => new URL(gateways[id].gatewayBaseUrl).origin)).size, 3, 'Use separately configured upstream gateway targets for the three Guard Endpoints.');
-  const statusUrl = new URL(modelStatusUrl);
-  localOrigin(statusUrl.origin);
-  assert(statusUrl.pathname === '/state' && !statusUrl.search && !statusUrl.hash && !statusUrl.username && !statusUrl.password,
-    'Use the standalone model aggregate /state endpoint without embedded credentials.');
-  assert(typeof modelStatusToken === 'string' && modelStatusToken, 'Configure the external model status credential.');
-  const secrets = new Set([modelStatusToken, ...tenants.map(id => gateways[id].gatewayApiKey)]);
-  for (const identity of [admin, ...tenants.map(id => identities[id])]) {
-    signIn(identity); secrets.add(identity.password);
-  }
-  for (const id of tenants) {
-    const fixture = fixtures.fixtures[id];
-    assert(fixture?.endpoint?.id && fixture.endpoint.credential && fixture.router?.id, `Missing ${id} private fixture.`);
-    secrets.add(fixture.endpoint.credential);
-  }
-  const cookies = {};
-  let beforeMonitor;
-  const result = { schemaVersion: 1, startedAt: new Date().toISOString(), status: 'running',
-    deployment: { controller, runnerAB, runnerC }, checks: [], runtime: [],
+export async function runAcceptance(raw, { fetcher = fetch, sleep = delay, save = async () => {}, now = Date.now } = {}) {
+  const config = validateConfiguration(raw), secrets = secretValues(config);
+  const result = { schemaVersion: 1, startedAt: new Date(now()).toISOString(), status: 'running', checks: [], runtime: [],
+    capabilities: { resourceIsolation: true, projectBoundIdentity: true, gatewayCompletion: true, pairedGuardTelemetry: true,
+      administratorPlacement: Boolean(config.administratorAuth), externalModelDispatch: Boolean(config.modelStatus),
+      wrongPoolCredentialDenial: config.projects.some(project => project.resources.endpointCredential
+        && config.projects.some(other => other.runnerBaseUrl !== project.runnerBaseUrl)) },
     limitations: [
-      'Requests traverse upstream LiteLLM Guard callbacks and the separately deployed OpenAI-compatible model service.',
-      'This verifier serves no model and does not manually compose the positive Guard pipeline.',
-      'Local admission occupancy measures held permits, not reserved CPU/memory or whole application concurrency.',
-      'This serial happy-path check does not prove peak isolation, HA/failover, permanent fencing or Provider billing isolation.',
-      'No standalone Scan Endpoint is created or reconfigured by this check.',
+      'Uses operator-provided existing Project credentials and resources; it does not provision or edit product configuration.',
+      'Gateway calls create application traffic, runtime telemetry and admission counters.',
+      'Paired telemetry observes the configured Guard path, not a gateway-supplied correlation identifier. Use quiet test resources and synchronized clocks; unrelated traffic can make attribution ambiguous.',
+      'A serial acceptance run does not establish load isolation, failover, infrastructure reservation or billing separation.',
+      ...(!config.modelStatus ? ['External model dispatch is unverified because no modelStatus counter endpoint was configured.'] : []),
+      ...(!config.administratorAuth ? ['Administrator allocation and Model policy checks were not requested.'] : []),
     ] };
   const persist = () => save(sanitize(result, secrets));
   async function check(name, action) {
-    const started = performance.now();
+    const started = now();
     try {
       const facts = await action();
-      result.checks.push({ name, status: 'passed', durationMs: Math.round(performance.now() - started), ...(facts ? { facts } : {}) });
-      await persist();
+      result.checks.push({ name, status: 'passed', durationMs: Math.max(0, now() - started), ...(facts ? { facts } : {}) }); await persist();
       return facts;
     } catch (error) {
-      result.checks.push({ name, status: 'failed', error: redact(error.message, secrets) });
-      result.status = 'failed'; result.completedAt = new Date().toISOString(); await persist();
-      throw new Error(`${name}: ${redact(error.message, secrets)}`, { cause: error });
+      const message = sanitize(error.message, secrets);
+      result.checks.push({ name, status: 'failed', error: message }); result.status = 'failed'; result.completedAt = new Date(now()).toISOString(); await persist();
+      throw new Error(`${name}: ${message}`);
     }
   }
-  async function request(base, path, { actor, body, method = 'GET', headers = {}, expect = 200 } = {}) {
-    const response = await fetcher(new URL(path, base), { method, redirect: 'error', signal: AbortSignal.timeout(Math.min(timeoutMs, 15000)),
-      headers: { ...(base === controller ? { origin, ...(actor ? { cookie: cookies[actor] ?? '' } : {}) } : {}),
-        ...(body === undefined ? {} : { 'content-type': 'application/json' }), ...headers },
-      ...(body === undefined ? {} : { body: JSON.stringify(body) }) });
-    const raw = await response.text(); let value;
-    try { value = raw ? JSON.parse(raw) : null; } catch { value = null; }
-    // Do not put upstream bodies, credentials or transport internals into proof files.
-    if (expect !== null) assert([].concat(expect).includes(response.status), `Expected HTTP ${expect}; received HTTP ${response.status}.`);
-    return { value, headers: response.headers, status: response.status };
-  }
-  const api = async (actor, path, options) => (await request(controller, path, { ...options, actor })).value;
-  async function until(read, ready) {
-    const deadline = Date.now() + timeoutMs;
-    let latest;
-    while (Date.now() < deadline) {
-      latest = await read();
-      if (ready(latest)) return latest;
-      await sleep(2000);
+  async function request(base, path, { auth, projectId, body, method = 'GET', headers = {}, expect = 200 } = {}) {
+    let response;
+    try {
+      response = await fetcher(new URL(path, base), { method, redirect: 'error', signal: AbortSignal.timeout(Math.min(config.timeoutMs, 15000)),
+        headers: { ...(auth ? authHeaders(auth) : {}), ...(projectId ? { 'x-project-id': projectId } : {}),
+          ...(base === config.controllerBaseUrl ? { origin: config.origin } : {}), ...(body === undefined ? {} : { 'content-type': 'application/json' }), ...headers },
+        ...(body === undefined ? {} : { body: JSON.stringify(body) }) });
+    } catch { throw new Error('External HTTP request failed.'); }
+    if (response.status !== expect) {
+      if (response.body) await response.body.cancel().catch(() => {});
+      throw new Error(`Expected HTTP ${expect}; received HTTP ${response.status}.`);
     }
-    throw new Error('Timed out waiting for current deployment evidence.');
-  }
-  async function modelState() {
-    const state = (await request(statusUrl.origin, statusUrl.pathname, { headers: { authorization: `Bearer ${modelStatusToken}` } })).value;
-    assert(Number.isSafeInteger(state?.completed) && state.completed >= 0 && Number.isSafeInteger(state.active) && state.active >= 0,
-      'Standalone model status is invalid.');
-    assert.equal(state.active, 0, 'Pause other model traffic before the serial acceptance run.');
-    return state;
-  }
-  async function gateway(id, content, expect = 200) {
-    const target = gateways[id];
-    return request(target.gatewayBaseUrl, '/v1/chat/completions', { method: 'POST', expect,
-      headers: { authorization: `Bearer ${target.gatewayApiKey}` },
-      body: { model: target.model, stream: false, messages: [{ role: 'user', content }] } });
-  }
-  async function modelDelta(action, expectedDelta) {
-    const before = await modelState();
-    const response = await action();
-    const after = await modelState();
-    assert.equal(after.completed - before.completed, expectedDelta,
-      'Observed standalone model calls differ from the guarded pipeline; pause other traffic and verify upstream wiring.');
     return response;
   }
-
+  const api = async (auth, path, projectId) => responseJson(await request(config.controllerBaseUrl, path, { auth, projectId }));
+  async function status(base, path, options) {
+    const response = await request(base, path, options);
+    if (response.body) await response.body.cancel().catch(() => {});
+  }
+  async function until(read, ready) {
+    const deadline = now() + config.timeoutMs;
+    while (now() < deadline) { const value = await read(); if (ready(value)) return value; await sleep(1000); }
+    throw new Error('Timed out waiting for paired runtime evidence.');
+  }
+  async function modelState() {
+    const state = await responseJson(await request(config.modelStatus.url, '', { headers: { authorization: `Bearer ${config.modelStatus.token}` } }));
+    requireValue(Number.isSafeInteger(state?.completed) && state.completed >= 0 && state.active === 0, 'Model status must expose an idle nonnegative completed counter; pause other traffic.');
+    return state.completed;
+  }
   await persist();
-  await check('Controller, both real Runner pools and standalone model are healthy', async () => {
-    await request(controller, '/health/ready');
-    for (const base of [runnerAB, runnerC]) {
-      const ready = (await request(base, '/health/ready')).value;
-      assert(ready?.ready && ready.controller_connected && ready.desired_state_synchronized, 'Runner has not synchronized with Controller.');
+  await check('Supplied credentials identify the configured Projects', async () => {
+    for (const project of config.projects) {
+      const identity = await api(project.auth, '/api/v1/account/identity', project.id);
+      requireValue(identity.role === 'user' && identity.projectId === project.id, 'Credential is not a business-user credential for the configured Project.');
     }
-    const external = await modelState();
-    return { externalModel: true, targetDelayMs: external.fixedLatencyMs ?? null };
+    return { projectIds: config.projects.map(item => item.id), signInsCreated: 0 };
   });
-  await check('Administrator and tenant sessions use persisted roles and tenants', async () => {
-    for (const [id, identity] of [['admin', admin], ...tenants.map(id => [id, identities[id]])]) {
-      const login = signIn(identity);
-      const response = await request(controller, login.path, { method: 'POST', body: login.body });
-      cookies[id] = response.headers.getSetCookie().map(item => item.split(';')[0]).join('; ');
-      assert(cookies[id], 'Login omitted a session cookie.'); secrets.add(cookies[id]);
-      const current = await api(id, '/api/v1/account/identity');
-      assert.equal(current.role, id === 'admin' ? 'admin' : 'user', 'Unexpected session role.');
-      if (id !== 'admin') assert.equal(current.tenantId, id, 'Unexpected persisted tenant identity.');
+  await check('Existing resources remain private across Projects', async () => {
+    let reads = 0;
+    for (const viewer of config.projects) for (const owner of config.projects) for (const [key, kind] of Object.entries(resourceKinds)) {
+      await status(config.controllerBaseUrl, `/api/v1/${kind}/${encodeURIComponent(owner.resources[key])}`,
+        { auth: viewer.auth, projectId: viewer.id, expect: viewer.id === owner.id ? 200 : 404 }); reads++;
     }
-    return { roles: { administrator: 'admin', tenants: 'user' } };
+    return { reads, distinctProjects: config.projects.length };
   });
-
-  let placement;
-  await check('A/B share a group and C has a separate allocated Runner pool', async () => {
-    const directory = await api('admin', '/api/v1/tenant-groups');
-    const byTenant = Object.fromEntries(tenants.map(id => [id, directory.tenants.find(item => item.id === id)?.groupId]));
-    assert(byTenant.tenantA && byTenant.tenantB && byTenant.tenantC, 'Tenant allocation is incomplete.');
-    assert.equal(byTenant.tenantA, byTenant.tenantB, 'A and B must share a group for this demonstration.');
-    assert.notEqual(byTenant.tenantA, byTenant.tenantC, 'C must be isolated into another group.');
-    const poolSets = Object.fromEntries(tenants.map(id => [id, directory.pools.filter(pool => pool.groupId === byTenant[id]).map(pool => pool.id).sort()]));
-    for (const id of tenants) assert(poolSets[id].length, `${id} has no allocated pool.`);
-    assert(poolSets.tenantA.every(id => !poolSets.tenantC.includes(id)), 'Groups share a pool identity.');
-    for (const id of tenants) {
-      const visible = (await api(id, '/api/v1/runner-pools')).items.map(pool => pool.id).sort();
-      assert.deepEqual(visible, poolSets[id], 'Tenant pool visibility differs from database allocation.');
+  await check('Project credentials cannot read administrator controls', async () => {
+    for (const project of config.projects) for (const path of ['/api/v1/project-groups', '/api/v1/project-admission-monitor'])
+      await status(config.controllerBaseUrl, path, { auth: project.auth, projectId: project.id, expect: 403 });
+  });
+  if (config.administratorAuth) await check('Administrator observes configured current Project allocation and Model policy', async () => {
+    const identity = await api(config.administratorAuth, '/api/v1/account/identity');
+    requireValue(identity.role === 'admin' && identity.projectId === null, 'Administrator credential does not identify a platform administrator.');
+    const allocations = [];
+    for (const project of config.projects) {
+      const allocation = await api(config.administratorAuth, `/api/v1/projects/${encodeURIComponent(project.id)}/runner`);
+      requireValue(allocation.projectId === project.id && allocation.groupId && allocation.pool?.id, 'Project has no current Runner allocation.');
+      if (project.expectedGroupId !== undefined) assert.equal(allocation.groupId, project.expectedGroupId, 'Current Project group differs from operator expectation.');
+      if (project.expectedPoolId !== undefined) assert.equal(allocation.pool.id, project.expectedPoolId, 'Current Runner pool differs from operator expectation.');
+      const policy = await api(config.administratorAuth, `/api/v1/project-groups/${encodeURIComponent(allocation.groupId)}/model-configuration`);
+      requireValue(policy.groupId === allocation.groupId && ['legacy', 'scoped', 'blocked'].includes(policy.mode), 'Current group Model policy is invalid.');
+      for (const field of ['credentials', 'credentialCiphertexts', 'runtimePayload', 'baseUrl']) requireValue(!Object.hasOwn(policy, field), 'Public Model policy exposes private runtime/credential data.');
+      allocations.push({ projectId: project.id, groupId: allocation.groupId, poolId: allocation.pool.id, modelPolicy: policy.mode });
     }
-    placement = { tenantGroups: byTenant, tenantPools: poolSets };
-    return placement;
+    return { allocations };
   });
-
-  await check('Same-group tenants retain private application ownership', async () => {
-    for (const viewer of tenants) for (const owner of tenants) {
-      for (const [kind, key] of [['endpoints', 'endpoint'], ['routers', 'router']]) {
-        const path = `/api/v1/${kind}/${encodeURIComponent(fixtures.fixtures[owner][key].id)}`;
-        await request(controller, path, { actor: viewer, expect: viewer === owner ? 200 : 404 });
+  await check('Configured Runner origins are synchronized', async () => {
+    for (const base of new Set(config.projects.map(item => item.runnerBaseUrl))) {
+      const ready = await responseJson(await request(base, '/health/ready'));
+      requireValue(ready?.ready && ready.controller_connected && ready.desired_state_synchronized, 'Configured Runner has not synchronized with Controller.');
+    }
+  });
+  await check('Gateways complete through the configured Project Guard path', async () => {
+    for (const project of config.projects) {
+      const since = new Date(now()).toISOString(), before = config.modelStatus ? await modelState() : null;
+      const started = now();
+      const completion = await responseJson(await request(project.gateway.baseUrl + '/', 'chat/completions', { method: 'POST',
+        headers: { authorization: `Bearer ${project.gateway.apiKey}` },
+        body: { model: project.gateway.model, stream: false, messages: [{ role: 'user', content: config.requestText }], metadata: { acceptance_request_id: randomUUID() } } }));
+      requireValue(typeof completion?.choices?.[0]?.message?.content === 'string', 'Gateway did not return an OpenAI-compatible completion.');
+      if (config.modelStatus) assert.equal(await modelState() - before, 1, 'Gateway request did not dispatch exactly one external model call; pause other traffic.');
+      const query = new URLSearchParams({ endpointId: project.resources.endpointId, since, limit: '100' });
+      const matches = row => row.endpointId === project.resources.endpointId && row.routerId === project.resources.routerId
+        && row.guardrailId === project.resources.guardrailId && row.guardrailVersion === project.resources.guardrailVersion;
+      const identity = value => typeof value === 'string' && value.trim().length > 0;
+      const paired = value => {
+        const rows = value.items.filter(matches);
+        const incoming = rows.find(row => row.direction === 'incoming' && identity(row.requestId) && identity(row.runnerId)
+          && rows.some(other => other.direction === 'outgoing' && other.requestId === row.requestId && identity(other.runnerId)));
+        const outgoing = incoming && rows.find(row => row.direction === 'outgoing' && row.requestId === incoming.requestId && identity(row.runnerId));
+        return incoming && outgoing ? { incoming, outgoing } : null;
+      };
+      const events = await until(async () => {
+        const value = await api(project.auth, `/api/v1/telemetry/events?${query}`, project.id);
+        requireValue(Array.isArray(value?.items), 'Runtime evidence response does not contain an event list.');
+        return value;
+      }, value => paired(value) !== null);
+      const { incoming, outgoing } = paired(events);
+      result.runtime.push({ projectId: project.id, status: 'delivered', durationMs: Math.max(0, now() - started),
+        endpointId: project.resources.endpointId, guardrailId: project.resources.guardrailId,
+        guardrailVersion: project.resources.guardrailVersion, inputRunnerId: incoming.runnerId, outputRunnerId: outgoing.runnerId, requestId: incoming.requestId,
+        externalModelDispatchVerified: Boolean(config.modelStatus) });
+    }
+    return { delivered: config.projects.length, pairedGuardTelemetry: true, externalModelDispatchVerified: Boolean(config.modelStatus) };
+  });
+  if (result.capabilities.wrongPoolCredentialDenial) await check('Endpoint credentials are valid only on their configured Runner origins', async () => {
+    let verified = 0, denied = 0;
+    for (const project of config.projects.filter(item => item.resources.endpointCredential)) {
+      const path = `/runtime/v1/endpoints/${encodeURIComponent(project.resources.endpointId)}/verify`;
+      const headers = { 'x-api-key': project.resources.endpointCredential };
+      const own = await responseJson(await request(project.runnerBaseUrl, path, { method: 'POST', headers }));
+      requireValue(own.ready === true && own.adapter_id === 'litellm-generic-guardrail', 'Endpoint credential is not valid on its configured LiteLLM Runner.');
+      verified++;
+      for (const base of new Set(config.projects.map(item => item.runnerBaseUrl).filter(base => base !== project.runnerBaseUrl))) {
+        await status(base, path, { method: 'POST', expect: 401, headers }); denied++;
       }
     }
+    return { verified, denied };
   });
-
-  await check('Tenant callers cannot access group controls or administrator monitoring', async () => {
-    for (const id of tenants) {
-      const groupId = placement.tenantGroups[id];
-      for (const path of ['/api/v1/tenant-groups', '/api/v1/tenant-admission-monitor', `/api/v1/tenant-groups/${encodeURIComponent(groupId)}/model-configuration`])
-        await request(controller, path, { actor: id, expect: 403 });
-      await request(controller, `/api/v1/tenant-groups/${encodeURIComponent(groupId)}/model-configuration`, {
-        actor: id, method: 'PUT', expect: 403, body: { mode: 'blocked', expectedVersion: 0 },
-      });
-    }
-  });
-
-  await check('Group Model policy API is readable without returning secret snapshots', async () => {
-    const groups = [...new Set(Object.values(placement.tenantGroups))], policies = [];
-    for (const groupId of groups) {
-      const policy = await api('admin', `/api/v1/tenant-groups/${encodeURIComponent(groupId)}/model-configuration`);
-      assert.equal(policy.groupId, groupId); assert(['legacy', 'scoped', 'blocked'].includes(policy.mode));
-      for (const field of ['credentialCiphertexts', 'runtimePayload', 'credentials', 'baseUrl'])
-        assert(!Object.hasOwn(policy, field), 'Group policy response exposes private runtime/credential data.');
-      policies.push({ groupId, mode: policy.mode, version: policy.version, modelCount: policy.modelIds.length, providerCount: policy.providerIds.length });
-    }
-    return { policies };
-  });
-
-  await check('Each upstream gateway delivers through real Input, standalone LLM and real Output', async () => {
-    beforeMonitor = await api('admin', '/api/v1/tenant-admission-monitor');
-    const since = new Date().toISOString();
-    for (const id of tenants) {
-      const started = performance.now();
-      const response = await modelDelta(() => gateway(id, 'A plain synthetic load lab request.'), 1);
-      assert.equal(typeof response.value?.choices?.[0]?.message?.content, 'string', 'Gateway did not return an OpenAI completion.');
-      assert(!response.value.choices[0].message.content.includes('LAB_BLOCK_MARKER'), 'Unchecked blocked output reached the client.');
-      result.runtime.push({ tenantId: id, status: 'delivered', gateway: gateways[id].gatewayBaseUrl,
-        durationMs: Math.round(performance.now() - started), model: gateways[id].model,
-        endpointId: fixtures.fixtures[id].endpoint.id, guardrailId: fixtures.guardrail.id, guardrailVersion: fixtures.guardrail.version });
-    }
-    for (const id of tenants) {
-      const endpointId = fixtures.fixtures[id].endpoint.id;
-      const events = await until(() => api(id, `/api/v1/telemetry/events?endpointId=${encodeURIComponent(endpointId)}&since=${encodeURIComponent(since)}&limit=50`), value => {
-        const pairs = new Map();
-        for (const row of value?.items ?? []) {
-          if (row.endpointId !== endpointId || row.routerId !== fixtures.fixtures[id].router.id
-            || row.guardrailId !== fixtures.guardrail.id || row.guardrailVersion !== fixtures.guardrail.version) continue;
-          const pair = pairs.get(row.requestId) ?? new Set(); pair.add(row.direction); pairs.set(row.requestId, pair);
-        }
-        return [...pairs.values()].some(pair => pair.has('incoming') && pair.has('outgoing'));
-      });
-      const related = events.items.filter(row => row.endpointId === endpointId && row.routerId === fixtures.fixtures[id].router.id
-        && row.guardrailId === fixtures.guardrail.id && row.guardrailVersion === fixtures.guardrail.version);
-      const incoming = related.find(row => row.requestId && row.runnerId && row.direction === 'incoming' && related.some(other =>
-        other.requestId === row.requestId && other.runnerId === row.runnerId && other.direction === 'outgoing'));
-      assert(incoming, 'No paired Input/Output execution evidence on the same Runner was found.');
-      const runtime = result.runtime.find(row => row.tenantId === id);
-      runtime.runnerId = incoming.runnerId; runtime.requestId = incoming.requestId;
-    }
-    for (const row of result.runtime.filter(row => row.tenantId !== 'tenantC'))
-      assert.notEqual(row.runnerId, result.runtime.find(row => row.tenantId === 'tenantC').runnerId,
-        'Shared-group and isolated-group telemetry came from the same Runner.');
-    return { delivered: 3, externalModelCalls: 3, path: 'upstream_litellm_guard_provider', pairedGuardTelemetry: true };
-  });
-
-  await check('Upstream gateway blocks current policies on Input and Output with external call proof', async () => {
-    for (const id of tenants) {
-      const input = await modelDelta(() => gateway(id, 'LAB_BLOCK_MARKER', 400), 0);
-      assert(input.value?.error && !input.value?.choices, 'Input policy failure returned an unexpected public body.');
-      const output = await modelDelta(() => gateway(id, '[mock:block-output]', 400), 1);
-      assert(output.value?.error && !output.value?.choices, 'Output policy failure delivered unchecked content.');
-    }
-    return { inputBlocks: 3, inputModelCalls: 0, outputBlocks: 3, outputModelCalls: 3, policiesEdited: false };
-  });
-
-  await check('A/B Endpoint credentials fail on C pool and C credentials fail on A/B pool', async () => {
-    for (const id of tenants) {
-      const fixture = fixtures.fixtures[id];
-      await request(id === 'tenantC' ? runnerAB : runnerC, suffix(fixture.endpoint.id), { method: 'POST', expect: 401,
-        headers: { 'x-api-key': fixture.endpoint.credential, 'x-tenant-id': id },
-        body: { input_type: 'request', litellm_call_id: `local-mt-wrong-${randomUUID()}`, texts: ['Hello.'] } });
-    }
-    return { denied: 3 };
-  });
-
-  await check('Measured admin monitoring reports current group placement and real completed permits', async () => {
-    const state = await until(async () => {
-      const response = await request(controller, '/api/v1/tenant-admission-monitor', { actor: 'admin' });
-      assert.equal(response.headers.get('cache-control'), 'no-store'); return response.value;
-    }, state => state?.source === 'authenticated_runner_heartbeat'
-      && [...new Set(Object.values(placement.tenantGroups))].every(id => {
-        const row = state.groups.find(item => item.id === id);
-        return row?.available && row.values.capacity > 0;
-      }) && tenants.every(id => {
-      const row = state.tenants.find(item => item.id === id);
-      const initial = beforeMonitor?.tenants.find(item => item.id === id)?.values.admitted ?? 0;
-      return row?.available && row.groupId === placement.tenantGroups[id] && row.values.admitted >= initial + 2 && row.values.capacity > 0;
-    }));
-    return { source: state.source, controllerLocal: state.controllerLocal,
-      groups: state.groups.filter(row => Object.values(placement.tenantGroups).includes(row.id)).map(row => ({
-        id: row.id, tenantIds: row.tenantIds, poolIds: row.poolIds, available: row.available,
-        active: row.values.active, capacity: row.values.capacity, queued: row.values.queued,
-      })), tenants: state.tenants.filter(row => tenants.includes(row.id)).map(row => ({
-        id: row.id, groupId: row.groupId, available: row.available, admitted: row.values.admitted, rejected: row.values.rejected,
-        waitP95Ms: row.values.waitP95Ms, heldP95Ms: row.values.heldP95Ms,
-      })) };
-  });
-  result.status = 'passed'; result.completedAt = new Date().toISOString(); await persist(); return sanitize(result, secrets);
+  result.status = 'passed'; result.completedAt = new Date(now()).toISOString(); await persist(); return sanitize(result, secrets);
 }
 
-async function main() {
-  if (process.argv.includes('--help') || !process.argv.includes('--execute')) {
-    console.log(`Verify an already deployed local A/B-shared + C-isolated demonstration.
-Use --execute to create login sessions and run real existing pipeline requests.
-Required: GUARD_LOCAL_ADMIN_IDENTITIES_FILE JSON {username,password}
-Optional:
-  GUARD_LOCAL_IDENTITIES_FILE   ${defaults}/identities.json
-  GUARD_LOCAL_FIXTURES_FILE     ${defaults}/load-lab-fixtures.json
-  GUARD_LOCAL_CONTROLLER_URL    http://127.0.0.1:38081
-  GUARD_LOCAL_RUNNER_AB_URL     http://127.0.0.1:38082
-  GUARD_LOCAL_RUNNER_C_URL      http://127.0.0.1:38083
-  GUARD_LOCAL_GATEWAYS_FILE     ${defaults}/external-llm/gateways.json
-  GUARD_LOCAL_MODEL_STATUS_CONFIG_FILE ${defaults}/load-lab-config.json
-  GUARD_LOCAL_ORIGIN            http://localhost:38081
-  GUARD_LOCAL_TIMEOUT_MS        120000
-  GUARD_LOCAL_RESULT_FILE       /tmp/tasklattice-local-multitenancy.json
-No fixtures, groups, Model policies, credentials or deployment flags are edited.
-The configured model is external. Upstream LiteLLM performs both Guard phases; this script serves no model.
-Pause the lab first so external model call-counter deltas are attributable.
-Use fresh fixture paths for a fresh release, not old deployment credentials.`);
+export async function main(argv = process.argv.slice(2), env = process.env) {
+  if (argv.includes('--help') || !argv.includes('--execute')) {
+    console.log(`Usage: node scripts/verify-local-multitenancy.mjs --config /private/project-acceptance.json --execute [--result /private/result.json]
+Standalone external acceptance for existing Projects; Node 24, no dependencies.
+The private JSON config supplies controllerBaseUrl, projects[2..8], and optional
+administratorAuth, modelStatus, origin, timeoutMs and requestText. Each Project:
+{id, auth:{bearerToken OR sessionCookie}, runnerBaseUrl,
+ gateway:{baseUrl,apiKey,model},
+ resources:{endpointId,routerId,guardrailId,guardrailVersion,endpointCredential?},
+ expectedGroupId?,expectedPoolId?}
+Use distinct Project-bound credentials and private resource IDs. Access tokens
+need read permissions for account identity, resources and runtime evidence.
+Sessions must already select the configured Project. No login is performed.
+Optional administratorAuth uses the same credential shape for allocation and
+Model policy reads. Optional modelStatus:{url,token} exposes an idle external
+model /state endpoint with completed and active counters; pause other traffic.
+Each gateway must already own real Input/LLM/Output integration. Resources,
+configuration and policies are read-only; real gateway calls create telemetry.
+No SSO, sharing, model server, fixture creation or deployment is implemented.
+A/B/C names and Kubernetes Service names are never inferred.
+Default result: /tmp/tasklattice-project-acceptance.json (mode0600).`);
     return;
   }
-  assert(process.env.GUARD_LOCAL_ADMIN_IDENTITIES_FILE, 'Set GUARD_LOCAL_ADMIN_IDENTITIES_FILE to a private administrator identity file.');
-  const [identities, admin, fixtures, gateways, modelStatus] = await Promise.all([
-    process.env.GUARD_LOCAL_IDENTITIES_FILE ?? `${defaults}/identities.json`, process.env.GUARD_LOCAL_ADMIN_IDENTITIES_FILE,
-    process.env.GUARD_LOCAL_FIXTURES_FILE ?? `${defaults}/load-lab-fixtures.json`,
-    process.env.GUARD_LOCAL_GATEWAYS_FILE ?? `${defaults}/external-llm/gateways.json`,
-    process.env.GUARD_LOCAL_MODEL_STATUS_CONFIG_FILE ?? `${defaults}/load-lab-config.json`,
-  ].map(async path => {
-    try { return JSON.parse(await readFile(path, 'utf8')); }
-    catch { throw new Error('A private identity or fixture input file is unreadable or malformed.'); }
-  }));
-  const target = resolve(process.env.GUARD_LOCAL_RESULT_FILE ?? '/tmp/tasklattice-local-multitenancy.json');
-  async function save(result) {
-    await mkdir(dirname(target), { recursive: true });
-    const temporary = `${target}.${process.pid}.${randomUUID()}.tmp`;
-    await writeFile(temporary, JSON.stringify(result, null, 2) + '\n', { mode: 0o600, flag: 'wx' });
-    await rename(temporary, target); await chmod(target, 0o600);
+  const options = new Map();
+  for (let index = 0; index < argv.length; index++) {
+    const key = argv[index]; if (key === '--execute') continue;
+    requireValue(['--config', '--result'].includes(key) && argv[index + 1] && !argv[index + 1].startsWith('--') && !options.has(key), 'Use --config FILE --execute [--result FILE].');
+    options.set(key, argv[++index]);
   }
-  const rawStatusUrl = new URL(modelStatus.modelStatusUrl);
-  // The K8s lab uses Docker's host alias; the host-side verifier uses loopback.
-  if (rawStatusUrl.hostname === 'host.docker.internal') rawStatusUrl.hostname = '127.0.0.1';
-  const result = await runAcceptance({ controller: localOrigin(process.env.GUARD_LOCAL_CONTROLLER_URL ?? 'http://127.0.0.1:38081'),
-    runnerAB: localOrigin(process.env.GUARD_LOCAL_RUNNER_AB_URL ?? 'http://127.0.0.1:38082'),
-    runnerC: localOrigin(process.env.GUARD_LOCAL_RUNNER_C_URL ?? 'http://127.0.0.1:38083'),
-    identities, admin, fixtures, gateways, modelStatusUrl: rawStatusUrl.href, modelStatusToken: modelStatus.modelStatusToken,
-    timeoutMs: Number(process.env.GUARD_LOCAL_TIMEOUT_MS ?? 120000),
-    origin: process.env.GUARD_LOCAL_ORIGIN ?? 'http://localhost:38081', save });
+  requireValue(options.has('--config'), 'Set --config to a private operator configuration file.');
+  let raw; try { raw = JSON.parse(await readFile(resolve(options.get('--config')), 'utf8')); } catch { throw new Error('Private acceptance configuration is unreadable or malformed.'); }
+  const target = resolve(options.get('--result') ?? '/tmp/tasklattice-project-acceptance.json');
+  requireValue(target !== resolve(options.get('--config')), 'Configuration and result paths must differ.');
+  async function save(result) {
+    await mkdir(dirname(target), { recursive: true }); const temporary = `${target}.${process.pid}.${randomUUID()}.tmp`;
+    let created = false;
+    try {
+      await writeFile(temporary, JSON.stringify(result, null, 2) + '\n', { mode: 0o600, flag: 'wx' });
+      created = true;
+      await rename(temporary, target); await chmod(target, 0o600);
+    } finally { if (created) await rm(temporary, { force: true }); }
+  }
+  const result = await runAcceptance(raw, { save });
   console.log(JSON.stringify({ status: result.status, checks: result.checks.length, resultFile: target }));
-
 }
-
-if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) main().catch(error => {
-  // The runner deliberately reports controlled assertions/statuses, not upstream
-  // response bodies or file contents. Secrets never belong in stdout/stderr.
-  console.error(JSON.stringify({ status: 'failed', error: error.message })); process.exitCode = 1;
-});
+if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href)
+  main().catch(error => { console.error(JSON.stringify({ status: 'failed', error: error.message })); process.exitCode = 1; });

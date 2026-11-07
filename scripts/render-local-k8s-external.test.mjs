@@ -46,7 +46,10 @@ function fixture() {
     { apiVersion: 'v1', kind: 'Secret', metadata: { name: 'mt-demo-tenant-lab' }, stringData: { 'config.json': JSON.stringify(labConfig) } },
     { apiVersion: 'apps/v1', kind: 'Deployment', metadata: { name: 'mt-demo-tenant-lab' }, spec: { template: { metadata: {}, spec: { containers: [] } } } },
   ] };
-  return { modelApiKey: modelKey, gatewayInputs, labManifest };
+  return { modelApiKey: modelKey, gatewayInputs, labManifest, runnerBindings: {
+    tenantA: 'http://runner-shared.example.svc:8091', tenantB: 'http://runner-shared.example.svc:8091',
+    tenantC: 'http://runner-dedicated.example.svc:8091',
+  } };
 }
 
 test('rendering preserves tenant credentials and upstream hooks while using Kubernetes services exclusively', () => {
@@ -78,7 +81,7 @@ test('rendering preserves tenant credentials and upstream hooks while using Kube
     assert.equal(secret.stringData.LITELLM_MASTER_KEY, input.gatewayInputs[id].environment.LITELLM_MASTER_KEY);
     assert.equal(secret.stringData.TASKLATTICE_GUARD_API_KEY, input.gatewayInputs[id].environment.TASKLATTICE_GUARD_API_KEY);
     assert.equal(secret.stringData.TASKLATTICE_GUARD_API_BASE,
-      `http://mt-demo-runtime${id === 'tenantC' ? '-group-demo' : ''}:8091/runtime/v1/endpoints/endpoint-${id}`);
+      `${input.runnerBindings[id]}/runtime/v1/endpoints/endpoint-${id}`);
     assert(!Object.hasOwn(secret.stringData, 'DATABASE_URL'));
   }
   const lab = JSON.parse(result.labManifest.items[0].stringData['config.json']);
@@ -101,6 +104,11 @@ test('renderer fails closed on ambiguous tenant bindings, disabled protection an
     input => { input.gatewayInputs.tenantA.config = config + '\nmock_response: bypass\n'; },
     input => { input.gatewayInputs.tenantA.config = config.replace('model_name: "guarded-model"', 'model_name: "different-model"'); },
     input => { input.gatewayInputs.tenantA.config = config.replace('http://127.0.0.1:38120/v1', 'https://external.example/v1'); },
+    input => { delete input.runnerBindings; },
+    input => { delete input.runnerBindings.tenantC; },
+    input => { input.runnerBindings.tenantA = 'http://runner.example/path'; },
+    input => { input.runnerBindings.tenantA = 'http://user:password@runner.example'; },
+    input => { input.runnerBindings.tenantA = 'http://runner.example?key=value'; },
     input => { input.gatewayMemoryLimitMi = 64; },
     input => { input.gatewayMemoryRequestMi = 512; },
   ];
@@ -140,7 +148,7 @@ test('CLI writes only private manifests and a credential-free summary', async ()
     for (const id of ids) {
       await writeFile(join(runtime, 'external-llm', `${id}.yaml`), input.gatewayInputs[id].config);
       await writeFile(join(runtime, 'external-llm', `${id}.env`), Object.entries(input.gatewayInputs[id].environment).map(([key, value]) => `${key}=${value}`).join('\n'));
-      gatewayMap[id] = { gatewayApiKey: input.gatewayInputs[id].environment.LITELLM_MASTER_KEY, model: 'guarded-model' };
+      gatewayMap[id] = { gatewayApiKey: input.gatewayInputs[id].environment.LITELLM_MASTER_KEY, model: 'guarded-model', runnerBaseUrl: input.runnerBindings[id] };
     }
     await writeFile(join(runtime, 'external-llm/gateways.json'), JSON.stringify(gatewayMap));
     console.log = value => messages.push(value);

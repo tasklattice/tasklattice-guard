@@ -163,8 +163,9 @@ for explicit views, Rule evidence, and execution limits.
 | Configure models and publish a Default copy through APIs | [guardctl configuration](docs/guardctl-configuration.md) |
 | Learn the code from the beginning | [Start here: folder map and seven-step source path](START-HERE.md) |
 | Develop or understand the internals | [Development and tests](docs/development.md) and [architecture](docs/architecture.md) |
-| Understand multi-tenancy and remaining work | [Current status and milestones](docs/multi-tenancy-status.md) and [tenant groups](docs/tenant-groups.md) |
-| Run the local tenant isolation experiment | [Load lab controls and measurements](docs/tenant-load-lab.md) and [current Kubernetes deployment](docs/local-k8s-runtime-2026-11-05.md) |
+| Configure Projects, membership and SSO | [Projects, users and Keycloak](docs/document/en/admin/03-platform-access.mdx) |
+| Run standalone external demo checks | [Operator-supplied gateway and Runner tools](docs/tenant-load-lab.md) |
+| Read the historical local experiment | [5 November deployment and measurements](docs/local-k8s-runtime-2026-11-05.md) |
 
 A running Controller also serves an interactive API reference at `/api/docs`,
 its OpenAPI contract at `/api/openapi.json`, and an agent-oriented index at

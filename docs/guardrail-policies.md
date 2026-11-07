@@ -2,32 +2,37 @@
 
 A Policy defines versioned checks, actions, and test cases. A Guardrail composes
 Policies into the protection configuration assigned to application traffic.
-Validation is recommended before deployment; publishing does not require a
-passing test and does not switch traffic. See [revision lifecycles](revision-lifecycle.md)
+Validate the current draft before publishing an executable version; deployment
+readiness is a separate step. See [revision lifecycles](revision-lifecycle.md)
 for publication and rollback.
 
 ## Default protection and model requirements
 
-The current Default selects **122 Rules across 12 local Policies** and requires
-no detection model. The authoritative selection is
-[default-policy-selection.ts](../controller/shared/default-policy-selection.ts);
-[defaults.ts](../controller/server/domain/defaults.ts) rejects non-local Policy
-implementations. Focused checks cover content, injection, credentials, payment
-data, identifiers and related local protections. Catalog additions remain opt-in;
-existing Guardrails retain their copied configuration.
+The Default Guardrail explicitly selects **124 Rules across 14 Policies**: two model
+Policies and 12 local Policies. Additional capability Rules remain opt-in.
+It requires compatible, validated assignments for `jailbreak.input`,
+`content_safety.input`, and `content_safety.output`. The Jailbreak binding may
+use the dedicated NemoGuard JailbreakDetect profile or another supported
+Jailbreak profile; the baseline does not hard-code a vendor or credentials. The authoritative selection is in
+[defaults.ts](../controller/server/domain/defaults.ts). Focused Policies cover
+credentials, payment data, tax/health/government identifiers, contact and
+network data, harmful phrases, and prompt/code injection. Selected Rules retain their matching behavior,
+actions, Rail scope, and inherited test cases; Default owns their composition
+order and reviewed test expectations. On newly compiled versions, local Block
+checks run first; independent `builtin-jailbreak` and `builtin-content-safety`
+checks can run together on Input.
+Content safety also runs on Output. Models see the
+original content before local redaction. A blocking verdict stops the chain.
+Missing required bindings reject runtime preparation; an unavailable or malformed
+model response fails closed and is recorded as an error, never a successful detection.
+Model support alone does not establish accuracy or multi-turn coverage; those
+remain properties of the configured model/profile and its measured behavior.
 
-Default owns the selected Rule order, actions and reviewed test expectations.
-It uses `full_buffered` output delivery because local PII transformations need
-the complete response. Local checks provide bounded screening, with possible
-false positives and negatives; they do not establish model-based or semantic
-coverage.
-
-For model-backed protection, select the [Full-feature baseline Profile](full-feature-baseline.md)
-or add the desired Policies explicitly. Missing required bindings reject runtime
-preparation; unavailable or malformed model responses follow the configured
-failure policy. Configure and validate bindings through the
-[model configuration workflow](model-configuration.md). Publishing a version
-alone does not prove model availability or detector accuracy.
+The older mixed `Baseline PII Protection`, `Pattern Matching`, and advanced PII
+collections have been replaced in Default by focused bindings. Local checks
+provide format/context screening, not exhaustive semantic protection. Default
+uses `full_buffered` output delivery because its transformations require the
+complete response.
 
 ## Topic and company business boundaries
 

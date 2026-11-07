@@ -1,10 +1,18 @@
 # Local Kubernetes runtime — 5 November 2026
 
-All ten application Pods are now Ready in local Kubernetes. The fake LLM and
-three LiteLLM gateways no longer run as native macOS application processes.
-Guard is available at http://localhost:38081; the
-[tenant load lab](http://localhost:38081/settings/tenant-load-lab) is paused after
-verification. Resume it to conduct a new test.
+This is a historical observation of the pre-Project-refactor deployment on
+5 November 2026. Its names, URLs, console controls, commands and measurements
+refer to that retained runtime, not the current upstream architecture. They do
+not establish the present state of the cluster or validate the rebased source.
+Use the [current standalone tools guide](tenant-load-lab.md) and the
+[upstream Helm guide](../charts/tali-guard/README.md) for a new environment.
+
+At the time of the observation, ten application Pods were Ready. The fake LLM and
+three gateways ran in local Kubernetes. The Controller was reachable through
+`localhost:38081`, and the then-existing embedded load-lab page was paused after
+verification. The current console has removed that page and uses Projects and
+OIDC/Keycloak. No legacy provisioning or SSO workflow below should be replayed
+against the new schema.
 
 Raw JSON/TXT observations are preserved locally in the ignored directory
 `.tasklattice-recovery/local-k8s-evidence-2026-11-05/`. Artifact filenames below
@@ -20,7 +28,7 @@ of the chat session.
 
 ## What runs where
 
-| Component | Current placement |
+| Component | Recorded placement |
 | --- | --- |
 | Controller and portal | Kubernetes Deployment `mt-demo-controller` |
 | A/B Runner pool | Kubernetes StatefulSet `mt-demo-runner` |
@@ -136,7 +144,7 @@ host network bridge requires a planned replacement cluster with
 `extraPortMappings` and data restoration. That migration was unnecessary and
 was not performed.
 
-## Fresh verification
+## Verification recorded on 5 November
 
 The new Kubernetes acceptance (`happy-path.json`)
 passed all 10 checks. It covers persisted roles, A/B versus C allocation, private
@@ -200,8 +208,10 @@ This local deployment still shares physical CPU, storage, Redis and PostgreSQL.
 It does not certify strong performance isolation, HA/failover, permanent fencing,
 or Provider billing isolation. The peak button remains available; a fresh peak
 was not used as a performance-isolation certification in this migration.
-End-to-end streaming load was not tested. Use the
-[current status and milestones](multi-tenancy-status.md) for remaining work.
+End-to-end streaming load was not tested. Consult the
+[current Project access guide](document/en/admin/03-platform-access.mdx) and
+[architecture](architecture.md) for the rebased product boundaries.
 
 Private runtime state is `.local-secrets/tenant-runtime-20261104/k8s-external/`.
-No commit or push was requested or performed.
+No commit or push was performed during that deployment observation.
+The source was later rebased; this dated record has not been rerun against it.
