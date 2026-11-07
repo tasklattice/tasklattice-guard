@@ -48,6 +48,8 @@ supports resource inspection and Guardrail package import and export.
 ## Documentation
 
 - [Source reading path](START-HERE.md)
+- [Projects, users and Keycloak](docs/document/en/admin/03-platform-access.mdx)
+- [Standalone Project acceptance and load tools](docs/tenant-load-lab.md)
 - [Guardrail lifecycle and testing](docs/document/en/overview/03-term-guardrail.mdx)
 - [Kubernetes deployment](charts/tali-guard/README.md) and [operations](docs/operations.md)
 - [Development and tests](docs/development.md) and [architecture](docs/architecture.md#components-and-ownership)

@@ -22,7 +22,7 @@ export function xml(value) {
 export function configuration(env = process.env, { root = repository, userHome = homedir() } = {}) {
   const name = (value, fallback, field) => {
     const result = value ?? fallback;
-    if (!/^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/.test(result)) throw new Error(`${field} must be a Kubernetes DNS label.`);
+    if (typeof result !== 'string' || !/^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/.test(result)) throw new Error(`${field} must be supplied as a Kubernetes DNS label.`);
     return result;
   };
   const port = (value, fallback, minimum, field) => {
@@ -38,11 +38,11 @@ export function configuration(env = process.env, { root = repository, userHome =
   };
   const logs = join(root, '.local-secrets', 'local-k8s-access');
   return {
-    namespace: name(env.GUARD_K8S_ACCESS_NAMESPACE, 'mt-demo', 'namespace'),
-    service: name(env.GUARD_K8S_ACCESS_SERVICE, 'mt-demo-controller', 'service'),
+    namespace: name(env.GUARD_K8S_ACCESS_NAMESPACE, 'default', 'namespace'),
+    service: name(env.GUARD_K8S_ACCESS_SERVICE, undefined, 'GUARD_K8S_ACCESS_SERVICE'),
     port: port(env.GUARD_K8S_ACCESS_PORT, 38081, 1024, 'local port'),
     targetPort: port(env.GUARD_K8S_ACCESS_TARGET_PORT, 8080, 1, 'target port'),
-    kubeconfig: path(env.GUARD_K8S_ACCESS_KUBECONFIG, '.local-secrets/tenant-runtime-20261026/kubeconfig', 'kubeconfig'),
+    kubeconfig: path(env.GUARD_K8S_ACCESS_KUBECONFIG, join(userHome, '.kube', 'config'), 'kubeconfig'),
     kubectl: env.GUARD_K8S_ACCESS_KUBECTL === undefined ? null : path(env.GUARD_K8S_ACCESS_KUBECTL, '', 'kubectl'),
     plist: join(userHome, 'Library', 'LaunchAgents', `${LABEL}.plist`),
     stdout: join(logs, 'stdout.log'), stderr: join(logs, 'stderr.log'), logs,
@@ -120,18 +120,18 @@ export async function main(argv = process.argv.slice(2)) {
 
 macOS launchd keeps a loopback-only kubectl port-forward alive across chat/tool
 sessions and restarts it after Controller Pod changes. This is a network bridge;
-all application processes remain in Kubernetes. Docker Desktop kind currently
-publishes no application ports, so a NodePort alone does not expose localhost.
+all application processes remain in the operator's existing Kubernetes cluster.
 
-Defaults: 127.0.0.1:38081 -> mt-demo/service/mt-demo-controller:8080
+Required: GUARD_K8S_ACCESS_SERVICE names an existing Controller Service.
+Defaults: 127.0.0.1:38081, namespace=default, Service port=8080.
 Environment: GUARD_K8S_ACCESS_KUBECONFIG, GUARD_K8S_ACCESS_KUBECTL,
 GUARD_K8S_ACCESS_NAMESPACE, GUARD_K8S_ACCESS_SERVICE,
 GUARD_K8S_ACCESS_PORT, GUARD_K8S_ACCESS_TARGET_PORT.
-Kubeconfig defaults to .local-secrets/tenant-runtime-20261026/kubeconfig.
+Kubeconfig defaults to ~/.kube/config.
 Install never creates a cluster or changes Kubernetes resources. Uninstall
 removes only this helper's LaunchAgent; private logs are retained. Stop any
 temporary forward on the same localhost port before installing. The bridge
-requires Docker Desktop and Kubernetes to be running, and resumes after login.`);
+requires the configured Kubernetes cluster to be accessible, and resumes after login.`);
     return;
   }
   if (argv.length > 1 || !['status', 'install', 'uninstall'].includes(command)) throw new Error('Use status, install, uninstall or --help.');

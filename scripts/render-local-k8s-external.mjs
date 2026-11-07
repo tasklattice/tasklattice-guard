@@ -71,7 +71,7 @@ function upstreamConfiguration(text, modelBaseUrl, credentials) {
   return output;
 }
 
-export function renderExternalManifests({ gatewayInputs, modelApiKey, labManifest,
+export function renderExternalManifests({ gatewayInputs, runnerBindings, modelApiKey, labManifest,
   namespace = 'mt-demo', prefix = 'mt-demo', gatewayImage = 'tasklattice-litellm-local:k8s-1.87.0-guard.3',
   modelImage = 'tasklattice-fake-llm:local-20261105', gatewayMemoryLimitMi = 384,
   gatewayMemoryRequestMi = 128, gatewayCpuRequestMilli = 10, gatewayReplicas = 1 } = {}) {
@@ -92,7 +92,16 @@ export function renderExternalManifests({ gatewayInputs, modelApiKey, labManifes
   const labels = name => name === modelName
     ? { 'app.kubernetes.io/name': 'tasklattice-fake-llm', 'app.kubernetes.io/instance': prefix, 'app.kubernetes.io/component': 'external-model' }
     : { 'app.kubernetes.io/name': name, 'app.kubernetes.io/instance': prefix };
-  const runnerBase = id => `http://${prefix}-runtime${id === 'tenantC' ? '-group-demo' : ''}:8091`;
+  assert(runnerBindings && Object.keys(runnerBindings).sort().join(',') === [...ids].sort().join(','),
+    'Configure an explicit Runner service binding for each demo alias.');
+  const runners = Object.fromEntries(ids.map(id => {
+    assert(typeof runnerBindings[id] === 'string', 'Runner binding must be an HTTP service origin.');
+    const url = new URL(runnerBindings[id]);
+    assert(['http:', 'https:'].includes(url.protocol) && !url.username && !url.password && !url.search && !url.hash
+      && url.pathname === '/', 'Runner binding must be an HTTP service origin without credentials, path or query.');
+    return [id, url.origin];
+  }));
+  const runnerBase = id => runners[id];
   const podSecurity = uid => ({ runAsNonRoot: true, runAsUser: uid, runAsGroup: uid, seccompProfile: { type: 'RuntimeDefault' } });
   const containerSecurity = { allowPrivilegeEscalation: false, readOnlyRootFilesystem: true, capabilities: { drop: ['ALL'] } };
   const items = [{ apiVersion: 'v1', kind: 'Secret', metadata: metadata(modelName), type: 'Opaque', stringData: { 'api-key': modelApiKey } }];
@@ -179,11 +188,11 @@ async function privateJson(path, value) {
 }
 export async function main(argv = process.argv.slice(2), env = process.env) {
   if (argv.includes('--help')) {
-    console.log(`Usage: node scripts/render-local-k8s-external.mjs\nRenders private application-manifest.json and lab-manifest.json; never deploys.\nGUARD_K8S_RUNTIME_DIR defaults to .local-secrets/tenant-runtime-20261104.\nGUARD_K8S_FAKE_PROJECT defaults to sibling ../tasklattice-fake-llm.\nOptional: GUARD_K8S_NAMESPACE, GUARD_K8S_PREFIX, GUARD_K8S_GATEWAY_IMAGE,\nGUARD_K8S_MODEL_IMAGE, GUARD_K8S_GATEWAY_MEMORY_LIMIT_MI (384),\nGUARD_K8S_GATEWAY_MEMORY_REQUEST_MI (128), GUARD_K8S_GATEWAY_CPU_REQUEST_MILLI (10), GUARD_K8S_GATEWAY_REPLICAS (1; 0 or1).`);
+    console.log(`Usage: node scripts/render-local-k8s-external.mjs\nRenders private application-manifest.json and lab-manifest.json; never deploys.\nGUARD_K8S_RUNTIME_DIR defaults to .local-secrets/external-demo.\nEach external-llm/gateways.json entry requires an operator-supplied runnerBaseUrl.\nGUARD_K8S_LAB_MANIFEST selects an operator-supplied Secret/Deployment List; defaults to lab-manifest.json in the runtime directory.\nGUARD_K8S_FAKE_PROJECT defaults to sibling ../tasklattice-fake-llm.\nOptional: GUARD_K8S_NAMESPACE, GUARD_K8S_PREFIX, GUARD_K8S_GATEWAY_IMAGE,\nGUARD_K8S_MODEL_IMAGE, GUARD_K8S_GATEWAY_MEMORY_LIMIT_MI (384),\nGUARD_K8S_GATEWAY_MEMORY_REQUEST_MI (128), GUARD_K8S_GATEWAY_CPU_REQUEST_MILLI (10), GUARD_K8S_GATEWAY_REPLICAS (1; 0 or1).`);
     return;
   }
   assert.equal(argv.length, 0, 'This renderer accepts environment options only; use --help.');
-  const runtime = resolve(repository, env.GUARD_K8S_RUNTIME_DIR ?? '.local-secrets/tenant-runtime-20261104');
+  const runtime = resolve(repository, env.GUARD_K8S_RUNTIME_DIR ?? '.local-secrets/external-demo');
   const project = resolve(repository, env.GUARD_K8S_FAKE_PROJECT ?? '../tasklattice-fake-llm');
   const modelEnv = parseEnvironment(await readFile(resolve(project, '.env'), 'utf8'));
   const gatewayMap = JSON.parse(await readFile(resolve(runtime, 'external-llm/gateways.json'), 'utf8'));
@@ -194,7 +203,8 @@ export async function main(argv = process.argv.slice(2), env = process.env) {
   }])));
   for (const id of ids) assert.equal(gatewayMap[id]?.gatewayApiKey, gatewayInputs[id].environment.LITELLM_MASTER_KEY, 'Existing gateway map and environment credentials disagree.');
   const result = renderExternalManifests({ gatewayInputs, modelApiKey: modelEnv.FAKE_LLM_API_KEY,
-    labManifest: JSON.parse(await readFile(resolve(runtime, 'lab-manifest.json'), 'utf8')),
+    runnerBindings: Object.fromEntries(ids.map(id => [id, gatewayMap[id]?.runnerBaseUrl])),
+    labManifest: JSON.parse(await readFile(env.GUARD_K8S_LAB_MANIFEST ? resolve(repository, env.GUARD_K8S_LAB_MANIFEST) : resolve(runtime, 'lab-manifest.json'), 'utf8')),
     namespace: env.GUARD_K8S_NAMESPACE, prefix: env.GUARD_K8S_PREFIX,
     gatewayImage: env.GUARD_K8S_GATEWAY_IMAGE, modelImage: env.GUARD_K8S_MODEL_IMAGE,
     gatewayMemoryLimitMi: env.GUARD_K8S_GATEWAY_MEMORY_LIMIT_MI,

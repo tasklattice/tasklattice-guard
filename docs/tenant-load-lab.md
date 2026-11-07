@@ -1,132 +1,266 @@
-# Tenant Load Lab
+# Standalone Project demo and acceptance tools
 
-The administrator portal at `/settings/tenant-load-lab` compares real traffic for
-tenantA, tenantB and tenantC. It provides changing baseline load, temporary peaks,
-occupancy and latency charts, and an optional client quota simulation. No example
-traffic is plotted before the generator runs.
+These Node 24 tools run outside Guard Controller and Guard Runner. They consume
+operator-supplied gateway addresses, Runner addresses and existing Project
+credentials. The current console uses Projects and OIDC/Keycloak; it has no
+Tenant Load Lab page, tenant login selector or resource-sharing scenario.
 
-In the retained local configuration, **A and B share the default Runner pool;
-C belongs to group-demo and uses a separate Runner pool**. These groups still
-share local CPU, memory, storage, PostgreSQL and Redis. Separate pools establish
-allocation boundaries; their existence does not prove performance isolation.
+Create Projects, memberships, published Guardrails, Routers, Endpoints and Runner
+allocations through the current product workflow first. Follow the
+[Project and SSO guide](document/en/admin/03-platform-access.mdx),
+[Helm installation](../charts/tali-guard/README.md) and
+[gateway integration guide](gateway-integration.md). These tools do not provision
+or edit that configuration.
 
-Use the [current Kubernetes runbook](local-k8s-runtime-2026-11-05.md) for service
-placement, browser access, measured capacity and fresh acceptance evidence. The
-[multi-tenancy status](multi-tenancy-status.md) lists implemented controls and
-remaining isolation work.
-
-## What actually executes
+## External request path
 
 ```text
-Generator's bounded client queue
-  → tenant-specific upstream LiteLLM gateway and gateway credential
-  → real Input check: Endpoint → Router → published Guardrail → assigned Runner
-  → standalone OpenAI-compatible fake generation model
-  → real Output check through the existing upstream Guard provider
-  → gateway completion delivered to the generator
+Standalone generator or acceptance process
+  → configured OpenAI-compatible gateway + its credential
+  → real Guard Input check on the Project's Runner
+  → application generation model
+  → real Guard Output check
+  → gateway completion
 ```
 
-Each pipeline sends a non-streaming Chat Completions request with `Hello.` to
-its configured gateway model. The gateway uses the existing TaskLattice Guard
-provider for Input and Output protection. A blocked Input skips generation;
-a blocked Output prevents delivery. The generator does not issue those callbacks
-itself and does not serve a model.
+The gateway must already have the Guard provider configured for Input and Output
+checks. The generator calls Chat Completions; it does not issue Guard callbacks
+itself, implement SSO or serve a model. An independent fake model can replace
+application generation for a controlled experiment. Protection, routing,
+authentication and telemetry still use the configured Guard deployment.
 
-The fake model lives in the sibling `tasklattice-fake-llm` project and runs as an
-independent Kubernetes service. Its local target delay is 120 ms, with concurrent
-requests. Only application generation is synthetic. Endpoint authentication,
-Router selection, signed Guardrail execution, Runner admission and telemetry are
-real. The lab fixtures use a simple `LAB_BLOCK_MARKER` keyword Policy; harmless
-chart traffic does not evaluate model-based detector quality.
+## Run a bounded traffic comparison
 
-## Conduct a comparison
+[scripts/tenant-load-lab.mjs](../scripts/tenant-load-lab.mjs) compares three client
+bindings named `tenantA`, `tenantB` and `tenantC`. These are retained **demo
+aliases**, not account identities or Project IDs. Map each alias to the gateway
+credential and Runner address for an existing Project. The configured `groupId`
+and `poolId` describe your experiment; they do not assign resources or grant
+access.
 
-1. Sign in as a platform administrator and open **Settings → Tenant Load Lab**.
-2. Confirm the displayed A/B and C group/pool assignments, Runner readiness, and
-   external model diagnostics. The **Measured tenant admission** panel shows
-   actual Runner permits independently of the generator.
-3. Select **Group allocation**, then **Start**. Allow at least 15 seconds of
-   successful baseline traffic before requesting a peak.
-4. Choose a 15, 30 or 60 second duration and peak A. Observe B in the same group
-   and C in the separate group: delivered p95, throughput, errors, queues and
-   group Runner process gauges. **Release peak** ends the peak early.
-5. Read **Neighbor impact** after there are at least three valid samples before
-   and during the peak. It compares the medians of sample p95 values, using up
-   to 15 seconds before the peak. This is not a new percentile of raw requests.
-6. Pause, or switch to **Quota simulation** and start a fresh comparison. A mode
-   change stops traffic and clears experiment measurements. **Reset** also
-   stops traffic and clears the generator's history and counters.
+Store the configuration outside tracked source, for example
+`.local-secrets/external-demo/load.json`, with permissions `0600`:
 
-Pause cancels generator HTTP calls and clears its queues and active peaks.
-Already accepted upstream work may take time to settle. Pausing or resetting the
-generator does not reset Runner counters or the independent model service.
+```json
+{
+  "runnerBaseUrl": "http://runner-default.guard.svc:8000",
+  "peakRps": 60,
+  "tenants": [
+    {
+      "id": "tenantA",
+      "name": "Project A client",
+      "gatewayBaseUrl": "https://gateway-a.example.test/v1",
+      "gatewayApiKey": "PRIVATE_GATEWAY_KEY_A",
+      "model": "guarded-model",
+      "groupId": "shared-experiment",
+      "poolId": "default"
+    },
+    {
+      "id": "tenantB",
+      "name": "Project B client",
+      "gatewayBaseUrl": "https://gateway-b.example.test/v1",
+      "gatewayApiKey": "PRIVATE_GATEWAY_KEY_B",
+      "model": "guarded-model",
+      "groupId": "shared-experiment",
+      "poolId": "default"
+    },
+    {
+      "id": "tenantC",
+      "name": "Project C client",
+      "gatewayBaseUrl": "https://gateway-c.example.test/v1",
+      "gatewayApiKey": "PRIVATE_GATEWAY_KEY_C",
+      "model": "guarded-model",
+      "runnerBaseUrl": "http://runner-project-c.guard.svc:8000",
+      "groupId": "separate-experiment",
+      "poolId": "project-c"
+    }
+  ]
+}
+```
 
-## Two generator modes
+Replace all example addresses, models, pool labels and credentials with your
+own bindings. The three gateway bindings must be distinct. Add a top-level or
+per-client `runnerMetricsToken` if Runner metrics require authentication.
+Optional `modelStatusUrl` and `modelStatusToken` read the independent model's
+bounded `/state` diagnostics; without them model diagnostics are unavailable.
 
-| Mode | Client admission behavior | Meaning |
-| --- | --- | --- |
-| Group allocation | Oldest queued arrival first, within global and group generator bounds | Observe the real configured Runner placement without the simulated tenant cap. |
-| Quota simulation | Round-robin tenants; at most 4 in-flight pipelines and 10 starts/sec per tenant | Compare client admission fairness on the same real Runner placement. |
+```sh
+TENANT_LOAD_LAB_CONFIG=.local-secrets/external-demo/load.json \
+  node scripts/tenant-load-lab.mjs
+```
 
-Both modes cap the generator at 64 in-flight pipelines, 120 gateway starts/sec,
-and 32 queued records per tenant. Excess arrivals count as errors. With multiple
-groups, each group leaves 16 slots available for every other group; with the
-two-group fixture, one group can occupy at most 48 of the 64 slots. These are
-test-tool limits, not Runner quotas or CPU reservations.
+The default bind is `127.0.0.1:38110`. Starting the process only starts monitoring;
+it sends no gateway load until a control request starts it. Operate it from the
+same host or an operator-controlled private connection:
 
-Baseline load changes smoothly toward a new random rate every three seconds.
-Source defaults are 3–5 pipelines/sec per tenant, initially 4. Deployment settings
-can lower these rates for limited hardware; the current local runbook records
-the tested deployment. The configured peak defaults to 60 pipelines/sec and is
-bounded to 12–80. Offered load can exceed delivered throughput.
+```sh
+curl -sS http://127.0.0.1:38110/state
+curl -sS -X POST http://127.0.0.1:38110/control \
+  -H 'content-type: application/json' -d '{"action":"start"}'
+curl -sS -X POST http://127.0.0.1:38110/control \
+  -H 'content-type: application/json' \
+  -d '{"action":"peak","tenantId":"tenantA","durationSeconds":30}'
+curl -sS -X POST http://127.0.0.1:38110/control \
+  -H 'content-type: application/json' -d '{"action":"stop"}'
+```
 
-## Interpret the measurements
+The direct `/state` and `/control` endpoints have no user authentication. Keep
+them on loopback or a private operator network. `TENANT_LOAD_LAB_HOST` and
+`TENANT_LOAD_LAB_PORT` change the bind explicitly. The `tenantId` control field
+selects a demo alias only; no Controller Project selection is performed.
 
-| Display | Actual measurement and limitation |
+`release` ends a peak early, `reset` stops traffic and clears the generator's
+measurements, and `mode` selects `shared` or `quota`. Stop/reset cancels local
+requests; already accepted gateway/model work can take time to settle.
+
+| Mode | Generator admission |
 | --- | --- |
-| Tenant occupancy | Generator in-flight pipelines ÷ 4 reference slots, capped at 100%. Four is a visual reference and the quota-mode cap, not allocated CPU or a Runner permit count. The numeric in-flight count can exceed four in Group allocation mode. |
-| Delivered p50/p95 | Successful gateway completion latency, including the generator's queue wait. A rolling 15-second window excludes failed requests; read it alongside errors and delivered throughput. |
-| Offered / delivered rate | Arrivals / successful completions observed in the preceding second. These are pipeline rates, not counts of individual Guard checks. |
-| Client queue p95 | Generator queue wait for successfully completed pipelines in the rolling window. It is distinct from Runner admission wait. |
-| Guard / model stage latency | Unavailable from the standard gateway completion; shown as gaps rather than inferred by subtracting percentiles. |
-| External model p95 | Read-only diagnostics from the independent model service. Its scope and sample window belong to that service, not one tenant or one gateway stage. |
-| Group Runner gauges | Real admission in-flight, queue, capacity, process CPU and resident memory, summed once per configured pool. Missing scrapes make gauges unavailable. Shared host contention remains possible. |
+| `shared` | Queued arrivals use the configured global and group bounds. |
+| `quota` | Client round-robin with at most four in-flight pipelines and ten starts/sec per alias. |
 
-Generator history has one sample per second and retains at most 180 points.
-Latency is unavailable when its window contains no successful completions.
-Every non-2xx gateway response, timeout, malformed completion and dropped client
-arrival counts as an error. The gateway does not expose reliable decision,
-block-phase or transformation details to this generator; its chart counters
-cannot certify policy decisions. Use Runner telemetry and the acceptance checks
-in the runbook to verify Input/Output enforcement.
+Both modes cap the process at 64 in-flight pipelines, 120 starts/sec and 32 queued
+records per alias. Multiple configured groups reserve generator slots for each
+other group. These are client-tool limits, not Runner permits or CPU reservations.
+Baseline load defaults to 3–5 pipelines/sec per alias, initially four. Configure
+`baselineMinRps`, `baselineMaxRps` and `baselineInitialRps` together to change it;
+each accepts 0.25–20 and minimum ≤ initial ≤ maximum. Peaks last 15–60 seconds
+and `peakRps` is bounded to 12–80.
 
-**Measured tenant admission** instead uses authenticated Runner heartbeats and
-current Controller group assignments. Its permit occupancy, queue, rejection
-counters and histogram-derived wait/held p95 describe actual local admission.
-Local caps do not reserve group capacity. Missing/stale/reset observations
-produce gaps. Its history is local to the Controller and can clear on restart
-or allocation/session changes. See the [monitor guide](tenant-admission-monitor.md).
+## Interpret the state
 
-## Configuration and permissions
+Successful completion latency includes the client queue and uses a rolling
+15-second window. Offered and completed rates cover the preceding second. All
+non-2xx responses, timeouts, malformed completions and dropped arrivals count as
+errors. Successful latency alone can hide a failing or saturated pipeline.
 
-The feature is optional. Set `CONTROLLER_TENANT_LOAD_LAB_URL` to the private lab
-service. The service reads `TENANT_LOAD_LAB_CONFIG`, containing three gateway
-bindings, Runner group/pool addresses and optional model diagnostics. Starting
-the service alone does not start load. Keep it on a private network: its direct
-`/state` and `/control` endpoints have no independent user authentication.
+The gateway completion does not provide reliable policy-decision, block-phase,
+transformation or per-stage timing evidence. Those fields are unavailable;
+zero-valued internal counters must not be interpreted as proof that Guard allowed
+all requests. Check actual Runner telemetry for protection outcomes.
 
-The Controller exposes administrator-only `GET /api/v1/tenant-load-lab/state` and
-`POST /api/v1/tenant-load-lab/control`; personal tokens also need Settings
-read/write permission respectively. The browser receives aggregate state, not
-gateway keys, Endpoint keys or private fixture configuration. Start and peak
-commands check that configured pools still belong to the tenants' current groups;
-allocation drift requires a configuration update before new load can start.
+Occupancy is generator in-flight pipelines divided by four reference slots,
+capped at 100%; it is not Project CPU usage. Runner process gauges are aggregated
+once per configured pool, with unavailable scrapes represented as missing data.
+A shared host can still contend across dedicated pools. Model diagnostics belong
+to the external service's own sample window. History retains at most 180 samples.
 
-Implementation entry points are [the generator](../scripts/tenant-load-lab.mjs),
-[shared contracts](../controller/shared/tenant-load-lab.ts),
-[portal](../controller/src/routes/tenant-load-lab.tsx) and
-[Controller proxy](../controller/server/services/tenant-load-lab.ts).
+## Verify existing Projects
 
-This lab does not establish streaming behavior, model safety quality, physical
-CPU/memory isolation, distributed concurrency guarantees, or production capacity.
-The current runbook separates measured happy paths from these unverified areas.
+[scripts/verify-local-multitenancy.mjs](../scripts/verify-local-multitenancy.mjs)
+is a separate serial acceptance runner for two to eight actual Project IDs.
+Unlike the generator, it uses current management APIs to check supplied
+Project-bound identities, direct-ID resource isolation and denied administrator
+controls. It then sends a gateway request for each Project and waits for paired
+Input/Output telemetry on the configured Endpoint, Router and Guardrail version.
+
+Use existing business-user access tokens with read permissions for identity,
+resources and runtime evidence, or existing browser sessions that select the
+configured Project. The tool performs no login. A minimal private configuration
+for two Projects is:
+
+```json
+{
+  "controllerBaseUrl": "https://guard.example.test",
+  "projects": [
+    {
+      "id": "PROJECT_A_ID",
+      "auth": { "bearerToken": "PRIVATE_PROJECT_A_TOKEN" },
+      "runnerBaseUrl": "https://runner-a.example.test",
+      "gateway": {
+        "baseUrl": "https://gateway-a.example.test/v1",
+        "apiKey": "PRIVATE_GATEWAY_KEY_A",
+        "model": "guarded-model"
+      },
+      "resources": {
+        "endpointId": "PROJECT_A_ENDPOINT_ID",
+        "routerId": "PROJECT_A_ROUTER_ID",
+        "guardrailId": "PROJECT_A_GUARDRAIL_ID",
+        "guardrailVersion": "PUBLISHED_VERSION"
+      }
+    },
+    {
+      "id": "PROJECT_B_ID",
+      "auth": { "bearerToken": "PRIVATE_PROJECT_B_TOKEN" },
+      "runnerBaseUrl": "https://runner-b.example.test",
+      "gateway": {
+        "baseUrl": "https://gateway-b.example.test/v1",
+        "apiKey": "PRIVATE_GATEWAY_KEY_B",
+        "model": "guarded-model"
+      },
+      "resources": {
+        "endpointId": "PROJECT_B_ENDPOINT_ID",
+        "routerId": "PROJECT_B_ROUTER_ID",
+        "guardrailId": "PROJECT_B_GUARDRAIL_ID",
+        "guardrailVersion": "PUBLISHED_VERSION"
+      }
+    }
+  ]
+}
+```
+
+```sh
+node scripts/verify-local-multitenancy.mjs \
+  --config .local-secrets/external-demo/acceptance.json \
+  --execute --result .tasklattice-recovery/project-acceptance.json
+```
+
+`--execute` is required because the check sends real application traffic and
+creates telemetry. It does not change resources, policies, membership or
+allocation. Keep test resources quiet and clocks synchronized so paired telemetry
+can be attributed to this serial run. Use harmless `requestText` accepted by the
+configured Guardrail; the default is `Hello.`.
+
+Optional settings extend the evidence:
+
+- `administratorAuth` uses the same token-or-session shape for current allocation
+  and public Model-policy reads; optional per-Project `expectedGroupId` and
+  `expectedPoolId` assert operator expectations.
+- `modelStatus: { "url": "https://model.example.test/state", "token": "PRIVATE_MODEL_TOKEN" }`
+  checks an idle external model's `completed`/`active` counters for dispatch.
+- Per-Project `resources.endpointCredential` enables Endpoint verification and
+  wrong-Runner credential checks where different Runner origins are configured.
+
+The result records requested capabilities and missing optional evidence. A pass
+without model diagnostics does not prove model dispatch. This serial run does
+not prove performance isolation, failover or infrastructure capacity. Results
+are written privately and configured credentials are redacted.
+
+## Optional Kubernetes helper tools
+
+The [external manifest renderer](../deploy/local-k8s/README.md) reads private
+operator gateway/Runner bindings and a standalone generator manifest template.
+It writes private manifests for review; it does not install Guard or provision
+Projects. Guard's supported Helm chart remains [charts/tali-guard](../charts/tali-guard/README.md).
+
+On macOS, [local-k8s-access.mjs](../scripts/local-k8s-access.mjs) can maintain a
+loopback `kubectl port-forward` to an explicitly selected existing Service:
+
+```sh
+GUARD_K8S_ACCESS_SERVICE=my-controller \
+GUARD_K8S_ACCESS_NAMESPACE=guard \
+GUARD_K8S_ACCESS_KUBECONFIG=/private/operator/kubeconfig \
+  node scripts/local-k8s-access.mjs install
+```
+
+Use the same environment with `status` or `uninstall`. The default namespace is
+`default`, kubeconfig is `~/.kube/config`, local port is 38081 and target port is
+8080. `GUARD_K8S_ACCESS_SERVICE` is required. This helper runs a network bridge,
+not an application process.
+
+The [5 November deployment record](local-k8s-runtime-2026-11-05.md) describes a
+historical pre-Project-refactor runtime and its screenshots. It is not validation
+of this rebased source or instructions for current console provisioning.
+
+## Test the external tooling
+
+Run the local script regressions without a configured deployment:
+
+```sh
+node --test scripts/tenant-load-lab.test.mjs \
+  scripts/local-k8s-access.test.mjs \
+  scripts/render-local-k8s-external.test.mjs \
+  scripts/verify-local-multitenancy.test.mjs
+```
+
+These tests use local fixtures or fake transports. They do not substitute for an
+explicit acceptance run against the operator's current Project deployment.
