@@ -162,8 +162,10 @@ export function CreateGuardrailWizard({
   useEffect(() => {
     if (!open || !catalogReady || !presetsQuery.isSuccess || initialProfileApplied.current) return;
     initialProfileApplied.current = true;
+    // Profiles are platform starting configurations: open the draft on the
+    // default one, or on the Profile a deep link points at.
     const profile = initialProfileId ? presetsQuery.data.items.find(item => item.id === initialProfileId)
-      : presetsQuery.data.items.find(item => item.id === "local-baseline" && item.isDefault);
+      : presetsQuery.data.items.find(item => item.isDefault);
     if (profile && profile.availability?.available !== false && !bindings.length && selectedPreset === "blank" && step === 0) {
       setSelectedPreset(profile.id);
       setBindings(structuredClone(profile.bindings));
@@ -403,7 +405,7 @@ export function CreateGuardrailWizard({
               )}
               {catalogReady && bindings.length > 0 ? <ProtectionDependencies bindings={bindings} policies={policies} /> : null}
               {presetFeedback ? <p role="status" className="text-sm font-medium text-primary">{presetFeedback}</p> : null}
-              {initialProfileId && presetsQuery.isSuccess && !presetsQuery.data.items.some(item => item.id === initialProfileId) ? <p role="alert" className="text-sm text-destructive">{t("policyLibrary.collections.notFound")}</p> : null}
+              {initialProfileId && presetsQuery.isSuccess && !presetsQuery.data.items.some(item => item.id === initialProfileId) ? <p role="alert" className="text-sm text-destructive">{t("protection.profileUnavailable")}</p> : null}
               {presetUndo && pendingPreset === null ? <Button variant="outline" className="min-h-11 justify-self-start" onClick={() => {
                 applySettings(presetUndo.settings); setProfileOrigin(presetUndo.origin); setBindings(presetUndo.bindings); setSelectedPreset(presetUndo.selected); setPresetUndo(null); setPresetFeedback(t("protection.wizard.undone"));
               }}>{t("protection.wizard.undoPreset")}</Button> : null}
@@ -709,7 +711,7 @@ function BoundaryPreview({ label, values }: { label: string; values: string[] })
 }
 
 function recommendedTopicPolicy(policies: Policy[]) {
-  const policy = policies.find((item) => item.id === "builtin-topic-safety");
+  const policy = policies.find((item) => item.id === "business-topics");
   return isBindablePolicy(policy) ? policy : undefined;
 }
 

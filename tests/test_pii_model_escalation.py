@@ -186,7 +186,7 @@ def _case(id: str, content: str, expected: str) -> dict[str, object]:
     return {
         "id": id,
         "name": id,
-        "policyId": "builtin-pii",
+        "policyId": "pii-semantic",
         "phase": "input",
         "content": content,
         "expectedDecision": expected,

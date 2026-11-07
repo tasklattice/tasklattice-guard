@@ -16,7 +16,8 @@ import { PolicyCatalog } from "../policy-catalog/catalog.js";
 import { testSuiteDigest } from "../domain/test-suite.js";
 import { ControlPlaneService } from "./control-plane.js";
 import { pruneTestingReportHistory } from "./testing-report-retention.js";
-import { fullFeatureBaseline } from "../../shared/full-feature-baseline.js";
+import { protectionPresets } from "../../shared/protection-presets.js";
+const fullFeatureBaseline = protectionPresets.find(profile => profile.id === "full-feature")!;
 import { profileDraft } from "../policy-catalog/presets.js";
 import type { ArtifactCompilation } from "../domain/artifact-compilation.js";
 import { parsePackage } from "../domain/guardrail-package.js";
@@ -165,7 +166,7 @@ describe.skipIf(!url)("Publishing the tested candidate in PostgreSQL", { timeout
 
   async function releasedFixture() {
     const draft = defaultGuardrailDraft(PolicyCatalog.load(catalogDir).list());
-    draft.policyBindings = draft.policyBindings.filter(item => item.policyId === "local-network-addresses");
+    draft.policyBindings = draft.policyBindings.filter(item => item.policyId === "network-identifiers");
     const guardrail = await withTestProject(() => service.createGuardrail({ name: "Report lifecycle", draftConfig: draft, runtimeProfile: "auto", actorId: "admin" }));
     const run = await service.requestValidation({ guardrailId: guardrail.id, actorId: "admin", compilerAvailable: true });
     await completeReport(service, { runId: run.id, status: "passed", metrics: emptyValidationMetrics(run.metrics.total), results: [], candidateArtifact: await runnerCandidate(run.id) });
@@ -320,7 +321,7 @@ describe.skipIf(!url)("Publishing the tested candidate in PostgreSQL", { timeout
 
   it("does not mark a passed draft or a passed Pending version Ready before publication", async () => {
     const draft = defaultGuardrailDraft(PolicyCatalog.load(catalogDir).list());
-    draft.policyBindings = draft.policyBindings.filter(item => item.policyId === "local-network-addresses");
+    draft.policyBindings = draft.policyBindings.filter(item => item.policyId === "network-identifiers");
     const guardrail = await withTestProject(() => service.createGuardrail({ name: "Readiness gates", draftConfig: draft, runtimeProfile: "auto", actorId: "admin" }));
     const run = await service.requestValidation({ guardrailId: guardrail.id, actorId: "admin", compilerAvailable: true });
     await completeReport(service, { runId: run.id, status: "passed", metrics: emptyValidationMetrics(run.metrics.total), results: [], candidateArtifact: await runnerCandidate(run.id) });

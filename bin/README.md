@@ -325,7 +325,7 @@ bin/guardctl project provision \
 ```
 
 The [example patch](../docs/examples/content-safety-input.json) enables only
-`builtin-content-safety` / `model/content-safety` on input, with a block action.
+`content-safety-model` / `model/content-safety` on input, with a block action.
 
 ### 4. Connect Veritas and verify evidence
 

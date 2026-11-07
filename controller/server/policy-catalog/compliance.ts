@@ -121,7 +121,7 @@ const industrySourceByPolicy: Partial<Record<string, SourceKey>> = {
 };
 
 const policiesWithoutExternalMapping = new Set([
-  "builtin-topic-safety", "configured-phrase-filter", "competitor-mention-detection", "keyword-blocking",
+  "business-topics", "configured-phrase-filter", "competitor-mention-detection", "keyword-blocking",
 ]);
 
 function contextualSources(policy: PolicyInput): SourceKey[] {

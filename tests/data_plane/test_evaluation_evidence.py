@@ -17,7 +17,7 @@ def decision(verdict="unknown", mode="enforce"):
               "raw_input": "private content must not leave the runtime"}
     trace = RuntimeTraceStep(id="jb:jev", kind="evaluation", name="Jev", status="completed", detail="private reason",
                              evaluator_id="typesafe-jev-jailbreak", capability="jailbreak", verdict=verdict,
-                             model_name="jev-1.13.0", policy_id="builtin-jailbreak", evidence=json.dumps(native),
+                             model_name="jev-1.13.0", policy_id="prompt-instruction-attacks", evidence=json.dumps(native),
                              content_block_id="input:0")
     return ProtectionDecision(decision="block", action="block", guardrail_id="guard", trace=(trace,), protection_mode=mode,
          execution_status="bypassed" if mode == "bypass" else "complete",
@@ -28,7 +28,7 @@ def decision(verdict="unknown", mode="enforce"):
 def test_native_classification_keeps_its_label_action_and_model_without_fabricated_probabilities(native_verdict, verdict, action):
     original = decision()
     classifier = replace(original.trace[0], id="cs:native-safety", evaluator_id="model-safety", capability="content_safety",
-        verdict=verdict, policy_id="builtin-content-safety", model_name="native-model", evidence=json.dumps({
+        verdict=verdict, policy_id="content-safety-model", model_name="native-model", evidence=json.dumps({
             "native_verdict": native_verdict, "requested_model": "native-model", "response_model": "actual-model",
             "raw_output": "private provider output"}))
     action_step = replace(classifier, kind="action", id="nemo:action:cs", evidence=json.dumps({"policy_action": action}))
@@ -74,7 +74,7 @@ def test_evidence_preserves_verdict_and_native_operating_point_without_source_te
 def test_content_safety_evidence_uses_its_own_capability_and_question():
     original = decision()
     trace = replace(original.trace[0], evaluator_id="typesafe-jev-content-safety", capability="content_safety",
-        policy_id="builtin-content-safety", evidence=json.dumps({"question_revision": "content-safety-input.v1",
+        policy_id="content-safety-model", evidence=json.dumps({"question_revision": "content-safety-input.v1",
             "thresholds": {"lower": .1, "upper": .9}, "judgments": {"unsafe_content": {"probability": .4},
             "jailbreak_attempt": {"probability": .8}}, "raw_input": "private"}))
     raw = evaluation_evidence(replace(original, trace=(trace,)))
@@ -89,7 +89,7 @@ def test_content_safety_evidence_uses_its_own_capability_and_question():
 def test_topic_evidence_explains_its_own_action_without_leaking_topic_text(verdict, action):
     original = decision()
     topic = replace(original.trace[0], id="topic:jev", evaluator_id="typesafe-jev-topic", capability="topic_control",
-        policy_id="builtin-topic-safety", verdict=verdict, evidence=json.dumps({"question_revision": "topic-input.v1",
+        policy_id="business-topics", verdict=verdict, evidence=json.dumps({"question_revision": "topic-input.v1",
             "thresholds": {"lower": .1, "upper": .9}, "judgments": {"denied_task": {"probability": .4},
             "unlisted_task": {"probability": .5}, "unsafe_content": {"probability": .8}}, "denied_topics": "private"}))
     safe_jailbreak = replace(original.trace[0], verdict="not_matched")

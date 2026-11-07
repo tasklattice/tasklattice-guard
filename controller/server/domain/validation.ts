@@ -5,7 +5,7 @@ import type { PolicyDto } from "../policy-catalog/catalog.js";
 import type { ProgrammablePolicySnapshot } from "../policy-studio/model.js";
 import { normalizeGuardrailDraft, type GuardrailDraftConfig, type ValidationExpectationOverride } from "./guardrail-plan.js";
 import { PHRASE_PARAMETER, PHRASE_POLICY_ID, PHRASE_RULE_ID, parsePhraseEntries } from "../../shared/phrase-policy.js";
-import { isSplitTopicPolicy, TOPIC_ALLOW_RULE, TOPIC_DENY_RULE, topicLines, topicPolicyValues } from "../../shared/topic-policy.js";
+import { hasTopicRules, isSplitTopicPolicy, TOPIC_ALLOW_RULE, TOPIC_DENY_RULE, topicLines, topicPolicyValues } from "../../shared/topic-policy.js";
 import type { ValidationCaseResult, ValidationMetrics } from "./models.js";
 import { definitionTestCases } from "../policy-studio/definition-tests.js";
 
@@ -48,15 +48,36 @@ export function generatedTestCases(
     const enabledRules = new Set(binding.enabledRuleIds);
     if (policy.definition) {
       const parameters = { ...Object.fromEntries(policy.parameters.flatMap(p => p.default == null ? [] : [[p.name, p.default]])), ...binding.parameterValues };
-      return definitionTestCases(policy.definition, parameters).filter(test => enabledRails.has(test.phase)
-        && test.covered_rule_ids.every(id => enabledRules.has(id)
-          || policy.definition!.rules.some(r => r.expand && enabledRules.has(r.id) && id.startsWith(`${r.id}/`))))
+      const topicCases: StoredTestCaseInput[] = [];
+      if (hasTopicRules(policy.definition.rules)) {
+        const values = topicPolicyValues(parameters);
+        const base = { guardrailId, origin: "generated" as const, trustedInstruction: "", targetSource: "user_input" as const, query: "",
+          groundingSources: [], expectedReasoningResult: null, required: true, expectedFailure: null, concurrencyGroup: "General",
+          sourcePolicyId: policy.id, sourcePolicyVersion: policy.version };
+        if (enabledRules.has(TOPIC_DENY_RULE)) {
+          for (const [index, topic] of topicLines(values.denied).entries()) topicCases.push({ ...base, id: generatedCaseId(policy.id, `${TOPIC_DENY_RULE}/${index + 1}`),
+            name: `Denied topic: ${topic}`, policyId: policy.id, phase: "input", content: `Please help me with this task: ${topic}`,
+            expectedDecision: "block", caseType: "rule_acceptance", coveredRuleIds: [TOPIC_DENY_RULE], sourceCaseId: `${TOPIC_DENY_RULE}/${index + 1}` });
+        }
+        if (enabledRules.has(TOPIC_ALLOW_RULE)) topicCases.push({ ...base, id: generatedCaseId(policy.id, `${TOPIC_ALLOW_RULE}/1`),
+          name: "Unlisted topic", policyId: policy.id, phase: "input", content: "Discuss a business subject that is not on the approved list.",
+          expectedDecision: values.mode === "permissive" ? "allow" : (binding.ruleActions[TOPIC_ALLOW_RULE] ?? binding.action ?? "block"),
+          caseType: "rule_acceptance", coveredRuleIds: [TOPIC_ALLOW_RULE], sourceCaseId: `${TOPIC_ALLOW_RULE}/1` });
+      }
+      // Topic cases are generated from their configured lists; every other
+      // authored Rule and Policy scenario still comes from the definition.
+      const otherCases = definitionTestCases(policy.definition, parameters)
+        .filter(test => !test.covered_rule_ids.every(id => id === TOPIC_DENY_RULE || id === TOPIC_ALLOW_RULE))
+        .filter(test => enabledRails.has(test.phase)
+          && test.covered_rule_ids.every(id => enabledRules.has(id)
+            || policy.definition!.rules.some(r => r.expand && enabledRules.has(r.id) && id.startsWith(`${r.id}/`))))
         .map(test => ({ id: generatedCaseId(policy.id, test.id), guardrailId, name: test.name, policyId: policy.id, phase: test.phase, content: test.content,
           expectedDecision: test.expected_decision, origin: "generated" as const, trustedInstruction: test.context?.trusted_instruction ?? "",
           targetSource: test.context?.target_source ?? (test.phase === "output" ? "model_output" as const : "user_input" as const), query: test.context?.query ?? "", groundingSources: test.context?.grounding_sources ?? [],
           expectedReasoningResult: test.context?.expected_reasoning_result ?? null, caseType: test.kind, required: test.required, expectedFailure: null, concurrencyGroup: test.group || null,
           sourcePolicyId: policy.id, sourcePolicyVersion: policy.version, sourceCaseId: test.id, coveredRuleIds: test.covered_rule_ids,
         }));
+      return [...topicCases, ...otherCases].filter(item => enabledRails.has(item.phase));
     }
     return policy.test_cases.flatMap((item) => {
       if (item.phase !== "input" && item.phase !== "output") return [];

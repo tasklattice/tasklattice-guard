@@ -1,0 +1,52 @@
+schema_version: 1
+kind: Policy
+metadata:
+  id: content-safety-local
+  name: Content Safety (Local)
+  description: 'Target taxonomy Policy: Content Safety (Local).'
+  source: built_in
+  version: 1.0.0
+  tags:
+  - namespace: protection
+    value: content_safety
+    label: Content Safety
+  - namespace: collection
+    value: policy-library
+    label: Policy Library
+  - namespace: jurisdiction
+    value: au
+    label: Australia
+    source: declared
+  - namespace: jurisdiction
+    value: uae
+    label: United Arab Emirates
+    source: declared
+  safety_level: balanced
+  output_delivery: full_buffered
+parameters: []
+rules: []
+rule_refs:
+- id: category/denied_insults
+  version: 1.0.0
+- id: category/harm_toxic_abuse
+  version: 1.0.0
+- id: category/harmful_violence
+  version: 1.0.0
+- id: category/harmful_self_harm
+  version: 1.0.0
+- id: category/harmful_child_safety
+  version: 1.0.0
+- id: category/harmful_illegal_weapons
+  version: 1.0.0
+- id: category/bias_gender
+  version: 1.0.0
+- id: category/bias_racial
+  version: 1.0.0
+- id: category/bias_religious
+  version: 1.0.0
+- id: category/bias_sexual_orientation
+  version: 1.0.0
+- id: nsfw-filter-multilingual/harm_toxic_abuse
+  version: 1.0.0
+tests:
+- tests/acceptance.yaml

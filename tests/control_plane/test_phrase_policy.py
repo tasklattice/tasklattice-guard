@@ -8,7 +8,7 @@ import pytest
 
 from runner.toolkit.nemo.actions.content_filter import BuiltinContentFilter
 
-POLICY = "configured-phrase-filter"
+POLICY = "content-filters"
 RULE = "configured/phrases"
 ENTRIES = [
     {"id": "mask", "phrase": "private", "action": "transform", "replacement": "public"},

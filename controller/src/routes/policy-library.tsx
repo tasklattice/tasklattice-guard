@@ -42,9 +42,7 @@ import { PolicyCompliancePanel } from "@/components/policy-compliance";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { queryKeys } from "@/features/query-keys";
 import { useAuth } from "@/lib/auth";
-import { deletePolicy, getPolicies, getPolicy, getGuardrailProfiles, type ProgrammablePolicy, type Policy, type PolicyRule, type PolicyTag } from "@/lib/api";
-import { catalogDirectories, collectionAsPolicy, policyCollections, type CatalogItem, type PolicyCollection } from "@/lib/policy-collections";
-import { CreateGuardrailWizard } from "./create-guardrail-wizard";
+import { deletePolicy, getPolicies, getPolicy, type ProgrammablePolicy, type Policy, type PolicyRule, type PolicyTag } from "@/lib/api";
 import {
   parsePolicyPackage,
   policyPackageFilename,
@@ -54,7 +52,7 @@ import {
 } from "@/lib/policy-transfer";
 import { cn } from "@/lib/utils";
 import { protectionDirectories, type ProtectionDirectoryId } from "../../shared/protection-map";
-import { declaredPolicyDirectory } from "@/lib/protection-composition";
+import { declaredPolicyDirectory, policyDirectory } from "@/lib/protection-composition";
 import { boundPolicy } from "@/lib/bound-policy";
 
 const POLICY_CARD_CLASS = "group flex min-w-0 flex-col rounded-xl border bg-card p-4 shadow-xs transition-[border-color,box-shadow] hover:border-primary/30 hover:shadow-sm";
@@ -80,19 +78,14 @@ const JURISDICTION_FLAGS: Record<string, string> = {
 export function PolicyLibraryPage() {
   const { t } = useTranslation();
   const navigate = useNavigate();
-  const searchParams = useSearch({ strict: false }) as { policy?: string; version?: string; collection?: string };
+  const searchParams = useSearch({ strict: false }) as { policy?: string; version?: string };
   const queryClient = useQueryClient();
   const { user } = useAuth();
   const canManage = hasPermission(user?.role, "policies", "write");
   const canManagePolicy = (policy: Policy) => canManage && (!policy.project_id || policy.project_id === user?.project_id);
   const query = useQuery({ queryKey: queryKeys.policies, queryFn: getPolicies });
-  const profilesQuery = useQuery({ queryKey: queryKeys.guardrailProfiles, queryFn: getGuardrailProfiles, retry: false });
   const policies = query.data?.items ?? EMPTY_POLICIES;
-  const collections = useMemo(() => policyCollections(profilesQuery.data?.items ?? [], policies).map(item => ({ ...item, name: t(`policyLibrary.collections.names.${item.id}`, { defaultValue: item.name }) })), [profilesQuery.data, policies, t]);
-  const [collectionId, setCollectionId] = useState<string | null>(null);
-  const collection = collections.find(item => item.id === collectionId) ?? null;
-  const [createFromProfile, setCreateFromProfile] = useState<string | null>(null);
-  const catalogItems: CatalogItem[] = useMemo(() => [...collections, ...policies].sort((a, b) => a.name.localeCompare(b.name)), [policies, collections]);
+  const catalogItems: Policy[] = useMemo(() => [...policies].sort((a, b) => a.name.localeCompare(b.name)), [policies]);
   const editable = (policy: Policy | null) => Boolean(policy);
   const canExportNativePolicy = (policy: Policy | null) => Boolean(policy?.implementation === "nemo_native");
   const [declarativeId, setDeclarativeId] = useState<string | null | undefined>(undefined);
@@ -107,7 +100,6 @@ export function PolicyLibraryPage() {
   const importInputRef = useRef<HTMLInputElement>(null);
   const studioOpenerRef = useRef<HTMLElement | null>(null);
   const catalogOpenerRef = useRef<HTMLElement | null>(null);
-  const collectionOpenerRef = useRef<HTMLElement | null>(null);
 
   const deleteMutation = useMutation({
     mutationFn: (policy: Policy) => deletePolicy(policy.id),
@@ -134,21 +126,13 @@ export function PolicyLibraryPage() {
     setSelected(policy ?? null);
   }, [policies, searchParams.policy, searchParams.version]);
 
-  useEffect(() => { setCollectionId(searchParams.collection ?? null); }, [searchParams.collection]);
-
   function openPolicy(policy: Policy, version?: string) {
-    setCollectionId(null);
     setSelected(policy);
     navigate({ params: projectParams(), to: "/$projectId/policy-library", search: { policy: policy.id, version }, replace: true });
   }
 
   function closePolicy() {
     setSelected(null);
-    navigate({ params: projectParams(), to: "/$projectId/policy-library", search: { policy: undefined, version: undefined }, replace: true });
-  }
-
-  function closeCollection() {
-    setCollectionId(null);
     navigate({ params: projectParams(), to: "/$projectId/policy-library", search: { policy: undefined, version: undefined }, replace: true });
   }
   const facets = useMemo(() => tagFacets(catalogItems, directory, selectedTags, search), [catalogItems, directory, selectedTags, search]);
@@ -234,9 +218,6 @@ export function PolicyLibraryPage() {
       </div>
 
       {query.error ? <div className="mt-5"><ErrorNotice error={query.error} /><Button variant="outline" onClick={() => void query.refetch()}>{t("protection.retryCatalog")}</Button></div> : null}
-      {profilesQuery.error ? <div className="mt-5" role="alert"><p className="text-sm">{t("policyLibrary.collections.loadFailed")}</p><Button variant="outline" onClick={() => void profilesQuery.refetch()}>{t("policyLibrary.collections.retry")}</Button></div> : null}
-      {profilesQuery.isLoading ? <p role="status" className="mt-4 text-sm text-muted-foreground">{t("policyLibrary.collections.loading")}</p> : null}
-      {searchParams.collection && profilesQuery.isSuccess && query.isSuccess && !collection ? <div role="alert" className="mt-4"><p>{t("policyLibrary.collections.notFound")}</p><Button variant="outline" onClick={closeCollection}>{t("common.close")}</Button></div> : null}
       {searchParams.version && searchParams.policy && query.isSuccess && !selected ? <div role="alert" className="mt-5 flex flex-wrap items-center gap-3 rounded-lg border border-destructive/30 bg-destructive/5 p-4 text-sm text-destructive">
         <span className="min-w-0 flex-1 break-words">{t("protection.pinnedVersionUnavailable", { name: `${searchParams.policy}@${searchParams.version}` })}</span>
         <Button className="min-h-11" variant="outline" onClick={closePolicy}>{t("common.close")}</Button>
@@ -265,14 +246,9 @@ export function PolicyLibraryPage() {
 
             {filtered.length ? (
               <div className="grid gap-4 md:grid-cols-2 2xl:grid-cols-3" aria-label={t("policyLibrary.catalogLabel")}>
-                {filtered.map(item => "profile" in item ? (
-                  <CollectionCard key={`profile:${item.id}`} collection={item} onOpen={trigger => {
-                    collectionOpenerRef.current = trigger; setCollectionId(item.id); setSelected(null);
-                    navigate({ params: projectParams(), to: "/$projectId/policy-library", search: { policy: undefined, version: undefined, collection: item.id }, replace: true });
-                  }} />
-                ) : (
+                {filtered.map(item => (
                   <PolicyCard
-                    key={`policy:${item.id}`}
+                    key={item.id}
                     policy={item}
                     projectId={user?.project_id}
                     onOpen={trigger => { catalogOpenerRef.current = trigger; openPolicy(item); }}
@@ -281,7 +257,7 @@ export function PolicyLibraryPage() {
                   />
                 ))}
               </div>
-            ) : !profilesQuery.isLoading && !profilesQuery.isError && !query.isError ? (
+            ) : !query.isError ? (
               <div className="flex min-h-80 flex-col items-center justify-center rounded-xl border border-dashed bg-card px-6 text-center">
                 <Workflow className="size-8 text-muted-foreground" />
                 <h2 className="mt-3 text-sm font-semibold">{t("policyLibrary.noCatalogResults")}</h2>
@@ -292,12 +268,6 @@ export function PolicyLibraryPage() {
           </div>
         </div>
       )}
-
-      {collection ? <CollectionDetail collection={collection} returnFocusRef={collectionOpenerRef} onClose={closeCollection}
-        onUse={hasPermission(user?.role, "guardrails", "write") && query.isSuccess && profilesQuery.isSuccess ? () => { closeCollection(); setCreateFromProfile(collection.id); } : undefined} /> : null}
-      {createFromProfile ? <CreateGuardrailWizard open initialProfileId={createFromProfile} returnFocusRef={collectionOpenerRef}
-        onOpenChange={open => { if (!open) setCreateFromProfile(null); }}
-        onCreated={id => { setCreateFromProfile(null); navigate({ to: "/$projectId/guardrails/$guardrailId", params: { ...projectParams(), guardrailId: id } }); }} /> : null}
 
       <PolicyDetail
         policy={selected}
@@ -334,23 +304,8 @@ export function PolicyLibraryPage() {
   );
 }
 
-function CollectionCard({ collection, onOpen }: { collection: PolicyCollection; onOpen: (trigger: HTMLElement) => void }) {
-  const { t } = useTranslation();
-  return <PolicyCard policy={collectionAsPolicy(collection)} onOpen={onOpen}
-    notice={collection.unavailable.length ? <p className="mt-2 text-xs text-destructive">{t("policyLibrary.collections.incomplete")}</p> : undefined} />;
-}
-
-export function CollectionDetail({ collection, onClose, onUse, returnFocusRef }: {
-  collection: PolicyCollection; onClose: () => void; onUse?: () => void; returnFocusRef: RefObject<HTMLElement | null>;
-}) {
-  const { t } = useTranslation();
-  return <PolicyDetail policy={collectionAsPolicy(collection)} onClose={onClose} returnFocusRef={returnFocusRef}
-    notice={collection.unavailable.length ? <div role="alert" className="mt-4 text-sm text-destructive"><p>{t("policyLibrary.collections.incomplete")}</p><ul className="mt-2 list-disc pl-5">{collection.unavailable.map(id => <li key={id}>{id}</li>)}</ul></div> : undefined}
-    footer={<><Button variant="outline" onClick={onClose}>{t("common.close")}</Button>{onUse ? <Button disabled={Boolean(collection.unavailable.length) || !collection.ruleCount} onClick={onUse}>{t("policyLibrary.collections.use")}</Button> : null}</>} />;
-}
-
 export function CatalogFilters({ policies, facets, directory, onDirectoryChange, selected, onChange, onClear }: {
-  policies: CatalogItem[]; facets: Map<string, CatalogFacetTag[]>; directory: ProtectionDirectoryId | null;
+  policies: Policy[]; facets: Map<string, CatalogFacetTag[]>; directory: ProtectionDirectoryId | null;
   onDirectoryChange: (value: ProtectionDirectoryId | null) => void; selected: Set<string>;
   onChange: (value: Set<string>) => void; onClear: () => void;
 }) {
@@ -366,9 +321,9 @@ export function CatalogFilters({ policies, facets, directory, onDirectoryChange,
   </div>;
 }
 
-function ProtectionDirectoryNav({ policies, value, onChange }: { policies: CatalogItem[]; value: ProtectionDirectoryId | null; onChange: (value: ProtectionDirectoryId | null) => void }) {
+function ProtectionDirectoryNav({ policies, value, onChange }: { policies: Policy[]; value: ProtectionDirectoryId | null; onChange: (value: ProtectionDirectoryId | null) => void }) {
   const { t } = useTranslation();
-  const items = protectionDirectories.map((directory) => ({ id: directory.id, label: t(`protection.directories.${directory.id}`), count: policies.filter((policy) => catalogDirectories(policy).includes(directory.id)).length }));
+  const items = protectionDirectories.map((directory) => ({ id: directory.id, label: t(`protection.directories.${directory.id}`), count: policies.filter((policy) => policyDirectory(policy) === directory.id).length }));
   return <details open className="group border-t py-3">
     <summary className="flex min-h-11 cursor-pointer list-none items-center justify-between gap-2 text-xs font-semibold outline-none focus-visible:ring-2 focus-visible:ring-ring [&::-webkit-details-marker]:hidden">
       {t("protection.overview")}<ChevronDown className="size-3.5 text-muted-foreground group-open:rotate-180" />
@@ -606,7 +561,7 @@ function normalizeCatalogTag(tag: PolicyTag): PolicyTag {
     ? { ...tag, id: "jurisdiction:sg", value: "sg" } : tag;
 }
 
-export function filterCatalogPolicies<T extends CatalogItem>(policies: T[], directory: ProtectionDirectoryId | null, selected: Set<string>, search = "") {
+export function filterCatalogPolicies(policies: Policy[], directory: ProtectionDirectoryId | null, selected: Set<string>, search = "") {
   const groups = new Map<string, string[]>();
   for (const id of selected) {
     const namespace = id.split(":")[0];
@@ -614,14 +569,14 @@ export function filterCatalogPolicies<T extends CatalogItem>(policies: T[], dire
   }
   const words = search.trim().toLocaleLowerCase();
   return policies.filter((policy) => {
-    if (directory && !catalogDirectories(policy).includes(directory)) return false;
+    if (directory && policyDirectory(policy) !== directory) return false;
     const ids = new Set(policy.tags.map((tag) => normalizeCatalogTag(tag).id));
     if ([...groups.values()].some((group) => !group.some((id) => ids.has(id)))) return false;
     return !words || policySearchText(policy).includes(words);
   });
 }
 
-export function tagFacets(policies: CatalogItem[], directory: ProtectionDirectoryId | null = null, selected = new Set<string>(), search = "") {
+export function tagFacets(policies: Policy[], directory: ProtectionDirectoryId | null = null, selected = new Set<string>(), search = "") {
   const facets = new Map<string, Map<string, CatalogFacetTag>>();
   for (const policy of policies) {
     for (const tag of new Map(visiblePolicyTags(policy.tags).map(normalizeCatalogTag).map((tag) => [tag.id, tag])).values()) {
@@ -679,9 +634,7 @@ function facetOrder(namespace: string) {
   return index === -1 ? POLICY_FACET_ORDER.length : index;
 }
 
-function policySearchText(policy: CatalogItem) {
-  if ("profile" in policy) return [policy.id, policy.name, policy.description, ...policy.tags.flatMap(tag => [tag.id, tag.label]), policy.profile.industry,
-    ...policy.groups.flatMap(group => [group.policy?.name ?? group.binding.policy_id, ...group.rules.flatMap(rule => [rule.id, rule.name, rule.description])])].join(" ").toLocaleLowerCase();
+function policySearchText(policy: Policy) {
   return [
     policy.id,
     policy.name,

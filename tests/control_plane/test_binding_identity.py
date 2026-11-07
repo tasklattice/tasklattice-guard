@@ -8,11 +8,11 @@ from tests.control_plane.plan_fixtures import _controller_plans
 
 
 def test_compiled_policy_rules_have_unique_binding_identities():
-    package = load_package(Path("policies/builtin/local-contact-data"))
+    package = load_package(Path("policies/library/contact-data"))
     compiled = compile_policy(package.definition, sources.registry())
     bindings = [rule["binding_id"] for rule in compiled["rules"]]
     assert len(bindings) == len(set(bindings)) == len(compiled["rules"])
-    assert all(binding.startswith("local-contact-data/") for binding in bindings)
+    assert all(binding.startswith("contact-data/") for binding in bindings)
 
 
 def test_plan_carries_binding_identities_with_rule_ids():
@@ -98,9 +98,7 @@ def test_shared_rule_resource_is_pinned_into_the_policy_package():
     from runner.toolkit.policy_library.rules import RuleRegistry
 
     registry = RuleRegistry.load(Path("policies/rules"))
-    package = load_package(Path("policies/builtin/keyword-blocking"), registry)
-    assert [rule.id for rule in package.definition.rules] == ["keyword/blocked-words"]
-    assert package.rule_dependencies == {
-        "keyword/blocked-words@1.0.0": registry.resolve("keyword/blocked-words", "1.0.0").checksum
-    }
-    assert package.manifest.rule_refs[0].id == "keyword/blocked-words"
+    package = load_package(Path("policies/library/content-filters"), registry)
+    assert "keyword/blocked-words" in [rule.id for rule in package.definition.rules]
+    assert package.rule_dependencies["keyword/blocked-words@1.0.0"] == registry.resolve("keyword/blocked-words", "1.0.0").checksum
+    assert any(ref.id == "keyword/blocked-words" for ref in package.manifest.rule_refs)

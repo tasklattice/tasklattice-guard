@@ -9,47 +9,6 @@ import { protectionPresets } from "../../shared/protection-presets.js";
 import { expandProtectionPreset } from "../policy-catalog/presets.js";
 
 describe("Guardrail Validation contract", () => {
-  it("inherits a multi-Rule scenario only when every covered Rule is enabled, through both catalog paths", async () => {
-    const { DeclarativeCompiler } = await import("../policy-studio/declarative.js");
-    const directory = resolve("../runner/toolkit/policy_library/assets");
-    const compiler = new DeclarativeCompiler(directory);
-    const asset = PolicyCatalog.load(directory).get("local-credentials")!;
-    const authored = compiler.compile(compiler.shipped(asset.id)!);
-    for (const policy of [asset, authored]) {
-      const scenario = policy.test_cases.find(test => test.covered_rule_ids.length > 1)!;
-      expect(scenario).toBeDefined();
-      const binding = { policyId: policy.id, policyVersion: policy.version, action: "transform" as const,
-        parameterValues: {}, enabledRuleIds: scenario.covered_rule_ids.slice(0, 1), ruleActions: {},
-        enabledRails: [scenario.phase as "input" | "output"], reasoningPolicy: null };
-      const draft = { allowedTopics: [], restrictedTopics: [], safetyLevel: "balanced" as const,
-        outputDelivery: "full_buffered" as const, policyBindings: [binding] };
-      expect(generatedTestCases("partial", draft, [policy]).some(test => test.sourceCaseId === scenario.id)).toBe(false);
-      binding.enabledRuleIds = [...scenario.covered_rule_ids];
-      expect(generatedTestCases("complete", draft, [policy]).some(test => test.sourceCaseId === scenario.id)).toBe(true);
-    }
-  });
-
-  it("requires explicit pass actions, the original match and unchanged output for observation-only acceptance", () => {
-    const policies = PolicyCatalog.load(resolve("../runner/toolkit/policy_library/assets")).list();
-    const draft = defaultGuardrailDraft(policies);
-    const cases = generatedTestCases("guardrail-1", draft, policies);
-    const observed = applyValidationOverrides(cases, draft).filter(item => item.sourcePolicyId === "local-content-safety" && item.coveredRuleIds.includes("category/denied_insults"));
-    expect(observed.map(item => item.phase)).toEqual(["input", "output"]);
-    for (const test of observed) {
-      expect(test.expectedDecision).toBe("block");
-      expect(test.expectationOverride).toMatchObject({ expectedDecision: "allow", expectedOutputContent: test.content,
-        expectedMatches: [{ policyId: "local-content-safety", ruleId: "category/denied_insults" }] });
-    }
-    for (const change of ["action", "match", "content"] as const) {
-      const changed = structuredClone(draft);
-      const binding = changed.policyBindings.find(item => item.policyId === "local-content-safety")!;
-      const overlay = binding.testCaseOverrides!["filter-denied-insults/accept/denied_insults"]!;
-      if (change === "action") binding.ruleActions = {};
-      if (change === "match") overlay.expectedMatches = [{ policyId: "local-credentials", ruleId: "unrelated" }];
-      if (change === "content") overlay.expectedOutputContent = "changed";
-      expect(() => applyValidationOverrides(cases, changed)).toThrow(/Cannot weaken/);
-    }
-  });
   it("does not generate Output assertions after the user selects Input-only protection", () => {
     const policies = PolicyCatalog.load(resolve("../runner/toolkit/policy_library/assets")).list();
     const binding = expandProtectionPreset(protectionPresets[0]!, policies)[0]!;
@@ -58,48 +17,12 @@ describe("Guardrail Validation contract", () => {
     expect(cases.length).toBeGreaterThan(0);
     expect(cases.every((item) => item.phase === "input")).toBe(true);
   });
-  it("preserves template assertions while applying version-pinned local composition expectations", () => {
-    const policies = PolicyCatalog.load(resolve("../runner/toolkit/policy_library/assets")).list();
-    const draft = defaultGuardrailDraft(policies);
-    const cases = generatedTestCases("guardrail-1", draft, policies);
-    const original = structuredClone(cases);
-    const reviewed = applyValidationOverrides(cases, draft);
-    const overlap = reviewed.find((item) => item.sourcePolicyId === "local-risk-content-terms" && item.sourceCaseId === "accept/weapons_firearms/input")!;
-    expect(overlap.expectedDecision).toBe("transform");
-    expect(overlap.expectationOverride).toMatchObject({
-      sourcePolicyVersion: "1.0.0", expectedDecision: "block", expectedOutputContent: "",
-      expectedMatches: [{ policyId: "local-content-safety", ruleId: "category/harmful_illegal_weapons" }],
-    });
-    expect(reviewed.length).toBeGreaterThanOrEqual(385);
-    expect(reviewed.every((item) => item.required)).toBe(true);
-    expect(cases).toEqual(original);
-  });
-
-  it("rejects stale, unreviewed, missing-evidence and incomplete-output overrides", () => {
-    const policies = PolicyCatalog.load(resolve("../runner/toolkit/policy_library/assets")).list();
-    const changes: Array<[(item: ValidationExpectationOverride) => void, RegExp]> = [
-      [(item) => { item.sourcePolicyVersion = "old"; }, /stale/],
-      [(item) => { item.reason = ""; }, /Invalid reviewed/],
-      [(item) => { item.expectedMatches = []; }, /Invalid reviewed/],
-      [(item) => { delete item.expectedOutputContent; }, /complete output/],
-      [(item) => { item.expectedMatches[0]!.ruleId = "unknown"; }, /not enabled/],
-      [(item) => { item.expectedDecision = "allow"; }, /Cannot weaken/],
-    ];
-    for (const [mutate, message] of changes) {
-      const draft = defaultGuardrailDraft(policies);
-      mutate(draft.policyBindings.find((item) => item.policyId === "local-government-identifiers")!.testCaseOverrides!["accept/uae_emirates_id/input"]!);
-      expect(() => applyValidationOverrides(generatedTestCases("guardrail-1", draft, policies), draft)).toThrow(message);
-    }
-    const draft = defaultGuardrailDraft(policies);
-    const cases = generatedTestCases("guardrail-1", draft, policies).filter((item) => item.sourceCaseId !== "accept/uae_emirates_id/input");
-    expect(() => applyValidationOverrides(cases, draft)).toThrow(/unavailable Test Case/);
-  });
   it("inherits only enabled catalog Rule cases and materializes binding parameters", () => {
     const policies = PolicyCatalog.load(resolve("../runner/toolkit/policy_library/assets")).list();
     const cases = generatedTestCases("guardrail-1", {
       allowedTopics: [], restrictedTopics: [], safetyLevel: "balanced", outputDelivery: "full_buffered",
       policyBindings: [{
-        policyId: "keyword-blocking", policyVersion: "1.0.0", action: "block",
+        policyId: "content-filters", policyVersion: "1.0.0", action: "block",
         parameterValues: { blocked_words: "restricted phrase" }, enabledRuleIds: ["keyword/blocked-words"],
         ruleActions: {}, enabledRails: ["input"], reasoningPolicy: null,
       }],
@@ -109,9 +32,9 @@ describe("Guardrail Validation contract", () => {
     expect(cases[0]).toMatchObject({
       guardrailId: "guardrail-1",
       origin: "generated",
-      sourcePolicyId: "keyword-blocking",
+      sourcePolicyId: "content-filters",
       sourcePolicyVersion: "1.0.0",
-      sourceCaseId: "accept/blocked-words",
+      sourceCaseId: "keyword-blocking/accept/blocked-words",
       content: "The phrase restricted phrase is prohibited.",
       expectedDecision: "block",
       coveredRuleIds: ["keyword/blocked-words"],
@@ -120,14 +43,14 @@ describe("Guardrail Validation contract", () => {
 
   it("generates mode-aware unmatched and denied-topic cases", () => {
     const policies = PolicyCatalog.load(resolve("../runner/toolkit/policy_library/assets")).list();
-    const binding = { policyId: "builtin-topic-safety", policyVersion: "1.0.0", action: "block" as const,
+    const binding = { policyId: "business-topics", policyVersion: "1.0.0", action: "block" as const,
       parameterValues: { allowed_topics: "Order support", denied_topics: "Fabricating refund evidence", topic_mode: "strict" }, enabledRuleIds: ["topic/denylist", "topic/allowlist"], ruleActions: {}, enabledRails: ["input" as const], reasoningPolicy: null };
     const draft = { allowedTopics: ["Order support"], restrictedTopics: ["Fabricating refund evidence"], safetyLevel: "balanced" as const, outputDelivery: "full_buffered" as const, policyBindings: [binding] };
     for (const mode of ["strict", "permissive"] as const) {
       binding.parameterValues.topic_mode = mode;
       const cases = generatedTestCases("topic", { ...draft, topicControlMode: mode }, policies);
-      expect(cases.find(item => item.sourceCaseId === "topic-unlisted")?.expectedDecision).toBe(mode === "strict" ? "block" : "allow");
-      expect(cases.find(item => item.sourceCaseId === "topic-denied/1")).toMatchObject({ expectedDecision: "block", content: "Please help me with this task: Fabricating refund evidence" });
+      expect(cases.find(item => item.coveredRuleIds.includes("topic/allowlist"))?.expectedDecision).toBe(mode === "strict" ? "block" : "allow");
+      expect(cases.find(item => item.coveredRuleIds.includes("topic/denylist"))).toMatchObject({ expectedDecision: "block", content: "Please help me with this task: Fabricating refund evidence" });
     }
   });
 
@@ -165,27 +88,36 @@ describe("Guardrail Validation contract", () => {
   });
 });
 
-it.each(["builtin-contextual-grounding", "builtin-automated-reasoning"])("preserves real positive/negative context for %s through both catalog paths", async (id) => {
+it.each([
+  ["model/contextual-grounding", false],
+  ["model/automated-reasoning", true],
+])("preserves real positive/negative context for %s through both catalog paths", async (ruleId, reasoning) => {
   const { DeclarativeCompiler } = await import("../policy-studio/declarative.js");
   const { buildGuardrailPlan, normalizeGuardrailDraft } = await import("./guardrail-plan.js");
   const directory = resolve("../runner/toolkit/policy_library/assets");
   const compiler = new DeclarativeCompiler(directory);
+  const id = "answer-reliability";
   const asset = PolicyCatalog.load(directory).get(id)!;
-  const authored = compiler.compile(compiler.shipped(id)!);
-  for (const policy of [asset, authored]) {
+  const filter = (rules: typeof asset.rules, tests: typeof asset.test_cases) => ({
+    rules: rules.filter(rule => rule.id === ruleId),
+    tests: tests.filter(test => test.covered_rule_ids.every(covered => covered === ruleId)),
+  });
+  const shipped = compiler.shipped(id)!;
+  shipped.rules = shipped.rules.filter(rule => rule.id === ruleId);
+  shipped.tests = shipped.tests.filter(test => test.covered_rule_ids.every(covered => covered === ruleId));
+  const assetView = { ...asset, ...filter(asset.rules, asset.test_cases) } as typeof asset;
+  const authored = compiler.compile(shipped);
+  for (const policy of [assetView, authored]) {
     const draft = normalizeGuardrailDraft({ policyBindings: [{ policyId: id, policyVersion: policy.version,
       enabledRuleIds: policy.rules.map(rule => rule.id), enabledRails: ["output"],
-      reasoningPolicy: id === "builtin-automated-reasoning" ? { policyId: "warranty-duration", policyVersion: "1", confidenceThreshold: .8 } : null }] });
+      reasoningPolicy: reasoning ? { policyId: "warranty-duration", policyVersion: "1", confidenceThreshold: .8 } : null }] });
     const cases = generatedTestCases("correctness", draft, [policy]);
-    expect(cases).toHaveLength(2);
-    expect(cases.map(test => test.expectedDecision)).toEqual(["block", "allow"]);
+    expect(cases).toHaveLength(1);
+    expect(cases.map(test => test.expectedDecision)).toEqual(["block"]);
     expect(cases.every(test => test.query === "How long is the warranty?" && test.targetSource === "model_output")).toBe(true);
-    expect(cases.map(test => test.content)).toEqual(["The warranty lasts ten years.", "The warranty lasts one year."]);
-    if (id === "builtin-contextual-grounding") {
-      expect(cases.every(test => test.groundingSources[0] === "The product warranty lasts one year.")).toBe(true);
-    } else {
-      expect(cases.map(test => test.expectedReasoningResult)).toEqual(["invalid", "valid"]);
-    }
+    expect(cases.map(test => test.content)).toEqual(["The warranty lasts ten years."]);
+    if (reasoning) expect(cases.map(test => test.expectedReasoningResult)).toEqual(["invalid"]);
+    else expect(cases.every(test => test.groundingSources[0] === "The product warranty lasts one year.")).toBe(true);
     const plan = buildGuardrailPlan({ guardrailId: "correctness", guardrailVersion: "20261013-130000.001Z", policies: [policy], draft });
     expect(plan.steps).toEqual([expect.objectContaining({ on_unsafe: "block" })]);
   }

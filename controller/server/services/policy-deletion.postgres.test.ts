@@ -73,7 +73,7 @@ describe.skipIf(!url)("Policy deletion in PostgreSQL", () => {
   });
 
   it("keeps system Policies protected and returns not found for an absent resource", async () => {
-    const builtin = (await service.listPolicies()).find(p => p.id === "local-payment-data")!;
+    const builtin = (await service.listPolicies()).find(p => p.id === "payment-data")!;
     expect(builtin.deletable).toBe(false);
     await expect(remove(builtin.id)).rejects.toThrow("system managed");
     await expect(remove("no-such-policy")).rejects.toMatchObject({ code: "not_found" });

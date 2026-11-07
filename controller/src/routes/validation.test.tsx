@@ -58,7 +58,7 @@ vi.mock("@/lib/auth", () => ({ useAuth: () => ({ user: { role: "user" } }) }));
 const result: TestCaseResult = {
   case_id: "validation-case-1",
   name: "Competitor comparison",
-  policy_id: "competitor-mention-detection",
+  policy_id: "content-filters",
   expected_decision: "block",
   actual_decision: "block",
   passed: false,

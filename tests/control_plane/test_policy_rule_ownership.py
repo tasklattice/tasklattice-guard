@@ -20,7 +20,7 @@ def signature(rule: dict) -> str:
 
 def catalog():
     return {p.parent.name: load_package(p.parent).definition.model_dump(mode='json', exclude_none=True)
-            for p in (ROOT / 'policies/builtin').glob('*/policy.yaml')}
+            for p in (ROOT / 'policies/library').glob('*/policy.yaml')}
 
 
 def test_local_rules_have_one_canonical_owner():

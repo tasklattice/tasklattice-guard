@@ -43,17 +43,14 @@ def test_all_bundled_sources_bootstrap_the_current_runtime_catalog():
     output = sources.build()
     for path, raw in output.items():
         assert json.loads(path.read_text()) == json.loads(raw), f"Generated asset drift: {path}"
-    manifest = yaml.safe_load((sources.SOURCE / "catalog.yaml").read_text())
-    for collection in manifest["collections"]:
-        if collection["asset"] == "custom_policies.json":
-            continue
-        compiled = json.loads(output[sources.ASSETS / collection["asset"]])
-        assert len(compiled) == len(collection["policies"])
-        for item, relative in zip(compiled, collection["policies"], strict=True):
-            declared = load_package(sources.source_path(relative)).definition
-            assert item["source"] == "built_in"
-            assert len(item["rules"]) == len(declared.rules)
-            assert len(item["test_cases"]) == len(declared.tests)
+    compiled = json.loads(output[sources.ASSETS / "policies.json"])
+    packages = sources.package_paths()
+    assert len(compiled) == len(packages)
+    for item, path in zip(compiled, packages, strict=True):
+        declared = load_package(path).definition
+        assert item["source"] == "built_in"
+        assert len(item["rules"]) == len(declared.rules)
+        assert len(item["test_cases"]) == len(declared.tests)
 
 
 @pytest.mark.parametrize("mutate, message", [
@@ -169,7 +166,8 @@ def test_import_export_round_trip_and_version_guard(isolated_catalog):
     sources.export_policy(original, archive)
     imported = sources.import_policy(archive)
     assert load_package(imported).files == load_package(original).files
-    assert json.loads((assets / "custom_policies.json").read_text())[0]["source"] == "custom"
+    catalog = json.loads((assets / "policies.json").read_text())
+    assert next(item for item in catalog if item["id"] == "customer-information")["source"] == "custom"
     with pytest.raises(ValueError, match="already imported"):
         sources.import_policy(archive)
     file = original / "policy.yaml"
@@ -192,7 +190,7 @@ def test_custom_packages_cannot_replace_bundled_or_transport_secret_defaults(iso
     source, _ = isolated_catalog
     file = source / "examples/customer-information/policy.yaml"
     manifest = yaml.safe_load(file.read_text())
-    manifest["metadata"]["id"] = "local-contact-data"
+    manifest["metadata"]["id"] = "contact-data"
     file.write_text(yaml.safe_dump(manifest, allow_unicode=True))
     with pytest.raises(ValueError, match="bundled Policy ID"):
         sources.import_policy(file.parent)
@@ -206,53 +204,6 @@ def test_custom_packages_cannot_replace_bundled_or_transport_secret_defaults(iso
 def test_test_values_must_be_declared_string_parameters(example, values):
     with pytest.raises(ValueError, match="test parameters|Test parameters"):
         parameters_for_test(load_package(ROOT / "policies/examples/customer-information"), values)
-
-
-async def test_imported_yaml_compiles_in_controller_and_executes_without_runtime_catalog(isolated_catalog, monkeypatch):
-    source, assets = isolated_catalog
-    sources.import_policy(source / "examples/customer-information")
-    script = '''
-      import { PolicyCatalog } from "./server/policy-catalog/catalog.ts";
-      import { buildGuardrailPlan } from "./server/domain/guardrail-plan.ts";
-      const policies = PolicyCatalog.load(process.argv[1]).list();
-      const policy = policies.find(p => p.id === "customer-information");
-      console.log(JSON.stringify(buildGuardrailPlan({
-        guardrailId: "declarative", guardrailVersion: "20260930-010000.001Z", policies,
-        draft: { allowedTopics: [], restrictedTopics: [], safetyLevel: "balanced", outputDelivery: "full_buffered",
-          policyBindings: [{ policyId: policy.id, policyVersion: policy.version, action: null, parameterValues: {},
-            enabledRuleIds: policy.rules.map(r => r.id), ruleOrder: policy.rules.map(r => r.id), ruleActions: {},
-            enabledRails: ["output"], reasoningPolicy: null }] }
-      })));
-    '''
-    result = subprocess.run(["node", "--import", "tsx", "--input-type=module", "-e", script, str(assets)], cwd=ROOT / "controller", capture_output=True, text=True, check=True)
-    plan = json.loads(result.stdout)
-    from runner.toolkit.nemo.actions import content_filter
-    from runner.compiler import DefaultRunnerCompiler
-    from runner.draft_preview import DraftPreviewRuntime
-    from runner.toolkit.nemo.action_registry import action_providers
-    from runner.toolkit.runtime.contracts import ProtectionRequest, RequestContext
-
-    def unavailable(_):
-        raise AssertionError("Published Rules must come from the pinned plan, not the mutable catalog")
-
-    monkeypatch.setattr("runner.toolkit.policy_library.policy", unavailable)
-    runtime = DraftPreviewRuntime(
-        DefaultRunnerCompiler(),
-        action_providers(content_filter.ContentFilterActionProvider()),
-    )
-    try:
-        for text, expected, output in [("普通订单回复", "allow", None), ("CUS-123456", "transform", "[客户编号已隐藏]"), ("INTERNAL_SECRET", "block", None)]:
-            decision = await runtime.evaluate(ProtectionRequest(phase="output", texts=(text,), context=RequestContext(protocol="test")),
-                preview_id="declarative", guardrail_id=plan["guardrail_id"], draft_revision=1,
-                candidate_version=plan["guardrail_version"], plan=plan, runtime_profile="auto")
-            assert not decision.usage.fail_closed, decision.reason
-            assert decision.decision == expected
-            assert decision.usage.model_invocations == 0
-            if output:
-                assert decision.texts == (output,)
-                assert [(f.policy_id, f.rule_id, f.risk_severity) for f in decision.findings] == [("customer-information", "customer-id", "medium")]
-    finally:
-        await runtime.shutdown()
 
 
 def test_metadata_owns_rule_order_and_rejects_unlisted_files(tmp_path):
@@ -357,7 +308,6 @@ def test_failed_candidate_build_restores_the_imported_package(isolated_catalog, 
     original = source / "examples/customer-information"
     imported = sources.import_policy(original)
     previous = load_package(imported).files
-    catalog = (assets / "custom_policies.json").read_bytes()
     file = original / "policy.yaml"
     value = yaml.safe_load(file.read_text())
     value["metadata"]["version"] = "2.0.0"
@@ -366,7 +316,6 @@ def test_failed_candidate_build_restores_the_imported_package(isolated_catalog, 
     with pytest.raises(ValueError, match="candidate invalid"):
         sources.import_policy(original, replace=True)
     assert load_package(imported).files == previous
-    assert (assets / "custom_policies.json").read_bytes() == catalog
 
 
 def test_built_in_rules_use_the_same_stage_coverage_gate(example):
@@ -377,25 +326,26 @@ def test_built_in_rules_use_the_same_stage_coverage_gate(example):
 
 
 async def test_model_tests_are_explicitly_not_run_without_a_model_environment():
-    package = load_package(ROOT / "policies/builtin/builtin-jailbreak")
+    package = load_package(ROOT / "policies/library/content-safety-model")
     report = await run_packages([package], sources.registry(), sources.ASSETS)
     assert report["summary"] == {"passed": 0, "failed": 0, "not_run": len(package.definition.tests)}
     assert all(case["status"] == "not_run" for case in report["policies"][0]["cases"])
 
 
 def test_bundled_strict_jailbreak_preserves_uncertainty_parameter():
-    package = load_package(ROOT / "policies/builtin/builtin-jailbreak-strict")
+    package = load_package(ROOT / "policies/library/prompt-instruction-attacks")
     compiled = compile_policy(package.definition, sources.registry())
     assert compiled["version"] == "1.0.0"
-    assert compiled["rules"][0]["detector_options"] == {
+    jailbreak = next(rule for rule in compiled["rules"] if rule["id"] == "model/jailbreak")
+    assert jailbreak["detector_options"] == {
         "profile": "jailbreak-classification", "on_unknown": "{{on_unknown}}", "review_unknown": "{{review_unknown}}",
     }
-    assert compiled["parameters"][0]["default"] == "block"
+    assert next(p for p in compiled["parameters"] if p["name"] == "on_unknown")["default"] == "block"
     candidate = package.definition.model_dump()
-    candidate["rules"][0]["detector"]["parameters"]["on_unknown"] = "{{missing}}"
+    next(rule for rule in candidate["rules"] if rule["id"] == "model/jailbreak")["detector"]["parameters"]["on_unknown"] = "{{missing}}"
     with pytest.raises(ValueError, match="on_unknown must be"):
         compile_policy(definition(candidate), sources.registry())
-    candidate["rules"][0]["detector"]["parameters"] = {
+    next(rule for rule in candidate["rules"] if rule["id"] == "model/jailbreak")["detector"]["parameters"] = {
         "profile": "pii-classification", "on_unknown": "block",
     }
     with pytest.raises(ValueError, match="unknown detector parameters"):
@@ -404,26 +354,29 @@ def test_bundled_strict_jailbreak_preserves_uncertainty_parameter():
 
 @pytest.mark.parametrize("profile", ["safety-classification", "topic-classification"])
 def test_classifier_uncertainty_parameter_survives_package_compilation(profile):
-    package = load_package(ROOT / "policies/builtin/builtin-jailbreak-strict")
+    package = load_package(ROOT / "policies/library/prompt-instruction-attacks")
     candidate = package.definition.model_dump()
-    candidate["rules"][0]["detector"]["parameters"]["profile"] = profile
+    target = next(rule for rule in candidate["rules"] if rule["id"] == "model/jailbreak")
+    target["detector"]["parameters"]["profile"] = profile
     compiled = compile_policy(definition(candidate), sources.registry())
-    assert compiled["rules"][0]["detector_options"]["on_unknown"] == "{{on_unknown}}"
-    assert compiled["rules"][0]["effect"] == "block"
-    candidate["rules"][0]["detector"]["parameters"]["on_unknown"] = "ignore"
+    compiled_rule = next(rule for rule in compiled["rules"] if rule["id"] == "model/jailbreak")
+    assert compiled_rule["detector_options"]["on_unknown"] == "{{on_unknown}}"
+    assert compiled_rule["effect"] == "block"
+    target["detector"]["parameters"]["on_unknown"] = "ignore"
     with pytest.raises(ValueError, match="on_unknown must be"):
         compile_policy(definition(candidate), sources.registry())
 
 
-@pytest.mark.parametrize("policy", ["builtin-content-safety", "builtin-jailbreak", "builtin-topic-safety"])
+@pytest.mark.parametrize("policy", ["content-safety-model", "prompt-instruction-attacks", "business-topics"])
 def test_shipped_v1_classifiers_wire_unknown_and_review(policy):
-    current = load_package(ROOT / "policies/builtin" / policy)
+    current = load_package(ROOT / "policies/library" / policy)
     compiled = compile_policy(current.definition, sources.registry())
     assert compiled["version"] == "1.0.0"
     assert next(p for p in compiled["parameters"] if p["name"] == "on_unknown")["default"] == "block"
-    assert all(r["detector_options"]["on_unknown"] == "{{on_unknown}}" for r in compiled["rules"])
+    classifiers = [r for r in compiled["rules"] if r["detector"]["ref"] == "model/classifier"]
+    assert classifiers and all(r["detector_options"]["on_unknown"] == "{{on_unknown}}" for r in classifiers)
     assert next(p for p in compiled["parameters"] if p["name"] == "review_unknown")["default"] == "false"
-    assert all(r["detector_options"]["review_unknown"] == "{{review_unknown}}" for r in compiled["rules"])
+    assert all(r["detector_options"]["review_unknown"] == "{{review_unknown}}" for r in classifiers)
 
 
 

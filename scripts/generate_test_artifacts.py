@@ -47,13 +47,7 @@ STREAM_SAFETY_FIXTURES = {
     f"stream-safety-{mode}-v1": mode for mode in ("window_buffered", "interruptible", "full_buffered")
 }
 STREAM_SAFETY_FIXTURES['content-safety-inout-v1'] = 'window_buffered'
-PRESET_FIXTURES = {
-    f"preset-{name}-v1": name for name in (
-        "banking-assistant", "securities-assistant",
-        "internet-customer-support",
-    )
-}
-FIXTURE_NAMES = (FIXTURE_NAME, ORDERED_FIXTURE_NAME, DEFAULT_FIXTURE_NAME, JAILBREAK_FIXTURE_NAME, TOPIC_FIXTURE_NAME, PHRASE_FIXTURE_NAME, CUSTOM_SYMBOL_FIXTURE_NAME, CUSTOM_FLOW_EVENT_FIXTURE_NAME, CUSTOM_DYNAMIC_FLOW_FIXTURE_NAME, CUSTOM_PARAMETER_FIXTURE_NAME, *PRESET_FIXTURES, *STREAM_SAFETY_FIXTURES)
+FIXTURE_NAMES = (FIXTURE_NAME, ORDERED_FIXTURE_NAME, DEFAULT_FIXTURE_NAME, JAILBREAK_FIXTURE_NAME, TOPIC_FIXTURE_NAME, PHRASE_FIXTURE_NAME, CUSTOM_SYMBOL_FIXTURE_NAME, CUSTOM_FLOW_EVENT_FIXTURE_NAME, CUSTOM_DYNAMIC_FLOW_FIXTURE_NAME, CUSTOM_PARAMETER_FIXTURE_NAME, *STREAM_SAFETY_FIXTURES)
 TEST_CREDENTIAL = "fixture-runtime-secret"
 _PRIVATE_KEY_BYTES = bytes(range(1, 33))
 
@@ -116,8 +110,8 @@ def _ordered_plan() -> dict[str, object]:
     from runner.toolkit.policy_library import policy
 
     from dataclasses import replace
-    contacts = policy("local-contact-data")
-    credentials = policy("local-credentials")
+    contacts = policy("contact-data")
+    credentials = policy("credentials-secrets")
     definition = replace(contacts, id="fixture-redactions", rules=(
         next(r for r in contacts.rules if r.id == "pattern/email"),
         next(r for r in credentials.rules if r.id == "credentials-api-keys/generic_api_key"),
@@ -207,41 +201,12 @@ def _phrase_plan() -> dict[str, object]:
       ]);
       console.log(JSON.stringify(buildGuardrailPlan({guardrailId:'fixture-secrets', guardrailVersion:'20260904-010000.001Z', policies,
         draft:{allowedTopics:[], restrictedTopics:[], safetyLevel:'balanced', outputDelivery:'full_buffered', policyBindings:[{
-          policyId:'configured-phrase-filter', policyVersion:'1.0.0', action:null,
-          parameterValues:{phrase_entries}, enabledRuleIds:['configured/phrases'], ruleActions:{}, enabledRails:['input','output'], reasoningPolicy:null,
+          policyId:'content-filters', policyVersion:'1.0.0', action:null,
+          parameterValues:{phrase_entries, brand_name:'TaskLattice', competitors:'Example', blocked_words:'confidential'}, enabledRuleIds:['configured/phrases'], ruleActions:{}, enabledRails:['input','output'], reasoningPolicy:null,
         }]}})));
     """
     return json.loads(subprocess.run(
         ["node", "--import", "tsx", "--input-type=module", "-e", source],
-        cwd=ROOT / "controller", capture_output=True, text=True, check=True, timeout=30,
-    ).stdout)
-
-
-def _preset_payload(preset_id: str) -> dict:
-    # Generate once outside the data plane. Frozen fixtures include the reviewed
-    # cases so Runner-only tests need neither Controller nor Policy expansion.
-    source = """
-      import {protectionPresets} from './shared/protection-presets.ts';
-      import {expandProtectionPreset} from './server/policy-catalog/presets.ts';
-      import {buildGuardrailPlan} from './server/domain/guardrail-plan.ts';
-      import {generatedTestCases, applyValidationOverrides} from './server/domain/validation.ts';
-      import {PolicyCatalog} from './server/policy-catalog/catalog.ts';
-      const policies = PolicyCatalog.load('../runner/toolkit/policy_library/assets').list();
-      const preset = protectionPresets.find(item => item.id === process.argv[1]);
-      if (!preset) throw new Error('Unknown preset');
-      const draft = {allowedTopics:[], restrictedTopics:[], policyBindings:expandProtectionPreset(preset, policies),
-        safetyLevel:'balanced', outputDelivery:'full_buffered'};
-      console.log(JSON.stringify({
-        plan:buildGuardrailPlan({guardrailId:'fixture-secrets', guardrailVersion:'20260904-010000.001Z', draft, policies}),
-        cases:applyValidationOverrides(generatedTestCases('fixture-secrets', draft, policies), draft).map(item => ({
-          id:item.id, name:item.name, phase:item.phase, content:item.content, expectedDecision:item.expectationOverride?.expectedDecision ?? item.expectedDecision,
-          expectedOutputContent:item.expectationOverride?.expectedOutputContent,
-          sourcePolicyId:item.sourcePolicyId, sourcePolicyVersion:item.sourcePolicyVersion,
-        })),
-      }));
-    """
-    return json.loads(subprocess.run(
-        ["node", "--import", "tsx", "--input-type=module", "-e", source, preset_id],
         cwd=ROOT / "controller", capture_output=True, text=True, check=True, timeout=30,
     ).stdout)
 
@@ -255,7 +220,7 @@ def _stream_safety_plan(mode: str, rails: tuple[str, ...] = ('output',)) -> dict
       const policies = PolicyCatalog.load('../runner/toolkit/policy_library/assets').list();
       console.log(JSON.stringify(buildGuardrailPlan({guardrailId:'fixture-secrets', guardrailVersion:'20260904-010000.001Z', policies,
         draft:{allowedTopics:[], restrictedTopics:[], safetyLevel:'balanced', outputDelivery:process.argv[1], policyBindings:[{
-          policyId:'builtin-content-safety', policyVersion:'1.0.0', action:null,
+          policyId:'content-safety-model', policyVersion:'1.0.0', action:null,
           parameterValues:{}, enabledRuleIds:['model/content-safety'], ruleActions:{}, enabledRails:JSON.parse(process.argv[2]), reasoningPolicy:null,
         }]}})));
     """
@@ -320,8 +285,7 @@ def generate(fixture_name: str = FIXTURE_NAME) -> FixtureFiles:
         serialization.Encoding.PEM,
         serialization.PublicFormat.SubjectPublicKeyInfo,
     )
-    preset = _preset_payload(PRESET_FIXTURES[fixture_name]) if fixture_name in PRESET_FIXTURES else None
-    plan = preset["plan"] if preset else {
+    plan = {
         DEFAULT_FIXTURE_NAME: _default_plan,
         ORDERED_FIXTURE_NAME: _ordered_plan,
         JAILBREAK_FIXTURE_NAME: _jailbreak_plan,
@@ -411,10 +375,6 @@ def generate(fixture_name: str = FIXTURE_NAME) -> FixtureFiles:
     if fixture_name in {ORDERED_FIXTURE_NAME, DEFAULT_FIXTURE_NAME}:
         manifest["expected"]["redacted_input"] = "GUARDRAIL_INTERVENED"
         manifest["expected"]["redacted_output"] = "GUARDRAIL_INTERVENED"
-    if preset:
-        manifest["preset_id"] = PRESET_FIXTURES[fixture_name]
-        manifest["regression_cases"] = preset["cases"]
-        manifest["policy_ids"] = [item["policy_id"] for item in plan["policy_bindings"]]
     if fixture_name in STREAM_SAFETY_FIXTURES:
         manifest["expected"] = {"safe_output": "allow", "unsafe_output": "block",
             "output_delivery": STREAM_SAFETY_FIXTURES[fixture_name]}

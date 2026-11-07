@@ -152,7 +152,9 @@ describe('guardctl configuration', () => {
     expect(calls.filter(c => c.path.endsWith('/emergency-apply'))).toHaveLength(1);
   });
   it('creates from the pinned Profile and resumes compilation without another creation or test', async () => {
-    const profile = { id: 'local-baseline', version: '1.0.0', runtimeProfile: 'auto', availability: { available: true },
+    // A target-catalog deployment has no legacy local-baseline id; the platform
+    // default is the Profile flagged isDefault.
+    const profile = { id: 'default', version: '1.0.0', runtimeProfile: 'auto', isDefault: true, availability: { available: true },
       draftSettings: { outputDelivery: 'full_buffered' }, policyBindings: ['local'] };
     let guard: any;
     const calls: any[] = [];
@@ -168,7 +170,7 @@ describe('guardctl configuration', () => {
     for (let retry = 0; retry < 2; retry++) await expect(provisionProject(api, flags, {}, state)).rejects.toThrow('Compiler temporarily unavailable');
     const creates = calls.filter(call => call.method === 'POST' && call.path === '/api/v1/guardrails');
     expect(creates).toHaveLength(1);
-    expect(creates[0].body).toMatchObject({ idempotencyKey: expect.any(String), draftConfig: { profileOrigin: { id: 'local-baseline', version: '1.0.0' } } });
+    expect(creates[0].body).toMatchObject({ idempotencyKey: expect.any(String), draftConfig: { profileOrigin: { id: 'default', version: '1.0.0' } } });
     expect(calls.filter(call => call.path.endsWith('/publish'))).toHaveLength(2);
     expect(calls.some(call => call.path.includes('test-runs') || call.path.includes('guardrail-default'))).toBe(false);
   });

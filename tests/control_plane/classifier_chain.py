@@ -31,14 +31,14 @@ def build_controller_plan(*, review=False, phase="input"):
       const compiler = new DeclarativeCompiler('../runner/toolkit/policy_library/assets');
       const policies = PolicyCatalog.load('../runner/toolkit/policy_library/assets').list().map(p => compiler.catalogView(p));
       const phase = process.env.GUARD_TEST_PHASE ?? 'input';
-      const ids = phase === 'output' ? ['builtin-content-safety'] : ['builtin-content-safety', 'builtin-jailbreak-strict', 'builtin-topic-safety',
-                   'keyword-blocking', 'local-data-use-boundaries'];
+      const ids = phase === 'output' ? ['content-safety-model'] : ['content-safety-model', 'prompt-instruction-attacks', 'business-topics',
+                   'content-filters', 'regional-compliance-sg-pdpa'];
       const bindings = ids.map(id => {
         const p = policies.find(p => p.id === id);
-        const rules = id === 'builtin-topic-safety' ? ['topic/denylist'] : p.rules.map(r => r.id);
+        const rules = id === 'business-topics' ? ['topic/denylist'] : p.rules.map(r => r.id);
         return { policyId: id, policyVersion: p.version, action: null, enabledRails: [phase],
           enabledRuleIds: rules, ruleOrder: rules, ruleActions: {}, reasoningPolicy: null,
-          parameterValues: id === 'keyword-blocking' ? {blocked_words: 'CHAIN_BLOCK'} :
+          parameterValues: id === 'content-filters' ? {blocked_words: 'CHAIN_BLOCK', brand_name: 'TaskLattice', competitors: 'Example', phrase_entries: JSON.stringify([{ id: 'x', phrase: 'CHAIN_BLOCK', action: 'block', replacement: '[REDACTED]' }])} :
             {on_unknown: 'allow', review_unknown: process.env.GUARD_TEST_REVIEW ?? 'false', topic_mode: 'permissive', denied_topics: 'Synthetic forbidden task'} };
       });
       console.log(JSON.stringify(buildGuardrailPlan({guardrailId: 'classifier-chain',

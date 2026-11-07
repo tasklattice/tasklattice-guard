@@ -47,15 +47,22 @@ async def run_packages(packages: list[PolicyPackage], registry: dict, assets: Pa
         result = {"id": definition.metadata.id, "version": definition.metadata.version, "source_sha256": package.checksum,
                   "detectors": detector_dependencies(package, registry), "cases": []}
         report["policies"].append(result)
-        if any(rule["implementation"]["execution"] != "local" for rule in compiled["rules"]):
-            result["cases"] = [{"id": case.id, "status": "not_run", "reason": "requires configured model evaluation"} for case in definition.tests]
-            report["summary"]["not_run"] += len(result["cases"])
-            continue
+        # Agent boundary Rules need their dedicated interaction runtime; the
+        # package regression harness executes local content and secret Rules.
+        local_rules = {rule["id"] for rule in compiled["rules"]
+                       if rule["implementation"]["execution"] == "local"
+                       and not rule["detector"]["ref"].startswith("agent/")}
         values = test_parameters(package, overrides if overrides is not None else {})
         groups = {}
         for case in definition.tests:
             selected = tuple(rule.id for rule in definition.rules if case.scope == "policy" or rule.id in case.covered_rule_ids)
-            groups.setdefault(selected, []).append(case)
+            # Mixed Policies still execute every local Rule's acceptance cases;
+            # only the cases that need a configured model are skipped.
+            if all(rule in local_rules for rule in selected):
+                groups.setdefault(selected, []).append(case)
+            else:
+                result["cases"].append({"id": case.id, "status": "not_run", "reason": "requires configured model or boundary runtime"})
+                report["summary"]["not_run"] += 1
         for selected, cases in groups.items():
             jobs.append((package, compiled, values, result, selected, cases))
     if not jobs:
@@ -66,11 +73,7 @@ async def run_packages(packages: list[PolicyPackage], registry: dict, assets: Pa
         shutil.copytree(assets, directory)
         # One current definition per ID. Sources under test replace generated
         # catalog definitions; the package is the authority for this run.
-        from .loader import _ASSET_PATHS
-        for path in _ASSET_PATHS:
-            (directory / path.name).write_text("[]")
-        for name, origin in (("builtin_policies.json", "built_in"), ("custom_policies.json", "custom")):
-            (directory / name).write_text(json.dumps(list({compiled["id"]: compiled for _, compiled, _, _, _, _ in jobs if compiled["source"] == origin}.values())))
+        (directory / "policies.json").write_text(json.dumps(list({compiled["id"]: compiled for _, compiled, _, _, _, _ in jobs}.values())))
         payload = {"assets": str(directory), "jobs": [{"id": p.definition.metadata.id, "parameters": values, "rules": selected} for p, _, values, _, selected, _ in jobs]}
         compiled_plans = subprocess.run(
             ["node", "--import", "tsx", str(ROOT / "scripts/policy-regression-plans.mjs")],

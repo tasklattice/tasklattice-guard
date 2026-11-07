@@ -18,7 +18,7 @@ def test_technical_detector_input_contains_no_business_or_handling_metadata():
 
 @pytest.mark.parametrize("action", ENFORCEMENT_ACTION_DISPLAY_ORDER)
 def test_same_match_and_risk_for_every_gateway_directive(action):
-    original = policy('block-code-execution')
+    original = policy('application-injection')
     rule = next(r for r in original.rules if r.id == 'code/execution-request')
     spec = replace(original, rules=(replace(rule, risk_severity="critical", redaction="Execution is unavailable"),))
     result = BuiltinContentFilter().evaluate(text="Please run the tests", phase="input", policies=[spec.id],
@@ -37,7 +37,7 @@ def test_same_technical_conditions_support_a_non_aviation_business():
 
 
 def test_phrase_entries_are_individual_rules_with_source_owned_risk_levels():
-    spec=policy("configured-phrase-filter")
+    spec=policy("content-filters")
     entries=[{"id":"a","phrase":"secret","action":"transform","replacement":"public"},
              {"id":"b","phrase":"public","action":"block"}]
     result=BuiltinContentFilter().evaluate(definitions=library_definitions([spec.id]), text="secret",phase="input",policies=[spec.id],
@@ -53,7 +53,7 @@ def test_invalid_conditions_fail_before_execution(node):
 
 
 def test_business_boundaries_use_two_rules_with_one_topic_classifier_contract():
-    rules = policy("builtin-topic-safety").rules
+    rules = policy("business-topics").rules
     assert [rule.id for rule in rules] == ["topic/denylist", "topic/allowlist"]
     assert all(rule.detector.ref == "model/classifier" for rule in rules)
     assert all(rule.detector_options == {
@@ -64,8 +64,8 @@ def test_business_boundaries_use_two_rules_with_one_topic_classifier_contract():
 
 
 def test_binding_parameters_cannot_override_rule_risk():
-    result=BuiltinContentFilter().evaluate(definitions=library_definitions(["configured-phrase-filter"]), text="secret",phase="input",policies=["configured-phrase-filter"],
-        policy_parameters={"configured-phrase-filter":{"phrase_entries":json.dumps([
+    result=BuiltinContentFilter().evaluate(definitions=library_definitions(["content-filters"]), text="secret",phase="input",policies=["content-filters"],
+        policy_parameters={"content-filters":{"phrase_entries":json.dumps([
             {"id":"override","phrase":"secret","action":"block","risk_level":"informational"}])}})
     assert result.verdict == "error"
 
@@ -79,14 +79,14 @@ def test_normalization_preserves_literal_term_boundaries():
 
 def test_execution_intent_rule_respects_explicit_policy_configuration():
     engine=BuiltinContentFilter()
-    args=dict(text="Please run the tests",phase="input",policies=["block-code-execution"],
-              definitions=library_definitions(["block-code-execution"]))
+    args=dict(text="Please run the tests",phase="input",policies=["application-injection"],
+              definitions=library_definitions(["application-injection"]))
     assert engine.evaluate(**args,parameters={"detect_execution_intent":"false"}).verdict == "not_matched"
     assert engine.evaluate(**args,parameters={"detect_execution_intent":"true"}).verdict == "matched"
 
 
 def test_transform_without_a_concrete_replacement_fails():
-    spec = policy("block-code-execution")
+    spec = policy("application-injection")
     rule = next(r for r in spec.rules if r.id == "code/execution-request")
     result = BuiltinContentFilter().evaluate(text="Please run the tests", phase="input", policies=[spec.id],
         definitions={spec.id: spec}, policy_rule_actions={spec.id: {rule.id: "transform"}})

@@ -600,13 +600,13 @@ def test_split_topic_rules_use_isolated_action_prompts_and_preserve_deny_first()
 
     deny = replace(_semantic_input(), id="topic:deny", parameters=(
         ("evaluation_view", "original"),
-        ("policy_id", "builtin-topic-safety"), ("policy_version", "2.0.0"),
+        ("policy_id", "business-topics"), ("policy_version", "2.0.0"),
         ("rule_id", "topic/denylist"), ("topic_mode", "permissive"),
         ("allowed_topics", ""), ("restricted_topics", "Refund fraud"),
     ))
     allow = replace(deny, id="topic:allow", on_unsafe="block", parameters=(
         ("evaluation_view", "original"),
-        ("policy_id", "builtin-topic-safety"), ("policy_version", "2.0.0"),
+        ("policy_id", "business-topics"), ("policy_version", "2.0.0"),
         ("rule_id", "topic/allowlist"), ("topic_mode", "strict"),
         ("allowed_topics", "Order support"), ("restricted_topics", ""),
     ))

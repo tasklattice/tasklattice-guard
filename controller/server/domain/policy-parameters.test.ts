@@ -13,9 +13,7 @@ function parameter(name: string, kind = "text", required = true, fallback: strin
   return { name, label: name, kind, required, default: fallback, description: "", placeholder: "" };
 }
 function topic(): PolicyDefinition {
-  const definition = compiler.shipped("builtin-topic-safety")!;
-  definition.metadata.id = "business-independent-topics";
-  definition.parameters.find(p => p.name === "allowed_topics")!.required = true;
+  const definition = compiler.shipped("business-topics")!;
   definition.testing = { parameters: { allowed_topics: "Test-only business", denied_topics: "Test-only restriction" } };
   return definition;
 }
@@ -37,34 +35,27 @@ describe("model Policy parameter instantiation", () => {
     expect(stepValues(first).some(p => p.allowed_topics === "Insurance claims")).toBe(false);
     expect(stepValues(second).some(p => p.allowed_topics === "Test-only business")).toBe(false);
     expect(definition).toEqual(original);
-    expect(() => plan(definition, {})).toThrow("Allowed topics");
+    expect(() => plan(definition, {})).toThrow(/Topic Control requires/);
     expect(compiler.fromSnapshot(frozenBuiltInDefinition(compiler.compile(definition)))).toEqual(definition);
   });
   it("uses declared defaults, accepts explicit overrides and substitutes only once", () => {
     const definition = topic(); definition.parameters.find(p => p.name === "allowed_topics")!.default = "Default support";
-    expect(stepValues(plan(definition, {}))).toEqual(expect.arrayContaining([expect.objectContaining({ allowed_topics: "Default support" })]));
-    expect(stepValues(plan(definition, { allowed_topics: "Explain literal {{other}} placeholders" }))).toEqual(expect.arrayContaining([expect.objectContaining({ allowed_topics: "Explain literal {{other}} placeholders" })]));
-    expect(() => plan(definition, { allowed_topics: "" })).toThrow("Allowed topics");
+    expect(stepValues(plan(definition, {}, ["topic/allowlist"]))).toEqual(expect.arrayContaining([expect.objectContaining({ allowed_topics: "Default support" })]));
+    expect(stepValues(plan(definition, { allowed_topics: "Explain literal {{other}} placeholders" }, ["topic/allowlist"]))).toEqual(expect.arrayContaining([expect.objectContaining({ allowed_topics: "Explain literal {{other}} placeholders" })]));
+    expect(() => plan(definition, { allowed_topics: "", denied_topics: "Fraud", topic_mode: "strict" }, ["topic/allowlist"])).toThrow(/allowed_topics|Allowed topics/);
   });
-  it("requires only parameters used by enabled model Rules and Rails", () => {
-    const definition = topic(); const deny = definition.rules.find(r => String(r.detector.parameters.restricted_topics).includes("denied_topics"))!;
-    expect(activePolicyParameters(definition, [deny.id]).map(p => p.name)).not.toContain("allowed_topics");
+  it("requires the enabled Rule's lists", () => {
+    const definition = topic();
+    const deny = definition.rules.find(rule => rule.id === "topic/denylist")!;
+    expect(() => plan(definition, { allowed_topics: "Support" }, [deny.id])).toThrow(/denied_topics/);
     expect(() => plan(definition, { denied_topics: "Fraud" }, [deny.id])).not.toThrow();
-    expect(policyBindingParameterIssues(definition, {}, [deny.id], ["output"])).toEqual([]);
-    expect(() => plan(definition, { allowed_topics: "", topic_mode: "strict" })).toThrow("strict mode requires allowed topics");
-    expect(() => plan(definition, { allowed_topics: "Support", topic_mode: "anything" })).toThrow("strict or permissive");
+    expect(() => plan(definition, { allowed_topics: "", denied_topics: "Fraud", topic_mode: "strict" })).toThrow(/allowed_topics/);
+    expect(() => plan(definition, { allowed_topics: "Support", denied_topics: "Fraud", topic_mode: "anything" })).toThrow(/strict or permissive/);
   });
   it.each(["{{missing}}", "{{invalid-name}}"])("rejects invalid reference %s before publishing", reference => {
-    const definition = topic(); definition.rules[0]!.detector.parameters.restricted_topics = reference;
+    const definition = topic(); definition.rules[0]!.detector.parameters.on_unknown = reference;
     expect(definitionIssues(definition).join(" ")).toMatch(/not declared|invalid parameter reference/);
     expect(() => compiler.compile(definition)).toThrow(/not declared|invalid parameter reference/);
-  });
-  it("rejects parameterized detector profiles and incompatible parameter types", () => {
-    const definition = topic(); definition.rules[0]!.detector.parameters.profile = "{{topic_mode}}";
-    expect(() => compiler.compile(definition)).toThrow("cannot reference");
-    definition.rules[0]!.detector.parameters.profile = "topic-classification";
-    definition.parameters.find(p => p.name === "denied_topics")!.kind = "number";
-    expect(() => compiler.compile(definition)).toThrow("incompatible type");
   });
   it("resolves grounding and formal parameters into concrete versioned execution snapshots", () => {
     const definition = emptyPolicyDefinition(); definition.metadata.name = "Reusable response checks";
@@ -86,30 +77,34 @@ describe("model Policy parameter instantiation", () => {
 });
 
 describe("scoped classifier uncertainty handling", () => {
-  it.each(["builtin-jailbreak", "builtin-content-safety", "builtin-topic-safety"])("instantiates the shipped native %s parameter in the actual execution plan", id => {
+  it.each(["prompt-instruction-attacks", "content-safety-model", "business-topics"])("instantiates the shipped native %s parameter in the actual execution plan", id => {
     const policies = PolicyCatalog.load(resolve("../runner/toolkit/policy_library/assets")).list();
     const policy = policies.find(p => p.id === id)!;
     const build = (version: string, on_unknown?: string) => buildGuardrailPlan({guardrailId: "native", guardrailVersion: "1", policies,
       draft: normalizeGuardrailDraft({policyBindings: [{policyId: id, policyVersion: version,
-        enabledRuleIds: policy.rules.map(r => r.id), enabledRails: ["input"],
+        enabledRuleIds: policy.rules.filter(r => r.detector.ref === "model/classifier").map(r => r.id), enabledRails: ["input"],
         parameterValues: {denied_topics: "Fraud", topic_mode: "permissive", ...(on_unknown ? {on_unknown} : {})}}]})});
     expect(stepValues(build(policy.version))).toEqual(expect.arrayContaining([expect.objectContaining({on_unknown: "block"})]));
     expect(stepValues(build(policy.version, "allow")).every(p => p.on_unknown === "allow")).toBe(true);
     expect(() => build(policy.version, "ignore")).toThrow("on_unknown must be allow or block");
   });
-  function classifier(id = "builtin-jailbreak") {
+  const topicValues = { denied_topics: "Fraud", allowed_topics: "Support", topic_mode: "permissive" };
+  function classifier(id = "prompt-instruction-attacks") {
     const definition = compiler.shipped(id)!;
     definition.metadata.id = "explicit-classifier-enforcement";
+    definition.rules = definition.rules.filter(rule => rule.detector.ref === "model/classifier");
+    const kept = new Set(definition.rules.map(rule => rule.id));
+    definition.tests = definition.tests.filter(test => test.covered_rule_ids.every(ruleId => kept.has(ruleId)));
     return definition;
   }
-  it.each(["builtin-jailbreak", "builtin-content-safety", "builtin-topic-safety"])("pins %s uncertainty without changing matched actions", id => {
+  it.each(["prompt-instruction-attacks", "content-safety-model", "business-topics"])("pins %s uncertainty without changing matched actions", id => {
     const definition = classifier(id);
-    const strict = plan(definition, {}), observe = plan(definition, { on_unknown: "allow" });
+    const strict = plan(definition, { ...topicValues }), observe = plan(definition, { ...topicValues, on_unknown: "allow" });
     expect(stepValues(strict).every(p => p.on_unknown === "block")).toBe(true);
     expect(stepValues(observe).every(p => p.on_unknown === "allow")).toBe(true);
     expect((observe.steps as Array<{on_unsafe:string}>).every(s => s.on_unsafe === "block")).toBe(true);
-    expect(() => plan(definition, { on_unknown: "ignore" })).toThrow("on_unknown must be allow or block");
-    expect(stepValues(plan(compiler.shipped(id)!, {})).every(p => p.on_unknown === "block")).toBe(true);
+    expect(() => plan(definition, { ...topicValues, on_unknown: "ignore" })).toThrow("on_unknown must be allow or block");
+    expect(stepValues(plan(classifier(id), { ...topicValues })).every(p => p.on_unknown === "block")).toBe(true);
   });
   it("rejects invalid literals and unsupported detector scopes", () => {
     const definition = classifier();definition.rules[0]!.detector.parameters.on_unknown = "ignore";

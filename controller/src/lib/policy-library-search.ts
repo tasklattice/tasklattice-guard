@@ -3,6 +3,5 @@ export function policyLibrarySearch(search: Record<string, unknown>) {
   // Custom Policy versions are positive integers; preserve those deep links.
   const version = typeof search.version === "string" ? search.version
     : typeof search.version === "number" && Number.isSafeInteger(search.version) && search.version > 0 ? String(search.version) : undefined;
-  return { policy: typeof search.policy === "string" ? search.policy : undefined, version,
-    ...(typeof search.collection === "string" && search.collection ? { collection: search.collection } : {}) };
+  return { policy: typeof search.policy === "string" ? search.policy : undefined, version };
 }

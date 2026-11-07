@@ -31,7 +31,7 @@ describe.skipIf(!url)("Policy child ownership across representations", () => {
     await expect(asProject("projectC", () => service.report("policy-conflict"))).rejects.toMatchObject({ code: "not_found" });
     await expect(asProject("projectB", () => service.publish("policy-conflict", 1, "actor"))).rejects.toMatchObject({ code: "not_found" });
     // Shipped definitions are intentionally platform catalog content.
-    await expect(asProject("projectC", () => service.get("builtin-topic-safety"))).resolves.toMatchObject({ id: "builtin-topic-safety", revision: 0 });
+    await expect(asProject("projectC", () => service.get("business-topics"))).resolves.toMatchObject({ id: "business-topics", revision: 0 });
   });
 
   it("hides root, version and report and rejects owner writes when another representation has a different owner", async () => {

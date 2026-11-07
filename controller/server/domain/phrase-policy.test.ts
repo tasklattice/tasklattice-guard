@@ -8,7 +8,7 @@ import { parsePhraseEntries, PHRASE_POLICY_ID, PHRASE_RULE_ID } from "../../shar
 const policies = PolicyCatalog.load(resolve("../runner/toolkit/policy_library/assets")).list();
 const entries = [{ id: "mask", phrase: "internal-name", action: "transform", replacement: "public-name" }, { id: "block", phrase: "confidential", action: "block" }];
 const draft: GuardrailDraftConfig = { allowedTopics: [], restrictedTopics: [], safetyLevel: "balanced", outputDelivery: "full_buffered", policyBindings: [{
-  policyId: PHRASE_POLICY_ID, policyVersion: "1.0.0", action: null, parameterValues: { phrase_entries: JSON.stringify(entries) },
+  policyId: PHRASE_POLICY_ID, policyVersion: "1.0.0", action: null, parameterValues: { phrase_entries: JSON.stringify(entries), brand_name: "TaskLattice", competitors: "Example", blocked_words: "internal-name" },
   enabledRuleIds: [PHRASE_RULE_ID], ruleActions: {}, enabledRails: ["input", "output"], reasoningPolicy: null,
 }] };
 

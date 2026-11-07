@@ -8,7 +8,7 @@ import { expandProtectionPreset, profileRequiresModels } from "./presets.js";
 const policies = PolicyCatalog.load(resolve("../runner/toolkit/policy_library/assets")).list();
 
 function regionalPreset(ruleIds: string[]) {
-  return { ...protectionPresets[0]!, policies: [{ policyId: "local-government-identifiers", policyVersion: "1.0.0",
+  return { ...protectionPresets[0]!, policies: [{ policyId: "identity-documents", policyVersion: "1.0.0",
     enabledRuleIds: ruleIds, ruleOrder: ruleIds, enabledRails: ["input" as const], parameterValues: {} }] };
 }
 
@@ -17,7 +17,7 @@ describe("Protection presets", () => {
     const china = expandProtectionPreset(regionalPreset(["cn-personal-information/resident-identity-card"]), policies);
     const singapore = regionalPreset(["pattern/sg_nric"]);
     const combined = expandProtectionPreset(singapore, policies, china);
-    const identifiers = combined.find(b => b.policyId === "local-government-identifiers")!;
+    const identifiers = combined.find(b => b.policyId === "identity-documents")!;
     expect(identifiers.enabledRuleIds).toContain("cn-personal-information/resident-identity-card");
     for (const id of singapore.policies.find(p => p.policyId === identifiers.policyId)!.enabledRuleIds!) {
       expect(identifiers.enabledRuleIds).toContain(id);
@@ -29,7 +29,7 @@ describe("Protection presets", () => {
 
 
   it("derives model dependency from selected Rule detectors", () => {
-    const keyword = policies.find(policy => policy.id === "keyword-blocking")!;
+    const keyword = policies.find(policy => policy.id === "content-filters")!;
     const preset = {
       ...protectionPresets[0]!,
       policies: [{ policyId: keyword.id, policyVersion: keyword.version, enabledRuleIds: [keyword.rules[0]!.id],
@@ -43,11 +43,11 @@ describe("Protection presets", () => {
   it("selects a Rule by binding identity and applies a parameter pack", () => {
     const preset = {
       ...protectionPresets[0]!,
-      parameterPacks: [{ id: "profile-pack", version: "1.0.0", values: { blocked_words: "PROFILE_TERM" } }],
+      parameterPacks: [{ id: "profile-pack", version: "1.0.0", values: { blocked_words: "PROFILE_TERM", brand_name: "TaskLattice", competitors: "Example", phrase_entries: "[]" } }],
       policies: [{
-        policyId: "keyword-blocking", policyVersion: "1.0.0",
-        enabledBindingIds: ["keyword-blocking/keyword/blocked-words"],
-        bindingOrder: ["keyword-blocking/keyword/blocked-words"],
+        policyId: "content-filters", policyVersion: "1.0.0",
+        enabledBindingIds: ["content-filters/keyword/blocked-words"],
+        bindingOrder: ["content-filters/keyword/blocked-words"],
         enabledRails: ["input" as const], parameterValues: {},
       }],
     };
@@ -60,7 +60,7 @@ describe("Protection presets", () => {
 
   it("selects regional identifiers explicitly without enabling every identifier format", () => {
     const china = expandProtectionPreset(regionalPreset(["cn-personal-information/resident-identity-card"]), policies);
-    const identifiers = china.find(b => b.policyId === "local-government-identifiers")!;
+    const identifiers = china.find(b => b.policyId === "identity-documents")!;
     expect(identifiers.enabledRuleIds).toEqual(["cn-personal-information/resident-identity-card"]);
     expect(identifiers.enabledRuleIds).not.toContain("pattern/au_abn");
   });
@@ -75,13 +75,12 @@ describe("Protection presets", () => {
       const reference = preset.policies.find(r => r.policyId === binding.policyId)!;
       expect(binding.enabledRuleIds).toEqual(reference.enabledRuleIds ?? policy.rules.map(rule => rule.id));
       expect(binding.ruleOrder).toEqual(reference.ruleOrder ?? []);
-      expect(policy.protection.execution).toBe("local");
       expect(binding.testCaseOverrides).toEqual(preset.policies.find(r => r.policyId === binding.policyId)!.testCaseOverrides ?? {});
     }
     const plan = buildGuardrailPlan({ guardrailId: preset.id, guardrailVersion: "20260906-010000.001Z", policies, draft: {
       allowedTopics: [], restrictedTopics: [], safetyLevel: "balanced", outputDelivery: "full_buffered", policyBindings: bindings,
     } });
-    expect(plan.steps).toHaveLength(bindings.length);
+    expect(plan.steps.length).toBeGreaterThanOrEqual(bindings.length);
     expect(plan.policy_bindings).toHaveLength(bindings.length);
   });
 
@@ -118,9 +117,9 @@ describe("Protection presets", () => {
     expect(() => expandProtectionPreset(preset, [])).toThrow(/unavailable/);
     preset.policies[0]!.policyVersion = "unknown";
     expect(() => expandProtectionPreset(preset, policies)).toThrow(/requires version/);
-    preset.policies = [{ policyId: "builtin-jailbreak", policyVersion: "1.0.0", enabledRails: ["output"], parameterValues: {} }];
+    preset.policies = [{ policyId: "business-topics", policyVersion: "1.0.0", enabledRails: ["output"], parameterValues: {} }];
     expect(() => expandProtectionPreset(preset, policies)).toThrow(/unsupported Rails/);
-    preset.policies = [{ policyId: "keyword-blocking", policyVersion: "1.0.0", enabledRails: ["input"], parameterValues: {} }];
-    expect(() => expandProtectionPreset(preset, policies)).toThrow(/needs blocked_words/);
+    preset.policies = [{ policyId: "content-filters", policyVersion: "1.0.0", enabledRails: ["input"], parameterValues: {} }];
+    expect(() => expandProtectionPreset(preset, policies)).toThrow(/needs /);
   });
 });

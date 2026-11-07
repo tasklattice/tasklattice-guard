@@ -1,0 +1,1121 @@
+- id: local-contact-data/local-regional-contact-formats/accept/br_phone_landline/input
+  name: 'local-contact-data: Brazilian mobile / landline overlap'
+  description: Required acceptance case for Brazilian PII Patterns. The source sample
+    is a mobile number; the complete mobile detector runs before the unprefixed landline
+    detector.
+  phase: input
+  content: 'Acceptance sample: (11) 91111-1111'
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/br_phone_mobile
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: local-contact-data/local-regional-contact-formats/accept/br_phone_landline/output
+  name: 'local-contact-data: Brazilian mobile / landline overlap'
+  description: Required acceptance case for Brazilian PII Patterns. The source sample
+    is a mobile number; the complete mobile detector runs before the unprefixed landline
+    detector.
+  phase: output
+  content: 'Acceptance sample: (11) 91111-1111'
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/br_phone_mobile
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: local-contact-data/local-regional-contact-formats/accept/br_phone_mobile/input
+  name: 'local-contact-data: Detect Brazilian Mobile Phone Number'
+  description: Required acceptance case for Brazilian PII Patterns.
+  phase: input
+  content: 'Acceptance sample: +1 (11) 91111-1111'
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/br_phone_mobile
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: local-contact-data/local-regional-contact-formats/accept/br_phone_mobile/output
+  name: 'local-contact-data: Detect Brazilian Mobile Phone Number'
+  description: Required acceptance case for Brazilian PII Patterns.
+  phase: output
+  content: 'Acceptance sample: +1 (11) 91111-1111'
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/br_phone_mobile
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: local-contact-data/local-regional-contact-formats/accept/br_cep/input
+  name: 'local-contact-data: Detect CEP - Brazilian Zip / Postal Code'
+  description: Required acceptance case for Brazilian PII Patterns.
+  phase: input
+  content: 'Acceptance sample: 11111-111'
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/br_cep
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: local-contact-data/local-regional-contact-formats/accept/br_cep/output
+  name: 'local-contact-data: Detect CEP - Brazilian Zip / Postal Code'
+  description: Required acceptance case for Brazilian PII Patterns.
+  phase: output
+  content: 'Acceptance sample: 11111-111'
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/br_cep
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: local-contact-data/local-regional-contact-formats/accept/fr_phone/input
+  name: 'local-contact-data: Detect Phone Number (France)'
+  description: Required acceptance case for EU PII Patterns.
+  phase: input
+  content: 'Acceptance sample: +33100000000'
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/fr_phone
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: local-contact-data/local-regional-contact-formats/accept/fr_phone/output
+  name: 'local-contact-data: Detect Phone Number (France)'
+  description: Required acceptance case for EU PII Patterns.
+  phase: output
+  content: 'Acceptance sample: +33100000000'
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/fr_phone
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: local-contact-data/local-regional-contact-formats/accept/fr_postal_code/input
+  name: 'local-contact-data: Detect Postal Code (France)'
+  description: Required acceptance case for EU PII Patterns.
+  phase: input
+  content: 'Acceptance sample: code postal 00000'
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/fr_postal_code
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: local-contact-data/local-regional-contact-formats/accept/fr_postal_code/output
+  name: 'local-contact-data: Detect Postal Code (France)'
+  description: Required acceptance case for EU PII Patterns.
+  phase: output
+  content: 'Acceptance sample: code postal 00000'
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/fr_postal_code
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: local-contact-data/local-regional-contact-formats/accept/street_address/input
+  name: 'local-contact-data: Detect Street Address'
+  description: Required acceptance case for PII Patterns.
+  phase: input
+  content: 'Acceptance sample: 1 AA Street'
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/street_address
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: local-contact-data/local-regional-contact-formats/accept/street_address/output
+  name: 'local-contact-data: Detect Street Address'
+  description: Required acceptance case for PII Patterns.
+  phase: output
+  content: 'Acceptance sample: 1 AA Street'
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/street_address
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: local-contact-data/local-regional-contact-formats/accept/uae_phone/input
+  name: 'local-contact-data: Detect Phone Number (UAE)'
+  description: Required acceptance case for UAE PII Patterns.
+  phase: input
+  content: 'Acceptance sample: +971 2 111 1111'
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/uae_phone
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: local-contact-data/local-regional-contact-formats/accept/uae_phone/output
+  name: 'local-contact-data: Detect Phone Number (UAE)'
+  description: Required acceptance case for UAE PII Patterns.
+  phase: output
+  content: 'Acceptance sample: +971 2 111 1111'
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/uae_phone
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: local-contact-data/local-regional-contact-formats/accept/sg_phone/input
+  name: 'local-contact-data: Detect Phone Number (Singapore)'
+  description: Required acceptance case for Singapore PII Patterns.
+  phase: input
+  content: 'Acceptance sample: +65 6111 1111'
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/sg_phone
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+
+- id: local-contact-data/local-regional-contact-formats/accept/sg_local_phone/input
+  name: 'local-contact-data: Detect a local Singapore phone number'
+  description: Local 8-digit Singapore numbers are covered without a country prefix.
+  phase: input
+  content: 'Call me at 8123 4567.'
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/sg_local_phone
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: local-contact-data/local-regional-contact-formats/accept/sg_local_phone/output
+  name: 'local-contact-data: Detect a local Singapore phone number'
+  description: Local 8-digit Singapore numbers are covered without a country prefix.
+  phase: output
+  content: 'Call me at 8123 4567.'
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/sg_local_phone
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: local-contact-data/local-regional-contact-formats/accept/sg_phone/output
+  name: 'local-contact-data: Detect Phone Number (Singapore)'
+  description: Required acceptance case for Singapore PII Patterns.
+  phase: output
+  content: 'Acceptance sample: +65 6111 1111'
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/sg_phone
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: local-contact-data/local-regional-contact-formats/accept/sg_postal_code/input
+  name: 'local-contact-data: Detect Postal Code (Singapore)'
+  description: Required acceptance case for Singapore PII Patterns.
+  phase: input
+  content: 'Acceptance sample: postal code 011111'
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/sg_postal_code
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: local-contact-data/local-regional-contact-formats/accept/sg_postal_code/output
+  name: 'local-contact-data: Detect Postal Code (Singapore)'
+  description: Required acceptance case for Singapore PII Patterns.
+  phase: output
+  content: 'Acceptance sample: postal code 011111'
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/sg_postal_code
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: local-contact-data/local-regional-contact-formats/accept/ca_postal_code/input
+  name: 'local-contact-data: Detect Postal Code (Canada)'
+  description: Required acceptance case for Canadian PII Patterns.
+  phase: input
+  content: Postal code M5V 3A8.
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/ca_postal_code
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: local-contact-data/local-regional-contact-formats/accept/ca_postal_code/output
+  name: 'local-contact-data: Detect Postal Code (Canada)'
+  description: Required acceptance case for Canadian PII Patterns.
+  phase: output
+  content: Postal code M5V 3A8.
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/ca_postal_code
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: local-contact-data/local-regional-contact-formats/br-landline-only/input
+  name: 'local-contact-data: br-landline-only/input'
+  description: Synthetic, deterministic text fixture; no external action is performed.
+  phase: input
+  content: 'Phone: (11) 2345-6789'
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/br_phone_landline
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Protection contract
+  scope: rule
+- id: local-contact-data/local-regional-contact-formats/br-landline-only/output
+  name: 'local-contact-data: br-landline-only/output'
+  description: Synthetic, deterministic text fixture; no external action is performed.
+  phase: output
+  content: 'Phone: (11) 2345-6789'
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/br_phone_landline
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Protection contract
+  scope: rule
+- id: local-contact-data/accept/email/input
+  name: 'local-contact-data: Detect Email Address'
+  description: Required acceptance case for PII Patterns.
+  phase: input
+  content: 'Acceptance sample: A@A.AA'
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/email
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: local-contact-data/accept/email/output
+  name: 'local-contact-data: Detect Email Address'
+  description: Required acceptance case for PII Patterns.
+  phase: output
+  content: 'Acceptance sample: A@A.AA'
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/email
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: local-contact-data/accept/us_phone/input
+  name: 'local-contact-data: Detect Phone Number (US)'
+  description: Required acceptance case for PII Patterns.
+  phase: input
+  content: 'Acceptance sample: +1 (000) 000 0000'
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/us_phone
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: local-contact-data/accept/us_phone/output
+  name: 'local-contact-data: Detect Phone Number (US)'
+  description: Required acceptance case for PII Patterns.
+  phase: output
+  content: 'Acceptance sample: +1 (000) 000 0000'
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/us_phone
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: local-contact-data/advanced-au-pii-protection/rule-contact-information-pii/email-acceptance
+  name: 'local-contact-data: Trigger Email Address'
+  description: Proves that the published regex implementation for Email Address activates
+    this Rule.
+  phase: input
+  content: 'Acceptance sample: A@A.AA'
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/email
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: local-contact-data/advanced-au-pii-protection/rule-contact-information-pii/us_phone-acceptance
+  name: 'local-contact-data: Trigger Phone Number (US)'
+  description: Proves that the published regex implementation for Phone Number (US)
+    activates this Rule.
+  phase: input
+  content: 'Acceptance sample: +1 (000) 000 0000'
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/us_phone
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: local-contact-data/advanced-au-pii-protection/rule-contact-information-pii/br_phone_landline-acceptance
+  name: 'local-contact-data: Trigger Brazilian Phone Number (Landline)'
+  description: Proves that the published regex implementation for Brazilian Phone
+    Number (Landline) activates this Rule.
+  phase: input
+  content: 'Acceptance sample: (11) 91111-1111'
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/br_phone_landline
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: local-contact-data/advanced-au-pii-protection/rule-contact-information-pii/br_phone_mobile-acceptance
+  name: 'local-contact-data: Trigger Brazilian Mobile Phone Number'
+  description: Proves that the published regex implementation for Brazilian Mobile
+    Phone Number activates this Rule.
+  phase: input
+  content: 'Acceptance sample: +1 (11) 91111-1111'
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/br_phone_mobile
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: local-contact-data/advanced-au-pii-protection/rule-contact-information-pii/street_address-acceptance
+  name: 'local-contact-data: Trigger Street Address'
+  description: Proves that the published regex implementation for Street Address activates
+    this Rule.
+  phase: input
+  content: 'Acceptance sample: 1 AA Street'
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/street_address
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: local-contact-data/advanced-au-pii-protection/rule-contact-information-pii/br_cep-acceptance
+  name: 'local-contact-data: Trigger CEP - Brazilian Zip / Postal Code'
+  description: Proves that the published regex implementation for CEP - Brazilian
+    Zip / Postal Code activates this Rule.
+  phase: input
+  content: 'Acceptance sample: 11111-111'
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/br_cep
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: local-contact-data/china-personal-identifiers/mainland-mobile/input
+  name: 'local-contact-data: Redact a mainland mobile candidate'
+  description: Synthetic, deterministic text fixture; no external action is performed.
+  phase: input
+  content: 手机号码：19900000000
+  expected_decision: transform
+  covered_rule_ids:
+  - cn-personal-information/mainland-mobile
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: local-contact-data/china-personal-identifiers/mainland-mobile/output
+  name: 'local-contact-data: Redact a mainland mobile candidate'
+  description: Synthetic, deterministic text fixture; no external action is performed.
+  phase: output
+  content: 手机号码：19900000000
+  expected_decision: transform
+  covered_rule_ids:
+  - cn-personal-information/mainland-mobile
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: local-contact-data/gdpr-eu-pii-protection/rule-gdpr-eu-contact-information/email-acceptance
+  name: 'local-contact-data: Trigger Email Address'
+  description: Proves that the published regex implementation for Email Address activates
+    this Rule.
+  phase: input
+  content: 'Acceptance sample: A@A.AA'
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/email
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: local-contact-data/gdpr-eu-pii-protection/rule-gdpr-eu-contact-information/fr_phone-acceptance
+  name: 'local-contact-data: Trigger Phone Number (France)'
+  description: Proves that the published regex implementation for Phone Number (France)
+    activates this Rule.
+  phase: input
+  content: 'Acceptance sample: +33100000000'
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/fr_phone
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: local-contact-data/pattern-matching/accept/email
+  name: 'local-contact-data: Detect Email Address'
+  description: Required acceptance case for PII Patterns.
+  phase: input
+  content: 'Acceptance sample: A@A.AA'
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/email
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: local-contact-data/pattern-matching/accept/us_phone
+  name: 'local-contact-data: Detect Phone Number (US)'
+  description: Required acceptance case for PII Patterns.
+  phase: input
+  content: 'Acceptance sample: +1 (000) 000 0000'
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/us_phone
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: local-contact-data/pattern-matching/accept/br_phone_landline
+  name: 'local-contact-data: Detect Brazilian Phone Number (Landline)'
+  description: Required acceptance case for Brazilian PII Patterns.
+  phase: input
+  content: 'Acceptance sample: (11) 91111-1111'
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/br_phone_landline
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: local-contact-data/pattern-matching/accept/br_phone_mobile
+  name: 'local-contact-data: Detect Brazilian Mobile Phone Number'
+  description: Required acceptance case for Brazilian PII Patterns.
+  phase: input
+  content: 'Acceptance sample: +1 (11) 91111-1111'
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/br_phone_mobile
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: local-contact-data/pattern-matching/accept/br_cep
+  name: 'local-contact-data: Detect CEP - Brazilian Zip / Postal Code'
+  description: Required acceptance case for Brazilian PII Patterns.
+  phase: input
+  content: 'Acceptance sample: 11111-111'
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/br_cep
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: local-contact-data/pattern-matching/accept/fr_phone
+  name: 'local-contact-data: Detect Phone Number (France)'
+  description: Required acceptance case for EU PII Patterns.
+  phase: input
+  content: 'Acceptance sample: +33100000000'
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/fr_phone
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: local-contact-data/pattern-matching/accept/fr_postal_code
+  name: 'local-contact-data: Detect Postal Code (France)'
+  description: Required acceptance case for EU PII Patterns.
+  phase: input
+  content: 'Acceptance sample: code postal 00000'
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/fr_postal_code
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: local-contact-data/pattern-matching/accept/street_address
+  name: 'local-contact-data: Detect Street Address'
+  description: Required acceptance case for PII Patterns.
+  phase: input
+  content: 'Acceptance sample: 1 AA Street'
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/street_address
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: local-contact-data/pattern-matching/accept/uae_phone
+  name: 'local-contact-data: Detect Phone Number (UAE)'
+  description: Required acceptance case for UAE PII Patterns.
+  phase: input
+  content: 'Acceptance sample: +971 2 111 1111'
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/uae_phone
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: local-contact-data/pattern-matching/accept/sg_phone
+  name: 'local-contact-data: Detect Phone Number (Singapore)'
+  description: Required acceptance case for Singapore PII Patterns.
+  phase: input
+  content: 'Acceptance sample: +65 6111 1111'
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/sg_phone
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: local-contact-data/pattern-matching/accept/sg_postal_code
+  name: 'local-contact-data: Detect Postal Code (Singapore)'
+  description: Required acceptance case for Singapore PII Patterns.
+  phase: input
+  content: 'Acceptance sample: postal code 011111'
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/sg_postal_code
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: local-contact-data/pattern-matching/accept/ca_postal_code
+  name: 'local-contact-data: Detect Postal Code (Canada)'
+  description: Required acceptance case for Canadian PII Patterns.
+  phase: input
+  content: Postal code M5V 3A8.
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/ca_postal_code
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: local-contact-data/pattern-matching/accept/email/output
+  name: 'local-contact-data: Detect Email Address'
+  description: Required acceptance case for PII Patterns.
+  phase: output
+  content: 'Acceptance sample: A@A.AA'
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/email
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: local-contact-data/pattern-matching/accept/us_phone/output
+  name: 'local-contact-data: Detect Phone Number (US)'
+  description: Required acceptance case for PII Patterns.
+  phase: output
+  content: 'Acceptance sample: +1 (000) 000 0000'
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/us_phone
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: local-contact-data/pattern-matching/accept/br_phone_landline/output
+  name: 'local-contact-data: Detect Brazilian Phone Number (Landline)'
+  description: Required acceptance case for Brazilian PII Patterns.
+  phase: output
+  content: 'Acceptance sample: (11) 91111-1111'
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/br_phone_landline
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: local-contact-data/pattern-matching/accept/br_phone_mobile/output
+  name: 'local-contact-data: Detect Brazilian Mobile Phone Number'
+  description: Required acceptance case for Brazilian PII Patterns.
+  phase: output
+  content: 'Acceptance sample: +1 (11) 91111-1111'
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/br_phone_mobile
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: local-contact-data/pattern-matching/accept/br_cep/output
+  name: 'local-contact-data: Detect CEP - Brazilian Zip / Postal Code'
+  description: Required acceptance case for Brazilian PII Patterns.
+  phase: output
+  content: 'Acceptance sample: 11111-111'
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/br_cep
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: local-contact-data/pattern-matching/accept/fr_phone/output
+  name: 'local-contact-data: Detect Phone Number (France)'
+  description: Required acceptance case for EU PII Patterns.
+  phase: output
+  content: 'Acceptance sample: +33100000000'
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/fr_phone
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: local-contact-data/pattern-matching/accept/fr_postal_code/output
+  name: 'local-contact-data: Detect Postal Code (France)'
+  description: Required acceptance case for EU PII Patterns.
+  phase: output
+  content: 'Acceptance sample: code postal 00000'
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/fr_postal_code
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: local-contact-data/pattern-matching/accept/street_address/output
+  name: 'local-contact-data: Detect Street Address'
+  description: Required acceptance case for PII Patterns.
+  phase: output
+  content: 'Acceptance sample: 1 AA Street'
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/street_address
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: local-contact-data/pattern-matching/accept/uae_phone/output
+  name: 'local-contact-data: Detect Phone Number (UAE)'
+  description: Required acceptance case for UAE PII Patterns.
+  phase: output
+  content: 'Acceptance sample: +971 2 111 1111'
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/uae_phone
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: local-contact-data/pattern-matching/accept/sg_phone/output
+  name: 'local-contact-data: Detect Phone Number (Singapore)'
+  description: Required acceptance case for Singapore PII Patterns.
+  phase: output
+  content: 'Acceptance sample: +65 6111 1111'
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/sg_phone
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: local-contact-data/pattern-matching/accept/sg_postal_code/output
+  name: 'local-contact-data: Detect Postal Code (Singapore)'
+  description: Required acceptance case for Singapore PII Patterns.
+  phase: output
+  content: 'Acceptance sample: postal code 011111'
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/sg_postal_code
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: local-contact-data/pattern-matching/accept/ca_postal_code/output
+  name: 'local-contact-data: Detect Postal Code (Canada)'
+  description: Required acceptance case for Canadian PII Patterns.
+  phase: output
+  content: Postal code M5V 3A8.
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/ca_postal_code
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: local-contact-data/pdpa-singapore/rule-sg-pdpa-contact-information/sg_phone-acceptance
+  name: 'local-contact-data: Trigger Phone Number (Singapore)'
+  description: Proves that the published regex implementation for Phone Number (Singapore)
+    activates this Rule.
+  phase: input
+  content: 'Acceptance sample: +65 6111 1111'
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/sg_phone
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: local-contact-data/pdpa-singapore/rule-sg-pdpa-contact-information/email-acceptance
+  name: 'local-contact-data: Trigger Email Address'
+  description: Proves that the published regex implementation for Email Address activates
+    this Rule.
+  phase: input
+  content: 'Acceptance sample: A@A.AA'
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/email
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: local-contact-data/singapore-customer-identifiers/rule-sg-pdpa-contact-information/sg_phone-acceptance/input
+  name: 'local-contact-data: Trigger Phone Number (Singapore)'
+  description: Proves that the published regex implementation for Phone Number (Singapore)
+    activates this Rule.
+  phase: input
+  content: 'Acceptance sample: +65 6111 1111'
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/sg_phone
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: local-contact-data/singapore-customer-identifiers/rule-sg-pdpa-contact-information/sg_phone-acceptance/output
+  name: 'local-contact-data: Trigger Phone Number (Singapore)'
+  description: Proves that the published regex implementation for Phone Number (Singapore)
+    activates this Rule.
+  phase: output
+  content: 'Acceptance sample: +65 6111 1111'
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/sg_phone
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: local-contact-data/uae-regulatory-compliance/rule-uae-data-protection-pii/uae_phone-acceptance
+  name: 'local-contact-data: Trigger Phone Number (UAE)'
+  description: Proves that the published regex implementation for Phone Number (UAE)
+    activates this Rule.
+  phase: input
+  content: 'Acceptance sample: +971 2 111 1111'
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/uae_phone
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: local-contact-data/uae-regulatory-compliance/rule-uae-data-protection-pii/email-acceptance
+  name: 'local-contact-data: Trigger Email Address'
+  description: Proves that the published regex implementation for Email Address activates
+    this Rule.
+  phase: input
+  content: 'Acceptance sample: A@A.AA'
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/email
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: local-contact-data/uae-regulatory-compliance/rule-uae-data-protection-pii/uae_po_box-acceptance
+  name: 'local-contact-data: Trigger UAE Po Box'
+  description: Proves that the published regex implementation for UAE Po Box activates
+    this Rule.
+  phase: input
+  content: 'Acceptance sample: P.O. Box 1'
+  expected_decision: transform
+  covered_rule_ids:
+  - uae-data-protection-pii/uae_po_box
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: local-contact-data/contact-structured/structured_username/input
+  name: 'local-contact-data: Complete structured_username value redaction'
+  description: Synthetic field/format regression; preserve surrounding structure.
+  phase: input
+  content: <Username>sample.user17</Username>
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/structured_username
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  expected_text: <Username>[structured_username_REDACTED]</Username>
+  scope: rule
+- id: local-contact-data/contact-structured/structured_username/output
+  name: 'local-contact-data: Complete structured_username value redaction'
+  description: Synthetic field/format regression; preserve surrounding structure.
+  phase: output
+  content: <Username>sample.user17</Username>
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/structured_username
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  expected_text: <Username>[structured_username_REDACTED]</Username>
+  scope: rule
+- id: local-contact-data/contact-structured/structured_address/input
+  name: 'local-contact-data: Complete structured_address value redaction'
+  description: Synthetic field/format regression; preserve surrounding structure.
+  phase: input
+  content: '{"street": "Example Road", "city": "Exampleville"}'
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/structured_address
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  expected_text: '{"street": "[structured_address_REDACTED]", "city": "[structured_address_REDACTED]"}'
+  scope: rule
+- id: local-contact-data/contact-structured/structured_address/output
+  name: 'local-contact-data: Complete structured_address value redaction'
+  description: Synthetic field/format regression; preserve surrounding structure.
+  phase: output
+  content: '{"street": "Example Road", "city": "Exampleville"}'
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/structured_address
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  expected_text: '{"street": "[structured_address_REDACTED]", "city": "[structured_address_REDACTED]"}'
+  scope: rule
+- id: local-contact-data/contact-structured/labelled_person/input
+  name: 'local-contact-data: Complete labelled_person value redaction'
+  description: Synthetic field/format regression; preserve surrounding structure.
+  phase: input
+  content: 'Teacher: Alex Example'
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/labelled_person
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  expected_text: 'Teacher: [labelled_person_REDACTED]'
+  scope: rule
+- id: local-contact-data/contact-structured/labelled_person/output
+  name: 'local-contact-data: Complete labelled_person value redaction'
+  description: Synthetic field/format regression; preserve surrounding structure.
+  phase: output
+  content: 'Teacher: Alex Example'
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/labelled_person
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  expected_text: 'Teacher: [labelled_person_REDACTED]'
+  scope: rule
+- id: local-contact-data/contact-structured/international_phone/input
+  name: 'local-contact-data: Complete international_phone value redaction'
+  description: Synthetic field/format regression; preserve surrounding structure.
+  phase: input
+  content: 'Phone: +345 67-123 4567'
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/international_phone
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  expected_text: 'Phone: [international_phone_REDACTED]'
+  scope: rule
+- id: local-contact-data/contact-structured/international_phone/output
+  name: 'local-contact-data: Complete international_phone value redaction'
+  description: Synthetic field/format regression; preserve surrounding structure.
+  phase: output
+  content: 'Phone: +345 67-123 4567'
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/international_phone
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  expected_text: 'Phone: [international_phone_REDACTED]'
+  scope: rule
+- id: local-contact-data/contact-context/titled_person/input
+  name: 'local-contact-data: Contextual titled_person redaction'
+  description: Synthetic context and source-offset regression.
+  phase: input
+  content: <p>Between <em>A<strong>Countess</strong> <strong>Elena Example</strong></em>
+    and Dr. Morgan Sample.</p>
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/titled_person
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Context-aware contact formats
+  expected_text: <p>Between <em>A<strong>[titled_person_REDACTED]</strong> <strong>[titled_person_REDACTED]</strong></em>
+    and [titled_person_REDACTED].</p>
+  scope: rule
+- id: local-contact-data/contact-context/titled_person/output
+  name: 'local-contact-data: Contextual titled_person redaction'
+  description: Synthetic context and source-offset regression.
+  phase: output
+  content: <p>Between <em>A<strong>Countess</strong> <strong>Elena Example</strong></em>
+    and Dr. Morgan Sample.</p>
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/titled_person
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Context-aware contact formats
+  expected_text: <p>Between <em>A<strong>[titled_person_REDACTED]</strong> <strong>[titled_person_REDACTED]</strong></em>
+    and [titled_person_REDACTED].</p>
+  scope: rule
+- id: local-contact-data/contact-context/contact_list_person/input
+  name: 'local-contact-data: Contextual contact_list_person redaction'
+  description: Synthetic context and source-offset regression.
+  phase: input
+  content: "contacts:\n  - +321 45-678 9012\n  - Alex\n  - 123-45-6789"
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/contact_list_person
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Context-aware contact formats
+  expected_text: "contacts:\n  - +321 45-678 9012\n  - [contact_list_person_REDACTED]\n\
+    \  - 123-45-6789"
+  scope: rule
+- id: local-contact-data/contact-context/contact_list_person/output
+  name: 'local-contact-data: Contextual contact_list_person redaction'
+  description: Synthetic context and source-offset regression.
+  phase: output
+  content: "contacts:\n  - +321 45-678 9012\n  - Alex\n  - 123-45-6789"
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/contact_list_person
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Context-aware contact formats
+  expected_text: "contacts:\n  - +321 45-678 9012\n  - [contact_list_person_REDACTED]\n\
+    \  - 123-45-6789"
+  scope: rule
+- id: local-contact-data/contact-context/truncated_address/input
+  name: 'local-contact-data: Contextual truncated_address redaction'
+  description: Synthetic context and source-offset regression.
+  phase: input
+  content: 'eet": "Example Road", "city":"Exampleville", "state":"WA", "postcode":"98101"}'
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/truncated_address
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Context-aware contact formats
+  expected_text: 'eet": "[truncated_address_REDACTED]", "city":"Exampleville", "state":"WA",
+    "postcode":"98101"}'
+  scope: rule
+- id: local-contact-data/contact-context/truncated_address/output
+  name: 'local-contact-data: Contextual truncated_address redaction'
+  description: Synthetic context and source-offset regression.
+  phase: output
+  content: 'eet": "Example Road", "city":"Exampleville", "state":"WA", "postcode":"98101"}'
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/truncated_address
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Context-aware contact formats
+  expected_text: 'eet": "[truncated_address_REDACTED]", "city":"Exampleville", "state":"WA",
+    "postcode":"98101"}'
+  scope: rule

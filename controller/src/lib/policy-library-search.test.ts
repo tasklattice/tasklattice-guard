@@ -7,7 +7,7 @@ it("preserves integer custom versions and semantic versions after JSON URL parsi
   for (const version of [null, false, 1.5, -1, [], {}]) expect(policyLibrarySearch({ version }).version).toBeUndefined();
 });
 
-it("accepts named set links without treating them as executable Policy IDs", () => {
-  expect(policyLibrarySearch({ collection: "singapore-data-protection" })).toMatchObject({ collection: "singapore-data-protection", policy: undefined });
-  for (const collection of [null, false, [], {}, ""]) expect(policyLibrarySearch({ collection }).collection).toBeUndefined();
+it("ignores the retired named-set links", () => {
+  expect(policyLibrarySearch({ collection: "singapore-data-protection" })).toEqual({ policy: undefined, version: undefined });
+  for (const collection of [null, false, [], {}, ""]) expect("collection" in policyLibrarySearch({ collection })).toBe(false);
 });

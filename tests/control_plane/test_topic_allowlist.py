@@ -50,7 +50,7 @@ def _request(content: str) -> ActionRequest:
         rail_type="input",
         guardrail_id=plan.guardrail_id,
         guardrail_version=plan.guardrail_version,
-        policy_id="builtin-topic-safety",
+        policy_id="business-topics",
         policy_version=1,
         trusted_context=(),
         content_blocks=(),

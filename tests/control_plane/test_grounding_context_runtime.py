@@ -19,11 +19,11 @@ def grounding_plan():
       import { PolicyCatalog } from './server/policy-catalog/catalog.ts';
       import { buildGuardrailPlan } from './server/domain/guardrail-plan.ts';
       const policies = PolicyCatalog.load('../runner/toolkit/policy_library/assets').list();
-      const policy = policies.find(p => p.id === 'builtin-contextual-grounding');
+      const policy = policies.find(p => p.id === 'answer-reliability');
       const plan = buildGuardrailPlan({guardrailId:'grounding-context', guardrailVersion:'20260907-010000.001Z', policies,
         draft:{allowedTopics:[],restrictedTopics:[],safetyLevel:'balanced',outputDelivery:'full_buffered',policyBindings:[{
           policyId:policy.id,policyVersion:policy.version,action:'block',parameterValues:{},enabledRails:['output'],
-          enabledRuleIds:policy.rules.map(r=>r.id),ruleActions:{},reasoningPolicy:null
+          enabledRuleIds:policy.rules.filter(r=>r.id==='model/contextual-grounding').map(r=>r.id),ruleActions:{},reasoningPolicy:null
         }]}});
       console.log(JSON.stringify(plan));
     """

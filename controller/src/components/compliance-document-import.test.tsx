@@ -58,7 +58,7 @@ const analysis: ComplianceDocumentAnalysis = {
   allowed_topics: ["Customer support"],
   restricted_topics: [],
   restricted_topics: ["Credential disclosure"],
-  recommended_policy_ids: ["local-government-identifiers"],
+  recommended_policy_ids: ["identity-documents"],
   review_notes: ["Confirm the complete identifier scope."],
   requirements: [{
     title: "Protect credentials",
@@ -78,7 +78,7 @@ const analysis: ComplianceDocumentAnalysis = {
 };
 
 const policy = {
-  id: "local-government-identifiers",
+  id: "identity-documents",
   name: "Baseline PII Protection",
 } as Policy;
 

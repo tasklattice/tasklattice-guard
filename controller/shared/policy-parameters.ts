@@ -72,11 +72,32 @@ export function policyParameterValues(definition: PolicyDefinition, values: Reco
   return { ...Object.fromEntries(definition.parameters.flatMap(p => p.default == null ? [] : [[p.name, p.default]])), ...values };
 }
 
-/** Parameters used only by disabled model Rules do not block an active binding. */
+/** Every Policy parameter a Rule consumes: templates, structured detector values and Rule expansion. */
+function ruleParameterNames(rule: DefinitionRule): string[] {
+  const names = new Set<string>();
+  const visit = (value: unknown) => {
+    if (typeof value === "string") { for (const name of parameterReferences(value)) names.add(name); return; }
+    if (Array.isArray(value)) { value.forEach(visit); return; }
+    if (value && typeof value === "object") {
+      const record = value as Record<string, unknown>;
+      if (typeof record.parameter === "string") names.add(record.parameter);
+      for (const item of Object.values(record)) visit(item);
+    }
+  };
+  visit(rule.detector.parameters);
+  const expand = (rule as unknown as { expand?: { parameter?: string } }).expand;
+  if (expand?.parameter) names.add(expand.parameter);
+  if (rule.detector.ref === "model/classifier" && rule.detector.parameters.profile === "topic-classification") {
+    names.add("topic_mode"); names.add("allowed_topics"); names.add("denied_topics");
+  }
+  return [...names];
+}
+
+/** Parameters used only by disabled Rules do not block an active binding. */
 export function activePolicyParameters(definition: PolicyDefinition, enabledRuleIds: readonly string[], rails?: readonly string[]) {
-  const all = new Set(definition.rules.flatMap(r => modelParameterFields(r).flatMap(f => parameterReferences(r.detector.parameters[f.key]))));
+  const all = new Set(definition.rules.flatMap(ruleParameterNames));
   const active = new Set(definition.rules.filter(r => enabledRuleIds.includes(r.id) && (!rails?.length || r.stages.some(s => rails.includes(s))))
-    .flatMap(r => modelParameterFields(r).flatMap(f => parameterReferences(r.detector.parameters[f.key]))));
+    .flatMap(ruleParameterNames));
   return definition.parameters.filter(p => !all.has(p.name) || active.has(p.name));
 }
 

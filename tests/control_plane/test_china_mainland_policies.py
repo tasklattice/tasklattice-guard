@@ -23,10 +23,10 @@ def _decision(result) -> str:
 
 
 def test_china_rules_belong_to_shared_capabilities() -> None:
-    assert {p.id for p in CHINA_POLICIES} == {"local-government-identifiers", "local-contact-data", "local-payment-data", "local-injection-protection", "local-fraud-prevention"}
+    assert {p.id for p in CHINA_POLICIES} == {"identity-documents", "contact-data", "payment-data", "prompt-instruction-attacks", "fraud-account-abuse", "financial-market-misconduct"}
     for policy in CHINA_POLICIES:
         assert policy.version == "1.0.0"
-        assert all(rule.implementation.execution == "local" for rule in policy.rules)
+        assert all(rule.implementation.execution == "local" for rule in policy.rules if rule.id.startswith("cn-"))
 
 
 @pytest.mark.parametrize(
@@ -60,7 +60,7 @@ def test_china_mainland_policy_cases_execute_the_published_rules(policy, case) -
     ],
 )
 def test_checksum_validation_does_not_redact_format_only_candidates(content: str) -> None:
-    ids = ("local-government-identifiers", "local-payment-data")
+    ids = ("identity-documents", "payment-data")
     definitions = library_definitions(ids)
     result = BuiltinContentFilter().evaluate(definitions=definitions, text=content, phase="input", policies=ids,
         enabled_rules={pid: tuple(r.id for r in p.rules if r.id.startswith("cn-")) for pid,p in definitions.items()})

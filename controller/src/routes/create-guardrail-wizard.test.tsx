@@ -8,12 +8,14 @@ import { queryKeys } from "@/features/query-keys";
 
 import { CreateGuardrailWizard } from "./create-guardrail-wizard";
 import { protectionEn } from "../protection-i18n";
-import configurablePolicies from "../../../runner/toolkit/policy_library/assets/configurable_policies.json";
+import policyAssets from "../../../runner/toolkit/policy_library/assets/policies.json";
+const configurablePolicies = policyAssets as unknown as Policy[];
 import { resolve } from "node:path";
 import { PolicyCatalog } from "../../server/policy-catalog/catalog";
 import { DeclarativeCompiler } from "../../server/policy-studio/declarative";
 import { profileDraft } from "../../server/policy-catalog/presets";
-import { fullFeatureBaseline } from "../../shared/full-feature-baseline";
+import { protectionPresets } from "../../shared/protection-presets";
+const fullFeatureBaseline = protectionPresets.find(profile => profile.id === "full-feature")!;
 
 const apiMocks = vi.hoisted(() => ({
   analyzeIntent: vi.fn(),
@@ -122,7 +124,7 @@ vi.mock("@/components/policy-binding-editor", async (importOriginal) => {
   const original = await importOriginal<typeof import("@/components/policy-binding-editor")>();
   return {
     ...original,
-    PolicyBindingEditor: (props: { policies: Policy[]; value: GuardrailPolicyBinding[]; onChange: (value: GuardrailPolicyBinding[]) => void }) => props.value.some(item => item.policy_id === "configured-phrase-filter") ? <original.PolicyBindingEditor {...props} /> : (
+    PolicyBindingEditor: (props: { policies: Policy[]; value: GuardrailPolicyBinding[]; onChange: (value: GuardrailPolicyBinding[]) => void }) => props.value.some(item => item.policy_id === "content-filters") ? <original.PolicyBindingEditor {...props} /> : (
       <div>
         <button type="button" onClick={() => props.onChange([binding])}>Select Topic Policy</button>
         <button type="button" onClick={() => props.onChange([requiredBinding])}>Select Brand Policy</button>
@@ -237,7 +239,7 @@ describe("Create Guardrail wizard", () => {
 
   it("gates AI authoring on Topic readiness while allowing manual draft configuration", async () => {
     apiMocks.getModels.mockResolvedValue({ models: [], active: null, draft: null, activating: null });
-    const topic = { ...policy, id: "builtin-topic-safety", name: "Model Topic Control", protection: { ...policy.protection!, execution: "model", modelCapabilities: ["topic_control"], requiredContext: ["allowed_topics"] } };
+    const topic = { ...policy, id: "business-topics", name: "Model Topic Control", protection: { ...policy.protection!, execution: "model", modelCapabilities: ["topic_control"], requiredContext: ["allowed_topics"] } };
     apiMocks.getPolicies.mockResolvedValue({ items: [policy, topic], count: 2 });
     renderWizard();
     fireEvent.change(screen.getByPlaceholderText("Customer data protection"), { target: { value: "Local filters" } });
@@ -258,7 +260,7 @@ describe("Create Guardrail wizard", () => {
 
   it("previews and creates a Topic preset before model setup and keeps its Policy removable", async () => {
     apiMocks.getModels.mockResolvedValue({ models: [], active: null, draft: null, activating: null });
-    const topic = { ...policy, id: "builtin-topic-safety", name: "Model Topic Control", protection: { ...policy.protection!, modelCapabilities: ["topic_control"], requiredContext: ["allowed_topics"] } };
+    const topic = { ...policy, id: "business-topics", name: "Model Topic Control", protection: { ...policy.protection!, modelCapabilities: ["topic_control"], requiredContext: ["allowed_topics"] } };
     const topicBinding = { ...binding, policy_id: topic.id };
     apiMocks.getPolicies.mockResolvedValue({ items: [policy, topic], count: 2 });
     apiMocks.getPresets.mockResolvedValue({ items: [{ id: "topics", name: "Topic preset", bindings: [binding, topicBinding], limitations: [] }] });
@@ -329,7 +331,18 @@ describe("Create Guardrail wizard", () => {
     expect(apiMocks.createGuardrail).not.toHaveBeenCalled();
   });
 
-  it("creates the actual full-feature V1 selection with all six model assignments missing", async () => {
+  it("opens on the platform default Profile even when it is not the legacy baseline", async () => {
+    apiMocks.getPresets.mockResolvedValue({ items: [
+      { id: "default", name: "Default", category: "catalog_default", categoryName: "Default", isDefault: true, bindings: [binding], limitations: [] },
+      { id: "sg-bank", name: "Singapore Bank", category: "catalog_sg_bank", categoryName: "Singapore Bank", isDefault: false, bindings: [configuredRequiredBinding], limitations: [] },
+    ] });
+    renderWizard();
+    expect(await screen.findByText("Profile applied · 1 Policies selected")).toBeTruthy();
+    expect(screen.getByRole("combobox").querySelector(".cds--list-box__label")?.textContent).toContain("Default");
+    expect(screen.getByRole("combobox").querySelector(".cds--list-box__label")?.textContent).not.toContain("Singapore Bank");
+  });
+
+  it("creates the actual full-feature V1 selection with all model assignments missing", async () => {
     const directory = resolve("../runner/toolkit/policy_library/assets");
     const compiler = new DeclarativeCompiler(directory);
     const catalog = PolicyCatalog.load(directory).list().map(policy => compiler.catalogView(policy));
@@ -342,7 +355,7 @@ describe("Create Guardrail wizard", () => {
     apiMocks.getModels.mockResolvedValue({ models: [], active: null, draft: null, activating: null });
     apiMocks.getPresets.mockResolvedValue({ items: [{ ...fullFeatureBaseline, bindings }] });
     renderWizard(fullFeatureBaseline.id);
-    await screen.findByText("Profile applied · 14 Policies selected");
+    await screen.findByText("Profile applied · 20 Policies selected");
     expect(await screen.findAllByText(protectionEn.dependencies.states.missing)).toHaveLength(6);
     fireEvent.change(screen.getByPlaceholderText("Customer data protection"), { target: { value: "Full V1" } });
     fireEvent.click(screen.getByRole("button", { name: "Review & create" }));
@@ -350,12 +363,12 @@ describe("Create Guardrail wizard", () => {
     fireEvent.click(screen.getByRole("button", { name: "Create draft" }));
     await waitFor(() => expect(apiMocks.createGuardrail).toHaveBeenCalledWith(expect.objectContaining({
       policy_bindings: bindings, profile_origin: { id: fullFeatureBaseline.id, version: "1.0.0" },
-      topic_control_mode: "permissive", output_delivery: "full_buffered",
+      topic_control_mode: "strict", output_delivery: "full_buffered",
     })));
   });
 
   it("copies full Profile settings, preserves them through undo, and saves with missing models", async () => {
-    const modelPolicy = { ...policy, id: "builtin-jailbreak-strict", name: "Strict Jailbreak", rules: [{ ...policy.rules[0]!, rails: ["input"] }], protection: { ...policy.protection!, execution: "model", modelCapabilities: ["jailbreak"] } };
+    const modelPolicy = { ...policy, id: "prompt-instruction-attacks", name: "Strict Jailbreak", rules: [{ ...policy.rules[0]!, rails: ["input"] }], protection: { ...policy.protection!, execution: "model", modelCapabilities: ["jailbreak"] } };
     const modelBinding = { ...binding, policy_id: modelPolicy.id, parameter_values: { on_unknown: "block" }, action: "block" as const };
     apiMocks.getPolicies.mockResolvedValue({ items: [policy, modelPolicy] });
     apiMocks.getModels.mockResolvedValue({ models: [], active: null, draft: null, activating: null });
@@ -487,9 +500,9 @@ describe("Create Guardrail wizard", () => {
   });
 
   it("shows unselected Topic and correctness Policies after applying a Profile, without enabling them", async () => {
-    const topic: Policy = { ...policy, id: "builtin-topic-safety", name: "Model Topic Control",
+    const topic: Policy = { ...policy, id: "business-topics", name: "Model Topic Control",
       protection: { ...policy.protection!, execution: "model", modelCapabilities: ["topic_control"] } };
-    const correctness: Policy = { ...policy, id: "builtin-contextual-grounding", name: "Contextual Grounding",
+    const correctness: Policy = { ...policy, id: "answer-reliability", name: "Contextual Grounding",
       protection: { ...policy.protection!, directory: "answer_reliability", execution: "model", modelCapabilities: ["contextual_grounding"] } };
     apiMocks.getPolicies.mockResolvedValue({ items: [policy, topic, correctness], count: 3 });
     apiMocks.getPresets.mockResolvedValue({ items: [{ id: "local-baseline", name: "Default", category: "local_baseline", isDefault: true, bindings: [binding], limitations: [] }] });
@@ -597,10 +610,10 @@ describe("Create Guardrail wizard", () => {
 
   it("saves phrases inside an ordinary Policy alongside a model Policy", async () => {
     const phrasePolicy = {
-      ...policy, id: "configured-phrase-filter", name: "Phrase filters", version: "1.0.0",
+      ...policy, id: "content-filters", name: "Phrase filters", version: "1.0.0",
       protection: { ...policy.protection!, directory: "content_filters" },
       parameters: [{ name: "phrase_entries", label: "Phrases and actions", kind: "phrase_entries", required: true, description: "" }],
-      rules: configurablePolicies.find(item => item.id === "configured-phrase-filter")!.rules,
+      rules: configurablePolicies.find(item => item.id === "content-filters")!.rules,
     } as Policy;
     apiMocks.getPolicies.mockResolvedValue({ items: [policy, phrasePolicy] });
     renderWizard();

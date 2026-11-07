@@ -17,7 +17,8 @@ import { createHttpApp } from "../http/app.js";
 import { ControlPlaneService } from "./control-plane.js";
 import { RunnerControlServer } from "../control-channel/control-server.js";
 import { profileDraft } from "../policy-catalog/presets.js";
-import { fullFeatureBaseline } from "../../shared/full-feature-baseline.js";
+import { protectionPresets } from "../../shared/protection-presets.js";
+const fullFeatureBaseline = protectionPresets.find(profile => profile.id === "full-feature")!;
 import type { ControllerAuth } from "../auth.js";
 import type { ControllerMetrics } from "../metrics.js";
 import type { ModelConfigurationService } from "../model-config/service.js";
@@ -54,7 +55,7 @@ describe.skipIf(!url)("950-case full-feature report delivery", () => {
       const draft = profileDraft(fullFeatureBaseline, await service.listPolicies());
       // Reproduce the reported local-only composition: model Policies removed.
       draft.policyBindings = draft.policyBindings.filter(binding =>
-        !["builtin-jailbreak-strict", "builtin-content-safety", "builtin-pii", "builtin-topic-safety"].includes(binding.policyId));
+        !["prompt-instruction-attacks", "content-safety-model", "pii-semantic", "business-topics"].includes(binding.policyId));
       const guardrail = await withTestProject(() => service.createGuardrail({ name: "Large local-only baseline", draftConfig: draft, runtimeProfile: "auto", actorId: "report-user" }));
       const rows = await database.db.select().from(testCases).where(eq(testCases.guardrailId, guardrail.id));
       expect(rows.length).toBeGreaterThan(600);

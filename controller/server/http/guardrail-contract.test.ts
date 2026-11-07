@@ -23,7 +23,7 @@ const draftConfig = {
   allowedTopics: ["Order status"],
   restrictedTopics: [],
   policyBindings: [{
-    policyId: "builtin-topic-safety",
+    policyId: "business-topics",
     policyVersion: "1.0.0",
     action: "block",
     parameterValues: {},

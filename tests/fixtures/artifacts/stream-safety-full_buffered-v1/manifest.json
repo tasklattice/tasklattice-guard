@@ -1,7 +1,7 @@
 {
   "adapter": "litellm-generic-guardrail",
   "artifact_id": "fixture-artifact-stream-safety-full_buffered-v1",
-  "checksum": "539eb60ab39c933a4427e6338747a67316997d1ca1961391c6a30e9f65cc8814",
+  "checksum": "6ccabc3fd0fc111b2137e0de44528eda8b8e6c38a1209437aa705489a6e292d2",
   "compiler_version": "tasklattice-nemo-config-v1",
   "endpoint_id": "fixture-endpoint",
   "expected": {

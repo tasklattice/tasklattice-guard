@@ -1116,17 +1116,6 @@ const resources = {
         noDecisionReason: "No decision reason was returned.",
       },
       policyLibrary: {
-        collections: {
-          use: "Use in Guardrail",
-          loadFailed: "Regional and industry Policies could not be loaded. Other Policies remain available.", retry: "Retry", loading: "Loading Policies…",
-          notFound: "This Policy is unavailable or has been disabled.", incomplete: "Some Rules are unavailable. Restore the required versions before using this Policy.",
-          names: {
-            "singapore-data-protection": "Singapore PDPA — Personal Data Protection", "eu-data-protection": "EU GDPR — Personal Data Protection",
-            "china-mainland-runtime": "China PIPL — Personal Data & Prompt Safety", "china-banking-assistant": "China Banking — PIPL & JR/T 0221-2021",
-            "australia-data-protection": "Australia — Data Protection", "uae-reference-controls": "UAE — Regional Reference Controls",
-            "eu-high-risk-practices": "EU AI Act — Prohibited Practices", "singapore-financial-assistant": "Singapore — Financial Services & PDPA",
-          },
-        },
         catalogLabel: "Policy catalog",
         searchCatalog: "Search all Policies",
         catalogSearchPlaceholder: "Search Policies, Rules, regions or frameworks…",
@@ -4267,17 +4256,6 @@ const resources = {
         noDecisionReason: "运行时未返回决策原因。",
       },
       policyLibrary: {
-        collections: {
-          use: "用于 Guardrail",
-          loadFailed: "地区和行业 Policy 加载失败。你仍可查看其他 Policy。", retry: "重新加载", loading: "正在加载 Policy…",
-          notFound: "此 Policy 不可用或已停用。", incomplete: "部分 Rule 不可用，请恢复所需版本后再使用此 Policy。",
-          names: {
-            "singapore-data-protection": "Singapore PDPA — 个人数据保护", "eu-data-protection": "EU GDPR — 个人数据保护",
-            "china-mainland-runtime": "中国 PIPL — 个人数据与提示安全", "china-banking-assistant": "中国银行业 — PIPL 与 JR/T 0221-2021",
-            "australia-data-protection": "澳大利亚 — 数据保护", "uae-reference-controls": "阿联酋 — 地区参考控制",
-            "eu-high-risk-practices": "EU AI Act — 禁止行为", "singapore-financial-assistant": "新加坡 — 金融服务与 PDPA",
-          },
-        },
         catalogLabel: "Policy 目录",
         searchCatalog: "搜索全部 Policies",
         catalogSearchPlaceholder: "搜索 Policy、Rule、地区或框架…",

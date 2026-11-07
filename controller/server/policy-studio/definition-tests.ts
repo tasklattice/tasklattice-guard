@@ -7,7 +7,9 @@ export function definitionTestCases(definition: PolicyDefinition, values: Record
   return definition.tests.flatMap(test => {
     const rule = test.scope === "rule" ? definition.rules.find(r => r.id === test.covered_rule_ids[0]) : undefined;
     if (rule?.expand && test.content === `{{${rule.expand.parameter}}}`) {
-      return parsePhraseEntries(values[rule.expand.parameter] ?? "").map(entry => ({
+      const configured = values[rule.expand.parameter] ?? "";
+      if (!configured.trim()) return [];
+      return parsePhraseEntries(configured).map(entry => ({
         ...test, id: `${test.id}/${entry.id}`, name: `${test.name}: ${entry.phrase}`, content: entry.phrase,
         covered_rule_ids: [`${rule.id}/${entry.id}`], expected_decision: entry.action,
         ...(entry.action === "transform" ? { expected_text: entry.replacement } : {}),

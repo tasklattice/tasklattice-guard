@@ -7,7 +7,7 @@ from runner.toolkit.policy_runtime.codec import policy_from_payload
 
 NEW=('pattern/structured_username','pattern/structured_address','pattern/labelled_person','pattern/international_phone')
 def run(text,phase='input'):
- p=policy('local-contact-data')
+ p=policy('contact-data')
  return BuiltinContentFilter().evaluate(definitions={p.id:p},policies=(p.id,),text=text,phase=phase,enabled_rules={p.id:NEW})
 
 @pytest.mark.parametrize('phase',['input','output'])

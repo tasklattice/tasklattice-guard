@@ -18,8 +18,6 @@ ENV NODE_ENV=production \
     CONTROLLER_GRPC_PORT=9090 \
     CONTROLLER_UI_DIST=/opt/tasklattice/guard-controller/dist \
     CONTROLLER_POLICY_CATALOG_DIR=/opt/tasklattice/guard-controller/policy-catalog \
-    CONTROLLER_TARGET_POLICY_CATALOG_DIR=/opt/tasklattice/guard-controller/policy-catalog-target \
-    CONTROLLER_LEGACY_POLICY_CATALOG_DIR=/opt/tasklattice/guard-controller/policy-catalog \
     CONTROLLER_MIGRATIONS_PATH=/opt/tasklattice/guard-controller/server/db/migrations \
     CONTROLLER_PROTO_PATH=/opt/tasklattice/guard-controller/proto/tasklattice/guard/control/v1/runner_control.proto \
     TALI_HELM_CHART=/opt/tali/helm/tali-guard.tgz
@@ -50,7 +48,6 @@ COPY --link --from=build /build/controller/scripts/runtime ./scripts/runtime
 COPY --link --from=build /build/controller/server/db/migrations ./server/db/migrations
 COPY --link --from=build /build/proto ./proto
 COPY --link runner/toolkit/policy_library/assets ./policy-catalog
-COPY --link runner/toolkit/policy_library/assets_target ./policy-catalog-target
 COPY --link dist/runtime-chart/tali-guard.tgz /opt/tali/helm/tali-guard.tgz
 ARG TALI_BUILD_INFO
 ENV TALI_BUILD_INFO=${TALI_BUILD_INFO}

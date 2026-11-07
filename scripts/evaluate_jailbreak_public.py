@@ -238,7 +238,7 @@ def source_code_manifest() -> dict[str, str]:
              ROOT / "tests/data_plane/test_jailbreak_public_evaluation.py",
              *(ROOT / name for name in ("pyproject.toml", "uv.lock", "package.json", "package-lock.json",
                                         "controller/package.json", "controller/package-lock.json"))]
-    for base in ("runner", "policies/builtin", "controller/server", "controller/shared"):
+    for base in ("runner", "policies/library", "controller/server", "controller/shared"):
         paths.extend(p for p in (ROOT / base).rglob("*")
                      if p.is_file() and p.suffix in {".py", ".yaml", ".yml", ".json", ".co", ".ts"}
                      and "__pycache__" not in p.parts)

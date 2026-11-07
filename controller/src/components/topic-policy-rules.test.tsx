@@ -11,7 +11,7 @@ import * as api from "@/lib/api";
 vi.mock("react-i18next", () => ({ useTranslation: () => ({ t: (key: string) => key, i18n: { language: "en" } }) }));
 const available = vi.hoisted(() => ({ ready: true }));
 vi.mock("./topic-control-availability", () => ({ useTopicControlAvailability: () => available, TopicControlUnavailable: () => <p>Model unavailable</p> }));
-const policy = PolicyCatalog.load(resolve("../runner/toolkit/policy_library/assets")).get("builtin-topic-safety")!;
+const policy = PolicyCatalog.load(resolve("../runner/toolkit/policy_library/assets")).get("business-topics")!;
 function Harness() {
   const [binding, setBinding] = useState(defaultPolicyBinding(policy));
   return <><TopicPolicyRules policy={policy} binding={binding} onChange={patch => setBinding(current => ({ ...current, ...patch }))} /><output data-testid="binding">{JSON.stringify(binding)}</output></>;
@@ -30,7 +30,7 @@ afterEach(() => { cleanup(); vi.restoreAllMocks(); available.ready = true; });
 describe("Topic Policy configuration", () => {
   it("appends general restrictions once without changing allowlist, mode or Rule selection", () => {
     setup();
-    fireEvent.click(screen.getByRole("checkbox", { name: "Model Topic Control: protection.topicRules.deny" }));
+    fireEvent.click(screen.getByRole("checkbox", { name: "Business Topics: protection.topicRules.deny" }));
     fireEvent.change(screen.getByRole("textbox", { name: "topicControl.denied" }), { target: { value: "Existing business restriction" } });
     const before = current();
     const details = screen.getByText("protection.topicRules.commonRestrictions").closest("details")!;
@@ -46,12 +46,12 @@ describe("Topic Policy configuration", () => {
   it("toggles Rules independently and retains disabled list values", () => {
     setup();
     expect(current().enabled_rule_ids).toEqual([ALLOW]);
-    fireEvent.click(screen.getByRole("checkbox", { name: "Model Topic Control: protection.topicRules.deny" }));
+    fireEvent.click(screen.getByRole("checkbox", { name: "Business Topics: protection.topicRules.deny" }));
     fireEvent.change(screen.getByRole("textbox", { name: "topicControl.denied" }), { target: { value: "Fraud" } });
-    fireEvent.click(screen.getByRole("checkbox", { name: "Model Topic Control: protection.topicRules.allow" }));
+    fireEvent.click(screen.getByRole("checkbox", { name: "Business Topics: protection.topicRules.allow" }));
     expect(current().enabled_rule_ids).toEqual([DENY]);
     expect(screen.queryByRole("combobox", { name: "topicControl.mode" })).toBeNull();
-    fireEvent.click(screen.getByRole("checkbox", { name: "Model Topic Control: protection.topicRules.deny" }));
+    fireEvent.click(screen.getByRole("checkbox", { name: "Business Topics: protection.topicRules.deny" }));
     expect(current().parameter_values.denied_topics).toBe("Fraud");
     expect(getPolicyBindingValidation(current(), policy).missingRules).toBe(true);
     expect(getPolicyBindingValidation(current(), policy).missingRequiredParameters).toEqual([]);

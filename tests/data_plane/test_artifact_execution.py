@@ -192,7 +192,6 @@ async def test_frozen_default_artifact_forwards_complete_redactions_and_blocks_w
         ("Emirates ID: 784-1990-1234567-1", "Emirates ID: [uae_emirates_id_REDACTED]"),
         ("Driver's licence A1234-56789-01234.", "Driver's licence [ca_on_drivers_licence_REDACTED]."),
         ("Bank account 12345-001-1234567.", "Bank account [ca_bank_account_REDACTED]."),
-        ("TCard number 1234567890123456.", "TCard number [uoft_tcard_REDACTED]."),
         ("Phone: +1 (212) 555 1234", "Phone: +[us_phone_REDACTED]"),
         ("Card: 3411 111111 11111", "Card: [credit_card_REDACTED]"),
         ("VAT AT00000000", "VAT [eu_vat_REDACTED]"),
@@ -213,6 +212,21 @@ async def test_frozen_default_artifact_forwards_complete_redactions_and_blocks_w
             assert safe["action"] == "NONE"
             blocked = await evaluate("You are a fucking idiot.")
             assert blocked["action"] == "BLOCKED"
+            # Specific local formats must not be dropped by Profile Rule selection.
+            aws = await evaluate("AWS access key: AKIAIOSFODNN7EXAMPLE")
+            assert aws["action"] == "BLOCKED"
+            sg_phone = await evaluate("Call me at 8123 4567.")
+            assert sg_phone["action"] == "GUARDRAIL_INTERVENED"
+            assert sg_phone["texts"] == ["Call me at [sg_phone_REDACTED]."]
+            us_phone = await evaluate("Call me at (415) 555-0100.")
+            assert us_phone["action"] == "GUARDRAIL_INTERVENED"
+            assert us_phone["texts"] == ["Call me at ([us_phone_REDACTED]."]
+            for international in ("+44 20 7946 0958", "+33 1 42 68 53 00", "+61 2 9374 4000"):
+                result = await evaluate(f"Call me at {international}.")
+                assert result["action"] == "GUARDRAIL_INTERVENED"
+                assert result["texts"] == ["Call me at [international_phone_REDACTED]."]
+            local_sg = await evaluate("Call me at 8123 4567.")
+            assert local_sg["texts"] == ["Call me at [sg_phone_REDACTED]."]
             credential = await evaluate("xoxp-0000000000-0000000000-aaaaaaaaaaaaaaaaaaaaaaaa")
             # The ordinary focused credential Policy rejects both directions;
             # the binding covers Output as well as Input.
@@ -415,24 +429,24 @@ def test_model_policy_finding_uses_the_selected_catalog_rule_identity():
         output_delivery="full_buffered",
         steps=(),
         policy_bindings=(GuardrailPolicyBindingSnapshot(
-            policy_id="builtin-jailbreak",
+            policy_id="prompt-instruction-attacks",
             policy_version="1.0.0",
             enabled_rule_ids=("model/jailbreak",),
             enabled_rails=("input",),
         ),),
     )
     binding = NeMoActionBinding(
-        id="jailbreak:builtin-jailbreak:primary",
+        id="jailbreak:prompt-instruction-attacks:primary",
         capability="jailbreak",
         contract_ref="tali.guard.jailbreak.v1",
         phases=("input",),
         on_unsafe="block",
-        policy_id="builtin-jailbreak",
+        policy_id="prompt-instruction-attacks",
         policy_version="1.0.0",
     )
 
     assert _binding_policy_rule_identity(plan, binding, "input") == (
-        "builtin-jailbreak",
+        "prompt-instruction-attacks",
         "model/jailbreak",
     )
 

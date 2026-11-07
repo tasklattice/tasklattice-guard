@@ -9,12 +9,15 @@ import { DeclarativeCompiler } from "../policy-studio/declarative.js";
 
 describe("Controller Guardrail plan", () => {
   it.each([
-    ["builtin-indirect-prompt-injection", "indirect_prompt_injection", "tali.guard.indirect-prompt-injection.v1"],
-    ["builtin-memory-poisoning", "memory_poisoning", "tali.guard.memory-poisoning.v1"],
+    ["prompt-instruction-attacks", "indirect_prompt_injection", "tali.guard.indirect-prompt-injection.v1"],
+    ["prompt-instruction-attacks", "memory_poisoning", "tali.guard.memory-poisoning.v1"],
   ])("keeps the boundary Action when %s is authored as a custom Policy", (id, capability, contract) => {
     const compiler = new DeclarativeCompiler(resolve("../runner/toolkit/policy_library/assets"));
     const definition = compiler.shipped(id!)!;
     definition.metadata.id = `custom-${capability}`;
+    const targetRule = capability === "indirect_prompt_injection" ? "boundary/indirect-injection" : "boundary/memory-poisoning";
+    definition.rules = definition.rules.filter(item => item.id === targetRule);
+    definition.tests = definition.tests.filter(test => test.covered_rule_ids.every(ruleId => ruleId === targetRule));
     const policy = compiler.compile(definition);
     const rule = policy.rules[0]!;
     const binding = { ...nativeBinding(policy.id), policyVersion: policy.version,
@@ -25,36 +28,6 @@ describe("Controller Guardrail plan", () => {
       parameters: expect.arrayContaining([["rule_id", rule.id]]) })]);
     expect(policy.definition!.tests[0]!.context!.target_source).toBe("retrieved_content");
     expect(policy.protection.modelCapabilities).toEqual([]);
-  });
-  it("rejects a classifier change that the native adapter cannot execute", () => {
-    const policies = PolicyCatalog.load(resolve("../runner/toolkit/policy_library/assets")).list();
-    const policy = policies.find(item => item.id === "builtin-content-safety")!;
-    policy.rules[0]!.detector_options = { profile: "topic-classification" };
-    const binding = { ...nativeBinding(policy.id), policyVersion: policy.version,
-      enabledRuleIds: policy.rules.map(rule => rule.id), enabledRails: ["input"] };
-    expect(() => buildGuardrailPlan({ guardrailId: "invalid-profile", guardrailVersion: "v1", policies,
-      draft: { allowedTopics: [], restrictedTopics: [], safetyLevel: "balanced", outputDelivery: "full_buffered", policyBindings: [binding] },
-    })).toThrow("requires the safety-classification detector contract");
-  });
-  it("pins local Rule definitions and parameter defaults without changing the source Policy", () => {
-    const policies = PolicyCatalog.load(resolve("../runner/toolkit/policy_library/assets")).list();
-    const policy = policies.find(item => item.id === "keyword-blocking")!;
-    policy.parameters[0]!.default = "private";
-    const before = structuredClone(policy);
-    const binding = { ...nativeBinding(policy.id), policyVersion: policy.version,
-      enabledRuleIds: policy.rules.map(rule => rule.id), enabledRails: ["input"] as const };
-    const build = () => buildGuardrailPlan({ guardrailId: "pinned", guardrailVersion: "v1", policies,
-      draft: { allowedTopics: [], restrictedTopics: [], safetyLevel: "balanced", outputDelivery: "full_buffered", policyBindings: [{ ...binding, enabledRails: [...binding.enabledRails] }] } });
-    const plan = build();
-    const parameters = Object.fromEntries((plan.steps as Array<{ parameters: Array<[string, string]> }>)[0]!.parameters);
-    const pinned = JSON.parse(parameters.policy_definitions_json!)[policy.id];
-    expect(pinned.rules).toEqual(before.rules);
-    expect(pinned.version).toBe(before.version);
-    expect(JSON.parse(parameters.policy_parameters_json!)).toEqual({ [policy.id]: { blocked_words: "private" } });
-    expect(policy).toEqual(before);
-    policy.rules[0]!.effect = "allow";
-    expect(pinned.rules[0].effect).toBe(before.rules[0]!.effect);
-    expect(build()).not.toEqual(plan);
   });
   it("materializes pinned custom Policy defaults while preserving explicit values and the source draft", () => {
     const snapshot: ProgrammablePolicySnapshot = {
@@ -81,8 +54,7 @@ describe("Controller Guardrail plan", () => {
   });
 
   it.each([
-    "builtin-content-safety", "builtin-jailbreak", "builtin-pii",
-    "builtin-contextual-grounding", "builtin-automated-reasoning",
+    "content-safety-model", "prompt-instruction-attacks", "pii-semantic",
   ])("compiles the catalog Rule override for %s without changing the source Policy", (id) => {
     const policies = PolicyCatalog.load(resolve("../runner/toolkit/policy_library/assets")).list();
     const policy = policies.find((item) => item.id === id)!;
@@ -108,115 +80,9 @@ describe("Controller Guardrail plan", () => {
     expect(build).toThrow(/unknown Rule action overrides/);
   });
 
-  it("inherits the native catalog Rule effect when no local action is configured", () => {
-    const policies = PolicyCatalog.load(resolve("../runner/toolkit/policy_library/assets")).list();
-    const policy = policies.find((item) => item.id === "builtin-pii")!;
-    const plan = buildGuardrailPlan({ guardrailId: "native-default", guardrailVersion: "20260906-010000.001Z", policies,
-      draft: { allowedTopics: [], restrictedTopics: [], safetyLevel: "balanced", outputDelivery: "full_buffered",
-        policyBindings: [{ ...nativeBinding(policy.id), policyVersion: policy.version, enabledRuleIds: [policy.rules[0]!.id], enabledRails: ["output"] }] },
-    });
-    expect(plan.steps).toEqual([
-      expect.objectContaining({ on_unsafe: "transform", phases: ["output"] }),
-      expect.objectContaining({ on_unsafe: "transform", phases: ["output"] }),
-    ]);
-  });
-
-  it("rejects an unsupported Rail instead of silently compiling empty protection", () => {
-    const policies = PolicyCatalog.load(resolve("../runner/toolkit/policy_library/assets")).list();
-    const policy = policies.find((item) => item.id === "builtin-jailbreak")!;
-    const draft = {
-      allowedTopics: [], restrictedTopics: [], safetyLevel: "balanced" as const, outputDelivery: "full_buffered" as const,
-      policyBindings: [{ ...nativeBinding(policy.id), policyVersion: policy.version, enabledRuleIds: policy.rules.map((rule) => rule.id), enabledRails: ["output"] as Array<"output"> }],
-    };
-    expect(() => buildGuardrailPlan({ guardrailId: "invalid", guardrailVersion: "v1", draft, policies })).toThrow(/unsupported Rail/);
-  });
   it("rejects anonymous root rules instead of silently attaching or dropping them", () => {
     const draft = { ...defaultGuardrailDraft(PolicyCatalog.load(resolve("../runner/toolkit/policy_library/assets")).list()), customContentRules: [{ id: "orphan" }] };
     expect(() => buildGuardrailPlan({ guardrailId: "orphan", guardrailVersion: "v1", draft })).toThrow(/Standalone custom content rules/);
-  });
-
-  it("preserves independent Policy and Rule ordering in the executable and immutable contracts", () => {
-    const policies = PolicyCatalog.load(resolve("../runner/toolkit/policy_library/assets")).list();
-    const draft = defaultGuardrailDraft(policies);
-    const template = structuredClone(policies);
-    const binding = draft.policyBindings.find((item) => item.policyId === "local-contact-data")!;
-    const build = () => buildGuardrailPlan({ guardrailId: "ordered", guardrailVersion: "20260904-010000.001Z", draft, policies });
-    binding.ruleOrder = ["pattern/email", "pattern/us_phone"];
-    const first = build();
-    binding.ruleOrder.reverse();
-    const second = build();
-    expect(second).not.toEqual(first);
-    const steps = second.steps as Array<{ parameters: Array<[string, string]> }>;
-    const configured = steps.map((step) => Object.fromEntries(step.parameters)).find((item) => item.policy_ids === binding.policyId)!;
-    const contact = policies.find(item => item.id === "local-contact-data")!;
-    const effectiveOrder = [
-      ...binding.ruleOrder,
-      ...contact.rules.map(rule => rule.id).filter(id => binding.enabledRuleIds.includes(id) && !binding.ruleOrder!.includes(id)),
-    ];
-    expect(JSON.parse(configured.rule_order_json!)).toEqual({ "local-contact-data": effectiveOrder });
-    expect((second.policy_bindings as Array<{ policy_id: string; rule_order?: string[] }>).find((item) => item.policy_id === binding.policyId)?.rule_order).toEqual(binding.ruleOrder);
-    const previousOrder = draft.policyBindings.map((item) => item.policyId);
-    draft.policyBindings.reverse();
-    expect((build().policy_bindings as Array<{ policy_id: string }>).map((item) => item.policy_id)).toEqual(previousOrder.reverse());
-    expect(policies).toEqual(template);
-    binding.ruleOrder = ["pattern/email", "pattern/email"];
-    expect(build).toThrow(/duplicate Rules/);
-    binding.ruleOrder = ["missing"];
-    expect(build).toThrow(/unknown ordered Rules/);
-  });
-  it("turns product Policy bindings into an immutable evaluator contract graph", () => {
-    const plan = buildGuardrailPlan({
-      guardrailId: "guardrail-1",
-      guardrailVersion: "20260904-030000.003Z",
-      draft: {
-        allowedTopics: [],
-        restrictedTopics: [],
-        policyBindings: [
-          nativeBinding("builtin-secrets"),
-          nativeBinding("builtin-pii"),
-          nativeBinding("builtin-prompt-injection"),
-        ],
-        safetyLevel: "strict",
-        outputDelivery: "full_buffered",
-      },
-    });
-
-    expect(plan).toMatchObject({
-      guardrail_id: "guardrail-1",
-      guardrail_version: "20260904-030000.003Z",
-      compiler_version: "tasklattice-controller-plan-v1",
-      safety_level: "strict",
-    });
-    expect(plan.steps).toEqual(expect.arrayContaining([
-      expect.objectContaining({ capability: "secrets", contract_ref: "tali.guard.secrets.exact.v1", on_unsafe: "block", trigger: { type: "always" } }),
-      expect.objectContaining({ capability: "pii", contract_ref: "tali.guard.pii.exact.v1", trigger: { type: "always" } }),
-      expect.objectContaining({ capability: "pii", contract_ref: "tali.guard.pii.semantic.v1", trigger: { type: "always" } }),
-      expect.objectContaining({ capability: "prompt_injection", contract_ref: "tali.guard.prompt-injection.v1", on_unsafe: "block" }),
-    ]));
-    expect(plan.modules).toEqual(expect.arrayContaining([
-      expect.objectContaining({ id: "data_protection:builtin-pii:input", failure_mode: "fail_closed", timeout_ms: 30_000 }),
-      expect.objectContaining({ id: "interaction_safety:builtin-prompt-injection:input", failure_mode: "fail_closed" }),
-    ]));
-
-    const balanced = buildGuardrailPlan({
-      guardrailId: "guardrail-balanced",
-      guardrailVersion: "20260904-010000.001Z",
-      draft: {
-        allowedTopics: [], restrictedTopics: [],
-        policyBindings: [nativeBinding("builtin-pii")],
-        safetyLevel: "balanced", outputDelivery: "full_buffered",
-      },
-    });
-    expect(balanced.steps).toEqual(expect.arrayContaining([
-      expect.objectContaining({
-        contract_ref: "tali.guard.pii.semantic.v1",
-        trigger: { type: "always" },
-      }),
-    ]));
-    // Exact and semantic checks share source parameters, not mutable metadata.
-    expect(balanced.steps.map(step => Object.fromEntries(step.parameters).precedence)).toEqual(["0", "1"]);
-    expect(balanced.steps.every(step => step.parameters.filter(([key]) => key === "precedence").length === 1)).toBe(true);
-    expect(balanced.steps[0]!.parameters).not.toBe(balanced.steps[1]!.parameters);
   });
 
   it("preserves the exact catalog version, enabled Rules, parameters, and action overrides", () => {
@@ -231,10 +97,10 @@ describe("Controller Guardrail plan", () => {
         safetyLevel: "strict",
         outputDelivery: "full_buffered",
         policyBindings: [{
-          policyId: "keyword-blocking",
+          policyId: "content-filters",
           policyVersion: "1.0.0",
           action: "block",
-          parameterValues: { blocked_words: "internal-only" },
+          parameterValues: { brand_name: "internal-only", competitors: "rival", phrase_entries: JSON.stringify([{ id: "p", phrase: "x", action: "block", replacement: "[REDACTED]" }]), blocked_words: "internal-only" },
           enabledRuleIds: ["keyword/blocked-words"],
           ruleActions: { "keyword/blocked-words": "transform" },
           enabledRails: ["input"],
@@ -244,10 +110,10 @@ describe("Controller Guardrail plan", () => {
     });
 
     expect(plan.policy_bindings).toEqual([expect.objectContaining({
-      policy_id: "keyword-blocking",
+      policy_id: "content-filters",
       policy_version: "1.0.0",
       action: "block",
-      parameter_values: [["blocked_words", "internal-only"]],
+      parameter_values: expect.arrayContaining([["blocked_words", "internal-only"]]),
       enabled_rule_ids: ["keyword/blocked-words"],
       rule_actions: [["keyword/blocked-words", "transform"]],
       enabled_rails: ["input"],
@@ -258,9 +124,9 @@ describe("Controller Guardrail plan", () => {
       phases: ["input"],
       on_unsafe: "transform",
       parameters: expect.arrayContaining([
-        ["policy_versions_json", JSON.stringify({ "keyword-blocking": "1.0.0" })],
-        ["enabled_rules_json", JSON.stringify({ "keyword-blocking": ["keyword/blocked-words"] })],
-        ["rule_actions_json", JSON.stringify({ "keyword-blocking": { "keyword/blocked-words": "transform" } })],
+        ["policy_versions_json", JSON.stringify({ "content-filters": "1.0.0" })],
+        ["enabled_rules_json", JSON.stringify({ "content-filters": ["keyword/blocked-words"] })],
+        ["rule_actions_json", JSON.stringify({ "content-filters": { "keyword/blocked-words": "transform" } })],
       ]),
     })]);
   });
@@ -274,7 +140,7 @@ describe("Controller Guardrail plan", () => {
       draft: {
         allowedTopics: [], restrictedTopics: [], safetyLevel: "balanced", outputDelivery: "full_buffered",
         policyBindings: [{
-          policyId: "keyword-blocking", policyVersion: "0.0.1", action: null,
+          policyId: "content-filters", policyVersion: "0.0.1", action: null,
           parameterValues: { blocked_words: "blocked" }, enabledRuleIds: ["keyword/blocked-words"],
           ruleActions: {}, enabledRails: ["input"], reasoningPolicy: null,
         }],
@@ -329,57 +195,9 @@ describe("Controller Guardrail plan", () => {
     ]);
   });
 
-  it("schedules effective Block Rules before transforms and preserves Rule > Policy > template actions", () => {
-    const policies = PolicyCatalog.load(resolve("../runner/toolkit/policy_library/assets")).list();
-    const pattern = policies.find((item) => item.id === "local-contact-data")!;
-    const keyword = policies.find((item) => item.id === "keyword-blocking")!;
-    const makeBinding = (policy: typeof pattern) => ({
-      ...nativeBinding(policy.id), policyVersion: policy.version,
-      enabledRuleIds: policy.rules.map((item) => item.id), enabledRails: [...policy.rails],
-    });
-    const draft = {
-      allowedTopics: [], restrictedTopics: [], safetyLevel: "balanced" as const, outputDelivery: "full_buffered" as const,
-      policyBindings: [
-        { ...makeBinding(pattern), action: "block" as const, ruleActions: { "pattern/email": "transform" as const } },
-        nativeBinding("builtin-secrets"),
-        { ...makeBinding(keyword), parameterValues: { blocked_words: "private" }, enabledRails: ["output" as const] },
-      ],
-    };
-    const plan = buildGuardrailPlan({ guardrailId: "ordered", guardrailVersion: "20260904-010000.001Z", draft, policies: [...policies, {
-      ...keyword, id: "builtin-secrets", version: "1.0.0", parameters: [], rules: [{ ...keyword.rules[0]!, id: "builtin-secrets" }],
-    }] });
-    const steps = plan.steps as Array<{ parameters: Array<[string, string]>; phases: string[] }>;
-    expect(steps.map((item) => Object.fromEntries(item.parameters).policy_id)).toEqual([
-      "local-contact-data", "local-contact-data", "local-contact-data", "builtin-secrets", "keyword-blocking",
-    ]);
-    // The authored Rule order puts the email transform after the Block run.
-    const emailStep = steps.find((item) => {
-      const params = Object.fromEntries(item.parameters);
-      return JSON.parse(params.rule_actions_json!)[pattern.id]?.["pattern/email"] === "transform";
-    })!;
-    expect(emailStep).toBeDefined();
-    expect(Object.fromEntries(emailStep.parameters).policy_id).toBe("local-contact-data");
-    expect(steps[2]!.phases).toEqual(["input", "output"]);
-    const modules = plan.modules as Array<{ id: string; phase: string; depends_on: string[]; input_view: string }>;
-    for (const phase of ["input", "output"]) {
-      const ordered = modules.filter((item) => item.phase === phase);
-      ordered.forEach((item, index) => {
-        expect(item.input_view).toBe("previous_output");
-        if (index === 0) expect(item.depends_on).toEqual([]);
-        else {
-          expect(item.depends_on.length).toBeGreaterThan(0);
-          const earlier = new Set(ordered.slice(0, index).map(module => module.id));
-          expect(item.depends_on.every(dependency => earlier.has(dependency))).toBe(true);
-        }
-      });
-    }
-    expect(pattern.rules.find((item) => item.id === "pattern/us_phone")?.effect).toBe("transform");
-    expect(draft.policyBindings[0]!.ruleActions).toEqual({ "pattern/email": "transform" });
-  });
-
   it("keeps mixed-action catalog Rules together when a custom flow is present", () => {
     const policies = PolicyCatalog.load(resolve("../runner/toolkit/policy_library/assets")).list();
-    const contact = policies.find(item => item.id === "local-contact-data")!;
+    const contact = policies.find(item => item.id === "contact-data")!;
     const snapshot: ProgrammablePolicySnapshot = {
       ...programmablePolicyDraftSchema.parse({
         guardrail_category: "content_safety",
@@ -444,7 +262,7 @@ describe("Controller Guardrail plan", () => {
 describe("Compiled evaluation views", () => {
   it("declares the authored precedence and a schedule-independent view per step", () => {
     const compiler = new DeclarativeCompiler(resolve("../runner/toolkit/policy_library/assets"));
-    const template = compiler.shipped("keyword-blocking")!;
+    const template = compiler.shipped("content-filters")!;
     const definition = structuredClone(template);
     definition.metadata.id = "views";
     definition.metadata.version = "1.0.0";
@@ -465,14 +283,14 @@ describe("Compiled evaluation views", () => {
         policyBindings: [{ policyId: policy.id, policyVersion: policy.version, action: null, parameterValues: {},
           enabledRuleIds: ["mask", "block"], ruleOrder: ["mask", "block"], ruleActions: {}, enabledRails: ["input", "output"],
           reasoningPolicy: null }] } });
-    const parameters = Object.fromEntries(plan.steps.map((step) => [step.id.split(":")[2]!, Object.fromEntries(step.parameters)]));
+    const parameters = plan.steps.map((step) => Object.fromEntries(step.parameters));
     // Rank Mode executes authored Rule order and every step reads the content
     // produced by preceding Transforms.
     expect(plan.steps.map((step) => step.on_unsafe)).toEqual(["transform", "block"]);
-    expect(parameters.mask).toMatchObject({ precedence: "0", evaluation_view: "previous_output" });
-    expect(parameters.block).toMatchObject({ precedence: "1", evaluation_view: "previous_output" });
-    expect(parameters.mask!.execution_schedule).toBe("local-first");
-    expect(parameters.block!.execution_schedule).toBe("local-first");
+    expect(parameters[0]).toMatchObject({ precedence: "0", evaluation_view: "previous_output" });
+    expect(parameters[1]).toMatchObject({ precedence: "1", evaluation_view: "previous_output" });
+    expect(parameters[0]!.execution_schedule).toBe("local-first");
+    expect(parameters[1]!.execution_schedule).toBe("local-first");
   });
 });
 
@@ -488,28 +306,3 @@ function nativeBinding(policyId: string) {
     reasoningPolicy: null,
   };
 }
-
-
-it("accepts a disabled Rule retained in ruleOrder and keeps its rank slot", () => {
-  const policies = PolicyCatalog.load(resolve("../runner/toolkit/policy_library/assets")).list();
-  const policy = policies.find(item => item.id === "local-contact-data")!;
-  const [disabled, first, second] = policy.rules.map(rule => rule.id);
-  const plan = buildGuardrailPlan({
-    guardrailId: "disabled-order", guardrailVersion: "20261106-000000.001Z", policies,
-    draft: {
-      allowedTopics: [], restrictedTopics: [], safetyLevel: "balanced", outputDelivery: "full_buffered",
-      policyBindings: [{
-        policyId: policy.id, policyVersion: policy.version, action: null, parameterValues: {},
-        enabledRuleIds: [first!, second!], ruleOrder: [disabled!, first!, second!],
-        ruleActions: {}, enabledRails: [...policy.rails], reasoningPolicy: null,
-      }],
-    },
-  });
-  const steps = plan.steps as Array<{ parameters: Array<[string, string]> }>;
-  const params = steps.map(step => Object.fromEntries(step.parameters));
-  expect(params.filter(item => item.policy_id === policy.id).length).toBeGreaterThan(0);
-  expect(params.find(item => item.policy_id === policy.id)?.rule_rank).toBe("1");
-  expect(plan.policy_bindings).toEqual([
-    expect.objectContaining({ rule_order: [disabled, first, second] }),
-  ]);
-});

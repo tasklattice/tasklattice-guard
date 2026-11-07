@@ -89,7 +89,7 @@ async def test_native_stream_consumes_signed_policy_and_preserves_model_evidence
         if scenario == "block":
             assert decisions[-1].decision == "block"
             finding = decisions[-1].findings[0]
-            assert finding.policy_id == "builtin-content-safety" and finding.rule_id
+            assert finding.policy_id == "content-safety-model" and finding.rule_id
             assert finding.provider_evidence
         assert registry.get(plan).active_requests == 0 and registry.readiness()["ready"]
     finally:

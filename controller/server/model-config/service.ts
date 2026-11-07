@@ -1941,7 +1941,7 @@ const nativePolicyRequirements: Record<string, string[]> = {
   "builtin-jailbreak": ["tali.guard.jailbreak.v1"],
   "builtin-system-prompt-leakage": ["tali.guard.system-prompt-leakage.v1"],
   "builtin-content-safety": ["tali.guard.content-safety.v1"],
-  "builtin-topic-safety": ["tali.guard.topic-control.rules.v1", "tali.guard.topic-control.semantic.v1"],
+  "business-topics": ["tali.guard.topic-control.rules.v1", "tali.guard.topic-control.semantic.v1"],
   "builtin-contextual-grounding": ["tali.guard.contextual-grounding.v1"],
   "builtin-automated-reasoning": ["tali.guard.automated-reasoning.v1"],
 };

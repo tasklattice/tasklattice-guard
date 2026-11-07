@@ -99,7 +99,7 @@ describe("Guardrail release package", () => {
       `guardrails/${content.guardrailId}/guardrail.json`,
       ...["artifact", "requirements", "test-suite", "version"].map(file => `guardrails/${content.guardrailId}/versions/${content.guardrailVersion}/${file}.json`),
       "manifest.json",
-      "policies/configured-phrase-filter/1.0.0/policy.json",
+      "policies/content-filters/1.0.0/policy.json",
     ]);
   });
 

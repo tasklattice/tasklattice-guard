@@ -48,12 +48,11 @@ configuration using Topic Control and validate it before publication.
 
 ## Capability catalog and regional/industry Profiles
 
-The Policy Library presents named regional, compliance and industry sets alongside
-the shared capability Policies in one searchable catalog. Jurisdiction and framework
-filters apply to both. Sets use enabled database Profiles and show only their selected,
-versioned Rules; viewing or applying a set does not create another detector definition.
-Capability tags describe discovery coverage, while a set's scope comes from its own
-regional and framework metadata. All catalog entries share one list, card and three-tab Policy inspector (Policy, Test Cases, Compliance); labels drive discovery. The inspector lists Rules directly, without nested source Policies. Test Cases include only enabled stages and complete selected Rule coverage; compliance references retain only selected Rule IDs from matching versions. Storage reuse does not introduce another product hierarchy.
+The Policy Library lists Policies only. Jurisdiction and framework filters describe
+each Policy's discovery tags, not a Profile's scope. Guardrail Profiles are platform
+starting configurations: they seed a Guardrail draft in the create flow and are not
+browsable catalog entries. A Profile applies its selected, versioned Rules without
+creating another detector definition. All catalog entries share one list, card and three-tab Policy inspector (Policy, Test Cases, Compliance); labels drive discovery. The inspector lists Rules directly, without nested source Policies. Test Cases include only enabled stages and complete selected Rule coverage; compliance references retain only selected Rule IDs from matching versions. Storage reuse does not introduce another product hierarchy.
 
 The current catalog has **26 Policies and 223 Rules**, consolidated from 64 Policies
 and 405 Rule declarations. Policies own detection capabilities: content safety,

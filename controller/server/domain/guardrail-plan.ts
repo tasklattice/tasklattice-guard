@@ -7,7 +7,7 @@ import { PHRASE_PARAMETER, PHRASE_POLICY_ID, parsePhraseEntries } from "../../sh
 import { materializePolicyRules } from "./policy-rules.js";
 import { scheduleRankedChecks } from "./execution-plan.js";
 import { frozenBuiltInDefinition, planPolicyVersion } from "./policy-node.js";
-import { isSplitTopicPolicy, TOPIC_ALLOW_RULE, TOPIC_DENY_RULE, topicMissingParameters, topicPolicyValues } from "../../shared/topic-policy.js";
+import { hasTopicRules, isSplitTopicPolicy, TOPIC_ALLOW_RULE, TOPIC_DENY_RULE, topicMissingParameters, topicPolicyValues } from "../../shared/topic-policy.js";
 import {
   enforcementActions,
   type EnforcementAction,
@@ -106,7 +106,7 @@ const capabilities: RuntimeCapability[] = [
   capability("jailbreak", "builtin-jailbreak", ["input"], "block", [always("primary", contracts.jailbreak, true)], "interaction_safety"),
   capability("system_prompt_leakage", "builtin-system-prompt-leakage", ["output"], "block", [always("exact", contracts.systemPromptLeakage)], "data_protection"),
   capability("content_safety", "builtin-content-safety", ["input", "output"], "block", [always("primary", contracts.contentSafety, true)], "interaction_safety"),
-  capability("topic_control", "builtin-topic-safety", ["input"], "block", [always("rules", contracts.topicRules), afterUnknown("semantic", contracts.topicSemantic, "rules")], "business_assurance"),
+  capability("topic_control", "business-topics", ["input"], "block", [always("rules", contracts.topicRules), afterUnknown("semantic", contracts.topicSemantic, "rules")], "business_assurance"),
   capability("contextual_grounding", "builtin-contextual-grounding", ["output"], "block", [always("primary", contracts.contextualGrounding, true)], "business_assurance"),
   capability("automated_reasoning", "builtin-automated-reasoning", ["output"], "block", [always("primary", contracts.automatedReasoning, true)], "business_assurance"),
 ];
@@ -187,13 +187,33 @@ export function buildGuardrailPlan(input: {
       validateCatalogBinding(binding, catalogPolicy);
     }
     if (catalogPolicy?.definition) {
-      if (!binding.enabledRails.length) binding.enabledRails = [...catalogPolicy.rails];
       binding.parameterValues = { ...Object.fromEntries(catalogPolicy.parameters.flatMap(p => p.default == null ? [] : [[p.name, p.default]])), ...binding.parameterValues };
+      if (hasTopicRules(catalogPolicy.definition.rules)) {
+        if (binding.ruleActions[TOPIC_DENY_RULE] && binding.ruleActions[TOPIC_DENY_RULE] !== "block") throw new Error("The Topic denylist Rule must reject.");
+        if (binding.parameterValues.topic_mode && !["strict", "permissive"].includes(binding.parameterValues.topic_mode)) throw new Error("Topic mode must be strict or permissive.");
+        const missing = topicMissingParameters(binding.parameterValues, binding.enabledRuleIds);
+        if (!binding.enabledRuleIds.length) throw new Error(`Policy ${binding.policyId} has no enabled Rules.`);
+        if (missing.length) throw new Error(`Topic Control requires ${missing.join(", ")}.`);
+      }
+      if (!binding.enabledRails.length) binding.enabledRails = [...catalogPolicy.rails];
       const policy = materializePolicyRules(catalogPolicy, binding);
       policyById.set(`${policy.id}@${policy.version}`, policy);
       const order = [...binding.ruleOrder ?? [], ...policy.rules.map(r => r.id)];
       const ordered = [...policy.rules].sort((a, b) => order.indexOf(a.id) - order.indexOf(b.id));
-      for (const rule of ordered.filter(r => binding.enabledRuleIds.includes(r.id))) {
+      // Only enabled Rules participate in Priority. A disabled Topic Rule must
+      // not move an enabled Topic Rule ahead of an earlier local Rule.
+      const enabledOrdered = ordered.filter(rule => binding.enabledRuleIds.includes(rule.id));
+      const groupLocalRules = enabledOrdered.filter(rule => rule.implementation.execution === "local"
+        && !rule.detector.ref.startsWith("agent/")).length > 4;
+      // Enforce only the Topic pair's deny-before-allow contract. Other Rules
+      // keep their authored Rank Mode positions; a local redaction may need to
+      // run before either Topic classifier sees the content.
+      const denyAt = enabledOrdered.findIndex(rule => rule.id === TOPIC_DENY_RULE);
+      const allowAt = enabledOrdered.findIndex(rule => rule.id === TOPIC_ALLOW_RULE);
+      if (denyAt >= 0 && allowAt >= 0 && denyAt > allowAt) {
+        [enabledOrdered[allowAt], enabledOrdered[denyAt]] = [enabledOrdered[denyAt]!, enabledOrdered[allowAt]!];
+      }
+      for (const rule of enabledOrdered) {
         const enabledRails = binding.enabledRails.filter(rail => rule.rails.includes(rail));
         if (!enabledRails.length) continue;
         const scoped = { ...binding, enabledRuleIds: [rule.id], enabledRails };
@@ -205,10 +225,40 @@ export function buildGuardrailPlan(input: {
           resolved.push({ capability: { capability: boundaryDetector[0], policyId: "", defaultPhases: ["input"],
             defaultAction: "block", evaluations: [always("boundary", boundaryDetector[1])], module: "interaction_safety" },
             binding: scoped, authoredRule: rule, authoredParameters: [["rule_id", rule.id]] });
+        } else if (rule.detector.ref === "model/classifier" && String(rule.detector_options.profile ?? "") === "topic-classification"
+          && (rule.id === TOPIC_DENY_RULE || rule.id === TOPIC_ALLOW_RULE)) {
+          const values = topicPolicyValues(binding.parameterValues);
+          const deny = rule.id === TOPIC_DENY_RULE;
+          const action = deny ? binding.ruleActions[rule.id] ?? "block" : binding.ruleActions[rule.id] ?? binding.action ?? "block";
+          if (deny && action !== "block") throw new Error("The Topic denylist Rule must reject.");
+          const authoredRule = catalogPolicy.definition.rules.find(item => item.id === rule.id)!;
+          const params = resolveModelRuleParameters(catalogPolicy.definition, authoredRule, binding.parameterValues);
+          const authoredParameters: Array<[string, string]> = [["declarative_rule", "true"], ["rule_id", rule.id],
+            ["topic_mode", deny ? "permissive" : values.mode],
+            ["allowed_topics", deny ? "" : values.allowed],
+            ["restricted_topics", deny ? values.denied : ""]];
+          if (params.on_unknown !== undefined) authoredParameters.push(["on_unknown", String(params.on_unknown)]);
+          if (params.review_unknown !== undefined) authoredParameters.push(["review_unknown", String(params.review_unknown)]);
+          resolved.push({ capability: { capability: "topic_control", policyId: "", defaultPhases: ["input"],
+            defaultAction: deny ? "block" : action,
+            evaluations: [always("semantic", contracts.topicSemantic, true)],
+            module: "business_assurance" }, binding: scoped, authoredRule: rule, authoredParameters });
         } else if (rule.implementation.execution === "local") {
-          // One action group per authored Rule: mixing local ContentFilter Rules
-          // with model/boundary Rules in the same Policy is not executable.
-          resolved.push({ capability: { capability: "builtin_content_filter", policyId: "", defaultPhases: ["input", "output"], defaultAction: "block", evaluations: [always("rules", contracts.contentFilter)], module: "interaction_safety" }, binding: scoped, policy: { ...policy, rules: [rule] }, fullPolicy: policy, authoredRule: rule });
+          // Keep contiguous local Rules in one action group. The executable
+          // pass still splits action runs and preserves authored order, while
+          // one NeMo Action evaluates the whole group.
+          const previous = resolved.at(-1);
+          if (groupLocalRules && previous && previous.policy?.id === policy.id && !previous.authoredRule
+            && previous.capability.capability === "builtin_content_filter") {
+            previous.binding = { ...previous.binding,
+              enabledRuleIds: [...previous.binding.enabledRuleIds, rule.id],
+              ruleOrder: [...(previous.binding.ruleOrder ?? []), rule.id],
+              enabledRails: [...new Set([...previous.binding.enabledRails, ...scoped.enabledRails])] };
+          } else if (groupLocalRules) {
+            resolved.push({ capability: { capability: "builtin_content_filter", policyId: "", defaultPhases: ["input", "output"], defaultAction: "block", evaluations: [always("rules", contracts.contentFilter)], module: "interaction_safety" }, binding: { ...scoped, ruleOrder: [rule.id] }, policy, fullPolicy: policy });
+          } else {
+            resolved.push({ capability: { capability: "builtin_content_filter", policyId: "", defaultPhases: ["input", "output"], defaultAction: "block", evaluations: [always("rules", contracts.contentFilter)], module: "interaction_safety" }, binding: scoped, policy: { ...policy, rules: [rule] }, fullPolicy: policy, authoredRule: rule });
+          }
         } else {
           const profile = String(rule.detector_options.profile ?? "");
           const adapter = rule.detector.ref === "model/classifier" ? ({
@@ -280,7 +330,9 @@ export function buildGuardrailPlan(input: {
     const ordered = [...explicit, ...enabled.map(rule => rule.id).filter(id => !explicit.includes(id))]
       .map(id => byId.get(id)!);
     const actionOf = (rule: typeof ordered[number]) =>
-      item.binding.ruleActions[rule.id] ?? item.binding.action ?? rule.effect as EnforcementAction;
+      isSplitTopicPolicy(item.binding.policyId, item.binding.policyVersion) && rule.id === TOPIC_DENY_RULE
+        ? "block"
+        : item.binding.ruleActions[rule.id] ?? item.binding.action ?? rule.effect as EnforcementAction;
     // Keep contiguous same-action Rules in one candidate. This preserves their
     // authored order while avoiding one NeMo Action per Rule; the action still
     // evaluates the Rules sequentially and applies each Transform before the
@@ -350,8 +402,10 @@ export function buildGuardrailPlan(input: {
         prefix: `${prefix}:${phase}`, phases: [phase],
         action: binding.ruleActions[flowRuleId(phase, rail.flow_name)] ?? binding.action ?? rail.on_unsafe,
       };
-    }) : [{ prefix, phases, action: (catalogRule ? binding.ruleActions[catalogRule.id] : undefined)
-      ?? binding.action ?? (catalogRule?.effect as EnforcementAction | undefined) ?? definition.defaultAction }];
+    }) : [{ prefix, phases, action: authoredRule && authoredRule.id === TOPIC_DENY_RULE
+      ? "block" as EnforcementAction
+      : (catalogRule ? binding.ruleActions[catalogRule.id] : undefined)
+        ?? binding.action ?? (catalogRule?.effect as EnforcementAction | undefined) ?? definition.defaultAction }];
     const evaluations = splitTopic ? [always("semantic", contracts.topicSemantic, true)] : definition.evaluations;
     for (const group of groups) for (const evaluation of evaluations) {
       policySteps.push({

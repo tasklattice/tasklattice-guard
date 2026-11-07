@@ -136,7 +136,7 @@ describe.skipIf(!url)("Guardrail release packages between isolated environments"
       .toMatchObject({ validation_run_id: null, publication: { source: "deployment" } });
     await prod.initialize();
     expect((await prodDb.pool.query("SELECT count(*)::int AS count FROM guardrail_version WHERE guardrail_id=$1", [defaultId])).rows[0].count).toBe(1);
-    expect((await prod.listPolicies()).map(p => p.id)).toEqual(expect.arrayContaining(["builtin-jailbreak", "builtin-content-safety"]));
+    expect((await prod.listPolicies()).map(p => p.id)).toEqual(expect.arrayContaining(["prompt-instruction-attacks", "content-safety-model"]));
     expect(await prod.requiredPlatformModelBindings()).toEqual([]);
     const updated = await prod.getGuardrail(defaultId);
     expect(updated.draftConfig.policyBindings).toHaveLength(12);
@@ -145,7 +145,7 @@ describe.skipIf(!url)("Guardrail release packages between isolated environments"
 
   it("requires models only for enabled routed targets, not historical versions or disabled routes", async () => {
     const catalog = PolicyCatalog.load(catalogDir).list();
-    const policy = catalog.find(p => p.id === "builtin-content-safety")!;
+    const policy = catalog.find(p => p.id === "content-safety-model")!;
     const draft = { ...defaultGuardrailDraft(catalog), policyBindings: [{ policyId: policy.id, policyVersion: policy.version,
       action: null, parameterValues: {}, enabledRuleIds: policy.rules.map(r => r.id), ruleActions: {}, enabledRails: [...policy.rails], reasoningPolicy: null }] };
     await prodDb.pool.query("INSERT INTO guardrail (project_id,id,name,draft_config,status) VALUES ('projectA','opt-in','Opt-in',$1,'active')", [draft]);
@@ -392,7 +392,7 @@ describe.skipIf(!url)("Guardrail release packages between isolated environments"
     cpSync(catalogDir, dir, { recursive: true });
     const file = join(dir, "focused_policies.json");
     const items = JSON.parse(readFileSync(file, "utf8")) as Array<Record<string, unknown>>;
-    edit(items.find(item => item.id === "local-network-addresses")!);
+    edit(items.find(item => item.id === "network-identifiers")!);
     writeFileSync(file, JSON.stringify(items));
     const database = await createTestDatabase(url!, `guard_pkg_${name}`);
     await seed(database);
@@ -401,20 +401,20 @@ describe.skipIf(!url)("Guardrail release packages between isolated environments"
   }
 
   it("keeps a catalog version this installation no longer ships as a read-only version of that Policy", async () => {
-    const importedVersion = PolicyCatalog.load(catalogDir).get("local-network-addresses")!.version;
+    const importedVersion = PolicyCatalog.load(catalogDir).get("network-identifiers")!.version;
     const next = await installationWith("next", policy => { policy.version = "2.1.0"; });
     try {
       const { bytes } = await uat.packages.exportPackage(guardrailId, [published[0]!]);
       const preview = await withTestProject(async () => next.service.packages.inspectUpload(bytes, "admin"));
-      expect(preview.policies.find(node => node.id === "local-network-addresses")).toMatchObject({ version: importedVersion, state: "new" });
+      expect(preview.policies.find(node => node.id === "network-identifiers")).toMatchObject({ version: importedVersion, state: "new" });
       await withTestProject(async () => next.service.packages.importPackage(preview.packageId, { actorId: "admin" }));
       const { rows } = await next.database.pool.query("SELECT policy_id, version, source_id FROM policy_imported_version");
-      expect(rows).toEqual([{ policy_id: "local-network-addresses", version: importedVersion, source_id: "tasklattice-guard" }]);
+      expect(rows).toEqual([{ policy_id: "network-identifiers", version: importedVersion, source_id: "tasklattice-guard" }]);
       // The Library lists the shipped version, with the imported one as a pinned, read-only version.
-      const policy = (await next.service.listPolicies()).find(item => item.id === "local-network-addresses")!;
+      const policy = (await next.service.listPolicies()).find(item => item.id === "network-identifiers")!;
       expect(policy.version).toBe("2.1.0");
       expect(policy.published_versions?.find(item => item.version === importedVersion)).toMatchObject({ origin: "imported", source_id: "tasklattice-guard" });
-      expect((await next.service.getPolicy("local-network-addresses")).published_versions?.some(item => item.version === importedVersion)).toBe(true);
+      expect((await next.service.getPolicy("network-identifiers")).published_versions?.some(item => item.version === importedVersion)).toBe(true);
       // Importing it again finds it already here.
       expect((await withTestProject(async () => next.service.packages.inspectUpload(bytes, "admin"))).policies.every(node => node.state === "existing")).toBe(true);
     } finally {
@@ -428,7 +428,7 @@ describe.skipIf(!url)("Guardrail release packages between isolated environments"
       await diverged.database.pool.query("INSERT INTO policy_record (project_id,id, name, owner, draft) VALUES ('projectA',$1, 'Local namesake', 'prod', $2)", [STUDIO, studioDraft]);
       const { bytes } = await uat.packages.exportPackage(guardrailId, published);
       const preview = await withTestProject(async () => diverged.service.packages.inspectUpload(bytes, "admin"));
-      expect(preview.policies.find(node => node.id === "local-network-addresses")!.state).toBe("conflict");
+      expect(preview.policies.find(node => node.id === "network-identifiers")!.state).toBe("conflict");
       expect(preview.policies.find(node => node.id === STUDIO)!.state).toBe("new");
       expect(new Set(preview.blockers.map(item => item.code))).toEqual(new Set(["policy_version_conflict"]));
       await expect(withTestProject(async () => diverged.service.packages.importPackage(preview.packageId, { actorId: "admin" }))).rejects.toMatchObject({ code: expect.stringMatching(/^policy_(version|ownership)_conflict$/) });

@@ -33,7 +33,7 @@ async def test_signed_phrase_policy_executes_both_directions_without_other_polic
                 if expected is not None:
                     assert (result.texts or (source,)) == (expected,)
                 if decision != "allow":
-                    assert any(f.policy_id == "configured-phrase-filter" and f.rule_id.startswith("configured/phrases/") and f.risk_severity == "low" for f in result.findings)
+                    assert any(f.policy_id == "content-filters" and f.rule_id.startswith("configured/phrases/") and f.risk_severity == "low" for f in result.findings)
         request = ProtectionRequest(phase="output", texts=("",), call_id="split-phrase", context=context)
         result, text, decisions, contract = await service_stream(runtime, request, ["internal-", "alias"])
         assert contract.effective_mode == "full_buffered"

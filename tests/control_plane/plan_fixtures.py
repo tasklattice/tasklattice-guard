@@ -31,7 +31,7 @@ def _controller_plans() -> dict[str, dict]:
       import { DeclarativeCompiler } from '../controller/server/policy-studio/declarative.ts';
       import { buildGuardrailPlan } from '../controller/server/domain/guardrail-plan.ts';
       const compiler = new DeclarativeCompiler('../runner/toolkit/policy_library/assets');
-      const template = compiler.shipped('keyword-blocking');
+      const template = compiler.shipped('content-filters');
       const rule = (id, action, replacement) => ({
         ...structuredClone(template.rules[0]), id, name: id, stages: ['input', 'output'],
         detector: { ref: 'text/keyword', version: '1.0.0', parameters: { keywords: [['alpha', 'low']] } },
@@ -78,7 +78,7 @@ def _binding_plan() -> dict:
       import { DeclarativeCompiler } from '../controller/server/policy-studio/declarative.ts';
       import { buildGuardrailPlan } from '../controller/server/domain/guardrail-plan.ts';
       const compiler = new DeclarativeCompiler('../runner/toolkit/policy_library/assets');
-      const template = compiler.shipped('keyword-blocking');
+      const template = compiler.shipped('content-filters');
       const definition = structuredClone(template);
       definition.metadata.id = 'binding-slice'; definition.metadata.version = '1.0.0';
       definition.parameters = []; delete definition.testing; definition.tests = [];

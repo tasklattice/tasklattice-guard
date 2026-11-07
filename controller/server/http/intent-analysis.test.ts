@@ -36,7 +36,7 @@ const analysis = {
 
 describe("Intent analysis HTTP API", () => {
   it.each([
-    ["local-government-identifiers", 200], ["unknown-policy", 502], ["local-contact-data", 200],
+    ["identity-documents", 200], ["unknown-policy", 502], ["contact-data", 200],
   ] as const)("enforces the current catalog for recommendation %s", async (policyId, status) => {
     const analyzer = fakeAnalyzer();
     vi.mocked(analyzer.analyzeDocuments).mockResolvedValue({ ...analysis, requirements: [{ title: "Privacy", description: "Protect identifiers", effect: "transform", source_refs: ["document-1:lines-1-1"] }], recommended_policy_ids: [policyId] });
@@ -52,7 +52,7 @@ describe("Intent analysis HTTP API", () => {
     else expect(await response.json()).toMatchObject({ recommended_policy_ids: [policyId] });
     const supplied = vi.mocked(analyzer.analyzeDocuments).mock.calls[0]![0].policies;
     expect(supplied.length).toBeGreaterThan(0);
-    expect(supplied.some((policy) => policy.id === "local-government-identifiers")).toBe(true);
+    expect(supplied.some((policy) => policy.id === "identity-documents")).toBe(true);
     expect(supplied.every((policy) => "directory" in policy)).toBe(true);
   });
 

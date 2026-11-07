@@ -32,15 +32,15 @@ describe.skipIf(!url)("Historical model-enabled Default publication uses the ord
       const catalog = PolicyCatalog.load(config.policyCatalogDir).list();
       const draft = defaultGuardrailDraft(catalog);
       // Explicit opt-in, also used to verify retained historical model-enabled releases.
-      const jailbreak = catalog.find(p => p.id === "builtin-jailbreak")!;
+      const jailbreak = catalog.find(p => p.id === "prompt-instruction-attacks")!;
       draft.policyBindings.splice(2, 0, { policyId: jailbreak.id, policyVersion: jailbreak.version,
         action: null, parameterValues: {}, enabledRuleIds: ["model/jailbreak"], ruleOrder: ["model/jailbreak"],
         ruleActions: {}, enabledRails: ["input"], reasoningPolicy: null, testCaseOverrides: {} });
       draft.policyBindings = draft.policyBindings.map(binding => ({ ...binding, testCaseOverrides: {} }));
       await database.db.insert(guardrails).values({ id: DEFAULT_GUARDRAIL_ID, name: "Default", draftConfig: draft, status: "draft", draftRevision: 1 });
       const cases = generatedTestCases(DEFAULT_GUARDRAIL_ID, draft, catalog);
-      const local = cases.find(c => c.policyId === "local-credentials")!;
-      const model = cases.find(c => c.policyId === "builtin-jailbreak")!;
+      const local = cases.find(c => c.policyId === "credentials-secrets")!;
+      const model = cases.find(c => c.policyId === "prompt-instruction-attacks")!;
       await database.db.insert(testCases).values([local, model]);
       for (const passes of [false, true]) {
         const run = await service.requestValidation({ guardrailId: DEFAULT_GUARDRAIL_ID, actorId: "user", compilerAvailable: true, testModelRules: false });

@@ -27,7 +27,7 @@ function planFor(definition = fixture(), selected?: string[]) {
 }
 describe("portable Policy authoring", () => {
   it("restores protection metadata for imported frozen catalog versions without changing their identity", () => {
-    const current = PolicyCatalog.load(directory).get("local-network-addresses")!;
+    const current = PolicyCatalog.load(directory).get("network-identifiers")!;
     const node = frozenBuiltInDefinition({ ...current, version: "0.9.0" });
     const imported = { ...builtInPolicyView(node), origin: "imported", source_id: "another-installation" } as unknown as PolicyDto;
     const view = compiler.catalogView({ ...current, published_versions: [imported] });
@@ -44,7 +44,7 @@ describe("portable Policy authoring", () => {
   });
   it("loads all existing definitions without source or runtime identity in the DSL", () => {
     const assets = JSON.parse(readFileSync(resolve(directory, "policy-definitions.generated.json"), "utf8"));
-    expect(Object.keys(assets)).toHaveLength(27);
+    expect(Object.keys(assets)).toHaveLength(21);
     for (const value of Object.values(assets)) {
       const definition = policyDefinitionSchema.parse(value);
       expect(definition.metadata).not.toHaveProperty("source");
@@ -78,11 +78,11 @@ describe("portable Policy authoring", () => {
   it("isolates a target Rule even when a previous Rule would block the same text", () => {
     const plan = planFor(fixture(), ["second"]);
     expect(plan.steps).toHaveLength(1);
-    expect(JSON.stringify(plan.steps)).toContain('second:rules');
+    expect(JSON.parse(Object.fromEntries((plan.steps[0] as { parameters: Array<[string, string]> }).parameters).enabled_rules_json!)).toEqual({ "independent-policy": ["second"] });
     expect(JSON.stringify(plan.modules)).not.toContain('first:input');
   });
   it("allows a maintained platform Policy to replace its previous detector contract", () => {
-    const definition = fixture(); definition.metadata.id = "configured-phrase-filter";
+    const definition = fixture(); definition.metadata.id = "content-filters";
     expect(planFor(definition).steps).toHaveLength(2);
   });
   it("selects model contracts by detector profile for arbitrary Policy and Rule IDs", () => {
@@ -97,7 +97,7 @@ describe("portable Policy authoring", () => {
     expect(Object.fromEntries(steps[0]!.parameters)).toMatchObject({ policy_id: "independent-policy", rule_id: "first", declarative_rule: "true" });
   });
   it("preserves Topic Rule configuration when a shipped definition is renamed and exported", () => {
-    const definition = compiler.shipped("builtin-topic-safety")!;
+    const definition = compiler.shipped("business-topics")!;
     definition.metadata.id = "our-topic-policy";
     definition.parameters.find(p => p.name === "denied_topics")!.default = "gambling";
     definition.parameters.find(p => p.name === "allowed_topics")!.default = "banking";
@@ -107,16 +107,16 @@ describe("portable Policy authoring", () => {
     expect(Object.fromEntries(steps[1]!.parameters)).toMatchObject({ policy_id: "our-topic-policy", topic_mode: "strict", allowed_topics: "banking", restricted_topics: "" });
   });
   it("expands parameterized phrase tests from the Rule contract without relying on a Policy ID", () => {
-    const definition = compiler.shipped("configured-phrase-filter")!;
+    const definition = compiler.shipped("content-filters")!;
     definition.metadata.id = "our-phrase-policy";
     const values = { phrase_entries: JSON.stringify([{ id: "hidden", phrase: "PRIVATE", action: "transform", replacement: "[hidden]" }]) };
-    const cases = definitionTestCases(definition, values);
+    const cases = definitionTestCases(definition, values).filter(item => item.covered_rule_ids[0]?.startsWith("configured/phrases"));
     expect(cases).toHaveLength(2);
     expect(cases[0]).toMatchObject({ content: "PRIVATE", expected_decision: "transform", expected_text: "[hidden]", covered_rule_ids: ["configured/phrases/hidden"] });
     const policy = compiler.compile(definition);
     const inherited = generatedTestCases("g", normalizeGuardrailDraft({ policyBindings: [{ policyId: policy.id, policyVersion: policy.version, enabledRuleIds: ["configured/phrases"], parameterValues: values }] }), [policy]);
     expect(inherited).toHaveLength(2); expect(inherited[0]).toMatchObject({ content: "PRIVATE", expectedDecision: "transform", coveredRuleIds: ["configured/phrases/hidden"] });
-    definition.metadata.id = "configured-phrase-filter"; definition.rules = fixture().rules; definition.tests = fixture().tests;
+    definition.metadata.id = "content-filters"; definition.rules = fixture().rules; definition.tests = fixture().tests;
     const changed = compiler.compile(definition);
     expect(generatedTestCases("g", normalizeGuardrailDraft({ policyBindings: [{ policyId: changed.id, policyVersion: changed.version, enabledRuleIds: ["first", "second"] }] }), [changed])).toHaveLength(2);
   });

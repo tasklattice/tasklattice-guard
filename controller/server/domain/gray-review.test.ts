@@ -9,9 +9,9 @@ const directory = "../runner/toolkit/policy_library/assets";
 const compiler = new DeclarativeCompiler(directory);
 const policies = PolicyCatalog.load(directory).list().map(p => compiler.catalogView(p));
 
-function plan(id = "builtin-content-safety", value = "true", rails: Array<"input" | "output"> = ["input"], version?: string) {
+function plan(id = "content-safety-model", value = "true", rails: Array<"input" | "output"> = ["input"], version?: string) {
   const policy = policies.find(p => p.id === id)!;
-  const rules = id === "builtin-topic-safety" ? ["topic/denylist"] : policy.rules.map(r => r.id);
+  const rules = policy.rules.filter(rule => rule.detector.ref === "model/classifier").map(rule => rule.id);
   return buildGuardrailPlan({ guardrailId: "review", guardrailVersion: "1", policies,
     draft: { safetyLevel: "balanced", outputDelivery: "full_buffered", allowedTopics: [], restrictedTopics: [], policyBindings: [{
       policyId: id, policyVersion: version ?? policy.version, action: null, enabledRails: rails, enabledRuleIds: rules,
@@ -20,7 +20,7 @@ function plan(id = "builtin-content-safety", value = "true", rails: Array<"input
     }] } });
 }
 
-it.each(["builtin-content-safety", "builtin-jailbreak", "builtin-jailbreak-strict", "builtin-topic-safety"])("pins %s review opt-in and its input dependency", id => {
+it.each(["content-safety-model", "prompt-instruction-attacks", "prompt-instruction-attacks", "business-topics"])("pins %s review opt-in and its input dependency", id => {
   const compiled = plan(id);
   expect(compiled.steps.every(s => Object.fromEntries(s.parameters).review_unknown === "true")).toBe(true);
   expect(publishedProtectionCoverage(compiled)!.requiredModelBindings).toContain("classifier_review.input");
@@ -30,8 +30,8 @@ it.each(["builtin-content-safety", "builtin-jailbreak", "builtin-jailbreak-stric
 
 
 it("requires independent review bindings for the same Rail as each opted-in classifier",() => {
-  expect(publishedProtectionCoverage(plan("builtin-content-safety","true",["output"]))!.requiredModelBindings).toEqual(["content_safety.output","classifier_review.output"]);
-  expect(publishedProtectionCoverage(plan("builtin-content-safety","true",["input","output"]))!.requiredModelBindings).toEqual([
+  expect(publishedProtectionCoverage(plan("content-safety-model","true",["output"]))!.requiredModelBindings).toEqual(["content_safety.output","classifier_review.output"]);
+  expect(publishedProtectionCoverage(plan("content-safety-model","true",["input","output"]))!.requiredModelBindings).toEqual([
     "content_safety.input","classifier_review.input","content_safety.output","classifier_review.output",
   ]);
   expect(assignmentTargetAcceptsModel("classifier_review.input","tali.classifier-review.v1","custom-openai-compatible")).toBe(true);

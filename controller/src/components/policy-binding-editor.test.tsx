@@ -7,7 +7,8 @@ import type { GuardrailPolicyBinding, Policy } from "@/lib/api";
 
 import { PolicyBindingEditor, defaultPolicyBinding, getPolicyBindingValidation } from "./policy-binding-editor";
 import { emptyPolicyDefinition } from "../../shared/policy-definition";
-import configurablePolicies from "../../../runner/toolkit/policy_library/assets/configurable_policies.json";
+import policyAssets from "../../../runner/toolkit/policy_library/assets/policies.json";
+const configurablePolicies = policyAssets as unknown as Policy[];
 
 vi.mock("react-i18next", () => ({
   useTranslation: () => ({
@@ -194,13 +195,14 @@ describe("PolicyBindingEditor", () => {
   });
 
   it("shows per-phrase actions only when no Policy action overrides them", () => {
-    const source = configurablePolicies.find(item => item.id === "configured-phrase-filter")!;
+    const source = configurablePolicies.find(item => item.id === "content-filters")!;
     const phrases = { ...policy, ...source } as unknown as Policy;
     const binding = defaultPolicyBinding(phrases);
-    binding.parameter_values.phrase_entries = JSON.stringify([{ id: "secret", phrase: "INTERNAL_SECRET", action: "block" }]);
+    binding.parameter_values = { ...binding.parameter_values, brand_name: "TaskLattice", competitors: "Example", blocked_words: "INTERNAL_SECRET", phrase_entries: JSON.stringify([{ id: "secret", phrase: "INTERNAL_SECRET", action: "block" }]) };
     const { rerender } = render(<PolicyBindingEditor policies={[phrases]} value={[binding]} onChange={vi.fn()} showSelector={false} />);
     fireEvent.click(screen.getByRole("button", { name: /Review Rule details for/ }));
-    const action = () => screen.getByRole("combobox", { name: `Action for ${phrases.rules[0].name}` });
+    const phraseRule = phrases.rules.find(rule => rule.id === "configured/phrases")!;
+    const action = () => screen.getByRole("combobox", { name: `Action for ${phraseRule.name}` });
     expect(action().querySelector(".cds--list-box__label")?.textContent).toBe("Phrase actions");
     rerender(<PolicyBindingEditor policies={[phrases]} value={[{ ...binding, action: "block" }]} onChange={vi.fn()} showSelector={false} />);
     expect(action().querySelector(".cds--list-box__label")?.textContent).toBe("Policy · block");

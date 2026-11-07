@@ -38,7 +38,7 @@ def test_compilation_rejects_catalog_references_without_frozen_content(missing):
 
 def test_runtime_rejects_missing_policy_instead_of_resolving_the_catalog():
     with pytest.raises(ValueError, match="all implementations must be embedded"):
-        definitions_from_parameters({"policy_ids": "configured-phrase-filter"})
+        definitions_from_parameters({"policy_ids": "content-filters"})
 
 
 def test_offline_cli_writes_the_same_unsigned_artifact(tmp_path):

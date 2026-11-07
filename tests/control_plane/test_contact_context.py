@@ -7,7 +7,7 @@ from runner.toolkit.policy_runtime.detectors import validate_regex_options
 RULES = ('pattern/titled_person', 'pattern/contact_list_person', 'pattern/truncated_address')
 
 def run(text, phase='input', rules=RULES):
-    p = policy('local-contact-data')
+    p = policy('contact-data')
     return BuiltinContentFilter().evaluate(definitions={p.id:p}, policies=(p.id,), text=text,
                                          phase=phase, enabled_rules={p.id:rules}).content
 
@@ -62,7 +62,7 @@ def test_context_options_are_validated(options):
     with pytest.raises(ValueError):validate_regex_options('(?P<v>x)',options)
 
 def test_identifier_first_transform_keeps_name_context_and_full_identifier_redaction():
-    government, contact = policy('local-government-identifiers'), policy('local-contact-data')
+    government, contact = policy('identity-documents'), policy('contact-data')
     result = BuiltinContentFilter().evaluate(
         text='- 123-45-6789\n- Alex\n- +321 45-678 9012',phase='input',
         policies=(government.id,contact.id),definitions={government.id:government,contact.id:contact},

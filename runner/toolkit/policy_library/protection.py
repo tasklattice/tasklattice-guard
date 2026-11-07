@@ -20,15 +20,20 @@ def policy_protection(item: PolicySpec) -> dict:
         raise ValueError(f"Policy {item.id} must declare exactly one valid protection directory.")
     directory = directories[0]
     native = contracts["nativePolicies"].get(item.id, {})
-    if native and set(item.rails).difference(native["rails"]):
-        raise ValueError(f"Policy {item.id} declares a Rail outside its runtime contract.")
+    if native:
+        # A composite Policy may add a Rail that only carries local Rules; the
+        # native contract still owns every model-backed direction.
+        outside = set(item.rails).difference(native["rails"])
+        local_rails = {rail for rule in item.rules if rule.implementation.execution == "local" for rail in rule.rails}
+        if outside.difference(local_rails):
+            raise ValueError(f"Policy {item.id} declares a Rail outside its runtime contract.")
     execution = native.get("execution", "custom" if any(rule.implementation.execution != "local" for rule in item.rules) else "local")
     limitations = []
     if execution == "local":
         limitations.append("Matches configured local patterns; it does not provide comprehensive semantic detection.")
     if native.get("modelCapabilities"):
         limitations.append("Requires a compatible, validated runtime assignment; model callability alone is not validation.")
-    if item.id == "builtin-content-safety":
+    if item.id == "content-safety-model":
         limitations.append("Incremental checks cannot recall previously released text. Transforming actions require a complete response.")
     if directory == "business_rules":
         limitations.append("Screens text against configured business rules; it does not establish regulatory compliance or authorize actions.")

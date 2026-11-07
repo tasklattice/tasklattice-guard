@@ -141,7 +141,7 @@ afterEach(() => { cleanup(); identity.role = "user"; vi.restoreAllMocks(); });
   it.each(["shortcut", "policy"])("hides Topic Control settings when removed via %s and saves only after explicit Save", async removal => {
     vi.spyOn(controllerApi, "getModelReadiness").mockResolvedValue({ models: [], active: null, draft: null, activating: null } as unknown as controllerApi.ModelConfigurationView);
     const catalog = PolicyCatalog.load(resolve("../runner/toolkit/policy_library/assets")).list();
-    const policies = ["local-credentials", "builtin-topic-safety"].map(id => { const latest = catalog.find(item => item.id === id)!; return latest; });
+    const policies = ["credentials-secrets", "business-topics"].map(id => { const latest = catalog.find(item => item.id === id)!; return latest; });
     const bindings = policies.map(defaultPolicyBinding);
     const guardrail = { ...deletableGuardrail, topic_control_mode: "permissive" as const, policy_bindings: bindings };
     const update = vi.spyOn(api, "updateGuardrail").mockResolvedValue(guardrail);
@@ -159,12 +159,12 @@ afterEach(() => { cleanup(); identity.role = "user"; vi.restoreAllMocks(); });
     await waitFor(() => expect(update).toHaveBeenCalledWith(guardrail.id, expect.objectContaining({ policy_bindings: [bindings[0]] })));
   });
 
-  it.each(["builtin-content-safety", "builtin-topic-safety"])("allows trimming a draft before its remaining %s model is configured", async modelId => {
+  it.each(["content-safety-model", "business-topics"])("allows trimming a draft before its remaining %s model is configured", async modelId => {
     vi.spyOn(controllerApi, "getModelReadiness").mockResolvedValue({ models: [], active: null, draft: null, activating: null });
     const catalog = PolicyCatalog.load(resolve("../runner/toolkit/policy_library/assets")).list();
-    const policies = ["local-government-identifiers", modelId].map(id => catalog.find(policy => policy.id === id)!);
+    const policies = ["identity-documents", modelId].map(id => catalog.find(policy => policy.id === id)!);
     const bindings = policies.map(defaultPolicyBinding);
-    if (modelId === "builtin-topic-safety") {
+    if (modelId === "business-topics") {
       bindings[1]!.enabled_rule_ids = ["topic/denylist"];
       bindings[1]!.parameter_values = { denied_topics: "Credential theft", topic_mode: "permissive", allowed_topics: "" };
     }
@@ -179,7 +179,7 @@ afterEach(() => { cleanup(); identity.role = "user"; vi.restoreAllMocks(); });
   });
 
   it("hides retained topic values when reopening a draft without Topic Control", () => {
-    const policy = PolicyCatalog.load(resolve("../runner/toolkit/policy_library/assets")).list().find(item => item.id === "local-credentials")!;
+    const policy = PolicyCatalog.load(resolve("../runner/toolkit/policy_library/assets")).list().find(item => item.id === "credentials-secrets")!;
     const guardrail = { ...deletableGuardrail, allowed_topics: ["Kubernetes"], restricted_topics: ["Investments"], policy_bindings: [defaultPolicyBinding(policy)] };
     render(<QueryClientProvider client={new QueryClient()}><TooltipProvider><EditGuardrailSheet guardrail={guardrail} policies={[policy]} open onOpenChange={vi.fn()} onSaved={vi.fn()} /></TooltipProvider></QueryClientProvider>);
     expect(screen.queryByRole("heading", { name: "guardrails.topicAllowlist" })).toBeNull();
@@ -299,7 +299,7 @@ afterEach(() => { cleanup(); identity.role = "user"; vi.restoreAllMocks(); });
       verdict: "matched",
       confidence: null,
       recommended_action: "block",
-      policy_id: "builtin-content-safety",
+      policy_id: "content-safety-model",
       rule_id: "model/content-safety",
       detail: "Runner reported an unsafe content-safety finding.",
     };
@@ -533,9 +533,9 @@ afterEach(() => { cleanup(); identity.role = "user"; vi.restoreAllMocks(); });
 
   it("reorders saved draft Policies without losing pinned versions, Rule order or local overrides", async () => {
     const catalog = PolicyCatalog.load(resolve("../runner/toolkit/policy_library/assets")).list();
-    const policies = ["configured-phrase-filter", "local-credentials"].map(id => catalog.find(p => p.id === id)!);
+    const policies = ["content-filters", "credentials-secrets"].map(id => catalog.find(p => p.id === id)!);
     const bindings = policies.map(defaultPolicyBinding);
-    bindings[0]!.parameter_values = { phrase_entries: JSON.stringify([{ id: "private-phrase", phrase: "confidential", action: "block" }]) };
+    bindings[0]!.parameter_values = { brand_name: "TaskLattice", competitors: "Example", blocked_words: "confidential", phrase_entries: JSON.stringify([{ id: "private-phrase", phrase: "confidential", action: "block" }]) };
     bindings[1]!.rule_order = [...bindings[1]!.enabled_rule_ids].reverse();
     bindings[1]!.rule_actions = { [bindings[1]!.enabled_rule_ids[0]!]: "transform" };
     const original = structuredClone(bindings);
@@ -544,12 +544,13 @@ afterEach(() => { cleanup(); identity.role = "user"; vi.restoreAllMocks(); });
     const onSaved = vi.fn();
     render(<QueryClientProvider client={new QueryClient({ defaultOptions: { mutations: { retry: false } } })}><TooltipProvider><EditGuardrailSheet guardrail={guardrail} policies={policies} open onOpenChange={vi.fn()} onSaved={onSaved} /></TooltipProvider></QueryClientProvider>);
     const order = screen.getByRole("list", { name: "protection.order" });
-    expect(within(order).getAllByRole("listitem").map(item => item.textContent)).toEqual([
+    const policyRows = () => within(order).getAllByRole("listitem").filter(item => item.textContent?.includes("v1.0.0"));
+    expect(policyRows().map(item => item.textContent)).toEqual([
       expect.stringContaining(policies[0]!.name), expect.stringContaining(policies[1]!.name),
     ]);
     expect(screen.getByRole("button", { name: `protection.moveUp name:${policies[0]!.name}` }).getAttribute("aria-disabled")).toBe("true");
     fireEvent.click(screen.getByRole("button", { name: `protection.moveUp name:${policies[1]!.name}` }));
-    expect(within(order).getAllByRole("listitem").map(item => item.textContent)).toEqual([
+    expect(policyRows().map(item => item.textContent)).toEqual([
       expect.stringContaining(policies[1]!.name), expect.stringContaining(policies[0]!.name),
     ]);
     expect(update).not.toHaveBeenCalled();
@@ -561,10 +562,10 @@ afterEach(() => { cleanup(); identity.role = "user"; vi.restoreAllMocks(); });
   });
 
   it("blocks saving incomplete Policy-owned phrases and recovers when filled", () => {
-    const policy = PolicyCatalog.load(resolve("../runner/toolkit/policy_library/assets")).list().find(item => item.id === "configured-phrase-filter")!;
+    const policy = PolicyCatalog.load(resolve("../runner/toolkit/policy_library/assets")).list().find(item => item.id === "content-filters")!;
     const guardrail: Guardrail = { ...deletableGuardrail, policy_bindings: [{
       policy_id: policy.id, policy_version: policy.version, action: null,
-      parameter_values: { phrase_entries: JSON.stringify([{ id: "entry", phrase: "", action: "block" }]) },
+      parameter_values: { brand_name: "TaskLattice", competitors: "Example", blocked_words: "confidential", phrase_entries: JSON.stringify([{ id: "entry", phrase: "", action: "block" }]) },
       enabled_rule_ids: ["configured/phrases"], rule_actions: {}, enabled_rails: ["input", "output"], reasoning_policy: null,
     }] };
     const client = new QueryClient();

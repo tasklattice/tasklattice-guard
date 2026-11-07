@@ -61,8 +61,11 @@ describe.skipIf(!url)("declarative Policy transactions", () => {
     const views = await service.views([]); expect(views[0]!.name).toBe("Two Rules"); expect(views[0]!.maintenance?.revision).toBe(2);
   });
   it("uses declared test parameters to isolate generated phrase Rules", async () => {
-    const definition = service.compiler.shipped("configured-phrase-filter")!;
+    const definition = service.compiler.shipped("content-filters")!;
     definition.metadata.id = "test-phrases";
+    definition.rules = definition.rules.filter(rule => rule.id === "configured/phrases");
+    definition.tests = definition.tests.filter(test => test.covered_rule_ids.includes("configured/phrases"));
+    definition.parameters = definition.parameters.filter(parameter => parameter.name === "phrase_entries");
     definition.testing = { parameters: { phrase_entries: JSON.stringify([{ id: "a", phrase: "alpha", action: "block" }, { id: "b", phrase: "beta", action: "transform", replacement: "[hidden]" }]) } };
     await withTestProject(() => service.save({ definition, maintainer: "Test", expectedRevision: 0, actorId: "test", create: true }));
     const report = await service.validate(definition.metadata.id, "test", true);
@@ -74,7 +77,7 @@ describe.skipIf(!url)("declarative Policy transactions", () => {
     expect(transform.payload.plan.policy_bindings[0].enabled_rule_ids).toEqual(["configured/phrases/b"]);
   });
   it("uses model test values only in validation jobs and publishes reusable references", async () => {
-    const definition = service.compiler.shipped("builtin-topic-safety")!;
+    const definition = service.compiler.shipped("business-topics")!;
     definition.metadata.id = "parameterized-topic";
     definition.testing = { parameters: { denied_topics: "Synthetic test topic", allowed_topics: "Synthetic support", topic_mode: "strict" } };
     await withTestProject(() => service.save({ definition, maintainer: "Test", expectedRevision: 0, actorId: "test", create: true }));
@@ -89,7 +92,8 @@ describe.skipIf(!url)("declarative Policy transactions", () => {
       } as ValidationCaseResult)) });
     }
     const published = await service.publish(definition.metadata.id, 1, "test");
-    expect(published.definition?.rules[0]!.detector.parameters.restricted_topics).toBe("{{denied_topics}}");
+    expect(published.definition?.rules[0]!.detector.parameters.profile).toBe("topic-classification");
+    expect(published.definition?.parameters.find(p => p.name === "denied_topics")?.default).toBe("");
     const plan = buildGuardrailPlan({ guardrailId: "live-binding", guardrailVersion: "1", policies: [published], draft: normalizeGuardrailDraft({ policyBindings: [{ policyId: published.id, policyVersion: published.version, enabledRuleIds: published.rules.map(r => r.id), parameterValues: { denied_topics: "Business restriction", allowed_topics: "Business support" } }] }) });
     const parameters = (plan.steps as Array<{ parameters: Array<[string, string]> }>).map(s => Object.fromEntries(s.parameters));
     expect(parameters.some(p => p.restricted_topics === "Business restriction")).toBe(true);

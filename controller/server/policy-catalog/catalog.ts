@@ -149,67 +149,24 @@ export type PolicyDto = {
   protection: PolicyProtection;
 };
 
-export const POLICY_CATALOG_FILE_NAMES = [
-  "builtin_policies.json",
-  "local_content_filters.json",
-  "model_capability_policies.json",
-  "focused_policies.json",
-  "china_policies.json",
-  "configurable_policies.json",
-  "target_policies.json",
-  "custom_policies.json",
-] as const;
+export const POLICY_CATALOG_FILE_NAMES = ["policies.json"] as const;
 
 const RAIL_ORDER: PolicyDto["rails"] = ["input", "retrieval", "dialog", "execution", "output"];
 
-// Keep the Controller's discovery metadata compatible with the canonical
-// Runner toolkit catalog. These tags are centrally reviewed metadata, not an
-// assertion that every Rule covers every OWASP risk.
-const OWASP_LLM_2025_POLICY_IDS = new Set([
-  "builtin-indirect-prompt-injection",
-  "builtin-memory-poisoning",
-  "builtin-jailbreak",
-  "builtin-pii",
-  "builtin-contextual-grounding",
-  "builtin-automated-reasoning",
-  "local-injection-protection",
-  "local-credentials",
-  "local-payment-data",
-  "local-government-identifiers",
-  "local-contact-data",
-  "local-passports",
-  "local-data-use-boundaries",
-  "local-fraud-prevention",
-  "block-code-execution"
-]);
-
 export class PolicyCatalog {
-  private constructor(
-    private readonly policiesById: ReadonlyMap<string, PolicyDto>,
-    private readonly legacyById: ReadonlyMap<string, PolicyDto> = new Map(),
-  ) {}
+  private constructor(private readonly policiesById: ReadonlyMap<string, PolicyDto>) {}
 
-  static load(directory: string, legacyDirectory?: string): PolicyCatalog {
-    const active = loadCatalogDirectory(directory);
-    const legacy = legacyDirectory ? loadCatalogDirectory(legacyDirectory) : new Map<string, PolicyDto>();
-    for (const policy of active.values()) legacy.delete(policy.id);
-    return new PolicyCatalog(active, legacy);
+  static load(directory: string): PolicyCatalog {
+    return new PolicyCatalog(loadCatalogDirectory(directory));
   }
 
-  /** Active catalog only: target mode must not offer legacy Policies to new Guardrails. */
   list(): PolicyDto[] {
     return [...this.policiesById.values()];
   }
 
-  /** Existing Guardrails may still resolve their pinned legacy Policy for read/compile. */
   get(policyId: string): PolicyDto | undefined {
-    return this.policiesById.get(policyId) ?? this.legacyById.get(policyId);
+    return this.policiesById.get(policyId);
   }
-
-  isLegacy(policyId: string): boolean {
-    return !this.policiesById.has(policyId) && this.legacyById.has(policyId);
-  }
-
 }
 
 function loadCatalogDirectory(directory: string): Map<string, PolicyDto> {
@@ -225,9 +182,6 @@ function loadCatalogDirectory(directory: string): Map<string, PolicyDto> {
     const path = join(directory, fileName);
     if (!existsSync(path)) continue;
     for (const policy of readPolicyAssets(path)) {
-      if (fileName === "custom_policies.json" && (policy.source !== "custom" || merged.has(policy.id) || contracts.nativePolicies[policy.id] || policy.compliance != null || policy.rules.some(rule => rule.implementation.execution !== "local"))) {
-        throw new Error(`Invalid imported Policy origin or identity: ${policy.id}`);
-      }
       if (merged.has(policy.id)) throw new Error(`Duplicate bundled Policy ID: ${policy.id}`);
       merged.set(policy.id, normalizePolicy(policy, contracts, fileName));
     }
@@ -257,10 +211,6 @@ function normalizePolicy(policy: PolicyAsset, contracts: ProtectionContracts, so
     }
   }
   const tags = new Map<string, PolicyTag>();
-  if (OWASP_LLM_2025_POLICY_IDS.has(policy.id)) {
-    const tag = policyTag("framework", "owasp-llm-2025", "OWASP LLM 2025", "declared");
-    tags.set(tag.id, tag);
-  }
   for (const item of policy.tags) {
     const tag = policyTag(item.namespace, item.value, item.label, item.source);
     tags.set(tag.id, tag);

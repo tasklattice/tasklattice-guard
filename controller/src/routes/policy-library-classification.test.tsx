@@ -6,11 +6,10 @@ import { describe, expect, it } from "vitest";
 import { CatalogFilters, tagFacets } from "./policy-library";
 import type { Policy } from "@/lib/api";
 
-// The active target catalog is the one the Console serves when
-// CONTROLLER_POLICY_CATALOG_MODE=target. Render the real reviewable data so a
-// catalog rebuild cannot silently drop a navigation group again.
+// The target catalog is the one the Console serves. Render the real reviewable
+// data so a catalog rebuild cannot silently drop a navigation group again.
 const targetPolicies: Policy[] = JSON.parse(readFileSync(
-  resolve(import.meta.dirname, "../../../runner/toolkit/policy_library/assets_target/target_policies.json"),
+  resolve(import.meta.dirname, "../../../runner/toolkit/policy_library/assets/policies.json"),
   "utf8",
 )).map((policy: Policy) => ({
   ...policy,

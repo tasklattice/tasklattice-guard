@@ -10,7 +10,7 @@ vi.mock("@tanstack/react-router", () => ({ useNavigate: () => vi.fn(), useSearch
 vi.mock("@/hooks/use-mobile", () => ({ useIsMobile: () => false }));
 vi.mock("@/lib/auth", () => ({ useAuth: () => ({ user: { email: "author@example.test", role: "user" } }) }));
 vi.mock("@/lib/api", async original => ({ ...await original<typeof import("@/lib/api")>(),
-  getPolicies: async () => ({ items: catalog.items }), getGuardrailProfiles: async () => ({ items: [], count: 0 }), getActionCatalog: async () => ({ items: [] }),
+  getPolicies: async () => ({ items: catalog.items }), getActionCatalog: async () => ({ items: [] }),
 }));
 vi.mock("@/lib/policy-transfer", async original => ({ ...await original<typeof import("@/lib/policy-transfer")>(),
   parsePolicyPackage: () => ({ name: "Imported local Policy", description: "Focus regression", owner: "author@example.test",

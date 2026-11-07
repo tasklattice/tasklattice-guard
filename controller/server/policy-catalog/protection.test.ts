@@ -21,12 +21,12 @@ describe("Protection contract", () => {
   });
 
   it("does not invent an Output jailbreak or topic binding and keeps grounded output contextual", () => {
-    expect(catalog.get("builtin-jailbreak")?.protection.outputStreaming).toBe("not_applicable");
-    const topic = catalog.get("builtin-topic-safety")!;
+    expect(catalog.get("prompt-instruction-attacks")?.protection.outputStreaming).toBe("not_applicable");
+    const topic = catalog.get("business-topics")!;
     expect(topic.version).toBe("1.0.0");
-    expect(topic.protection).toMatchObject({ execution: "model", requiredContext: [], modelCapabilities: ["topic_control"] });
-    expect(catalog.get("builtin-contextual-grounding")?.protection).toMatchObject({
-      requiredContext: ["query", "grounding_source"], outputStreaming: "complete_response",
+    expect(topic.protection).toMatchObject({ execution: "model", requiredContext: ["allowed_topics"], modelCapabilities: ["topic_control"] });
+    expect(catalog.get("answer-reliability")?.protection).toMatchObject({
+      requiredContext: ["query", "grounding_source", "reasoning_policy"], outputStreaming: "complete_response",
     });
     for (const native of Object.values(contracts.nativePolicies)) {
       for (const capability of native.modelCapabilities) {
@@ -38,7 +38,7 @@ describe("Protection contract", () => {
   });
 
   it("rejects ambiguous ownership and unsupported runtime directions", () => {
-    const policy = structuredClone(catalog.get("builtin-jailbreak")!);
+    const policy = structuredClone(catalog.get("business-topics")!);
     expect(() => policyProtection({ ...policy, tags: [] }, contracts)).toThrow(/exactly one/);
     expect(() => policyProtection({ ...policy, tags: [...policy.tags, { namespace: "protection", value: "privacy" }] }, contracts)).toThrow(/exactly one/);
     expect(() => policyProtection({ ...policy, rails: ["output"] }, contracts)).toThrow(/outside its runtime contract/);

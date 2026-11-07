@@ -11,13 +11,13 @@ describe("Document recommendation catalog", () => {
     const focusedEmail = source.find((policy) => policy.rules.some((rule) => rule.id === "pattern/email"));
     expect(focusedEmail).toBeDefined();
     expect(recommendations.some((policy) => policy.id === focusedEmail!.id)).toBe(true);
-    expect(source.some((policy) => policy.id === "local-government-identifiers")).toBe(true);
-    expect(recommendations.some((policy) => policy.id === "local-government-identifiers")).toBe(true);
+    expect(source.some((policy) => policy.id === "identity-documents")).toBe(true);
+    expect(recommendations.some((policy) => policy.id === "identity-documents")).toBe(true);
   });
 
   it("provides real direction, dependency and limitation metadata without implementation bodies", () => {
     const recommendations = recommendationCatalog(source);
-    const model = recommendations.find((policy) => policy.id === "builtin-content-safety")!;
+    const model = recommendations.find((policy) => policy.id === "content-safety-model")!;
     expect(model).toMatchObject({ directory: "content_safety", rails: ["input", "output"], execution: "model", model_capabilities: ["content_safety"] });
     expect(model.limitations.length).toBeGreaterThan(0);
     expect(model).not.toHaveProperty("rules");

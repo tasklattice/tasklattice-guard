@@ -1,4 +1,4 @@
-import { defaultGuardrailProfiles, targetGuardrailProfiles } from "../../shared/guardrail-profiles.js";
+import { guardrailProfiles } from "../../shared/guardrail-profiles.js";
 import { expandProtectionPreset } from "../policy-catalog/presets.js";
 import { resolve } from "node:path";
 
@@ -63,26 +63,13 @@ describe("Policy catalog HTTP compatibility", () => {
     expect(response.status).toBe(401);
   });
 
-  it("serves the 20-Policy target catalog in target mode", async () => {
-    const targetConfig = loadConfig({
-      NODE_ENV: "test",
-      CONTROLLER_DATABASE_URL: "postgresql://controller:controller@localhost/controller",
-      CONTROLLER_RUNNER_TOKEN: "runner-token-that-is-at-least-32-characters",
-      CONTROLLER_ARTIFACT_SIGNING_KEY_PATH: "/tmp/controller-signing-key.pem",
-      CONTROLLER_POLICY_CATALOG_MODE: "target",
-      BETTER_AUTH_SECRET: "better-auth-secret-that-is-at-least-32-characters",
-    });
-    const targetPolicies = PolicyCatalog.load(targetConfig.policyCatalogDir);
-    const app = appWithSession(
-      { session: { id: "fixture-session", activeProjectId: "projectA" }, user: { id: "member-1", role: "user", projectId: "projectA" } },
-      { listGuardrailProfiles: vi.fn().mockResolvedValue(targetGuardrailProfiles.map(profile => ({ ...profile, policyBindings: expandProtectionPreset(profile, targetPolicies.list()) }))) },
-      targetConfig,
-    );
+  it("serves the 21-Policy catalog", async () => {
+    const app = appWithSession({ session: { id: "fixture-session", activeProjectId: "projectA" }, user: { id: "member-1", role: "user", projectId: "projectA" } });
     const response = await app.request("/api/v1/policies");
     const collection = await response.json() as { count: number; items: Array<{ id: string }> };
-    expect(collection.count).toBe(20);
+    expect(collection.count).toBe(21);
     expect(collection.items.map(item => item.id)).toContain("payment-data");
-    expect((await app.request("/api/v1/policies/local-contact-data")).status).toBe(200);
+    expect((await app.request("/api/v1/policies/local-contact-data")).status).toBe(404);
     const profiles = await (await app.request("/api/v1/guardrail-profiles")).json() as { items: Array<{ id: string }> };
     expect(profiles.items.map(item => item.id)).toEqual(["default", "full-feature", "sg-bank", "cn-financial-services", "cn-internet"]);
   });
@@ -95,15 +82,15 @@ describe("Policy catalog HTTP compatibility", () => {
     expect(listResponse.status).toBe(200);
     expect(collection.count).toBe(PolicyCatalog.load(config.policyCatalogDir).list().length);
     expect(collection.items).toHaveLength(collection.count);
-    expect(collection.items).toHaveLength(27);
+    expect(collection.items).toHaveLength(21);
     expect(collection.items.every(item => !("source" in item))).toBe(true);
     expect(collection.items.some((item) => ["mas-ai-risk-management", "singapore-financial-conduct"].includes(item.id))).toBe(false);
-    expect(collection.items.find((item) => item.id === "local-contact-data")?.test_count).toBeGreaterThan(0);
+    expect(collection.items.find((item) => item.id === "payment-data")?.test_count).toBeGreaterThan(0);
 
-    const detailResponse = await app.request("/api/v1/policies/local-contact-data");
+    const detailResponse = await app.request("/api/v1/policies/payment-data");
     const detail = await detailResponse.json() as { id: string; implementation: string; tags: Array<{ id: string }> };
     expect(detailResponse.status).toBe(200);
-    expect(detail).toMatchObject({ id: "local-contact-data", implementation: "rules" });
+    expect(detail).toMatchObject({ id: "payment-data", implementation: "rules" });
     expect(detail.tags).toEqual(expect.arrayContaining([expect.objectContaining({ id: "framework:owasp-llm-2025" })]));
   });
 
@@ -113,7 +100,7 @@ describe("Policy catalog HTTP compatibility", () => {
     expect(response.status).toBe(200);
     const data = await response.json() as { directories: unknown[]; items: Array<{ id: string; policies: unknown[]; policyBindings: Array<{ policyId: string; policyVersion: string }> }> };
     expect(data.directories).toHaveLength(8);
-    expect(data.items.map(profile => profile.id)).toEqual(defaultGuardrailProfiles.map(profile => profile.id));
+    expect(data.items.map(profile => profile.id)).toEqual(guardrailProfiles.map(profile => profile.id));
     expect(data.items.some(preset => preset.id === "restricted-general-topics")).toBe(false);
     for (const preset of data.items) {
       expect(preset.policyBindings).toHaveLength(preset.policies.length);
@@ -156,8 +143,8 @@ function appWithSession(session: { user: { id: string; role: string; projectId?:
     api: { getSession: vi.fn().mockResolvedValue(session) },
     handler: vi.fn(),
   } as unknown as ControllerAuth;
-  const policies = PolicyCatalog.load(activeConfig.policyCatalogDir, activeConfig.policyFallbackDir ?? undefined);
-  const profileSeeds = activeConfig.policyCatalogMode === "target" ? targetGuardrailProfiles : defaultGuardrailProfiles;
+  const policies = PolicyCatalog.load(activeConfig.policyCatalogDir);
+  const profileSeeds = guardrailProfiles;
   const service = {
     listGuardrailProfiles: vi.fn().mockResolvedValue(profileSeeds.map(profile => ({ ...profile, policyBindings: expandProtectionPreset(profile, policies.list()) }))),
     listPolicies: vi.fn().mockResolvedValue(policies.list()),

@@ -1,4 +1,4 @@
-import { defaultGuardrailProfiles } from "../../shared/guardrail-profiles.js";
+import { guardrailProfiles } from "../../shared/guardrail-profiles.js";
 // @vitest-environment node
 import { resolve } from "node:path";
 import { describe, expect, it, vi } from "vitest";
@@ -71,7 +71,7 @@ const platformRoutes = [
 function setup(role: string | null) {
   const getSession = vi.fn().mockResolvedValue(role === null ? null : { session: { id: "fixture-session", activeProjectId: "projectA" }, user: { id: "actor", role, projectId: "projectA" } });
   const unexpected = vi.fn(() => { throw new Error("Protected service was reached"); });
-  const service = new Proxy({}, { get: (_, key) => key === "listGuardrailProfiles" ? async () => defaultGuardrailProfiles : unexpected });
+  const service = new Proxy({}, { get: (_, key) => key === "listGuardrailProfiles" ? async () => guardrailProfiles : unexpected });
   const app = createHttpApp({ config,
     auth: { api: { getSession }, handler: vi.fn() } as unknown as ControllerAuth,
     service: service as ControlPlaneService, runnerControl: service as RunnerControlServer,
@@ -277,8 +277,7 @@ describe("Session freshness and read-only access", () => {
     expect(response.status).toBe(200);
     const body = await response.json();
     expect(body.items.map((item: { id: string }) => item.id)).toEqual([
-      "local-baseline", "full-feature-baseline", "banking-assistant",
-      "securities-assistant", "internet-customer-support",
+      "default", "full-feature", "sg-bank", "cn-financial-services", "cn-internet",
     ]);
     expect(unexpected).not.toHaveBeenCalled();
     expect((await setup(null).app.request("/api/v1/policy-catalog/protection-presets")).status).toBe(401);

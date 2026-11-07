@@ -44,16 +44,7 @@ const environmentSchema = z.object({
     }
   }, "Expected an HTTP(S) base URL without credentials, query, or fragment, or an empty value."),
   CONTROLLER_UI_DIST: z.string().default("dist"),
-  CONTROLLER_POLICY_CATALOG_MODE: z.enum(["legacy", "target"]).default("legacy"),
   CONTROLLER_POLICY_CATALOG_DIR: z
-    .string()
-    .min(1)
-    .default("../runner/toolkit/policy_library/assets"),
-  CONTROLLER_TARGET_POLICY_CATALOG_DIR: z
-    .string()
-    .min(1)
-    .default("../runner/toolkit/policy_library/assets_target"),
-  CONTROLLER_LEGACY_POLICY_CATALOG_DIR: z
     .string()
     .min(1)
     .default("../runner/toolkit/policy_library/assets"),
@@ -242,13 +233,7 @@ export function loadConfig(environment: NodeJS.ProcessEnv = process.env) {
     runtimeServiceUrl: parsed.CONTROLLER_RUNTIME_SERVICE_URL.replace(/\/$/, ""),
     runtimePublicUrl: parsed.CONTROLLER_RUNTIME_PUBLIC_URL.replace(/\/+$/, "") || null,
     uiDist: parsed.CONTROLLER_UI_DIST,
-    policyCatalogMode: parsed.CONTROLLER_POLICY_CATALOG_MODE,
-    policyCatalogDir: parsed.CONTROLLER_POLICY_CATALOG_MODE === "target"
-      ? parsed.CONTROLLER_TARGET_POLICY_CATALOG_DIR
-      : parsed.CONTROLLER_POLICY_CATALOG_DIR,
-    policyFallbackDir: parsed.CONTROLLER_POLICY_CATALOG_MODE === "target"
-      ? parsed.CONTROLLER_LEGACY_POLICY_CATALOG_DIR
-      : null,
+    policyCatalogDir: parsed.CONTROLLER_POLICY_CATALOG_DIR,
     protoPath: parsed.CONTROLLER_PROTO_PATH,
     migrationsPath: parsed.CONTROLLER_MIGRATIONS_PATH,
     runnerToken: parsed.CONTROLLER_RUNNER_TOKEN,

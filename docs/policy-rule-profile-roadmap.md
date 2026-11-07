@@ -287,7 +287,7 @@ Its Rules are redistributed:
 
 ### 4.2 Policy mapping
 
-| Source Policy | Target Policy |
+| Source Policy | Unified Policy |
 |---|---|
 | `block-code-execution` | Application Injection |
 | `builtin-automated-reasoning` | Answer Reliability |
@@ -450,7 +450,7 @@ Validate:
 
 ### Phase 4: Policy refactor
 
-- Create the 20 target Policies.
+- Create the unified Policy catalog (21 Policies).
 - Add Rule bindings and remove inline Rule ownership.
 - Reclassify protection topic/jurisdiction/framework.
 - Remove `business_rules`.

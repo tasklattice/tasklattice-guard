@@ -140,6 +140,75 @@
       ],
       "execution": "model",
       "outputStreaming": "complete_response"
+    },
+    "content-safety-model": {
+      "capability": "content_safety",
+      "rails": [
+        "input",
+        "output"
+      ],
+      "modelCapabilities": [
+        "content_safety"
+      ],
+      "requiredContext": [],
+      "execution": "model",
+      "outputStreaming": "incremental_check"
+    },
+    "pii-semantic": {
+      "capability": "pii",
+      "rails": [
+        "input",
+        "output"
+      ],
+      "modelCapabilities": [
+        "pii_semantic"
+      ],
+      "requiredContext": [],
+      "execution": "local_then_model",
+      "outputStreaming": "complete_response"
+    },
+    "business-topics": {
+      "capability": "topic_control",
+      "rails": [
+        "input"
+      ],
+      "modelCapabilities": [
+        "topic_control"
+      ],
+      "requiredContext": [
+        "allowed_topics"
+      ],
+      "execution": "model",
+      "outputStreaming": "not_applicable"
+    },
+    "answer-reliability": {
+      "capability": "contextual_grounding",
+      "rails": [
+        "output"
+      ],
+      "modelCapabilities": [
+        "contextual_grounding",
+        "automated_reasoning"
+      ],
+      "requiredContext": [
+        "query",
+        "grounding_source",
+        "reasoning_policy"
+      ],
+      "execution": "model",
+      "outputStreaming": "complete_response"
+    },
+    "prompt-instruction-attacks": {
+      "capability": "jailbreak",
+      "rails": [
+        "input"
+      ],
+      "modelCapabilities": [
+        "jailbreak"
+      ],
+      "requiredContext": [],
+      "execution": "local_then_model",
+      "outputStreaming": "not_applicable"
     }
   }
 }

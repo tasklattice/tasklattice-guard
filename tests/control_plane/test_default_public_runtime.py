@@ -16,10 +16,7 @@ from scripts.evaluate_default_public import build_default_plan, diagnostic_cases
 async def test_public_evaluator_current_default_transports_history():
     built = build_default_plan()
     plan = built["plan"]
-    assert len(plan["policy_bindings"]) == 12
-    assert not {"builtin-jailbreak", "builtin-content-safety"} & {
-        binding["policy_id"] for binding in plan["policy_bindings"]
-    }
+    assert len(plan["policy_bindings"]) == 17
     assert built["draft"]["safetyLevel"] == "balanced"
     assert built["draft"]["outputDelivery"] == "full_buffered"
     seen = []

@@ -54,7 +54,7 @@ describe.skipIf(!url)("Preconfigured Guardrail lifecycle", () => {
 
     const renamed = await service.updateGuardrail({ id, actorId: "user", name: "My local protections", expectedDraftRevision: initial.draftRevision,
       draftConfig: { ...initial.draftConfig, safetyLevel: "strict" } });
-    const custom = await service.createTestCase({ guardrailId: id, actorId: "user", name: "My safe input", phase: "input", policyId: "local-credentials",
+    const custom = await service.createTestCase({ guardrailId: id, actorId: "user", name: "My safe input", phase: "input", policyId: "credentials-secrets",
       content: "Hello there", expectedDecision: "allow", trustedInstruction: "", targetSource: "user_input", query: "", groundingSources: [], expectedReasoningResult: null });
     await service.protectionModes.update({ id, actorId: "user", mode: "monitor", expectedGeneration: 0, reason: "Review local protection" });
     const saved = await service.getGuardrail(id);

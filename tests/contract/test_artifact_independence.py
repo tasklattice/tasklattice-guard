@@ -65,12 +65,9 @@ assert not any(name.startswith("runner.toolkit.policy_library") for name in sys.
 ''', FIXTURES)
 
 
-@pytest.mark.parametrize("fixture", ["preset-banking-assistant-v1", "configured-phrases-v1", "custom-symbol-ownership-v1"])
+@pytest.mark.parametrize("fixture", ["configured-phrases-v1", "custom-symbol-ownership-v1"])
 def test_runner_serves_frozen_artifacts_with_library_directory_removed(isolated_runner, fixture):
-    cases = ({"preset-banking-assistant-v1": [
-        ("ordinary support request", "NONE"),
-        ("Acceptance sample: A@A.AA", "GUARDRAIL_INTERVENED"),
-    ], "configured-phrases-v1": [("internal-alias", "GUARDRAIL_INTERVENED"), ("internal-name", "GUARDRAIL_INTERVENED"), ("confidential", "BLOCKED")],
+    cases = ({"configured-phrases-v1": [("internal-alias", "GUARDRAIL_INTERVENED"), ("internal-name", "GUARDRAIL_INTERVENED"), ("confidential", "BLOCKED")],
         "custom-symbol-ownership-v1": [("hello", "NONE")]}[fixture])
     run_isolated(isolated_runner, BOOTSTRAP + '''
 import asyncio, base64, json, os

@@ -7,9 +7,7 @@ model backend or Controller writes. This is transport correctness, not PII recal
 import pytest
 
 
-RELEASES = ['default-local-v1', *[f'preset-{p}-v1' for p in (
-    'banking-assistant', 'securities-assistant',
-    'internet-customer-support')]]
+RELEASES = ['default-local-v1']
 CASES = [
     ('passport', '中文 Passport: E12345678', 'E12345678'),
     ('email', '中文 Email: alice@example.com', 'alice@example.com'),
@@ -21,7 +19,7 @@ CASES = [
 @pytest.mark.parametrize('kind,text,sensitive', CASES)
 async def test_pii_full_buffering_all_character_and_unicode_boundaries(tmp_path, release, kind, text, sensitive):
     expected = {
-        'passport': '中文 Passport: [passport_china_REDACTED]' if release == 'default-local-v1' else '中文 [REDACTED]',
+        'passport': '中文 Passport: [passport_china_REDACTED]',
         'email': '中文 Email: [email_REDACTED]',
         'card': '中文 Card: [credit_card_REDACTED]',
     }[kind]

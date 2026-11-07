@@ -18,7 +18,7 @@ export type ProtectionContracts = z.output<typeof protectionContractsSchema>;
 type PolicySurface = {
   id: string;
   rails: readonly string[];
-  rules: ReadonlyArray<{ id?: string; implementation: { binding_id: string; execution: string } }>;
+  rules: ReadonlyArray<{ id?: string; rails?: readonly string[]; implementation: { binding_id: string; execution: string } }>;
   tags: ReadonlyArray<{ namespace: string; value: string }>;
 };
 
@@ -29,8 +29,14 @@ export function policyProtection(policy: PolicySurface, contracts: ProtectionCon
     throw new Error(`Policy ${policy.id} must declare exactly one valid protection directory.`);
   }
   const native = contracts.nativePolicies[policy.id];
-  if (native && policy.rails.some((rail) => !(native.rails as string[]).includes(rail))) {
-    throw new Error(`Policy ${policy.id} declares a Rail outside its runtime contract.`);
+  if (native) {
+    // A composite Policy may add a Rail that only carries local Rules; the
+    // native contract still owns every model-backed direction.
+    const outside = policy.rails.filter((rail) => !(native.rails as string[]).includes(rail));
+    const localOnly = (inRail: string) => policy.rules.some(rule => (rule.rails ?? policy.rails).includes(inRail) && rule.implementation.execution === "local");
+    if (outside.some((rail) => !localOnly(rail))) {
+      throw new Error(`Policy ${policy.id} declares a Rail outside its runtime contract.`);
+    }
   }
   const unknownFlow = policy.rules.some((rule) => rule.implementation.execution !== "local") && !native;
   const execution = native?.execution ?? (unknownFlow ? "custom" : "local");
@@ -45,7 +51,7 @@ export function policyProtection(policy: PolicySurface, contracts: ProtectionCon
     limitations: [
       ...(execution === "local" ? ["Matches configured local patterns; it does not provide comprehensive semantic detection."] : []),
       ...(model ? ["Requires a compatible, validated runtime assignment; model callability alone is not validation."] : []),
-      ...(policy.id === "builtin-content-safety" ? ["Incremental checks cannot recall previously released text. Transforming actions require a complete response."] : []),
+      ...(policy.id === "content-safety-model" ? ["Incremental checks cannot recall previously released text. Transforming actions require a complete response."] : []),
       ...(declared[0] === "business_rules" ? ["Screens text against configured business rules; it does not establish regulatory compliance or authorize actions."] : []),
       ...(declared[0] === "application_injection" ? ["Content screening does not replace parameterized queries, output encoding, sandboxing or tool authorization."] : []),
     ],

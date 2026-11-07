@@ -9,7 +9,7 @@ const binding = (id: string): GuardrailPolicyBinding => ({
 
 describe("business protection composition", () => {
   it("combines regional Rule selections within one capability while retaining current settings and execution order", () => {
-    const current = { ...binding("local-government-identifiers"), enabled_rule_ids: ["au-abn", "au-medicare"],
+    const current = { ...binding("identity-documents"), enabled_rule_ids: ["au-abn", "au-medicare"],
       rule_order: ["au-medicare"], rule_actions: { "au-abn": "allow" as const }, enabled_rails: ["input"] as ["input"] };
     const regional = { ...binding(current.policy_id), enabled_rule_ids: ["sg-nric", "au-abn"], rule_order: ["sg-nric", "au-abn"] };
     const merged = mergePresetBindings([current], [regional]);
@@ -47,8 +47,8 @@ describe("business protection composition", () => {
   });
 
   it("derives full-response delivery from selected Output checks, not a two-ID allowlist", () => {
-    const policy = { id: "local-passports", version: "2", name: "Passports", protection: { outputStreaming: "complete_response" } } as Policy;
-    const classifier = { id: "builtin-content-safety", version: "2", name: "Content safety", protection: { outputStreaming: "incremental_check" } } as Policy;
+    const policy = { id: "identity-documents", version: "2", name: "Passports", protection: { outputStreaming: "complete_response" } } as Policy;
+    const classifier = { id: "content-safety-model", version: "2", name: "Content safety", protection: { outputStreaming: "incremental_check" } } as Policy;
     expect(completeResponsePolicies([binding(policy.id)], [policy])).toEqual(["Passports"]);
     expect(completeResponsePolicies([{ ...binding(policy.id), enabled_rails: ["input"] }], [policy])).toEqual([]);
     expect(completeResponsePolicies([binding(classifier.id)], [classifier])).toEqual([]);

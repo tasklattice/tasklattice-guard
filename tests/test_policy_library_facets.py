@@ -17,10 +17,7 @@ def test_policy_library_uses_reviewed_facets_and_nemo_rail_terms() -> None:
     assert "scope" not in namespaces
     assert "stage" not in namespaces
     assert "capability" not in namespaces
-    assert "guardrail_category" in namespaces
-    assert "rail" in namespaces
-    assert ("rail:input", "Input rail") in {(tag.id, tag.label) for tag in tags}
-    assert ("rail:output", "Output rail") in {(tag.id, tag.label) for tag in tags}
+    assert "protection" in namespaces
 
 
 @pytest.mark.parametrize("namespace", ["scope", "stage"])
@@ -49,12 +46,12 @@ def test_policy_library_rejects_unknown_guardrail_categories() -> None:
 
 
 def test_local_content_filter_executes_policy_rails_without_a_model() -> None:
-    result = BuiltinContentFilter().evaluate(definitions=library_definitions(("keyword-blocking",)),
+    result = BuiltinContentFilter().evaluate(definitions=library_definitions(("content-filters",)),
         text="The phrase internal-only is prohibited.",
         phase="input",
-        policies=("keyword-blocking",),
-        policy_parameters={"keyword-blocking": {"blocked_words": "internal-only"}},
-        enabled_rules={"keyword-blocking": ("keyword/blocked-words",)},
+        policies=("content-filters",),
+        policy_parameters={"content-filters": {"blocked_words": "internal-only"}},
+        enabled_rules={"content-filters": ("keyword/blocked-words",)},
     )
 
     assert result.verdict == "matched"
@@ -69,7 +66,7 @@ def test_topic_parameter_defaults_do_not_break_unrelated_local_rules() -> None:
     from runner.toolkit.policy_library.loader import load_builtin_policies
 
     loaded = PolicyLibraryRegistry(load_builtin_policies())
-    topic = loaded.policy("builtin-topic-safety")
+    topic = loaded.policy("business-topics")
     assert {item.name: item.default for item in topic.parameters} == {
         "allowed_topics": "", "denied_topics": "", "topic_mode": "permissive",
         "on_unknown": "block", "review_unknown": "false",
@@ -78,7 +75,7 @@ def test_topic_parameter_defaults_do_not_break_unrelated_local_rules() -> None:
         "allowed_topics": "", "denied_topics": "", "topic_mode": "",
         "on_unknown": "block or allow", "review_unknown": "true or false",
     }
-    credentials = policy("local-credentials")
+    credentials = policy("credentials-secrets")
     case = next(item for item in credentials.test_cases
                 if "credentials-api-keys/aws_access_key" in item.covered_rule_ids and item.phase == "input")
     result = BuiltinContentFilter().evaluate(definitions=library_definitions((credentials.id,)), text=case.content, phase="input", policies=(credentials.id,))

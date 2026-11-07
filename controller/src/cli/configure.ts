@@ -35,7 +35,8 @@ export const configurationHelp = `Non-interactive configuration (existing Contro
   guardctl project test-case --run-id ID --ordinal N [--trace-offset N]
   guardctl project test-cancel --run-id ID
   guardctl project provision --name NAME --patch FILE --state FILE
-    --emergency-reason TEXT [--profile local-baseline | --source GUARDRAIL_ID] [--adapter litellm-generic-guardrail]
+    --emergency-reason TEXT [--profile PROFILE_ID | --source GUARDRAIL_ID] [--adapter litellm-generic-guardrail]
+    Profile defaults to the platform default Profile.
     [--endpoint-id ID] [--router-id ID] [--replace-change-id ID] [--wait-seconds 300]
 
 Common: --url URL, --env-file FILE. Credentials come from environment only:
@@ -193,7 +194,7 @@ export async function bindModel(api: Api, flags: Flags, journal: Journal): Promi
 
 export async function provisionProject(api: Api, flags: Flags, patch: any, journal: Journal): Promise<any> {
   const name = required(flags, 'name'), reason = required(flags, 'emergency-reason');
-  const sourceId = flags.source ?? journal.data.request?.sourceId, profileId = sourceId ? undefined : flags.profile ?? 'local-baseline', adapter = flags.adapter ?? 'litellm-generic-guardrail';
+  const sourceId = flags.source ?? journal.data.request?.sourceId, profileId = sourceId ? undefined : flags.profile, adapter = flags.adapter ?? 'litellm-generic-guardrail';
   assert.ok(!(flags.source && flags.profile), 'Choose --profile or --source');
   assert.ok(['litellm-generic-guardrail', 'f5-scan'].includes(adapter), 'Unsupported Endpoint adapter');
   assert.ok(patch && typeof patch === 'object' && !Array.isArray(patch), 'Patch must be a JSON object');
@@ -203,8 +204,14 @@ export async function provisionProject(api: Api, flags: Flags, patch: any, journ
   const request = JSON.parse(JSON.stringify({ name, sourceId, profileId, adapter, patch, endpointId: flags['endpoint-id'], routerId: flags['router-id'] }));
   if (s.request) assert.deepEqual(s.request, request, 'State belongs to a different provision request');
   if (!s.request) {
-    const profile = profileId ? (await api('/api/v1/guardrail-profiles')).items.find((item: any) => item.id === profileId) : null;
-    if (profileId) assert.ok(profile?.availability?.available, profile?.availability?.reason ?? 'Profile is unavailable');
+    // Profiles are global, platform-seeded starting configurations. An explicit
+    // --profile wins; otherwise use the Profile the platform marks as default.
+    const profiles: any[] = sourceId ? [] : (await api('/api/v1/guardrail-profiles')).items;
+    const profile = sourceId ? null : profileId
+      ? profiles.find(item => item.id === profileId)
+      : profiles.find(item => item.isDefault);
+    if (!sourceId) assert.ok(profile, profileId ? `Profile ${profileId} is unavailable` : 'No default Profile is available; pass --profile');
+    if (profile) assert.ok(profile.availability?.available, profile.availability?.reason ?? 'Profile is unavailable');
     const source = sourceId ? await api(`/api/v1/guardrails/${id(sourceId)}`) : {
       id: null, draftRevision: 1, runtimeProfile: 'auto',
       draftConfig: { ...profile.draftSettings, policyBindings: profile.policyBindings, profileOrigin: { id: profile.id, version: profile.version } },

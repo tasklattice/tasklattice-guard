@@ -1,5 +1,5 @@
 import { readMigrationFiles } from "drizzle-orm/migrator";
-import { seedProfiles, syncTargetProfiles } from "./seed-profiles.js";
+import { seedProfiles, syncProfiles } from "./seed-profiles.js";
 import { sql } from "drizzle-orm";
 import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -29,12 +29,12 @@ export async function runMigrations(config: ControllerConfig, db: ControllerData
       if (Number(last?.created_at ?? 0) >= migration.folderMillis) continue;
       await scoped.transaction(async tx => {
         for (const statement of migration.sql) await tx.execute(sql.raw(statement));
-        if (migration.folderMillis === SCHEMA_BASELINE) await seedProfiles(tx, config.policyCatalogMode);
+        if (migration.folderMillis === SCHEMA_BASELINE) await seedProfiles(tx);
         await tx.execute(sql`INSERT INTO drizzle.__drizzle_migrations(hash,created_at) VALUES(${migration.hash},${migration.folderMillis})`);
       });
     }
   }, true);
-  if (config.policyCatalogMode === "target") await syncTargetProfiles(db);
+  await syncProfiles(db);
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {

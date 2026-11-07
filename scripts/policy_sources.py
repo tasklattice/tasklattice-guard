@@ -33,84 +33,60 @@ def source_path(relative: str) -> Path:
     return path
 
 
-def collections() -> list[dict]:
-    manifest = parse_yaml((SOURCE / "catalog.yaml").read_text())
-    if manifest.get("schema_version") != 1:
-        raise ValueError("Catalog requires directory packages (schema_version: 1)")
-    items = manifest["collections"]
-    assets = [item["asset"] for item in items]
-    if len(assets) != len(set(assets)) or assets[-1:] != ["custom_policies.json"]:
-        raise ValueError("Catalog assets must be unique, with custom_policies.json last")
-    return items
+def library_paths() -> list[Path]:
+    paths = sorted(path.parent for path in (SOURCE / "library").glob("*/policy.yaml"))
+    if not paths:
+        raise ValueError("The Policy catalog has no packages")
+    return paths
 
 
-def package_paths() -> list[tuple[str, Path]]:
-    result = []
-    for collection in collections():
-        asset = collection["asset"]
-        if Path(asset).name != asset or not asset.endswith(".json"):
-            raise ValueError("Invalid catalog asset name")
-        paths = [source_path(relative) for relative in collection["policies"]]
-        if asset == "custom_policies.json":
-            paths = sorted(path.parent for path in (SOURCE / "custom").glob("*/policy.yaml"))
-        result.extend((asset, path) for path in paths)
-    declared = {path.resolve() for _, path in result}
-    if len(declared) != len(result):
-        raise ValueError("Duplicate Policy package path")
-    discovered = {path.parent.resolve() for directory in ("builtin",)
-                  for path in (SOURCE / directory).rglob("policy.yaml")}
-    listed_builtin = {path.resolve() for asset, path in result if asset != "custom_policies.json"}
-    if discovered != listed_builtin:
-        raise ValueError("Built-in packages and catalog metadata differ")
-    return result
+def package_paths() -> list[Path]:
+    """Bundled and imported Policy packages compiled into the one catalog."""
+    return library_paths() + sorted(path.parent for path in (SOURCE / "custom").glob("*/policy.yaml"))
 
 
 def build() -> dict[Path, str]:
     detectors = registry()
     rule_registry = RuleRegistry.load(SOURCE / "rules")
-    compiled = {item["asset"]: [] for item in collections()}
-    identities = set()
-    current_ids = set()
-    definitions = {}
-    for asset, path in package_paths():
+    compiled: list[dict] = []
+    definitions: dict[str, dict] = {}
+    identities: set[tuple[str, str]] = set()
+    for path in package_paths():
         package = load_package(path, rule_registry)
         definition = package.definition
-        custom = asset == "custom_policies.json"
-        if (definition.metadata.source == "custom") != custom:
+        source = "custom" if path.resolve().is_relative_to((SOURCE / "custom").resolve()) else "built_in"
+        if definition.metadata.source != source:
             raise ValueError(f"Package {path} has an invalid origin")
-        if custom and definition.metadata.id in current_ids:
-            raise ValueError("Custom Policies cannot replace bundled Policy IDs")
+        item_source = source
         identity = (definition.metadata.id, definition.metadata.version)
         if identity in identities:
             raise ValueError(f"Duplicate Policy identity {identity}")
         identities.add(identity)
-        if path.name != definition.metadata.id or definition.metadata.id in current_ids:
+        if path.name != definition.metadata.id:
             raise ValueError("Each Policy must have one directory named after its ID")
-        current_ids.add(definition.metadata.id)
-        compiled[asset].append(compile_policy(definition, detectors))
+        item = compile_policy(definition, detectors)
+        item["source"] = item_source
+        item["rails"] = sorted({rail for rule in item["rules"] for rail in rule["rails"]})
+        item["testing"] = package.manifest.testing.parameters
         authoring = definition.model_dump()
         authoring["metadata"].pop("source", None)
         authoring["metadata"].pop("compliance", None)
+        for rule in authoring["rules"]:
+            rule.pop("runtime_adapter", None)
         for test in authoring["tests"]:
             if test["context"] is None:
                 test.pop("context")
         if package.manifest.testing.parameters:
             authoring["testing"] = {"parameters": package.manifest.testing.parameters}
-        for rule in authoring["rules"]:
-            rule.pop("runtime_adapter", None)
-            # Export each Topic Rule with its explicit detector parameters.
-            if definition.metadata.id == "builtin-topic-safety":
-                params = rule["detector"]["parameters"]
-                if rule["id"] == "topic/denylist":
-                    params.update(topic_mode="permissive", restricted_topics="{{denied_topics}}", allowed_topics="")
-                elif rule["id"] == "topic/allowlist":
-                    params.update(topic_mode="{{topic_mode}}", allowed_topics="{{allowed_topics}}", restricted_topics="")
+        item["definition"] = authoring
+        compiled.append(item)
         definitions[definition.metadata.id] = authoring
-    output = {ASSETS / name: json.dumps(items, ensure_ascii=False, indent=2) + "\n" for name, items in compiled.items()}
-    output[ASSETS / "detectors.generated.json"] = json.dumps(detectors, ensure_ascii=False, indent=2) + "\n"
-    output[ASSETS / "policy-definitions.generated.json"] = json.dumps(definitions, ensure_ascii=False, indent=2) + "\n"
+    output = {
+        ASSETS / "policies.json": json.dumps(compiled, ensure_ascii=False, indent=2) + "\n",
+        ASSETS / "detectors.generated.json": json.dumps(detectors, ensure_ascii=False, indent=2) + "\n",
+        ASSETS / "policy-definitions.generated.json": json.dumps(definitions, ensure_ascii=False, indent=2) + "\n",
+    }
     schemas = {"policy": PolicyManifest.model_json_schema(), "rule": RuleDefinition.model_json_schema(), "tests": TypeAdapter(list[TestDefinition]).json_schema()}
-    # The package loader resolves declared resources before validating cases.
     for field in ("content", "expected_text"):
         prop = schemas["tests"]["$defs"]["TestDefinition"]["properties"][field]
         schemas["tests"]["$defs"]["TestDefinition"]["properties"][field] = {"anyOf": [prop, {"type": "object", "properties": {"$ref": {"type": "string"}}, "required": ["$ref"], "additionalProperties": False}]}
@@ -153,7 +129,7 @@ def write_outputs(output: dict[Path, str]) -> None:
 def validate_import(package: PolicyPackage) -> None:
     if package.definition.metadata.source != "custom":
         raise ValueError("Import/export accepts custom Policies only")
-    bundled_ids = {load_package(path).definition.metadata.id for asset, path in package_paths() if asset != "custom_policies.json"}
+    bundled_ids = {load_package(path).definition.metadata.id for path in library_paths()}
     if package.definition.metadata.id in bundled_ids:
         raise ValueError("Custom Policies cannot claim a bundled Policy ID")
     compile_policy(package.definition, registry())
@@ -223,7 +199,7 @@ def main() -> None:
         return
     if args.command == "test" and args.all:
         from runner.toolkit.policy_library.regression import run_packages
-        packages = [load_package(path) for _, path in package_paths()]
+        packages = [load_package(path) for path in package_paths()]
         report = asyncio.run(run_packages(packages, registry(), ASSETS))
     else:
         if args.package is None:

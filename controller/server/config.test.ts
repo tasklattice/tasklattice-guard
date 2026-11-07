@@ -11,11 +11,9 @@ const requiredEnvironment = {
 };
 
 describe("Controller config", () => {
-  it("selects the target Policy catalog only in target mode", () => {
-    expect(loadConfig(requiredEnvironment).policyCatalogMode).toBe("legacy");
-    const target = loadConfig({ ...requiredEnvironment, CONTROLLER_POLICY_CATALOG_MODE: "target" });
-    expect(target.policyCatalogMode).toBe("target");
-    expect(target.policyCatalogDir).toContain("assets_target");
+  it("loads the target Policy catalog, with an explicit directory override", () => {
+    expect(loadConfig(requiredEnvironment).policyCatalogDir).toContain("assets");
+    expect(loadConfig({ ...requiredEnvironment, CONTROLLER_POLICY_CATALOG_DIR: "/catalog" }).policyCatalogDir).toBe("/catalog");
   });
   it("bounds Endpoint provenance rows and logical payload independently of database disk quotas", () => {
     expect(loadConfig(requiredEnvironment).endpointContextStorage).toEqual({ maxRowsPerPool: 256, maxRowsGlobal: 2048,
@@ -172,7 +170,7 @@ describe("Controller config", () => {
     }).policyCatalogDir).toBe("/var/lib/tasklattice/policies");
   });
 
-  it("uses the Runner toolkit assets for local development by default", () => {
+  it("uses the compiled catalog for local development by default", () => {
     expect(loadConfig(requiredEnvironment).policyCatalogDir).toBe("../runner/toolkit/policy_library/assets");
   });
 

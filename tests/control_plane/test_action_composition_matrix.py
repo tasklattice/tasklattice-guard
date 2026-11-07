@@ -32,7 +32,7 @@ def composition_plans():
       import { buildGuardrailPlan } from './server/domain/guardrail-plan.ts';
       const sequences = JSON.parse(process.argv[1]);
       const compiler = new DeclarativeCompiler('../runner/toolkit/policy_library/assets');
-      const template = compiler.shipped('keyword-blocking');
+      const template = compiler.shipped('content-filters');
       const words = ['alpha', 'beta', 'gamma'];
       const entries = [];
       for (const actions of sequences) for (const layout of ['same-policy', 'cross-policy']) {

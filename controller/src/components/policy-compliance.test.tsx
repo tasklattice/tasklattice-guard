@@ -7,7 +7,7 @@ import { PolicyCompliancePanel } from "./policy-compliance";
 const locale = vi.hoisted(() => ({ language: "en" }));
 vi.mock("react-i18next", () => ({ useTranslation: () => ({ t: (key: string) => key, i18n: locale }) }));
 afterEach(() => { cleanup(); locale.language = "en"; });
-const policy = PolicyCatalog.load(resolve("../runner/toolkit/policy_library/assets")).get("local-government-identifiers")!;
+const policy = PolicyCatalog.load(resolve("../runner/toolkit/policy_library/assets")).get("application-injection")!;
 
 it("renders version-bound provenance, blue external references, Rules, limits and review evidence", () => {
   render(<PolicyCompliancePanel policy={policy} />);
@@ -15,7 +15,7 @@ it("renders version-bound provenance, blue external references, Rules, limits an
   expect(screen.getByText("policyLibrary.compliance.referenceNotice")).toBeTruthy();
   expect(screen.getByText("policyLibrary.compliance.reviewed")).toBeTruthy();
   expect(screen.getByText("TaskLattice Engineering")).toBeTruthy();
-  expect(screen.getAllByText("TFN (Australian Tax File Number)").length).toBeGreaterThan(0);
+  expect(screen.getAllByText(policy.rules[0]!.name).length).toBeGreaterThan(0);
   for (const reference of policy.compliance!.references) {
     const link = screen.getByRole("link", { name: new RegExp(reference.title.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")) });
     expect(link.getAttribute("href")).toBe(reference.url);

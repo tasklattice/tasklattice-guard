@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { enforcementActions } from "./enforcement-action.generated.js";
 
-export const PHRASE_POLICY_ID = "configured-phrase-filter";
+export const PHRASE_POLICY_ID = "content-filters";
 export const PHRASE_RULE_ID = "configured/phrases";
 export const PHRASE_PARAMETER = "phrase_entries";
 

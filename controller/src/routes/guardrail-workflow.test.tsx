@@ -29,7 +29,7 @@ vi.mock("@/components/dashboard/runtime-metric-chart", () => ({ RuntimeMetricCha
 vi.mock("@/routes/create-guardrail-wizard", () => ({ CreateGuardrailWizard: () => null }));
 vi.mock("@/routes/routers", () => ({ TrafficScopeBadges: () => null }));
 
-const policy = PolicyCatalog.load(resolve("../runner/toolkit/policy_library/assets")).list().find(item => item.id === "local-credentials")!;
+const policy = PolicyCatalog.load(resolve("../runner/toolkit/policy_library/assets")).list().find(item => item.id === "credentials-secrets")!;
 const draft: api.Guardrail = {
   id: "guardrail-workflow", name: "Workflow Guardrail", draft_revision: 2, allowed_topics: [], restricted_topics: [],
   policy_bindings: [defaultPolicyBinding(policy)], safety_level: "balanced", output_delivery: "full_buffered",

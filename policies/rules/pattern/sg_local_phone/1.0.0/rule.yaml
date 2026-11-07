@@ -1,0 +1,22 @@
+id: pattern/sg_local_phone
+version: 1.0.0
+name: Local Phone Number (Singapore)
+description: Detects a standalone Singapore 8-digit number without a country prefix.
+stages:
+- input
+- output
+detector:
+  ref: text/regex
+  version: 1.0.0
+  parameters:
+    expression: (?<![\d+])(?<!\d )[689]\d{3}\s?\d{4}(?!\d)
+on_match:
+  action: transform
+  replacement: '[sg_phone_REDACTED]'
+risk_level: medium
+metadata:
+  taxonomy_ids:
+  - TALI-PRIVACY-PII
+runtime_adapter:
+  binding_id: local-contact-data
+  implementation_rule_id: pattern/sg_local_phone

@@ -11,8 +11,8 @@ import { artifactExecutionContractIssue } from "../domain/artifact-execution-con
 import { writeRuntimeEvent } from "./runtime-event-write.js";
 import { issueEndpointTelemetryContexts, lockEndpointTelemetryContextReaders, pruneEndpointTelemetryContexts as pruneEndpointContexts } from "./endpoint-telemetry-contexts.js";
 import { ProjectAdmissionMonitor } from "./admission-monitor.js";
-import { localBaseline } from "../../shared/local-baseline.js";
-import { exportTargetProfilePackage, importTargetProfilePackage } from "../domain/target-profile-package.js";
+import { platformDefaultDraft, platformDefaultProfile } from "../domain/platform-default.js";
+import { exportProfilePackage, importProfilePackage } from "../domain/profile-package.js";
 import bundledDefault from "../domain/default-baseline.json" with { type: "json" };
 import { querySecurityEvents } from "./security-events.js";
 import type { SecurityEventsQuery } from "../../shared/security-events.js";
@@ -156,7 +156,7 @@ type RunnerRegistration = {
   appliedGeneration: number;
 };
 
-const TARGET_PROFILE_IDS = new Set(["default", "full-feature", "sg-bank", "cn-financial-services", "cn-internet"]);
+const SEEDED_PROFILE_IDS = new Set(["default", "full-feature", "sg-bank", "cn-financial-services", "cn-internet"]);
 
 export class ControlPlaneService {
   readonly users: UserDirectory;
@@ -305,24 +305,22 @@ export class ControlPlaneService {
   async listGuardrailProfiles() {
     const profiles = await readGuardrailProfiles(this.db);
     const policies = await this.listPolicies();
-    const selectable = this.config.policyCatalogMode === "target"
-      ? profiles.filter(profile => TARGET_PROFILE_IDS.has(profile.id) || profile.category === "imported")
-      : profiles;
+    const selectable = profiles.filter(profile => SEEDED_PROFILE_IDS.has(profile.id) || profile.category === "imported");
     return selectable.map(profile => previewProtectionProfile(profile, policies));
   }
 
   async exportGuardrailProfilePackage(id: string) {
     const profile = (await readGuardrailProfiles(this.db)).find(item => item.id === id);
     if (!profile) throw new NotFoundError("Guardrail Profile", id);
-    return exportTargetProfilePackage(profile, this.policyCatalog().list());
+    return exportProfilePackage(profile, this.policyCatalog().list());
   }
 
   async verifyGuardrailProfilePackage(value: unknown) {
-    return importTargetProfilePackage(value, this.policyCatalog().list());
+    return importProfilePackage(value, this.policyCatalog().list());
   }
 
   async importGuardrailProfilePackage(value: unknown, actorId: string, replace = false) {
-    const profile = importTargetProfilePackage(value, this.policyCatalog().list());
+    const profile = importProfilePackage(value, this.policyCatalog().list());
     const existing = await this.db.select().from(guardrailProfiles).where(eq(guardrailProfiles.id, profile.id));
     if (existing.length && !replace) throw new ConflictError("A Guardrail Profile with this ID already exists.", "guardrail_profile_exists");
     const nextRows = await this.db.select({ next: sql`coalesce(max(${guardrailProfiles.sortOrder}), -1) + 1` }).from(guardrailProfiles);
@@ -2749,7 +2747,7 @@ export class ControlPlaneService {
   }
 
   private policyCatalog(): PolicyCatalog {
-    this.catalog ??= PolicyCatalog.load(this.config.policyCatalogDir, this.config.policyFallbackDir ?? undefined);
+    this.catalog ??= PolicyCatalog.load(this.config.policyCatalogDir);
     return this.catalog;
   }
 
@@ -2758,7 +2756,7 @@ export class ControlPlaneService {
     const [installed] = await tx.select().from(defaultGuardrailProvisioning).where(eq(defaultGuardrailProvisioning.scopeKey, scopeKey));
     if (installed) return;
     const catalog = this.policyCatalog().list();
-    const draft = profileDraft(localBaseline, catalog);
+    const draft = platformDefaultDraft(catalog);
     const guardrail = await this.createGuardrailIn(tx, { platformPreset: !projectId, name: "Default", draftConfig: draft, runtimeProfile: "auto", actorId: null });
     // The deployment carries precompiled content. Rebind its ordinary identity,
     // verify the same frozen plan and use the common publication transaction.
@@ -2773,7 +2771,7 @@ export class ControlPlaneService {
       sourceDraftRevision: guardrail.draftRevision, candidateArtifact: content, candidateDigest: artifactContentDigest(content),
       candidateInspection: guardrailInspection({ name: guardrail.name, runtimeProfile: guardrail.runtimeProfile, draftConfig: draft, catalog, programmablePolicies: [], testSuite: suite }),
       candidatePolicies: guardrailPolicyNodes(draft.policyBindings, catalog, []), testSuite: suite }, null);
-    await tx.insert(defaultGuardrailProvisioning).values({ scopeKey, guardrailId: guardrail.id, profileId: localBaseline.id, profileVersion: localBaseline.version });
+    await tx.insert(defaultGuardrailProvisioning).values({ scopeKey, guardrailId: guardrail.id, profileId: platformDefaultProfile.id, profileVersion: platformDefaultProfile.version });
   }
 
   private async validateGuardrailDraft(draft: GuardrailDraftConfig, db: Pick<ControllerDatabase, "select"> = this.db, previous?: GuardrailDraftConfig) {

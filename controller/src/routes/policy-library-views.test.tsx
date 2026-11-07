@@ -26,7 +26,6 @@ const local = definition("policy-local", "3", "Local marker", { origin: "local",
 const imported = definition("policy-studio", "1", "Studio marker", { origin: "imported", source_id: "bank-uat" });
 
 function mount(items = [local, imported]) {
-  vi.spyOn(api, "getGuardrailProfiles").mockResolvedValue({ items: [], count: 0 });
   vi.spyOn(api, "getPolicies").mockResolvedValue({ items, count: items.length });
   render(<QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}><PolicyLibraryPage /></QueryClientProvider>);
 }

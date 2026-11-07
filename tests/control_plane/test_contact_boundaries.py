@@ -6,8 +6,8 @@ from runner.toolkit.nemo.actions.content_filter import BuiltinContentFilter
 from runner.toolkit.policy_library import policy
 
 
-CONTACT = "local-contact-data"
-NETWORK = "local-network-addresses"
+CONTACT = "contact-data"
+NETWORK = "network-identifiers"
 
 
 def evaluate(text, phase="input", definitions=None, enabled=None):
@@ -64,7 +64,7 @@ def test_pii_profile_excludes_generic_urls_without_exempting_email_or_ip(phase):
 
 @pytest.mark.parametrize("phase", ["input", "output"])
 def test_pii_profile_keeps_credential_blocking_in_urls(phase):
-    definitions = {"local-credentials": policy("local-credentials"), NETWORK: policy(NETWORK)}
+    definitions = {"credentials-secrets": policy("credentials-secrets"), NETWORK: policy(NETWORK)}
     result = evaluate("postgresql://reader:fixture-secret-47@database.example/db", phase,
                       definitions, {NETWORK: ("pattern/ipv4", "pattern/ipv6")})
     assert result.verdict == "matched"
