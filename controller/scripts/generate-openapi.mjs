@@ -215,6 +215,9 @@ try {
         operation.responses[status]=response;
       }
     }
+    if (!Object.keys(operation.responses).some(code=>Number(code)<400) && route.nodes.some(n=>ast.isCallExpression(n)&&n.expression.getText()==='stream')) {
+      operation.responses[200]={description:'Streaming JSON export.',content:{'application/json':{schema:{type:'object'}}}};
+    }
     assert(Object.keys(operation.responses).some(code=>Number(code)<400),`No success response: ${id}`);
     for(const status of [400,404,409,422,500,503,...(authenticated?[401,403]:[]),...(sessionOnly?[415]:[])])
       operation.responses[status]??={description:statusDescription[status],content:{'application/json':{schema:ref('Error')}}};

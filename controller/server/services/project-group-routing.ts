@@ -2,7 +2,7 @@ import { projectPoolAllocation } from "./runner-allocation.js";
 import { asc, eq } from "drizzle-orm";
 import type { ControllerConfig } from "../config.js";
 import type { ControllerDatabase } from "../db/client.js";
-import { guardrails, policyRecords, policyResources, runnerPools, projects } from "../db/schema.js";
+import { guardrails, policyRecords, policyResources, policyResourceValidations, runnerPools, projects } from "../db/schema.js";
 import { ControllerError } from "../domain/errors.js";
 
 /** Resolves allocation from trusted persisted project/pool membership, never request headers. */
@@ -26,6 +26,11 @@ export class ProjectGroupRouting {
   }
 
   async poolsForValidation(kind: string, resourceId: string): Promise<string[]> {
+    if (kind === "policy.validation_requested" && resourceId.startsWith("policy-job-")) {
+      const [job] = await this.db.select({ projectId: policyResourceValidations.projectId }).from(policyResourceValidations).where(eq(policyResourceValidations.id, resourceId));
+      if (job?.projectId) return (await this.poolsForProject(job.projectId)).map(pool => pool.id);
+      return [];
+    }
     let [resource] = kind === "guardrail.validation_requested"
       ? await this.db.select({ projectId: guardrails.projectId }).from(guardrails).where(eq(guardrails.id, resourceId)).limit(1)
       : kind === "policy.validation_requested"

@@ -33,6 +33,8 @@ import { logger } from "hono/logger";
 import { secureHeaders } from "hono/secure-headers";
 import { bodyLimit } from "hono/body-limit";
 import { compress } from "hono/compress";
+import { stream } from "hono/streaming";
+import type { PolicyTestReadiness } from "../../shared/policy-version-test.js";
 import { z } from "zod";
 import { policyDefinitionSchema } from "../../shared/policy-definition.js";
 import { publicPolicy } from "../policy-catalog/public-policy.js";
@@ -636,6 +638,60 @@ export function createHttpApp(input: {
   });
 
   app.get("/api/v1/policy-catalog/detectors", authenticated, context => context.json({ items: input.service.policyResources.compiler.detectors }));
+  const policyTestReadiness = async (id: string, version: string, projectId: string) => {
+    const blockers: PolicyTestReadiness["blockers"] = [];
+    let prepared: Awaited<ReturnType<ControlPlaneService["preparePolicyVersionTest"]>> | null = null;
+    try { prepared = await input.service.preparePolicyVersionTest(id, version); }
+    catch (error) {
+      if (!(error instanceof ValidationError)) throw error;
+      blockers.push({ code: "test_configuration", message: error.message });
+    }
+    const pools = input.service.groupRouting ? await input.service.groupRouting.poolsForProject(projectId) : [{ id: "default" }];
+    const pool = pools.find(pool => input.runnerControl.hasCompilerForPools ? input.runnerControl.hasCompilerForPools([pool.id]) : input.runnerControl.hasDefaultCompiler()) ?? pools[0];
+    if (!pool || !(await hasProjectCompiler(projectId))) blockers.push({ code: "runner_unavailable", message: "No healthy testing Runner is available in this project's runtime group." });
+    const configuration = pool && input.models ? await input.models.configurationForPool(pool.id, false) : null;
+    const environment: PolicyTestReadiness["environment"] = pool ? { poolId: pool.id, modelRevisionId: configuration?.revisionId ?? "", models: [] } : null;
+    for (const binding of prepared?.requiredBindings ?? []) {
+      const modelId = configuration?.assignments.bindings[binding];
+      const model = configuration?.models.find(item => item.id === modelId);
+      if (!model) blockers.push({ code: "protection_missing", binding, message: `No active model is configured for ${binding}.` });
+      else environment?.models.push({ binding, model: model.model, provider: model.providerName, profile: model.profile, lowerThreshold: model.lowerThreshold ?? 0.1, upperThreshold: model.upperThreshold ?? 0.9 });
+    }
+    return { prepared, readiness: { ready: blockers.length === 0, blockers, total: prepared?.tests.length ?? 0, environment } satisfies PolicyTestReadiness };
+  };
+  app.get("/api/v1/policies/:id/versions/:version/test-readiness", authenticated, async context => {
+    const result = await policyTestReadiness(context.req.param("id"), context.req.param("version"), requireProjectId(context.get("actor").projectId));
+    return context.json(result.readiness);
+  });
+  app.post("/api/v1/policies/:id/versions/:version/test-runs", authenticated, async context => {
+    const result = await policyTestReadiness(context.req.param("id"), context.req.param("version"), requireProjectId(context.get("actor").projectId));
+    if (!result.readiness.ready || !result.prepared || !result.readiness.environment) throw new ConflictError(result.readiness.blockers.map(item => item.message).join("\n"), "policy_test_not_ready", { blockers: result.readiness.blockers });
+    return context.json(await input.service.policyResources.validateVersion(result.prepared, result.readiness.environment, context.get("actor").id), 202);
+  });
+  app.get("/api/v1/policies/:id/versions/:version/test-runs/:runId", authenticated, async context => {
+    await input.service.getPolicy(context.req.param("id"));
+    const runId = context.req.param("runId");
+    const report = await input.service.policyResources.versionReport(context.req.param("id"), context.req.param("version"), runId === "latest" ? undefined : runId);
+    if (!report && runId !== "latest") throw new NotFoundError("Policy test run", runId);
+    return context.json(report);
+  });
+  app.get("/api/v1/policies/:id/versions/:version/test-runs/:runId/evidence", authenticated, async context => {
+    await input.service.authorizeReportRead(context.req.param("runId"));
+    const report = await input.service.policyResources.versionReport(context.req.param("id"), context.req.param("version"), context.req.param("runId"));
+    if (!report) throw new NotFoundError("Policy test run", context.req.param("runId"));
+    if (["queued", "running"].includes(report.status)) throw new ConflictError("Wait for this Policy test to finish before exporting its evidence.", "report_pending");
+    context.header("Content-Type", "application/json");
+    context.header("Content-Disposition", `attachment; filename="${report.id}-evidence.json"`);
+    return stream(context, async output => {
+      await output.write(`{"schema":"tasklattice.policy-test-evidence.v1","report":${JSON.stringify(report)},"cases":[`);
+      let first = true;
+      for await (const item of input.service.reportResults.exportCases(report.id)) {
+        if (output.aborted) return;
+        await output.write((first ? "" : ",") + JSON.stringify(item)); first = false;
+      }
+      await output.write("]}");
+    });
+  });
   app.get("/api/v1/policies/:id/definition", authenticated, async context => context.json(await input.service.policyResources.get(context.req.param("id"))));
   app.put("/api/v1/policies/:id/definition", authenticated, async context => {
     const body = z.object({ definition: policyDefinitionSchema, maintainer: z.string().trim().min(1).max(200), expectedRevision: z.number().int().nonnegative(), create: z.boolean().optional() }).parse(await context.req.json());
@@ -1021,6 +1077,10 @@ export function createHttpApp(input: {
   app.get("/api/v1/test-runs/:runId/cases/:ordinal", authenticated, compress(), async context => {
     await input.service.authorizeReportRead(context.req.param("runId"));
     return context.json(await input.service.reportResults.detail(context.req.param("runId"), Number(context.req.param("ordinal")), Number(context.req.query("traceOffset") ?? 0)));
+  });
+  app.get("/api/v1/test-runs/:runId/cases/:ordinal/evidence", authenticated, compress(), async context => {
+    await input.service.authorizeReportRead(context.req.param("runId"));
+    return context.json(await input.service.reportResults.detail(context.req.param("runId"), Number(context.req.param("ordinal")), 0, true));
   });
   app.post("/api/v1/test-runs/:runId/cancel", authenticated, async context => {
     return context.json(await input.service.cancelValidation({ runId: context.req.param("runId"), actorId: context.get("actor").id }), 202);

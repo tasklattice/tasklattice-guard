@@ -3,6 +3,11 @@ import type { AccessAction, PermissionResource } from "../../shared/rbac.js";
 
 // Shared route allowlist for session RBAC and token scopes. Unclassified APIs deny access.
 export const tokenRoutePermissions: ReadonlyArray<readonly [string, string, TokenModule, "read" | "write"]> = [
+  ["GET", "/api/v1/policies/:id/versions/:version/test-readiness", "policies", "read"],
+  ["POST", "/api/v1/policies/:id/versions/:version/test-runs", "policies", "write"],
+  ["GET", "/api/v1/policies/:id/versions/:version/test-runs/:runId", "policies", "read"],
+  ["GET", "/api/v1/policies/:id/versions/:version/test-runs/:runId/evidence", "policies", "read"],
+  ["GET", "/api/v1/test-runs/:runId/cases/:ordinal/evidence", "guardrails", "read"],
   ["GET", "/api/v1/projects", "projects", "read"],
   ["POST", "/api/v1/projects", "projects", "write"],
   ["GET", "/api/v1/projects/:projectId/members", "projects", "read"],

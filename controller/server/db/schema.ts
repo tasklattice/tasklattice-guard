@@ -84,12 +84,15 @@ export const policyResourceVersions = pgTable("policy_resource_version", {
   digest: text("digest").notNull(), createdAt,
 }, t => [primaryKey({ columns: [t.policyId, t.version] }), uniqueIndex("policy_resource_published_revision_idx").on(t.policyId, t.revision)]);
 export const policyResourceValidations = pgTable("policy_resource_validation", {
-  id: text("id").primaryKey(), policyId: text("policy_id").notNull().references(() => policyResources.id),
+  id: text("id").primaryKey(), policyId: text("policy_id").notNull(),
+  projectId: text("project_id").references(() => projects.id),
+  version: text("version"),
+  snapshot: jsonb("snapshot").$type<import("../../shared/policy-version-test.js").PolicyVersionTestSnapshot>(),
   parentId: text("parent_id"), revision: integer("revision").notNull(),
   status: text("status").notNull(),
   tests: jsonb("tests").$type<import("../../shared/policy-definition.js").DefinitionTest[]>().notNull(),
   failureReason: text("failure_reason"), createdAt,
-}, t => [index("policy_resource_validation_parent_idx").on(t.parentId), index("policy_resource_validation_policy_idx").on(t.policyId, t.createdAt)]);
+}, t => [index("policy_resource_validation_parent_idx").on(t.parentId), index("policy_resource_validation_policy_idx").on(t.policyId, t.createdAt), index("policy_version_test_project_idx").on(t.projectId, t.policyId, t.version, t.createdAt.desc())]);
 
 // Better Auth owns these four models. Application code must not create,
 // validate, hash, or rotate human credentials itself.

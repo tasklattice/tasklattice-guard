@@ -1,8 +1,9 @@
-"""Full failed model exchanges, held per request for protected evidence storage.
+"""Model exchanges, held per request for protected evidence storage.
 
 Payloads never enter usage dataclasses, logs, spans or ordinary telemetry.
 Runtime evidence is encrypted; validation evidence uses protected reports.
-Healthy attempts/cancelled calls drop their transient HTTP buffers immediately.
+Runtime drops healthy attempts; validation explicitly retains them for evidence.
+Cancelled calls always drop their transient HTTP buffers.
 """
 from __future__ import annotations
 
@@ -16,6 +17,7 @@ from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 _SENSITIVE = frozenset({'authorization', 'proxyauthorization', 'cookie', 'setcookie', 'apikey', 'xapikey', 'password', 'secret', 'clientsecret', 'token', 'accesstoken', 'refreshtoken', 'credential', 'signature'})
 _CURRENT: ContextVar[list[dict] | None] = ContextVar('model_http_evidence_request', default=None)
+_INCLUDE_SUCCESS: ContextVar[bool] = ContextVar('model_http_evidence_include_success', default=False)
 _ACTIVE: ContextVar['CallEvidence | None'] = ContextVar('model_http_evidence_call', default=None)
 _EXTENSION = 'tasklattice.model_http_evidence'
 
@@ -74,10 +76,11 @@ class CallEvidence:
     def export(self, result, error_type):
         exchanges = []
         for raw in self.exchanges:
-            if result == 'success' and raw['response'] is not None and raw['response']['status'] < 400 and raw['response'].get('bodyComplete', True):
+            healthy = result == 'success' and raw['response'] is not None and raw['response']['status'] < 400 and raw['response'].get('bodyComplete', True)
+            if healthy and not _INCLUDE_SUCCESS.get():
                 continue
             item = {'modelCallId': self.call_id, 'provider': self.provider, 'model': self.model,
-                    'result': 'recovered_failure' if result == 'success' else result, 'errorType': error_type, 'response': None}
+                    'result': 'success' if healthy else 'recovered_failure' if result == 'success' else result, 'errorType': error_type, 'response': None}
             for side in ('request', 'response'):
                 if raw[side] is None:
                     continue
@@ -96,12 +99,14 @@ class CallEvidence:
 
 
 @contextmanager
-def capture_model_http_evidence(*, enabled=True):
+def capture_model_http_evidence(*, enabled=True, include_success=False):
     token = _CURRENT.set([] if enabled else None)
+    scope = _INCLUDE_SUCCESS.set(include_success)
     try:
         yield
     finally:
         _CURRENT.reset(token)
+        _INCLUDE_SUCCESS.reset(scope)
 
 
 def begin_model_http_call(call_id, provider, model):
@@ -157,7 +162,7 @@ def attach_validation_http_evidence(decision):
     records = failed_model_http_evidence()
     return replace(decision, trace=(*decision.trace, *(RuntimeTraceStep(
         id=f'{record["modelCallId"]}:http-evidence:{index}', kind='model_http_evidence',
-        name='Model HTTP evidence', status='completed', detail='Full failed model exchange; authentication values redacted.',
+        name='Model HTTP evidence', status='completed', detail='Full model exchange; authentication values redacted.',
         model_call_id=record['modelCallId'], provider_name=record['provider'], model_name=record['model'],
         evidence=json.dumps(record, ensure_ascii=False),
     ) for index, record in enumerate(records))))

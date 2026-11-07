@@ -1001,11 +1001,18 @@ export class RunnerControlServer {
       let compiler: Connection | undefined;
       for (const candidate of events) {
         if (this.activeValidations.has(string(candidate.payload.runId))) continue;
+        if (typeof candidate.payload.testPoolId === "string") {
+          const currentRevision = (await this.runtimeModelsForPool(candidate.payload.testPoolId))?.revisionId ?? "";
+          if (currentRevision !== candidate.payload.testModelRevisionId) {
+            await this.service.rejectValidation({ runId: string(candidate.payload.runId), reason: "Protection configuration changed while this test was queued. Run the Policy test again." });
+            continue;
+          }
+        }
         const poolIds = this.service.groupRouting
           ? await this.service.groupRouting.poolsForValidation(candidate.kind, candidate.aggregateId)
           : ["default"];
         for (const connection of this.connections.values()) {
-          if (poolIds.includes(connection.poolId) && this.isTestingRunner(connection) && !busy.has(connection) &&
+          if (poolIds.includes(connection.poolId) && (!candidate.payload.testPoolId || candidate.payload.testPoolId === connection.poolId) && this.isTestingRunner(connection) && !busy.has(connection) &&
               connection.appliedModelRevisionId === ((await this.runtimeModelsForPool(connection.poolId))?.revisionId ?? "") &&
               await this.isCurrentConnection(connection)) {
             compiler = connection;

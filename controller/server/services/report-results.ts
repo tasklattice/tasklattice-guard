@@ -90,16 +90,24 @@ export class ReportResults {
         nextCursor: rows.length > page.length && last ? Buffer.from(JSON.stringify({ runId, filter: query.filter, priority: last.priority, ordinal: last.ordinal })).toString("base64url") : null };
     }));
   }
-  async detail(runId: string, ordinal: number, traceOffset = 0) {
+  async detail(runId: string, ordinal: number, traceOffset = 0, complete = false) {
     if (!Number.isSafeInteger(ordinal) || ordinal < 0 || !Number.isSafeInteger(traceOffset) || traceOffset < 0) throw new ValidationError("Invalid test case position.");
     return this.reads.run(REPORT_CASE_BYTES, () => reportDatabaseWork(this.db, "read", async tx => {
       if (!await this.ready(tx, runId)) throw new ConflictError("Report is still being saved.", "report_pending");
       const { rows: [row] } = await tx.execute<{ detail: ValidationCaseResult }>(sql`SELECT CASE WHEN c.detail_bytes <= ${REPORT_CASE_BYTES} THEN d.body || c.assessment ELSE NULL END AS detail FROM validation_report_case c JOIN validation_report_detail d ON d.id=c.detail_id WHERE run_id=${runId} AND ordinal=${ordinal}`);
       if (!row) throw new NotFoundError("Test Case Result", String(ordinal));
       if (!row.detail) throw new ControllerError("Test case exceeds the detail budget.", 413, "report_case_too_large");
-      const trace = row.detail.trace ?? [], end = Math.min(trace.length, traceOffset + 100);
+      const trace = row.detail.trace ?? [], end = complete ? trace.length : Math.min(trace.length, traceOffset + 100);
       return { ...row.detail, trace: trace.slice(traceOffset, end), traceCount: trace.length, nextTraceOffset: end < trace.length ? end : null };
     }));
+  }
+  async *exportCases(runId: string) {
+    let cursor: string | undefined;
+    do {
+      const page = await this.page(runId, { cursor });
+      for (const item of page.items) yield await this.detail(runId, item.ordinal, 0, true);
+      cursor = page.nextCursor ?? undefined;
+    } while (cursor);
   }
   /** Fence finalization against a replacement upload. The bridge lock is also
    * taken by stage(), so the identity cannot change before this commit. */

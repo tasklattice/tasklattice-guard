@@ -108,6 +108,7 @@ import { freezeTestSuite, testSuiteDigest } from "../domain/test-suite.js";
 import { builtInPolicyView, guardrailPolicyNodes } from "../domain/policy-node.js";
 import { applyValidationOverrides, emptyValidationMetrics, generatedTestCases, reconcileValidationOverrides } from "../domain/validation.js";
 import { PolicyCatalog, type PolicyDto } from "../policy-catalog/catalog.js";
+import { preparePolicyVersionTest } from "../domain/policy-version-test.js";
 import { customPolicyCompliance } from "../policy-catalog/compliance.js";
 import { registeredAction } from "../action-catalog/catalog.js";
 import type { ValidationTerminalState } from "../../shared/lifecycle.js";
@@ -399,6 +400,14 @@ export class ControlPlaneService {
     const versions = await this.db.select().from(policyVersions)
       .where(eq(policyVersions.policyId, id)).orderBy(desc(policyVersions.version));
     return programmablePolicyPayload(record, versions);
+  }
+
+  async preparePolicyVersionTest(id: string, version: string) {
+    const policy = await this.getPolicy(id);
+    const selected = [policy, ...policy.published_versions ?? []].find(item => item.version === version);
+    if (!selected) throw new NotFoundError("Policy version", `${id}@${version}`);
+    const native = "implementation_detail" in policy ? policy.implementation_detail.versions.find(item => String(item.version) === version) : undefined;
+    return preparePolicyVersionTest(selected as unknown as PolicyDto, native);
   }
 
   async createPolicy(input: {
@@ -1215,7 +1224,12 @@ export class ControlPlaneService {
   async authorizeReportRead(runId: string): Promise<void> {
     const [guardrailRun] = await this.db.select({ id: validationRuns.id }).from(validationRuns).where(eq(validationRuns.id, runId));
     if (guardrailRun) { await this.getValidationRun(runId); return; }
-    const [resourceRun] = await this.db.select({ policyId: policyResourceValidations.policyId }).from(policyResourceValidations).where(eq(policyResourceValidations.id, runId));
+    const [resourceRun] = await this.db.select({ policyId: policyResourceValidations.policyId, projectId: policyResourceValidations.projectId, version: policyResourceValidations.version }).from(policyResourceValidations).where(eq(policyResourceValidations.id, runId));
+    if (resourceRun?.version) {
+      if (resourceRun.projectId !== currentProjectId()) throw new NotFoundError("Testing Report", runId);
+      await this.getPolicy(resourceRun.policyId);
+      return;
+    }
     const [programmableRun] = resourceRun ? [] : await this.db.select({ policyId: policyValidationRuns.policyId }).from(policyValidationRuns).where(eq(policyValidationRuns.id, runId));
     const policyId = resourceRun?.policyId ?? programmableRun?.policyId;
     if (!policyId) throw new NotFoundError("Testing Report", runId);

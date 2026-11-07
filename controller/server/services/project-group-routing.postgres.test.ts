@@ -35,6 +35,10 @@ describe.skipIf(!url)("Project group Runner routing against PostgreSQL", () => {
   it("dispatches validation only to pools belonging to the resource owner's group", async () => {
     expect(await routing.poolsForValidation("guardrail.validation_requested", "g-b")).toEqual(["beta-pool"]);
     expect(await routing.poolsForValidation("guardrail.validation_requested", "missing")).toEqual([]);
+    await database.pool.query(`INSERT INTO policy_resource_validation (id, policy_id, project_id, version, revision, status, tests)
+      VALUES ('policy-job-catalog-b', 'content-safety-model', 'projectB', '1.0.0', 0, 'queued', '[]')`);
+    expect(await routing.poolsForValidation("policy.validation_requested", "policy-job-catalog-b")).toEqual(["beta-pool"]);
+    expect(await routing.poolsForValidation("policy.validation_requested", "policy-job-missing")).toEqual([]);
   });
   it("rejects an unallocated Runner pool before registering its process", async () => {
     const registration = { runnerId: "runner-test-project-b-0", bootId: "boot-1", poolId: "not-allocated", runnerVersion: "test", nemoVersion: "test", maxConcurrency: 1, compilerCapable: true, labels: {}, appliedGeneration: 0 };

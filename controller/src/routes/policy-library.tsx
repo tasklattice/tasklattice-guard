@@ -1,3 +1,4 @@
+import { PolicyVersionTest } from "@/components/policy-version-test";
 import { projectParams } from "@/lib/project-paths";
 import { hasPermission } from "../../shared/rbac";
 import { SecuritySeverityBadge } from "@/components/security-severity";
@@ -270,6 +271,7 @@ export function PolicyLibraryPage() {
       )}
 
       <PolicyDetail
+        testingEnabled
         policy={selected}
         onClose={closePolicy}
         onExport={!searchParams.version && canExportNativePolicy(selected) ? exportPolicy : undefined}
@@ -406,10 +408,10 @@ function Metric({ label, value }: { label: string; value: number }) {
   return <div className="inline-flex items-baseline gap-1.5"><span className="text-muted-foreground">{label}</span><strong className="font-mono font-medium">{value}</strong></div>;
 }
 
-export function PolicyDetail({ policy, onClose, onEdit, onExport, onDelete, notice, footer, returnFocusRef }: {
+export function PolicyDetail({ policy, onClose, onEdit, onExport, onDelete, notice, footer, returnFocusRef, testingEnabled = false }: {
   policy: Policy | null; onClose: () => void; onEdit?: (policy: Policy, trigger: HTMLButtonElement) => void;
   onExport?: (policy: Policy) => void; onDelete?: (policy: Policy) => void;
-  notice?: ReactNode; footer?: ReactNode; returnFocusRef?: RefObject<HTMLElement | null>;
+  notice?: ReactNode; footer?: ReactNode; returnFocusRef?: RefObject<HTMLElement | null>; testingEnabled?: boolean;
 }) {
   const { t } = useTranslation();
   if (!policy) return null;
@@ -447,7 +449,7 @@ export function PolicyDetail({ policy, onClose, onEdit, onExport, onDelete, noti
           </section> : null}
           <RuleList policy={policy} />
         </TabsContent>
-        <TabsContent value="validation" className="pt-3 sm:pt-4"><PolicyTestCases policy={policy} /></TabsContent>
+        <TabsContent value="validation" className="pt-3 sm:pt-4">{testingEnabled ? <PolicyVersionTest key={`${policy.id}@${policy.version}`} policy={policy}><PolicyTestCases policy={policy} hideTitle /></PolicyVersionTest> : <PolicyTestCases policy={policy} />}</TabsContent>
         <TabsContent value="compliance" className="pt-3 sm:pt-4">{policy.origin === "imported" ? <ImportedBadge source={policy.source_id} /> : null}{policy.maintenance ? <p className="mb-4 text-sm">Maintenance: {policy.maintenance.maintainer}</p> : null}<PolicyCompliancePanel policy={policy} /></TabsContent>
       </Tabs>
     </EntitySheet>
@@ -513,14 +515,14 @@ function RuleRow({ rule }: { rule: PolicyRule }) {
   );
 }
 
-function PolicyTestCases({ policy }: { policy: Policy }) {
+function PolicyTestCases({ policy, hideTitle = false }: { policy: Policy; hideTitle?: boolean }) {
   const { t } = useTranslation();
   const ruleNames = new Map(policy.rules.map((rule) => [rule.id, rule.name]));
   const groups = Array.from(new Set(policy.test_cases.map((testCase) => testCase.group)));
   return (
     <section>
-      <h3 className="text-sm font-semibold">{t("policyLibrary.testCasesTitle")}</h3>
-      <p className="mt-1 text-xs leading-5 text-muted-foreground">{t("policyLibrary.testCasesDescription")}</p>
+      {!hideTitle ? <><h3 className="text-sm font-semibold">{t("policyLibrary.testCasesTitle")}</h3>
+      <p className="mt-1 text-xs leading-5 text-muted-foreground">{t("policyLibrary.testCasesDescription")}</p></> : null}
       <div className="mt-4 space-y-4">
         {groups.map((group) => (
           <section key={group} className="overflow-hidden rounded-lg border">

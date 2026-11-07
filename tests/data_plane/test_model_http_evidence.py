@@ -78,6 +78,28 @@ async def test_network_failure_has_no_fabricated_response():
         assert all(secret not in json.dumps(evidence) for secret in ('password', 'private-key', 'secret'))
 
 
+async def test_validation_retains_success_and_retry_payloads_with_redaction():
+    with capture_model_http_evidence(include_success=True):
+        with observe_model_call(jailbreak_request(), provider='laya', model='auto', operation='classify') as call:
+            async with httpx.AsyncClient(transport=httpx.MockTransport(lambda req: httpx.Response(422 if req.url.path == '/retry' else 200, json={'unsafe_content': 0.95})), event_hooks=validation_http_hooks()) as client:
+                await client.post('https://model.test/retry', json={'text': 'sample', 'head_max_len': 512}, headers={'authorization': 'Bearer private-key'})
+                await client.post('https://model.test/ok', json={'text': 'sample'}, headers={'authorization': 'Bearer private-key'})
+            call.complete(payload={})
+        evidence = failed_model_http_evidence()
+        assert [item['response']['status'] for item in evidence] == [422, 200]
+        assert [item['result'] for item in evidence] == ['recovered_failure', 'success']
+        assert json.loads(content(evidence[0]['request']))['head_max_len'] == 512
+        assert json.loads(content(evidence[1]['response']))['unsafe_content'] == 0.95
+        assert 'private-key' not in json.dumps(evidence)
+        assert ['authorization', '[REDACTED]'] in evidence[1]['request']['headers']
+    with capture_model_http_evidence():
+        with observe_model_call(jailbreak_request(), provider='laya', model='auto', operation='classify') as call:
+            async with httpx.AsyncClient(transport=httpx.MockTransport(lambda _: httpx.Response(200, json={})), event_hooks=validation_http_hooks()) as client:
+                await client.get('https://model.test/ok')
+            call.complete(payload={})
+        assert failed_model_http_evidence() == []
+
+
 async def test_router_dependency_captures_failures_at_info_without_sampling():
     class ModelRuntime(Runtime):
         async def evaluate(self, request, **kwargs):

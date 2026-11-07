@@ -245,7 +245,7 @@ class DefaultRunnerValidator:
         content = _string(case.get("content"))
         view = _test_content_view(case, phase, content)
         started = time.perf_counter()
-        with capture_model_http_evidence():
+        with capture_model_http_evidence(include_success=True):
             decision = await runtime.evaluate(
                 EngineRequest(
                     phase=phase,

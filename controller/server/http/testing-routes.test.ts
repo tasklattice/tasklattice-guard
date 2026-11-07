@@ -25,6 +25,9 @@ function setup(role = "user") {
     requestPolicyValidation: vi.fn().mockResolvedValue(run),
     latestPolicyValidation: vi.fn().mockResolvedValue(run),
     getPolicyValidation: vi.fn().mockResolvedValue(run),
+    preparePolicyVersionTest: vi.fn().mockResolvedValue({ policyId: "policy-1", version: "v1", requiredBindings: [], tests: [{ id: "case-1" }] }),
+    getPolicy: vi.fn().mockResolvedValue({ id: "policy-1", version: "v1" }),
+    policyResources: { validateVersion: vi.fn().mockResolvedValue(run), versionReport: vi.fn().mockResolvedValue(run) },
   };
   const config = loadConfig({ NODE_ENV: "test", CONTROLLER_DATABASE_URL: "postgresql://test:test@localhost/test",
     CONTROLLER_RUNNER_TOKEN: "runner-token-that-is-at-least-32-characters", CONTROLLER_ARTIFACT_SIGNING_KEY_PATH: "/tmp/test-key.pem",
@@ -39,6 +42,35 @@ function setup(role = "user") {
 }
 
 describe("Testing HTTP paths", () => {
+  it("starts the exact selected version and disables missing Protection on both readiness and submission", async () => {
+    const { app, service } = setup();
+    const path = "/api/v1/policies/policy-1/versions/v1";
+    expect(await (await app.request(`${path}/test-readiness`)).json()).toMatchObject({ ready: true, total: 1, blockers: [] });
+    expect((await app.request(`${path}/test-runs`, { method: "POST" })).status).toBe(202);
+    expect(service.preparePolicyVersionTest).toHaveBeenCalledWith("policy-1", "v1");
+    expect(service.policyResources.validateVersion).toHaveBeenCalledWith(expect.objectContaining({ version: "v1" }), { poolId: "default", modelRevisionId: "", models: [] }, "admin-1");
+    service.preparePolicyVersionTest.mockResolvedValue({ policyId: "policy-1", version: "v1", requiredBindings: ["content_safety.input"], tests: [{ id: "case-1" }] });
+    service.policyResources.validateVersion.mockClear();
+    expect(await (await app.request(`${path}/test-readiness`)).json()).toMatchObject({ ready: false, blockers: [{ code: "protection_missing", binding: "content_safety.input" }] });
+    expect((await app.request(`${path}/test-runs`, { method: "POST" })).status).toBe(409);
+    expect(service.policyResources.validateVersion).not.toHaveBeenCalled();
+  });
+
+  it("keeps Policy tests read-only for viewers and authorizes full case evidence", async () => {
+    const viewer = setup("viewer");
+    expect((await viewer.app.request("/api/v1/policies/policy-1/versions/v1/test-runs", { method: "POST" })).status).toBe(403);
+    expect(viewer.service.policyResources.validateVersion).not.toHaveBeenCalled();
+    const { app, service } = setup();
+    service.reportResults.detail.mockResolvedValue({ trace: Array.from({ length: 150 }, (_, index) => ({ index })) });
+    const detail = await app.request("/api/v1/test-runs/run-1/cases/7/evidence");
+    expect(detail.status).toBe(200);
+    expect((await detail.json()).trace).toHaveLength(150);
+    expect(service.authorizeReportRead).toHaveBeenCalledWith("run-1");
+    expect(service.reportResults.detail).toHaveBeenCalledWith("run-1", 7, 0, true);
+    service.authorizeReportRead.mockRejectedValue(new NotFoundError("Testing Report", "run-1"));
+    expect((await app.request("/api/v1/test-runs/run-1/cases/7/evidence")).status).toBe(404);
+  });
+
   it("starts and reads a Guardrail Test Run through the renamed routes", async () => {
     const { app, service, run } = setup();
     const created = await app.request("/api/v1/guardrails/guard-1/test-runs", { method: "POST" });

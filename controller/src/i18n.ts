@@ -1,3 +1,4 @@
+import { policyTestingEn, policyTestingZh } from "./policy-testing-i18n";
 import { accountFormEn, accountFormZh } from "./account-form-i18n";
 import { dashboardInvestigationEn, dashboardInvestigationZh } from "./dashboard-investigation-i18n";
 import { runtimeMetricsEn, runtimeMetricsZh } from "./runtime-metrics-i18n";
@@ -25,6 +26,7 @@ export type SupportedLanguage = "en" | "zh-CN";
 const resources = {
   en: {
     translation: {
+      policyTesting: policyTestingEn,
       projects: projectsEn,
       accountForm: accountFormEn,
       validationScope: validationScopeEn,
@@ -3167,6 +3169,7 @@ const resources = {
   },
   "zh-CN": {
     translation: {
+      policyTesting: policyTestingZh,
       projects: projectsZh,
       accountForm: accountFormZh,
       validationScope: validationScopeZh,

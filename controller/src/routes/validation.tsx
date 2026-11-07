@@ -1,3 +1,4 @@
+import { TestCaseEvidence } from "@/components/test-case-evidence";
 import { ModelCallStatus } from "@/components/model-call-status";
 import { TestModelRulesSwitch, ValidationScopeNotice } from "@/components/validation-model-scope";
 import { hasPermission } from "../../shared/rbac";
@@ -225,8 +226,8 @@ export function DetailFact({ label, value, definition }: { label: string; value:
 
 type CaseResultFilter = "all" | "failed" | "passed" | "skipped";
 
-type CaseResultsProps = { runId: string; defaultFilter?: CaseResultFilter; excludedCaseIds?: string[]; busyCaseId?: string | undefined; onValidationScopeChange?: ((caseId: string, action: "exclude" | "restore") => void) | undefined };
-export function ValidationCaseResults({ runId, defaultFilter = "all", excludedCaseIds = [], busyCaseId, onValidationScopeChange }: CaseResultsProps) {
+type CaseResultsProps = { runId: string; evidence?: boolean; defaultFilter?: CaseResultFilter; excludedCaseIds?: string[]; busyCaseId?: string | undefined; onValidationScopeChange?: ((caseId: string, action: "exclude" | "restore") => void) | undefined };
+export function ValidationCaseResults({ runId, defaultFilter = "all", excludedCaseIds = [], busyCaseId, onValidationScopeChange, evidence = false }: CaseResultsProps) {
   const { t } = useTranslation();
   const [filter, setFilter] = useState<CaseResultFilter>(defaultFilter);
   const pagination = useEventCursor(`${runId}:${filter}`);
@@ -238,13 +239,13 @@ export function ValidationCaseResults({ runId, defaultFilter = "all", excludedCa
       <div className="mt-2 flex gap-1" role="group" aria-label={t("validation.filterCaseResults")}>{(["all", "failed", "passed", "skipped"] as const).map(value => <Button key={value} type="button" size="sm" variant={filter === value ? "secondary" : "ghost"} className="min-h-11 px-3" aria-pressed={filter === value} onClick={() => setFilter(value)}>{t(value === "skipped" ? "validationScope.skipped" : `validation.caseFilters.${value}`)}<span className="font-mono text-xs">{counts?.[value] ?? "—"}</span></Button>)}</div>
     </header>
     <div className="space-y-3 bg-background p-3" aria-busy={query.isFetching}>
-      {query.isPending ? <Skeleton className="h-48" /> : query.error ? <><ErrorNotice error={query.error} /><Button variant="outline" onClick={() => void query.refetch()}>{t("common.retry")}</Button></> : !query.data?.items.length ? <p role="status" className="px-4 py-6 text-sm text-muted-foreground">{t(filter === "skipped" ? "validationScope.empty" : `validation.emptyCaseResults.${filter}`)}</p> : query.data.items.map(result => <TestCaseResultRow key={result.ordinal} result={result} runId={runId} ordinal={result.ordinal} excluded={excludedCaseIds.includes(result.case_id)} busy={busyCaseId === result.case_id} onValidationScopeChange={onValidationScopeChange} />)}
+      {query.isPending ? <Skeleton className="h-48" /> : query.error ? <><ErrorNotice error={query.error} /><Button variant="outline" onClick={() => void query.refetch()}>{t("common.retry")}</Button></> : !query.data?.items.length ? <p role="status" className="px-4 py-6 text-sm text-muted-foreground">{t(filter === "skipped" ? "validationScope.empty" : `validation.emptyCaseResults.${filter}`)}</p> : query.data.items.map(result => <TestCaseResultRow evidence={evidence} key={result.ordinal} result={result} runId={runId} ordinal={result.ordinal} excluded={excludedCaseIds.includes(result.case_id)} busy={busyCaseId === result.case_id} onValidationScopeChange={onValidationScopeChange} />)}
     </div>
     <EventPagination page={pagination.page} busy={query.isFetching} nextCursor={query.data?.nextCursor} onNext={pagination.next} onPrevious={pagination.previous} onLatest={pagination.latest} casePages itemCount={query.data?.items.length ?? 0} />
   </section>;
 }
 
-export function TestCaseResultRow({ result: summary, runId, ordinal, excluded = false, busy = false, onValidationScopeChange }: { result: TestCaseResult; runId?: string; ordinal?: number; excluded?: boolean; busy?: boolean; onValidationScopeChange?: ((caseId: string, action: "exclude" | "restore") => void) | undefined }) {
+export function TestCaseResultRow({ result: summary, runId, ordinal, excluded = false, busy = false, onValidationScopeChange, evidence = false }: { evidence?: boolean; result: TestCaseResult; runId?: string; ordinal?: number; excluded?: boolean; busy?: boolean; onValidationScopeChange?: ((caseId: string, action: "exclude" | "restore") => void) | undefined }) {
   const [open, setOpen] = useState(!runId && isExecutionError(summary));
   const [traceOffset, setTraceOffset] = useState(0);
   const detail = useQuery({ queryKey: ["validation-case", runId, ordinal, traceOffset], queryFn: ({ signal }) => getValidationCase(runId!, ordinal!, traceOffset, signal), enabled: Boolean(runId && open), staleTime: Infinity, gcTime: 0, retry: false });
@@ -270,6 +271,7 @@ export function TestCaseResultRow({ result: summary, runId, ordinal, excluded = 
       <ChevronDown aria-hidden className="size-4 text-muted-foreground transition-transform group-open/case:rotate-180 motion-reduce:transition-none" />
     </summary>
     {runId && !open ? null : runId && !detail.data ? <div className="border-t p-4">{detail.error ? <><ErrorNotice error={detail.error} /><Button variant="outline" onClick={() => void detail.refetch()}>{t("common.retry")}</Button></> : <Skeleton className="h-32" />}</div> : <div className="space-y-4 border-t bg-card p-4">
+      {evidence && runId && ordinal != null ? <TestCaseEvidence runId={runId} ordinal={ordinal} result={result} /> : null}
       <ModelCallStatus status={result.model_status} />
       {result.model_status === "ok" && failed && !isExecutionError(result) ? <p className="text-xs text-muted-foreground">{t("logs.modelQualitySeparate")}</p> : null}
       {failed ? <FailureDiagnosis result={result} /> : null}
