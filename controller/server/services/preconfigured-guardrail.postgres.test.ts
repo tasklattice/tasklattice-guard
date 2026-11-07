@@ -39,7 +39,7 @@ describe.skipIf(!url)("Preconfigured Guardrail lifecycle", () => {
     const initial = await service.getGuardrail(id);
     expect(initial.draftConfig.policyBindings).toHaveLength(17);
     expect(initial.versions).toHaveLength(1);
-    expect(initial.versions[0]!.testSuiteCount).toBe(746);
+    expect(initial.versions[0]!.testSuiteCount).toBe(726);
     expect(initial.versions[0]!.validationRunId).toBeNull();
     const artifact = initial.versions[0]!.artifact!;
     expect(verify(null, Buffer.from(artifact.checksum, "utf8"), key.publicKey, Buffer.from(artifact.signature, "base64"))).toBe(true);

@@ -6,9 +6,12 @@ import { PolicyCatalog } from "./catalog.js";
 import { expandProtectionPreset, profileRequiresModels } from "./presets.js";
 
 const policies = PolicyCatalog.load(resolve("../runner/toolkit/policy_library/assets")).list();
+const catalogVersion = (policyId: string) => policies.find(policy => policy.id === policyId)!.version;
 
 function regionalPreset(ruleIds: string[]) {
-  return { ...protectionPresets[0]!, policies: [{ policyId: "identity-documents", policyVersion: "1.0.0",
+  // Replace the shared exclusions too: this selection owns no source cases of
+  // the Default composition.
+  return { ...protectionPresets[0]!, testExclusions: [], policies: [{ policyId: "identity-documents", policyVersion: catalogVersion("identity-documents"),
     enabledRuleIds: ruleIds, ruleOrder: ruleIds, enabledRails: ["input" as const], parameterValues: {} }] };
 }
 
@@ -43,9 +46,10 @@ describe("Protection presets", () => {
   it("selects a Rule by binding identity and applies a parameter pack", () => {
     const preset = {
       ...protectionPresets[0]!,
+      testExclusions: [],
       parameterPacks: [{ id: "profile-pack", version: "1.0.0", values: { blocked_words: "PROFILE_TERM", brand_name: "TaskLattice", competitors: "Example", phrase_entries: "[]" } }],
       policies: [{
-        policyId: "content-filters", policyVersion: "1.0.0",
+        policyId: "content-filters", policyVersion: catalogVersion("content-filters"),
         enabledBindingIds: ["content-filters/keyword/blocked-words"],
         bindingOrder: ["content-filters/keyword/blocked-words"],
         enabledRails: ["input" as const], parameterValues: {},
@@ -114,12 +118,13 @@ describe("Protection presets", () => {
 
   it("fails on missing, stale, misdirected or incomplete references", () => {
     const preset = structuredClone(protectionPresets[0]!);
+    preset.testExclusions = [];
     expect(() => expandProtectionPreset(preset, [])).toThrow(/unavailable/);
     preset.policies[0]!.policyVersion = "unknown";
     expect(() => expandProtectionPreset(preset, policies)).toThrow(/requires version/);
     preset.policies = [{ policyId: "business-topics", policyVersion: "1.0.0", enabledRails: ["output"], parameterValues: {} }];
     expect(() => expandProtectionPreset(preset, policies)).toThrow(/unsupported Rails/);
-    preset.policies = [{ policyId: "content-filters", policyVersion: "1.0.0", enabledRails: ["input"], parameterValues: {} }];
+    preset.policies = [{ policyId: "content-filters", policyVersion: catalogVersion("content-filters"), enabledRails: ["input"], parameterValues: {} }];
     expect(() => expandProtectionPreset(preset, policies)).toThrow(/needs /);
   });
 });

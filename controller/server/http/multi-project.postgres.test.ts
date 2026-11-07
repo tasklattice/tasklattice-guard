@@ -1,4 +1,5 @@
 import { seedTestProjects } from "../db/postgres-test-database.js";
+import { seedProfiles } from "../db/seed-profiles.js";
 // @vitest-environment node
 import { generateKeyPairSync, randomUUID } from "node:crypto";
 import { readFileSync, writeFileSync, rmSync } from "node:fs";
@@ -43,6 +44,9 @@ describe.skipIf(!url)("multi-project password authentication and sharing in Post
       await pool.query(migration(`${tag}.sql`).replaceAll('"public".', `"${namespace}".`));
     }
     await seedTestProjects(pool);
+    // Match a bootstrapped deployment: migrations seed the reviewed Profiles,
+    // and Default provisioning resolves its pinned Profile from those rows.
+    await seedProfiles(drizzle(pool, { schema }));
     writeFileSync(signingKey, generateKeyPairSync("ed25519").privateKey.export({ format: "pem", type: "pkcs8" }), { mode: 0o600 });
     // Match a bootstrapped deployment: Endpoint responses resolve a project's
     // Runner group against its registered pool before returning distribution.

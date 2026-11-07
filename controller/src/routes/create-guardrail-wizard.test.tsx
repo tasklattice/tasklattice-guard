@@ -362,7 +362,7 @@ describe("Create Guardrail wizard", () => {
     await waitFor(() => expect(screen.getByRole("button", { name: "Create draft" }).hasAttribute("disabled")).toBe(false));
     fireEvent.click(screen.getByRole("button", { name: "Create draft" }));
     await waitFor(() => expect(apiMocks.createGuardrail).toHaveBeenCalledWith(expect.objectContaining({
-      policy_bindings: bindings, profile_origin: { id: fullFeatureBaseline.id, version: "1.0.0" },
+      policy_bindings: bindings, profile_origin: { id: fullFeatureBaseline.id, version: fullFeatureBaseline.version },
       topic_control_mode: "strict", output_delivery: "full_buffered",
     })));
   });

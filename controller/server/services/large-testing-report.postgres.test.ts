@@ -60,7 +60,10 @@ describe.skipIf(!url)("950-case full-feature report delivery", () => {
       const rows = await database.db.select().from(testCases).where(eq(testCases.guardrailId, guardrail.id));
       expect(rows.length).toBeGreaterThan(600);
       expect(rows.length).toBeLessThan(950);
-      await database.db.insert(testCases).values(Array.from({ length: 950 - rows.length }, (_, index) => ({
+      // Reviewed Profile exclusions are already frozen out of the suite, so top
+      // up to 950 executable cases rather than 950 stored Test Cases.
+      const excluded = guardrail.excludedTestCaseIds.length;
+      await database.db.insert(testCases).values(Array.from({ length: 950 + excluded - rows.length }, (_, index) => ({
         ...rows[index % rows.length]!, id: `repeat-${index}-${rows[index % rows.length]!.id}`,
       })));
       const connection = await handle({ registration: { runnerId: "runner-default-0", bootId: "report-boot", poolId: "default",

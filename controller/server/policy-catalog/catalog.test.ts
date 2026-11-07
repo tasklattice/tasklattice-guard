@@ -28,7 +28,8 @@ describe("Policy catalog", () => {
 
   it("ships only V1 builtin Policies with no bundled history", () => {
     const catalog = PolicyCatalog.load(assetDirectory);
-    expect(new Set(catalog.list().map(policy => policy.version))).toEqual(new Set(["1.0.0"]));
+    // Versions advance with reviewed Rule fixes; the shipped catalog stays on V1.
+    expect(catalog.list().every(policy => policy.version.startsWith("1."))).toBe(true);
     expect(catalog.list().every(policy => !policy.retired && !policy.published_versions?.length)).toBe(true);
     expect(catalog.get("local-bank-account-formats")).toBeUndefined();
   });

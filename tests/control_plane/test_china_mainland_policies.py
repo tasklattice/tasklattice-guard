@@ -23,9 +23,10 @@ def _decision(result) -> str:
 
 
 def test_china_rules_belong_to_shared_capabilities() -> None:
+    # China Rules stay in the shared taxonomy Policies, so their versions move
+    # with the rest of the catalog instead of being forked here.
     assert {p.id for p in CHINA_POLICIES} == {"identity-documents", "contact-data", "payment-data", "prompt-instruction-attacks", "fraud-account-abuse", "financial-market-misconduct"}
     for policy in CHINA_POLICIES:
-        assert policy.version == "1.0.0"
         assert all(rule.implementation.execution == "local" for rule in policy.rules if rule.id.startswith("cn-"))
 
 
