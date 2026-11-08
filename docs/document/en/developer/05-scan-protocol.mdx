@@ -102,7 +102,30 @@ Content-Type: application/json
 
 Each request selects the route again and creates a new Scan ID. Input and Output scans are independent. They do not share a session or a fixed version. Each repeat submission creates a new scan. The API provides no deduplication or idempotency guarantee.
 
-This API does not accept conversation messages or reference context. Use the [gateway integration API](/document/developer/gateway-connect) to link Input and Output or supply inspection context.
+This API does not correlate conversation messages or link Input and Output. Use the [gateway integration API](/document/developer/gateway-connect) for that lifecycle. The explicit context extension below supports independent context-aware scans.
+
+### TaskLattice context extension
+
+`guardrail_context` is an optional TaskLattice extension, **not an upstream F5 standard field**. It uses the same untrusted content boundaries as the gateway API:
+
+```json
+{
+  "input": "The actual retrieved document or memory record",
+  "scanDirection": "request",
+  "flagOnly": false,
+  "guardrail_context": {
+    "query": "Summarize the information relevant to my task",
+    "target_source": "retrieved_content",
+    "memory": {"operation": "read", "source_query": "The original acquisition task"}
+  }
+}
+```
+
+`query` and `memory.source_query` are optional strings, each limited to 100,000 characters. `target_source` is `user_input`, `retrieved_content`, or `tool_output`. Omit `memory` for ordinary external-document checks; only real memory boundaries use `read` (retrieved content) or `write` (tool output). An explicit source must agree with the operation. External content and memory operations require `scanDirection=request`. `grounding_sources` optionally supplies up to 32 reference strings, totaling at most 500,000 characters. The existing whole-request body limit still applies. Unknown context fields, invalid types, and conflicting boundaries return `422` without echoing their contents.
+
+The original `input` is the only scanned candidate; the task and references are contextual evidence, not additional user messages. All supplied blocks are untrusted. The extension cannot select a Router, change policy, mark content trusted, or inject a test's expected answer. Do not replace the actual memory candidate with an attacker-desired memory value.
+
+Accepted context is acknowledged by `X-TaskLattice-Scan-Context: v1` and recorded in telemetry as `scanContextVersion`. Clients relying on this extension must reject a successful response without that acknowledgement; old or other F5 servers may ignore unknown fields. Plain text scans retain their previous behavior. `requestPromptId` and `externalMetadata` remain compatibility placeholders and do not supply this context.
 
 <a id="scan-flag-only-default" />
 ### Default flagOnly
@@ -124,7 +147,7 @@ An explicit boolean in the request overrides the Endpoint setting. Guard uses th
 | `configOverrides` | Does not override Scanner, Policy or Router configuration. |
 | `disabled`, `forceEnabled` | Do not disable inspection or force a specific Scanner. |
 
-These compatibility fields accept any valid JSON value, including strings, arrays, objects and `null`. Guard also ignores unknown extra fields, such as `messages`, `guardrail_context`, `mode` and `dry_run`. They cannot supply context or change the protection mode. Their bytes still count toward the body limit.
+These compatibility fields accept any valid JSON value, including strings, arrays, objects and `null`. Guard also ignores unknown extra fields, such as `messages`, `mode` and `dry_run`. They cannot supply context or change the protection mode. Their bytes still count toward the body limit. The declared `guardrail_context` extension is validated separately.
 
 The client must retain its own mapping between dataset rows, expected labels and returned Scan IDs.
 

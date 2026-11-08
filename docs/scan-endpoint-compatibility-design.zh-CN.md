@@ -8,7 +8,7 @@
 
 执行链保持为 **Endpoint → 绑定的 Router → 路由命中的 Guardrail Version → 扫描结果**。调用方不需要选择 Scanner，也不需要配置 F5 Project。内部适配器标识约定为 `f5-scan`，协议标识为 `scan`。
 
-请求中只有四个字段具有执行语义：`input`、`scanDirection`、`flagOnly`、`verbose`。F5 的另外六个字段保留名称，接受任意合法 JSON 值并忽略。未知顶层字段也忽略。占位字段不能覆盖路由、修改规则、建立会话或切换身份。
+标准文本扫描的四个执行字段为 `input`、`scanDirection`、`flagOnly`、`verbose`。2026-11-07 起增加可选的 TaskLattice `guardrail_context` 扩展（并非 F5 标准字段），传递显式不可信上下文，详见 [Scan 接口文档](document/zh-CN/developer/05-scan-protocol.mdx)。接收后返回 `X-TaskLattice-Scan-Context: v1`；客户端依赖上下文时必须核验此回执。F5 的另外六个字段保留名称，接受任意合法 JSON 值并忽略。未知顶层字段也忽略。占位字段不能覆盖路由、修改规则、建立会话或切换身份。
 
 兼容承诺是本文件定义的 **Scan HTTP 请求与响应契约**，以及不依赖占位字段语义的客户端。依赖 F5 Project、按请求启停 Scanner、Prompt 关联或逐 Scanner 配置的程序，虽然请求可以被接受，其原有行为不会被复现。检测效果由实际命中的 TaskLattice Guardrail 决定。
 
@@ -64,6 +64,7 @@ Scan 与 LiteLLM 共用 `/runtime/v1/endpoints/{endpoint_id}` 基础路径。`CA
 | `configOverrides` | 对象；默认 `{}` | **兼容占位，任意 JSON 值均忽略。** 不覆盖阈值、动作、正则、提示词或其他配置 |
 | `disabled` | UUID 数组；默认 `[]` | **兼容占位，任意 JSON 值均忽略。** 不能禁用任何规则 |
 | `forceEnabled` | UUID 数组；默认 `[]` | **兼容占位，任意 JSON 值均忽略。** 不能启用或增加任何规则 |
+| `guardrail_context` | TaskLattice 扩展，对象或 `null` | 验证任务、外部来源及真实记忆边界；所有内容仍不可信，不覆盖策略；详见接口文档 |
 | 其他顶层字段 | 不在本契约中 | 接受并忽略；不递归解释其中的配置、角色或指令 |
 
 占位字段的统一说明为：**“此字段不适用于 TaskLattice Guard，仅为 F5 Scan 请求兼容保留；可以省略，传入任意合法 JSON 值均被忽略。”** 接口文档和生成的 Schema 均须明确表达这一语义。
@@ -182,7 +183,7 @@ sequenceDiagram
 | Scan 内容 | `ProtectionRequest` / `RequestContext` |
 | --- | --- |
 | `input` | 单一 `texts` 元素及一个内容块；文本不拼接、不重写 |
-| `request` | `phase=input`；内容块 `role=user_input`、`source=user_input` |
+| `request` | `phase=input`；无显式上下文时为 `user_input`；扩展可指定 `retrieved_content` 或 `tool_output`，真实记忆操作保留在内容块元数据中 |
 | `response` | `phase=output`；内容块 `role=model_output`、`source=model_output` |
 | 任意方向的内容块 | `trust=untrusted`，不能从被忽略的字段注入可信 system 指令 |
 | 身份与协议 | `protocol=scan`、认证得到的 `endpoint_id`，沿用现有可信身份字段 |

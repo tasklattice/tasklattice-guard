@@ -10,8 +10,9 @@ from uuid import UUID, uuid4
 from fastapi import Depends, Request
 from fastapi.responses import JSONResponse
 from fastapi.security import HTTPBearer
-from pydantic import BaseModel, ConfigDict, ValidationError
+from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
 
+from .guard_context import GuardrailContext, _request_content
 from .routing import RoutingError
 from .project_admission import AdmissionRejected, AdmissionUnavailable
 from .toolkit.runtime.outcome import GuardrailExecutionError
@@ -19,6 +20,8 @@ from .toolkit.runtime.contracts import GuardContentBlock, ProtectionDecision, Pr
 
 SCAN_PATH = "/runtime/v1/endpoints/{endpoint_id}/backend/v1/scans"
 SCAN_ADAPTER = "f5-scan"
+CONTEXT_HEADER = "X-TaskLattice-Scan-Context"
+CONTEXT_VERSION = "v1"
 IGNORED_FIELDS = ("project", "externalMetadata", "requestPromptId", "configOverrides", "disabled", "forceEnabled")
 
 
@@ -46,6 +49,40 @@ class ScanRequest(BaseModel):
     scanDirection: Literal["request", "response"] = "request"
     flagOnly: bool = True
     verbose: bool = False
+    guardrail_context: GuardrailContext | None = Field(default=None, description=(
+        "TaskLattice extension (not an F5 standard field): untrusted task, external-content "
+        "and memory-boundary evidence. Accepted context is acknowledged by X-TaskLattice-Scan-Context: v1."
+    ))
+
+    @model_validator(mode="after")
+    def context_direction(self):
+        context = self.guardrail_context
+        if context and context.memory and context.target_source is not None:
+            expected = "tool_output" if context.memory.operation == "write" else "retrieved_content"
+            if context.target_source != expected:
+                raise ValueError("target_source conflicts with the memory operation.")
+        if context and self.scanDirection == "response" and (
+            context.memory or context.target_source in {"retrieved_content", "tool_output"}
+        ):
+            raise ValueError("External content and memory boundaries require scanDirection=request.")
+        return self
+
+
+def scan_request_schema():
+    # This schema is embedded in a manually bounded HTTP handler. Inline nested
+    # definitions so OpenAPI does not contain dangling #/$defs references.
+    schema = ScanRequest.model_json_schema()
+    definitions = schema.pop("$defs", {})
+    def inline(value):
+        if isinstance(value, list):
+            return [inline(item) for item in value]
+        if not isinstance(value, dict):
+            return value
+        if "$ref" in value:
+            return inline({**definitions[value["$ref"].split("/")[-1]],
+                           **{k: v for k, v in value.items() if k != "$ref"}})
+        return {key: inline(item) for key, item in value.items()}
+    return inline(schema)
 
 
 class ScannerResult(BaseModel):
@@ -110,7 +147,7 @@ def register_scan(api, *, max_body_bytes: int, timeout_seconds: float) -> None:
 
     @api.router.post(SCAN_PATH, response_model=ScanResponse, tags=["Scans"],
         dependencies=[Depends(HTTPBearer(auto_error=False, scheme_name="ScanBearer"))],
-        openapi_extra={"requestBody": {"required": True, "content": {"application/json": {"schema": ScanRequest.model_json_schema()}}},
+        openapi_extra={"requestBody": {"required": True, "content": {"application/json": {"schema": scan_request_schema()}}},
                        "responses": {"422": {"description": "Invalid Scan request"}}})
     async def scan(endpoint_id: str, request: Request):
         """Map Scan traffic to the Endpoint's Guardrail and map its final result.
@@ -167,16 +204,21 @@ def register_scan(api, *, max_body_bytes: int, timeout_seconds: float) -> None:
                     else api._store.endpoint_scan_flag_only_default(endpoint_id)})
             phase = "input" if payload.scanDirection == "request" else "output"
             source = "user_input" if phase == "input" else "model_output"
+            if payload.guardrail_context is not None:
+                response_headers[CONTEXT_HEADER] = CONTEXT_VERSION
             protection_request = ProtectionRequest(
                 phase=phase, texts=(payload.input,), mode="enforce",
-                content_blocks=(GuardContentBlock(id=f"{phase}:0", text=payload.input, role=source, source=source, trust="untrusted"),),
+                content_blocks=_request_content(phase, (payload.input,), payload.guardrail_context, source) or (
+                    GuardContentBlock(id=f"{phase}:0", text=payload.input, role=source, source=source, trust="untrusted"),),
                 context=RequestContext(protocol="scan", endpoint_id=endpoint_id, call_id=scan_id,
                     endpoint_snapshot=endpoint_snapshot,
                     headers=tuple((k, v) for k, v in request.headers.items() if k.lower() not in SENSITIVE_HEADERS),
                     fields=(("protocol", "scan"), ("endpoint.id", endpoint_id),
                             *((("auth.principal", endpoint_id),) if access.authenticated else ()),
                             ("auth.mode", "credential" if access.authenticated else "anonymous"),
-                            ("scan.direction", payload.scanDirection), ("http.method", request.method),
+                            ("scan.direction", payload.scanDirection),
+                            *((("scan.context_version", CONTEXT_VERSION),) if payload.guardrail_context is not None else ()),
+                            ("http.method", request.method),
                             ("http.path", request.url.path), ("http.host", request.url.hostname or "")),
                     endpoint_request=_endpoint_source(request)),
             )
@@ -208,6 +250,7 @@ def register_scan(api, *, max_body_bytes: int, timeout_seconds: float) -> None:
                         phase=phase, protocol="scan", mode="enforce", started=started, decision=decision,
                         content_before=(payload.input,), http_request=request, observation=observation,
                         stream_metadata={"authentication": "credential" if access.authenticated else "anonymous", "scanDirection": payload.scanDirection, "flagOnly": payload.flagOnly,
+                            "scanContextVersion": CONTEXT_VERSION if payload.guardrail_context is not None else None,
                             "verbose": payload.verbose, "scanExecutionStatus": "completed" if result is not None else "error",
                             "scanOutcome": result.result.outcome if result is not None else None})
                 response = JSONResponse(result.model_dump(mode="json"), headers=response_headers)

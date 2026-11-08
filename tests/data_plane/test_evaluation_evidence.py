@@ -71,6 +71,20 @@ def test_evidence_preserves_verdict_and_native_operating_point_without_source_te
     assert "private" not in raw and body["complete"]
 
 
+def test_external_and_memory_probabilities_survive_without_arbitrary_source_fields():
+    original = decision()
+    native = {"question_revision": "external-instruction-input.v1", "judgments": {
+        "task_hijack": {"probability": .94}, "answer_planting": {"probability": .83},
+        "private_source_text": {"probability": .99},
+    }}
+    trace = replace(original.trace[0], evidence=json.dumps(native))
+    evidence = json.loads(evaluation_evidence(replace(original, trace=(trace,))))
+    row, = evidence["evaluations"]
+    assert row["questionRevision"] == "external-instruction-input.v1"
+    assert row["probabilities"] == {"task_hijack": .94, "answer_planting": .83}
+    assert "private_source_text" not in json.dumps(evidence)
+
+
 def test_content_safety_evidence_uses_its_own_capability_and_question():
     original = decision()
     trace = replace(original.trace[0], evaluator_id="typesafe-jev-content-safety", capability="content_safety",

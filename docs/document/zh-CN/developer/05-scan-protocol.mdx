@@ -102,7 +102,30 @@ Content-Type: application/json
 
 每次请求都重新选择路由，并生成新的 Scan ID。Input 扫描与 Output 扫描互相独立，不共享会话或固定版本。重复提交会执行新的扫描，接口不保证去重或幂等。
 
-此接口不接收会话消息或参考资料上下文。需要关联 Input 与 Output，或提供检测上下文时，请使用[网关集成接口](/document/developer/gateway-connect)。
+此接口不关联会话消息或 Input/Output 生命周期；需要关联时请使用[网关集成接口](/document/developer/gateway-connect)。独立扫描可使用下面的显式上下文扩展。
+
+### TaskLattice 上下文扩展
+
+可选的 `guardrail_context` 是 **TaskLattice 扩展，并非 F5 标准字段**，与网关 API 共用不可信内容边界：
+
+```json
+{
+  "input": "实际检索到的文档或记忆记录",
+  "scanDirection": "request",
+  "flagOnly": false,
+  "guardrail_context": {
+    "query": "总结与当前任务相关的信息",
+    "target_source": "retrieved_content",
+    "memory": {"operation": "read", "source_query": "最初获取记录时的任务"}
+  }
+}
+```
+
+`query` 与 `memory.source_query` 为可选字符串，各限 100,000 字符。`target_source` 可为 `user_input`、`retrieved_content` 或 `tool_output`。普通外部文档检查省略 `memory`；真实记忆边界才使用 `read`（检索内容）或 `write`（工具输出），显式来源必须与操作一致。外部内容和记忆操作要求 `scanDirection=request`。可选 `grounding_sources` 最多 32 个字符串、合计 500,000 字符，整个请求仍受原有 body 大小限制。未知上下文字段、类型错误或边界冲突返回不回显原文的 `422`。
+
+只有原始 `input` 是待扫描对象，任务与参考资料仅用于上下文判断，不是额外用户消息。全部内容块均为不可信，不能覆盖路由、策略或提升为系统指令。不能将攻击者希望植入的内容当作实际记忆候选，也不能传入测试预期结果供模型判断。
+
+服务接收上下文后返回 `X-TaskLattice-Scan-Context: v1`，遥测记录 `scanContextVersion`。依赖扩展的客户端必须拒绝缺少该回执的成功响应，防止旧服务忽略字段后仍产生无效评分。普通文本扫描行为不变；`requestPromptId`、`externalMetadata` 仍为兼容占位，不用于传递该上下文。
 
 <a id="scan-flag-only-default" />
 ### flagOnly 默认值
@@ -124,7 +147,7 @@ Content-Type: application/json
 | `configOverrides` | 不覆盖 Scanner、Policy 或 Router 配置。 |
 | `disabled`、`forceEnabled` | 不禁用检测，也不强制启用指定 Scanner。 |
 
-这些兼容字段接受任意合法的 JSON 值，包括字符串、数组、对象和 `null`。Guard 也会忽略未知的额外字段，例如 `messages`、`guardrail_context`、`mode` 和 `dry_run`。它们不能提供上下文或改变防护模式，但仍计入请求体大小。
+这些兼容字段接受任意合法的 JSON 值，包括字符串、数组、对象和 `null`。Guard 也会忽略未知的额外字段，例如 `messages`、`mode` 和 `dry_run`。它们不能提供上下文或改变防护模式，但仍计入请求体大小。
 
 接入方需自行保存数据集行号、预期标签与返回的 Scan ID 之间的对应关系。
 
