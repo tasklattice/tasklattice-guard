@@ -80,11 +80,17 @@ async def test_review_allow_cannot_suppress_another_policy_block(classifier_back
     assert row['review']['verdict']=='not_matched' and row['review']['policyAction']=='allow'
 
 
-async def test_unresolved_review_is_coverage_failure_not_safe_or_a_successful_detection(classifier_backend, plan):
-    response,calls,evidence=await scan(plan,{'content_safety':.5},review={'content_safety':'unknown'}, backend=classifier_backend)
-    assert response.status_code>=400
-    assert evidence['execution']['status']=='error'
-    assert next(r for r in evidence[classifier_backend.evidence_key] if r['capability']=='content_safety')['review']['verdict']=='unknown'
+@pytest.mark.parametrize('capability', CONTRACTS)
+async def test_unresolved_review_blocks_without_relabeling_uncertainty_as_a_match_or_error(classifier_backend, plan, capability):
+    # This plan deliberately has on_unknown=allow for the primary model.
+    response,calls,evidence=await scan(plan,{capability:.5},review={capability:'unknown'}, backend=classifier_backend)
+    assert response.status_code==200, response.text
+    assert response.json()['result']['outcome']=='blocked'
+    assert evidence['execution']['status']=='complete'
+    row=next(r for r in evidence[classifier_backend.evidence_key] if r['capability']==capability)
+    assert row['verdict']==row['review']['verdict']=='unknown'
+    assert row['finalPolicyAction']==row['review']['enforcedAction']=='block'
+    assert row['review']['errorType'] is None
 
 
 async def test_missing_review_binding_prevents_readiness_and_makes_no_model_calls(classifier_backend, plan):
@@ -136,6 +142,7 @@ def output_plan():
 @pytest.mark.parametrize("score,answer,outcome,expected_calls", [
     (.01, "yes", "cleared", 1), (.9, "no", "blocked", 1),
     (.5, "yes", "blocked", 2), (.5, "no", "cleared", 2),
+    (.5, "unknown", "blocked", 2),
 ])
 async def test_output_classifier_uses_its_own_review_binding_and_preserves_evidence(classifier_backend, output_plan, score, answer, outcome, expected_calls):
     response, calls, evidence = await scan(output_plan, {"content_safety": score},

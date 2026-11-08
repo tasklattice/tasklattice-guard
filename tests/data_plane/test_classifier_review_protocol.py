@@ -77,5 +77,6 @@ async def test_one_read_timeout_can_recover_and_both_model_calls_remain_auditabl
     assert [c.result for c in result.usage.model_calls]==['timeout','success']
     assert [a['result'] for a in json.loads(result.trace[-1].evidence)['attempts']]==['timeout','success']
     if verdict == 'unknown':
+        assert result.unknown_reason == 'uncertain'
         assert result.trace[-1].error_category == 'review_inconclusive'
         assert result.trace[-1].model_call_id == result.usage.model_calls[-1].call_id

@@ -222,11 +222,11 @@ class ClassifierReviewer:
                         model_call_id=review_usage.model_calls[-1].call_id if verdict == "unknown" and review_usage.model_calls else None)
         reason = {"matched":"Independent classifier review confirmed a policy violation.",
                   "not_matched":"Independent classifier review found no policy violation.",
-                  "unknown":"Independent classifier review requires additional context.",
+                  "unknown":"Independent classifier review remained uncertain; conservative policy handling applies.",
                   "error":f"Independent classifier review failed ({error_type}); configured failure handling applies."}[verdict]
         capability = "content_safety" if request.capability == "classifier_review" else request.capability
         findings = (RiskFinding(risk=capability,taxonomy_id=taxonomy_for_evaluator(capability),verdict="matched",confidence=None,
             evidence=reason,recommended_action=request.proposed_action,
             provider_evidence=(ProviderEvidence(provider_id=self._provider,model=actual_model or self._model,native_verdict=trace.evidence),)),) if verdict == "matched" else ()
         return evaluation_result(request,verdict,request.content,findings=findings,reason=reason,
-            trace=(*first.trace,trace),usage=usage,unknown_reason="needs_context")
+            trace=(*first.trace,trace),usage=usage,unknown_reason="uncertain")

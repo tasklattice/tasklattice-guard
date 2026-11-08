@@ -12,7 +12,7 @@
 | 灰区且未开启复核 | 保留该 Rule 的 `on_unknown` 行为 |
 | 调用失败、非法分数、缺少上下文 | 保留错误或覆盖不足处理，不通过复核掩盖错误 |
 
-复核严格接受每个原问题的 `yes`、`no`、`unknown`。任一 `yes` 表示命中；全部 `no` 表示该项未命中；仍有 `unknown` 表示需要上下文，保留覆盖不足处理。复核未命中只结束当前检测项，不能覆盖其他 Policy 的 Block。输出复核使用独立的 `classifier_review.output` 绑定和 `classifier-review-output.v2` 模板，不借用输入复核绑定。
+复核严格接受每个原问题的 `yes`、`no`、`unknown`。任一 `yes` 表示命中；全部 `no` 表示该项未命中；仍有 `unknown` 表示复核仍不确定：对于启用拦截的 Rule，正常返回 Block，保留 Unknown 证据，不伪装成明确命中或调用错误。复核未命中只结束当前检测项，不能覆盖其他 Policy 的 Block。输出复核使用独立的 `classifier_review.output` 绑定和 `classifier-review-output.v2` 模板，不借用输入复核绑定。
 
 ## 配置
 
@@ -38,9 +38,9 @@ bin/guardctl platform bind \
 | `business-topics` | 1.0.0 |
 | `pii-semantic` | 1.1.0 |
 
-新参数默认 `"false"`。旧版本保留原定义，不能靠增加未声明参数开启复核。四项检测可以分别开启；`on_unknown=allow` 仍只控制当前 Rule 的第一阶段灰区处置。
+新参数默认 `"false"`。旧版本保留原定义，不能靠增加未声明参数开启复核。四项检测可以分别开启；`on_unknown=allow` 只控制当前 Rule 未启用复核时的第一阶段灰区处置，不能使复核后的 Unknown 放行。观察模式和显式观察规则保留原有行为。
 
-语义 PII 复核确认命中后，按当前 Rule 的动作处理；`transform` 使用适配器固定的 `[PII_REDACTED]` 替换整个被检查块，不采信复核模型提供的替换文字或字符位置。未命中保持原文；复核失败或仍为 Unknown 保留错误/覆盖不足，不能当作安全放行。旧 `model/pii@1.0.0` Rule 保持不变，新配置使用 `model/pii@1.1.0`。Full-feature 源 Profile 更新为 `1.1.1`，默认仍需显式开启复核；现有 Guard 的版本和路由不会自动改变。
+语义 PII 复核确认命中后，按当前 Rule 的动作处理；`transform` 使用适配器固定的 `[PII_REDACTED]` 替换整个被检查块，不采信复核模型提供的替换文字或字符位置。未命中保持原文；复核仍为 Unknown 时正常返回 Block；调用失败、超时或非法响应仍保留执行错误，均不能当作安全放行。旧 `model/pii@1.0.0` Rule 保持不变，新配置使用 `model/pii@1.1.0`。Full-feature 源 Profile 更新为 `1.1.1`，默认仍需显式开启复核；现有 Guard 的版本和路由不会自动改变。
 
 输入复核提示词版本为 `classifier-review.v2`。短文本、标识符或代码片段本身不代表上下文缺失；没有问题所要求的违规行为证据时应回答 no，真正依赖缺失指代或必要上下文时仍回答 unknown。明确的违规或越权指令不因缺少额外背景变成安全。
 

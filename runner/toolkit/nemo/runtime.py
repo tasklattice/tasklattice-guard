@@ -3333,7 +3333,10 @@ def _runtime_action(item):
         if ((item.binding.capability in {"jailbreak", "content_safety", "topic_control"}
                 or (item.binding.capability == "pii" and item.binding.contract_ref == "tali.guard.pii.semantic.v1"))
                 and item.result.unknown_reason == "uncertain"
-                and item.binding.parameter("on_unknown") == "allow"):
+                and item.binding.parameter("on_unknown") == "allow"
+                # on_unknown controls primary abstention only. A completed
+                # second opinion that still abstains must not silently allow.
+                and not any(step.evaluator_id == "classifier-review" for step in item.result.trace)):
             return "allow"
         return "block"
     reasoning = tuple(

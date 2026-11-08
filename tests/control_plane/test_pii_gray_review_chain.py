@@ -36,7 +36,7 @@ async def test_reviewed_pii_uses_trusted_redaction_and_preserves_both_decisions(
         assert "review" not in row
 
 
-@pytest.mark.parametrize("failure", ["unknown", "malformed", "timeout", "http", "missing-binding"])
+@pytest.mark.parametrize("failure", ["malformed", "timeout", "http", "missing-binding"])
 async def test_pii_review_failure_never_releases_unredacted_content(classifier_backend, pii_plan, failure):
     phase, plan = pii_plan
     response, calls, evidence = await scan(plan, {"pii": .5}, phase=phase,
@@ -50,7 +50,20 @@ async def test_pii_review_failure_never_releases_unredacted_content(classifier_b
         assert evidence["execution"]["status"] in {"error", "timeout"}
         row = evidence[classifier_backend.evidence_key][0]
         assert row["verdict"] == "unknown"
-        assert row["review"]["verdict"] == ("unknown" if failure == "unknown" else "error")
+        assert row["review"]["verdict"] == "error"
+
+
+async def test_unresolved_pii_review_blocks_without_transforming_or_reporting_an_error(classifier_backend, pii_plan):
+    phase, plan = pii_plan
+    response, calls, evidence = await scan(plan, {"pii": .5}, phase=phase, pii_only=True,
+        backend=classifier_backend, review={"pii": "unknown"})
+    assert response.status_code == 200, response.text
+    assert response.json()["result"]["outcome"] == "blocked"
+    assert calls == ["pii", "review:pii"]
+    assert evidence["execution"]["status"] == "complete"
+    row = evidence[classifier_backend.evidence_key][0]
+    assert row["verdict"] == row["review"]["verdict"] == "unknown"
+    assert row["finalPolicyAction"] == row["review"]["enforcedAction"] == "block"
 
 
 @pytest.mark.parametrize("on_unknown,outcome", [("allow", "cleared"), ("block", "blocked")])
