@@ -59,6 +59,21 @@ def review_enabled(request: EvaluationRequest) -> bool:
     return request.rail_type in {"input", "output"} and dict(request.parameters).get("review_unknown") == "true"
 
 
+def apply_review_transform(request: EvaluationRequest, result: EvaluationResult, *,
+                           content: str, replacement: str | None) -> EvaluationResult:
+    """Apply the primary adapter's trusted transformation after a review match.
+
+    Review models supply classifications, never replacement text or offsets.
+    The Action layer builds patches as it does for a primary match.
+    """
+    if result.verdict != "matched" or request.proposed_action != "transform":
+        return result
+    return evaluation_result(request, result.verdict, content,
+        findings=tuple(replace(finding, replacement=replacement) for finding in result.findings),
+        reason=result.reason, trace=result.trace, usage=result.usage,
+        unknown_reason=result.unknown_reason)
+
+
 def parse_review_answers(content: str, question_ids: set[str]) -> dict[str,str]:
     parsed = json.loads(content)
     if not isinstance(parsed,dict):

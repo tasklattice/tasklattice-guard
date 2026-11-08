@@ -116,6 +116,7 @@ async def test_observation_respects_action_without_relabeling_model_verdict(acti
 def test_unknown_observation_is_scoped_to_supported_classifiers():
     from runner.toolkit.nemo.runtime import _runtime_action
     for capability in ["pii", "secrets", "contextual_grounding"]:
-        item = SimpleNamespace(binding=SimpleNamespace(on_unsafe="block", capability=capability, parameter=lambda _: "allow"),
+        item = SimpleNamespace(binding=SimpleNamespace(on_unsafe="block", capability=capability,
+                               contract_ref="tali.guard.pii.exact.v1", parameter=lambda _: "allow"),
                                result=SimpleNamespace(verdict="unknown"))
         assert _runtime_action(item) == "block"

@@ -5,7 +5,7 @@ metadata:
   name: PII (Semantic)
   description: 'Target taxonomy Policy: PII (Semantic).'
   source: built_in
-  version: 1.0.0
+  version: 1.1.0
   tags:
   - namespace: protection
     value: privacy
@@ -19,10 +19,27 @@ metadata:
     source: declared
   safety_level: balanced
   output_delivery: full_buffered
-parameters: []
+parameters:
+- name: on_unknown
+  label: Uncertain result action
+  kind: text
+  required: false
+  placeholder: block or allow
+  description: Block valid uncertain results by default. Allow continues only this
+    Rule; other Policies and failure handling still apply.
+  default: block
+- name: review_unknown
+  label: Review uncertain results
+  kind: text
+  required: false
+  placeholder: true or false
+  description: Review valid JEV/Laya uncertainty using the separately validated
+    classifier_review binding for this input/output stage. Confirmed PII uses the
+    configured action and the detector's trusted whole-block redaction.
+  default: 'false'
 rules: []
 rule_refs:
 - id: model/pii
-  version: 1.0.0
+  version: 1.1.0
 tests:
 - tests/acceptance.yaml

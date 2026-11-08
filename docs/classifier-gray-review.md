@@ -1,6 +1,6 @@
 # JEV / Laya 灰区复核
 
-灰区复核是 JEV/Laya 输入检测及内容安全输出检测的第二阶段。第一阶段成功返回合法分数、但无法在各自配置的上下界之间作出确定判断时，调用当前 Rail 单独绑定的复核模型。Laya v2 也会对无法确认全部任务范围的复合请求返回覆盖不足的 `unknown`。第一阶段原始分数和证据保留，不因复核而改写。
+灰区复核是 JEV/Laya 输入检测、内容安全输出检测及语义 PII 输入/输出检测的第二阶段。第一阶段成功返回合法分数、但无法在各自配置的上下界之间作出确定判断时，调用当前 Rail 单独绑定的复核模型。Laya v2 也会对无法确认全部任务范围的复合请求返回覆盖不足的 `unknown`。第一阶段原始分数和证据保留，不因复核而改写。
 
 | 第一阶段结果 | 处理 |
 | --- | --- |
@@ -29,16 +29,18 @@ bin/guardctl platform bind \
   --state /private/path/review-binding.json
 ```
 
-在 Guard 的 Policy binding 中选用以下新版本，并设置 `parameterValues.review_unknown` 为字符串 `"true"`：
+在 Guard 的 Policy binding 中选用以下当前目录版本，并设置 `parameterValues.review_unknown` 为字符串 `"true"`：
 
 | Policy | 支持复核的版本 |
 | --- | --- |
-| `builtin-content-safety` | 1.2.0 |
-| `builtin-jailbreak` | 1.2.0 |
-| `builtin-jailbreak-strict` | 1.1.0 |
-| `builtin-topic-safety` | 2.2.0 |
+| `content-safety-model` | 1.0.0 |
+| `prompt-instruction-attacks` | 1.0.0 |
+| `business-topics` | 1.0.0 |
+| `pii-semantic` | 1.1.0 |
 
-新参数默认 `"false"`。旧版本保留原定义，不能靠增加未声明参数开启复核。三项检测可以分别开启；`on_unknown=allow` 仍只控制当前 Rule 的第一阶段灰区处置。
+新参数默认 `"false"`。旧版本保留原定义，不能靠增加未声明参数开启复核。四项检测可以分别开启；`on_unknown=allow` 仍只控制当前 Rule 的第一阶段灰区处置。
+
+语义 PII 复核确认命中后，按当前 Rule 的动作处理；`transform` 使用适配器固定的 `[PII_REDACTED]` 替换整个被检查块，不采信复核模型提供的替换文字或字符位置。未命中保持原文；复核失败或仍为 Unknown 保留错误/覆盖不足，不能当作安全放行。旧 `model/pii@1.0.0` Rule 保持不变，新配置使用 `model/pii@1.1.0`。Full-feature 源 Profile 更新为 `1.1.1`，默认仍需显式开启复核；现有 Guard 的版本和路由不会自动改变。
 
 输入复核提示词版本为 `classifier-review.v2`。短文本、标识符或代码片段本身不代表上下文缺失；没有问题所要求的违规行为证据时应回答 no，真正依赖缺失指代或必要上下文时仍回答 unknown。明确的违规或越权指令不因缺少额外背景变成安全。
 

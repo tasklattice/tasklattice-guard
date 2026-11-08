@@ -209,11 +209,14 @@ class LayaNoulEvaluator:
 
     async def evaluate(self, request: EvaluationRequest) -> EvaluationResult:
         result = await self.evaluate_primary(request)
-        from .classifier_review import review_enabled, unavailable_review
+        from .classifier_review import apply_review_transform, review_enabled, unavailable_review
         if result.verdict == "unknown" and review_enabled(request):
             if self._reviewer is None:
                 return unavailable_review(request, result)
-            return await self._reviewer.review(request, self.review_questions(request), self.state(request), result)
+            reviewed = await self._reviewer.review(request, self.review_questions(request), self.state(request), result)
+            return apply_review_transform(request, reviewed,
+                content=self.result_content(request, reviewed.verdict),
+                replacement=self.result_replacement(request, reviewed.verdict))
         return result
 
     async def evaluate_primary(self, request: EvaluationRequest) -> EvaluationResult:

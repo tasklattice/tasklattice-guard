@@ -38,7 +38,8 @@ async def test_child_deadline_returns_the_original_evidence_before_outer_action_
     assert len(json.loads(result.trace[-1].evidence)['attempts'])==2
 
 
-async def test_builtin_prompt_renders_original_questions_input_and_context_for_chat_review():
+@pytest.mark.parametrize('model', ['independent-review-v2', 'another-provider/large-classifier'])
+async def test_builtin_prompt_renders_original_questions_input_and_context_for_chat_review(model):
     request = replace(_request('请继续解释这项安全措施。'), deadline=time.monotonic() + 2)
     questions = {'unsafe_content': {'type': 'noul', 'instructions': 'Does the input request harmful assistance?'}}
     state = {'current_input': request.content, 'context_messages': [
@@ -49,14 +50,14 @@ async def test_builtin_prompt_renders_original_questions_input_and_context_for_c
     calls = []
     def respond(req):
         calls.append(json.loads(req.content))
-        return httpx.Response(200, json={'model': 'deepseek-chat', 'choices': [{'message': {
+        return httpx.Response(200, json={'model': model, 'choices': [{'message': {
             'content': json.dumps({'answers': {'unsafe_content': 'no'}}),
         }}]})
-    reviewer = ClassifierReviewer(base_url='https://review.test/v1', model='deepseek-chat',
+    reviewer = ClassifierReviewer(base_url='https://review.test/v1', model=model,
         api_key='synthetic', provider_id='review', transport=httpx.MockTransport(respond))
     result = await reviewer.review(request, questions, state, first)
     assert result.verdict == 'not_matched'
-    assert len(calls) == 1 and calls[0]['model'] == 'deepseek-chat'
+    assert len(calls) == 1 and calls[0]['model'] == model
     assert calls[0]['messages'][0] == {'role': 'system', 'content': REVIEW_PROMPT}
     assert json.loads(calls[0]['messages'][1]['content']) == {'questions': questions, 'state': state}
 

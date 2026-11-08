@@ -40491,7 +40491,7 @@
     "name": "PII (Semantic)",
     "description": "Target taxonomy Policy: PII (Semantic).",
     "source": "built_in",
-    "version": "1.0.0",
+    "version": "1.1.0",
     "tags": [
       {
         "namespace": "protection",
@@ -40512,7 +40512,26 @@
     ],
     "safety_level": "balanced",
     "output_delivery": "full_buffered",
-    "parameters": [],
+    "parameters": [
+      {
+        "name": "on_unknown",
+        "label": "Uncertain result action",
+        "kind": "text",
+        "required": false,
+        "placeholder": "block or allow",
+        "description": "Block valid uncertain results by default. Allow continues only this Rule; other Policies and failure handling still apply.",
+        "default": "block"
+      },
+      {
+        "name": "review_unknown",
+        "label": "Review uncertain results",
+        "kind": "text",
+        "required": false,
+        "placeholder": "true or false",
+        "description": "Review valid JEV/Laya uncertainty using the separately validated classifier_review binding for this input/output stage. Confirmed PII uses the configured action and the detector's trusted whole-block redaction.",
+        "default": "false"
+      }
+    ],
     "test_cases": [
       {
         "id": "builtin-pii/name-input",
@@ -40624,9 +40643,9 @@
       {
         "id": "model/pii",
         "name": "PII detector",
-        "description": "Redact detected PII before forwarding or release.",
+        "description": "Redact detected PII, with optional independent review of uncertainty.",
         "rule_id": "model/pii",
-        "rule_version": "1.0.0",
+        "rule_version": "1.1.0",
         "detector": {
           "ref": "model/classifier",
           "version": "1.0.0"
@@ -40647,7 +40666,9 @@
           "implementation_rule_id": "pii"
         },
         "detector_options": {
-          "profile": "pii-classification"
+          "profile": "pii-classification",
+          "on_unknown": "{{on_unknown}}",
+          "review_unknown": "{{review_unknown}}"
         },
         "taxonomy_ids": [
           "TALI-PRIVACY-PII"
@@ -40667,7 +40688,7 @@
         "id": "pii-semantic",
         "name": "PII (Semantic)",
         "description": "Target taxonomy Policy: PII (Semantic).",
-        "version": "1.0.0",
+        "version": "1.1.0",
         "tags": [
           {
             "namespace": "protection",
@@ -40691,13 +40712,32 @@
         "safety_level": "balanced",
         "output_delivery": "full_buffered"
       },
-      "parameters": [],
+      "parameters": [
+        {
+          "name": "on_unknown",
+          "label": "Uncertain result action",
+          "kind": "text",
+          "required": false,
+          "placeholder": "block or allow",
+          "description": "Block valid uncertain results by default. Allow continues only this Rule; other Policies and failure handling still apply.",
+          "default": "block"
+        },
+        {
+          "name": "review_unknown",
+          "label": "Review uncertain results",
+          "kind": "text",
+          "required": false,
+          "placeholder": "true or false",
+          "description": "Review valid JEV/Laya uncertainty using the separately validated classifier_review binding for this input/output stage. Confirmed PII uses the configured action and the detector's trusted whole-block redaction.",
+          "default": "false"
+        }
+      ],
       "rules": [
         {
           "id": "model/pii",
-          "version": "1.0.0",
+          "version": "1.1.0",
           "name": "PII detector",
-          "description": "Redact detected PII before forwarding or release.",
+          "description": "Redact detected PII, with optional independent review of uncertainty.",
           "stages": [
             "input",
             "output"
@@ -40706,7 +40746,9 @@
             "ref": "model/classifier",
             "version": "1.0.0",
             "parameters": {
-              "profile": "pii-classification"
+              "profile": "pii-classification",
+              "on_unknown": "{{on_unknown}}",
+              "review_unknown": "{{review_unknown}}"
             }
           },
           "on_match": {

@@ -19,7 +19,7 @@ export function modelParameterFields(rule: DefinitionRule): ModelParameterField[
     { key: "on_unknown", name: "on_unknown", kind: "text", default: "block", required: false },
     { key: "review_unknown", name: "review_unknown", kind: "text", default: "false", required: false },
   ];
-  if (rule.detector.ref === "model/classifier" && ["jailbreak-classification", "safety-classification"].includes(String(rule.detector.parameters.profile))) return [
+  if (rule.detector.ref === "model/classifier" && ["jailbreak-classification", "safety-classification", "pii-classification"].includes(String(rule.detector.parameters.profile))) return [
     { key: "on_unknown", name: "on_unknown", kind: "text", default: "block", required: false },
     { key: "review_unknown", name: "review_unknown", kind: "text", default: "false", required: false },
   ];
@@ -42,12 +42,12 @@ export function modelParameterDeclarationIssues(definition: PolicyDefinition): s
     const fields = modelParameterFields(rule);
     if (rule.detector.parameters.on_unknown !== undefined) {
       const value = rule.detector.parameters.on_unknown;
-      if (!fields.some(field => field.key === "on_unknown")) issues.push(`Rule ${rule.name || rule.id}: on_unknown is supported only by the jailbreak, content safety and topic classifiers.`);
+      if (!fields.some(field => field.key === "on_unknown")) issues.push(`Rule ${rule.name || rule.id}: on_unknown requires a supported safety, jailbreak, topic or PII classifier.`);
       else if (!parameterReferences(value).length && !["allow", "block"].includes(String(value))) issues.push(`Rule ${rule.name || rule.id}: on_unknown must be allow or block.`);
     }
     if (rule.detector.parameters.review_unknown !== undefined) {
       const value = rule.detector.parameters.review_unknown;
-      if (!fields.some(field => field.key === "review_unknown")) issues.push(`Rule ${rule.name || rule.id}: review_unknown is supported only by the jailbreak, content safety and topic classifiers.`);
+      if (!fields.some(field => field.key === "review_unknown")) issues.push(`Rule ${rule.name || rule.id}: review_unknown requires a supported safety, jailbreak, topic or PII classifier.`);
       else if (!parameterReferences(value).length && !["true", "false"].includes(String(value))) issues.push(`Rule ${rule.name || rule.id}: review_unknown must be true or false.`);
     }
     for (const [key, value] of Object.entries(rule.detector.parameters)) {

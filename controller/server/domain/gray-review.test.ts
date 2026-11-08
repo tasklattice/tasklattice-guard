@@ -20,7 +20,7 @@ function plan(id = "content-safety-model", value = "true", rails: Array<"input" 
     }] } });
 }
 
-it.each(["content-safety-model", "prompt-instruction-attacks", "prompt-instruction-attacks", "business-topics"])("pins %s review opt-in and its input dependency", id => {
+it.each(["content-safety-model", "prompt-instruction-attacks", "pii-semantic", "business-topics"])("pins %s review opt-in and its input dependency", id => {
   const compiled = plan(id);
   expect(compiled.steps.every(s => Object.fromEntries(s.parameters).review_unknown === "true")).toBe(true);
   expect(publishedProtectionCoverage(compiled)!.requiredModelBindings).toContain("classifier_review.input");
@@ -36,6 +36,10 @@ it("requires independent review bindings for the same Rail as each opted-in clas
   ]);
   expect(assignmentTargetAcceptsModel("classifier_review.input","tali.classifier-review.v1","custom-openai-compatible")).toBe(true);
   expect(assignmentTargetAcceptsModel("classifier_review.output","generic-chat","deepseek")).toBe(true);
+  expect(assignmentTargetAcceptsModel("classifier_review.input","generic-chat","custom-openai-compatible")).toBe(true);
+  expect(publishedProtectionCoverage(plan("pii-semantic","true",["input","output"]))!.requiredModelBindings).toEqual([
+    "pii_semantic.input","classifier_review.input","pii_semantic.output","classifier_review.output",
+  ]);
   expect(assignmentTargetAcceptsModel("classifier_review.input","tali.nemotron-safety-guard-v3.v1","custom-openai-compatible")).toBe(false);
   expect(assignmentTargetAcceptsModel("content_safety.output","tali.classifier-review.v1","custom-openai-compatible")).toBe(false);
   expect(assignmentTargetAcceptsModel("control_plane","tali.classifier-review.v1","custom-openai-compatible")).toBe(false);

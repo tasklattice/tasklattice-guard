@@ -23,7 +23,7 @@ CONTRACTS = {"jailbreak": "tali.guard.jailbreak.v1", "content_safety": "tali.gua
              "topic_control": "tali.guard.topic-control.semantic.v1"}
 
 
-def build_controller_plan(*, review=False, phase="input"):
+def build_controller_plan(*, review=False, phase="input", pii_only=False):
     source = """
       import { PolicyCatalog } from './server/policy-catalog/catalog.ts';
       import { DeclarativeCompiler } from './server/policy-studio/declarative.ts';
@@ -31,7 +31,7 @@ def build_controller_plan(*, review=False, phase="input"):
       const compiler = new DeclarativeCompiler('../runner/toolkit/policy_library/assets');
       const policies = PolicyCatalog.load('../runner/toolkit/policy_library/assets').list().map(p => compiler.catalogView(p));
       const phase = process.env.GUARD_TEST_PHASE ?? 'input';
-      const ids = phase === 'output' ? ['content-safety-model'] : ['content-safety-model', 'prompt-instruction-attacks', 'business-topics',
+      const ids = process.env.GUARD_TEST_PII === 'true' ? ['pii-semantic'] : phase === 'output' ? ['content-safety-model'] : ['content-safety-model', 'prompt-instruction-attacks', 'business-topics',
                    'content-filters', 'regional-compliance-sg-pdpa'];
       const bindings = ids.map(id => {
         const p = policies.find(p => p.id === id);
@@ -48,13 +48,15 @@ def build_controller_plan(*, review=False, phase="input"):
     """
     result = subprocess.run(["node", "--import", "tsx", "--input-type=module", "-e", source],
                             cwd=ROOT / "controller", capture_output=True, text=True, check=True, timeout=60,
-                            env={**os.environ,"GUARD_TEST_REVIEW":"true" if review else "false", "GUARD_TEST_PHASE":phase})
+                            env={**os.environ,"GUARD_TEST_REVIEW":"true" if review else "false", "GUARD_TEST_PHASE":phase,
+                                 "GUARD_TEST_PII":"true" if pii_only else "false"})
     return json.loads(result.stdout)
 
 
 async def scan(plan, probabilities, *, content="An ordinary synthetic request.", fault=None,
                backend, topic_profile=None, scope="full", review=None, review_fault=None, reviewer_binding=True,
-               reviewer_profile="tali.classifier-review.v1", require_evidence=True, phase="input", reviewer_phase=None):
+               reviewer_profile="tali.classifier-review.v1", require_evidence=True, phase="input", reviewer_phase=None,
+               pii_only=False):
     topic_profile = topic_profile or backend.profile
     config = candidate("input", "jailbreak", backend.profile, CONTRACTS["jailbreak"]).configuration
     for capability in ("content_safety", "topic_control"):
@@ -62,6 +64,9 @@ async def scan(plan, probabilities, *, content="An ordinary synthetic request.",
         config.bindings.extend(other.bindings)
     if phase == "output":
         config = candidate("output", "content_safety", backend.profile, CONTRACTS["content_safety"]).configuration
+    if pii_only:
+        from runner.toolkit.evaluation.contracts import CONTRACT_PII_SEMANTIC
+        config = candidate(phase, "pii_semantic", backend.profile, CONTRACT_PII_SEMANTIC).configuration
     if topic_profile != backend.profile:
         topic = candidate("input", "topic_control", topic_profile, CONTRACTS["topic_control"]).configuration
         topic.runtimes[0].id = "topic-only"
@@ -91,7 +96,7 @@ async def scan(plan, probabilities, *, content="An ordinary synthetic request.",
             data=json.loads(body['messages'][-1]['content'])
             assert f"current_{phase}" in data['state']
             keys=set(data['questions'])
-            capability = ('jailbreak' if 'jailbreak_attempt' in keys else 'content_safety' if 'unsafe_content' in keys else 'topic_control')
+            capability = ('pii' if pii_only else 'jailbreak' if 'jailbreak_attempt' in keys else 'content_safety' if 'unsafe_content' in keys else 'topic_control')
             calls.append('review:'+capability)
             assert set(data)=={'questions','state'}
             assert not any(k in data['state'] for k in ('expected','label','dataset','caseId','probabilities'))
@@ -102,7 +107,7 @@ async def scan(plan, probabilities, *, content="An ordinary synthetic request.",
             answer=review.get(capability,'no')
             return httpx.Response(200,json={'model':'review-model-v1','choices':[{'message':{'content':json.dumps({'answers':{k:answer for k in keys}})}}]})
         keys = set(body["questions"])
-        capability = ("jailbreak" if "jailbreak_attempt" in keys else
+        capability = ("pii" if pii_only else "jailbreak" if "jailbreak_attempt" in keys else
                       "content_safety" if "unsafe_content" in keys else "topic_control")
         calls.append(capability)
         if fault and capability == fault[0]:

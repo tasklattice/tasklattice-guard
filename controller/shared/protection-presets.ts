@@ -1160,7 +1160,7 @@ export const protectionPresets: readonly ProtectionPreset[] = [
   },
   {
     "id": "full-feature",
-    "version": "1.1.0",
+    "version": "1.1.1",
     "name": "Full-feature",
     "description": "All Policies and Rules except advanced Answer Reliability; benchmark only.",
     "industry": "general",
@@ -2231,12 +2231,15 @@ export const protectionPresets: readonly ProtectionPreset[] = [
       },
       {
         "policyId": "pii-semantic",
-        "policyVersion": "1.0.0",
+        "policyVersion": "1.1.0",
         "enabledRails": [
           "input",
           "output"
         ],
-        "parameterValues": {},
+        "parameterValues": {
+          "on_unknown": "block",
+          "review_unknown": "false"
+        },
         "action": null,
         "ruleActions": {},
         "reasoningPolicy": null,

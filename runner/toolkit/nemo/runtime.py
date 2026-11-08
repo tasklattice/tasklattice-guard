@@ -2470,7 +2470,7 @@ def _trace(
                     "on_unknown": binding.parameter("on_unknown") or "block",
                     "review_unknown": binding.parameter("review_unknown") or "false",
                     "decision_source": "review" if any(step.evaluator_id == "classifier-review" for step in item.result.trace) else "primary",
-                }) if binding.capability in {"content_safety", "jailbreak", "topic_control"} else None,
+                }) if binding.capability in {"content_safety", "jailbreak", "topic_control", "pii"} else None,
                 duration_ms=item.latency_ms,
                 parent_id=(
                     action_parents.get(binding.id)
@@ -3330,7 +3330,8 @@ def _runtime_action(item):
     if item.result.verdict == "unknown":
         if item.binding.on_unsafe == "allow":
             return "allow"
-        if (item.binding.capability in {"jailbreak", "content_safety", "topic_control"}
+        if ((item.binding.capability in {"jailbreak", "content_safety", "topic_control"}
+                or (item.binding.capability == "pii" and item.binding.contract_ref == "tali.guard.pii.semantic.v1"))
                 and item.result.unknown_reason == "uncertain"
                 and item.binding.parameter("on_unknown") == "allow"):
             return "allow"
