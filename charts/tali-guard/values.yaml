@@ -101,6 +101,9 @@ controller:
       memory: 2Gi
 
 runner:
+  # Optional Scan request budget in seconds (1..300). Omit to use the Runner
+  # default of 25. Clients must allow more time than this total request budget.
+  # scanTimeoutSeconds: 90
   # Optional different data-plane URL; normally inherits top-level publicUrl.
   # Overrides CONTROLLER_RUNTIME_PUBLIC_URL in the Controller ConfigMap.
   # When neither URL is configured, Endpoint addresses use the incoming Controller origin.

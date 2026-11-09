@@ -58,6 +58,20 @@ async def test_review_failure_keeps_primary_unknown_and_is_an_execution_error(cl
     assert row['review']['verdict']=='error' and row['review']['answers']=={}
 
 
+@pytest.mark.parametrize('capability', CONTRACTS)
+@pytest.mark.parametrize('answer,outcome', [('no', 'cleared'), ('yes', 'blocked'), ('unknown', 'blocked')])
+async def test_recovered_review_timeout_keeps_audit_without_failing_scan(classifier_backend, plan, capability, answer, outcome):
+    response,calls,evidence=await scan(plan,{capability:.5},review={capability:answer},
+        review_fault=(capability,'timeout-once'),backend=classifier_backend)
+    assert response.status_code==200,response.text
+    assert response.json()['result']['outcome']==outcome
+    assert evidence['execution']['status']=='complete'
+    assert calls.count('review:'+capability)==2
+    row=next(e for e in evidence[classifier_backend.evidence_key] if e['capability']==capability)
+    assert [a['result'] for a in row['review']['attempts']]==['timeout','success']
+    assert row['review']['verdict']=={'no':'not_matched','yes':'matched','unknown':'unknown'}[answer]
+
+
 @pytest.mark.parametrize('capability',CONTRACTS)
 async def test_primary_errors_do_not_start_review(classifier_backend, plan,capability):
     response,calls,evidence=await scan(plan,{},review={},fault=(capability,'http'), backend=classifier_backend)
@@ -137,6 +151,18 @@ def test_generic_chat_review_still_requires_matching_rail_binding_and_contract(i
 @pytest.fixture(scope="module")
 def output_plan():
     return build_controller_plan(review=True, phase="output")
+
+
+@pytest.mark.parametrize('answer,outcome', [('no', 'cleared'), ('yes', 'blocked'), ('unknown', 'blocked')])
+async def test_output_review_retry_recovers_without_losing_attempt_evidence(classifier_backend, output_plan, answer, outcome):
+    response,calls,evidence=await scan(output_plan,{'content_safety':.5},phase='output',
+        review={'content_safety':answer},review_fault=('content_safety','timeout-once'),backend=classifier_backend)
+    assert response.status_code==200,response.text
+    assert response.json()['result']['outcome']==outcome
+    assert evidence['execution']['status']=='complete'
+    assert calls.count('review:content_safety')==2
+    row=evidence[classifier_backend.evidence_key][0]
+    assert [a['result'] for a in row['review']['attempts']]==['timeout','success']
 
 
 @pytest.mark.parametrize("score,answer,outcome,expected_calls", [

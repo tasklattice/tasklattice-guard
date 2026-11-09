@@ -49,13 +49,13 @@ Laya 是独立的 Decision Model 适配，覆盖输入/输出内容安全、输�
 
 内容安全使用两种短问题交叉检查：全部达到上界才明确命中，全部不超过下界才明确未命中，其余情况为 unknown。辅助问题不能单独把原来的高风险结果改成安全；表述分歧交给完整类别复核。其他检测保持任一相关分数达到上界即命中、全部不超过下界即未命中的规则。当前 Rule 的 `on_unknown` 单独处理灰区，不能覆盖其他 Policy 的 Block。布尔值、字符串、越界、非有限分数、缺少问题或模型名均为错误，不会转为安全判定。
 
-Laya 服务的 `usage.truncated` 只报告状态截断，不报告问题截断。v2 使用固定短问题及显式预算；若服务报告状态截断或丢失 token，返回 `LayaInputTruncatedError`，保留实际模型、路由与截断元数据，不将残缺输入判成安全或命中。
+Laya 服务的 `usage.truncated` 只报告状态截断，不报告问题截断。v2 使用固定短问题及显式预算；若服务报告状态截断或丢失 token，原生调用记录 `LayaInputTruncatedError`，保留实际模型、路由与截断元数据，不将残缺输入判成安全或命中。启用复核时，将该项作为覆盖不足的 Unknown 交给独立复核，使用完整原文；片段分数只存于 `discarded_probabilities`，不参与最终判定。未启用复核时仍返回执行错误。
 
 当前 checkpoint 可能只识别复合请求中的允许任务，忽略另一项越界任务。因此，含多句或连接词的输入若未明确命中，返回覆盖不足的 `unknown`；原始概率仍保留在第一条 trace 中。此检查是保守的适用范围限制，不是完整的任务拆解器。
 
 话题 v3 对以换行或分号分隔的多项允许/禁止主题也要求完整复核。原生编码器在此类列表上出现过高分误拦和低分漏检，因此无论初判方向如何，都保留原分数并追加 `multi_topic_scope_unverified` 覆盖证据，返回 unknown；原生错误仍按错误处理。单一主题检查保持原行为。
 
-`review_unknown` 与 JEV 一样可选。开启时复核合法灰区及上述覆盖不足，使用完整的规范问题与原始内容/历史；不发送第一阶段概率或测试标签。规范问题比 v2 初判问题更完整，内容安全仍包含 23 类及良性例外。第一阶段传输、格式、截断错误不进入复核。复核需当前 Rail 独立的 `classifier_review.input` 或 `classifier_review.output` 绑定。具体规则见 [灰区复核](classifier-gray-review.md)。
+`review_unknown` 与 JEV 一样可选。开启时复核合法灰区及上述覆盖不足，使用完整的规范问题与原始内容/历史；不发送第一阶段概率或测试标签。规范问题比 v2 初判问题更完整，内容安全仍包含 23 类及良性例外。第一阶段传输及格式错误不进入复核；合法响应明确报告的截断可以复核，复核自身失败仍为执行错误，复核后仍 Unknown 则 Block。复核需当前 Rail 独立的 `classifier_review.input` 或 `classifier_review.output` 绑定。具体规则见 [灰区复核](classifier-gray-review.md)。
 
 `tali.laya.v1` 支持 `content_safety.input`、`content_safety.output`、`jailbreak.input`、`topic_control.input`、`pii_semantic.input`、`pii_semantic.output`。仅话题协议只支持 `topic_control.input`。两者仍不实现控制面用途；JEV Provider 也不能绑定 Laya 协议。
 

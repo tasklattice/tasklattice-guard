@@ -267,6 +267,18 @@ class LayaNoulEvaluator:
                         call.complete(payload=payload)
         except (httpx.HTTPError, TimeoutError, ValueError, TypeError, KeyError) as error:
             record_validation_error(error)
+            from .classifier_review import review_enabled
+            if isinstance(error, LayaInputTruncatedError) and review_enabled(request):
+                # A well-formed partial answer cannot decide the full request.
+                # Keep the failed native call for audit, discard its judgments,
+                # and let the configured reviewer inspect the original state.
+                reason = "Laya input or policy context was truncated; independent full-context review is required."
+                model_metadata.update(coverage="input_truncated", discarded_probabilities=probabilities)
+                trace = self._trace(request, "unknown", reason, {}, actual_model,
+                                    model_metadata=model_metadata, request_budget=request_budget)
+                return evaluation_result(request, "unknown", request.content, reason=reason,
+                    trace=(trace,), unknown_reason="uncertain",
+                    usage=action_usage(call, len(request.content)) if call is not None else EvaluationUsage())
             detail = " Input or policy context was truncated; no complete classification is available." if isinstance(error, LayaInputTruncatedError) else ""
             return self._error(request, f"Laya {self.scope_label} evaluation failed: {type(error).__name__}.{detail}",
                                error_type=type(error).__name__,

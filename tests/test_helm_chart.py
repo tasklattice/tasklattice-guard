@@ -570,6 +570,16 @@ def test_adapter_limits_use_application_defaults():
     assert "GUARD_SCAN_TIMEOUT_SECONDS" not in env
 
 
+def test_explicit_scan_budget_reaches_runner_and_rejects_invalid_values():
+    documents = render("--set", "runner.scanTimeoutSeconds=90")
+    runtime = next(d for d in documents if d["kind"] == "StatefulSet" and d["metadata"]["name"] == "runner-default")
+    env = {v["name"]: v.get("value") for v in runtime["spec"]["template"]["spec"]["containers"][0]["env"]}
+    assert env["GUARD_SCAN_TIMEOUT_SECONDS"] == "90"
+    for value in ["0", "-1", "301", "1.5", "invalid"]:
+        with pytest.raises(subprocess.CalledProcessError):
+            render("--set", "runner.scanTimeoutSeconds=" + value)
+
+
 def test_image_versions_follow_chart_with_explicit_overrides():
     version = str(load_values(CHART / "Chart.yaml")["appVersion"])
     documents = render()

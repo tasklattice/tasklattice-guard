@@ -56,7 +56,7 @@ def build_controller_plan(*, review=False, phase="input", pii_only=False):
 async def scan(plan, probabilities, *, content="An ordinary synthetic request.", fault=None,
                backend, topic_profile=None, scope="full", review=None, review_fault=None, reviewer_binding=True,
                reviewer_profile="tali.classifier-review.v1", require_evidence=True, phase="input", reviewer_phase=None,
-               pii_only=False):
+               pii_only=False, guard_context=None):
     topic_profile = topic_profile or backend.profile
     config = candidate("input", "jailbreak", backend.profile, CONTRACTS["jailbreak"]).configuration
     for capability in ("content_safety", "topic_control"):
@@ -94,20 +94,24 @@ async def scan(plan, probabilities, *, content="An ordinary synthetic request.",
         if str(request.url).endswith('/chat/completions'):
             assert request.headers['authorization'] == 'Bearer review-synthetic'
             data=json.loads(body['messages'][-1]['content'])
-            assert f"current_{phase}" in data['state']
+            assert data['state'][f"current_{phase}"] == content
             keys=set(data['questions'])
-            capability = ('pii' if pii_only else 'jailbreak' if 'jailbreak_attempt' in keys else 'content_safety' if 'unsafe_content' in keys else 'topic_control')
+            if 'task_hijack' in keys and guard_context and guard_context.get('query'):
+                assert data['state']['user_task'] == guard_context['query']
+            capability = ('pii' if pii_only else 'jailbreak' if keys & {'jailbreak_attempt','task_hijack'} else 'content_safety' if 'unsafe_content' in keys else 'topic_control')
             calls.append('review:'+capability)
             assert set(data)=={'questions','state'}
             assert not any(k in data['state'] for k in ('expected','label','dataset','caseId','probabilities'))
             if review_fault and review_fault[0]==capability:
+                if review_fault[1]=='timeout-once' and calls.count('review:'+capability)==1:
+                    raise httpx.ReadTimeout('Synthetic recovered review timeout',request=request)
                 if review_fault[1]=='timeout':raise httpx.ReadTimeout('Synthetic review timeout',request=request)
                 if review_fault[1]=='http':return httpx.Response(503)
                 if review_fault[1]=='malformed':return httpx.Response(200,json={'model':'review-model-v1','choices':[{'message':{'content':'{"answers":{"unsafe_content":true}}'}}]})
             answer=review.get(capability,'no')
             return httpx.Response(200,json={'model':'review-model-v1','choices':[{'message':{'content':json.dumps({'answers':{k:answer for k in keys}})}}]})
         keys = set(body["questions"])
-        capability = ("pii" if pii_only else "jailbreak" if "jailbreak_attempt" in keys else
+        capability = ("pii" if pii_only else "jailbreak" if keys & {"jailbreak_attempt", "task_hijack"} else
                       "content_safety" if "unsafe_content" in keys else "topic_control")
         calls.append(capability)
         if fault and capability == fault[0]:
@@ -115,9 +119,11 @@ async def scan(plan, probabilities, *, content="An ordinary synthetic request.",
                 raise httpx.ReadTimeout("Synthetic timeout", request=request)
             if fault[1] == "http":
                 return httpx.Response(503)
-            return httpx.Response(200, json={"model": backend.model, "answers": {}})
+            if fault[1] != "truncated":
+                return httpx.Response(200, json={"model": backend.model, "answers": {}})
         return httpx.Response(200, json={"model": backend.model, "answers": {
-            key: {"type": "noul", "noul": probabilities.get(capability, .01)} for key in keys}})
+            key: {"type": "noul", "noul": probabilities.get(capability, .01)} for key in keys},
+            "usage": {"truncated": True, "state_tokens_dropped": 400} if fault == (capability, "truncated") else {}})
 
     providers = action_providers(*dynamic_runtime_action_providers(config, credentials,
         transport=httpx.MockTransport(respond)))
@@ -140,7 +146,8 @@ async def scan(plan, probabilities, *, content="An ordinary synthetic request.",
     try:
         async with httpx.AsyncClient(transport=httpx.ASGITransport(app), base_url="http://runner") as client:
             response = await client.post(SCAN_URL, headers={"authorization": "Bearer key", "x-guard-evidence": "evaluations-v1"},
-                                         json={"input": content, "flagOnly": False, "scanDirection": "response" if phase == "output" else "request"})
+                                         json={"input": content, "flagOnly": False, "scanDirection": "response" if phase == "output" else "request",
+                                               **({"guardrail_context":guard_context} if guard_context else {})})
         if require_evidence:
             assert "x-guard-evaluation-evidence" in response.headers, (response.text, failures)
         return response, calls, json.loads(response.headers["x-guard-evaluation-evidence"]) if "x-guard-evaluation-evidence" in response.headers else None

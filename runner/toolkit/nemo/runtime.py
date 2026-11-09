@@ -3210,6 +3210,9 @@ def _native_model_trace_steps(
             route="cancelled" if cancelled else (failure_mode if failed else "complete"),
             capability=risk,
             module_id=module.id if module is not None else "__unknown__",
+            # Match the assessment for this content block. Otherwise a recovered
+            # attempt has no owning result and is treated as a fatal failure.
+            content_block_id=request.active_block_id,
             guardrail_id=request.plan.guardrail_id,
             guardrail_version=request.plan.guardrail_version,
             policy_id=(

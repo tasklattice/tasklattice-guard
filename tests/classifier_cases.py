@@ -52,7 +52,7 @@ JEV = ClassifierBackend(
     content_safety_type=jev_content_safety.JevContentSafetyEvaluator,
     topic_type=jev_topic.JevTopicEvaluator,
     jailbreak_revision="jailbreak-input.v1",
-    external_revision="external-instruction-input.v1",
+    external_revision="external-instruction-input.v2",
     content_safety_revision="content-safety-input.v1",
     topic_questions=jev_topic.topic_questions,
 )
@@ -64,7 +64,7 @@ LAYA = ClassifierBackend(
     content_safety_type=laya_content_safety.LayaContentSafetyEvaluator,
     topic_type=laya_topic.LayaTopicEvaluator,
     jailbreak_revision="laya-jailbreak-input.v2",
-    external_revision="laya-external-instruction-input.v2",
+    external_revision="laya-external-instruction-input.v3",
     content_safety_revision="laya-content-safety-input.v4",
     topic_questions=laya_topic.topic_questions,
 )

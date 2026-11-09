@@ -42,6 +42,38 @@ async def test_truncated_input_never_becomes_a_pass_or_a_detection(usage, probab
     assert evidence["model_metadata"]["usage"] == usage
 
 
+@pytest.mark.parametrize("usage", [
+    {"truncated": True, "state_tokens_dropped": 20},
+    {"truncated": False, "state_tokens_dropped": 1},
+])
+@pytest.mark.parametrize("probability", [.01, .99])
+async def test_truncation_review_preserves_failure_evidence_and_complete_state(usage, probability):
+    content = "Neutral context. " * 500 + "The final sentence must be checked."
+    item = replace(request(content=content, context_messages=[{"role": "user", "content": "Prior turn."}]),
+                   parameters=(("review_unknown", "true"),))
+    seen = []
+
+    class Reviewer:
+        async def review(self, original, questions, state, first):
+            seen.append(first)
+            assert original is item
+            assert state == {"current_input": content, "context_messages": [{"role": "user", "content": "Prior turn."}]}
+            assert first.verdict == "unknown" and not first.findings
+            return first
+
+    service = LayaContentSafetyEvaluator(base_url="https://laya.test/v1", model="auto", api_key="secret",
+        reviewer=Reviewer(), transport=httpx.MockTransport(lambda wire: reply(json.loads(wire.content), probability, usage)))
+    result = await service.evaluate(item)
+    assert len(seen) == 1
+    call = result.usage.model_calls[0]
+    assert call.result == "invalid_response" and call.error_type == "LayaInputTruncatedError"
+    evidence = json.loads(result.trace[0].evidence)
+    assert evidence["judgments"] == {}
+    assert evidence["model_metadata"]["coverage"] == "input_truncated"
+    assert evidence["model_metadata"]["usage"] == usage
+    assert set(evidence["model_metadata"]["discarded_probabilities"].values()) == {probability}
+
+
 @pytest.mark.parametrize("capability,factory", [
     ("content_safety", LayaContentSafetyEvaluator), ("jailbreak", LayaJailbreakEvaluator),
     ("topic_control", LayaTopicEvaluator),
