@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { riskSeverities } from "../../shared/security-severity.js";
 import { enforcementActions } from "../../shared/enforcement-action.generated.js";
 import { guardrailCategoryIds } from "../../shared/guardrail-catalog.js";
 import { protectionDirectoryIds } from "../../shared/protection-map.js";
@@ -25,6 +26,7 @@ const railBindingSchema = z.object({
   // on_unsafe is an EnforcementAction directive, not a PolicyDecision. The
   // values come from the shared Controller/Runner wire contract.
   on_unsafe: z.enum(enforcementActions),
+  risk_severity: z.enum(riskSeverities).nullable().default(null),
   parallel_group: z.string().trim().min(1).max(120).nullable().default(null),
   priority: z.number().int().nullable().default(null),
   timeout_ms: z.number().int().positive().max(120_000).default(2_000),
@@ -48,7 +50,7 @@ const policyTestCaseSchema = z.object({
   covered_rule_ids: z.array(z.string().trim().min(1).max(256)).min(1).max(64),
   case_type: z.enum(["unit", "input_rail", "output_rail", "timeout", "provider_failure", "concurrency"]),
   required: z.boolean().default(true),
-  expected_failure: z.enum(["timeout", "provider_failure"]).nullable().default(null),
+  expected_failure: z.enum(["timeout", "provider_failure", "guard_failure", "configuration_failure"]).nullable().default(null),
   concurrency_group: z.string().trim().min(1).max(120).nullable().default(null),
   trusted_instruction: z.string().max(8_000).default(""),
   use_guardrail_instruction: z.boolean().default(false),
@@ -116,4 +118,34 @@ export type PolicyValidationResult = {
 
 export function flowRuleId(rail: string, flow: string): string {
   return `flow/${rail}/${flow}`;
+}
+
+/** The Rule a Policy Library shows for one Flow of a programmable Policy version. */
+export function flowRule(bindingId: string, version: string, binding: Pick<ProgrammablePolicyDraft["rail_bindings"][number], "rail_type" | "flow_name" | "on_unsafe" | "risk_severity">) {
+  return {
+    id: flowRuleId(binding.rail_type, binding.flow_name),
+    name: binding.flow_name.replaceAll("_", " ").replaceAll("-", " ").replace(/\b\w/g, (value) => value.toUpperCase()),
+    description: `Runs ${binding.flow_name} on the ${binding.rail_type} Rail and applies ${binding.on_unsafe} when the Flow reports unsafe content.`,
+    detector: { ref: `programmable/${binding.flow_name}`, version },
+    effect: binding.on_unsafe,
+    risk_severity: binding.risk_severity ?? null,
+    rails: [binding.rail_type],
+    implementation: {
+      engine: "nemo-guardrails",
+      execution: "programmable" as const,
+      binding_id: bindingId,
+      implementation_rule_id: binding.flow_name,
+      detector: null,
+      flow_name: binding.flow_name,
+      action_name: null,
+    },
+    validators: [],
+    detector_options: {},
+    rule_expansion: null,
+    expression: null,
+    context_expression: null,
+    redaction: null,
+    severity_threshold: null,
+    identifiers: [], conditions: [], keywords: [], always_block: [], exceptions: [], phrase_patterns: [],
+  };
 }

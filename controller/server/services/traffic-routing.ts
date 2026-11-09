@@ -1,24 +1,72 @@
+import { projectPoolAllocation } from "./runner-allocation.js";
+import { guardrailTelemetryFilter } from "./guardrail-operational-data.js";
 import { routerRolloutState } from "../../shared/router-lifecycle.js";
 import { z } from "zod";
 import { isDeepStrictEqual } from "node:util";
-import { createHash, randomUUID } from "node:crypto";
-import { and, asc, desc, eq, gte, inArray, isNull, lte, lt, sql } from "drizzle-orm";
+import { randomUUID } from "node:crypto";
+import { and, asc, desc, eq, getTableColumns, gte, inArray, isNull, lte, lt, ne, or, sql } from "drizzle-orm";
 import type { ControllerDatabase } from "../db/client.js";
-import { auditEvents, controllerState, endpoints, guardrails, guardrailVersions, routeAssignments, runnerInstances, telemetryWatermarks, trafficRouters, trafficRouterRevisions, type RouterRevisionContext } from "../db/schema.js";
-import { ConflictError, NotFoundError, ValidationError } from "../domain/errors.js";
-import { capabilityIssues, routingIssues, type RouterDraft } from "../../shared/traffic-routing.js";
+import { auditEvents, controllerState, endpoints, guardrails, guardrailVersions, routeAssignments, runnerInstances, runnerPools, telemetryWatermarks, projects, trafficRouterChangeRequests, trafficRouters, trafficRouterRevisions, user, type RouterRevisionContext } from "../db/schema.js";
+import { ConflictError, ControllerError, NotFoundError, ValidationError } from "../domain/errors.js";
+import { capabilityIssues, routingIssues, type RouterChangeRequest, type RouterDraft, type SelectorExpression } from "../../shared/traffic-routing.js";
 import { advisoryTransactionLock } from "../db/postgres-locks.js";
+import { routingEventProjectId } from "./routing-telemetry-context.js";
+import { lockEndpointTelemetryContextReaders } from "./endpoint-telemetry-contexts.js";
+import {
+  assertResourceWriteAccess,
+  currentProjectId,
+  resourceReadPredicate,
+  resourceWritePredicate,
+  projectOwnerForCreate,
+} from "./project-context.js";
+import { telemetryBatches, telemetryWatermarkBatch } from "./telemetry-batches.js";
 
-function canonical(value: unknown): string {
-  if (Array.isArray(value)) return `[${value.map(canonical).join(",")}]`;
-  if (value && typeof value === "object") return `{${Object.entries(value).sort(([a], [b]) => a.localeCompare(b)).map(([key, child]) => `${JSON.stringify(key)}:${canonical(child)}`).join(",")}}`;
-  return JSON.stringify(value);
+/** How long a Runner load check of an imported version counts as current. */
+export const IMPORTED_VERSION_CHECK_TTL_MS = 10 * 60_000;
+
+const sortedIds = (ids: readonly string[]) => [...new Set(ids)].sort((a, b) => a.localeCompare(b));
+
+type VisibleReferences = { endpoints: Set<string> | null; guardrails: Set<string> | null; restrictedEndpoints: Set<string> };
+
+/** Project-facing views must not turn a Router share into a resource share. */
+function endpointSelectorValues(expression: SelectorExpression): string[] {
+  return expression.conditions.flatMap(condition => {
+    if ("conditions" in condition) return endpointSelectorValues(condition);
+    if (condition.field !== "endpoint.id" && condition.field !== "auth.principal") return [];
+    return (Array.isArray(condition.value) ? condition.value : [condition.value]).filter(Boolean);
+  });
+}
+
+function redactSelector(expression: SelectorExpression, restrictedEndpoints: Set<string>): SelectorExpression {
+  return { ...expression, conditions: expression.conditions.map(condition => {
+    if ("conditions" in condition) return redactSelector(condition, restrictedEndpoints);
+    if (condition.field !== "endpoint.id" && condition.field !== "auth.principal") return condition;
+    const redact = (value: string) => restrictedEndpoints.has(value) ? "[restricted]" : value;
+    return { ...condition, value: Array.isArray(condition.value) ? condition.value.map(redact) : redact(condition.value) };
+  }) };
+}
+
+function redactSnapshot(snapshot: RouterDraft, refs: VisibleReferences): RouterDraft {
+  if (refs.guardrails === null || refs.endpoints === null) return snapshot;
+  return { ...snapshot, routes: snapshot.routes.map(route => ({ ...route,
+    selector: { ...route.selector, expression: redactSelector(route.selector.expression, refs.restrictedEndpoints) },
+    targets: route.targets.filter(target => refs.guardrails!.has(target.guardrailId)),
+  })) };
+}
+
+function redactContext(context: RouterRevisionContext | null, refs: VisibleReferences): RouterRevisionContext | null {
+  if (!context) return context;
+  return {
+    endpoints: context.endpoints.filter(endpoint => refs.endpoints === null || refs.endpoints.has(endpoint.id)),
+    guardrails: context.guardrails.filter(guardrail => refs.guardrails === null || refs.guardrails.has(guardrail.id)),
+  };
 }
 
 export const routingEventSchema = z.object({
   id: z.string().min(1).max(300), eventType: z.enum(["route_assignment", "completion"]),
   decisionId: z.string().min(1).max(256), callId: z.string().min(1).max(256), runnerId: z.string().min(1).max(256),
   poolId: z.string().max(128).optional(), endpointId: z.string().min(1).max(256),
+  allocationContextId: z.string().min(1).max(128).optional(),
   routerId: z.string().max(256).default(""), routerRevision: z.number().int().nonnegative().default(0),
   routeId: z.string().max(256).default(""), targetId: z.string().max(256).default(""),
   guardrailId: z.string().max(256).default(""), guardrailVersion: z.string().max(256).default(""),
@@ -36,16 +84,39 @@ const endpointContext = (rows: Array<{ id: string; name: string; adapter: string
 
 type Tx = Parameters<Parameters<ControllerDatabase["transaction"]>[0]>[0];
 export class TrafficRoutingService {
-  constructor(private db: ControllerDatabase) {}
+  constructor(private db: ControllerDatabase, private readonly scopedTelemetry = false) {}
   async list() {
-    const [rows, bindings, runners] = await Promise.all([
-      this.db.select().from(trafficRouters).where(isNull(trafficRouters.deletedAt)).orderBy(asc(trafficRouters.name)),
-      this.db.select({ id: endpoints.id, routerId: endpoints.trafficRouterId }).from(endpoints).where(isNull(endpoints.deletedAt)),
-      this.db.select().from(runnerInstances).where(eq(runnerInstances.poolId, "default")),
+    const [rows, bindings, runners, changes] = await Promise.all([
+      this.db.select().from(trafficRouters).where(and(
+        isNull(trafficRouters.deletedAt), resourceReadPredicate("router", trafficRouters.id, trafficRouters.projectId),
+      )).orderBy(asc(trafficRouters.name)),
+      this.db.select({ id: endpoints.id, routerId: endpoints.trafficRouterId }).from(endpoints).where(and(
+        isNull(endpoints.deletedAt), resourceReadPredicate("endpoint", endpoints.id, endpoints.projectId),
+      )),
+      this.db.select({ ...getTableColumns(runnerInstances), groupId: runnerPools.groupId, poolProjectId: runnerPools.projectId }).from(runnerInstances)
+        .innerJoin(runnerPools, eq(runnerPools.id, runnerInstances.poolId)),
+      this.db.select({ change: trafficRouterChangeRequests }).from(trafficRouterChangeRequests)
+        .innerJoin(trafficRouters, eq(trafficRouters.id, trafficRouterChangeRequests.routerId))
+        .where(or(eq(trafficRouterChangeRequests.status, "pending"), and(eq(trafficRouterChangeRequests.status, "applied"),
+          eq(trafficRouterChangeRequests.kind, "publish"), eq(trafficRouterChangeRequests.appliedRevision, trafficRouters.activeRevision))))
+        .then(found => this.withUsernames(this.db, found.map(row => row.change))),
     ]);
-    return rows.map(r => ({ ...r, endpointIds: bindings.filter(e => e.routerId === r.id).map(e => e.id),
-      rolloutStatus: routerRolloutState(r, runners),
-    }));
+    const owners = [...new Set(rows.map(row => row.projectId))];
+    const allocations = owners.length ? await this.db.select({ id: projects.id, poolId: runnerPools.id })
+      .from(projects).innerJoin(runnerPools, projectPoolAllocation).where(inArray(projects.id, owners)) : [];
+    const refs = await this.visibleReferences(this.db, rows.flatMap(row => [row.draft, row.activeSnapshot]), [], []);
+    return rows.map(r => {
+      const poolIds = new Set(allocations.filter(project => project.id === r.projectId).map(project => project.poolId));
+      const revertible = changes.find(c => c.routerId === r.id && c.status === "applied" && c.baseRevision !== null);
+      return { ...r, draft: redactSnapshot(r.draft, refs),
+        activeSnapshot: r.activeSnapshot ? redactSnapshot(r.activeSnapshot, refs) : null,
+        rolloutError: currentProjectId() && r.rolloutError ? "Runner reported a rollout error." : r.rolloutError,
+        endpointIds: bindings.filter(e => e.routerId === r.id).map(e => e.id),
+        rolloutStatus: routerRolloutState(r, runners.filter(runner => poolIds.has(runner.poolId))),
+        pendingChangeRequest: changes.find(c => c.routerId === r.id && c.status === "pending") ?? null,
+        revertibleChangeRequest: revertible ? { id: revertible.id, baseRevision: revertible.baseRevision!, appliedRevision: revertible.appliedRevision! } : null,
+      };
+    });
   }
   async get(id: string) {
     const found = (await this.list()).find(r => r.id === id);
@@ -58,8 +129,11 @@ export class TrafficRoutingService {
     const id = randomUUID();
     await this.db.transaction(async tx => {
       await advisoryTransactionLock(tx, "traffic-router-bindings");
+      await this.assertDraftGuardrailsVisible(tx, draft);
       const requested = [...new Set(endpointIds)];
-      const available = await tx.select().from(endpoints).where(isNull(endpoints.deletedAt));
+      const available = await tx.select().from(endpoints).where(and(
+        isNull(endpoints.deletedAt), resourceWritePredicate(endpoints.projectId),
+      ));
       const selected = available.filter(endpoint => requested.includes(endpoint.id));
       if (selected.length !== requested.length) throw new ValidationError("Endpoint was not found.");
       for (const endpoint of selected) {
@@ -67,7 +141,7 @@ export class TrafficRoutingService {
       }
       const issues = capabilityIssues(draft, selected);
       if (selected.length && issues.length) throw new ValidationError(issues.join("; "));
-      await tx.insert(trafficRouters).values({ id, name, description, draft });
+      await tx.insert(trafficRouters).values({ id, projectId: projectOwnerForCreate(), name, description, draft });
       for (const endpoint of selected) {
         await tx.update(endpoints).set({ trafficRouterId: id, updatedAt: new Date() }).where(eq(endpoints.id, endpoint.id));
       }
@@ -76,45 +150,62 @@ export class TrafficRoutingService {
     return this.get(id);
   }
   async save(id: string, expectedDraftRevision: number, draft: RouterDraft, actorId: string) {
+    await assertResourceWriteAccess(this.db, "router", id);
     const errors = routingIssues(draft);
     if (errors.length) throw new ValidationError(errors.join("; "));
     await this.db.transaction(async tx => {
       await advisoryTransactionLock(tx, "traffic-router-bindings");
+      await this.assertDraftGuardrailsVisible(tx, draft);
       const rows = await tx.update(trafficRouters).set({ draft, draftRevision: expectedDraftRevision + 1, updatedAt: new Date() })
-        .where(and(eq(trafficRouters.id, id), eq(trafficRouters.draftRevision, expectedDraftRevision), isNull(trafficRouters.deletedAt))).returning();
+        .where(and(eq(trafficRouters.id, id), eq(trafficRouters.draftRevision, expectedDraftRevision), isNull(trafficRouters.deletedAt), resourceWritePredicate(trafficRouters.projectId))).returning();
       if (!rows.length) throw new ConflictError("Router draft changed. Reload and compare your changes.", "router_draft_conflict");
       await this.audit(tx, id, actorId, "router.draft_saved", { previousDraftRevision: expectedDraftRevision, draft });
     });
     return this.get(id);
   }
-  private async resolvePublication(tx: Tx, id: string, draft: RouterDraft) {
+  private async resolvePublication(tx: Tx, id: string, draft: RouterDraft, options: { verifyImports?: boolean } = {}) {
     const initialErrors = routingIssues(draft, true);
     if (initialErrors.length) throw new ValidationError(initialErrors.join("; "));
-    const bound = await tx.select().from(endpoints).where(and(eq(endpoints.trafficRouterId, id), isNull(endpoints.deletedAt)));
+    // A readable Router does not transitively grant access to its targets.
+    // Recheck even disabled/zero-weight targets before returning a preview.
+    if (currentProjectId()) await this.assertDraftGuardrailsVisible(tx, draft);
+    const bound = await tx.select().from(endpoints).where(and(
+      eq(endpoints.trafficRouterId, id), isNull(endpoints.deletedAt), resourceWritePredicate(endpoints.projectId),
+    ));
     const ids = [...new Set(draft.routes.flatMap(r => r.targets.map(t => t.guardrailId)))];
     const versions = ids.length ? await tx.select({ id: guardrailVersions.guardrailId, version: guardrailVersions.version,
-      artifactId: guardrailVersions.artifactId, status: guardrailVersions.status, name: guardrails.name, deletedAt: guardrails.deletedAt })
+      artifactId: guardrailVersions.artifactId, status: guardrailVersions.status, name: guardrails.name, deletedAt: guardrails.deletedAt,
+      origin: guardrailVersions.origin, environmentCheck: guardrailVersions.environmentCheck })
       .from(guardrailVersions).innerJoin(guardrails, eq(guardrails.id, guardrailVersions.guardrailId))
-      .where(inArray(guardrailVersions.guardrailId, ids))
-      .orderBy(desc(guardrailVersions.generation), asc(guardrailVersions.version)) : [];
-    const snapshot: RouterDraft = { routes: draft.routes.map(route => ({ ...route, targets: route.targets.map(target => {
-      const { versionStrategy, ...pinned } = target;
-      if (versionStrategy === "latest") {
-        // Generation is globally unique and monotonic; version labels are opaque strings.
-        const latest = versions.find(v => v.id === target.guardrailId && !v.deletedAt && v.status === "ready" && v.artifactId);
-        if (!latest) throw new ValidationError(`${route.name}: ${target.guardrailId} has no ready Guardrail Version`);
-        pinned.guardrailVersion = latest.version;
-      }
-      return pinned;
-    }) })) };
+      .where(and(inArray(guardrailVersions.guardrailId, ids), resourceReadPredicate("guardrail", guardrails.id, guardrails.projectId))) : [];
+    // Targets already name immutable versions: the reviewed snapshot is the draft itself.
+    const snapshot: RouterDraft = structuredClone(draft);
     const errors = [...routingIssues(snapshot, true), ...capabilityIssues(snapshot, bound)];
     if (errors.length) throw new ValidationError(errors.join("; "));
     const context: RouterRevisionContext = { endpoints: endpointContext(bound), guardrails: [] };
     const captured = new Set<string>();
     for (const route of snapshot.routes) for (const target of route.targets) {
       const version = versions.find(v => v.id === target.guardrailId && v.version === target.guardrailVersion);
+      if (route.enabled && target.weightBps > 0 && version?.status === "pending") {
+        // Same validation as "not ready", so a change that drifts here is superseded rather than applied.
+        throw new ValidationError(`${route.name}: ${target.guardrailId} ${target.guardrailVersion} has not been released in this environment. Publish it first`,
+          { guardrailId: target.guardrailId, version: target.guardrailVersion, reason: "not_released" });
+      }
       if (route.enabled && target.weightBps > 0 && (!version?.artifactId || version.status !== "ready" || version.deletedAt)) {
         throw new ValidationError(`${route.name}: ${target.guardrailId} ${target.guardrailVersion} is not a ready Guardrail Version`);
+      }
+      // An imported version was tested elsewhere. It may receive traffic only
+      // after Runners here proved they can load it (see checkRoutedImports).
+      if (options.verifyImports && route.enabled && target.weightBps > 0 && version?.origin === "imported") {
+        const check = version.environmentCheck;
+        const fresh = check && Date.now() - Date.parse(check.checkedAt) <= IMPORTED_VERSION_CHECK_TTL_MS;
+        if (!fresh || check.status !== "compatible") {
+          throw new ConflictError(
+            `${route.name}: this environment has not confirmed it can serve ${target.guardrailId} ${target.guardrailVersion}. Resolve the missing dependencies and check again.`,
+            "guardrail_version_environment_unverified",
+            { guardrailId: target.guardrailId, version: target.guardrailVersion, environment: check ?? null },
+          );
+        }
       }
       // Missing inactive references remain in snapshot, without invented metadata.
       const key = JSON.stringify([target.guardrailId, target.guardrailVersion]);
@@ -126,6 +217,7 @@ export class TrafficRoutingService {
     return { snapshot, context, endpointIds: context.endpoints.map(e => e.id) };
   }
   async preview(id: string, expectedDraftRevision: number) {
+    await assertResourceWriteAccess(this.db, "router", id);
     return this.db.transaction(async tx => {
       const [router] = await tx.select().from(trafficRouters).where(and(eq(trafficRouters.id, id), isNull(trafficRouters.deletedAt)));
       if (!router) throw new NotFoundError("Router", id);
@@ -134,53 +226,214 @@ export class TrafficRoutingService {
       return { draftRevision: router.draftRevision, snapshot, endpointIds };
     }, { isolationLevel: "repeatable read", accessMode: "read only" });
   }
-  async publish(id: string, expectedDraftRevision: number, idempotencyKey: string, actorId: string, rollbackRevision?: number, reviewedSnapshot?: RouterDraft, reviewedEndpointIds?: string[]) {
-    const requestDigest = createHash("sha256").update(canonical({ actorId, expectedDraftRevision, rollbackRevision: rollbackRevision ?? null, reviewedSnapshot: reviewedSnapshot ?? null, reviewedEndpointIds: reviewedEndpointIds ? [...new Set(reviewedEndpointIds)].sort() : null })).digest("hex");
-    const publication = await this.db.transaction(async tx => {
+  async changeRequests(id: string) {
+    await this.get(id);
+    const rows = await this.db.select().from(trafficRouterChangeRequests).where(eq(trafficRouterChangeRequests.routerId, id)).orderBy(desc(trafficRouterChangeRequests.submittedAt));
+    return this.withUsernames(this.db, rows);
+  }
+  async changeRequest(id: string, changeId: string) {
+    const found = (await this.changeRequests(id)).find(change => change.id === changeId);
+    if (!found) throw new NotFoundError("Router change request", changeId);
+    return found;
+  }
+  /** Freeze the reviewed draft as a pending change. Nothing is published until approval. */
+  async submitChange(id: string, input: { expectedDraftRevision: number; reviewedSnapshot: RouterDraft; reviewedEndpointIds: string[]; reason: string; ticket: string; restore?: { revision: number; expectedActiveRevision: number } | undefined }, actorId: string) {
+    await assertResourceWriteAccess(this.db, "router", id);
+    const changeId = randomUUID();
+    await this.db.transaction(async tx => {
       await advisoryTransactionLock(tx, "traffic-router-bindings");
-      const [router] = await tx.select().from(trafficRouters).where(eq(trafficRouters.id, id)).for("update");
-      if (!router || router.deletedAt) throw new NotFoundError("Router", id);
-      const [prior] = await tx.select().from(trafficRouterRevisions).where(and(eq(trafficRouterRevisions.routerId, id), eq(trafficRouterRevisions.idempotencyKey, idempotencyKey)));
-      if (prior) {
-        if (prior.requestDigest !== requestDigest) throw new ConflictError("Idempotency key belongs to another publish request.", "router_publish_key_conflict");
-        return { revision: prior.revision, generation: prior.generation, replayed: true };
+      const router = await this.lockRouter(tx, id);
+      if (router.draftRevision !== input.expectedDraftRevision) throw new ConflictError("Router draft changed; review again before submitting.", "router_draft_conflict");
+      const [pending] = await tx.select({ id: trafficRouterChangeRequests.id }).from(trafficRouterChangeRequests)
+        .where(and(eq(trafficRouterChangeRequests.routerId, id), eq(trafficRouterChangeRequests.status, "pending")));
+      if (pending) throw new ConflictError("This Router already has a pending change request.", "router_change_request_pending", { changeRequestId: pending.id });
+      let source = router.draft;
+      if (input.restore) {
+        if (router.activeRevision !== input.restore.expectedActiveRevision) throw new ConflictError("The active Router revision changed; review the restoration again.", "router_review_conflict");
+        if (input.restore.revision === router.activeRevision) throw new ConflictError("This Router revision is already active.", "router_restore_unavailable");
+        const [target] = await tx.select().from(trafficRouterRevisions).where(and(eq(trafficRouterRevisions.routerId, id), eq(trafficRouterRevisions.revision, input.restore.revision)));
+        if (!target) throw new NotFoundError("Router revision", String(input.restore.revision));
+        source = target.snapshot;
       }
-      const [deletedPublication] = await tx.select({ id: auditEvents.id }).from(auditEvents).where(and(eq(auditEvents.resourceId, id), eq(auditEvents.kind, "router.revision_deleted"), sql`${auditEvents.detail}->>'idempotencyKey' = ${idempotencyKey}`)).limit(1);
-      if (deletedPublication) throw new ConflictError("The revision created by this publication was deleted. Use a new publication key.", "router_revision_deleted");
-      if (router.draftRevision !== expectedDraftRevision) throw new ConflictError("Router draft changed; reload before publishing.", "router_draft_conflict");
-      let draft = router.draft;
-      if (rollbackRevision !== undefined) {
-        const [revision] = await tx.select().from(trafficRouterRevisions).where(and(eq(trafficRouterRevisions.routerId, id), eq(trafficRouterRevisions.revision, rollbackRevision)));
-        if (!revision) throw new NotFoundError("Router revision", String(rollbackRevision));
-        draft = revision.snapshot;
-      }
-      if ((reviewedSnapshot === undefined) !== (reviewedEndpointIds === undefined)) throw new ValidationError("Provide both reviewedSnapshot and reviewedEndpointIds.");
-      const resolved = await this.resolvePublication(tx, id, draft).catch(error => {
-        if (reviewedSnapshot !== undefined && error instanceof ValidationError) {
-          throw new ConflictError("Router publication is no longer valid. Review again before publishing.", "router_review_conflict");
-        }
+      const { snapshot, context, endpointIds } = await this.resolvePublication(tx, id, source, { verifyImports: true }).catch(error => {
+        if (error instanceof ValidationError) throw new ConflictError("Router publication is no longer valid. Review again before submitting.", "router_review_conflict");
         throw error;
       });
-      const { snapshot, context, endpointIds } = resolved;
-      if (reviewedSnapshot !== undefined && (!isDeepStrictEqual(snapshot, reviewedSnapshot) ||
-        !isDeepStrictEqual(endpointIds, [...new Set(reviewedEndpointIds!)].sort((a, b) => a.localeCompare(b))))) {
-        throw new ConflictError("Router publication changed since review. Review again before publishing.", "router_review_conflict");
+      if (!isDeepStrictEqual(snapshot, input.reviewedSnapshot) || !isDeepStrictEqual(endpointIds, sortedIds(input.reviewedEndpointIds))) {
+        throw new ConflictError("Router publication changed since review. Review again before submitting.", "router_review_conflict");
       }
-      const revision = (router.activeRevision ?? 0) + 1;
-      const sourceDraftRevision = rollbackRevision === undefined ? router.draftRevision : router.draftRevision + 1;
-      const generation = await this.advance(tx);
-      await tx.insert(trafficRouterRevisions).values({ routerId: id, revision, sourceDraftRevision, snapshot, context, idempotencyKey, requestDigest, generation, requestDraftRevision: expectedDraftRevision, rollbackRevision: rollbackRevision ?? null, createdBy: actorId });
-      await tx.update(trafficRouters).set({ draft: rollbackRevision === undefined ? router.draft : snapshot, draftRevision: sourceDraftRevision, activeDraftRevision: sourceDraftRevision, activeRevision: revision, activeSnapshot: snapshot, rolloutError: null, desiredGeneration: generation, updatedAt: new Date() }).where(eq(trafficRouters.id, id));
-      await this.audit(tx, id, actorId, rollbackRevision ? "router.rolled_back" : "router.published", { revision, previous: router.activeSnapshot, snapshot, endpointIds });
-      return { revision, generation, replayed: false };
+      // Persist the restored draft and its request atomically: a failed submission
+      // must never replace an existing draft, and submission never publishes.
+      const sourceDraftRevision = router.draftRevision + (input.restore ? 1 : 0);
+      if (input.restore) await tx.update(trafficRouters).set({ draft: snapshot, draftRevision: sourceDraftRevision, updatedAt: new Date() }).where(eq(trafficRouters.id, id));
+      await tx.insert(trafficRouterChangeRequests).values({ id: changeId, routerId: id, kind: "publish", status: "pending",
+        sourceDraftRevision, baseRevision: router.activeRevision, snapshot, endpointIds, context,
+        ticket: input.ticket, reason: input.reason, submittedBy: actorId });
+      await this.audit(tx, id, actorId, "router.change_submitted", { changeRequestId: changeId, ticket: input.ticket, baseRevision: router.activeRevision, snapshot, endpointIds, ...(input.restore ? { restoredRevision: input.restore.revision } : {}) });
     });
+    return this.changeRequest(id, changeId);
+  }
+  /** Apply a pending change. Approval requires a second administrator; emergency application requires a reason. */
+  async approveChange(id: string, changeId: string, actorId: string, decision: { note?: string | undefined } | { emergency: { reason: string } }) {
+    const emergency = "emergency" in decision ? decision.emergency : null;
+    const outcome = await this.db.transaction(async tx => {
+      await advisoryTransactionLock(tx, "traffic-router-bindings");
+      const router = await this.lockRouter(tx, id);
+      const change = await this.lockChange(tx, id, changeId);
+      if (change.status === "applied" && change.decidedBy === actorId && change.kind === "publish" && Boolean(change.emergencyReason) === Boolean(emergency)) {
+        const [revision] = await tx.select().from(trafficRouterRevisions).where(and(eq(trafficRouterRevisions.routerId, id), eq(trafficRouterRevisions.revision, change.appliedRevision!)));
+        return { revision: change.appliedRevision!, generation: revision?.generation ?? null, replayed: true };
+      }
+      if (change.status !== "pending") throw new ConflictError(`This change request is already ${change.status}.`, "router_change_request_closed");
+      if (!emergency && change.submittedBy === actorId) {
+        throw new ControllerError("The submitter cannot approve their own change request. Ask another administrator, or use emergency apply.", 403, "router_change_request_self_approval");
+      }
+      const stale = await this.staleReason(tx, router, change);
+      if (stale) {
+        await tx.update(trafficRouterChangeRequests).set({ status: "superseded", decidedAt: new Date(), decisionNote: stale, updatedAt: new Date() }).where(eq(trafficRouterChangeRequests.id, changeId));
+        await this.audit(tx, id, actorId, "router.change_superseded", { changeRequestId: changeId, reason: stale });
+        return { stale };
+      }
+      const applied = await this.applySnapshot(tx, router, { snapshot: change.snapshot, context: change.context, changeId, actorId,
+        sourceDraftRevision: change.sourceDraftRevision!, requestDraftRevision: change.sourceDraftRevision!, rollbackRevision: null });
+      await tx.update(trafficRouterChangeRequests).set({ status: "applied", decidedBy: actorId, decidedAt: new Date(), appliedRevision: applied.revision,
+        decisionNote: emergency ? null : ("note" in decision ? decision.note ?? null : null),
+        emergencyReason: emergency?.reason ?? null, updatedAt: new Date() })
+        .where(eq(trafficRouterChangeRequests.id, changeId));
+      await this.audit(tx, id, actorId, emergency ? "router.change_emergency_applied" : "router.change_approved", {
+        changeRequestId: changeId, ticket: change.ticket, submittedBy: change.submittedBy, revision: applied.revision,
+        previous: router.activeSnapshot, snapshot: change.snapshot, endpointIds: change.endpointIds,
+        ...(emergency ? { emergencyReason: emergency.reason } : {}),
+      });
+      return { ...applied, replayed: false };
+    });
+    if ("stale" in outcome) throw new ConflictError(`This change request is no longer valid: ${outcome.stale} Submit the change again.`, "router_change_request_stale");
+    return this.withPublication(id, outcome);
+  }
+  async rejectChange(id: string, changeId: string, actorId: string, note: string) {
+    return this.closeChange(id, changeId, actorId, "rejected", note);
+  }
+  async withdrawChange(id: string, changeId: string, actorId: string) {
+    return this.closeChange(id, changeId, actorId, "withdrawn", null);
+  }
+  /** Restore the base revision of the active change; it was approved together with that change. */
+  async revertChange(id: string, changeId: string, actorId: string, reason: string) {
+    const revertId = randomUUID();
+    const outcome = await this.db.transaction(async tx => {
+      await advisoryTransactionLock(tx, "traffic-router-bindings");
+      const router = await this.lockRouter(tx, id);
+      const change = await this.lockChange(tx, id, changeId);
+      if (change.kind !== "publish" || change.status !== "applied" || change.baseRevision === null || change.appliedRevision !== router.activeRevision) {
+        throw new ConflictError("Only the change that produced the active revision can be reverted without approval.", "router_revert_unavailable");
+      }
+      const [base] = await tx.select().from(trafficRouterRevisions).where(and(eq(trafficRouterRevisions.routerId, id), eq(trafficRouterRevisions.revision, change.baseRevision)));
+      if (!base) throw new ConflictError(`Router revision ${change.baseRevision} is no longer available.`, "router_revert_unavailable");
+      const { snapshot, context, endpointIds } = await this.resolvePublication(tx, id, base.snapshot).catch(error => {
+        if (error instanceof ValidationError) throw new ConflictError(`Router revision ${change.baseRevision} can no longer be applied: ${error.message}`, "router_revert_unavailable");
+        throw error;
+      });
+      await tx.insert(trafficRouterChangeRequests).values({ id: revertId, routerId: id, kind: "revert", status: "applied",
+        sourceDraftRevision: null, baseRevision: router.activeRevision, snapshot, endpointIds, context, ticket: change.ticket, reason,
+        submittedBy: actorId, decidedBy: actorId, decidedAt: new Date(), decisionNote: null, revertsChangeRequestId: changeId });
+      const applied = await this.applySnapshot(tx, router, { snapshot, context, changeId: revertId, actorId,
+        sourceDraftRevision: router.draftRevision + 1, requestDraftRevision: router.draftRevision, rollbackRevision: change.baseRevision, replaceDraft: true });
+      await tx.update(trafficRouterChangeRequests).set({ appliedRevision: applied.revision }).where(eq(trafficRouterChangeRequests.id, revertId));
+      // A pending change was reviewed against the revision just replaced.
+      await tx.update(trafficRouterChangeRequests).set({ status: "superseded", decidedAt: new Date(), decisionNote: "The active Router revision was reverted.", updatedAt: new Date() })
+        .where(and(eq(trafficRouterChangeRequests.routerId, id), eq(trafficRouterChangeRequests.status, "pending")));
+      await this.audit(tx, id, actorId, "router.change_reverted", { changeRequestId: revertId, revertsChangeRequestId: changeId, reason, revision: applied.revision, restoredRevision: change.baseRevision, previous: router.activeSnapshot, snapshot, endpointIds });
+      return { ...applied, replayed: false };
+    });
+    return this.withPublication(id, outcome);
+  }
+  private async closeChange(id: string, changeId: string, actorId: string, status: "rejected" | "withdrawn", note: string | null) {
+    await this.db.transaction(async tx => {
+      await this.lockRouter(tx, id);
+      const change = await this.lockChange(tx, id, changeId);
+      if (change.status !== "pending") throw new ConflictError(`This change request is already ${change.status}.`, "router_change_request_closed");
+      if (status === "withdrawn" && change.submittedBy !== actorId) throw new ControllerError("Only the submitter can withdraw a change request.", 403, "router_change_request_not_submitter");
+      if (status === "rejected" && change.submittedBy === actorId) throw new ControllerError("Withdraw your own change request instead of rejecting it.", 403, "router_change_request_self_approval");
+      await tx.update(trafficRouterChangeRequests).set({ status, decidedBy: actorId, decidedAt: new Date(), decisionNote: note, updatedAt: new Date() }).where(eq(trafficRouterChangeRequests.id, changeId));
+      await this.audit(tx, id, actorId, `router.change_${status}`, { changeRequestId: changeId, note });
+    });
+    return this.changeRequest(id, changeId);
+  }
+  /** Why a frozen change can no longer be applied as reviewed, or null when it still can. */
+  private async staleReason(tx: Tx, router: typeof trafficRouters.$inferSelect, change: typeof trafficRouterChangeRequests.$inferSelect) {
+    if (router.activeRevision !== change.baseRevision) return "The active Router revision changed after submission.";
+    try {
+      const resolved = await this.resolvePublication(tx, router.id, change.snapshot, { verifyImports: true });
+      if (!isDeepStrictEqual(resolved.snapshot, change.snapshot)) return "The referenced Guardrail versions changed after submission.";
+      if (!isDeepStrictEqual(resolved.endpointIds, sortedIds(change.endpointIds))) return "The bound Endpoints changed after submission.";
+      return null;
+    } catch (error) {
+      if (error instanceof ValidationError) return error.message.endsWith(".") ? error.message : `${error.message}.`;
+      throw error;
+    }
+  }
+  private async applySnapshot(tx: Tx, router: typeof trafficRouters.$inferSelect, input: { snapshot: RouterDraft; context: RouterRevisionContext | null; changeId: string; actorId: string; sourceDraftRevision: number; requestDraftRevision: number; rollbackRevision: number | null; replaceDraft?: boolean }) {
+    const revision = (router.activeRevision ?? 0) + 1;
+    const generation = await this.advance(tx);
+    await tx.insert(trafficRouterRevisions).values({ routerId: router.id, revision, sourceDraftRevision: input.sourceDraftRevision, snapshot: input.snapshot, context: input.context,
+      idempotencyKey: `change-request:${input.changeId}`, changeRequestId: input.changeId, generation, requestDraftRevision: input.requestDraftRevision, rollbackRevision: input.rollbackRevision, createdBy: input.actorId });
+    await tx.update(trafficRouters).set({ ...(input.replaceDraft ? { draft: input.snapshot, draftRevision: input.sourceDraftRevision } : {}),
+      activeDraftRevision: input.sourceDraftRevision, activeRevision: revision, activeSnapshot: input.snapshot, rolloutError: null, desiredGeneration: generation, updatedAt: new Date() })
+      .where(eq(trafficRouters.id, router.id));
+    return { revision, generation };
+  }
+  private async withPublication(id: string, publication: { revision: number; generation: number | null; replayed: boolean }) {
     return { ...await this.get(id), publication: { ...publication, revisionUrl: `/api/v1/routers/${encodeURIComponent(id)}/revisions/${publication.revision}`, statusUrl: `/api/v1/routers/${encodeURIComponent(id)}` } };
+  }
+  private async lockRouter(tx: Tx, id: string) {
+    const [router] = await tx.select().from(trafficRouters).where(and(eq(trafficRouters.id, id), resourceWritePredicate(trafficRouters.projectId))).for("update");
+    if (!router || router.deletedAt) throw new NotFoundError("Router", id);
+    return router;
+  }
+  private async lockChange(tx: Tx, id: string, changeId: string) {
+    const [change] = await tx.select().from(trafficRouterChangeRequests).where(and(eq(trafficRouterChangeRequests.id, changeId), eq(trafficRouterChangeRequests.routerId, id))).for("update");
+    if (!change) throw new NotFoundError("Router change request", changeId);
+    return change;
+  }
+  private async withUsernames(tx: Tx | ControllerDatabase, rows: Array<typeof trafficRouterChangeRequests.$inferSelect>): Promise<RouterChangeRequest[]> {
+    const ids = [...new Set(rows.flatMap(row => [row.submittedBy, row.decidedBy].filter((value): value is string => Boolean(value))))];
+    const people = ids.length ? await tx.select({ id: user.id, username: user.username }).from(user).where(inArray(user.id, ids)) : [];
+    const refs = await this.visibleReferences(tx, rows.map(row => row.snapshot), rows.map(row => row.context), rows.flatMap(row => row.endpointIds));
+    const username = (userId: string | null) => people.find(person => person.id === userId)?.username ?? null;
+    return rows.map(row => ({ ...row, snapshot: redactSnapshot(row.snapshot, refs),
+      endpointIds: row.endpointIds.filter(id => refs.endpoints === null || refs.endpoints.has(id)),
+      context: redactContext(row.context, refs), submittedByUsername: username(row.submittedBy), decidedByUsername: username(row.decidedBy),
+      submittedAt: row.submittedAt.toISOString(), decidedAt: row.decidedAt?.toISOString() ?? null }));
   }
   async revisions(id: string) {
     await this.get(id);
-    return this.db.select().from(trafficRouterRevisions).where(eq(trafficRouterRevisions.routerId, id)).orderBy(desc(trafficRouterRevisions.revision));
+    const rows = await this.db.select().from(trafficRouterRevisions).where(eq(trafficRouterRevisions.routerId, id)).orderBy(desc(trafficRouterRevisions.revision));
+    const refs = await this.visibleReferences(this.db, rows.map(row => row.snapshot), rows.map(row => row.context), []);
+    return rows.map(row => ({ ...row, snapshot: redactSnapshot(row.snapshot, refs), context: redactContext(row.context, refs) }));
+  }
+
+  /** A Router share does not grant access to referenced resource metadata. */
+  private async visibleReferences(tx: Tx | ControllerDatabase, snapshots: Array<RouterDraft | null>, contexts: Array<RouterRevisionContext | null>, endpointIds: string[]) {
+    if (!currentProjectId()) return { endpoints: null, guardrails: null, restrictedEndpoints: new Set<string>() };
+    const targetIds = [...new Set([
+      ...snapshots.flatMap(snapshot => snapshot?.routes.flatMap(route => route.targets.map(target => target.guardrailId)) ?? []),
+      ...contexts.flatMap(context => context?.guardrails.map(guardrail => guardrail.id) ?? []),
+    ])];
+    const sourceIds = [...new Set([...endpointIds, ...contexts.flatMap(context => context?.endpoints.map(endpoint => endpoint.id) ?? []),
+      ...snapshots.flatMap(snapshot => snapshot?.routes.flatMap(route => endpointSelectorValues(route.selector.expression)) ?? []),
+    ])];
+    const [readableEndpoints, readableGuardrails, existingEndpoints] = await Promise.all([
+      sourceIds.length ? tx.select({ id: endpoints.id }).from(endpoints).where(and(inArray(endpoints.id, sourceIds),
+        isNull(endpoints.deletedAt), resourceReadPredicate("endpoint", endpoints.id, endpoints.projectId))) : [],
+      targetIds.length ? tx.select({ id: guardrails.id }).from(guardrails).where(and(inArray(guardrails.id, targetIds),
+        isNull(guardrails.deletedAt), resourceReadPredicate("guardrail", guardrails.id, guardrails.projectId))) : [],
+      sourceIds.length ? tx.select({ id: endpoints.id }).from(endpoints).where(inArray(endpoints.id, sourceIds)) : [],
+    ]);
+    const readableEndpointIds = new Set(readableEndpoints.map(row => row.id));
+    return { endpoints: readableEndpointIds, guardrails: new Set(readableGuardrails.map(row => row.id)),
+      restrictedEndpoints: new Set(existingEndpoints.filter(row => !readableEndpointIds.has(row.id)).map(row => row.id)) };
   }
   async deleteRevision(id: string, revision: number, actorId: string) {
+    await assertResourceWriteAccess(this.db, "router", id);
     await this.db.transaction(async tx => {
       await advisoryTransactionLock(tx, "traffic-router-bindings");
       const [router] = await tx.select().from(trafficRouters).where(eq(trafficRouters.id, id)).for("update");
@@ -188,7 +441,14 @@ export class TrafficRoutingService {
       const [record] = await tx.select().from(trafficRouterRevisions).where(and(eq(trafficRouterRevisions.routerId, id), eq(trafficRouterRevisions.revision, revision)));
       if (!record) throw new NotFoundError("Router revision", String(revision));
       if (router.activeRevision === revision) throw new ConflictError("The current Router revision cannot be deleted. Publish another revision first.", "revision_in_use");
-      const runners = await tx.select().from(runnerInstances).where(eq(runnerInstances.poolId, "default"));
+      const [rollbackTarget] = await tx.select({ id: trafficRouterChangeRequests.id }).from(trafficRouterChangeRequests).where(and(
+        eq(trafficRouterChangeRequests.routerId, id), eq(trafficRouterChangeRequests.status, "applied"), eq(trafficRouterChangeRequests.kind, "publish"),
+        eq(trafficRouterChangeRequests.appliedRevision, router.activeRevision ?? -1), eq(trafficRouterChangeRequests.baseRevision, revision))).limit(1);
+      if (rollbackTarget) throw new ConflictError("This revision is the pre-approved rollback target of the active change.", "revision_in_use");
+      const runners = await tx.select({ ...getTableColumns(runnerInstances) }).from(runnerInstances)
+        .innerJoin(runnerPools, eq(runnerPools.id, runnerInstances.poolId))
+        .where(sql`exists (select 1 from ${projects}
+          where ${projects.id} = ${router.projectId} and ${projectPoolAllocation})`);
       if (routerRolloutState(router, runners) !== "active" || Date.now() - router.updatedAt.getTime() < 300000) throw new ConflictError("Wait for Runner convergence and the five-minute call retention window before deleting historical revisions.", "revision_in_use");
       const [pending] = await tx.select().from(routeAssignments).where(and(eq(routeAssignments.routerId, id), eq(routeAssignments.routerRevision, revision), isNull(routeAssignments.completedAt), gte(routeAssignments.occurredAt, new Date(Date.now() - 300000)))).limit(1);
       if (pending) throw new ConflictError("This revision still has in-flight calls.", "revision_in_use");
@@ -197,11 +457,15 @@ export class TrafficRoutingService {
     });
   }
   async bind(id: string, endpointIds: string[], actorId: string) {
+    await assertResourceWriteAccess(this.db, "router", id);
     const changed = await this.db.transaction(async tx => {
       await advisoryTransactionLock(tx, "traffic-router-bindings");
       const [router] = await tx.select().from(trafficRouters).where(eq(trafficRouters.id, id)).for("update");
       if (!router || router.deletedAt) throw new NotFoundError("Router", id);
-      const all = await tx.select().from(endpoints).where(isNull(endpoints.deletedAt));
+      await this.assertDraftGuardrailsVisible(tx, router.activeSnapshot ?? router.draft);
+      const all = await tx.select().from(endpoints).where(and(
+        isNull(endpoints.deletedAt), resourceWritePredicate(endpoints.projectId),
+      ));
       const requested = [...new Set(endpointIds)];
       const selected = all.filter(e => requested.includes(e.id));
       if (selected.length !== requested.length) throw new ValidationError("Endpoint was not found.");
@@ -225,7 +489,7 @@ export class TrafficRoutingService {
     return { ...await this.get(id), changed };
   }
   async distribution(id: string, hours: number, revision?: number, endpointId?: string) {
-    await this.get(id);
+    const router = await this.get(id);
     const until = new Date(), since = new Date(until.getTime() - hours * 3600000);
     const rows = await this.db.select({
       routeId: routeAssignments.routeId, targetId: routeAssignments.targetId, routerRevision: routeAssignments.routerRevision,
@@ -237,20 +501,31 @@ export class TrafficRoutingService {
       transformed: sql<number>`count(*) filter (where ${routeAssignments.outcome} = 'transform')::int`, intervened: sql<number>`count(*) filter (where ${routeAssignments.outcome} = 'intervene')::int`,
       allowed: sql<number>`count(*) filter (where ${routeAssignments.outcome} = 'allow')::int`,
       p95Ms: sql<number | null>`percentile_cont(0.95) within group (order by ${routeAssignments.durationMs})`,
-    }).from(routeAssignments).where(and(eq(routeAssignments.routerId, id), gte(routeAssignments.occurredAt, since), lte(routeAssignments.occurredAt, until), revision ? eq(routeAssignments.routerRevision, revision) : undefined, endpointId ? eq(routeAssignments.endpointId, endpointId) : undefined))
+    }).from(routeAssignments).where(and(eq(routeAssignments.routerId, id), currentProjectId() ? eq(routeAssignments.projectId, currentProjectId()!) : undefined, gte(routeAssignments.occurredAt, since), lte(routeAssignments.occurredAt, until), revision ? eq(routeAssignments.routerRevision, revision) : undefined, endpointId ? eq(routeAssignments.endpointId, endpointId) : undefined))
       .groupBy(routeAssignments.routeId, routeAssignments.targetId, routeAssignments.routerRevision, routeAssignments.guardrailId, routeAssignments.guardrailVersion, routeAssignments.assignmentStatus);
-    const watermarks = await this.db.select({ at: telemetryWatermarks.lastReceivedAt, heartbeat: runnerInstances.lastHeartbeatAt }).from(runnerInstances)
-      .leftJoin(telemetryWatermarks, eq(telemetryWatermarks.runnerId, runnerInstances.runnerId)).where(eq(runnerInstances.poolId, "default"));
-    const telemetryFresh = watermarks.length > 0 && watermarks.every(r => r.at && until.getTime() - r.at.getTime() < 60000 && until.getTime() - r.heartbeat.getTime() < 60000);
+    // Runtime snapshots follow the Router owner's group, which may contain
+    // several pools. An unrelated healthy default pool must not make this
+    // Router's distribution look current.
+    const pools = await this.db.select({ id: runnerPools.id }).from(runnerPools)
+      .innerJoin(projects, projectPoolAllocation).where(eq(projects.id, router.projectId));
+    const poolIds = pools.map(pool => pool.id);
+    const watermarks = poolIds.length ? await this.db.select({ poolId: runnerInstances.poolId, at: telemetryWatermarks.lastReceivedAt, heartbeat: runnerInstances.lastHeartbeatAt }).from(runnerInstances)
+      .leftJoin(telemetryWatermarks, eq(telemetryWatermarks.runnerId, runnerInstances.runnerId))
+      .where(and(inArray(runnerInstances.poolId, poolIds), ne(runnerInstances.status, "offline"))) : [];
+    const everyPoolHasRunner = poolIds.length > 0 && poolIds.every(poolId => watermarks.some(r => r.poolId === poolId));
+    // Scoped ingestion cannot yet establish a Runner/boot watermark. A fresh
+    // watermark left by legacy mode (or a mixed-version writer) is not proof
+    // that the quarantined routing events are complete.
+    const telemetryFresh = !this.scopedTelemetry && everyPoolHasRunner && watermarks.every(r => r.at && until.getTime() - r.at.getTime() < 60000 && until.getTime() - r.heartbeat.getTime() < 60000);
     const dates = watermarks.flatMap(r => r.at ? [r.at.getTime()] : []);
     const total = rows.reduce((n, r) => n + r.count, 0), unassigned = rows.filter(r => r.assignmentStatus === "unassigned").reduce((n, r) => n + r.count, 0);
     const revisions = await this.revisions(id);
     const trend = await this.db.select({ at: sql<string>`date_bin(interval '15 minutes', ${routeAssignments.occurredAt}, timestamptz '2000-01-01')::text`, routeId: routeAssignments.routeId, count: sql<number>`count(*)::int` }).from(routeAssignments)
-      .where(and(eq(routeAssignments.routerId, id), gte(routeAssignments.occurredAt, since), lte(routeAssignments.occurredAt, until), revision ? eq(routeAssignments.routerRevision, revision) : undefined, endpointId ? eq(routeAssignments.endpointId, endpointId) : undefined))
+      .where(and(eq(routeAssignments.routerId, id), currentProjectId() ? eq(routeAssignments.projectId, currentProjectId()!) : undefined, gte(routeAssignments.occurredAt, since), lte(routeAssignments.occurredAt, until), revision ? eq(routeAssignments.routerRevision, revision) : undefined, endpointId ? eq(routeAssignments.endpointId, endpointId) : undefined))
       .groupBy(sql`date_bin(interval '15 minutes', ${routeAssignments.occurredAt}, timestamptz '2000-01-01')`, routeAssignments.routeId);
     return { since: since.toISOString(), until: until.toISOString(), rows, total, assigned: total - unassigned, unassigned, trend,
       revisions: revisions.map(r => ({ revision: r.revision, snapshot: r.snapshot, context: r.context })),
-      telemetryFresh, completeness: telemetryFresh ? "current" : "delayed_or_unavailable", dataWatermark: dates.length ? new Date(Math.min(...dates)).toISOString() : null,
+      telemetryFresh, completeness: telemetryFresh ? "current" : "delayed_or_unavailable", dataWatermark: !this.scopedTelemetry && everyPoolHasRunner && dates.length === watermarks.length ? new Date(Math.min(...dates)).toISOString() : null,
       unit: "logical_call", multipleRevisions: new Set(rows.map(r => r.routerRevision)).size > 1 };
   }
   async expireCalls() {
@@ -258,20 +533,40 @@ export class TrafficRoutingService {
       .where(and(isNull(routeAssignments.completedAt), lt(routeAssignments.occurredAt, new Date(Date.now() - 300000))));
   }
   private lastRetentionAt = 0;
-  async recordEvents(events: readonly RoutingEvent[]) {
+  async recordEvents(events: readonly RoutingEvent[], quarantine = false, authenticatedPoolId?: string, transaction?: Tx) {
+    const restricted = quarantine || this.scopedTelemetry || authenticatedPoolId !== undefined;
     if (Date.now() - this.lastRetentionAt > 3600000) {
-      await this.db.delete(routeAssignments).where(lt(routeAssignments.occurredAt, new Date(Date.now() - 30 * 86400000)));
+      await (transaction ?? this.db).delete(routeAssignments).where(lt(routeAssignments.occurredAt, new Date(Date.now() - 30 * 86400000)));
       this.lastRetentionAt = Date.now();
     }
-    await this.db.transaction(async tx => {
-      for (const event of events) {
-        if (event.decisionAt.getTime() < Date.now() - 30 * 86400000) continue;
+    const prepare = async (tx: Tx, batch: readonly RoutingEvent[]) => {
+      const endpointIds = [...new Set(batch.map(event => event.endpointId))];
+      const routerIds = [...new Set(batch.map(event => event.routerId).filter(Boolean))];
+      const endpointOwners = new Map((!restricted && endpointIds.length ? await tx.select({ id: endpoints.id, projectId: endpoints.projectId })
+        .from(endpoints).where(inArray(endpoints.id, endpointIds)) : []).map(row => [row.id, row.projectId]));
+      const routerOwners = new Map((!restricted && routerIds.length ? await tx.select({ id: trafficRouters.id, projectId: trafficRouters.projectId })
+        .from(trafficRouters).where(inArray(trafficRouters.id, routerIds)) : []).map(row => [row.id, row.projectId]));
+      const accepts = await guardrailTelemetryFilter(tx, batch.map(event => event.guardrailId));
+      if (batch.some(event => event.allocationContextId)) await lockEndpointTelemetryContextReaders(tx);
+      const watermarks = telemetryWatermarkBatch(tx);
+      return { write: async (event: RoutingEvent) => {
+        if (!accepts(event.guardrailId, event.decisionAt)) return;
+        if (event.decisionAt.getTime() < Date.now() - 30 * 86400000) return;
         const complete = event.eventType === "completion";
-        await tx.insert(routeAssignments).values({ decisionId: event.decisionId, callId: event.callId, routerId: event.routerId, routerRevision: event.routerRevision,
+        // A Router alone cannot establish who invoked an Endpoint. Missing or
+        // conflicting owners are platform-only without guessing a project.
+        const endpointOwner = endpointOwners.get(event.endpointId);
+        const routerOwner = routerOwners.get(event.routerId);
+        const eventProject = restricted
+          ? authenticatedPoolId === undefined ? null : routingEventProjectId(event, authenticatedPoolId)
+          : endpointOwner && (!event.routerId || endpointOwner === routerOwner) ? endpointOwner : null;
+        await tx.insert(routeAssignments).values({ decisionId: event.decisionId, projectId: eventProject, callId: event.callId, routerId: event.routerId, routerRevision: event.routerRevision,
           routeId: event.routeId, targetId: event.targetId, guardrailId: event.guardrailId, guardrailVersion: event.guardrailVersion, endpointId: event.endpointId,
+          allocationContextId: event.allocationContextId ?? null,
           assignmentStatus: event.assignmentStatus, failureReason: event.failureReason ?? null, occurredAt: event.decisionAt,
           completedAt: complete ? event.occurredAt : null, outcome: complete ? event.outcome! : null, durationMs: complete ? event.durationMs ?? null : null,
         }).onConflictDoUpdate({ target: routeAssignments.decisionId, set: {
+          failureReason: sql`CASE WHEN excluded.completed_at IS NOT NULL THEN coalesce(excluded.failure_reason, ${routeAssignments.failureReason}) ELSE ${routeAssignments.failureReason} END`,
           completionInferred: sql`CASE WHEN excluded.completed_at IS NOT NULL THEN false ELSE ${routeAssignments.completionInferred} END`,
           completedAt: sql`CASE WHEN ${routeAssignments.completionInferred} AND excluded.completed_at IS NOT NULL THEN excluded.completed_at ELSE coalesce(${routeAssignments.completedAt}, excluded.completed_at) END`,
           outcome: sql`CASE WHEN ${routeAssignments.completionInferred} AND excluded.completed_at IS NOT NULL THEN excluded.outcome WHEN ${routeAssignments.outcome} IN ('error','timeout') THEN ${routeAssignments.outcome}
@@ -281,21 +576,114 @@ export class TrafficRoutingService {
             WHEN ${routeAssignments.outcome} = 'transform' OR excluded.outcome = 'transform' THEN 'transform'
             ELSE coalesce(${routeAssignments.outcome}, excluded.outcome) END`,
           durationMs: sql`CASE WHEN ${routeAssignments.completionInferred} AND excluded.completed_at IS NOT NULL THEN excluded.duration_ms ELSE greatest(${routeAssignments.durationMs}, excluded.duration_ms) END`,
-        }});
-        await tx.insert(telemetryWatermarks).values({ runnerId: event.runnerId, lastEventOccurredAt: event.occurredAt, lastReceivedAt: new Date(), updatedAt: new Date() })
-          .onConflictDoUpdate({ target: telemetryWatermarks.runnerId, set: { lastEventOccurredAt: event.occurredAt, lastReceivedAt: new Date(), updatedAt: new Date() } });
-      }
-    });
+        }, setWhere: sql`(${restricted} AND excluded.project_id IS NOT NULL AND ${routeAssignments.projectId} = excluded.project_id
+            OR ${!restricted} AND (
+            ${routeAssignments.projectId} IS NOT DISTINCT FROM excluded.project_id
+          ))
+          AND ${routeAssignments.allocationContextId} IS NOT DISTINCT FROM excluded.allocation_context_id
+          AND ${routeAssignments.callId} = excluded.call_id
+          AND ${routeAssignments.endpointId} = excluded.endpoint_id
+          AND ${routeAssignments.routerId} = excluded.router_id
+          AND ${routeAssignments.routerRevision} = excluded.router_revision
+          AND ${routeAssignments.routeId} = excluded.route_id
+          AND ${routeAssignments.targetId} = excluded.target_id
+          AND ${routeAssignments.guardrailId} = excluded.guardrail_id
+          AND ${routeAssignments.guardrailVersion} = excluded.guardrail_version
+          AND ${routeAssignments.assignmentStatus} = excluded.assignment_status
+          AND ${routeAssignments.occurredAt} = excluded.occurred_at` });
+        if (!restricted) watermarks.add(event.runnerId, event.occurredAt);
+      }, finish: () => watermarks.flush() };
+    };
+    if (transaction) {
+      const writer = await prepare(transaction, events);
+      for (const event of events) await writer.write(event);
+      await writer.finish();
+    } else await telemetryBatches(this.db, events, prepare);
   }
 
-  async runtimeSnapshots(tx: Tx | ControllerDatabase = this.db) {
-    const rows = await tx.select().from(trafficRouters).where(isNull(trafficRouters.deletedAt));
-    const bindings = await tx.select({ id: endpoints.id, routerId: endpoints.trafficRouterId }).from(endpoints).where(isNull(endpoints.deletedAt));
-    const versions = await tx.select().from(guardrailVersions);
-    return rows.filter(r => r.activeSnapshot).map(r => ({ routerId: r.id, revision: r.activeRevision!, endpointIds: bindings.filter(e => e.routerId === r.id).map(e => e.id), routes: r.activeSnapshot!.routes.map(route => ({ ...route, targets: route.targets.map(t => ({ ...t, artifactId: versions.find(v => v.guardrailId === t.guardrailId && v.version === t.guardrailVersion)?.artifactId ?? "" })) })) }));
+  async runtimeSnapshots(projectIds: readonly string[], tx: Tx | ControllerDatabase = this.db) {
+    // Runtime distribution is an explicit allocation boundary, independent of
+    // the HTTP actor's read visibility. An empty group must never mean "all".
+    if (!projectIds.length) return [];
+    const rows = await tx.select().from(trafficRouters).where(and(
+      isNull(trafficRouters.deletedAt), inArray(trafficRouters.projectId, [...projectIds]),
+    ));
+    const bindings = await tx.select({ id: endpoints.id, routerId: endpoints.trafficRouterId, projectId: endpoints.projectId })
+      .from(endpoints).where(and(isNull(endpoints.deletedAt), inArray(endpoints.projectId, [...projectIds])));
+    const published = rows.filter(row => row.activeSnapshot && row.activeRevision !== null);
+    const ids = [...new Set(published.flatMap(row => row.activeSnapshot!.routes.flatMap(route => route.targets.map(target => target.guardrailId))))];
+    const versions = ids.length ? await tx.select({
+      guardrailId: guardrailVersions.guardrailId, version: guardrailVersions.version,
+      artifactId: guardrailVersions.artifactId, ownerProjectId: guardrails.projectId,
+    }).from(guardrailVersions).innerJoin(guardrails, eq(guardrails.id, guardrailVersions.guardrailId))
+      .where(and(inArray(guardrailVersions.guardrailId, ids), isNull(guardrails.deletedAt))) : [];
+    return published.flatMap(router => {
+      const versionsForTarget = (target: { guardrailId: string; guardrailVersion: string }) =>
+        versions.find(version => version.guardrailId === target.guardrailId && version.version === target.guardrailVersion);
+      // A stale/deleted target must not keep serving through last-known-good
+      // state. Omit the entire Router so its Endpoints become unbound in this
+      // accepted snapshot; never fall through to another Route.
+      const invalid = router.activeSnapshot!.routes.some(route => route.targets.some(target => {
+        const version = versionsForTarget(target);
+        if (!version) return target.weightBps > 0;
+        return (target.weightBps > 0 && !version.artifactId)
+          || version.ownerProjectId !== router.projectId;
+      }));
+      if (invalid) return [];
+      return [{ routerId: router.id, revision: router.activeRevision!,
+        endpointIds: bindings.filter(endpoint => endpoint.routerId === router.id && endpoint.projectId === router.projectId).map(endpoint => endpoint.id),
+        routes: router.activeSnapshot!.routes.map(route => ({ ...route,
+          targets: route.targets.map(target => ({ ...target, artifactId: versionsForTarget(target)?.artifactId ?? "" })),
+        })),
+      }];
+    });
+  }
+  /**
+   * Routing that still depends on one immutable Guardrail version. Historical
+   * revisions are not references: they are reported because deleting the
+   * version makes them non-restorable. `retired` is when, and at which
+   * generation, the version last stopped being served by an active revision.
+   */
+  async versionReferences(guardrailId: string, version: string, tx: Tx | ControllerDatabase = this.db) {
+    const pinned = (draft: RouterDraft | null) => Boolean(draft?.routes.some(route => route.targets.some(t =>
+      t.guardrailId === guardrailId && t.guardrailVersion === version)));
+    const routers = await tx.select().from(trafficRouters).where(isNull(trafficRouters.deletedAt)).orderBy(asc(trafficRouters.name));
+    const ids = routers.map(r => r.id);
+    const readableIds = await this.readableRouterIds(tx, ids);
+    const [history, changes] = ids.length ? await Promise.all([
+      tx.select().from(trafficRouterRevisions).where(inArray(trafficRouterRevisions.routerId, ids)).orderBy(asc(trafficRouterRevisions.routerId), asc(trafficRouterRevisions.revision)),
+      tx.select().from(trafficRouterChangeRequests).where(and(inArray(trafficRouterChangeRequests.routerId, ids),
+        or(eq(trafficRouterChangeRequests.status, "pending"), and(eq(trafficRouterChangeRequests.status, "applied"), eq(trafficRouterChangeRequests.kind, "publish"))))),
+    ]) : [[], []];
+    const references: Array<{ kind: "router_active" | "router_draft" | "change_request" | "rollback_target"; routerId: string; routerName: string; changeRequestId?: string; ticket?: string; revision?: number }> = [];
+    const historical: Array<{ routerId: string; routerName: string; revision: number; createdAt: string }> = [];
+    let retired: { at: Date; generation: number | null } | null = null;
+    for (const router of routers) {
+      const readable = readableIds.has(router.id);
+      const at = readable ? { routerId: router.id, routerName: router.name }
+        : { routerId: "", routerName: "Another project’s Router" };
+      if (pinned(router.activeSnapshot)) references.push({ kind: "router_active", ...at, ...(readable ? { revision: router.activeRevision! } : {}) });
+      const pending = changes.find(c => c.routerId === router.id && c.status === "pending");
+      if (pending && pinned(pending.snapshot)) references.push({ kind: "change_request", ...at, ...(readable ? { changeRequestId: pending.id, ticket: pending.ticket } : {}) });
+      // A draft unchanged since the active or pending snapshot is already reported through it.
+      const draftEdited = router.draftRevision !== router.activeDraftRevision && router.draftRevision !== pending?.sourceDraftRevision;
+      if (draftEdited && pinned(router.draft)) references.push({ kind: "router_draft", ...at });
+      const active = changes.find(c => c.routerId === router.id && c.status === "applied" && c.appliedRevision === router.activeRevision && c.baseRevision !== null);
+      const revisions = history.filter(r => r.routerId === router.id);
+      revisions.forEach((revision, index) => {
+        if (!pinned(revision.snapshot)) return;
+        if (revision.revision === active?.baseRevision) references.push({ kind: "rollback_target", ...at, ...(readable ? { revision: revision.revision, changeRequestId: active.id } : {}) });
+        else if (readable && revision.revision !== router.activeRevision) historical.push({ ...at, revision: revision.revision, createdAt: revision.createdAt.toISOString() });
+        const successor = revisions[index + 1];
+        if (successor && !pinned(successor.snapshot) && (!retired || successor.createdAt > retired.at)) retired = { at: successor.createdAt, generation: successor.generation };
+      });
+    }
+    return { references, historical, retired: retired as { at: Date; generation: number | null } | null };
   }
   async assertGuardrailUnused(id: string, tx: Tx | ControllerDatabase = this.db) {
     const rows = await tx.select().from(trafficRouters).where(isNull(trafficRouters.deletedAt));
+    const readableIds = await this.readableRouterIds(tx, rows.map(row => row.id));
+    const names = (routers: typeof rows) => routers.map(router => readableIds.has(router.id) ? router.name : "Another project’s Router").join(", ");
     const recentRevisions = await tx.select().from(trafficRouterRevisions).where(gte(trafficRouterRevisions.createdAt, new Date(Date.now() - 300000)));
     const recentlyChanged = new Set(recentRevisions.map(r => r.routerId));
     if (recentlyChanged.size) {
@@ -305,12 +693,49 @@ export class TrafficRoutingService {
     const refs = rows.filter(r => r.activeSnapshot?.routes.some(route => route.targets.some(t => t.guardrailId === id)));
     const [pending] = await tx.select({ count: sql<number>`count(*)::int` }).from(routeAssignments).where(and(eq(routeAssignments.guardrailId, id), isNull(routeAssignments.completedAt), gte(routeAssignments.occurredAt, new Date(Date.now() - 300000))));
     if (pending?.count) throw new ConflictError("Guardrail still has in-flight calls.", "guardrail_in_use");
-    if (refs.length) throw new ConflictError(`Guardrail is referenced by published Routers: ${refs.map(r => r.name).join(", ")}`, "guardrail_in_use");
+    if (refs.length) throw new ConflictError(`Guardrail is referenced by published Routers: ${names(refs)}`, "guardrail_in_use");
+    const pendingChanges = await tx.select({ routerId: trafficRouterChangeRequests.routerId, snapshot: trafficRouterChangeRequests.snapshot }).from(trafficRouterChangeRequests).where(eq(trafficRouterChangeRequests.status, "pending"));
+    const awaiting = rows.filter(r => pendingChanges.some(c => c.routerId === r.id && c.snapshot.routes.some(route => route.targets.some(t => t.guardrailId === id))));
+    if (awaiting.length) throw new ConflictError(`Guardrail is referenced by pending Router change requests: ${names(awaiting)}`, "guardrail_in_use");
   }
-  async reportRolloutFailure(generation: number, runnerId: string, reason: string) {
-    await this.db.update(trafficRouters).set({ rolloutError: `${runnerId}: ${reason}` }).where(and(isNull(trafficRouters.deletedAt), lte(trafficRouters.desiredGeneration, generation), sql`${trafficRouters.activeRevision} IS NOT NULL`));
+  private async readableRouterIds(tx: Tx | ControllerDatabase, ids: string[]): Promise<Set<string>> {
+    if (!currentProjectId() || !ids.length) return new Set(ids);
+    const rows = await tx.select({ id: trafficRouters.id }).from(trafficRouters).where(and(
+      inArray(trafficRouters.id, ids), resourceReadPredicate("router", trafficRouters.id, trafficRouters.projectId),
+    ));
+    return new Set(rows.map(row => row.id));
+  }
+  async reportRolloutFailure(generation: number, runnerId: string, reason: string,
+    principal?: { poolId: string; bootId: string; controlSessionId: string }) {
+    // A pool's rejected snapshot is not authority to change another group's
+    // Router status. Raw errors may contain a different same-group project's
+    // private Endpoint/Policy identity, so only platform audit retains them.
+    if (!principal || !Number.isSafeInteger(generation) || generation < 0) return;
+    await this.db.transaction(async tx => {
+      await advisoryTransactionLock(tx, "traffic-router-bindings");
+      const updated = await tx.update(trafficRouters).set({ rolloutError: "A Runner rejected this project group's runtime snapshot. Contact a platform administrator." })
+        .where(and(isNull(trafficRouters.deletedAt), lte(trafficRouters.desiredGeneration, generation),
+          sql`${trafficRouters.activeRevision} is not null`,
+          sql`exists (select 1 from project failure_project
+            inner join runner_pool failure_pool on failure_pool.group_id = failure_project.group_id
+              and (failure_pool.project_id = failure_project.id or (failure_pool.id = 'default' and not exists (
+                select 1 from runner_pool dedicated where dedicated.project_id = failure_project.id)))
+            inner join runner_instance failure_runner on failure_runner.pool_id = failure_pool.id
+            inner join runner_control_session failure_session on failure_session.id = failure_runner.control_session_id
+            where failure_project.id = ${trafficRouters.projectId} and failure_pool.id = ${principal.poolId}
+              and failure_runner.runner_id = ${runnerId} and failure_runner.boot_id = ${principal.bootId}
+              and failure_runner.control_session_id = ${principal.controlSessionId}
+              and failure_runner.disconnected_at is null and failure_runner.status <> 'offline'
+              and failure_session.id = ${principal.controlSessionId} and failure_session.runner_id = ${runnerId}
+              and failure_session.boot_id = ${principal.bootId} and failure_session.pool_id = ${principal.poolId}
+              and failure_session.disconnected_at is null)`)).returning({ id: trafficRouters.id });
+      if (updated.length) await tx.insert(auditEvents).values({ id: randomUUID(), projectId: null,
+        kind: "runner.snapshot_rejected", actorId: null, resourceType: "runner", resourceId: runnerId,
+        detail: { poolId: principal.poolId, generation, affectedRouterCount: updated.length, reason: reason.slice(0, 2000) } });
+    });
   }
   async remove(id: string, actorId: string) {
+    await assertResourceWriteAccess(this.db, "router", id);
     await this.db.transaction(async tx => {
       await advisoryTransactionLock(tx, "traffic-router-bindings");
       const [router] = await tx.select().from(trafficRouters).where(and(eq(trafficRouters.id, id), isNull(trafficRouters.deletedAt))).for("update");
@@ -326,6 +751,15 @@ export class TrafficRoutingService {
     const [row] = await tx.update(controllerState).set({ desiredGeneration: sql`${controllerState.desiredGeneration} + 1`, updatedAt: new Date() }).where(eq(controllerState.id, "singleton")).returning();
     if (!row) throw new Error("Controller state is not initialized");
     return row.desiredGeneration;
+  }
+  private async assertDraftGuardrailsVisible(tx: Tx, draft: RouterDraft): Promise<void> {
+    const ids = [...new Set(draft.routes.flatMap(route => route.targets.map(target => target.guardrailId)))];
+    if (!ids.length) return;
+    const rows = await tx.select({ id: guardrails.id }).from(guardrails).where(and(
+      inArray(guardrails.id, ids), isNull(guardrails.deletedAt),
+      resourceReadPredicate("guardrail", guardrails.id, guardrails.projectId),
+    ));
+    if (rows.length !== ids.length) throw new ValidationError("Router references a Guardrail that is unavailable to this project.");
   }
   private async audit(tx: Tx, id: string, actorId: string, kind: string, detail: Record<string, unknown>) {
     await tx.insert(auditEvents).values({ id: randomUUID(), resourceType: "router", resourceId: id, actorId, kind, detail });

@@ -64,6 +64,7 @@ _NEMOTRON_CONTENT_SAFETY = (
     ProviderCategoryMapping("Harassment", "TALI-SOCIAL-HARM-HARASSMENT", "direct"),
     ProviderCategoryMapping("Threat", "TALI-SOCIAL-HARM-THREAT", "direct"),
     ProviderCategoryMapping("Profanity", "TALI-SOCIAL-HARM-HARASSMENT", "partial"),
+    ProviderCategoryMapping("Manipulation", "TALI-SOCIAL-HARM", "partial", True),
     ProviderCategoryMapping("Fraud/Deception", "TALI-ILLEGAL-ACTIVITY-FRAUD", "direct"),
     ProviderCategoryMapping("Malware", "TALI-ILLEGAL-ACTIVITY-CYBER", "direct"),
     ProviderCategoryMapping("Political/Misinformation/Conspiracy", "TALI-CIVIC-INTEGRITY-POLITICAL-MISINFORMATION", "direct"),

@@ -1,80 +1,84 @@
+import { projectParams } from "@/lib/project-paths";
+import { GuardrailRequestRate } from "./guardrail-request-rate";
+import type { GuardrailRequestRates } from "@/lib/observability-api";
+import { hasPermission } from "../../shared/rbac";
 import { GuardrailRowActions } from "./guardrail-row-actions";
-import { useAuth } from "@/lib/auth";
 import { Link } from "@tanstack/react-router";
-import { ShieldCheck } from "lucide-react";
+import { Info, ShieldCheck } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
 import { StateBadge } from "@/components/product-shell";
+import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Tooltip, TooltipContent, TooltipTrigger } from "./ui/tooltip";
+import { useAuth } from "@/lib/auth";
 import type { Guardrail } from "@/lib/api";
 
 export function GuardrailRegistry({
   guardrails,
   onOpen,
+  requestRates, ratesLoading, ratesError,
 }: {
   guardrails: Guardrail[];
+  requestRates?: GuardrailRequestRates;
+  ratesLoading?: boolean;
+  ratesError?: boolean;
   onOpen: (guardrailId: string) => void;
 }) {
   const { t, i18n } = useTranslation();
-  const canEdit = useAuth().user?.role === "admin";
+  const user = useAuth().user;
+  const canEdit = hasPermission(user?.role, "guardrails", "write");
 
   return (
-    <section className="mt-5 min-w-0 overflow-hidden rounded-xl border bg-card shadow-xs">
-      <header className="border-b bg-muted/25 px-5 py-3">
-        <p className="text-xs font-medium text-muted-foreground">{t("guardrails.registry", { count: guardrails.length })}</p>
-      </header>
-      <Table className="table-fixed">
+    <Table className="resource-table resource-guardrail-table table-fixed" aria-label={t("pages.guardrails.title")}>
         <TableHeader>
           <TableRow className="hover:bg-transparent">
-            <TableHead className="px-5">{t("guardrails.guardrail")}</TableHead>
-            <TableHead className="w-28">{t("common.status")}</TableHead>
-            <TableHead className="hidden w-20 md:table-cell">{t("guardrails.policies")}</TableHead>
-            <TableHead className="hidden w-40 lg:table-cell">{t("guardrails.validation")}</TableHead>
-            <TableHead className="hidden w-44 xl:table-cell">{t("guardrails.updated")}</TableHead>
-            {canEdit && <TableHead className="w-16"><span className="sr-only">{t("common.actions")}</span></TableHead>}
+            <TableHead className="resource-name-column">{t("guardrails.guardrail")}</TableHead>
+            <TableHead className="resource-protection-column"><ColumnHelp label={t("guardrails.registryReadiness")} help={t("guardrails.registryReadinessHelp")} /></TableHead>
+            <TableHead className="resource-traffic-column"><ColumnHelp label={t("dashboard.metrics.request_rate")} help={t("guardrails.registryTrafficHelp")} /></TableHead>
+            <TableHead className="resource-updated-column">{t("guardrails.updated")}</TableHead>
+            <TableHead className="resource-actions-column"><span className="sr-only">{t("common.actions")}</span></TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
           {guardrails.map((guardrail) => (
             <TableRow
               key={guardrail.id}
-              className="group cursor-pointer focus-within:bg-muted/50"
+              className="resource-row"
               onClick={() => onOpen(guardrail.id)}
             >
-              <TableCell className="min-w-0 whitespace-normal px-5 py-3.5">
+              <TableCell className="min-w-0">
                 <Link
-                  to="/guardrails/$guardrailId"
-                  params={{ guardrailId: guardrail.id }}
+                  to="/$projectId/guardrails/$guardrailId"
+                  params={{ ...projectParams(), guardrailId: guardrail.id }}
                   aria-label={t("guardrails.openNamedGuardrail", { name: guardrail.name })}
-                  className="flex min-w-0 items-start gap-3 rounded-sm focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+                  className="resource-name"
                   onClick={(event) => event.stopPropagation()}
                 >
-                  <span className="grid size-9 shrink-0 place-items-center rounded-lg bg-primary/10 text-primary">
-                    <ShieldCheck className="size-4" />
-                  </span>
-                  <span className="min-w-0 flex-1">
-                    <strong className="block truncate text-sm group-hover:text-primary">{guardrail.name}</strong>
-                  </span>
+                  <ShieldCheck aria-hidden="true" />
+                  <span>{guardrail.name}</span>
+                  
                 </Link>
               </TableCell>
-              <TableCell><StateBadge state={guardrail.status} /></TableCell>
-              <TableCell className="hidden font-mono text-xs md:table-cell">{guardrail.policy_bindings.length}</TableCell>
-              <TableCell className="hidden lg:table-cell">
-                {guardrail.latest_validation_run ? (
-                  <span className="flex items-center gap-2">
-                    <StateBadge state={guardrail.latest_validation_run.status} />
-                    <span className="font-mono text-xs text-muted-foreground">{guardrail.latest_validation_run.metrics.compliance_rate}%</span>
-                  </span>
-                ) : <span className="text-xs text-muted-foreground">{t("guardrails.notRun")}</span>}
+              <TableCell><StateBadge state={guardrail.status} />
+                {guardrail.status !== "not_ready" && guardrail.protection && guardrail.protection.status !== "applied" ? <p className="mt-2 text-xs leading-5 text-muted-foreground">{t(`protectionMode.states.${guardrail.protection.status}`)} · {t("protectionMode.switching", { mode: t(`states.${guardrail.protection.mode}`) })} · {t("protectionMode.progress", guardrail.protection)}</p> : null}
               </TableCell>
-              <TableCell className="hidden text-xs text-muted-foreground xl:table-cell">
+              <TableCell>
+                <GuardrailRequestRate guardrailId={guardrail.id} name={guardrail.name} points={requestRates?.byGuardrail[guardrail.id] ?? requestRates?.zeroPoints} loading={ratesLoading} error={ratesError} />
+              </TableCell>
+              <TableCell className="text-xs text-muted-foreground">
                 {new Date(guardrail.updated_at).toLocaleString(i18n.language)}
               </TableCell>
-              {canEdit && <TableCell className="text-right" onClick={event => event.stopPropagation()}><GuardrailRowActions guardrail={guardrail} /></TableCell>}
+              <TableCell className="resource-actions-column" onClick={event => event.stopPropagation()}>{canEdit && (!guardrail.project_id || guardrail.project_id === user?.project_id) ? <GuardrailRowActions guardrail={guardrail} /> : null}</TableCell>
             </TableRow>
           ))}
         </TableBody>
       </Table>
-    </section>
   );
+}
+
+function ColumnHelp({ label, help }: { label: string; help: string }) {
+  return <Tooltip><TooltipTrigger asChild><button type="button" className="inline-flex min-h-11 items-center gap-1 text-left" aria-label={label}>
+    {label}<Info className="size-3.5 shrink-0 text-muted-foreground" aria-hidden="true" />
+  </button></TooltipTrigger><TooltipContent className="max-w-80 text-left leading-5">{help}</TooltipContent></Tooltip>;
 }

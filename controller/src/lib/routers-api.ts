@@ -1,3 +1,4 @@
+import { highestSeverity } from "../../shared/security-severity";
 import * as controllerApi from "@/lib/controller-api";
 import {
   arrayOfStrings,
@@ -11,11 +12,8 @@ import {
 import type {
   Collection,
   DeleteConfirmation,
-  Router,
   RouterDeletionImpact,
   RouterRuntimeTrace,
-  TrafficScopeExpression,
-  TrafficScopeField,
 } from "@/lib/api-types";
 
 export { listTrafficRouters as getRouters, getTrafficRouter as getRouter } from './traffic-routing-api';
@@ -44,7 +42,7 @@ function mapRouterTrace(event: controllerApi.RuntimeEvent): RouterRuntimeTrace {
     outcome,
     action: stringValue(event.metadata.action) ?? event.decision,
     risk: findings[0]?.risk ?? arrayOfStrings(event.metadata.risks)[0] ?? null,
-    severity: findings[0]?.severity ?? null,
+    severity: highestSeverity(findings.map(finding => finding.severity)),
     latency_ms: event.durationMs,
     timed_out: isTimedOut(event),
     runtime_engine: stringValue(usage.runtime_engine) ?? stringValue(event.metadata.runtimeEngine) ?? "unknown",

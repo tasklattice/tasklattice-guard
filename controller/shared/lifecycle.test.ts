@@ -38,25 +38,25 @@ describe("Controller lifecycle contract", () => {
     expect(runnerStatuses).not.toContain("registered");
   });
 
-  it("makes Guardrail deletion and version completion terminal", () => {
+  it("models evidence loss and confirmed restoration without changing version contents", () => {
     expect(guardrailLifecycleTransitions).toEqual({
       draft: ["active", "disabled"],
-      active: ["disabled"],
-      disabled: [],
+      active: ["draft", "disabled"],
+      disabled: ["draft"],
     });
     expect(guardrailVersionTransitions).toEqual({
-      compiling: ["ready", "failed"],
-      ready: [],
-      failed: [],
+      pending: ["ready"],
+      ready: ["pending"],
     });
   });
 
   it("allows validation terminal shortcuts and reversible Endpoint toggles", () => {
     expect(validationRunTransitions).toEqual({
-      queued: ["running", "passed", "failed"],
-      running: ["passed", "failed"],
+      queued: ["running", "passed", "failed", "cancelled"],
+      running: ["passed", "failed", "cancelled"],
       passed: [],
       failed: [],
+      cancelled: [],
     });
     expect(endpointLifecycleTransitions).toEqual({
       active: ["disabled"],

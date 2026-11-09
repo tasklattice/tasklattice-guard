@@ -1,10 +1,13 @@
 import { createHash } from "node:crypto";
+import { canonicalJson } from "../../shared/canonical-json.js";
 
 import type { PolicyDto } from "../policy-catalog/catalog.js";
 import type { ProgrammablePolicySnapshot } from "../policy-studio/model.js";
 import { normalizeGuardrailDraft, type GuardrailDraftConfig, type ValidationExpectationOverride } from "./guardrail-plan.js";
-import { PHRASE_PARAMETER, PHRASE_POLICY_ID, parsePhraseEntries } from "../../shared/phrase-policy.js";
+import { PHRASE_PARAMETER, PHRASE_POLICY_ID, PHRASE_RULE_ID, parsePhraseEntries } from "../../shared/phrase-policy.js";
+import { hasTopicRules, isSplitTopicPolicy, TOPIC_ALLOW_RULE, TOPIC_DENY_RULE, topicLines, topicPolicyValues } from "../../shared/topic-policy.js";
 import type { ValidationCaseResult, ValidationMetrics } from "./models.js";
+import { definitionTestCases } from "../policy-studio/definition-tests.js";
 
 export type StoredTestCaseInput = {
   id: string;
@@ -37,22 +40,62 @@ export function generatedTestCases(
   programmablePolicies: readonly ProgrammablePolicySnapshot[] = [],
 ): StoredTestCaseInput[] {
   const draft = normalizeGuardrailDraft(draftValue);
-  const byId = new Map(policies.map((item) => [item.id, item]));
+  const byId = new Map(policies.flatMap(item => [item, ...(item.published_versions ?? [])]).map(item => [`${item.id}@${item.version}`, item]));
   const declarative = draft.policyBindings.flatMap((binding) => {
-    const policy = byId.get(binding.policyId);
+    const policy = byId.get(`${binding.policyId}@${binding.policyVersion}`);
     if (!policy) return [];
     const enabledRails = new Set(binding.enabledRails.length ? binding.enabledRails : policy.rails);
     const enabledRules = new Set(binding.enabledRuleIds);
+    if (policy.definition) {
+      const parameters = { ...Object.fromEntries(policy.parameters.flatMap(p => p.default == null ? [] : [[p.name, p.default]])), ...binding.parameterValues };
+      const topicCases: StoredTestCaseInput[] = [];
+      if (hasTopicRules(policy.definition.rules)) {
+        const values = topicPolicyValues(parameters);
+        const base = { guardrailId, origin: "generated" as const, trustedInstruction: "", targetSource: "user_input" as const, query: "",
+          groundingSources: [], expectedReasoningResult: null, required: true, expectedFailure: null, concurrencyGroup: "General",
+          sourcePolicyId: policy.id, sourcePolicyVersion: policy.version };
+        if (enabledRules.has(TOPIC_DENY_RULE)) {
+          for (const [index, topic] of topicLines(values.denied).entries()) topicCases.push({ ...base, id: generatedCaseId(policy.id, `${TOPIC_DENY_RULE}/${index + 1}`),
+            name: `Denied topic: ${topic}`, policyId: policy.id, phase: "input", content: `Please help me with this task: ${topic}`,
+            expectedDecision: "block", caseType: "rule_acceptance", coveredRuleIds: [TOPIC_DENY_RULE], sourceCaseId: `${TOPIC_DENY_RULE}/${index + 1}` });
+        }
+        if (enabledRules.has(TOPIC_ALLOW_RULE)) topicCases.push({ ...base, id: generatedCaseId(policy.id, `${TOPIC_ALLOW_RULE}/1`),
+          name: "Unlisted topic", policyId: policy.id, phase: "input", content: "Discuss a business subject that is not on the approved list.",
+          expectedDecision: values.mode === "permissive" ? "allow" : (binding.ruleActions[TOPIC_ALLOW_RULE] ?? binding.action ?? "block"),
+          caseType: "rule_acceptance", coveredRuleIds: [TOPIC_ALLOW_RULE], sourceCaseId: `${TOPIC_ALLOW_RULE}/1` });
+      }
+      // Topic cases are generated from their configured lists; every other
+      // authored Rule and Policy scenario still comes from the definition.
+      const otherCases = definitionTestCases(policy.definition, parameters)
+        .filter(test => !test.covered_rule_ids.every(id => id === TOPIC_DENY_RULE || id === TOPIC_ALLOW_RULE))
+        .filter(test => enabledRails.has(test.phase)
+          && test.covered_rule_ids.every(id => enabledRules.has(id)
+            || policy.definition!.rules.some(r => r.expand && enabledRules.has(r.id) && id.startsWith(`${r.id}/`))))
+        .map(test => ({ id: generatedCaseId(policy.id, test.id), guardrailId, name: test.name, policyId: policy.id, phase: test.phase, content: test.content,
+          expectedDecision: test.expected_decision, origin: "generated" as const, trustedInstruction: test.context?.trusted_instruction ?? "",
+          targetSource: test.context?.target_source ?? (test.phase === "output" ? "model_output" as const : "user_input" as const), query: test.context?.query ?? "", groundingSources: test.context?.grounding_sources ?? [],
+          expectedReasoningResult: test.context?.expected_reasoning_result ?? null, caseType: test.kind, required: test.required, expectedFailure: null, concurrencyGroup: test.group || null,
+          sourcePolicyId: policy.id, sourcePolicyVersion: policy.version, sourceCaseId: test.id, coveredRuleIds: test.covered_rule_ids,
+        }));
+      return [...topicCases, ...otherCases].filter(item => enabledRails.has(item.phase));
+    }
     return policy.test_cases.flatMap((item) => {
       if (item.phase !== "input" && item.phase !== "output") return [];
       if (!enabledRails.has(item.phase)) return [];
       const phase = item.phase;
-      if (item.covered_rule_ids.length && !item.covered_rule_ids.some((id) => enabledRules.has(id))) return [];
-      const expanded = policy.id === PHRASE_POLICY_ID
+      // A scenario covering several Rules is only valid when its complete
+      // selection is enabled. Partial Profiles cannot promise disabled checks.
+      if (!item.covered_rule_ids.every((id) => enabledRules.has(id))) return [];
+      const topicValues = topicPolicyValues(binding.parameterValues);
+      const expanded = isSplitTopicPolicy(binding.policyId, binding.policyVersion) ? item.covered_rule_ids.includes(TOPIC_DENY_RULE)
+        ? topicLines(topicValues.denied).map((topic, index) => ({ ...item, id: `${item.id}/${index + 1}`, name: `Denied topic: ${topic}`, content: `Please help me with this task: ${topic}`, expected_decision: "block" as const }))
+        : [{ ...item, expected_decision: topicValues.mode === "permissive" ? "allow" as const : (binding.ruleActions[TOPIC_ALLOW_RULE] ?? binding.action ?? "block") }]
+        : policy.id === PHRASE_POLICY_ID
         ? parsePhraseEntries(binding.parameterValues[PHRASE_PARAMETER] ?? "").map((entry) => ({
             ...item, id: `${item.id}/${entry.id}`, name: `${item.name}: ${entry.phrase}`,
             content: entry.phrase,
-            expected_decision: entry.action === "reject" ? "block" as const : "transform" as const,
+            expected_decision: entry.action,
+            covered_rule_ids: [`${PHRASE_RULE_ID}/${entry.id}`],
           })) : [item];
       return expanded.map((item) => ({
         id: generatedCaseId(policy.id, item.id),
@@ -63,11 +106,11 @@ export function generatedTestCases(
         content: policy.id === PHRASE_POLICY_ID ? item.content : materialize(item.content, binding.parameterValues),
         expectedDecision: item.expected_decision,
         origin: "generated" as const,
-        trustedInstruction: "",
-        targetSource: item.phase === "output" ? "model_output" as const : "user_input" as const,
-        query: "",
-        groundingSources: [],
-        expectedReasoningResult: null,
+        trustedInstruction: materialize(item.context?.trusted_instruction ?? "", binding.parameterValues),
+        targetSource: item.context?.target_source ?? (item.phase === "output" ? "model_output" as const : "user_input" as const),
+        query: materialize(item.context?.query ?? "", binding.parameterValues),
+        groundingSources: (item.context?.grounding_sources ?? []).map(source => materialize(source, binding.parameterValues)),
+        expectedReasoningResult: item.context?.expected_reasoning_result ?? null,
         caseType: item.kind,
         required: item.required,
         expectedFailure: null,
@@ -132,8 +175,39 @@ export function generatedTestCases(
   return [...declarative, ...programmable];
 }
 
+/** Restore source assertions only when an unchanged inherited overlay loses a
+ * selected Rule, Policy or Rail. New/edited or stale overlays still need review.
+ * Mutates the candidate before it is persisted, never a published snapshot. */
+export function reconcileValidationOverrides(
+  draft: GuardrailDraftConfig,
+  reference: GuardrailDraftConfig,
+  referenceCases: readonly StoredTestCaseInput[],
+): void {
+  const before = new Map(reference.policyBindings.map(binding => [binding.policyId, binding]));
+  const after = new Map(draft.policyBindings.map(binding => [binding.policyId, binding]));
+  for (const binding of draft.policyBindings) {
+    const previous = before.get(binding.policyId);
+    if (!previous || previous.policyVersion !== binding.policyVersion) continue;
+    for (const [caseId, overlay] of Object.entries(binding.testCaseOverrides ?? {})) {
+      const inherited = previous.testCaseOverrides?.[caseId];
+      if (!inherited || overlay.sourcePolicyVersion !== binding.policyVersion || canonicalJson(overlay) !== canonicalJson(inherited)) continue;
+      const source = referenceCases.find(item => item.sourcePolicyId === binding.policyId && item.sourceCaseId === caseId);
+      if (!source || source.sourcePolicyVersion !== binding.policyVersion) continue;
+      const removed = !binding.enabledRails.includes(source.phase)
+        || source.coveredRuleIds.some(id => previous.enabledRuleIds.includes(id) && !binding.enabledRuleIds.includes(id))
+        || overlay.expectedMatches.some(match => {
+          const was = before.get(match.policyId);
+          const now = after.get(match.policyId);
+          return was?.enabledRuleIds.includes(match.ruleId) && was.enabledRails.includes(source.phase)
+            && (!now?.enabledRuleIds.includes(match.ruleId) || !now.enabledRails.includes(source.phase));
+        });
+      if (removed) delete binding.testCaseOverrides![caseId];
+    }
+  }
+}
+
 /** Preserve template assertions in storage; freeze reviewed local overlays into each run. */
-export function applyValidationOverrides<T extends { id: string; sourcePolicyId: string | null; sourcePolicyVersion: string | null; sourceCaseId: string | null; expectedDecision: string }>(cases: readonly T[], draftValue: GuardrailDraftConfig): Array<T & { expectationOverride?: ValidationExpectationOverride }> {
+export function applyValidationOverrides<T extends { id: string; sourcePolicyId: string | null; sourcePolicyVersion: string | null; sourceCaseId: string | null; expectedDecision: string; coveredRuleIds?: string[]; content?: string }>(cases: readonly T[], draftValue: GuardrailDraftConfig): Array<T & { expectationOverride?: ValidationExpectationOverride }> {
   const draft = normalizeGuardrailDraft(draftValue);
   const bindings = new Map(draft.policyBindings.map((binding) => [binding.policyId, binding]));
   for (const binding of draft.policyBindings) {
@@ -144,7 +218,19 @@ export function applyValidationOverrides<T extends { id: string; sourcePolicyId:
         throw new Error(`Review the stale expectation override for ${binding.policyId}/${caseId} after changing Policy version.`);
       }
       if (source.expectedDecision !== "allow" && override.expectedDecision === "allow") {
-        throw new Error(`Cannot weaken an unsafe inherited Test Case to allow: ${binding.policyId}/${caseId}. Use an explicit scoped exclusion instead.`);
+        // Observation-only is an explicit action contract, not a discarded
+        // unsafe test: every covered detector must still match, and the full
+        // original content must survive unchanged.
+        const recordsOnly = Boolean(source.coveredRuleIds?.length)
+          && source.coveredRuleIds!.every((ruleId) =>
+            (binding.ruleActions[ruleId] ?? binding.action) === "allow"
+            && override.expectedMatches.some((match) => match.policyId === binding.policyId && match.ruleId === ruleId))
+          && override.expectedMatches.every((match) => {
+            const target = bindings.get(match.policyId);
+            return target && (target.ruleActions[match.ruleId] ?? target.action) === "allow";
+          })
+          && typeof source.content === "string" && override.expectedOutputContent === source.content;
+        if (!recordsOnly) throw new Error(`Cannot weaken an unsafe inherited Test Case to allow: ${binding.policyId}/${caseId}. Observation-only expectations require explicit allow actions, retained Rule matches and unchanged content.`);
       }
       for (const match of override.expectedMatches) {
         if (!bindings.get(match.policyId)?.enabledRuleIds.includes(match.ruleId)) {
@@ -177,8 +263,12 @@ export function emptyValidationMetrics(total = 0): ValidationMetrics {
 
 export function validationMetrics(results: readonly ValidationCaseResult[]): ValidationMetrics {
   const passed = results.filter((item) => item.passed).length;
-  const falsePositive = results.filter((item) => item.expectedDecision === "allow" && item.actualDecision !== "allow").length;
-  const falseNegative = results.filter((item) => item.expectedDecision !== "allow" && item.actualDecision === "allow").length;
+  // Infrastructure failures and unknown verdicts describe availability, not
+  // classifier accuracy. They still count toward total, pass rate and latency.
+  const evaluated = results.filter((item) => !item.actualFailure
+    && ![...item.findings, ...item.trace].some((entry) => entry.verdict === "unknown"));
+  const falsePositive = evaluated.filter((item) => item.expectedDecision === "allow" && item.actualDecision !== "allow").length;
+  const falseNegative = evaluated.filter((item) => item.expectedDecision !== "allow" && item.actualDecision === "allow").length;
   const escalated = results.filter((item) => item.escalated).length;
   const latencies = results.map((item) => item.latencyMs).sort((left, right) => left - right);
   return {

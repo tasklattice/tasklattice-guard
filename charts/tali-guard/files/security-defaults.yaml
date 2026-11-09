@@ -1,0 +1,51 @@
+# Internal credential defaults. Public TLS/admin defaults live in values.yaml.
+bootstrap:
+  enabled: true
+customCa:
+  existingSecret: ''
+  certificateKey: ca.crt
+metrics:
+  existingSecret: ''
+  tokenKey: metrics-token
+bootstrapAdmin:
+  existingSecret: ''
+  usernameKey: username
+  credentialKey: ''
+bootstrapUser:
+  enabled: true
+  existingSecret: ''
+  username: user
+  project: ''
+  usernameKey: username
+  credentialKey: ''
+controlSecret:
+  existingSecret: ''
+  runnerTokenKey: runner-token
+  betterAuthSecretKey: better-auth-secret
+poolAuthentication:
+  enabled: false
+  scopedTelemetry: false
+  controllerSecret: ''
+  controllerKey: pool-tokens.json
+  runnerSecrets: {}
+runnerHttpAuthentication:
+  enabled: false
+  controllerSecret: ''
+  controllerKey: pool-http-tokens.json
+  runnerSecrets: {}
+runtimeLogs:
+  existingSecret: ''
+  encryptionKeyKey: encryption-key
+artifactSigning:
+  existingSecret: ''
+  privateKeyKey: private-key.pem
+  publicKeyKey: public-key.pem
+controlTls:
+  existingSecret: ''
+  autoGenerate: true
+  caKey: ca.crt
+  controllerCertificateKey: tls.crt
+  controllerPrivateKeyKey: tls.key
+  runnerCertificateKey: runner.crt
+  runnerPrivateKeyKey: runner.key
+  caPrivateKeyKey: ca.key

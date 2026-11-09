@@ -1,72 +1,160 @@
-"use client"
-
-import * as React from "react"
-import { Tabs as TabsPrimitive } from "radix-ui"
-
-import { cn } from "@/lib/utils"
-
-function Tabs({
-  className,
+import {
+  createContext,
+  useContext,
+  useState,
+  Children,
+  cloneElement,
+  isValidElement,
+  type ComponentProps,
+  type ReactNode,
+} from "react";
+import {
+  Tabs as CarbonTabs,
+  TabsVertical,
+  TabList,
+  TabListVertical,
+  Tab,
+  TabPanels,
+  TabPanel,
+} from "@carbon/react";
+import { findSlots } from "@/components/carbon/composition";
+import { cn } from "@/lib/utils";
+const Context = createContext({
+  value: "",
+  orientation: "horizontal",
+  activation: "automatic",
+});
+export function Tabs({
+  children,
+  value,
+  defaultValue,
+  onValueChange,
   orientation = "horizontal",
+  activationMode = "automatic",
+  className,
   ...props
-}: React.ComponentProps<typeof TabsPrimitive.Root>) {
+}: ComponentProps<"div"> & {
+  value?: string;
+  defaultValue?: string;
+  onValueChange?: (value: string) => void;
+  orientation?: "horizontal" | "vertical";
+  activationMode?: "automatic" | "manual";
+}) {
+  const lists = findSlots(children, TabsList);
+  const values = lists.flatMap((list) =>
+    Children.toArray(list.props.children as ReactNode)
+      .filter(isValidElement)
+      .map((child) => String((child.props as { value: string }).value)),
+  );
+  const panels = findSlots(children, TabsContent);
+  const [local, setLocal] = useState(defaultValue ?? values[0]);
+  const selected = value ?? local;
+  let placed = false;
+  const transform = (nodes: ReactNode): ReactNode =>
+    Children.map(nodes, (child) => {
+      if (!isValidElement<{ children?: ReactNode }>(child)) return child;
+      if (child.type === TabsContent) {
+        if (placed) return null;
+        placed = true;
+        return (
+          <TabPanels>
+            {values.map((v) => {
+              const panel = panels.find((p) => p.props.value === v);
+              return <TabsContent key={v} {...panel?.props} value={v} />;
+            })}
+          </TabPanels>
+        );
+      }
+      if (
+        child.type === Tabs ||
+        child.type === TabsList ||
+        child.type === TabsTrigger
+      )
+        return child;
+      return child.props.children
+        ? cloneElement(child, {}, transform(child.props.children))
+        : child;
+    });
+  const Root = orientation === "vertical" ? TabsVertical : CarbonTabs;
   return (
-    <TabsPrimitive.Root
+    <div
+      {...props}
       data-slot="tabs"
-      data-orientation={orientation}
-      className={cn(
-        "group/tabs flex gap-2 data-[orientation=horizontal]:flex-col",
-        className
-      )}
-      {...props}
-    />
-  )
+      className={cn("guard-tabs min-w-0", className)}
+    >
+      <Context.Provider
+        value={{ value: selected, orientation, activation: activationMode }}
+      >
+        <Root
+          selectedIndex={Math.max(0, values.indexOf(selected))}
+          onChange={({ selectedIndex }) => {
+            const next = values[selectedIndex];
+            if (next !== undefined) {
+              setLocal(next);
+              onValueChange?.(next);
+            }
+          }}
+        >
+          {transform(children)}
+        </Root>
+      </Context.Provider>
+    </div>
+  );
 }
-
-function TabsList({
-  className,
-  ...props
-}: React.ComponentProps<typeof TabsPrimitive.List>) {
+export function TabsList({ className, children, ...props }: ComponentProps<"div">) {
+  const { orientation, activation } = useContext(Context);
+  const List = orientation === "vertical" ? TabListVertical : TabList;
   return (
-    <TabsPrimitive.List
+    <List
+      {...props}
       data-slot="tabs-list"
-      className={cn(
-        "group/tabs-list inline-flex h-11 w-fit items-center justify-start gap-0 border-b border-border/60 bg-transparent text-muted-foreground group-data-[orientation=vertical]/tabs:h-fit group-data-[orientation=vertical]/tabs:flex-col group-data-[orientation=vertical]/tabs:border-r group-data-[orientation=vertical]/tabs:border-b-0",
-        className,
-      )}
-      {...props}
-    />
-  )
+      className={className}
+      activation={activation as "automatic" | "manual"}
+    >
+      {Children.toArray(children)}
+    </List>
+  );
 }
-
-function TabsTrigger({
+export function TabsTrigger({
+  value,
   className,
+  asChild,
+  children,
   ...props
-}: React.ComponentProps<typeof TabsPrimitive.Trigger>) {
+}: ComponentProps<typeof Tab> & { value: string; asChild?: boolean }) {
+  const context = useContext(Context);
+  const child =
+    asChild && isValidElement<Record<string, unknown>>(children)
+      ? children
+      : null;
   return (
-    <TabsPrimitive.Trigger
+    <Tab
+      {...props}
+      {...(child?.props ?? {})}
+      as={child ? (child.type as ComponentProps<typeof Tab>["as"]) : undefined}
+      className={className}
       data-slot="tabs-trigger"
-      className={cn(
-        "relative inline-flex h-11 shrink-0 items-center justify-center gap-1.5 rounded-none border border-transparent px-4 text-[13px] font-medium whitespace-nowrap text-muted-foreground transition-colors outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/30 disabled:pointer-events-none disabled:opacity-45 data-[state=active]:text-foreground group-data-[orientation=vertical]/tabs:w-full group-data-[orientation=vertical]/tabs:justify-start [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-3.5",
-        "after:absolute after:bg-primary after:opacity-0 after:transition-opacity data-[state=active]:after:opacity-100 group-data-[orientation=horizontal]/tabs:after:inset-x-2 group-data-[orientation=horizontal]/tabs:after:bottom-0 group-data-[orientation=horizontal]/tabs:after:h-0.5 group-data-[orientation=vertical]/tabs:after:inset-y-2 group-data-[orientation=vertical]/tabs:after:right-0 group-data-[orientation=vertical]/tabs:after:w-0.5",
-        className
-      )}
-      {...props}
-    />
-  )
+      data-state={context.value === value ? "active" : "inactive"}
+    >
+      {child ? (child.props.children as ReactNode) : children}
+    </Tab>
+  );
 }
-
-function TabsContent({
+export function TabsContent({
+  value,
+  forceMount,
+  children,
   className,
   ...props
-}: React.ComponentProps<typeof TabsPrimitive.Content>) {
+}: ComponentProps<"div"> & { value: string; forceMount?: boolean }) {
+  const context = useContext(Context);
   return (
-    <TabsPrimitive.Content
-      data-slot="tabs-content"
-      className={cn("flex-1 text-sm outline-none", className)}
+    <TabPanel
       {...props}
-    />
-  )
+      data-slot="tabs-content"
+      className={cn("min-w-0", className)}
+    >
+      {context.value === value || forceMount ? children : null}
+    </TabPanel>
+  );
 }
-
-export { Tabs, TabsList, TabsTrigger, TabsContent }

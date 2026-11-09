@@ -2,6 +2,16 @@
 
 The top of Playground offers “Normal mode / Advanced mode,” with Normal mode selected by default. Normal mode continues to provide GuardRail chat testing, with the model, GuardRail, Version, and send button below the input. Advanced mode uses an API request workbench layout.
 
+## Chat model and request-test availability
+
+Normal chat mode requires a validated Chat model assignment in **Settings → Models**. Registering a Provider or a model alone does not assign it to chat. Run the assignment validation and save the successful result; the Controller applies the chat assignment without a Runner rollout. If a hosted model exceeds its configured request timeout, adjust the unused model definition before validating it again rather than bypassing the probe.
+
+Advanced Router / Endpoint tests do not require a chat model. The mode switch and advanced deep links stay available while model discovery is loading, empty, or failing. Published execution requires a synchronized Router revision and a bound Endpoint; Endpoint execution additionally requires that Endpoint's credential.
+
+In the local development profile, Endpoint setup advertises Runtime port `38082`, while the UI remains on `38081`. Shared `publicUrl` and explicit `runner.publicUrl` still take precedence; internal Playground traffic continues using the Runtime Service.
+
+For a LiteLLM input/output pair, send the input first and reuse its `litellm_call_id` for the output. The Runner pins the Router revision and Guardrail version to that call. An output with an unknown or expired call ID fails closed instead of being silently reassigned.
+
 ## Usage
 
 1. Switch to Advanced mode at the top of the page, or enter through the test action on a Router / Endpoint detail page.
@@ -27,7 +37,7 @@ Switching between Normal and Advanced modes preserves each mode's inputs and his
 
 Published Router requests carry an expected Revision. The Controller checks the current published revision and Endpoint bindings; the Runner then checks the loaded revision. Unsynchronized or changed revisions return an error. Execution also checks the version actually resolved by Runtime. The same Call ID follows Runtime's routing-pinning rules; generate a new Call ID in request context to test again.
 
-Endpoint mode follows protocol fields and Call ID in the request Body. Host in the HTTP editor supplies request context; the network destination is fixed to the Runner service configured in the Controller. Currently supported paths are the selected Endpoint's POST `guardrails/evaluate` and `beta/litellm_basic_guardrail_api`. External Ingress, DNS, TLS, and a complete third-party model round trip are outside this path test's scope.
+Endpoint mode follows protocol fields and Call ID in the request Body. Host in the HTTP editor supplies request context; the network destination is fixed to the Runner service configured in the Controller. Supported paths are the selected LiteLLM Endpoint's POST `beta/litellm_basic_guardrail_api` and the selected Scan Endpoint's `/runtime/v1/endpoints/{endpoint_id}/backend/v1/scans` path. Scan's Bearer key must belong to the selected Endpoint; its scans are independent and ignore client call IDs. External Ingress, DNS, TLS, and a complete third-party model round trip are outside this path test's scope.
 
 Endpoint tests use the entered API Key (also accepting X-Api-Key from HTTP), never forwarding the Controller's internal token. Sensitive request headers are masked in history; the request Body retains user input. cURL is parsed only as text: it does not execute a shell or read files.
 
@@ -43,7 +53,7 @@ Endpoint tests use the entered API Key (also accepting X-Api-Key from HTTP), nev
 - `PathTestResult`: result summary, rule table, detection information, and raw response.
 - `PathTestHistory`: history browsing and restoration.
 
-This directly replaces the old Advanced mode without a legacy-interaction compatibility branch. It reuses existing Tabs, Input, Select, and Sheet components without adding a large API client or editor dependency.
+Advanced mode uses the current interaction flow. It reuses existing Tabs, Input, Select, and Sheet components without adding a large API client or editor dependency.
 
 ## Verification Record (2026-09-13)
 

@@ -1,0 +1,12 @@
+# Z3's native ARM64 wheel requires glibc >= 2.38 (Debian Trixie supplies 2.41).
+FROM python:3.13-slim-trixie
+COPY --from=ghcr.io/astral-sh/uv:0.11.32 /uv /bin/uv
+ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1
+WORKDIR /opt/formal-proof
+# A standalone proof service: no Controller, Runner runtime, or model client.
+RUN --mount=type=cache,target=/root/.cache/uv,sharing=locked \
+    uv pip install --system fastapi==0.141.1 uvicorn==0.52.1 z3-solver==4.16.0.0
+COPY runner/formal_service ./formal_service
+USER 65532:65532
+EXPOSE 8093
+CMD ["uvicorn", "formal_service.app:create_app", "--factory", "--host", "0.0.0.0", "--port", "8093"]

@@ -1,0 +1,160 @@
+{
+  "version": 1,
+  "checked_at": "2026-10-19",
+  "files": [
+    {
+      "dataset": "bipia",
+      "repository": "https://github.com/microsoft/BIPIA",
+      "revision": "a004b69ec0dd446e0afd461d98cb5e96e120a5d0",
+      "upstream_path": "bipia/data/utils.py",
+      "path": "bipia--bipia--data--utils.py",
+      "url": "https://raw.githubusercontent.com/microsoft/BIPIA/a004b69ec0dd446e0afd461d98cb5e96e120a5d0/bipia/data/utils.py",
+      "sha256": "51d38fccc527c88b5d045ea8336705476a43aa576356e0e76a15bb4633bf1945",
+      "bytes": 2887,
+      "license_note": "Upstream repository license; underlying QA data retains its own terms. See parent security_benchmarks.lock.json."
+    },
+    {
+      "dataset": "bipia",
+      "repository": "https://github.com/microsoft/BIPIA",
+      "revision": "a004b69ec0dd446e0afd461d98cb5e96e120a5d0",
+      "upstream_path": "bipia/data/code.py",
+      "path": "bipia--bipia--data--code.py",
+      "url": "https://raw.githubusercontent.com/microsoft/BIPIA/a004b69ec0dd446e0afd461d98cb5e96e120a5d0/bipia/data/code.py",
+      "sha256": "7df0c5554b17d5552cbb02d8acba2466b30f447f264e6d0c154b772269a9d126",
+      "bytes": 3588,
+      "license_note": "Upstream repository license; underlying QA data retains its own terms. See parent security_benchmarks.lock.json."
+    },
+    {
+      "dataset": "bipia",
+      "repository": "https://github.com/microsoft/BIPIA",
+      "revision": "a004b69ec0dd446e0afd461d98cb5e96e120a5d0",
+      "upstream_path": "bipia/data/table.py",
+      "path": "bipia--bipia--data--table.py",
+      "url": "https://raw.githubusercontent.com/microsoft/BIPIA/a004b69ec0dd446e0afd461d98cb5e96e120a5d0/bipia/data/table.py",
+      "sha256": "d3c06476a3e2f906071e7ad6d5e95bf273b3aca880ef826693109689703fa870",
+      "bytes": 1762,
+      "license_note": "Upstream repository license; underlying QA data retains its own terms. See parent security_benchmarks.lock.json."
+    },
+    {
+      "dataset": "bipia",
+      "repository": "https://github.com/microsoft/BIPIA",
+      "revision": "a004b69ec0dd446e0afd461d98cb5e96e120a5d0",
+      "upstream_path": "bipia/metrics/regist.py",
+      "path": "bipia--bipia--metrics--regist.py",
+      "url": "https://raw.githubusercontent.com/microsoft/BIPIA/a004b69ec0dd446e0afd461d98cb5e96e120a5d0/bipia/metrics/regist.py",
+      "sha256": "b5fc0917b27e233bcb5fdfd6f10712a2e066280e80a9c77c6ba75f3f05776fa7",
+      "bytes": 23028,
+      "license_note": "Upstream repository license; underlying QA data retains its own terms. See parent security_benchmarks.lock.json."
+    },
+    {
+      "dataset": "bipia",
+      "repository": "https://github.com/microsoft/BIPIA",
+      "revision": "a004b69ec0dd446e0afd461d98cb5e96e120a5d0",
+      "upstream_path": "bipia/metrics/eval_factory.py",
+      "path": "bipia--bipia--metrics--eval_factory.py",
+      "url": "https://raw.githubusercontent.com/microsoft/BIPIA/a004b69ec0dd446e0afd461d98cb5e96e120a5d0/bipia/metrics/eval_factory.py",
+      "sha256": "72ca54dcd57447b0b3c51cd0f4333ca1ff7b70d4efb8205e6b7d0f1abb151b29",
+      "bytes": 2359,
+      "license_note": "Upstream repository license; underlying QA data retains its own terms. See parent security_benchmarks.lock.json."
+    },
+    {
+      "dataset": "minja",
+      "repository": "https://github.com/dsh3n77/MINJA",
+      "revision": "a3ec8da0f7740b3fe629f6706e1c14296ee6861d",
+      "upstream_path": "QA/main.py",
+      "path": "minja--QA--main.py",
+      "url": "https://raw.githubusercontent.com/dsh3n77/MINJA/a3ec8da0f7740b3fe629f6706e1c14296ee6861d/QA/main.py",
+      "sha256": "15b1af6117fbb23af649108e4fca9c7c17baa4801ffeb775c04ad728d3d286c3",
+      "bytes": 16622,
+      "license_note": "Upstream repository license; underlying QA data retains its own terms. See parent security_benchmarks.lock.json."
+    },
+    {
+      "dataset": "minja",
+      "repository": "https://github.com/dsh3n77/MINJA",
+      "revision": "a3ec8da0f7740b3fe629f6706e1c14296ee6861d",
+      "upstream_path": "QA/utils.py",
+      "path": "minja--QA--utils.py",
+      "url": "https://raw.githubusercontent.com/dsh3n77/MINJA/a3ec8da0f7740b3fe629f6706e1c14296ee6861d/QA/utils.py",
+      "sha256": "fa7a804fd37cdb880219b48882804cb98a3d3fcf211b2204dabdd5a64bcbbebb",
+      "bytes": 1073,
+      "license_note": "Upstream repository license; underlying QA data retains its own terms. See parent security_benchmarks.lock.json."
+    },
+    {
+      "dataset": "minja",
+      "repository": "https://github.com/dsh3n77/MINJA",
+      "revision": "a3ec8da0f7740b3fe629f6706e1c14296ee6861d",
+      "upstream_path": "QA/config.py",
+      "path": "minja--QA--config.py",
+      "url": "https://raw.githubusercontent.com/dsh3n77/MINJA/a3ec8da0f7740b3fe629f6706e1c14296ee6861d/QA/config.py",
+      "sha256": "77a36c54577ae8cbdc754125125c212b9b5b18eb3cf643a589667d0e0259c9c2",
+      "bytes": 863,
+      "license_note": "Upstream repository license; underlying QA data retains its own terms. See parent security_benchmarks.lock.json."
+    },
+    {
+      "dataset": "minja",
+      "repository": "https://github.com/dsh3n77/MINJA",
+      "revision": "a3ec8da0f7740b3fe629f6706e1c14296ee6861d",
+      "upstream_path": "QA/data/dev/abstract_algebra_dev.csv",
+      "path": "minja--QA--data--dev--abstract_algebra_dev.csv",
+      "url": "https://raw.githubusercontent.com/dsh3n77/MINJA/a3ec8da0f7740b3fe629f6706e1c14296ee6861d/QA/data/dev/abstract_algebra_dev.csv",
+      "sha256": "bd8c73f3c75bea9db82d281d9da6949cea687b987dba24a142c638e758046624",
+      "bytes": 719,
+      "license_note": "Upstream repository license; underlying QA data retains its own terms. See parent security_benchmarks.lock.json."
+    },
+    {
+      "dataset": "minja",
+      "repository": "https://github.com/dsh3n77/MINJA",
+      "revision": "a3ec8da0f7740b3fe629f6706e1c14296ee6861d",
+      "upstream_path": "QA/data/dev/business_ethics_dev.csv",
+      "path": "minja--QA--data--dev--business_ethics_dev.csv",
+      "url": "https://raw.githubusercontent.com/dsh3n77/MINJA/a3ec8da0f7740b3fe629f6706e1c14296ee6861d/QA/data/dev/business_ethics_dev.csv",
+      "sha256": "7cd487e4ba7d9fe423bcc259ad852e963dc370629b8d61881b61ed0ae84c0b46",
+      "bytes": 2095,
+      "license_note": "Upstream repository license; underlying QA data retains its own terms. See parent security_benchmarks.lock.json."
+    },
+    {
+      "dataset": "agentpoison",
+      "repository": "https://github.com/AI-secure/AgentPoison",
+      "revision": "7fc934d4004179a042c7b15bdea8842465958304",
+      "upstream_path": "ReAct/run_strategyqa_inference.py",
+      "path": "agentpoison--ReAct--run_strategyqa_inference.py",
+      "url": "https://raw.githubusercontent.com/AI-secure/AgentPoison/7fc934d4004179a042c7b15bdea8842465958304/ReAct/run_strategyqa_inference.py",
+      "sha256": "ad04b1d18fbcfc18ee7291a143eceee96436bdd830be85b38b87c369344e9f51",
+      "bytes": 20242,
+      "license_note": "Upstream repository license; underlying QA data retains its own terms. See parent security_benchmarks.lock.json."
+    },
+    {
+      "dataset": "agentpoison",
+      "repository": "https://github.com/AI-secure/AgentPoison",
+      "revision": "7fc934d4004179a042c7b15bdea8842465958304",
+      "upstream_path": "ReAct/local_wikienv.py",
+      "path": "agentpoison--ReAct--local_wikienv.py",
+      "url": "https://raw.githubusercontent.com/AI-secure/AgentPoison/7fc934d4004179a042c7b15bdea8842465958304/ReAct/local_wikienv.py",
+      "sha256": "0567201d4306b490af2eff1a5043b505ec273799610c20c64d348c9b2943348b",
+      "bytes": 17538,
+      "license_note": "Upstream repository license; underlying QA data retains its own terms. See parent security_benchmarks.lock.json."
+    },
+    {
+      "dataset": "agentpoison",
+      "repository": "https://github.com/AI-secure/AgentPoison",
+      "revision": "7fc934d4004179a042c7b15bdea8842465958304",
+      "upstream_path": "ReAct/data/strategyqa/strategyqa_dev.json",
+      "path": "agentpoison--ReAct--data--strategyqa--strategyqa_dev.json",
+      "url": "https://raw.githubusercontent.com/AI-secure/AgentPoison/7fc934d4004179a042c7b15bdea8842465958304/ReAct/data/strategyqa/strategyqa_dev.json",
+      "sha256": "fe267f56178a799d6e118ac9ca5d413c959b2b3160b8d68b8ab4b6823a608ea7",
+      "bytes": 60375,
+      "license_note": "Upstream repository license; underlying QA data retains its own terms. See parent security_benchmarks.lock.json."
+    },
+    {
+      "dataset": "minja",
+      "repository": "https://github.com/dsh3n77/MINJA",
+      "revision": "a3ec8da0f7740b3fe629f6706e1c14296ee6861d",
+      "upstream_path": "QA/victim.json",
+      "path": "minja--QA--victim.json",
+      "url": "https://raw.githubusercontent.com/dsh3n77/MINJA/a3ec8da0f7740b3fe629f6706e1c14296ee6861d/QA/victim.json",
+      "sha256": "2457f99c4b97b2a591c79fd985f66363a91370a4bb08e935ab007875dbd1e452",
+      "bytes": 990,
+      "license_note": "Upstream repository license; underlying QA data retains its own terms. See parent security_benchmarks.lock.json."
+    }
+  ]
+}

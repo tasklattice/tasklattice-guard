@@ -1,11 +1,11 @@
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { toast } from "sonner";
+import { toast } from "@/components/ui/notifications";
 import i18n from "@/i18n";
 import type { ModelDefinition } from "@/lib/controller-api";
 import { ModelCallEvidence } from "./model-call-evidence";
 
-vi.mock("sonner", () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
+vi.mock("@/components/ui/notifications", () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
 const error = `Model call returned HTTP 500: ${"long-upstream-error-".repeat(100)}`;
 const model: ModelDefinition = {
   id: "topic", name: "Topic Control", model: "nvidia/topic", providerId: "nvidia", providerName: "NVIDIA", providerKind: "custom-openai-compatible",

@@ -1,0 +1,22 @@
+id: pattern/passport_netherlands
+version: 1.0.0
+name: Passport (Netherlands)
+description: Dutch passport numbers (2 letters + 6 alphanumeric + 1 digit)
+stages:
+- input
+- output
+detector:
+  ref: text/regex
+  version: 1.0.0
+  parameters:
+    expression: \b[A-Z]{2}[A-Z0-9]{6}[0-9]\b
+on_match:
+  action: transform
+  replacement: '[passport_netherlands_REDACTED]'
+risk_level: medium
+metadata:
+  taxonomy_ids:
+  - TALI-PRIVACY-PII
+runtime_adapter:
+  binding_id: local-passports
+  implementation_rule_id: pattern/passport_netherlands

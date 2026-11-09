@@ -1,0 +1,13 @@
+{
+  "department": "dep1",
+  "projects": [
+    {
+      "name": "test1", "groupId": "default",
+      "username": "sso-user1", "userId": "a0542e06-c8dd-47c2-b486-3cb22a355a01"
+    },
+    {
+      "name": "test2", "groupId": "test2",
+      "username": "sso-user2", "userId": "a0542e06-c8dd-47c2-b486-3cb22a355a02"
+    }
+  ]
+}

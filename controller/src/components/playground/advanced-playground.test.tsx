@@ -1,3 +1,4 @@
+import "@/i18n";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   cleanup,
@@ -30,7 +31,7 @@ vi.mock("@/lib/traffic-routing-api", () => ({
 vi.mock("@/lib/endpoints-api", () => ({
   getEndpoints: async () => ({
     items: [
-      { id: "endpoint", name: "Support API", protocol: "http" },
+      { id: "endpoint", name: "Support API", protocol: "litellm" },
       { id: "second", name: "Second API", protocol: "litellm" },
     ],
   }),
@@ -74,7 +75,7 @@ const success = {
   callId: "c",
   body: {
     simulation: true,
-    assignment: { guardrailId: "g1", guardrailVersion: "v3" },
+    assignment: { guardrailId: "g1", guardrailVersion: "revision-c" },
     runnerId: "r1",
   },
 };
@@ -94,7 +95,7 @@ function choose(label: string, value: string) {
   fireEvent.change(screen.getByLabelText(label), { target: { value } });
 }
 function tab(name: string) {
-  fireEvent.mouseDown(screen.getByRole("tab", { name }), {
+  fireEvent.click(screen.getByRole("tab", { name }), {
     button: 0,
     ctrlKey: false,
   });
@@ -106,7 +107,7 @@ describe("advanced request workbench", () => {
     choose("Header 2 value", "customer");
     fireEvent.click(screen.getByLabelText("Enable header 1"));
     fireEvent.click(screen.getByRole("button", { name: "Test routing" }));
-    await screen.findByText("Routed to g1 · v3");
+    await screen.findByText("Routed to g1 · revision-c");
     const sent = JSON.parse(api.request.mock.calls[0][1].body);
     expect(sent).toMatchObject({
       target: "router",

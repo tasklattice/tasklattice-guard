@@ -1,0 +1,2 @@
+# Optional test tooling only. Product dependency files stay unchanged.
+nltk==3.9.2

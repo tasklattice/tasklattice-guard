@@ -1,14 +1,11 @@
+{{- include "tali-guard.defaults" . -}}
 {{- if or .Values.observability.performanceDebug.enabled .Values.observability.serviceMonitor.enabled }}
 apiVersion: monitoring.coreos.com/v1
 kind: ServiceMonitor
 metadata:
   name: {{ include "tali-guard.controllerName" . }}
   labels:
-    {{- include "tali-guard.commonLabels" . | nindent 4 }}
-    app.kubernetes.io/component: controller
-    {{- with .Values.observability.serviceMonitor.labels }}
-    {{- toYaml . | nindent 4 }}
-    {{- end }}
+    {{- include "tali-guard.serviceMonitorLabels" (dict "root" . "component" "controller") | nindent 4 }}
 spec:
   namespaceSelector:
     matchNames: [{{ .Release.Namespace | quote }}]
@@ -36,11 +33,7 @@ kind: ServiceMonitor
 metadata:
   name: {{ include "tali-guard.fullname" . }}-runners
   labels:
-    {{- include "tali-guard.commonLabels" . | nindent 4 }}
-    app.kubernetes.io/component: runner
-    {{- with .Values.observability.serviceMonitor.labels }}
-    {{- toYaml . | nindent 4 }}
-    {{- end }}
+    {{- include "tali-guard.serviceMonitorLabels" (dict "root" . "component" "runner") | nindent 4 }}
 spec:
   namespaceSelector:
     matchNames: [{{ .Release.Namespace | quote }}]

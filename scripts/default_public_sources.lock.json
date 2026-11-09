@@ -1,0 +1,95 @@
+{
+  "schema_version": 1,
+  "files": [
+    {
+      "source": "xstest",
+      "revision": "d7bb5bd738c1fcbc36edd83d5e7d1b71a3e2d84d",
+      "url": "https://raw.githubusercontent.com/paul-rottger/xstest/d7bb5bd738c1fcbc36edd83d5e7d1b71a3e2d84d/readme.md",
+      "path": "xstest-readme.md",
+      "sha256": "51488f4032ba007b0345449e63293fccf5588cde1a967e3897107c6e08b532ce",
+      "bytes": 2772,
+      "license": "CC-BY-4.0"
+    },
+    {
+      "source": "xstest",
+      "revision": "d7bb5bd738c1fcbc36edd83d5e7d1b71a3e2d84d",
+      "url": "https://raw.githubusercontent.com/paul-rottger/xstest/d7bb5bd738c1fcbc36edd83d5e7d1b71a3e2d84d/LICENSE",
+      "path": "xstest-LICENSE",
+      "sha256": "9e5f1b3c610b9c2da5c313bf81d577a7d1acec686bdb0384edefa6df0f90cd94",
+      "bytes": 18656,
+      "license": "CC-BY-4.0"
+    },
+    {
+      "source": "xstest",
+      "revision": "d7bb5bd738c1fcbc36edd83d5e7d1b71a3e2d84d",
+      "url": "https://raw.githubusercontent.com/paul-rottger/xstest/d7bb5bd738c1fcbc36edd83d5e7d1b71a3e2d84d/xstest_prompts.csv",
+      "path": "xstest-xstest_prompts.csv",
+      "sha256": "11783fb294ed017473ee53c207d71f2161c7672c8d0b037501e78387f801cb5a",
+      "bytes": 38719,
+      "license": "CC-BY-4.0"
+    },
+    {
+      "source": "harmbench",
+      "revision": "8e1604d1171fe8a48d8febecd22f600e462bdcdd",
+      "url": "https://raw.githubusercontent.com/centerforaisafety/HarmBench/8e1604d1171fe8a48d8febecd22f600e462bdcdd/README.md",
+      "path": "harmbench-README.md",
+      "sha256": "baae4a0b64b61812e61a162eafb2ed344edbc151f57dd99c4af063e3d0efec5d",
+      "bytes": 10480,
+      "license": "MIT (repository; contextual third-party text retains original rights)"
+    },
+    {
+      "source": "harmbench",
+      "revision": "8e1604d1171fe8a48d8febecd22f600e462bdcdd",
+      "url": "https://raw.githubusercontent.com/centerforaisafety/HarmBench/8e1604d1171fe8a48d8febecd22f600e462bdcdd/LICENSE",
+      "path": "harmbench-LICENSE",
+      "sha256": "fe29c68dd1216e81e98a6069165e1c720757b23bbcaa6c0cb8f9a957bdaaca80",
+      "bytes": 1074,
+      "license": "MIT (repository; contextual third-party text retains original rights)"
+    },
+    {
+      "source": "harmbench",
+      "revision": "8e1604d1171fe8a48d8febecd22f600e462bdcdd",
+      "url": "https://raw.githubusercontent.com/centerforaisafety/HarmBench/8e1604d1171fe8a48d8febecd22f600e462bdcdd/data/behavior_datasets/harmbench_behaviors_text_test.csv",
+      "path": "harmbench-data--behavior_datasets--harmbench_behaviors_text_test.csv",
+      "sha256": "75d257b3e7428c52eb7b0154318f455af3e01b09a3794b5e2f3d36054f3c0e29",
+      "bytes": 160828,
+      "license": "MIT (repository; contextual third-party text retains original rights)"
+    },
+    {
+      "source": "pyrit",
+      "revision": "f4fb86808c41210a164b2c8983c10919c051e7a1",
+      "url": "https://raw.githubusercontent.com/microsoft/PyRIT/f4fb86808c41210a164b2c8983c10919c051e7a1/LICENSE",
+      "path": "pyrit-LICENSE",
+      "sha256": "7c77a44a8acd9b41fdc209864a8016b3d430b5d0e09309818d5b7444336df744",
+      "bytes": 1074,
+      "license": "MIT"
+    },
+    {
+      "source": "pyrit",
+      "revision": "f4fb86808c41210a164b2c8983c10919c051e7a1",
+      "url": "https://raw.githubusercontent.com/microsoft/PyRIT/f4fb86808c41210a164b2c8983c10919c051e7a1/pyrit/datasets/executors/crescendo/crescendo_variant_1.yaml",
+      "path": "pyrit-pyrit--datasets--executors--crescendo--crescendo_variant_1.yaml",
+      "sha256": "090cf96dfd09241ee4eb8a79fc11d2ba73e71539106841d0a8ec9894fbf49ec9",
+      "bytes": 8546,
+      "license": "MIT"
+    },
+    {
+      "source": "aegis",
+      "revision": "d86bb8bedff51d25ac834ab7838f1cc61acb7a2c",
+      "url": "https://huggingface.co/datasets/nvidia/Aegis-AI-Content-Safety-Dataset-2.0/resolve/d86bb8bedff51d25ac834ab7838f1cc61acb7a2c/README.md",
+      "path": "aegis-README.md",
+      "sha256": "da2598e587850bacc77c0658f56d0ea430f55d1cf70b197eb06070871802d3ba",
+      "bytes": 14107,
+      "license": "CC-BY-4.0"
+    },
+    {
+      "source": "aegis",
+      "revision": "d86bb8bedff51d25ac834ab7838f1cc61acb7a2c",
+      "url": "https://huggingface.co/datasets/nvidia/Aegis-AI-Content-Safety-Dataset-2.0/resolve/d86bb8bedff51d25ac834ab7838f1cc61acb7a2c/test.json",
+      "path": "aegis-test.json",
+      "sha256": "b0a6d602260524866053cb34105194f074f2c2906e3691b68d43b9e6e9318f35",
+      "bytes": 1731373,
+      "license": "CC-BY-4.0"
+    }
+  ]
+}

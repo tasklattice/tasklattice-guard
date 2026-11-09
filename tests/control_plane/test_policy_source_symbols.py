@@ -304,11 +304,11 @@ def test_recording_action_requires_named_arguments_before_runtime_dispatch():
 async def test_same_named_flows_keep_their_own_policy_result_and_order(phase):
     plan = custom_plan(SOURCE, ["GuardRecordPolicyAction"])
     first = plan["policy_versions"][0]
-    first["rail_bindings"][0].update(rail_type=phase, on_unsafe="redact", execution_mode="mutate")
+    first["rail_bindings"][0].update(rail_type=phase, on_unsafe="transform", execution_mode="mutate")
     plan["policy_bindings"][0]["enabled_rails"] = [phase]
     second = deepcopy(first)
     second["policy_id"] = "other"
-    second["rail_bindings"][0].update(on_unsafe="reject", execution_mode="detect")
+    second["rail_bindings"][0].update(on_unsafe="block", execution_mode="detect")
     second["sources"][0]["content"] = SOURCE.replace('$check == "check"', '$check == "check reviewed"')
     plan["policy_versions"].append(second)
     plan["policy_bindings"].append({"policy_id": "other", "policy_version": "1", "enabled_rails": [phase]})
@@ -320,6 +320,6 @@ async def test_same_named_flows_keep_their_own_policy_result_and_order(phase):
             candidate_version=plan["guardrail_version"], plan=plan, runtime_profile="auto")
         assert not result.usage.fail_closed, result.reason
         assert result.decision == "block"
-        assert [finding.policy_id for finding in result.findings if finding.verdict == "unsafe"] == ["custom", "other"]
+        assert [finding.policy_id for finding in result.findings if finding.verdict == "matched"] == ["custom", "other"]
     finally:
         await runtime.shutdown()

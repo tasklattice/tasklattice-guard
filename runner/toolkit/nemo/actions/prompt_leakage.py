@@ -35,7 +35,7 @@ class PromptLeakageActionProvider:
         if request.target_source != "model_output":
             return action_result(
                 request,
-                "safe",
+                "not_matched",
                 request.content,
                 reason="The active block is not a model response.",
             )
@@ -58,7 +58,7 @@ class PromptLeakageActionProvider:
         if detector is None:
             return action_result(
                 request,
-                "safe",
+                "not_matched",
                 request.content,
                 reason="No trusted-instruction canary or substantial prompt fragment was disclosed.",
             )
@@ -69,13 +69,13 @@ class PromptLeakageActionProvider:
         )
         return action_result(
             request,
-            "unsafe",
+            "matched",
             request.content,
             findings=(
                 RiskFinding(
                     risk=request.capability,
                     taxonomy_id=taxonomy_for_evaluator(request.capability),
-                    verdict="unsafe",
+                    verdict="matched",
                     confidence=1.0 if detector == "canary_match" else 0.99,
                     evidence=reason,
                     recommended_action=request.proposed_action,

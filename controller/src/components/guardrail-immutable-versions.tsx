@@ -1,0 +1,383 @@
+import { projectParams } from "@/lib/project-paths";
+import { TestModelRulesSwitch, ValidationScopeNotice } from "./validation-model-scope";
+import { hasPermission } from "../../shared/rbac";
+import { isValidationRunning } from "./validation-run-progress";
+import { useEffect, useRef, useState } from "react";
+import { Link } from "@tanstack/react-router";
+import { useMutation } from "@tanstack/react-query";
+import { Check, ChevronLeft, ChevronRight, Download, FlaskConical, GitCompareArrows, LoaderCircle, LockKeyhole, MoreHorizontal, RefreshCw, Rocket, Trash2 } from "lucide-react";
+import { useTranslation } from "react-i18next";
+
+import { GeneratedVersionFiles, RuntimeDependencySummary, RuntimeExecutionSummary } from "./compiled-runtime";
+import { ConfirmationSheet } from "./confirmation-sheet";
+import { CopyableChecksum } from "./copyable-checksum";
+import { EntitySheet } from "./entity-sheet";
+import { ExportGuardrailSheet } from "./guardrail-export-sheet";
+import { DeleteGuardrailVersionSheet } from "./guardrail-version-delete-sheet";
+import { GuardrailVersionComparison } from "./guardrail-version-workspace";
+import { EmptyState, ErrorNotice, StateBadge } from "./product-shell";
+import { Badge } from "./ui/badge";
+import { Button } from "./ui/button";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "./ui/dropdown-menu";
+import { toast } from "./ui/notifications";
+import { Skeleton } from "./ui/skeleton";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "./ui/table";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "./ui/tabs";
+import { releaseGuardrailVersion, testGuardrailVersion, type GuardrailVersion, type GuardrailVersionDetail, type ValidationRun } from "@/lib/api";
+import { latestVersionTestEvidence, latestVersionTestStatus, versionReleaseState, type VersionReleaseState } from "@/lib/version-release";
+import { useAuth } from "@/lib/auth";
+import { checkGuardrailVersionEnvironment } from "@/lib/controller-api";
+import { CopyableChecksum as Digest } from "./copyable-checksum";
+import { EnvironmentStatus } from "./guardrail-import-sheet";
+import { VersionTestSuite } from "./version-test-suite";
+
+type VersionAction = { kind: "export" | "delete" | "release" | "test"; version: string };
+type Props = {
+  openRequested?: boolean;
+  onOpenRequestHandled?: () => void;
+  detail?: GuardrailVersionDetail;
+  selectedVersion?: GuardrailVersion;
+  versions: GuardrailVersion[];
+  loading: boolean;
+  error?: unknown;
+  detailLoading?: boolean;
+  detailError?: unknown;
+  comparisonDetail?: GuardrailVersionDetail;
+  comparisonActive: boolean;
+  comparisonLoading: boolean;
+  comparisonError?: unknown;
+  compareOptions: GuardrailVersion[];
+  guardrailId: string;
+  guardrailName: string;
+  validation: ValidationRun | null;
+  validationRuns?: ValidationRun[];
+  validationLoading?: boolean;
+  validationError?: unknown;
+  onRetry?: () => void;
+  onRetryComparison?: () => void;
+  onChanged: () => Promise<void>;
+  onOpenDraft: () => void;
+  onOpenValidation: (run: ValidationRun) => void;
+  onSelectVersion: (version: string) => void;
+  onStartCompare: () => void;
+  onCompareBaseChange: (version: string) => void;
+  onCloseCompare: () => void;
+};
+
+const PAGE_SIZE = 10;
+
+export function ImmutableVersionView({ openRequested, onOpenRequestHandled, detail, selectedVersion, versions, loading, error, detailLoading, detailError, comparisonDetail, comparisonActive, comparisonLoading, comparisonError, compareOptions, guardrailId, guardrailName, validation, validationRuns = [], validationLoading, validationError, onRetry, onRetryComparison, onChanged, onOpenDraft, onOpenValidation, onSelectVersion, onStartCompare, onCompareBaseChange, onCloseCompare }: Props) {
+  const { t, i18n } = useTranslation();
+  const auth = useAuth();
+  const [drawerOpen, setDrawerOpen] = useState(false);
+  const [testModelRules, setTestModelRules] = useState(true);
+  const [action, setAction] = useState<VersionAction | null>(null);
+  const [tab, setTab] = useState("overview");
+  const [page, setPage] = useState(0);
+  const [policyPage, setPolicyPage] = useState(0);
+  const opener = useRef<HTMLElement | null>(null);
+  const versionButtons = useRef(new Map<string, HTMLButtonElement>());
+  useEffect(() => {
+    if (!openRequested) return;
+    setTab("overview");
+    setPolicyPage(0);
+    setDrawerOpen(true);
+    onOpenRequestHandled?.();
+  }, [openRequested, onOpenRequestHandled]);
+  const ordered = [...versions].sort((a, b) => b.created_at.localeCompare(a.created_at) || b.version.localeCompare(a.version));
+  const selectedIndex = ordered.findIndex(item => item.version === selectedVersion?.version);
+  const currentPage = Math.min(page, Math.max(0, Math.ceil(ordered.length / PAGE_SIZE) - 1));
+  const latestTest = selectedVersion ? latestVersionTestEvidence(selectedVersion, validationRuns) : null;
+  const expiredTest = latestTest && !isValidationRunning(validation) && !validationRuns.some(run => run.id === latestTest.id) ? latestTest : null;
+  const currentDetail = detail?.version === selectedVersion?.version ? detail : undefined;
+  const canManage = hasPermission(auth.user?.role, "guardrails", "write");
+  const releaseOf = (version: GuardrailVersion) => versionReleaseState(version, validationRuns);
+  const testVersion = useMutation({
+    mutationFn: (version: string) => testGuardrailVersion(guardrailId, version, testModelRules),
+    onSuccess: async (_run, version) => { setAction(null); await onChanged(); toast.success(t("immutableVersions.testStarted", { version })); },
+    onError: error => { toast.error(error instanceof Error ? error.message : String(error)); },
+  });
+  const release = useMutation({
+    mutationFn: (version: string) => releaseGuardrailVersion(guardrailId, version),
+    onSuccess: async (_result, version) => { await onChanged(); setAction(null); toast.success(t("immutableVersions.released", { version })); },
+  });
+  const environmentCheck = useMutation({
+    mutationFn: (version: string) => checkGuardrailVersionEnvironment(guardrailId, version),
+    onSuccess: () => onChanged(),
+  });
+  const openVersion = (version: string, target: HTMLElement) => {
+    opener.current = target;
+    // Selection already resets comparison; a second navigation in the same tick
+    // would spread the stale URL and drop the newly selected version.
+    onSelectVersion(version);
+    setTab("overview");
+    setPolicyPage(0);
+    setDrawerOpen(true);
+  };
+  const navigateVersion = (index: number) => {
+    const version = ordered[index];
+    if (!version) return;
+    onSelectVersion(version.version);
+    setPage(Math.floor(index / PAGE_SIZE));
+    setPolicyPage(0);
+  };
+  const closeAction = () => { setAction(null); release.reset(); };
+  const menu = (version: GuardrailVersion, inDrawer = false) => (
+    <div onFocusCapture={event => { if (!inDrawer && event.target instanceof HTMLButtonElement && event.currentTarget.contains(event.target)) opener.current = event.target; }}><DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button variant="ghost" className="size-11 shrink-0" aria-label={inDrawer ? t("uiCopy.versionActions") : t("immutableVersions.versionActions", { version: version.version })}><MoreHorizontal /></Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end">
+        {/* Testing a version runs its own suite against its signed Artifact, here. */}
+        {canManage ? <DropdownMenuItem disabled={!version.test_suite_count || releaseOf(version).state === "testing" || testVersion.isPending} onSelect={() => { setTestModelRules(true); setAction({ kind: "test", version: version.version }); }}><FlaskConical />{t("immutableVersions.runTests")}</DropdownMenuItem> : null}
+        {canManage && version.status === "pending" ? <DropdownMenuItem variant="edit"  onSelect={() => setAction({ kind: "release", version: version.version })}><Rocket />{t("immutableVersions.release")}</DropdownMenuItem> : null}
+        <DropdownMenuItem onSelect={() => setAction({ kind: "export", version: version.version })}><Download />{t("guardrails.exportEllipsis")}</DropdownMenuItem>
+        {canManage ? <DropdownMenuItem variant="destructive" onSelect={() => setAction({ kind: "delete", version: version.version })}><Trash2 />{t("uiCopy.delete")}</DropdownMenuItem>
+        : null}
+      </DropdownMenuContent>
+    </DropdownMenu></div>
+  );
+  const testStatus = (run?: Pick<ValidationRun, "status"> | null) => validationLoading
+    ? <span className="text-sm text-muted-foreground">{t("immutableVersions.loading")}</span>
+    : validationError ? <span className="text-sm text-muted-foreground">{t("immutableVersions.testUnavailable")}</span>
+      : run ? <StateBadge state={run.status} /> : <span className="text-sm text-muted-foreground">{t("immutableVersions.noTest")}</span>;
+
+  return <>
+    <section className="min-w-0 border bg-card" aria-label={t("guardrails.versions")}>
+      <header className="border-b px-5 py-4">
+        <p className="text-sm text-muted-foreground">{t("immutableVersions.description")}</p>
+      </header>
+      {error ? <div className="space-y-3 p-5"><ErrorNotice error={error} /><Button variant="outline" onClick={onRetry}>{t("immutableVersions.retry")}</Button></div> : null}
+      {loading ? <div className="space-y-3 p-5" aria-label={t("immutableVersions.loading")}><Skeleton className="h-12" /><Skeleton className="h-16" /><Skeleton className="h-16" /></div>
+        : !versions.length ? !error && <EmptyState title={t("guardrails.noPublishedVersion")} description={t("guardrails.noPublishedVersionDescription")} action={hasPermission(auth.user?.role, "guardrails", "write") ? <Button onClick={onOpenDraft}>{t("guardrails.openDraftRelease")}</Button> : undefined} />
+          : <>
+            <Table>
+              <TableHeader><TableRow><TableHead>{t("immutableVersions.version")}</TableHead><TableHead>{t("immutableVersions.status")}</TableHead><TableHead>{t("immutableVersions.published")}</TableHead><TableHead>{t("immutableVersions.policies")}</TableHead><TableHead>{t("immutableVersions.tests")}</TableHead><TableHead className="w-16"><span className="sr-only">{t("immutableVersions.actions")}</span></TableHead></TableRow></TableHeader>
+              <TableBody>{ordered.slice(currentPage * PAGE_SIZE, (currentPage + 1) * PAGE_SIZE).map(version => <TableRow key={version.version} data-state={drawerOpen && selectedVersion?.version === version.version ? "selected" : undefined}>
+                <TableCell><div className="flex items-center gap-3">
+                  <Button variant="ghost" className="min-h-11 px-0 font-mono text-sm text-primary hover:underline" aria-label={t("immutableVersions.view", { version: version.version })} ref={node => { if (node) versionButtons.current.set(version.version, node); else versionButtons.current.delete(version.version); }} aria-haspopup="dialog" onClick={event => openVersion(version.version, event.currentTarget)}>{version.version}</Button>
+                </div></TableCell>
+                <TableCell className="min-w-44"><span className="whitespace-nowrap"><ReleaseStateBadge state={releaseOf(version).state} /></span></TableCell>
+                <TableCell><time dateTime={version.created_at} className="text-muted-foreground">{new Date(version.created_at).toLocaleString(i18n.language)}</time></TableCell>
+                <TableCell className="tabular-nums">{version.policy_count ?? (detail?.version === version.version ? detail.policy_bindings.length : "—")}</TableCell>
+                <TableCell>{testStatus(latestVersionTestStatus(version, validationRuns))}</TableCell>
+                <TableCell>{menu(version)}</TableCell>
+              </TableRow>)}</TableBody>
+            </Table>
+            {ordered.length > PAGE_SIZE ? <ListPagination page={currentPage} total={ordered.length} onPageChange={setPage} /> : null}
+          </>}
+    </section>
+
+    {/* Actions replace the detail sheet; two modal drawers must never overlap. */}
+    {drawerOpen && !action && selectedVersion ? <EntitySheet open onOpenChange={open => { if (!open) { opener.current = versionButtons.current.get(selectedVersion.version) ?? opener.current; setDrawerOpen(false); onCloseCompare(); } }}
+      returnFocusRef={opener} width="xl" density="compact" bodyClassName="flex flex-col !overflow-hidden !py-0" footer={null}
+      eyebrow={t("guardrails.versions")}
+      title={<span className="flex items-center gap-3"><span className="font-mono text-xl">{selectedVersion.version}</span></span>}
+      description={<span className="flex items-center gap-2"><LockKeyhole className="size-3.5" />{t("immutableVersions.readOnly")}<span aria-hidden="true">·</span>{t(selectedVersion.origin === "imported" ? "immutableVersions.importedDescription" : "immutableVersions.detailDescription", { date: new Date(selectedVersion.created_at).toLocaleString(i18n.language) })}</span>}
+    >
+      <div className="flex shrink-0 items-center justify-between gap-3 border-b bg-background py-2">
+        <div className="flex items-center gap-1">
+          <Button variant="ghost" className="size-11" aria-label={t("immutableVersions.previous")} disabled={selectedIndex <= 0} onClick={() => navigateVersion(selectedIndex - 1)}><ChevronLeft /></Button>
+          <span className="px-1 text-xs tabular-nums text-muted-foreground">{t("immutableVersions.position", { current: selectedIndex + 1, total: ordered.length })}</span>
+          <Button variant="ghost" className="size-11" aria-label={t("immutableVersions.next")} disabled={selectedIndex < 0 || selectedIndex >= ordered.length - 1} onClick={() => navigateVersion(selectedIndex + 1)}><ChevronRight /></Button>
+        </div>
+        <div className="flex items-center gap-2">{compareOptions.length > 0 && !comparisonActive ? <Button variant="outline" className="min-h-11" disabled={!currentDetail || Boolean(detailError)} onClick={onStartCompare}><GitCompareArrows />{t("immutableVersions.compare")}</Button> : null}{menu(selectedVersion, true)}</div>
+      </div>
+      <div className="min-h-0 flex-1 overflow-y-auto py-5">
+        {detailError ? <RetryNotice error={detailError} onRetry={onRetry} />
+            : detailLoading && !currentDetail ? <div role="status"><p className="mb-4 text-sm text-muted-foreground">{t("immutableVersions.loadingDetail")}</p><Skeleton className="h-64" /></div>
+              : !currentDetail ? <RetryNotice error={new Error(t("immutableVersions.noDetail"))} onRetry={onRetry} />
+                : comparisonActive ? comparisonError ? <div className="space-y-4"><Button variant="outline" onClick={onCloseCompare}>{t("guardrails.backToVersionDetail")}</Button><RetryNotice error={comparisonError} onRetry={onRetryComparison} /></div>
+                  : comparisonLoading || !comparisonDetail ? <div className="space-y-4"><Button variant="outline" onClick={onCloseCompare}>{t("guardrails.backToVersionDetail")}</Button><Skeleton className="h-64" /></div>
+                    : <GuardrailVersionComparison base={comparisonDetail} target={currentDetail} baseOptions={compareOptions} onBaseChange={onCompareBaseChange} onClose={onCloseCompare} />
+                  : <Tabs value={tab} onValueChange={setTab} className="flex h-full min-h-0 flex-col">
+                    <TabsList className="shrink-0" aria-label={t("immutableVersions.views")}>
+                      <TabsTrigger value="overview">{t("immutableVersions.overview")}</TabsTrigger>
+                      <TabsTrigger value="policies">{t("immutableVersions.policies")}<Badge variant="outline">{currentDetail.policy_bindings.length}</Badge></TabsTrigger>
+                      <TabsTrigger value="tests">{t("immutableVersions.testSuite")}{currentDetail.test_suite_count != null ? <Badge variant="outline">{currentDetail.test_suite_count}</Badge> : null}</TabsTrigger>
+                      <TabsTrigger value="compiled">{t("immutableVersions.compiled")}</TabsTrigger>
+                      <TabsTrigger value="files">{t("immutableVersions.files")}<Badge variant="outline">{currentDetail.artifacts.length}</Badge></TabsTrigger>
+                    </TabsList>
+                    <TabsContent value="overview" className="min-h-0 flex-1 overflow-y-auto overscroll-contain space-y-7 pt-6">
+                      <ReleasePanel version={selectedVersion} release={releaseOf(selectedVersion)} canManage={canManage} canRelease={canManage} testing={testVersion.isPending}
+                        onTest={() => { setTestModelRules(true); setAction({ kind: "test", version: selectedVersion.version }); }} onRelease={() => setAction({ kind: "release", version: selectedVersion.version })}
+                        onOpenRun={onOpenValidation} />
+                      <ImmutablePosture detail={currentDetail} />
+                      <ReleaseEnvironment version={selectedVersion}
+                        checking={environmentCheck.isPending} error={environmentCheck.error} canCheck={hasPermission(auth.user?.role, "guardrails", "write")}
+                        onCheck={() => environmentCheck.mutate(selectedVersion.version)} />
+                      {selectedVersion.provenance ? <ReleaseSource version={selectedVersion} /> : null}
+                      <section className="space-y-3 border-t pt-6">
+                        <div><h3 className="text-base font-semibold">{t("guardrails.validationEvidence")}</h3><p className="mt-1 text-sm text-muted-foreground">{t("immutableVersions.testDescription")}</p></div>
+                        {validationError ? <RetryNotice error={validationError} onRetry={onRetry} /> : validationLoading ? <Skeleton className="h-20" /> : expiredTest ? <div className="space-y-2 border p-4"><div className="flex items-center gap-3">{testStatus(expiredTest)}<time className="text-xs text-muted-foreground" dateTime={expiredTest.completedAt}>{new Date(expiredTest.completedAt).toLocaleString(i18n.language)}</time></div><p className="text-sm text-muted-foreground">{t("immutableVersions.reportExpired")}</p></div> : validation ? <div className="flex items-center justify-between gap-4 border p-4"><div><div className="flex items-center gap-3">{testStatus(validation)}<span className="text-sm">{t("guardrails.compliance", { rate: validation.metrics.compliance_rate })}</span></div><p className="mt-2 text-xs text-muted-foreground">{new Date(validation.created_at).toLocaleString(i18n.language)}</p></div><Button variant="outline" onClick={() => { setDrawerOpen(false); onOpenValidation(validation); }}><FlaskConical />{t("guardrails.openValidation")}</Button></div>
+                          : <p className="border bg-muted/20 p-4 text-sm text-muted-foreground">{t("immutableVersions.noTestDescription")}</p>}
+                      </section>
+                    </TabsContent>
+                    <TabsContent value="policies" className="min-h-0 flex-1 overflow-y-auto overscroll-contain pt-5"><PinnedPolicies key={currentDetail.version} bindings={currentDetail.policy_bindings} page={policyPage} onPageChange={setPolicyPage} /></TabsContent>
+                    <TabsContent value="tests" className="min-h-0 flex-1 overflow-y-auto overscroll-contain pt-5"><VersionTestSuite key={currentDetail.version} guardrailId={guardrailId} version={currentDetail.version} /></TabsContent>
+                    <TabsContent value="compiled" className="min-h-0 flex-1 overflow-y-auto overscroll-contain space-y-5 pt-5">
+                      <p className="text-sm text-muted-foreground">{t("immutableVersions.compiledDescription")}</p>
+                      <dl className="grid grid-cols-2 gap-5">
+                        <VersionFact label={t("guardrails.runtimeEngine")} value={`${currentDetail.runtime_engine} · ${currentDetail.runtime_profile}`} />
+                        <VersionFact label={t("guardrails.compiledWith")} value={currentDetail.compiler_version} mono />
+                        <VersionFact label={t("guardrails.colangVersion")} value={currentDetail.colang_version} />
+                        <VersionFact label={t("guardrails.criticalPath")} value={`${currentDetail.estimated_critical_path_ms} ms`} />
+                        <div className="col-span-2"><dt className="text-xs text-muted-foreground">{t("guardrails.configIdentity")}</dt><dd className="mt-2"><CopyableChecksum value={currentDetail.config_checksum} /></dd></div>
+                      </dl>
+                      <div className="border"><RuntimeExecutionSummary detail={currentDetail} /><RuntimeDependencySummary detail={currentDetail} /></div>
+                    </TabsContent>
+                    <TabsContent value="files" className="min-h-0 flex-1 overflow-hidden pt-5"><GeneratedVersionFiles fillHeight key={currentDetail.version} detail={currentDetail} /></TabsContent>
+                  </Tabs>}
+      </div>
+    </EntitySheet> : null}
+    {action?.kind === "delete" ? <DeleteGuardrailVersionSheet returnFocusRef={drawerOpen ? undefined : opener} guardrailId={guardrailId} version={action.version} onClose={closeAction} onDeleted={async () => {
+      toast.success(t("guardrails.versionDeleted", { version: action.version }));
+      setDrawerOpen(false);
+      setAction(null);
+      onCloseCompare();
+      await onChanged();
+    }} /> : null}
+    {action?.kind === "test" ? <EntitySheet open width="lg" onOpenChange={open => { if (!open && !testVersion.isPending) closeAction(); }} closeDisabled={testVersion.isPending}
+      title={t("immutableVersions.runTests")} eyebrow={guardrailName} description={action.version}
+      footer={<><Button variant="outline" disabled={testVersion.isPending} onClick={closeAction}>{t("common.cancel")}</Button><Button variant="testing" disabled={testVersion.isPending} onClick={() => testVersion.mutate(action.version)}><FlaskConical />{t("immutableVersions.runTests")}</Button></>}>
+      <TestModelRulesSwitch checked={testModelRules} onChange={setTestModelRules} disabled={testVersion.isPending} />
+      {testVersion.error ? <ErrorNotice error={testVersion.error} /> : null}
+    </EntitySheet> : null}
+    {action?.kind === "release" ? (() => {
+      const target = versions.find(item => item.version === action.version);
+      const evidence = target ? releaseOf(target) : null;
+      return <ConfirmationSheet open returnFocusRef={drawerOpen ? undefined : opener} onOpenChange={open => { if (!open && !release.isPending) closeAction(); }}
+        eyebrow={t("guardrails.confirmActionEyebrow")} title={t("immutableVersions.releaseTitle", { version: action.version })} description={t("immutableVersions.releaseDescription")}
+        cancelLabel={t("common.cancel")} confirmLabel={t("immutableVersions.release")} pendingLabel={t("common.saving")} pending={release.isPending}
+         confirmIcon={<Rocket />} onConfirm={() => release.mutate(action.version)}>
+        {evidence?.run ? <p className="text-sm leading-6">{t("immutableVersions.releaseEvidence", { run: evidence.run.id, passed: evidence.run.metrics.passed, total: evidence.run.metrics.total,
+          time: new Date(evidence.run.created_at).toLocaleString(i18n.language) })}</p> : null}
+        {evidence?.run ? <ValidationScopeNotice run={evidence.run} /> : target?.testing_evidence?.latest?.testModelRules === false ? <p className="text-sm">{t("validationScope.badge")}</p> : null}
+        <p className="text-sm leading-6 text-muted-foreground">{t("immutableVersions.releaseImpact")}</p>
+        {release.error ? <ErrorNotice error={release.error} /> : null}
+      </ConfirmationSheet>;
+    })() : null}
+    {action?.kind === "export" ? <ExportGuardrailSheet returnFocusRef={drawerOpen ? undefined : opener} guardrailId={guardrailId} guardrailName={guardrailName} initialVersion={action.version} onClose={closeAction} /> : null}
+  </>;
+}
+
+const RELEASE_BADGE: Record<VersionReleaseState, string> = {
+  released_waiver: "warning", released: "active", released_retest_failed: "failed", untested: "needs_validation", testing: "syncing", test_failed: "failed", releasable: "ready",
+};
+
+/** Display state of a version's release here: pending (with its testing state) or released. */
+function ReleaseStateBadge({ state }: { state: VersionReleaseState }) {
+  const { t } = useTranslation();
+  return <StateBadge state={RELEASE_BADGE[state]} label={t(`immutableVersions.releaseStates.${state}`)} />;
+}
+
+/**
+ * The version's release in this environment: what it takes to release a
+ * pending version (a passed test of exactly this content here), or which
+ * report a released version was released with.
+ */
+function ReleasePanel({ version, release, canManage, canRelease, testing, onTest, onRelease, onOpenRun }: {
+  version: GuardrailVersion; release: ReturnType<typeof versionReleaseState>; canManage: boolean; canRelease: boolean; testing: boolean;
+  onTest: () => void; onRelease: () => void; onOpenRun: (run: ValidationRun) => void;
+}) {
+  const { t, i18n } = useTranslation();
+  const run = release.run;
+  return <section className="space-y-3">
+    <div className="flex flex-wrap items-start justify-between gap-4">
+      <div className="min-w-0 space-y-2">
+        <div className="flex flex-wrap items-center gap-3"><h3 className="text-base font-semibold">{t("immutableVersions.releaseHeading")}</h3><ReleaseStateBadge state={release.state} /></div>
+        <p className="max-w-3xl text-sm text-muted-foreground">{version.status === "pending" && !version.test_suite_count ? t("immutableVersions.noTestSuite") : t(`immutableVersions.releaseHints.${release.state}`)}</p>
+        {version.status === "ready" && version.released_at ? <p className="text-xs text-muted-foreground">{t("immutableVersions.releasedAt", { time: new Date(version.released_at).toLocaleString(i18n.language) })}</p> : null}
+        {version.test_waiver ? <div className="space-y-1 border-l-2 border-amber-500 pl-3 text-sm">
+          <p>{t("immutableVersions.waiverReason", { reason: version.test_waiver.reason })}</p>
+          <p className="text-muted-foreground">{t("immutableVersions.waiverActor", { actor: version.test_waiver.actorId, time: new Date(version.test_waiver.createdAt).toLocaleString(i18n.language) })}</p>
+        </div> : null}
+        {run ? <ValidationScopeNotice run={run} /> : version.testing_evidence?.release?.testModelRules === false ? <p className="text-sm">{t("validationScope.badge")}</p> : null}
+        {run ? <button type="button" className="text-sm text-primary hover:underline" onClick={() => onOpenRun(run)}>
+          {t("immutableVersions.reportLink", { run: run.id, passed: run.metrics.passed, total: run.metrics.total })}</button> : null}
+      </div>
+      {canManage ? <div className="flex shrink-0 gap-2">
+        <Button variant="testing" disabled={!version.test_suite_count || testing || release.state === "testing"} onClick={onTest}>
+          {testing || release.state === "testing" ? <LoaderCircle className="animate-spin" /> : <FlaskConical />}{t("immutableVersions.runTests")}</Button>
+        {canRelease && version.status === "pending" ? <Button className="min-h-11"  onClick={onRelease}><Rocket />{t("immutableVersions.release")}</Button> : null}
+      </div> : null}
+    </div>
+  </section>;
+}
+
+/** Where an imported version came from. Its test suite travels with it; test reports never do. */
+function ReleaseSource({ version }: { version: GuardrailVersion }) {
+  const { t, i18n } = useTranslation();
+  const provenance = version.provenance!;
+  return <section className="space-y-3 border-t pt-6">
+    <div><h3 className="text-base font-semibold">{t("guardrailPackage.provenanceTitle")}</h3><p className="mt-1 text-sm text-muted-foreground">{t("guardrailPackage.provenanceDescription")}</p></div>
+    <div className="space-y-3 border p-4">
+      <p className="text-sm">{t("guardrailPackage.importedFromSource", { source: provenance.sourceId })}</p>
+      <p className="text-xs text-muted-foreground">{t("guardrailPackage.importedAt", { time: new Date(provenance.importedAt).toLocaleString(i18n.language) })}</p>
+      <div><p className="mb-1 text-xs text-muted-foreground">{t("guardrailPackage.contentDigest")}</p><Digest value={provenance.contentDigest} /></div>
+    </div>
+  </section>;
+}
+
+/** Whether this environment's Runners can load the version; required before routing imported content. */
+function ReleaseEnvironment({ version, checking, error, canCheck, onCheck }: { version: GuardrailVersion; checking: boolean; error: unknown; canCheck: boolean; onCheck: () => void }) {
+  const { t, i18n } = useTranslation();
+  const check = version.environment_check;
+  return <section className="space-y-3 border-t pt-6">
+    <div className="flex items-start justify-between gap-4">
+      <div><h3 className="text-base font-semibold">{t("guardrailPackage.environmentTitle")}</h3><p className="mt-1 text-sm text-muted-foreground">{t("guardrailPackage.environmentDescription")}</p></div>
+      {canCheck ? <Button variant="outline" className="min-h-11 shrink-0" disabled={checking} onClick={onCheck}>{checking ? <LoaderCircle className="animate-spin" /> : <RefreshCw />}{t(checking ? "guardrailPackage.checking" : "guardrailPackage.checkEnvironment")}</Button> : null}
+    </div>
+    <div className="border p-4"><EnvironmentStatus check={check} />
+      {check ? <p className="mt-2 text-xs text-muted-foreground">{t("guardrailPackage.lastChecked", { time: new Date(check.checkedAt).toLocaleString(i18n.language) })}</p> : null}</div>
+    {error ? <ErrorNotice error={error} /> : null}
+  </section>;
+}
+
+function RetryNotice({ error, onRetry }: { error: unknown; onRetry?: () => void }) {
+  const { t } = useTranslation();
+  return <div className="space-y-3"><ErrorNotice error={error} /><Button variant="outline" onClick={onRetry}>{t("immutableVersions.retry")}</Button></div>;
+}
+
+function VersionFact({ label, value, mono = false }: { label: string; value: string; mono?: boolean }) {
+  return <div className="min-w-0"><dt className="text-xs text-muted-foreground">{label}</dt><dd className={`mt-2 break-words leading-6 ${mono ? "font-mono text-xs" : "text-sm font-medium"}`}>{value}</dd></div>;
+}
+
+function ImmutablePosture({ detail }: { detail: GuardrailVersionDetail }) {
+  const { t } = useTranslation();
+  const effective = detail.effective_output_delivery ?? detail.output_delivery;
+  return <section><h3 className="text-base font-semibold">{t("immutableVersions.requestHandling")}</h3>
+    <dl className="mt-5 grid grid-cols-2 gap-6">
+      <VersionFact label={t("guardrailWizard.safetyLevel")} value={t(`guardrailWizard.safetyLevelOptions.${detail.safety_level}`)} />
+      <VersionFact label={t("guardrailWizard.outputDelivery")} value={t(`guardrailWizard.outputDeliveryOptions.${effective}`)} />
+      <VersionFact label={t("modelSettings.inputRail")} value={t("guardrails.compiledFlowCount", { count: detail.rails.filter(rail => rail.rail_type === "input").length })} />
+      <VersionFact label={t("modelSettings.outputRail")} value={t("guardrails.compiledFlowCount", { count: detail.rails.filter(rail => rail.rail_type === "output").length })} />
+    </dl><p className="mt-5 text-sm leading-6 text-muted-foreground">{t(effective === "full_buffered" ? "modelSettings.streamFull" : "modelSettings.streamWindow")}</p>
+    {effective !== detail.output_delivery ? <p className="mt-2 text-sm text-muted-foreground">{t("guardrails.deliverySafetyFallback")}</p> : null}
+  </section>;
+}
+
+function PinnedPolicies({ bindings, page, onPageChange }: { bindings: GuardrailVersionDetail["policy_bindings"]; page: number; onPageChange: (page: number) => void }) {
+  const { t } = useTranslation();
+  return <section className="space-y-4"><p className="text-sm text-muted-foreground">{t("immutableVersions.policyDescription")}</p>
+    {bindings.length ? <div className="border"><Table><TableHeader><TableRow><TableHead>{t("immutableVersions.policyVersion")}</TableHead><TableHead>{t("immutableVersions.rules")}</TableHead><TableHead>{t("immutableVersions.phases")}</TableHead><TableHead>{t("immutableVersions.behavior")}</TableHead></TableRow></TableHeader>
+      <TableBody>{bindings.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE).map(binding => <TableRow key={`${binding.policy_id}@${binding.policy_version}`}>
+        <TableCell className="whitespace-normal">
+          {/* The exact Policy version this snapshot was built from, in the Policy Library. */}
+          <Link params={projectParams()} to="/$projectId/policy-library" search={{ policy: binding.policy_id, version: binding.policy_version }} className="text-sm font-medium text-primary hover:underline"
+            aria-label={t("immutableVersions.openPolicy", { name: binding.policy_name ?? binding.policy_id, version: binding.policy_version })}>{binding.policy_name ?? binding.policy_id}</Link>
+          {binding.policy_name ? <code className="block break-all text-xs">{binding.policy_id}</code> : null}<p className="mt-1 font-mono text-xs text-muted-foreground">{binding.policy_version}</p></TableCell>
+        <TableCell className="tabular-nums">{binding.enabled_rule_ids.length}</TableCell>
+        <TableCell className="whitespace-normal text-xs">{binding.enabled_rails.join(" · ") || "—"}</TableCell>
+        <TableCell className="whitespace-normal text-xs">{binding.action ?? t("guardrails.policyBehavior")}</TableCell>
+      </TableRow>)}</TableBody></Table>{bindings.length > PAGE_SIZE ? <ListPagination page={page} total={bindings.length} onPageChange={onPageChange} /> : null}</div> : <p className="py-6 text-sm text-muted-foreground">{t("immutableVersions.noPolicies")}</p>}
+  </section>;
+}
+
+function ListPagination({ page, total, onPageChange }: { page: number; total: number; onPageChange: (page: number) => void }) {
+  const { t } = useTranslation();
+  return <nav className="flex items-center justify-between gap-3 border-t px-4 py-2">
+    <span className="text-xs tabular-nums text-muted-foreground">{t("immutableVersions.rows", { start: page * PAGE_SIZE + 1, end: Math.min((page + 1) * PAGE_SIZE, total), total })}</span>
+    <div className="flex gap-1"><Button variant="ghost" className="size-11" aria-label={t("immutableVersions.previousPage")} disabled={page === 0} onClick={() => onPageChange(page - 1)}><ChevronLeft /></Button><Button variant="ghost" className="size-11" aria-label={t("immutableVersions.nextPage")} disabled={(page + 1) * PAGE_SIZE >= total} onClick={() => onPageChange(page + 1)}><ChevronRight /></Button></div>
+  </nav>;
+}

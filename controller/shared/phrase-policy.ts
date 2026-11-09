@@ -1,6 +1,7 @@
 import { z } from "zod";
+import { enforcementActions } from "./enforcement-action.generated.js";
 
-export const PHRASE_POLICY_ID = "configured-phrase-filter";
+export const PHRASE_POLICY_ID = "content-filters";
 export const PHRASE_RULE_ID = "configured/phrases";
 export const PHRASE_PARAMETER = "phrase_entries";
 
@@ -8,7 +9,7 @@ export const PHRASE_PARAMETER = "phrase_entries";
 export const phraseEntrySchema = z.object({
   id: z.string().trim().min(1).max(100),
   phrase: z.string().trim().min(1, "Enter a phrase.").max(240),
-  action: z.enum(["reject", "redact"]),
+  action: z.enum(enforcementActions),
   replacement: z.string().max(240).default("[REDACTED]"),
 }).strict();
 export type PhraseEntry = z.infer<typeof phraseEntrySchema>;

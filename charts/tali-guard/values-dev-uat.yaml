@@ -1,0 +1,92 @@
+# The only development/UAT profile (OrbStack, Docker Desktop, kind).
+# Internal Secrets and mTLS certificates are generated once by a Helm hook.
+# Only development overrides are listed; other settings inherit values.yaml.
+# Keep the existing local release tali-guard, namespace tali and 38081/38082 ports.
+# For a shared external hostname, see values.yaml and examples/virtualservice-shared-host.yaml.
+# Set top-level publicUrl to update UI, Endpoint and Better Auth together;
+# it takes precedence over the local Controller URLs below.
+#
+# Build the two local images first:
+#   npm run images:build:dev
+#
+# Upgrade (or install); the chart initializes its own internal Secrets:
+#   bash scripts/helm-upgrade.sh tali-guard ./charts/tali-guard orbstack tali \
+#     --values ./charts/tali-guard/values-dev-uat.yaml --wait --timeout 5m
+
+fullnameOverride: tali-guard
+
+controller:
+  image:
+    tag: dev
+    # OrbStack shares locally built Docker images with Kubernetes.
+    pullPolicy: Never
+  publicUrl:
+    - http://localhost:38081
+    - http://localhost:8092
+  # Keep the internal HTTP/gRPC Service private and publish only Controller
+  # HTTP. This avoids exposing gRPC or colliding with tali-relay on 38080/9090.
+  service:
+    public:
+      enabled: true
+
+runner:
+  image:
+    tag: dev
+    pullPolicy: Never
+  default:
+    # One Default Runner replica.
+    replicaCount: 1
+  service:
+    public:
+      enabled: true
+      # Default public port: 38082 (Controller HTTP: 38081).
+
+# Local single-node PostgreSQL is infrastructure, not a third Guard application
+# component. Production keeps this disabled and supplies database.existingSecret.
+postgresql:
+  enabled: true
+  image:
+    pullPolicy: Never
+
+# Keep shared input/output call-version context available when scaling locally.
+# This Redis is infrastructure only; production uses runner.callContextRedisUrl.
+redis:
+  enabled: true
+  image:
+    pullPolicy: Never
+  # Call contexts retain the immutable plan for input/output version pinning.
+  # Leave room for the full Default regression within the five-minute TTL.
+  resources:
+    requests:
+      memory: 128Mi
+    limits:
+      memory: 6Gi
+
+security:
+  bootstrapAdmin:
+    # Create the development account using the image-provided local login.
+    username: admin
+  bootstrapUser:
+    enabled: true
+    username: user
+    project: test1
+
+# Keep the self-contained development baseline independent from Prometheus
+# Operator and Grafana. Use npm run helm:deploy:dev:debug when the local
+# monitoring stack is installed and full performance diagnostics are wanted.
+observability:
+  serviceMonitor:
+    enabled: false
+  prometheusRule:
+    enabled: false
+  grafanaDashboard:
+    enabled: false
+
+# Optional gateway; enable through litellm-provider.enabled or the npm command.
+# Mock model and bootstrap reuse the Runner/Controller images above.
+litellm-provider:
+  image:
+    pullPolicy: Never
+  postgresql:
+    image:
+      pullPolicy: Never

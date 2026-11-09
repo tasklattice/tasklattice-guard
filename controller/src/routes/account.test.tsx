@@ -2,18 +2,19 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import type { IdentityUser } from "@/lib/identity-api";
+import { updateMe, type IdentityUser } from "@/lib/identity-api";
 
 import { AccountPage } from "./account";
 
 const updateProfileMock = vi.fn();
 const navigateMock = vi.fn();
+const authClientMock = vi.hoisted(() => ({ updateUser: vi.fn(), getSession: vi.fn(), listAccounts: vi.fn() }));
+vi.mock("@/lib/better-auth", () => ({ authClient: authClientMock }));
 vi.mock("@tanstack/react-router", () => ({ useNavigate: () => navigateMock }));
 
 const user: IdentityUser = {
   id: "user-admin",
-  display_name: "Administrator",
-  email: "admin@tasklattice.local",
+  username: "admin",
   role: "admin",
   enabled: true,
   preferred_language: "en",
@@ -31,11 +32,9 @@ vi.mock("react-i18next", () => ({
       "account.general": "General",
       "account.security": "Security",
       "account.profile": "Profile",
-      "account.profileDescription": "Choose how your name appears.",
-      "account.displayName": "Display name",
-      "account.displayNameHint": "This name identifies your activity.",
-      "account.email": "Work email",
-      "account.emailReadOnly": "Your sign-in email is managed by an administrator.",
+      "account.profileDescription": "View your account identifier and choose your interface language.",
+      "account.username": "Username",
+      "account.usernameReadOnly": "Your username is managed by an administrator.",
       "account.interfaceLanguage": "Interface language",
       "account.languageDescription": "Applies whenever you sign in.",
       "account.saveChanges": "Save changes",
@@ -64,7 +63,7 @@ vi.mock("@/lib/auth", () => ({
   useAuth: () => ({ user, updateProfile: updateProfileMock }),
 }));
 
-vi.mock("sonner", () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
+vi.mock("@/components/ui/notifications", () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
 
 function renderPage(section: "general" | "security" = "general") {
   const client = new QueryClient({ defaultOptions: { mutations: { retry: false } } });
@@ -72,26 +71,13 @@ function renderPage(section: "general" | "security" = "general") {
 }
 
 describe("AccountPage", () => {
-  beforeEach(() => updateProfileMock.mockReset().mockResolvedValue(undefined));
-  afterEach(cleanup);
-
-  it("persists an edited display name with the current account language", async () => {
-    renderPage();
-
-    const save = screen.getByRole("button", { name: "Save changes" }) as HTMLButtonElement;
-    expect(save.disabled).toBe(true);
-
-    fireEvent.change(screen.getByLabelText("Display name"), { target: { value: "Guard Operator" } });
-    expect(save.disabled).toBe(false);
-    fireEvent.click(save);
-    expect(updateProfileMock).not.toHaveBeenCalled();
-    fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
-
-    await waitFor(() => expect(updateProfileMock).toHaveBeenCalledWith({
-      display_name: "Guard Operator",
-      preferred_language: "en",
-    }));
+  beforeEach(() => {
+    updateProfileMock.mockReset().mockResolvedValue(undefined);
+    authClientMock.updateUser.mockReset();
+    authClientMock.getSession.mockReset();
+    authClientMock.listAccounts.mockReset().mockResolvedValue({ data: [{providerId: "credential"}], error: null });
   });
+  afterEach(cleanup);
 
   it("keeps password management in the Security section", async () => {
     renderPage();
@@ -104,6 +90,40 @@ describe("AccountPage", () => {
     cleanup();
     renderPage("security");
     expect(await screen.findByText("Password & sessions")).toBeTruthy();
-    expect(screen.getByRole("button", { name: "Change password" })).toBeTruthy();
+    expect(await screen.findByRole("button", { name: "Change password" })).toBeTruthy();
+  });
+
+  it("directs SSO users to Keycloak without offering a local password change", async () => {
+    authClientMock.listAccounts.mockResolvedValue({ data: [{providerId: "corporate-sso"}], error: null });
+    renderPage("security");
+    expect(await screen.findByText("account.ssoManaged")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Change password" })).toBeNull();
+  });
+
+  it("saves a language change directly through the status-only API", async () => {
+    authClientMock.updateUser.mockResolvedValue({ data: { status: true }, error: null });
+    authClientMock.getSession.mockResolvedValue({ data: { user: {
+      id: user.id, username: user.username, role: user.role,
+      preferredLanguage: "zh-CN", createdAt: user.created_at, updatedAt: user.updated_at,
+    } }, error: null });
+    updateProfileMock.mockImplementation(updateMe);
+    const scrollIntoView = Object.getOwnPropertyDescriptor(HTMLElement.prototype, "scrollIntoView");
+    Object.defineProperty(HTMLElement.prototype, "scrollIntoView", { configurable: true, value: vi.fn() });
+
+    try {
+      renderPage();
+      // Language is the only profile preference; there is no timezone selector.
+      expect(screen.getAllByRole("combobox")).toHaveLength(1);
+      fireEvent.keyDown(screen.getByRole("combobox", { name: "Interface language" }), { key: "Enter" });
+      fireEvent.click(await screen.findByRole("option", { name: "common.chinese" }));
+      fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
+
+      await waitFor(() => expect(authClientMock.updateUser).toHaveBeenCalledWith({ preferredLanguage: "zh-CN" }));
+      expect(authClientMock.getSession).toHaveBeenCalledWith({ query: { disableCookieCache: true } });
+      expect(screen.queryByRole("alert")).toBeNull();
+    } finally {
+      if (scrollIntoView) Object.defineProperty(HTMLElement.prototype, "scrollIntoView", scrollIntoView);
+      else Reflect.deleteProperty(HTMLElement.prototype, "scrollIntoView");
+    }
   });
 });

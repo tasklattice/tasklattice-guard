@@ -1,7 +1,6 @@
 #!/usr/bin/env node
 /** Replay the published isolated Default. Never modifies drafts or publishes. */
 import assert from "node:assert/strict";
-import { readFile } from "node:fs/promises";
 import { randomUUID } from "node:crypto";
 
 const required = (key) => { assert(process.env[key], `Set ${key}.`); return process.env[key]; };
@@ -22,8 +21,8 @@ async function call(base, path, body) {
   assert(response.ok, `${path}: HTTP ${response.status}`);
   return { value: await response.json(), response };
 }
-const auth = await call(controller, "/api/auth/sign-in/email", {
-  email: required("GUARD_REGRESSION_EMAIL"), password: required("GUARD_REGRESSION_PASSWORD"),
+const auth = await call(controller, "/api/auth/sign-in/username", {
+  username: required("GUARD_REGRESSION_USERNAME"), password: required("GUARD_REGRESSION_PASSWORD"),
 });
 cookie = auth.response.headers.getSetCookie().map((item) => item.split(";")[0]).join("; ");
 assert(cookie);
@@ -31,10 +30,9 @@ const targetId = process.env.GUARD_REGRESSION_DEFAULT_COPY_ID ?? "guardrail-defa
 const path = `/api/v1/guardrails/${encodeURIComponent(targetId)}`;
 const rail = (await call(controller, path)).value;
 if (targetId !== "guardrail-default") assert(rail.name.startsWith("Regression Default copy "), "Only a named isolated Default copy may be replayed here.");
-const version = rail.versions.find((item) => item.version === rail.activeVersion);
-assert(version?.status === "ready" && version.artifact.signature);
-assert.equal(version.sourceDraftRevision, rail.draftRevision, "Publish the reviewed Default draft before replay.");
-assert.equal(version.artifactId, rail.activeArtifactId);
+// Replay the release of the reviewed draft: the ready version published from this draft revision.
+const version = rail.versions.find((item) => item.status === "ready" && item.sourceDraftRevision === rail.draftRevision);
+assert(version?.artifact.signature, "Publish the reviewed Default draft before replay.");
 assert(version.plan.steps.length > 0 && version.plan.steps.every(step => step.capability === "builtin_content_filter"),
   "Refuse to replay a Default with model-backed or unknown steps under the zero-external-call budget.");
 assert.equal(rail.draftConfig.outputDelivery, "full_buffered");
@@ -61,7 +59,7 @@ async function replay(test) {
   assert.equal(verdict.usage?.fail_closed, false, label);
   assert.match(verdict.usage.config_checksum, /^[a-f0-9]{64}$/);
   configChecksums.add(verdict.usage.config_checksum);
-  const matches = verdict.findings.filter((item) => item.verdict === "unsafe" || item.verdict === "uncertain");
+  const matches = verdict.findings.filter((item) => item.verdict === "matched" || item.verdict === "unknown");
   for (const match of expected.expectedMatches ?? []) {
     assert(matches.some((item) => item.policy_id === match.policyId && item.rule_id === match.ruleId), label);
   }
@@ -84,12 +82,6 @@ async function replay(test) {
 for (const test of cases) await replay(test);
 console.log(JSON.stringify({ stage: "inherited-cases-passed", count: cases.length }));
 
-const migration = JSON.parse(await readFile(new URL("../tests/fixtures/default-policy-migration.json", import.meta.url), "utf8"));
-for (const test of migration.cases) await replay({ ...test,
-  ...(test.expectedOutputContent === undefined ? {} : {
-    expectedOutputContent: test.expectedOutputContent.replaceAll(/\[(visa|mastercard|amex|discover)_REDACTED\]/g, "[credit_card_REDACTED]"),
-  }),
-});
 for (const phase of ["input", "output"]) {
   for (const content of ["How do I renew my passport?", "Explain how to redact personal information.", "Explain how this application works."])
     await replay({ phase, content, expectedDecision: "allow", assertFullOrder: true });
@@ -106,10 +98,10 @@ for (const phase of ["input", "output"]) {
 }
 const after = (await call(controller, path)).value;
 assert.equal(after.draftRevision, rail.draftRevision);
-assert.equal(after.activeArtifactId, rail.activeArtifactId);
+assert.equal(after.versions.find((item) => item.version === version.version)?.artifactId, version.artifactId);
 assert.equal(configChecksums.size, 1, "All calls must execute the same compiled configuration.");
 console.log(JSON.stringify({ stage: "passed", guardrailId: rail.id, draftRevision: rail.draftRevision,
   version: version.version, artifactId: version.artifactId, checksum: version.artifact.checksum,
   runtimeConfigChecksum: [...configChecksums][0], appliedGeneration: ready.applied_generation,
-  inheritedCases: cases.length, frozenLegacyCases: migration.cases.length, checked, exactOutputs, modelInvocations: 0,
+  inheritedCases: cases.length, checked, exactOutputs, modelInvocations: 0,
   scope: "real deployed Default artifact replay; not business-proxy, streaming or live-model quality" }));

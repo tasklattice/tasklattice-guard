@@ -5,26 +5,26 @@ This API change does not preserve old paths. The frontend, token permission tabl
 ## Standard Documentation and Generation Sources
 
 - `/api/docs`: API reference grouped by product domain, explaining operation semantics and retry rules.
-- `/api/openapi.json`: standard OpenAPI 3.1 document, currently containing 97 operations.
+- `/api/openapi.json`: standard OpenAPI 3.1 document generated from the current API.
 - `/api/openapi.json?module=routers`: complete document filtered by product Tag.
 - `/api/openapi.json?operationId=postRoutersByIdPublish`: a single operation and its recursive Schemas.
 - `/api/llms.txt`: model invocation index, including permissions and idempotency categories.
 
 Methods, paths, input Schemas, return types, and status codes are generated from Hono/Zod/TypeScript code; token permissions come from the actual authorization table. Product Tags, business meaning, and idempotency/retry guidance are centralized in `controller/shared/api-contract.ts` and reviewed with code. Business semantics cannot be inferred automatically from TypeScript types alone.
 
-After changing an API, run `npm run openapi:generate --prefix controller`. Build and CI `openapi:check` checks block stale contracts. Tests verify coverage of actually mounted endpoints, permission consistency, Schema validity, and complete reference resolution in filtered documents.
+`controller/openapi/controller.openapi.json` is generated automatically before Controller development startup/restarts, tests, typechecking, and server builds. It is ignored by Git and must not be edited manually. `npm run openapi:generate --prefix controller` generates it independently. CI runs `npm run openapi:check --prefix controller` to generate and validate the contract, then uploads it as a commit-specific artifact. Tests verify coverage of actually mounted endpoints, permission consistency, Schema validity, and complete reference resolution in filtered documents. Production serves the JSON packaged with the compiled server.
 
 ## Product Groups and Permissions
 
 | Product domain | OpenAPI Tags |
 | --- | --- |
 | Account | account, access-tokens |
-| Guardrail Design | guardrails, policies, validation, authoring, playground |
+| Guardrail Design | guardrails, policies, testing, authoring, playground |
 | Integration | routers, endpoints |
 | Observability | telemetry, audit |
 | Platform Settings | model-providers, models, model-configurations, runners, system |
 
-Tags explain the product; they do not determine authorization. For example, Router traffic statistics belong to telemetry but still require routers:read. Guardrail and Policy validation both belong to validation but require their respective module permissions. Use each operation's `x-token-permission` as the authority.
+Tags explain the product; they do not determine authorization. For example, Router traffic statistics belong to telemetry but still require routers:read. Guardrail and Policy testing both belong to testing but require their respective module permissions. Use each operation's `x-token-permission` as the authority.
 
 Tokens are passed through `Authorization: Bearer <token>`. `GET /api/v1/account/identity` returns identity and effective permissions. The current authorization scope is module-level read/write, covering all resources in that module. Writes also require the current account to have an administrator role. Token management accepts only the account owner's browser Session.
 
@@ -35,9 +35,9 @@ The paths below omit the common `/api/v1` prefix. Old paths have been removed, w
 | Resource / responsibility | Current path and behavior |
 | --- | --- |
 | Guardrail Test Case | `GET/POST /guardrails/{guardrailId}/test-cases`; `DELETE /guardrails/{guardrailId}/test-cases/{caseId}`. The parent ID is required to locate the case. |
-| Executable Guardrail validation | `POST /guardrails/{guardrailId}/validation-runs` creates a job; global `/validation-runs` supports queries across Guardrails. |
+| Executable Guardrail testing | `POST /guardrails/{guardrailId}/test-runs` creates a job; global `/test-runs` supports queries across Guardrails. |
 | Static Policy checks | `GET /policies/{id}/draft/checks` performs read-only checks without creating a Runner job. |
-| Executable Policy validation | `POST /policies/{id}/validation-runs` creates a job and returns 202, Location, and statusUrl. Poll this specific job through `/policies/{id}/validation-runs/{runId}`; latest is only for browsing the most recent record. |
+| Executable Policy testing | `POST /policies/{id}/test-runs` creates a job and returns 202, Location, and statusUrl. Poll this specific job through `/policies/{id}/test-runs/{runId}`; latest is only for browsing the most recent record. |
 | Router publication preview | `POST /routers/{id}/publication-preview` resolves the reviewed version, snapshot, and Endpoint set. |
 | Router rule simulation | `POST /routers/{id}/simulations` computes input matches without publishing or executing a Guardrail. |
 | Router historical traffic | `/routers/{id}/traffic-distribution` and its route-specific counterpart. Read Router rolloutStatus/desiredGeneration for configuration distribution status. |
@@ -63,9 +63,9 @@ Idempotency means repeated requests do not further change the target state; resp
 | DELETE | Affects only the resource specified in the path; repeats may return 404. Test Case deletion includes the parent ID and cannot delete a same-named case in another Guardrail. |
 | Router Endpoint PUT | Deduplicates and sorts Endpoint IDs. An unchanged set neither increments generation nor redistributes configuration. |
 | Router draft PUT | expectedDraftRevision is a concurrency precondition. Replaying an old revision after success may return 409. Reread, compare, and review; do not automatically substitute the new revision to force an overwrite. |
-| Router publish/rollback | idempotencyKey and expectedDraftRevision are required. The same key and normalized content reuse the original operation; different content returns 409. Snapshot and Endpoint IDs must be submitted together. |
-| Router idempotency key details | publish/rollback share a key namespace within each Router. Keys do not expire; deleting a revision retains an audit tombstone that rejects republication. Comparison uses the SHA-256 of actorId, draft revision, rollback target, reviewed snapshot, and normalized Endpoint set. Transaction locks serialize concurrent duplicates. |
-| Router replay response | The top-level Router is current state; publication.revision/generation identify the original operation, replayed marks a replay, and revisionUrl retrieves the original revision. A later publication may already have superseded it; replay creates no new distribution. |
+| Router change submission | `POST /routers/{id}/change-requests` requires expectedDraftRevision, the reviewed snapshot and Endpoint IDs, and a reason. It freezes the snapshot without publishing. A Router has at most one pending change; a lost response is reconciled by reading `pendingChangeRequest` on the Router. |
+| Router change approval | `approve` (a different administrator) or `emergency-apply` (reason required) applies exactly the frozen snapshot. The reason and applying administrator are recorded for emergency changes. The same actor repeating a successful decision receives `publication.replayed=true` without another revision or distribution. A change whose base revision, Endpoint set, or referenced versions changed becomes `superseded` and returns 409. |
+| Router rollback | `revert` restores the base revision of the change that produced the active revision, without another approval, and records a revert change. It is not repeatable: after success the original change is no longer active. Older revisions are restored by copying them into the draft and submitting a new change. |
 | Policy publication | expectedDraftRevision is required. The same Policy and source draft revision reuse the published immutable version. |
 | Guardrail publication | expectedDraftRevision is required, and the current draft is checked. The page submits the revision the user is viewing; conflicts require another review. General request-key replay is not guaranteed. Query compilation results using the returned version. |
 | Model assignment PUT | An identical binding is a no-op. Changing to a nonempty binding requires a valid validationId; clear with modelId:null. Whole-draft PUT clears validation only when configuration changes. |

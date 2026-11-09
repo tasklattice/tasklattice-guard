@@ -1,0 +1,7 @@
+{
+  "policies": [{
+    "id": "warranty-duration", "version": "1",
+    "variables": {"warranty_years": {"minimum": 0, "maximum": 100}},
+    "rules": [{"id": "warranty-term", "variable": "warranty_years", "operator": "eq", "value": 1, "description": "The product warranty lasts exactly one year."}]
+  }]
+}

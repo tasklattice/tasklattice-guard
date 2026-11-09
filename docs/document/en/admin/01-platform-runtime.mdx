@@ -1,0 +1,52 @@
+---
+id: "platform-runtime"
+title: "Platform components, Runners, and runtime health"
+summary: "Separate Controller, Runner, and gateway responsibilities, including Runner and model configuration states."
+order: 0
+---
+Platform health describes whether the environment can execute protection. Configuration publication, Runner rollout and actual traffic are separate signals.
+
+<a id="platform-components" />
+## Understand component responsibilities
+
+| Component | Responsibility |
+| --- | --- |
+| Controller | Stores resources and versions. Distributes desired configuration. |
+| Runner | Authenticates Endpoint calls, executes inspections and reports application status. |
+| Application or gateway | Calls the business model, submits content and applies each Decision. |
+
+Default is preconfigured once with local protection and a bundled release, without claiming a local test run passed. Users can edit, test, publish and delete it like any Guardrail. Startup preserves edits and deletions. Router rules and Fallback targets determine traffic protection.
+
+<a id="platform-health" />
+## Inspect health and rollout
+
+Start with [platform health](/settings/health). Then inspect instance synchronization and capacity under [Runner](/settings/runner).
+
+An Active Router requires at least one default-pool Runner. Every target instance must acknowledge the desired generation with a fresh heartbeat. One Ready instance does not prove rollout completed.
+
+For Distributing or Failed, compare desired and applied generations. Inspect heartbeat freshness and rejection reasons. Then inspect dependencies and capacity. See [Router rollout states](/document/overview/term-router#state-router).
+
+<a id="state-runner" />
+## Separate synchronization from capacity
+
+<StateMachineDiagram kind="runner" locale="en" />
+
+| Status | Meaning |
+| --- | --- |
+| Syncing | The instance has not applied the desired generation. |
+| Ready, Busy or Saturated | Configuration converged. Current load determines available capacity. |
+| Offline | The connection or heartbeat is stale. |
+
+Reconnection requires configuration convergence again. These statuses combine synchronization and load, rather than one persistent lifecycle.
+
+<a id="state-models" />
+## Check model configuration separately
+
+<StateMachineDiagram kind="model-probe" locale="en" />
+<StateMachineDiagram kind="model-revision" locale="en" />
+
+Provider and Model checks use Pending, Validated or Failed. Configuration or protocol changes require new checks. Connectivity checks and capability behavior tests answer different questions.
+
+Model-assignment drafts use Draft or Validated. Applying configuration creates an Activating snapshot. It becomes Active after convergence, or Failed after an activation error. Changing an active snapshot creates a new revision.
+
+Administrators can activate untested or failed assignments. Their actual results remain visible. Activation does not convert them to passing tests. See [model configuration](/document/admin/platform-models).

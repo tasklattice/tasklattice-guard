@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from contextlib import contextmanager
+from dataclasses import replace
 import base64
 import json
 from types import SimpleNamespace
@@ -12,8 +13,9 @@ from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 from prometheus_client import generate_latest
 
 from runner.toolkit.runtime.contracts import ProtectionDecision, RiskFinding, RuntimeTraceStep, RuntimeUsage
+from runner.artifact_store import EndpointAccess
 from runner.api import RunnerAPI
-from runner.metrics import INTERNAL_METRIC_ID, RunnerMetrics
+from runner.metrics import GuardrailRequestObservation, INTERNAL_METRIC_ID, RunnerMetrics
 
 
 class Runtime:
@@ -24,7 +26,7 @@ class Runtime:
         self.request = request
         return ProtectionDecision(
             decision="block",
-            action="reject",
+            action="block",
             reason="policy matched",
             guardrail_id="guardrail-1",
             guardrail_version="20260904-020000.002Z",
@@ -33,10 +35,10 @@ class Runtime:
             findings=(RiskFinding(
                 risk="secrets",
                 taxonomy_id="TALI-PRIVACY-CREDENTIAL",
-                verdict="unsafe",
+                verdict="matched",
                 confidence=0.99,
                 evidence="secret prompt must never be exported",
-                recommended_action="reject",
+                recommended_action="block",
                 policy_id="builtin-secrets",
                 rule_id="credential-pattern",
             ),),
@@ -51,7 +53,7 @@ class Runtime:
                 evidence="secret prompt must never be exported",
                 capability="secrets",
                 contract_ref="tali.guard.secrets.exact.v1",
-                outcome="unsafe",
+                outcome="matched",
                 action_name="GuardSecretsAction",
                 action_version="1.0.0",
             ),),
@@ -67,31 +69,6 @@ class Runtime:
     async def evaluate_guardrail(self, request, guardrail_id, version, *, on_resolved=None):
         self.explicit_guardrail = (guardrail_id, version)
         return await self.evaluate(request)
-
-
-class StreamingRuntime:
-    def __init__(self, mode="full_buffered") -> None:
-        self.mode = mode
-        self.requests = []
-
-    def output_delivery(self, _request, *, on_resolved=None, require_existing=False, allow_new_output=False):
-        from runner.toolkit.runtime.contracts import GuardrailPlanSnapshot, PlanResolution
-        if on_resolved:
-            on_resolved(PlanResolution(plan=GuardrailPlanSnapshot(
-                guardrail_id="guardrail-stream", guardrail_version="20260904-020000.002Z",
-                compiler_version="test", safety_level="balanced", output_delivery=self.mode, steps=(),
-            ), router_id="router-stream"))
-        return self.mode
-
-    async def evaluate(self, request, *, on_resolved=None):
-        self.requests.append(request)
-        return ProtectionDecision(
-            decision="allow",
-            action="pass",
-            output_delivery=self.mode,
-            guardrail_id="guardrail-stream",
-            guardrail_version="20260904-020000.002Z",
-        )
 
 
 class NoRouterRuntime:
@@ -110,18 +87,30 @@ class ResolvedFailureRuntime:
 
 
 class Store:
+    def __init__(self, level="info"):
+        self.level = level
+
+    def authorize_endpoint(self, endpoint_id, credential):
+        adapter = self.endpoint_adapter(endpoint_id)
+        if not adapter:
+            return EndpointAccess(None, False, False)
+        if not getattr(self, "credential_required", True):
+            return EndpointAccess(adapter, True, None)
+        authenticated = self.authenticate_endpoint(endpoint_id, credential)
+        return EndpointAccess(adapter, authenticated, authenticated)
+
     def authenticate_endpoint(self, endpoint_id, credential):
-        return endpoint_id in {"endpoint-1", "endpoint-http", "endpoint-a2a"} and credential == "valid-secret"
+        return endpoint_id in {"endpoint-1", "endpoint-secondary", "endpoint-scan"} and credential == "valid-secret"
 
     def endpoint_adapter(self, endpoint_id):
         return {
             "endpoint-1": "litellm-generic-guardrail",
-            "endpoint-http": "generic-http-guard",
-            "endpoint-a2a": "a2a-guard",
+            "endpoint-secondary": "litellm-generic-guardrail",
+            "endpoint-scan": "f5-scan",
         }.get(endpoint_id)
 
     def logging_level(self, _guardrail_id):
-        return "info"
+        return self.level
 
 
 class Metrics:
@@ -130,7 +119,7 @@ class Metrics:
 
     @contextmanager
     def request(self, *_args, **_kwargs):
-        yield MetricObservation()
+        yield GuardrailRequestObservation()
 
     def observe_authentication(self, *_args, **_kwargs):
         return None
@@ -142,20 +131,6 @@ class Metrics:
         return None
 
     def observe_failure(self, *_args, **_kwargs):
-        return None
-
-
-class MetricObservation:
-    def resolve(self, *_args, **_kwargs):
-        return None
-
-    def set_identity(self, *_args, **_kwargs):
-        return None
-
-    def complete(self, *_args, **_kwargs):
-        return None
-
-    def fail(self, *_args, **_kwargs):
         return None
 
 
@@ -190,7 +165,7 @@ class DraftPreviews:
         self.evaluated = (request, input)
         return ProtectionDecision(
             decision="allow",
-            action="pass",
+            action="allow",
             reason="draft passed",
             guardrail_id=input["guardrail_id"],
             guardrail_version=input["candidate_version"],
@@ -216,17 +191,17 @@ async def test_runtime_authenticates_locally_and_emits_content_free_telemetry():
         )
         events_after_verification = list(telemetry.events)
         unauthorized = await client.post(
-            "/runtime/v1/endpoints/endpoint-http/guardrails/evaluate",
-            json={"phase": "input", "texts": ["secret prompt"]},
+            "/runtime/v1/endpoints/endpoint-secondary/beta/litellm_basic_guardrail_api",
+            json={"input_type": "request", "texts": ["secret prompt"]},
         )
         response = await client.post(
-            "/runtime/v1/endpoints/endpoint-http/guardrails/evaluate",
-            headers={"x-api-key": "valid-secret", "x-tenant": "tenant-a"},
+            "/runtime/v1/endpoints/endpoint-secondary/beta/litellm_basic_guardrail_api",
+            headers={"x-api-key": "valid-secret", "x-project": "project-a"},
             json={
-                "phase": "input",
+                "input_type": "request",
                 "texts": ["secret prompt"],
-                "call_id": "call-1",
-                "attributes": {"target.environment": "production"},
+                "litellm_call_id": "call-1",
+                "request_data": {"target_environment": "production"},
             },
         )
 
@@ -243,8 +218,8 @@ async def test_runtime_authenticates_locally_and_emits_content_free_telemetry():
     assert events_after_verification == []
     assert unauthorized.status_code == 401
     assert response.status_code == 200
-    assert response.json()["decision"] == "block"
-    assert runtime.request.context.value("header", "x-tenant") == "tenant-a"
+    assert response.json()["action"] == "BLOCKED"
+    assert ("x-project", "project-a") in runtime.request.context.endpoint_request
     assert runtime.request.context.value("header", "x-api-key") is None
     assert telemetry.events[0]["guardrailId"] == "guardrail-1"
     assert telemetry.events[0]["routerId"] == "router-1"
@@ -252,98 +227,20 @@ async def test_runtime_authenticates_locally_and_emits_content_free_telemetry():
             "id": "finding-1",
             "risk": "secrets",
             "taxonomyId": "TALI-PRIVACY-CREDENTIAL",
-            "verdict": "unsafe",
+            "verdict": "matched",
         "confidence": 0.99,
-        "recommendedAction": "reject",
+        "recommendedAction": "block",
         "policyId": "builtin-secrets",
             "ruleId": "credential-pattern",
             "providerEvidence": [],
+            "riskSeverity": None,
+            "policyVersion": None,
     }]
     assert telemetry.events[0]["metadata"]["usage"]["action_invocations"] == 1
     assert telemetry.events[0]["metadata"]["trace"][0]["actionName"] == "GuardSecretsAction"
     assert telemetry.events[0]["metadata"]["trace"][0]["parentId"] == "rail-1"
     assert "texts" not in telemetry.events[0]
     assert "secret prompt" not in str(telemetry.events[0])
-
-
-@pytest.mark.asyncio
-@pytest.mark.parametrize("protocol,endpoint", [("http", "endpoint-http"), ("litellm", "endpoint-1")])
-async def test_output_stream_endpoint_holds_full_response_until_final_chunk(protocol, endpoint):
-    runtime = StreamingRuntime()
-    app = FastAPI()
-    app.include_router(RunnerAPI(runtime, Store(), Metrics(), Telemetry(), "runner-1", "controller-token").router)  # type: ignore[arg-type]
-    headers = {"x-api-key": "valid-secret"}
-    url = f"/runtime/v1/endpoints/{endpoint}/guardrails/output-stream"
-    context = {"protocol": protocol, "request_data": {"user_api_key_team_id": "team-1"},
-               "request_headers": {"x-api-key": "never-forward", "x-original-uri": "/chat/completions"}}
-    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://runner") as client:
-        first = await client.post(url, headers=headers, json={
-            **context,
-            "stream_id": "stream-1", "call_id": "call-1", "sequence": 0,
-            "text": "hello ", "final": False,
-        })
-        final = await client.post(url, headers=headers, json={
-            **context,
-            "stream_id": "stream-1", "call_id": "call-1", "sequence": 1,
-            "text": "world", "final": True,
-        })
-
-    assert first.status_code == 200
-    assert first.json()["status"] == "buffering"
-    assert first.json()["released_text"] == ""
-    assert final.status_code == 200
-    assert final.json()["status"] == "completed"
-    assert final.json()["released_text"] == "hello world"
-    assert runtime.requests[0].texts == ("hello world",)
-    assert runtime.requests[0].context.protocol == protocol
-    if protocol == "litellm":
-        assert runtime.requests[0].call_id == "endpoint-1:call-1"
-        assert runtime.requests[0].context.value("field", "litellm.team_id") == "team-1"
-        assert runtime.requests[0].context.value("field", "http.path") == "/chat/completions"
-        assert runtime.requests[0].context.value("header", "x-api-key") is None
-
-
-@pytest.mark.asyncio
-async def test_litellm_stream_rejects_wrong_adapter_and_credentials():
-    app = FastAPI()
-    app.include_router(RunnerAPI(StreamingRuntime(), Store(), Metrics(), Telemetry(), "runner-1", "token").router)
-    body = {"protocol": "litellm", "stream_id": "stream", "sequence": 0, "text": "hello", "final": True}
-    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://runner") as client:
-        mismatch = await client.post("/runtime/v1/endpoints/endpoint-http/guardrails/output-stream",
-                                     headers={"x-api-key": "valid-secret"}, json=body)
-        unauthorized = await client.post("/runtime/v1/endpoints/endpoint-1/guardrails/output-stream", json=body)
-    assert mismatch.status_code == 409
-    assert unauthorized.status_code == 401
-
-
-@pytest.mark.asyncio
-@pytest.mark.parametrize("protocol,endpoint", [("http", "endpoint-http"), ("litellm", "endpoint-1")])
-@pytest.mark.parametrize("kind,expected", [("provider_failure", 502), ("timeout", 504), ("missing_transform", 502), ("policy_block", 200)])
-async def test_stream_distinguishes_failed_checks_from_policy_rejection(protocol, endpoint, kind, expected):
-    runtime = StreamingRuntime()
-
-    async def evaluate(_request):
-        return ProtectionDecision(
-            decision="transform" if kind == "missing_transform" else "block", action="reject",
-            reason="private upstream body must not appear in HTTP errors",
-            usage=RuntimeUsage(fail_closed=kind in {"provider_failure", "timeout"}),
-            trace=(RuntimeTraceStep(id="check", kind="action", name="Check", status="failed", detail="private detail", timed_out=kind == "timeout"),),
-        )
-
-    runtime.evaluate = evaluate
-    app = FastAPI()
-    app.include_router(RunnerAPI(runtime, Store(), Metrics(), Telemetry(), "runner-1", "token").router)
-    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://runner") as client:
-        response = await client.post(f"/runtime/v1/endpoints/{endpoint}/guardrails/output-stream",
-            headers={"x-api-key": "valid-secret"}, json={"protocol": protocol, "stream_id": "failed-check",
-                "sequence": 0, "text": "private content", "final": True})
-    assert response.status_code == expected
-    if kind == "policy_block":
-        assert response.json()["status"] == "blocked"
-        assert response.json()["released_text"] == "" and response.json()["terminate"]
-    else:
-        assert "private" not in response.text
-        assert "released_text" not in response.json()
 
 
 @pytest.mark.asyncio
@@ -364,7 +261,7 @@ async def test_controller_can_prepare_and_evaluate_draft_without_runtime_evidenc
     plan = {
         "guardrail_id": "guardrail-draft",
         "guardrail_version": "20260904-040000.004Z",
-        "compiler_version": "controller-plan-v2",
+        "compiler_version": "controller-plan-v1",
         "steps": [],
         "modules": [],
     }
@@ -385,7 +282,7 @@ async def test_controller_can_prepare_and_evaluate_draft_without_runtime_evidenc
         )
         evaluated = await client.post(
             "/internal/v1/playground/draft-previews/preview-1/evaluate",
-            headers={"authorization": "Bearer controller-token", "x-tenant": "preview-tenant"},
+            headers={"authorization": "Bearer controller-token", "x-project": "preview-project"},
             json={
                 **{key: value for key, value in payload.items() if key != "guardrail_id"},
                 "phase": "input",
@@ -407,26 +304,6 @@ async def test_controller_can_prepare_and_evaluate_draft_without_runtime_evidenc
     assert telemetry.events == []
 
 
-@pytest.mark.asyncio
-async def test_http_adapter_defaults_to_input_and_rejects_detect_only_bypass():
-    runtime = Runtime()
-    app = FastAPI()
-    app.include_router(RunnerAPI(runtime, Store(), Metrics(), Telemetry(), "runner-1", "controller-token").router)  # type: ignore[arg-type]
-    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://runner") as client:
-        default_input = await client.post(
-            "/runtime/v1/endpoints/endpoint-http/guardrails/evaluate",
-            headers={"x-api-key": "valid-secret"},
-            json={"texts": ["hello"]},
-        )
-        detect_bypass = await client.post(
-            "/runtime/v1/endpoints/endpoint-http/guardrails/evaluate",
-            headers={"x-api-key": "valid-secret"},
-            json={"texts": ["hello"], "mode": "detect"},
-        )
-
-    assert default_input.status_code == 200
-    assert runtime.request.phase == "input"
-    assert detect_bypass.status_code == 422
 
 
 @pytest.mark.asyncio
@@ -439,55 +316,15 @@ async def test_runtime_distinguishes_adapter_mismatch_from_bad_credentials():
 
     async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://runner") as client:
         response = await client.post(
-            "/runtime/v1/endpoints/endpoint-1/guardrails/evaluate",
+            "/runtime/v1/endpoints/endpoint-scan/beta/litellm_basic_guardrail_api",
             headers={"x-api-key": "valid-secret"},
-            json={"texts": ["hello"]},
+            json={"input_type":"request", "texts": ["hello"]},
         )
 
     assert response.status_code == 409
-    assert metrics.rejections == [(('http', 'input', 'adapter_mismatch'), {})]
+    assert metrics.rejections == [(('litellm',), {'phase': 'input', 'result': 'adapter_mismatch'})]
 
 
-@pytest.mark.asyncio
-async def test_http_adapter_preserves_structured_grounding_and_a2a_routing_facts():
-    runtime = Runtime()
-    telemetry = Telemetry()
-    app = FastAPI()
-    app.include_router(RunnerAPI(runtime, Store(), Metrics(), telemetry, "runner-1", "controller-token").router)  # type: ignore[arg-type]
-    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://runner") as client:
-        response = await client.post(
-            "/runtime/v1/endpoints/endpoint-a2a/guardrails/evaluate",
-            headers={
-                "x-api-key": "valid-secret",
-                "a2a-version": "1.0",
-                "a2a-extensions": "streaming",
-                "authorization": "must-not-cross",
-            },
-            json={
-                "protocol": "a2a",
-                "input_type": "response",
-                "content": [
-                    {"id": "query", "text": "What is revenue?", "role": "query", "qualifiers": ["query"]},
-                    {"id": "source", "text": "Revenue was 10M.", "role": "grounding_source", "qualifiers": ["grounding_source"]},
-                    {"id": "answer", "text": "Revenue was 10M.", "role": "model_output"},
-                ],
-                "a2a_operation": "tasks/send",
-                "a2a_context_id": "context-1",
-                "a2a_task_id": "task-1",
-                "jwt_claims": {"tenant": "tenant-a"},
-                "output_scope": "full",
-            },
-        )
-
-    assert response.status_code == 200
-    assert response.json()["call_id"] == "endpoint-a2a:task-1"
-    assert runtime.request.context.protocol == "a2a"
-    assert runtime.request.context.value("field", "a2a.operation") == "tasks/send"
-    assert runtime.request.context.value("field", "a2a.version") == "1.0"
-    assert runtime.request.context.value("jwt_claim", "tenant") is None  # Caller assertions are not verified identity.
-    assert runtime.request.context.value("header", "authorization") is None
-    assert [item.id for item in runtime.request.content_blocks] == ["query", "source", "answer"]
-    assert runtime.request.evidence_scope == "full"
 
 
 @pytest.mark.asyncio
@@ -496,7 +333,7 @@ async def test_controller_can_evaluate_an_explicit_guardrail_version_without_an_
     telemetry = Telemetry()
     app = FastAPI()
     encryption_key = b"runtime-log-encryption-key-32b!!"
-    app.include_router(RunnerAPI(runtime, Store(), Metrics(), telemetry, "runner-1", "controller-token", encryption_key).router)  # type: ignore[arg-type]
+    app.include_router(RunnerAPI(runtime, Store("trace"), Metrics(), telemetry, "runner-1", "controller-token", encryption_key).router)  # type: ignore[arg-type]
     async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://runner") as client:
         unauthorized = await client.post(
             "/internal/v1/guardrails/guardrail-1/evaluate",
@@ -531,6 +368,26 @@ async def test_controller_can_evaluate_an_explicit_guardrail_version_without_an_
         prefix.encode(),
     )
     assert json.loads(plaintext)["contentBefore"][0]["text"] == "secret prompt"
+
+
+@pytest.mark.asyncio
+async def test_guardrail_evaluation_does_not_return_internal_routing_capabilities():
+    class CapabilityRuntime(Runtime):
+        async def evaluate_guardrail(self, request, guardrail_id, version, *, on_resolved=None):
+            decision = await super().evaluate_guardrail(request, guardrail_id, version, on_resolved=on_resolved)
+            return replace(decision, route_assignment={"routeId": "route-1", "internalCapability": "private-token"})
+
+    app = FastAPI()
+    app.include_router(RunnerAPI(CapabilityRuntime(), Store(), Metrics(), Telemetry(), "runner-1", "controller-token").router)
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://runner") as client:
+        response = await client.post(
+            "/internal/v1/guardrails/guardrail-1/evaluate",
+            headers={"authorization": "Bearer controller-token"},
+            json={"phase": "input", "texts": ["hello"], "guardrail_version": "20260904-020000.002Z"},
+        )
+    assert response.status_code == 200
+    assert response.json()["route_assignment"] == {"routeId": "route-1"}
+    assert "private-token" not in response.text
 
 
 @pytest.mark.asyncio
@@ -581,6 +438,28 @@ async def test_litellm_basic_guardrail_api_normalizes_and_maps_the_runtime_contr
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("internal", [False, True])
+async def test_detection_http_preserves_untrusted_query_and_sources(internal):
+    runtime = Runtime()
+    app = FastAPI()
+    app.include_router(RunnerAPI(runtime, Store(), Metrics(), Telemetry(), "runner", "controller-token").router)
+    path = "/internal/v1/guardrails/guardrail-1/evaluate" if internal else "/runtime/v1/endpoints/endpoint-1/beta/litellm_basic_guardrail_api"
+    headers = {"authorization": "Bearer controller-token"} if internal else {"x-api-key": "valid-secret"}
+    body = {"texts": ["The warranty lasts one year."], "guardrail_context": {
+        "query": "How long is the warranty?", "grounding_sources": ["The product warranty lasts one year."]}}
+    body.update({"phase": "output", "guardrail_version": "20260904-020000.002Z"} if internal else {"input_type": "response"})
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://runner") as client:
+        assert (await client.post(path, headers=headers, json=body)).status_code == 200
+        blocks = runtime.request.content_blocks
+        assert [block.role for block in blocks] == ["model_output", "query", "grounding_source"]
+        assert all(block.trust == "untrusted" for block in blocks)
+        assert [block.guard_content for block in blocks] == [True, False, False]
+        assert blocks[1].text == body["guardrail_context"]["query"]
+        assert blocks[2].text == body["guardrail_context"]["grounding_sources"][0]
+        body["guardrail_context"]["trust"] = "trusted"
+        assert (await client.post(path, headers=headers, json=body)).status_code == 422
+
+
 async def test_litellm_basic_guardrail_api_fails_closed_when_no_router_matches():
     telemetry = Telemetry()
     metrics = RunnerMetrics(8)
@@ -593,14 +472,14 @@ async def test_litellm_basic_guardrail_api_fails_closed_when_no_router_matches()
             json={"input_type": "request", "texts": ["hello"], "request_data": {}},
         )
 
-    assert response.status_code == 200
-    assert response.json() == {
-        "action": "BLOCKED",
-        "blocked_reason": "No Router matches this request.",
-    }
-    assert telemetry.events[0]["decision"] == "block"
+    assert response.status_code == 503
+    assert telemetry.events[0]["decision"] == "error"
+    assert telemetry.events[0]["metadata"]["executionStatus"] == "error"
     rendered = generate_latest(metrics.registry).decode()
-    assert 'coverage="unknown",disposition="deny",endpoint_id="endpoint-1",enforcement_mode="enforce",failure_mode="normal",guardrail_id="__unmatched__",phase="input",protocol="litellm",result="success",traffic_class="runtime"} 1.0' in rendered
+    assert 'guardrail_id="__unmatched__"' in rendered
+    assert 'result="error"' in rendered
+    assert response.json()["detail"] == "The Guardrail route or runtime is unavailable."
+
 
 
 @pytest.mark.asyncio
@@ -616,15 +495,15 @@ async def test_runtime_failure_after_resolution_keeps_guardrail_metric_identity(
         base_url="http://runner",
     ) as client:
         response = await client.post(
-            "/runtime/v1/endpoints/endpoint-http/guardrails/evaluate",
+            "/runtime/v1/endpoints/endpoint-secondary/beta/litellm_basic_guardrail_api",
             headers={"x-api-key": "valid-secret"},
-            json={"phase": "output", "texts": ["hello"]},
+            json={"input_type": "response", "texts": ["hello"]},
         )
 
     assert response.status_code == 500
     rendered = generate_latest(metrics.registry).decode()
-    assert 'coverage="unknown",disposition="unknown",endpoint_id="endpoint-http",enforcement_mode="enforce",failure_mode="normal",guardrail_id="guardrail-resolved",phase="output",protocol="http",result="error",traffic_class="runtime"} 1.0' in rendered
-    assert 'guard_runner_guardrail_execution_failures_total{endpoint_id="endpoint-http",guardrail_id="guardrail-resolved",phase="output",protocol="http",reason_class="runtime_exception",result="error",stage="runtime"} 1.0' in rendered
+    assert 'coverage="unknown",disposition="unknown",endpoint_id="endpoint-secondary",enforcement_mode="enforce",failure_mode="normal",guardrail_id="guardrail-resolved",phase="output",protocol="litellm",result="error",traffic_class="runtime"} 1.0' in rendered
+    assert 'guard_runner_guardrail_execution_failures_total{endpoint_id="endpoint-secondary",guardrail_id="guardrail-resolved",phase="output",protocol="litellm",reason_class="runtime_exception",result="error",stage="runtime"} 1.0' in rendered
     assert "provider failed" not in rendered
 
 
@@ -641,14 +520,14 @@ async def test_telemetry_append_failure_is_a_scoped_request_failure():
         base_url="http://runner",
     ) as client:
         response = await client.post(
-            "/runtime/v1/endpoints/endpoint-http/guardrails/evaluate",
+            "/runtime/v1/endpoints/endpoint-secondary/beta/litellm_basic_guardrail_api",
             headers={"x-api-key": "valid-secret"},
-            json={"phase": "input", "texts": ["hello"]},
+            json={"input_type": "request", "texts": ["hello"]},
         )
 
     assert response.status_code == 500
     rendered = generate_latest(metrics.registry).decode()
-    assert 'guard_runner_guardrail_execution_failures_total{endpoint_id="endpoint-http",guardrail_id="guardrail-1",phase="input",protocol="http",reason_class="telemetry_append_failed",result="error",stage="telemetry"} 1.0' in rendered
+    assert 'guard_runner_guardrail_execution_failures_total{endpoint_id="endpoint-secondary",guardrail_id="guardrail-1",phase="input",protocol="litellm",reason_class="telemetry_append_failed",result="error",stage="telemetry"} 1.0' in rendered
     assert 'guard_runner_failures_total{reason_class="telemetry_append_failed",stage="telemetry"} 1.0' in rendered
     assert "disk-specific path" not in rendered
 
@@ -663,14 +542,14 @@ async def test_runtime_metrics_use_authenticated_api_endpoint_not_decision_ident
 
     async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://runner") as client:
         response = await client.post(
-            "/runtime/v1/endpoints/endpoint-http/guardrails/evaluate",
+            "/runtime/v1/endpoints/endpoint-secondary/beta/litellm_basic_guardrail_api",
             headers={"x-api-key": "valid-secret"},
-            json={"phase": "input", "texts": ["hello"]},
+            json={"input_type": "request", "texts": ["hello"]},
         )
 
     assert response.status_code == 200
     rendered = generate_latest(metrics.registry).decode()
-    assert 'endpoint_id="endpoint-http"' in rendered
+    assert 'endpoint_id="endpoint-secondary"' in rendered
     # Runtime() deliberately returns endpoint-1, proving the decision cannot
     # overwrite the identity authenticated at the API boundary.
     assert 'endpoint_id="endpoint-1"' not in rendered
@@ -687,9 +566,9 @@ async def test_internal_api_uses_bounded_sentinel_and_rejected_ids_never_reach_b
     attacker_controlled_id = "caller-supplied-unbounded-series-value"
     async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://runner") as client:
         rejected = await client.post(
-            f"/runtime/v1/endpoints/{attacker_controlled_id}/guardrails/evaluate",
+            f"/runtime/v1/endpoints/{attacker_controlled_id}/beta/litellm_basic_guardrail_api",
             headers={"x-api-key": "valid-secret"},
-            json={"phase": "input", "texts": ["hello"]},
+            json={"input_type": "request", "texts": ["hello"]},
         )
         internal = await client.post(
             "/internal/v1/guardrails/guardrail-1/evaluate",
@@ -702,3 +581,48 @@ async def test_internal_api_uses_bounded_sentinel_and_rejected_ids_never_reach_b
     rendered = generate_latest(metrics.registry).decode()
     assert attacker_controlled_id not in rendered
     assert f'endpoint_id="{INTERNAL_METRIC_ID}"' in rendered
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("path,payload,credential", [
+    ("/internal/v1/guardrails/guardrail-1/evaluate", {"phase": "input", "texts": ["你好 " * 3000], "guardrail_version": "20260904-020000.002Z"}, ("authorization", "Bearer controller-token")),
+    ("/runtime/v1/endpoints/endpoint-1/beta/litellm_basic_guardrail_api", {"input_type": "request", "texts": ["你好 " * 3000]}, ("x-api-key", "valid-secret")),
+])
+async def test_runtime_encrypts_complete_http_request_without_truncating_body(path, payload, credential):
+    telemetry = Telemetry()
+    app = FastAPI()
+    key = b"runtime-log-encryption-key-32b!!"
+    app.include_router(RunnerAPI(Runtime(), Store("trace"), Metrics(), telemetry, "runner", "controller-token", key).router)
+    body = (json.dumps(payload, ensure_ascii=False, indent=3) + "\n").encode("utf-8")
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://runner") as client:
+        response = await client.post(path + "?test=one%20two", content=body,
+            headers=[credential, ("content-type", "application/json"), ("x-request-tag", "first"), ("x-request-tag", "second"), ("cookie", "session=private")])
+    assert response.status_code == 200, response.text
+    metadata = telemetry.events[0]["metadata"]
+    assert "httpRequest" not in metadata
+    assert "你好" not in json.dumps(metadata, ensure_ascii=False)
+    prefix, nonce, tag, ciphertext = metadata["contentCiphertext"].split(":")
+    decrypted = json.loads(AESGCM(key).decrypt(base64.b64decode(nonce), base64.b64decode(ciphertext) + base64.b64decode(tag), prefix.encode()))
+    request = decrypted["httpRequest"]
+    assert request["method"] == "POST"
+    assert request["target"] == path + "?test=one%20two"
+    assert request["httpVersion"] == "1.1"
+    assert base64.b64decode(request["bodyBase64"]) == body
+    assert [header for header in request["headers"] if header[0] == "x-request-tag"] == [["x-request-tag", "first"], ["x-request-tag", "second"]]
+    assert [credential[0], "[REDACTED]"] in request["headers"]
+    assert ["cookie", "[REDACTED]"] in request["headers"]
+    assert "private" not in json.dumps(request)
+    assert credential[1] not in json.dumps(request)
+
+
+@pytest.mark.parametrize("protocol", ["http", "a2a"])
+async def test_removed_adapter_route_is_absent(protocol):
+    runtime = Runtime()
+    app = FastAPI()
+    app.include_router(RunnerAPI(runtime, Store(), Metrics(), Telemetry(), "runner", "controller").router)
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app), base_url="http://runner") as client:
+        response = await client.post("/runtime/v1/endpoints/endpoint-1/guardrails/evaluate",
+            headers={"x-api-key":"valid-secret"}, json={"protocol":protocol,"texts":["hello"]})
+    assert response.status_code == 404
+    assert runtime.request is None
+    assert "/runtime/v1/endpoints/{endpoint_id}/guardrails/evaluate" not in app.openapi()["paths"]

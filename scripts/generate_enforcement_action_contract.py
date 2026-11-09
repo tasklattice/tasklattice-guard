@@ -105,8 +105,8 @@ def _load_contract() -> tuple[str, list[ActionDefinition]]:
     conflict_actions = sorted(
         actions, key=lambda action: action.conflict_priority, reverse=True
     )
-    if conflict_actions[-1].value != "pass":
-        raise ValueError("pass must remain the weakest conflict action.")
+    if conflict_actions[-1].value != "allow":
+        raise ValueError("allow must remain the weakest conflict action.")
     return description, actions
 
 

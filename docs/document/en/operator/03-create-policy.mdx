@@ -1,0 +1,221 @@
+---
+id: "operator-create-policy"
+title: "Create, test and publish a Policy"
+summary: "Choose detectors, configure Rules and parameters, test acceptance and scenarios, then publish a version for Guardrails to use."
+order: 2
+---
+Policy Studio combines detectors into reusable Policies. A detector inspects content. A Rule selects the inspection stage and action. A Test Case checks actual behavior.
+
+Users with Policy write access can maintain shipped, locally created and imported Policies. Origin records compliance and traceability information. It does not determine editing permission. The maintainer's name records responsibility without granting write access.
+
+<a id="operator-policy-create" />
+## Create and maintain drafts
+
+Choose **Create Policy** in the [Policy Library](/$projectId/policy-library). To maintain an existing Policy, open its details. Choose **Edit**.
+
+The steps are **Basics → Rules → Test Cases → Review & publish**:
+
+1. In **Basics**, enter a name and **Maintenance · maintainer**. The form requires both fields. Use the description to explain what the Policy inspects.
+2. In **Rules**, add a Rule. Select its detector, inspection stages and action. Configure the detector parameters.
+3. In **Test Cases**, add a required acceptance case for each Rule and each inspection stage. Add scenarios for the complete Policy as needed.
+4. Select **Run tests**.
+5. In **Review & publish**, inspect actual actions, matched Rules and output. Correct failures before testing again. Then select **Publish**.
+
+Switching steps preserves current edits. **Save draft** stores the content in the Library. A new unpublished Policy displays Draft and cannot bind to a Guardrail. Save the draft before closing the editor.
+
+Renaming a Rule preserves its ID. Deleting a Rule also deletes draft tests that reference it.
+
+<a id="operator-policy-declarative" />
+## Choose detectors and configure Rules
+
+Each Rule references a versioned detector. Use JSON in **Advanced definition** for complex conditions.
+
+| Detector | Inspection stage | Purpose and configuration |
+| --- | --- | --- |
+| `text/keyword` | Input, Output | Matches words or phrases. Supports text replacement after a match. |
+| `text/regex` | Input, Output | Matches a regular expression. Supports text replacement after a match. |
+| `text/conditions` | Input, Output | Combines text conditions without text replacement. |
+| `code/fenced-block` | Input, Output | Detects Markdown fenced code blocks. Specify code languages when needed. |
+| `agent/indirect-injection` | Input only | Uses local rules to detect instruction manipulation in external content. See the Studio acceptance limit below. |
+| `agent/memory-poisoning` | Input only | Uses local rules to detect instruction manipulation in memory, without checking factual accuracy. See the Studio acceptance limit below. |
+| `model/classifier` | Depends on classification | Content safety, jailbreaks, semantic PII or topic control. Jailbreaks and topic control use Input. |
+| `model/grounding` | Output only | Checks an answer against the user query and reference sources. |
+| `service/formal-verification` | Output only | Checks an answer against a versioned formal policy in an external service. |
+
+Model classification, grounding and formal verification use active bindings in the [Protection Capabilities](/settings/protection-capabilities). Missing bindings or service failures cause tests to fail. Model addresses and credentials remain in environment configuration.
+
+Both `agent/` detectors appear in the form. Studio currently cannot complete their acceptance tests for external content sources. Use published bundled Policies. Test actual scenarios in a Guardrail.
+
+Rules run in order. Each Rule reads the text that the previous Rule processed. A block ends the inspection. Use scenarios to check the order of replacement and blocking.
+
+<a id="operator-policy-risk-severity" />
+### Risk severity and actions
+
+Risk severity belongs to each Rule. New Rules default to medium severity. The action determines what happens after a match:
+
+| Action | Effect |
+| --- | --- |
+| `allow` | Continues processing after a match. The match still counts as a Rule match. |
+| `block` | Blocks the current inspection after a match. |
+| `transform` | Replaces text before the next Rule. Use only with detectors that support replacement. |
+
+Use the advanced definition to change severity and taxonomy. Guardrails can override actions but cannot override Policy severity. Run the tests again after a severity change. Publish a new Policy version after they pass.
+
+<a id="operator-policy-parameters" />
+### Parameters and test values
+
+Parameters let you reuse the same rules. Studio creates parameter references for configurable fields when you select a model or formal verification detector. Each field can use a **Guardrail parameter** or a **Fixed value**.
+
+For parameter references, enter test values in **Policy test parameters**. The corresponding advanced field is `testing.parameters`. These values apply only to Studio tests. They do not configure Guardrails.
+
+Configure parameters separately when you bind the Policy in a Guardrail. Declared parameter defaults can supply omitted values. A missing required value causes test or binding validation errors. Do not store credentials in definitions, defaults or test values.
+
+Phrase expansion generates a separate acceptance case for each concrete entry. Check each entry's expected action and replacement text.
+
+<a id="operator-policy-mechanism" />
+## Write and run tests
+
+Each Rule needs at least one required **Rule acceptance** case for each inspection stage. An acceptance case runs the target Rule in isolation. It must demonstrate an actual match.
+
+| Case type | Scope | Purpose |
+| --- | --- | --- |
+| Rule acceptance | Target Rule | Checks the action, Rule identity and replacement result. |
+| Scenario | Complete Policy for the current stage | Checks normal passes, combined rules and execution order. Clear **Rule acceptance** to create a scenario. |
+
+Use a scenario for text that should pass without a match. When a Rule uses `allow` for matches, its acceptance case must still demonstrate a match.
+
+Replacement cases require the complete expected output. The comparison includes spaces and line breaks.
+
+<a id="operator-policy-test-context" />
+### Supply test context
+
+**Input text** contains the text for inspection. For Output cases, enter the model answer in this field. Enter the user query separately in **Test context**.
+
+| Detector | Context requirements |
+| --- | --- |
+| Model classification | Supply trusted instructions when the scenario needs them. |
+| Grounding | Requires a user query and at least one reference source. Enter one source per line. |
+| Formal verification | Requires a user query and expected reasoning result. Configure the policy ID, version and threshold in the Rule or its parameters. |
+
+<a id="operator-policy-test-results" />
+### Run tests and inspect results
+
+**Run tests** saves the draft before executing actual detectors. Inspect expected actions, actual actions, matched Rules and output. Model cases show call counts. Formal verification cases also show actual proof results.
+
+Execution errors, unknown verdicts and missing results cannot prove a match. A final `block` action alone does not prove that the target Rule passed acceptance.
+
+Edits invalidate previous test results. Tests return errors when the inspection service is unavailable. Restore the service before running the tests again.
+
+<a id="operator-policy-release" />
+## Publish, bind and transfer
+
+Publication requires the current draft to pass its required tests. The server checks the draft revision and test results. Repeating publication for the same revision does not create duplicate versions. Published versions cannot change.
+
+After publication, bind an exact Policy version in a Guardrail. Configure its parameters. Run the Guardrail's tests. Publish the Guardrail after they pass. Configure its route.
+
+Editing an existing Policy creates a new draft. Guardrails retain earlier versions until you explicitly update their bindings.
+
+<a id="operator-policy-transfer" />
+### Export and import
+
+**Export definition** downloads editable JSON. The Library import control opens that definition as a new Studio draft.
+
+Use a Guardrail package to transfer a complete Guardrail between environments. Packages preserve referenced Policy versions, complete Rules and test definitions. Removing unused resources does not delete Rules from a referenced Policy.
+
+Users with Policy write access can maintain imported drafts. The target environment still needs model or external service bindings.
+
+<a id="operator-policy-formal-service" />
+## Configure and test formal verification
+
+Formal verification checks an answer against rules in a proof service. It supports Output only and requires a user query and the complete answer.
+
+Two versioned objects apply here. Policy Studio publishes a Policy version. The proof service supplies a formal policy version. The Rule's **Formal policy ID** and **Formal policy version** reference the latter.
+
+<a id="operator-policy-formal-binding" />
+### Prepare and validate the service binding
+
+A platform administrator completes the Provider, Model and capability-binding steps below. Ask the deployment administrator for the proof service address and credential. The inspection environment must have access to this address. The service must use `tali.automated-reasoning.v1`.
+
+1. Register a custom Provider in [Providers](/settings/providers) with the service address and credential.
+2. Register its Model in [Models](/settings/models). Select `tali.automated-reasoning.v1` as the protocol.
+3. Select that Model under **Output → Automated reasoning** in the [Protection Capabilities](/settings/protection-capabilities).
+4. Start validation with an existing service policy ID, version, threshold and user query.
+5. Supply distinct valid and invalid answers with known outcomes.
+6. Inspect both results. After both examples pass, save the binding. Activate the configuration.
+
+A connection check proves service access only. Saving or activating configuration does not prove that behavior tests passed. Policy acceptance cases remain necessary after binding validation.
+
+The reference service includes this validation data:
+
+| Field | Example value |
+| --- | --- |
+| Formal policy ID | `warranty-duration` |
+| Formal policy version | `1` |
+| Proof confidence threshold | `0.8` |
+| User query | `How long is the warranty?` |
+| Valid answer | `The warranty lasts one year.` |
+| Invalid answer | `The warranty lasts ten years.` |
+
+<a id="operator-policy-formal-rule" />
+### Configure the Rule and test cases
+
+In **Rules**, select `service/formal-verification`. Use the **Output** stage. Set the action to `block` for this example.
+
+| Field | Required | Type | Default | Example configuration |
+| --- | --- | --- | --- | --- |
+| Formal policy ID | Yes | Text | None | `warranty-duration` |
+| Formal policy version | Yes | Text | None | `1` |
+| Proof confidence threshold | Yes | Number from 0 to 1 | `0.8` | `0.8` |
+
+New Rules reference `formal_policy_id`, `formal_policy_version` and `confidence_threshold` parameters by default. Enter the example values in **Policy test parameters**. Alternatively, select **Fixed value** for the corresponding fields.
+
+Add these two Output cases in **Test Cases**. Both use the query `How long is the warranty?`:
+
+| Case | Content for **Input text** | Expected action | Expected reasoning result | Rule acceptance |
+| --- | --- | --- | --- | --- |
+| Invalid answer | `The warranty lasts ten years.` | `block` | `invalid` | Selected. Retain this required acceptance case. |
+| Valid answer | `The warranty lasts one year.` | `allow` | `valid` | Cleared. Use a scenario for the complete Policy. |
+
+If the Policy contains other Rules, check whether they change the valid-answer scenario. Run the tests. The invalid answer must show a match for the target Rule. The valid answer should pass that Rule without a match.
+
+<a id="operator-policy-formal-results" />
+### Interpret proof results
+
+| Proof result | Meaning | Evidence of a target Rule match |
+| --- | --- | --- |
+| `valid` | The answer follows from the formal policy. | No. The Rule requires no intervention. |
+| `invalid` | The answer contradicts the formal policy. | Yes, if confidence meets the threshold. |
+| `satisfiable` | The answer is possible, but the policy does not prove it. | No. |
+| `impossible` | The policy constraints contradict each other. | No. |
+| `translation_ambiguous` | The answer has multiple possible logical translations. | No. |
+| `too_complex` | The service cannot complete the proof within its resource or time limits. | No. |
+| `no_translations` | The service cannot extract verifiable claims. | No. |
+
+Results below the threshold cannot prove a match, even with an `invalid` label. Inconclusive results and service errors cannot count as passes. Check the action, proof result and target Rule matches together.
+
+<a id="operator-policy-formal-reference" />
+### Optional: start the reference Z3 service
+
+Use your existing compatible proof service when available. The repository also provides a reference Z3 service for bounded integer constraints.
+
+Run these commands from the repository root:
+
+```bash
+uv sync --extra formal
+export FORMAL_SERVICE_API_KEY='<Proof service credential>'
+.venv/bin/uvicorn runner.formal_service.app:create_app --factory --host 127.0.0.1 --port 8093
+```
+
+The local example address is `http://127.0.0.1:8093/evaluate`. Use the `FORMAL_SERVICE_API_KEY` value as the Provider credential. Containers and remote inspection environments need a service address that they can access.
+
+The reference policy `warranty-duration`, version `1`, sets the warranty to one year. The service accepts the complete English warranty sentences above or JSON claims over bounded integers. This JSON can be the test case's **Input text**:
+
+```json
+{"claims":[{"variable":"warranty_years","operator":"eq","value":1}]}
+```
+
+The reference service does not verify arbitrary natural language. Additional prose, unknown variables and unsupported formats return `no_translations`. The user query supplies context. External policy rules supply the proof premises.
+
+Deploy the external policy catalog separately. Maintain its versioned rules. Use a new external policy version when rules change. Run the tests again. Guardrail packages contain the policy reference, without the proof service's rule catalog.
+
+See `runner/formal_service/README.md` in the repository for deployment instructions and policy formats. See [Provider, Model and capability configuration](/document/admin/platform-models) for the complete binding procedure.

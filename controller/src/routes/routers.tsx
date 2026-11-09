@@ -1,51 +1,69 @@
+import { projectParams } from "@/lib/project-paths";
+import { hasPermission } from "../../shared/rbac";
+import { queryKeys } from '@/features/query-keys';
+import { ResourceList } from '@/components/resource-list';
+import { Table, TableHead, TableBody, TableRow, TableHeader, TableCell } from '@/components/ui/table';
+import { useTranslation } from 'react-i18next';
 import { CreateRouterSheet } from '@/components/traffic-routing/create-router-sheet';
 export { CreateRouterSheet } from '@/components/traffic-routing/create-router-sheet';
 import { useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
-import { Link } from '@tanstack/react-router';
-import { Plus, MoreHorizontal, History, ArrowUpRight, GitBranch } from 'lucide-react';
-import { EmptyState, ErrorNotice, PageHeader } from '@/components/product-shell';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { Link, useNavigate } from '@tanstack/react-router';
+import { Plus, MoreHorizontal, History, ArrowUpRight, GitBranch, Trash2 } from 'lucide-react';
+import { PageHeader } from '@/components/product-shell';
+import { DeleteTrafficRouterSheet } from '@/components/traffic-routing/delete-router-sheet';
+import { RouterRolloutBadge, rolloutLabel } from '@/components/traffic-routing/router-rollout-badge';
 import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
-import { Skeleton } from '@/components/ui/skeleton';
-import { share, useRoutingText } from '@/components/traffic-routing/form';
 import { useAuth } from '@/lib/auth';
 import { getEndpoints } from '@/lib/api';
-import { getRouterDistribution, listTrafficRouters, trafficRouterKeys, type TrafficRouter } from '@/lib/traffic-routing-api';
+import { getRouterDistribution, getRouterRevisions, listTrafficRouters, trafficRouterKeys, type TrafficRouter } from '@/lib/traffic-routing-api';
 
 export function RoutersPage() {
-  const t = useRoutingText();
+  const { t: localize } = useTranslation();
+  const { t } = useTranslation();
   const auth = useAuth();
+  const queryClient = useQueryClient();
   const [open, setOpen] = useState(false);
+  const [deleting, setDeleting] = useState<TrafficRouter | null>(null);
   const routers = useQuery({ queryKey: trafficRouterKeys.all, queryFn: listTrafficRouters });
-  const endpoints = useQuery({ queryKey: ['routing-endpoints'], queryFn: getEndpoints });
-  return <section className="py-6 sm:py-8"><PageHeader title={t('流量 Routers', 'Traffic Routers')} description={t('按顺序选择流量，在每条 Route 内按比例分配给固定版本的 Guardrail。', 'Select traffic in Route order, then distribute each Route across pinned Guardrail versions.')} action={auth.user?.role === 'admin' ? <Button variant="create" className="min-h-11" onClick={() => setOpen(true)}><Plus />{t('创建 Router', 'Create Router')}</Button> : undefined} />
-    {routers.isPending && <Skeleton className="mt-5 h-48" />}
-    {routers.error && <div className="mt-5 space-y-3"><ErrorNotice error={routers.error} /><Button onClick={() => void routers.refetch()}>{t('重试', 'Retry')}</Button></div>}
-    {routers.data && !routers.data.items.length && <div className="mt-5"><EmptyState title={t('尚无 Router', 'No Routers yet')} description={t('选择来源 Endpoint，配置路由规则和默认 Guardrail。', 'Choose source Endpoints, routing rules, and a default Guardrail.')} /></div>}
-    {!!routers.data?.items.length && <div className="mt-5 overflow-x-auto rounded-md border bg-card"><table className="w-full text-left text-sm"><thead className="border-b bg-muted/30"><tr>{['Router', 'Endpoints', t('启用 Route', 'Enabled Routes'), t('24h 调用量', '24h calls'), 'Fallback', t('发布状态', 'Rollout'), t('操作', 'Actions')].map(label => <th key={label} className="p-4 font-medium">{label}</th>)}</tr></thead><tbody>{routers.data.items.map(router => <RouterRow key={router.id} router={router} endpointName={id => endpoints.data?.items.find(e => e.id === id)?.name ?? id} />)}</tbody></table></div>}
-    {open && <CreateRouterSheet open onOpenChange={setOpen} onCreated={() => setOpen(false)} />}
+  const endpoints = useQuery({ queryKey: queryKeys.endpoints, queryFn: getEndpoints });
+  const { t: translate } = useTranslation();
+  const navigate = useNavigate();
+  const endpointName = (id: string) => endpoints.data?.items.find(item => item.id === id)?.name ?? id;
+  return <section className="py-8">
+    <PageHeader title={t("routing.trafficRouters")} description={t("routing.selectTrafficInRouteOrderThenDistributeEachRoute")} />
+    <ResourceList items={routers.data?.items ?? []} label={t("routing.trafficRouters")} searchPlaceholder={translate('resourceList.searchRouters')}
+      searchText={item => `${item.name} ${item.id} ${item.description} ${item.endpointIds.map(id => `${id} ${endpointName(id)}`).join(' ')}`}
+      filter={{ label: t("resourceList.statusAndChanges"), options: [{ value: '', label: translate('resourceList.allStatuses') }, { value: 'pending', label: t('routing.changeStatus.pending') }, ...['unpublished', 'distributing', 'active', 'failed'].map(value => ({ value, label: rolloutLabel(value, t) }))], matches: (item, value) => value === "pending" ? Boolean(item.pendingChangeRequest) : item.rolloutStatus === value }}
+      loading={routers.isPending} refreshing={routers.isFetching || endpoints.isFetching} error={routers.error} onRefresh={() => { void queryClient.invalidateQueries({ queryKey: trafficRouterKeys.all }); void endpoints.refetch(); }}
+      emptyTitle={t("routing.noRoutersYet")} emptyDescription={t("routing.chooseSourceEndpointsRoutingRulesAndADefaultGuardrail")}
+      action={hasPermission(auth.user?.role, "routers", "write") ? <Button variant="create" size="lg" onClick={() => setOpen(true)}><Plus />{t("routing.createRouter")}</Button> : undefined}>
+      {items => <Table className="resource-table resource-router-table" aria-label={t("routing.trafficRouters")}><TableHeader><TableRow>
+        {[localize("routing.router"), localize("routing.endpoints2"), t("routing.routingCount"), t("routing.24hCalls"), t("routing.publishedRevision")].map((label, index) => <TableHead key={label} className={index === 0 ? 'resource-name-column' : index === 1 ? 'resource-endpoints-column' : index === 2 ? 'resource-routes-column' : index === 4 ? 'resource-rollout-column' : undefined}>{label}</TableHead>)}
+        <TableHead className="resource-actions-column"><span className="sr-only">{t("routing.actions")}</span></TableHead>
+      </TableRow></TableHeader><TableBody>{items.map(router => <RouterRow key={router.id} router={router} endpointName={endpointName} onDelete={hasPermission(auth.user?.role, "routers", "write") ? () => setDeleting(router) : undefined} onOpen={() => void navigate({ to: '/$projectId/integration/routers/$routerId', params: { ...projectParams(), routerId: router.id } })} />)}</TableBody></Table>}
+    </ResourceList>
+    {open && <CreateRouterSheet open onOpenChange={setOpen} onCreated={router => { setOpen(false); void navigate({ to: "/$projectId/integration/routers/$routerId", params: { ...projectParams(), routerId: router.id }, search: { tab: "routing" } }); }} />}
+    {deleting && <DeleteTrafficRouterSheet router={deleting} onClose={() => setDeleting(null)} />}
   </section>;
 }
-function RouterRow({ router, endpointName }: { router: TrafficRouter; endpointName: (id: string) => string }) {
-  const t = useRoutingText();
-  const metrics = useQuery({ queryKey: [...trafficRouterKeys.detail(router.id), 'distribution', 24], queryFn: () => getRouterDistribution(router.id), retry: false });
-  const fallbackIds = new Set(router.activeSnapshot?.routes.filter(r => r.kind === 'fallback').map(r => r.id));
-  const fallback = metrics.data?.rows.filter(r => r.routeId !== null && fallbackIds.has(r.routeId)).reduce((n, r) => n + r.count, 0) ?? 0;
-  return <tr className="border-b last:border-0"><td className="p-4"><Link className="inline-flex min-h-11 items-center gap-2 font-medium text-primary" to="/integration/routers/$routerId" params={{ routerId: router.id }}><GitBranch aria-hidden="true" className="size-4 shrink-0" /><span>{router.name}</span></Link><p className="max-w-xs text-xs text-muted-foreground">{router.description}</p></td><td className="p-4">{router.endpointIds.length ? router.endpointIds.map(endpointName).join(', ') : t('未接入', 'Unbound')}</td><td className="p-4 tabular-nums">{router.draft.routes.filter(r => r.kind === 'normal' && r.enabled).length} + 1 Fallback</td><td className="p-4 tabular-nums">{metrics.error ? t('数据暂不可用', 'Data unavailable') : metrics.data ? metrics.data.total.toLocaleString() : '—'}</td><td className="p-4">{metrics.data ? share(fallback, metrics.data.total) : '—'}</td><td className="p-4"><RouterStatus router={router} /></td><td className="p-4 text-right"><DropdownMenu><DropdownMenuTrigger asChild><Button variant="ghost" size="icon" aria-label={`Actions for ${router.name}`}><MoreHorizontal /></Button></DropdownMenuTrigger><DropdownMenuContent align="end">
-    <DropdownMenuItem asChild><Link to="/integration/routers/$routerId" params={{routerId: router.id}}><ArrowUpRight />{t('查看详情', 'View details')}</Link></DropdownMenuItem>
-    <DropdownMenuItem asChild><Link to="/integration/routers/$routerId" params={{routerId: router.id}} search={{tab: 'revisions'}}><History />{t('查看版本', 'View revisions')}</Link></DropdownMenuItem>
-  </DropdownMenuContent></DropdownMenu></td></tr>;
-}
-export function RouterStatus({ router, revisionLabel }: { router: TrafficRouter; revisionLabel?: string }) {
-  const t = useRoutingText();
-  return <span className="text-sm">{router.rolloutStatus === 'failed' ? t('分发失败', 'Rollout failed') : router.rolloutStatus === 'active' ? t('已生效', 'Active') : router.rolloutStatus === 'distributing' ? t('分发中', 'Distributing') : t('未发布', 'Unpublished')}{router.activeRevision ? ` · ${revisionLabel ?? `r${router.activeRevision}`}` : ''}{router.draftRevision !== router.activeDraftRevision && ` · ${t('有草稿', 'Draft changes')}`}</span>;
-}
 
+function RouterRow({ router, endpointName, onOpen, onDelete }: { router: TrafficRouter; endpointName: (id: string) => string; onOpen: () => void; onDelete?: () => void }) {
+  const { t: localize } = useTranslation();
+  const { t } = useTranslation();
+  const user = useAuth().user;
+  const metrics = useQuery({ queryKey: [...trafficRouterKeys.detail(router.id), 'distribution', 24], queryFn: () => getRouterDistribution(router.id), retry: false });
+  const revisions = useQuery({ queryKey: [...trafficRouterKeys.detail(router.id), 'revisions'], queryFn: () => getRouterRevisions(router.id), enabled: router.activeRevision !== null });
+  const activeRevision = revisions.data?.items.find(revision => revision.revision === router.activeRevision);
+  return <TableRow className="resource-row" onClick={onOpen}><TableCell><Link className="resource-name" onClick={event => event.stopPropagation()} to="/$projectId/integration/routers/$routerId" params={{ ...projectParams(), routerId: router.id }}><GitBranch aria-hidden="true" className="size-4 shrink-0" /><span>{router.name}</span></Link><span className="resource-secondary" title={router.description || router.id}>{router.description || router.id}</span></TableCell><TableCell>{router.endpointIds.length ? router.endpointIds.map(id => <Link params={projectParams()} key={id} to="/$projectId/integration/endpoints" search={{ endpointId: id }} onClick={event => event.stopPropagation()} className="resource-related-link">{endpointName(id)}</Link>) : t("routing.unbound")}</TableCell><TableCell className="tabular-nums">{router.draft.routes.filter(r => r.kind === 'normal' && r.enabled).length} + 1 {localize("routing.fallback")}</TableCell><TableCell className="tabular-nums">{metrics.error ? t("routing.dataUnavailable") : metrics.data ? metrics.data.total.toLocaleString() : '—'}</TableCell><TableCell><RouterRolloutBadge router={router} revision={activeRevision} />{router.pendingChangeRequest ? <Link className="resource-related-link resource-pending-link" to="/$projectId/integration/routers/$routerId" params={{ ...projectParams(), routerId: router.id }} search={{ tab: 'change-requests' }} onClick={event => event.stopPropagation()}>{t("routing.changeStatus.pending")}</Link> : router.draftRevision !== router.activeDraftRevision && <span className="resource-secondary">{t("routing.draftChanges")}</span>}</TableCell><TableCell className="resource-actions-column" onClick={event => event.stopPropagation()}><DropdownMenu><DropdownMenuTrigger asChild><Button variant="ghost" size="icon" aria-label={`${t("routing.actions")}: ${router.name}`}><MoreHorizontal /></Button></DropdownMenuTrigger><DropdownMenuContent align="end">
+    <DropdownMenuItem asChild><Link to="/$projectId/integration/routers/$routerId" params={{ ...projectParams(),routerId: router.id}}><ArrowUpRight />{t("routing.viewDetails")}</Link></DropdownMenuItem>
+    <DropdownMenuItem asChild><Link to="/$projectId/integration/routers/$routerId" params={{ ...projectParams(),routerId: router.id}} search={{tab: 'revisions'}}><History />{t("routing.viewRevisions")}</Link></DropdownMenuItem>
+    {onDelete && (!router.projectId || router.projectId === user?.project_id) && <DropdownMenuItem variant="destructive" onSelect={onDelete}><Trash2 />{t("routing.delete")}</DropdownMenuItem>}
+  </DropdownMenuContent></DropdownMenu></TableCell></TableRow>;
+}
 export function TrafficScopeBadges({ router }: { router: TrafficRouter }) {
-  const legacy = router as TrafficRouter & { traffic_scope?: { conditions?: unknown[] }; is_default?: boolean };
-  if (!router.activeSnapshot && legacy.traffic_scope) {
-    return <div className="flex flex-wrap gap-2 text-xs"><span className="rounded border px-2 py-1">{legacy.is_default ? 'routers.unmatchedTraffic' : 'All traffic'}</span></div>;
-  }
-  return <div className="flex flex-wrap gap-2 text-xs">{router.activeSnapshot?.routes.map(route => <span key={route.id} className="rounded border px-2 py-1">{route.name} · {route.kind === 'fallback' ? 'Fallback' : route.enabled ? 'Enabled' : 'Disabled'} · {route.targets.map(target => `${target.guardrailId} ${target.guardrailVersion} ${target.weightBps / 100}%`).join(' / ')}</span>)}</div>;
+  const { t: localize } = useTranslation();
+  return <div className="flex flex-wrap gap-2 text-xs">{router.activeSnapshot?.routes.map(route => <span key={route.id} className="rounded border px-2 py-1">{route.name} · {route.kind === 'fallback' ? localize("routing.fallback") : route.enabled ? localize("routing.enabled") : localize("routing.disabled")} · {route.targets.map(target => `${target.guardrailId} ${target.guardrailVersion} ${target.weightBps / 100}%`).join(' / ')}</span>)}</div>;
 }

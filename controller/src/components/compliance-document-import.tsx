@@ -20,20 +20,24 @@ const SUPPORTED_EXTENSIONS = [".doc", ".docx", ".txt"];
 
 export function ComplianceDocumentImport({
   available,
+  topicOnly = false,
   analystProvider,
   analystModel,
   language,
   policies,
   resetKey,
   onApply,
+  applyBlockedReason,
 }: {
   available: boolean;
+  topicOnly?: boolean;
   analystProvider?: string | null;
   analystModel?: string | null;
   language: "en" | "zh-CN";
   policies: Policy[];
   resetKey: number;
   onApply: (analysis: ComplianceDocumentAnalysis) => void;
+  applyBlockedReason?: (analysis: ComplianceDocumentAnalysis) => string | null;
 }) {
   const { t, i18n } = useTranslation();
   const inputRef = useRef<HTMLInputElement>(null);
@@ -105,6 +109,7 @@ export function ComplianceDocumentImport({
     analyze.reset();
   }
 
+  const applyBlocker = analysis ? applyBlockedReason?.(analysis) : null;
   const policyNames = new Map(policies.map((policy) => [policy.id, policy.name]));
   const analyst = [analystProvider, analystModel].filter(Boolean).join(" · ");
 
@@ -116,7 +121,7 @@ export function ComplianceDocumentImport({
             <span className="grid size-8 shrink-0 place-items-center rounded-lg bg-primary/10 text-primary"><FileText className="size-4" /></span>
             <div>
               <h4 id="compliance-document-title" className="text-sm font-semibold">{t("guardrailWizard.documentImportTitle")}</h4>
-              <p className="mt-0.5 text-xs leading-5 text-muted-foreground">{t("guardrailWizard.documentImportDescription")}</p>
+              <p className="mt-0.5 text-xs leading-5 text-muted-foreground">{t(topicOnly ? "protection.topicRules.helperHint" : "guardrailWizard.documentImportDescription")}</p>
             </div>
           </div>
         </div>
@@ -200,7 +205,7 @@ export function ComplianceDocumentImport({
             <header className="flex flex-wrap items-start justify-between gap-3 border-b bg-muted/20 p-3">
               <div>
                 <h5 className="text-sm font-semibold">{t("guardrailWizard.documentDraftReady")}</h5>
-                <p className="mt-1 text-xs text-muted-foreground">{t("guardrailWizard.documentDraftSummary", { requirements: analysis.requirements.length, policies: analysis.recommended_policy_ids.length })}</p>
+                {!topicOnly ? <p className="mt-1 text-xs text-muted-foreground">{t("guardrailWizard.documentDraftSummary", { requirements: analysis.requirements.length, policies: analysis.recommended_policy_ids.length })}</p> : null}
               </div>
               <Badge variant="outline" className={cn(applied && "border-emerald-200 bg-emerald-50 text-emerald-700")}>
                 {applied ? <Check /> : <Sparkles />}{t(applied ? "guardrailWizard.documentApplied" : "guardrailWizard.documentDraft")}
@@ -212,7 +217,10 @@ export function ComplianceDocumentImport({
                 <p className="mt-1 text-sm leading-6">{analysis.summary}</p>
               </div>
 
-              {analysis.recommended_policy_ids.length ? (
+              <div className="grid gap-4 sm:grid-cols-2">{([['topicControl.allowed', analysis.allowed_topics], ['topicControl.denied', analysis.restricted_topics]] as const).map(([label, values]) => <div key={label}><h5 className="text-sm font-medium">{t(label)}</h5><ul className="mt-2 list-disc space-y-1 pl-5 text-xs leading-5">{values.map(value => <li key={value}>{value}</li>)}</ul>{!values.length ? <p className="mt-2 text-xs text-muted-foreground">{t('topicControl.empty')}</p> : null}</div>)}</div>
+              <p className="text-xs text-muted-foreground">{t('topicControl.denyPriority')}</p>
+
+              {!topicOnly && analysis.recommended_policy_ids.length ? (
                 <div>
                   <p className="text-xs font-medium text-muted-foreground">{t("guardrailWizard.documentRecommendedPolicies")}</p>
                   <div className="mt-2 flex flex-wrap gap-2">
@@ -241,8 +249,8 @@ export function ComplianceDocumentImport({
               ) : null}
 
               <div className="flex flex-col gap-2 border-t pt-4 sm:flex-row sm:items-center sm:justify-between">
-                <p className="text-xs leading-5 text-muted-foreground">{t("guardrailWizard.documentApplyDescription")}</p>
-                <Button type="button" className="min-h-11" disabled={applied} onClick={() => { onApply(analysis); setApplied(true); }}>
+                <p role={applyBlocker ? "status" : undefined} className="text-xs leading-5 text-muted-foreground">{applyBlocker ?? t(topicOnly ? "protection.topicRules.helperHint" : "guardrailWizard.documentApplyDescription")}</p>
+                <Button type="button" className="min-h-11" disabled={applied || Boolean(applyBlocker)} onClick={() => { if (applyBlocker) return; onApply(analysis); setApplied(true); }}>
                   <Check />{t(applied ? "guardrailWizard.documentApplied" : "guardrailWizard.documentApply")}
                 </Button>
               </div>

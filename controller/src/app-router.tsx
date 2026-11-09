@@ -1,31 +1,61 @@
-import { createBrowserHistory, createRootRoute, createRoute, createRouter, Navigate, redirect, useRouterState } from "@tanstack/react-router";
+import { runtimeMetricKeys, type RuntimeMetricKey } from "@/features/runtime-metrics";
+import { runtimeLogOutcomes, type RuntimeLogOutcome } from "../shared/runtime-outcome";
+import { auditLogSearch } from "../shared/audit-query";
+import { selectedSeverities } from "../shared/security-severity";
+import { createBrowserHistory, createRootRoute, createRoute, createRouter, Navigate, notFound, redirect, useRouterState } from "@tanstack/react-router";
 
 import { ControlPlaneLayout } from "@/routes/layout";
 import { GuardrailDetailPage, GuardrailsPage } from "@/routes/guardrails";
 import { RoutersPage } from "@/routes/routers";
 import { RouterDetailPage } from "@/routes/router-detail";
+import { BillingPage } from "@/routes/billing";
 import { LogsPage } from "@/routes/logs";
 import { EndpointsPage } from "@/routes/endpoints";
 import { PlaygroundPage } from "@/routes/playground";
 import { UsersPage } from "@/routes/users";
+import { ProjectsPage } from "@/routes/projects";
 import { DashboardPage } from "@/routes/dashboard";
 import { PolicyLibraryPage } from "@/routes/policy-library";
 import { AccountPage } from "@/routes/account";
-import { HelpPage } from "@/routes/help";
+import { HelpPage, DocumentNotFound } from "@/routes/help";
+import { getHelpContent } from "@/features/help-content";
 import { AuditLogPage } from "@/routes/audit-log";
+import { VersionPage } from "@/routes/version";
 import { HealthPage } from "@/routes/status";
-import { RunnerPage } from "@/routes/runner";
+import { ProjectRunnerPage, RunnerPage } from "@/routes/runner";
 import { GuardrailCatalogPage, ModelsPage, ProvidersPage } from "@/routes/models";
 import { policyLibrarySearch } from "@/lib/policy-library-search";
 import { isGuardrailVersionId } from "../shared/guardrail-version";
+import { reservedProjectPaths } from "../shared/console-paths";
+import { projectParams } from "@/lib/project-paths";
+import { projectIdSchema } from "../shared/projects";
 
 const rootRoute = createRootRoute({ component: ControlPlaneLayout });
-const indexRoute = createRoute({ getParentRoute: () => rootRoute, path: "/", component: () => <Navigate to="/dashboard" replace /> });
-const dashboardRoute = createRoute({ getParentRoute: () => rootRoute, path: "/dashboard", component: DashboardPage });
-const guardrailsRoute = createRoute({ getParentRoute: () => rootRoute, path: "/guardrails", component: GuardrailsPage });
-const guardrailDetailRoute = createRoute({ getParentRoute: () => rootRoute, path: "/guardrails/$guardrailId", component: GuardrailDetailPage });
-const policyLibraryRoute = createRoute({ getParentRoute: () => rootRoute, path: "/policy-library", validateSearch: policyLibrarySearch, component: PolicyLibraryPage });
+const indexRoute = createRoute({ getParentRoute: () => rootRoute, path: "/", component: () => null });
+const projectRoute = createRoute({ getParentRoute: () => rootRoute, path: "/$projectId", beforeLoad: ({ params }) => {
+  if (!projectIdSchema.safeParse(params.projectId).success || reservedProjectPaths.has(params.projectId)) throw notFound();
+} });
+const dashboardRoute = createRoute({ getParentRoute: () => projectRoute, path: "/", component: DashboardPage });
+const guardrailsRoute = createRoute({ getParentRoute: () => projectRoute, path: "guardrails", component: GuardrailsPage });
+const guardrailDetailRoute = createRoute({ getParentRoute: () => projectRoute, path: "guardrails/$guardrailId", validateSearch: (search: Record<string, unknown>): { tab?: string; report?: string; version?: string; compare?: string; window?: "1h" | "24h" | "7d" | "15d" | "30d"; severity?: string; pageSize?: 25 | 50; metric?: RuntimeMetricKey } => ({
+  version: typeof search.version === "string" && search.version ? search.version : undefined,
+  compare: typeof search.compare === "string" && search.compare ? search.compare : undefined,
+  // The open Testing Report is addressable: refresh, deep link and Back all work.
+  report: typeof search.report === "string" && search.report ? search.report : undefined,
+  tab: ["runtime", "event", "immutable", "testing", "draft"].includes(String(search.tab)) ? String(search.tab) : undefined,
+  window: ["1h", "24h", "7d", "15d", "30d"].includes(String(search.window)) ? search.window as "1h" | "24h" | "7d" | "15d" | "30d" : undefined,
+  metric: runtimeMetricKeys.includes(search.metric as RuntimeMetricKey) ? search.metric as RuntimeMetricKey : undefined,
+  severity: selectedSeverities(search.severity).join(",") || undefined,
+  pageSize: Number(search.pageSize) === 50 ? 50 : undefined,
+}), component: GuardrailDetailPage });
+const policyLibraryRoute = createRoute({ getParentRoute: () => projectRoute, path: "policy-library", validateSearch: policyLibrarySearch, component: PolicyLibraryPage });
 const guardrailSearch = (search: Record<string, unknown>) => ({ guardrail: typeof search.guardrail === "string" ? search.guardrail : undefined });
+const billingRoute = createRoute({ getParentRoute: () => projectRoute, path: "billing", validateSearch: guardrailSearch, component: BillingRoutePage });
+function BillingRoutePage() {
+  const { guardrail } = billingRoute.useSearch();
+  const navigate = billingRoute.useNavigate();
+  return <BillingPage guardrailId={guardrail} onGuardrailChange={id => void navigate({ search: { guardrail: id } })} />;
+}
 const playgroundSearch = (search: Record<string, unknown>): { guardrail?: string; target?: "draft"; version?: string; mode?: "advanced"; router?: string; endpoint?: string } => {
   return {
     ...guardrailSearch(search),
@@ -36,32 +66,33 @@ const playgroundSearch = (search: Record<string, unknown>): { guardrail?: string
     version: isGuardrailVersionId(search.version) ? search.version : undefined,
   };
 };
-const playgroundRoute = createRoute({ getParentRoute: () => rootRoute, path: "/playground", validateSearch: playgroundSearch, component: PlaygroundPage });
-const routersRoute = createRoute({ getParentRoute: () => rootRoute, path: "/integration/routers", component: RoutersPage });
-const routerDetailRoute = createRoute({ getParentRoute: () => rootRoute, path: "/integration/routers/$routerId", validateSearch: (search: Record<string, unknown>): { routeId?: string; tab?: string } => ({ routeId: typeof search.routeId === "string" ? search.routeId : undefined, tab: ['overview', 'endpoints', 'routing', 'monitoring', 'revisions'].includes(String(search.tab)) ? String(search.tab) : undefined }), component: RouterDetailPage });
-const endpointRoute = createRoute({
-  getParentRoute: () => rootRoute,
-  path: "/integration/endpoint",
+const playgroundRoute = createRoute({ getParentRoute: () => projectRoute, path: "playground", validateSearch: playgroundSearch, component: PlaygroundPage });
+const routersRoute = createRoute({ getParentRoute: () => projectRoute, path: "integration/routers", component: RoutersPage });
+const routerDetailRoute = createRoute({ getParentRoute: () => projectRoute, path: "integration/routers/$routerId", validateSearch: (search: Record<string, unknown>): { routeId?: string; tab?: string } => ({ routeId: typeof search.routeId === "string" ? search.routeId : undefined, tab: ['overview', 'endpoints', 'routing', 'monitoring', 'revisions', 'change-requests'].includes(String(search.tab)) ? String(search.tab) : undefined }), component: RouterDetailPage });
+const endpointsRoute = createRoute({
+  getParentRoute: () => projectRoute, path: "integration/endpoints",
   validateSearch: (search: Record<string, unknown>): { endpointId?: string } => ({
     endpointId: typeof search.endpointId === "string" && search.endpointId.trim() ? search.endpointId : undefined,
   }),
-  component: EndpointRoutePage,
+  component: EndpointsRoutePage,
 });
-function EndpointRoutePage() {
-  const { endpointId } = endpointRoute.useSearch();
-  const navigate = endpointRoute.useNavigate();
+function EndpointsRoutePage() {
+  const { endpointId } = endpointsRoute.useSearch();
+  const navigate = endpointsRoute.useNavigate();
   return <EndpointsPage endpointId={endpointId} onEndpointChange={(id) => {
     // Closing a URL-driven sheet must not add a history entry that Back reopens.
     if (id === endpointId) return;
     void navigate({ search: (previous) => ({ ...previous, endpointId: id }), replace: id === undefined });
   }} />;
 }
-const logsRoute = createRoute({ getParentRoute: () => rootRoute, path: "/logs", validateSearch: (search: Record<string, unknown>): { routerId?: string; routeId?: string; targetId?: string; routerRevision?: number; since?: string; until?: string; endpointId?: string } => ({
-  ...Object.fromEntries(['routerId', 'routeId', 'targetId', 'endpointId', 'since', 'until'].flatMap(key => typeof search[key] === 'string' ? [[key, search[key]]] : [])),
+const logsRoute = createRoute({ getParentRoute: () => projectRoute, path: "logs", validateSearch: (search: Record<string, unknown>): { requestId?: string; checkpointId?: string; eventId?: string; outcome?: RuntimeLogOutcome; guardrailId?: string; routerId?: string; routeId?: string; targetId?: string; routerRevision?: number; since?: string; until?: string; endpointId?: string } => ({
+  ...Object.fromEntries(['requestId', 'checkpointId', 'eventId', 'guardrailId', 'routerId', 'routeId', 'targetId', 'endpointId', 'since', 'until'].flatMap(key => typeof search[key] === 'string' && search[key].trim() ? [[key, search[key]]] : [])),
+  ...(runtimeLogOutcomes.includes(search.outcome as RuntimeLogOutcome) ? { outcome: search.outcome as RuntimeLogOutcome } : {}),
   ...(Number.isInteger(Number(search.routerRevision)) && Number(search.routerRevision) > 0 ? { routerRevision: Number(search.routerRevision) } : {}),
 }), component: LogsPage });
-const auditLogRoute = createRoute({ getParentRoute: () => rootRoute, path: "/audit-log", component: AuditLogPage });
+const auditLogRoute = createRoute({ getParentRoute: () => rootRoute, path: "/audit-log", validateSearch: auditLogSearch, component: AuditLogPage });
 const usersRoute = createRoute({ getParentRoute: () => rootRoute, path: "/access", component: UsersPage });
+const projectsRoute = createRoute({ getParentRoute: () => rootRoute, path: "/access/projects", component: ProjectsPage });
 const accountRoute = createRoute({ getParentRoute: () => rootRoute, path: "/account", component: AccountRoutePage });
 function AccountRoutePage() {
   const path = useRouterState({ select: state => state.location.pathname.replace(/\/$/, "") });
@@ -69,35 +100,58 @@ function AccountRoutePage() {
 }
 const accountSecurityRoute = createRoute({ getParentRoute: () => accountRoute, path: "security", component: () => null });
 const accountTokensRoute = createRoute({ getParentRoute: () => accountRoute, path: "access-tokens", component: () => null });
-const accountGeneralRoute = createRoute({ getParentRoute: () => accountRoute, path: "general", beforeLoad: () => { throw redirect({ to: "/account", replace: true }); } });
 const settingsRoute = createRoute({ getParentRoute: () => rootRoute, path: "/settings", component: () => <Navigate to="/settings/health" replace /> });
+const versionRoute = createRoute({ getParentRoute: () => rootRoute, path: "/settings/version", component: VersionPage });
 const healthRoute = createRoute({ getParentRoute: () => rootRoute, path: "/settings/health", component: HealthPage });
 const runnerRoute = createRoute({ getParentRoute: () => rootRoute, path: "/settings/runner", component: RunnerPage });
+const projectSettingsRoute = createRoute({ getParentRoute: () => projectRoute, path: "settings", component: () => <Navigate to="/$projectId/settings/health" params={projectParams()} replace /> });
+const projectHealthRoute = createRoute({ getParentRoute: () => projectRoute, path: "settings/health", component: HealthPage });
+const projectRunnerRoute = createRoute({ getParentRoute: () => projectRoute, path: "settings/runner", component: ProjectRunnerPage });
+const projectVersionRoute = createRoute({ getParentRoute: () => projectRoute, path: "settings/version", component: VersionPage });
 const providersRoute = createRoute({ getParentRoute: () => rootRoute, path: "/settings/providers", component: ProvidersPage });
-const modelsRoute = createRoute({ getParentRoute: () => rootRoute, path: "/settings/models", component: ModelsPage });
-const guardrailCatalogRoute = createRoute({ getParentRoute: () => rootRoute, path: "/settings/guardrail-catalog", component: GuardrailCatalogPage });
-const helpRoute = createRoute({ getParentRoute: () => rootRoute, path: "/help", component: HelpPage });
+const modelsRoute = createRoute({ getParentRoute: () => rootRoute, path: "/settings/models", validateSearch: (search: Record<string, unknown>) => ({ tab: search.tab === "pricing" ? "pricing" : undefined }), component: ModelsPage });
+const protectionCapabilitiesRoute = createRoute({ getParentRoute: () => rootRoute, path: "/settings/protection-capabilities", component: GuardrailCatalogPage });
+const documentRoute = createRoute({ getParentRoute: () => rootRoute, path: "/document", notFoundComponent: DocumentNotFound });
+const documentIndexRoute = createRoute({
+  getParentRoute: () => documentRoute,
+  path: "/",
+  beforeLoad: () => { throw redirect({ to: "/document/$categoryId/$articleId", params: { categoryId: "overview", articleId: "quickstart-protection" }, replace: true }); },
+});
+const documentArticleRoute = createRoute({
+  getParentRoute: () => documentRoute,
+  path: "$categoryId/$articleId",
+  beforeLoad: ({ params }) => {
+    if (!getHelpContent("en").documents.some(document => document.categoryId === params.categoryId && document.id === params.articleId)) throw notFound();
+  },
+  component: HelpPage,
+});
 export const routeTree = rootRoute.addChildren([
   indexRoute,
-  dashboardRoute,
-  guardrailsRoute,
-  guardrailDetailRoute,
-  policyLibraryRoute,
-  playgroundRoute,
-  routersRoute,
-  routerDetailRoute,
-  endpointRoute,
-  logsRoute,
+  projectRoute.addChildren([
+    dashboardRoute,
+    guardrailsRoute,
+    guardrailDetailRoute,
+    policyLibraryRoute,
+    playgroundRoute,
+    routersRoute,
+    routerDetailRoute,
+    endpointsRoute,
+    logsRoute,
+    billingRoute,
+    projectSettingsRoute, projectHealthRoute, projectRunnerRoute, projectVersionRoute,
+  ]),
   auditLogRoute,
   usersRoute,
-  accountRoute.addChildren([accountSecurityRoute, accountTokensRoute, accountGeneralRoute]),
+  projectsRoute,
+  accountRoute.addChildren([accountSecurityRoute, accountTokensRoute]),
   settingsRoute,
   healthRoute,
+  versionRoute,
   runnerRoute,
   providersRoute,
   modelsRoute,
-  guardrailCatalogRoute,
-  helpRoute,
+  protectionCapabilitiesRoute,
+  documentRoute.addChildren([documentIndexRoute, documentArticleRoute]),
 ]);
-export const router = createRouter({ routeTree, history: createBrowserHistory() });
+export const router = createRouter({ routeTree, history: createBrowserHistory(), trailingSlash: "never" });
 declare module "@tanstack/react-router" { interface Register { router: typeof router } }

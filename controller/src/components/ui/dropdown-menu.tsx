@@ -1,99 +1,129 @@
-import * as React from "react";
-import { Check, ChevronRight, Circle } from "lucide-react";
-import { DropdownMenu as DropdownMenuPrimitive } from "radix-ui";
-
+import { isValidElement, useId, type ReactNode, type ComponentProps } from "react";
+import { OverflowMenu, OverflowMenuItem } from "@carbon/react";
+import { findSlots, textContent } from "@/components/carbon/composition";
 import { cn } from "@/lib/utils";
-
-const DropdownMenu = DropdownMenuPrimitive.Root;
-const DropdownMenuTrigger = DropdownMenuPrimitive.Trigger;
-const DropdownMenuGroup = DropdownMenuPrimitive.Group;
-const DropdownMenuPortal = DropdownMenuPrimitive.Portal;
-const DropdownMenuSub = DropdownMenuPrimitive.Sub;
-const DropdownMenuRadioGroup = DropdownMenuPrimitive.RadioGroup;
-
-function DropdownMenuContent({ className, sideOffset = 6, ...props }: React.ComponentProps<typeof DropdownMenuPrimitive.Content>) {
+type SlotProps = { children?: ReactNode; className?: string };
+export function DropdownMenu({ children }: SlotProps) {
+  const labelId = useId();
+  const trigger = findSlots(children, DropdownMenuTrigger)[0];
+  const content = findSlots(children, DropdownMenuContent)[0];
+  const side = content?.props.side === "top" ? "top" : "bottom";
+  const offset: Exclude<ComponentProps<typeof OverflowMenu>["menuOffset"], undefined> =
+    (menu, direction, target, flipped) => ({
+      left: (flipped ? -1 : 1) * (menu.offsetWidth - (target?.offsetWidth ?? 0)) / 2,
+      top: (direction === "top" ? -1 : 1) * Number(content?.props.sideOffset ?? 8),
+    });
+  const child = trigger?.props.children;
+  const childProps = isValidElement<Record<string, unknown>>(child)
+    ? child.props
+    : {};
+  const label = String(
+    childProps["aria-label"] ??
+      (textContent(childProps.children as ReactNode) || "Actions"),
+  );
+  const Icon = () => (
+    <span className="guard-menu-trigger-content">
+      {childProps.children as ReactNode}
+    </span>
+  );
   return (
-    <DropdownMenuPrimitive.Portal>
-      <DropdownMenuPrimitive.Content
-        data-slot="dropdown-menu-content"
-        sideOffset={sideOffset}
-        className={cn(
-          "z-50 min-w-44 origin-(--radix-dropdown-menu-content-transform-origin) overflow-hidden rounded-xl border bg-popover p-1 text-popover-foreground shadow-lg data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95",
-          className,
+    <>
+      {/* Keep the trigger name independent of the transient floating tooltip. */}
+      <span id={labelId} className="sr-only">{label}</span>
+      <OverflowMenu
+        autoAlign
+        align={content?.props.align === "end" ? "top-end" : "top-start"}
+        aria-label={label}
+        aria-labelledby={labelId}
+        iconDescription={label}
+        renderIcon={Icon}
+        size="md"
+        direction={side}
+        menuOffset={offset}
+        menuOffsetFlip={offset}
+        flipped={content?.props.align === "end"}
+        className={cn("guard-overflow-menu", childProps.className as string)}
+        menuOptionsClass={cn(
+          "guard-menu-options",
+          content?.props.className as string,
         )}
-        {...props}
-      />
-    </DropdownMenuPrimitive.Portal>
+        disabled={Boolean(childProps.disabled)}
+      >
+        {content?.props.children as ReactNode}
+      </OverflowMenu>
+    </>
   );
 }
-
-function DropdownMenuItem({ className, inset, variant = "default", ...props }: React.ComponentProps<typeof DropdownMenuPrimitive.Item> & { inset?: boolean; variant?: "default" | "edit" | "destructive" }) {
+export function DropdownMenuTrigger(
+  _props: ComponentProps<"button"> & { asChild?: boolean },
+) {
+  return null;
+}
+export function DropdownMenuContent(
+  _props: SlotProps & {
+    align?: string;
+    side?: string;
+    sideOffset?: number;
+    onCloseAutoFocus?: (e: Event) => void;
+  },
+) {
+  return null;
+}
+export function DropdownMenuItem({
+  children,
+  className,
+  asChild,
+  disabled,
+  variant,
+  onSelect,
+  onClick,
+  ...props
+}: Omit<ComponentProps<typeof OverflowMenuItem>, "onSelect"> & {
+  children?: ReactNode;
+  asChild?: boolean;
+  variant?: "default" | "edit" | "testing" | "destructive";
+  onSelect?: (event: Event) => void;
+}) {
+  const child =
+    asChild && isValidElement<Record<string, unknown>>(children)
+      ? children
+      : null;
+  let href = child?.props.to as string | undefined;
+  for (const [key, value] of Object.entries(
+    (child?.props.params as Record<string, string>) ?? {},
+  ))
+    href = href?.replace(`$${key}`, encodeURIComponent(value));
+  const search = child?.props.search as Record<string, string> | undefined;
+  if (href && search) href += `?${new URLSearchParams(search).toString()}`;
   return (
-    <DropdownMenuPrimitive.Item
-      data-slot="dropdown-menu-item"
-      data-inset={inset}
-      data-variant={variant}
-      className={cn(
-        "relative flex min-h-9 cursor-default items-center gap-2 rounded-lg px-2.5 py-2 text-sm outline-none select-none focus:bg-accent focus:text-accent-foreground data-disabled:pointer-events-none data-disabled:opacity-50 data-[inset=true]:pl-8 data-[variant=edit]:text-amber-900 data-[variant=edit]:focus:bg-amber-50 dark:data-[variant=edit]:text-amber-200 dark:data-[variant=edit]:focus:bg-amber-950 data-[variant=destructive]:text-destructive data-[variant=destructive]:focus:bg-destructive/10 [&_svg]:size-4 [&_svg]:shrink-0",
-        className,
-      )}
+    <OverflowMenuItem
       {...props}
+      data-slot="dropdown-menu-item"
+      className={cn(variant === "testing" && "guard-testing-menu-item", className)}
+      disabled={disabled}
+      isDelete={variant === "destructive"}
+      href={href}
+      itemText={
+        <span className="guard-menu-item-content">
+          {child ? (child.props.children as ReactNode) : children}
+        </span>
+      }
+      onClick={(event) => {
+        const select = new Event("select", { cancelable: true });
+        onSelect?.(select);
+        onClick?.(event);
+        if (select.defaultPrevented) event.preventDefault();
+      }}
     />
   );
 }
-
-function DropdownMenuLabel({ className, inset, ...props }: React.ComponentProps<typeof DropdownMenuPrimitive.Label> & { inset?: boolean }) {
-  return <DropdownMenuPrimitive.Label className={cn("px-2.5 py-1.5 text-xs font-medium text-muted-foreground data-[inset=true]:pl-8", className)} data-inset={inset} {...props} />;
-}
-
-function DropdownMenuSeparator({ className, ...props }: React.ComponentProps<typeof DropdownMenuPrimitive.Separator>) {
-  return <DropdownMenuPrimitive.Separator className={cn("-mx-1 my-1 h-px bg-border", className)} {...props} />;
-}
-
-function DropdownMenuShortcut({ className, ...props }: React.ComponentProps<"span">) {
-  return <span className={cn("ml-auto text-xs tracking-widest text-muted-foreground", className)} {...props} />;
-}
-
-function DropdownMenuCheckboxItem({ className, children, checked, ...props }: React.ComponentProps<typeof DropdownMenuPrimitive.CheckboxItem>) {
+export function DropdownMenuLabel({ children, className }: SlotProps) {
   return (
-    <DropdownMenuPrimitive.CheckboxItem className={cn("relative flex min-h-9 cursor-default items-center rounded-lg py-2 pr-2.5 pl-8 text-sm outline-none focus:bg-accent", className)} checked={checked} {...props}>
-      <span className="absolute left-2.5 flex size-4 items-center justify-center"><DropdownMenuPrimitive.ItemIndicator><Check className="size-4" /></DropdownMenuPrimitive.ItemIndicator></span>
+    <li role="presentation" className={cn("guard-menu-label", className)}>
       {children}
-    </DropdownMenuPrimitive.CheckboxItem>
+    </li>
   );
 }
-
-function DropdownMenuRadioItem({ className, children, ...props }: React.ComponentProps<typeof DropdownMenuPrimitive.RadioItem>) {
-  return (
-    <DropdownMenuPrimitive.RadioItem className={cn("relative flex min-h-9 cursor-default items-center rounded-lg py-2 pr-2.5 pl-8 text-sm outline-none focus:bg-accent", className)} {...props}>
-      <span className="absolute left-2.5 flex size-4 items-center justify-center"><DropdownMenuPrimitive.ItemIndicator><Circle className="size-2 fill-current" /></DropdownMenuPrimitive.ItemIndicator></span>
-      {children}
-    </DropdownMenuPrimitive.RadioItem>
-  );
+export function DropdownMenuSeparator() {
+  return <li role="separator" className="guard-menu-separator" />;
 }
-
-function DropdownMenuSubTrigger({ className, inset, children, ...props }: React.ComponentProps<typeof DropdownMenuPrimitive.SubTrigger> & { inset?: boolean }) {
-  return <DropdownMenuPrimitive.SubTrigger className={cn("flex min-h-9 cursor-default items-center gap-2 rounded-lg px-2.5 py-2 text-sm outline-none focus:bg-accent data-[state=open]:bg-accent data-[inset=true]:pl-8", className)} data-inset={inset} {...props}>{children}<ChevronRight className="ml-auto size-4" /></DropdownMenuPrimitive.SubTrigger>;
-}
-
-function DropdownMenuSubContent({ className, ...props }: React.ComponentProps<typeof DropdownMenuPrimitive.SubContent>) {
-  return <DropdownMenuPrimitive.SubContent className={cn("z-50 min-w-40 overflow-hidden rounded-xl border bg-popover p-1 shadow-lg", className)} {...props} />;
-}
-
-export {
-  DropdownMenu,
-  DropdownMenuCheckboxItem,
-  DropdownMenuContent,
-  DropdownMenuGroup,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuPortal,
-  DropdownMenuRadioGroup,
-  DropdownMenuRadioItem,
-  DropdownMenuSeparator,
-  DropdownMenuShortcut,
-  DropdownMenuSub,
-  DropdownMenuSubContent,
-  DropdownMenuSubTrigger,
-  DropdownMenuTrigger,
-};

@@ -5,6 +5,8 @@ from collections.abc import Mapping
 from typing import Any, Protocol
 
 import httpx
+from runner.model_validation_diagnostics import validation_http_hooks
+from ...runtime.failures import ModelConfigurationError, model_response
 
 from ...runtime.contracts import (
     AutomatedReasoningFinding,
@@ -44,6 +46,12 @@ class AutomatedReasoningProvider(Protocol):
     ) -> tuple[tuple[AutomatedReasoningFinding, ...], ActionUsage]: ...
 
 
+class ProofServiceError(RuntimeError):
+    def __init__(self, usage: ActionUsage):
+        super().__init__("Formal proof service request failed.")
+        self.usage = usage
+
+
 class HTTPAutomatedReasoningProvider:
     """Call a configured formal-reasoning endpoint using TaskLattice's provider contract."""
 
@@ -73,7 +81,7 @@ class HTTPAutomatedReasoningProvider:
     ) -> tuple[tuple[AutomatedReasoningFinding, ...], ActionUsage]:
         credential = self._credential()
         if not credential:
-            raise RuntimeError("Automated Reasoning provider credential is not configured.")
+            raise ModelConfigurationError("Automated Reasoning provider credential is not configured.")
         raise RuntimeError(
             "HTTPAutomatedReasoningProvider.evaluate requires ActionRequest context."
         )
@@ -88,35 +96,39 @@ class HTTPAutomatedReasoningProvider:
     ) -> tuple[tuple[AutomatedReasoningFinding, ...], ActionUsage]:
         credential = self._credential()
         if not credential:
-            raise RuntimeError("Automated Reasoning provider credential is not configured.")
-        with observe_model_call(
-            request,
-            provider="automated_reasoning",
-            model="formal_reasoning",
-            operation="policy_proof",
-        ) as call:
-            async with httpx.AsyncClient(
-                timeout=self._timeout_seconds,
-                transport=self._transport,
-                verify=not self._skip_tls_verify,
-            ) as client:
-                response = await client.post(
-                    self._endpoint_url,
-                    headers={"authorization": f"Bearer {credential}"},
-                    json={
-                        "policy": {
-                            "id": policy.policy_id,
-                            "version": policy.policy_version,
+            raise ModelConfigurationError("Automated Reasoning provider credential is not configured.")
+        try:
+            with observe_model_call(
+                request,
+                provider="automated_reasoning",
+                model="formal_reasoning",
+                operation="policy_proof",
+            ) as call:
+                async with httpx.AsyncClient(
+                    timeout=self._timeout_seconds,
+                    transport=self._transport,
+                    verify=not self._skip_tls_verify, event_hooks=validation_http_hooks(),
+                ) as client:
+                    response = await client.post(
+                        self._endpoint_url,
+                        headers={"authorization": f"Bearer {credential}"},
+                        json={
+                            "policy": {
+                                "id": policy.policy_id,
+                                "version": policy.policy_version,
+                            },
+                            "query_content": query_content,
+                            "guard_content": guard_content,
+                            "confidence_threshold": policy.confidence_threshold,
                         },
-                        "query_content": query_content,
-                        "guard_content": guard_content,
-                        "confidence_threshold": policy.confidence_threshold,
-                    },
-                )
-                response.raise_for_status()
-                payload = response.json()
-                findings = parse_reasoning_findings(payload)
-                call.complete(payload=payload)
+                    )
+                    response.raise_for_status()
+                    with model_response():
+                        payload = response.json()
+                        findings = parse_reasoning_findings(payload)
+                    call.complete(payload=payload)
+        except (httpx.HTTPError, KeyError, TypeError, ValueError) as error:
+            raise ProofServiceError(action_usage(call, len(query_content) + len(guard_content))) from error
         return findings, action_usage(call, len(query_content) + len(guard_content))
 
     def _credential(self) -> str:
@@ -143,13 +155,13 @@ class ReasoningActionProvider:
         active = view.active_block
         if "query" in active.qualifiers:
             return action_result(request,
-                "safe",
+                "not_matched",
                 request.content,
                 reason="The active block supplies reasoning context and is not an output target.",
             )
         if active.role != "model_output":
             return action_result(request,
-                "safe",
+                "not_matched",
                 request.content,
                 reason="Automated Reasoning evaluates complete model-output blocks only.",
             )
@@ -160,6 +172,7 @@ class ReasoningActionProvider:
                 "error",
                 request.content,
                 reason="Automated Reasoning plan step has no policy snapshot.",
+                error_source="configuration", error_category="configuration",
             )
         try:
             policy = request.plan.reasoning_policy(snapshot_id)
@@ -168,6 +181,7 @@ class ReasoningActionProvider:
                 "error",
                 request.content,
                 reason="Automated Reasoning policy snapshot is unavailable.",
+                error_source="configuration", error_category="configuration",
             )
 
         query_content = "\n".join(
@@ -193,6 +207,9 @@ class ReasoningActionProvider:
                 "error",
                 request.content,
                 reason=f"{self.name} evaluator failed: {type(error).__name__}.",
+                usage=error.usage if isinstance(error, ProofServiceError) else ActionUsage(),
+                error_source="configuration" if isinstance(error, ModelConfigurationError) else None,
+                error_category="configuration" if isinstance(error, ModelConfigurationError) else None,
             )
 
         if not findings:
@@ -203,26 +220,33 @@ class ReasoningActionProvider:
             )
         ordered = order_reasoning_findings(findings)
         result = aggregate_reasoning_result(ordered)
-        detected = result != "valid"
+        # The target is a demonstrated policy contradiction. A valid provider
+        # response that cannot establish validity or contradiction is inconclusive.
+        if any(item.result == "invalid" for item in ordered):
+            result = "invalid"
+        verdict = "not_matched" if result == "valid" else "matched" if result == "invalid" else "unknown"
         message = next(
             (item.message for item in ordered if item.result == result and item.message),
             _result_message(result),
         )
+        if any(item.confidence < policy.confidence_threshold for item in ordered):
+            verdict = "unknown"
+            message = "Formal proof confidence is below the Policy threshold."
         risk_finding = RiskFinding(
             risk=request.capability,
             taxonomy_id=taxonomy_for_evaluator(request.capability),
-            verdict="unsafe" if detected else "safe",
+            verdict=verdict,
             confidence=min(item.confidence for item in ordered),
             evidence=message,
-            recommended_action="pass",
+            recommended_action="allow",
             reasoning=ordered,
         )
         return action_result(request,
-            "unsafe" if detected else "safe",
+            verdict,
             request.content,
             findings=(
                 (risk_finding,)
-                if detected or request.evidence_scope == "full"
+                if verdict != "not_matched" or request.evidence_scope == "full"
                 else ()
             ),
             reason=message,

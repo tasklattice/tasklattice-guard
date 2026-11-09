@@ -1,0 +1,109 @@
+---
+id: "operator-metrics"
+title: "业务统计与 Prometheus Metrics"
+summary: "Controller 和 Runner 都有指标。业务统计 API 与 Prometheus 采集接口的用途及凭据不同。"
+order: 5
+---
+业务统计用于查看已上报流量，Prometheus 用于监测服务运行。两者的接口和凭据不同。
+
+<a id="operator-business-metrics" />
+## 查询业务统计
+
+以下 API 使用浏览器 Session，或具备对应授权和账户权限的个人 Token。
+
+| API | 授权 | 用途 |
+| --- | --- | --- |
+| `GET /api/v1/telemetry/metrics` | `runtime:read`，User 角色 | 汇总运行事件，可按 window、`guardrailId` 和 `routerId` 筛选。 |
+| `GET /api/v1/telemetry/security-events` | `runtime:read`，User 角色 | 读取 finding，必须提供 `guardrailId`，可按 window 和逗号分隔的 severity 筛选。 |
+| `GET /api/v1/routers/{id}/traffic-distribution` | `routers:read` | 查询历史路由分布，也提供 Route 级查询。 |
+
+安全事件默认每页 25 条，也支持 `limit=50`。翻页时使用 `nextCursor`，保持筛选和页大小不变。游标固定时间范围与接收边界，不带游标可查询新的范围。
+
+事件列表独立于统计加载。统计失败不会禁用事件翻页。证据缺失时检查 `data_availability`。流量统计不能证明配置已经收敛。
+
+[业务统计契约](/api/openapi.json?operationId=getTelemetryMetrics)
+
+<a id="operator-prometheus" />
+## 配置 Prometheus 采集
+
+| 服务 | 地址 | 配置采集凭据后的认证 |
+| --- | --- | --- |
+| Controller | HTTP 地址上的 `/metrics` | `Authorization: Bearer <CONTROLLER_METRICS_TOKEN>` |
+| Runner | 每个实例 HTTP 地址上的 `/metrics`，默认容器端口 8091 | `Authorization: Bearer <GUARD_METRICS_TOKEN>` |
+
+采集凭据不是个人 Access Token。请在采集器中配置 Authorization Header。直接用浏览器打开受保护地址可能返回 `401`。
+
+Controller 的数据库指标使用十秒快照缓存，并发采集共享一次查询。计数器与进程指标仍实时读取，失败结果不进入缓存。
+
+[Controller 指标](/metrics) · [Runner 管理](/settings/runner) · [平台健康](/settings/health)
+
+<a id="operator-troubleshooting" />
+## 按顺序排查保护故障
+
+1. 检查 Endpoint 状态、凭据归属、Router 绑定与 Route 顺序。
+2. 核对确切的 Guardrail Version 和 checksum。
+3. 在[运行日志](/$projectId/logs)检查 Policy、Rule、检查点、Decision 和延迟。
+4. 检查专用模型或证明服务、网络和凭据。
+5. 区分排队饱和、执行时限、Provider 延迟与内容命中。
+
+<a id="runner-liveness-timeouts" />
+### 高级：排查 Runner liveness 超时
+
+以下步骤需要部署日志读取权限。进程仍在运行时，事件循环阻塞也可能导致 `/health/live` 超时。readiness `503` 和启动时连接被拒绝是不同信号。
+
+先记录 Kubernetes 的具体探针错误和容器退出原因。运行实例通过后台工作线程构建，准备失败时保留当前服务版本。
+
+只有已启用且权重大于零的 Route 目标需要预热。其他已校验版本在首次使用时异步加载。按需租约为 600 秒，每个发布快照最多保留 128 个非路由实例。租用容量满时，新的冷加载可能被拒绝。
+
+模型和凭据指纹未变时复用实例，凭据轮换时重新构建。旧发布快照保留固定调用的依赖，直到租约和在途工作结束。草稿预览与验证共用构建工作线程。
+
+<a id="runner-diagnostic-events" />
+### 阅读诊断事件
+
+诊断默认写入容器日志。
+
+| 事件 | 含义 |
+| --- | --- |
+| `runner_event_loop_stalled` | 监测线程每 0.5 秒采样，发现超过两秒的调度延迟时记录。持续阻塞期间最多每 30 秒重复一次。 |
+| `runner_event_loop_delayed` / `runner_event_loop_recovered` | 已完成的调度延迟或监测到的恢复。完整延迟可记录监测线程错过的阻塞。 |
+| `runner_phase_started` / `runner_phase_finished` | 生命周期阶段、耗时和结果。未结束的阶段可用于定位中断。 |
+
+阻塞诊断包含调用栈、执行阶段、内存以及可用的 CPU 或 cgroup 计数。调用栈只记录文件名、行号和函数名，不记录源码行、局部值、凭据或请求内容。
+
+原生扩展持有 GIL 或整个容器暂停时，监测线程可能无法运行。没有告警不能排除这些原因。
+
+<a id="runner-diagnostic-collection" />
+### 收集日志并比较资源信号
+
+重启后收集当前和上一容器日志：
+
+```bash
+kubectl -n <namespace> describe pod <runner-pod>
+kubectl -n <namespace> logs <runner-pod> --timestamps --since=30m
+kubectl -n <namespace> logs <runner-pod> --previous --timestamps
+```
+
+请将 stdout 和 stderr 接入集中采集。Pod 删除后，Kubernetes 不保留上一容器日志。
+
+按故障时间核对候选版本数量、预热耗时，以及 readiness 或 admission 的异常锁等待。比较 CPU 节流、OOM 计数、内存限额和节点压力。累计 CPU 计数需要两次采样才能计算速率。
+
+| Prometheus 指标 | 用途 |
+| --- | --- |
+| `guard_runner_event_loop_lag_seconds` | 当前调度延迟。 |
+| `guard_runner_event_loop_delay_seconds` | 已完成调度延迟的直方图。 |
+| `guard_runner_event_loop_stalls_total` | 监测线程观察到的阻塞次数。 |
+
+例如，`increase(guard_runner_event_loop_stalls_total[5m])` 可查近期观察到的阻塞。事件循环阻塞也可能导致指标采集失败，请同时保留诊断日志。
+
+<a id="runner-liveness-benchmark" />
+### 执行隔离性能检查
+
+在源码目录运行：
+
+```bash
+.venv/bin/python scripts/benchmark_runner_liveness.py --versions 1 8 32 --repeats 2
+```
+
+脚本使用 fixture 副本，比较有无 readiness 并发读取时的真实构建过程，报告事件循环延迟、CPU 时间和 RSS。它不调用外部模型，也不修改集群。
+
+这些结果不能估计实际部署容量。`--injected-prewarm-seconds` 用于主动注入延迟，输出会单独标识。

@@ -1,0 +1,2150 @@
+- id: local-credentials/rule-credentials-api-keys/aws_access_key-acceptance/input
+  name: 'local-credentials: Trigger AWS Access Key'
+  description: Proves that the published regex implementation for AWS Access Key activates
+    this Rule.
+  phase: input
+  content: 'Acceptance sample: AKIA0000000000000000'
+  expected_decision: block
+  covered_rule_ids:
+  - credentials-api-keys/aws_access_key
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: local-credentials/rule-credentials-api-keys/aws_access_key-acceptance/output
+  name: 'local-credentials: Trigger AWS Access Key'
+  description: Proves that the published regex implementation for AWS Access Key activates
+    this Rule.
+  phase: output
+  content: 'Acceptance sample: AKIA0000000000000000'
+  expected_decision: block
+  covered_rule_ids:
+  - credentials-api-keys/aws_access_key
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: local-credentials/rule-credentials-api-keys/aws_secret_key-acceptance/input
+  name: 'local-credentials: Trigger AWS Secret Key'
+  description: Proves that the published regex implementation for AWS Secret Key activates
+    this Rule.
+  phase: input
+  content: aws_secret_access_key="AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+  expected_decision: block
+  covered_rule_ids:
+  - credentials-api-keys/aws_secret_key
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: local-credentials/rule-credentials-api-keys/aws_secret_key-acceptance/output
+  name: 'local-credentials: Trigger AWS Secret Key'
+  description: Proves that the published regex implementation for AWS Secret Key activates
+    this Rule.
+  phase: output
+  content: aws_secret_access_key="AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+  expected_decision: block
+  covered_rule_ids:
+  - credentials-api-keys/aws_secret_key
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: local-credentials/rule-credentials-api-keys/github_token-acceptance/input
+  name: 'local-credentials: Trigger GitHub Token'
+  description: Proves that the published regex implementation for GitHub Token activates
+    this Rule.
+  phase: input
+  content: 'Acceptance sample: ghp_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'
+  expected_decision: block
+  covered_rule_ids:
+  - credentials-api-keys/github_token
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: local-credentials/rule-credentials-api-keys/github_token-acceptance/output
+  name: 'local-credentials: Trigger GitHub Token'
+  description: Proves that the published regex implementation for GitHub Token activates
+    this Rule.
+  phase: output
+  content: 'Acceptance sample: ghp_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'
+  expected_decision: block
+  covered_rule_ids:
+  - credentials-api-keys/github_token
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: local-credentials/rule-credentials-api-keys/slack_token-acceptance/input
+  name: 'local-credentials: Trigger Slack Token'
+  description: Proves that the published regex implementation for Slack Token activates
+    this Rule.
+  phase: input
+  content: 'Acceptance sample: xoxp-0000000000-0000000000-aaaaaaaaaaaaaaaaaaaaaaaa'
+  expected_decision: block
+  covered_rule_ids:
+  - credentials-api-keys/slack_token
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: local-credentials/rule-credentials-api-keys/slack_token-acceptance/output
+  name: 'local-credentials: Trigger Slack Token'
+  description: Proves that the published regex implementation for Slack Token activates
+    this Rule.
+  phase: output
+  content: 'Acceptance sample: xoxp-0000000000-0000000000-aaaaaaaaaaaaaaaaaaaaaaaa'
+  expected_decision: block
+  covered_rule_ids:
+  - credentials-api-keys/slack_token
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: local-credentials/rule-credentials-api-keys/generic_api_key-acceptance/input
+  name: 'local-credentials: Trigger API Key (Generic)'
+  description: Proves that the published regex implementation for API Key (Generic)
+    activates this Rule.
+  phase: input
+  content: 'Acceptance sample: API-KEY ''AAAAAAAAAAAAAAAAAAAA'''
+  expected_decision: block
+  covered_rule_ids:
+  - credentials-api-keys/generic_api_key
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: local-credentials/rule-credentials-api-keys/generic_api_key-acceptance/output
+  name: 'local-credentials: Trigger API Key (Generic)'
+  description: Proves that the published regex implementation for API Key (Generic)
+    activates this Rule.
+  phase: output
+  content: 'Acceptance sample: API-KEY ''AAAAAAAAAAAAAAAAAAAA'''
+  expected_decision: block
+  covered_rule_ids:
+  - credentials-api-keys/generic_api_key
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: local-credentials/password-en/input
+  name: 'local-credentials: password-en/input'
+  description: Synthetic, deterministic text fixture; no external action is performed.
+  phase: input
+  content: password=synthetic-secret-42
+  expected_decision: block
+  covered_rule_ids:
+  - credential/password
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Protection contract
+  scope: rule
+- id: local-credentials/password-zh/input
+  name: 'local-credentials: password-zh/input'
+  description: Synthetic, deterministic text fixture; no external action is performed.
+  phase: input
+  content: 密码：测试密码123
+  expected_decision: block
+  covered_rule_ids:
+  - credential/password
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Protection contract
+  scope: rule
+- id: local-credentials/password-en/output
+  name: 'local-credentials: password-en/output'
+  description: Synthetic, deterministic text fixture; no external action is performed.
+  phase: output
+  content: password=synthetic-secret-42
+  expected_decision: block
+  covered_rule_ids:
+  - credential/password
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Protection contract
+  scope: rule
+- id: local-credentials/password-zh/output
+  name: 'local-credentials: password-zh/output'
+  description: Synthetic, deterministic text fixture; no external action is performed.
+  phase: output
+  content: 密码：测试密码123
+  expected_decision: block
+  covered_rule_ids:
+  - credential/password
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Protection contract
+  scope: rule
+- id: local-credentials/bearer-minimum/input
+  name: 'local-credentials: bearer-minimum (input)'
+  description: Synthetic credential fixture; no real credential or external action.
+  phase: input
+  content: 'Authorization: BeArEr AAAAAAAAAAAAAAAAAAAAAAAA'
+  expected_decision: block
+  covered_rule_ids:
+  - credential/bearer-token
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Credential patterns
+  expected_matched_rules:
+  - credential/bearer-token
+  scope: rule
+- id: local-credentials/bearer-minimum/output
+  name: 'local-credentials: bearer-minimum (output)'
+  description: Synthetic credential fixture; no real credential or external action.
+  phase: output
+  content: 'Authorization: BeArEr AAAAAAAAAAAAAAAAAAAAAAAA'
+  expected_decision: block
+  covered_rule_ids:
+  - credential/bearer-token
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Credential patterns
+  expected_matched_rules:
+  - credential/bearer-token
+  scope: rule
+- id: local-credentials/private-key-rsa/input
+  name: 'local-credentials: private-key-rsa (input)'
+  description: Synthetic credential fixture; no real credential or external action.
+  phase: input
+  content: '-----BEGIN RSA PRIVATE KEY-----'
+  expected_decision: block
+  covered_rule_ids:
+  - credential/private-key-header
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Credential patterns
+  expected_matched_rules:
+  - credential/private-key-header
+  scope: rule
+- id: local-credentials/private-key-rsa/output
+  name: 'local-credentials: private-key-rsa (output)'
+  description: Synthetic credential fixture; no real credential or external action.
+  phase: output
+  content: '-----BEGIN RSA PRIVATE KEY-----'
+  expected_decision: block
+  covered_rule_ids:
+  - credential/private-key-header
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Credential patterns
+  expected_matched_rules:
+  - credential/private-key-header
+  scope: rule
+- id: local-credentials/hex-minimum/input
+  name: 'local-credentials: hex-minimum (input)'
+  description: Synthetic credential fixture; no real credential or external action.
+  phase: input
+  content: 'secret: a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1'
+  expected_decision: block
+  covered_rule_ids:
+  - credential/hex-token
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Credential patterns
+  expected_matched_rules:
+  - credential/hex-token
+  scope: rule
+- id: local-credentials/hex-minimum/output
+  name: 'local-credentials: hex-minimum (output)'
+  description: Synthetic credential fixture; no real credential or external action.
+  phase: output
+  content: 'secret: a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1'
+  expected_decision: block
+  covered_rule_ids:
+  - credential/hex-token
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Credential patterns
+  expected_matched_rules:
+  - credential/hex-token
+  scope: rule
+- id: local-credentials/advanced-au-pii-protection/rule-credentials-api-keys/aws_access_key-acceptance
+  name: 'local-credentials: Trigger AWS Access Key'
+  description: Proves that the published regex implementation for AWS Access Key activates
+    this Rule.
+  phase: input
+  content: 'Acceptance sample: AKIA0000000000000000'
+  expected_decision: block
+  covered_rule_ids:
+  - credentials-api-keys/aws_access_key
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: local-credentials/advanced-au-pii-protection/rule-credentials-api-keys/aws_secret_key-acceptance
+  name: 'local-credentials: Trigger AWS Secret Key'
+  description: Proves that the published regex implementation for AWS Secret Key activates
+    this Rule.
+  phase: input
+  content: aws_secret_access_key="AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+  expected_decision: block
+  covered_rule_ids:
+  - credentials-api-keys/aws_secret_key
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: local-credentials/advanced-au-pii-protection/rule-credentials-api-keys/github_token-acceptance
+  name: 'local-credentials: Trigger GitHub Token'
+  description: Proves that the published regex implementation for GitHub Token activates
+    this Rule.
+  phase: input
+  content: 'Acceptance sample: ghp_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'
+  expected_decision: block
+  covered_rule_ids:
+  - credentials-api-keys/github_token
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: local-credentials/advanced-au-pii-protection/rule-credentials-api-keys/slack_token-acceptance
+  name: 'local-credentials: Trigger Slack Token'
+  description: Proves that the published regex implementation for Slack Token activates
+    this Rule.
+  phase: input
+  content: 'Acceptance sample: xoxp-0000000000-0000000000-aaaaaaaaaaaaaaaaaaaaaaaa'
+  expected_decision: block
+  covered_rule_ids:
+  - credentials-api-keys/slack_token
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: local-credentials/baseline-pii-protection/rule-credentials-api-keys/aws_access_key-acceptance
+  name: 'local-credentials: Trigger AWS Access Key'
+  description: Proves that the published regex implementation for AWS Access Key activates
+    this Rule.
+  phase: input
+  content: 'Acceptance sample: AKIA0000000000000000'
+  expected_decision: block
+  covered_rule_ids:
+  - credentials-api-keys/aws_access_key
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: local-credentials/baseline-pii-protection/rule-credentials-api-keys/aws_secret_key-acceptance
+  name: 'local-credentials: Trigger AWS Secret Key'
+  description: Proves that the published regex implementation for AWS Secret Key activates
+    this Rule.
+  phase: input
+  content: aws_secret_access_key="AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+  expected_decision: block
+  covered_rule_ids:
+  - credentials-api-keys/aws_secret_key
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: local-credentials/baseline-pii-protection/rule-credentials-api-keys/github_token-acceptance
+  name: 'local-credentials: Trigger GitHub Token'
+  description: Proves that the published regex implementation for GitHub Token activates
+    this Rule.
+  phase: input
+  content: 'Acceptance sample: ghp_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'
+  expected_decision: block
+  covered_rule_ids:
+  - credentials-api-keys/github_token
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: local-credentials/baseline-pii-protection/rule-credentials-api-keys/slack_token-acceptance
+  name: 'local-credentials: Trigger Slack Token'
+  description: Proves that the published regex implementation for Slack Token activates
+    this Rule.
+  phase: input
+  content: 'Acceptance sample: xoxp-0000000000-0000000000-aaaaaaaaaaaaaaaaaaaaaaaa'
+  expected_decision: block
+  covered_rule_ids:
+  - credentials-api-keys/slack_token
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: local-credentials/formats-4.1/pkcs8/input
+  name: 'local-credentials: pkcs8'
+  description: Synthetic credential-format regression; no real credentials or external
+    model calls.
+  phase: input
+  content: '-----BEGIN PRIVATE KEY-----'
+  expected_decision: block
+  covered_rule_ids:
+  - credential/private-key-header
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Credential format regression
+  scope: rule
+- id: local-credentials/formats-4.1/encrypted-pkcs8/input
+  name: 'local-credentials: encrypted-pkcs8'
+  description: Synthetic credential-format regression; no real credentials or external
+    model calls.
+  phase: input
+  content: '-----BEGIN ENCRYPTED PRIVATE KEY-----'
+  expected_decision: block
+  covered_rule_ids:
+  - credential/private-key-header
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Credential format regression
+  scope: rule
+- id: local-credentials/formats-4.1/pgp-private/input
+  name: 'local-credentials: pgp-private'
+  description: Synthetic credential-format regression; no real credentials or external
+    model calls.
+  phase: input
+  content: '-----BEGIN PGP PRIVATE KEY BLOCK-----'
+  expected_decision: block
+  covered_rule_ids:
+  - credential/private-key-header
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Credential format regression
+  scope: rule
+- id: local-credentials/formats-4.1/json-password/input
+  name: 'local-credentials: json-password'
+  description: Synthetic credential-format regression; no real credentials or external
+    model calls.
+  phase: input
+  content: '{"password": "synthetic-secret-42"}'
+  expected_decision: block
+  covered_rule_ids:
+  - credential/password
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Credential format regression
+  scope: rule
+- id: local-credentials/formats-4.1/single-quoted-password/input
+  name: 'local-credentials: single-quoted-password'
+  description: Synthetic credential-format regression; no real credentials or external
+    model calls.
+  phase: input
+  content: '{''Password'': ''demo-secret-84''}'
+  expected_decision: block
+  covered_rule_ids:
+  - credential/password
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Credential format regression
+  scope: rule
+- id: local-credentials/formats-4.1/env-password/input
+  name: 'local-credentials: env-password'
+  description: Synthetic credential-format regression; no real credentials or external
+    model calls.
+  phase: input
+  content: DB_PASSWORD=secret-42
+  expected_decision: block
+  covered_rule_ids:
+  - credential/password
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Credential format regression
+  scope: rule
+- id: local-credentials/formats-4.1/camel-password/input
+  name: 'local-credentials: camel-password'
+  description: Synthetic credential-format regression; no real credentials or external
+    model calls.
+  phase: input
+  content: dbPassword="secret-42"
+  expected_decision: block
+  covered_rule_ids:
+  - credential/password
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Credential format regression
+  scope: rule
+- id: local-credentials/formats-4.1/passphrase/input
+  name: 'local-credentials: passphrase'
+  description: Synthetic credential-format regression; no real credentials or external
+    model calls.
+  phase: input
+  content: '"passphrase": "phrase with multiple words"'
+  expected_decision: block
+  covered_rule_ids:
+  - credential/password
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Credential format regression
+  scope: rule
+- id: local-credentials/formats-4.1/password-repeat-fields/input
+  name: 'local-credentials: password-repeat-fields'
+  description: Synthetic credential-format regression; no real credentials or external
+    model calls.
+  phase: input
+  content: '{"password1":"fixture-42","password2":"fixture-42"}'
+  expected_decision: block
+  covered_rule_ids:
+  - credential/password
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Credential format regression
+  scope: rule
+- id: local-credentials/formats-4.1/escaped-json/input
+  name: 'local-credentials: escaped-json'
+  description: Synthetic credential-format regression; no real credentials or external
+    model calls.
+  phase: input
+  content: '"CONNECT {\"pass\": \"secret42\"}\r\n"'
+  expected_decision: block
+  covered_rule_ids:
+  - credential/password
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Credential format regression
+  scope: rule
+- id: local-credentials/formats-4.1/password-newline/input
+  name: 'local-credentials: password-newline'
+  description: Synthetic credential-format regression; no real credentials or external
+    model calls.
+  phase: input
+  content: "password:\n  \"synthetic-secret-42\""
+  expected_decision: block
+  covered_rule_ids:
+  - credential/password
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Credential format regression
+  scope: rule
+- id: local-credentials/formats-4.1/password-index/input
+  name: 'local-credentials: password-index'
+  description: Synthetic credential-format regression; no real credentials or external
+    model calls.
+  phase: input
+  content: config['password'] = 'fixture-42'
+  expected_decision: block
+  covered_rule_ids:
+  - credential/password
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Credential format regression
+  scope: rule
+- id: local-credentials/formats-4.1/quoted-weak-literal/input
+  name: 'local-credentials: quoted-weak-literal'
+  description: Synthetic credential-format regression; no real credentials or external
+    model calls.
+  phase: input
+  content: password="password"
+  expected_decision: block
+  covered_rule_ids:
+  - credential/password
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Credential format regression
+  scope: rule
+- id: local-credentials/formats-4.1/generic-json/input
+  name: 'local-credentials: generic-json'
+  description: Synthetic credential-format regression; no real credentials or external
+    model calls.
+  phase: input
+  content: '{"apiKey":"Ab3dEf5hIj7lMn9pQr2tUv4x"}'
+  expected_decision: block
+  covered_rule_ids:
+  - credentials-api-keys/generic_api_key
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Credential format regression
+  scope: rule
+- id: local-credentials/formats-4.1/shared-secret/input
+  name: 'local-credentials: shared-secret'
+  description: Synthetic credential-format regression; no real credentials or external
+    model calls.
+  phase: input
+  content: SharedSecret=Ab3dEf5hIj7lMn9pQr2tUv4x
+  expected_decision: block
+  covered_rule_ids:
+  - credentials-api-keys/generic_api_key
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Credential format regression
+  scope: rule
+- id: local-credentials/formats-4.1/oauth-cookie/input
+  name: 'local-credentials: oauth-cookie'
+  description: Synthetic credential-format regression; no real credentials or external
+    model calls.
+  phase: input
+  content: 'Cookie: _oauth_request_token=Ab3dEf5hIj7lMn9pQr2tUv4x'
+  expected_decision: block
+  covered_rule_ids:
+  - credentials-api-keys/generic_api_key
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Credential format regression
+  scope: rule
+- id: local-credentials/formats-4.1/oauth-query/input
+  name: 'local-credentials: oauth-query'
+  description: Synthetic credential-format regression; no real credentials or external
+    model calls.
+  phase: input
+  content: oauth_token=Ab3dEf5hIj7lMn9pQr2tUv4x&oauth_token_secret=Ab3dEf5hIj7lMn9pQr2tUv4x
+  expected_decision: block
+  covered_rule_ids:
+  - credentials-api-keys/generic_api_key
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Credential format regression
+  scope: rule
+- id: local-credentials/formats-4.1/api-token/input
+  name: 'local-credentials: api-token'
+  description: Synthetic credential-format regression; no real credentials or external
+    model calls.
+  phase: input
+  content: '{"Apitoken":"a1b2c3d4a1b2c3d4a1b2c3d4a1b2c3d4a1b2c3d4a1b2c3d4a1b2c3d4a1b2c3d4"}'
+  expected_decision: block
+  covered_rule_ids:
+  - credentials-api-keys/generic_api_key
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Credential format regression
+  scope: rule
+- id: local-credentials/formats-4.1/paseto-context/input
+  name: 'local-credentials: paseto-context'
+  description: Synthetic credential-format regression; no real credentials or external
+    model calls.
+  phase: input
+  content: 'token: "v2.local.Ab3dEf5hIj7lMn9pQr2tUv4x"'
+  expected_decision: block
+  covered_rule_ids:
+  - credentials-api-keys/generic_api_key
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Credential format regression
+  scope: rule
+- id: local-credentials/formats-4.1/totp/input
+  name: 'local-credentials: totp'
+  description: Synthetic credential-format regression; no real credentials or external
+    model calls.
+  phase: input
+  content: otpauth://totp/Example?secret=Ab3dEf5hIj7lMn9pQr2tUv4x&issuer=Example
+  expected_decision: block
+  covered_rule_ids:
+  - credentials-api-keys/generic_api_key
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Credential format regression
+  scope: rule
+- id: local-credentials/formats-4.1/aws-context/input
+  name: 'local-credentials: aws-context'
+  description: Synthetic credential-format regression; no real credentials or external
+    model calls.
+  phase: input
+  content: aws_secret_access_key="AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+  expected_decision: block
+  covered_rule_ids:
+  - credentials-api-keys/aws_secret_key
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Credential format regression
+  scope: rule
+- id: local-credentials/formats-4.1/bearer-base64/input
+  name: 'local-credentials: bearer-base64'
+  description: Synthetic credential-format regression; no real credentials or external
+    model calls.
+  phase: input
+  content: 'Authorization: Bearer Ab3dEf5hIj7lMn9pQr2tUv4x+/=='
+  expected_decision: block
+  covered_rule_ids:
+  - credential/bearer-token
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Credential format regression
+  scope: rule
+- id: local-credentials/formats-4.1/slack-refresh/input
+  name: 'local-credentials: slack-refresh'
+  description: Synthetic credential-format regression; no real credentials or external
+    model calls.
+  phase: input
+  content: xoxe-0-TESTONLY-NOT-A-REAL-REFRESH-TOKEN
+  expected_decision: block
+  covered_rule_ids:
+  - credentials-api-keys/slack_token
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Credential format regression
+  scope: rule
+- id: local-credentials/formats-4.1/uri/input
+  name: 'local-credentials: uri'
+  description: Synthetic credential-format regression; no real credentials or external
+    model calls.
+  phase: input
+  content: postgresql://fixture:synthetic42@localhost:5432/demo
+  expected_decision: block
+  covered_rule_ids:
+  - credential/url-password
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Credential format regression
+  scope: rule
+- id: local-credentials/formats-4.1/uri-percent/input
+  name: 'local-credentials: uri-percent'
+  description: Synthetic credential-format regression; no real credentials or external
+    model calls.
+  phase: input
+  content: nats-route://fixture:synthetic%40pass@localhost:8222
+  expected_decision: block
+  covered_rule_ids:
+  - credential/url-password
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Credential format regression
+  scope: rule
+- id: local-credentials/formats-4.1/basic/input
+  name: 'local-credentials: basic'
+  description: Synthetic credential-format regression; no real credentials or external
+    model calls.
+  phase: input
+  content: 'Authorization: "Basic Zml4dHVyZTpzeW50aGV0aWM0Mg=="'
+  expected_decision: block
+  covered_rule_ids:
+  - credential/basic-auth
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Credential format regression
+  scope: rule
+- id: local-credentials/formats-4.1/jwt/input
+  name: 'local-credentials: jwt'
+  description: Synthetic credential-format regression; no real credentials or external
+    model calls.
+  phase: input
+  content: eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJmaXh0dXJlIn0.Ab3dEf5hIj7lMn9pQr2tUv4x
+  expected_decision: block
+  covered_rule_ids:
+  - credential/jwt
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Credential format regression
+  scope: rule
+- id: local-credentials/formats-4.1/key-hex/input
+  name: 'local-credentials: key-hex'
+  description: Synthetic credential-format regression; no real credentials or external
+    model calls.
+  phase: input
+  content: Key = a1b2c3d4a1b2c3d4a1b2c3d4a1b2c3d4a1b2c3d4a1b2c3d4a1b2c3d4a1b2c3d4
+  expected_decision: block
+  covered_rule_ids:
+  - credential/labelled-hex-key
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Credential format regression
+  scope: rule
+- id: local-credentials/formats-4.1/jwk-private/input
+  name: 'local-credentials: jwk-private'
+  description: Synthetic credential-format regression; no real credentials or external
+    model calls.
+  phase: input
+  content: '{"kty":"RSA","n":"Ab3dEf5hIj7lMn9pQr2tUv4x","e":"AQAB","d":"Ab3dEf5hIj7lMn9pQr2tUv4x"}'
+  expected_decision: block
+  covered_rule_ids:
+  - credential/private-jwk
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Credential format regression
+  scope: rule
+- id: local-credentials/formats-4.1/jwk-private-reversed/input
+  name: 'local-credentials: jwk-private-reversed'
+  description: Synthetic credential-format regression; no real credentials or external
+    model calls.
+  phase: input
+  content: '{"d":"Ab3dEf5hIj7lMn9pQr2tUv4x","kty":"EC"}'
+  expected_decision: block
+  covered_rule_ids:
+  - credential/private-jwk
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Credential format regression
+  scope: rule
+- id: local-credentials/formats-4.1/sql-nested-quotes/input
+  name: 'local-credentials: sql-nested-quotes'
+  description: Synthetic credential-format regression; no real credentials or external
+    model calls.
+  phase: input
+  content: CREATE LOGIN fixture WITH PASSWORD = ''''synthetic-secret-42''''
+  expected_decision: block
+  covered_rule_ids:
+  - credential/password
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Credential format regression
+  scope: rule
+- id: local-credentials/formats-4.1/literal-password-comment/input
+  name: 'local-credentials: literal-password-comment'
+  description: Synthetic credential-format regression; no real credentials or external
+    model calls.
+  phase: input
+  content: 'Password: synthetic-secret-42 (account owner)'
+  expected_decision: block
+  covered_rule_ids:
+  - credential/password
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Credential format regression
+  scope: rule
+- id: local-credentials/formats-4.1/placeholder-not-bypass/input
+  name: 'local-credentials: placeholder-not-bypass'
+  description: Synthetic credential-format regression; no real credentials or external
+    model calls.
+  phase: input
+  content: 'password="${DB_PASSWORD}"
+
+    password="second-real-literal"'
+  expected_decision: block
+  covered_rule_ids:
+  - credential/password
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Credential format regression
+  scope: rule
+- id: local-credentials/formats-4.1/public-not-bypass/input
+  name: 'local-credentials: public-not-bypass'
+  description: Synthetic credential-format regression; no real credentials or external
+    model calls.
+  phase: input
+  content: '-----BEGIN PUBLIC KEY-----
+
+    -----BEGIN PRIVATE KEY-----'
+  expected_decision: block
+  covered_rule_ids:
+  - credential/private-key-header
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Credential format regression
+  scope: rule
+- id: local-credentials/formats-4.1/pkcs8/output
+  name: 'local-credentials: pkcs8'
+  description: Synthetic credential-format regression; no real credentials or external
+    model calls.
+  phase: output
+  content: '-----BEGIN PRIVATE KEY-----'
+  expected_decision: block
+  covered_rule_ids:
+  - credential/private-key-header
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Credential format regression
+  scope: rule
+- id: local-credentials/formats-4.1/encrypted-pkcs8/output
+  name: 'local-credentials: encrypted-pkcs8'
+  description: Synthetic credential-format regression; no real credentials or external
+    model calls.
+  phase: output
+  content: '-----BEGIN ENCRYPTED PRIVATE KEY-----'
+  expected_decision: block
+  covered_rule_ids:
+  - credential/private-key-header
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Credential format regression
+  scope: rule
+- id: local-credentials/formats-4.1/pgp-private/output
+  name: 'local-credentials: pgp-private'
+  description: Synthetic credential-format regression; no real credentials or external
+    model calls.
+  phase: output
+  content: '-----BEGIN PGP PRIVATE KEY BLOCK-----'
+  expected_decision: block
+  covered_rule_ids:
+  - credential/private-key-header
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Credential format regression
+  scope: rule
+- id: local-credentials/formats-4.1/json-password/output
+  name: 'local-credentials: json-password'
+  description: Synthetic credential-format regression; no real credentials or external
+    model calls.
+  phase: output
+  content: '{"password": "synthetic-secret-42"}'
+  expected_decision: block
+  covered_rule_ids:
+  - credential/password
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Credential format regression
+  scope: rule
+- id: local-credentials/formats-4.1/single-quoted-password/output
+  name: 'local-credentials: single-quoted-password'
+  description: Synthetic credential-format regression; no real credentials or external
+    model calls.
+  phase: output
+  content: '{''Password'': ''demo-secret-84''}'
+  expected_decision: block
+  covered_rule_ids:
+  - credential/password
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Credential format regression
+  scope: rule
+- id: local-credentials/formats-4.1/env-password/output
+  name: 'local-credentials: env-password'
+  description: Synthetic credential-format regression; no real credentials or external
+    model calls.
+  phase: output
+  content: DB_PASSWORD=secret-42
+  expected_decision: block
+  covered_rule_ids:
+  - credential/password
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Credential format regression
+  scope: rule
+- id: local-credentials/formats-4.1/camel-password/output
+  name: 'local-credentials: camel-password'
+  description: Synthetic credential-format regression; no real credentials or external
+    model calls.
+  phase: output
+  content: dbPassword="secret-42"
+  expected_decision: block
+  covered_rule_ids:
+  - credential/password
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Credential format regression
+  scope: rule
+- id: local-credentials/formats-4.1/passphrase/output
+  name: 'local-credentials: passphrase'
+  description: Synthetic credential-format regression; no real credentials or external
+    model calls.
+  phase: output
+  content: '"passphrase": "phrase with multiple words"'
+  expected_decision: block
+  covered_rule_ids:
+  - credential/password
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Credential format regression
+  scope: rule
+- id: local-credentials/formats-4.1/password-repeat-fields/output
+  name: 'local-credentials: password-repeat-fields'
+  description: Synthetic credential-format regression; no real credentials or external
+    model calls.
+  phase: output
+  content: '{"password1":"fixture-42","password2":"fixture-42"}'
+  expected_decision: block
+  covered_rule_ids:
+  - credential/password
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Credential format regression
+  scope: rule
+- id: local-credentials/formats-4.1/escaped-json/output
+  name: 'local-credentials: escaped-json'
+  description: Synthetic credential-format regression; no real credentials or external
+    model calls.
+  phase: output
+  content: '"CONNECT {\"pass\": \"secret42\"}\r\n"'
+  expected_decision: block
+  covered_rule_ids:
+  - credential/password
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Credential format regression
+  scope: rule
+- id: local-credentials/formats-4.1/password-newline/output
+  name: 'local-credentials: password-newline'
+  description: Synthetic credential-format regression; no real credentials or external
+    model calls.
+  phase: output
+  content: "password:\n  \"synthetic-secret-42\""
+  expected_decision: block
+  covered_rule_ids:
+  - credential/password
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Credential format regression
+  scope: rule
+- id: local-credentials/formats-4.1/password-index/output
+  name: 'local-credentials: password-index'
+  description: Synthetic credential-format regression; no real credentials or external
+    model calls.
+  phase: output
+  content: config['password'] = 'fixture-42'
+  expected_decision: block
+  covered_rule_ids:
+  - credential/password
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Credential format regression
+  scope: rule
+- id: local-credentials/formats-4.1/quoted-weak-literal/output
+  name: 'local-credentials: quoted-weak-literal'
+  description: Synthetic credential-format regression; no real credentials or external
+    model calls.
+  phase: output
+  content: password="password"
+  expected_decision: block
+  covered_rule_ids:
+  - credential/password
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Credential format regression
+  scope: rule
+- id: local-credentials/formats-4.1/generic-json/output
+  name: 'local-credentials: generic-json'
+  description: Synthetic credential-format regression; no real credentials or external
+    model calls.
+  phase: output
+  content: '{"apiKey":"Ab3dEf5hIj7lMn9pQr2tUv4x"}'
+  expected_decision: block
+  covered_rule_ids:
+  - credentials-api-keys/generic_api_key
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Credential format regression
+  scope: rule
+- id: local-credentials/formats-4.1/shared-secret/output
+  name: 'local-credentials: shared-secret'
+  description: Synthetic credential-format regression; no real credentials or external
+    model calls.
+  phase: output
+  content: SharedSecret=Ab3dEf5hIj7lMn9pQr2tUv4x
+  expected_decision: block
+  covered_rule_ids:
+  - credentials-api-keys/generic_api_key
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Credential format regression
+  scope: rule
+- id: local-credentials/formats-4.1/oauth-cookie/output
+  name: 'local-credentials: oauth-cookie'
+  description: Synthetic credential-format regression; no real credentials or external
+    model calls.
+  phase: output
+  content: 'Cookie: _oauth_request_token=Ab3dEf5hIj7lMn9pQr2tUv4x'
+  expected_decision: block
+  covered_rule_ids:
+  - credentials-api-keys/generic_api_key
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Credential format regression
+  scope: rule
+- id: local-credentials/formats-4.1/oauth-query/output
+  name: 'local-credentials: oauth-query'
+  description: Synthetic credential-format regression; no real credentials or external
+    model calls.
+  phase: output
+  content: oauth_token=Ab3dEf5hIj7lMn9pQr2tUv4x&oauth_token_secret=Ab3dEf5hIj7lMn9pQr2tUv4x
+  expected_decision: block
+  covered_rule_ids:
+  - credentials-api-keys/generic_api_key
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Credential format regression
+  scope: rule
+- id: local-credentials/formats-4.1/api-token/output
+  name: 'local-credentials: api-token'
+  description: Synthetic credential-format regression; no real credentials or external
+    model calls.
+  phase: output
+  content: '{"Apitoken":"a1b2c3d4a1b2c3d4a1b2c3d4a1b2c3d4a1b2c3d4a1b2c3d4a1b2c3d4a1b2c3d4"}'
+  expected_decision: block
+  covered_rule_ids:
+  - credentials-api-keys/generic_api_key
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Credential format regression
+  scope: rule
+- id: local-credentials/formats-4.1/paseto-context/output
+  name: 'local-credentials: paseto-context'
+  description: Synthetic credential-format regression; no real credentials or external
+    model calls.
+  phase: output
+  content: 'token: "v2.local.Ab3dEf5hIj7lMn9pQr2tUv4x"'
+  expected_decision: block
+  covered_rule_ids:
+  - credentials-api-keys/generic_api_key
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Credential format regression
+  scope: rule
+- id: local-credentials/formats-4.1/totp/output
+  name: 'local-credentials: totp'
+  description: Synthetic credential-format regression; no real credentials or external
+    model calls.
+  phase: output
+  content: otpauth://totp/Example?secret=Ab3dEf5hIj7lMn9pQr2tUv4x&issuer=Example
+  expected_decision: block
+  covered_rule_ids:
+  - credentials-api-keys/generic_api_key
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Credential format regression
+  scope: rule
+- id: local-credentials/formats-4.1/aws-context/output
+  name: 'local-credentials: aws-context'
+  description: Synthetic credential-format regression; no real credentials or external
+    model calls.
+  phase: output
+  content: aws_secret_access_key="AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+  expected_decision: block
+  covered_rule_ids:
+  - credentials-api-keys/aws_secret_key
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Credential format regression
+  scope: rule
+- id: local-credentials/formats-4.1/bearer-base64/output
+  name: 'local-credentials: bearer-base64'
+  description: Synthetic credential-format regression; no real credentials or external
+    model calls.
+  phase: output
+  content: 'Authorization: Bearer Ab3dEf5hIj7lMn9pQr2tUv4x+/=='
+  expected_decision: block
+  covered_rule_ids:
+  - credential/bearer-token
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Credential format regression
+  scope: rule
+- id: local-credentials/formats-4.1/slack-refresh/output
+  name: 'local-credentials: slack-refresh'
+  description: Synthetic credential-format regression; no real credentials or external
+    model calls.
+  phase: output
+  content: xoxe-0-TESTONLY-NOT-A-REAL-REFRESH-TOKEN
+  expected_decision: block
+  covered_rule_ids:
+  - credentials-api-keys/slack_token
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Credential format regression
+  scope: rule
+- id: local-credentials/formats-4.1/uri/output
+  name: 'local-credentials: uri'
+  description: Synthetic credential-format regression; no real credentials or external
+    model calls.
+  phase: output
+  content: postgresql://fixture:synthetic42@localhost:5432/demo
+  expected_decision: block
+  covered_rule_ids:
+  - credential/url-password
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Credential format regression
+  scope: rule
+- id: local-credentials/formats-4.1/uri-percent/output
+  name: 'local-credentials: uri-percent'
+  description: Synthetic credential-format regression; no real credentials or external
+    model calls.
+  phase: output
+  content: nats-route://fixture:synthetic%40pass@localhost:8222
+  expected_decision: block
+  covered_rule_ids:
+  - credential/url-password
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Credential format regression
+  scope: rule
+- id: local-credentials/formats-4.1/basic/output
+  name: 'local-credentials: basic'
+  description: Synthetic credential-format regression; no real credentials or external
+    model calls.
+  phase: output
+  content: 'Authorization: "Basic Zml4dHVyZTpzeW50aGV0aWM0Mg=="'
+  expected_decision: block
+  covered_rule_ids:
+  - credential/basic-auth
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Credential format regression
+  scope: rule
+- id: local-credentials/formats-4.1/jwt/output
+  name: 'local-credentials: jwt'
+  description: Synthetic credential-format regression; no real credentials or external
+    model calls.
+  phase: output
+  content: eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJmaXh0dXJlIn0.Ab3dEf5hIj7lMn9pQr2tUv4x
+  expected_decision: block
+  covered_rule_ids:
+  - credential/jwt
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Credential format regression
+  scope: rule
+- id: local-credentials/formats-4.1/key-hex/output
+  name: 'local-credentials: key-hex'
+  description: Synthetic credential-format regression; no real credentials or external
+    model calls.
+  phase: output
+  content: Key = a1b2c3d4a1b2c3d4a1b2c3d4a1b2c3d4a1b2c3d4a1b2c3d4a1b2c3d4a1b2c3d4
+  expected_decision: block
+  covered_rule_ids:
+  - credential/labelled-hex-key
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Credential format regression
+  scope: rule
+- id: local-credentials/formats-4.1/jwk-private/output
+  name: 'local-credentials: jwk-private'
+  description: Synthetic credential-format regression; no real credentials or external
+    model calls.
+  phase: output
+  content: '{"kty":"RSA","n":"Ab3dEf5hIj7lMn9pQr2tUv4x","e":"AQAB","d":"Ab3dEf5hIj7lMn9pQr2tUv4x"}'
+  expected_decision: block
+  covered_rule_ids:
+  - credential/private-jwk
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Credential format regression
+  scope: rule
+- id: local-credentials/formats-4.1/jwk-private-reversed/output
+  name: 'local-credentials: jwk-private-reversed'
+  description: Synthetic credential-format regression; no real credentials or external
+    model calls.
+  phase: output
+  content: '{"d":"Ab3dEf5hIj7lMn9pQr2tUv4x","kty":"EC"}'
+  expected_decision: block
+  covered_rule_ids:
+  - credential/private-jwk
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Credential format regression
+  scope: rule
+- id: local-credentials/formats-4.1/sql-nested-quotes/output
+  name: 'local-credentials: sql-nested-quotes'
+  description: Synthetic credential-format regression; no real credentials or external
+    model calls.
+  phase: output
+  content: CREATE LOGIN fixture WITH PASSWORD = ''''synthetic-secret-42''''
+  expected_decision: block
+  covered_rule_ids:
+  - credential/password
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Credential format regression
+  scope: rule
+- id: local-credentials/formats-4.1/literal-password-comment/output
+  name: 'local-credentials: literal-password-comment'
+  description: Synthetic credential-format regression; no real credentials or external
+    model calls.
+  phase: output
+  content: 'Password: synthetic-secret-42 (account owner)'
+  expected_decision: block
+  covered_rule_ids:
+  - credential/password
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Credential format regression
+  scope: rule
+- id: local-credentials/formats-4.1/placeholder-not-bypass/output
+  name: 'local-credentials: placeholder-not-bypass'
+  description: Synthetic credential-format regression; no real credentials or external
+    model calls.
+  phase: output
+  content: 'password="${DB_PASSWORD}"
+
+    password="second-real-literal"'
+  expected_decision: block
+  covered_rule_ids:
+  - credential/password
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Credential format regression
+  scope: rule
+- id: local-credentials/formats-4.1/public-not-bypass/output
+  name: 'local-credentials: public-not-bypass'
+  description: Synthetic credential-format regression; no real credentials or external
+    model calls.
+  phase: output
+  content: '-----BEGIN PUBLIC KEY-----
+
+    -----BEGIN PRIVATE KEY-----'
+  expected_decision: block
+  covered_rule_ids:
+  - credential/private-key-header
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Credential format regression
+  scope: rule
+- id: local-credentials/formats-4.2/camel-certificate/input
+  name: 'local-credentials: camel-certificate'
+  description: Synthetic local credential format regression.
+  phase: input
+  content: CertificatePassword="synthetic-72"
+  expected_decision: block
+  covered_rule_ids:
+  - credential/password
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Credential format regression
+  scope: rule
+- id: local-credentials/formats-4.2/colon-assign/input
+  name: 'local-credentials: colon-assign'
+  description: Synthetic local credential format regression.
+  phase: input
+  content: password := "synthetic-72"
+  expected_decision: block
+  covered_rule_ids:
+  - credential/password
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Credential format regression
+  scope: rule
+- id: local-credentials/formats-4.2/json-escaped/input
+  name: 'local-credentials: json-escaped'
+  description: Synthetic local credential format regression.
+  phase: input
+  content: '{\"password\":\"synthetic-72\"}'
+  expected_decision: block
+  covered_rule_ids:
+  - credential/password
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Credential format regression
+  scope: rule
+- id: local-credentials/formats-4.2/bare-env/input
+  name: 'local-credentials: bare-env'
+  description: Synthetic local credential format regression.
+  phase: input
+  content: DB_PASSWORD=synthetic-pass-72
+  expected_decision: block
+  covered_rule_ids:
+  - credential/password
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Credential format regression
+  scope: rule
+- id: local-credentials/formats-4.2/mysql-plugin/input
+  name: 'local-credentials: mysql-plugin'
+  description: Synthetic local credential format regression.
+  phase: input
+  content: ALTER USER 'test'@'localhost' IDENTIFIED WITH mysql_native_password BY
+    'synthetic-72';
+  expected_decision: block
+  covered_rule_ids:
+  - credential/sql-password
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Credential format regression
+  scope: rule
+- id: local-credentials/formats-4.2/mysql-basic/input
+  name: 'local-credentials: mysql-basic'
+  description: Synthetic local credential format regression.
+  phase: input
+  content: CREATE USER 'test' IDENTIFIED BY 'synthetic-72';
+  expected_decision: block
+  covered_rule_ids:
+  - credential/sql-password
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Credential format regression
+  scope: rule
+- id: local-credentials/formats-4.2/postgres-role/input
+  name: 'local-credentials: postgres-role'
+  description: Synthetic local credential format regression.
+  phase: input
+  content: CREATE ROLE fixture LOGIN PASSWORD 'synthetic72';
+  expected_decision: block
+  covered_rule_ids:
+  - credential/sql-password
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Credential format regression
+  scope: rule
+- id: local-credentials/formats-4.2/postgres-bare/input
+  name: 'local-credentials: postgres-bare'
+  description: Synthetic local credential format regression.
+  phase: input
+  content: CREATE ROLE fixture LOGIN PASSWORD synthetic72;
+  expected_decision: block
+  covered_rule_ids:
+  - credential/sql-password
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Credential format regression
+  scope: rule
+- id: local-credentials/formats-4.2/postgres-encrypted/input
+  name: 'local-credentials: postgres-encrypted'
+  description: Synthetic local credential format regression.
+  phase: input
+  content: CREATE USER fixture WITH ENCRYPTED PASSWORD 'synthetic-72';
+  expected_decision: block
+  covered_rule_ids:
+  - credential/sql-password
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Credential format regression
+  scope: rule
+- id: local-credentials/formats-4.2/cli-array/input
+  name: 'local-credentials: cli-array'
+  description: Synthetic local credential format regression.
+  phase: input
+  content: '["--password", "synthetic72"]'
+  expected_decision: block
+  covered_rule_ids:
+  - credential/command-password
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Credential format regression
+  scope: rule
+- id: local-credentials/formats-4.2/powershell-certificate/input
+  name: 'local-credentials: powershell-certificate'
+  description: Synthetic local credential format regression.
+  phase: input
+  content: tool -CertificatePassword synthetic72
+  expected_decision: block
+  covered_rule_ids:
+  - credential/command-password
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Credential format regression
+  scope: rule
+- id: local-credentials/formats-4.2/sql-function/input
+  name: 'local-credentials: sql-function'
+  description: Synthetic local credential format regression.
+  phase: input
+  content: INSERT INTO mysql.user VALUES (PASSWORD('synthetic72'));
+  expected_decision: block
+  covered_rule_ids:
+  - credential/sql-password
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Credential format regression
+  scope: rule
+- id: local-credentials/formats-4.2/sql-comment/input
+  name: 'local-credentials: sql-comment'
+  description: Synthetic local credential format regression.
+  phase: input
+  content: CREATE ROLE fixture; -- PASSWORD 'synthetic72'
+  expected_decision: block
+  covered_rule_ids:
+  - credential/sql-password
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Credential format regression
+  scope: rule
+- id: local-credentials/formats-4.2/cli-long/input
+  name: 'local-credentials: cli-long'
+  description: Synthetic local credential format regression.
+  phase: input
+  content: tool --password "synthetic-72"
+  expected_decision: block
+  covered_rule_ids:
+  - credential/command-password
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Credential format regression
+  scope: rule
+- id: local-credentials/formats-4.2/cli-equals/input
+  name: 'local-credentials: cli-equals'
+  description: Synthetic local credential format regression.
+  phase: input
+  content: tool --password=synthetic72
+  expected_decision: block
+  covered_rule_ids:
+  - credential/command-password
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Credential format regression
+  scope: rule
+- id: local-credentials/formats-4.2/powershell/input
+  name: 'local-credentials: powershell'
+  description: Synthetic local credential format regression.
+  phase: input
+  content: Get-NtToken -Password synthetic72 -User fixture
+  expected_decision: block
+  covered_rule_ids:
+  - credential/command-password
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Credential format regression
+  scope: rule
+- id: local-credentials/formats-4.2/mysql-attached/input
+  name: 'local-credentials: mysql-attached'
+  description: Synthetic local credential format regression.
+  phase: input
+  content: mysql -u fixture -psynthetic72
+  expected_decision: block
+  covered_rule_ids:
+  - credential/command-password
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Credential format regression
+  scope: rule
+- id: local-credentials/formats-4.2/openssl-pass/input
+  name: 'local-credentials: openssl-pass'
+  description: Synthetic local credential format regression.
+  phase: input
+  content: openssl pkcs12 -passin pass:synthetic72
+  expected_decision: block
+  covered_rule_ids:
+  - credential/command-password
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Credential format regression
+  scope: rule
+- id: local-credentials/formats-4.2/nkey-user/input
+  name: 'local-credentials: nkey-user'
+  description: Synthetic local credential format regression.
+  phase: input
+  content: seed="SUAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+  expected_decision: block
+  covered_rule_ids:
+  - credential/nkey-seed
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Credential format regression
+  scope: rule
+- id: local-credentials/formats-4.2/nkey-operator/input
+  name: 'local-credentials: nkey-operator'
+  description: Synthetic local credential format regression.
+  phase: input
+  content: SOAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+  expected_decision: block
+  covered_rule_ids:
+  - credential/nkey-seed
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Credential format regression
+  scope: rule
+- id: local-credentials/formats-4.2/base64-pem/input
+  name: 'local-credentials: base64-pem'
+  description: Synthetic local credential format regression.
+  phase: input
+  content: LS0tLS1CRUdJTiBQUklWQVRFIEtFWS0tLS0tCmMzbHVkR2hsZEdsaklIQnlhWFpoZEdVZ2JXRjBaWEpwWVd4emVXNTBhR1YwYVdNZ2NISnBkbUYwWlNCdFlYUmxjbWxoYkhONWJuUm9aWFJwWXlCd2NtbDJZWFJsSUcxaGRHVnlhV0ZzYzNsdWRHaGxkR2xqSUhCeWFYWmhkR1VnYldGMFpYSnBZV3h6ZVc1MGFHVjBhV01nY0hKcGRtRjBaU0J0WVhSbGNtbGhiSE41Ym5Sb1pYUnBZeUJ3Y21sMllYUmxJRzFoZEdWeWFXRnNjM2x1ZEdobGRHbGpJSEJ5YVhaaGRHVWdiV0YwWlhKcFlXeHplVzUwYUdWMGFXTWdjSEpwZG1GMFpTQnRZWFJsY21saGJBPT0KLS0tLS1FTkQgUFJJVkFURSBLRVktLS0tLQ==
+  expected_decision: block
+  covered_rule_ids:
+  - credential/base64-private-key
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Credential format regression
+  scope: rule
+- id: local-credentials/formats-4.2/base64-prefixed/input
+  name: 'local-credentials: base64-prefixed'
+  description: Synthetic local credential format regression.
+  phase: input
+  content: cHJlZml4LS0tLS1CRUdJTiBQUklWQVRFIEtFWS0tLS0tCmMzbHVkR2hsZEdsaklIQnlhWFpoZEdVZ2JXRjBaWEpwWVd4emVXNTBhR1YwYVdNZ2NISnBkbUYwWlNCdFlYUmxjbWxoYkhONWJuUm9aWFJwWXlCd2NtbDJZWFJsSUcxaGRHVnlhV0ZzYzNsdWRHaGxkR2xqSUhCeWFYWmhkR1VnYldGMFpYSnBZV3h6ZVc1MGFHVjBhV01nY0hKcGRtRjBaU0J0WVhSbGNtbGhiSE41Ym5Sb1pYUnBZeUJ3Y21sMllYUmxJRzFoZEdWeWFXRnNjM2x1ZEdobGRHbGpJSEJ5YVhaaGRHVWdiV0YwWlhKcFlXeHplVzUwYUdWMGFXTWdjSEpwZG1GMFpTQnRZWFJsY21saGJBPT0KLS0tLS1FTkQgUFJJVkFURSBLRVktLS0tLQ==
+  expected_decision: block
+  covered_rule_ids:
+  - credential/base64-private-key
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Credential format regression
+  scope: rule
+- id: local-credentials/formats-4.2/base64-prefixed-offset1/input
+  name: 'local-credentials: base64-prefixed-offset1'
+  description: Synthetic local credential format regression.
+  phase: input
+  content: eC0tLS0tQkVHSU4gUFJJVkFURSBLRVktLS0tLQpjM2x1ZEdobGRHbGpJSEJ5YVhaaGRHVWdiV0YwWlhKcFlXeHplVzUwYUdWMGFXTWdjSEpwZG1GMFpTQnRZWFJsY21saGJITjViblJvWlhScFl5QndjbWwyWVhSbElHMWhkR1Z5YVdGc2MzbHVkR2hsZEdsaklIQnlhWFpoZEdVZ2JXRjBaWEpwWVd4emVXNTBhR1YwYVdNZ2NISnBkbUYwWlNCdFlYUmxjbWxoYkhONWJuUm9aWFJwWXlCd2NtbDJZWFJsSUcxaGRHVnlhV0ZzYzNsdWRHaGxkR2xqSUhCeWFYWmhkR1VnYldGMFpYSnBZV3h6ZVc1MGFHVjBhV01nY0hKcGRtRjBaU0J0WVhSbGNtbGhiQT09Ci0tLS0tRU5EIFBSSVZBVEUgS0VZLS0tLS0=
+  expected_decision: block
+  covered_rule_ids:
+  - credential/base64-private-key
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Credential format regression
+  scope: rule
+- id: local-credentials/formats-4.2/base64-prefixed-offset2/input
+  name: 'local-credentials: base64-prefixed-offset2'
+  description: Synthetic local credential format regression.
+  phase: input
+  content: eHgtLS0tLUJFR0lOIFBSSVZBVEUgS0VZLS0tLS0KYzNsdWRHaGxkR2xqSUhCeWFYWmhkR1VnYldGMFpYSnBZV3h6ZVc1MGFHVjBhV01nY0hKcGRtRjBaU0J0WVhSbGNtbGhiSE41Ym5Sb1pYUnBZeUJ3Y21sMllYUmxJRzFoZEdWeWFXRnNjM2x1ZEdobGRHbGpJSEJ5YVhaaGRHVWdiV0YwWlhKcFlXeHplVzUwYUdWMGFXTWdjSEpwZG1GMFpTQnRZWFJsY21saGJITjViblJvWlhScFl5QndjbWwyWVhSbElHMWhkR1Z5YVdGc2MzbHVkR2hsZEdsaklIQnlhWFpoZEdVZ2JXRjBaWEpwWVd4emVXNTBhR1YwYVdNZ2NISnBkbUYwWlNCdFlYUmxjbWxoYkE9PQotLS0tLUVORCBQUklWQVRFIEtFWS0tLS0t
+  expected_decision: block
+  covered_rule_ids:
+  - credential/base64-private-key
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Credential format regression
+  scope: rule
+- id: local-credentials/formats-4.2/base64-wrapped/input
+  name: 'local-credentials: base64-wrapped'
+  description: Synthetic local credential format regression.
+  phase: input
+  content: 'LS0tLS1CRUdJTiBQUklWQVRFIEtFWS0tLS0tCmMzbHVkR2hsZEdsaklIQnlh
+
+    WFpoZEdVZ2JXRjBaWEpwWVd4emVXNTBhR1YwYVdNZ2NISnBkbUYwWlNCdFlY
+
+    UmxjbWxoYkhONWJuUm9aWFJwWXlCd2NtbDJZWFJsSUcxaGRHVnlhV0ZzYzNs
+
+    dWRHaGxkR2xqSUhCeWFYWmhkR1VnYldGMFpYSnBZV3h6ZVc1MGFHVjBhV01n
+
+    Y0hKcGRtRjBaU0J0WVhSbGNtbGhiSE41Ym5Sb1pYUnBZeUJ3Y21sMllYUmxJ
+
+    RzFoZEdWeWFXRnNjM2x1ZEdobGRHbGpJSEJ5YVhaaGRHVWdiV0YwWlhKcFlX
+
+    eHplVzUwYUdWMGFXTWdjSEpwZG1GMFpTQnRZWFJsY21saGJBPT0KLS0tLS1F
+
+    TkQgUFJJVkFURSBLRVktLS0tLQ=='
+  expected_decision: block
+  covered_rule_ids:
+  - credential/base64-private-key
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Credential format regression
+  scope: rule
+- id: local-credentials/formats-4.2/reference-no-bypass/input
+  name: 'local-credentials: reference-no-bypass'
+  description: Synthetic local credential format regression.
+  phase: input
+  content: 'password=user.password
+
+    password="synthetic-72"'
+  expected_decision: block
+  covered_rule_ids:
+  - credential/password
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Credential format regression
+  scope: rule
+- id: local-credentials/formats-4.2/label-no-bypass/input
+  name: 'local-credentials: label-no-bypass'
+  description: Synthetic local credential format regression.
+  phase: input
+  content: '"LABEL_CURRENT_PASSWORD":"Current password"
+
+    password="synthetic-72"'
+  expected_decision: block
+  covered_rule_ids:
+  - credential/password
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Credential format regression
+  scope: rule
+- id: local-credentials/formats-4.2/public-no-bypass/input
+  name: 'local-credentials: public-no-bypass'
+  description: Synthetic local credential format regression.
+  phase: input
+  content: 'public-key="0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+
+    key="0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"'
+  expected_decision: block
+  covered_rule_ids:
+  - credential/labelled-hex-key
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Credential format regression
+  scope: rule
+- id: local-credentials/formats-4.2/cli-variable-no-bypass/input
+  name: 'local-credentials: cli-variable-no-bypass'
+  description: Synthetic local credential format regression.
+  phase: input
+  content: tool --password $PASS --password synthetic72
+  expected_decision: block
+  covered_rule_ids:
+  - credential/command-password
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Credential format regression
+  scope: rule
+- id: local-credentials/formats-4.2/camel-certificate/output
+  name: 'local-credentials: camel-certificate'
+  description: Synthetic local credential format regression.
+  phase: output
+  content: CertificatePassword="synthetic-72"
+  expected_decision: block
+  covered_rule_ids:
+  - credential/password
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Credential format regression
+  scope: rule
+- id: local-credentials/formats-4.2/colon-assign/output
+  name: 'local-credentials: colon-assign'
+  description: Synthetic local credential format regression.
+  phase: output
+  content: password := "synthetic-72"
+  expected_decision: block
+  covered_rule_ids:
+  - credential/password
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Credential format regression
+  scope: rule
+- id: local-credentials/formats-4.2/json-escaped/output
+  name: 'local-credentials: json-escaped'
+  description: Synthetic local credential format regression.
+  phase: output
+  content: '{\"password\":\"synthetic-72\"}'
+  expected_decision: block
+  covered_rule_ids:
+  - credential/password
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Credential format regression
+  scope: rule
+- id: local-credentials/formats-4.2/bare-env/output
+  name: 'local-credentials: bare-env'
+  description: Synthetic local credential format regression.
+  phase: output
+  content: DB_PASSWORD=synthetic-pass-72
+  expected_decision: block
+  covered_rule_ids:
+  - credential/password
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Credential format regression
+  scope: rule
+- id: local-credentials/formats-4.2/mysql-plugin/output
+  name: 'local-credentials: mysql-plugin'
+  description: Synthetic local credential format regression.
+  phase: output
+  content: ALTER USER 'test'@'localhost' IDENTIFIED WITH mysql_native_password BY
+    'synthetic-72';
+  expected_decision: block
+  covered_rule_ids:
+  - credential/sql-password
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Credential format regression
+  scope: rule
+- id: local-credentials/formats-4.2/mysql-basic/output
+  name: 'local-credentials: mysql-basic'
+  description: Synthetic local credential format regression.
+  phase: output
+  content: CREATE USER 'test' IDENTIFIED BY 'synthetic-72';
+  expected_decision: block
+  covered_rule_ids:
+  - credential/sql-password
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Credential format regression
+  scope: rule
+- id: local-credentials/formats-4.2/postgres-role/output
+  name: 'local-credentials: postgres-role'
+  description: Synthetic local credential format regression.
+  phase: output
+  content: CREATE ROLE fixture LOGIN PASSWORD 'synthetic72';
+  expected_decision: block
+  covered_rule_ids:
+  - credential/sql-password
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Credential format regression
+  scope: rule
+- id: local-credentials/formats-4.2/postgres-bare/output
+  name: 'local-credentials: postgres-bare'
+  description: Synthetic local credential format regression.
+  phase: output
+  content: CREATE ROLE fixture LOGIN PASSWORD synthetic72;
+  expected_decision: block
+  covered_rule_ids:
+  - credential/sql-password
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Credential format regression
+  scope: rule
+- id: local-credentials/formats-4.2/postgres-encrypted/output
+  name: 'local-credentials: postgres-encrypted'
+  description: Synthetic local credential format regression.
+  phase: output
+  content: CREATE USER fixture WITH ENCRYPTED PASSWORD 'synthetic-72';
+  expected_decision: block
+  covered_rule_ids:
+  - credential/sql-password
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Credential format regression
+  scope: rule
+- id: local-credentials/formats-4.2/cli-array/output
+  name: 'local-credentials: cli-array'
+  description: Synthetic local credential format regression.
+  phase: output
+  content: '["--password", "synthetic72"]'
+  expected_decision: block
+  covered_rule_ids:
+  - credential/command-password
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Credential format regression
+  scope: rule
+- id: local-credentials/formats-4.2/powershell-certificate/output
+  name: 'local-credentials: powershell-certificate'
+  description: Synthetic local credential format regression.
+  phase: output
+  content: tool -CertificatePassword synthetic72
+  expected_decision: block
+  covered_rule_ids:
+  - credential/command-password
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Credential format regression
+  scope: rule
+- id: local-credentials/formats-4.2/sql-function/output
+  name: 'local-credentials: sql-function'
+  description: Synthetic local credential format regression.
+  phase: output
+  content: INSERT INTO mysql.user VALUES (PASSWORD('synthetic72'));
+  expected_decision: block
+  covered_rule_ids:
+  - credential/sql-password
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Credential format regression
+  scope: rule
+- id: local-credentials/formats-4.2/sql-comment/output
+  name: 'local-credentials: sql-comment'
+  description: Synthetic local credential format regression.
+  phase: output
+  content: CREATE ROLE fixture; -- PASSWORD 'synthetic72'
+  expected_decision: block
+  covered_rule_ids:
+  - credential/sql-password
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Credential format regression
+  scope: rule
+- id: local-credentials/formats-4.2/cli-long/output
+  name: 'local-credentials: cli-long'
+  description: Synthetic local credential format regression.
+  phase: output
+  content: tool --password "synthetic-72"
+  expected_decision: block
+  covered_rule_ids:
+  - credential/command-password
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Credential format regression
+  scope: rule
+- id: local-credentials/formats-4.2/cli-equals/output
+  name: 'local-credentials: cli-equals'
+  description: Synthetic local credential format regression.
+  phase: output
+  content: tool --password=synthetic72
+  expected_decision: block
+  covered_rule_ids:
+  - credential/command-password
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Credential format regression
+  scope: rule
+- id: local-credentials/formats-4.2/powershell/output
+  name: 'local-credentials: powershell'
+  description: Synthetic local credential format regression.
+  phase: output
+  content: Get-NtToken -Password synthetic72 -User fixture
+  expected_decision: block
+  covered_rule_ids:
+  - credential/command-password
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Credential format regression
+  scope: rule
+- id: local-credentials/formats-4.2/mysql-attached/output
+  name: 'local-credentials: mysql-attached'
+  description: Synthetic local credential format regression.
+  phase: output
+  content: mysql -u fixture -psynthetic72
+  expected_decision: block
+  covered_rule_ids:
+  - credential/command-password
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Credential format regression
+  scope: rule
+- id: local-credentials/formats-4.2/openssl-pass/output
+  name: 'local-credentials: openssl-pass'
+  description: Synthetic local credential format regression.
+  phase: output
+  content: openssl pkcs12 -passin pass:synthetic72
+  expected_decision: block
+  covered_rule_ids:
+  - credential/command-password
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Credential format regression
+  scope: rule
+- id: local-credentials/formats-4.2/nkey-user/output
+  name: 'local-credentials: nkey-user'
+  description: Synthetic local credential format regression.
+  phase: output
+  content: seed="SUAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+  expected_decision: block
+  covered_rule_ids:
+  - credential/nkey-seed
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Credential format regression
+  scope: rule
+- id: local-credentials/formats-4.2/nkey-operator/output
+  name: 'local-credentials: nkey-operator'
+  description: Synthetic local credential format regression.
+  phase: output
+  content: SOAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+  expected_decision: block
+  covered_rule_ids:
+  - credential/nkey-seed
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Credential format regression
+  scope: rule
+- id: local-credentials/formats-4.2/base64-pem/output
+  name: 'local-credentials: base64-pem'
+  description: Synthetic local credential format regression.
+  phase: output
+  content: LS0tLS1CRUdJTiBQUklWQVRFIEtFWS0tLS0tCmMzbHVkR2hsZEdsaklIQnlhWFpoZEdVZ2JXRjBaWEpwWVd4emVXNTBhR1YwYVdNZ2NISnBkbUYwWlNCdFlYUmxjbWxoYkhONWJuUm9aWFJwWXlCd2NtbDJZWFJsSUcxaGRHVnlhV0ZzYzNsdWRHaGxkR2xqSUhCeWFYWmhkR1VnYldGMFpYSnBZV3h6ZVc1MGFHVjBhV01nY0hKcGRtRjBaU0J0WVhSbGNtbGhiSE41Ym5Sb1pYUnBZeUJ3Y21sMllYUmxJRzFoZEdWeWFXRnNjM2x1ZEdobGRHbGpJSEJ5YVhaaGRHVWdiV0YwWlhKcFlXeHplVzUwYUdWMGFXTWdjSEpwZG1GMFpTQnRZWFJsY21saGJBPT0KLS0tLS1FTkQgUFJJVkFURSBLRVktLS0tLQ==
+  expected_decision: block
+  covered_rule_ids:
+  - credential/base64-private-key
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Credential format regression
+  scope: rule
+- id: local-credentials/formats-4.2/base64-prefixed/output
+  name: 'local-credentials: base64-prefixed'
+  description: Synthetic local credential format regression.
+  phase: output
+  content: cHJlZml4LS0tLS1CRUdJTiBQUklWQVRFIEtFWS0tLS0tCmMzbHVkR2hsZEdsaklIQnlhWFpoZEdVZ2JXRjBaWEpwWVd4emVXNTBhR1YwYVdNZ2NISnBkbUYwWlNCdFlYUmxjbWxoYkhONWJuUm9aWFJwWXlCd2NtbDJZWFJsSUcxaGRHVnlhV0ZzYzNsdWRHaGxkR2xqSUhCeWFYWmhkR1VnYldGMFpYSnBZV3h6ZVc1MGFHVjBhV01nY0hKcGRtRjBaU0J0WVhSbGNtbGhiSE41Ym5Sb1pYUnBZeUJ3Y21sMllYUmxJRzFoZEdWeWFXRnNjM2x1ZEdobGRHbGpJSEJ5YVhaaGRHVWdiV0YwWlhKcFlXeHplVzUwYUdWMGFXTWdjSEpwZG1GMFpTQnRZWFJsY21saGJBPT0KLS0tLS1FTkQgUFJJVkFURSBLRVktLS0tLQ==
+  expected_decision: block
+  covered_rule_ids:
+  - credential/base64-private-key
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Credential format regression
+  scope: rule
+- id: local-credentials/formats-4.2/base64-prefixed-offset1/output
+  name: 'local-credentials: base64-prefixed-offset1'
+  description: Synthetic local credential format regression.
+  phase: output
+  content: eC0tLS0tQkVHSU4gUFJJVkFURSBLRVktLS0tLQpjM2x1ZEdobGRHbGpJSEJ5YVhaaGRHVWdiV0YwWlhKcFlXeHplVzUwYUdWMGFXTWdjSEpwZG1GMFpTQnRZWFJsY21saGJITjViblJvWlhScFl5QndjbWwyWVhSbElHMWhkR1Z5YVdGc2MzbHVkR2hsZEdsaklIQnlhWFpoZEdVZ2JXRjBaWEpwWVd4emVXNTBhR1YwYVdNZ2NISnBkbUYwWlNCdFlYUmxjbWxoYkhONWJuUm9aWFJwWXlCd2NtbDJZWFJsSUcxaGRHVnlhV0ZzYzNsdWRHaGxkR2xqSUhCeWFYWmhkR1VnYldGMFpYSnBZV3h6ZVc1MGFHVjBhV01nY0hKcGRtRjBaU0J0WVhSbGNtbGhiQT09Ci0tLS0tRU5EIFBSSVZBVEUgS0VZLS0tLS0=
+  expected_decision: block
+  covered_rule_ids:
+  - credential/base64-private-key
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Credential format regression
+  scope: rule
+- id: local-credentials/formats-4.2/base64-prefixed-offset2/output
+  name: 'local-credentials: base64-prefixed-offset2'
+  description: Synthetic local credential format regression.
+  phase: output
+  content: eHgtLS0tLUJFR0lOIFBSSVZBVEUgS0VZLS0tLS0KYzNsdWRHaGxkR2xqSUhCeWFYWmhkR1VnYldGMFpYSnBZV3h6ZVc1MGFHVjBhV01nY0hKcGRtRjBaU0J0WVhSbGNtbGhiSE41Ym5Sb1pYUnBZeUJ3Y21sMllYUmxJRzFoZEdWeWFXRnNjM2x1ZEdobGRHbGpJSEJ5YVhaaGRHVWdiV0YwWlhKcFlXeHplVzUwYUdWMGFXTWdjSEpwZG1GMFpTQnRZWFJsY21saGJITjViblJvWlhScFl5QndjbWwyWVhSbElHMWhkR1Z5YVdGc2MzbHVkR2hsZEdsaklIQnlhWFpoZEdVZ2JXRjBaWEpwWVd4emVXNTBhR1YwYVdNZ2NISnBkbUYwWlNCdFlYUmxjbWxoYkE9PQotLS0tLUVORCBQUklWQVRFIEtFWS0tLS0t
+  expected_decision: block
+  covered_rule_ids:
+  - credential/base64-private-key
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Credential format regression
+  scope: rule
+- id: local-credentials/formats-4.2/base64-wrapped/output
+  name: 'local-credentials: base64-wrapped'
+  description: Synthetic local credential format regression.
+  phase: output
+  content: 'LS0tLS1CRUdJTiBQUklWQVRFIEtFWS0tLS0tCmMzbHVkR2hsZEdsaklIQnlh
+
+    WFpoZEdVZ2JXRjBaWEpwWVd4emVXNTBhR1YwYVdNZ2NISnBkbUYwWlNCdFlY
+
+    UmxjbWxoYkhONWJuUm9aWFJwWXlCd2NtbDJZWFJsSUcxaGRHVnlhV0ZzYzNs
+
+    dWRHaGxkR2xqSUhCeWFYWmhkR1VnYldGMFpYSnBZV3h6ZVc1MGFHVjBhV01n
+
+    Y0hKcGRtRjBaU0J0WVhSbGNtbGhiSE41Ym5Sb1pYUnBZeUJ3Y21sMllYUmxJ
+
+    RzFoZEdWeWFXRnNjM2x1ZEdobGRHbGpJSEJ5YVhaaGRHVWdiV0YwWlhKcFlX
+
+    eHplVzUwYUdWMGFXTWdjSEpwZG1GMFpTQnRZWFJsY21saGJBPT0KLS0tLS1F
+
+    TkQgUFJJVkFURSBLRVktLS0tLQ=='
+  expected_decision: block
+  covered_rule_ids:
+  - credential/base64-private-key
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Credential format regression
+  scope: rule
+- id: local-credentials/formats-4.2/reference-no-bypass/output
+  name: 'local-credentials: reference-no-bypass'
+  description: Synthetic local credential format regression.
+  phase: output
+  content: 'password=user.password
+
+    password="synthetic-72"'
+  expected_decision: block
+  covered_rule_ids:
+  - credential/password
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Credential format regression
+  scope: rule
+- id: local-credentials/formats-4.2/label-no-bypass/output
+  name: 'local-credentials: label-no-bypass'
+  description: Synthetic local credential format regression.
+  phase: output
+  content: '"LABEL_CURRENT_PASSWORD":"Current password"
+
+    password="synthetic-72"'
+  expected_decision: block
+  covered_rule_ids:
+  - credential/password
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Credential format regression
+  scope: rule
+- id: local-credentials/formats-4.2/public-no-bypass/output
+  name: 'local-credentials: public-no-bypass'
+  description: Synthetic local credential format regression.
+  phase: output
+  content: 'public-key="0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+
+    key="0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"'
+  expected_decision: block
+  covered_rule_ids:
+  - credential/labelled-hex-key
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Credential format regression
+  scope: rule
+- id: local-credentials/formats-4.2/cli-variable-no-bypass/output
+  name: 'local-credentials: cli-variable-no-bypass'
+  description: Synthetic local credential format regression.
+  phase: output
+  content: tool --password $PASS --password synthetic72
+  expected_decision: block
+  covered_rule_ids:
+  - credential/command-password
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Credential format regression
+  scope: rule

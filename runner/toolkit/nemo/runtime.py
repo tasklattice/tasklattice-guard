@@ -2,15 +2,18 @@ from __future__ import annotations
 
 import asyncio
 import difflib
+import json
 import re
 import time
-from contextlib import nullcontext
+from collections.abc import AsyncIterator, Awaitable, Callable
+from contextlib import asynccontextmanager, contextmanager, nullcontext
 from contextvars import ContextVar
 from dataclasses import asdict, dataclass, replace
 from functools import wraps
 from typing import Any
 
 from nemoguardrails import Guardrails
+from nemoguardrails.actions.rail_outcome import RailOutcome
 from nemoguardrails.exceptions import LLMCallException
 from nemoguardrails.guardrails.iorails import INTERNAL_ERROR_MESSAGE
 from nemoguardrails.rails.llm.options import (
@@ -24,13 +27,17 @@ from nemoguardrails.rails.llm.options import (
 from opentelemetry import context as otel_context, trace
 from opentelemetry.trace import Status, StatusCode
 
-from ..runtime.content_views import request_view, with_active_text
-from ..runtime.interventions import fallback_content
+from ...model_concurrency import model_slot
+from ..runtime.content_views import current_context_messages, request_view, with_active_text
+from ..compiler.semantics import collects_complete_evidence
+from ..runtime.outcome import finalize_decision
+from ..runtime.streaming import OutputStreamContract, OutputStreamEvaluationError, OutputStreamResult
 from ..runtime.contracts import (
     AppliedIntervention,
     ContentPatch,
     DecisionFragment,
     ENFORCEMENT_ACTIONS,
+    EVALUATOR_VERDICTS,
     EngineRequest,
     ProtectionDecision,
     RuntimeTraceStep,
@@ -57,11 +64,14 @@ from .actions.names import ACTION_RECORD_OWNED_POLICY
 from ..evaluation.contracts import CONTRACT_PII_EXACT
 from .actions.contracts import ActionRequest, ActionResult, ActionUsage, ModelCallUsage
 from .actions.model_call import (
+    SHORT_CIRCUIT_CANCEL,
     ModelCallObserver,
     activate_native_model_observation,
     deactivate_native_model_observation,
     observe_native_model_call,
 )
+from .native_streaming import native_output_config
+from .output import protect_output
 from .artifacts import config_checksum
 from .registry import NeMoRuntimeRegistry
 from ..safety.taxonomy import taxonomy, taxonomy_for_evaluator
@@ -92,16 +102,64 @@ class _ExecutionScope:
     c2_decision: dict[str, Any] | None = None
     closed: bool = False
     current_text: str | None = None
-    proposed_action: str = "pass"
+    proposed_action: str = "allow"
     reason: str = "All NeMo Actions passed."
     action_failure: _ActionExecutionFailure | None = None
+    native_stream: Any = None
+
+
+@contextmanager
+def _execution_context(runtime, request, instance, started, *, native_stream=None):
+    """One request scope and model-observation lifecycle for all NeMo APIs."""
+    scope = _ExecutionScope(request, instance.config.runtime_profile, [], started,
+                            native_stream=native_stream)
+    token = _CURRENT_SCOPE.set(scope)
+    observation, model_token = activate_native_model_observation(
+        guardrail_id=request.plan.guardrail_id,
+        endpoint_id=(request.request_context.endpoint_id or "__internal__")
+        if request.request_context is not None else "__internal__",
+        phase=request.phase, request_started_at=started,
+        observer=runtime._model_call_observer,
+    )
+    try:
+        yield scope, observation
+    finally:
+        scope.closed = True
+        _CURRENT_SCOPE.reset(token)
+        deactivate_native_model_observation(model_token)
+
+
+@asynccontextmanager
+async def _admission(instance, request):
+    started = time.perf_counter()
+    instance.waiting_requests += 1
+    try:
+        with _TRACER.start_as_current_span("guardrail.queue_wait", attributes={
+            "guardrail.id": request.plan.guardrail_id,
+            "guardrail.version": request.plan.guardrail_version,
+            "guardrail.phase": request.phase,
+            "guardrail.runtime.profile": instance.config.runtime_profile,
+        }) as span:
+            await instance.admission.acquire()
+            wait_ms = max(0, round((time.perf_counter() - started) * 1000))
+            span.set_attribute("guardrail.queue.duration_ms", wait_ms)
+    finally:
+        instance.waiting_requests -= 1
+    instance.active_requests += 1
+    try:
+        yield wait_ms
+    finally:
+        instance.active_requests -= 1
+        instance.admission.release()
 
 
 class _ActionExecutionFailure(LLMCallException):
     """Safe diagnostic: never retain Action arguments or exception messages."""
 
-    def __init__(self, action_name: str, error_type: str, *, timed_out: bool = False):
+    def __init__(self, action_name: str, error_type: str, *, timed_out: bool = False, failure=None):
         self.action_name = action_name
+        self.failure = failure
+        self.error_type = error_type
         self.timed_out = timed_out
         super().__init__(f"{action_name} failed with {error_type}.", detail="Guardrail Action")
 
@@ -123,6 +181,9 @@ class NeMoActionBridge:
         self._config = config
         self._bindings = {item.id: item for item in config.action_bindings}
         self._providers = providers
+        self._native_output_streaming = bool(
+            native_output_config(config).get("streaming", {}).get("enabled", False)
+        )
 
     def register(self, rails: Guardrails) -> None:
         def register_action(handler, *, name):
@@ -139,8 +200,12 @@ class NeMoActionBridge:
                 try:
                     return await handler(*args, **kwargs)
                 except Exception as error:
+                    from .actions.model_call import model_failure
+                    _, failure = model_failure(error)
+                    if isinstance(error, TimeoutError) and failure:
+                        failure = replace(failure, source="guard", category="deadline")
                     scope.action_failure = _ActionExecutionFailure(
-                        name, type(error).__name__, timed_out=isinstance(error, TimeoutError)
+                        name, type(error).__name__, timed_out=isinstance(error, TimeoutError), failure=failure,
                     )
                     # NeMo's public dispatcher deliberately propagates this
                     # exception family instead of logging arguments or converting
@@ -149,14 +214,11 @@ class NeMoActionBridge:
 
             rails.register_action(checked, name=name)
 
+        register_action(self.resolve, name=ACTION_RESOLVE)
         if self._config.runtime_profile == "llmrails_colang2_programmable":
             register_action(
                 self.record_native,
                 name=ACTION_RECORD_NATIVE,
-            )
-            register_action(
-                self.resolve,
-                name=ACTION_RESOLVE,
             )
             register_action(
                 self.customer_identifier,
@@ -202,16 +264,130 @@ class NeMoActionBridge:
             text: str,
             binding_id: str,
             context: dict[str, Any] | None = None,
-        ) -> dict[str, Any]:
-            return await self.execute_action(
-                action_name,
-                action_version,
-                text,
-                binding_id,
-                context,
+            llm_task_manager=None, config=None, model_name=None, llms=None, llm=None,
+        ) -> dict[str, Any] | RailOutcome:
+            # NeMo injects these public Action parameters on its streaming path.
+            selected = self._bindings.get(binding_id)
+            group = selected.parameter(f"parallel_group_{self._request().phase}") if selected else None
+            payload = (await self.execute_action_group(text, group, context) if group else
+                       await self.execute_action(action_name, action_version, text, binding_id, context))
+            if not self._native_output_streaming or self._request().phase != "output":
+                return payload
+            scope = _execution_scope()
+            if scope.native_stream is not None:
+                scope.native_stream.record(payload)
+            metadata = {"tasklattice_result": payload}
+            if payload["verdict"] == "error":
+                return RailOutcome.failure(reason=payload["reason"], metadata=metadata)
+            if payload["modified"]:
+                raise ValueError("A streaming rail cannot transform content.")
+            return (RailOutcome.block if payload["blocked"] else RailOutcome.allow)(
+                reason=payload["reason"], metadata=metadata,
             )
 
         return execute_provider
+
+    async def execute_action_group(self, text, group, context):
+        """Run compiler-proven independent read-only checks inside a NeMo Action.
+
+        Block cancels remaining checks; Allow waits for every required member.
+        Each member retains its evaluator, deadline, evidence and Policy identity.
+        """
+        phase = self._request().phase
+        members = [b for b in self._bindings.values() if phase in b.phases
+                   and b.parameter(f"parallel_group_{phase}") == group]
+        if not members or any(b.on_unsafe not in {"allow", "block"} or b.trigger.type != "always" for b in members):
+            raise ValueError("Parallel group requires independent read-only checks.")
+        started = set()
+        async def check(binding):
+            # Admission belongs to the actual model RPC, shared across requests.
+            # A group-wide gate lets one busy model starve unrelated models.
+            started.add(binding.id)
+            payload = await self.execute_action(binding.action_name, binding.action_version, text, binding.id, context)
+            if payload["modified"]:
+                raise ValueError("A parallel check attempted to transform content.")
+            return payload
+        def rank_of(binding) -> int:
+            value = _trace_precedence(binding)
+            return value if value is not None else 1 << 30
+
+        tasks = {asyncio.create_task(check(b)): b for b in members}
+        pending = set(tasks)
+        completed = {}
+        failures = {}
+        cancelled = []
+        try:
+            while pending:
+                done, pending = await asyncio.wait(pending, return_when=asyncio.FIRST_COMPLETED)
+                # Harvest the entire ready batch before acting on exceptions:
+                # set iteration order must not erase a simultaneous Block.
+                for task in tasks:
+                    if task not in done:
+                        continue
+                    if task.cancelled():
+                        continue
+                    if error := task.exception():
+                        failures[tasks[task].id] = error
+                    else:
+                        completed[tasks[task].id] = task.result()
+                if not self._full_evidence():
+                    blocked = [p for p in completed.values() if p["blocked"]]
+                    if blocked:
+                        # A smaller rank may still return a Block and become the
+                        # authoritative blocking candidate. Wait for it before
+                        # cancelling greater-rank work.
+                        threshold = min(rank_of(b) for b in members
+                                        if b.id in completed and completed[b.id]["blocked"])
+                        if not any(not task.done() and rank_of(tasks[task]) < threshold for task in tasks):
+                            break
+                if failures:
+                    raise next(iter(failures.values()))
+                if any(task.cancelled() for task in done):
+                    raise asyncio.CancelledError()
+        finally:
+            for task in tasks:
+                if not task.done():
+                    task.cancel(SHORT_CIRCUIT_CANCEL if any(p["blocked"] for p in completed.values()) else None)
+            await asyncio.gather(*tasks, return_exceptions=True)
+        # A sibling may finish between FIRST_COMPLETED and cancellation. Keep
+        # its verdict and usage instead of calling a completed request cancelled.
+        for task, binding in tasks.items():
+            if task.cancelled(): cancelled.append(binding)
+            elif error := task.exception(): failures[binding.id] = error
+            else: completed[binding.id] = task.result()
+        results = [completed[b.id] for b in members if b.id in completed]
+        blocked = [p for p in results if p["blocked"]]
+        winner = min(blocked, key=lambda p: next(
+            rank_of(b) for b in members if b.id == p["step_id"])) if blocked else results[0]
+        cancellation_trace = tuple(RuntimeTraceStep(
+            id=f"nemo:action:{b.id}:cancelled", kind="action", name=b.action_name,
+            status="cancelled" if b.id in started else "skipped",
+            detail=("Cancelled after another mandatory check blocked. Provider usage may be unavailable."
+                    if b.id in started else "Not started because another mandatory check blocked."),
+            policy_id=b.policy_id, policy_version=b.policy_version, capability=b.capability,
+            module_id=self._module(b).id if self._module(b) else None,
+            rail_type=phase, contract_ref=b.contract_ref, content_block_id=self._request().active_block_id,
+            parallel_group=group,
+        ) for b in cancelled) + tuple(RuntimeTraceStep(
+            id=f"nemo:action:{b.id}:failed", kind="action", name=b.action_name,
+            status="error", verdict="error", error_source="guard", error_category="internal",
+            error_type=type(failures[b.id]).__name__, detail="An independent check failed during group execution.",
+            policy_id=b.policy_id, policy_version=b.policy_version, capability=b.capability,
+            module_id=self._module(b).id if self._module(b) else None,
+            rail_type=phase, contract_ref=b.contract_ref, content_block_id=self._request().active_block_id,
+            parallel_group=group,
+        ) for b in members if b.id in failures)
+        winner["trace"].extend(asdict(t) for t in cancellation_trace)
+        scope = _execution_scope()
+        if scope.profile == "llmrails_colang2_programmable":
+            for item in scope.results:
+                if item.binding.id == winner["step_id"]:
+                    item.result = replace(item.result, trace=(*item.result.trace, *cancellation_trace))
+        by_id = {b.id: {"verdict": "skipped"} for b in members}
+        by_id.update({p["step_id"]: p for p in results})
+        return {"parallel_results": results, "parallel_by_id": by_id, "blocked": winner["blocked"],
+                "stop": winner["blocked"] and not self._full_evidence(), "modified": False,
+                "content": text, "reason": winner["reason"], "verdict": winner["verdict"]}
 
     async def execute_action(
         self,
@@ -228,7 +404,7 @@ class NeMoActionBridge:
                 capability="unknown",
                 contract_ref="tali.guard.unknown.v1",
                 phases=(self._request().phase,),
-                on_unsafe="reject",
+                on_unsafe="block",
                 action_name=action_name,
                 action_version=action_version,
             )
@@ -246,6 +422,7 @@ class NeMoActionBridge:
         provider_latency_ms = 0
         request = self._request()
         module = self._module(binding)
+        evaluation_text = self._evaluation_text(text, binding)
         endpoint_id = (
             request.request_context.endpoint_id
             if request.request_context is not None
@@ -260,6 +437,8 @@ class NeMoActionBridge:
                 "guardrail.action": action_name,
                 "guardrail.action.version": action_version,
                 "guardrail.action.binding_id": binding.id,
+                "guardrail.execution.stage": binding.parameter(f"execution_stage_{request.phase}") or "authored",
+                "guardrail.execution.group": binding.parameter(f"parallel_group_{request.phase}") or "serial",
                 "guardrail.module.id": module.id if module is not None else "__unmapped__",
                 "guardrail.evaluation.contract": binding.contract_ref,
                 "guardrail.capability": binding.capability,
@@ -281,7 +460,7 @@ class NeMoActionBridge:
                     raise LookupError("provider does not support the pinned Policy")
                 if supported_rails and request.phase not in supported_rails:
                     raise LookupError("provider does not support the active Rail")
-                action_request = self._action_request(text, binding)
+                action_request = self._action_request(evaluation_text, binding)
                 async with asyncio.timeout(binding.timeout_ms / 1_000):
                     action_result = await provider.execute(action_request)
                 result = (
@@ -324,7 +503,7 @@ class NeMoActionBridge:
                 "guardrail.action.result": action_result_name,
                 "guardrail.action.duration_ms": latency,
                 "guardrail.action.provider_work_ms": sum(
-                    call.duration_ms for call in model_calls
+                    _model_call_work_ms(call) for call in model_calls
                 ),
                 "guardrail.action.model_wait_ms": _model_calls_wall_ms(model_calls),
                 "guardrail.action.failure_mode": (
@@ -339,7 +518,7 @@ class NeMoActionBridge:
                 result,
                 latency,
                 provider_latency_ms=provider_latency_ms,
-                input_text=text,
+                input_text=evaluation_text,
             )
 
     async def detect_sensitive_data(
@@ -351,7 +530,7 @@ class NeMoActionBridge:
     ) -> bool:
         result, binding, latency = await self._pii(text)
         self._record(context, binding, result, latency)
-        return result.verdict == "unsafe"
+        return result.verdict == "matched"
 
     async def mask_sensitive_data(
         self,
@@ -362,7 +541,7 @@ class NeMoActionBridge:
     ) -> str:
         result, binding, latency = await self._pii(text)
         self._record(context, binding, result, latency)
-        return result.content if result.verdict == "unsafe" else text
+        return result.content if result.verdict == "matched" else text
 
     async def resolve(
         self,
@@ -378,13 +557,14 @@ class NeMoActionBridge:
         request = self._request()
         resolved = scope.current_text if scope.current_text is not None else request.text
         enforce = request.mode == "enforce"
-        blocked = enforce and action == "reject"
-        modified = enforce and action not in {"pass", "reject"}
+        blocked = enforce and action == "block"
+        modified = enforce and action not in {"allow", "block"}
         payload = {
             "decision": "block" if blocked else "transform" if modified else "allow",
-            "action": action if enforce else "pass",
+            "action": action if enforce else "allow",
             "proposed_action": action,
             "blocked": blocked,
+            "stop": blocked and not self._full_evidence(),
             "modified": modified,
             "content": resolved if enforce else request.text,
             "reason": reason,
@@ -431,7 +611,7 @@ class NeMoActionBridge:
                 else f"tali.guard.{risk.replace('_', '-')}.native.v1"
             ),
             phases=(request.phase,),
-            on_unsafe=step.on_unsafe if step is not None else "reject",
+            on_unsafe=step.on_unsafe if step is not None else "block",
             parameters=step.parameters if step is not None else (),
         )
         reason = (
@@ -446,14 +626,14 @@ class NeMoActionBridge:
             RiskFinding(
                 risk=risk,
                 taxonomy_id=taxonomy_for_evaluator(risk),
-                verdict="unsafe",
+                verdict="matched",
                 confidence=None,
                 evidence=reason,
                 recommended_action=binding.on_unsafe,
             ),
         )
         result = ActionResult(
-            "error" if failed else "safe" if safe else "unsafe",
+            "error" if failed else "not_matched" if safe else "matched",
             text,
             findings=findings,
             reason=reason,
@@ -525,7 +705,7 @@ class NeMoActionBridge:
             and request.phase in item.phases
         )
         # New artifacts carry compiler-owned identity even when flow_name is
-        # computed dynamically. Legacy names resolve only when unambiguous.
+        # computed dynamically. Previous names resolve only when unambiguous.
         binding = candidates[0] if len(candidates) == 1 else None
         if binding is None:
             binding = NeMoActionBinding(
@@ -533,7 +713,7 @@ class NeMoActionBridge:
                 capability="unknown_policy",
                 contract_ref="tali.guard.unknown-policy.v1",
                 phases=(request.phase,),
-                on_unsafe="reject",
+                on_unsafe="block",
             )
             result = ActionResult(
                 "error",
@@ -551,7 +731,7 @@ class NeMoActionBridge:
             RiskFinding(
                 risk=binding.capability,
                 taxonomy_id=taxonomy_for_evaluator(binding.capability),
-                verdict="unsafe",
+                verdict="matched",
                 confidence=1.0,
                 evidence=reason,
                 recommended_action=binding.on_unsafe,
@@ -559,7 +739,7 @@ class NeMoActionBridge:
             ),
         )
         result = ActionResult(
-            "safe" if safe else "unsafe",
+            "not_matched" if safe else "matched",
             replacement if not safe and replacement is not None else text,
             findings=findings,
             reason=reason,
@@ -591,7 +771,7 @@ class NeMoActionBridge:
             capability="pii",
             contract_ref=CONTRACT_PII_EXACT,
             phases=(phase,),
-            on_unsafe=plan_step.on_unsafe if plan_step is not None else "redact",
+            on_unsafe=plan_step.on_unsafe if plan_step is not None else "transform",
             timeout_ms=750,
             parameters=plan_step.parameters if plan_step is not None else (),
             action_name=ACTION_EVALUATE,
@@ -622,21 +802,49 @@ class NeMoActionBridge:
         binding: NeMoActionBinding | None = None,
     ) -> EngineRequest:
         request = self._request()
-        content = text
+        content = self._evaluation_text(text, binding)
         view = with_active_text(request_view(request), content, kind="previous_output")
         return EngineRequest(
             phase=request.phase,
             text=content,
             plan=self._plan,
-            context_messages=request.context_messages,
+            context_messages=current_context_messages(request, content),
             trusted_instruction=request.trusted_instruction,
             target_source=request.target_source,
             mode=request.mode,
-            evidence_scope=request.evidence_scope,
+            evidence_scope=request.evidence_scope, execution_purpose=request.execution_purpose,
             content_view=view,
             active_block_id=request.active_block_id,
             request_context=request.request_context,
         )
+
+    @staticmethod
+    def _declared_view(binding: NeMoActionBinding | None) -> str:
+        if binding is None:
+            return "previous_output"
+        views = [value for key, value in binding.parameters if key == "evaluation_view"]
+        if len(views) != 1 or views[0] not in {"original", "previous_output"}:
+            raise ValueError(f"Action {binding.id!r} must declare exactly one valid evaluation_view.")
+        return views[0]
+
+    def _full_evidence(self) -> bool:
+        request = self._request()
+        return collects_complete_evidence(request.execution_purpose, self._plan)
+
+    def _evaluation_text(self, text: str, binding: NeMoActionBinding | None) -> str:
+        """Materialize the view this step declares; the schedule never selects it.
+
+        A read-only check inspects the phase input so that moving it ahead of a
+        Transform step for latency cannot change its detection verdict. Mutating
+        steps and their trigger chains inspect the preceding Transform output.
+        A windowed output stream has no complete phase input yet: its rail must
+        keep checking exactly the pending window it was handed.
+        """
+        if self._declared_view(binding) != "original":
+            return text
+        if self._native_output_streaming and self._request().phase == "output":
+            return text
+        return self._request().text
 
     def _action_request(
         self,
@@ -665,7 +873,7 @@ class NeMoActionBridge:
             context_messages=prepared.context_messages,
             target_source=prepared.target_source,
             mode=prepared.mode,
-            evidence_scope=prepared.evidence_scope,
+            evidence_scope=prepared.evidence_scope, execution_purpose=prepared.execution_purpose,
             content_view=view,
             active_block_id=prepared.active_block_id,
             request_context=prepared.request_context,
@@ -748,37 +956,32 @@ class NeMoActionBridge:
                 }
             )
         proposed_action = (
-            "reject" if result.verdict == "error" and self._fails_closed(binding)
-            else "pass" if result.verdict in {"safe", "error"}
-            else "clarify" if result.verdict == "uncertain"
+            "block" if result.verdict == "error" and self._fails_closed(binding)
+            else "allow" if result.verdict in {"not_matched", "error"}
             else _runtime_action(runtime_result)
         )
-        # An uncertain prerequisite is evidence for its next evaluator, not a
+        # An unknown prerequisite is evidence for its next evaluator, not a
         # clarification to inject into that evaluator's input.
-        if result.verdict == "uncertain" and any(
+        if result.verdict == "unknown" and any(
             step.trigger.step_ref == binding.id
             and result.verdict in step.trigger.verdicts
             and scope.request.phase in step.phases
             for step in self._plan.steps
         ):
-            proposed_action = "pass"
+            proposed_action = "allow"
         enforce = scope.request.mode == "enforce"
-        blocked = enforce and proposed_action == "reject"
-        modified = enforce and proposed_action not in {"pass", "reject"}
+        blocked = enforce and proposed_action == "block"
+        modified = enforce and proposed_action not in {"allow", "block"}
         content = result.content
         if modified and content == before:
-            try:
-                content = _resolved_content(
-                    before,
-                    proposed_action,
-                    (runtime_result,) if result.verdict == "unsafe" else (),
-                )
-            except _PatchConflict:
-                proposed_action = "reject"
-                blocked = True
-                modified = False
-                content = before
-        if proposed_action != "pass" and scope.proposed_action != "reject":
+            # Let the registered Action wrapper report missing/conflicting output
+            # as an execution failure. A failed transform is not a policy block.
+            content = _resolved_content(
+                before,
+                proposed_action,
+                (runtime_result,) if result.verdict == "matched" else (),
+            )
+        if proposed_action != "allow" and scope.proposed_action != "block":
             scope.proposed_action = proposed_action
             scope.reason = result.reason or "An ordered Policy applied an intervention."
         if scope.current_text is None:
@@ -792,13 +995,16 @@ class NeMoActionBridge:
             "contract_ref": binding.contract_ref,
             "verdict": result.verdict,
             "content": content,
+            "unknown_reason": result.unknown_reason,
             "reason": result.reason,
             "decision": decision,
-            "action": proposed_action if enforce else "pass",
+            "action": proposed_action if enforce else "allow",
             "proposed_action": proposed_action,
             "blocked": blocked,
+            "stop": blocked and not self._full_evidence(),
             "modified": modified,
             "findings": [asdict(item) for item in result.findings],
+            "trace": [asdict(item) for item in result.trace],
             "failure_mode": (
                 "fail_closed" if self._fails_closed(binding) else "fail_open"
             ),
@@ -815,6 +1021,20 @@ class NeMoRuntime:
     name = "nemo-guardrails"
     supported_phases = frozenset({"input", "output"})
 
+    async def protect_output(
+        self,
+        request: EngineRequest,
+        source: AsyncIterator[str],
+        *,
+        emit: Callable[[str], Awaitable[None]],
+        observe: Callable[[ProtectionDecision], Awaitable[None]] | None = None,
+        ready: Callable[[OutputStreamContract], Awaitable[None]] | None = None,
+        timeout_seconds: float = 300,
+    ) -> OutputStreamResult:
+        """Protect any output source with one pinned configuration and lifecycle."""
+        return await protect_output(self, request, source, emit=emit, observe=observe,
+            ready=ready, timeout_seconds=timeout_seconds)
+
     def __init__(
         self,
         registry: NeMoRuntimeRegistry,
@@ -825,257 +1045,247 @@ class NeMoRuntime:
         self._model_call_observer = model_call_observer
 
     async def evaluate(self, request: EngineRequest) -> ProtectionDecision:
-        instance, cache_hit, registry_queue_latency_ms = self._registry.acquire(
+        if request.phase != "output":
+            return await self._evaluate_complete(request)
+        decisions = []
+        started = time.perf_counter()
+
+        async def source():
+            yield request.text
+
+        async def emit(_):
+            pass  # The complete decision already carries any transformed text.
+
+        async def observe(decision):
+            decisions.append(decision)
+
+        try:
+            await self.protect_output(request, source(), emit=emit, observe=observe,
+                timeout_seconds=_request_timeout_ms(request) / 1000)
+            if len(decisions) != 1:
+                raise RuntimeError("Complete output must produce exactly one check.")
+            return decisions[0]
+        except Exception as error:
+            if decisions and decisions[-1].execution_status in {"error", "timeout"}:
+                return decisions[-1]
+            instance, cache_hit, queue_wait = await self._registry.acquire_async(request.plan,
+                **({"release_id": request.effective_release_id} if request.effective_release_id else {}))
+            return _failed_decision(request, error,
+                max(0, round((time.perf_counter() - started) * 1000)), instance.config,
+                cache_hit=cache_hit, queue_latency_ms=queue_wait)
+
+    async def _evaluate_complete(self, request: EngineRequest, *, acquisition=None) -> ProtectionDecision:
+        instance, cache_hit, registry_queue_latency_ms = acquisition or await self._registry.acquire_async(
             request.plan,
             **({"release_id": request.effective_release_id} if request.effective_release_id else {}),
         )
         profile = instance.config.runtime_profile
         started = time.perf_counter()
-        scope = _ExecutionScope(request, profile, [], started)
-        token = _CURRENT_SCOPE.set(scope)
-        request_context = request.request_context
-        native_model_scope, native_model_token = activate_native_model_observation(
-            guardrail_id=request.plan.guardrail_id,
-            endpoint_id=(
-                request_context.endpoint_id
-                if request_context is not None and request_context.endpoint_id
-                else "__internal__"
-            ),
-            phase=request.phase,
-            request_started_at=started,
-            observer=self._model_call_observer,
-        )
-        queue_started = started
-        queue_latency_ms = registry_queue_latency_ms
-        admitted = False
-        waiting = False
-        active_concurrency = 0
-        response: GenerationResponse | None = None
-        rails_result: RailsResult | None = None
-        runtime_results: tuple[_RuntimeResult, ...] = ()
-        custom_decision: dict[str, Any] | None = None
-        runtime_span = None
-        runtime_context_token = None
-        try:
-            async with asyncio.timeout(_request_timeout_ms(request) / 1_000):
-                instance.waiting_requests += 1
-                waiting = True
-                with _TRACER.start_as_current_span(
-                    "guardrail.queue_wait",
-                    attributes={
-                        "guardrail.id": request.plan.guardrail_id,
-                        "guardrail.version": request.plan.guardrail_version,
-                        "guardrail.phase": request.phase,
-                        "guardrail.runtime.profile": profile,
-                    },
-                ) as queue_span:
-                    await instance.admission.acquire()
-                    queue_span.set_attribute(
-                        "guardrail.queue.duration_ms",
-                        max(0, round((time.perf_counter() - queue_started) * 1_000)),
-                    )
-                instance.waiting_requests = max(0, instance.waiting_requests - 1)
-                waiting = False
-                admitted = True
-                instance.active_requests += 1
-                active_concurrency = instance.active_requests
-                queue_latency_ms += max(
-                    0, round((time.perf_counter() - queue_started) * 1_000)
-                )
-                runtime_started = time.perf_counter()
-                runtime_span = _TRACER.start_span(
-                    "guardrail.runtime",
-                    attributes={
-                        "guardrail.id": request.plan.guardrail_id,
-                        "guardrail.version": request.plan.guardrail_version,
-                        "guardrail.phase": request.phase,
-                        "guardrail.runtime.engine": instance.config.runtime_engine,
-                        "guardrail.runtime.profile": profile,
-                        "guardrail.runtime.cache_hit": cache_hit,
-                    },
-                )
-                runtime_context_token = otel_context.attach(
-                    trace.set_span_in_context(runtime_span)
-                )
-                if profile == "iorails_native":
-                    native_model = next(
-                        iter(instance.native_models),
-                        None,
-                    )
-                    observation = (
-                        observe_native_model_call(
-                            native_model_scope,
-                            role=native_model.type,
-                            provider=native_model.runtime_id,
-                            model=native_model.model,
-                            profile_ref=native_model.profile_ref,
-                            runtime_ref=native_model.runtime_id,
+        with _execution_context(self, request, instance, started) as (scope, native_model_scope):
+            queue_latency_ms = registry_queue_latency_ms
+            admitted = False
+            active_concurrency = 0
+            response: GenerationResponse | None = None
+            rails_result: RailsResult | None = None
+            runtime_results: tuple[_RuntimeResult, ...] = ()
+            custom_decision: dict[str, Any] | None = None
+            runtime_span = None
+            runtime_context_token = None
+            try:
+                async with asyncio.timeout(_request_timeout_ms(request) / 1_000):
+                    async with _admission(instance, request) as admission_wait:
+                        admitted = True
+                        active_concurrency = instance.active_requests
+                        queue_latency_ms += admission_wait
+                        runtime_started = time.perf_counter()
+                        runtime_span = _TRACER.start_span(
+                            "guardrail.runtime",
+                            attributes={
+                                "guardrail.id": request.plan.guardrail_id,
+                                "guardrail.version": request.plan.guardrail_version,
+                                "guardrail.phase": request.phase,
+                                "guardrail.runtime.engine": instance.config.runtime_engine,
+                                "guardrail.runtime.profile": profile,
+                                "guardrail.runtime.cache_hit": cache_hit,
+                            },
                         )
-                        if native_model is not None and request.text
-                        else nullcontext()
-                    )
-                    with observation:
-                        rails_result = await instance.rails.check_async(
-                            messages=_messages(request),
-                            rail_types=[NeMoRailType(request.phase)],
+                        runtime_context_token = otel_context.attach(
+                            trace.set_span_in_context(runtime_span)
                         )
-                        _raise_if_cancelled()
-                        if (
-                            rails_result.status == RailStatus.BLOCKED
-                            and rails_result.content == INTERNAL_ERROR_MESSAGE
-                        ):
-                            raise ValueError(
-                                f"NeMo rail {rails_result.rail or 'unknown'} "
-                                "returned an invalid result."
+                        if profile == "iorails_native":
+                            native_model = next(
+                                iter(instance.native_models),
+                                None,
                             )
-                    response, custom_decision = _iorails_response(
-                        request,
-                        instance.config,
-                        rails_result,
-                        max(0, time.perf_counter() - runtime_started),
-                    )
-                elif profile == "llmrails_colang1_standard":
-                    candidate = await instance.rails.generate_async(
-                        messages=_colang1_messages(request),
-                        options={
-                            "rails": [request.phase],
-                            "output_vars": [
-                                *(
-                                    binding.result_var
-                                    for binding in instance.config.bindings_for(
-                                        request.phase
+                            observation = (
+                                observe_native_model_call(
+                                    native_model_scope,
+                                    role=native_model.type,
+                                    provider=native_model.runtime_id,
+                                    model=native_model.model,
+                                    profile_ref=native_model.profile_ref,
+                                    runtime_ref=native_model.runtime_id,
+                                )
+                                if native_model is not None and request.text
+                                else nullcontext()
+                            )
+                            # Queueing stays inside the request deadline and the
+                            # observation records queue time and unsent cancellation.
+                            with observation:
+                                async with model_slot(native_model.runtime_id) if native_model is not None and request.text else nullcontext():
+                                    rails_result = await instance.rails.check_async(
+                                        messages=_messages(request),
+                                        rail_types=[NeMoRailType(request.phase)],
                                     )
-                                    if binding.result_var
-                                ),
-                                (
-                                    "user_message"
-                                    if request.phase == "input"
-                                    else "bot_message"
-                                ),
-                            ],
-                            # Aggregate call counts remain available in
-                            # log.stats; raw model prompts/completions stay off.
-                            "log": {
-                                "activated_rails": True,
-                                "llm_calls": False,
-                            },
-                        },
-                    )
-                    _raise_if_cancelled()
-                    response = _generation_response(candidate)
-                    runtime_results, action_payloads = _colang1_results(
-                        request,
-                        instance.config,
-                        response,
-                    )
-                    custom_decision = _colang1_decision(
-                        request,
-                        instance.config,
-                        response,
-                        runtime_results,
-                        action_payloads,
-                    )
-                elif profile == "llmrails_colang2_programmable":
-                    response = await instance.rails.generate_async(
-                        messages=_programmable_messages(request),
-                        options={
-                            "rails": {
-                                "input": False,
-                                "dialog": False,
-                                "retrieval": False,
-                                "output": False,
-                                "tool_input": False,
-                                "tool_output": False,
-                            },
-                        },
-                    )
-                    _raise_if_cancelled()
-                    response = _generation_response(response)
-                    runtime_results = tuple(scope.results)
-                    custom_decision = scope.c2_decision
-                    if custom_decision is None:
-                        raise RuntimeError(
-                            "The Colang 2 policy completed without a decision."
-                        )
-                else:
-                    raise RuntimeError(f"Unknown NeMo runtime profile {profile!r}.")
-                if scope.action_failure is not None:
-                    raise scope.action_failure
-                runtime_span.set_attributes({
-                    "guardrail.runtime.result": "success",
-                    "guardrail.runtime.duration_ms": max(
-                        0, round((time.perf_counter() - runtime_started) * 1_000)
-                    ),
-                    "guardrail.runtime.action_count": len(runtime_results),
-                })
-        except Exception as error:
-            # Colang may itself fail while consuming the missing Action result.
-            # Preserve the original safe diagnostic rather than a secondary one.
-            error = scope.action_failure or error
-            if runtime_span is not None:
-                runtime_span.record_exception(error)
-                runtime_span.set_status(Status(StatusCode.ERROR, type(error).__name__))
-                runtime_span.set_attribute("guardrail.runtime.result", "error")
-            duration = max(0, round((time.perf_counter() - started) * 1_000))
-            if not admitted:
-                queue_latency_ms += duration
-            return _failed_decision(
-                request,
-                error,
-                duration,
-                instance.config,
-                cache_hit=cache_hit,
-                queue_latency_ms=queue_latency_ms,
-                active_concurrency=active_concurrency,
-                native_model_calls=tuple(native_model_scope.calls),
-            )
-        finally:
-            if runtime_context_token is not None:
-                otel_context.detach(runtime_context_token)
-            if runtime_span is not None:
-                runtime_span.end()
-            if waiting:
-                instance.waiting_requests = max(0, instance.waiting_requests - 1)
-            if admitted:
-                instance.active_requests = max(0, instance.active_requests - 1)
-                instance.admission.release()
-            scope.closed = True
-            _CURRENT_SCOPE.reset(token)
-            deactivate_native_model_observation(native_model_token)
-        if response is None:
-            return _failed_decision(
-                request,
-                RuntimeError("NeMo invocation completed without a response."),
-                max(0, round((time.perf_counter() - started) * 1_000)),
-                instance.config,
-                cache_hit=cache_hit,
-                queue_latency_ms=queue_latency_ms,
-                active_concurrency=active_concurrency,
-                native_model_calls=tuple(native_model_scope.calls),
-            )
-        try:
-            return _decision(
-                request,
-                response,
-                instance.config,
-                runtime_results,
-                custom_decision=custom_decision,
-                cache_hit=cache_hit,
-                queue_latency_ms=queue_latency_ms,
-                active_concurrency=active_concurrency,
-                native_model_calls=tuple(native_model_scope.calls),
-            )
-        except Exception as error:
-            return _failed_decision(
-                request,
-                error,
-                max(0, round((time.perf_counter() - started) * 1_000)),
-                instance.config,
-                cache_hit=cache_hit,
-                queue_latency_ms=queue_latency_ms,
-                active_concurrency=active_concurrency,
-                native_model_calls=tuple(native_model_scope.calls),
-            )
+                                    _raise_if_cancelled()
+                                    if (
+                                        rails_result.status == RailStatus.BLOCKED
+                                        and rails_result.content == INTERNAL_ERROR_MESSAGE
+                                    ):
+                                        raise ValueError(
+                                            f"NeMo rail {rails_result.rail or 'unknown'} "
+                                            "returned an invalid result."
+                                        )
+                            response, custom_decision = _iorails_response(
+                                request,
+                                instance.config,
+                                rails_result,
+                                max(0, time.perf_counter() - runtime_started),
+                            )
+                        elif profile == "llmrails_colang1_standard":
+                            candidate = await instance.rails.generate_async(
+                                messages=_colang1_messages(request),
+                                options={
+                                    "rails": [request.phase],
+                                    "output_vars": [
+                                        *(
+                                            binding.result_var
+                                            for binding in instance.config.bindings_for(
+                                                request.phase
+                                            )
+                                            if binding.result_var
+                                        ),
+                                        (
+                                            "user_message"
+                                            if request.phase == "input"
+                                            else "bot_message"
+                                        ),
+                                    ],
+                                    # Aggregate call counts remain available in
+                                    # log.stats; raw model prompts/completions stay off.
+                                    "log": {
+                                        "activated_rails": True,
+                                        "llm_calls": False,
+                                    },
+                                },
+                            )
+                            _raise_if_cancelled()
+                            response = _generation_response(candidate)
+                            runtime_results, action_payloads = _colang1_results(
+                                request,
+                                instance.config,
+                                response,
+                            )
+                            custom_decision = _colang1_decision(
+                                request,
+                                instance.config,
+                                response,
+                                runtime_results,
+                                action_payloads,
+                            )
+                        elif profile == "llmrails_colang2_programmable":
+                            response = await instance.rails.generate_async(
+                                messages=_programmable_messages(request),
+                                options={
+                                    "rails": {
+                                        "input": False,
+                                        "dialog": False,
+                                        "retrieval": False,
+                                        "output": False,
+                                        "tool_input": False,
+                                        "tool_output": False,
+                                    },
+                                },
+                            )
+                            _raise_if_cancelled()
+                            response = _generation_response(response)
+                            runtime_results = tuple(scope.results)
+                            custom_decision = scope.c2_decision
+                            if custom_decision is None:
+                                raise RuntimeError(
+                                    "The Colang 2 policy completed without a decision."
+                                )
+                        else:
+                            raise RuntimeError(f"Unknown NeMo runtime profile {profile!r}.")
+                        if scope.action_failure is not None:
+                            raise scope.action_failure
+                        runtime_span.set_attributes({
+                            "guardrail.runtime.result": "success",
+                            "guardrail.runtime.duration_ms": max(
+                                0, round((time.perf_counter() - runtime_started) * 1_000)
+                            ),
+                            "guardrail.runtime.action_count": len(runtime_results),
+                        })
+            except Exception as error:
+                # Colang may itself fail while consuming the missing Action result.
+                # Preserve the original safe diagnostic rather than a secondary one.
+                error = scope.action_failure or error
+                if runtime_span is not None:
+                    runtime_span.record_exception(error)
+                    runtime_span.set_status(Status(StatusCode.ERROR, type(error).__name__))
+                    runtime_span.set_attribute("guardrail.runtime.result", "error")
+                duration = max(0, round((time.perf_counter() - started) * 1_000))
+                if not admitted:
+                    queue_latency_ms += duration
+                return _failed_decision(
+                    request,
+                    error,
+                    duration,
+                    instance.config,
+                    cache_hit=cache_hit,
+                    queue_latency_ms=queue_latency_ms,
+                    active_concurrency=active_concurrency,
+                    native_model_calls=tuple(native_model_scope.calls),
+                )
+            finally:
+                if runtime_context_token is not None:
+                    otel_context.detach(runtime_context_token)
+                if runtime_span is not None:
+                    runtime_span.end()
+            if response is None:
+                return _failed_decision(
+                    request,
+                    RuntimeError("NeMo invocation completed without a response."),
+                    max(0, round((time.perf_counter() - started) * 1_000)),
+                    instance.config,
+                    cache_hit=cache_hit,
+                    queue_latency_ms=queue_latency_ms,
+                    active_concurrency=active_concurrency,
+                    native_model_calls=tuple(native_model_scope.calls),
+                )
+            try:
+                return _decision(
+                    request,
+                    response,
+                    instance.config,
+                    runtime_results,
+                    custom_decision=custom_decision,
+                    cache_hit=cache_hit,
+                    queue_latency_ms=queue_latency_ms,
+                    active_concurrency=active_concurrency,
+                    native_model_calls=tuple(native_model_scope.calls),
+                )
+            except Exception as error:
+                return _failed_decision(
+                    request,
+                    error,
+                    max(0, round((time.perf_counter() - started) * 1_000)),
+                    instance.config,
+                    cache_hit=cache_hit,
+                    queue_latency_ms=queue_latency_ms,
+                    active_concurrency=active_concurrency,
+                    native_model_calls=tuple(native_model_scope.calls),
+                )
 
     async def shutdown(self) -> None:
         await self._registry.shutdown()
@@ -1189,17 +1399,15 @@ def _colang1_results(
             raise RuntimeError(
                 f"Colang 1 binding {binding.id!r} has no explicit result variable."
             )
-        raw = output_data.get(binding.result_var)
-        if isinstance(raw, dict):
-            raw_by_id[binding.id] = raw
+        for raw in _action_evidences(output_data.get(binding.result_var)):
+            raw_by_id[str(raw["step_id"])] = raw
 
     # A stopping parallel rail can cancel sibling flows before their output
     # variables are copied.  The official generation log still carries the
     # executed Action's return value, so use it only as a same-call fallback.
     for rail in _activated_rails(response):
         for action in rail.executed_actions:
-            raw = action.return_value
-            if isinstance(raw, dict) and isinstance(raw.get("step_id"), str):
+            for raw in _action_evidences(action.return_value):
                 raw_by_id.setdefault(str(raw["step_id"]), raw)
 
     binding_by_id = {item.id: item for item in bindings}
@@ -1235,6 +1443,52 @@ def _colang1_results(
     return ordered, payloads
 
 
+def _trace_precedence(binding: "NeMoActionBinding") -> int | None:
+    value = binding.parameter("precedence")
+    return int(value) if value is not None and str(value).isdigit() else None
+
+
+def _trace_rank_suffix(binding: "NeMoActionBinding") -> str:
+    precedence = _trace_precedence(binding)
+    if precedence is None:
+        return ""
+    view = binding.parameter("evaluation_view") or "previous_output"
+    policy_rank = binding.parameter("policy_rank")
+    rule_rank = binding.parameter("rule_rank")
+    ranks = f"rank={precedence}" + (f", policyRank={policy_rank}" if policy_rank is not None else "") + (
+        f", ruleRank={rule_rank}" if rule_rank is not None else "")
+    binding_ids = binding.parameter("binding_ids_json")
+    binding_suffix = ""
+    if binding_ids:
+        try:
+            values = [item for group in json.loads(binding_ids).values() for item in group]
+        except (TypeError, ValueError, AttributeError):
+            values = []
+        if len(values) == 1:
+            binding_suffix = f", bindingId={values[0]}"
+        elif values:
+            binding_suffix = ", bindingIds=" + ",".join(values)
+    return f" [{ranks}{binding_suffix}, view={view}]"
+
+
+def _action_evidence(value: Any) -> Any:
+    if isinstance(value, RailOutcome):
+        return value.metadata.get("tasklattice_result")
+    return value
+
+
+def _action_evidences(value: Any) -> tuple[dict, ...]:
+    raw = _action_evidence(value)
+    if not isinstance(raw, dict):
+        return ()
+    if "parallel_results" not in raw and not isinstance(raw.get("step_id"), str):
+        return ()
+    items = raw.get("parallel_results", [raw])
+    if not isinstance(items, list) or any(not isinstance(p, dict) or not isinstance(p.get("step_id"), str) for p in items):
+        raise RuntimeError("Invalid Action group evidence.")
+    return tuple(items)
+
+
 def _colang1_runtime_result(
     binding: NeMoActionBinding,
     payload: dict[str, Any],
@@ -1251,7 +1505,7 @@ def _colang1_runtime_result(
             f"NeMo Action result metadata does not match binding {binding.id!r}."
         )
     verdict = str(payload.get("verdict", ""))
-    if verdict not in {"safe", "unsafe", "uncertain", "error"}:
+    if verdict not in EVALUATOR_VERDICTS:
         raise RuntimeError(f"NeMo Action {binding.id!r} returned an invalid verdict.")
     content = payload.get("content")
     if not isinstance(content, str):
@@ -1286,12 +1540,21 @@ def _colang1_runtime_result(
     if not isinstance(model_calls_raw, list):
         raise RuntimeError(f"NeMo Action {binding.id!r} returned invalid model-call evidence.")
     model_calls = tuple(_model_call_usage_from_payload(binding, item) for item in model_calls_raw)
+    trace_raw = payload.get("trace", [])
+    if not isinstance(trace_raw, list) or any(not isinstance(item, dict) for item in trace_raw):
+        raise RuntimeError(f"NeMo Action {binding.id!r} returned invalid evaluator trace evidence.")
+    try:
+        evaluator_trace = tuple(RuntimeTraceStep(**item) for item in trace_raw)
+    except TypeError as error:
+        raise RuntimeError(f"NeMo Action {binding.id!r} returned invalid evaluator trace evidence.") from error
     return _RuntimeResult(
         binding=binding,
         result=ActionResult(
             verdict=verdict,  # type: ignore[arg-type]
             content=content,
+            unknown_reason=payload.get("unknown_reason", "needs_context"),
             findings=findings,
+            trace=evaluator_trace,
             reason=(
                 str(payload["reason"])
                 if payload.get("reason") is not None
@@ -1320,16 +1583,21 @@ def _model_call_usage_from_payload(
     if not all(isinstance(value, str) and value for value in required):
         raise RuntimeError(f"NeMo Action {binding.id!r} returned incomplete model-call evidence.")
     if required[3] not in {
-        "success", "timeout", "rate_limited", "client_error", "server_error",
+        "success", "cancelled", "timeout", "rate_limited", "client_error", "server_error",
         "transport_error", "invalid_response", "configuration_error", "unknown_error",
     }:
         raise RuntimeError(f"NeMo Action {binding.id!r} returned an invalid model-call result.")
+    request_sent = payload.get("request_sent")
+    if request_sent is not None and type(request_sent) is not bool:
+        raise RuntimeError(f"NeMo Action {binding.id!r} returned invalid model-call dispatch evidence.")
     return ModelCallUsage(
         provider=required[0],
         model=required[1],
         operation=required[2],
         result=required[3],  # type: ignore[arg-type]
         duration_ms=_non_negative_int(payload.get("duration_ms", 0)),
+        queue_duration_ms=_non_negative_int(payload.get("queue_duration_ms", 0)),
+        request_sent=request_sent,
         profile_ref=(str(payload["profile_ref"]) if payload.get("profile_ref") is not None else None),
         runtime_ref=(str(payload["runtime_ref"]) if payload.get("runtime_ref") is not None else None),
         started_offset_ms=_non_negative_int(payload.get("started_offset_ms", 0)),
@@ -1338,11 +1606,17 @@ def _model_call_usage_from_payload(
             _non_negative_int(payload["time_to_first_token_ms"])
             if payload.get("time_to_first_token_ms") is not None else None
         ),
+        call_id=str(payload.get("call_id", "")),
+        usage_known=payload.get("usage_known") is True,
+        cached_input_tokens=_non_negative_int(payload.get("cached_input_tokens", 0)),
+        unsupported_usage=payload.get("unsupported_usage") is True,
         input_tokens=_non_negative_int(payload.get("input_tokens", 0)),
         output_tokens=_non_negative_int(payload.get("output_tokens", 0)),
         retries=_non_negative_int(payload.get("retries", 0)),
         backoff_ms=_non_negative_int(payload.get("backoff_ms", 0)),
         error_type=str(payload.get("error_type", "none")),
+        error_source=payload.get("error_source"), error_category=payload.get("error_category"),
+        http_status=payload.get("http_status"),
     )
 
 
@@ -1354,7 +1628,7 @@ def _risk_finding_from_payload(
         raise RuntimeError(f"NeMo Action {binding.id!r} returned an invalid finding.")
     verdict = str(payload.get("verdict", ""))
     action = str(payload.get("recommended_action", ""))
-    if verdict not in {"safe", "unsafe", "uncertain", "error"}:
+    if verdict not in EVALUATOR_VERDICTS:
         raise RuntimeError(f"NeMo Action {binding.id!r} returned an invalid finding verdict.")
     if action not in ENFORCEMENT_ACTIONS:
         raise RuntimeError(f"NeMo Action {binding.id!r} returned an invalid finding action.")
@@ -1466,9 +1740,9 @@ def _colang1_decision(
     if request.mode == "detect":
         return {
             "decision": "allow",
-            "action": "pass",
+            "action": "allow",
             "proposed_action": _ordered_action(
-                tuple(str(item.get("proposed_action", "pass")) for item in payloads)
+                tuple(str(item.get("proposed_action", "allow")) for item in payloads)
             ),
             "blocked": False,
             "modified": False,
@@ -1486,11 +1760,11 @@ def _colang1_decision(
         selected = blocked_payloads[0] if blocked_payloads else None
         return {
             "decision": "block",
-            "action": "reject",
+            "action": "block",
             "proposed_action": (
-                str(selected.get("proposed_action", "reject"))
+                str(selected.get("proposed_action", "block"))
                 if selected is not None
-                else "reject"
+                else "block"
             ),
             "blocked": True,
             "modified": False,
@@ -1527,8 +1801,8 @@ def _colang1_decision(
         # source of truth.
         return {
             "decision": "transform",
-            "action": "redact",
-            "proposed_action": "redact",
+            "action": "transform",
+            "proposed_action": "transform",
             "blocked": False,
             "modified": True,
             "content": result_content,
@@ -1536,8 +1810,8 @@ def _colang1_decision(
         }
     return {
         "decision": "allow",
-        "action": "pass",
-        "proposed_action": "pass",
+        "action": "allow",
+        "proposed_action": "allow",
         "blocked": False,
         "modified": False,
         "content": request.text,
@@ -1565,23 +1839,21 @@ def _iorails_response(
     proposed_action = _action_for_risk(request.plan, native_risk, request.phase)
     if request.mode == "detect":
         decision = "allow"
-        action = "pass"
-        content = request.text
-    elif blocked and proposed_action == "reject":
-        decision = "block"
-        action = "reject"
+        action = "allow"
         content = request.text
     elif blocked:
-        decision = "transform"
-        action = proposed_action
-        content = fallback_content(action, request.text)
+        # A native refusal is not replacement content for a transform. Never
+        # fabricate a successful rewrite when the rail only supplies a block.
+        decision = "allow" if proposed_action == "allow" else "block"
+        action = decision
+        content = request.text
     elif modified:
         decision = "transform"
-        action = "redact"
+        action = "transform"
         content = result.content
     else:
         decision = "allow"
-        action = "pass"
+        action = "allow"
         content = request.text
     reason = (
         f"NeMo rail {rail_name} blocked the interaction."
@@ -1626,6 +1898,8 @@ def _decision(
     active_concurrency: int,
     native_model_calls: tuple[ModelCallUsage, ...] = (),
 ) -> ProtectionDecision:
+    returned_calls = {call.call_id for item in runtime_results for call in item.result.usage.model_calls if call.call_id}
+    native_model_calls = tuple(call for call in native_model_calls if not call.call_id or call.call_id not in returned_calls)
     output_data = response.output_data or {}
     custom = (
         custom_decision
@@ -1640,6 +1914,11 @@ def _decision(
         if stopping_binding is not None
         else _native_risk(stopping.name if stopping else None)
     )
+    # Streaming synthesizes ActivatedRail without executed_actions. Its stop
+    # flag also represents fail-closed errors, so the rail's name alone cannot
+    # certify a native match when an Action already supplies the real verdict.
+    if native_risk and any(item.binding.capability == native_risk for item in runtime_results):
+        native_risk = None
     native_action = _action_for_risk(request.plan, native_risk, request.phase)
     result_content = _response_content(response, request.text)
 
@@ -1650,24 +1929,20 @@ def _decision(
         reason = validated["reason"]
         result_content = validated["content"]
     elif stopping is not None:
-        decision = (
-            "allow"
-            if request.mode == "detect"
-            else "block"
-            if native_action == "reject"
-            else "transform"
-        )
-        action = "pass" if request.mode == "detect" else native_action
+        action = "allow" if request.mode == "detect" or native_action == "allow" else "block"
+        decision = action
+        result_content = request.text
         reason = f"NeMo rail {stopping.name} blocked the interaction."
     elif result_content != request.text and request.mode == "enforce":
         decision = "transform"
-        action = native_action if native_action != "reject" else "redact"
+        action = "transform"
         reason = "NeMo Guardrails modified sensitive content."
     else:
         decision = "allow"
-        action = "pass"
+        action = "allow"
         reason = "All activated NeMo rails passed."
 
+    native_identity = _native_finding_identity(request.plan, native_risk, request.phase)
     findings = tuple(
         finding
         for item in runtime_results
@@ -1679,12 +1954,15 @@ def _decision(
             RiskFinding(
                 risk=native_risk,
                 taxonomy_id=taxonomy_for_evaluator(native_risk),
-                verdict="unsafe",
+                verdict="matched",
                 confidence=None,
                 evidence=reason,
                 recommended_action=native_action,
+                policy_id=native_identity[0],
+                rule_id=native_identity[1],
             ),
         )
+    findings = _snapshot_finding_risks(request.plan, findings)
     trace = _trace(
         request,
         config,
@@ -1721,7 +1999,16 @@ def _decision(
         required_modules_completed=completed_modules,
         required_modules_total=len(modules),
     )
-    return ProtectionDecision(
+    block_match = _terminal_block_match(runtime_results) if decision == "block" else None
+    policy_unknown = decision == "block" and any(
+        item.result.verdict == "unknown" and item.result.unknown_reason == "uncertain"
+        and _runtime_action(item) == "block" for item in _terminal_runtime_results(runtime_results)
+    )
+    terminal_reason = ("policy_block" if block_match is not None or decision == "block" and native_risk
+                       else "policy_unknown" if policy_unknown else None)
+    if block_match is not None:
+        reason = block_match.result.reason or "A terminal Policy match blocked the interaction."
+    return finalize_decision(ProtectionDecision(
         decision=decision,  # type: ignore[arg-type]
         action=action,  # type: ignore[arg-type]
         reason=reason,
@@ -1745,6 +2032,9 @@ def _decision(
             # Count versioned policy Actions only. NeMo's internal bot/stop
             # actions are implementation details, not billable evaluators.
             action_invocations=len(runtime_results),
+            model_calls=tuple({call.call_id or str(index): call for index, call in enumerate(
+                (*native_model_calls, *(call for item in runtime_results for call in item.result.usage.model_calls))
+            )}.values()),
             model_invocations=len(native_model_calls) + sum(
                 item.result.usage.model_invocations for item in runtime_results
             ),
@@ -1754,7 +2044,10 @@ def _decision(
             runtime_engine=config.runtime_engine,
             runtime_profile=config.runtime_profile,
             config_checksum=config_checksum(config),
-            fail_closed=any(
+            # A conclusive Policy Block already determines delivery. Errors in
+            # other full-evidence checks remain in trace/assessments, but are not
+            # the cause of that decision. Explicit on-unknown Block is policy too.
+            fail_closed=terminal_reason is None and any(
                 item.result.verdict == "error"
                 and _binding_fails_closed(request, item.binding)
                 for item in _terminal_runtime_results(runtime_results)
@@ -1771,7 +2064,8 @@ def _decision(
             ),
         ),
         mode=request.mode,
-    )
+        termination_reason=terminal_reason,
+    ), purpose=request.execution_purpose, require_coverage=bool(request.plan.modules_for(request.phase)))
 
 
 def _trace(
@@ -1831,14 +2125,23 @@ def _trace(
     for index, rail in enumerate(activated):
         rail_type = str(rail.type or request.phase)
         binding_ids = tuple(
-            str(action.return_value["step_id"])
+            str(raw["step_id"])
             for action in rail.executed_actions
-            if isinstance(action.return_value, dict)
-            and isinstance(action.return_value.get("step_id"), str)
-            and action.return_value["step_id"] in bindings_by_id
+            for raw in _action_evidences(action.return_value)
+            if raw["step_id"] in bindings_by_id
         )
         binding = bindings_by_id.get(binding_ids[0]) if binding_ids else None
-        result = results_by_id.get(binding.id) if binding is not None else None
+        # A Rail can execute local detection and then a semantic model. Its
+        # first action does not describe the final result (e.g. local safe,
+        # followed by a provider error). Stopping is not evidence of a hit.
+        observed_results = tuple(
+            results_by_id[item] for item in binding_ids if item in results_by_id
+        )
+        policy_groups: dict[tuple[str, ...], list[_RuntimeResult]] = {}
+        for item in observed_results:
+            policy_groups.setdefault(_result_group_key(item), []).append(item)
+        combined = len(policy_groups) > 1
+        rail_results = _terminal_runtime_results(observed_results)
         capability = (
             binding.capability
             if binding is not None
@@ -1849,9 +2152,10 @@ def _trace(
             if binding is None
             else None
         )
-        error = result is not None and result.result.verdict == "error"
-        unsafe = result is not None and result.result.verdict == "unsafe"
-        uncertain = result is not None and result.result.verdict == "uncertain"
+        error = any(item.result.verdict == "error" for item in rail_results)
+        matched = any(item.result.verdict == "matched" for item in observed_results)
+        unknown = any(item.result.verdict == "unknown" for item in rail_results)
+        observed_unknown = unknown and all(_runtime_action(item) == "allow" for item in rail_results if item.result.verdict == "unknown")
         modified = any(
             isinstance(action.return_value, dict)
             and action.return_value.get("modified") is True
@@ -1859,17 +2163,17 @@ def _trace(
         )
         status = (
             "error" if error else "blocked" if rail.stop else
-            "modified" if modified else "needs_context" if uncertain else "passed"
+            "modified" if modified else "observed" if observed_unknown else _unknown_status(rail_results) if unknown else "passed"
         )
         verdict = (
-            "error" if error else "uncertain" if uncertain else
-            "unsafe" if unsafe or rail.stop or modified else "safe"
+            "error" if error else "unknown" if unknown else
+            "matched" if matched or (not rail_results and (rail.stop or modified)) else "not_matched"
         )
         route = (
             "fail_closed"
             if error and binding is not None and _binding_fails_closed(request, binding)
             else "fail_open" if error else "enforce" if rail.stop or modified else
-            "escalate" if uncertain else "complete"
+            "escalate" if unknown and not observed_unknown else "complete"
         )
         rail_id = f"nemo:rail:official:{index}"
         trace.append(
@@ -1884,7 +2188,7 @@ def _trace(
                 parent_id=root_id,
                 verdict=verdict,
                 route=route,
-                capability=capability,
+                capability=None if combined else capability,
                 module_id=next(
                     (
                         module.id
@@ -1896,7 +2200,7 @@ def _trace(
                         )
                     ),
                     None,
-                ),
+                ) if not combined else None,
                 rail_type=rail_type,
                 **common(),
             )
@@ -1904,50 +2208,70 @@ def _trace(
         for binding_id in binding_ids:
             action_parents[binding_id] = rail_id
 
-        policy_rail = (
-            _policy_rail_binding(request.plan, binding, request.phase)
-            if binding is not None
-            else None
-        )
         if binding is not None and binding.policy_id is not None:
-            policy_id = (
-                f"nemo:policy:{binding.policy_id}:"
-                f"{binding.policy_version}:{binding.flow_name or binding.capability}"
-            )
-            trace.append(
-                RuntimeTraceStep(
+            # Colang 1 runs several Policies inside one ordered Rail. The
+            # Rail's final status belongs to the chain, not its first Policy.
+            for selected in policy_groups.values():
+                terminal = selected[-1]
+                selected_binding = terminal.binding
+                if selected_binding.policy_id is None:
+                    continue
+                policy_rail = _policy_rail_binding(request.plan, selected_binding, request.phase)
+                policy_id = (
+                    f"nemo:policy:{selected_binding.policy_id}:"
+                    f"{selected_binding.policy_version}:{selected_binding.flow_name or selected_binding.capability}"
+                )
+                handling = _runtime_action(terminal)
+                policy_verdict = terminal.result.verdict
+                policy_status = (
+                    "error" if policy_verdict == "error" else
+                    "observed" if policy_verdict in {"matched", "unknown"} and handling == "allow" else
+                    "blocked" if policy_verdict == "matched" and handling == "block" else
+                    "modified" if policy_verdict == "matched" else
+                    _unknown_status((terminal,)) if policy_verdict == "unknown" else "passed"
+                )
+                policy_route = (
+                    "fail_closed" if policy_verdict == "error" and _binding_fails_closed(request, selected_binding) else
+                    "fail_open" if policy_verdict == "error" else
+                    "enforce" if policy_verdict == "matched" and handling != "allow" else
+                    "escalate" if policy_verdict == "unknown" and handling != "allow" else "complete"
+                )
+                trace.append(RuntimeTraceStep(
                     id=policy_id,
                     kind="policy",
-                    name=f"{binding.policy_id}@{binding.policy_version}",
-                    status=status,
-                    outcome=status,
-                    detail="Executed the immutable Policy binding inside an official NeMo Rail.",
-                    duration_ms=max(0, round((rail.duration or 0) * 1_000)),
+                    name=f"{selected_binding.policy_id}@{selected_binding.policy_version}",
+                    status=policy_status,
+                    outcome=policy_status,
+                    detail="Executed the immutable Policy binding inside an official NeMo Rail."
+                    + _trace_rank_suffix(selected_binding),
+                    duration_ms=sum(item.latency_ms for item in selected),
                     parent_id=rail_id,
-                    verdict=verdict,
-                    route=route,
-                    capability=binding.capability,
-                    policy_id=binding.policy_id,
-                    policy_version=binding.policy_version,
+                    verdict=policy_verdict,
+                    route=policy_route,
+                    capability=selected_binding.capability,
+                    policy_id=selected_binding.policy_id,
+                    policy_version=selected_binding.policy_version,
+                    precedence=_trace_precedence(selected_binding),
+                    evaluation_view=selected_binding.parameter("evaluation_view"),
                     rail_type=request.phase,
                     flow_name=(
-                        binding.flow_name
+                        selected_binding.flow_name
                         or (policy_rail.flow_name if policy_rail is not None else None)
                     ),
                     parallel_group=(
-                        binding.parallel_group
+                        selected_binding.parallel_group
+                        or selected_binding.parameter(f"parallel_group_{request.phase}")
                         or (
                             policy_rail.parallel_group
                             if policy_rail is not None
                             else None
                         )
                     ),
-                    timeout_ms=binding.timeout_ms,
+                    timeout_ms=selected_binding.timeout_ms,
                     **common(),
-                )
-            )
-            for binding_id in binding_ids:
-                action_parents[binding_id] = policy_id
+                ))
+                for item in selected:
+                    action_parents[item.binding.id] = policy_id
         else:
             native_policy = _native_policy_rail(
                 request.plan,
@@ -2001,15 +2325,17 @@ def _trace(
             flow_name = binding.flow_name or (
                 policy_rail.flow_name if policy_rail is not None else None
             )
-            parallel_group = binding.parallel_group or (
+            parallel_group = binding.parallel_group or binding.parameter(f"parallel_group_{request.phase}") or (
                 policy_rail.parallel_group if policy_rail is not None else None
             )
             error = terminal.result.verdict == "error"
-            unsafe = terminal.result.verdict == "unsafe"
-            uncertain = terminal.result.verdict == "uncertain"
+            matched = terminal.result.verdict == "matched"
+            unknown = terminal.result.verdict == "unknown"
+            handling = _runtime_action(terminal)
             status = (
-                "error" if error else "blocked" if unsafe else
-                "needs_context" if uncertain else "passed"
+                "error" if error else "observed" if matched and handling == "allow" else
+                "blocked" if matched and handling == "block" else "modified" if matched else
+                "observed" if unknown and handling == "allow" else _unknown_status((terminal,)) if unknown else "passed"
             )
             rail_id = f"nemo:rail:{request.phase}:{capability}:{group_index}"
             for item in selected:
@@ -2028,14 +2354,14 @@ def _trace(
                     duration_ms=sum(item.latency_ms for item in selected),
                     parent_id=root_id,
                     verdict=(
-                        "error" if error else "unsafe" if unsafe else
-                        "uncertain" if uncertain else "safe"
+                        "error" if error else "matched" if matched else
+                        "unknown" if unknown else "not_matched"
                     ),
                     route=(
                         "fail_closed"
                         if error and _binding_fails_closed(request, binding)
-                        else "fail_open" if error else "enforce" if unsafe else
-                        "escalate" if uncertain else "complete"
+                        else "fail_open" if error else "enforce" if matched and handling != "allow" else
+                        "escalate" if unknown and handling != "allow" else "complete"
                     ),
                     capability=capability,
                     module_id=next((module.id for module in request.plan.modules_for(request.phase) if binding.id in module.step_ids), None),
@@ -2076,7 +2402,6 @@ def _trace(
                     )
                 )
     for item in results:
-        trace.extend(item.result.trace)
         binding = item.binding
         module = next((
             candidate
@@ -2091,7 +2416,7 @@ def _trace(
         flow_name = binding.flow_name or (
             policy_rail.flow_name if policy_rail is not None else None
         )
-        parallel_group = binding.parallel_group or (
+        parallel_group = binding.parallel_group or binding.parameter(f"parallel_group_{request.phase}") or (
             policy_rail.parallel_group if policy_rail is not None else None
         )
         timed_out = (
@@ -2109,6 +2434,24 @@ def _trace(
         profile_refs = tuple(dict.fromkeys(
             call.profile_ref for call in model_calls if call.profile_ref
         ))
+        action_id = f"nemo:action:{binding.id}"
+        failed_calls = [call for call in model_calls if call.error_source]
+        for step in item.result.trace:
+            candidates = [call for call in failed_calls if not step.model_name or call.model == step.model_name]
+            failure = candidates[-1] if candidates and step.verdict == "error" else None
+            trace.append(replace(step, parent_id=step.parent_id or action_id,
+                module_id=step.module_id or (module.id if module else None),
+                error_source=step.error_source or (failure.error_source if failure else None),
+                error_category=step.error_category or (failure.error_category if failure else None),
+                http_status=step.http_status or (failure.http_status if failure else None),
+                model_call_id=step.model_call_id or (failure.call_id if failure else None),
+                provider_name=step.provider_name or (failure.provider if failure else None)))
+        trace.extend(replace(step, capability=binding.capability,
+            module_id=module.id if module else None, policy_id=binding.policy_id,
+            policy_version=binding.policy_version, action_name=binding.action_name,
+            timeout_ms=binding.timeout_ms,
+            route=(module.failure_mode if module else "fail_closed") if step.verdict == "error" else step.route)
+            for step in _native_model_trace_steps(request, model_calls, action_id))
         trace.append(
             RuntimeTraceStep(
                 id=f"nemo:action:{binding.id}",
@@ -2116,7 +2459,18 @@ def _trace(
                 name=binding.action_name or binding.id,
                 status=item.result.verdict,
                 outcome=item.result.verdict,
-                detail=item.result.reason or "NeMo Action completed.",
+                detail=(item.result.reason or "NeMo Action completed.") + _trace_rank_suffix(binding),
+                evidence=json.dumps({
+                    "policy_action": (
+                        "block" if item.result.verdict == "error" and _binding_fails_closed(request, binding)
+                        else "allow" if item.result.verdict in {"not_matched", "error"}
+                        else _runtime_action(item)
+                    ),
+                    "on_match": binding.on_unsafe,
+                    "on_unknown": binding.parameter("on_unknown") or "block",
+                    "review_unknown": binding.parameter("review_unknown") or "false",
+                    "decision_source": "review" if any(step.evaluator_id == "classifier-review" for step in item.result.trace) else "primary",
+                }) if binding.capability in {"content_safety", "jailbreak", "topic_control", "pii"} else None,
                 duration_ms=item.latency_ms,
                 parent_id=(
                     action_parents.get(binding.id)
@@ -2125,14 +2479,20 @@ def _trace(
                     or root_id
                 ),
                 contract_ref=binding.contract_ref,
+                precedence=_trace_precedence(binding),
+                evaluation_view=binding.parameter("evaluation_view"),
+                binding_id=(
+                    json.loads(binding.parameter("binding_ids_json") or "{}").get(binding.policy_id, [None])[0]
+                    if binding.parameter("binding_ids_json") else None
+                ),
                 verdict=item.result.verdict,
                 route=(
-                    "enforce" if item.result.verdict == "unsafe" else
+                    "enforce" if item.result.verdict == "matched" and _runtime_action(item) != "allow" else
                     "fail_closed"
                     if item.result.verdict == "error"
                     and _binding_fails_closed(request, binding)
                     else "fail_open" if item.result.verdict == "error" else
-                    "escalate" if item.result.verdict == "uncertain" else
+                    "escalate" if item.result.verdict == "unknown" and _runtime_action(item) != "allow" else
                     "complete"
                 ),
                 capability=binding.capability,
@@ -2153,7 +2513,7 @@ def _trace(
                 timed_out=timed_out,
                 parallel_group=parallel_group,
                 provider_latency_ms=item.provider_latency_ms,
-                provider_work_ms=sum(call.duration_ms for call in model_calls),
+                provider_work_ms=sum(_model_call_work_ms(call) for call in model_calls),
                 model_wait_ms=_model_calls_wall_ms(model_calls),
                 provider_name=_one_or_mixed(providers),
                 model_name=_one_or_mixed(models),
@@ -2196,6 +2556,29 @@ def _trace(
             )
         )
     return tuple(trace)
+
+
+def _native_finding_identity(plan, risk, phase):
+    native = _native_policy_rail(plan, risk, phase)
+    if native:
+        return native[0].policy_id, flow_rule_id(phase, native[2].flow_name)
+    policy_ids = {step.parameter("policy_id") for step in plan.steps if step.capability == risk and phase in step.phases}
+    candidates = [binding for binding in plan.policy_bindings if binding.policy_id in policy_ids and phase in binding.enabled_rails]
+    if len(candidates) == 1 and len(candidates[0].enabled_rule_ids) == 1:
+        return candidates[0].policy_id, candidates[0].enabled_rule_ids[0]
+    return None, None
+
+
+def _snapshot_finding_risks(plan, findings):
+    """Only the pinned Rule defines severity; never trust evaluator-supplied levels."""
+    bindings = {item.policy_id: item for item in plan.policy_bindings}
+    return tuple(
+        replace(finding,
+            risk_severity=(dict(bindings[finding.policy_id].rule_severities).get(finding.rule_id)
+                if finding.policy_id in bindings and finding.verdict in {"matched", "unknown"} else None),
+            policy_version=(bindings[finding.policy_id].policy_version if finding.policy_id in bindings else None))
+        for finding in findings
+    )
 
 
 def _policy_rail_binding(plan, binding, phase):
@@ -2260,6 +2643,14 @@ def _binding_policy_rule_identity(
             if selected is not None and len(selected.enabled_rule_ids) == 1
             else None
         )
+        compiled_rule = dict(binding.parameters).get("rule_id")
+        if (dict(binding.parameters).get("declarative_rule") == "true"
+                and selected is not None and compiled_rule in selected.enabled_rule_ids):
+            rule_id = compiled_rule
+        if (binding.policy_id == "business-topics" and binding.policy_version == "1.0.0"
+                and selected is not None and compiled_rule in selected.enabled_rule_ids
+                and compiled_rule in {"topic/allowlist", "topic/denylist"}):
+            rule_id = compiled_rule
         return (
             binding.policy_id,
             rule_id,
@@ -2296,6 +2687,14 @@ def _native_policy_rail(plan, risk, phase):
     return None
 
 
+def _unknown_status(results):
+    """Only explicitly completed abstentions can be scored as policy decisions."""
+    return "needs_context" if any(
+        item.result.verdict == "unknown" and item.result.unknown_reason != "uncertain"
+        for item in results
+    ) else "uncertain"
+
+
 def _assessments(request, results, trace, all_findings=(), *, force_error=False):
     assessments = []
     for module in request.plan.modules_for(request.phase):
@@ -2312,11 +2711,12 @@ def _assessments(request, results, trace, all_findings=(), *, force_error=False)
         native_unsafe = any(
             item.kind == "rail"
             and item.module_id == module.id
-            and item.verdict == "unsafe"
+            and item.verdict == "matched"
             for item in trace
         )
         observed = bool(selected) or any(
             item.kind in {"rail", "policy", "action"}
+            and item.status not in {"cancelled", "skipped"}
             and item.module_id == module.id
             for item in trace
         )
@@ -2326,10 +2726,10 @@ def _assessments(request, results, trace, all_findings=(), *, force_error=False)
             else "uncovered"
             if not observed
             else "intervene"
-            if native_unsafe or any(item.result.verdict == "unsafe" for item in terminal)
-            else "needs_context"
-            if any(item.result.verdict == "uncertain" for item in terminal)
-            else "pass"
+            if native_unsafe or any(item.result.verdict == "matched" for item in terminal)
+            else _unknown_status(terminal)
+            if any(item.result.verdict == "unknown" for item in terminal)
+            else "allow"
         )
         findings = tuple(
             dict.fromkeys(
@@ -2339,6 +2739,7 @@ def _assessments(request, results, trace, all_findings=(), *, force_error=False)
                 )
             )
         )
+        findings = _snapshot_finding_risks(request.plan, findings)
         reason = next(
             (item.result.reason for item in selected if item.result.reason),
             (
@@ -2353,7 +2754,10 @@ def _assessments(request, results, trace, all_findings=(), *, force_error=False)
             module_id=module.id,
             module=module.module,
             status=status,
-            action=_ordered_action(tuple(f.recommended_action for f in findings)),
+            action=(
+                _ordered_action(tuple(_runtime_action(item) for item in terminal if item.result.verdict == "unknown"))
+                if status == "uncertain" else _ordered_action(tuple(f.recommended_action for f in findings))
+            ),
             findings=findings,
             coverage=module_coverage,
             reason=reason,
@@ -2403,14 +2807,10 @@ def _interventions(request, decision, action, reason, runtime_results):
     terminal = _terminal_runtime_results(runtime_results)
     interventions = []
     for item in terminal:
-        if item.result.verdict not in {"unsafe", "uncertain"}:
+        if item.result.verdict not in {"matched", "unknown"}:
             continue
-        proposed = (
-            "clarify"
-            if item.result.verdict == "uncertain"
-            else _runtime_action(item)
-        )
-        if proposed == "pass":
+        proposed = _runtime_action(item)
+        if proposed == "allow":
             continue
         module = next(
             (
@@ -2428,7 +2828,7 @@ def _interventions(request, decision, action, reason, runtime_results):
                 reason=item.result.reason,
                 patches=(
                     _redaction_patches(item.input_text if item.input_text is not None else request.text, (item,))
-                    if proposed == "redact"
+                    if proposed == "transform"
                     else ()
                 ),
                 replacement=next(
@@ -2443,12 +2843,12 @@ def _interventions(request, decision, action, reason, runtime_results):
                 content_block_id=request.active_block_id,
             )
         )
-    if decision == "block" and action == "reject" and not any(
-        item.kind == "reject" for item in interventions
+    if decision == "block" and action == "block" and not any(
+        item.kind == "block" for item in interventions
     ):
         interventions.append(
             AppliedIntervention(
-                kind="reject",
+                kind="block",
                 module_id="nemo-guardrails",
                 fragment_id="nemo:reject",
                 reason=reason,
@@ -2469,6 +2869,7 @@ def _failed_decision(
     active_concurrency=0,
     native_model_calls: tuple[ModelCallUsage, ...] = (),
 ):
+    error_type = error.error_type if isinstance(error, _ActionExecutionFailure) else type(error).__name__
     reason = (
         f"NeMo Guardrails failed closed: {error}"
         if isinstance(error, _ActionExecutionFailure)
@@ -2486,6 +2887,10 @@ def _failed_decision(
             outcome="error",
             route="fail_closed",
             timed_out=error.timed_out,
+            error_type=error_type,
+            error_source=error.failure.source if error.failure else "guard",
+            error_category=error.failure.category if error.failure else "internal",
+            http_status=error.failure.http_status if error.failure else None,
             detail=reason,
             guardrail_id=request.plan.guardrail_id,
             guardrail_version=request.plan.guardrail_version,
@@ -2510,8 +2915,9 @@ def _failed_decision(
             guardrail_version=request.plan.guardrail_version,
             rail_type=request.phase,
             outcome="error",
+            error_type=error_type,
             timed_out=isinstance(error, TimeoutError) or (
-                isinstance(error, _ActionExecutionFailure) and error.timed_out
+                isinstance(error, (_ActionExecutionFailure, OutputStreamEvaluationError)) and error.timed_out
             ),
             engine=config.runtime_engine,
             runtime_profile=config.runtime_profile,
@@ -2522,9 +2928,9 @@ def _failed_decision(
             request, native_model_calls, "nemo:runtime:error",
         ),
     )
-    return ProtectionDecision(
+    return finalize_decision(ProtectionDecision(
         decision="block" if request.mode == "enforce" else "allow",
-        action="reject" if request.mode == "enforce" else "pass",
+        action="block" if request.mode == "enforce" else "allow",
         reason=reason,
         guardrail_id=request.plan.guardrail_id,
         guardrail_version=request.plan.guardrail_version,
@@ -2547,17 +2953,18 @@ def _failed_decision(
             config_checksum=checksum,
             fail_closed=True,
             active_concurrency=active_concurrency,
+            model_calls=native_model_calls,
             model_invocations=len(native_model_calls),
             provider_latency_ms=sum(
-                call.duration_ms for call in native_model_calls
+                _model_call_work_ms(call) for call in native_model_calls
             ),
             provider_work_latency_ms=sum(
-                call.duration_ms for call in native_model_calls
+                _model_call_work_ms(call) for call in native_model_calls
             ),
             model_wait_latency_ms=_model_calls_wall_ms(native_model_calls),
         ),
         mode=request.mode,
-    )
+    ), purpose=request.execution_purpose, require_coverage=bool(request.plan.modules_for(request.phase)))
 
 
 def _response_content(response: GenerationResponse, fallback: str) -> str:
@@ -2578,11 +2985,11 @@ def _validated_decision_payload(payload: dict[str, Any]) -> dict[str, str]:
         raise RuntimeError("NeMo returned an invalid enforcement action.")
     if not isinstance(content, str):
         raise RuntimeError("NeMo returned invalid decision content.")
-    if decision == "allow" and action != "pass":
+    if decision == "allow" and action != "allow":
         raise RuntimeError("NeMo returned an inconsistent allow decision.")
-    if decision == "block" and action != "reject":
+    if decision == "block" and action != "block":
         raise RuntimeError("NeMo returned an inconsistent block decision.")
-    if decision == "transform" and action in {"pass", "reject"}:
+    if decision == "transform" and action in {"allow", "block"}:
         raise RuntimeError("NeMo returned an inconsistent transform decision.")
     if "blocked" in payload and bool(payload["blocked"]) != (decision == "block"):
         raise RuntimeError("NeMo returned inconsistent blocking metadata.")
@@ -2654,7 +3061,7 @@ def _compiled_policy_flow_name(binding: NeMoActionBinding) -> str:
 
 def _action_for_risk(plan, risk, phase):
     step = _native_step(plan, risk, phase)
-    return step.on_unsafe if step is not None else "reject"
+    return step.on_unsafe if step is not None else "block"
 
 
 def _native_step(plan, risk, phase):
@@ -2676,41 +3083,36 @@ def _native_step(plan, risk, phase):
 
 def _ordered_action(actions):
     # Summary of an ordered execution, not a conflict-priority adjudicator.
-    result = "pass"
+    result = "allow"
     for action in actions:
-        if action == "reject":
+        if action == "block":
             return action
-        if action != "pass":
+        if action != "allow":
             result = action
     return result
 
 
 def _resolved_content(text, action, unsafe):
-    if action == "redact":
-        patches = _redaction_patches(text, unsafe)
+    if action != "transform":
+        return text
+    patches = _redaction_patches(text, unsafe)
+    if patches:
         content = text
         previous_end = -1
-        for patch in sorted(set(patches), key=lambda value: (value.start, value.end)):
+        ordered = sorted(set(patches), key=lambda value: (value.start, value.end))
+        for patch in ordered:
             if patch.start < previous_end:
-                raise _PatchConflict(
-                    "The interaction was blocked because redaction patches conflicted."
-                )
+                raise _PatchConflict("Conflicting transformation patches.")
             previous_end = patch.end
-        for patch in reversed(sorted(set(patches), key=lambda value: (value.start, value.end))):
+        for patch in reversed(ordered):
             content = content[:patch.start] + patch.replacement + content[patch.end:]
         return content
-    replacement = next(
-        (
-            finding.replacement
-            for item in unsafe
-            for finding in item.result.findings
-            if finding.recommended_action == action and finding.replacement is not None
-        ),
-        None,
-    )
-    if replacement is not None:
-        return replacement
-    return fallback_content(action, text)
+    replacements = {finding.replacement for item in unsafe
+                    for finding in item.result.findings
+                    if finding.recommended_action == "transform" and finding.replacement is not None}
+    if len(replacements) == 1:
+        return replacements.pop()
+    raise _PatchConflict("Transform requires an explicit replacement or valid content patches.")
 
 
 def _redaction_patches(text, results):
@@ -2732,8 +3134,26 @@ def _redaction_patches(text, results):
 def _terminal_runtime_results(results):
     terminal = {}
     for item in results:
-        terminal[_result_group_key(item)] = item
+        # Split Rules remain independent, including native Topic Rules. Steps
+        # of one native exact/semantic Rule still share a terminal result.
+        key = (("action", item.binding.id) if item.binding.capability == "builtin_content_filter"
+               else (*_result_group_key(item), item.binding.parameter("rule_id") or ""))
+        terminal[key] = item
     return tuple(terminal.values())
+
+
+def _terminal_block_match(results):
+    terminal = _terminal_runtime_results(results)
+    found = next((item for item in terminal
+                  if item.result.verdict == "matched" and _runtime_action(item) == "block"), None)
+    if found is not None:
+        return found
+    # A parallel group records the winning payload under the leader binding.
+    # Its finding can carry the effective action while the binding remains the
+    # declared Block; preserve the terminal Block across independent errors in
+    # full-evidence mode.
+    return next((item for item in terminal
+                 if item.result.verdict == "matched" and item.binding.on_unsafe == "block"), None)
 
 
 def _native_model_trace_steps(
@@ -2767,34 +3187,36 @@ def _native_model_trace_steps(
             request.plan, risk, request.phase,
         )
         selected_policy = native_policy[0] if native_policy is not None else None
-        failed = call.result != "success"
+        cancelled = call.result == "cancelled"
+        failed = call.result not in {"success", "cancelled"}
         failure_mode = (
             module.failure_mode if module is not None else "fail_closed"
         )
         steps.append(RuntimeTraceStep(
-            id=f"nemo:model:{index}:{risk}",
+            id=f"{parent_id}:model:{call.call_id or index}",
             kind="evaluator",
             name=f"{call.provider}/{call.model}",
-            status=call.result if failed else "complete",
+            status=call.result if failed or cancelled else "complete",
             detail=(
-                f"NeMo-native {risk.replace('_', ' ')} model call failed."
+                "Model call cancelled after another required check blocked; provider usage may be unavailable."
+                if cancelled else f"{risk.replace('_', ' ')} model call failed."
                 if failed
-                else f"NeMo-native {risk.replace('_', ' ')} model call completed."
+                else f"{risk.replace('_', ' ')} model call completed; response format accepted."
             ),
             duration_ms=call.duration_ms,
             parent_id=parent_id,
             contract_ref=(plan_step.contract_ref if plan_step is not None else None),
-            verdict="error" if failed else "safe",
-            route=(failure_mode if failed else "complete"),
+            verdict=None if cancelled else "error" if failed else "not_matched",
+            route="cancelled" if cancelled else (failure_mode if failed else "complete"),
             capability=risk,
             module_id=module.id if module is not None else "__unknown__",
             guardrail_id=request.plan.guardrail_id,
             guardrail_version=request.plan.guardrail_version,
             policy_id=(
-                selected_policy.policy_id if selected_policy is not None else None
+                selected_policy.policy_id if selected_policy is not None else plan_step.parameter("policy_id") if plan_step else None
             ),
             policy_version=(
-                selected_policy.policy_version if selected_policy is not None else None
+                selected_policy.policy_version if selected_policy is not None else plan_step.parameter("policy_version") if plan_step else None
             ),
             rail_type=request.phase,
             action_name=f"nemo_{risk}",
@@ -2802,13 +3224,15 @@ def _native_model_trace_steps(
             timeout_ms=module.timeout_ms if module is not None else None,
             timed_out=call.result == "timeout",
             provider_latency_ms=call.duration_ms,
-            provider_work_ms=call.duration_ms,
+            provider_work_ms=_model_call_work_ms(call),
             model_wait_ms=call.duration_ms,
             provider_name=call.provider,
             model_name=call.model,
             model_operation=call.operation,
             model_result=call.result,
-            error_type=call.error_type,
+            error_type=call.error_type if call.error_type != "none" else None,
+            error_source=call.error_source, error_category=call.error_category,
+            http_status=call.http_status, model_call_id=call.call_id or None,
             model_input_tokens=call.input_tokens,
             model_output_tokens=call.output_tokens,
             model_retries=call.retries,
@@ -2819,6 +3243,13 @@ def _native_model_trace_steps(
     return tuple(steps)
 
 
+def _model_call_work_ms(call: ModelCallUsage) -> int:
+    """Time spent after admission; queued attempts are not provider work."""
+    if call.request_sent is False:
+        return 0
+    return max(0, call.duration_ms - call.queue_duration_ms)
+
+
 def _provider_work_ms(
     results: tuple[_RuntimeResult, ...],
     extra_calls: tuple[ModelCallUsage, ...] = (),
@@ -2827,11 +3258,11 @@ def _provider_work_ms(
     for item in results:
         calls = item.result.usage.model_calls
         total += (
-            sum(call.duration_ms for call in calls)
+            sum(_model_call_work_ms(call) for call in calls)
             if calls
             else max(0, item.provider_latency_ms)
         )
-    return total + sum(call.duration_ms for call in extra_calls)
+    return total + sum(_model_call_work_ms(call) for call in extra_calls)
 
 
 def _model_wait_wall_ms(
@@ -2890,6 +3321,24 @@ def _result_group_key(item: _RuntimeResult) -> tuple[str, ...]:
 
 
 def _runtime_action(item):
+    # Observation-only Rules must not start enforcing when a model abstains.
+    # Classifier Rules may explicitly observe abstentions while still blocking
+    # positive matches. The signed, versioned plan pins this local handling;
+    # it never changes model questions, probability thresholds or the verdict.
+    # Other capabilities and absent/invalid values retain conservative handling.
+    # Execution errors use the separate fail-closed path, never this branch.
+    if item.result.verdict == "unknown":
+        if item.binding.on_unsafe == "allow":
+            return "allow"
+        if ((item.binding.capability in {"jailbreak", "content_safety", "topic_control"}
+                or (item.binding.capability == "pii" and item.binding.contract_ref == "tali.guard.pii.semantic.v1"))
+                and item.result.unknown_reason == "uncertain"
+                and item.binding.parameter("on_unknown") == "allow"
+                # on_unknown controls primary abstention only. A completed
+                # second opinion that still abstains must not silently allow.
+                and not any(step.evaluator_id == "classifier-review" for step in item.result.trace)):
+            return "allow"
+        return "block"
     reasoning = tuple(
         evidence
         for finding in item.result.findings
@@ -2899,8 +3348,9 @@ def _runtime_action(item):
         recommended = tuple(
             finding.recommended_action
             for finding in item.result.findings
-            if finding.recommended_action != "pass"
         )
+        # Explicit allow findings must not fall back to the binding's block
+        # action. Only a result with no findings inherits that fallback.
         return _ordered_action(recommended) if recommended else item.binding.on_unsafe
     severity = {
         "too_complex": 0,
@@ -2916,13 +3366,13 @@ def _runtime_action(item):
         key=lambda value: (severity[value.result], value.id),
     ).result
     return {
-        "valid": "pass",
+        "valid": "allow",
         "invalid": item.binding.on_unsafe,
-        "satisfiable": "clarify",
-        "impossible": "reject",
-        "translation_ambiguous": "clarify",
-        "too_complex": "reject",
-        "no_translations": "clarify",
+        "satisfiable": "block",
+        "impossible": "block",
+        "translation_ambiguous": "block",
+        "too_complex": "block",
+        "no_translations": "block",
     }[result]
 
 

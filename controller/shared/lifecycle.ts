@@ -6,18 +6,23 @@
  * for Controller persistence, HTTP DTOs, and UI projections.
  */
 
-/** Persisted lifecycle of a Guardrail resource. `disabled` is terminal after soft deletion. */
+/** Persisted Guardrail lifecycle. Confirmed package re-import can restore a soft-deleted identity to draft. */
 export const guardrailLifecycleStates = ["draft", "active", "disabled"] as const;
 export type GuardrailLifecycleState = (typeof guardrailLifecycleStates)[number];
 
-/** Persisted lifecycle of one immutable Guardrail version. */
-export const guardrailVersionStates = ["compiling", "ready", "failed"] as const;
+/**
+ * Persisted lifecycle of one immutable Guardrail version in this environment:
+ * `pending` until published here, then `ready`. Report deletion and test
+ * outcomes never change publication. Resource deletion resets versions to
+ * pending. Routing and runtime readiness remain separate.
+ */
+export const guardrailVersionStates = ["pending", "ready"] as const;
 export type GuardrailVersionState = (typeof guardrailVersionStates)[number];
 
 /** Persisted lifecycle shared by Guardrail and programmable-policy validation runs. */
-export const validationRunStates = ["queued", "running", "passed", "failed"] as const;
+export const validationRunStates = ["queued", "running", "passed", "failed", "cancelled"] as const;
 export type ValidationRunState = (typeof validationRunStates)[number];
-export type ValidationTerminalState = Extract<ValidationRunState, "passed" | "failed">;
+export type ValidationTerminalState = Extract<ValidationRunState, "passed" | "failed" | "cancelled">;
 
 /** UI projection used when no persisted validation run exists yet. */
 export type ValidationRunDisplayState = "not_run" | ValidationRunState;
@@ -32,10 +37,10 @@ export type EndpointSetupState = (typeof endpointSetupStates)[number];
 
 /**
  * Derived Guardrail readiness shown in the UI. This is deliberately not a
- * resource lifecycle: it is recomputed from the current draft, active version,
- * and enabled router count.
+ * resource lifecycle: it requires a published immutable version with its
+ * executable Artifact. Draft tests and routing state are separate.
  */
-export const guardrailReadinessStates = ["needs_validation", "ready", "protected"] as const;
+export const guardrailReadinessStates = ["not_ready", "ready"] as const;
 export type GuardrailReadinessState = (typeof guardrailReadinessStates)[number];
 
 /** Runner reconciliation/connectivity axis before it is folded into `RunnerStatus`. */
@@ -57,15 +62,14 @@ export type RunnerStatus = (typeof runnerStatuses)[number];
 /** Allowed persisted transitions; omitted self-transitions do not change state. */
 export const guardrailLifecycleTransitions = {
   draft: ["active", "disabled"],
-  active: ["disabled"],
-  disabled: [],
+  active: ["draft", "disabled"],
+  disabled: ["draft"],
 } as const satisfies Record<GuardrailLifecycleState, readonly GuardrailLifecycleState[]>;
 
-/** Guardrail versions are immutable once compilation reaches a terminal state. */
+/** Publication creates ready; deleting/restoring the resource resets versions to pending. */
 export const guardrailVersionTransitions = {
-  compiling: ["ready", "failed"],
-  ready: [],
-  failed: [],
+  pending: ["ready"],
+  ready: ["pending"],
 } as const satisfies Record<GuardrailVersionState, readonly GuardrailVersionState[]>;
 
 /**
@@ -73,10 +77,11 @@ export const guardrailVersionTransitions = {
  * `running` update; dispatch failures also complete a queued run as failed.
  */
 export const validationRunTransitions = {
-  queued: ["running", "passed", "failed"],
-  running: ["passed", "failed"],
+  queued: ["running", "passed", "failed", "cancelled"],
+  running: ["passed", "failed", "cancelled"],
   passed: [],
   failed: [],
+  cancelled: [],
 } as const satisfies Record<ValidationRunState, readonly ValidationRunState[]>;
 
 /** Disabling an Endpoint is reversible until the separate soft-delete overlay is set. */

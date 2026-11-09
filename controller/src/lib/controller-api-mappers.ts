@@ -1,3 +1,4 @@
+import { eventSeverity } from "../../shared/security-severity";
 import * as controllerApi from "@/lib/controller-api";
 import type {
   RouterRuntimeTrace,
@@ -27,25 +28,25 @@ export function arrayOfStrings(value: unknown): string[] {
 export function normalizeOutcome(decision: string): "allow" | "transform" | "block" | "error" | string {
   const value = decision.toLowerCase();
   if (["allow", "allowed", "pass", "passed"].includes(value)) return "allow";
-  if (["transform", "transformed", "redact", "redacted", "rewrite", "rewritten", "intervene", "intervened"].includes(value)) return "transform";
-  if (["block", "blocked", "reject", "rejected", "deny", "denied"].includes(value)) return "block";
+  if (["transform", "transformed", "intervene", "intervened"].includes(value)) return "transform";
+  if (["block", "blocked", "deny", "denied"].includes(value)) return "block";
   if (["error", "failed", "failure", "timeout", "timed_out"].includes(value)) return "error";
   return decision;
 }
 
 export function isTimedOut(event: controllerApi.RuntimeEvent): boolean {
-  const decision = event.decision.toLowerCase();
-  return decision === "timeout" || decision === "timed_out" || event.metadata.timedOut === true || event.metadata.timed_out === true;
+  return event.metadata.executionStatus === "timeout";
 }
 
-export function runtimeFindings(event: controllerApi.RuntimeEvent): RouterTraceFinding[] {
-  return arrayOfRecords(event.metadata.findings).map((finding, index) => {
+export function runtimeFindings(event: Pick<controllerApi.RuntimeEvent, "id" | "requestId" | "occurredAt" | "guardrailId" | "guardrailVersion" | "routerId" | "endpointId" | "direction" | "decision" | "metadata">): RouterTraceFinding[] {
+  return arrayOfRecords(event.metadata.findings).filter(finding => finding.verdict === "matched" || finding.verdict === "unknown").map((finding, index) => {
     const verdict = stringValue(finding.verdict) ?? "unknown";
     const confidence = numberValue(finding.confidence);
     const risk = stringValue(finding.risk) ?? "unknown";
     const taxonomyId = stringValue(finding.taxonomyId) ?? "TALI-BUSINESS-POLICY";
     return {
       id: stringValue(finding.id) ?? `${event.id}:finding:${index + 1}`,
+      event_id: event.id,
       trace_id: event.requestId,
       created_at: event.occurredAt,
       guardrail_id: event.guardrailId,
@@ -53,7 +54,8 @@ export function runtimeFindings(event: controllerApi.RuntimeEvent): RouterTraceF
       router_id: event.routerId,
       endpoint_id: event.endpointId,
       phase: event.direction === "incoming" ? "input" : "output",
-      severity: findingSeverity(verdict, confidence),
+      severity: eventSeverity(finding.riskSeverity),
+      policy_version: stringValue(finding.policyVersion),
       risk,
       taxonomy_id: taxonomyId,
       verdict,
@@ -68,7 +70,7 @@ export function runtimeFindings(event: controllerApi.RuntimeEvent): RouterTraceF
         native_category: stringValue(item.native_category),
         mapping_quality: stringValue(item.mapping_quality),
       })),
-      detail: `Runner reported a ${verdict} ${taxonomyId} finding. Raw protected content was not retained.`,
+      detail: `Runner reported ${verdict} evidence for ${taxonomyId}. Raw protected content was not retained.`,
       protocol: stringValue(event.metadata.protocol),
     };
   });
@@ -94,6 +96,11 @@ export function runtimeTraceSteps(event: controllerApi.RuntimeEvent): RouterRunt
     outcome: stringValue(step.outcome) ?? stringValue(step.status) ?? "unknown",
     latency_ms: numberValue(step.durationMs) ?? 0,
     timed_out: step.timedOut === true,
+    error_source: enumValue(step.errorSource, ["model", "configuration", "guard", "unknown", "mixed"] as const),
+    error_category: stringValue(step.errorCategory), error_type: stringValue(step.errorType),
+    http_status: numberValue(step.httpStatus), model_call_id: stringValue(step.modelCallId),
+    model_result: stringValue(step.modelResult), provider_name: stringValue(step.providerName),
+    model_name: stringValue(step.modelName), affects_result: step.affectsResult === true,
     runtime_engine: stringValue(step.engine) ?? "unknown",
     config_checksum: stringValue(step.configChecksum) ?? "",
     policy_id: stringValue(step.policyId),
@@ -108,12 +115,6 @@ export function runtimeTraceSteps(event: controllerApi.RuntimeEvent): RouterRunt
   }));
 }
 
-function findingSeverity(verdict: string, confidence: number | null): RouterTraceFinding["severity"] {
-  if (verdict === "error") return "critical";
-  if (verdict === "unsafe" && confidence !== null && confidence >= 0.9) return "high";
-  if (verdict === "unsafe" || (confidence !== null && confidence >= 0.7)) return "medium";
-  return "low";
-}
 
 export function metadataRecord(value: unknown): Record<string, unknown> {
   return value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {};

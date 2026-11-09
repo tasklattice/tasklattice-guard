@@ -1,6 +1,6 @@
 import type { TrafficRouter } from "./traffic-routing-api";
 import * as controllerApi from "@/lib/controller-api";
-import type { ProtectionPreset } from "../../shared/protection-map";
+import type { GuardrailProfile, ProtectionPreset } from "../../shared/protection-map";
 import {
   arrayOfRecords,
   arrayOfStrings,
@@ -34,11 +34,10 @@ import type {
   ProgrammablePolicyDraft,
   ProgrammablePolicyVersion,
   SafetyLevel,
-  TestCase,
+  TestCase, TestCaseResult,
   ValidationRun,
 } from "@/lib/api-types";
 
-const DEFAULT_GUARDRAIL_ID = "guardrail-default";
 
 type CurrentPolicyBinding = controllerApi.GuardrailDraftConfig["policyBindings"][number];
 type CurrentTestCase = {
@@ -108,47 +107,62 @@ function fromCurrentBinding(binding: CurrentPolicyBinding): GuardrailPolicyBindi
 
 function mapGuardrail(
   value: controllerApi.Guardrail,
-  routerCount: number,
+  routers: TrafficRouter[],
   publishedVersionCount?: number,
 ): Guardrail {
-  const isDefault = value.id === DEFAULT_GUARDRAIL_ID;
   const latestValidation = value.latestValidationRun ? mapValidationRun(value.latestValidationRun) : null;
   const testedCurrent = Boolean(latestValidation && latestValidation.source_draft_version === value.draftRevision && latestValidation.status === "passed");
-  const published = value.status === "active" && value.activeVersion !== null;
-  const publishedCurrent = published && value.activeSourceDraftRevision === value.draftRevision;
+  const published = value.readiness === "ready";
+  const trafficVersions = guardrailTrafficVersions(value.id, routers);
+  const hasUnpublishedChanges = value.hasUnpublishedChanges ?? !(published && value.publishedSourceDraftRevision === value.draftRevision);
+  const publishedCurrent = published && !hasUnpublishedChanges;
   return {
     copy_origin: value.copyOrigin,
+    project_id: value.projectId,
     id: value.id,
     name: value.name,
     allowed_topics: value.draftConfig.allowedTopics,
     restricted_topics: value.draftConfig.restrictedTopics,
+    topic_control_mode: value.draftConfig.topicControlMode ?? "strict",
+    ...(value.draftConfig.profileOrigin ? { profile_origin: value.draftConfig.profileOrigin } : {}),
     policy_bindings: value.draftConfig.policyBindings.map(fromCurrentBinding),
     safety_level: value.draftConfig.safetyLevel,
     output_delivery: value.draftConfig.outputDelivery,
     updated_at: value.updatedAt,
-    status: publishedCurrent ? (routerCount > 0 ? "protected" : "ready") : "needs_validation",
+    status: published ? value.protection?.appliedMode ?? "enforce" : "not_ready",
+    protection: value.protection,
+    version_summary: value.versionSummary,
+    monthly_cost: value.monthlyCost,
+    traffic_versions: trafficVersions,
     latest_validation_run: latestValidation,
-    router_count: routerCount,
+    latest_testing_report: value.latestTestingReport ? mapValidationRun(value.latestTestingReport) : null,
+    router_count: new Set(trafficVersions.flatMap(version => version.routers.map(router => router.id))).size,
     test_case_count: value.testCaseCount,
     excluded_test_case_count: value.excludedTestCaseCount,
     excluded_test_case_ids: value.excludedTestCaseIds,
     draft_revision: value.draftRevision,
     tested_current: testedCurrent,
     published_current: publishedCurrent,
-    published_version_count: publishedVersionCount,
-    is_default: isDefault,
-    system_managed: isDefault,
-    local_only: isDefault,
+    has_unpublished_changes: hasUnpublishedChanges,
+    published_version_count: value.versionSummary?.total ?? publishedVersionCount,
     coverage: [],
+    origin: value.origin ?? "local",
+    source_id: value.sourceId ?? null,
   };
 }
 
-function routerCounts(values: TrafficRouter[]): Map<string, number> {
-  const result = new Map<string, number>();
-  for (const router of values) {
-    for (const id of new Set(router.endpointIds.length ? router.activeSnapshot?.routes.filter(route => route.enabled).flatMap(route => route.targets.filter(target => target.weightBps > 0).map(target => target.guardrailId)) : [])) result.set(id, (result.get(id) ?? 0) + 1);
+export function guardrailTrafficVersions(id: string, routers: TrafficRouter[]): NonNullable<Guardrail["traffic_versions"]> {
+  const versions = new Map<string, NonNullable<Guardrail["traffic_versions"]>[number]>();
+  for (const router of routers) {
+    if (router.activeRevision === null || !router.endpointIds.length || !router.activeSnapshot) continue;
+    for (const version of new Set(router.activeSnapshot.routes.filter(route => route.enabled)
+      .flatMap(route => route.targets.filter(target => target.guardrailId === id && target.weightBps > 0).map(target => target.guardrailVersion)))) {
+      const entry = versions.get(version) ?? { version, routers: [] };
+      entry.routers.push({ id: router.id, name: router.name, status: router.rolloutStatus });
+      versions.set(version, entry);
+    }
   }
-  return result;
+  return [...versions.values()].sort((a, b) => b.version.localeCompare(a.version));
 }
 
 export async function getGuardrails(): Promise<Collection<Guardrail>> {
@@ -156,23 +170,28 @@ export async function getGuardrails(): Promise<Collection<Guardrail>> {
     controllerApi.listControllerGuardrails(),
     controllerApi.listControllerRouters(),
   ]);
-  const counts = routerCounts(routers.items);
-  const items = guardrails.items.map((item) => mapGuardrail(item, counts.get(item.id) ?? 0));
+  const items = guardrails.items.map((item) => mapGuardrail(item, routers.items));
   return { items, count: items.length };
 }
+
+export const updateGuardrailProtectionMode = (id: string, input: { mode: import("../../shared/protection-mode").ProtectionMode; expectedGeneration: number; reason: string }) =>
+  controllerApi.requestController<import("../../shared/protection-mode").ProtectionModeSettings>(`/api/v1/guardrails/${encodeURIComponent(id)}/protection-mode`,
+    { method: "PATCH", body: JSON.stringify(input) });
 
 export async function getGuardrail(id: string): Promise<Guardrail> {
   const [guardrail, routers] = await Promise.all([
     controllerApi.getControllerGuardrail(id),
     controllerApi.listControllerRouters(),
   ]);
-  const count = routerCounts(routers.items).get(id) ?? 0;
-  return mapGuardrail(guardrail, count, guardrail.versions.length);
+  return mapGuardrail(guardrail, routers.items, guardrail.versions.length);
 }
 
 export async function createGuardrail(input: {
   name: string;
   allowed_topics?: string[];
+  restricted_topics?: string[];
+  topic_control_mode?: "strict" | "permissive";
+  profile_origin?: import("../../shared/protection-map").ProfileOrigin;
   policy_bindings: GuardrailPolicyBinding[];
   safety_level?: SafetyLevel;
   output_delivery?: OutputDelivery;
@@ -180,39 +199,49 @@ export async function createGuardrail(input: {
   const created = await controllerApi.createControllerGuardrail({
     name: input.name,
     draftConfig: {
+      ...(input.profile_origin ? { profileOrigin: input.profile_origin } : {}),
       allowedTopics: input.allowed_topics ?? [],
-      restrictedTopics: [],
+      restrictedTopics: input.restricted_topics ?? [],
+      topicControlMode: input.topic_control_mode ?? "permissive",
       policyBindings: input.policy_bindings.map(toCurrentBinding),
       safetyLevel: input.safety_level ?? "balanced",
       outputDelivery: input.output_delivery ?? "window_buffered",
     },
     runtimeProfile: "auto",
   });
-  return mapGuardrail(created, 0, 0);
+  return mapGuardrail(created, [], 0);
 }
 
 export const updateGuardrail = (
   id: string,
-  input: Partial<Pick<Guardrail, "name" | "allowed_topics" | "policy_bindings" | "safety_level" | "output_delivery">>,
+  input: Partial<Pick<Guardrail, "name" | "allowed_topics" | "restricted_topics" | "topic_control_mode" | "policy_bindings" | "safety_level" | "output_delivery">> & { expectedDraftRevision?: number },
 ) => updateGuardrailDraft(id, input);
 
 async function updateGuardrailDraft(
   id: string,
-  input: Partial<Pick<Guardrail, "name" | "allowed_topics" | "policy_bindings" | "safety_level" | "output_delivery">>,
+  input: Partial<Pick<Guardrail, "name" | "allowed_topics" | "restricted_topics" | "topic_control_mode" | "policy_bindings" | "safety_level" | "output_delivery">> & { expectedDraftRevision?: number },
 ): Promise<Guardrail> {
   const current = await controllerApi.getControllerGuardrail(id);
   const updated = await controllerApi.updateControllerGuardrail(id, {
+    expectedDraftRevision: input.expectedDraftRevision ?? current.draftRevision,
     ...(input.name !== undefined ? { name: input.name } : {}),
     draftConfig: {
+      ...(current.draftConfig.profileOrigin ? { profileOrigin: current.draftConfig.profileOrigin } : {}),
       allowedTopics: input.allowed_topics ?? current.draftConfig.allowedTopics,
-      restrictedTopics: [],
+      restrictedTopics: input.restricted_topics ?? current.draftConfig.restrictedTopics,
+      topicControlMode: input.topic_control_mode ?? current.draftConfig.topicControlMode ?? "strict",
       policyBindings: (input.policy_bindings ?? current.draftConfig.policyBindings.map(fromCurrentBinding)).map(toCurrentBinding),
       safetyLevel: input.safety_level ?? current.draftConfig.safetyLevel,
       outputDelivery: input.output_delivery ?? current.draftConfig.outputDelivery,
     },
   });
-  return mapGuardrail(updated, 0, current.versions.length);
+  return mapGuardrail(updated, [], current.versions.length);
 }
+
+export const getGuardrailDraftChanges = (id: string) => controllerApi.requestController<import("../../shared/guardrail-draft-changes").GuardrailDraftChanges>(`/api/v1/guardrails/${encodeURIComponent(id)}/draft-changes`);
+export const discardGuardrailDraft = (id: string, expectedDraftRevision: number, expectedBaselineVersion: string) => controllerApi.requestController<controllerApi.Guardrail>(
+  `/api/v1/guardrails/${encodeURIComponent(id)}/discard-draft`, { method: "POST", body: JSON.stringify({ expectedDraftRevision, expectedBaselineVersion }) },
+).then(value => mapGuardrail(value, []));
 
 export async function getGuardrailDeletionImpact(id: string): Promise<GuardrailDeletionImpact> {
   const [impact, guardrail] = await Promise.all([
@@ -245,15 +274,24 @@ function mapVersion(value: controllerApi.GuardrailVersion, guardrail: controller
     guardrail_id: value.guardrailId,
     version: value.version,
     source_draft_version: value.sourceDraftRevision,
+    test_suite_count: value.testSuiteCount ?? null,
     compiler_version: compiler,
     plan_checksum: value.artifact?.checksum ?? "",
     created_at: value.createdAt,
-    active: guardrail.activeVersion === value.version,
     runtime_engine: runtimeEngine(value.runtimeProfile),
     config_checksum: value.artifact?.checksum ?? "",
     execution_mode: "nemo_only",
-    compile_status: value.status,
-    failure_reason: value.failureReason,
+    policy_count: arrayOfRecords(value.plan.policy_bindings).length,
+    status: value.status,
+    released_at: value.releasedAt,
+    release_run_id: value.validationRunId ?? null,
+    testing_evidence: value.testingEvidence ?? null,
+    test_waiver: value.testWaiver ?? null,
+    publication: value.publication ?? null,
+    source_validation_run_id: value.sourceValidationRunId ?? null,
+    origin: value.origin ?? "local",
+    environment_check: value.environmentCheck ?? null,
+    provenance: value.provenance ?? null,
   };
 }
 
@@ -266,7 +304,7 @@ function mapVersionDetail(value: controllerApi.GuardrailVersion, guardrail: cont
   const requestedDelivery = enumValue(value.plan.output_delivery, ["interruptible", "window_buffered", "full_buffered"]) ?? "full_buffered";
   const hasCustomOutput = arrayOfRecords(value.plan.policy_versions).some((policy) => arrayOfRecords(policy.rail_bindings).some((binding) => binding.rail_type === "output"));
   const incrementalOutput = !hasCustomOutput && steps.filter((step) => arrayOfStrings(step.phases).includes("output"))
-    .every((step) => step.capability === "content_safety" && ["reject", "report", "pass"].includes(String(step.on_unsafe)));
+    .every((step) => step.capability === "content_safety" && ["block", "report", "allow"].includes(String(step.on_unsafe)));
   const actions = artifactBindings.length ? artifactBindings.map((binding) => ({
     name: stringValue(binding.action_name) ?? stringValue(binding.name) ?? stringValue(binding.id) ?? "runtime-action",
     version: stringValue(binding.action_version) ?? stringValue(binding.version),
@@ -303,6 +341,7 @@ function mapVersionDetail(value: controllerApi.GuardrailVersion, guardrail: cont
       return {
         policy_id: stringValue(binding.policy_id) ?? "",
         policy_version: stringValue(binding.policy_version) ?? "",
+        policy_name: value.inspection?.policies.find((policy) => policy.policyId === binding.policy_id && policy.policyVersion === binding.policy_version)?.name ?? null,
         action: stringValue(binding.action),
         enabled_rule_ids: arrayOfStrings(binding.enabled_rule_ids),
         enabled_rails: arrayOfStrings(binding.enabled_rails).filter((rail): rail is "input" | "output" | "retrieval" | "dialog" | "execution" => ["input", "output", "retrieval", "dialog", "execution"].includes(rail)),
@@ -349,27 +388,30 @@ export async function getGuardrailVersion(guardrailId: string, version: string):
   return mapVersionDetail(found, guardrail);
 }
 
+/** Publishing is synchronous: the tested candidate is signed and released at once. */
 export async function publishGuardrail(guardrailId: string, expectedDraftRevision: number): Promise<GuardrailVersion> {
   const result = await controllerApi.publishControllerGuardrail(guardrailId, expectedDraftRevision);
-  for (let attempt = 0; attempt < 120; attempt += 1) {
-    const guardrail = await controllerApi.getControllerGuardrail(guardrailId);
-    const version = guardrail.versions.find((item) => item.version === result.version);
-    if (version?.status === "ready") return mapVersion(version, guardrail);
-    if (version?.status === "failed") throw new Error(version.failureReason || `Guardrail version ${result.version} failed to compile.`);
-    await new Promise((resolve) => setTimeout(resolve, 250));
-  }
-  throw new Error(`Guardrail version ${result.version} is still compiling. Check Controller activity for progress.`);
+  const guardrail = await controllerApi.getControllerGuardrail(guardrailId);
+  const version = guardrail.versions.find((item) => item.version === result.version);
+  if (!version) throw new Error(`Guardrail version ${result.version} was not found after publishing.`);
+  return mapVersion(version, guardrail);
 }
 
-export const rollbackGuardrail = (guardrailId: string, version: string) =>
-  controllerApi.rollbackControllerGuardrail(guardrailId, version).then(async (item) => {
-    const guardrail = await controllerApi.getControllerGuardrail(guardrailId);
-    return mapVersion(item, guardrail);
-  });
+/** Run a version's own test suite against its signed Artifact in this environment. */
+export const testGuardrailVersion = (guardrailId: string, version: string, testModelRules = true) =>
+  controllerApi.requestController<controllerApi.ValidationRun>(`/api/v1/guardrails/${encodeURIComponent(guardrailId)}/versions/${encodeURIComponent(version)}/test-runs`, { method: "POST", body: JSON.stringify({ testModelRules }) }).then(mapValidationRun);
+
+/** Release a pending version here; requires its passed test of exactly this content. */
+export const releaseGuardrailVersion = (guardrailId: string, version: string) =>
+  controllerApi.requestController<controllerApi.GuardrailVersion>(`/api/v1/guardrails/${encodeURIComponent(guardrailId)}/versions/${encodeURIComponent(version)}/release`, { method: "POST" });
+
 
 export function previewGuardrailCandidate(input: {
   name: string;
   allowed_topics?: string[];
+  restricted_topics?: string[];
+  topic_control_mode?: "strict" | "permissive";
+  profile_origin?: import("../../shared/protection-map").ProfileOrigin;
   policy_bindings: GuardrailPolicyBinding[];
   safety_level?: SafetyLevel;
   output_delivery?: OutputDelivery;
@@ -377,8 +419,10 @@ export function previewGuardrailCandidate(input: {
   return controllerApi.previewControllerGuardrailPlan({
     name: input.name,
     draftConfig: {
+      ...(input.profile_origin ? { profileOrigin: input.profile_origin } : {}),
       allowedTopics: input.allowed_topics ?? [],
-      restrictedTopics: [],
+      restrictedTopics: input.restricted_topics ?? [],
+      topicControlMode: input.topic_control_mode ?? "permissive",
       policyBindings: input.policy_bindings.map(toCurrentBinding),
       safetyLevel: input.safety_level ?? "balanced",
       outputDelivery: input.output_delivery ?? "full_buffered",
@@ -396,6 +440,7 @@ export async function getGuardrailCompilePreview(id: string): Promise<GuardrailC
   const guardrail = await controllerApi.getControllerGuardrail(id);
   return previewGuardrailCandidate({
     name: guardrail.name,
+    ...(guardrail.draftConfig.profileOrigin ? { profile_origin: guardrail.draftConfig.profileOrigin } : {}),
     policy_bindings: guardrail.draftConfig.policyBindings.map(fromCurrentBinding),
     safety_level: guardrail.draftConfig.safetyLevel,
     output_delivery: guardrail.draftConfig.outputDelivery,
@@ -403,9 +448,10 @@ export async function getGuardrailCompilePreview(id: string): Promise<GuardrailC
 }
 
 export const getPolicies = () => controllerApi.requestController<Collection<Policy>>("/api/v1/policies");
-export type ProtectionPresetPreview = ProtectionPreset & { bindings: GuardrailPolicyBinding[] };
-export async function getProtectionPresets(): Promise<Collection<ProtectionPresetPreview>> {
-  const result = await controllerApi.requestController<Collection<ProtectionPreset & { policyBindings: CurrentPolicyBinding[] }>>("/api/v1/policy-catalog/protection-presets");
+export type GuardrailProfilePreview = ProtectionPreset & Partial<Pick<GuardrailProfile, "category" | "categoryName" | "isDefault">> & { bindings: GuardrailPolicyBinding[]; availability?: { available: boolean; reason: string | null } };
+export type ProtectionPresetPreview = GuardrailProfilePreview;
+export async function getGuardrailProfiles(): Promise<Collection<ProtectionPresetPreview>> {
+  const result = await controllerApi.requestController<Collection<GuardrailProfile & { policyBindings: CurrentPolicyBinding[]; availability?: { available: boolean; reason: string | null } }>>("/api/v1/guardrail-profiles");
   return { ...result, items: result.items.map(({ policyBindings, ...preset }) => ({ ...preset, bindings: policyBindings.map(fromCurrentBinding) })) };
 }
 export const getPolicy = (id: string) => controllerApi.requestController<Policy>(`/api/v1/policies/${encodeURIComponent(id)}`);
@@ -417,25 +463,25 @@ export const createProgrammablePolicy = (input: { name: string; description: str
 export const updateProgrammablePolicy = (id: string, input: { name?: string; description?: string; owner?: string; draft?: ProgrammablePolicyDraft }) => controllerApi.requestController<Policy>(`/api/v1/policies/${encodeURIComponent(id)}`, {
   method: "PATCH", body: JSON.stringify(input),
 });
-export const deleteProgrammablePolicy = (id: string) => controllerApi.requestController<void>(`/api/v1/policies/${encodeURIComponent(id)}`, { method: "DELETE" });
+export const deletePolicy = (id: string) => controllerApi.requestController<void>(`/api/v1/policies/${encodeURIComponent(id)}`, { method: "DELETE" });
 export const validateProgrammablePolicy = (id: string) => controllerApi.requestController<PolicyValidation>(`/api/v1/policies/${encodeURIComponent(id)}/draft/checks`);
-export const getLatestProgrammablePolicyValidation = (id: string) => controllerApi.requestController<PolicyDraftValidationRun>(`/api/v1/policies/${encodeURIComponent(id)}/validation-runs/latest`);
+export const getLatestProgrammablePolicyValidation = (id: string) => controllerApi.requestController<PolicyDraftValidationRun>(`/api/v1/policies/${encodeURIComponent(id)}/test-runs/latest`);
 export async function runProgrammablePolicyValidation(id: string): Promise<PolicyDraftValidationRun> {
-  const initial = await controllerApi.requestController<PolicyDraftValidationRun>(`/api/v1/policies/${encodeURIComponent(id)}/validation-runs`, { method: "POST" });
+  const initial = await controllerApi.requestController<PolicyDraftValidationRun>(`/api/v1/policies/${encodeURIComponent(id)}/test-runs`, { method: "POST" });
   if (!initial.id) throw new Error("Policy validation did not return a run ID.");
   const deadline = Date.now() + 5 * 60_000;
   let current = initial;
   while ((current.status === "queued" || current.status === "running") && Date.now() < deadline) {
     await new Promise((resolve) => setTimeout(resolve, 1_000));
-    current = await controllerApi.requestController<PolicyDraftValidationRun>(`/api/v1/policies/${encodeURIComponent(id)}/validation-runs/${encodeURIComponent(initial.id)}`);
+    current = await controllerApi.requestController<PolicyDraftValidationRun>(`/api/v1/policies/${encodeURIComponent(id)}/test-runs/${encodeURIComponent(initial.id)}`);
   }
-  if (current.status === "queued" || current.status === "running") throw new Error("Policy Validation timed out while waiting for GuardRails 0.");
+  if (current.status === "queued" || current.status === "running") throw new Error("Policy Validation timed out while waiting for the assigned Runner.");
   return current;
 }
 export const publishProgrammablePolicy = (id: string, expectedDraftRevision: number) => controllerApi.requestController<ProgrammablePolicyVersion>(`/api/v1/policies/${encodeURIComponent(id)}/publish`, { method: "POST", body: JSON.stringify({ expectedDraftRevision }) });
 
 export const getIntentAnalysisStatus = () => controllerApi.requestController<IntentAnalysisStatus>("/api/v1/authoring/capabilities");
-export const analyzeGuardrailIntent = (input: { purpose: string; language: "en" | "zh-CN" }) => controllerApi.requestController<IntentAnalysis>("/api/v1/authoring/intent-analyses", {
+export const analyzeGuardrailIntent = (input: { purpose: string; deniedPurpose?: string; topicControlMode: "strict" | "permissive"; language: "en" | "zh-CN" }) => controllerApi.requestController<IntentAnalysis>("/api/v1/authoring/intent-analyses", {
   method: "POST",
   body: JSON.stringify(input),
 });
@@ -469,13 +515,34 @@ function moduleTimeoutForStep(step: Record<string, unknown>, modules: Record<str
 export const getGuardrailLoggingSettings = (id: string) => controllerApi.requestController<CurrentLoggingSettings>(`/api/v1/guardrails/${encodeURIComponent(id)}/logging`).then(mapLogging);
 export const updateGuardrailLoggingSettings = (id: string, level: LoggingLevel, acknowledgeCost = false) => controllerApi.requestController<CurrentLoggingSettings>(`/api/v1/guardrails/${encodeURIComponent(id)}/logging`, { method: "PATCH", body: JSON.stringify({ level, acknowledgeCost }) }).then(mapLogging);
 
-export const createValidationRun = (guardrailId: string) => controllerApi.requestController<controllerApi.ValidationRun>(`/api/v1/guardrails/${encodeURIComponent(guardrailId)}/validation-runs`, { method: "POST" }).then(waitForValidation);
-export async function getValidationRuns(guardrailId?: string): Promise<Collection<ValidationRun>> {
-  const suffix = guardrailId ? `?guardrailId=${encodeURIComponent(guardrailId)}` : "";
-  const response = await controllerApi.requestController<{ items: controllerApi.ValidationRun[]; count: number }>(`/api/v1/validation-runs${suffix}`);
-  return { items: response.items.map(mapValidationRun), count: response.count };
+type ValidationObserver = { onProgress?: (run: ValidationRun) => void };
+export const createValidationRun = (guardrailId: string, observer?: ValidationObserver, testModelRules = true) => controllerApi.requestController<controllerApi.ValidationRun>(`/api/v1/guardrails/${encodeURIComponent(guardrailId)}/test-runs`, { method: "POST", body: JSON.stringify({ testModelRules }) }).then(run => waitForValidation(run, observer));
+export const resumeValidationRun = (runId: string, observer?: ValidationObserver) => controllerApi.requestController<controllerApi.ValidationRun>(`/api/v1/test-runs/${encodeURIComponent(runId)}`).then(run => waitForValidation(run, observer));
+export async function getValidationRuns(guardrailId?: string, options: { cursor?: string | undefined; q?: string; status?: string } = {}): Promise<Collection<ValidationRun> & { nextCursor?: string | null; versionReports?: ValidationRun[] }> {
+  const params = new URLSearchParams();
+  if (guardrailId) params.set("guardrailId", guardrailId);
+  if (options.cursor) params.set("cursor", options.cursor);
+  if (options.q) params.set("q", options.q);
+  if (options.status && options.status !== "all") params.set("status", options.status);
+  const suffix = params.size ? `?${params}` : "";
+  const response = await controllerApi.requestController<{ items: controllerApi.ValidationRun[]; count: number; nextCursor?: string | null; versionReports?: controllerApi.ValidationRun[] }>(`/api/v1/test-runs${suffix}`);
+  return { items: response.items.map(mapValidationRun), count: response.count,
+    nextCursor: response.nextCursor, versionReports: response.versionReports?.map(mapValidationRun) };
 }
-export const getValidationRun = (runId: string) => controllerApi.requestController<controllerApi.ValidationRun>(`/api/v1/validation-runs/${encodeURIComponent(runId)}`).then(mapValidationRun);
+export const cancelValidationRun = (runId: string) => controllerApi.requestController<controllerApi.ValidationRun>(`/api/v1/test-runs/${encodeURIComponent(runId)}/cancel`, { method: "POST" }).then(mapValidationRun);
+export const getValidationRun = (runId: string) => controllerApi.requestController<controllerApi.ValidationRun>(`/api/v1/test-runs/${encodeURIComponent(runId)}`, { timeoutMs: 30_000 }).then(mapValidationRun);
+export type ValidationCaseFilter = "all" | "failed" | "passed" | "skipped";
+export async function getValidationCases(runId: string, filter: ValidationCaseFilter, cursor?: string, signal?: AbortSignal) {
+  const query = new URLSearchParams({ filter, limit: "50" });
+  if (cursor) query.set("cursor", cursor);
+  const page = await controllerApi.requestController<{ items: Array<Record<string, unknown> & { ordinal: number }>; count: number;
+    counts: Record<ValidationCaseFilter | "warnings", number>; nextCursor: string | null }>(`/api/v1/test-runs/${encodeURIComponent(runId)}/cases?${query}`, { ...(signal ? { signal } : {}) });
+  return { ...page, items: page.items.map(item => ({ ...mapValidationResult(item), ordinal: item.ordinal })) };
+}
+export async function getValidationCase(runId: string, ordinal: number, traceOffset = 0, signal?: AbortSignal) {
+  const value = await controllerApi.requestController<Record<string, unknown> & { nextTraceOffset: number | null; traceCount: number }>(`/api/v1/test-runs/${encodeURIComponent(runId)}/cases/${ordinal}?traceOffset=${traceOffset}`, { ...(signal ? { signal } : {}) });
+  return { result: mapValidationResult(value), nextTraceOffset: value.nextTraceOffset, traceCount: value.traceCount };
+}
 export const getPlaygroundModels = () => controllerApi.requestController<Collection<PlaygroundModel>>("/api/v1/playground/models");
 export const preparePlaygroundDraftPreview = (guardrailId: string) =>
   controllerApi.requestController<PlaygroundDraftPreview>(`/api/v1/playground/guardrails/${encodeURIComponent(guardrailId)}/draft-previews`, {
@@ -524,11 +591,11 @@ export const createTestCase = (
 }) }).then(mapTestCase);
 export const deleteTestCase = (guardrailId: string, caseId: string) => controllerApi.requestController<void>(`/api/v1/guardrails/${encodeURIComponent(guardrailId)}/test-cases/${encodeURIComponent(caseId)}`, { method: "DELETE" });
 export const excludeGuardrailTestCase = (guardrailId: string, caseId: string) => controllerApi.requestController<TestCase>(
-  `/api/v1/guardrails/${encodeURIComponent(guardrailId)}/validation-scope`,
+  `/api/v1/guardrails/${encodeURIComponent(guardrailId)}/test-scope`,
   { method: "PATCH", body: JSON.stringify({ caseId, excluded: true }) },
 );
 export const restoreGuardrailTestCase = (guardrailId: string, caseId: string) => controllerApi.requestController<TestCase>(
-  `/api/v1/guardrails/${encodeURIComponent(guardrailId)}/validation-scope`,
+  `/api/v1/guardrails/${encodeURIComponent(guardrailId)}/test-scope`,
   { method: "PATCH", body: JSON.stringify({ caseId, excluded: false }) },
 );
 
@@ -550,10 +617,19 @@ function mapValidationRun(value: controllerApi.ValidationRun): ValidationRun {
     id: value.id,
     guardrail_id: value.guardrailId,
     guardrail_version: value.guardrailVersion,
+    test_model_rules: value.testModelRules ?? true,
+    test_scope: value.testScope ?? null,
     source_draft_version: value.sourceDraftRevision,
-    status: value.status === "passed" ? "passed" : value.status === "failed" ? "failed" : "incomplete",
+    subject: value.subject ?? "draft",
+    candidate_digest: value.candidateDigest ?? null,
+    test_suite_digest: value.testSuiteDigest ?? null,
+    status: value.status === "passed" || value.status === "failed" || value.status === "cancelled" ? value.status : "incomplete",
+    execution_status: value.status,
+    progress: value.progress ?? null,
     failure_reason: value.failureReason,
     metrics: {
+      skipped: value.metrics.skipped ?? 0,
+      executed: value.metrics.executed ?? value.metrics.total,
       total: value.metrics.total,
       passed: value.metrics.passed,
       compliance_rate: value.metrics.complianceRate,
@@ -562,13 +638,13 @@ function mapValidationRun(value: controllerApi.ValidationRun): ValidationRun {
       escalation_rate: value.metrics.escalationRate,
       p95_latency_ms: value.metrics.p95LatencyMs,
     },
-    results: value.results.map(mapValidationResult),
+    completed_at: value.completedAt,
     excluded_case_ids: value.excludedCaseIds,
     created_at: value.createdAt,
   };
 }
 
-function mapValidationResult(value: Record<string, unknown>): ValidationRun["results"][number] {
+function mapValidationResult(value: Record<string, unknown>): TestCaseResult {
   const phase = stringValue(value.phase) === "output" ? "output" : "input";
   return {
     ...(value.expectationOverride && typeof value.expectationOverride === "object" ? { expectation_override: value.expectationOverride as Record<string, unknown> } : {}),
@@ -579,46 +655,57 @@ function mapValidationResult(value: Record<string, unknown>): ValidationRun["res
     policy_id: stringValue(value.policyId) ?? "",
     expected_decision: stringValue(value.expectedDecision) ?? "",
     actual_decision: stringValue(value.actualDecision) ?? "error",
+    skipped: Boolean(value.skipped),
+    skip_reason: stringValue(value.skipReason) ?? "",
     passed: Boolean(value.passed),
     evaluator_ids: arrayOfStrings(value.evaluatorIds),
     latency_ms: numberValue(value.latencyMs) ?? 0,
     reason: stringValue(value.reason) ?? "",
     phase,
     input_content: stringValue(value.inputContent) ?? "",
-    action: stringValue(value.action) ?? "pass",
+    action: stringValue(value.action) ?? "allow",
     output_content: stringValue(value.outputContent) ?? "",
-    findings: arrayOfRecords(value.findings) as ValidationRun["results"][number]["findings"],
-    trace: arrayOfRecords(value.trace) as ValidationRun["results"][number]["trace"],
+    findings: arrayOfRecords(value.findings) as TestCaseResult["findings"],
+    trace: arrayOfRecords(value.trace) as TestCaseResult["trace"],
     trusted_instruction: stringValue(value.trustedInstruction) ?? "",
     target_source: (stringValue(value.targetSource) ?? (phase === "output" ? "model_output" : "user_input")) as TestCase["target_source"],
     query: stringValue(value.query) ?? "",
     grounding_sources: arrayOfStrings(value.groundingSources),
-    expected_reasoning_result: stringValue(value.expectedReasoningResult) as ValidationRun["results"][number]["expected_reasoning_result"],
-    actual_reasoning_result: stringValue(value.actualReasoningResult) as ValidationRun["results"][number]["actual_reasoning_result"],
+    expected_reasoning_result: stringValue(value.expectedReasoningResult) as TestCaseResult["expected_reasoning_result"],
+    actual_reasoning_result: stringValue(value.actualReasoningResult) as TestCaseResult["actual_reasoning_result"],
     case_type: stringValue(value.caseType) ?? "scenario",
     required: value.required !== false,
     expected_failure: stringValue(value.expectedFailure),
     actual_failure: stringValue(value.actualFailure),
+    model_status: enumValue(value.modelStatus, ["ok", "error", "not_called", "unknown"] as const) ?? undefined,
+    execution_status: stringValue(value.executionStatus) ?? undefined,
     concurrency_group: stringValue(value.concurrencyGroup),
     source_policy_id: stringValue(value.sourcePolicyId),
     source_policy_version: stringValue(value.sourcePolicyVersion),
     source_case_id: stringValue(value.sourceCaseId),
     covered_rule_ids: arrayOfStrings(value.coveredRuleIds),
     matched_rule_ids: arrayOfStrings(value.matchedRuleIds),
-    preempting_matches: arrayOfRecords(value.preemptingMatches).map(item => ({ policyId: String(item.policyId), ruleId: String(item.ruleId) })),
+    evidence_status: stringValue(value.evidenceStatus) ?? "unverifiable",
+    evidence_detail: stringValue(value.evidenceDetail) ?? "",
+    verified_rule_ids: arrayOfStrings(value.verifiedRuleIds),
+    superseded_by: arrayOfRecords(value.supersededBy).map(item => ({ policyId: String(item.policyId), ruleId: String(item.ruleId) })),
+    rule_contract_satisfied: value.ruleContractSatisfied === true,
     evaluation_contracts: arrayOfStrings(value.evaluationContracts),
     escalated: Boolean(value.escalated),
     model_invocations: numberValue(value.modelInvocations) ?? 0,
   };
 }
 
-async function waitForValidation(initial: controllerApi.ValidationRun): Promise<ValidationRun> {
+async function waitForValidation(initial: controllerApi.ValidationRun, observer?: ValidationObserver): Promise<ValidationRun> {
   let current = initial;
   if (!initial.id) throw new Error("Policy validation did not return a run ID.");
-  const deadline = Date.now() + 5 * 60_000;
-  while ((current.status === "queued" || current.status === "running") && Date.now() < deadline) {
+  // The server owns task deadlines. A long suite must not become a client-side
+  // report failure after five minutes; poll the same ID until a terminal state.
+  observer?.onProgress?.(mapValidationRun(current));
+  while (current.status === "queued" || current.status === "running") {
     await new Promise((resolve) => setTimeout(resolve, 1_000));
-    current = await controllerApi.requestController<controllerApi.ValidationRun>(`/api/v1/validation-runs/${encodeURIComponent(initial.id)}`);
+    current = await controllerApi.requestController<controllerApi.ValidationRun>(`/api/v1/test-runs/${encodeURIComponent(initial.id)}`);
+    observer?.onProgress?.(mapValidationRun(current));
   }
   return mapValidationRun(current);
 }

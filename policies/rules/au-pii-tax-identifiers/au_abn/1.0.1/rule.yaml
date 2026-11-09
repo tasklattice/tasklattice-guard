@@ -1,0 +1,40 @@
+# Checksum: https://abr.business.gov.au/Help/AbnFormat
+id: au-pii-tax-identifiers/au_abn
+version: 1.0.1
+name: ABN (Australian Business Number)
+description: Detects 11-digit Australian Business Numbers with a valid modulus-89
+  checksum; optional spaces are accepted. Does not verify registration.
+stages:
+- input
+- output
+detector:
+  ref: text/regex
+  version: 1.0.0
+  parameters:
+    expression: \b\d{2}\s?\d{3}\s?\d{3}\s?\d{3}\b
+    validators:
+    - type: modulus_checksum
+      weights:
+      - 10
+      - 1
+      - 3
+      - 5
+      - 7
+      - 9
+      - 11
+      - 13
+      - 15
+      - 17
+      - 19
+      modulus: 89
+      offset: -10
+on_match:
+  action: transform
+  replacement: '[au_abn_REDACTED]'
+risk_level: low
+metadata:
+  taxonomy_ids:
+  - TALI-BUSINESS-POLICY
+runtime_adapter:
+  binding_id: local-government-identifiers
+  implementation_rule_id: au-pii-tax-identifiers/au_abn

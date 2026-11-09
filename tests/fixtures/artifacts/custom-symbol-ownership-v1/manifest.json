@@ -1,8 +1,8 @@
 {
   "adapter": "litellm-generic-guardrail",
   "artifact_id": "fixture-artifact-custom-symbol-ownership-v1",
-  "checksum": "66ab6112700a22286c32136a8141972b3483de01a419b047a6be471c5dfcdfd5",
-  "compiler_version": "tasklattice-nemo-config-v21-dynamic-flow-targets",
+  "checksum": "b7345ce057685fadc4a0c7139633953370aca40fffd2c6af7c5da3330ae8a15e",
+  "compiler_version": "tasklattice-nemo-config-v1",
   "endpoint_id": "fixture-endpoint",
   "expected": {
     "first_policy_marker": "check",

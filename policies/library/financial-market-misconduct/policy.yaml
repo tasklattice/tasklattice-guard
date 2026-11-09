@@ -1,0 +1,42 @@
+schema_version: 1
+kind: Policy
+metadata:
+  id: financial-market-misconduct
+  name: Financial Market Misconduct
+  description: 'Target taxonomy Policy: Financial Market Misconduct.'
+  source: built_in
+  version: 1.0.0
+  tags:
+  - namespace: protection
+    value: business_rules
+    label: Business Rules
+  - namespace: collection
+    value: policy-library
+    label: Policy Library
+  - namespace: framework
+    value: jr-t-0221-2021
+    label: JR/T 0221-2021
+    source: declared
+  - namespace: framework
+    value: owasp-llm-2025
+    label: OWASP LLM 2025
+    source: declared
+  - namespace: jurisdiction
+    value: cn
+    label: China mainland
+    source: declared
+  safety_level: balanced
+  output_delivery: full_buffered
+parameters: []
+rules: []
+rule_refs:
+- id: banking/return-guarantee
+  version: 1.0.0
+- id: cn-banking/misleading-return-guarantee
+  version: 1.0.0
+- id: securities/inside-information
+  version: 1.0.0
+- id: securities/manipulation
+  version: 1.0.0
+tests:
+- tests/acceptance.yaml

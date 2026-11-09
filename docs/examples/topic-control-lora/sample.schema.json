@@ -1,0 +1,98 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Topic Control SFT annotation record v1",
+  "description": "One record represents one evaluator invocation, not the final guardrail decision. This is an annotation format; compile only scope, policy, context_messages and content into model input. Export approved labels only. Synthetic examples require human review.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "id", "scope", "policy", "context_messages", "content", "label", "annotation", "metadata"],
+  "properties": {
+    "schema_version": {"const": "topic-control-sft.v1"},
+    "id": {"type": "string", "minLength": 1},
+    "scope": {"enum": ["input", "output"]},
+    "policy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["topic_mode", "allowed_topics", "restricted_topics"],
+      "properties": {
+        "topic_mode": {"enum": ["strict", "permissive"]},
+        "allowed_topics": {"$ref": "#/$defs/topics"},
+        "restricted_topics": {"$ref": "#/$defs/topics"}
+      },
+      "allOf": [{
+        "if": {"properties": {"topic_mode": {"const": "strict"}}},
+        "then": {"properties": {"allowed_topics": {"minItems": 1}}}
+      }]
+    },
+    "context_messages": {
+      "description": "History before the target content. Do not append the classifier label or repeat the target here. Supply the history actually visible to the evaluator.",
+      "type": "array",
+      "maxItems": 12,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["role", "content"],
+        "properties": {
+          "role": {"enum": ["user", "assistant"]},
+          "content": {"type": "string", "minLength": 1}
+        }
+      }
+    },
+    "content": {"description": "The target user request for input, or target assistant response for output.", "type": "string", "minLength": 1},
+    "label": {"enum": ["on-topic", "off-topic", null]},
+    "annotation": {
+      "description": "Human annotation metadata. Never include this object in the model prompt or completion.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["review_status", "reason", "tags"],
+      "properties": {
+        "review_status": {"enum": ["proposed", "approved", "needs_review"]},
+        "reason": {"type": "string", "minLength": 1, "maxLength": 512},
+        "tags": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"type": "string", "minLength": 1}}
+      }
+    },
+    "metadata": {
+      "description": "Provenance and split bookkeeping only. All variants of a source conversation/counterfactual group stay in one split. Hold out policy families separately to evaluate new-policy generalization.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["source", "language", "rule_scope", "group_id", "policy_family", "split"],
+      "properties": {
+        "source": {"enum": ["synthetic", "real_redacted"]},
+        "language": {"type": "string", "minLength": 1},
+        "rule_scope": {"enum": ["combined", "allowlist", "denylist"]},
+        "group_id": {"type": "string", "minLength": 1},
+        "policy_family": {"type": "string", "minLength": 1},
+        "split": {"enum": ["unassigned", "train", "validation", "test"]},
+        "source_ref": {"type": "string", "minLength": 1}
+      }
+    }
+  },
+  "allOf": [
+    {
+      "if": {"properties": {"scope": {"const": "output"}}},
+      "then": {"properties": {"context_messages": {"maxItems": 6}}}
+    },
+    {
+      "if": {"properties": {"annotation": {"properties": {"review_status": {"const": "needs_review"}}}}},
+      "then": {"properties": {"label": {"type": "null"}}},
+      "else": {"properties": {"label": {"enum": ["on-topic", "off-topic"]}}}
+    },
+    {
+      "if": {"properties": {"metadata": {"properties": {"rule_scope": {"const": "denylist"}}}}},
+      "then": {"properties": {"policy": {"properties": {
+        "topic_mode": {"const": "permissive"},
+        "allowed_topics": {"maxItems": 0},
+        "restricted_topics": {"minItems": 1}
+      }}}}
+    },
+    {
+      "if": {"properties": {"metadata": {"properties": {"rule_scope": {"const": "allowlist"}}}}},
+      "then": {"properties": {"policy": {"properties": {
+        "allowed_topics": {"minItems": 1},
+        "restricted_topics": {"maxItems": 0}
+      }}}}
+    }
+  ],
+  "$defs": {
+    "topics": {"type": "array", "uniqueItems": true, "items": {"type": "string", "minLength": 1, "pattern": "\\S"}}
+  }
+}

@@ -27,7 +27,7 @@ export function PathTestSelect({
     >
       <SelectTrigger
         aria-label={label}
-        className="h-11 w-full min-w-0 bg-background shadow-none lg:w-auto lg:min-w-32 lg:max-w-56"
+        className="path-target-select"
       >
         <SelectValue placeholder={label} />
       </SelectTrigger>

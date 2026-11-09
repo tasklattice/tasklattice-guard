@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import base64
+import gzip
 import asyncio
 from pathlib import Path
 from types import SimpleNamespace
@@ -23,6 +24,7 @@ from runner.toolkit.evaluation.contracts import (
     CONTRACT_PII_SEMANTIC,
 )
 from runner.toolkit.nemo.registry import NeMoRuntimeRegistry
+from runner.validator import ValidationOutcome
 from tests.capability_binding import capability_binding
 
 
@@ -47,11 +49,21 @@ async def test_large_validation_round_trip_and_reconnect_sender_cleanup(tmp_path
         async def Connect(self, request_iterator, context):  # noqa: N802
             assert (await request_iterator.__anext__()).WhichOneof("body") == "registration"
             yield protocol.ControllerMessage(validation_request=request)
+            cases = []
             async for message in request_iterator:
-                if message.WhichOneof("body") == "validation_result":
-                    received.append(message.validation_result)
+                if message.WhichOneof("body") != "validation_report_chunk":
+                    continue
+                chunk = message.validation_report_chunk
+                result = protocol.ValidationResult.FromString(gzip.decompress(chunk.gzip_result))
+                cases.extend(result.results)
+                if chunk.final:
+                    result.results.extend(cases)
+                    received.append(result)
                     if server_abort:
                         await context.abort(grpc.StatusCode.UNAVAILABLE, "synthetic connection loss")
+                yield protocol.ControllerMessage(validation_report_chunk_ack=protocol.ValidationReportChunkAck(
+                    run_id=chunk.run_id,upload_id=chunk.upload_id,sequence=chunk.sequence))
+                if chunk.final:
                     return
 
     server = grpc.aio.server(options=CONTROL_CHANNEL_OPTIONS)
@@ -61,11 +73,11 @@ async def test_large_validation_round_trip_and_reconnect_sender_cleanup(tmp_path
     settings = SimpleNamespace(
         runner_id="e2e-runner", pool_id="default", compiler_capable=False,
         max_concurrency=4, controller_ca_path=None,
-        controller_target=f"127.0.0.1:{port}", controller_token="e2e-runner-token",
+        controller_target=f"127.0.0.1:{port}", controller_token="e2e-runner-token", control_token=None,
     )
     client = RunnerControlClient(settings, ArtifactStore(FIXTURE / "public-key.pem", tmp_path), RunnerMetrics(4))
-    client._validator = SimpleNamespace(validate=AsyncMock(return_value=(
-        "passed", {"total": 321, "passed": 321}, results,
+    client._validator = SimpleNamespace(compiler_model_types=(), run=AsyncMock(return_value=ValidationOutcome(
+        "passed", {"total": 321, "passed": 321}, results, protocol.Artifact(guardrail_id="large", guardrail_version="v"),
     )))
     baseline_tasks = asyncio.all_tasks()
     try:
@@ -81,6 +93,7 @@ async def test_large_validation_round_trip_and_reconnect_sender_cleanup(tmp_path
                         if task.get_name() == "guard-control-writer"]
     finally:
         await server.stop(grace=0)
+    client._validator.run.assert_awaited_once()
     assert len(received) == 3
     for result in received:
         assert result.ByteSize() > 4 * 1024 * 1024
@@ -95,6 +108,8 @@ class MockController(services.RunnerControlServicer):
     def __init__(self, desired_state: protocol.DesiredState) -> None:
         self.desired_state = desired_state
         self.received: list[protocol.RunnerMessage] = []
+        self.applied = asyncio.Event()
+        self.release_stream = asyncio.Event()
 
     async def Connect(self, request_iterator, context):  # noqa: N802
         metadata = dict(context.invocation_metadata())
@@ -113,10 +128,40 @@ class MockController(services.RunnerControlServicer):
             message_id="desired-state",
             desired_state=self.desired_state,
         )
+        accepted = False
         async for message in request_iterator:
             self.received.append(message)
             if message.WhichOneof("body") == "desired_state_result":
+                if not message.desired_state_result.accepted:
+                    return
+                accepted = True
+            # Applying desired state also sends its new generation immediately.
+            # Closing after the ACK races that required heartbeat write in gRPC.
+            if (accepted and message.WhichOneof("body") == "heartbeat"
+                    and message.heartbeat.applied_generation == self.desired_state.generation):
+                self.applied.set()
+                await self.release_stream.wait()
                 return
+
+
+async def _apply_then_disconnect(client: RunnerControlClient, controller: MockController) -> None:
+    connection = asyncio.create_task(client._connect_once())
+    applied = asyncio.create_task(controller.applied.wait())
+    try:
+        done, _ = await asyncio.wait({connection, applied}, timeout=10, return_when=asyncio.FIRST_COMPLETED)
+        if connection in done:
+            await connection
+            raise AssertionError("Runner disconnected before acknowledging the desired state.")
+        assert applied in done, "Runner did not acknowledge the desired state."
+        assert client.synchronized is True
+        controller.release_stream.set()
+        await asyncio.wait_for(connection, 10)
+    finally:
+        controller.release_stream.set()
+        for task in (connection, applied):
+            if not task.done():
+                task.cancel()
+        await asyncio.gather(connection, applied, return_exceptions=True)
 
 
 @pytest.mark.asyncio
@@ -146,7 +191,7 @@ async def test_mock_controller_and_real_runner_exchange_and_apply_desired_state(
         client_key_path=None,
         client_certificate_path=None,
         controller_target=f"127.0.0.1:{port}",
-        controller_token="e2e-runner-token",
+        controller_token="e2e-runner-token", control_token=None,
     )
     client = RunnerControlClient(
         settings,  # type: ignore[arg-type]
@@ -154,7 +199,7 @@ async def test_mock_controller_and_real_runner_exchange_and_apply_desired_state(
         RunnerMetrics(4),
     )
     try:
-        await client._connect_once()
+        await _apply_then_disconnect(client, controller)
     finally:
         await server.stop(grace=0)
 
@@ -168,8 +213,9 @@ async def test_mock_controller_and_real_runner_exchange_and_apply_desired_state(
     assert result.runner_id == "e2e-runner"
     assert result.generation == 1
     assert result.accepted is True
+    assert controller.received[-1].heartbeat.applied_generation == 1
     assert store.generation == 1
-    assert client.synchronized is True
+    assert client.synchronized is False
     assert registry.readiness()["ready"] is True
 
 
@@ -224,7 +270,7 @@ async def test_runner_accepts_replaceable_model_configuration_in_desired_state(
         client_key_path=None,
         client_certificate_path=None,
         controller_target=f"127.0.0.1:{port}",
-        controller_token="e2e-runner-token",
+        controller_token="e2e-runner-token", control_token=None,
     )
     client = RunnerControlClient(
         settings,  # type: ignore[arg-type]
@@ -232,7 +278,7 @@ async def test_runner_accepts_replaceable_model_configuration_in_desired_state(
         RunnerMetrics(4),
     )
     try:
-        await client._connect_once()
+        await _apply_then_disconnect(client, controller)
     finally:
         await server.stop(grace=0)
 
@@ -243,7 +289,8 @@ async def test_runner_accepts_replaceable_model_configuration_in_desired_state(
     )
     assert result.accepted is True
     assert result.model_revision_id == model_configuration.revision_id
-    assert client.synchronized is True
+    assert controller.received[-1].heartbeat.applied_generation == desired_state.generation
+    assert client.synchronized is False
     assert client._providers is not None
     assert registry.readiness()["ready"] is True
 
@@ -302,7 +349,6 @@ def _split_guard_configuration() -> protocol.DataPlaneModelConfiguration:
                 profile_ref="tali.nemoguard-topic-control.v1",
                 contract_refs=[
                     "tali.guard.topic-control.semantic.v1",
-                    "tali.guard.company-policy.v1",
                 ],
             ),
             capability_binding(

@@ -5,6 +5,8 @@ from typing import Any, Iterable
 
 import yaml
 
+from runner.model_concurrency import configure_model_limit
+
 
 TOPIC_CONTROL_MODEL_TYPE = "topic_control"
 TOPIC_CONTROL_BINDING_ID = "topic_control.input"
@@ -23,6 +25,7 @@ class NativeRailModel:
     api_key: str
     timeout_seconds: float
     max_tokens: int
+    max_concurrency: int = 2
 
     def __post_init__(self) -> None:
         if not self.type.strip() or not self.runtime_id.strip() or not self.model.strip():
@@ -31,6 +34,7 @@ class NativeRailModel:
             raise ValueError("Native Rail models require an HTTP(S) base_url.")
         if self.timeout_seconds <= 0 or self.max_tokens <= 0:
             raise ValueError("Native Rail model timeout and max_tokens must be positive.")
+        configure_model_limit(self.runtime_id, self.max_concurrency)
 
     def compiler_config(self) -> dict[str, Any]:
         """Return a secret-free model declaration suitable for a signed artifact."""
@@ -112,6 +116,7 @@ def native_rail_models(
             api_key=credentials.get(runtime.credential_ref, ""),
             timeout_seconds=float(runtime.timeout_seconds or 20),
             max_tokens=int(runtime.max_tokens or 128),
+            max_concurrency=int(getattr(runtime, "max_concurrency", 0) or 2),
         ),
     )
 

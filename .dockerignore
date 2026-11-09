@@ -9,8 +9,12 @@
 tests
 .env
 data
-web/node_modules
+output
+.local-archives
+**/node_modules
 web/dist
+controller/openapi/controller.openapi.json
+controller/openapi/.controller.openapi-*.tmp
 **/dist
 !dist/runtime-chart
 !dist/runtime-chart/**

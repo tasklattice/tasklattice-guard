@@ -1,0 +1,109 @@
+---
+id: "operator-metrics"
+title: "Business statistics and Prometheus Metrics"
+summary: "Both Controller and Runner expose metrics. Business statistics APIs and Prometheus scrapes have different purposes and credentials."
+order: 5
+---
+Use business statistics to inspect reported traffic. Use Prometheus to monitor service operation. Their interfaces and credentials differ.
+
+<a id="operator-business-metrics" />
+## Query business statistics
+
+These APIs use a browser session or a personal token with the corresponding grant and account authority.
+
+| API | Grant | Purpose |
+| --- | --- | --- |
+| `GET /api/v1/telemetry/metrics` | `runtime:read`, User role | Aggregate runtime events. Filters include window, `guardrailId` and `routerId`. |
+| `GET /api/v1/telemetry/security-events` | `runtime:read`, User role | Read findings for a required `guardrailId`. Optional filters include window and comma-separated severity. |
+| `GET /api/v1/routers/{id}/traffic-distribution` | `routers:read` | Read historical routing distribution. Route-specific queries are also available. |
+
+Security-event pages contain 25 findings by default. They also support `limit=50`. Follow `nextCursor` with unchanged filters and page size. The cursor fixes time and ingestion boundaries. Start without a cursor for a fresh range.
+
+Event lists load independently from statistics. A statistics error does not disable event pagination. Inspect `data_availability` when evidence is missing. Traffic counts do not establish configuration convergence.
+
+[Business metrics contract](/api/openapi.json?operationId=getTelemetryMetrics)
+
+<a id="operator-prometheus" />
+## Configure Prometheus scrapes
+
+| Service | Address | Authentication when configured |
+| --- | --- | --- |
+| Controller | `/metrics` on its HTTP address | `Authorization: Bearer <CONTROLLER_METRICS_TOKEN>` |
+| Runner | `/metrics` on each deployed HTTP address, default container port 8091 | `Authorization: Bearer <GUARD_METRICS_TOKEN>` |
+
+These scrape credentials are not personal Access Tokens. Configure the scraper's Authorization header. Opening a protected metrics URL in a browser can return `401`.
+
+Controller database gauges use a ten-second snapshot cache. Concurrent scrapes share one collection. Counters and process metrics remain live. Collection failures do not enter the cache.
+
+[Controller metrics](/metrics) · [Runner management](/settings/runner) · [Platform health](/settings/health)
+
+<a id="operator-troubleshooting" />
+## Diagnose protection failures in order
+
+1. Check Endpoint state, credential ownership, Router binding and Route precedence.
+2. Inspect the exact Guardrail Version and checksum.
+3. Inspect Policy, Rule, checkpoint, Decision and latency in [runtime logs](/$projectId/logs).
+4. Check specialized models or proof services, network access and credentials.
+5. Distinguish queue saturation, execution deadlines and provider latency from content detections.
+
+<a id="runner-liveness-timeouts" />
+### Advanced: diagnose Runner liveness timeouts
+
+These steps require deployment-log access. A `/health/live` timeout can indicate a blocked event loop even while the process remains alive. Readiness `503` and startup connection refusal are different signals.
+
+Record the exact Kubernetes probe failure and container termination reason first. Runtime construction uses a background worker. A failed preparation retains the serving release.
+
+Only enabled positive-weight Route targets require prewarming. Other verified versions load asynchronously on demand. On-demand leases last 600 seconds. Each release retains at most 128 non-route instances. Full leased capacity can reject a new cold load.
+
+Unchanged model and credential fingerprints reuse instances. Credential rotation creates a new materialization. Old releases retain dependencies for pinned calls until leases and work drain. Draft previews and validation share the construction worker.
+
+<a id="runner-diagnostic-events" />
+### Read diagnostic events
+
+Diagnostics write to container logs by default.
+
+| Event | Meaning |
+| --- | --- |
+| `runner_event_loop_stalled` | The watchdog detects scheduling delay above two seconds, sampled every 0.5 seconds. Continuous-stall warnings repeat at most every 30 seconds. |
+| `runner_event_loop_delayed` / `runner_event_loop_recovered` | Completed scheduling delay or watchdog-observed recovery. The completed delay can capture stalls the watchdog missed. |
+| `runner_phase_started` / `runner_phase_finished` | Lifecycle phase, duration and result. An unfinished phase can identify interrupted work. |
+
+Stall diagnostics include stacks, active phases, memory and available CPU or cgroup counters. Stack records include filenames, line numbers and function names. They exclude source lines, local values, credentials and request content.
+
+A native extension holding the GIL or a frozen container can prevent watchdog execution. A missing warning does not exclude those causes.
+
+<a id="runner-diagnostic-collection" />
+### Collect logs and compare resource signals
+
+Collect current and previous container logs after a restart:
+
+```bash
+kubectl -n <namespace> describe pod <runner-pod>
+kubectl -n <namespace> logs <runner-pod> --timestamps --since=30m
+kubectl -n <namespace> logs <runner-pod> --previous --timestamps
+```
+
+Keep stdout and stderr in centralized collection. Kubernetes previous-container logs do not survive Pod deletion.
+
+Correlate the failure with release candidate counts, prewarm duration and unexpected readiness or admission lock waits. Compare CPU throttling, OOM counters, memory limits and node pressure. Cumulative CPU counters require two samples to calculate rates.
+
+| Prometheus metric | Purpose |
+| --- | --- |
+| `guard_runner_event_loop_lag_seconds` | Current scheduling lag. |
+| `guard_runner_event_loop_delay_seconds` | Histogram of completed scheduling delays. |
+| `guard_runner_event_loop_stalls_total` | Count of watchdog-observed stalls. |
+
+For example, `increase(guard_runner_event_loop_stalls_total[5m])` finds recently observed stalls. A blocked event loop can also prevent metrics scrapes. Retain diagnostic logs alongside metrics.
+
+<a id="runner-liveness-benchmark" />
+### Run an isolated performance check
+
+From the source checkout, run:
+
+```bash
+.venv/bin/python scripts/benchmark_runner_liveness.py --versions 1 8 32 --repeats 2
+```
+
+The script compares actual runtime construction with and without concurrent readiness reads. It reports loop delay, CPU time and RSS using fixture copies. It makes no external model calls or cluster changes.
+
+These results do not estimate deployment capacity. `--injected-prewarm-seconds` simulates a deliberate delay, with separate output labels.

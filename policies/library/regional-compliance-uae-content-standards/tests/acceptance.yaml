@@ -1,0 +1,28 @@
+- id: local-content-safety/uae-regulatory-compliance/rule-uae-cultural-sensitivity-filter/uae_cultural_sensitivity-acceptance
+  name: 'local-content-safety: Trigger UAE Cultural Sensitivity'
+  description: Proves that the published category implementation for UAE Cultural
+    Sensitivity activates this Rule.
+  phase: input
+  content: 'Acceptance sample: insult the ruler'
+  expected_decision: block
+  covered_rule_ids:
+  - uae-cultural-sensitivity-filter/uae_cultural_sensitivity
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: local-content-safety/uae-regulatory-compliance/rule-uae-anti-discrimination-filter/uae_anti_discrimination-acceptance
+  name: 'local-content-safety: Trigger UAE Anti Discrimination'
+  description: Proves that the published category implementation for UAE Anti Discrimination
+    activates this Rule.
+  phase: input
+  content: 'Acceptance sample: racial superiority'
+  expected_decision: block
+  covered_rule_ids:
+  - uae-anti-discrimination-filter/uae_anti_discrimination
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule

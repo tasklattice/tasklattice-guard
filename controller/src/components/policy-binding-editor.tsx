@@ -1,9 +1,13 @@
+import { SecuritySeverityBadge } from "@/components/security-severity";
+import { isSplitTopicPolicy, TOPIC_ALLOW_RULE, topicMissingParameters } from "../../shared/topic-policy";
+import { TopicPolicyRules } from "./topic-policy-rules";
 import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { ArrowDown, ArrowUp, ChevronDown, Trash2 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { parsePhraseEntries } from "../../shared/phrase-policy";
 import { PhrasePolicyEditor } from "./phrase-policy-editor";
 import { boundPolicy } from "@/lib/bound-policy";
+import { activePolicyParameters, policyBindingParameterIssues } from "../../shared/policy-parameters";
 
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -20,6 +24,7 @@ export function PolicyBindingEditor({
   onChange,
   showSelector = true,
   embedded = false,
+  unavailableReason,
 }: {
   policies: Policy[];
   value: GuardrailPolicyBinding[];
@@ -27,6 +32,7 @@ export function PolicyBindingEditor({
   showSelector?: boolean;
   /** The containing Policy row already owns the disclosure and heading. */
   embedded?: boolean;
+  unavailableReason?: (policy: Policy) => string | null;
 }) {
   const { t } = useTranslation();
   const movedControl = useRef<HTMLButtonElement | null>(null);
@@ -58,15 +64,15 @@ export function PolicyBindingEditor({
       label: `${catalogPolicy.id}@${binding!.policy_version}`,
       description: t("guardrailWizard.nextBlocked.policyUnavailable", { name: `${catalogPolicy.id}@${binding!.policy_version}` }),
     };
-    const bindable = policy.source === "built_in" || policy.version !== "0";
+    const bindable = policy.version !== "0";
     const frameworkLabels = policy.tags
       .filter((tag) => tag.namespace === "framework")
       .map((tag) => tag.label);
     return {
       value: policy.id,
       label: policy.name,
-      description: policy.description,
-      disabled: !bindable,
+      description: unavailableReason?.(policy) ?? policy.description,
+      disabled: !bindable || (Boolean(unavailableReason?.(policy)) && !binding),
       keywords: [
         policy.id,
         ...policy.tags.map((tag) => tag.label),
@@ -80,14 +86,14 @@ export function PolicyBindingEditor({
         ...(!bindable ? [t("guardrailWizard.publishPolicyFirst")] : []),
       ].join(" · "),
     };
-  }), [policies, value, t]);
+  }), [policies, value, t, unavailableReason]);
 
   function selectPolicies(nextIds: string[]) {
     onChange(nextIds.map((policyId) => {
       const existing = value.find((binding) => binding.policy_id === policyId);
       if (existing) return existing;
       const policy = policies.find((item) => item.id === policyId);
-      return policy ? defaultPolicyBinding(policy) : null;
+      return policy && !unavailableReason?.(policy) ? defaultPolicyBinding(policy) : null;
     }).filter((binding): binding is GuardrailPolicyBinding => binding !== null));
   }
 
@@ -102,7 +108,7 @@ export function PolicyBindingEditor({
         <div className="min-w-0 space-y-2">
           <MultiSelectCombobox
             ariaLabel={t("guardrailWizard.selectPolicies")}
-            showSelectedValues={false}
+            selectionDisplay="count"
             value={selectedIds}
             options={options}
             placeholder={t("guardrailWizard.selectPolicies")}
@@ -130,6 +136,12 @@ export function PolicyBindingEditor({
                 <p className="min-w-0 flex-1 break-words">{t("guardrailWizard.nextBlocked.policyUnavailable", { name: `${binding.policy_id}@${binding.policy_version}` })}</p>
                 <Button variant="outline" className="min-h-11" onClick={() => onChange(value.filter((item) => item.policy_id !== binding.policy_id))}>{t("common.remove")}</Button>
               </li>;
+              const splitTopic = isSplitTopicPolicy(policy.id, policy.version);
+              const unavailable = unavailableReason?.(policy);
+              if (unavailable) return <li key={binding.policy_id} className="flex min-w-0 flex-wrap items-center justify-between gap-3 p-4">
+                <div className="min-w-0 flex-1"><h4 className="text-sm font-semibold">{policy.name}</h4><p role="status" className="mt-1 text-sm text-muted-foreground">{unavailable}</p></div>
+                <Button variant="outline" className="min-h-11" aria-label={t("protection.remove", { name: policy.name })} onClick={() => onChange(value.filter(item => item.policy_id !== binding.policy_id))}>{t("common.remove")}</Button>
+              </li>;
               const validation = getPolicyBindingValidation(binding, policy);
               const validationLabel = validation.missingRequiredParameters.length
                 ? t("guardrailWizard.missingRequiredFieldCount", { count: validation.missingRequiredParameters.length })
@@ -139,7 +151,7 @@ export function PolicyBindingEditor({
                     ? t("guardrailWizard.noEnabledRules")
                     : validation.missingRails
                       ? t("protection.selectDirection")
-                    : null;
+                    : validation.parameterIssues[0] ?? null;
               const orderedRuleIds = [...new Set([...(binding.rule_order ?? []), ...policy.rules.map((rule) => rule.id)])];
               const orderedRules = orderedRuleIds.flatMap((id) => policy.rules.filter((rule) => rule.id === id));
               function moveRule(index: number, offset: number, button: HTMLButtonElement) {
@@ -180,7 +192,7 @@ export function PolicyBindingEditor({
                   </>}
                 >
                   <div className="space-y-5 border-t bg-muted/[0.12] p-4">
-                    <section className="space-y-3">
+                    {splitTopic ? <TopicPolicyRules binding={binding} policy={policy} onChange={patch => update(binding.policy_id, patch)} /> : <section className="space-y-3">
                       <div>
                         <h4 className="text-xs font-semibold">{t("protection.ruleOrder")}</h4>
                         <p className="mt-1 text-xs leading-5 text-muted-foreground">{t("protection.ruleOrderHint")}</p>
@@ -190,16 +202,16 @@ export function PolicyBindingEditor({
                           const enabled = binding.enabled_rule_ids.includes(rule.id);
                           const inheritedActionLabel = binding.action != null
                             ? t("protection.ruleInheritedAction", { action: binding.action })
-                            : rule.implementation?.detector === "configured_phrases"
+                            : rule.rule_expansion
                               ? t("protection.phrases.useEntryActions")
                               : t("protection.ruleDefaultAction", { action: rule.effect });
                           return (
                             <div key={rule.id} className="grid grid-cols-[1.25rem_minmax(0,1fr)] items-center gap-3 p-3 lg:grid-cols-[1.25rem_minmax(0,1fr)_10rem_auto]">
                               <Checkbox aria-label={`${policy.name}: ${rule.name}`} checked={enabled} onCheckedChange={(next) => update(binding.policy_id, { enabled_rule_ids: next ? [...binding.enabled_rule_ids, rule.id] : binding.enabled_rule_ids.filter((id) => id !== rule.id) })} />
-                              <span className="min-w-0"><span className="mb-1 block font-mono text-xs text-muted-foreground">{embedded ? ruleIndex + 1 : `${policyIndex + 1}.${ruleIndex + 1}`}</span><strong className="block truncate text-xs">{rule.name}</strong><span className="mt-1 block truncate font-mono text-xs text-muted-foreground">{rule.id}</span></span>
+                              <span className="min-w-0"><span className="mb-1 block font-mono text-xs text-muted-foreground">{embedded ? ruleIndex + 1 : `${policyIndex + 1}.${ruleIndex + 1}`}</span><strong className="block truncate text-xs">{rule.name}</strong><SecuritySeverityBadge severity={rule.risk_severity} /><span className="mt-1 block truncate font-mono text-xs text-muted-foreground">{rule.id}</span></span>
                               <div className="col-start-2 min-w-0 lg:col-auto">
                               <Select value={binding.rule_actions[rule.id] ?? "policy_default"} disabled={!enabled} onValueChange={(selected) => { const next = { ...binding.rule_actions }; if (selected === "policy_default") delete next[rule.id]; else next[rule.id] = selected as EnforcementAction; update(binding.policy_id, { rule_actions: next }); }}>
-                                <SelectTrigger aria-label={t("protection.ruleAction", { name: rule.name })} className="min-h-11"><SelectValue /></SelectTrigger>
+                                <SelectTrigger aria-label={t("protection.ruleAction", { name: rule.name })} className="field:min-h-11"><SelectValue /></SelectTrigger>
                                 <SelectContent><SelectItem value="policy_default">{inheritedActionLabel}</SelectItem>{enforcementActions.map((action) => <SelectItem key={action} value={action}>{action}</SelectItem>)}</SelectContent>
                               </Select>
                               </div>
@@ -211,19 +223,19 @@ export function PolicyBindingEditor({
                           );
                         })}
                       </div>
-                    </section>
+                    </section>}
                     <section className="space-y-3">
                       <div>
                         <h4 className="text-xs font-semibold">{t("guardrailWizard.behaviorTitle")}</h4>
                         <p className="mt-1 text-xs leading-5 text-muted-foreground">{t("guardrailWizard.behaviorDescription")}</p>
                       </div>
                       <div className="grid gap-4 sm:grid-cols-2">
-                        <Field label={t("guardrailWizard.policyAction")}>
+                        {!splitTopic ? <Field label={t("guardrailWizard.policyAction")}>
                           <Select value={binding.action ?? "policy_default"} onValueChange={(selected) => update(binding.policy_id, { action: selected === "policy_default" ? null : selected as EnforcementAction })}>
-                            <SelectTrigger className="min-h-11 bg-card"><SelectValue /></SelectTrigger>
+                            <SelectTrigger className="field:min-h-11 field:bg-card"><SelectValue /></SelectTrigger>
                             <SelectContent><SelectItem value="policy_default">{t("guardrailWizard.usePolicyBehavior")}</SelectItem>{enforcementActions.map((action) => <SelectItem key={action} value={action}>{action}</SelectItem>)}</SelectContent>
                           </Select>
-                        </Field>
+                        </Field> : null}
                         <div>
                           <Label>{t("protection.inspectDirection")}</Label>
                           <div className="mt-2 flex min-h-11 flex-wrap items-center gap-2">
@@ -236,7 +248,7 @@ export function PolicyBindingEditor({
                       </div>
                     </section>
 
-                    {policy.parameters.length || binding.policy_id === "builtin-automated-reasoning" ? (
+                    {!splitTopic && (policy.parameters.length || binding.policy_id === "builtin-automated-reasoning") ? (
                       <section className="space-y-3">
                         <div>
                           <h4 className="text-xs font-semibold">{t("guardrailWizard.inputsTitle")}</h4>
@@ -251,15 +263,16 @@ export function PolicyBindingEditor({
                               <Field key={parameter.name} label={`${parameter.label ?? parameter.name}${parameter.required ? " *" : ""}`} hint={parameter.description}>
                                 {parameter.kind === "textarea" ? (
                                   <Textarea
-                                    className="min-h-24 bg-card"
+                                    className="field:min-h-24 field:bg-card"
                                     value={binding.parameter_values[parameter.name] ?? parameter.default ?? ""}
                                     placeholder={parameter.placeholder}
                                     onChange={(event) => update(binding.policy_id, { parameter_values: { ...binding.parameter_values, [parameter.name]: event.target.value } })}
                                   />
                                 ) : (
                                   <Input
-                                    className="min-h-11 bg-card"
-                                    type={parameter.kind === "secret" ? "password" : "text"}
+                                    className="field:min-h-11 field:bg-card"
+                                    type={parameter.kind === "secret" ? "password" : parameter.kind === "number" ? "number" : "text"}
+                                    step={parameter.kind === "number" ? "any" : undefined}
                                     value={binding.parameter_values[parameter.name] ?? parameter.default ?? ""}
                                     placeholder={parameter.placeholder}
                                     onChange={(event) => update(binding.policy_id, { parameter_values: { ...binding.parameter_values, [parameter.name]: event.target.value } })}
@@ -272,9 +285,9 @@ export function PolicyBindingEditor({
 
                         {binding.policy_id === "builtin-automated-reasoning" ? (
                           <div className="grid gap-4 rounded-lg border bg-card p-4 sm:grid-cols-3">
-                            <Field label={t("guardrailWizard.reasoningPolicyId")}><Input className="min-h-11" value={binding.reasoning_policy?.policy_id ?? ""} onChange={(event) => update(binding.policy_id, { reasoning_policy: { policy_id: event.target.value, policy_version: binding.reasoning_policy?.policy_version ?? "", confidence_threshold: binding.reasoning_policy?.confidence_threshold ?? 0.8 } })} /></Field>
-                            <Field label={t("guardrailWizard.reasoningPolicyVersion")}><Input className="min-h-11" value={binding.reasoning_policy?.policy_version ?? ""} onChange={(event) => update(binding.policy_id, { reasoning_policy: { policy_id: binding.reasoning_policy?.policy_id ?? "", policy_version: event.target.value, confidence_threshold: binding.reasoning_policy?.confidence_threshold ?? 0.8 } })} /></Field>
-                            <Field label={t("guardrailWizard.confidenceThreshold")}><Input className="min-h-11" type="number" min={0} max={1} step={0.05} value={binding.reasoning_policy?.confidence_threshold ?? 0.8} onChange={(event) => update(binding.policy_id, { reasoning_policy: { policy_id: binding.reasoning_policy?.policy_id ?? "", policy_version: binding.reasoning_policy?.policy_version ?? "", confidence_threshold: Number(event.target.value) } })} /></Field>
+                            <Field label={t("guardrailWizard.reasoningPolicyId")}><Input className="field:min-h-11" value={binding.reasoning_policy?.policy_id ?? ""} onChange={(event) => update(binding.policy_id, { reasoning_policy: { policy_id: event.target.value, policy_version: binding.reasoning_policy?.policy_version ?? "", confidence_threshold: binding.reasoning_policy?.confidence_threshold ?? 0.8 } })} /></Field>
+                            <Field label={t("guardrailWizard.reasoningPolicyVersion")}><Input className="field:min-h-11" value={binding.reasoning_policy?.policy_version ?? ""} onChange={(event) => update(binding.policy_id, { reasoning_policy: { policy_id: binding.reasoning_policy?.policy_id ?? "", policy_version: event.target.value, confidence_threshold: binding.reasoning_policy?.confidence_threshold ?? 0.8 } })} /></Field>
+                            <Field label={t("guardrailWizard.confidenceThreshold")}><Input className="field:min-h-11" type="number" min={0} max={1} step={0.05} value={binding.reasoning_policy?.confidence_threshold ?? 0.8} onChange={(event) => update(binding.policy_id, { reasoning_policy: { policy_id: binding.reasoning_policy?.policy_id ?? "", policy_version: binding.reasoning_policy?.policy_version ?? "", confidence_threshold: Number(event.target.value) } })} /></Field>
                           </div>
                         ) : null}
                       </section>
@@ -300,7 +313,7 @@ export function defaultPolicyBinding(policy: Policy): GuardrailPolicyBinding {
     policy_version: policy.version,
     action: null,
     parameter_values: Object.fromEntries(policy.parameters.filter((parameter) => parameter.default != null).map((parameter) => [parameter.name, parameter.default ?? ""])),
-    enabled_rule_ids: policy.rules.map((rule) => rule.id),
+    enabled_rule_ids: isSplitTopicPolicy(policy.id, policy.version) ? [TOPIC_ALLOW_RULE] : policy.rules.map((rule) => rule.id),
     rule_actions: {},
     enabled_rails: policy.rails,
     reasoning_policy: policy.id === "builtin-automated-reasoning" ? { policy_id: "", policy_version: "", confidence_threshold: 0.8 } : null,
@@ -308,15 +321,21 @@ export function defaultPolicyBinding(policy: Policy): GuardrailPolicyBinding {
 }
 
 export function getPolicyBindingValidation(binding: GuardrailPolicyBinding, policy: Policy) {
-  const missingRequiredParameters = policy.parameters.filter((parameter) => {
+  const topicMissing = isSplitTopicPolicy(policy.id, policy.version) ? topicMissingParameters(binding.parameter_values, binding.enabled_rule_ids) : [];
+  const active = policy.definition ? activePolicyParameters(policy.definition, binding.enabled_rule_ids, binding.enabled_rails) : policy.parameters;
+  const missingRequiredParameters = active.filter((parameter) => {
     const value = binding.parameter_values[parameter.name] ?? parameter.default ?? "";
     if (parameter.kind === "phrase_entries") {
       try { parsePhraseEntries(value); return false; } catch { return true; }
     }
-    return parameter.required && !value.trim();
+    return topicMissing.includes(parameter.name) || parameter.required && !value.trim();
   });
   return {
     missingRequiredParameters,
+    parameterIssues: policy.definition ? policyBindingParameterIssues(policy.definition, binding.parameter_values,
+      binding.enabled_rule_ids, binding.enabled_rails, binding.reasoning_policy ? {
+        policyId: binding.reasoning_policy.policy_id, policyVersion: binding.reasoning_policy.policy_version,
+      } : null) : [],
     missingReasoningPolicy: binding.policy_id === "builtin-automated-reasoning"
       && !(binding.reasoning_policy?.policy_id.trim() && binding.reasoning_policy.policy_version.trim()),
     missingRules: binding.enabled_rule_ids.length === 0,

@@ -1,0 +1,27 @@
+---
+id: "concept-playground"
+title: "Playground: try protection behavior"
+summary: "Try normal and unsafe examples against draft previews or published versions."
+order: 4
+---
+Playground runs trial inspections against a draft preview or a published Guardrail Version. It shows inspection results without publishing a version or changing production routing.
+
+<a id="playground-how-to-use" />
+## Try normal and unsafe scenarios
+
+1. Select a Guardrail and a draft preview or published version.
+2. Enter a normal example, such as an order-status question.
+3. Inspect the Input result, model call and Output result.
+4. Try an unsafe input and a response that needs replacement.
+5. Compare matched Rules, effective output and execution evidence with your expectations.
+
+Results depend on enabled Rules and configured model capabilities. A trial does not create publication evidence. Run the required Test Cases before publishing a draft or releasing an imported version.
+
+<a id="playground-boundaries" />
+## Distinguish previews from production
+
+Explicit Playground evaluation runs real detection even when the Guardrail's online mode is Monitor or Bypass. It does not prove the application's delivery behavior.
+
+The application must still submit real traffic and apply returned Decisions. See [Endpoint integration checks](/document/developer/endpoint-setup#endpoint-verification).
+
+[Open Playground](/$projectId/playground) · [View Guardrails](/$projectId/guardrails)

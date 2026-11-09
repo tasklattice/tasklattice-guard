@@ -1,0 +1,35 @@
+---
+id: "user-review-policy"
+title: "Review a Policy before use"
+summary: "Use its protection goal, Rules, Test Cases, version, and binding parameters to understand what it actually does."
+order: 1
+---
+Read a Policy's Rules and tests before selecting it. Its name alone does not define coverage. Users can maintain shipped, local and imported Policies in Policy Studio.
+
+<a id="policy-review-goal" />
+## Review purpose and coverage
+
+1. Read the protection goal and compliance sources.
+2. Inspect every Rule and its inspection stage.
+3. Check detector parameters, risk severity and the action after a match.
+4. Review acceptance cases, normal passes and likely false positives.
+5. Identify the exact Policy Version used by the Guardrail.
+
+A Policy supplies reusable behavior. A Guardrail selects that behavior for an application. A Router selects the Guardrail Version for a request.
+
+<a id="policy-review-binding" />
+## Inspect the effective binding
+
+| Item | What to inspect |
+| --- | --- |
+| Version | Exact published Policy Version. Later edits do not update the binding automatically. |
+| Rules and stages | Enabled Rules and Input or Output checkpoints. Disabling a Rule changes executable behavior. |
+| Parameters | Declared defaults and values supplied by this Guardrail. Required values must resolve before execution. |
+| Actions | Rule defaults, Policy-level overrides and individual Rule overrides. |
+| Tests | Expected Decision, matched Rule identity and complete replacement output where applicable. |
+
+A Policy's default action can differ from the action that a Guardrail applies. Test the effective binding before publishing the Guardrail.
+
+Follow [create, test and publish a Policy](/document/operator/operator-create-policy).
+
+[Open Policy Library](/$projectId/policy-library)

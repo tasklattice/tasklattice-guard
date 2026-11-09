@@ -9,7 +9,7 @@ vi.mock("react-i18next", () => ({
   useTranslation: () => ({ t: (key: string) => key }),
 }));
 
-vi.mock("sonner", () => ({
+vi.mock("@/components/ui/notifications", () => ({
   toast: { success: vi.fn(), error: vi.fn() },
 }));
 

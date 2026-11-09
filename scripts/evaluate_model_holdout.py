@@ -1,6 +1,7 @@
 """Opt-in deployed Guardrail quality replay. Never mock a safety verdict.
 
-Uses a reviewed, external corpus and an existing generic-http-guard Endpoint.
+Uses a reviewed, external corpus and the internal version evaluation API.
+Requires a Runner controller token; does not exercise Endpoint routing.
 No registration, compilation, publishing, retry, or generation occurs here.
 Reports full Guardrail decision quality, not isolated classifier accuracy.
 """
@@ -24,7 +25,7 @@ IDENTITY = ("guardrail_id", "guardrail_version", "effective_release_id", "model_
 
 
 def validate_corpus(corpus):
-    for field in (*IDENTITY, "endpoint_id", "reviewed_by", "reviewed_at", "dataset_version"):
+    for field in (*IDENTITY, "reviewed_by", "reviewed_at", "dataset_version"):
         if not isinstance(corpus.get(field), str) or not corpus[field].strip():
             raise ValueError(f"Missing corpus metadata: {field}")
     if not re.fullmatch(r"[a-f0-9]{64}", corpus.get("runtime_config_checksum", "")):
@@ -109,7 +110,7 @@ def summarize(corpus, rows):
 
 class NoRedirect(HTTPRedirectHandler):
     def redirect_request(self, *args, **kwargs):
-        # Never forward the Endpoint credential to another URL.
+        # Never forward the Runner controller credential to another URL.
         return None
 
 
@@ -131,15 +132,15 @@ def main():
         raise ValueError("Use HTTPS or isolated loopback HTTP.")
     if os.environ.get("GUARD_HOLDOUT_ALLOW_MODEL_CALLS") != "1":
         raise ValueError("Real calls require GUARD_HOLDOUT_ALLOW_MODEL_CALLS=1.")
-    token = os.environ["GUARD_HOLDOUT_ENDPOINT_KEY"]
-    endpoint = args.runner.rstrip("/") + "/runtime/v1/endpoints/" + quote(corpus["endpoint_id"], safe="") + "/guardrails/evaluate"
+    token = os.environ["GUARD_HOLDOUT_RUNNER_TOKEN"]
+    endpoint = args.runner.rstrip("/") + "/internal/v1/guardrails/" + quote(corpus["guardrail_id"], safe="") + "/evaluate"
     opener, rows = build_opener(NoRedirect()), []
     for case in corpus["cases"]:
-        payload = {"phase": case["phase"], "texts": [case["content"]], "protocol": "http",
+        payload = {"phase": case["phase"], "texts": [case["content"]], "guardrail_version": corpus["guardrail_version"],
             "messages": case.get("messages", []), "mode": "enforce"}
         started = time.monotonic()
         try:
-            request = Request(endpoint, data=json.dumps(payload).encode(), headers={"content-type": "application/json", "x-api-key": token})
+            request = Request(endpoint, data=json.dumps(payload).encode(), headers={"content-type": "application/json", "authorization": f"Bearer {token}"})
             with opener.open(request, timeout=30) as response:
                 result = json.load(response)
             outcome = classify_result(corpus, case, result)
@@ -151,7 +152,7 @@ def main():
         if outcome not in ("true_positive", "true_negative", "false_positive", "false_negative"):
             break  # Stop spending on stale config, missing evidence, or outages.
     report = summarize(corpus, rows)
-    report.update({"scope": "full Guardrail decisions with observed guard-model calls; not business-model generation or streaming",
+    report.update({"scope": "internal version evaluation with observed guard-model calls; no Endpoint routing, business-model generation or streaming",
         "corpus_sha256": hashlib.sha256(raw).hexdigest(), "dataset_version": corpus["dataset_version"],
         "reviewed_by": corpus["reviewed_by"], "reviewed_at": corpus["reviewed_at"],
         "thresholds": corpus["thresholds"], "identity": {key: corpus[key] for key in (*IDENTITY, "runtime_config_checksum")}})

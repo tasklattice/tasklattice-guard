@@ -1,0 +1,584 @@
+---
+id: "gateway-connect"
+title: "网关集成（LiteLLM 规范）"
+summary: "以 LiteLLM Generic Guardrail 规范作为网关接入标准，说明非流式 Input／完整的 Output 检测与流式 Output 检测的接入约定。"
+order: 1
+---
+Guard 以 **LiteLLM Generic Guardrail 技术规范**作为 AI 网关接入标准。LiteLLM 和遵循该规范的自研网关或 Agent 均可接入。接入方通过 LiteLLM Endpoint（`litellm-generic-guardrail`）提交检测请求，再按结果放行、阻断或替换内容。
+
+- **使用 LiteLLM**：按 [连接 LiteLLM](/document/developer/endpoint-setup#endpoint-litellm) 配置 TaskLattice Guard Provider。Provider 负责调用下文的检测接口并执行返回结果，无需手动构造这些请求。其源码可作为 [LiteLLM Guardrails Provider 实现示例](#gateway-litellm-provider-example)。
+- **开发自研网关或 Agent**：按下文的 LiteLLM 规范实现非流式检测请求与响应处理。流式 Output 使用 Guard 的 WebSocket 扩展协议。接入方无需部署 LiteLLM。
+
+本文说明两类检测接口的请求、结果处理和调用关联约定。Scan 接入见 [Scan 请求与响应](/document/developer/scan-protocol)。
+
+<a id="gateway-overview" />
+## 接入概览与准备
+
+<a id="gateway-interface-types" />
+### 接口类型与检测范围
+
+**非流式检测接口是核心接口，可以检测 Input 和完整的 Output。流式检测接口只检测 Output。** 连接验证是接入准备步骤，不执行内容检测。
+
+| 接口类型 | 检测 Input | 检测 Output | 调用方式 |
+| --- | --- | --- | --- |
+| [非流式检测（核心接口）](#gateway-checks) | 支持 | 支持，提交完整的 Output | HTTP POST |
+| [流式检测](#gateway-stream-protocol) | 不支持 | 支持，逐段提交 Output | WebSocket |
+
+本文中，Input 指模型输入，Output 指模型产生的内容。各方职责如下：
+
+| 名称 | 职责 |
+| --- | --- |
+| 接入方 | 向 Guard 发送检测请求的网关或 Agent。在 LiteLLM 中，由 Provider 执行这些操作。 |
+| Guard | 接收检测请求并返回结果。 |
+| 业务客户端 | 向接入方发起业务请求，接收最终输出。 |
+
+如果需要同时检测 Input 和流式 Output，按以下顺序接入：
+
+1. 接入方向非流式接口提交 Input。
+2. Input 允许继续后，接入方调用模型。
+3. 接入方向流式接口逐段提交模型的 Output。
+4. 接入方向业务客户端交付 Guard 允许释放的文本。
+
+仅检测 Output 时，可以直接使用对应的输出检测接口，无需先检测 Input。调用关联方式见 [Call ID 约定](#gateway-call-correlation)。
+
+<a id="gateway-connection" />
+### Endpoint 地址与认证
+
+`{endpoint}` 是包含 Endpoint ID 的接入基础地址，例如 `https://guard-runtime.example.com/runtime/v1/endpoints/your-endpoint-id`。在此地址后拼接下表中的操作路径。
+
+| 方法与路径 | 用途 |
+| --- | --- |
+| `POST {endpoint}/verify` | 按 Endpoint 的凭据要求验证访问权限和接口类型。请求体为 `{}`。 |
+| `POST {endpoint}/beta/litellm_basic_guardrail_api` | 检测输入或完整的 Output。请求体为 JSON。 |
+| `WebSocket {endpoint}/guardrails/output-stream` | [流式 Output 检测](#gateway-stream-protocol) |
+
+默认开启“要求 Credential”。关闭时，HTTP、`/verify` 和 WebSocket 可以省略 `x-api-key`；已携带的凭据会被忽略，请求以匿名身份执行检测。`ready` 此时表示访问和协议检查通过，不代表身份已认证。
+
+开启凭据要求时，JSON 请求要带 `x-api-key: <Endpoint 凭据>` 和 `Content-Type: application/json`。凭据不能放在请求体中，也不能用控制台的个人 Access Token 或模型服务密钥代替。
+
+以下 HTTP 示例展示请求行或状态行、接入所需的 Header 和 JSON Body。空行分隔 Header 与 Body。域名、Endpoint ID 和凭据均为示例值。示例省略 `Content-Length`、`Date` 等自动生成的 Header，也省略额外的诊断 Header。
+
+<a id="gateway-verification" />
+### 连接验证
+
+验证请求：
+
+```http
+POST /runtime/v1/endpoints/your-endpoint-id/verify HTTP/1.1
+Host: guard-runtime.example.com
+x-api-key: <Endpoint 凭据>
+Content-Type: application/json
+
+{}
+```
+
+对应的 cURL 命令：
+
+```bash
+export TALI_GUARD_ENDPOINT='https://guard-runtime.example.com/runtime/v1/endpoints/your-endpoint-id'
+export TALI_GUARD_TOKEN='<Endpoint 凭据>'
+curl -sS --fail-with-body -X POST "${TALI_GUARD_ENDPOINT%/}/verify" \
+  -H "x-api-key: $TALI_GUARD_TOKEN" \
+  -H 'Content-Type: application/json' -d '{}'
+```
+
+验证响应：
+
+```http
+HTTP/1.1 200 OK
+Content-Type: application/json
+
+{
+  "ready": true,
+  "adapter_id": "litellm-generic-guardrail",
+  "protocol": "litellm"
+}
+```
+
+`ready` 只证明访问权限和接口类型检查通过，不执行内容检测。之后还必须发送真实的检测请求，验证接入链路可用。
+
+<a id="gateway-call-correlation" />
+### 输入与输出的调用关联（Call ID）
+
+需要关联同一次模型调用的 Input 和 Output 时，接入方必须保持以下内容一致：
+
+- Endpoint。
+- 非空的 `litellm_call_id`。
+- 路由元数据。
+
+Guard 在首次请求时确定路由和版本。后续关联请求复用这次分配，元数据变化不会触发重新路由。接入方为每次新的模型调用生成新的 ID。
+
+- 关联的输出请求必须已经有输入上下文。上下文过期后，换一个 ID 也不能延续原来的调用。
+- HTTP 接口允许省略 Call ID。Guard 此时为每次请求独立路由，也支持单独检测完整的 Output。Input 和 Output 不保证使用同一个版本。
+- 调用上下文默认从首次创建起保留 300 秒，后续访问不刷新有效期。输入和输出的 Guardrail 版本固定，但运行模式会在每次 HTTP 检测时重新读取。
+- 流式调用的 ID 还必须满足 [start 帧的限制](#gateway-stream-request)。
+
+以上关联约定同时适用于“非流式 Input → 非流式 Output”和“非流式 Input → 流式 Output”。
+
+- 关联流式 Output 时，接入方将 Input 检测的 `litellm_call_id` 填入 `start.call_id`。
+- 单独检测流式 Output 时，接入方省略 `call_id`，并使用新的 `stream_id`。
+
+字段约束见 [接入方发送的消息](#gateway-stream-request)。
+
+<a id="gateway-checks" />
+## 非流式检测接口：Input 与完整的 Output
+
+非流式接口是网关集成的核心接口，用于检测 Input 和完整的 Output。两种检测共用一个 HTTP POST 接口，通过 `input_type` 区分。逐段提交的 Output 使用后文的 [流式检测接口](#gateway-stream-protocol)。
+
+<a id="gateway-http-request" />
+### 接口地址与请求 Header
+
+接口为 `POST {endpoint}/beta/litellm_basic_guardrail_api`，请求 Body 为 JSON。
+
+| HTTP Header | 值 | 要求 |
+| --- | --- | --- |
+| `x-api-key` | `<Endpoint 凭据>` | 开启“要求 Credential”时必填。 |
+| `Content-Type` | `application/json` | 必填，声明 JSON 请求体。 |
+
+`input_type: "request"` 表示检测 Input。`input_type: "response"` 表示检测完整的 Output。这两个值表示检测阶段。两种情况都是接入方向 Guard 发送 HTTP 请求。下面的请求示例均包含请求行、Header 和 JSON Body。
+
+<a id="gateway-request-fields" />
+### 请求字段
+
+以下字段属于 `POST {endpoint}/beta/litellm_basic_guardrail_api` 的 JSON 请求体。Input 检测和完整的 Output 检测共用这份定义。**Required** 表示接口必填，**Optional** 表示接口允许省略。实际检测文本时，接入方必须提供 `texts`。关联 Input 和 Output 时，还必须提供 `litellm_call_id`。
+
+| 字段 | 必填性 | JSON 数据类型 | 默认值 | 行为 |
+| --- | --- | --- | --- | --- |
+| `input_type` | Required | 字符串：`"request"` 或 `"response"` | 无（必填） | 选择输入阶段或输出阶段。 |
+| `texts` | Optional | 字符串数组或 `null` | `null` | **实际检测文本时必传。** 列出待检测的文本。省略或提交空数组不代表其他内容已通过检测。 |
+| `litellm_call_id` | Optional | 字符串或 `null` | `null` | **关联 Input 和 Output 时必传。** 每次模型调用使用新的非空 ID。流式关联时最长 256 字符。 |
+| `structured_messages` | Optional | 对象数组或 `null` | `null` | 提供会话上下文。Guard 最多保留最近 20 条消息。 |
+| `guardrail_context` | Optional | 对象或 `null` | `null` | 按所用 Policy 提供用户问题、参考资料、内容来源和记忆读写边界。见 [检测上下文与回答核验](#gateway-context-fields)。 |
+| `model` | Optional | 字符串或 `null` | `null` | 模型路由上下文，未提供时使用 `request_data.model`。不会触发模型调用。 |
+| `request_data` | Optional | 对象（不接受 `null`） | `{}` | 身份与路由元数据。`user_api_key_alias`、`user_api_key_team_id`、`user_api_key_user_id` 对应 LiteLLM Selector 字段。 |
+| `request_headers` | Optional | 对象或 `null`。值为字符串或字符串数组 | `null` | 原业务请求的 Header，与本次 API 的 HTTP Header 分开。认证、Cookie 等敏感头不参与路由。 |
+| `litellm_trace_id`、`litellm_version` | Optional | 字符串或 `null` | `null` | 兼容元数据，当前不影响检测或调用关联，不能代替 Call ID。 |
+| `images` | Optional | 字符串数组或 `null` | `null` | 兼容字段，当前不作为独立检测目标。 |
+| `tools`、`tool_calls` | Optional | 对象数组或 `null` | `null` | 兼容字段，当前不作为独立检测目标。 |
+| `additional_provider_specific_params` | Optional | 对象或 `null` | `null` | 兼容字段，不能切换运行模式或覆盖 Guardrail 配置。 |
+
+未列出的顶层额外字段不会改变接口行为。`protocol`、`phase`、`mode`、`protection_mode`、`dry_run` 等字段不能改变检测方向或运行模式。需要保护的工具输出等内容，必须明确放进 `texts`，并按需指定 [内容来源](#gateway-context-fields)。
+
+原业务 Header 的限制：
+
+- 每个来源最多 128 个键。
+- 每个键最多 64 个值。
+- 每个值最长 2,048 字符。
+
+Header 键名和路由字段也须合法，路由上下文总大小最多 65,536 字符。无效或超限的路由上下文会导致请求失败。
+
+<a id="gateway-input-example" />
+### Input 检测请求示例
+
+在调用模型前，以 `input_type: "request"` 提交待检测的 Input。
+
+- `texts` 是要检测的内容。
+- `structured_messages` 是上下文，不能代替 `texts`。
+- HTTP Header 中的 `x-api-key` 用于 Endpoint 认证。
+- JSON Body 中的 `request_headers` 描述原业务请求的 Header，与认证 Header 分别填写。
+
+```http
+POST /runtime/v1/endpoints/your-endpoint-id/beta/litellm_basic_guardrail_api HTTP/1.1
+Host: guard-runtime.example.com
+x-api-key: <Endpoint 凭据>
+Content-Type: application/json
+
+{
+  "input_type": "request",
+  "litellm_call_id": "call-123",
+  "texts": ["Please summarize this report."],
+  "structured_messages": [
+    {"role": "user", "content": "Please summarize this report."}
+  ],
+  "model": "gateway-model-alias",
+  "request_data": {
+    "user_api_key_alias": "support-service",
+    "user_api_key_team_id": "support-team",
+    "user_api_key_user_id": "user-123"
+  },
+  "request_headers": {
+    "x-channel": "support"
+  }
+}
+```
+
+仅将上面空行后的 JSON Body 保存为 `input.json`。不要把请求行和 Header 写入文件。运行以下命令，由 cURL 参数设置请求行和 Header：
+
+```bash
+curl -sS --fail-with-body -X POST "${TALI_GUARD_ENDPOINT%/}/beta/litellm_basic_guardrail_api" \
+  -H "x-api-key: $TALI_GUARD_TOKEN" -H 'Content-Type: application/json' \
+  --data-binary @input.json
+```
+
+<a id="gateway-output-example" />
+### Output 检测请求示例
+
+下面的示例关联前面的 Input 检测。接入方按以下顺序操作：
+
+1. Input 允许继续后，调用模型。
+2. 缓存完整的 Output。
+3. 向同一个检测接口提交 Output，使用相同的认证 Header 和 Call ID。
+
+```http
+POST /runtime/v1/endpoints/your-endpoint-id/beta/litellm_basic_guardrail_api HTTP/1.1
+Host: guard-runtime.example.com
+x-api-key: <Endpoint 凭据>
+Content-Type: application/json
+
+{
+  "input_type": "response",
+  "litellm_call_id": "call-123",
+  "texts": ["Here is the generated response."],
+  "model": "gateway-model-alias",
+  "request_data": {
+    "user_api_key_alias": "support-service",
+    "user_api_key_team_id": "support-team",
+    "user_api_key_user_id": "user-123"
+  },
+  "request_headers": {
+    "x-channel": "support"
+  }
+}
+```
+
+<a id="gateway-actions" />
+### 响应与处理动作
+
+Guard 正常完成非流式检测请求后，返回 HTTP `200` 和 JSON 响应体。**HTTP `200` 表示 Guard 已返回处理结果，不代表内容被放行。** 接入方必须读取 `action` 字段，再按其值放行、阻断或替换内容。
+
+正常响应使用 `Content-Type: application/json`。Body 中的 `action` 决定如何处理内容。下面三种示例展示状态行、该 Header 和 Body。其他响应 Header 无需参与业务判断。具体结果由 [运行模式](#gateway-protection-modes) 和已发布的 Policy 共同决定。
+
+允许：
+
+```http
+HTTP/1.1 200 OK
+Content-Type: application/json
+
+{"action": "NONE"}
+```
+
+阻断：
+
+```http
+HTTP/1.1 200 OK
+Content-Type: application/json
+
+{"action": "BLOCKED", "blocked_reason": "Policy matched."}
+```
+
+替换：
+
+```http
+HTTP/1.1 200 OK
+Content-Type: application/json
+
+{"action": "GUARDRAIL_INTERVENED", "texts": ["Replacement text"]}
+```
+
+| `action` | 输入阶段 | 输出阶段 |
+| --- | --- | --- |
+| `NONE` | 用原输入调用模型。 | 交付原输出。 |
+| `BLOCKED` | 不调用模型。 | 不交付被阻断的输出。 |
+| `GUARDRAIL_INTERVENED` | 按位置替换输入的 `texts`。 | 按位置交付返回的 `texts`。 |
+
+- `action` 一定存在。
+- `blocked_reason` 是阻断时可选的说明文字，不是稳定的错误码。
+- `texts` 在替换时用于交付。
+- 值为 `null` 的可选字段会被省略。
+
+当前接口只支持 `texts` 的替换，不返回 `images` 或 `tools` 的替换结果。
+
+替换数组必须与提交的 `texts` 数量相同、顺序一致。空字符串是有效的替换。未知的 action、无效的 JSON 或错误的替换数量，都属于无效的检测响应，不能当作 `NONE`。
+
+<a id="gateway-protection-modes" />
+#### Guardrail 运行模式与返回结果
+
+Router 选中的 Guardrail 的当前运行模式决定是否执行检测和拦截：
+
+| 运行模式 | HTTP 接口行为 |
+| --- | --- |
+| **Enforce** | 执行检测并按结果返回 `NONE`、`BLOCKED` 或 `GUARDRAIL_INTERVENED`。 |
+| **Monitor** | 执行检测并记录证据，但不阻断或替换。即使检测命中或检测器失败，也返回 `NONE`，允许原文继续。 |
+| **Bypass** | 跳过检测，返回 `NONE`，允许原文继续。 |
+
+`NONE` 表示允许原文继续，不能证明内容经过了检测。运行日志记录运行模式及 Monitor 的真实检测结果。Guard 仍会按 Endpoint 设置执行认证，并执行字段校验、路由和调用关联。这些环节失败时，Guard 仍会返回错误。接入方不能通过请求 Body 切换运行模式。
+
+<a id="gateway-errors" />
+### 错误处理与重试
+
+| 状态／返回 | 含义与处理 |
+| --- | --- |
+| `401` | Endpoint 不存在或已停用，或者要求的凭据缺失或无效。请检查 URL 和 `x-api-key`。 |
+| `409` | Endpoint 的接口类型不支持 LiteLLM。请检查 Endpoint 类型。修改请求体的 `protocol` 无法解决。 |
+| `422` | JSON 或字段校验失败。修正 `input_type`、字段类型等后重新提交。 |
+| `503` | 路由上下文、调用关联或固定版本不可用，本次请求未得到有效检测结果。关联 Output 不能更换版本继续原调用。 |
+| `500`、其他非 2xx、超时或断线 | 接入方没有得到有效检测结果。Guard 或代理返回的错误不一定是 JSON。 |
+| `200` + `BLOCKED` | 必须阻断。不能按 HTTP 错误的降级策略放行。 |
+
+常见的认证错误响应：
+
+```http
+HTTP/1.1 401 Unauthorized
+Content-Type: application/json
+
+{"detail": "Endpoint credential is invalid."}
+```
+
+错误响应中的 `detail` 通常是字符串，`422` 则使用校验错误数组。不要把它们解析为 Scan 的 `detail.code` 对象，也不要拿可变的 `blocked_reason` 文本去匹配固定错误码。
+
+关联输入和输出时，要使用同一个 Endpoint、Call ID 和路由上下文。上下文过期后，换 ID 也不能继续原来的调用。
+
+- 重试不保证去重。接入方负责限制重试次数，并处理重复请求。
+- `BLOCKED` 可能来自 Policy 命中或运行时失败保护。接入方收到 `BLOCKED` 后一律阻断。路由分配不可用时，Guard 通常返回 `503`。接入方必须将它视为检测故障。评测时可结合运行证据区分原因。
+- Guard 不支持请求参数 `dry_run: true`。
+
+<a id="gateway-context-fields" />
+### 可选：检测上下文与回答核验
+
+`guardrail_context` 属于 Guard 的扩展字段。Guard 只接受下表列出的上下文字段。请求包含未知的上下文字段时，Guard 返回 `422`。
+
+| 字段 | 类型与约束 | 用途 |
+| --- | --- | --- |
+| `query` | 字符串，默认 `""`，最长 100,000 字符。 | 当前用户问题，作为核验或边界检测的上下文。 |
+| `grounding_sources` | 字符串数组，默认 `[]`。最多 32 条，总计最多 500,000 字符。 | 回答依据核验的参考资料。 |
+| `target_source` | `"user_input"`、`"retrieved_content"`、`"tool_output"` 或 `null`，默认 `null`。 | 输入阶段指定 `texts` 的来源，用于区分用户输入、检索内容和工具输出。输出阶段的文本仍作为模型输出检测。 |
+| `memory` | 对象或 `null`，默认 `null`。 | 检测即将读取或写入的记忆内容。对象字段见下表。 |
+
+`memory` 对象的字段：
+
+| 字段 | 必填性 | JSON 数据类型 | 默认值 | 行为 |
+| --- | --- | --- | --- | --- |
+| `operation` | Required | 字符串：`"read"` 或 `"write"` | 无（必填） | 指定记忆读取或写入操作。 |
+| `source_query` | Optional | 字符串 | `""` | 记忆来源问题，最长 100,000 字符。 |
+
+记忆检测遵循以下约定：
+
+- 接入方在消费或存储记忆前执行检测。
+- 请求必须使用 `input_type: "request"`。使用 `response` 时，Guard 返回 `422`。
+- `memory.operation=read` 将文本标记为检索内容。
+- `memory.operation=write` 将文本标记为工具输出。
+
+这些来源标记覆盖 `target_source`。Guard 不会因此将文本视为可信指令。
+
+<a id="gateway-grounding-context" />
+#### 为回答核验提供问题与参考资料
+
+已发布的 Policy 启用以下检查时，接入方需要提供核验依据。将这些依据填入非流式检测接口的 `guardrail_context` 字段。未使用这些检查时，可以跳过本节。
+
+- **回答依据核验（Grounding）**：检查回答是否有参考资料支持、是否与用户问题相关。需要 `query`（用户问题）和至少一条非空的 `grounding_sources`（参考资料，例如 RAG 检索结果）。
+- **形式规则验证**：检查回答是否符合已发布 Policy 中的形式规则。接入方需要提供 `query`。形式规则来自 Policy，无需在请求中重复传入。
+
+下面以“保修期为一年”这条回答为例。将回答填入 `texts`。将用户问题和产品资料填入 `guardrail_context`：
+
+```http
+POST /runtime/v1/endpoints/your-endpoint-id/beta/litellm_basic_guardrail_api HTTP/1.1
+Host: guard-runtime.example.com
+x-api-key: <Endpoint 凭据>
+Content-Type: application/json
+
+{
+  "input_type": "response",
+  "texts": ["The warranty lasts one year."],
+  "guardrail_context": {
+    "query": "How long is the warranty?",
+    "grounding_sources": ["The product warranty lasts one year."]
+  }
+}
+```
+
+使用 `litellm_call_id` 关联 Input 和 Output 时，接入方先用同一 ID 检测 Input。Guard 保留 Input 请求中的上下文，用于关联的 Output 检测。
+
+[检测上下文](#gateway-context-fields) 列出的是 API 接收上限。实际核验使用以下更严格的上限：
+
+| 核验方式 | 内容 | 最多字符数 |
+| --- | --- | --- |
+| 回答依据核验（Grounding） | 用户问题 | 1,000 |
+| 回答依据核验（Grounding） | 拼接后的参考资料 | 100,000 |
+| 回答依据核验（Grounding） | 每段待核验回答 | 5,000 |
+| 形式规则验证 | 用户问题 | 10,000 |
+| 形式规则验证 | 每段待核验回答 | 10,000 |
+
+超限或缺少必要上下文时，核验会失败或无法判定。接入方不能将这些情况视为核验通过。
+
+这些字段提供核验依据，不作为系统指令或额外的 Output 检测目标。Guard 不会将参考资料混入替换后的 `texts`。接入方必须在非流式检测请求中显式传入这些字段。不能假设 LiteLLM Provider 会自动转发检索资料。
+
+WebSocket 的 `start` 帧不接受 `guardrail_context`。如果流式输出需要这些核验上下文，应先在 HTTP 输入检测中提供，再通过同一个 Call ID 关联输出流。
+
+<a id="gateway-stream-protocol" />
+## 流式检测接口：仅 Output
+
+流式接口仅检测模型产生的 Output，不接收 Input 检测请求。需要保护 Input 时，先使用 [非流式接口](#gateway-input-example) 完成检测。如需关联两阶段，遵循 [Call ID 约定](#gateway-call-correlation)。
+
+<a id="gateway-stream-connection" />
+### 建立连接与认证
+
+1. 如需关联输入和输出，先完成输入检测，并保存该次 `litellm_call_id`。
+2. 打开一条到 `{endpoint}/guardrails/output-stream` 的 WebSocket，并在升级请求头中传入 `x-api-key`。
+
+WebSocket 使用同一个 Endpoint 地址。生产环境将 `https://` 改为 `wss://`。网关对业务客户端继续使用原有的 SSE。反向代理必须允许 WebSocket 升级。
+
+<a id="gateway-stream-request" />
+### 接入方发送的消息：start、delta、end
+
+```json
+{
+  "type": "start",
+  "version": 1,
+  "protocol": "litellm",
+  "call_id": "call-123",
+  "stream_id": "stream-456",
+  "messages": [],
+  "model": "gateway-model-alias",
+  "request_data": {
+    "user_api_key_alias": "support-service",
+    "user_api_key_team_id": "support-team",
+    "user_api_key_user_id": "user-123"
+  },
+  "request_headers": {"x-channel": "support"}
+}
+```
+
+关联 Input 时，接入方复用 Input 检测的 Call ID 和路由元数据。仅检测 Output 时，接入方可以省略 `call_id`。Guard 此时用 `stream_id` 标识独立的输出调用，不关联先前的 Input 检测。若接入方显式提供无效或已过期的 `call_id`，Guard 返回 `routing_failed`。
+
+发送 `start` 后，接入方必须等待 Guard 返回 `ready`。之后才能在可用的 [发送额度](#gateway-stream-events) 内提交 `delta` 或 `end`。
+
+接入方必须在连接建立后 10 秒内发送 `start`。Guard 严格校验字段类型，不接受未知字段。
+
+| 字段 | 约束 |
+| --- | --- |
+| `type`、`version`、`protocol` | 必填。值分别为 `"start"`、整数 `1`、`"litellm"`。 |
+| `stream_id` | 必填。非空字符串，最长 256 字符。每个新流使用新的 ID。独立输出调用不要复用既有的 Call ID。 |
+| `call_id` | 关联输入时，必须传入同一个 Call ID，长度 1–256 字符。省略时，以 stream ID 创建独立输出调用，不关联先前的输入检测。 |
+| `messages` | 对象数组，默认 `[]`，最多 20 条。这些是上下文，不是要检测的输出。 |
+| `request_data` | 对象，默认 `{}`。关联 Input 时，保持与 Input 检测一致的路由元数据。 |
+| `request_headers` | 值为字符串的对象，默认 `{}`。与非流式检测接口不同，这里不接受数组值。 |
+| `model` | 可选的字符串或 `null`。关联 Input 时，保持与 Input 检测一致的模型上下文。 |
+
+接入方发送的每个 `delta` 或 `end` 消耗一个发送额度。两类消息共用整数 `sequence`，从 `0` 开始，每帧恰好加 `1`。序号不能跳号或重复。`delta.text` 是待检测的 Output 片段，类型为字符串。`end` 必须省略 `text` 或使用空字符串。
+
+下面每行是一个独立的 JSON 帧：
+
+```jsonl
+{"type":"delta","sequence":0,"text":"你好，"}
+{"type":"delta","sequence":1,"text":"世界。"}
+{"type":"end","sequence":2}
+```
+
+<a id="gateway-stream-events" />
+### Guard 返回的事件与发送额度
+
+接入方收到 Guard 的 `ready` 后，才能发送 `delta` 或 `end`。接入方需要处理以下字段：
+
+- `stream_id` 和协议 `version`。
+- 请求的交付模式 `requested_mode` 和实际模式 `mode`。
+- 发送额度 `input_credits`，当前为 `8`。
+
+每个 `delta` 或 `end` 消耗一个发送额度。`start` 不消耗额度。接入方每收到一个 `ack`，恢复一个发送额度。`ack` 不代表检测完成。接入方需要同时处理消息发送和事件接收。
+
+下例展示 `full_buffered` 模式的一次正常交付。接入方发送两个 Output 片段和 `end`。Guard 随后交付一段合并后的文本。示例展示接入方需要处理的事件字段。实际事件可能附带其他元数据，接入方可忽略这些元数据。
+
+每行是一个独立的 JSON 帧。`ack.sequence` 对应接入方发送消息的序号。Guard 返回的 Output 消息使用独立的序号。
+
+```jsonl
+{"stream_id":"stream-456","type":"ready","version":1,"input_credits":8,"mode":"full_buffered","requested_mode":"full_buffered"}
+{"stream_id":"stream-456","type":"ack","sequence":0}
+{"stream_id":"stream-456","type":"ack","sequence":1}
+{"stream_id":"stream-456","type":"ack","sequence":2}
+{"stream_id":"stream-456","type":"delta","sequence":0,"text":"你好，世界。"}
+{"stream_id":"stream-456","type":"completed","sequence":1,"checks":1,"released_characters":6,"transformed":false}
+```
+
+正常的阻断使用 `type=blocked`。它和 `completed` 一样包含 `sequence`、`checks`、`released_characters`、`transformed`，但不能继续交付。故障帧示例：
+
+```json
+{"stream_id":"stream-456","type":"error","sequence":0,"checks":0,"code":"protection_failed","message":"Protected output stream failed; unchecked text was withheld."}
+```
+
+`completed` 和 `blocked` 中的计数如下：
+
+- `sequence`：Guard 已发送的 Output `delta` 数量。
+- `released_characters`：Guard 已交付的字符数。
+
+接入方应将这些计数与实际收到的结果核对。`error` 帧包含 `sequence` 和 `checks`，不包含 `released_characters` 或 `transformed`。如果 Guard 尚未接受有效的 `start`，该错误帧的 `stream_id` 为 `null`。连接关闭本身不等于 `completed`。
+
+<a id="gateway-stream-delivery" />
+### 输出交付规则与运行模式
+
+接入方只能向业务客户端交付 Guard 返回的 `delta.text`。接入方必须校验 stream ID 和 Guard 返回消息的序号。`ack` 只确认接入方发送的消息，不代表允许交付文本。
+
+- `completed`：核对计数后，表示正常结束。
+- `blocked`：表示拦截，停止输出。
+- `error`：表示检测失败或协议失败。
+
+收到 `blocked` 或 `error` 后，取消上游的模型调用。断线或超时会终止本次流。不支持重连、重放或续传。
+
+在 **Enforce** 模式下，实际交付方式由启用的 Policy 决定，以 `ready.mode` 为准：
+
+- `window_buffered`：分段缓存并检测，随后交付允许释放的文本。
+- `full_buffered`：Guard 缓存完整的 Output，在收到 `end` 后检测。通过后可能拆成多个 Guard `delta` 事件交付。
+- 请求 `interruptible` 不保证立即输出，实际仍可能使用上述两种缓存模式。已交付的文本无法撤回。
+
+**Monitor／Bypass** 的 `ready.mode` 为 `interruptible`。Guard 直接交付原始片段，不等待拦截判定。
+
+- Monitor 在 `end` 后对完整的 Output 做一次观测，`checks` 为 `1`。
+- Bypass 不执行检测，`checks` 为 `0`。
+
+Guard 在处理连接建立时确定运行模式。连接期间，运行模式保持不变。`completed` 只表示流正常结束，不能证明 Guard 执行了强制检测。
+
+<a id="gateway-stream-end" />
+### 正常结束与协议限制
+
+只有确认模型正常结束后，才能发送 `end`。上游异常或截断时，必须关闭连接。
+
+限制：
+
+- 每个连接 300 秒。
+- 100,000 个 delta。
+- 每段 delta 100,000 字符。
+- 总计 1,000,000 字符。
+- 每个 WebSocket 文本消息最多 1,048,576 字符（包括 JSON 外壳）。
+
+<a id="gateway-stream-errors" />
+### 错误处理与连接中断
+
+该 WebSocket 扩展只适用于 LiteLLM Endpoint。自研网关也可以实现这一扩展。Scan Endpoint 不支持此扩展。
+
+要求认证但凭据缺失或无效、Endpoint 不存在或已停用、Endpoint 类型不匹配时，Guard 拒绝握手。连接建立后，Guard 通过 `type=error` 帧报告故障。Guard 不会在流中用 HTTP `502` 或 `504` 表示故障：
+
+| 帧的 `code` | 含义 |
+| --- | --- |
+| `invalid_stream` | start、delta 或 end 的格式错误，或者序号、额度使用错误。 |
+| `routing_failed` | 调用关联、路由或固定版本不可用。 |
+| `timeout` | 等待 start、整个流或检测过程超时。 |
+| `protection_failed` | 其他检测故障。 |
+
+流式故障时，停止交付并取消上游调用。断线后不支持重连续传，也不支持 chunk 重放。已交付的文本无法撤回。
+
+<a id="gateway-litellm-provider-example" />
+## 实现示例：LiteLLM Guardrails Provider
+
+下面以 TaskLattice Guard Provider 为例，说明如何把本文的非流式检测接口和流式 Output 检测接口接入 LiteLLM 的 Guardrails 扩展机制。
+
+<a id="gateway-litellm-provider-implementation" />
+### Provider 实现与源码说明
+
+网关可以将 Guard 集成为自身的 Guardrails Provider，在模型调用前后执行检测。[TaskLattice Guard Provider 源码](https://github.com/tasklattice/tasklattice-litellm-guard/tree/main/litellm/v1.87.0/overlay/litellm/proxy/guardrails/guardrail_hooks/tasklattice_guard) 是一个基于 LiteLLM 1.87.0 的实现示例，以 `tasklattice_guard` 为 Provider 标识，将 LiteLLM 的回调接入本文定义的 HTTP 检测接口和 WebSocket 流式扩展。
+
+| 示例文件 | 实现职责 |
+| --- | --- |
+| [\_\_init\_\_.py](https://github.com/tasklattice/tasklattice-litellm-guard/blob/main/litellm/v1.87.0/overlay/litellm/proxy/guardrails/guardrail_hooks/tasklattice_guard/__init__.py) | 注册 Provider，初始化回调，并接入 LiteLLM 的 `pre_call`、`post_call` 检查点。 |
+| [tasklattice_guard.py](https://github.com/tasklattice/tasklattice-litellm-guard/blob/main/litellm/v1.87.0/overlay/litellm/proxy/guardrails/guardrail_hooks/tasklattice_guard/tasklattice_guard.py) | 继承 `GenericGuardrailAPI`，设置 `x-api-key` 和 `Content-Type`，复用标准 HTTP 检测请求与 `action` 处理，并提供流式回调入口。 |
+| [streaming.py](https://github.com/tasklattice/tasklattice-litellm-guard/blob/main/litellm/v1.87.0/overlay/litellm/proxy/guardrails/guardrail_hooks/tasklattice_guard/streaming.py) | 将模型的 Output 送入 Guard WebSocket。只把 Guard 释放的文本交付给业务客户端。处理发送额度、结束、错误和取消。 |
+| [endpoints.py](https://github.com/tasklattice/tasklattice-litellm-guard/blob/main/litellm/v1.87.0/overlay/litellm/proxy/guardrails/guardrail_hooks/tasklattice_guard/endpoints.py) 与 [service.py](https://github.com/tasklattice/tasklattice-litellm-guard/blob/main/litellm/v1.87.0/overlay/litellm/proxy/guardrails/guardrail_hooks/tasklattice_guard/service.py) | 提供连接配置、凭据管理和 `/verify` 验证，供 LiteLLM 管理界面使用。 |
+
+这个示例展示了如何把 Guard 封装成 LiteLLM 中的一个 Guardrails Provider。其他网关也可通过各自的插件或回调机制实现同样的请求提交、结果处理和输出交付职责，接入契约以本文为准。复用此示例的流式实现时，遵循 [当前 Provider 的流式接入限制](#gateway-litellm-provider-limits)。
+
+<a id="gateway-litellm-provider-limits" />
+### 当前 Provider 的使用限制
+
+通过当前 LiteLLM 1.87.0 TaskLattice Guard Provider 接入流式输出时，还须遵守以下限制：
+
+- 使用本文的输入／输出关联流程时，同时启用 **Before model** 和 **After model**。Provider 发送的 LiteLLM Call ID 必须关联到有效的输入检测请求。
+- **Guard unavailable** 必须选择 **Block request**（`fail_closed`）。`fail_open` 仅适用于非流式回调。Provider 在流式接入时拒绝该设置。
+- 当前 Provider 只接受 `ready.mode` 为 `full_buffered` 或 `window_buffered`，不兼容 Monitor／Bypass 返回的 `interruptible`。通过当前 Provider 使用受保护流式输出时，选择 **Enforce**。
+- 只支持单个文本 choice、最多 20 条上下文消息。工具调用、音频、推理内容和多个 choice 等输出通道会被拒绝，不会按已受文本检测保护的内容透传。

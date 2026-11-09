@@ -1,12 +1,16 @@
 from __future__ import annotations
 
+import asyncio
+import json
 from collections.abc import Callable
 from dataclasses import replace
 from datetime import UTC, datetime
 
 from .content_views import content_view, text_blocks
-from .context import CallContextStore
-from .streaming import output_stream_contract
+from .context import CallContext, CallContextStore
+from .streaming import OutputStreamContract, OutputStreamEvaluationError, OutputStreamResult
+from .protection_modes import allowed_decision
+from .outcome import finalize_decision, require_online_result, call_outcome, GuardrailExecutionError
 from .contracts import (
     AppliedIntervention,
     ContentBlockResult,
@@ -22,7 +26,7 @@ from .contracts import (
     PlanResolution,
     PlanResolver,
     RuntimeCoverage,
-    OutputDeliveryMode,
+    RuntimeTraceStep,
 )
 
 
@@ -41,14 +45,18 @@ class GuardrailRuntimeService:
         self.routing_event_sink = None
 
     def _resolve_call(self, request, *, require_existing=False, allow_new_output=False):
+        self._begin_context_request()
         stored = self._contexts.get(request.call_id)
         composed = getattr(self._resolver, "composed_endpoint", lambda _: False)(request.context.endpoint_id)
         if stored is not None:
+            if stored.resolution.allocation_context_id and request.context.endpoint_snapshot is None:
+                from runner.routing import RoutingError
+                raise RoutingError("call_endpoint_authentication_required")
             if stored.resolution.endpoint_id != request.context.endpoint_id:
                 from runner.routing import RoutingError
                 raise RoutingError("call_endpoint_mismatch")
             return stored.resolution, stored
-        if require_existing or (composed and request.phase == "output" and request.call_id and not allow_new_output):
+        if not self._context_degraded() and (require_existing or (composed and request.phase == "output" and request.call_id and not allow_new_output)):
             from runner.routing import RoutingError
             raise RoutingError("call_context_expired: correlated output cannot be reassigned")
         resolution = self._resolver.resolve(replace(request.context, call_id=request.call_id))
@@ -58,7 +66,23 @@ class GuardrailRuntimeService:
         if stored.resolution.endpoint_id != request.context.endpoint_id:
             from runner.routing import RoutingError
             raise RoutingError("call_endpoint_mismatch")
-        return stored.resolution, stored
+        return self._context_evidence(stored.resolution), stored
+
+    def _begin_context_request(self):
+        getattr(self._contexts, "begin_request", lambda: None)()
+
+    def _context_degraded(self):
+        return getattr(self._contexts, "degraded_reason", lambda: None)()
+
+    def _context_evidence(self, item):
+        if not self._context_degraded() or any(s.id == "context:redis-capacity" for s in item.trace):
+            return item
+        return replace(item, trace=(*item.trace, RuntimeTraceStep(
+            id="context:redis-capacity", kind="context", name="Context capacity fallback", status="degraded",
+            detail="Redis capacity exhausted. Current-content detection continues without shared context writes; history is used only when already available.",
+            evidence=json.dumps({"reason": "redis_capacity", "updatesPersisted": False,
+                "historyAvailable": getattr(self._contexts, "context_history_available", lambda: False)()}),
+        )))
 
     async def publish_assignment(self, resolution, call_id):
         if resolution.route_assignment and self.routing_event_sink:
@@ -99,26 +123,25 @@ class GuardrailRuntimeService:
             on_resolved(resolution)
         await self.publish_assignment(resolution, request.call_id)
         try:
-            decision = await self._evaluate_resolved(request, resolution, stored)
+            decision = await self._evaluate_online(request, resolution, stored)
         except Exception as error:
-            await self.complete_call(resolution, request.call_id, "timeout" if isinstance(error, TimeoutError) else "error", type(error).__name__)
+            await self.complete_call(resolution, request.call_id,
+                "timeout" if isinstance(error, TimeoutError) or isinstance(error, GuardrailExecutionError) and error.timed_out else "error", type(error).__name__)
             raise
-        outcome = "error" if decision.usage and decision.usage.fail_closed else "intervene" if decision.interventions and decision.decision != "block" else decision.decision
+        outcome = call_outcome(decision)
         outcome = self._contexts.record_outcome(request.call_id, outcome)
         if outcome in {"error", "block"} or (request.phase == "output" and request.context.value("field", "routing.stream") != "true"):
             await self.complete_call(resolution, request.call_id, outcome)
-        return decision
+        return self._context_evidence(decision)
 
-    def output_delivery(
-        self,
-        request: ProtectionRequest,
-        *,
-        on_resolved: Callable[[PlanResolution], None] | None = None,
-        require_existing: bool = False,
-        allow_new_output: bool = False,
-    ) -> OutputDeliveryMode:
-        """Resolve and pin the delivery contract before the first output chunk is released."""
-        resolution, stored = self._resolve_call(request, require_existing=require_existing, allow_new_output=allow_new_output)
+    async def stream_output(self, request, source, *, ready, emit, observe, allow_new_output=False):
+        """Pin once for the lifetime of one connection; NeMo owns incremental checks."""
+        request = replace(request, execution_purpose="online", evidence_scope="full")
+        resolution, stored = self._resolve_call(request, allow_new_output=allow_new_output)
+        protection_mode = self._protection_mode(resolution)
+        if protection_mode != "enforce":
+            return await self._stream_permissive(request, source, resolution, stored, protection_mode,
+                ready=ready, emit=emit, observe=observe)
         retain = getattr(self._resolver, "retain_release", None)
         if retain is not None:
             try:
@@ -126,11 +149,88 @@ class GuardrailRuntimeService:
             except LookupError as error:
                 from runner.routing import RoutingError
                 raise RoutingError("pinned_release_unavailable", resolution.route_assignment) from error
-        self._contexts.put(request.call_id, stored.messages if stored else request.messages,
-                           resolution, stored.content_blocks if stored else request.content_blocks)
-        if on_resolved is not None:
-            on_resolved(resolution)
-        return output_stream_contract(resolution.plan).effective_mode
+        await self.publish_assignment(resolution, request.call_id)
+        incoming = text_blocks("output", ("",), "model_output")
+        blocks = _context_blocks(stored.content_blocks, incoming)
+        engine_request = EngineRequest(
+            phase="output", text="", plan=resolution.plan, context_messages=stored.messages,
+            trusted_instruction=_trusted_instruction(stored.messages, blocks), target_source="model_output",
+            mode=request.mode, evidence_scope=request.evidence_scope, execution_purpose=request.execution_purpose,
+            content_view=content_view(blocks, incoming[0].id), active_block_id=incoming[0].id,
+            request_context=request.context, effective_release_id=resolution.effective_release_id,
+        )
+        outcome = "error"
+
+        async def checked(decision):
+            decision = replace(decision, router_id=resolution.router_id, endpoint_id=resolution.endpoint_id,
+                effective_release_id=resolution.effective_release_id, model_revision_id=resolution.model_revision_id,
+                route_assignment=resolution.route_assignment,
+                allocation_context_id=resolution.allocation_context_id,
+                trace=decision.trace if decision.router_id else (*resolution.trace, *decision.trace))
+            self._contexts.record_outcome(request.call_id, call_outcome(decision))
+            await observe(self._context_evidence(decision))
+
+        async def prepared(contract):
+            await ready(contract, resolution)
+
+        try:
+            result = await self._runtime.protect_output(engine_request, source,
+                ready=prepared, emit=emit, observe=checked)
+            outcome = "block" if result.status == "blocked" else "intervene" if result.transformed else "allow"
+            return result
+        except asyncio.CancelledError:
+            raise
+        except TimeoutError:
+            outcome = "timeout"
+            raise
+        except OutputStreamEvaluationError as error:
+            outcome = "timeout" if error.timed_out else "error"
+            raise
+        finally:
+            await self.complete_call(resolution, request.call_id, outcome)
+
+    async def evaluate_standalone(
+        self, request: ProtectionRequest, *,
+        on_resolved: Callable[[PlanResolution], None] | None = None,
+        timeout_seconds: float | None = None,
+    ) -> ProtectionDecision:
+        """Evaluate one independently routed scan, without creating a call session."""
+        # The caller supplies a server-generated assignment ID in RequestContext.
+        resolution = None
+        outcome, failure = "error", None
+        try:
+            async with asyncio.timeout(timeout_seconds):
+                resolution = self._resolver.resolve(request.context)
+                if on_resolved is not None:
+                    on_resolved(resolution)
+                retain = getattr(self._resolver, "retain_release", None)
+                if retain is not None:
+                    retain(resolution.effective_release_id)
+                await self.publish_assignment(resolution, request.context.call_id)
+                stored = CallContext(messages=(), content_blocks=(), resolution=resolution, expires_at=0)
+                decision = await self._evaluate_online(request, resolution, stored,
+                    timeout_seconds=timeout_seconds * 0.9 if timeout_seconds else 25)
+                outcome = call_outcome(decision)
+                return decision
+        except BaseException as error:
+            outcome = "timeout" if isinstance(error, TimeoutError) or isinstance(error, GuardrailExecutionError) and error.timed_out else "error"
+            failure = "cancelled" if isinstance(error, asyncio.CancelledError) else type(error).__name__
+            assignment = getattr(error, "assignment", None)
+            if resolution is None and assignment and self.routing_event_sink:
+                await self.routing_event_sink({**assignment, "id": assignment["decisionId"] + ":assignment",
+                    "eventType": "route_assignment", "callId": request.context.call_id,
+                    "occurredAt": assignment["decisionAt"]})
+            raise
+        finally:
+            if resolution is not None and resolution.route_assignment and self.routing_event_sink:
+                assignment = resolution.route_assignment
+                now = datetime.now(UTC)
+                # Standalone calls deliberately never access the shared session store.
+                await self.routing_event_sink({**assignment, "id": assignment["decisionId"] + ":completion",
+                    "eventType": "completion", "callId": request.context.call_id,
+                    "occurredAt": now.isoformat(), "outcome": outcome,
+                    "durationMs": max(0, round((now - datetime.fromisoformat(assignment["decisionAt"])).total_seconds() * 1000)),
+                    **({"failureReason": failure} if failure else {})})
 
     async def evaluate_guardrail(
         self,
@@ -140,6 +240,7 @@ class GuardrailRuntimeService:
         *,
         on_resolved: Callable[[PlanResolution], None] | None = None,
     ) -> ProtectionDecision:
+        self._begin_context_request()
         stored = self._contexts.get(request.call_id)
         resolver = getattr(self._resolver, "resolve_guardrail", None)
         if resolver is None:
@@ -155,7 +256,7 @@ class GuardrailRuntimeService:
             resolution = resolver(guardrail_id, version)
         if on_resolved is not None:
             on_resolved(resolution)
-        return await self._evaluate_resolved(request, resolution, stored)
+        return self._context_evidence(await self._evaluate_resolved(request, resolution, stored))
 
     async def _evaluate_resolved(self, request, resolution, stored) -> ProtectionDecision:
         incoming_blocks = request.content_blocks or text_blocks(
@@ -172,9 +273,9 @@ class GuardrailRuntimeService:
             )
 
         if not incoming_blocks:
-            return ProtectionDecision(
+            return finalize_decision(ProtectionDecision(
                 decision="allow",
-                action="pass",
+                action="allow",
                 reason="No model content required a protection check.",
                 guardrail_id=resolution.plan.guardrail_id,
                 guardrail_version=resolution.plan.guardrail_version,
@@ -184,19 +285,22 @@ class GuardrailRuntimeService:
                 effective_release_id=resolution.effective_release_id,
                 model_revision_id=resolution.model_revision_id,
                 route_assignment=resolution.route_assignment,
+                allocation_context_id=resolution.allocation_context_id,
                 trace=resolution.trace,
                 mode=request.mode,
-            )
+            ))
 
         output_by_id: dict[str, str] = {}
         findings = []
+        diagnostics = []
         trace = list(resolution.trace)
         assessments: list[ModuleAssessment] = []
         interventions: list[AppliedIntervention] = []
         coverages: list[RuntimeCoverage] = []
         usages: list[RuntimeUsage] = []
         final_decision = "allow"
-        final_action = "pass"
+        final_action = "allow"
+        termination_reason = None
         reason = "All model content passed the active Guardrail."
         pinned = stored if request.phase == "output" else None
         context_messages = pinned.messages if pinned else request.messages
@@ -211,7 +315,7 @@ class GuardrailRuntimeService:
                 role=block.role,
                 source=block.source,
                 decision="allow",
-                action="pass",
+                action="allow",
                 text=block.text,
                 evaluated=False,
             )
@@ -232,13 +336,14 @@ class GuardrailRuntimeService:
                     trusted_instruction=trusted_instruction,
                     target_source=block.source,
                     mode=request.mode,
-                    evidence_scope=request.evidence_scope,
+                    evidence_scope=request.evidence_scope, execution_purpose=request.execution_purpose,
                     content_view=view,
                     active_block_id=block.id,
                     request_context=request.context,
                     effective_release_id=resolution.effective_release_id,
                 )
             )
+            diagnostics.extend(decision.diagnostics)
             findings.extend(decision.findings)
             trace.extend(decision.trace)
             assessments.extend(decision.assessments)
@@ -266,8 +371,18 @@ class GuardrailRuntimeService:
                 output_by_id[block.id] = resolved_text
             if decision.decision == "block":
                 final_decision = "block"
-                final_action = "reject"
+                final_action = "block"
                 reason = decision.reason or "A content block was blocked by the active Guardrail."
+                termination_reason = decision.termination_reason
+                if request.execution_purpose == "online":
+                    for remaining in incoming_blocks:
+                        if remaining.id not in content_results:
+                            content_results[remaining.id] = ContentBlockResult(id=remaining.id, role=remaining.role,
+                                source=remaining.source, decision="block", action="block", evaluated=False)
+                            trace.append(RuntimeTraceStep(id=f"content:{remaining.id}:skipped", kind="content",
+                                name="Content check", status="skipped", content_block_id=remaining.id,
+                                detail="Not evaluated because the Guardrail already blocked this request."))
+                    break
                 continue
             if decision.decision == "transform":
                 if final_decision != "block":
@@ -276,9 +391,10 @@ class GuardrailRuntimeService:
                     reason = decision.reason or "The active Guardrail transformed model content."
 
         ordered_results = tuple(content_results[block.id] for block in incoming_blocks)
-        output = tuple(output_by_id.get(block.id, block.text) for block in incoming_blocks)
+        # Context evidence is never part of the caller's transformed text array.
+        output = tuple(output_by_id.get(block.id, block.text) for block in incoming_blocks if block.guard_content)
 
-        return ProtectionDecision(
+        return finalize_decision(ProtectionDecision(
             decision=final_decision,
             action=final_action,
             reason=reason,
@@ -295,6 +411,8 @@ class GuardrailRuntimeService:
             effective_release_id=resolution.effective_release_id,
             model_revision_id=resolution.model_revision_id,
             route_assignment=resolution.route_assignment,
+            allocation_context_id=resolution.allocation_context_id,
+            diagnostics=tuple(diagnostics),
             findings=tuple(findings),
             trace=tuple(trace),
             assessments=tuple(assessments),
@@ -303,7 +421,66 @@ class GuardrailRuntimeService:
             usage=_usage(usages),
             mode=request.mode,
             content_results=ordered_results,
-        )
+            termination_reason=termination_reason,
+        ), purpose=request.execution_purpose)
+
+    def _protection_mode(self, resolution):
+        # Read at each new online operation, including output on a pinned call.
+        # Version tests and direct Playground evaluation never use this overlay.
+        return getattr(self._resolver, "protection_mode", lambda _: "enforce")(resolution.plan.guardrail_id)
+
+    async def _evaluate_online(self, request, resolution, stored, *, timeout_seconds=25, mode=None):
+        request = replace(request, execution_purpose="online", evidence_scope="full")
+        mode = mode or self._protection_mode(resolution)
+        if mode == "enforce":
+            return require_online_result(await self._evaluate_resolved(request, resolution, stored))
+        if mode == "bypass":
+            return allowed_decision(request, resolution, mode)
+        if mode != "monitor":
+            raise ValueError("Unsupported protection mode.")
+        try:
+            async with asyncio.timeout(timeout_seconds):
+                detected = await self._evaluate_resolved(replace(request, mode="detect"), resolution, stored)
+            return allowed_decision(request, resolution, mode, detected=detected)
+        except Exception as error:
+            # Detector failure is evidence, not permission to stop monitored traffic.
+            # Cancellation, routing, authentication and transport failures are not swallowed.
+            return allowed_decision(request, resolution, mode, error=type(error).__name__)
+
+    async def _stream_permissive(self, request, source, resolution, stored, mode, *, ready, emit, observe):
+        await self.publish_assignment(resolution, request.call_id)
+        iterator = source.__aiter__()
+        parts, size, frames = [], 0, 0
+        outcome = "error"
+        try:
+            await ready(OutputStreamContract(resolution.plan.output_delivery, "interruptible",
+                "Original output is delivered without enforcement."), resolution)
+            async for text in iterator:
+                frames += 1
+                if not isinstance(text, str):
+                    raise OutputStreamEvaluationError("Output must be text.")
+                size += len(text)
+                if size > 1_000_000 or frames > 100_000:
+                    raise OutputStreamEvaluationError("Output exceeded the stream limits.")
+                if mode == "monitor":
+                    parts.append(text)
+                await emit(text)
+            # One complete-response observation preserves cross-chunk rules and context.
+            # No detector is acquired at all in Bypass, including cold/broken runtimes.
+            candidate = replace(request, texts=("".join(parts),),
+                content_blocks=text_blocks("output", ("".join(parts),), "model_output"))
+            decision = await self._evaluate_online(candidate, resolution, stored, mode=mode)
+            await observe(replace(decision, output_delivery="interruptible"))
+            outcome = "allow"
+            return OutputStreamResult("completed", size, 0 if mode == "bypass" else 1)
+        finally:
+            try:
+                close = getattr(iterator, "aclose", None)
+                if close is not None:
+                    async with asyncio.timeout(2):
+                        await close()
+            finally:
+                await self.complete_call(resolution, request.call_id, outcome)
 
 
 def _trusted_instruction(
@@ -341,7 +518,7 @@ def _strongest_action(
     values = set(actions)
     return next(
         (action for action in ENFORCEMENT_ACTION_CONFLICT_ORDER if action in values),
-        "pass",
+        "allow",
     )
 
 
@@ -369,6 +546,7 @@ def _usage(items: list[RuntimeUsage]) -> RuntimeUsage | None:
     if not items:
         return None
     return RuntimeUsage(
+        model_calls=tuple(call for item in items for call in item.model_calls),
         module_invocations=sum(item.module_invocations for item in items),
         evaluator_invocations=sum(item.evaluator_invocations for item in items),
         text_characters=sum(item.text_characters for item in items),

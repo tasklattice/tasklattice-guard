@@ -15,60 +15,113 @@ const config = loadConfig({ NODE_ENV: "test", CONTROLLER_DATABASE_URL: "postgres
   CONTROLLER_POLICY_CATALOG_DIR: resolve("../runner/toolkit/policy_library/assets"), BETTER_AUTH_SECRET: "better-auth-secret-that-is-at-least-32-characters" });
 export const fallbackDraft = (): RouterDraft => ({ routes: [{ id: "fallback", name: "Fallback", kind: "fallback", enabled: true,
   selector: { expression: { combinator: "and", conditions: [] } }, targets: [{ id: "target", guardrailId: "guard", guardrailVersion: "1", weightBps: 10000 }] }] });
-export function setupRoutingHttp(role: string | null = "admin") {
+export function setupRoutingHttp(role: string | null = "user") {
   const router = { id: "router", draft: fallbackDraft(), draftRevision: 1, activeRevision: 1 };
+  const change = { id: "change", routerId: "router", status: "pending" };
   const trafficRouting = { list: vi.fn().mockResolvedValue([router]), get: vi.fn().mockResolvedValue(router), create: vi.fn().mockResolvedValue(router),
-    preview: vi.fn().mockResolvedValue({ draftRevision: 7, snapshot: fallbackDraft(), endpointIds: ["http"] }), save: vi.fn().mockResolvedValue(router), publish: vi.fn().mockResolvedValue({ ...router, publication: { revision: 1, generation: 1, replayed: false } }), bind: vi.fn().mockResolvedValue({ ...router, changed: true }),
+    preview: vi.fn().mockResolvedValue({ draftRevision: 7, snapshot: fallbackDraft(), endpointIds: ["http"] }), save: vi.fn().mockResolvedValue(router), submitChange: vi.fn().mockResolvedValue(change), approveChange: vi.fn().mockResolvedValue({ ...router, publication: { revision: 1, generation: 1, replayed: false } }),
+    rejectChange: vi.fn().mockResolvedValue(change), withdrawChange: vi.fn().mockResolvedValue(change), revertChange: vi.fn().mockResolvedValue({ ...router, publication: { revision: 1, generation: 1, replayed: false } }),
+    changeRequests: vi.fn().mockResolvedValue([change]), changeRequest: vi.fn().mockResolvedValue(change), bind: vi.fn().mockResolvedValue({ ...router, changed: true }),
     deleteRevision: vi.fn().mockResolvedValue(undefined), remove: vi.fn().mockResolvedValue(undefined), revisions: vi.fn().mockResolvedValue([]), distribution: vi.fn().mockResolvedValue({ total: 0, rows: [], telemetryFresh: false }) };
   const deleteGuardrailVersion = vi.fn().mockResolvedValue(undefined);
   const duplicateGuardrail = vi.fn().mockResolvedValue({ id: "copy", status: "draft" });
-  const listEndpoints = vi.fn().mockResolvedValue([{ id: "http", adapter: "HTTP" }, { id: "a2a", adapter: "A2A" }]);
+  const listEndpoints = vi.fn().mockResolvedValue([{ id: "http", adapter: "LITELLM" }, { id: "scan", adapter: "SCAN" }]);
   const distributeDesiredState = vi.fn().mockResolvedValue({ desiredGeneration: 2, distributionStatus: "pending" });
-  const app = createHttpApp({ config, auth: { api: { getSession: vi.fn().mockResolvedValue(role === null ? null : { user: { id: "actor", role } }) }, handler: vi.fn() } as unknown as ControllerAuth,
-    service: { trafficRouting, duplicateGuardrail, deleteGuardrailVersion, listEndpoints } as unknown as ControlPlaneService,
+  const app = createHttpApp({ config, auth: { api: { getSession: vi.fn().mockResolvedValue(role === null ? null : { session: { id: "fixture-session", activeProjectId: "projectA" }, user: { id: "actor", role, projectId: "projectA" } }) }, handler: vi.fn() } as unknown as ControllerAuth,
+    service: { trafficRouting, duplicateGuardrail, deleteGuardrailVersion, listEndpoints, packages: { checkRoutedImports: vi.fn(async () => undefined) } } as unknown as ControlPlaneService,
     runnerControl: { distributeDesiredState } as unknown as RunnerControlServer, metrics: {} as ControllerMetrics });
   const send = (method: string, path: string, body?: unknown) => app.request(`/api/v1${path}`, { method, headers: { "content-type": "application/json" }, ...(body === undefined ? {} : { body: JSON.stringify(body) }) });
   return { app, send, trafficRouting, deleteGuardrailVersion, duplicateGuardrail, distributeDesiredState, listEndpoints };
 }
 
 describe("Composed Router HTTP contract", () => {
+  it.each([
+    ['litellm', ['litellm.team_id', 'litellm.api_key_alias', 'litellm.user_id'], ['adapter.field']],
+    ['scan', ['adapter.field', 'http.header'], ['litellm.team_id']],
+    ['litellm,scan', ['protocol', 'http.header'], ['litellm.team_id', 'model', 'adapter.field']],
+  ])('offers only common supported Selector fields for %s', async (ids, supported, unsupported) => {
+    const { send, listEndpoints } = setupRoutingHttp();
+    listEndpoints.mockResolvedValue([{ id: 'http', adapter: 'LITELLM' }, { id: 'litellm', adapter: 'LITELLM' }, { id: 'scan', adapter: 'SCAN' }]);
+    const response = await send('GET', `/routing/selector-fields?endpointIds=${ids}`);
+    expect(response.status).toBe(200);
+    const body = await response.json();
+    const fields = body.items.map((field: { id: string }) => field.id);
+    expect(fields).toEqual(expect.arrayContaining(supported));
+    for (const field of [...unsupported, 'litellm.version', 'output.sink', 'output.content_type', 'output.schema_id', 'auth.jwt_claim']) {
+      expect(fields).not.toContain(field);
+    }
+    expect(body.count).toBe(fields.length);
+  });
   it.each(["/routers", "/routers/router", "/routers/router/revisions", "/routers/router/traffic-distribution", "/routers/router/routes/fallback/traffic-distribution", "/routing/selector-fields"])("requires authentication but allows viewer reads: %s", async path => {
     expect((await setupRoutingHttp(null).send("GET", path)).status).toBe(401);
     expect((await setupRoutingHttp("user").send("GET", path)).status).toBe(200);
   });
   it("forwards complete drafts with actor and optimistic revision, without distributing drafts", async () => {
     const { send, trafficRouting, distributeDesiredState } = setupRoutingHttp(); const draft = fallbackDraft();
-    expect((await send("POST", "/routers", { name: " New ", endpointIds: ["http", "a2a"], draft })).status).toBe(201);
-    expect(trafficRouting.create).toHaveBeenCalledExactlyOnceWith("New", "", routerDraftSchema.parse(draft), "actor", ["http", "a2a"]);
+    expect((await send("POST", "/routers", { name: " New ", endpointIds: ["http", "scan"], draft })).status).toBe(201);
+    expect(trafficRouting.create).toHaveBeenCalledExactlyOnceWith("New", "", routerDraftSchema.parse(draft), "actor", ["http", "scan"]);
     expect((await send("PUT", "/routers/router/draft", { expectedDraftRevision: 7, draft })).status).toBe(200);
     expect(trafficRouting.save).toHaveBeenCalledExactlyOnceWith("router", 7, routerDraftSchema.parse(draft), "actor");
     expect((await send("PATCH", "/routers/router", { name: "Renamed", description: "Shared" })).status).toBe(404);
     expect(distributeDesiredState).not.toHaveBeenCalled();
   });
-  it.each([false, true])("publishes and distributes complete state with 202 (rollback=%s)", async rollback => {
-    const { send, trafficRouting, distributeDesiredState } = setupRoutingHttp();
-    const response = await send("POST", `/routers/router/${rollback ? "rollback" : "publish"}`, { expectedDraftRevision: 7, idempotencyKey: "request", ...(rollback ? { revision: 2 } : {}) });
-    expect(response.status).toBe(202);
-    expect(trafficRouting.publish).toHaveBeenCalledExactlyOnceWith("router", 7, "request", "actor", ...(rollback ? [2] : [undefined, undefined, undefined]));
-    expect(distributeDesiredState).toHaveBeenCalledOnce();
-    expect(trafficRouting.publish.mock.invocationCallOrder[0]!).toBeLessThan(distributeDesiredState.mock.invocationCallOrder[0]!);
-  });
-  it("previews persisted drafts for admins without distribution and forwards reviewed publication", async () => {
+  it("submits the reviewed publication as a pending change without distributing", async () => {
     const { send, trafficRouting, distributeDesiredState } = setupRoutingHttp();
     expect((await setupRoutingHttp(null).send("POST", "/routers/router/publication-preview", { expectedDraftRevision: 7 })).status).toBe(401);
-    expect((await setupRoutingHttp("user").send("POST", "/routers/router/publication-preview", { expectedDraftRevision: 7 })).status).toBe(403);
+    expect((await setupRoutingHttp("user").send("POST", "/routers/router/publication-preview", { expectedDraftRevision: 7 })).status).toBe(200);
     const response = await send("POST", "/routers/router/publication-preview", { expectedDraftRevision: 7 });
     expect(response.status).toBe(200);
     expect(trafficRouting.preview).toHaveBeenCalledExactlyOnceWith("router", 7);
-    expect(distributeDesiredState).not.toHaveBeenCalled();
     const review = await response.json();
-    expect((await send("POST", "/routers/router/publish", { expectedDraftRevision: 7, idempotencyKey: "review", reviewedSnapshot: review.snapshot, reviewedEndpointIds: review.endpointIds })).status).toBe(202);
-    expect(trafficRouting.publish).toHaveBeenCalledExactlyOnceWith("router", 7, "review", "actor", undefined, routerDraftSchema.parse(review.snapshot), ["http"]);
+    expect((await send("POST", "/routers/router/change-requests", { expectedDraftRevision: 7, reviewedSnapshot: review.snapshot, reviewedEndpointIds: review.endpointIds, reason: " Enable v7 ", ticket: "CHG-1" })).status).toBe(201);
+    expect(trafficRouting.submitChange).toHaveBeenCalledExactlyOnceWith("router", { expectedDraftRevision: 7, reviewedSnapshot: routerDraftSchema.parse(review.snapshot), reviewedEndpointIds: ["http"], reason: "Enable v7", ticket: "CHG-1" }, "actor");
+    expect(distributeDesiredState).not.toHaveBeenCalled();
+  });
+  it("validates a historical restoration and submits it without distributing", async () => {
+    const { send, trafficRouting, distributeDesiredState } = setupRoutingHttp();
+    const body = { expectedDraftRevision: 7, reviewedSnapshot: fallbackDraft(), reviewedEndpointIds: ["http"], reason: "Restore stable routing", ticket: "", restore: { revision: 1, expectedActiveRevision: 2 } };
+    expect((await send("POST", "/routers/router/change-requests", body)).status).toBe(201);
+    expect(trafficRouting.submitChange).toHaveBeenCalledExactlyOnceWith("router", { ...body, reviewedSnapshot: routerDraftSchema.parse(body.reviewedSnapshot) }, "actor");
+    expect((await send("POST", "/routers/router/change-requests", { ...body, restore: { revision: 1 } })).status).toBe(400);
+    expect(distributeDesiredState).not.toHaveBeenCalled();
+  });
+  it.each([
+    ["approve", {}, { note: undefined }],
+    ["emergency-apply", { reason: " Abuse " }, { emergency: { reason: "Abuse" } }],
+  ])("applies a change through %s and distributes after the revision is written", async (action, body, decision) => {
+    const { send, trafficRouting, distributeDesiredState } = setupRoutingHttp();
+    expect((await send("POST", `/routers/router/change-requests/change/${action}`, body)).status).toBe(202);
+    expect(trafficRouting.approveChange).toHaveBeenCalledExactlyOnceWith("router", "change", "actor", decision);
+    expect(distributeDesiredState).toHaveBeenCalledOnce();
+    expect(trafficRouting.approveChange.mock.invocationCallOrder[0]!).toBeLessThan(distributeDesiredState.mock.invocationCallOrder[0]!);
+  });
+  it.each([{}, { reason: "" }, { reason: "   " }])("rejects an emergency application without a nonblank reason: %j", async body => {
+    const { send, trafficRouting, distributeDesiredState } = setupRoutingHttp();
+    expect((await send("POST", "/routers/router/change-requests/change/emergency-apply", body)).status).toBe(400);
+    expect(trafficRouting.approveChange).not.toHaveBeenCalled();
+    expect(distributeDesiredState).not.toHaveBeenCalled();
+  });
+  it("closes, lists and reverts change requests", async () => {
+    const { send, trafficRouting, distributeDesiredState } = setupRoutingHttp();
+    expect((await send("POST", "/routers/router/change-requests/change/reject", { note: "Not in window" })).status).toBe(200);
+    expect(trafficRouting.rejectChange).toHaveBeenCalledExactlyOnceWith("router", "change", "actor", "Not in window");
+    expect((await send("POST", "/routers/router/change-requests/change/withdraw")).status).toBe(200);
+    expect(trafficRouting.withdrawChange).toHaveBeenCalledExactlyOnceWith("router", "change", "actor");
+    expect(distributeDesiredState).not.toHaveBeenCalled();
+    expect(await (await setupRoutingHttp("user").send("GET", "/routers/router/change-requests")).json()).toMatchObject({ count: 1, items: [{ id: "change" }] });
+    expect((await send("POST", "/routers/router/change-requests/change/revert", { reason: "False positives" })).status).toBe(202);
+    expect(trafficRouting.revertChange).toHaveBeenCalledExactlyOnceWith("router", "change", "actor", "False positives");
+    expect(distributeDesiredState).toHaveBeenCalledOnce();
+  });
+  it.each(["/routers/router/publish", "/routers/router/rollback"])("no longer publishes directly through %s", async path => {
+    const { send, distributeDesiredState } = setupRoutingHttp();
+    expect((await send("POST", path, { expectedDraftRevision: 1, idempotencyKey: "x" })).status).toBe(404);
+    expect(distributeDesiredState).not.toHaveBeenCalled();
   });
   it("passes endpoint binding and Duplicate identities through the admin boundary", async () => {
     const { send, trafficRouting, duplicateGuardrail, distributeDesiredState } = setupRoutingHttp();
-    expect((await send("PUT", "/routers/router/endpoints", { endpointIds: ["http", "a2a"] })).status).toBe(200);
-    expect(trafficRouting.bind).toHaveBeenCalledExactlyOnceWith("router", ["http", "a2a"], "actor");
+    expect((await send("PUT", "/routers/router/endpoints", { endpointIds: ["http", "scan"] })).status).toBe(200);
+    expect(trafficRouting.bind).toHaveBeenCalledExactlyOnceWith("router", ["http", "scan"], "actor");
     expect(distributeDesiredState).toHaveBeenCalledOnce();
     const request = { name: "Copy", sourceDraftRevision: 3, idempotencyKey: "copy-request" };
     expect((await send("POST", "/guardrails/guard/duplicate", request)).status).toBe(201);
@@ -79,9 +132,12 @@ describe("Composed Router HTTP contract", () => {
     ["PUT", "/routers/router/draft", { expectedDraftRevision: 0, draft: fallbackDraft() }],
     ["PUT", "/routers/router/draft", { expectedDraftRevision: 1, draft: { routes: [] } }],
     ["POST", "/routers/router/publication-preview", { expectedDraftRevision: 0 }],
-    ["POST", "/routers/router/publish", { expectedDraftRevision: 1 }],
-    ["POST", "/routers/router/publish", { expectedDraftRevision: 1.5, idempotencyKey: "x" }],
-    ["POST", "/routers/router/rollback", { expectedDraftRevision: 1, idempotencyKey: "x", revision: 0 }],
+    ["POST", "/routers/router/change-requests", { expectedDraftRevision: 1, reviewedSnapshot: fallbackDraft(), reviewedEndpointIds: [] }],
+    ["POST", "/routers/router/change-requests", { expectedDraftRevision: 1, reviewedSnapshot: fallbackDraft(), reviewedEndpointIds: [], reason: "   " }],
+    ["POST", "/routers/router/change-requests", { expectedDraftRevision: 1.5, reviewedSnapshot: fallbackDraft(), reviewedEndpointIds: [], reason: "x" }],
+    ["POST", "/routers/router/change-requests/change/reject", {}],
+    ["POST", "/routers/router/change-requests/change/emergency-apply", { reason: "x".repeat(2001) }],
+    ["POST", "/routers/router/change-requests/change/revert", { reason: "" }],
     ["PUT", "/routers/router/endpoints", { endpointIds: [""] }],
     ["POST", "/guardrails/guard/duplicate", { name: "Copy", sourceVersion: "1", sourceDraftRevision: 1, idempotencyKey: "x" }],
     ["GET", "/routers/router/traffic-distribution?hours=169", undefined],
@@ -89,18 +145,18 @@ describe("Composed Router HTTP contract", () => {
   ])("rejects malformed %s %s before service writes", async (method, path, body) => {
     const { send, trafficRouting, duplicateGuardrail, distributeDesiredState } = setupRoutingHttp();
     expect((await send(method as string, path as string, body)).status).toBe(400);
-    for (const method of [trafficRouting.create, trafficRouting.save, trafficRouting.publish, trafficRouting.bind, trafficRouting.distribution, duplicateGuardrail, distributeDesiredState]) expect(method).not.toHaveBeenCalled();
+    for (const method of [trafficRouting.create, trafficRouting.save, trafficRouting.submitChange, trafficRouting.approveChange, trafficRouting.rejectChange, trafficRouting.revertChange, trafficRouting.bind, trafficRouting.distribution, duplicateGuardrail, distributeDesiredState]) expect(method).not.toHaveBeenCalled();
   });
-  it.each([new ConflictError("Draft changed", "router_draft_conflict"), new ValidationError("Fallback weights must total 100%")])("returns actionable publication failures without distributing", async error => {
-    const { send, trafficRouting, distributeDesiredState } = setupRoutingHttp(); trafficRouting.publish.mockRejectedValue(error);
-    const response = await send("POST", "/routers/router/publish", { expectedDraftRevision: 1, idempotencyKey: "request" });
+  it.each([new ConflictError("Stale", "router_change_request_stale"), new ValidationError("Fallback weights must total 100%")])("returns actionable approval failures without distributing", async error => {
+    const { send, trafficRouting, distributeDesiredState } = setupRoutingHttp(); trafficRouting.approveChange.mockRejectedValue(error);
+    const response = await send("POST", "/routers/router/change-requests/change/approve", {});
     expect(response.status).toBe(error.status); expect(await response.json()).toMatchObject({ error: { code: error.code, message: error.message } });
     expect(distributeDesiredState).not.toHaveBeenCalled();
   });
-  it("does not redistribute a publication replay or unchanged Endpoint bindings", async () => {
+  it("does not redistribute an approval replay or unchanged Endpoint bindings", async () => {
     const { send, trafficRouting, distributeDesiredState } = setupRoutingHttp();
-    trafficRouting.publish.mockResolvedValueOnce({ id: "router", publication: { revision: 1, replayed: true } });
-    expect((await send("POST", "/routers/router/publish", { expectedDraftRevision: 1, idempotencyKey: "original" })).status).toBe(202);
+    trafficRouting.approveChange.mockResolvedValueOnce({ id: "router", publication: { revision: 1, replayed: true } });
+    expect((await send("POST", "/routers/router/change-requests/change/approve", {})).status).toBe(202);
     trafficRouting.bind.mockResolvedValueOnce({ id: "router", changed: false });
     expect((await send("PUT", "/routers/router/endpoints", { endpointIds: [] })).status).toBe(200);
     expect(distributeDesiredState).not.toHaveBeenCalled();
@@ -129,4 +185,22 @@ it("protects Guardrail version deletion and validates version IDs", async () => 
  expect((await admin.send('DELETE', path)).status).toBe(204);
  expect(admin.deleteGuardrailVersion).toHaveBeenCalledWith({ guardrailId: 'guard', version: '20260908-024342.826Z', actorId: 'actor' });
  expect((await admin.send('DELETE', '/guardrails/guard/versions/invalid')).status).toBe(400);
+});
+
+it("applies ordinary authoring permissions and usage conflicts to Default versions", async () => {
+  const path = "/guardrails/guardrail-default/versions/20260908-024342.826Z";
+  for (const role of [null, "admin", "viewer"]) {
+    const denied = setupRoutingHttp(role);
+    expect((await denied.send("DELETE", path)).status).toBe(role === null ? 401 : 403);
+    expect(denied.deleteGuardrailVersion).not.toHaveBeenCalled();
+  }
+  const admin = setupRoutingHttp("user");
+  expect((await admin.send("DELETE", path)).status).toBe(204);
+  expect(admin.deleteGuardrailVersion).toHaveBeenCalledWith({ guardrailId: "guardrail-default", version: "20260908-024342.826Z", actorId: "actor" });
+  const impact = { deletable: false, references: [{ kind: "router_active", routerId: "router", routerName: "Router", routeId: "fallback", routeName: "Fallback" }], blockers: [] };
+  admin.deleteGuardrailVersion.mockRejectedValue(new ConflictError("This version is still referenced.", "version_in_use", { impact }));
+  const blocked = await admin.send("DELETE", path);
+  expect(blocked.status).toBe(409);
+  expect(await blocked.json()).toMatchObject({ error: { code: "version_in_use", detail: { impact } } });
+
 });

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import math
+import json
 import threading
 import time
 from contextlib import contextmanager
@@ -68,8 +69,12 @@ class GuardrailRequestObservation:
     decision: ProtectionDecision | None = None
     failure_stage: str | None = None
     failure_reason_class: str | None = None
+    allocation_context_id: str | None = None
+    route_assignment: dict | None = None
 
     def resolve(self, resolution: PlanResolution) -> None:
+        self.allocation_context_id = getattr(resolution, "allocation_context_id", None)
+        self.route_assignment = getattr(resolution, "route_assignment", None)
         self.set_identity(
             guardrail_id=resolution.plan.guardrail_id,
             guardrail_version=resolution.plan.guardrail_version,
@@ -120,6 +125,7 @@ class RunnerMetrics:
         self._active_jobs: dict[str, int] = {"compile": 0, "validation": 0}
         self._loaded_artifact_count = 0
         self._admission_load: Callable[[], tuple[int, int, int]] = lambda: (0, 0, max_concurrency)
+        self._project_admission_snapshot: Callable[[], dict] = lambda: {"version": 1, "available": False, "reason": "disabled"}
         self._process = psutil.Process()
         self.registry = CollectorRegistry()
         ProcessCollector(registry=self.registry)
@@ -169,7 +175,7 @@ class RunnerMetrics:
             ["protocol", "phase", "result"], registry=self.registry,
         )
         self.authentication = Counter(
-            "guard_runner_authentication_total", "Runtime Endpoint authentication attempts.",
+            "guard_runner_authentication_total", "Runtime Endpoint access decisions, including anonymous access.",
             ["protocol", "result"], registry=self.registry,
         )
         self.failures = Counter(
@@ -212,16 +218,22 @@ class RunnerMetrics:
         )
         self.model_in_flight = Gauge(
             "guard_runner_model_in_flight",
-            "Currently executing external model/provider RPCs.",
+            "Model call attempts executing or waiting for admission.",
             list(_MODEL_SCOPE_LABELS),
             registry=self.registry,
         )
         self.model_call_duration = Histogram(
             "guard_runner_model_call_duration_seconds",
-            "Wall duration of one external model/provider RPC.",
+            "Wall duration of a dispatched model/provider RPC, including admission wait.",
             [*_MODEL_SCOPE_LABELS, "result"],
             buckets=_DURATION_BUCKETS,
             registry=self.registry,
+        )
+        self.model_admission_wait = Histogram(
+            "guard_runner_model_admission_wait_seconds",
+            "Time waiting for a model concurrency permit, including unsent attempts.",
+            [*_MODEL_SCOPE_LABELS, "result"],
+            buckets=_DURATION_BUCKETS, registry=self.registry,
         )
         self.model_time_to_first_token = Histogram(
             "guard_runner_model_time_to_first_token_seconds",
@@ -444,6 +456,11 @@ class RunnerMetrics:
             "guard_runner_telemetry_wal_write_failures_total", "Local telemetry WAL write failures.",
             ["operation"], registry=self.registry,
         )
+        self.telemetry_quarantined = Counter(
+            "guard_runner_telemetry_quarantined_events_total",
+            "Runtime telemetry events quarantined or stranded by the upload contract.",
+            ["reason"], registry=self.registry,
+        )
 
     @contextmanager
     def request(
@@ -485,7 +502,7 @@ class RunnerMetrics:
                 span.set_status(Status(StatusCode.ERROR, result))
                 raise
             except Exception as error:
-                result = "error"
+                result = "timeout" if observation.decision and observation.decision.execution_status == "timeout" else "error"
                 span.record_exception(error)
                 span.set_status(Status(StatusCode.ERROR, result))
                 raise
@@ -610,7 +627,7 @@ class RunnerMetrics:
     ) -> None:
         detail_labels = {**identity, "protocol": protocol_name, "phase": phase}
         actions = [item.kind for item in decision.interventions]
-        if not actions and disposition in {"deny", "transform"} and decision.action != "pass":
+        if not actions and disposition in {"deny", "transform"} and decision.action != "allow":
             actions.append(decision.action)
         for action in actions:
             self.guardrail_interventions.labels(**detail_labels, action=action).inc()
@@ -696,37 +713,37 @@ class RunnerMetrics:
             for fragment in assessment.fragments:
                 for finding in fragment.findings:
                     observed_findings.add(finding)
-                    if finding.verdict in {"unsafe", "uncertain", "error"}:
+                    if finding.verdict in {"matched", "unknown", "error"}:
                         triggers.add((
                             assessment.module_id or "__unknown__",
                             finding.risk or "unknown",
                             finding.policy_id or "__builtin__",
-                            finding.recommended_action or "pass",
+                            finding.recommended_action or "allow",
                             finding.verdict,
                         ))
         for finding in decision.findings:
             if finding in observed_findings or finding.verdict not in {
-                "unsafe", "uncertain", "error",
+                "matched", "unknown", "error",
             }:
                 continue
             triggers.add((
                 "__unknown__",
                 finding.risk or "unknown",
                 finding.policy_id or "__builtin__",
-                finding.recommended_action or "pass",
+                finding.recommended_action or "allow",
                 finding.verdict,
             ))
         if not triggers and disposition in {"deny", "transform"}:
             for step in decision.trace:
                 if step.kind != "action" or step.verdict not in {
-                    "unsafe", "uncertain", "error",
+                    "matched", "unknown", "error",
                 }:
                     continue
                 triggers.add((
                     step.module_id or "__unknown__",
                     step.capability or "unknown",
                     step.policy_id or "__builtin__",
-                    decision.action or "pass",
+                    decision.action or "allow",
                     step.verdict,
                 ))
         for module_id, risk, policy_id, action, verdict in triggers:
@@ -766,6 +783,11 @@ class RunnerMetrics:
     def model_call_finished(self, *, usage, **labels: str) -> None:
         scope = _select_labels(labels, _MODEL_SCOPE_LABELS)
         self.model_in_flight.labels(**scope).dec()
+        if usage.request_sent is not None:
+            self.model_admission_wait.labels(**scope, result=usage.result).observe(
+                max(0, usage.queue_duration_ms) / 1_000, exemplar=current_exemplar())
+        if usage.request_sent is False:
+            return
         self.model_calls.labels(
             **scope,
             operation=labels["operation"],
@@ -797,9 +819,9 @@ class RunnerMetrics:
     def reject_request(self, protocol_name: str, phase: str, result: str) -> None:
         self.request_rejections.labels(protocol=protocol_name, phase=phase, reason=result).inc()
 
-    def observe_authentication(self, protocol_name: str, accepted: bool) -> None:
+    def observe_authentication(self, protocol_name: str, accepted: bool | None) -> None:
         self.authentication.labels(
-            protocol=protocol_name, result="accepted" if accepted else "rejected",
+            protocol=protocol_name, result="anonymous" if accepted is None else "accepted" if accepted else "rejected",
         ).inc()
 
     def observe_route(self, protocol_name: str, phase: str, matched: bool) -> None:
@@ -812,6 +834,19 @@ class RunnerMetrics:
 
     def set_admission_load_provider(self, provider: Callable[[], tuple[int, int, int]]) -> None:
         self._admission_load = provider
+
+    def set_project_admission_snapshot_provider(self, provider: Callable[[], dict]) -> None:
+        self._project_admission_snapshot = provider
+
+    def project_admission_snapshot_json(self) -> bytes:
+        try:
+            encoded = json.dumps(self._project_admission_snapshot(), allow_nan=False, separators=(",", ":")).encode("utf-8")
+            if len(encoded) <= 65_536:
+                return encoded
+            reason = "payload_limit"
+        except Exception:
+            reason = "instrumentation_unavailable"
+        return json.dumps({"version": 1, "available": False, "reason": reason}).encode("utf-8")
 
     def set_desired_generation(self, generation: int) -> None:
         self.desired_generation.set(max(0, generation))
@@ -872,6 +907,9 @@ class RunnerMetrics:
     def observe_telemetry_write_failure(self, operation: str) -> None:
         self.telemetry_write_failures.labels(operation=operation).inc()
 
+    def observe_telemetry_quarantine(self, reason: str) -> None:
+        self.telemetry_quarantined.labels(reason=reason).inc()
+
     def heartbeat(self) -> protocol.RunnerLoad:
         now = time.monotonic()
         admission_inflight, queue_depth, admission_capacity = self._admission_load()
@@ -905,13 +943,13 @@ class RunnerMetrics:
 
 def _bounded_result(value: str | None) -> str:
     normalized = (value or "unknown").lower()
-    if normalized in {"complete", "passed", "safe", "allow", "success"}:
+    if normalized in {"complete", "passed", "not_matched", "allow", "success"}:
         return "success"
     if normalized in {"timeout", "timed_out"}:
         return "timeout"
     if normalized in {"error", "failed", "failure", "uncovered"}:
         return "error"
-    if normalized in {"unsafe", "block", "transform", "intervene", "enforce"}:
+    if normalized in {"matched", "block", "transform", "intervene", "enforce"}:
         return "intervention"
     return "other"
 
@@ -938,12 +976,7 @@ def _disposition(decision: ProtectionDecision | None) -> str:
 def _failure_mode(decision: ProtectionDecision | None) -> str:
     if decision is None:
         return "normal"
-    routes = {step.route for step in decision.trace}
-    if (decision.usage is not None and decision.usage.fail_closed) or "fail_closed" in routes:
-        return "fail_closed"
-    if "fail_open" in routes:
-        return "fail_open"
-    return "normal"
+    return decision.termination_reason if decision.termination_reason in {"fail_open", "fail_closed"} else "normal"
 
 
 def _failure_labels(step) -> dict[str, str]:

@@ -1,0 +1,55 @@
+---
+id: "api-contract-retries"
+title: "Versioned contracts and retries"
+summary: "Use the current OpenAPI contract to distinguish permissions, idempotency keys, asynchronous state, and safe retries."
+order: 1
+---
+Before each API call, inspect its permissions, idempotency and retry rules in OpenAPI. A network timeout means the client received no result. The server may still complete the operation.
+
+<a id="api-contract-annotations" />
+## Read the OpenAPI annotations
+
+| Annotation | Meaning |
+| --- | --- |
+| `x-token-permission` | Required module and read or write grant. Account role restrictions also apply. |
+| `x-idempotency` | How the operation handles repeated requests. Different operations use different mechanisms. |
+| `x-retry-policy` | Whether to inspect state before retrying, and which values must stay unchanged. |
+
+These annotations describe operations. They are not HTTP request headers. Follow the operation schema for its actual parameters.
+
+Router approval uses a state transition on an existing change request. It does not accept a client-supplied publication `idempotencyKey`.
+
+<a id="api-contract-async" />
+## Follow asynchronous work after 202
+
+`202 Accepted` confirms acceptance of the operation. It does not prove completion or successful rollout.
+
+After starting a Guardrail test run, read its report through `GET /api/v1/test-runs/{runId}`. Use the returned run ID. After routing approval, inspect the publication revision and Router rollout status.
+
+<a id="api-contract-router-publish" />
+## Review and submit a Router change
+
+1. Read the Router and its draft revision.
+2. Save through `PUT /api/v1/routers/{id}/draft` with that `expectedDraftRevision`.
+3. Request `POST /api/v1/routers/{id}/publication-preview`. Review exact version references and Endpoint bindings.
+4. Submit through `POST /api/v1/routers/{id}/change-requests` with the reviewed revision, snapshot, Endpoint IDs, reason and optional ticket.
+5. A different user with Router write permission approves through `POST /api/v1/routers/{id}/change-requests/{changeId}/approve`.
+
+Submission alone does not publish. Approval publishes the submitted snapshot. Emergency application requires a reason and records the applying actor. See [routing approval](/document/operator/operator-routing#operator-routing-approval).
+
+If saving or submission times out, read the Router before retrying. Compare the draft contents and `pendingChangeRequest`. Do not silently adopt a newer revision.
+
+The same approver can repeat a completed approval. Inspect `publication.replayed` and the returned revision. Other operations can have different retry rules. Starting a test run, for example, does not guarantee idempotency.
+
+<a id="api-contract-resource-ids" />
+## Keep resource IDs distinct
+
+| ID | Lookup |
+| --- | --- |
+| `caseId` | `/api/v1/guardrails/{guardrailId}/test-cases/{caseId}` |
+| `runId` | `/api/v1/test-runs/{runId}` |
+| `changeId` | `/api/v1/routers/{id}/change-requests/{changeId}` |
+
+A Test Case ID is not a test run ID. Use the ID that the corresponding operation returns.
+
+[Full OpenAPI](/api/openapi.json)

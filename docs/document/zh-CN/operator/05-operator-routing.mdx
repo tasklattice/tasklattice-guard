@@ -1,0 +1,93 @@
+---
+id: "operator-routing"
+title: "配置路由与灰度发布"
+summary: "绑定 Endpoint，选择确切的 Guardrail Versions，审批路由变更，并验证灰度下发与回退。"
+outcome: "最终产出：特定的模型请求会命中已发布的 Guardrail Version。灰度比例和 Runner 下发状态都能核对。"
+order: 4
+---
+Endpoint 认证调用方，Router 选择执行检测的已 Release Guardrail Version。以下操作使用具备路由写入权限的 User 账户。
+
+<a id="operator-routing-setup" />
+## 配置 Endpoint 路由
+
+1. 按应用的信任边界创建独立 Endpoint，选择协议并签发运行时凭据。
+2. 将 Endpoint 绑定到目标 Router。每个 Endpoint 最多绑定一个 Router，一个 Router 可以服务多个 Endpoint。
+3. 添加带 Selector 的 Route。使用受支持的字段，例如已认证的 `endpoint.id`、`protocol` 或适配器提取的模型。
+4. 选择确切的已 Release Guardrail Version 作为 Target。单个 Target 设置为 100%。
+5. 检查 Route 顺序。第一条匹配的 Route 生效，最后保留无条件 fallback。
+6. 使用代表性的请求事实执行 **Test matching**，再进入变更审阅。
+
+可用的 Selector 字段取决于 Endpoint 协议。调用方传入的 Header 或 `jwt_claims` 不会自动成为可信身份。
+
+Target 不提供“使用最新版本”。发布新的 Guardrail Version 不会更新已有 Target。多个 Target 用于分流；要让一次调用执行多个 Policy，应将它们组合进同一个 Guardrail。
+
+<a id="operator-routing-approval" />
+## 审阅并应用路由变更
+
+Router 通过已审阅的变更单发布。常规流程需要另一位有权限的用户批准。
+
+| 操作 | 审阅内容 | 结果 |
+| --- | --- | --- |
+| 提交 | 确切版本、权重、绑定的 Endpoints、变更原因和可选单号 | 冻结已审阅快照。每个 Router 最多一张待审批变更单，此时流量不变。 |
+| 批准或驳回 | 与活动 revision 的差异 | 批准后发布新 revision，提交人不能批准自己的变更。 |
+| 撤回 | 待审批变更 | 提交人取消请求。 |
+| 紧急生效 | 跳过第二人审批的原因 | 应用变更，记录执行人与原因。 |
+| 回退 | 活动变更已批准的基线 revision，以及回退原因 | 使用该基线发布新 revision，无需再次审批。 |
+
+批准前，活动 revision、Endpoint 绑定或引用版本发生变化时，变更变为 **已失效**。请重新审阅并提交快照。Router 的**变更记录**保留完整记录。
+
+批准只会启动下发，不能证明每个 Runner 都已应用配置。
+
+[管理 Endpoints](/$projectId/integration/endpoints) · [管理 Routers](/$projectId/integration/routers)
+
+<a id="operator-canary-release" />
+## 在同一条 Route 中分配稳定版与候选版
+
+例如，先让少量客服模型调用试用更严格的候选方案：
+
+| Route 匹配条件 | Target | 权重 |
+| --- | --- | --- |
+| `model = gateway-model-alias` | 客服保护·稳定 v3 | 90% |
+| 同一条 Route | 客服保护·候选 v1 | 10% |
+
+权重在这条 Route 内合计 100%，不是整个 Router 的流量比例。每次逻辑调用只选择一个 Target。权重也不表示按用户固定分组，小样本不会保证精确比例。
+
+按以下步骤操作：
+
+1. 测试并 Release 两个确切的 Guardrail Versions，检查依赖和模型能力。
+2. 在同一条 Route 添加两个 Target，分别设置为 90% 和 10%。
+3. 检查更早的 Route 和 fallback，核对共享 Router 绑定的所有 Endpoints。
+4. 预览匹配，将版本、权重和绑定提交审批。
+5. 确认下发后，在 **Monitoring** 检查实际 Target 占比、分配量、Decision、错误和延迟。
+6. 在[运行日志](/$projectId/logs)检查候选版结果，并考虑统计延迟和样本波动。
+7. 通过逐次审批的变更扩大候选版比例。结果不符合预期时，回退当前活动变更。
+
+**Test matching** 只检查路由，不执行保护，也不能证明实际分流比例。
+
+Input 与 Output 共享协议的 Call ID 时，才会沿用同一个 Target。没有调用关联时，两次检测可能独立选择。Scan 请求彼此独立。已关联的在途调用在下发期间仍沿用原版本。
+
+<a id="operator-release-rollback" />
+## 验证下发与回退
+
+| 标识 | 回答的问题 |
+| --- | --- |
+| Guardrail Version | 使用哪份保护配置和测试？ |
+| Router revision | 发布了哪份路由配置？ |
+| 已应用 generation | 执行节点应用了哪一批配置？ |
+
+检查 Router 的下发状态和目标 generation，核对 Runner 确认与健康。Active 要求默认池的每个 Runner 都已收敛，且心跳有效。
+
+回退操作恢复活动变更已批准的基线。更早的 revision 需要先恢复为草稿，再提交新变更。回退创建新的 revision，不会修改历史。
+
+每个 Runner 应用新配置后，新调用才使用新路由快照。已关联的在途调用仍保留固定版本。
+
+[平台健康](/settings/health) · [Router 状态含义](/document/overview/term-router#router-rollout-states)
+
+<a id="operator-runtime" />
+## 下发后验证调用方行为
+
+调用方必须送检内容并执行每次 Decision。Input 被阻断时，停止调用模型。Output 被转换时，交付替换后的文本；被阻断时，不交付原始内容。
+
+Enforce、Monitor 和 Bypass 的在线行为不同。测试与显式 Playground 试验仍执行真实检测。结果与预期 Policy 动作不同时，请核对[运行模式](/document/overview/term-guardrail#state-guardrail-readiness)。
+
+[Endpoint 接入](/document/developer/endpoint-setup) · [查看运行日志](/$projectId/logs)

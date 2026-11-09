@@ -1,0 +1,156 @@
+- id: local-network-addresses/accept/ipv4/input
+  name: 'local-network-addresses: Detect IP Address (IPv4)'
+  description: Required acceptance case for Network Patterns.
+  phase: input
+  content: 'Acceptance sample: 250.250.250.250'
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/ipv4
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: local-network-addresses/accept/ipv4/output
+  name: 'local-network-addresses: Detect IP Address (IPv4)'
+  description: Required acceptance case for Network Patterns.
+  phase: output
+  content: 'Acceptance sample: 250.250.250.250'
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/ipv4
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: local-network-addresses/accept/ipv6/input
+  name: 'local-network-addresses: Detect IP Address (IPv6)'
+  description: Required acceptance case for Network Patterns.
+  phase: input
+  content: 'Acceptance sample: 0:0:0:0:0:0:0:0'
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/ipv6
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: local-network-addresses/accept/ipv6/output
+  name: 'local-network-addresses: Detect IP Address (IPv6)'
+  description: Required acceptance case for Network Patterns.
+  phase: output
+  content: 'Acceptance sample: 0:0:0:0:0:0:0:0'
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/ipv6
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: local-network-addresses/accept/url/input
+  name: 'local-network-addresses: Detect URL'
+  description: Required acceptance case for Network Patterns.
+  phase: input
+  content: The private endpoint is https://example.com/internal.
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/url
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: local-network-addresses/accept/url/output
+  name: 'local-network-addresses: Detect URL'
+  description: Required acceptance case for Network Patterns.
+  phase: output
+  content: The private endpoint is https://example.com/internal.
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/url
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: local-network-addresses/pattern-matching/accept/ipv4
+  name: 'local-network-addresses: Detect IP Address (IPv4)'
+  description: Required acceptance case for Network Patterns.
+  phase: input
+  content: 'Acceptance sample: 250.250.250.250'
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/ipv4
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: local-network-addresses/pattern-matching/accept/ipv6
+  name: 'local-network-addresses: Detect IP Address (IPv6)'
+  description: Required acceptance case for Network Patterns.
+  phase: input
+  content: 'Acceptance sample: 0:0:0:0:0:0:0:0'
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/ipv6
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: local-network-addresses/pattern-matching/accept/url
+  name: 'local-network-addresses: Detect URL'
+  description: Required acceptance case for Network Patterns.
+  phase: input
+  content: The private endpoint is https://example.com/internal.
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/url
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: local-network-addresses/pattern-matching/accept/ipv4/output
+  name: 'local-network-addresses: Detect IP Address (IPv4)'
+  description: Required acceptance case for Network Patterns.
+  phase: output
+  content: 'Acceptance sample: 250.250.250.250'
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/ipv4
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: local-network-addresses/pattern-matching/accept/ipv6/output
+  name: 'local-network-addresses: Detect IP Address (IPv6)'
+  description: Required acceptance case for Network Patterns.
+  phase: output
+  content: 'Acceptance sample: 0:0:0:0:0:0:0:0'
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/ipv6
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: local-network-addresses/pattern-matching/accept/url/output
+  name: 'local-network-addresses: Detect URL'
+  description: Required acceptance case for Network Patterns.
+  phase: output
+  content: The private endpoint is https://example.com/internal.
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/url
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule

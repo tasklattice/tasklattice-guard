@@ -1,13 +1,19 @@
+import type { VersionTestingEvidence } from "../../shared/testing-report-retention.js";
 import type { RouterDraft } from "../../shared/traffic-routing.js";
+import type { ValidationProgress } from "../../shared/validation-progress.js";
 import {
+  check,
   bigint,
   boolean,
+  customType,
   doublePrecision,
   index,
   integer,
   jsonb,
+  numeric,
   pgTable,
   primaryKey,
+  smallint,
   text,
   timestamp,
   uniqueIndex,
@@ -17,6 +23,7 @@ import { sql } from "drizzle-orm";
 import type { GuardrailDraftConfig } from "../domain/guardrail-plan.js";
 import type { ValidationCaseResult, ValidationMetrics } from "../domain/models.js";
 import type {
+  LayaRequestMode,
   ModelAssignments,
   ModelProfile,
   ModelProviderKind,
@@ -32,15 +39,66 @@ import type {
   RunnerStatus,
   ValidationRunState,
 } from "../../shared/lifecycle.js";
+import type { ArtifactContent } from "../domain/artifact-content.js";
+import type { GuardrailInspection } from "../domain/guardrail-inspection.js";
+import type { PolicyNode } from "../domain/policy-node.js";
+import type { FrozenTestCase } from "../domain/test-suite.js";
+import type { ValidationRuntimeFingerprint } from "../domain/models.js";
+import type { ArtifactRequirements } from "../domain/artifact-requirements.js";
+import type { EnvironmentCheck } from "../domain/environment-check.js";
+import type { PackageManifest, PackageSignature } from "../domain/guardrail-package.js";
 
 const createdAt = timestamp("created_at", { withTimezone: true }).notNull().defaultNow();
 const updatedAt = timestamp("updated_at", { withTimezone: true }).notNull().defaultNow();
+
+export const projectGroups = pgTable("project_group", {
+  id: text("id").primaryKey(),
+  name: text("name").notNull(),
+  isDefault: boolean("is_default").notNull().default(false),
+  createdAt,
+  updatedAt,
+}, table => [uniqueIndex("project_group_single_default_idx").on(table.isDefault).where(sql`${table.isDefault} = true`)]);
+
+export const projects = pgTable("project", {
+  id: text("id").primaryKey(),
+  name: text("name").notNull(),
+  externalDepartmentId: text("external_department_id"),
+  groupId: text("group_id").notNull().default("default").references(() => projectGroups.id),
+  createdAt,
+}, table => [index("project_group_idx").on(table.groupId, table.id), uniqueIndex("project_name_idx").on(table.name)]);
+
+export const policyResources = pgTable("policy_resource", {
+  projectId: text("project_id").notNull().references(() => projects.id),
+  id: text("id").primaryKey(),
+  definition: jsonb("definition").$type<import("../../shared/policy-definition.js").PolicyDefinition>().notNull(),
+  revision: integer("revision").notNull().default(1),
+  maintainer: text("maintainer").notNull(),
+  createdAt, updatedAt,
+});
+export const policyResourceVersions = pgTable("policy_resource_version", {
+  policyId: text("policy_id").notNull().references(() => policyResources.id),
+  version: text("version").notNull(),
+  revision: integer("revision").notNull(),
+  definition: jsonb("definition").$type<import("../../shared/policy-definition.js").PolicyDefinition>().notNull(),
+  view: jsonb("view").$type<import("../policy-catalog/catalog.js").PolicyDto>().notNull(),
+  digest: text("digest").notNull(), createdAt,
+}, t => [primaryKey({ columns: [t.policyId, t.version] }), uniqueIndex("policy_resource_published_revision_idx").on(t.policyId, t.revision)]);
+export const policyResourceValidations = pgTable("policy_resource_validation", {
+  id: text("id").primaryKey(), policyId: text("policy_id").notNull(),
+  projectId: text("project_id").references(() => projects.id),
+  version: text("version"),
+  snapshot: jsonb("snapshot").$type<import("../../shared/policy-version-test.js").PolicyVersionTestSnapshot>(),
+  parentId: text("parent_id"), revision: integer("revision").notNull(),
+  status: text("status").notNull(),
+  tests: jsonb("tests").$type<import("../../shared/policy-definition.js").DefinitionTest[]>().notNull(),
+  failureReason: text("failure_reason"), createdAt,
+}, t => [index("policy_resource_validation_parent_idx").on(t.parentId), index("policy_resource_validation_policy_idx").on(t.policyId, t.createdAt), index("policy_version_test_project_idx").on(t.projectId, t.policyId, t.version, t.createdAt.desc())]);
 
 // Better Auth owns these four models. Application code must not create,
 // validate, hash, or rotate human credentials itself.
 export const user = pgTable("auth_user", {
   id: text("id").primaryKey(),
-  name: text("name").notNull(),
+  username: text("username").unique(),
   email: text("email").notNull().unique(),
   emailVerified: boolean("email_verified").notNull().default(false),
   image: text("image"),
@@ -49,6 +107,8 @@ export const user = pgTable("auth_user", {
   banReason: text("ban_reason"),
   banExpires: timestamp("ban_expires", { withTimezone: true }),
   preferredLanguage: text("preferred_language").notNull().default("en"),
+  ssoProjectGrants: jsonb("sso_project_grants").$type<import("../sso.js").RelayProjectGrant[]>().notNull().default([]),
+  ssoVerifiedAt: timestamp("sso_verified_at", { withTimezone: true }),
   lastLoginAt: timestamp("last_login_at", { withTimezone: true }),
   createdAt,
   updatedAt,
@@ -57,6 +117,7 @@ export const user = pgTable("auth_user", {
 export const personalAccessTokens = pgTable("personal_access_token", {
   id: text("id").primaryKey(),
   userId: text("user_id").notNull().references(() => user.id, { onDelete: "cascade" }),
+  projectId: text("project_id").references(() => projects.id),
   name: text("name").notNull(),
   prefix: text("prefix").notNull(),
   tokenHash: text("token_hash").notNull().unique(),
@@ -75,9 +136,20 @@ export const session = pgTable("auth_session", {
   userAgent: text("user_agent"),
   impersonatedBy: text("impersonated_by"),
   userId: text("user_id").notNull().references(() => user.id, { onDelete: "cascade" }),
+  activeProjectId: text("active_project_id").references(() => projects.id),
   createdAt,
   updatedAt,
 }, (table) => [index("auth_session_user_idx").on(table.userId)]);
+
+// Projects own business resources. Human identities gain access through membership.
+export const projectMembers = pgTable("project_member", {
+  projectId: text("project_id").notNull().references(() => projects.id, { onDelete: "cascade" }),
+  userId: text("user_id").notNull().references(() => user.id, { onDelete: "cascade" }),
+  source: text("source").notNull().default("local"),
+  access: text("access").$type<"read" | "write">().notNull().default("write"),
+  roles: jsonb("roles").$type<string[]>().notNull().default([]),
+  createdAt,
+}, table => [primaryKey({ columns: [table.projectId, table.userId] }), index("project_member_user_idx").on(table.userId, table.projectId)]);
 
 export const account = pgTable("auth_account", {
   id: text("id").primaryKey(),
@@ -95,7 +167,7 @@ export const account = pgTable("auth_account", {
   createdAt,
   updatedAt,
 }, (table) => [
-  index("auth_account_user_idx").on(table.userId),
+  index("auth_account_user_idx").on(table.userId, table.providerId),
   uniqueIndex("auth_account_issuer_idx").on(table.issuer, table.accountId),
 ]);
 
@@ -111,13 +183,62 @@ export const verification = pgTable("auth_verification", {
 export const runnerPools = pgTable("runner_pool", {
   id: text("id").primaryKey(),
   name: text("name").notNull(),
+  projectId: text("project_id").references(() => projects.id),
+  groupId: text("group_id").notNull().default("default").references(() => projectGroups.id),
+  runtimeUrl: text("runtime_url"),
+  publicUrl: text("public_url"),
   isDefault: boolean("is_default").notNull().default(false),
   desiredReplicas: integer("desired_replicas").notNull().default(1),
   safeRpsPerRunner: doublePrecision("safe_rps_per_runner").notNull().default(1),
   maxConcurrencyPerRunner: integer("max_concurrency_per_runner").notNull().default(64),
   createdAt,
   updatedAt,
-}, (table) => [uniqueIndex("runner_pool_single_default_idx").on(table.isDefault).where(sql`${table.isDefault} = true`)]);
+}, (table) => [uniqueIndex("runner_pool_single_default_idx").on(table.isDefault).where(sql`${table.isDefault} = true`), index("runner_pool_group_idx").on(table.groupId, table.id), uniqueIndex("runner_pool_project_idx").on(table.projectId), check("runner_pool_project_required", sql`(${table.id}='default' and ${table.projectId} is null) or (${table.id}<>'default' and ${table.projectId} is not null)`)]);
+
+// Durable foundations only; these tables do not yet control live serving or moves.
+export const runnerPoolLeaseEpochs = pgTable("runner_pool_lease_epoch", {
+  poolId: text("pool_id").primaryKey().references(() => runnerPools.id),
+  epoch: bigint("epoch", { mode: "number" }).notNull().default(0),
+  draining: boolean("draining").notNull().default(false),
+  updatedAt,
+});
+
+export const runnerControlSessions = pgTable("runner_control_session", {
+  id: text("id").primaryKey(),
+  runnerId: text("runner_id").notNull(),
+  bootId: text("boot_id").notNull(),
+  poolId: text("pool_id").notNull().references(() => runnerPools.id),
+  connectedAt: timestamp("connected_at", { withTimezone: true }).notNull().defaultNow(),
+  disconnectedAt: timestamp("disconnected_at", { withTimezone: true }),
+  snapshotNonce: text("snapshot_nonce"),
+  snapshotGeneration: bigint("snapshot_generation", { mode: "number" }),
+  snapshotModelRevisionId: text("snapshot_model_revision_id"),
+  snapshotEpoch: bigint("snapshot_epoch", { mode: "number" }),
+  snapshotGroupId: text("snapshot_group_id"),
+  snapshotDispatchedAt: timestamp("snapshot_dispatched_at", { withTimezone: true }),
+  snapshotAcknowledgedAt: timestamp("snapshot_acknowledged_at", { withTimezone: true }),
+  snapshotAccepted: boolean("snapshot_accepted").notNull().default(false),
+}, table => [index("runner_control_session_runner_idx").on(table.runnerId, table.bootId)]);
+
+export const runnerServingGrants = pgTable("runner_serving_grant", {
+  poolId: text("pool_id").notNull().references(() => runnerPoolLeaseEpochs.poolId),
+  runnerId: text("runner_id").notNull(),
+  bootId: text("boot_id").notNull(),
+  nonce: text("nonce").notNull(),
+  epoch: bigint("epoch", { mode: "number" }).notNull(),
+  generation: bigint("generation", { mode: "number" }).notNull(),
+  durationMs: integer("duration_ms").notNull(),
+  uncertaintyMs: integer("uncertainty_ms").notNull(),
+  snapshotNonce: text("snapshot_nonce"),
+  modelRevisionId: text("model_revision_id"),
+  controlSessionId: text("control_session_id").references(() => runnerControlSessions.id),
+  issuedAt: timestamp("issued_at", { withTimezone: true }).notNull(),
+  conservativeExpiresAt: timestamp("conservative_expires_at", { withTimezone: true }).notNull(),
+}, table => [primaryKey({ columns: [table.poolId, table.runnerId, table.bootId, table.nonce] }),
+  index("runner_serving_grant_expiry_idx").on(table.poolId, table.epoch, table.conservativeExpiresAt)]);
+
+// Historical transition records remain read-only. Allocation guards consult
+// them so removing the unfinished move prototype cannot bypass an existing lock.
 
 export const controllerState = pgTable("controller_state", {
   id: text("id").primaryKey(),
@@ -145,14 +266,36 @@ export const modelProviders = pgTable("model_provider", {
   index("model_provider_status_idx").on(table.status),
 ]);
 
+export const modelValidationCredentialLeases = pgTable("model_validation_credential_lease", {
+  id: text("id").primaryKey(),
+  providerId: text("provider_id").notNull().references(() => modelProviders.id, { onDelete: "cascade" }),
+  credentialCiphertext: text("credential_ciphertext").notNull(),
+  poolId: text("pool_id"),
+  groupId: text("group_id"),
+  allocationEpoch: bigint("allocation_epoch", { mode: "number" }),
+  runnerId: text("runner_id"),
+  bootId: text("boot_id"),
+  controlSessionId: text("control_session_id"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().default(sql`clock_timestamp()`),
+  expiresAt: timestamp("expires_at", { withTimezone: true }).notNull().default(sql`clock_timestamp() + interval '95 seconds'`),
+}, table => [index("model_validation_credential_lease_expiry_idx").on(table.expiresAt)]);
+
 export const modelDefinitions = pgTable("model_definition", {
   id: text("id").primaryKey(),
+  projectId: text("project_id").references(() => projects.id),
   providerId: text("provider_id").notNull().references(() => modelProviders.id, { onDelete: "restrict" }),
   name: text("name").notNull(),
   model: text("model").notNull(),
   profile: text("profile").$type<ModelProfile>().notNull().default("generic-chat"),
+  // Laya System One transport detail detected by the model probe. NULL on legacy
+  // rows (and non-Laya rows) resolves to the broad "compatible" default.
+  layaRequestMode: text("laya_request_mode").$type<LayaRequestMode>(),
   timeoutSeconds: integer("timeout_seconds").notNull().default(20),
   maxTokens: integer("max_tokens").notNull().default(512),
+  maxConcurrency: integer("max_concurrency").notNull().default(2),
+  rateLimitAttempts: integer("rate_limit_attempts").notNull().default(3),
+  lowerThreshold: doublePrecision("lower_threshold").notNull().default(0.1),
+  upperThreshold: doublePrecision("upper_threshold").notNull().default(0.9),
   // Transport health is independent of scenario/capability validation below.
   connectionStatus: text("connection_status").$type<ModelResourceStatus>().notNull().default("pending"),
   connectionMessage: text("connection_message").notNull().default("Not checked."),
@@ -166,9 +309,11 @@ export const modelDefinitions = pgTable("model_definition", {
   createdAt,
   updatedAt,
 }, (table) => [
-  uniqueIndex("model_definition_provider_model_idx").on(table.providerId, table.model, table.profile),
+  uniqueIndex("model_definition_project_provider_model_idx").on(table.projectId, table.providerId, table.model, table.profile),
+  uniqueIndex("model_definition_platform_provider_model_idx").on(table.providerId, table.model, table.profile).where(sql`${table.projectId} is null`),
   index("model_definition_provider_idx").on(table.providerId),
   index("model_definition_status_idx").on(table.status),
+  index("model_definition_project_idx").on(table.projectId),
 ]);
 
 export const modelAssignmentValidations = pgTable("model_assignment_validation", {
@@ -184,6 +329,7 @@ export const modelAssignmentValidations = pgTable("model_assignment_validation",
 
 export const modelConfigurationRevisions = pgTable("model_configuration_revision", {
   id: text("id").primaryKey(),
+  projectId: text("project_id").references(() => projects.id),
   revision: integer("revision").notNull(),
   state: text("state").$type<ModelRevisionState>().notNull().default("draft"),
   generation: bigint("generation", { mode: "number" }),
@@ -196,21 +342,43 @@ export const modelConfigurationRevisions = pgTable("model_configuration_revision
   createdAt,
   updatedAt,
 }, (table) => [
-  uniqueIndex("model_configuration_revision_number_idx").on(table.revision),
+  uniqueIndex("model_configuration_revision_project_number_idx").on(table.projectId, table.revision),
+  uniqueIndex("model_configuration_revision_platform_number_idx").on(table.revision).where(sql`${table.projectId} is null`),
   index("model_configuration_revision_state_idx").on(table.state),
 ]);
 
+// One current policy per group. Replacements get a fresh immutable identity;
+// prior non-secret identities/digests remain in audit, not secret history rows.
+export const groupModelConfigurations = pgTable("project_group_model_configuration", {
+  groupId: text("group_id").primaryKey().references(() => projectGroups.id, { onDelete: "cascade" }),
+  id: text("id").notNull().unique(),
+  version: bigint("version", { mode: "number" }).notNull(),
+  mode: text("mode").$type<"platform" | "scoped" | "blocked">().notNull(),
+  sourceRevisionId: text("source_revision_id"),
+  sourceFingerprint: text("source_fingerprint"),
+  runtimePayload: jsonb("runtime_payload").$type<import("../model-config/domain.js").ActiveModelConfiguration>(),
+  credentialCiphertexts: jsonb("credential_ciphertexts").$type<Record<string, string>>().notNull().default({}),
+  snapshotDigest: text("snapshot_digest"),
+  generation: bigint("generation", { mode: "number" }).notNull(),
+  updatedBy: text("updated_by").notNull().references(() => user.id),
+  updatedAt,
+});
+
 export const policyRecords = pgTable("policy_record", {
   id: text("id").primaryKey(),
+  projectId: text("project_id").notNull().references(() => projects.id),
   name: text("name").notNull(),
   description: text("description").notNull().default(""),
   source: text("source").notNull().default("custom"),
+  // "imported": arrived with a Guardrail from sourceId; read only here.
+  origin: text("origin").$type<"local" | "imported">().notNull().default("local"),
+  sourceId: text("source_id"),
   owner: text("owner").notNull(),
   draft: jsonb("draft").$type<ProgrammablePolicyDraft>().notNull(),
   draftRevision: integer("draft_revision").notNull().default(1),
   createdAt,
   updatedAt,
-}, (table) => [index("policy_record_name_idx").on(table.name)]);
+}, (table) => [index("policy_record_name_idx").on(table.name), index("policy_record_project_idx").on(table.projectId)]);
 
 export const policyVersions = pgTable("policy_version", {
   policyId: text("policy_id").notNull().references(() => policyRecords.id, { onDelete: "cascade" }),
@@ -225,12 +393,24 @@ export const policyVersions = pgTable("policy_version", {
   uniqueIndex("policy_version_source_draft_idx").on(table.policyId, table.sourceDraftRevision),
 ]);
 
+/** Built-in Policy versions a package brought that the local catalog does not ship. */
+export const policyImportedVersions = pgTable("policy_imported_version", {
+  projectId: text("project_id").notNull().references(() => projects.id),
+  policyId: text("policy_id").notNull(),
+  version: text("version").notNull(),
+  digest: text("digest").notNull(),
+  definition: jsonb("definition").$type<Record<string, unknown>>().notNull(),
+  sourceId: text("source_id").notNull(),
+  packageId: text("package_id").references(() => guardrailPackages.id, { onDelete: "set null" }),
+  importedBy: text("imported_by").references(() => user.id),
+  importedAt: timestamp("imported_at", { withTimezone: true }).notNull().defaultNow(),
+}, (table) => [primaryKey({ columns: [table.policyId, table.version] })]);
+
 export const policyValidationRuns = pgTable("policy_validation_run", {
   id: text("id").primaryKey(),
   policyId: text("policy_id").notNull().references(() => policyRecords.id, { onDelete: "cascade" }),
   draftRevision: integer("draft_revision").notNull(),
   status: text("status").$type<ValidationRunState>().notNull().default("queued"),
-  results: jsonb("results").$type<PolicyValidationResult[]>().notNull().default([]),
   failureReason: text("failure_reason"),
   createdBy: text("created_by").notNull().references(() => user.id),
   createdAt,
@@ -238,9 +418,20 @@ export const policyValidationRuns = pgTable("policy_validation_run", {
 }, (table) => [index("policy_validation_run_policy_idx").on(table.policyId, table.createdAt)]);
 
 export const guardrails = pgTable("guardrail", {
+  creationKey: text("creation_key").unique(),
+  creationDigest: text("creation_digest"),
+  protectionMode: text("protection_mode").$type<import("../../shared/protection-mode.js").ProtectionMode>().notNull().default("enforce"),
+  protectionModeApplied: text("protection_mode_applied").$type<import("../../shared/protection-mode.js").ProtectionMode>().notNull().default("enforce"),
+  protectionModeGeneration: bigint("protection_mode_generation", { mode: "number" }).notNull().default(0),
+  protectionModeUpdatedAt: timestamp("protection_mode_updated_at", { withTimezone: true }),
+  protectionModeUpdatedBy: text("protection_mode_updated_by").references(() => user.id),
+  protectionModeReason: text("protection_mode_reason").notNull().default(""),
+  // Retained across restore to reject telemetry from the previous installation.
+  operationalResetAt: timestamp("operational_reset_at", { withTimezone: true }),
   copyOrigin: jsonb("copy_origin").$type<Record<string, unknown>>(),
   duplicateKey: text("duplicate_key").unique(),
   id: text("id").primaryKey(),
+  projectId: text("project_id").references(() => projects.id),
   name: text("name").notNull(),
   draftConfig: jsonb("draft_config").$type<GuardrailDraftConfig>().notNull(),
   draftRevision: integer("draft_revision").notNull().default(1),
@@ -249,32 +440,92 @@ export const guardrails = pgTable("guardrail", {
   runtimeProfile: text("runtime_profile").notNull().default("auto"),
   status: text("status").$type<GuardrailLifecycleState>().notNull().default("draft"),
   desiredGeneration: bigint("desired_generation", { mode: "number" }).notNull().default(0),
-  activeVersion: text("active_version"),
-  activeArtifactId: text("active_artifact_id"),
   deletedAt: timestamp("deleted_at", { withTimezone: true }),
   deletedBy: text("deleted_by").references(() => user.id),
   deleteReason: text("delete_reason"),
+  // Creation provenance; imported and local Guardrails share one draft lifecycle.
+  origin: text("origin").$type<"local" | "imported">().notNull().default("local"),
+  sourceId: text("source_id"),
   createdAt,
   updatedAt,
-}, (table) => [index("guardrail_status_idx").on(table.status)]);
+}, (table) => [index("guardrail_status_idx").on(table.status), index("guardrail_project_idx").on(table.projectId)]);
+
+/** Idempotency ledger for the platform and per-Project Default Guardrails. */
+export const defaultGuardrailProvisioning = pgTable("default_guardrail_provisioning", {
+  scopeKey: text("scope_key").primaryKey(),
+  guardrailId: text("guardrail_id").notNull(),
+  profileId: text("profile_id").notNull(),
+  profileVersion: text("profile_version").notNull(),
+  createdAt,
+});
 
 export const guardrailVersions = pgTable("guardrail_version", {
+  publication: jsonb("publication").$type<import("../../shared/guardrail-publication.js").GuardrailPublication>(),
   sourceSnapshot: jsonb("source_snapshot").$type<{ draftConfig: GuardrailDraftConfig; runtimeProfile: string; loggingLevel: string; excludedTestCaseIds: string[]; testCases?: Array<typeof testCases.$inferInsert> }>(),
   guardrailId: text("guardrail_id").notNull().references(() => guardrails.id),
   version: text("version").notNull(),
   generation: bigint("generation", { mode: "number" }).notNull(),
   sourceDraftRevision: integer("source_draft_revision").notNull().default(1),
-  status: text("status").$type<GuardrailVersionState>().notNull().default("compiling"),
+  status: text("status").$type<GuardrailVersionState>().notNull(),
   runtimeProfile: text("runtime_profile").notNull(),
   plan: jsonb("plan").$type<Record<string, unknown>>().notNull(),
   artifactId: text("artifact_id"),
-  failureReason: text("failure_reason"),
+  // Optional source test report; publication never requires a passing result.
+  validationRunId: text("validation_run_id"),
+  platformRelease: jsonb("platform_release").$type<import("../../shared/platform-release.js").PlatformRelease>(),
+  testingEvidence: jsonb("testing_evidence").$type<VersionTestingEvidence>(),
+  // Previous audit provenance, never publication eligibility.
+  sourceValidationRunId: text("source_validation_run_id"),
+  testWaiver: jsonb("test_waiver").$type<import("../../shared/default-release.js").DefaultTestWaiver>(),
+  releasedAt: timestamp("released_at", { withTimezone: true }),
+  releasedBy: text("released_by").references(() => user.id),
+  inspection: jsonb("inspection").$type<GuardrailInspection>(),
+  // The Policy versions this version was built from, as package nodes.
+  policies: jsonb("policies").$type<PolicyNode[]>(),
+  // Static definition, with the plan: the Test Cases that define this version's expected behaviour.
+  testSuite: jsonb("test_suite").$type<FrozenTestCase[]>(),
+  origin: text("origin").$type<"local" | "imported">().notNull().default("local"),
+  // Latest Runner load check in this environment; informational only.
+  environmentCheck: jsonb("environment_check").$type<EnvironmentCheck>(),
   createdBy: text("created_by").references(() => user.id),
   createdAt,
 }, (table) => [
   primaryKey({ columns: [table.guardrailId, table.version] }),
   uniqueIndex("guardrail_version_generation_idx").on(table.generation),
 ]);
+
+const bytea = customType<{ data: Buffer; driverData: Buffer }>({ dataType: () => "bytea" });
+
+/** Uploaded release packages, kept verbatim for audit and re-verification. */
+export const guardrailPackages = pgTable("guardrail_package", {
+  projectId: text("project_id").notNull().references(() => projects.id),
+  // SHA-256 of the owning project, a separator, and the exact uploaded bytes.
+  id: text("id").primaryKey(),
+  content: bytea("content").notNull(),
+  sizeBytes: integer("size_bytes").notNull(),
+  sourceId: text("source_id").notNull(),
+  keyId: text("key_id"),
+  guardrailId: text("guardrail_id").notNull(),
+  manifest: jsonb("manifest").$type<PackageManifest>().notNull(),
+  uploadedBy: text("uploaded_by").references(() => user.id),
+  uploadedAt: timestamp("uploaded_at", { withTimezone: true }).notNull().defaultNow(),
+  lastImportedAt: timestamp("last_imported_at", { withTimezone: true }),
+});
+
+/** Where an imported version came from and the evidence it arrived with. */
+export const guardrailVersionProvenance = pgTable("guardrail_version_provenance", {
+  guardrailId: text("guardrail_id").notNull(),
+  version: text("version").notNull(),
+  sourceId: text("source_id").notNull(),
+  sourceKeyId: text("source_key_id"),
+  contentDigest: text("content_digest").notNull(),
+  fileDigests: jsonb("file_digests").$type<Record<string, string>>().notNull(),
+  requirements: jsonb("requirements").$type<ArtifactRequirements>().notNull(),
+  sourceSignature: jsonb("source_signature").$type<PackageSignature>(),
+  packageId: text("package_id").notNull().references(() => guardrailPackages.id),
+  importedBy: text("imported_by").references(() => user.id),
+  importedAt: timestamp("imported_at", { withTimezone: true }).notNull().defaultNow(),
+}, (table) => [primaryKey({ columns: [table.guardrailId, table.version] })]);
 
 export const testCases = pgTable("guardrail_test_case", {
   id: text("id").notNull(),
@@ -304,12 +555,18 @@ export const testCases = pgTable("guardrail_test_case", {
   index("guardrail_test_case_guardrail_idx").on(table.guardrailId),
 ]);
 
+export const validationSnapshots = pgTable("guardrail_validation_snapshot", {
+  digest: text("digest").primaryKey(), payload: jsonb("payload").$type<Record<string, unknown>>().notNull(),
+});
 export const validationRuns = pgTable("guardrail_validation_run", {
+  testModelRules: boolean("test_model_rules").notNull().default(true),
+  testScope: jsonb("test_scope").$type<import("../../shared/validation-scope.js").ValidationTestScope>(),
   id: text("id").primaryKey(),
   guardrailId: text("guardrail_id").notNull().references(() => guardrails.id),
   guardrailVersion: text("guardrail_version").notNull(),
   sourceDraftRevision: integer("source_draft_revision").notNull(),
   status: text("status").$type<ValidationRunState>().notNull().default("queued"),
+  progress: jsonb("progress").$type<ValidationProgress>(),
   metrics: jsonb("metrics").$type<ValidationMetrics>().notNull().default({
     total: 0,
     passed: 0,
@@ -319,14 +576,59 @@ export const validationRuns = pgTable("guardrail_validation_run", {
     escalationRate: 0,
     p95LatencyMs: 0,
   }),
-  results: jsonb("results").$type<ValidationCaseResult[]>().notNull().default([]),
+  snapshotDigest: text("snapshot_digest").references(() => validationSnapshots.digest),
   excludedCaseIds: jsonb("excluded_case_ids").$type<string[]>().notNull().default([]),
   failureReason: text("failure_reason"),
-  // Null identifies the audited system-baseline validation, not a human user.
+  // The exact content the cases ran against; publication reuses it unchanged.
+  candidateDigest: text("candidate_digest"),
+  // The Policy versions the candidate was built from; publication copies them.
+  // "draft": a draft compiled into a candidate. "version": a published or
+  // imported version's signed Artifact, tested as it is in this environment.
+  subject: text("subject").$type<"draft" | "version">().notNull().default("draft"),
+  // The exact cases this run executed, frozen; publication copies them to the version.
+  testSuiteDigest: text("test_suite_digest"),
+  runtimeFingerprint: jsonb("runtime_fingerprint").$type<ValidationRuntimeFingerprint>(),
+  // Null preserves historical automated validation runs without a human actor.
   createdBy: text("created_by").references(() => user.id),
   createdAt,
   completedAt: timestamp("completed_at", { withTimezone: true }),
-}, (table) => [index("guardrail_validation_run_guardrail_idx").on(table.guardrailId, table.createdAt)]);
+}, (table) => [
+  index("guardrail_validation_retention_idx").on(table.guardrailId, table.status, sql`(coalesce(${table.completedAt}, ${table.createdAt})) DESC`, table.id.desc()),
+  index("guardrail_validation_run_guardrail_idx").on(table.guardrailId, table.createdAt),
+]);
+
+export const validationReports = pgTable("validation_report", {
+  id: text("id").primaryKey(),
+  guardrailRunId: text("guardrail_run_id").unique().references(() => validationRuns.id, { onDelete: "cascade" }),
+  policyRunId: text("policy_run_id").unique().references(() => policyValidationRuns.id, { onDelete: "cascade" }),
+  policyJobId: text("policy_job_id").unique().references(() => policyResourceValidations.id, { onDelete: "cascade" }),
+});
+export const validationReportDetails = pgTable("validation_report_detail", {
+  id: text("id").primaryKey(), ownerId: text("owner_id").notNull().references(() => validationReports.id, { onDelete: "cascade" }),
+  body: jsonb("body").$type<ValidationCaseResult>().notNull(), bytes: integer("bytes").notNull(),
+}, t => [index("validation_report_detail_owner_idx").on(t.ownerId)]);
+
+export const validationCaseResults = pgTable("validation_report_case", {
+  runId: text("run_id").notNull().references(() => validationReports.id, { onDelete: "cascade" }),
+  ordinal: integer("ordinal").notNull(), caseId: text("case_id").notNull(),
+  status: text("status").notNull(), priority: integer("priority").notNull(),
+  summary: jsonb("summary").$type<Record<string, unknown>>().notNull(),
+  assessment: jsonb("assessment").$type<Record<string, unknown>>().notNull().default({}), detailBytes: integer("detail_bytes").notNull(),
+  detailId: text("detail_id").notNull().references(() => validationReportDetails.id, { onDelete: "cascade" }),
+}, table => [primaryKey({ columns: [table.runId, table.ordinal] }), uniqueIndex("guardrail_validation_case_identity_idx").on(table.runId, table.caseId),
+  index("guardrail_validation_case_page_idx").on(table.runId, table.priority, table.ordinal), index("guardrail_validation_case_status_idx").on(table.runId, table.status, table.priority, table.ordinal)]);
+
+export const validationUploads = pgTable("validation_report_upload", {
+  runId: text("run_id").primaryKey().references(() => validationReports.id, { onDelete: "cascade" }),
+  runnerBootId: text("runner_boot_id").notNull(), retiredBootIds: text("retired_boot_ids").array().notNull().default([]),
+  uploadId: text("upload_id").notNull(), manifestDigest: text("manifest_digest").notNull(),
+  chunks: integer("chunks").notNull(), cases: integer("cases").notNull(), createdAt,
+});
+export const validationChunks = pgTable("validation_report_chunk", {
+  runId: text("run_id").notNull().references(() => validationUploads.runId, { onDelete: "cascade" }),
+  sequence: integer("sequence").notNull(), digest: text("digest").notNull(), rawBytes: integer("raw_bytes").notNull(),
+  caseOffset: integer("case_offset").notNull(), caseCount: integer("case_count").notNull(),
+}, table => [primaryKey({ columns: [table.runId, table.sequence] })]);
 
 export const artifacts = pgTable("guardrail_artifact", {
   id: text("id").primaryKey(),
@@ -344,6 +646,7 @@ export const artifacts = pgTable("guardrail_artifact", {
   dependencyManifest: jsonb("dependency_manifest").$type<unknown[]>().notNull().default([]),
   checksum: text("checksum").notNull(),
   signature: text("signature").notNull(),
+  contentDigestVersion: smallint("content_digest_version").notNull().default(1),
   createdAt,
 }, (table) => [
   uniqueIndex("guardrail_artifact_checksum_idx").on(table.checksum),
@@ -351,12 +654,12 @@ export const artifacts = pgTable("guardrail_artifact", {
 ]);
 
 export const trafficRouters = pgTable("traffic_router", {
-  id: text("id").primaryKey(), name: text("name").notNull(), description: text("description").notNull().default(""),
+  id: text("id").primaryKey(), projectId: text("project_id").notNull().references(() => projects.id), name: text("name").notNull(), description: text("description").notNull().default(""),
   draftRevision: integer("draft_revision").notNull().default(1), draft: jsonb("draft").$type<RouterDraft>().notNull(),
   deletedAt: timestamp("deleted_at", { withTimezone: true }), rolloutError: text("rollout_error"),
   activeRevision: integer("active_revision"), activeDraftRevision: integer("active_draft_revision"),
   activeSnapshot: jsonb("active_snapshot").$type<RouterDraft>(), desiredGeneration: bigint("desired_generation", { mode: "number" }).notNull().default(0), createdAt, updatedAt,
-});
+}, (table) => [index("traffic_router_project_idx").on(table.projectId)]);
 /** Metadata observed at publication, not the binding history of individual requests.
  * Missing references on inactive targets have no metadata entry; their IDs remain in snapshot.
  */
@@ -364,7 +667,26 @@ export type RouterRevisionContext = {
   endpoints: Array<{ id: string; name: string; adapter: string }>;
   guardrails: Array<{ id: string; name: string; version: string }>;
 };
+export type RouterChangeRequestKind = "publish" | "revert";
+export type RouterChangeRequestStatus = "pending" | "applied" | "rejected" | "withdrawn" | "superseded";
+/** A frozen Router publication awaiting, or recording, an administrator decision. */
+export const trafficRouterChangeRequests = pgTable("traffic_router_change_request", {
+  id: text("id").primaryKey(), routerId: text("router_id").notNull().references(() => trafficRouters.id),
+  kind: text("kind").$type<RouterChangeRequestKind>().notNull(), status: text("status").$type<RouterChangeRequestStatus>().notNull(),
+  sourceDraftRevision: integer("source_draft_revision"), baseRevision: integer("base_revision"),
+  snapshot: jsonb("snapshot").$type<RouterDraft>().notNull(), endpointIds: jsonb("endpoint_ids").$type<string[]>().notNull(),
+  context: jsonb("context").$type<RouterRevisionContext>(),
+  ticket: text("ticket").notNull().default(""), reason: text("reason").notNull(),
+  submittedBy: text("submitted_by").notNull().references(() => user.id), submittedAt: timestamp("submitted_at", { withTimezone: true }).notNull().defaultNow(),
+  decidedBy: text("decided_by").references(() => user.id), decidedAt: timestamp("decided_at", { withTimezone: true }), decisionNote: text("decision_note"),
+  emergencyReason: text("emergency_reason"), emergencyContact: text("emergency_contact"),
+  appliedRevision: integer("applied_revision"), revertsChangeRequestId: text("reverts_change_request_id"), updatedAt,
+}, t => [
+  uniqueIndex("traffic_router_change_request_pending_idx").on(t.routerId).where(sql`${t.status} = 'pending'`),
+  index("traffic_router_change_request_router_idx").on(t.routerId, t.submittedAt),
+]);
 export const trafficRouterRevisions = pgTable("traffic_router_revision", {
+  changeRequestId: text("change_request_id").references(() => trafficRouterChangeRequests.id),
   context: jsonb("context").$type<RouterRevisionContext>(),
   routerId: text("router_id").notNull().references(() => trafficRouters.id), revision: integer("revision").notNull(),
   sourceDraftRevision: integer("source_draft_revision").notNull(), snapshot: jsonb("snapshot").$type<RouterDraft>().notNull(),
@@ -372,19 +694,29 @@ export const trafficRouterRevisions = pgTable("traffic_router_revision", {
   idempotencyKey: text("idempotency_key").notNull(), requestDraftRevision: integer("request_draft_revision").notNull(), rollbackRevision: integer("rollback_revision"), createdBy: text("created_by").notNull().references(() => user.id), createdAt,
 }, t => [primaryKey({ columns: [t.routerId, t.revision] }), uniqueIndex("traffic_router_revision_idempotency_idx").on(t.routerId, t.idempotencyKey)]);
 export const routeAssignments = pgTable("route_assignment", {
+  projectId: text("project_id").references(() => projects.id),
+  allocationContextId: text("allocation_context_id"),
   callId: text("call_id").notNull(), assignmentStatus: text("assignment_status").notNull(), failureReason: text("failure_reason"),
   decisionId: text("decision_id").primaryKey(), routerId: text("router_id").notNull(), routerRevision: integer("router_revision").notNull(),
   routeId: text("route_id").notNull(), targetId: text("target_id").notNull(), guardrailId: text("guardrail_id").notNull(), guardrailVersion: text("guardrail_version").notNull(),
   endpointId: text("endpoint_id").notNull(), occurredAt: timestamp("occurred_at", { withTimezone: true }).notNull(),
   completionInferred: boolean("completion_inferred").notNull().default(false),
   completedAt: timestamp("completed_at", { withTimezone: true }), outcome: text("outcome"), durationMs: integer("duration_ms"),
-}, t => [index("route_assignment_router_time_idx").on(t.routerId, t.occurredAt)]);
+}, t => [
+  index("route_assignment_router_time_idx").on(t.routerId, t.occurredAt),
+  index("route_assignment_guardrail_idx").on(t.guardrailId),
+  index("route_assignment_allocation_context_idx").on(t.allocationContextId),
+  index("route_assignment_project_router_time_idx").on(t.projectId, t.routerId, t.occurredAt),
+]);
 
 export const endpoints = pgTable("endpoint", {
   trafficRouterId: text("traffic_router_id").references(() => trafficRouters.id),
   id: text("id").primaryKey(),
+  projectId: text("project_id").notNull().references(() => projects.id),
   name: text("name").notNull(),
   adapter: text("adapter").notNull(),
+  credentialRequired: boolean("credential_required").notNull().default(true),
+  scanFlagOnlyDefault: boolean("scan_flag_only_default").notNull().default(true),
   status: text("status").$type<EndpointLifecycleState>().notNull().default("active"),
   verification: jsonb("verification").$type<Record<string, unknown>>().notNull().default({}),
   deletedAt: timestamp("deleted_at", { withTimezone: true }),
@@ -392,30 +724,7 @@ export const endpoints = pgTable("endpoint", {
   deleteReason: text("delete_reason"),
   createdAt,
   updatedAt,
-}, (table) => [index("endpoint_status_idx").on(table.status)]);
-
-export const routers = pgTable("guardrail_router", {
-  id: text("id").primaryKey(),
-  name: text("name").notNull(),
-  guardrailId: text("guardrail_id").notNull().references(() => guardrails.id),
-  endpointId: text("endpoint_id").references(() => endpoints.id),
-  poolId: text("pool_id").notNull().references(() => runnerPools.id),
-  guardrailVersion: text("guardrail_version"),
-  routeOrder: integer("route_order").notNull().default(0),
-  enabled: boolean("enabled").notNull().default(true),
-  trafficScope: jsonb("traffic_scope").$type<Record<string, unknown>>().notNull().default({}),
-  deletedAt: timestamp("deleted_at", { withTimezone: true }),
-  deletedBy: text("deleted_by").references(() => user.id),
-  deleteReason: text("delete_reason"),
-  createdAt,
-  updatedAt,
-}, (table) => [
-  index("router_guardrail_idx").on(table.guardrailId),
-  index("router_endpoint_idx").on(table.endpointId),
-  uniqueIndex("router_endpoint_route_order_idx").on(table.endpointId, table.routeOrder)
-    .where(sql`${table.deletedAt} is null`),
-  index("router_pool_idx").on(table.poolId),
-]);
+}, (table) => [index("endpoint_status_idx").on(table.status), index("endpoint_project_idx").on(table.projectId)]);
 
 export type RunnerLoad = {
   inflight: number;
@@ -433,6 +742,10 @@ export type RunnerLoad = {
 };
 
 export const runnerInstances = pgTable("runner_instance", {
+  controlSessionId: text("control_session_id").references(() => runnerControlSessions.id),
+  protectionGeneration: bigint("protection_generation", { mode: "number" }).notNull().default(0),
+  protectionRejectedGeneration: bigint("protection_rejected_generation", { mode: "number" }).notNull().default(0),
+  protectionError: text("protection_error"),
   runnerId: text("runner_id").primaryKey(),
   bootId: text("boot_id").notNull(),
   poolId: text("pool_id").notNull().references(() => runnerPools.id),
@@ -450,10 +763,62 @@ export const runnerInstances = pgTable("runner_instance", {
   lastHeartbeatAt: timestamp("last_heartbeat_at", { withTimezone: true }).notNull().defaultNow(),
   disconnectedAt: timestamp("disconnected_at", { withTimezone: true }),
   updatedAt,
-}, (table) => [index("runner_instance_pool_idx").on(table.poolId)]);
+}, (table) => [index("runner_instance_pool_idx").on(table.poolId, table.runnerId)]);
+
+export const playgroundInvocations = pgTable("playground_invocation", {
+  callId: text("call_id").primaryKey(),
+  projectId: text("project_id").notNull().references(() => projects.id),
+  guardrailId: text("guardrail_id").notNull(),
+  guardrailVersion: text("guardrail_version").notNull(),
+  // Immutable snapshot of the allocation selected for dispatch. NULL for
+  // mappings created before this provenance was recorded.
+  poolId: text("pool_id"),
+  groupId: text("group_id"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+}, table => [index("playground_invocation_expiry_idx").on(table.expiresAt)]);
+
+// Immutable historical authorization; deliberately no cascading resource FKs.
+export const endpointTelemetryContexts = pgTable("endpoint_telemetry_context", {
+  id: text("id").primaryKey(),
+  snapshotKey: text("snapshot_key").notNull().unique(),
+  projectId: text("project_id").notNull(),
+  groupId: text("group_id").notNull(),
+  poolId: text("pool_id").notNull(),
+  allocationEpoch: bigint("allocation_epoch", { mode: "number" }).notNull(),
+  generation: bigint("generation", { mode: "number" }).notNull(),
+  endpointId: text("endpoint_id").notNull(),
+  adapter: text("adapter").notNull(),
+  verificationDigest: text("verification_digest").notNull(),
+  endpointSnapshotDigest: text("endpoint_snapshot_digest").notNull(),
+  routerId: text("router_id"),
+  routerRevision: bigint("router_revision", { mode: "number" }),
+  routerSnapshotDigest: text("router_snapshot_digest"),
+  targets: jsonb("targets").$type<Array<{ routeId: string; targetId: string; guardrailId: string; guardrailVersion: string }>>().notNull().default([]),
+  payloadBytes: bigint("payload_bytes", { mode: "number" }).notNull().generatedAlwaysAs(sql`128::bigint
+    + octet_length(id) + octet_length(snapshot_key) + octet_length(project_id) + octet_length(group_id)
+    + octet_length(pool_id) + octet_length(endpoint_id) + octet_length(adapter) + octet_length(verification_digest)
+    + octet_length(endpoint_snapshot_digest) + octet_length(coalesce(router_id, ''))
+    + octet_length(coalesce(router_snapshot_digest, '')) + octet_length(targets::text)`),
+  issuedAt: timestamp("issued_at", { withTimezone: true }).notNull().defaultNow(),
+  retiredAt: timestamp("retired_at", { withTimezone: true }),
+}, table => [index("endpoint_telemetry_context_pool_idx").on(table.poolId, table.retiredAt),
+  uniqueIndex("endpoint_telemetry_context_active_endpoint_idx").on(table.poolId, table.endpointId).where(sql`${table.retiredAt} is null`),
+  index("endpoint_telemetry_context_retention_idx").on(table.retiredAt, table.id).where(sql`${table.retiredAt} is not null`)]);
+
+// Persist the bounded retention sweep independently of retained context rows.
+export const endpointTelemetryContextGcCursor = pgTable("endpoint_telemetry_context_gc_cursor", {
+  id: text("id").primaryKey(),
+  lastRetiredAt: timestamp("last_retired_at", { withTimezone: true }),
+  lastContextId: text("last_context_id"),
+}, table => [
+  check("endpoint_telemetry_context_gc_cursor_singleton", sql`${table.id} = 'singleton'`),
+  check("endpoint_telemetry_context_gc_cursor_position", sql`(${table.lastRetiredAt} is null) = (${table.lastContextId} is null)`),
+]);
 
 export const runtimeEvents = pgTable("runtime_event", {
   id: text("id").primaryKey(),
+  projectId: text("project_id").references(() => projects.id),
   occurredAt: timestamp("occurred_at", { withTimezone: true }).notNull(),
   receivedAt: timestamp("received_at", { withTimezone: true }).notNull().defaultNow(),
   requestId: text("request_id").notNull(),
@@ -462,13 +827,16 @@ export const runtimeEvents = pgTable("runtime_event", {
   guardrailVersion: text("guardrail_version"),
   endpointId: text("endpoint_id"),
   routerId: text("router_id"),
+  allocationContextId: text("allocation_context_id"),
   direction: text("direction").notNull(),
   decision: text("decision").notNull(),
   durationMs: integer("duration_ms").notNull(),
   metadata: jsonb("metadata").$type<Record<string, unknown>>().notNull().default({}),
 }, (table) => [
-  index("runtime_event_guardrail_time_idx").on(table.guardrailId, table.occurredAt),
+  index("runtime_event_guardrail_time_id_idx").on(table.guardrailId, table.occurredAt, table.id),
+  index("runtime_event_project_time_idx").on(table.projectId, table.occurredAt),
   index("runtime_event_endpoint_time_idx").on(table.endpointId, table.occurredAt),
+  index("runtime_event_allocation_context_idx").on(table.allocationContextId),
   index("runtime_event_router_time_idx").on(table.routerId, table.occurredAt, table.id),
   index("runtime_event_time_id_idx").on(table.occurredAt, table.id),
   index("runtime_event_request_time_idx").on(table.requestId, table.occurredAt, table.id),
@@ -484,15 +852,61 @@ export const telemetryWatermarks = pgTable("telemetry_watermark", {
   updatedAt,
 });
 
+// Operational cost records intentionally live outside Guardrail definitions/packages.
+export const modelPriceRevisions = pgTable("model_price_revision", {
+  id: text("id").primaryKey(),
+  key: text("key").notNull(),
+  source: text("source").$type<"litellm" | "manual" | "automatic">().notNull(),
+  catalogKey: text("catalog_key"),
+  rates: jsonb("rates").$type<import("../../shared/model-pricing.js").ModelRates>(),
+  effectiveAt: timestamp("effective_at", { withTimezone: true }).notNull().defaultNow(),
+}, table => [index("model_price_revision_lookup_idx").on(table.key, table.effectiveAt.desc())]);
+
+export const modelPriceSync = pgTable("model_price_sync", {
+  id: text("id").primaryKey(),
+  lastSuccessAt: timestamp("last_success_at", { withTimezone: true }),
+  catalogVersion: text("catalog_version"),
+  error: text("error"),
+  entries: integer("entries").notNull().default(0),
+  meteringSince: timestamp("metering_since", { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const modelUsageCosts = pgTable("model_usage_cost", {
+  projectId: text("project_id").references(() => projects.id),
+  id: text("id").primaryKey(),
+  eventId: text("event_id").notNull(),
+  allocationContextId: text("allocation_context_id"),
+  guardrailId: text("guardrail_id").notNull(),
+  guardrailVersion: text("guardrail_version"),
+  modelId: text("model_id"),
+  model: text("model").notNull(),
+  provider: text("provider").notNull(),
+  source: text("source").$type<"runtime" | "testing">().notNull(),
+  occurredAt: timestamp("occurred_at", { withTimezone: true }).notNull(),
+  calls: integer("calls").notNull().default(1),
+  inputTokens: bigint("input_tokens", { mode: "number" }),
+  outputTokens: bigint("output_tokens", { mode: "number" }),
+  cachedInputTokens: bigint("cached_input_tokens", { mode: "number" }),
+  priceId: text("price_id"),
+  currency: text("currency"),
+  amount: numeric("amount", { precision: 30, scale: 12 }),
+  reason: text("reason").$type<import("../../shared/model-pricing.js").CostReason>().notNull(),
+}, table => [index("model_usage_cost_guardrail_time_idx").on(table.guardrailId, table.occurredAt), index("model_usage_cost_event_idx").on(table.eventId), index("model_usage_cost_allocation_context_idx").on(table.allocationContextId)]);
+
 export const auditEvents = pgTable("audit_event", {
   id: text("id").primaryKey(),
+  projectId: text("project_id").references(() => projects.id),
   kind: text("kind").notNull(),
   actorId: text("actor_id").references(() => user.id),
   resourceType: text("resource_type").notNull(),
   resourceId: text("resource_id").notNull(),
   detail: jsonb("detail").$type<Record<string, unknown>>().notNull().default({}),
   occurredAt: timestamp("occurred_at", { withTimezone: true }).notNull().defaultNow(),
-}, (table) => [index("audit_resource_idx").on(table.resourceType, table.resourceId)]);
+}, (table) => [
+  index("audit_resource_idx").on(table.resourceType, table.resourceId),
+  index("audit_time_id_idx").on(table.occurredAt.desc(), table.id.desc()),
+  index("audit_project_time_idx").on(table.projectId, table.occurredAt),
+]);
 
 export const outboxEvents = pgTable("controller_outbox", {
   id: text("id").primaryKey(),
@@ -506,6 +920,8 @@ export const outboxEvents = pgTable("controller_outbox", {
 }, (table) => [index("controller_outbox_pending_idx").on(table.processedAt, table.availableAt)]);
 
 export const schema = {
+  projectGroups,
+  projects,
   user,
   session,
   account,
@@ -516,15 +932,27 @@ export const schema = {
   modelConfigurationRevisions,
   runnerPools,
   guardrails,
+  defaultGuardrailProvisioning,
   guardrailVersions,
   testCases,
   validationRuns,
   artifacts,
   endpoints,
-  routers,
   runnerInstances,
   runtimeEvents,
   telemetryWatermarks,
   auditEvents,
   outboxEvents,
 };
+
+export const guardrailProfiles = pgTable("guardrail_profile", {
+  id: text("id").primaryKey(),
+  category: text("category").notNull(),
+  categoryName: text("category_name").notNull(),
+  isDefault: boolean("is_default").notNull().default(false),
+  enabled: boolean("enabled").notNull().default(true),
+  sortOrder: integer("sort_order").notNull().default(0),
+  definition: jsonb("definition").$type<Omit<import("../../shared/protection-map.js").ProtectionPreset, "id">>().notNull(),
+  createdAt,
+  updatedAt,
+}, table => [uniqueIndex("guardrail_profile_category_default_idx").on(table.category).where(sql`${table.isDefault} AND ${table.enabled}`)]);

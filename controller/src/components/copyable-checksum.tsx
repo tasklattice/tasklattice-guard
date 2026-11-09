@@ -1,7 +1,7 @@
 import type { KeyboardEvent } from "react";
 import { Copy } from "lucide-react";
 import { useTranslation } from "react-i18next";
-import { toast } from "sonner";
+import { toast } from "@/components/ui/notifications";
 
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 

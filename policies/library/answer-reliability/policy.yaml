@@ -1,0 +1,30 @@
+schema_version: 1
+kind: Policy
+metadata:
+  id: answer-reliability
+  name: Answer Reliability
+  description: 'Target taxonomy Policy: Answer Reliability.'
+  source: built_in
+  version: 1.0.0
+  tags:
+  - namespace: protection
+    value: answer_reliability
+    label: Answer Reliability
+  - namespace: collection
+    value: policy-library
+    label: Policy Library
+  - namespace: framework
+    value: owasp-llm-2025
+    label: OWASP LLM 2025
+    source: declared
+  safety_level: balanced
+  output_delivery: full_buffered
+parameters: []
+rules: []
+rule_refs:
+- id: model/automated-reasoning
+  version: 1.0.0
+- id: model/contextual-grounding
+  version: 1.0.0
+tests:
+- tests/acceptance.yaml

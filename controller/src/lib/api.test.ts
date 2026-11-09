@@ -1,9 +1,33 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { analyzeComplianceDocuments, analyzeGuardrailIntent, excludeGuardrailTestCase, getIntentAnalysisStatus, publishGuardrail, publishProgrammablePolicy, updateGuardrail } from "./api";
+import { analyzeComplianceDocuments, analyzeGuardrailIntent, createValidationRun, resumeValidationRun, getValidationRun, excludeGuardrailTestCase, getIntentAnalysisStatus, getValidationRuns, publishGuardrail, publishProgrammablePolicy, updateGuardrail } from "./api";
+import { requestController } from "./controller-api";
 
 describe("API error responses", () => {
   afterEach(() => vi.unstubAllGlobals());
+  it("does not let an empty detail object hide the Controller error message", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(Response.json({ error: { message: "Model timed out", detail: {} } }, { status: 504 })));
+    await expect(requestController("/api/test")).rejects.toThrow("Model timed out");
+  });
+
+  it("preserves diagnostic details and upstream status separately from the Controller status", async () => {
+    const detail = { provider: "NIM", upstreamStatus: 429, responseBody: "Quota exceeded" };
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(Response.json({ error: { message: "AI provider error", code: "intent_analysis_failed", detail } }, { status: 502 })));
+    await expect(requestController("/api/test")).rejects.toMatchObject({ message: "AI provider error", status: 502, code: "intent_analysis_failed", detail });
+  });
+
+  it("shows Controller validation fields instead of the generic request validation message", async () => {
+    const detail = { formErrors: [], fieldErrors: { kind: ["Unsupported Provider kind"], baseUrl: ["Invalid URL"] } };
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(Response.json({ error: { message: "Request validation failed.", code: "invalid_request", detail } }, { status: 400 })));
+    await expect(requestController("/api/test")).rejects.toMatchObject({
+      message: "kind: Unsupported Provider kind; baseUrl: Invalid URL", code: "invalid_request", detail,
+    });
+  });
+
+  it("shows a non-JSON proxy error rather than losing its response body", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response("upstream connection closed", { status: 502 })));
+    await expect(requestController("/api/test")).rejects.toThrow("upstream connection closed");
+  });
   it("pins Policy publication to the validated draft revision", async () => {
     const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({ version: "1" }), { status: 201 }));
     vi.stubGlobal("fetch", fetchMock);
@@ -42,11 +66,71 @@ describe("API error responses", () => {
     );
   });
 
-  it("sends slash-containing Test Case IDs in the validation-scope body", async () => {
+  it("creates, polls, and lists Test Runs using the new paths", async () => {
+    vi.useFakeTimers();
+    try {
+      const run = { id: "run-1", guardrailId: "guard-1", status: "passed", metrics: {}, results: [], excludedCaseIds: [] };
+      const fetchMock = vi.fn()
+        .mockResolvedValueOnce(Response.json({ ...run, status: "queued" }, { status: 202 }))
+        .mockResolvedValueOnce(Response.json({ ...run, status: "running", progress: { phase: "executing", completedCases: 3, passedCases: 2 } }))
+        .mockResolvedValueOnce(Response.json(run))
+        .mockResolvedValueOnce(Response.json({ items: [run], count: 1 }));
+      vi.stubGlobal("fetch", fetchMock);
+      const onProgress = vi.fn();
+      const pending = createValidationRun("guard-1", { onProgress });
+      await vi.advanceTimersByTimeAsync(2000);
+      expect((await pending).status).toBe("passed");
+      expect(onProgress.mock.calls.map(([value]) => value.execution_status)).toEqual(["queued", "running", "passed"]);
+      expect(onProgress.mock.calls[1]?.[0].progress).toMatchObject({ completedCases: 3, passedCases: 2 });
+      expect((await getValidationRuns("guard-1")).count).toBe(1);
+      expect(fetchMock.mock.calls.map(([path]) => path)).toEqual([
+        "/api/v1/guardrails/guard-1/test-runs", "/api/v1/test-runs/run-1", "/api/v1/test-runs/run-1", "/api/v1/test-runs?guardrailId=guard-1",
+      ]);
+      expect(fetchMock.mock.calls[0]?.[1]).toMatchObject({ method: "POST" });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("keeps polling the same run beyond five minutes until its report is saved", async () => {
+    vi.useFakeTimers();
+    try {
+      const run = { id: "run-slow", guardrailId: "guard-1", status: "running", metrics: { total: 10 }, results: [], excludedCaseIds: [] };
+      const fetchMock = vi.fn().mockImplementation(async () => Response.json(run));
+      vi.stubGlobal("fetch", fetchMock);
+      const onProgress = vi.fn();
+      const pending = createValidationRun("guard-1", { onProgress });
+      await vi.advanceTimersByTimeAsync(6 * 60_000);
+      expect(onProgress.mock.lastCall?.[0].execution_status).toBe("running");
+      fetchMock.mockImplementation(async () => Response.json({ ...run, status: "passed" }));
+      await vi.advanceTimersByTimeAsync(1000);
+      expect((await pending).status).toBe("passed");
+      expect(fetchMock.mock.calls.filter(([, init]) => init?.method === "POST")).toHaveLength(1);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("preserves an interrupted report response as an error rather than an empty success", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response("{"));
+    vi.stubGlobal("fetch", fetchMock);
+    await expect(getValidationRun("large-report")).rejects.toBeInstanceOf(SyntaxError);
+    expect(fetchMock.mock.calls[0]?.[1]).not.toHaveProperty("timeoutMs");
+  });
+
+  it("treats cancellation as a terminal state instead of polling or displaying failure", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(Response.json({ id: "cancelled-run", guardrailId: "guard-1",
+      status: "cancelled", metrics: {}, results: [], excludedCaseIds: [] }));
+    vi.stubGlobal("fetch", fetchMock);
+    expect(await resumeValidationRun("cancelled-run")).toMatchObject({ status: "cancelled", execution_status: "cancelled" });
+    expect(fetchMock).toHaveBeenCalledOnce();
+  });
+
+  it("sends slash-containing Test Case IDs in the test-scope body", async () => {
     const fetchMock = vi.fn().mockResolvedValue({
       status: 200,
       ok: true,
-      url: "http://test/api/v1/guardrails/guardrail-1/validation-scope",
+      url: "http://test/api/v1/guardrails/guardrail-1/test-scope",
       json: async () => ({}),
     });
     vi.stubGlobal("fetch", fetchMock);
@@ -57,7 +141,7 @@ describe("API error responses", () => {
     );
 
     expect(fetchMock).toHaveBeenCalledWith(
-      "/api/v1/guardrails/guardrail-1/validation-scope",
+      "/api/v1/guardrails/guardrail-1/test-scope",
       {
         credentials: "same-origin",
         method: "PATCH",
@@ -91,6 +175,8 @@ describe("API error responses", () => {
     await expect(getIntentAnalysisStatus()).resolves.toEqual(status);
     await expect(analyzeGuardrailIntent({
       purpose: "Finance analysts use this assistant for approved reporting only.",
+      deniedPurpose: "Medical advice and chemical process instructions",
+      topicControlMode: "permissive",
       language: "en",
     })).resolves.toEqual(analysis);
 
@@ -104,6 +190,8 @@ describe("API error responses", () => {
       method: "POST",
       body: JSON.stringify({
         purpose: "Finance analysts use this assistant for approved reporting only.",
+      deniedPurpose: "Medical advice and chemical process instructions",
+      topicControlMode: "permissive",
         language: "en",
       }),
       headers: { "content-type": "application/json" },

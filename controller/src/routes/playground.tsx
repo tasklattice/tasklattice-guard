@@ -1,9 +1,13 @@
+import { hasPermission, isPlatformAdministrator } from "../../shared/rbac";
 import { AdvancedPlayground } from "@/components/playground/advanced-playground";
+import { Link } from "@tanstack/react-router";
+import { projectParams } from "@/lib/project-paths";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
-import { toast } from "sonner";
+import { Activity, MessageSquareText } from "lucide-react";
+import { toast } from "@/components/ui/notifications";
 
 import { ProbeInspectionDrawer } from "@/components/playground/probe-inspection-drawer";
 import { ProbeConversationPanel } from "@/components/playground/probe-conversation-panel";
@@ -15,6 +19,7 @@ import {
   InfoNotice,
   PageHeader,
 } from "@/components/product-shell";
+import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { queryKeys } from "@/features/query-keys";
 import { useAuth } from "@/lib/auth";
@@ -43,6 +48,7 @@ export function PlaygroundPage() {
       new URLSearchParams(window.location.search).get("mode") === "advanced",
   );
   const [advancedOpened, setAdvancedOpened] = useState(advanced);
+  const [conversationActions, setConversationActions] = useState<HTMLDivElement | null>(null);
   const changeMode = (mode: string) => {
     if (mode === "advanced") setAdvancedOpened(true);
     setAdvanced(mode === "advanced");
@@ -50,7 +56,7 @@ export function PlaygroundPage() {
     url.searchParams.set("mode", mode);
     window.history.replaceState(window.history.state, "", url);
   };
-  const canTestDraft = auth.user?.role === "admin";
+  const canTestDraft = hasPermission(auth.user?.role, "playground", "write");
   const guardrailsQuery = useQuery({
     queryKey: queryKeys.guardrails,
     queryFn: getGuardrails,
@@ -67,7 +73,7 @@ export function PlaygroundPage() {
   const selectableGuardrails = canTestDraft ? guardrails : publishedGuardrails;
   const models = modelsQuery.data?.items ?? [];
   const { guardrailId, target, selectGuardrail, selectTarget } =
-    usePlaygroundSelection(selectableGuardrails, canTestDraft);
+    usePlaygroundSelection(selectableGuardrails, canTestDraft, !advanced);
   const selected = selectableGuardrails.find((item) => item.id === guardrailId);
   const versionsQuery = useQuery({
     queryKey: queryKeys.guardrailVersions(guardrailId),
@@ -81,7 +87,7 @@ export function PlaygroundPage() {
       : undefined;
 
   useEffect(() => {
-    if (!versionsQuery.isSuccess) return;
+    if (advanced || !versionsQuery.isSuccess) return;
     if (target.kind === "draft" && canTestDraft) return;
     const requested = target.kind === "published" ? target.version : "";
     const resolved = resolvePublishedVersion(versions, requested);
@@ -93,104 +99,122 @@ export function PlaygroundPage() {
     } else if (!resolved && canTestDraft && target.kind !== "draft") {
       selectTarget({ kind: "draft" });
     }
-  }, [canTestDraft, selectTarget, target, versions, versionsQuery.isSuccess]);
+  }, [advanced, canTestDraft, selectTarget, target, versions, versionsQuery.isSuccess]);
 
   const loading = guardrailsQuery.isLoading || modelsQuery.isLoading;
+  // Path testing uses Runner and Endpoint authentication, not the chat model.
+  const advancedActive = advanced;
   return (
     <Tabs
-      value={advanced ? "advanced" : "simple"}
+      value={advancedActive ? "advanced" : "simple"}
       onValueChange={changeMode}
-      className="gap-0 py-6 sm:py-8"
+      className="gap-0 py-4"
     >
       <PageHeader
         title={t("pages.playground.title")}
-        description={
-          advanced
-            ? t("playground.advancedDescription")
-            : t("pages.playground.description")
-        }
-        action={
-          <TabsList aria-label={t("playground.modeLabel")}>
-            <TabsTrigger value="simple">
-              {t("playground.simpleMode")}
-            </TabsTrigger>
-            <TabsTrigger value="advanced">
-              {t("playground.advancedMode")}
-            </TabsTrigger>
-          </TabsList>
-        }
+        description={advancedActive
+          ? t("playground.advancedDescription")
+          : t("pages.playground.description")}
       />
-      <TabsContent
-        value="simple"
-        forceMount
-        className="data-[state=inactive]:hidden"
-      >
-        {guardrailsQuery.error ? (
-          <div className="mt-5">
-            <ErrorNotice error={guardrailsQuery.error} />
+      <div className="mt-3 min-w-0 overflow-hidden rounded-2xl border bg-card shadow-xs">
+        <header className="flex min-w-0 items-center gap-3 border-b bg-muted/20 px-5 py-2">
+          <span className="grid size-9 shrink-0 place-items-center rounded-xl border bg-card text-primary">
+            {advancedActive ? <Activity className="size-4.5" /> : <MessageSquareText className="size-4.5" />}
+          </span>
+          <div className="min-w-0 flex-1">
+            <h2 className="text-sm font-semibold">{t(advancedActive ? "routing.advancedRequestWorkbench" : "playground.conversationTitle")}</h2>
+            {!advancedActive && <p className="mt-0.5 truncate text-xs text-muted-foreground">{t("playground.conversationDescription")}</p>}
           </div>
-        ) : null}
-        {modelsQuery.error ? (
-          <div className="mt-5">
-            <ErrorNotice error={modelsQuery.error} />
+          <div ref={setConversationActions} className={advancedActive ? "hidden" : "shrink-0"} />
+          <div className="min-w-0 shrink-0">
+            <TabsList aria-label={t("playground.modeLabel")}>
+              <TabsTrigger value="simple">
+                {t("playground.simpleMode")}
+              </TabsTrigger>
+              <TabsTrigger value="advanced">
+                {t("playground.advancedMode")}
+              </TabsTrigger>
+            </TabsList>
           </div>
-        ) : null}
-        {versionsQuery.error ? (
-          <div className="mt-5">
-            <ErrorNotice error={versionsQuery.error} />
-          </div>
-        ) : null}
-        {loading ? (
-          <Skeleton className="mt-5 h-[calc(100dvh-14rem)] min-h-[34rem] rounded-2xl" />
-        ) : null}
-        {!loading && !guardrails.length ? (
-          <div className="mt-5">
-            <EmptyState
-              title={t("validation.noGuardrails")}
-              description={t("validation.noGuardrailsDescription")}
+        </header>
+        <TabsContent
+          value="simple"
+          forceMount
+          className="p-0! data-[state=inactive]:hidden"
+        >
+          {guardrailsQuery.error ? (
+            <div className="mt-5">
+              <ErrorNotice error={guardrailsQuery.error} />
+            </div>
+          ) : null}
+          {modelsQuery.error ? (
+            <div className="mt-5">
+              <ErrorNotice error={modelsQuery.error} />
+            </div>
+          ) : null}
+          {versionsQuery.error ? (
+            <div className="mt-5">
+              <ErrorNotice error={versionsQuery.error} />
+            </div>
+          ) : null}
+          {loading ? (
+            <Skeleton className="h-[calc(100dvh-16rem)] min-h-[30rem]" />
+          ) : null}
+          {!loading && !guardrails.length ? (
+            <div className="mt-5">
+              <EmptyState
+                title={t("validation.noGuardrails")}
+                description={t("validation.noGuardrailsDescription")}
+              />
+            </div>
+          ) : null}
+          {!loading && guardrails.length > 0 && !selectableGuardrails.length ? (
+            <div className="mt-5">
+              <EmptyState
+                title={t("playground.noPublishedGuardrails")}
+                description={t("playground.noPublishedGuardrailsDescription")}
+              />
+            </div>
+          ) : null}
+          {!loading && modelsQuery.isSuccess && selectableGuardrails.length > 0 && !models.length ? (
+            <div className="mt-5">
+              <InfoNotice title={t("playground.controllerUnavailableTitle")}>
+                <p>{t("resourceList.testUnavailable")}</p>
+                <div className="mt-4 flex flex-wrap items-center gap-2">
+                  <Button variant="outline" disabled={modelsQuery.isFetching} onClick={() => void modelsQuery.refetch()}>{t("resourceList.retryTesting")}</Button>
+                  {isPlatformAdministrator(auth.user?.role) ? <Button asChild variant="outline"><a href="/settings/models">{t("resourceList.configureChatModel")}</a></Button> : null}
+                  <PlaygroundReturnLink />
+                </div>
+              </InfoNotice>
+            </div>
+          ) : null}
+          {!loading && selected && models.length ? (
+            <PlaygroundWorkspace
+              key={`${selected.id}:${target.kind}:${target.kind === "published" ? target.version : (selected.draft_revision ?? 1)}`}
+              guardrail={selected}
+              guardrails={selectableGuardrails}
+              versions={versions}
+              target={target}
+              selectedVersion={selectedVersion}
+              versionsLoading={versionsQuery.isLoading}
+              canTestDraft={canTestDraft}
+              models={models}
+              actionsContainer={conversationActions}
+              onGuardrailChange={selectGuardrail}
+              onTargetChange={selectTarget}
             />
-          </div>
-        ) : null}
-        {!loading && guardrails.length > 0 && !selectableGuardrails.length ? (
-          <div className="mt-5">
-            <EmptyState
-              title={t("playground.noPublishedGuardrails")}
-              description={t("playground.noPublishedGuardrailsDescription")}
-            />
-          </div>
-        ) : null}
-        {!loading && selectableGuardrails.length > 0 && !models.length ? (
-          <div className="mt-5">
-            <InfoNotice title={t("playground.controllerUnavailableTitle")}>
-              {t("playground.controllerUnavailableDescription")}
-            </InfoNotice>
-          </div>
-        ) : null}
-        {!loading && selected && models.length ? (
-          <PlaygroundWorkspace
-            key={`${selected.id}:${target.kind}:${target.kind === "published" ? target.version : (selected.draft_revision ?? 1)}`}
-            guardrail={selected}
-            guardrails={selectableGuardrails}
-            versions={versions}
-            target={target}
-            selectedVersion={selectedVersion}
-            versionsLoading={versionsQuery.isLoading}
-            canTestDraft={canTestDraft}
-            models={models}
-            onGuardrailChange={selectGuardrail}
-            onTargetChange={selectTarget}
-          />
-        ) : null}
-      </TabsContent>
-      <TabsContent
-        value="advanced"
-        forceMount
-        className="mt-5 data-[state=inactive]:hidden"
-      >
-        {advancedOpened && (
-          <AdvancedPlayground active={advanced} guardrails={guardrails} />
-        )}
-      </TabsContent>
+          ) : null}
+        </TabsContent>
+        <TabsContent
+          value="advanced"
+          forceMount
+          className="p-0! data-[state=inactive]:hidden"
+        >
+          {advancedOpened && (
+            <AdvancedPlayground active={advancedActive} guardrails={guardrails} />
+          )}
+        </TabsContent>
+      </div>
     </Tabs>
   );
 }
@@ -204,6 +228,7 @@ function PlaygroundWorkspace({
   versionsLoading,
   canTestDraft,
   models,
+  actionsContainer,
   onGuardrailChange,
   onTargetChange,
 }: {
@@ -215,6 +240,7 @@ function PlaygroundWorkspace({
   versionsLoading: boolean;
   canTestDraft: boolean;
   models: PlaygroundModel[];
+  actionsContainer: HTMLDivElement | null;
   onGuardrailChange: (value: string) => void;
   onTargetChange: (value: PlaygroundTargetSelection) => void;
 }) {
@@ -311,8 +337,9 @@ function PlaygroundWorkspace({
   };
   return (
     <>
-      <div className="mt-5 min-w-0">
+      <div className="min-w-0">
         <ProbeConversationPanel
+          actionsContainer={actionsContainer}
           guardrail={guardrail}
           guardrails={guardrails}
           versions={versions}
@@ -405,12 +432,13 @@ export function resolvePublishedVersion(
 function usePlaygroundSelection(
   guardrails: Guardrail[],
   canTestDraft: boolean,
+  enabled = true,
 ) {
   const initial = initialPlaygroundSelection();
   const [selection, setSelection] = useState(initial);
   useEffect(() => {
     if (
-      !guardrails.length ||
+      !enabled || !guardrails.length ||
       guardrails.some((item) => item.id === selection.guardrailId)
     )
       return;
@@ -423,7 +451,7 @@ function usePlaygroundSelection(
     };
     setSelection(next);
     syncPlaygroundSearch(next);
-  }, [guardrails, selection.guardrailId]);
+  }, [enabled, canTestDraft, guardrails, selection.guardrailId]);
   const selectGuardrail = useCallback(
     (guardrailId: string) => {
       const guardrail = guardrails.find((item) => item.id === guardrailId);
@@ -494,4 +522,17 @@ function initialTargetFor(
   return canTestDraft && !hasPublishedVersion(guardrail)
     ? { kind: "draft" }
     : { kind: "published", version: "" };
+}
+
+function PlaygroundReturnLink() {
+  const { t } = useTranslation();
+  const search = new URLSearchParams(window.location.search);
+  const endpoint = search.get("endpoint");
+  const router = search.get("router");
+  const guardrail = search.get("guardrail");
+  const link = endpoint ? <Link to="/$projectId/integration/endpoints" params={projectParams()} search={{ endpointId: endpoint }}>{t("common.back")}</Link>
+    : router ? <Link to="/$projectId/integration/routers/$routerId" params={{ ...projectParams(), routerId: router }}>{t("common.back")}</Link>
+      : guardrail ? <Link to="/$projectId/guardrails/$guardrailId" params={{ ...projectParams(), guardrailId: guardrail }} search={{ tab: "testing" }}>{t("common.back")}</Link>
+        : <Link to="/$projectId/guardrails" params={projectParams()}>{t("common.back")}</Link>;
+  return <Button asChild variant="outline">{link}</Button>;
 }

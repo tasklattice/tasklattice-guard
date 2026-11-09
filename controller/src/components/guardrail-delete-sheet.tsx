@@ -69,4 +69,3 @@ export function DeleteGuardrailSheet({ guardrail, open, impact, loading, deletin
     })}
   />;
 }
-

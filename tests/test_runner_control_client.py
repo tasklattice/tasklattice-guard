@@ -11,6 +11,47 @@ from runner import generated as protocol
 from tests.capability_binding import capability_binding
 
 
+@pytest.mark.asyncio
+@pytest.mark.parametrize("pool_token", [None, "pool-a-token-with-at-least-32-characters"])
+async def test_control_stream_uses_pool_token_when_configured(monkeypatch, pool_token):
+    from unittest.mock import Mock
+
+    settings = SimpleNamespace(controller_token="legacy-controller-token", control_token=pool_token, compiler_capable=False)
+    channel = SimpleNamespace(close=AsyncMock())
+    response_stream = SimpleNamespace(cancel=Mock())
+    stub = SimpleNamespace(Connect=Mock(return_value=response_stream))
+    monkeypatch.setattr("runner.control_client.services.RunnerControlStub", lambda _channel: stub)
+    client = RunnerControlClient(settings, Store(), Metrics())
+    monkeypatch.setattr(client, "_channel", lambda: channel)
+    monkeypatch.setattr(client, "_heartbeats", AsyncMock())
+    monkeypatch.setattr(client, "_write_messages", AsyncMock())
+    monkeypatch.setattr(client, "_receive_messages", AsyncMock())
+
+    await client._connect_once()
+    stub.Connect.assert_called_once_with(metadata=(("authorization", f"Bearer {pool_token or settings.controller_token}"),))
+    channel.close.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("pool_token", [None, "pool-a-token-with-at-least-32-characters"])
+async def test_model_credentials_use_pool_token_when_configured(monkeypatch, pool_token):
+    settings = SimpleNamespace(controller_token="legacy-controller-token", control_token=pool_token, compiler_capable=False,
+                               telemetry_endpoint="http://controller/api/internal/v1/runtime-events")
+    response = SimpleNamespace(raise_for_status=lambda: None, json=lambda: {"credentials": {"provider-1": "secret"}})
+    post = AsyncMock(return_value=response)
+    class Client:
+        def __init__(self, **_kwargs): pass
+        async def __aenter__(self): return self
+        async def __aexit__(self, *_args): pass
+        async def post(self, *args, **kwargs): return await post(*args, **kwargs)
+    monkeypatch.setattr("runner.control_client.httpx.AsyncClient", Client)
+    client = RunnerControlClient(settings, Store(), Metrics())
+    configuration = protocol.DataPlaneModelConfiguration(runtimes=[protocol.ModelRuntime(credential_ref="provider-1")])
+    assert await client._model_credentials(configuration, "lease-1") == {"provider-1": "secret"}
+    assert post.await_args.kwargs["headers"]["authorization"] == f"Bearer {pool_token or settings.controller_token}"
+    assert post.await_args.kwargs["json"]["leaseId"] == "lease-1"
+
+
 @pytest.mark.parametrize("tls", [False, True])
 def test_both_controller_transports_use_finite_message_limits(monkeypatch, tmp_path, tls):
     from unittest.mock import Mock
@@ -39,22 +80,49 @@ def test_both_controller_transports_use_finite_message_limits(monkeypatch, tmp_p
 
 
 class Store:
+    model_revision_id = ""
     generation = 0
+    protection_generation = 0
     providers = None
     fail = False
 
-    def apply(self, desired_state, *, providers=None, native_models=None):
+    def apply(self, desired_state, *, providers=None, native_models=None, materialization_key=None):
         if self.fail:
             raise RuntimeError("provider prewarm failed")
         self.providers = providers
         self.native_models = native_models
+        self.materialization_key = materialization_key
         self.generation = desired_state.generation
+
+    def verify(self, _artifact):
+        return None
 
     def observability_counts(self):
         return 0, 0, 0
 
 
+async def test_runner_nacks_signed_unsupported_artifact_without_becoming_ready(tmp_path):
+    from runner.artifact_store import ArtifactStore
+    from tests.test_runner_artifact_store import FIXTURE, Registry, unsupported_state
+    store = ArtifactStore(FIXTURE / "public-key.pem", tmp_path)
+    registry = Registry()
+    store.attach_registry(registry)
+    client = RunnerControlClient(_settings(), store, Metrics())
+    await client._apply_desired_state(unsupported_state())
+    rejected = await client._outgoing.get()
+    assert not rejected.artifact_result.accepted
+    assert "artifact_recompile_required" in rejected.artifact_result.reason
+    rejected_state = await client._outgoing.get()
+    assert not rejected_state.desired_state_result.accepted
+    assert "artifact_recompile_required" in rejected_state.desired_state_result.reason
+    assert not client.synchronized
+    assert store.generation == registry.preparations == 0
+
+
 class Metrics:
+    def observe_control_message(self, *_args):
+        pass
+
     def set_control_state(self, **_kwargs):
         return None
 
@@ -100,10 +168,31 @@ async def test_runner_acknowledges_an_endpoint_only_generation_immediately():
     assert message.WhichOneof("body") == "desired_state_result"
     assert message.desired_state_result.accepted is True
     assert message.desired_state_result.generation == 11
+    assert not message.desired_state_result.HasField("snapshot_nonce")
     heartbeat = await client._outgoing.get()
     assert heartbeat.WhichOneof("body") == "heartbeat"
     assert heartbeat.heartbeat.runner_id == "runner-0"
     assert heartbeat.heartbeat.applied_generation == 11
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("fails", [False, True])
+async def test_runner_echoes_snapshot_nonce_only_after_apply_attempt(fails):
+    store = Store()
+    store.fail = fails
+    client = RunnerControlClient(_settings(), store, Metrics())
+    await client._apply_desired_state(protocol.DesiredState(generation=11, snapshot_nonce="challenge"))
+    result = await client._outgoing.get()
+    assert result.WhichOneof("body") == "desired_state_result"
+    assert result.desired_state_result.snapshot_nonce == "challenge"
+    assert result.desired_state_result.accepted is not fails
+    assert store.generation == (0 if fails else 11)
+
+
+def test_runner_advertises_optional_snapshot_ack_capability():
+    settings = SimpleNamespace(**vars(_settings()), max_concurrency=4)
+    client = RunnerControlClient(settings, Store(), Metrics())
+    assert client._registration().registration.labels["tasklattice.snapshot-ack"] == "1"
 
 
 @pytest.mark.asyncio
@@ -154,6 +243,12 @@ def _settings():
     )
 
 
+def test_registration_advertises_explicit_views_support():
+    settings = _settings()
+    settings.max_concurrency = 4
+    client = RunnerControlClient(settings, Store(), Metrics())
+
+
 def _model_desired_state(*, generation: int) -> protocol.DesiredState:
     return protocol.DesiredState(
         generation=generation,
@@ -177,3 +272,140 @@ def _model_desired_state(*, generation: int) -> protocol.DesiredState:
             )],
         ),
     )
+
+
+@pytest.mark.asyncio
+async def test_route_updates_reuse_models_but_credential_rotation_rebuilds_them():
+    store = Store()
+    client = RunnerControlClient(_settings(), store, Metrics())
+    client._model_credentials = AsyncMock(return_value={"provider-1": "first-secret"})
+    state = _model_desired_state(generation=20)
+    await client._apply_desired_state(state)
+    original_providers = client._providers
+    original_key = store.materialization_key
+    assert original_providers is not None
+
+    state.generation = 21
+    await client._apply_desired_state(state)
+    assert store.providers is None  # An unchanged model set does not trigger replacement.
+    assert client._providers is original_providers
+    assert store.materialization_key == original_key
+
+    client._model_credentials.return_value = {"provider-1": "rotated-secret"}
+    state.generation = 22
+    await client._apply_desired_state(state)
+    assert store.providers is not None and store.providers is not original_providers
+    assert store.materialization_key != original_key
+    assert "secret" not in store.materialization_key
+
+
+@pytest.mark.asyncio
+async def test_failed_apply_does_not_cache_unapplied_model_configuration():
+    store = Store()
+    client = RunnerControlClient(_settings(), store, Metrics())
+    client._model_credentials = AsyncMock(return_value={"provider-1": "test-secret"})
+    state = _model_desired_state(generation=23)
+    store.fail = True
+    await client._apply_desired_state(state)
+    assert client._materialization_key is None
+    store.fail = False
+    await client._apply_desired_state(state)
+    assert store.providers is not None and store.generation == 23
+
+
+@pytest.mark.asyncio
+async def test_duplicate_validation_requests_share_execution_and_replay_terminal_failure():
+    import asyncio
+    from unittest.mock import Mock
+    client = RunnerControlClient(_settings(), Store(), Metrics())
+    client._metrics.job = Mock()
+    client._validator = SimpleNamespace(run=AsyncMock(side_effect=RuntimeError("synthetic test failure")))
+    request = protocol.ValidationRequest(run_id="same-run")
+    await asyncio.gather(client._validate(request), client._validate(request))
+    first = (await client._outgoing.get()).validation_status_notice
+    second = (await client._outgoing.get()).validation_status_notice
+    client._validator.run.assert_awaited_once()
+    assert first == second
+    assert first.status == protocol.VALIDATION_STATUS_FAILED
+    assert len(client._validation_notices) <= 64
+
+
+@pytest.mark.asyncio
+async def test_terminal_notice_replay_cache_is_bounded():
+    from unittest.mock import Mock
+    client = RunnerControlClient(_settings(), Store(), Metrics())
+    client._metrics.job = Mock()
+    client._validator = SimpleNamespace(run=AsyncMock(side_effect=RuntimeError("synthetic test failure")))
+    for n in range(66):
+        await client._validate(protocol.ValidationRequest(run_id=f"run-{n}"))
+    assert len(client._validation_notices) == 64
+    assert "run-0" not in client._validation_notices
+    await client._validate(protocol.ValidationRequest(run_id="run-65"))
+    assert client._validator.run.await_count == 66
+
+
+@pytest.mark.asyncio
+async def test_failed_test_returns_compiled_candidate_without_marking_passed():
+    from unittest.mock import Mock
+    client = RunnerControlClient(_settings(), Store(), Metrics())
+    client._metrics.job = Mock()
+    client._store.model_revision_id = "models-1"
+    artifact = protocol.Artifact(guardrail_id="guardrail-default", guardrail_version="candidate")
+    client._validator = SimpleNamespace(compiler_model_types=[], run=AsyncMock(return_value=SimpleNamespace(
+        status="failed", metrics={}, results=[], artifact=artifact, test_scope=None)))
+    import asyncio
+    from tests.control_plane.report_helpers import receive_report
+    task = asyncio.create_task(client._execute_validation(protocol.ValidationRequest(run_id="failed")))
+    result = await receive_report(client)
+    await task
+    assert result.accepted and result.status == protocol.VALIDATION_STATUS_FAILED
+    assert result.candidate_artifact == artifact
+
+
+@pytest.mark.asyncio
+async def test_modes_overtake_model_preparation_and_report_nacks(tmp_path):
+    import asyncio
+    from runner.artifact_store import ArtifactStore
+    from tests.test_runner_artifact_store import FIXTURE
+    store = ArtifactStore(FIXTURE / "public-key.pem", tmp_path / "state")
+    client = RunnerControlClient(_settings(), store, Metrics())
+    started, finish = asyncio.Event(), asyncio.Event()
+    async def prepare(_):
+        started.set()
+        await finish.wait()
+    client._apply_desired_state = prepare
+    async def incoming():
+        yield protocol.ControllerMessage(desired_state=protocol.DesiredState(generation=1))
+        await started.wait()
+        yield protocol.ControllerMessage(protection_state=protocol.GuardrailProtectionState(generation=2, modes={"g": "bypass"}))
+        result = await client._outgoing.get()
+        assert result.protection_result.accepted and result.protection_result.generation == 2
+        assert store.protection_mode("g") == "bypass" and not finish.is_set()
+        yield protocol.ControllerMessage(protection_state=protocol.GuardrailProtectionState(generation=3, modes={"g": "unknown"}))
+        result = await client._outgoing.get()
+        assert not result.protection_result.accepted and result.protection_result.reason
+        assert store.protection_mode("g") == "bypass"
+        finish.set()
+    await asyncio.wait_for(client._receive_messages(incoming()), 3)
+
+
+@pytest.mark.asyncio
+async def test_offline_compilation_reports_failures_and_capacity_without_state_changes():
+    from unittest.mock import Mock
+
+    settings = _settings()
+    settings.compiler_capable = True
+    compiler = Mock()
+    compiler.compile_offline.side_effect = ValueError("Invalid plan")
+    client = RunnerControlClient(settings, Store(), Metrics(), compiler=compiler)
+    request = protocol.CompileRequest(compile_id="bad-plan")
+    await client._compile_artifact(request)
+    reply = await client._outgoing.get()
+    assert reply.artifact_compilation_result.error == "Invalid plan"
+    assert not reply.artifact_compilation_result.HasField("artifact")
+    client._capability_tasks = set(range(4))
+    await client._handle(protocol.ControllerMessage(artifact_compilation_request=request))
+    reply = await client._outgoing.get()
+    assert "capacity" in reply.artifact_compilation_result.error
+    assert compiler.compile_offline.call_count == 1
+    client._capability_tasks.clear()

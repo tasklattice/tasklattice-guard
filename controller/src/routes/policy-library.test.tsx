@@ -32,24 +32,21 @@ vi.mock("react-i18next", () => ({
         "policyLibrary.detailViews": "Policy detail views",
         "policyLibrary.tabs.policy": "Policy",
         "policyLibrary.tabs.testCases": "Test Cases",
-        "policyLibrary.tabs.implementation": "NeMo implementation",
-        "policyLibrary.ruleListTitle": "Rules ({{count}})",
+        "policyLibrary.tabs.compliance": "Sources & Compliance",
+        "policyLibrary.compliance.empty": "Sources and compliance documentation have not been provided for this Policy version.",
+        "policyLibrary.ruleListTitle": "Rules",
         "policyLibrary.ruleListDescription": "Each Rule is linked to Test Cases.",
-        "policyLibrary.testCasesTitle": "Test Cases ({{count}})",
+        "policyLibrary.testCasesTitle": "Test Cases",
         "policyLibrary.testCasesDescription": "Executable Test Cases.",
-        "policyLibrary.implementationTitle": "NeMo Guardrails implementation",
-        "policyLibrary.implementationDescription": "Technical Rule bindings.",
         "policyLibrary.filters": "Filters",
         "policyLibrary.clearFilters": "Clear filters",
         "policyLibrary.tagNamespaces.implementation": "Implementation",
         "policyLibrary.tagNamespaces.rail": "Rail type",
         "policyLibrary.railTypesLabel": "Rail types",
-        "policyLibrary.ruleForms": "Rule forms",
-        "policyLibrary.ruleForm": "Rule form",
+        "policyLibrary.detector": "Detector",
         "policyLibrary.effectLabel": "Effect",
-        "policyLibrary.runtimeManaged": "Runtime managed",
         "policyLibrary.jurisdictions.au": "Australia",
-        "policyLibrary.forms.category": "Category",
+        "policyLibrary.jurisdictions.cn": "China mainland",
         "policyLibrary.railTypes.input": "Input rail",
         "policyLibrary.railTiming.input": "Before the main model",
         "policyLibrary.effects.block": "Block",
@@ -83,17 +80,17 @@ const policy: Policy = {
   parameters: [],
   rails: ["input"],
   effects: ["block"],
-  forms: ["category"],
+  detectors: ["text/conditions"],
   rules: [{
     id: "competitor-policy/comparison-intent",
     name: "Competitor comparison intent",
     description: "Requires a competitor identity and comparison intent.",
-    form: "category",
+    detector: { ref: "text/conditions", version: "1.0.0" },
     effect: "block",
     rails: ["input"],
     implementation: {
       engine: "nemo-guardrails",
-      form: "category",
+      execution: "local",
       binding_id: "competitor-policy",
       implementation_rule_id: "comparison-intent",
       detector: "category",
@@ -142,7 +139,7 @@ const policy: Policy = {
 };
 
 function clickTab(tab: HTMLElement) {
-  fireEvent.mouseDown(tab, { button: 0, ctrlKey: false });
+  fireEvent.click(tab, { button: 0, ctrlKey: false });
   fireEvent.mouseUp(tab, { button: 0, ctrlKey: false });
   fireEvent.click(tab);
 }
@@ -150,32 +147,29 @@ function clickTab(tab: HTMLElement) {
 describe("Policy detail", () => {
   afterEach(cleanup);
 
-  it("presents Policy, testable Rules, Test Cases, and NeMo implementation as three views", () => {
+  it("presents only Policy, Test Cases, and Sources & Compliance in order", () => {
     render(<PolicyDetail policy={policy} onClose={vi.fn()} onEdit={vi.fn()} />);
 
     expect(screen.getByRole("heading", { name: "Competitor Discussion Policy" })).toBeTruthy();
     expect(screen.getByRole("tablist", { name: "Policy detail views" })).toBeTruthy();
-    expect(screen.getByRole("tab", { name: "Policy" }).getAttribute("aria-selected")).toBe("true");
+    expect(screen.getByRole("tab", { name: "Policy 1" }).getAttribute("aria-selected")).toBe("true");
     expect(screen.getAllByText("Input rail").length).toBeGreaterThan(0);
     expect(screen.getByText("Australia").parentElement?.textContent).toBe("🇦🇺Australia");
     expect(screen.queryByText("Category classifier")).toBeNull();
-    expect(screen.getByText("Rules (1)")).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "Rules" })).toBeTruthy();
     expect(screen.getByText("Competitor comparison intent")).toBeTruthy();
 
-    clickTab(screen.getByRole("tab", { name: "Test Cases" }));
-    expect(screen.getByText("Test Cases (2)")).toBeTruthy();
+    clickTab(screen.getByRole("tab", { name: "Test Cases 2" }));
+    expect(screen.getByRole("heading", { name: "Test Cases" })).toBeTruthy();
     expect(screen.getByText("Block airline comparison")).toBeTruthy();
     expect(screen.getByText("Allow destination question")).toBeTruthy();
 
-    clickTab(screen.getByRole("tab", { name: "NeMo implementation" }));
-    expect(screen.getByRole("heading", { name: "NeMo Guardrails implementation" })).toBeTruthy();
-    expect(screen.queryByText("Runtime engine")).toBeNull();
-    const actionName = screen.getByText("GuardPolicyRuleAction");
-    expect(actionName.tagName).toBe("CODE");
-    expect(actionName.getAttribute("title")).toBe("GuardPolicyRuleAction");
+    expect(screen.getAllByRole("tab").map(tab => tab.textContent)).toEqual(["Policy1", "Test Cases2", "Sources & Compliance"]);
+    clickTab(screen.getByRole("tab", { name: "Sources & Compliance" }));
+    expect(screen.getByText("Sources and compliance documentation have not been provided for this Policy version.")).toBeTruthy();
   });
 
-  it("visually identifies a custom Policy and exposes its migration export from the card", () => {
+  it("shows uniform Policy cards and exposes explicitly permitted actions", () => {
     const onExport = vi.fn();
     const onDelete = vi.fn();
     const customPolicy: Policy = {
@@ -188,20 +182,20 @@ describe("Policy detail", () => {
 
     render(<PolicyCard policy={customPolicy} onOpen={vi.fn()} onExport={onExport} onDelete={onDelete} />);
 
-    expect(screen.getByText("Custom Policy")).toBeTruthy();
+    expect(screen.queryByText("Custom Policy")).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "Export Customer identifiers migration package" }));
     expect(onExport).toHaveBeenCalledOnce();
     fireEvent.click(screen.getByRole("button", { name: "Delete Customer identifiers" }));
     expect(onDelete).toHaveBeenCalledOnce();
   });
 
-  it("does not expose deletion for a built-in Policy", () => {
+  it("shows no deletion without an authorized handler and no origin badge", () => {
     render(<PolicyCard policy={policy} onOpen={vi.fn()} />);
 
     expect(screen.queryByRole("button", { name: "Delete Competitor Discussion Policy" })).toBeNull();
     const heading = screen.getByRole("heading", { name: "Competitor Discussion Policy" });
-    expect(heading.parentElement?.textContent).toContain("Built-in");
-    expect(heading.closest("article")?.querySelectorAll(".lucide-shield-check")).toHaveLength(1);
+    expect(heading.parentElement?.textContent).not.toContain("Built-in");
+    expect(heading.closest("article")?.querySelectorAll(".lucide-shield-check")).toHaveLength(0);
   });
 
   it("requires explicit confirmation before deleting a custom Policy", () => {
@@ -244,13 +238,14 @@ describe("Catalog filtering", () => {
   const tag = (namespace: "jurisdiction" | "framework" | "collection" | "domain", value: string) => ({ id: `${namespace}:${value}`, namespace, value, label: value, source: "declared" as const });
   const australia: Policy = { ...policy, id: "au", tags: [tag("jurisdiction", "au"), tag("framework", "owasp-llm-2025")] };
   const singapore: Policy = { ...policy, id: "sg", source: "custom", tags: [tag("jurisdiction", "singapore"), tag("framework", "pdpa")] };
+  const china: Policy = { ...policy, id: "cn", tags: [tag("jurisdiction", "cn"), tag("framework", "pipl")] };
   const eu: Policy = { ...policy, id: "eu", tags: [tag("jurisdiction", "eu"), tag("framework", "gdpr")] };
-  const items = [australia, singapore, eu];
+  const items = [australia, singapore, china, eu];
 
   it("unions choices within a group and intersects groups, protection and search", () => {
     expect(filterCatalogPolicies(items, null, new Set(["jurisdiction:au", "jurisdiction:sg"]))).toEqual([australia, singapore]);
-    expect(filterCatalogPolicies(items, null, new Set(["jurisdiction:au", "jurisdiction:sg", "source:custom"]))).toEqual([singapore]);
-    expect(filterCatalogPolicies(items, null, new Set(["source:custom", "source:built_in"]))).toEqual(items);
+    expect(filterCatalogPolicies(items, null, new Set(["jurisdiction:au", "jurisdiction:sg", "framework:pdpa"]))).toEqual([singapore]);
+    expect(filterCatalogPolicies(items, null, new Set())).toEqual(items);
     expect(filterCatalogPolicies(items, "privacy", new Set())).toEqual([]);
     expect(filterCatalogPolicies(items, null, new Set(), "no matching text")).toEqual([]);
   });
@@ -258,15 +253,23 @@ describe("Catalog filtering", () => {
   it("keeps regions discoverable, merges Singapore aliases and omits removed facets", () => {
     const alias: Policy = { ...singapore, id: "alias", tags: [tag("jurisdiction", "sg"), tag("jurisdiction", "singapore"), tag("collection", "old"), tag("domain", "finance")] };
     const facets = tagFacets([...items, alias]);
-    expect(facets.get("jurisdiction")?.map((tag) => tag.value)).toEqual(["au", "eu", "sg"]);
+    expect(facets.get("jurisdiction")?.map((tag) => tag.value)).toEqual(["au", "cn", "eu", "sg"]);
     expect(facets.get("jurisdiction")?.find((tag) => tag.value === "sg")?.count).toBe(2);
     expect(facets.has("collection")).toBe(false);
     expect(facets.has("domain")).toBe(false);
     expect(facets.get("framework")?.[0].value).toBe("owasp-llm-2025");
-    const scoped = tagFacets(items, null, new Set(["source:custom"]));
+    const scoped = tagFacets(items, null, new Set(["framework:pdpa"]));
     expect(scoped.get("jurisdiction")?.find((tag) => tag.value === "au")?.count).toBe(0);
     expect(scoped.get("jurisdiction")?.find((tag) => tag.value === "sg")?.count).toBe(1);
-    expect(tagFacets([australia]).get("source")?.find((tag) => tag.value === "custom")?.count).toBe(0);
+    expect(tagFacets([australia]).has("source")).toBe(false);
+  });
+
+  it("shows mainland China as a localized jurisdiction with its flag", () => {
+    render(<TagFilters facets={tagFacets([china])} selected={new Set()} onChange={vi.fn()} />);
+
+    const label = screen.getByText("China mainland");
+    expect(label.parentElement?.textContent).toBe("🇨🇳China mainland");
+    expect(screen.getByRole("checkbox", { name: /China mainland/ })).toBeTruthy();
   });
 
   it("clears the protection selection together with checkbox selections", () => {
@@ -276,11 +279,11 @@ describe("Catalog filtering", () => {
       return <CatalogFilters policies={items} facets={tagFacets(items)} directory={directory} onDirectoryChange={(value) => setDirectory(value as "privacy" | null)} selected={selected} onChange={setSelected} onClear={() => { setDirectory(null); setSelected(new Set()); }} />;
     }
     render(<Harness />);
-    expect(screen.getByRole("checkbox", { name: /Australia/ }).getAttribute("aria-checked")).toBe("true");
+    expect((screen.getByRole("checkbox", { name: /Australia/ }) as HTMLInputElement).checked).toBe(true);
     fireEvent.click(screen.getByRole("button", { name: "Clear filters" }));
     expect(screen.queryByRole("combobox")).toBeNull();
     expect(screen.queryByRole("button", { name: /protection.allDirectories/ })).toBeNull();
-    expect(screen.getByRole("checkbox", { name: /Australia/ }).getAttribute("aria-checked")).toBe("false");
+    expect((screen.getByRole("checkbox", { name: /Australia/ }) as HTMLInputElement).checked).toBe(false);
     expect((screen.getByRole("button", { name: "Clear filters" }) as HTMLButtonElement).disabled).toBe(true);
     fireEvent.click(screen.getByRole("button", { name: /protection.directories.privacy/ }));
     expect(screen.getByRole("button", { name: /protection.directories.privacy/ }).getAttribute("aria-pressed")).toBe("true");

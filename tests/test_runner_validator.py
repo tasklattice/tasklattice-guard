@@ -4,7 +4,7 @@ import pytest
 
 from runner.compiler import DefaultRunnerCompiler
 from runner import generated as protocol
-from runner.protocol_codec import plan_to_proto, validation_test_to_proto
+from runner.protocol_codec import artifact_digest, plan_to_proto, validation_test_to_proto
 from runner.validator import DefaultRunnerValidator
 
 
@@ -13,7 +13,7 @@ async def test_default_runner_validates_cases_through_the_real_nemo_runtime() ->
     plan = {
         "guardrail_id": "guardrail-1",
         "guardrail_version": "20260904-010000.001Z",
-        "compiler_version": "tasklattice-controller-plan-v3",
+        "compiler_version": "tasklattice-controller-plan-v1",
         "safety_level": "balanced",
         "output_delivery": "full_buffered",
         "steps": [{
@@ -21,9 +21,9 @@ async def test_default_runner_validates_cases_through_the_real_nemo_runtime() ->
             "capability": "secrets",
             "contract_ref": "tali.guard.secrets.exact.v1",
             "phases": ["input", "output"],
-            "on_unsafe": "reject",
+            "on_unsafe": "block",
             "trigger": {"type": "always", "verdicts": []},
-            "parameters": [],
+            "parameters": [["evaluation_view", "original"], ["precedence", "0"]],
         }],
         "modules": [{
             "id": "data_protection:input",
@@ -70,7 +70,13 @@ async def test_default_runner_validates_cases_through_the_real_nemo_runtime() ->
         "coveredRuleIds": [],
     }]
 
-    status, metrics, results = await DefaultRunnerValidator(DefaultRunnerCompiler()).validate(
+    progress = []
+
+    async def on_progress(phase, completed, passed):
+        progress.append((phase, completed, passed))
+
+    compiler = DefaultRunnerCompiler()
+    outcome = await DefaultRunnerValidator(compiler).run(
         protocol.ValidationRequest(
             run_id="validation-1",
             guardrail_id="guardrail-1",
@@ -85,10 +91,24 @@ async def test_default_runner_validates_cases_through_the_real_nemo_runtime() ->
                 "groundingSources": [],
                 "caseType": "scenario",
             }) for case in cases],
-        )
+        ),
+        on_progress=on_progress,
     )
+    status, metrics, results = outcome.status, outcome.metrics, outcome.results
 
     assert status == "passed"
+    # The tested candidate is the exact offline-compiled content: publication
+    # can reuse it without compiling again.
+    expected = compiler.compile(protocol.CompileRequest(
+        guardrail_id="guardrail-1", guardrail_version="20260904-010000.001Z",
+        plan=plan_to_proto(plan), runtime_profile="auto",
+    ))
+    assert outcome.artifact.checksum == expected.checksum == artifact_digest(outcome.artifact)
+    assert outcome.artifact.generation == 0
+    assert not outcome.artifact.signature and not outcome.artifact.artifact_id
+    assert progress[0:2] == [("preparing", 0, 0), ("executing", 0, 0)]
+    assert progress[-2:] == [("executing", 2, 2), ("finalizing", 2, 2)]
+    assert all(a[1] <= b[1] for a, b in zip(progress, progress[1:]))
     assert metrics["total"] == 2
     assert metrics["passed"] == 2
     assert metrics["complianceRate"] == 100
@@ -97,3 +117,81 @@ async def test_default_runner_validates_cases_through_the_real_nemo_runtime() ->
         ("blocked", "block", True),
     ]
     assert results[1]["findings"][0]["risk"] == "secrets"
+
+
+@pytest.mark.asyncio
+async def test_local_cases_allow_progress_to_flush_before_the_suite_finishes(monkeypatch) -> None:
+    import asyncio
+    import itertools
+    from types import SimpleNamespace
+    import runner.validator as module
+
+    class Runtime:
+        def __init__(self, _registry):
+            pass
+
+        async def shutdown(self):
+            pass
+
+    async def prepared(*_args, **_kwargs):
+        return None, None, protocol.Artifact(checksum="a" * 64)
+
+    monkeypatch.setattr(module, "NeMoRuntime", Runtime)
+    monkeypatch.setattr(module, "prepare", prepared)
+    monkeypatch.setattr(module, "validation_test_from_proto", lambda item: {"id": item.id})
+    monkeypatch.setattr(module, "_metrics", lambda results: {"total": len(results)})
+    monkeypatch.setattr(module, "time", SimpleNamespace(monotonic=lambda: next(ticks)))
+    ticks = itertools.count()
+    validator = DefaultRunnerValidator(DefaultRunnerCompiler())
+    finished = []
+
+    async def local_case(_runtime, _plan, case):
+        # Like local detectors, this asynchronous function need not yield.
+        finished.append(case["id"])
+        return {"caseId": case["id"], "required": True, "passed": int(case["id"]) % 2 == 0}
+
+    monkeypatch.setattr(validator, "_evaluate", local_case)
+    outgoing = asyncio.Queue()
+    flushed = []
+
+    async def report(phase, completed, passed):
+        outgoing.put_nowait((phase, completed, passed))
+
+    async def sender():
+        while True:
+            observation = await outgoing.get()
+            flushed.append((*observation, len(finished)))
+            if observation[0] == "finalizing":
+                return
+
+    sending = asyncio.create_task(sender())
+    status, metrics, results = await validator.validate(protocol.ValidationRequest(
+        test_cases=[protocol.ValidationTestCase(id=str(index)) for index in range(32)],
+    ), on_progress=report)
+    await sending
+    assert any(phase == "executing" and 0 < completed < 32 and at_flush < 32
+               for phase, completed, _passed, at_flush in flushed)
+    assert flushed[-1] == ("finalizing", 32, 16, 32)
+    assert [result["caseId"] for result in results] == list(map(str, range(32)))
+    assert status == "failed"
+    assert metrics["total"] == 32
+
+
+def test_validation_accuracy_does_not_count_failure_or_unknown_as_detector_errors():
+    from runner.validator import _metrics
+
+    base = {"expectedDecision": "allow", "actualDecision": "block", "passed": False,
+            "actualFailure": None, "findings": [], "trace": [], "escalated": True, "latencyMs": 10}
+    results = [
+        {**base, "actualFailure": "timeout", "latencyMs": 30000},
+        {**base, "actualFailure": "provider_failure", "expectedDecision": "block", "actualDecision": "allow"},
+        {**base, "findings": [{"verdict": "unknown"}]},
+        {**base, "trace": [{"verdict": "unknown"}], "expectedDecision": "block", "actualDecision": "allow"},
+        {**base, "findings": [{"verdict": "matched"}]},
+        {**base, "expectedDecision": "block", "actualDecision": "allow"},
+        {**base, "actualDecision": "allow", "passed": True, "escalated": False},
+        {**base, "actualDecision": "allow", "passed": True, "escalated": False},
+    ]
+    assert _metrics(results) == {"total": 8, "skipped": 0, "executed": 8, "passed": 2, "complianceRate": 25,
+                                "falsePositiveRate": 12.5, "falseNegativeRate": 12.5,
+                                "escalationRate": 75, "p95LatencyMs": 30000}

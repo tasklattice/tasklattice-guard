@@ -1,0 +1,108 @@
+---
+id: "concept-logs"
+title: "运行日志：核对保护是否执行"
+summary: "了解 INFO、DEBUG、TRACE 与 Rule 风险级别的关系，以及 request、response 正文的采集条件。"
+order: 3
+---
+运行日志记录内容经过了哪套保护，以及实际结果。它属于 `user` 工作区，包含已采集的请求与响应正文。管理员通过[审计日志](/audit-log)查看管理操作。
+
+遇到意外阻断时，先按 Guardrail、时间范围和结果筛选。打开交互后，检查版本、检测点、命中 Rule 和执行步骤。
+
+<a id="runtime-log-views" />
+## 选择日志视图
+
+| 视图 | 用途 |
+| --- | --- |
+| 交互 | 查看关联交互的整体结果。 |
+| Guardrail 检查点 | 查看每次 Input 和 Output 检测结果。 |
+| 系统事件 | 查看路由、Decision 和延迟等运行元数据，不展示请求与响应正文。 |
+
+筛选包含 Guardrail、时间、方向和结果。Router Monitoring 可带入 Route、Target 和 revision 条件。这里没有独立 Endpoint 筛选器，请通过请求 ID 和路由上下文关联调用方记录。
+
+<a id="term-evidence" />
+### 阅读执行证据
+
+Evidence 包含发现、Policy 与 Rule 身份、执行步骤和版本信息。先看结果及命中 Rule，再检查错误、延迟和固定版本。
+
+Router 下发状态描述配置是否应用，运行证据描述某次检测。单次请求被阻断，不代表整个 Guardrail 不健康。
+
+<a id="runtime-log-capture" />
+## 配置正文采集
+
+日志等级属于 Guardrail，对各版本生效，默认 **INFO**。用户在 **Guardrail → 操作 → 编辑日志等级** 中修改。DEBUG 与 TRACE 需要确认正文采集成本。
+
+配置同步后，新调用使用新等级。同一次关联调用保留首次检查时的等级，提高等级不能恢复此前正文。
+
+所有等级都保留运行记录、发现、动作、版本和执行 trace。下表说明 **Enforce** 模式的正文采集。
+
+| 内容 | INFO | DEBUG | TRACE |
+| --- | --- | --- | --- |
+| 运行记录、发现和 trace | 保留 | 保留 | 保留 |
+| 本次调用收到的原始正文 | 不保存 | 命中 Medium、High 或 Critical Rule 后保存。 | 所有调用均保存。 |
+| 额外的转换后正文副本 | 不保存 | 不保存 | 不保存 |
+
+<a id="concept-event-log-levels" />
+### 根据命中 Rule 的风险选择正文
+
+| 整次调用中已知的最高命中风险 | INFO | DEBUG | TRACE |
+| --- | --- | --- | --- |
+| Critical、High 或 Medium | 记录和 trace | 记录、trace 和原始正文 | 记录、trace 和原始正文 |
+| Low 或 Informational | 记录和 trace | 记录和 trace | 记录、trace 和原始正文 |
+| 未命中或没有已知风险的命中 | 记录和 trace | 记录和 trace | 记录、trace 和原始正文 |
+
+DEBUG 只根据实际 Rule 命中选择正文。未命中、结果不确定和执行错误不能建立高风险命中。
+
+动作不改变风险阈值。High Rule 使用 `allow` 仍会选择 DEBUG 正文，Low Rule 使用 `block` 则不会。INFO 在阻断、超时和失败关闭时也不保存正文。
+
+Rule 的 `informational` 描述风险，日志 INFO 描述采集。修改日志等级不改变防护模式或 Rule 风险。
+
+<a id="runtime-log-request-response" />
+## 关联请求与响应正文
+
+采集以完整的关联调用为单位。接入方需使用同一 Call ID 提交 Input 和 Output，两个阶段可由不同 Runner 检查。
+
+| Enforce 场景 | 保存的正文 |
+| --- | --- |
+| INFO，包括 Output 阻断 | 两个方向均无正文，运行证据保留。 |
+| DEBUG，任一阶段命中 Medium 及以上 | 保存两个方向已收到的原文。Output 命中可选择之前的 Input 正文。 |
+| DEBUG，只命中 Low | 无论采取什么动作，均不保存正文。 |
+| TRACE，包括没有命中的调用 | 保存两个方向已收到的原文。 |
+| 已选中的调用在 Input 阻断，未调用模型 | 仅保存 Input，不存在模型响应。 |
+
+LiteLLM 使用 `litellm_call_id` 关联。缺少 Output 或调用 ID 时，无法补出另一个方向。Scan 调用互相独立，`requestPromptId` 不建立关联。
+
+<a id="runtime-log-content-boundary" />
+### 理解保存的内容
+
+采集仅包含 Guard 收到的内容。支持的 HTTP 检测可保存原始正文、方法、目标和脱敏后的请求 Header。鉴权凭据与 Cookie 不保留。
+
+Output 检测正文包含接入方提交的回答，不等于模型服务完整的 HTTP 响应封装。转换后的副本不会作为额外原文保存。
+
+流式采集包含检测期间收到的原始文本，不包含未来文本或完整 HTTP 流封装。详见[流式检测](/document/developer/gateway-connect#gateway-stream-protocol)。
+
+<a id="runtime-log-missing-content" />
+### 排查正文缺失
+
+检查首次检测的日志等级、命中风险、Call ID 和提交内容。用户在[运行日志](/$projectId/logs)中按需加载已采集正文，系统事件不展示正文。
+
+DEBUG 从首次检查起最多保留五分钟的候选正文。过期、缓存限制、存储错误或上报失败可能导致内容不完整，已有运行记录仍然保留。
+
+Monitor 根据实际检测选择 DEBUG 正文，最终放行不取消选择。Bypass 不产生检测命中，因此 DEBUG 不能据此选择正文。TRACE 仍可保留收到的原文。
+
+<a id="concept-security-events" />
+## 调查安全事件
+
+打开 **Guardrail → 安全事件**，选择时间范围，再通过筛选选择风险级别。数量与匹配摘要使用该时段。可移除单个条件，或清除筛选以恢复全部等级。
+
+筛选条件保存在页面 URL 中。事件级别取 Rule 的版本化风险，置信度和动作不改变风险等级。
+
+1. 检查 Policy、Rule、Endpoint 和检测阶段。
+2. 查看要求的动作。高风险事件仅记录时，仍然是高风险。
+3. 打开运行日志，查看实际 Decision 和执行错误。
+4. 核对 Policy 和 Guardrail 版本。缺少置信度时显示“未提供”。
+
+应用必须执行 `block` 和 `transform`。日志不能证明下游已正确完成交付。
+
+每个 finding 保留自己的风险，Router 请求摘要取最高级别。正常通过本身不创建事件。运行故障独立保留在运行日志中，不由最终放行或阻断结果决定。
+
+风险级别不是调查状态。当前不提供认领、关闭或抑制事件的流程。详见[风险定义](/document/overview/glossary-definition#term-rule-risk-severity)。

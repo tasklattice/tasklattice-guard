@@ -19,6 +19,22 @@ message ModelRuntime {
   int32 max_tokens = 9;
   // Explicit Provider-scoped opt-in. False retains HTTPS certificate checks.
   bool skip_tls_verify = 10;
+  // Concurrent active model RPCs per Runner process; unset uses 2.
+  int32 max_concurrency = 11;
+  // Total attempts on explicit rate-limit rejection, including the initial call.
+  int32 rate_limit_attempts = 12;
+  // Inclusive negative decision boundary; unset uses 0.1. Zero is valid.
+  // Must be nonnegative and less than upper_threshold.
+  optional double lower_threshold = 13;
+  // Inclusive positive decision boundary; unset uses 0.9.
+  // Must exceed lower_threshold and be at most 1.
+  optional double upper_threshold = 14;
+  // Laya only. Determines the System One request body without per-request
+  // negotiation: "native" sends max_len and head_max_len; "compatible" sends
+  // max_len only for strict wrappers such as 1Panel-dev/laya-server. The
+  // Controller determines it during the model connection probe. Empty means
+  // "compatible" so an older Controller cannot force a rejected request.
+  string laya_request_mode = 15;
 }
 
 // Bind one stable product capability on one Rail surface to a registered
@@ -49,6 +65,17 @@ message CapabilityValidationRequest {
   string binding_id = 2;
   DataPlaneModelConfiguration configuration = 3;
   string credential_lease_id = 4;
+  FormalValidationContext formal_validation = 5;
+}
+
+// Synthetic examples tied to an existing, versioned external proof policy.
+message FormalValidationContext {
+  string policy_id = 1;
+  string policy_version = 2;
+  double confidence_threshold = 3;
+  string query = 4;
+  string valid_response = 5;
+  string invalid_response = 6;
 }
 
 // Behavioural evidence from the same NeMo compiler and runtime used for traffic.

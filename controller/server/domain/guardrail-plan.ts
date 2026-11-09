@@ -1,7 +1,13 @@
+import { activePolicyParameters, policyBindingParameterIssues, resolveModelRuleParameters } from "../../shared/policy-parameters.js";
+import { PLAN_COMPILER_VERSION } from "./artifact-execution-contract.js";
 import type { PolicyDto } from "../policy-catalog/catalog.js";
 import type { ProgrammablePolicySnapshot } from "../policy-studio/model.js";
 import { flowRuleId } from "../policy-studio/model.js";
 import { PHRASE_PARAMETER, PHRASE_POLICY_ID, parsePhraseEntries } from "../../shared/phrase-policy.js";
+import { materializePolicyRules } from "./policy-rules.js";
+import { scheduleRankedChecks } from "./execution-plan.js";
+import { frozenBuiltInDefinition, planPolicyVersion } from "./policy-node.js";
+import { hasTopicRules, isSplitTopicPolicy, TOPIC_ALLOW_RULE, TOPIC_DENY_RULE, topicMissingParameters, topicPolicyValues } from "../../shared/topic-policy.js";
 import {
   enforcementActions,
   type EnforcementAction,
@@ -42,8 +48,9 @@ export type GuardrailPolicyBindingConfig = {
 
 /** Controller-owned product draft expressed only as Policy bindings. */
 export type GuardrailDraftConfig = {
+  profileOrigin?: import("../../shared/protection-map.js").ProfileOrigin | undefined;
   allowedTopics: string[];
-  /** @deprecated Topic Control is allowlist-only; retained only to read older drafts. */
+  topicControlMode?: "strict" | "permissive";
   restrictedTopics: string[];
   policyBindings: GuardrailPolicyBindingConfig[];
   safetyLevel: "balanced" | "strict";
@@ -63,7 +70,7 @@ type RuntimeEvaluation = {
   idSuffix: string;
   contractRef: string;
   potentiallyRemote: boolean;
-  after?: { idSuffix: string; verdicts: Array<"safe" | "unsafe" | "uncertain" | "error"> };
+  after?: { idSuffix: string; verdicts: Array<"not_matched" | "matched" | "unknown" | "error"> };
 };
 
 const contracts = {
@@ -73,12 +80,12 @@ const contracts = {
   contentFilter: "tali.guard.content-filter.rules.v1",
   promptInjection: "tali.guard.prompt-injection.v1",
   indirectPromptInjection: "tali.guard.indirect-prompt-injection.v1",
+  memoryPoisoning: "tali.guard.memory-poisoning.v1",
   jailbreak: "tali.guard.jailbreak.v1",
   systemPromptLeakage: "tali.guard.system-prompt-leakage.v1",
   contentSafety: "tali.guard.content-safety.v1",
   topicRules: "tali.guard.topic-control.rules.v1",
   topicSemantic: "tali.guard.topic-control.semantic.v1",
-  companyPolicy: "tali.guard.company-policy.v1",
   contextualGrounding: "tali.guard.contextual-grounding.v1",
   automatedReasoning: "tali.guard.automated-reasoning.v1",
 } as const;
@@ -86,22 +93,22 @@ const contracts = {
 const always = (idSuffix: string, contractRef: string, potentiallyRemote = false): RuntimeEvaluation => ({
   idSuffix, contractRef, potentiallyRemote,
 });
-const afterUncertain = (idSuffix: string, contractRef: string, previous: string, potentiallyRemote = true): RuntimeEvaluation => ({
-  idSuffix, contractRef, potentiallyRemote, after: { idSuffix: previous, verdicts: ["uncertain"] },
+const afterUnknown = (idSuffix: string, contractRef: string, previous: string, potentiallyRemote = true): RuntimeEvaluation => ({
+  idSuffix, contractRef, potentiallyRemote, after: { idSuffix: previous, verdicts: ["unknown"] },
 });
 
 const capabilities: RuntimeCapability[] = [
-  capability("secrets", "builtin-secrets", ["input", "output"], "reject", [always("exact", contracts.secretsExact)], "data_protection"),
-  capability("pii", "builtin-pii", ["input", "output"], "redact", [always("exact", contracts.piiExact), afterUncertain("semantic", contracts.piiSemantic, "exact")], "data_protection"),
-  capability("prompt_injection", "builtin-prompt-injection", ["input"], "reject", [always("primary", contracts.promptInjection)], "interaction_safety"),
-  capability("indirect_prompt_injection", "builtin-indirect-prompt-injection", ["input"], "reject", [always("exact", contracts.indirectPromptInjection)], "interaction_safety"),
-  capability("jailbreak", "builtin-jailbreak", ["input"], "reject", [always("primary", contracts.jailbreak, true)], "interaction_safety"),
-  capability("system_prompt_leakage", "builtin-system-prompt-leakage", ["output"], "reject", [always("exact", contracts.systemPromptLeakage)], "data_protection"),
-  capability("content_safety", "builtin-content-safety", ["input", "output"], "reject", [always("primary", contracts.contentSafety, true)], "interaction_safety"),
-  capability("topic_control", "builtin-topic-safety", ["input"], "redirect", [always("rules", contracts.topicRules), afterUncertain("semantic", contracts.topicSemantic, "rules")], "business_assurance"),
-  capability("company_policy", "builtin-company-policy", ["input"], "reject", [always("primary", contracts.companyPolicy, true)], "business_assurance"),
-  capability("contextual_grounding", "builtin-contextual-grounding", ["output"], "regenerate", [always("primary", contracts.contextualGrounding, true)], "business_assurance"),
-  capability("automated_reasoning", "builtin-automated-reasoning", ["output"], "rewrite", [always("primary", contracts.automatedReasoning, true)], "business_assurance"),
+  capability("secrets", "builtin-secrets", ["input", "output"], "block", [always("exact", contracts.secretsExact)], "data_protection"),
+  capability("pii", "builtin-pii", ["input", "output"], "transform", [always("exact", contracts.piiExact), always("semantic", contracts.piiSemantic, true)], "data_protection"),
+  capability("prompt_injection", "builtin-prompt-injection", ["input"], "block", [always("primary", contracts.promptInjection)], "interaction_safety"),
+  capability("indirect_prompt_injection", "builtin-indirect-prompt-injection", ["input"], "block", [always("exact", contracts.indirectPromptInjection)], "interaction_safety"),
+  capability("memory_poisoning", "builtin-memory-poisoning", ["input"], "block", [always("exact", contracts.memoryPoisoning)], "interaction_safety"),
+  capability("jailbreak", "builtin-jailbreak", ["input"], "block", [always("primary", contracts.jailbreak, true)], "interaction_safety"),
+  capability("system_prompt_leakage", "builtin-system-prompt-leakage", ["output"], "block", [always("exact", contracts.systemPromptLeakage)], "data_protection"),
+  capability("content_safety", "builtin-content-safety", ["input", "output"], "block", [always("primary", contracts.contentSafety, true)], "interaction_safety"),
+  capability("topic_control", "business-topics", ["input"], "block", [always("rules", contracts.topicRules), afterUnknown("semantic", contracts.topicSemantic, "rules")], "business_assurance"),
+  capability("contextual_grounding", "builtin-contextual-grounding", ["output"], "block", [always("primary", contracts.contextualGrounding, true)], "business_assurance"),
+  capability("automated_reasoning", "builtin-automated-reasoning", ["output"], "block", [always("primary", contracts.automatedReasoning, true)], "business_assurance"),
 ];
 
 const capabilityByPolicyId = new Map(capabilities.map((item) => [item.policyId, item]));
@@ -114,7 +121,7 @@ type PlanStep = {
   contract_ref: string;
   phases: Array<"input" | "output">;
   on_unsafe: EnforcementAction;
-  trigger: { type: "always" } | { type: "on_result"; step_ref: string; verdicts: Array<"safe" | "unsafe" | "uncertain" | "error"> };
+  trigger: { type: "always" } | { type: "on_result"; step_ref: string; verdicts: Array<"not_matched" | "matched" | "unknown" | "error"> };
   parameters: Array<[string, string]>;
 };
 
@@ -124,11 +131,11 @@ export function normalizeGuardrailDraft(value: unknown): GuardrailDraftConfig {
     throw new Error("Standalone custom content rules are no longer supported. Configure the Phrase filters Policy before saving or publishing this draft.");
   }
   return {
+    ...(typeof record(source.profileOrigin).id === "string" && typeof record(source.profileOrigin).version === "string"
+      ? { profileOrigin: { id: String(record(source.profileOrigin).id), version: String(record(source.profileOrigin).version) } } : {}),
     allowedTopics: stringArray(source.allowedTopics),
-    // Topic Control is intentionally allowlist-only. Keep the serialized field
-    // empty so older drafts remain readable without preserving deny-list
-    // semantics in newly compiled versions.
-    restrictedTopics: [],
+    restrictedTopics: stringArray(source.restrictedTopics),
+    topicControlMode: source.topicControlMode === "permissive" ? "permissive" : "strict",
     policyBindings: Array.isArray(source.policyBindings)
       ? source.policyBindings.map(normalizeBinding)
       : [],
@@ -148,12 +155,13 @@ export function buildGuardrailPlan(input: {
   programmablePolicies?: readonly ProgrammablePolicySnapshot[];
 }): Record<string, unknown> {
   const draft = normalizeGuardrailDraft(input.draft);
-  const policyById = new Map((input.policies ?? []).map((item) => [item.id, item]));
+  const policyById = new Map((input.policies ?? []).flatMap(item => [item, ...(item.published_versions ?? [])]).map(item => [`${item.id}@${item.version}`, item]));
   const programmableByKey = new Map((input.programmablePolicies ?? []).map((item) => [`${item.policy_id}@${item.version}`, item]));
   const bindings = draft.policyBindings;
+  const authoredReasoningPolicies: Array<{ id: string; policy_id: string; policy_version: string; confidence_threshold: number }> = [];
   if (!bindings.length) throw new Error("Select at least one Policy before compiling a Guardrail.");
 
-  const resolved: Array<{ capability: RuntimeCapability; binding: GuardrailPolicyBindingConfig; policy?: PolicyDto }> = [];
+  const resolved: Array<{ capability: RuntimeCapability; binding: GuardrailPolicyBindingConfig; policy?: PolicyDto; fullPolicy?: PolicyDto; authoredRule?: PolicyDto["rules"][number]; authoredParameters?: Array<[string, string]> }> = [];
   const programmable: Array<{ binding: GuardrailPolicyBindingConfig; policy: ProgrammablePolicySnapshot }> = [];
   for (const binding of bindings) {
     const programmablePolicy = programmableByKey.get(`${binding.policyId}@${binding.policyVersion}`);
@@ -173,65 +181,233 @@ export function buildGuardrailPlan(input: {
       if (native) resolved.push({ capability: native, binding });
       continue;
     }
-    const catalogPolicy = policyById.get(binding.policyId);
+    const catalogPolicy = policyById.get(`${binding.policyId}@${binding.policyVersion}`);
     if (input.policies !== undefined) {
       if (!catalogPolicy) throw new Error(`Policy ${binding.policyId}@${binding.policyVersion} is unavailable in the Controller catalog.`);
       validateCatalogBinding(binding, catalogPolicy);
     }
+    if (catalogPolicy?.definition) {
+      binding.parameterValues = { ...Object.fromEntries(catalogPolicy.parameters.flatMap(p => p.default == null ? [] : [[p.name, p.default]])), ...binding.parameterValues };
+      if (hasTopicRules(catalogPolicy.definition.rules)) {
+        if (binding.ruleActions[TOPIC_DENY_RULE] && binding.ruleActions[TOPIC_DENY_RULE] !== "block") throw new Error("The Topic denylist Rule must reject.");
+        if (binding.parameterValues.topic_mode && !["strict", "permissive"].includes(binding.parameterValues.topic_mode)) throw new Error("Topic mode must be strict or permissive.");
+        const missing = topicMissingParameters(binding.parameterValues, binding.enabledRuleIds);
+        if (!binding.enabledRuleIds.length) throw new Error(`Policy ${binding.policyId} has no enabled Rules.`);
+        if (missing.length) throw new Error(`Topic Control requires ${missing.join(", ")}.`);
+      }
+      if (!binding.enabledRails.length) binding.enabledRails = [...catalogPolicy.rails];
+      const policy = materializePolicyRules(catalogPolicy, binding);
+      policyById.set(`${policy.id}@${policy.version}`, policy);
+      const order = [...binding.ruleOrder ?? [], ...policy.rules.map(r => r.id)];
+      const ordered = [...policy.rules].sort((a, b) => order.indexOf(a.id) - order.indexOf(b.id));
+      // Only enabled Rules participate in Priority. A disabled Topic Rule must
+      // not move an enabled Topic Rule ahead of an earlier local Rule.
+      const enabledOrdered = ordered.filter(rule => binding.enabledRuleIds.includes(rule.id));
+      const groupLocalRules = enabledOrdered.filter(rule => rule.implementation.execution === "local"
+        && !rule.detector.ref.startsWith("agent/")).length > 4;
+      // Enforce only the Topic pair's deny-before-allow contract. Other Rules
+      // keep their authored Rank Mode positions; a local redaction may need to
+      // run before either Topic classifier sees the content.
+      const denyAt = enabledOrdered.findIndex(rule => rule.id === TOPIC_DENY_RULE);
+      const allowAt = enabledOrdered.findIndex(rule => rule.id === TOPIC_ALLOW_RULE);
+      if (denyAt >= 0 && allowAt >= 0 && denyAt > allowAt) {
+        [enabledOrdered[allowAt], enabledOrdered[denyAt]] = [enabledOrdered[denyAt]!, enabledOrdered[allowAt]!];
+      }
+      for (const rule of enabledOrdered) {
+        const enabledRails = binding.enabledRails.filter(rail => rule.rails.includes(rail));
+        if (!enabledRails.length) continue;
+        const scoped = { ...binding, enabledRuleIds: [rule.id], enabledRails };
+        const boundaryDetector = ({
+          "agent/indirect-injection": ["indirect_prompt_injection", contracts.indirectPromptInjection],
+          "agent/memory-poisoning": ["memory_poisoning", "tali.guard.memory-poisoning.v1"],
+        } as Record<string, [string, string]>)[rule.detector.ref];
+        if (boundaryDetector) {
+          resolved.push({ capability: { capability: boundaryDetector[0], policyId: "", defaultPhases: ["input"],
+            defaultAction: "block", evaluations: [always("boundary", boundaryDetector[1])], module: "interaction_safety" },
+            binding: scoped, authoredRule: rule, authoredParameters: [["declarative_rule", "true"], ["rule_id", rule.id]] });
+        } else if (rule.detector.ref === "model/classifier" && String(rule.detector_options.profile ?? "") === "topic-classification"
+          && (rule.id === TOPIC_DENY_RULE || rule.id === TOPIC_ALLOW_RULE)) {
+          const values = topicPolicyValues(binding.parameterValues);
+          const deny = rule.id === TOPIC_DENY_RULE;
+          const action = deny ? binding.ruleActions[rule.id] ?? "block" : binding.ruleActions[rule.id] ?? binding.action ?? "block";
+          if (deny && action !== "block") throw new Error("The Topic denylist Rule must reject.");
+          const authoredRule = catalogPolicy.definition.rules.find(item => item.id === rule.id)!;
+          const params = resolveModelRuleParameters(catalogPolicy.definition, authoredRule, binding.parameterValues);
+          const authoredParameters: Array<[string, string]> = [["declarative_rule", "true"], ["rule_id", rule.id],
+            ["topic_mode", deny ? "permissive" : values.mode],
+            ["allowed_topics", deny ? "" : values.allowed],
+            ["restricted_topics", deny ? values.denied : ""]];
+          if (params.on_unknown !== undefined) authoredParameters.push(["on_unknown", String(params.on_unknown)]);
+          if (params.review_unknown !== undefined) authoredParameters.push(["review_unknown", String(params.review_unknown)]);
+          resolved.push({ capability: { capability: "topic_control", policyId: "", defaultPhases: ["input"],
+            defaultAction: deny ? "block" : action,
+            evaluations: [always("semantic", contracts.topicSemantic, true)],
+            module: "business_assurance" }, binding: scoped, authoredRule: rule, authoredParameters });
+        } else if (rule.implementation.execution === "local") {
+          // Keep contiguous local Rules in one action group. The executable
+          // pass still splits action runs and preserves authored order, while
+          // one NeMo Action evaluates the whole group.
+          const previous = resolved.at(-1);
+          if (groupLocalRules && previous && previous.policy?.id === policy.id && !previous.authoredRule
+            && previous.capability.capability === "builtin_content_filter") {
+            previous.binding = { ...previous.binding,
+              enabledRuleIds: [...previous.binding.enabledRuleIds, rule.id],
+              ruleOrder: [...(previous.binding.ruleOrder ?? []), rule.id],
+              enabledRails: [...new Set([...previous.binding.enabledRails, ...scoped.enabledRails])] };
+          } else if (groupLocalRules) {
+            resolved.push({ capability: { capability: "builtin_content_filter", policyId: "", defaultPhases: ["input", "output"], defaultAction: "block", evaluations: [always("rules", contracts.contentFilter)], module: "interaction_safety" }, binding: { ...scoped, ruleOrder: [rule.id] }, policy, fullPolicy: policy });
+          } else {
+            resolved.push({ capability: { capability: "builtin_content_filter", policyId: "", defaultPhases: ["input", "output"], defaultAction: "block", evaluations: [always("rules", contracts.contentFilter)], module: "interaction_safety" }, binding: scoped, policy: { ...policy, rules: [rule] }, fullPolicy: policy, authoredRule: rule });
+          }
+        } else {
+          const profile = String(rule.detector_options.profile ?? "");
+          const adapter = rule.detector.ref === "model/classifier" ? ({
+            "safety-classification": ["content_safety", contracts.contentSafety], "jailbreak-classification": ["jailbreak", contracts.jailbreak],
+            "pii-classification": ["pii", contracts.piiSemantic], "topic-classification": ["topic_control", contracts.topicSemantic],
+          } as Record<string, [string, string]>)[profile] : rule.detector.ref === "model/grounding" ? ["contextual_grounding", contracts.contextualGrounding] : rule.detector.ref === "service/formal-verification" ? ["automated_reasoning", contracts.automatedReasoning] : undefined;
+          if (!adapter) throw new Error(`Detector ${rule.detector.ref} has no executable capability contract.`);
+          const authoredRule = catalogPolicy.definition.rules.find(r => r.id === rule.id)!;
+          const params = resolveModelRuleParameters(catalogPolicy.definition, authoredRule, binding.parameterValues);
+          const authoredParameters: Array<[string, string]> = [["declarative_rule", "true"], ["rule_id", rule.id]];
+          for (const key of ["topic_mode", "allowed_topics", "restricted_topics", "grounding_threshold", "relevance_threshold", "policy_snapshot_id", "on_unknown", "review_unknown"]) {
+            if (params[key] !== undefined) authoredParameters.push([key, String(params[key])]);
+          }
+          if (rule.detector.ref === "service/formal-verification" && params.policy_id && params.policy_version) {
+            const snapshotId = `formal:${JSON.stringify([binding.policyId, binding.policyVersion, rule.id])}`;
+            const threshold = Number(params.confidence_threshold ?? 0.8);
+            if (!Number.isFinite(threshold) || threshold < 0 || threshold > 1) throw new Error(`Rule ${rule.id}: confidence_threshold must be between 0 and 1.`);
+            authoredReasoningPolicies.push({ id: snapshotId, policy_id: String(params.policy_id), policy_version: String(params.policy_version), confidence_threshold: threshold });
+            authoredParameters.push(["policy_snapshot_id", snapshotId]);
+          } else if (rule.detector.ref === "service/formal-verification" && params.policy_snapshot_id === undefined && binding.reasoningPolicy) {
+            authoredParameters.push(["policy_snapshot_id", `automated-reasoning:${binding.reasoningPolicy.policyId}:${binding.reasoningPolicy.policyVersion}`]);
+          }
+          resolved.push({ capability: { capability: adapter[0]!, policyId: "", defaultPhases: ["input", "output"], defaultAction: rule.effect, evaluations: [always("detector", adapter[1]!, true)], module: "interaction_safety" }, binding: scoped, authoredRule: rule, authoredParameters });
+        }
+      }
+      continue;
+    }
     const native = capabilityByPolicyId.get(binding.policyId);
     if (native) {
+      // Until platform-native plans are fully Rule-driven, never accept source
+      // detector changes that this adapter path would otherwise silently ignore.
+      if (catalogPolicy) validateNativeDetectorContract(catalogPolicy, native.capability);
       resolved.push({ capability: native, binding });
       continue;
     }
-    const policy = catalogPolicy;
+    let policy = catalogPolicy;
     if (!policy) throw new Error(`Policy ${binding.policyId}@${binding.policyVersion} is unavailable in the Controller catalog.`);
     if (input.policies === undefined) validateCatalogBinding(binding, policy);
+    binding.parameterValues = {
+      ...Object.fromEntries(policy.parameters.flatMap((parameter) => parameter.default == null ? [] : [[parameter.name, parameter.default]])),
+      ...binding.parameterValues,
+    };
+    policy = materializePolicyRules(policy, binding);
+    policyById.set(`${policy.id}@${policy.version}`, policy);
     resolved.push({ capability: {
       capability: "builtin_content_filter", policyId: "", defaultPhases: ["input", "output"],
-      defaultAction: "reject", evaluations: [always("rules", contracts.contentFilter)], module: "interaction_safety",
+      defaultAction: "block", evaluations: [always("rules", contracts.contentFilter)], module: "interaction_safety",
     }, binding, policy });
   }
 
-  if (resolved.some(({ capability }) => capability.capability === "topic_control" || capability.capability === "company_policy") && !draft.allowedTopics.length) {
-    throw new Error("Topic Control requires at least one allowed topic. Requests outside this allowlist are off-topic.");
+  if (resolved.some(({ capability, binding, authoredRule }) => !authoredRule && !isSplitTopicPolicy(binding.policyId, binding.policyVersion) && capability.capability === "topic_control") && draft.topicControlMode !== "permissive" && !draft.allowedTopics.length) {
+    throw new Error("Strict Topic Control requires at least one allowed topic. Unlisted tasks are off-topic.");
   }
 
   const steps: PlanStep[] = [];
   const modules: Array<Record<string, unknown>> = [];
   const previousModule: Partial<Record<"input" | "output", string>> = {};
-  for (const { capability: definition, binding, policy } of resolved) {
+  const hasCustomFlows = programmable.some(({ policy }) => policy.source !== "built_in");
+  if (hasCustomFlows) {
+    throw new Error("Rank Mode does not support custom Colang flows; expand them into declarative Rules before publishing.");
+  }
+  const executable = resolved.flatMap(item => {
+    // A custom flow is an ordering barrier for the whole plan, including
+    // mixed-action Rules inside an older catalog Policy.
+    if (hasCustomFlows || !item.policy || item.authoredRule) return [{ ...item, actionGroup: "" }];
+    const enabled = item.policy.rules.filter(rule => item.binding.enabledRuleIds.includes(rule.id));
+    const byId = new Map(enabled.map(rule => [rule.id, rule]));
+    const explicit = (item.binding.ruleOrder ?? []).filter(id => byId.has(id));
+    const ordered = [...explicit, ...enabled.map(rule => rule.id).filter(id => !explicit.includes(id))]
+      .map(id => byId.get(id)!);
+    const actionOf = (rule: typeof ordered[number]) =>
+      isSplitTopicPolicy(item.binding.policyId, item.binding.policyVersion) && rule.id === TOPIC_DENY_RULE
+        ? "block"
+        : item.binding.ruleActions[rule.id] ?? item.binding.action ?? rule.effect as EnforcementAction;
+    // Keep contiguous same-action Rules in one candidate. This preserves their
+    // authored order while avoiding one NeMo Action per Rule; the action still
+    // evaluates the Rules sequentially and applies each Transform before the
+    // next Rule. Mixed-action sequences remain separate candidates.
+    const runs: Array<{ action: EnforcementAction; rules: typeof ordered }> = [];
+    for (const rule of ordered) {
+      const action = actionOf(rule);
+      const last = runs.at(-1);
+      if (last && last.action === action) last.rules.push(rule);
+      else runs.push({ action, rules: [rule] });
+    }
+    return runs.map((run, index) => ({ ...item, actionGroup: `:${run.action}:${index}`,
+      binding: { ...item.binding, action: run.action, enabledRuleIds: run.rules.map(rule => rule.id),
+        ruleOrder: run.rules.map(rule => rule.id) } }));
+  });
+  for (const { capability: definition, binding, policy, fullPolicy, authoredRule, authoredParameters, actionGroup } of executable) {
     // Never coalesce separate Policies by capability: a later Policy must see
     // the content produced by every earlier Policy, even across module types.
-    const declarative = policy ? [{ binding, policy }] : [];
+    const declarative = policy ? [{ binding, policy: fullPolicy ?? policy, executionPolicy: policy }] : [];
     const nativePolicy = programmableByKey.get(`${binding.policyId}@${binding.policyVersion}`);
-    const catalogNative = !policy && !nativePolicy ? policyById.get(binding.policyId) : undefined;
+    const catalogNative = !authoredRule && !policy && !nativePolicy ? policyById.get(`${binding.policyId}@${binding.policyVersion}`) : undefined;
+    const splitTopic = !authoredRule && isSplitTopicPolicy(binding.policyId, binding.policyVersion);
     // Catalog-native Policies expose one detector Rule. Its local override
     // must change the executable step, not merely the binding audit snapshot.
     // Refuse an ambiguous future catalog shape rather than silently choosing
     // one of several Rules for the same detector.
-    if (catalogNative && catalogNative.rules.length !== 1) {
+    if (catalogNative && catalogNative.rules.length !== 1 && !splitTopic) {
       throw new Error(`Native Policy ${binding.policyId} must declare exactly one detector Rule.`);
     }
-    const catalogRule = catalogNative?.rules[0];
+    const catalogRule = authoredRule ?? (splitTopic ? undefined : catalogNative?.rules[0]);
     const phases = phasesFor(definition, binding, declarative).filter((phase) => !nativePolicy || nativePolicy.rail_bindings.some((rail) => (
       rail.rail_type === phase && binding.enabledRuleIds.includes(flowRuleId(phase, rail.flow_name))
     ))).filter((phase) => !catalogRule || (binding.enabledRuleIds.includes(catalogRule.id) && catalogRule.rails.includes(phase)));
+    const orderBinding = bindings.find((item) =>
+      item.policyId === binding.policyId && item.policyVersion === binding.policyVersion) ?? binding;
+    const policyRank = Math.max(0, bindings.indexOf(orderBinding));
+    const allRuleIds = policy?.rules.map(rule => rule.id) ?? binding.enabledRuleIds;
+    const explicitRuleIds = (orderBinding.ruleOrder ?? []).filter(id => allRuleIds.includes(id));
+    const effectiveRuleIds = [...explicitRuleIds, ...allRuleIds.filter(id =>
+      binding.enabledRuleIds.includes(id) && !explicitRuleIds.includes(id))];
+    const ruleRank = Math.max(0, effectiveRuleIds.indexOf(binding.enabledRuleIds[0] ?? ""));
     const parameters: Array<[string, string]> = [
       ["policy_id", binding.policyId],
       ["policy_version", binding.policyVersion],
-      ...parametersFor(definition.capability, binding, draft, declarative),
+      ["policy_rank", String(policyRank)],
+      ["rule_rank", String(ruleRank)],
+      ...(authoredParameters ?? parametersFor(definition.capability, binding, draft, declarative)),
+      ...(!authoredRule && catalogNative && catalogRule
+        ? nativeClassifierParameters(catalogNative, catalogRule, binding) : []),
     ];
-    const prefix = `${definition.capability}:${binding.policyId}`;
+    const suffix = authoredRule ? `:${authoredRule.id}` : actionGroup;
+    const prefix = `${definition.capability}:${binding.policyId}${suffix}`;
     const policySteps: PlanStep[] = [];
-    const groups = nativePolicy ? phases.map((phase) => {
+    const values = topicPolicyValues(binding.parameterValues);
+    // Deny-first is the Policy's semantic contract, independent of display order.
+    const groups: Array<{ prefix: string; phases: Array<"input" | "output">; action: EnforcementAction; parameters?: Array<[string, string]> }> = splitTopic ? [TOPIC_DENY_RULE, TOPIC_ALLOW_RULE].filter(id => binding.enabledRuleIds.includes(id)).map(id => ({
+      prefix: `${prefix}:${id}`, phases,
+      action: id === TOPIC_DENY_RULE ? "block" as EnforcementAction : binding.ruleActions[id] ?? binding.action ?? "block" as EnforcementAction,
+      parameters: [["policy_id", binding.policyId], ["policy_version", binding.policyVersion], ["rule_id", id],
+        ["topic_mode", id === TOPIC_DENY_RULE ? "permissive" : values.mode],
+        ["allowed_topics", id === TOPIC_ALLOW_RULE ? values.allowed : ""],
+        ["restricted_topics", id === TOPIC_DENY_RULE ? values.denied : ""],
+        ...(catalogNative ? nativeClassifierParameters(catalogNative, catalogNative.rules.find(rule => rule.id === id)!, binding) : [])] as Array<[string, string]>,
+    })) : nativePolicy ? phases.map((phase) => {
       const rail = nativePolicy.rail_bindings.find((item) => item.rail_type === phase && binding.enabledRuleIds.includes(flowRuleId(phase, item.flow_name)))!;
       return {
         prefix: `${prefix}:${phase}`, phases: [phase],
         action: binding.ruleActions[flowRuleId(phase, rail.flow_name)] ?? binding.action ?? rail.on_unsafe,
       };
-    }) : [{ prefix, phases, action: (catalogRule ? binding.ruleActions[catalogRule.id] : undefined)
-      ?? binding.action ?? (catalogRule?.effect as EnforcementAction | undefined) ?? definition.defaultAction }];
-    for (const group of groups) for (const evaluation of definition.evaluations) {
+    }) : [{ prefix, phases, action: authoredRule && authoredRule.id === TOPIC_DENY_RULE
+      ? "block" as EnforcementAction
+      : (catalogRule ? binding.ruleActions[catalogRule.id] : undefined)
+        ?? binding.action ?? (catalogRule?.effect as EnforcementAction | undefined) ?? definition.defaultAction }];
+    const evaluations = splitTopic ? [always("semantic", contracts.topicSemantic, true)] : definition.evaluations;
+    for (const group of groups) for (const evaluation of evaluations) {
       policySteps.push({
         id: `${group.prefix}:${evaluation.idSuffix}`,
         capability: definition.capability,
@@ -243,16 +419,17 @@ export function buildGuardrailPlan(input: {
               type: "on_result",
               step_ref: `${group.prefix}:${evaluation.after.idSuffix}`,
               verdicts: draft.safetyLevel === "strict"
-                ? Array.from(new Set(["safe" as const, ...evaluation.after.verdicts]))
+                ? Array.from(new Set(["not_matched" as const, ...evaluation.after.verdicts]))
                 : evaluation.after.verdicts,
             }
           : { type: "always" },
-        parameters,
+        parameters: [...(group.parameters ?? parameters),
+          ["execution_dependency", evaluation.potentiallyRemote ? "model" : "local"]],
       });
     }
     steps.push(...policySteps);
     for (const phase of phases) {
-      const id = `${definition.module}:${binding.policyId}:${phase}`;
+      const id = `${definition.module}:${binding.policyId}${suffix}:${phase}`;
       modules.push({
         id, module: definition.module, phase, step_ids: policySteps.filter((step) => step.phases.includes(phase)).map((step) => step.id),
         depends_on: previousModule[phase] ? [previousModule[phase]] : [], input_view: "previous_output",
@@ -263,6 +440,17 @@ export function buildGuardrailPlan(input: {
       previousModule[phase] = id;
     }
   }
+  // Rank Mode records the authored order as the execution order. Every step
+  // reads the content produced by the preceding Transform, not the original
+  // phase request.
+  const authoredIndex = new Map(steps.map((step, index) => [step.id, index]));
+  for (const step of steps) {
+    step.parameters = [...step.parameters,
+      ["precedence", String(authoredIndex.get(step.id)!)],
+      ["evaluation_view", "previous_output"],
+    ];
+  }
+  scheduleRankedChecks(steps, modules, draft.outputDelivery === "full_buffered");
   const reasoningPolicies = bindings.flatMap((binding) => binding.reasoningPolicy ? [{
     id: `automated-reasoning:${binding.reasoningPolicy.policyId}:${binding.reasoningPolicy.policyVersion}`,
     policy_id: binding.reasoningPolicy.policyId,
@@ -272,29 +460,14 @@ export function buildGuardrailPlan(input: {
   return {
     guardrail_id: input.guardrailId,
     guardrail_version: input.guardrailVersion,
-    compiler_version: "tasklattice-controller-plan-v8-effective-policy-parameters",
-    topic_control_mode: "allowlist",
+    compiler_version: PLAN_COMPILER_VERSION,
+    topic_control_mode: draft.topicControlMode ?? "strict",
     safety_level: draft.safetyLevel,
     output_delivery: draft.outputDelivery,
     steps,
     modules,
-    reasoning_policies: reasoningPolicies,
-    policy_versions: programmable.map(({ policy }) => ({
-      policy_id: policy.policy_id,
-      version: policy.version,
-      name: policy.name,
-      source: policy.source,
-      colang_version: policy.colang_version,
-      sources: policy.sources,
-      parameter_schema: policy.parameter_schema.map((item) => [item.name, item.kind]),
-      rail_bindings: policy.rail_bindings,
-      action_references: policy.action_references,
-      evaluation_contracts: policy.evaluation_contracts,
-      prompt_dependencies: policy.prompt_dependencies,
-      execution_contract: policy.execution_contract,
-      test_cases: policy.test_cases.map((item) => [item.name, item.expected_decision]),
-      checksum: policy.checksum,
-    })),
+    reasoning_policies: [...reasoningPolicies, ...authoredReasoningPolicies],
+    policy_versions: programmable.map(({ policy }) => planPolicyVersion(policy)),
     policy_bindings: bindings.map((binding) => ({
       policy_id: binding.policyId,
       policy_version: binding.policyVersion,
@@ -303,39 +476,119 @@ export function buildGuardrailPlan(input: {
       enabled_rule_ids: binding.enabledRuleIds,
       rule_order: binding.ruleOrder ?? [],
       rule_actions: Object.entries(binding.ruleActions).sort(([left], [right]) => left.localeCompare(right)),
+      // Compiler-owned snapshot; no Guardrail risk override is accepted.
+      rule_severities: (programmableByKey.get(`${binding.policyId}@${binding.policyVersion}`)?.rail_bindings.map(rail => ({ id: flowRuleId(rail.rail_type, rail.flow_name), risk_severity: rail.risk_severity }))
+        ?? policyById.get(`${binding.policyId}@${binding.policyVersion}`)?.rules
+        ?? []).filter(rule => binding.enabledRuleIds.includes(rule.id) && rule.risk_severity)
+        .map(rule => [rule.id, rule.risk_severity]),
       enabled_rails: binding.enabledRails,
     })),
   };
+}
+
+function validateNativeDetectorContract(policy: PolicyDto, capability: string): void {
+  const profiles: Record<string, string> = {
+    topic_control: "topic-classification",
+    content_safety: "safety-classification", jailbreak: "jailbreak-classification", pii: "pii-classification",
+  };
+  for (const rule of policy.rules) {
+    const boundaryRef = capability === "indirect_prompt_injection" ? "agent/indirect-injection"
+      : capability === "memory_poisoning" ? "agent/memory-poisoning" : null;
+    if (boundaryRef && (rule.detector.ref !== boundaryRef || rule.implementation.execution !== "local")) {
+      throw new Error(`Policy ${policy.id} requires detector ${boundaryRef}.`);
+    }
+    if (rule.implementation.execution !== "platform") continue;
+    const expected = profiles[capability];
+    if (expected && (rule.detector.ref !== "model/classifier" || rule.detector_options.profile !== expected)) {
+      throw new Error(`Policy ${policy.id} requires the ${expected} detector contract.`);
+    }
+    const ref = capability === "contextual_grounding" ? "model/grounding"
+      : capability === "automated_reasoning" ? "service/formal-verification" : null;
+    if (ref && rule.detector.ref !== ref) throw new Error(`Policy ${policy.id} requires detector ${ref}.`);
+  }
+}
+
+function nativeClassifierParameters(policy: PolicyDto, rule: PolicyDto["rules"][number], binding: GuardrailPolicyBindingConfig): Array<[string, string]> {
+  // Catalog-native classifiers bypass the declarative adapter. Resolve only a
+  // parameter this exact pinned Rule declares, including its pinned default.
+  // A caller cannot enable new handling on an older immutable Policy version.
+  if (rule.detector.ref !== "model/classifier" || rule.detector_options.on_unknown === undefined) return [];
+  const configured = String(rule.detector_options.on_unknown);
+  const reference = /^\{\{([a-zA-Z_][a-zA-Z0-9_]*)\}\}$/.exec(configured);
+  const parameter = reference ? policy.parameters.find(item => item.name === reference[1]) : undefined;
+  const value = reference ? parameter && (binding.parameterValues[parameter.name] ?? parameter.default) : configured;
+  if (value !== "allow" && value !== "block") throw new Error(`Policy ${policy.id}: on_unknown must be allow or block.`);
+  const values: Array<[string, string]> = [["on_unknown", value]];
+  const review = rule.detector_options.review_unknown;
+  if (review !== undefined) {
+    const reference = /^\{\{([a-zA-Z_][a-zA-Z0-9_]*)\}\}$/.exec(String(review));
+    const parameter = reference ? policy.parameters.find(item => item.name === reference[1]) : undefined;
+    const resolved = reference ? parameter && (binding.parameterValues[parameter.name] ?? parameter.default) : String(review);
+    if (resolved !== "true" && resolved !== "false") throw new Error(`Policy ${policy.id}: review_unknown must be true or false.`);
+    values.push(["review_unknown", resolved]);
+  }
+  return values;
+}
+
+/**
+ * Small plans keep the complete Policy node for package identity. Large plans
+ * send one selected Rule per step, without authoring tests or duplicate source
+ * rules, so target Profiles remain below the Runner's gRPC message limit.
+ */
+function planDefinitions(
+  declarative: Array<{ policy: PolicyDto; executionPolicy?: PolicyDto }>,
+): Record<string, unknown> {
+  const full = Object.fromEntries(declarative.map(({ policy }) => [policy.id, frozenBuiltInDefinition(policy)]));
+  const needsCompact = declarative.some(({ policy }) =>
+    policy.rules.length > 8 || JSON.stringify(frozenBuiltInDefinition(policy)).length > 100_000);
+  if (!needsCompact && JSON.stringify(full).length <= 1_000_000) return full;
+  return Object.fromEntries(declarative.map(({ policy, executionPolicy }) => {
+    const selected = executionPolicy ?? policy;
+    const definition = frozenBuiltInDefinition(selected);
+    const { definition: _source, test_cases: _tests, ...execution } = definition;
+    return [selected.id, execution];
+  }));
 }
 
 function parametersFor(
   capabilityId: string,
   binding: GuardrailPolicyBindingConfig,
   draft: GuardrailDraftConfig,
-  declarative: Array<{ binding: GuardrailPolicyBindingConfig; policy: PolicyDto }>,
+  declarative: Array<{ binding: GuardrailPolicyBindingConfig; policy: PolicyDto; executionPolicy?: PolicyDto }>,
 ): Array<[string, string]> {
   if (capabilityId === "builtin_content_filter") {
     return [
       ["policy_versions_json", JSON.stringify(Object.fromEntries(declarative.map((item) => [item.binding.policyId, item.policy.version])))],
+      // A published Guardrail owns its Rule definitions. Catalog changes or
+      // custom package replacement must not mutate an already compiled plan.
+      ["policy_definitions_json", JSON.stringify(planDefinitions(declarative))],
       ["policy_ids", declarative.map((item) => item.binding.policyId).join("\n")],
       ["enabled_rules_json", JSON.stringify(Object.fromEntries(declarative.map((item) => [item.binding.policyId, item.binding.enabledRuleIds])))],
-      ["rule_order_json", JSON.stringify(Object.fromEntries(declarative.map((item) => [item.binding.policyId, item.binding.ruleOrder ?? []])))],
+      ["binding_ids_json", JSON.stringify(Object.fromEntries(declarative.map((item) => [
+        item.binding.policyId,
+        item.binding.enabledRuleIds.map((id) => item.policy.rules.find((rule) => rule.id === id)?.binding_id ?? `${item.binding.policyId}/${id}`),
+      ])))],
+      ["rule_order_json", JSON.stringify(Object.fromEntries(declarative.map((item) => [
+        item.binding.policyId,
+        (item.binding.ruleOrder ?? []).filter((id) => item.binding.enabledRuleIds.includes(id)),
+      ])))],
       // Resolve action inheritance per Rule, without modifying the library or
       // replacing the authored Policy/Rule overrides in policy_bindings.
       ["rule_actions_json", JSON.stringify(Object.fromEntries(declarative.map(({ binding: item, policy }) => [
         item.policyId,
         Object.fromEntries(policy.rules.filter((rule) => item.enabledRuleIds.includes(rule.id))
-          .filter((rule) => policy.id !== PHRASE_POLICY_ID || item.ruleActions[rule.id] != null || item.action != null).map((rule) => [
+          .map((rule) => [
           rule.id, item.ruleActions[rule.id] ?? item.action ?? rule.effect,
         ])),
       ])))],
       ["policy_parameters_json", JSON.stringify(Object.fromEntries(declarative.filter((item) => Object.keys(item.binding.parameterValues).length).map((item) => [item.binding.policyId, item.binding.parameterValues])))],
     ];
   }
-  if (capabilityId === "topic_control" || capabilityId === "company_policy") {
+  if (capabilityId === "topic_control") {
     return [
-      ["topic_mode", "allowlist"],
+      ["topic_mode", draft.topicControlMode ?? "strict"],
       ["allowed_topics", draft.allowedTopics.join("\n")],
+      ["restricted_topics", draft.restrictedTopics.join("\n")],
     ];
   }
   if (capabilityId === "contextual_grounding") {
@@ -350,7 +603,7 @@ function parametersFor(
 function phasesFor(
   capability: RuntimeCapability,
   binding: GuardrailPolicyBindingConfig,
-  declarative: Array<{ binding: GuardrailPolicyBindingConfig; policy: PolicyDto }>,
+  declarative: Array<{ binding: GuardrailPolicyBindingConfig; policy: PolicyDto; executionPolicy?: PolicyDto }>,
 ): Array<"input" | "output"> {
   if (capability.capability === "builtin_content_filter") {
     const selected = new Set(declarative.flatMap(({ binding: item, policy }) => {
@@ -368,7 +621,13 @@ function stringValue(value: unknown): string {
 }
 
 function validateCatalogBinding(binding: GuardrailPolicyBindingConfig, policy: PolicyDto): void {
-  if (policy.id === PHRASE_POLICY_ID) parsePhraseEntries(binding.parameterValues[PHRASE_PARAMETER] ?? "");
+  if (!policy.definition && isSplitTopicPolicy(binding.policyId, binding.policyVersion)) {
+    const missing = topicMissingParameters(binding.parameterValues, binding.enabledRuleIds);
+    if (missing.length) throw new Error(`Topic Control requires configuration for enabled Rules: ${missing.join(", ")}.`);
+    if (binding.parameterValues.topic_mode && !["strict", "permissive"].includes(binding.parameterValues.topic_mode)) throw new Error("Topic Control Allowlist mode must be strict or permissive.");
+    if (binding.ruleActions[TOPIC_DENY_RULE] && binding.ruleActions[TOPIC_DENY_RULE] !== "block") throw new Error("The Topic Control Denylist Rule must reject denied tasks.");
+  }
+  if (!policy.definition && policy.id === PHRASE_POLICY_ID) parsePhraseEntries(binding.parameterValues[PHRASE_PARAMETER] ?? "");
   if (binding.policyVersion !== policy.version) throw new Error(`Policy ${policy.id} must pin catalog version ${policy.version}; received ${binding.policyVersion}.`);
   const enabledRails = binding.enabledRails.length ? binding.enabledRails : policy.rails;
   if (enabledRails.some((rail) => !policy.rails.includes(rail) || !["input", "output"].includes(rail))) {
@@ -382,7 +641,11 @@ function validateCatalogBinding(binding: GuardrailPolicyBindingConfig, policy: P
   const unknownRules = binding.enabledRuleIds.filter((item) => !ruleIds.has(item));
   if (unknownRules.length) throw new Error(`Policy ${policy.id} contains unknown enabled Rules: ${unknownRules.join(", ")}.`);
   if (!binding.enabledRuleIds.length) throw new Error(`Policy ${policy.id} must enable at least one Rule.`);
-  for (const parameter of policy.parameters) {
+  if (policy.definition) {
+    const issues = policyBindingParameterIssues(policy.definition, binding.parameterValues, binding.enabledRuleIds, binding.enabledRails, binding.reasoningPolicy);
+    if (issues.length) throw new Error(`Policy ${policy.id}: ${issues.join(" ")}`);
+  }
+  for (const parameter of policy.definition ? activePolicyParameters(policy.definition, binding.enabledRuleIds, binding.enabledRails) : policy.parameters) {
     if (parameter.required && !(binding.parameterValues[parameter.name] ?? parameter.default ?? "").trim()) {
       throw new Error(`Policy ${policy.id} requires parameter ${parameter.name}.`);
     }

@@ -1,3 +1,4 @@
+import { uiCopyEn } from "../ui-copy-i18n";
 import { onlineManager, QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -7,6 +8,14 @@ import { queryKeys } from "@/features/query-keys";
 
 import { CreateGuardrailWizard } from "./create-guardrail-wizard";
 import { protectionEn } from "../protection-i18n";
+import policyAssets from "../../../runner/toolkit/policy_library/assets/policies.json";
+const configurablePolicies = policyAssets as unknown as Policy[];
+import { resolve } from "node:path";
+import { PolicyCatalog } from "../../server/policy-catalog/catalog";
+import { DeclarativeCompiler } from "../../server/policy-studio/declarative";
+import { profileDraft } from "../../server/policy-catalog/presets";
+import { protectionPresets } from "../../shared/protection-presets";
+const fullFeatureBaseline = protectionPresets.find(profile => profile.id === "full-feature")!;
 
 const apiMocks = vi.hoisted(() => ({
   analyzeIntent: vi.fn(),
@@ -15,12 +24,19 @@ const apiMocks = vi.hoisted(() => ({
   getPolicies: vi.fn(),
   getPresets: vi.fn(),
   preview: vi.fn(),
+  getModels: vi.fn(),
 }));
 const identity = vi.hoisted(() => ({ role: 'admin' }));
+
+vi.mock("@/lib/controller-api", async importOriginal => ({
+  ...await importOriginal<typeof import("@/lib/controller-api")>(),
+  getModelReadiness: (...args: unknown[]) => apiMocks.getModels(...args),
+}));
 
 vi.mock("react-i18next", () => ({
   useTranslation: () => ({
     t: (key: string, values?: Record<string, string | number>) => {
+      if (key.startsWith("uiCopy.")) return uiCopyEn[key.slice(7) as keyof typeof uiCopyEn];
       const labels: Record<string, string> = {
         "common.cancel": "Cancel",
         "common.next": "Next",
@@ -86,7 +102,7 @@ vi.mock("@/lib/api", async (importOriginal) => {
     createGuardrail: (...args: unknown[]) => apiMocks.createGuardrail(...args),
     getIntentAnalysisStatus: (...args: unknown[]) => apiMocks.getIntentStatus(...args),
     getPolicies: (...args: unknown[]) => apiMocks.getPolicies(...args),
-    getProtectionPresets: (...args: unknown[]) => apiMocks.getPresets(...args),
+    getGuardrailProfiles: (...args: unknown[]) => apiMocks.getPresets(...args),
     previewGuardrailCandidate: (...args: unknown[]) => apiMocks.preview(...args),
   };
 });
@@ -97,7 +113,8 @@ vi.mock("@/components/entity-sheet", () => ({
   ),
 }));
 
-vi.mock("@/components/creation-flow", () => ({
+vi.mock("@/components/creation-flow", async importOriginal => ({
+  ...(await importOriginal<typeof import("@/components/creation-flow")>()),
   CreationFlow: ({ children, steps, onStepChange }: { children: React.ReactNode; steps: Array<{ label: string }>; onStepChange: (step: number) => void }) => (
     <div><nav>{steps.map((step, index) => <button key={step.label} onClick={() => onStepChange(index)}>{step.label}</button>)}</nav>{children}</div>
   ),
@@ -107,11 +124,11 @@ vi.mock("@/components/policy-binding-editor", async (importOriginal) => {
   const original = await importOriginal<typeof import("@/components/policy-binding-editor")>();
   return {
     ...original,
-    PolicyBindingEditor: (props: { policies: Policy[]; value: GuardrailPolicyBinding[]; onChange: (value: GuardrailPolicyBinding[]) => void }) => props.value.some(item => item.policy_id === "configured-phrase-filter") ? <original.PolicyBindingEditor {...props} /> : (
+    PolicyBindingEditor: (props: { policies: Policy[]; value: GuardrailPolicyBinding[]; onChange: (value: GuardrailPolicyBinding[]) => void }) => props.value.some(item => item.policy_id === "content-filters") ? <original.PolicyBindingEditor {...props} /> : (
       <div>
         <button type="button" onClick={() => props.onChange([binding])}>Select Topic Policy</button>
-        <button type="button" onClick={() => props.onChange([requiredBinding])}>Select Aviation Policy</button>
-        <button type="button" onClick={() => props.onChange([configuredRequiredBinding])}>Complete Aviation configuration</button>
+        <button type="button" onClick={() => props.onChange([requiredBinding])}>Select Brand Policy</button>
+        <button type="button" onClick={() => props.onChange([configuredRequiredBinding])}>Complete Brand configuration</button>
       </div>
     ),
   };
@@ -129,7 +146,7 @@ const policy = {
   parameters: [],
   rails: ["input", "output"],
   effects: ["block"],
-  forms: ["keyword"],
+  detectors: ["text/keyword"],
   rules: [{ id: "topic-rule" }],
   test_cases: [],
   test_count: 1,
@@ -151,11 +168,11 @@ const binding = {
 const requiredPolicy = {
   ...policy,
   protection: { ...policy.protection!, directory: "business_rules" },
-  id: "aviation-operations-security",
-  name: "Aviation Operations Security",
+  id: "brand-protection-example",
+  name: "Brand Protection",
   tags: [],
   parameters: [
-    { name: "brand_name", label: "Your Airline / Brand Name", kind: "text", required: true, placeholder: "e.g. Acme Airlines", description: "" },
+    { name: "brand_name", label: "Your Brand Name", kind: "text", required: true, placeholder: "e.g. Acme Airlines", description: "" },
     { name: "competitors", label: "Competitors", kind: "textarea", required: true, placeholder: "One competitor per line", description: "Reviewed competitors." },
   ],
 } satisfies Policy;
@@ -172,32 +189,43 @@ const configuredRequiredBinding = {
   parameter_values: { brand_name: "TaskLattice Air", competitors: "Example Air" },
 } satisfies GuardrailPolicyBinding;
 
-function renderWizard() {
+function renderWizard(initialProfileId?: string) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
   const onCreated = vi.fn();
   const tree = () => (
       <QueryClientProvider client={client}>
-        <CreateGuardrailWizard open onOpenChange={vi.fn()} onCreated={onCreated} />
+        <CreateGuardrailWizard open initialProfileId={initialProfileId} onOpenChange={vi.fn()} onCreated={onCreated} />
       </QueryClientProvider>
   );
   const view = render(tree());
   return { client, onCreated, ...view, refreshIdentity: () => view.rerender(tree()) };
 }
 
+async function selectSection(name: string) {
+  fireEvent.click(await screen.findByRole("tab", { name: new RegExp(name) }), { button: 0, ctrlKey: false });
+}
+
 describe("Create Guardrail wizard", () => {
   beforeEach(() => {
-    identity.role = 'admin';
+    Object.defineProperty(HTMLElement.prototype, "scrollIntoView", { configurable: true, value: vi.fn() });
+    apiMocks.getModels.mockReset().mockResolvedValue({ models: [{ id: "topic-model", name: "Topic model" }], draft: null, activating: null,
+      active: { revision: 1, assignments: { bindings: { "topic_control.input": "topic-model" } }, validationReport: {
+        checks: [{ id: "probe:topic_control.input:topic-model", status: "passed", evidenceKind: "nemo-rail-v1" }],
+      } },
+    });
+    identity.role = 'user';
     apiMocks.analyzeIntent.mockReset().mockResolvedValue({
       summary: "Customer support only.",
       structured_purpose: { audience: "Support agents", tasks: "Answer order questions", protect: "Customer identifiers", out_of_scope: "Medical advice" },
       allowed_topics: ["Orders", "Returns"],
+      restricted_topics: ["Medical advice"],
       review_notes: [],
     });
     apiMocks.getIntentStatus.mockReset().mockResolvedValue({ available: true, provider: "test", model: "test", document_analysis_available: true });
     apiMocks.getPolicies.mockReset().mockResolvedValue({ items: [policy, requiredPolicy], count: 2 });
     apiMocks.getPresets.mockReset().mockResolvedValue({ items: [], count: 0 });
     apiMocks.preview.mockReset().mockResolvedValue({
-      engine: "GuardRails 0 · NeMo",
+      engine: "runner-default · NeMo",
       colang_version: "2.x",
       checksum: "draft-checksum",
       rails: [],
@@ -208,6 +236,195 @@ describe("Create Guardrail wizard", () => {
   });
 
   afterEach(() => { cleanup(); onlineManager.setOnline(true); });
+
+  it("gates AI authoring on Topic readiness while allowing manual draft configuration", async () => {
+    apiMocks.getModels.mockResolvedValue({ models: [], active: null, draft: null, activating: null });
+    const topic = { ...policy, id: "business-topics", name: "Model Topic Control", protection: { ...policy.protection!, execution: "model", modelCapabilities: ["topic_control"], requiredContext: ["allowed_topics"] } };
+    apiMocks.getPolicies.mockResolvedValue({ items: [policy, topic], count: 2 });
+    renderWizard();
+    fireEvent.change(screen.getByPlaceholderText("Customer data protection"), { target: { value: "Local filters" } });
+    fireEvent.click(screen.getByRole("button", { name: "Configure protections" }));
+    await selectSection("Business rules");
+    await selectSection("Topic Control");
+    const checkbox = await screen.findByRole("checkbox", { name: "Model Topic Control" });
+    await waitFor(() => expect(checkbox.hasAttribute("disabled")).toBe(false));
+    expect(screen.getAllByText("topicControl.availability.missing").length).toBeGreaterThan(0);
+    expect(screen.getByRole("button", { name: "Add topic allowlist" })).toBeTruthy();
+    expect(screen.queryByText(protectionEn.wizard.businessAssistant)).toBeNull();
+    expect(screen.queryByRole("button", { name: /Generate from intent/ })).toBeNull();
+    expect(screen.queryByRole("button", { name: /Generate from documents/ })).toBeNull();
+    await selectSection("Business rules");
+    fireEvent.click(screen.getByRole("checkbox", { name: "Topic Filtering" }));
+    expect(screen.getByRole("button", { name: "Review draft" }).hasAttribute("disabled")).toBe(false);
+  });
+
+  it("previews and creates a Topic preset before model setup and keeps its Policy removable", async () => {
+    apiMocks.getModels.mockResolvedValue({ models: [], active: null, draft: null, activating: null });
+    const topic = { ...policy, id: "business-topics", name: "Model Topic Control", protection: { ...policy.protection!, modelCapabilities: ["topic_control"], requiredContext: ["allowed_topics"] } };
+    const topicBinding = { ...binding, policy_id: topic.id };
+    apiMocks.getPolicies.mockResolvedValue({ items: [policy, topic], count: 2 });
+    apiMocks.getPresets.mockResolvedValue({ items: [{ id: "topics", name: "Topic preset", bindings: [binding, topicBinding], limitations: [] }] });
+    renderWizard();
+    fireEvent.change(screen.getByPlaceholderText("Customer data protection"), { target: { value: "Preset" } });
+    fireEvent.keyDown(await screen.findByRole("combobox"), { key: "ArrowDown" });
+    fireEvent.click(await screen.findByRole("option", { name: "Topic preset" }));
+    fireEvent.click(screen.getByRole("button", { name: "Configure protections" }));
+    await selectSection("Topic Control");
+    await waitFor(() => expect(screen.getAllByText("topicControl.availability.missing").length).toBeGreaterThan(0));
+    expect(screen.getByRole("button", { name: "Review draft" }).hasAttribute("disabled")).toBe(false);
+    fireEvent.click(screen.getByRole("button", { name: "Review & create" }));
+    await waitFor(() => expect(apiMocks.preview).toHaveBeenCalledWith(expect.objectContaining({ policy_bindings: [binding, topicBinding] })));
+    await waitFor(() => expect(screen.getByRole("button", { name: "Create draft" }).hasAttribute("disabled")).toBe(false));
+    fireEvent.click(screen.getByRole("button", { name: "Create draft" }));
+    await waitFor(() => expect(apiMocks.createGuardrail).toHaveBeenCalledWith(expect.objectContaining({ policy_bindings: [binding, topicBinding] })));
+    fireEvent.click(screen.getByRole("button", { name: "Configure protections" }));
+    await selectSection("Business rules");
+    await selectSection("Topic Control");
+    const checkbox = screen.getByRole("checkbox", { name: "Model Topic Control" });
+    expect(checkbox.hasAttribute("disabled")).toBe(false);
+    fireEvent.click(checkbox);
+    expect(screen.getByRole("button", { name: "Review draft" }).hasAttribute("disabled")).toBe(false);
+  });
+
+  it.each(["contextual_grounding", "automated_reasoning"])("blocks unavailable %s selection and removes preset bindings before preview", async capability => {
+    const check: Policy = { ...policy, id: 'builtin-' + capability.replaceAll('_', '-'), name: capability,
+      protection: { ...policy.protection!, directory: "answer_reliability", modelCapabilities: [capability] } };
+    const checkBinding = { ...binding, policy_id: check.id };
+    apiMocks.getPolicies.mockResolvedValue({ items: [policy, check], count: 2 });
+    apiMocks.getPresets.mockResolvedValue({ items: [{ id: "checks", name: "Correctness preset", bindings: [binding, checkBinding], limitations: [] }] });
+    renderWizard();
+    fireEvent.change(screen.getByPlaceholderText("Customer data protection"), { target: { value: "Checks" } });
+    fireEvent.click(screen.getByRole("button", { name: "Configure protections" }));
+    await selectSection("Correctness checks");
+    expect(screen.getByRole("tab", { name: /Correctness checks/ }).textContent).toContain("Unavailable");
+    expect(screen.getByRole("checkbox", { name: capability }).hasAttribute("disabled")).toBe(true);
+    fireEvent.click(screen.getByRole("button", { name: protectionEn.start }));
+    fireEvent.keyDown(await screen.findByRole("combobox"), { key: "ArrowDown" });
+    fireEvent.click(await screen.findByRole("option", { name: "Correctness preset" }));
+    fireEvent.click(screen.getByRole("button", { name: "Configure protections" }));
+    await selectSection("Correctness checks");
+    const checkbox = screen.getByRole("checkbox", { name: capability });
+    expect(checkbox.hasAttribute("disabled")).toBe(false);
+    expect(screen.getByRole("button", { name: 'Configure ' + capability, exact: true }).hasAttribute("disabled")).toBe(true);
+    expect(screen.getByRole("button", { name: "Review draft" }).hasAttribute("disabled")).toBe(true);
+    fireEvent.click(screen.getByRole("button", { name: "Review & create" }));
+    expect(apiMocks.preview).not.toHaveBeenCalled();
+    expect(screen.getByRole("button", { name: "Create draft" }).hasAttribute("disabled")).toBe(true);
+    fireEvent.click(screen.getByRole("button", { name: "Configure protections" }));
+    await selectSection("Correctness checks");
+    fireEvent.click(screen.getByRole("checkbox", { name: capability }));
+    fireEvent.click(screen.getByRole("button", { name: "Review draft" }));
+    await waitFor(() => expect(apiMocks.preview).toHaveBeenCalledWith(expect.objectContaining({ policy_bindings: [binding] })));
+  });
+
+  it("uses the library's selected Profile with its exact Rules instead of Default", async () => {
+    apiMocks.getPresets.mockResolvedValue({ items: [
+      { id: "local-baseline", name: "Default", category: "local_baseline", categoryName: "Default", isDefault: true, bindings: [binding], limitations: [] },
+      { id: "chosen-set", name: "Chosen regional set", category: "banking", categoryName: "Banking", isDefault: true, bindings: [configuredRequiredBinding], limitations: [] },
+    ] });
+    renderWizard("chosen-set");
+    expect(await screen.findByText("Profile applied · 1 Policies selected")).toBeTruthy();
+    expect(screen.getByRole("combobox").querySelector(".cds--list-box__label")?.textContent).toContain("Chosen regional set");
+    fireEvent.change(screen.getByPlaceholderText("Customer data protection"), { target: { value: "Regional draft" } });
+    fireEvent.click(screen.getByRole("button", { name: "Review & create" }));
+    await waitFor(() => expect(apiMocks.preview).toHaveBeenCalledWith(expect.objectContaining({ policy_bindings: [configuredRequiredBinding] })));
+    expect(apiMocks.createGuardrail).not.toHaveBeenCalled();
+  });
+
+  it("opens on the platform default Profile even when it is not the legacy baseline", async () => {
+    apiMocks.getPresets.mockResolvedValue({ items: [
+      { id: "default", name: "Default", category: "catalog_default", categoryName: "Default", isDefault: true, bindings: [binding], limitations: [] },
+      { id: "sg-bank", name: "Singapore Bank", category: "catalog_sg_bank", categoryName: "Singapore Bank", isDefault: false, bindings: [configuredRequiredBinding], limitations: [] },
+    ] });
+    renderWizard();
+    expect(await screen.findByText("Profile applied · 1 Policies selected")).toBeTruthy();
+    expect(screen.getByRole("combobox").querySelector(".cds--list-box__label")?.textContent).toContain("Default");
+    expect(screen.getByRole("combobox").querySelector(".cds--list-box__label")?.textContent).not.toContain("Singapore Bank");
+  });
+
+  it("creates the actual full-feature V1 selection with all model assignments missing", async () => {
+    const directory = resolve("../runner/toolkit/policy_library/assets");
+    const compiler = new DeclarativeCompiler(directory);
+    const catalog = PolicyCatalog.load(directory).list().map(policy => compiler.catalogView(policy));
+    const draft = profileDraft(fullFeatureBaseline, catalog);
+    const bindings = draft.policyBindings.map(binding => ({ policy_id: binding.policyId, policy_version: binding.policyVersion,
+      action: binding.action, parameter_values: binding.parameterValues, enabled_rule_ids: binding.enabledRuleIds,
+      rule_actions: binding.ruleActions, rule_order: binding.ruleOrder, test_case_overrides: binding.testCaseOverrides,
+      enabled_rails: binding.enabledRails, reasoning_policy: binding.reasoningPolicy }));
+    apiMocks.getPolicies.mockResolvedValue({ items: catalog });
+    apiMocks.getModels.mockResolvedValue({ models: [], active: null, draft: null, activating: null });
+    apiMocks.getPresets.mockResolvedValue({ items: [{ ...fullFeatureBaseline, bindings }] });
+    renderWizard(fullFeatureBaseline.id);
+    await screen.findByText("Profile applied · 20 Policies selected");
+    expect(await screen.findAllByText(protectionEn.dependencies.states.missing)).toHaveLength(6);
+    fireEvent.change(screen.getByPlaceholderText("Customer data protection"), { target: { value: "Full V1" } });
+    fireEvent.click(screen.getByRole("button", { name: "Review & create" }));
+    await waitFor(() => expect(screen.getByRole("button", { name: "Create draft" }).hasAttribute("disabled")).toBe(false));
+    fireEvent.click(screen.getByRole("button", { name: "Create draft" }));
+    await waitFor(() => expect(apiMocks.createGuardrail).toHaveBeenCalledWith(expect.objectContaining({
+      policy_bindings: bindings, profile_origin: { id: fullFeatureBaseline.id, version: fullFeatureBaseline.version },
+      topic_control_mode: "strict", output_delivery: "full_buffered",
+    })));
+  });
+
+  it("copies full Profile settings, preserves them through undo, and saves with missing models", async () => {
+    const modelPolicy = { ...policy, id: "prompt-instruction-attacks", name: "Strict Jailbreak", rules: [{ ...policy.rules[0]!, rails: ["input"] }], protection: { ...policy.protection!, execution: "model", modelCapabilities: ["jailbreak"] } };
+    const modelBinding = { ...binding, policy_id: modelPolicy.id, parameter_values: { on_unknown: "block" }, action: "block" as const };
+    apiMocks.getPolicies.mockResolvedValue({ items: [policy, modelPolicy] });
+    apiMocks.getModels.mockResolvedValue({ models: [], active: null, draft: null, activating: null });
+    apiMocks.getPresets.mockResolvedValue({ items: [{ id: "full-feature-baseline", version: "1.0.0", name: "Full-feature baseline", description: "Reviewed benchmark", bindings: [binding, modelBinding], limitations: [],
+      draftSettings: { allowedTopics: ["Support"], restrictedTopics: ["Advice"], topicControlMode: "strict", safetyLevel: "strict", outputDelivery: "full_buffered" } }] });
+    renderWizard("full-feature-baseline");
+    await screen.findByText("Profile applied · 2 Policies selected");
+    expect(await screen.findByText(protectionEn.dependencies.states.missing)).toBeTruthy();
+    fireEvent.change(screen.getByPlaceholderText("Customer data protection"), { target: { value: "Baseline draft" } });
+    fireEvent.keyDown(screen.getByRole("combobox"), { key: "ArrowDown" });
+    fireEvent.click(await screen.findByRole("option", { name: "Start blank" }));
+    fireEvent.click(screen.getByRole("button", { name: protectionEn.wizard.replacePreset }));
+    fireEvent.click(screen.getByRole("button", { name: protectionEn.wizard.undoPreset }));
+    fireEvent.click(screen.getByRole("button", { name: "Review & create" }));
+    await waitFor(() => expect(apiMocks.preview).toHaveBeenCalledWith(expect.objectContaining({
+      policy_bindings: [binding, modelBinding], output_delivery: "full_buffered", safety_level: "strict", topic_control_mode: "strict",
+      allowed_topics: ["Support"], restricted_topics: ["Advice"], profile_origin: { id: "full-feature-baseline", version: "1.0.0" },
+    })));
+    await waitFor(() => expect(screen.getByRole("button", { name: "Create draft" }).hasAttribute("disabled")).toBe(false));
+    fireEvent.click(screen.getByRole("button", { name: "Create draft" }));
+    await waitFor(() => expect(apiMocks.createGuardrail).toHaveBeenCalledWith(apiMocks.preview.mock.calls.at(-1)![0]));
+  });
+
+  it("shows an unavailable Profile without applying its partial bindings", async () => {
+    apiMocks.getPresets.mockResolvedValue({ items: [{ id: "missing", version: "1", name: "Missing Profile", bindings: [], limitations: [], availability: { available: false, reason: "Pinned version unavailable" } }] });
+    renderWizard("missing");
+    expect(await screen.findByText(/Missing Profile: Pinned version unavailable/)).toBeTruthy();
+    expect(screen.queryByText(/Profile applied/)).toBeNull();
+    fireEvent.keyDown(screen.getByRole("combobox"), { key: "ArrowDown" });
+    expect((await screen.findByRole("option", { name: /Missing Profile/ })).getAttribute("aria-disabled")).toBe("true");
+  });
+
+  it("loads the Default Profile and lists all Profiles with tags in one dropdown", async () => {
+    apiMocks.getPresets.mockResolvedValue({ items: [
+      { id: "local-baseline", name: "Default", category: "local_baseline", categoryName: "Default", isDefault: true, bindings: [binding], limitations: [] },
+      { id: "bank-alternate", name: "Alternate banking", category: "banking", categoryName: "Banking", isDefault: false, bindings: [binding], limitations: [] },
+      { id: "bank-default", name: "Default banking", category: "banking", categoryName: "Banking", isDefault: true, bindings: [configuredRequiredBinding], limitations: [] },
+    ] });
+    renderWizard();
+    expect(await screen.findByText("Profile applied · 1 Policies selected")).toBeTruthy();
+    expect(screen.getByRole("combobox").querySelector(".cds--list-box__label")?.textContent).toContain("Default");
+    expect(screen.queryByRole("group", { name: "Industry or use case" })).toBeNull();
+    fireEvent.keyDown(screen.getByRole("combobox", { name: "Profile", exact: true }), { key: "ArrowDown" });
+    expect(await screen.findByRole("option", { name: /Alternate banking.*Banking/ })).toBeTruthy();
+    fireEvent.click(screen.getByRole("option", { name: /Default banking.*Banking.*Default/ }));
+    expect(screen.getByRole("combobox").querySelector(".cds--list-box__label")?.textContent).toContain("Default banking");
+    fireEvent.click(screen.getByRole("button", { name: protectionEn.wizard.addPreset }));
+    expect(screen.getByText("Profile applied · 2 Policies selected")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: protectionEn.wizard.undoPreset }));
+    expect(screen.getByRole("combobox").querySelector(".cds--list-box__label")?.textContent).toContain("Default");
+    fireEvent.keyDown(screen.getByRole("combobox"), { key: "ArrowDown" });
+    fireEvent.click(await screen.findByRole("option", { name: "Start blank" }));
+    fireEvent.click(screen.getByRole("button", { name: protectionEn.wizard.replacePreset }));
+    expect(screen.getByRole("combobox").querySelector(".cds--list-box__label")?.textContent).toBe("Start blank");
+    expect(screen.getByText("Profile applied · 0 Policies selected")).toBeTruthy();
+  });
 
   it("applies the first preset immediately, resolves later changes explicitly, and supports undo", async () => {
     Object.defineProperty(HTMLElement.prototype, "scrollIntoView", { configurable: true, value: vi.fn() });
@@ -223,71 +440,129 @@ describe("Create Guardrail wizard", () => {
       fireEvent.click(await screen.findByRole("option", { name }));
     }
     await choose("Banking preset");
-    expect(screen.getByText("Preset applied · 1 Policies selected")).toBeTruthy();
+    expect(screen.getByText("Profile applied · 1 Policies selected")).toBeTruthy();
     expect(screen.queryByRole("button", { name: "Apply preset" })).toBeNull();
     await choose("Internet preset");
     expect(screen.getByRole("button", { name: "Next" }).hasAttribute("disabled")).toBe(true);
     fireEvent.click(screen.getByRole("button", { name: protectionEn.wizard.addPreset }));
-    expect(screen.getByText("Preset applied · 2 Policies selected")).toBeTruthy();
+    expect(screen.getByText("Profile applied · 2 Policies selected")).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: protectionEn.wizard.undoPreset }));
-    expect(picker.textContent).toBe("Banking preset");
+    expect(picker.querySelector(".cds--list-box__label")?.textContent).toBe("Banking preset");
     await choose("Internet preset");
     fireEvent.click(screen.getByRole("button", { name: protectionEn.wizard.replacePreset }));
     fireEvent.click(screen.getByRole("button", { name: "Next" }));
+    await selectSection("Business rules");
     fireEvent.click(await screen.findByRole("button", { name: "All protections" }));
-    expect(screen.getByRole("checkbox", { name: "Topic Filtering" })).toHaveProperty("ariaChecked", "false");
+    expect(screen.getByRole("checkbox", { name: "Topic Filtering" })).toHaveProperty("checked", false);
     fireEvent.click(screen.getByRole("button", { name: "Review draft" }));
     await waitFor(() => expect(apiMocks.preview).toHaveBeenCalledWith(expect.objectContaining({ policy_bindings: [configuredRequiredBinding] })));
   });
 
-  it("shows exactly three steps and collects all protections without category navigation", async () => {
+  it("keeps three wizard steps with five distinct protection categories", async () => {
     renderWizard();
     expect(screen.getByRole("navigation").querySelectorAll("button")).toHaveLength(3);
     expect(screen.getByRole("button", { name: "Next" }).hasAttribute("disabled")).toBe(true);
     expect(screen.queryByRole("button", { name: "Content safety" })).toBeNull();
     fireEvent.change(screen.getByPlaceholderText("Customer data protection"), { target: { value: "Support Guardrail" } });
     fireEvent.click(screen.getByRole("button", { name: "Next" }));
+    await selectSection("Business rules");
     expect(await screen.findByRole("checkbox", { name: "Topic Filtering" })).toBeTruthy();
-    expect(screen.getByRole("checkbox", { name: "Aviation Operations Security" })).toBeTruthy();
+    expect(screen.getByRole("checkbox", { name: "Brand Protection" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "Review draft" }).hasAttribute("disabled")).toBe(true);
     expect(screen.queryByRole("button", { name: "Leave unselected & continue" })).toBeNull();
-    expect(screen.queryByRole("button", { name: "Complete Aviation configuration" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Complete Brand configuration" })).toBeNull();
+  });
+
+  it("keeps Data & privacy and Correctness checks discoverable and preserves selections across categories", async () => {
+    const privacy: Policy = { ...policy, id: "privacy", name: "Sensitive data", protection: { ...policy.protection!, directory: "privacy" } };
+    const correctness: Policy = { ...policy, id: "grounding", name: "Grounding check", protection: { ...policy.protection!, directory: "answer_reliability" } };
+    const safety: Policy = { ...policy, id: "safety", name: "Harmful content", protection: { ...policy.protection!, directory: "content_safety" } };
+    apiMocks.getPolicies.mockResolvedValue({ items: [policy, privacy, correctness, safety], count: 4 });
+    renderWizard();
+    fireEvent.change(screen.getByPlaceholderText("Customer data protection"), { target: { value: "Data protection" } });
+    fireEvent.click(screen.getByRole("button", { name: "Configure protections" }));
+    expect(await screen.findByRole("checkbox", { name: "Harmful content" })).toBeTruthy();
+    expect(screen.getAllByRole("tab")).toHaveLength(5);
+    await selectSection("Data & privacy");
+    expect(screen.getByRole("heading", { name: "Data & privacy" })).toBeTruthy();
+    expect(screen.queryByRole("checkbox", { name: "Harmful content" })).toBeNull();
+    fireEvent.click(screen.getByRole("checkbox", { name: "Sensitive data" }));
+    await selectSection("Correctness checks");
+    fireEvent.click(screen.getByRole("checkbox", { name: "Grounding check" }));
+    await selectSection("Business rules");
+    fireEvent.click(screen.getByRole("checkbox", { name: "Topic Filtering" }));
+    await selectSection("Data & privacy");
+    expect((screen.getByRole("checkbox", { name: "Sensitive data" }) as HTMLInputElement).checked).toBe(true);
+    fireEvent.click(screen.getByRole("button", { name: "Review draft" }));
+    await waitFor(() => expect(apiMocks.preview).toHaveBeenCalledWith(expect.objectContaining({
+      policy_bindings: [expect.objectContaining({ policy_id: privacy.id }), expect.objectContaining({ policy_id: correctness.id }), binding],
+    })));
+  });
+
+  it("shows unselected Topic and correctness Policies after applying a Profile, without enabling them", async () => {
+    const topic: Policy = { ...policy, id: "business-topics", name: "Model Topic Control",
+      protection: { ...policy.protection!, execution: "model", modelCapabilities: ["topic_control"] } };
+    const correctness: Policy = { ...policy, id: "answer-reliability", name: "Contextual Grounding",
+      protection: { ...policy.protection!, directory: "answer_reliability", execution: "model", modelCapabilities: ["contextual_grounding"] } };
+    apiMocks.getPolicies.mockResolvedValue({ items: [policy, topic, correctness], count: 3 });
+    apiMocks.getPresets.mockResolvedValue({ items: [{ id: "local-baseline", name: "Default", category: "local_baseline", isDefault: true, bindings: [binding], limitations: [] }] });
+    renderWizard();
+    expect(await screen.findByText("Profile applied · 1 Policies selected")).toBeTruthy();
+    fireEvent.change(screen.getByPlaceholderText("Customer data protection"), { target: { value: "Discover protections" } });
+    fireEvent.click(screen.getByRole("button", { name: "Next" }));
+    for (const [category, name] of [["Topic Control", "Model Topic Control"], ["Correctness checks", "Contextual Grounding"]] as const) {
+      await selectSection(category);
+      expect(screen.getByRole("button", { name: "All protections" }).getAttribute("aria-pressed")).toBe("true");
+      expect(screen.getByRole("checkbox", { name })).toHaveProperty("checked", false);
+      // Filtering is explicit and never mutates the Profile's selections.
+      fireEvent.click(screen.getByRole("button", { name: "Selected (0)" }));
+      expect(screen.queryByRole("checkbox", { name })).toBeNull();
+      fireEvent.click(screen.getByRole("button", { name: "All protections" }));
+      expect(screen.getByRole("checkbox", { name })).toHaveProperty("checked", false);
+    }
+    fireEvent.click(screen.getByRole("button", { name: "Review draft" }));
+    await waitFor(() => expect(apiMocks.preview).toHaveBeenCalledWith(expect.objectContaining({ policy_bindings: [binding] })));
   });
 
   it("searches and filters without changing bindings, then returns from review to configuration", async () => {
     renderWizard();
     fireEvent.change(screen.getByPlaceholderText("Customer data protection"), { target: { value: "Filtered draft" } });
     fireEvent.click(screen.getByRole("button", { name: "Configure protections" }));
-    fireEvent.click(await screen.findByRole("checkbox", { name: "Aviation Operations Security" }));
-    fireEvent.click(screen.getByRole("button", { name: "Configure Aviation Operations Security", exact: true }));
-    fireEvent.click(screen.getByRole("button", { name: "Complete Aviation configuration" }));
-    fireEvent.click(screen.getByRole("button", { name: "Configure Aviation Operations Security", exact: true }));
-    fireEvent.change(screen.getByRole("textbox", { name: "Search protections" }), { target: { value: "Topic Filtering" } });
-    expect(screen.queryByRole("checkbox", { name: "Aviation Operations Security" })).toBeNull();
+    await selectSection("Business rules");
+    fireEvent.click(await screen.findByRole("checkbox", { name: "Brand Protection" }));
+    fireEvent.click(screen.getByRole("button", { name: "Configure Brand Protection", exact: true }));
+    fireEvent.click(screen.getByRole("button", { name: "Complete Brand configuration" }));
+    fireEvent.click(screen.getByRole("button", { name: "Configure Brand Protection", exact: true }));
+    fireEvent.change(screen.getByRole("searchbox", { name: "Search protections" }), { target: { value: "Topic Filtering" } });
+    expect(screen.queryByRole("checkbox", { name: "Brand Protection" })).toBeNull();
     expect(screen.getByRole("checkbox", { name: "Topic Filtering" })).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "Review draft" }));
     await waitFor(() => expect(apiMocks.preview).toHaveBeenCalledWith(expect.objectContaining({ policy_bindings: [configuredRequiredBinding] })));
     fireEvent.click(screen.getByRole("button", { name: "Edit protections" }));
-    expect(screen.getByRole("checkbox", { name: "Aviation Operations Security" }).getAttribute("aria-checked")).toBe("true");
-    expect(screen.getByRole("textbox", { name: "Search protections" }).getAttribute("value")).toBe("");
+    expect((screen.getByRole("checkbox", { name: "Brand Protection" }) as HTMLInputElement).checked).toBe(true);
+    expect(screen.getByRole("searchbox", { name: "Search protections" }).getAttribute("value")).toBe("");
   });
 
   it("keeps intent generation inside Policies and applies only after review", async () => {
     renderWizard();
     fireEvent.change(screen.getByPlaceholderText("Customer data protection"), { target: { value: "Support Guardrail" } });
     fireEvent.click(screen.getByRole("button", { name: "Configure protections" }));
+    await selectSection("Business rules");
     if (screen.queryByRole("button", { name: "All protections" })) fireEvent.click(screen.getByRole("button", { name: "All protections" }));
+    fireEvent.click(await screen.findByRole("checkbox", { name: "Topic Filtering" }));
+    await selectSection("Topic Control");
     await screen.findByText(protectionEn.wizard.businessAssistant);
     fireEvent.click(screen.getByText(protectionEn.wizard.businessAssistant));
-    fireEvent.click(await screen.findByRole("checkbox", { name: "Topic Filtering" }));
 
     fireEvent.click(screen.getByRole("button", { name: /Generate from intent/ }));
     expect(screen.getByText("Generate Topic Control from intent")).toBeTruthy();
     expect(screen.getByRole("button", { name: "Back to Policies" })).toBeTruthy();
     fireEvent.change(screen.getByPlaceholderText("Describe intent"), { target: { value: "Support agents may answer order questions but not medical advice." } });
+    expect((screen.getByRole("combobox", { name: "topicControl.mode" }) as HTMLSelectElement).value).toBe("permissive");
     fireEvent.click(screen.getByRole("button", { name: "Generate proposal" }));
 
     expect(await screen.findByText("Topic Control proposal")).toBeTruthy();
+    expect(apiMocks.analyzeIntent).toHaveBeenCalledWith(expect.objectContaining({ purpose: "Support agents may answer order questions but not medical advice.", topicControlMode: "permissive" }));
     expect(screen.getAllByText("Medical advice").length).toBeGreaterThan(0);
     expect(screen.queryByText("Generated from intent")).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "Apply proposal" }));
@@ -298,14 +573,18 @@ describe("Create Guardrail wizard", () => {
     expect(screen.getByRole("combobox", { name: "Output delivery" }).hasAttribute("disabled")).toBe(true);
   });
 
-  it("saves a Policy-based draft without a purpose or description", async () => {
+  it.each(["user"])("lets %s save a Policy-based draft without a purpose or description", async role => {
+    identity.role = role;
     const { onCreated } = renderWizard();
     fireEvent.change(screen.getByPlaceholderText("Customer data protection"), { target: { value: "Support Guardrail" } });
     fireEvent.click(screen.getByRole("button", { name: "Configure protections" }));
+    await selectSection("Business rules");
     if (screen.queryByRole("button", { name: "All protections" })) fireEvent.click(screen.getByRole("button", { name: "All protections" }));
+    fireEvent.click(await screen.findByRole("checkbox", { name: "Topic Filtering" }));
+    await selectSection("Topic Control");
     await screen.findByText(protectionEn.wizard.businessAssistant);
     fireEvent.click(screen.getByText(protectionEn.wizard.businessAssistant));
-    fireEvent.click(await screen.findByRole("checkbox", { name: "Topic Filtering" }));
+    await selectSection("Topic Control");
     fireEvent.click(screen.getByRole("button", { name: "Add topic allowlist" }));
     fireEvent.change(screen.getByPlaceholderText("guardrailWizard.onePerLine"), { target: { value: "Orders\nReturns" } });
     fireEvent.click(screen.getByRole("button", { name: "Review & create" }));
@@ -317,6 +596,8 @@ describe("Create Guardrail wizard", () => {
     await waitFor(() => expect(apiMocks.createGuardrail).toHaveBeenCalledWith(expect.objectContaining({
       name: "Support Guardrail",
       allowed_topics: ["Orders", "Returns"],
+      restricted_topics: [],
+      topic_control_mode: "permissive",
       safety_level: "balanced",
       policy_bindings: [binding],
     })));
@@ -329,26 +610,29 @@ describe("Create Guardrail wizard", () => {
 
   it("saves phrases inside an ordinary Policy alongside a model Policy", async () => {
     const phrasePolicy = {
-      ...policy, id: "configured-phrase-filter", name: "Phrase filters", version: "1.0.0",
+      ...policy, id: "content-filters", name: "Phrase filters", version: "1.0.0",
       protection: { ...policy.protection!, directory: "content_filters" },
       parameters: [{ name: "phrase_entries", label: "Phrases and actions", kind: "phrase_entries", required: true, description: "" }],
-      rules: [{ id: "configured/phrases", name: "Configured phrase sequence", form: "keyword", effect: "reject", rails: ["input", "output"], implementation: { detector: "configured_phrases" } }],
+      rules: configurablePolicies.find(item => item.id === "content-filters")!.rules,
     } as Policy;
     apiMocks.getPolicies.mockResolvedValue({ items: [policy, phrasePolicy] });
     renderWizard();
     fireEvent.change(screen.getByPlaceholderText("Customer data protection"), { target: { value: "Support Guardrail" } });
     fireEvent.click(screen.getByRole("button", { name: "Configure protections" }));
+    await selectSection("Business rules");
     if (screen.queryByRole("button", { name: "All protections" })) fireEvent.click(screen.getByRole("button", { name: "All protections" }));
     fireEvent.click(await screen.findByRole("checkbox", { name: "Topic Filtering" }));
+    await selectSection("Topic Control");
     fireEvent.click(screen.getByRole("button", { name: "Add topic allowlist" }));
     fireEvent.change(screen.getByPlaceholderText("guardrailWizard.onePerLine"), { target: { value: "Orders" } });
     fireEvent.click(screen.getByRole("button", { name: "Configure protections" }));
+    await selectSection("Business rules");
     if (screen.queryByRole("button", { name: "All protections" })) fireEvent.click(screen.getByRole("button", { name: "All protections" }));
     expect(screen.queryByRole("button", { name: "Add rule" })).toBeNull();
     fireEvent.click(await screen.findByRole("checkbox", { name: "Phrase filters" }));
     expect(screen.queryByRole("button", { name: "Add phrase" })).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "Configure Phrase filters", exact: true }));
-    expect(screen.getByRole("combobox", { name: "Action for Configured phrase sequence" }).textContent).toBe("Phrase actions");
+    expect(screen.getByRole("combobox", { name: "Action for Configured phrase sequence" }).querySelector(".cds--list-box__label")?.textContent).toBe("Phrase actions");
     expect(screen.getByRole("button", { name: "Review draft" }).hasAttribute("disabled")).toBe(true);
     fireEvent.click(screen.getByRole("button", { name: "Add phrase" }));
     fireEvent.change(screen.getByRole("textbox", { name: "Phrase 1" }), { target: { value: "internal-name" } });
@@ -366,7 +650,7 @@ describe("Create Guardrail wizard", () => {
     expect(preview).not.toHaveProperty("custom_content_rules");
     expect(preview.policy_bindings.map((item: GuardrailPolicyBinding) => item.policy_id)).toEqual([binding.policy_id, phrasePolicy.id]);
     expect(JSON.parse(preview.policy_bindings[1].parameter_values.phrase_entries)).toEqual([
-      expect.objectContaining({ phrase: "internal-name", action: "reject" }),
+      expect.objectContaining({ phrase: "internal-name", action: "block" }),
     ]);
     expect(preview.output_delivery).toBe("full_buffered");
     await waitFor(() => expect(screen.getByRole("button", { name: "Create draft" }).hasAttribute("disabled")).toBe(false));
@@ -377,22 +661,23 @@ describe("Create Guardrail wizard", () => {
 
   it("explains hidden required Policy configuration and enables Next after it is completed", async () => {
     renderWizard();
-    fireEvent.change(screen.getByPlaceholderText("Customer data protection"), { target: { value: "Aviation Guardrail" } });
+    fireEvent.change(screen.getByPlaceholderText("Customer data protection"), { target: { value: "Brand Guardrail" } });
     fireEvent.click(screen.getByRole("button", { name: "Configure protections" }));
+    await selectSection("Business rules");
     if (screen.queryByRole("button", { name: "All protections" })) fireEvent.click(screen.getByRole("button", { name: "All protections" }));
 
-    fireEvent.click(await screen.findByRole("checkbox", { name: "Aviation Operations Security" }));
+    fireEvent.click(await screen.findByRole("checkbox", { name: "Brand Protection" }));
 
     const next = screen.getByRole("button", { name: "Review draft" });
     expect(next.hasAttribute("disabled")).toBe(true);
-    expect(screen.getByText("Complete required fields for Aviation Operations Security: Your Airline / Brand Name, Competitors.")).toBeTruthy();
+    expect(screen.getByText("Complete required fields for Brand Protection: Your Brand Name, Competitors.")).toBeTruthy();
     expect(next.getAttribute("aria-describedby")).toBeTruthy();
 
-    fireEvent.click(screen.getByRole("button", { name: "Configure Aviation Operations Security", exact: true }));
-    fireEvent.click(screen.getByRole("button", { name: "Complete Aviation configuration" }));
+    fireEvent.click(screen.getByRole("button", { name: "Configure Brand Protection", exact: true }));
+    fireEvent.click(screen.getByRole("button", { name: "Complete Brand configuration" }));
 
     expect(next.hasAttribute("disabled")).toBe(false);
-    expect(screen.queryByText("Complete required fields for Aviation Operations Security: Your Airline / Brand Name, Competitors.")).toBeNull();
+    expect(screen.queryByText("Complete required fields for Brand Protection: Your Brand Name, Competitors.")).toBeNull();
     fireEvent.click(next);
     expect(screen.getByText("Review Guardrail")).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "Review & create" }));
@@ -407,16 +692,20 @@ describe("Create Guardrail wizard", () => {
     expect(apiMocks.preview).not.toHaveBeenCalled();
   });
 
-  it("lets a Company Policy configure its required topics in its own business-rules step", async () => {
-    const company: Policy = { ...policy, id: "builtin-company-policy", name: "Company boundaries",
+  it("lets a custom Topic Policy configure its required business boundaries", async () => {
+    const company: Policy = { ...policy, id: "custom-support-boundaries", name: "Company boundaries",
       protection: { ...policy.protection!, directory: "business_rules", execution: "model", requiredContext: ["allowed_topics"] },
     };
     apiMocks.getPolicies.mockResolvedValue({ items: [company], count: 1 });
     renderWizard();
     fireEvent.change(screen.getByPlaceholderText("Customer data protection"), { target: { value: "Company protection" } });
     fireEvent.click(screen.getByRole("button", { name: "Configure protections" }));
+    await selectSection("Business rules");
     if (screen.queryByRole("button", { name: "All protections" })) fireEvent.click(screen.getByRole("button", { name: "All protections" }));
+    await selectSection("Topic Control");
     fireEvent.click(await screen.findByRole("checkbox", { name: "Company boundaries" }));
+    expect(screen.getByRole("button", { name: "Review draft" }).hasAttribute("disabled")).toBe(false);
+    fireEvent.change(screen.getByRole("combobox", { name: "topicControl.mode" }), { target: { value: "strict" } });
     expect(screen.getByRole("button", { name: "Review draft" }).hasAttribute("disabled")).toBe(true);
     expect(screen.getByText("Add at least one allowed topic.")).toBeTruthy();
     // No navigation to an unrelated step is necessary to recover.
@@ -432,30 +721,34 @@ describe("Create Guardrail wizard", () => {
     renderWizard();
     fireEvent.change(screen.getByPlaceholderText("Customer data protection"), { target: { value: "Scoped changes" } });
     fireEvent.click(screen.getByRole("button", { name: "Configure protections" }));
+    await selectSection("Business rules");
     if (screen.queryByRole("button", { name: "All protections" })) fireEvent.click(screen.getByRole("button", { name: "All protections" }));
     fireEvent.click(await screen.findByRole("checkbox", { name: "Topic Filtering" }));
     fireEvent.click(screen.getByRole("button", { name: "Configure protections" }));
+    await selectSection("Business rules");
     if (screen.queryByRole("button", { name: "All protections" })) fireEvent.click(screen.getByRole("button", { name: "All protections" }));
-    fireEvent.click(await screen.findByRole("checkbox", { name: "Aviation Operations Security" }));
-    fireEvent.click(screen.getByRole("button", { name: "Configure Aviation Operations Security", exact: true }));
-    fireEvent.click(screen.getByRole("button", { name: "Complete Aviation configuration" }));
+    fireEvent.click(await screen.findByRole("checkbox", { name: "Brand Protection" }));
+    fireEvent.click(screen.getByRole("button", { name: "Configure Brand Protection", exact: true }));
+    fireEvent.click(screen.getByRole("button", { name: "Complete Brand configuration" }));
     fireEvent.click(screen.getByRole("button", { name: "Configure protections" }));
+    await selectSection("Business rules");
     if (screen.queryByRole("button", { name: "All protections" })) fireEvent.click(screen.getByRole("button", { name: "All protections" }));
     fireEvent.click(screen.getByRole("checkbox", { name: "Topic Filtering" }));
     fireEvent.click(screen.getByRole("button", { name: "Review & create" }));
     await waitFor(() => expect(apiMocks.preview).toHaveBeenCalledWith(expect.objectContaining({ policy_bindings: [configuredRequiredBinding] })));
   });
 
-  it("preserves selections but prevents writes after administrator access is lost", async () => {
+  it("preserves selections but prevents writes after account access is revoked", async () => {
     const { refreshIdentity } = renderWizard();
     fireEvent.change(screen.getByPlaceholderText("Customer data protection"), { target: { value: "Preserved access draft" } });
     fireEvent.click(screen.getByRole("button", { name: "Configure protections" }));
+    await selectSection("Business rules");
     if (screen.queryByRole("button", { name: "All protections" })) fireEvent.click(screen.getByRole("button", { name: "All protections" }));
     fireEvent.click(await screen.findByRole("checkbox", { name: "Topic Filtering" }));
     fireEvent.click(screen.getByRole("button", { name: "Review & create" }));
     await waitFor(() => expect(screen.getByRole("button", { name: "Create draft" }).hasAttribute("disabled")).toBe(false));
 
-    identity.role = 'member';
+    identity.role = 'revoked';
     refreshIdentity();
     expect(screen.getByRole("button", { name: "Create draft" }).hasAttribute("disabled")).toBe(true);
     expect(screen.getByText(protectionEn.adminAccessRequired)).toBeTruthy();
@@ -463,12 +756,14 @@ describe("Create Guardrail wizard", () => {
     fireEvent.click(screen.getByRole("button", { name: "Create draft" }));
     expect(apiMocks.createGuardrail).not.toHaveBeenCalled();
     fireEvent.click(screen.getByRole("button", { name: "Configure protections" }));
+    await selectSection("Business rules");
     if (screen.queryByRole("button", { name: "All protections" })) fireEvent.click(screen.getByRole("button", { name: "All protections" }));
+    await selectSection("Topic Control");
     fireEvent.click(screen.getByText(protectionEn.wizard.businessAssistant));
     expect(screen.getByRole("button", { name: /Generate from intent/ }).hasAttribute("disabled")).toBe(true);
     expect(screen.getByRole("button", { name: /Generate from documents/ }).hasAttribute("disabled")).toBe(true);
 
-    identity.role = 'admin';
+    identity.role = 'user';
     refreshIdentity();
     fireEvent.click(screen.getByRole("button", { name: "Review & create" }));
     await waitFor(() => expect(screen.getByRole("button", { name: "Create draft" }).hasAttribute("disabled")).toBe(false));
@@ -482,6 +777,7 @@ describe("Create Guardrail wizard", () => {
     const { client } = renderWizard();
     fireEvent.change(screen.getByPlaceholderText("Customer data protection"), { target: { value: "Catalog recovery draft" } });
     fireEvent.click(screen.getByRole("button", { name: "Configure protections" }));
+    await selectSection("Business rules");
     if (screen.queryByRole("button", { name: "All protections" })) fireEvent.click(screen.getByRole("button", { name: "All protections" }));
     fireEvent.click(await screen.findByRole("checkbox", { name: "Topic Filtering" }));
     fireEvent.click(screen.getByRole("button", { name: "Review & create" }));
@@ -527,6 +823,7 @@ describe("Create Guardrail wizard", () => {
     renderWizard();
     fireEvent.change(screen.getByPlaceholderText("Customer data protection"), { target: { value: "Retry draft" } });
     fireEvent.click(screen.getByRole("button", { name: "Configure protections" }));
+    await selectSection("Business rules");
     if (screen.queryByRole("button", { name: "All protections" })) fireEvent.click(screen.getByRole("button", { name: "All protections" }));
     fireEvent.click(await screen.findByRole("checkbox", { name: "Topic Filtering" }));
     fireEvent.click(screen.getByRole("button", { name: "Review & create" }));
@@ -542,6 +839,7 @@ describe("Create Guardrail wizard", () => {
     const { onCreated } = renderWizard();
     fireEvent.change(screen.getByPlaceholderText("Customer data protection"), { target: { value: "Offline draft" } });
     fireEvent.click(screen.getByRole("button", { name: "Configure protections" }));
+    await selectSection("Business rules");
     if (screen.queryByRole("button", { name: "All protections" })) fireEvent.click(screen.getByRole("button", { name: "All protections" }));
     fireEvent.click(await screen.findByRole("checkbox", { name: "Topic Filtering" }));
     fireEvent.click(screen.getByRole("button", { name: "Review & create" }));

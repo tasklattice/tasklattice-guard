@@ -1,0 +1,23 @@
+.playground-model-option { display: flex; align-items: center; gap: 0.75rem; min-inline-size: 0; width: 100%; }
+.playground-model-label { display: flex; flex-direction: column; gap: 0.125rem; min-inline-size: 0; line-height: 1.25; }
+.playground-model-label strong { display: block; font-size: 0.875rem; font-weight: 600; }
+.playground-model-label > span { display: block; color: var(--cds-text-secondary); font-size: 0.75rem; overflow-wrap: anywhere; }
+.playground-target-label { display: flex; align-items: center; gap: 0.5rem; min-inline-size: 0; white-space: nowrap; }
+.playground-model-select .cds--list-box__label { display: block; min-inline-size: 0; width: 100%; }
+.playground-model-select .cds--list-box__label .playground-model-label > span,
+.playground-model-select .cds--list-box__label .playground-model-label strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.playground-composer-controls .guard-select,
+.playground-composer-controls .cds--list-box { min-inline-size: 0; }
+.playground-composer-controls .cds--list-box__label {
+  min-inline-size: 0;
+  font-size: var(--text-xs);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.playground-composer-controls .playground-model-label strong { font-size: var(--text-xs); }
+// Size Carbon's actual field and wrapper together, including single-line selections.
+.playground-composer-controls .guard-select,
+.playground-composer-controls .cds--list-box,
+.playground-composer-controls .cds--list-box__field { block-size: 3rem; min-block-size: 3rem; }
+.playground-composer-controls .playground-definition-link { block-size: 3rem; inline-size: 3rem; }

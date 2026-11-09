@@ -121,7 +121,7 @@ export function ProtectedDeleteSheet({
           <Label htmlFor={`${inputId}-reason`}>{copy.reasonLabel ?? "Reason"}</Label>
           <Input
             id={`${inputId}-reason`}
-            className="min-h-11"
+            className="field:min-h-11"
             value={reason ?? ""}
             placeholder={copy.reasonPlaceholder}
             onChange={(event) => onReasonChange(event.target.value)}
@@ -139,7 +139,7 @@ export function ProtectedDeleteSheet({
         </div>
         <div className="space-y-2">
           <Label htmlFor={inputId}>{copy.typeNameLabel}</Label>
-          <Input id={inputId} className="min-h-11" autoComplete="off" autoFocus value={typedName} onChange={(event) => setTypedName(event.target.value)} disabled={deleting} />
+          <Input id={inputId} className="field:min-h-11" autoComplete="off" autoFocus value={typedName} onChange={(event) => setTypedName(event.target.value)} disabled={deleting} />
         </div>
         <div className="rounded-lg border bg-muted/35 px-4 py-3 text-xs leading-5 text-muted-foreground">{copy.retentionNote}</div>
         {error ? <p role="alert" className="rounded-lg border border-destructive/20 bg-destructive/5 px-4 py-3 text-xs leading-5 text-destructive">{error.message}</p> : null}

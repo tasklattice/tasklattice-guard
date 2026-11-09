@@ -1,0 +1,26 @@
+---
+id: "api-access"
+title: "API 与工具入口"
+summary: "查看 Controller 管理 API、标准 OpenAPI 契约和供工具读取的索引。运行检查请使用 Endpoint 对应协议和凭据。"
+order: 0
+---
+管理 API 用于配置资源，Endpoint API 用于检测应用内容。两类接口使用不同的凭据。
+
+<a id="api-tools" />
+## 选择 API 参考入口
+
+| 工具 | 用途 |
+| --- | --- |
+| [API 文档](/api/docs) | 查看操作参数、响应和示例。 |
+| [OpenAPI](/api/openapi.json) | 生成客户端或读取机器可识别的契约。 |
+| [工具索引](/api/llms.txt) | 通过紧凑的文本索引查找操作。 |
+| [Access Tokens](/account/access-tokens) | 创建和管理个人管理凭据。 |
+
+<a id="api-credentials" />
+## 选择对应凭据
+
+管理 API 接受浏览器 Session，或具备对应授权的个人 Access Token。账户角色限制同时生效。部分账户操作必须使用浏览器 Session。
+
+运行时检测使用所选 Endpoint 的凭据。个人 Token 不能代替 Endpoint 凭据，也不能签发其他个人 Token。
+
+后续步骤见[账户角色与凭据](/document/admin/platform-access)、[控制面 API 集成](/document/developer/developer-api-access)和 [Endpoint 接入指南](/document/developer/endpoint-setup)。

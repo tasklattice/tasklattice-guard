@@ -1,0 +1,37 @@
+- id: builtin-automated-reasoning/reasoning-output
+  name: 'builtin-automated-reasoning: Blocks disproved warranty claim'
+  description: With warranty-duration@1 pinned, ten years contradicts the one-year
+    rule.
+  phase: output
+  content: The warranty lasts ten years.
+  expected_decision: block
+  covered_rule_ids:
+  - model/automated-reasoning
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: General
+  scope: rule
+  context:
+    trusted_instruction: ''
+    query: How long is the warranty?
+    grounding_sources: []
+    expected_reasoning_result: invalid
+- id: builtin-contextual-grounding/grounding-output
+  name: 'builtin-contextual-grounding: Blocks unsupported warranty claim'
+  description: The answer contradicts the supplied one-year warranty source.
+  phase: output
+  content: The warranty lasts ten years.
+  expected_decision: block
+  covered_rule_ids:
+  - model/contextual-grounding
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: General
+  scope: rule
+  context:
+    trusted_instruction: ''
+    query: How long is the warranty?
+    grounding_sources:
+    - The product warranty lasts one year.

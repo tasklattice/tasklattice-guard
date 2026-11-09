@@ -1,5 +1,6 @@
+import { useTranslation } from "react-i18next";
 import { useRef, useState, type ReactNode } from "react";
-import { useRoutingText } from "@/components/traffic-routing/form";
+
 
 /** One scroll owner per pane; the separator supports pointer and keyboard resizing. */
 export function PathWorkbenchSplit({
@@ -9,28 +10,28 @@ export function PathWorkbenchSplit({
   request: ReactNode;
   result: ReactNode;
 }) {
-  const t = useRoutingText();
-  const [height, setHeight] = useState(45);
-  const drag = useRef({ y: 0, height: 45 });
+  const { t } = useTranslation();
+  const [height, setHeight] = useState(50);
+  const drag = useRef({ y: 0, height: 50 });
   const container = useRef<HTMLDivElement>(null);
   const resize = (next: number) => setHeight(Math.min(60, Math.max(30, next)));
   return (
     <div
       ref={container}
-      className="flex h-[38rem] min-h-[30rem] flex-col lg:h-[calc(100dvh-25rem)]"
+      className="flex h-[38rem] min-h-[36rem] flex-col lg:h-[calc(100dvh-25rem)]"
     >
-      <div style={{ height: `${height}%` }} className="min-h-0 shrink-0">
+      <div style={{ height: `${height}%` }} className="min-h-0 shrink-0 overflow-hidden">
         {request}
       </div>
       <div
         role="separator"
         tabIndex={0}
-        aria-label={t("调整请求区高度", "Resize request panel")}
+        aria-label={t("routing.resizeRequestPanel")}
         aria-orientation="horizontal"
         aria-valuemin={30}
         aria-valuemax={60}
         aria-valuenow={height}
-        className="group relative z-10 flex h-3 shrink-0 cursor-row-resize touch-none items-center justify-center border-y bg-muted/30 outline-none before:absolute before:inset-x-0 before:-inset-y-4 hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring"
+        className="group relative z-10 flex h-3 shrink-0 cursor-row-resize touch-none items-center justify-center border-y bg-muted/30 outline-none hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring"
         onPointerDown={(e) => {
           drag.current = { y: e.clientY, height };
           e.currentTarget.setPointerCapture(e.pointerId);

@@ -2,9 +2,18 @@ import { describe, expect, it } from "vitest";
 import {
   capabilityIssues, evaluateCondition, evaluateSelector, previewRouter, routerDraftSchema,
   routingInputSchema, routingIssues, selectorConditionSchema, selectorExpressionSchema,
-  selectorFieldCatalog, type RouterDraft, type RoutingInput, type SelectorCondition,
+  selectorFieldCatalog, targetSchema, type RouterDraft, type RoutingInput, type SelectorCondition,
+  endpointSelectorCapabilities,
   type SelectorExpression, type TrafficRoute,
 } from "./traffic-routing.js";
+
+it("declares only real Scan extraction fields", () => {
+  const caps = endpointSelectorCapabilities({ id: "scan", adapter: "f5-scan" });
+  expect(caps).toContainEqual({ field: "adapter.field", key: "scan.direction", availableAt: "first_assignment", cardinality: "one", valueType: "string" });
+  expect(caps.some(c => c.requestSource === "business_request")).toBe(false);
+  expect(caps.some(c => ["model", "auth.jwt_claim", "tool.name"].includes(c.field))).toBe(false);
+  expect(caps.some(c => c.key === "project")).toBe(false);
+});
 
 const header = (changes: Partial<SelectorCondition> = {}): SelectorCondition => ({
   field: "http.header", key: "X-Channel", requestSource: "business_request", operator: "equals", value: "partner", ...changes,
@@ -121,9 +130,9 @@ describe("bounded schemas and error classes", () => {
     expect(() => previewRouter(draft(), { ...input(), extractionErrors: ["headers_overflow"] })).toThrow(expect.objectContaining({ code: "routing_input_error" }));
   });
   it("keeps system Endpoint identity authoritative and custom keys literal", () => {
-    const sample = { ...input(), fields: { "endpoint.id": "spoofed", "tenant.id": "a" } };
+    const sample = { ...input(), fields: { "endpoint.id": "spoofed", "project.id": "a" } };
     expect(evaluateCondition({ field: "endpoint.id", operator: "equals", value: "http" }, sample).matched).toBe(true);
-    expect(evaluateCondition({ field: "adapter.field", key: "tenant.id", operator: "equals", value: "a" }, sample).matched).toBe(true);
+    expect(evaluateCondition({ field: "adapter.field", key: "project.id", operator: "equals", value: "a" }, sample).matched).toBe(true);
     expect(evaluateCondition({ field: "adapter.field", key: "toString", operator: "exists", value: "" }, sample).matched).toBe(false);
   });
   it("allows incomplete weights in drafts but validates immutable versions, empty groups and fallback on publish", () => {
@@ -131,7 +140,7 @@ describe("bounded schemas and error classes", () => {
     expect(routingIssues(config)).toEqual([]);
     expect(routingIssues(config, true).join(";")).toMatch(/Selector/);
     expect(routingIssues(config, true).join(";")).toMatch(/100%/);
-    config.routes[0]!.targets[0]!.guardrailVersion = "latest";
+    config.routes[0]!.targets[0]!.guardrailVersion = " ";
     expect(routingIssues(config, true).join(";")).toMatch(/pin a Guardrail Version/);
     const invalidFallback = fallback(); invalidFallback.selector.expression.combinator = "or";
     expect(routingIssues({ routes: [invalidFallback] }).join(";")).toMatch(/unconditional/);
@@ -157,16 +166,16 @@ describe("glob and boolean expressions", () => {
 describe("capabilities and exact ordered preview", () => {
   it("checks every scoped Endpoint without guessing boolean reachability", () => {
     const config = draft(route("business"));
-    const endpoints = [{ id: "http", adapter: "HTTP" }, { id: "a2a", adapter: "A2A" }];
-    expect(capabilityIssues(config, endpoints).join(";")).toMatch(/a2a.*business_request.*conditions.0/);
+    const endpoints = [{ id: "http", adapter: "LITELLM" }, { id: "scan", adapter: "SCAN" }];
+    expect(capabilityIssues(config, endpoints).join(";")).toMatch(/scan.*business_request.*conditions.0/);
   });
   it("honors explicit stage and key declarations and exposes availability to editors", () => {
     const config = draft(route("output", group({ field: "output.sink", operator: "equals", value: "chat" })));
-    const endpoint = { id: "http", adapter: "HTTP", selectorCapabilities: [{ field: "output.sink", availableAt: "output" as const, cardinality: "one" as const, valueType: "string" as const }] };
+    const endpoint = { id: "http", adapter: "LITELLM", selectorCapabilities: [{ field: "output.sink", availableAt: "output" as const, cardinality: "one" as const, valueType: "string" as const }] };
     expect(capabilityIssues(config, [endpoint])).toHaveLength(1);
     expect(selectorFieldCatalog([endpoint]).find(f => f.id === "output.sink")!.availableEndpoints).toEqual([]);
     expect(capabilityIssues(config, [{ ...endpoint, selectorCapabilities: [{ ...endpoint.selectorCapabilities[0]!, availableAt: "first_assignment" }] }])).toEqual([]);
-    expect(capabilityIssues(draft(route("a")), [{ id: "http", adapter: "HTTP", selectorCapabilities: [] }])).toHaveLength(1);
+    expect(capabilityIssues(draft(route("a")), [{ id: "http", adapter: "LITELLM", selectorCapabilities: [] }])).toHaveLength(1);
   });
   it("marks every later applicable route unexecuted regardless of independent match", () => {
     const rows = previewRouter(draft(route("winner"), route("overlap"), route("different", group(header({ value: "other" })))), input());
@@ -185,14 +194,11 @@ describe("capabilities and exact ordered preview", () => {
 
 
 describe("publication target contracts", () => {
-  it("allows latest with empty version while undefined and explicit pinned require identities", () => {
+  it("requires every target to pin a version and accepts no version strategy", () => {
     const value = draft(); const target = value.routes[0]!.targets[0]!;
     target.guardrailVersion = "";
     expect(routingIssues(value, true).join(";")).toContain("pin a Guardrail Version");
-    target.versionStrategy = "pinned";
-    expect(routingIssues(value, true).join(";")).toContain("pin a Guardrail Version");
-    target.versionStrategy = "latest";
-    expect(routingIssues(value, true)).toEqual([]);
+    expect(targetSchema.safeParse({ ...target, guardrailVersion: "20261009-120000.000Z", versionStrategy: "latest" }).success).toBe(false);
   });
   it("requires one 100% fallback target and preserves fallback topology", () => {
     const value = draft(); const fallbackRoute = value.routes[0]!;
@@ -203,7 +209,7 @@ describe("publication target contracts", () => {
     expect(routingIssues(value, true).join(";")).toContain("exactly one Target at 100%");
     fallbackRoute.targets[0]!.weightBps = 10000; fallbackRoute.enabled = false;
     expect(routingIssues(value, true).join(";")).toContain("Fallback must be enabled, unconditional and last");
-    fallbackRoute.enabled = true; fallbackRoute.selector.expression = { combinator: "and", conditions: [{ field: "protocol", operator: "equals", value: "HTTP" }] };
+    fallbackRoute.enabled = true; fallbackRoute.selector.expression = { combinator: "and", conditions: [{ field: "protocol", operator: "equals", value: "litellm" }] };
     expect(routingIssues(value, true).join(";")).toContain("Fallback must be enabled, unconditional and last");
     fallbackRoute.selector.expression = group(); value.routes.push(route("after", group()));
     expect(routingIssues(value, true).join(";")).toContain("Fallback must be enabled, unconditional and last");

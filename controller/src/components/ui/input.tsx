@@ -1,19 +1,31 @@
-import * as React from "react"
-
-import { cn } from "@/lib/utils"
-
-function Input({ className, type, ...props }: React.ComponentProps<"input">) {
+import { useId, type ComponentProps } from "react";
+import { TextInput } from "@carbon/react";
+/** className lays out the Carbon wrapper; field: utilities style the visible control. */
+export function Input({
+  id,
+  className,
+  size: _size,
+  onClick,
+  value,
+  defaultValue,
+  ...props
+}: ComponentProps<"input">) {
+  const generated = useId();
   return (
-    <input
-      type={type}
-      data-slot="input"
-      className={cn(
-        "h-10 w-full min-w-0 rounded-lg border border-input bg-card px-3 py-2 text-base shadow-xs transition-colors outline-none file:inline-flex file:h-6 file:border-0 file:bg-transparent file:text-sm file:font-medium file:text-foreground placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/25 disabled:pointer-events-none disabled:cursor-not-allowed disabled:bg-muted disabled:opacity-60 aria-invalid:border-destructive aria-invalid:ring-3 aria-invalid:ring-destructive/20 md:text-sm dark:bg-input/30 dark:disabled:bg-input/80 dark:aria-invalid:border-destructive/50 dark:aria-invalid:ring-destructive/40",
-        className
-      )}
+    <TextInput
       {...props}
+      onClick={onClick as ComponentProps<typeof TextInput>["onClick"]}
+      id={id ?? generated}
+      data-slot="input"
+      className={className}
+      size="md"
+      labelText=""
+      hideLabel
+      value={value as string | number | undefined}
+      defaultValue={defaultValue as string | number | undefined}
+      invalid={
+        props["aria-invalid"] === true || props["aria-invalid"] === "true"
+      }
     />
-  )
+  );
 }
-
-export { Input }

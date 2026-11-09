@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { ControllerConfig } from "./config.js";
 import type { ControllerDatabase } from "./db/client.js";
@@ -6,13 +6,14 @@ import { ControlPlaneService } from "./services/control-plane.js";
 import { ControllerMetrics } from "./metrics.js";
 
 describe("Controller metrics contract", () => {
+  afterEach(() => { vi.restoreAllMocks(); });
   it("exports fleet convergence, freshness, capacity, and outbox signals", async () => {
     const now = Date.now();
     const service = {
       desiredGeneration: async () => 12,
       listRunnerPoolsWithCapacity: async () => [{
         id: "default",
-        name: "GuardRails 0",
+        name: "runner-default",
         isDefault: true,
         desiredReplicas: 2,
         safeRpsPerRunner: 50,
@@ -54,11 +55,11 @@ describe("Controller metrics contract", () => {
         }],
         guardrails: [{
           guardrailId: "guardrail-1", guardrailName: "PII Shield",
-          status: "active", activeVersion: "20260904-030000.003Z",
+          status: "active",
         }],
         endpoints: [{
           endpointId: "endpoint-1", endpointName: "Agent Gateway",
-          adapter: "generic-http-guard", status: "active",
+          adapter: "litellm-generic-guardrail", status: "active",
         }],
         endpointBindings: [{
           guardrailId: "guardrail-1", endpointId: "endpoint-1",
@@ -82,7 +83,7 @@ describe("Controller metrics contract", () => {
     expect(rendered).toContain('guard_controller_runner_pool_worst_runner_latency_p95_seconds{pool="default"} 0.12');
     expect(rendered).toContain('guard_controller_outbox_pending{kind="runner.desired_state_changed"} 2');
     expect(rendered).toContain('guard_controller_guardrail_info{guardrail_id="guardrail-1",guardrail_name="PII Shield",status="active"} 1');
-    expect(rendered).toContain('guard_controller_endpoint_info{endpoint_id="endpoint-1",endpoint_name="Agent Gateway",adapter="generic-http-guard",status="active"} 1');
+    expect(rendered).toContain('guard_controller_endpoint_info{endpoint_id="endpoint-1",endpoint_name="Agent Gateway",adapter="litellm-generic-guardrail",status="active"} 1');
     expect(rendered).toContain('guard_controller_guardrail_endpoint_info{guardrail_id="guardrail-1",endpoint_id="endpoint-1",endpoint_name="Agent Gateway",pool="default",status="active"} 1');
     expect(rendered).toContain('guard_controller_guardrail_router_info{guardrail_id="guardrail-1",guardrail_version="20260904-030000.003Z",router_id="router-1",router_name="Production API",pool="default",status="syncing"} 1');
     expect(rendered).toContain('guard_controller_guardrail_router_ready{guardrail_id="guardrail-1",router_id="router-1"} 0');
@@ -109,7 +110,7 @@ describe("Controller metrics contract", () => {
         watermarks: [], pendingOutbox: [],
         guardrails: [{
           guardrailId: "guardrail-1", guardrailName: "PII Shield",
-          status: "active", activeVersion: "20260904-030000.003Z",
+          status: "active",
         }],
         endpoints: [], endpointBindings: [],
         routers: [{
@@ -141,7 +142,7 @@ describe("Controller metrics contract", () => {
     expect(rendered).toContain('guard_controller_telemetry_events_total{result="accepted"} 1');
   });
 
-  it("removes stale database-backed series on the next scrape", async () => {
+  it("removes stale database-backed series after cache expiry", async () => {
     let present = true;
     const service = {
       desiredGeneration: async () => 1,
@@ -163,11 +164,11 @@ describe("Controller metrics contract", () => {
         watermarks: [], pendingOutbox: [],
         guardrails: present ? [{
           guardrailId: "guardrail-1", guardrailName: "PII Shield",
-          status: "active", activeVersion: "20260904-010000.001Z",
+          status: "active",
         }] : [],
         endpoints: present ? [{
           endpointId: "endpoint-1", endpointName: "Agent Gateway",
-          adapter: "generic-http-guard", status: "active",
+          adapter: "litellm-generic-guardrail", status: "active",
         }] : [],
         endpointBindings: present ? [{
           guardrailId: "guardrail-1", endpointId: "endpoint-1",
@@ -186,10 +187,82 @@ describe("Controller metrics contract", () => {
     expect(await metrics.render(service)).toContain('guardrail_id="guardrail-1"');
     expect(await metrics.render(service)).toContain('endpoint_id="endpoint-1"');
     present = false;
+    vi.spyOn(Date, "now").mockReturnValue(Date.now() + 10_001);
     const rendered = await metrics.render(service);
     expect(rendered).not.toContain('runner_id="runner-0"');
     expect(rendered).not.toContain('guardrail_id="guardrail-1"');
     expect(rendered).not.toContain('endpoint_id="endpoint-1"');
+  });
+
+  it("coalesces simultaneous scrapes, caches DB gauges for ten seconds and keeps counters live", async () => {
+    let release!: () => void;
+    const gate = new Promise<void>(resolve => { release = resolve; });
+    const service = {
+      desiredGeneration: vi.fn(async () => { await gate; return 3; }),
+      listRunnerPoolsWithCapacity: vi.fn(async () => []),
+      observabilitySnapshot: vi.fn(async () => ({ watermarks: [], pendingOutbox: [], guardrails: [], endpoints: [], endpointBindings: [], routers: [] })),
+    } as unknown as ControlPlaneService;
+    const metrics = new ControllerMetrics();
+    const scrapes = Array.from({ length: 20 }, () => metrics.render(service));
+    expect(service.desiredGeneration).toHaveBeenCalledOnce();
+    release();
+    const results = await Promise.all(scrapes);
+    expect(results.every(result => result.includes("guard_controller_desired_generation 3"))).toBe(true);
+    metrics.observeHeartbeat("default", "accepted");
+    expect(await metrics.render(service)).toContain('guard_controller_runner_heartbeats_total{pool="default",result="accepted"} 1');
+    expect(service.observabilitySnapshot).toHaveBeenCalledOnce();
+    vi.spyOn(Date, "now").mockReturnValue(Date.now() + 10_001);
+    await metrics.render(service);
+    expect(service.desiredGeneration).toHaveBeenCalledTimes(2);
+    expect(service.observabilitySnapshot).toHaveBeenCalledTimes(2);
+  });
+
+  it("serves process metrics on database failure and backs off before refreshing again", async () => {
+    const service = {
+      desiredGeneration: vi.fn().mockRejectedValueOnce(new Error("DB offline")).mockResolvedValue(3),
+      listRunnerPoolsWithCapacity: vi.fn(async () => []),
+      observabilitySnapshot: vi.fn(async () => ({ watermarks: [], pendingOutbox: [], guardrails: [], endpoints: [], endpointBindings: [], routers: [] })),
+    } as unknown as ControlPlaneService;
+    const metrics = new ControllerMetrics();
+    const results = await Promise.allSettled([metrics.render(service), metrics.render(service)]);
+    expect(results.map(result => result.status)).toEqual(["fulfilled", "fulfilled"]);
+    expect(service.desiredGeneration).toHaveBeenCalledOnce();
+    expect(await metrics.render(service)).toContain("guard_controller_database_snapshot_fresh 0");
+    expect(service.desiredGeneration).toHaveBeenCalledOnce();
+    vi.spyOn(Date, "now").mockReturnValue(Date.now() + 10_001);
+    expect(await metrics.render(service)).toContain("guard_controller_desired_generation 3");
+    expect(await metrics.registry.metrics()).toContain('guard_controller_metrics_collection_failures_total{stage="snapshot"} 1');
+  });
+
+  it("exposes live pool pressure while SQL hangs, retains single-flight through sibling failures, and drains the refresh", async () => {
+    const held = Promise.withResolvers<number>();
+    const snapshot = { watermarks: [], pendingOutbox: [], guardrails: [], endpoints: [], endpointBindings: [], routers: [] };
+    const service = {
+      desiredGeneration: vi.fn(() => held.promise),
+      listRunnerPoolsWithCapacity: vi.fn().mockRejectedValue(new Error("PRIVATE_CREDENTIAL")),
+      observabilitySnapshot: vi.fn(async () => snapshot),
+      databasePoolState: () => ({ max: 20, total: 20, idle: 0, busy: 20, waiting: 7 }),
+      reportWorkState: () => ({ write: { active: 2, queued: 3, in_flight_bytes: 1048576 } }),
+    } as unknown as ControlPlaneService;
+    const logged = vi.spyOn(console, "error").mockImplementation(() => {});
+    const metrics = new ControllerMetrics();
+    const rendered = await metrics.render(service);
+    expect(rendered).toContain('guard_controller_database_pool_connections{state="busy"} 20');
+    expect(rendered).toContain("guard_controller_database_pool_waiting 7");
+    expect(rendered).toContain('guard_controller_report_work{stage="write",state="active"} 2');
+    expect(rendered).toContain('guard_controller_report_work{stage="write",state="in_flight_bytes"} 1048576');
+    expect(rendered).toContain("guard_controller_database_snapshot_in_flight 1");
+    expect(rendered).toContain("guard_controller_database_snapshot_fresh 0");
+    expect(rendered).toContain("guard_controller_process_");
+    await metrics.render(service);
+    expect(service.desiredGeneration).toHaveBeenCalledOnce();
+    let stopped = false;
+    const stop = metrics.stop().then(() => { stopped = true; });
+    await Promise.resolve(); expect(stopped).toBe(false);
+    held.resolve(3); await stop;
+    expect(JSON.stringify(logged.mock.calls)).not.toContain("PRIVATE_CREDENTIAL");
+    await metrics.render(service);
+    expect(service.desiredGeneration).toHaveBeenCalledOnce();
   });
 
   it("converts persisted Guardrail topology into bounded observability states", async () => {
@@ -207,8 +280,8 @@ describe("Controller metrics contract", () => {
       .mockImplementationOnce(() => ({
         from: vi.fn(() => ({
           where: vi.fn().mockResolvedValue([
-            { id: "guardrail-1", name: "PII Shield", status: "active", activeVersion: "20260904-030000.003Z" },
-            { id: "guardrail-2", name: "Draft Shield", status: "draft", activeVersion: null },
+            { id: "guardrail-1", name: "PII Shield", status: "active" },
+            { id: "guardrail-2", name: "Draft Shield", status: "draft" },
           ]),
         })),
       }))
@@ -216,16 +289,24 @@ describe("Controller metrics contract", () => {
         from: vi.fn(() => ({
           where: vi.fn().mockResolvedValue([
             {
-              id: "router-active", name: "Production API", guardrailId: "guardrail-1",
-              guardrailVersion: null, endpointId: "endpoint-active", poolId: "production", enabled: true,
+              id: "router-active", projectId: "project-a", name: "Production API", activeRevision: 3,
+              activeSnapshot: { routes: [
+                { id: "r1", name: "Paused", kind: "normal", enabled: false, selector: { expression: { combinator: "and", conditions: [] } },
+                  targets: [{ id: "t0", guardrailId: "guardrail-2", guardrailVersion: "20260904-020000.002Z", weightBps: 10000 }] },
+                { id: "r2", name: "All", kind: "fallback", enabled: true, selector: { expression: { combinator: "and", conditions: [] } },
+                  targets: [
+                    { id: "t1", guardrailId: "guardrail-1", guardrailVersion: "20260904-030000.003Z", weightBps: 10000 },
+                    { id: "t2", guardrailId: "guardrail-2", guardrailVersion: "20260904-020000.002Z", weightBps: 0 },
+                  ] },
+              ] },
             },
+            { id: "router-unpublished", projectId: "project-b", name: "Unpublished API", activeRevision: null, activeSnapshot: null },
             {
-              id: "router-disabled", name: "Disabled API", guardrailId: "guardrail-1",
-              guardrailVersion: "20260904-020000.002Z", endpointId: "endpoint-active", poolId: "production", enabled: false,
-            },
-            {
-              id: "router-inactive", name: "Draft API", guardrailId: "guardrail-2",
-              guardrailVersion: null, endpointId: "endpoint-disabled", poolId: "production", enabled: true,
+              id: "router-inactive", projectId: "project-b", name: "Draft API", activeRevision: 1,
+              activeSnapshot: { routes: [
+                { id: "r3", name: "All", kind: "fallback", enabled: true, selector: { expression: { combinator: "and", conditions: [] } },
+                  targets: [{ id: "t3", guardrailId: "guardrail-2", guardrailVersion: "20260904-020000.002Z", weightBps: 10000 }] },
+              ] },
             },
           ]),
         })),
@@ -233,70 +314,73 @@ describe("Controller metrics contract", () => {
       .mockImplementationOnce(() => ({
         from: vi.fn().mockResolvedValue([
           {
-            id: "endpoint-active", name: "Agent Gateway", adapter: "generic-http-guard",
-            status: "active", deletedAt: null,
+            id: "endpoint-active", projectId: "project-a", name: "Agent Gateway", adapter: "litellm-generic-guardrail",
+            status: "active", deletedAt: null, trafficRouterId: "router-active",
           },
           {
-            id: "endpoint-disabled", name: "Disabled Gateway", adapter: "generic-http-guard",
-            status: "disabled", deletedAt: null,
+            id: "endpoint-disabled", projectId: "project-b", name: "Disabled Gateway", adapter: "litellm-generic-guardrail",
+            status: "disabled", deletedAt: null, trafficRouterId: "router-inactive",
           },
           {
-            id: "endpoint-zero-traffic", name: "New Gateway", adapter: "openai-compatible",
-            status: "active", deletedAt: null,
+            id: "endpoint-zero-traffic", projectId: "project-a", name: "New Gateway", adapter: "openai-compatible",
+            status: "active", deletedAt: null, trafficRouterId: null,
           },
           {
-            id: "endpoint-deleted", name: "Deleted Gateway", adapter: "generic-http-guard",
-            status: "disabled", deletedAt: new Date(),
+            id: "endpoint-deleted", projectId: "project-a", name: "Deleted Gateway", adapter: "litellm-generic-guardrail",
+            status: "disabled", deletedAt: new Date(), trafficRouterId: "router-active",
           },
         ]),
+      }))
+      .mockImplementationOnce(() => ({
+        from: vi.fn(() => ({ innerJoin: vi.fn().mockResolvedValue([
+          { projectId: "project-a", poolId: "pool-project-a" },
+          { projectId: "project-b", poolId: "default" },
+        ]) })),
       }));
     const db = { select } as unknown as ControllerDatabase;
 
     const snapshot = await new ControlPlaneService(db, {} as ControllerConfig).observabilitySnapshot();
 
     expect(snapshot.guardrails).toEqual([
-      { guardrailId: "guardrail-1", guardrailName: "PII Shield", status: "active", activeVersion: "20260904-030000.003Z" },
-      { guardrailId: "guardrail-2", guardrailName: "Draft Shield", status: "draft", activeVersion: null },
+      { guardrailId: "guardrail-1", guardrailName: "PII Shield", status: "active" },
+      { guardrailId: "guardrail-2", guardrailName: "Draft Shield", status: "draft" },
     ]);
     expect(snapshot.endpoints).toEqual([
       {
         endpointId: "endpoint-active", endpointName: "Agent Gateway",
-        adapter: "generic-http-guard", status: "active",
+        adapter: "litellm-generic-guardrail", status: "active",
       },
       {
         endpointId: "endpoint-disabled", endpointName: "Disabled Gateway",
-        adapter: "generic-http-guard", status: "disabled",
+        adapter: "litellm-generic-guardrail", status: "disabled",
       },
       {
         endpointId: "endpoint-zero-traffic", endpointName: "New Gateway",
         adapter: "openai-compatible", status: "active",
       },
     ]);
+    // Disabled routes and zero-weight targets never become topology; deleted
+    // Endpoints never become bindings; unpublished Routers have no topology.
     expect(snapshot.endpointBindings).toEqual([
       {
         guardrailId: "guardrail-1", endpointId: "endpoint-active",
-        endpointName: "Agent Gateway", poolId: "production", status: "active",
+        endpointName: "Agent Gateway", poolId: "pool-project-a", status: "active",
       },
       {
         guardrailId: "guardrail-2", endpointId: "endpoint-disabled",
-        endpointName: "Disabled Gateway", poolId: "production", status: "inactive",
+        endpointName: "Disabled Gateway", poolId: "default", status: "inactive",
       },
     ]);
     expect(snapshot.routers).toEqual([
       {
         guardrailId: "guardrail-1", guardrailVersion: "20260904-030000.003Z",
         routerId: "router-active", routerName: "Production API",
-        poolId: "production", status: "active",
+        poolId: "pool-project-a", status: "active",
       },
       {
-        guardrailId: "guardrail-1", guardrailVersion: "20260904-020000.002Z",
-        routerId: "router-disabled", routerName: "Disabled API",
-        poolId: "production", status: "disabled",
-      },
-      {
-        guardrailId: "guardrail-2", guardrailVersion: null,
+        guardrailId: "guardrail-2", guardrailVersion: "20260904-020000.002Z",
         routerId: "router-inactive", routerName: "Draft API",
-        poolId: "production", status: "inactive",
+        poolId: "default", status: "inactive",
       },
     ]);
   });

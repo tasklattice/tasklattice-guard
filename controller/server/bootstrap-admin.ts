@@ -2,26 +2,29 @@ import { loadConfig } from "./config.js";
 import { createDatabase } from "./db/client.js";
 import { createAuth } from "./auth.js";
 import { runMigrations } from "./db/migrate.js";
-import { ensureBootstrapAdmin } from "./bootstrap.js";
-
-const email = process.env.CONTROLLER_BOOTSTRAP_ADMIN_EMAIL?.trim();
-const password = process.env.CONTROLLER_BOOTSTRAP_ADMIN_PASSWORD;
-const name = process.env.CONTROLLER_BOOTSTRAP_ADMIN_NAME?.trim() || "Administrator";
-
-if (!email || !password) {
-  throw new Error(
-    "CONTROLLER_BOOTSTRAP_ADMIN_EMAIL and CONTROLLER_BOOTSTRAP_ADMIN_PASSWORD are required.",
-  );
-}
+import { BootstrapAccountSynchronizer } from "./bootstrap.js";
+import { ControlPlaneService } from "./services/control-plane.js";
+import { ProjectService } from "./services/projects.js";
 
 const config = loadConfig();
+if (!config.bootstrapAdmin && !config.bootstrapUser) {
+  throw new Error("Configure a bootstrap username and password.");
+}
+
 const { db, pool } = createDatabase(config);
 const auth = createAuth(config, db);
 
 try {
   await runMigrations(config, db);
-  const status = await ensureBootstrapAdmin({ auth, db, email, password, name });
-  process.stdout.write(`${status === "created" ? "Created" : "Found existing"} Better Auth administrator ${email}.\n`);
+  let projects: ProjectService | undefined;
+  if (config.bootstrapUser?.project) {
+    const service = new ControlPlaneService(db, config);
+    await service.initialize();
+    projects = new ProjectService(db, (tx, id) => service.initializeProject(tx, id), config.runtimeServiceUrl);
+  }
+  for (const result of await new BootstrapAccountSynchronizer(auth, projects).synchronize(config)) {
+    process.stdout.write(`${result.status === "created" ? "Created" : "Updated"} Better Auth ${result.role} ${result.username}.\n`);
+  }
 } finally {
   await pool.end();
 }

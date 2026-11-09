@@ -1,0 +1,26 @@
+---
+id: "api-access"
+title: "API access and tools"
+summary: "Read the Controller management API, standard OpenAPI contract, and agent index. Runtime checks use the Endpoint protocol and its credentials."
+order: 0
+---
+Use the management API to configure resources. Use an Endpoint API to inspect application content. These APIs use different credentials.
+
+<a id="api-tools" />
+## Choose an API reference
+
+| Tool | Purpose |
+| --- | --- |
+| [API reference](/api/docs) | Read operation parameters, responses and examples. |
+| [OpenAPI](/api/openapi.json) | Generate a client or inspect the machine-readable contract. |
+| [Agent index](/api/llms.txt) | Find operations through a compact text index. |
+| [Access Tokens](/account/access-tokens) | Create and manage your personal management credentials. |
+
+<a id="api-credentials" />
+## Select the credential
+
+Management APIs accept a browser session or a personal Access Token with the required grants. Account role restrictions also apply. Some account operations require a browser session.
+
+Runtime inspection uses the credential of the selected Endpoint. Personal tokens cannot replace Endpoint credentials or issue other personal tokens.
+
+See [account roles and credentials](/document/admin/platform-access), [control-plane integration](/document/developer/developer-api-access) and [Endpoint integration](/document/developer/endpoint-setup).

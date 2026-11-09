@@ -1,8 +1,10 @@
-import { lazy, Suspense } from 'react';
+import { useTranslation } from "react-i18next";
+import DiffViewer from 'react-diff-viewer-continued';
 import type { RouterDraft } from '@/lib/traffic-routing-api';
 import { routingDiff } from './router-view-model';
 
-const DiffViewer = lazy(() => import('react-diff-viewer-continued'));
+// Load review UI with the workspace so a deployment cannot remove an older
+// lazy chunk between editing a route and opening its review.
 
 export function routingSnapshotText(snapshot: RouterDraft | null, names: Array<{ id: string; name: string }>): string {
   if (!snapshot) return '';
@@ -34,16 +36,16 @@ const colors = {
   codeFoldBackground: 'var(--muted)', codeFoldContentColor: 'var(--muted-foreground)',
 };
 export function Changes({ before, after, names }: { before: RouterDraft | null; after: RouterDraft; names: Array<{ id: string; name: string }> }) {
+  const { t: localize } = useTranslation();
   const changes = routingDiff(before, after);
-  if (!changes.length) return <p className="text-sm text-muted-foreground">No routing changes.</p>;
-  return <section className="min-w-0 space-y-3" aria-label="Routing configuration diff">
+  if (!changes.length) return <p className="text-sm text-muted-foreground">{localize("routing.noRoutingChanges")}</p>;
+  return <section className="min-w-0 space-y-3" aria-label={localize("routing.routingConfigurationDiff")}>
     <div className="flex flex-wrap items-center justify-between gap-2 text-sm">
-      <h3 className="font-medium">Routing changes · {changes.length}</h3>
-      <div className="flex gap-3 text-xs"><span className="rounded bg-green-600/15 px-2 py-1">+ Added · green</span><span className="rounded bg-destructive/15 px-2 py-1">− Removed · red</span></div>
+      <h3 className="font-medium">{localize("routing.changesTitle", { count: changes.length })}</h3>
+      <div className="flex gap-3 text-xs"><span className="rounded bg-green-600/15 px-2 py-1">{localize("routing.addedGreen")}</span><span className="rounded bg-destructive/15 px-2 py-1">{localize("routing.removedRed")}</span></div>
     </div>
-    <p className="text-xs text-muted-foreground">Before → After · Line numbers show the previous and proposed configuration.</p>
+    <p className="text-xs text-muted-foreground">{localize("routing.beforeAfterLineNumbersShowThePreviousAndProposed")}</p>
     <div className="min-w-0 overflow-x-auto rounded-lg border text-xs [&_table]:w-full [&_table]:table-fixed [&_pre]:whitespace-pre-wrap [&_pre]:[overflow-wrap:anywhere]">
-      <Suspense fallback={<p role="status" className="p-4">Loading changes…</p>}>
         <DiffViewer oldValue={routingSnapshotText(before, names)} newValue={routingSnapshotText(after, names)} splitView={false} hideSummary showDiffOnly extraLinesSurroundingDiff={2} useDarkTheme={false} styles={{
           variables: { light: colors, dark: colors },
           diffContainer: { minWidth: 0, width: "100%", tableLayout: "fixed" },
@@ -51,7 +53,6 @@ export function Changes({ before, after, names }: { before: RouterDraft | null; 
           gutter: { width: '2.5rem', minWidth: '2.5rem', padding: '0 4px' },
           marker: { width: '1.25rem', padding: '0 4px' },
         }} />
-      </Suspense>
     </div>
   </section>;
 }

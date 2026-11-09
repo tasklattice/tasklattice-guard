@@ -2,145 +2,23 @@ from __future__ import annotations
 
 import json
 import re
-import unicodedata
 from dataclasses import dataclass
-from functools import lru_cache
 from typing import Any, Iterable, Mapping
 
-from ...policy_library import PolicyRuleSpec, PolicySpec, policy
-from ...policy_library.matching import keyword_expression, severity_applies
+from ...policy_runtime.domain import PolicyRuleSpec, PolicySpec
+from ...policy_runtime.snapshots import definitions_from_parameters
+from ...policy_runtime.detectors import DetectorInput, LocalDetector
+from ...policy_runtime.rule_expansion import expand_rule
 from ...runtime.contracts import (
     EvaluatorVerdict,
     GuardrailPhase,
     RiskFinding,
     RuntimeTraceStep,
 )
-from ...runtime.interventions import fallback_content
+from ...compiler.semantics import collects_complete_evidence
 from ...safety.taxonomy import taxonomy_for_evaluator
 from .contracts import ActionRequest, ActionResult, action_result
 from .names import ACTION_CONTENT_FILTER
-
-
-_WORD_NUMBER_MAP = {
-    "zero": "0",
-    "oh": "0",
-    "one": "1",
-    "two": "2",
-    "three": "3",
-    "four": "4",
-    "five": "5",
-    "six": "6",
-    "seven": "7",
-    "eight": "8",
-    "nine": "9",
-}
-_WORD_NUMBER_TOKEN = "|".join(_WORD_NUMBER_MAP)
-_WORD_NUMBER_SEQUENCE = re.compile(
-    rf"(?<![A-Za-z])(?:{_WORD_NUMBER_TOKEN})"
-    rf"(?:[\s\-]+(?:{_WORD_NUMBER_TOKEN}))+(?![A-Za-z])",
-    re.IGNORECASE,
-)
-_WORD_NUMBER_FINDER = re.compile(_WORD_NUMBER_TOKEN, re.IGNORECASE)
-_GAP_WORD = re.compile(r"\b\w+\b")
-_FENCED_CODE_BLOCK = re.compile(r"```(\w*)\n(.*?)```", re.DOTALL)
-_LANGUAGE_ALIASES = {
-    "js": "javascript",
-    "py": "python",
-    "sh": "bash",
-    "ts": "typescript",
-}
-_NON_EXECUTABLE_TAGS = frozenset(
-    {"text", "plaintext", "plain", "markdown", "md", "output", "result"}
-)
-_NO_EXECUTION_PHRASES = (
-    "don't run",
-    "do not run",
-    "don't execute",
-    "do not execute",
-    "no execution",
-    "without running",
-    "just reason",
-    "what would happen if",
-    "what would this output",
-    "explain what this code",
-    "explain what this script",
-    "can you explain this code",
-    "refactor this code",
-    "convert this code",
-    "spot any security issues",
-    "write pseudocode",
-)
-_EXECUTION_PHRASES = (
-    "run this ",
-    "run these ",
-    "execute this ",
-    "please run ",
-    "can you run ",
-    "run `",
-    "execute `",
-    "run code",
-    "run the snippet",
-    "execute the command",
-    "just run it",
-    "compile and run",
-    "run the program",
-    "run the tests",
-    "check if tests pass",
-    "read /",
-    "list the files",
-    "create a file",
-    "run curl",
-    "make an http request",
-    "connect to postgres",
-    "paste the output",
-    "tell me the result",
-)
-_ZERO_WIDTH = re.compile(r"[\u200b-\u200d\u2060\ufeff]")
-_LEET_TRANSLATION = str.maketrans(
-    {"@": "a", "4": "a", "0": "o", "3": "e", "1": "i", "5": "s", "7": "t"}
-)
-_COMPETITOR_SUFFIX = re.compile(
-    r"\s+(?:airlines?|airways?|air|bank|banks|group|company|corp(?:oration)?|inc)$",
-    re.IGNORECASE,
-)
-_COMPETITOR_COMPARISON = (
-    "better",
-    "best",
-    "worse",
-    " vs ",
-    "versus",
-    "compare",
-    "comparison",
-    "alternative",
-    "recommend",
-    "choose",
-    "switch",
-    "ranked",
-    "number one",
-)
-_COMPETITOR_DOMAIN = (
-    "airline",
-    "airlines",
-    "airways",
-    "carrier",
-    "carriers",
-    "business class",
-    "customer satisfaction",
-    "lounges",
-)
-_COMPETITOR_OPERATIONAL = (
-    "baggage allowance",
-    "lounge access",
-    "check in",
-    "check-in",
-    "refund policy",
-)
-_COMPETITOR_DESTINATION = re.compile(
-    r"\b(?:fly|flight|travel|transit|layover|visit|going)\b.{0,16}"
-    r"\b(?:to|from|via|in|through)\b|"
-    r"\b(?:visa|airport|weather|documents?|entry|connection time)\b",
-    re.IGNORECASE,
-)
 
 
 @dataclass(frozen=True, slots=True)
@@ -151,8 +29,10 @@ class _Detection:
     action: str
     evidence: str
     spans: tuple[tuple[int, int], ...] = ()
-    replacement: str = "[REDACTED]"
-    confidence: float = 0.99
+    replacement: str | None = None
+    confidence: float | None = None
+    risk_severity: str | None = None
+    taxonomy_ids: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -180,6 +60,8 @@ class BuiltinContentFilter:
         rule_actions: Mapping[str, str] | None = None,
         policy_rule_actions: Mapping[str, Mapping[str, str]] | None = None,
         custom_rules: Iterable[Mapping[str, Any]] = (),
+        definitions: Mapping[str, PolicySpec] | None = None,
+        stop_on_block: bool = True,
     ) -> _ContentFilterResult:
         shared_parameters = parameters or {}
         configured_by_policy = policy_parameters or {}
@@ -194,7 +76,7 @@ class BuiltinContentFilter:
 
         try:
             for name in policies:
-                definition = policy(name)
+                definition = (definitions or {}).get(name)
                 if definition is None:
                     return _ContentFilterResult(
                         verdict="error",
@@ -213,16 +95,17 @@ class BuiltinContentFilter:
                     flat_actions,
                     actions_by_policy.get(name, {}),
                     tuple((rule_order or {}).get(name, ())),
+                    stop_on_block,
                 )
                 detections.extend(matched)
-                if any(item.action == "reject" for item in matched):
+                if stop_on_block and any(item.action == "block" for item in matched):
                     break
             else:
                 for rule in custom_rules:
                     matched = self._apply_custom_rules((rule,), content, phase)
                     detections.extend(matched)
                     content = self._apply_effect(content, matched)
-                    if any(item.action == "reject" for item in matched):
+                    if stop_on_block and any(item.action == "block" for item in matched):
                         break
         except (re.error, ValueError) as error:
             return _ContentFilterResult(
@@ -233,10 +116,11 @@ class BuiltinContentFilter:
 
         # Findings retain actual execution order. Redaction offsets belong to
         # each Rule's input, never to a shared original-text snapshot.
-        detections = [item for item in detections if item.action != "pass"]
+        # A pass action is observation-only, not a disabled detector. Keep its
+        # findings so Security can show the match without changing the content.
         if not detections:
             return _ContentFilterResult(
-                verdict="safe",
+                verdict="not_matched",
                 content=text,
                 reason="No built-in content-filter Rule matched.",
             )
@@ -245,29 +129,32 @@ class BuiltinContentFilter:
             RiskFinding(
                 risk="builtin_content_filter",
                 taxonomy_id=taxonomy_id,
-                verdict="unsafe",
+                verdict="matched",
                 confidence=item.confidence,
                 evidence=(
                     f"Policy {item.policy} matched "
                     f"{item.kind} Rule {item.rule}: {item.evidence}."
                 ),
                 recommended_action=item.action,
-                replacement=(item.replacement if item.action in {"redact", "rewrite"} else None),
+                replacement=(item.replacement if item.action == "transform" else None),
                 policy_id=item.policy,
                 rule_id=item.rule,
+                risk_severity=item.risk_severity,
             )
             for item in detections
-            for taxonomy_id in _taxonomy_ids(item.policy, item.rule)
+            for taxonomy_id in (item.taxonomy_ids or _taxonomy_ids(item.policy, item.rule, definitions))
         )
-        blocked = any(item.action == "reject" for item in detections)
+        blocked = any(item.action == "block" for item in detections)
         return _ContentFilterResult(
-            verdict="unsafe",
+            verdict="matched",
             content=content,
             findings=findings,
             reason=(
                 "A built-in content-filter Policy blocked the interaction."
                 if blocked
                 else "A built-in content-filter Policy transformed the interaction."
+                if any(item.action != "allow" for item in detections)
+                else "A built-in content-filter Policy recorded a finding without intervening."
             ),
         )
 
@@ -281,6 +168,7 @@ class BuiltinContentFilter:
         flat_actions: Mapping[str, str],
         policy_actions: Mapping[str, str],
         rule_order: tuple[str, ...] = (),
+        stop_on_block: bool = True,
     ) -> tuple[str, list[_Detection]]:
         detections: list[_Detection] = []
         by_id = {rule.id: rule for rule in definition.rules}
@@ -299,124 +187,39 @@ class BuiltinContentFilter:
                 flat_actions,
                 policy_actions,
             )
-            if action == "pass":
-                continue
-            if rule.implementation.detector == "configured_phrases":
-                entries = json.loads(parameters.get("phrase_entries", "[]"))
-                if not isinstance(entries, list) or not 1 <= len(entries) <= 50:
-                    raise ValueError("Phrase filters requires 1–50 configured entries")
-                ids: set[str] = set()
-                for entry in entries:
-                    if not isinstance(entry, dict) or set(entry) - {"id", "phrase", "action", "replacement"}:
-                        raise ValueError("Invalid phrase entry")
-                    entry_id, phrase = entry.get("id"), entry.get("phrase")
-                    if not isinstance(entry_id, str) or not 1 <= len(entry_id.strip()) <= 100 or entry_id.strip() in ids:
-                        raise ValueError("Phrase IDs must be nonempty and unique")
-                    ids.add(entry_id.strip())
-                    if not isinstance(phrase, str) or not 1 <= len(phrase.strip()) <= 240:
-                        raise ValueError("Enter a phrase of at most 240 characters")
-                    if entry.get("action") not in ("redact", "reject"):
-                        raise ValueError("Phrase action must be redact or reject")
-                    if not isinstance(entry.get("replacement", "[REDACTED]"), str) or len(entry.get("replacement", "")) > 240:
-                        raise ValueError("Invalid phrase replacement")
-                for entry in entries:
-                    phrase = entry["phrase"].strip()
-                    spans = tuple((match.start(), match.end()) for match in _keyword_regex(phrase).finditer(text))
-                    if not spans:
-                        continue
-                    entry_action = policy_actions.get(rule.id, flat_actions.get(rule.id, entry["action"]))
-                    matched = [_Detection(definition.id, f"phrase entry {entry['id']}", rule.id,
-                                          entry_action, phrase, spans, entry.get("replacement", "[REDACTED]"))]
-                    detections.extend(matched)
-                    text = self._apply_effect(text, matched)
-                    if entry_action == "reject":
-                        return text, detections
-                continue
-            start = len(detections)
-            if rule.form == "category":
-                match = self._category_match(rule, text)
-                if match is not None:
-                    evidence, spans = match
-                    detections.append(
-                        _Detection(
-                            definition.id,
-                            "category",
-                            rule.id,
-                            action,
-                            evidence,
-                            spans,
-                        )
-                    )
-            elif rule.form == "regex":
-                spans = self._pattern_spans(rule, text, parameters)
-                if spans:
-                    detections.append(
-                        _Detection(
-                            definition.id,
-                            "pattern",
-                            rule.id,
-                            action,
-                            text[spans[0][0] : spans[0][1]],
-                            spans,
-                            rule.redaction or "[REDACTED]",
-                        )
-                    )
-            elif rule.form == "keyword":
-                for keyword in self._resolved_keywords(rule, parameters):
-                    rendered = self._render(keyword, parameters).strip()
-                    if not rendered:
-                        continue
-                    matches = tuple(
-                        (match.start(), match.end())
-                        for match in _keyword_regex(rendered).finditer(text)
-                    )
-                    if not matches:
-                        continue
-                    detections.append(
-                        _Detection(
-                            definition.id,
-                            "keyword",
-                            rule.id,
-                            action,
-                            rendered,
-                            matches,
-                            rule.redaction or "[KEYWORD_REDACTED]",
-                        )
-                    )
-                    break
-            elif rule.form == "code_block":
-                detection = self._code_block_detection(
-                    definition.id,
-                    rule,
-                    text,
-                    phase,
-                    parameters,
-                    action,
+            for concrete in expand_rule(rule, dict(parameters)):
+                concrete_action = action if (rule.id in policy_actions or rule.id in flat_actions or not rule.rule_expansion) else concrete.effect
+                text, matched = self._apply_rule(
+                    definition.id, concrete, text, phase, parameters, concrete_action,
                 )
-                if detection is not None:
-                    detections.append(detection)
-            elif rule.form == "competitor_intent":
-                detection = self._competitor_detection(
-                    definition.id,
-                    rule,
-                    text,
-                    parameters,
-                    action,
-                )
-                if detection is not None:
-                    detections.append(detection)
-            matched = detections[start:]
-            text = self._apply_effect(text, matched)
-            if any(item.action == "reject" for item in matched):
-                break
+                detections.extend(matched)
+                if stop_on_block and any(item.action == "block" for item in matched):
+                    return text, detections
         return text, detections
 
+    def _apply_rule(
+        self, policy_id: str, rule: PolicyRuleSpec, text: str,
+        phase: GuardrailPhase, parameters: Mapping[str, str], action: str,
+    ) -> tuple[str, list[_Detection]]:
+        if rule.implementation.execution != "local":
+            raise ValueError(f"Rule {rule.id} cannot execute in the local content filter")
+        config = DetectorInput(
+            expression=rule.expression, context_expression=rule.context_expression,
+            context_max_gap_words=rule.context_max_gap_words, allow_word_numbers=rule.allow_word_numbers,
+            validators=rule.validators, keywords=tuple(term for term, _ in rule.keywords), options=rule.detector_options,
+        )
+        match = LocalDetector().detect(rule.implementation.detector, config, text, phase, parameters)
+        matched = [] if match is None else [_Detection(
+            policy_id, rule.detector.ref, rule.id, action, match.evidence,
+            match.spans, rule.redaction, match.confidence, rule.risk_severity, rule.taxonomy_ids,
+        )]
+        return self._apply_effect(text, matched), matched
+
     def _apply_effect(self, text: str, detections: list[_Detection]) -> str:
-        text = self._apply_redactions(text, detections)
-        for item in detections:
-            if item.action not in {"pass", "reject", "redact"}:
-                text = fallback_content(item.action, text)
-        return text
+        transforms = [item for item in detections if item.action == "transform"]
+        if any(item.replacement is None for item in transforms):
+            raise ValueError("Transform requires explicit replacement content")
+        return self._apply_redactions(text, detections)
 
     def _apply_custom_rules(
         self,
@@ -428,380 +231,24 @@ class BuiltinContentFilter:
         for rule in rules:
             if phase not in tuple(rule.get("phases", ())):
                 continue
-            rule_id = str(rule.get("id", "custom-rule"))
-            action = _enforcement_action(str(rule.get("action", "reject")))
-            detector = str(rule.get("detector", "keyword"))
-            if detector == "regex":
-                expression = str(rule.get("expression") or "")
-                matches = tuple(
-                    (match.start(), match.end())
-                    for match in _compiled_regex(expression).finditer(text)
-                )
-                if matches:
-                    detections.append(
-                        _Detection(
-                            "custom",
-                            "pattern",
-                            rule_id,
-                            action,
-                            text[matches[0][0] : matches[0][1]],
-                            matches,
-                            str(rule.get("replacement") or "[REDACTED]"),
-                        )
-                    )
-                continue
-            if detector == "keyword":
-                for keyword in tuple(rule.get("keywords", ())):
-                    rendered = str(keyword).strip()
-                    if not rendered:
-                        continue
-                    matches = tuple(
-                        (match.start(), match.end())
-                        for match in _keyword_regex(rendered).finditer(text)
-                    )
-                    if matches:
-                        detections.append(
-                            _Detection(
-                                "custom",
-                                "keyword",
-                                rule_id,
-                                action,
-                                rendered,
-                                matches,
-                                str(rule.get("replacement") or "[REDACTED]"),
-                            )
-                        )
-                        break
+            kind = str(rule.get("detector", "keyword"))
+            config = DetectorInput(expression=str(rule.get("expression") or ""),
+                                   keywords=tuple(str(term) for term in rule.get("keywords", ())))
+            match = LocalDetector().detect(kind, config, text, phase, {})
+            if match:
+                detections.append(_Detection(
+                    "custom", kind, str(rule.get("id", "custom-rule")),
+                    _enforcement_action(str(rule.get("action", "block"))),
+                    match.evidence, match.spans, rule.get("replacement"), match.confidence,
+                ))
         return detections
-
-    def _category_match(
-        self,
-        rule: PolicyRuleSpec,
-        text: str,
-    ) -> tuple[str, tuple[tuple[int, int], ...]] | None:
-        lowered = text.lower()
-        if any(exception.lower() in lowered for exception in rule.exceptions):
-            return None
-        for expression in rule.phrase_patterns:
-            match = re.search(expression, text, re.IGNORECASE)
-            if match:
-                return match.group(0), ((match.start(), match.end()),)
-        if rule.identifiers and rule.conditions:
-            for sentence in re.finditer(r"[^.!?]+", text):
-                sentence_text = sentence.group(0)
-                identifier = next(
-                    (
-                        value
-                        for value in rule.identifiers
-                        if value.lower() in sentence_text.lower()
-                    ),
-                    None,
-                )
-                if identifier is None:
-                    continue
-                conditional = next(
-                    (
-                        value
-                        for value in rule.conditions
-                        if self._keyword_matches(value, sentence_text)
-                    ),
-                    None,
-                )
-                if conditional:
-                    return f"{identifier} + {conditional}", ()
-        for keyword, _severity in rule.always_block:
-            match = _keyword_regex(keyword).search(text)
-            if match:
-                return keyword, ((match.start(), match.end()),)
-        for keyword, severity in rule.keywords:
-            if not severity_applies(
-                severity,
-                rule.severity_threshold or "medium",
-            ):
-                continue
-            match = _keyword_regex(keyword).search(text)
-            if match:
-                return keyword, ((match.start(), match.end()),)
-        return None
-
-    def _pattern_spans(
-        self,
-        rule: PolicyRuleSpec,
-        text: str,
-        parameters: Mapping[str, str],
-    ) -> tuple[tuple[int, int], ...]:
-        expression = self._render(rule.expression or "", parameters)
-        regex = _compiled_regex(expression)
-        context_matches: tuple[re.Match[str], ...] | None = None
-        if rule.context_expression:
-            context = _compiled_regex(
-                self._render(rule.context_expression, parameters)
-            )
-            context_matches = tuple(context.finditer(text))
-            if not context_matches:
-                return ()
-
-        spans = [
-            (match.start(), match.end())
-            for match in regex.finditer(text)
-            if context_matches is None
-            or rule.context_max_gap_words is None
-            or self._near_context(
-                match.start(),
-                match.end(),
-                context_matches,
-                text,
-                rule.context_max_gap_words,
-            )
-        ]
-        if rule.allow_word_numbers:
-            for match in _WORD_NUMBER_SEQUENCE.finditer(text):
-                digits = "".join(
-                    _WORD_NUMBER_MAP[token.lower()]
-                    for token in _WORD_NUMBER_FINDER.findall(match.group(0))
-                )
-                if not regex.fullmatch(digits):
-                    continue
-                if (
-                    context_matches is not None
-                    and rule.context_max_gap_words is not None
-                    and not self._near_context(
-                        match.start(),
-                        match.end(),
-                        context_matches,
-                        text,
-                        rule.context_max_gap_words,
-                    )
-                ):
-                    continue
-                spans.append((match.start(), match.end()))
-        return self._merge_spans(spans)
-
-    @staticmethod
-    def _near_context(
-        value_start: int,
-        value_end: int,
-        contexts: tuple[re.Match[str], ...],
-        text: str,
-        max_gap_words: int,
-    ) -> bool:
-        for context in contexts:
-            if value_start >= context.end():
-                gap = text[context.end() : value_start]
-            elif context.start() >= value_end:
-                gap = text[value_end : context.start()]
-            else:
-                return True
-            if any(character.isdigit() for character in gap):
-                continue
-            if len(_GAP_WORD.findall(gap)) <= max_gap_words:
-                return True
-        return False
-
-    def _code_block_detection(
-        self,
-        policy_id: str,
-        rule: PolicyRuleSpec,
-        text: str,
-        phase: GuardrailPhase,
-        parameters: Mapping[str, str],
-        action: str,
-    ) -> _Detection | None:
-        normalized_text = self._normalize_escaped_newlines(text)
-        blocked_languages = {
-            self._normalize_language(item)
-            for item in re.split(
-                r"[,\n]",
-                parameters.get("blocked_languages", ""),
-            )
-            if item.strip()
-        }
-        block_all = not blocked_languages
-        threshold = _float_parameter(
-            parameters.get("confidence_threshold"),
-            default=0.5,
-        )
-        detect_intent = _boolean_parameter(
-            parameters.get("detect_execution_intent"),
-            default=True,
-        )
-        lowered = normalized_text.lower()
-        has_no_intent = any(item in lowered for item in _NO_EXECUTION_PHRASES)
-        has_intent = any(item in lowered for item in _EXECUTION_PHRASES)
-        is_output = phase == "output"
-        if (
-            not is_output
-            and detect_intent
-            and has_no_intent
-            and not has_intent
-        ):
-            return None
-
-        spans: list[tuple[int, int]] = []
-        evidence: list[str] = []
-        confidence = 0.0
-        for match in _FENCED_CODE_BLOCK.finditer(normalized_text):
-            language = self._normalize_language(match.group(1))
-            language_blocked = block_all or language in blocked_languages
-            if not language_blocked:
-                continue
-            item_confidence = (
-                0.5 if block_all and language in _NON_EXECUTABLE_TAGS else 1.0
-            )
-            if item_confidence < threshold:
-                continue
-            if not is_output and detect_intent and not has_intent:
-                continue
-            spans.append((match.start(), match.end()))
-            evidence.append(language or "untagged")
-            confidence = max(confidence, item_confidence)
-
-        if spans:
-            return _Detection(
-                policy_id,
-                "code block",
-                rule.id,
-                action,
-                ", ".join(evidence),
-                tuple(spans),
-                rule.redaction or "[CODE_BLOCK_REDACTED]",
-                confidence,
-            )
-        if not is_output and detect_intent and has_intent and action == "reject":
-            return _Detection(
-                policy_id,
-                "execution request",
-                rule.id,
-                action,
-                "explicit execution intent",
-                confidence=1.0,
-            )
-        return None
-
-    def _competitor_detection(
-        self,
-        policy_id: str,
-        rule: PolicyRuleSpec,
-        text: str,
-        parameters: Mapping[str, str],
-        action: str,
-    ) -> _Detection | None:
-        competitors = tuple(
-            item.strip()
-            for item in parameters.get("competitors", "").splitlines()
-            if item.strip()
-        )
-        if not competitors:
-            return None
-        normalized = self._normalize_competitor(text)
-        normalized_competitors = tuple(
-            (item, self._normalize_competitor(item)) for item in competitors
-        )
-        full_match = next(
-            (
-                original
-                for original, candidate in normalized_competitors
-                if self._word_boundary_match(normalized, candidate)
-            ),
-            None,
-        )
-        aliases = {
-            self._normalize_competitor(_COMPETITOR_SUFFIX.sub("", original)): original
-            for original in competitors
-        }
-        alias_match = next(
-            (
-                alias
-                for alias in aliases
-                if alias
-                and alias != self._normalize_competitor(aliases[alias])
-                and self._word_boundary_match(normalized, alias)
-            ),
-            None,
-        )
-        comparison = any(signal in f" {normalized} " for signal in _COMPETITOR_COMPARISON)
-        domain = any(signal in normalized for signal in _COMPETITOR_DOMAIN)
-        operational = any(signal in normalized for signal in _COMPETITOR_OPERATIONAL)
-        destination = bool(_COMPETITOR_DESTINATION.search(normalized))
-
-        evidence: str | None = None
-        confidence = 0.0
-        if full_match is not None:
-            evidence = full_match
-            confidence = 0.85 if comparison else 0.75
-        elif alias_match is not None:
-            if (destination or operational) and not comparison:
-                return None
-            if comparison or domain:
-                evidence = aliases[alias_match]
-                confidence = 0.8
-        elif comparison and domain:
-            evidence = "comparison + domain"
-            confidence = 0.65
-        if evidence is None:
-            return None
-        return _Detection(
-            policy_id,
-            "competitor intent",
-            rule.id,
-            action,
-            evidence,
-            ((0, len(text)),) if action == "redact" else (),
-            rule.redaction or "[COMPETITOR_CONTENT_REDACTED]",
-            confidence,
-        )
-
-    @staticmethod
-    def _resolved_keywords(
-        rule: PolicyRuleSpec,
-        parameters: Mapping[str, str],
-    ) -> tuple[str, ...]:
-        if len(rule.keywords) != 1:
-            return tuple(value for value, _severity in rule.keywords)
-        configured = rule.keywords[0][0]
-        if not (configured.startswith("{{") and configured.endswith("}}")):
-            return (configured,)
-        competitors = tuple(
-            item.strip()
-            for item in parameters.get("competitors", "").splitlines()
-            if item.strip()
-        )
-        brand = parameters.get("brand_name", "").strip()
-        if configured == "{{competitors_blocked_words}}":
-            return competitors
-        if configured == "{{competitor_recommendation_words}}":
-            return tuple(
-                phrase
-                for competitor in competitors
-                for phrase in (
-                    f"recommend {competitor}",
-                    f"try {competitor}",
-                    f"switch to {competitor}",
-                )
-            )
-        if configured == "{{competitor_comparison_words}}":
-            return tuple(
-                phrase
-                for competitor in competitors
-                for phrase in (
-                    f"{competitor} is better",
-                    f"{competitor} vs {brand}" if brand else f"{competitor} vs",
-                    f"better than {brand}" if brand else f"better than {competitor}",
-                )
-            )
-        parameter_name = configured[2:-2].strip()
-        return tuple(
-            item.strip()
-            for item in re.split(r"[\n,]", parameters.get(parameter_name, ""))
-            if item.strip()
-        )
 
     @staticmethod
     def _apply_redactions(text: str, detections: Iterable[_Detection]) -> str:
         candidates = [
             (start, end, item.policy, item.rule, item.replacement)
             for item in detections
-            if item.action in {"redact", "rewrite"}
+            if item.action == "transform"
             for start, end in (item.spans or ((0, len(text)),))
         ]
         selected: list[tuple[int, int, str]] = []
@@ -819,53 +266,10 @@ class BuiltinContentFilter:
             content = content[:start] + replacement + content[end:]
         return content
 
-    @staticmethod
-    def _merge_spans(
-        spans: Iterable[tuple[int, int]],
-    ) -> tuple[tuple[int, int], ...]:
-        merged: list[tuple[int, int]] = []
-        for start, end in sorted(spans):
-            if merged and start <= merged[-1][1]:
-                merged[-1] = (merged[-1][0], max(end, merged[-1][1]))
-            else:
-                merged.append((start, end))
-        return tuple(merged)
-
-    @staticmethod
-    def _keyword_matches(keyword: str, text: str) -> bool:
-        return bool(_keyword_regex(keyword).search(text))
-
-    @staticmethod
-    def _render(value: str, parameters: Mapping[str, str]) -> str:
-        rendered = value
-        for key, replacement in parameters.items():
-            rendered = rendered.replace(f"{{{{{key}}}}}", replacement)
-        return rendered
-
-    @staticmethod
-    def _normalize_language(tag: str) -> str:
-        normalized = tag.strip().lower()
-        return _LANGUAGE_ALIASES.get(normalized, normalized)
-
-    @staticmethod
-    def _normalize_escaped_newlines(text: str) -> str:
-        if ("\\n" not in text and "\\r" not in text) or "\n" in text or "\r" in text:
-            return text
-        return text.replace("\\r\\n", "\n").replace("\\n", "\n").replace("\\r", "\n")
-
-    @staticmethod
-    def _normalize_competitor(text: str) -> str:
-        value = _ZERO_WIDTH.sub("", text)
-        value = unicodedata.normalize("NFKC", value).lower().translate(_LEET_TRANSLATION)
-        return re.sub(r"\s+", " ", value).strip()
-
-    @staticmethod
-    def _word_boundary_match(text: str, token: str) -> bool:
-        return bool(re.search(r"\b" + re.escape(token) + r"\b", text))
 
 
 class ContentFilterActionProvider:
-    """Provide local Policy Library Rules as a versioned NeMo Action."""
+    """Execute the Artifact-owned local Rules through a versioned NeMo Action."""
 
     name = ACTION_CONTENT_FILTER
     version = "1.0.0"
@@ -876,46 +280,12 @@ class ContentFilterActionProvider:
         self._content_filter = content_filter or BuiltinContentFilter()
 
     async def execute(self, request: ActionRequest) -> ActionResult:
-        parameters = dict(request.parameters)
-        legacy_parameters = {
-            key.removeprefix("parameter."): value
-            for key, value in request.parameters
-            if key.startswith("parameter.")
-        }
-        decoded_actions = _json_mapping(
-            parameters.get("rule_actions_json", "{}")
-        )
-        policy_actions = {
-            key: value
-            for key, value in decoded_actions.items()
-            if isinstance(value, dict)
-        }
-        flat_actions = {
-            key: str(value)
-            for key, value in decoded_actions.items()
-            if isinstance(value, str)
-        }
-        result = self._content_filter.evaluate(
+        result = evaluate_parameters(
+            self._content_filter,
             text=request.content,
             phase=request.rail_type,
-            policies=tuple(
-                item.strip()
-                for item in parameters.get("policy_ids", "").splitlines()
-                if item.strip()
-            ),
-            parameters=legacy_parameters,
-            policy_parameters=_json_nested_mapping(
-                parameters.get("policy_parameters_json", "{}")
-            ),
-            enabled_rules=_json_mapping(
-                parameters.get("enabled_rules_json", "{}")
-            ),
-            rule_actions=flat_actions,
-            rule_order=_json_mapping(parameters.get("rule_order_json", "{}")),
-            policy_rule_actions=policy_actions,
-            custom_rules=_json_rules(
-                parameters.get("custom_rules_json", "[]")
-            ),
+            parameters=request.parameters,
+            stop_on_block=not collects_complete_evidence(request.execution_purpose, request.plan),
         )
         return action_result(
             request,
@@ -927,16 +297,65 @@ class ContentFilterActionProvider:
         )
 
 
-def _taxonomy_ids(policy_id: str, rule_id: str) -> tuple[str, ...]:
+def evaluate_parameters(
+    content_filter: BuiltinContentFilter,
+    *,
+    text: str,
+    phase: GuardrailPhase,
+    parameters: Iterable[tuple[str, str]] | Mapping[str, str],
+    stop_on_block: bool = True,
+) -> _ContentFilterResult:
+    """Evaluate one compiled content-filter step without a NeMo Action wrapper.
+
+    The same immutable step parameters drive production execution and offline
+    Rule-evidence re-evaluation, so an acceptance case cannot pass on a detector
+    contract that the deployed step does not actually implement.
+    """
+    resolved = dict(parameters)
+    shared_parameters = {
+        key.removeprefix("parameter."): value
+        for key, value in resolved.items()
+        if key.startswith("parameter.")
+    }
+    decoded_actions = _json_mapping(resolved.get("rule_actions_json", "{}"))
+    policy_actions = {
+        key: value for key, value in decoded_actions.items() if isinstance(value, dict)
+    }
+    flat_actions = {
+        key: str(value) for key, value in decoded_actions.items() if isinstance(value, str)
+    }
+    return content_filter.evaluate(
+        text=text,
+        phase=phase,
+        policies=tuple(
+            item.strip()
+            for item in resolved.get("policy_ids", "").splitlines()
+            if item.strip()
+        ),
+        parameters=shared_parameters,
+        policy_parameters=_json_nested_mapping(
+            resolved.get("policy_parameters_json", "{}")
+        ),
+        enabled_rules=_json_mapping(resolved.get("enabled_rules_json", "{}")),
+        rule_actions=flat_actions,
+        rule_order=_json_mapping(resolved.get("rule_order_json", "{}")),
+        policy_rule_actions=policy_actions,
+        custom_rules=_json_rules(resolved.get("custom_rules_json", "[]")),
+        definitions=definitions_from_parameters(resolved),
+        stop_on_block=stop_on_block,
+    )
+
+
+def _taxonomy_ids(policy_id: str, rule_id: str, definitions: Mapping[str, PolicySpec] | None = None) -> tuple[str, ...]:
     # Guardrail-local phrase/regex Rules have no shared catalog entry. Their
     # category is the configured business boundary, not an inferred PII label.
-    if policy_id == "custom":
-        return (taxonomy_for_evaluator("builtin_content_filter"),)
-    definition = policy(policy_id)
+    definition = (definitions or {}).get(policy_id)
     if definition is not None:
         rule = next((item for item in definition.rules if item.id == rule_id), None)
         if rule is not None and rule.taxonomy_ids:
             return rule.taxonomy_ids
+    if policy_id == "custom":
+        return (taxonomy_for_evaluator("builtin_content_filter"),)
     raise RuntimeError(
         f"Policy {policy_id!r} Rule {rule_id!r} has no TALI Taxonomy category."
     )
@@ -982,39 +401,6 @@ def _configured_action(
 
 def _enforcement_action(value: str) -> str:
     normalized = value.strip().lower()
-    return {
-        "allow": "pass",
-        "block": "reject",
-        "mask": "redact",
-        "transform": "rewrite",
-    }.get(normalized, normalized)
-
-
-def _boolean_parameter(value: str | None, *, default: bool) -> bool:
-    if value is None or not value.strip():
-        return default
-    normalized = value.strip().lower()
-    if normalized in {"true", "1", "yes", "on"}:
-        return True
-    if normalized in {"false", "0", "no", "off"}:
-        return False
-    raise ValueError(f"Expected a boolean value, got {value!r}")
-
-
-def _float_parameter(value: str | None, *, default: float) -> float:
-    if value is None or not value.strip():
-        return default
-    parsed = float(value)
-    if not 0 <= parsed <= 1:
-        raise ValueError("Confidence threshold must be between 0 and 1")
-    return parsed
-
-
-@lru_cache(maxsize=16_384)
-def _keyword_regex(keyword: str) -> re.Pattern[str]:
-    return re.compile(keyword_expression(keyword), re.IGNORECASE)
-
-
-@lru_cache(maxsize=4_096)
-def _compiled_regex(expression: str) -> re.Pattern[str]:
-    return re.compile(expression, re.IGNORECASE)
+    if normalized not in {"allow", "block", "transform"}:
+        raise ValueError(f"Unknown Rule action: {value}")
+    return normalized

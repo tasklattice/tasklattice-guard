@@ -26,7 +26,9 @@ from ..nemo.action_registry import (
 )
 from ..nemo.artifacts import config_checksum
 from ..nemo.actions.names import ACTION_RECORD_OWNED_POLICY
+from ..nemo.actions.topic import topic_judge_prompt
 from ..nemo.native_models import TOPIC_CONTROL_MODEL_TYPE, TOPIC_CONTROL_PROFILE
+from .semantics import NEMO_COMPILER_VERSION, complete_evidence_supported, validate_step_contract
 from ..runtime.contracts import (
     GuardrailPhase,
     GuardrailPlanSnapshot,
@@ -36,11 +38,11 @@ from ..runtime.contracts import (
     PolicyVersionSnapshot,
     flow_rule_id,
 )
+from ..runtime.streaming import output_stream_contract
+from ..policy_runtime.snapshots import definitions_from_parameters
 from .domain import PolicyDraft, PlanCompilationError, RailBinding
 from .policy_sources import FLOW_ID_EVENTS, expand_policy_parameters, link_policy_source, literal_flow_target, parse_source_tree, symbol_name
 
-
-NEMO_COMPILER_VERSION = "tasklattice-nemo-config-v21-dynamic-flow-targets"
 
 _COLANG1_STANDARD_ACTIONS = {
     ACTION_EVALUATE,
@@ -63,7 +65,15 @@ class NeMoConfigCompiler:
         models: tuple[dict[str, Any], ...] = (),
         builtin_prompts_yaml: str = "",
         otel_enabled: bool = False,
+        stream_chunk_size: int = 200,
+        stream_context_size: int = 50,
     ) -> None:
+        if not 1 <= stream_context_size < stream_chunk_size:
+            # NeMo 0.24 retains buffer[-context_size:]; zero would retain the
+            # entire buffer. Use a positive overlap without patching upstream.
+            raise ValueError("Streaming requires 1 <= context_size < chunk_size.")
+        self._stream_chunk_size = stream_chunk_size
+        self._stream_context_size = stream_context_size
         self._models = tuple(dict(item) for item in models)
         self._model_types = frozenset(str(item.get("type", "")) for item in models)
         unsupported_model_types = self._model_types - _ALLOWED_RUNTIME_MODEL_TYPES
@@ -86,6 +96,23 @@ class NeMoConfigCompiler:
 
     def compile(self, plan: GuardrailPlanSnapshot) -> NeMoConfigSnapshot:
         _validate_execution_order(plan)
+        precedence = set()
+        for step in plan.steps:
+            views = [value for key, value in step.parameters if key == "evaluation_view"]
+            if len(views) != 1 or views[0] not in {"original", "previous_output"}:
+                raise PlanCompilationError(f"Step {step.id!r} must declare exactly one valid evaluation_view.")
+            positions = [value for key, value in step.parameters if key == "precedence"]
+            if len(positions) != 1 or not re.fullmatch(r"0|[1-9][0-9]*", positions[0]):
+                raise PlanCompilationError(f"Step {step.id!r} must declare exactly one non-negative integer precedence.")
+            if positions[0] in precedence:
+                raise PlanCompilationError("Step precedence values must be unique across the plan.")
+            precedence.add(positions[0])
+            if step.capability == "builtin_content_filter":
+                definitions_from_parameters(dict(step.parameters))
+        try:
+            validate_step_contract(plan)
+        except ValueError as error:
+            raise PlanCompilationError(str(error)) from error
         selected = {(item.policy_id, item.policy_version): item for item in plan.policy_bindings}
         for version in plan.policy_versions:
             binding = selected.get((version.policy_id, version.version))
@@ -155,12 +182,32 @@ class NeMoConfigCompiler:
             if runtime_profile == "llmrails_colang2_programmable"
             else "1.0"
         )
+        native_streaming = (
+            runtime_profile == "llmrails_colang1_standard"
+            and bool(plan.steps_for("output"))
+            and output_stream_contract(plan).effective_mode != "full_buffered"
+            and all(module.required_for_release and module.failure_mode == "fail_closed"
+                    for module in plan.modules_for("output"))
+            and all(
+                binding.capability == "content_safety"
+                and binding.on_unsafe in {"allow", "block"}
+                and binding.failure_mode == "fail_closed"
+                for binding in builtin_bindings if "output" in binding.phases
+            )
+        )
         if runtime_profile == "llmrails_colang1_standard":
             builtin_bindings = tuple(
                 _with_result_var(binding) for binding in builtin_bindings
             )
             bindings = builtin_bindings + custom_bindings
             flows = _colang_v1_flow_lists(flows, builtin_bindings)
+            if native_streaming:
+                # NeMo's public stream API executes a direct Action per rail;
+                # it does not traverse our ordered subflow entry point.
+                flows["output"] = [
+                    _colang_v1_flow_name(binding, "output")
+                    for binding in builtin_bindings if "output" in binding.phases
+                ]
         config = self._config(
             flows,
             prompts,
@@ -170,13 +217,21 @@ class NeMoConfigCompiler:
             colang_version=colang_version,
             include_flow_lists=runtime_profile != "llmrails_colang2_programmable",
         )
+        if native_streaming:
+            config["rails"]["output"]["streaming"] = {
+                "enabled": True,
+                "stream_first": False,
+                "chunk_size": self._stream_chunk_size,
+                "context_size": self._stream_context_size,
+            }
         config_yaml = yaml.safe_dump(
             config,
             allow_unicode=True,
             sort_keys=False,
         )
         colang_content = (
-            _colang_v1_standard(builtin_bindings)
+            _colang_v1_standard(builtin_bindings, native_streaming=native_streaming,
+                                complete_evidence=complete_evidence_supported(plan))
             if runtime_profile == "llmrails_colang1_standard"
             else ""
             if runtime_profile == "iorails_native"
@@ -362,10 +417,16 @@ class NeMoConfigCompiler:
         step,
         phase: GuardrailPhase,
     ) -> str | None:
+        if dict(step.parameters).get("execution_schedule") == "block-first-v1":
+            return None
         if (
             step.capability == "topic_control"
             and step.contract_ref == "tali.guard.topic-control.semantic.v1"
-            and step.on_unsafe == "reject"
+            and step.on_unsafe == "block"
+            # The official topic flow shares one global prompt. Split Rules need
+            # binding-scoped prompts so a deny check cannot reuse allow settings.
+            and dict(step.parameters).get("rule_id") not in {"topic/allowlist", "topic/denylist"}
+            and dict(step.parameters).get("declarative_rule") != "true"
             and phase == "input"
             and TOPIC_CONTROL_MODEL_TYPE in self._model_types
         ):
@@ -382,22 +443,12 @@ class NeMoConfigCompiler:
             topic_step = next(
                 step
                 for step in plan.steps
-                if step.contract_ref == "tali.guard.topic-control.semantic.v1"
-                and "input" in step.phases
+                if "input" in step.phases and self._native_flow(step, "input") is not None
             )
-            parameters = dict(topic_step.parameters)
             prompts.append(
                 {
                     "task": "topic_safety_check_input $model=topic_control",
-                    "content": "\n".join(
-                        (
-                            "You are the topic policy evaluator for an enterprise assistant.",
-                            "Allowed topics (strict allowlist):",
-                            parameters.get("allowed_topics", ""),
-                            "Anything whose primary task is not listed above is off-topic.",
-                            "Classify the primary requested task, not entities merely mentioned as context.",
-                        )
-                    ),
+                    "content": topic_judge_prompt(topic_step.parameters),
                     "max_tokens": 10,
                 }
             )
@@ -573,6 +624,7 @@ def _colang_v1_flow_lists(
 
 def _colang_v1_standard(
     bindings: tuple[NeMoActionBinding, ...],
+    *, native_streaming: bool = False, complete_evidence: bool = False,
 ) -> str:
     lines = [
         "define bot tasklattice refuse",
@@ -585,10 +637,18 @@ def _colang_v1_standard(
     # NeMo still executes every check sequentially, including stop/redaction.
     # Do not raise or patch the upstream runtime's event safety limit.
     for phase in ("input", "output"):
+        if native_streaming and phase == "output":
+            continue
         phase_bindings = tuple(binding for binding in bindings if phase in binding.phases)
         if phase_bindings:
             lines.append(f"define subflow tasklattice ordered {phase} rails")
-            lines.extend(f"  do {_colang_v1_flow_name(binding, phase)}" for binding in phase_bindings)
+            lines.extend(f"  do {_colang_v1_flow_name(binding, phase)}" for binding in phase_bindings
+                         if binding.parameter(f"parallel_leader_{phase}") != "false")
+            if complete_evidence:
+                message_var = "$user_message" if phase == "input" else "$bot_message"
+                lines.extend((f"  $tl_final_decision = execute {ACTION_RESOLVE}(text={message_var})",
+                              '  if $tl_final_decision["blocked"]',
+                              "    bot tasklattice refuse", "    stop"))
             lines.append("")
     for binding in bindings:
         if not binding.action_name or not binding.result_var:
@@ -597,6 +657,7 @@ def _colang_v1_standard(
             )
         for phase in binding.phases:
             message_var = "$user_message" if phase == "input" else "$bot_message"
+            native_outcome = native_streaming and phase == "output"
             lines.extend(
                 (
                     f"define subflow {_colang_v1_flow_name(binding, phase)}",
@@ -604,11 +665,14 @@ def _colang_v1_standard(
                         f"  ${binding.result_var} = execute {binding.action_name}("
                         f'text={message_var}, binding_id="{binding.id}")'
                     ),
-                    f'  if ${binding.result_var}["blocked"]',
+                    (f'  if ${binding.result_var}.is_blocked'
+                     if native_outcome else f'  if ${binding.result_var}["{"stop" if complete_evidence else "blocked"}"]'),
                     "    bot tasklattice refuse",
                     "    stop",
-                    f'  else if ${binding.result_var}["modified"]',
-                    f'    {message_var} = ${binding.result_var}["content"]',
+                    *(() if native_outcome else (
+                        f'  else if ${binding.result_var}["modified"]',
+                        f'    {message_var} = ${binding.result_var}["content"]',
+                    )),
                     "",
                 )
             )
@@ -669,6 +733,12 @@ def _timeout_for(
         candidate
         for candidate in serial_steps
         if any(item.trigger.step_ref == candidate.id for item in serial_steps)
+        # PII's semantic pass always reviews the locally redacted text. Its
+        # unconditional trigger must not reserve half the remote deadline for
+        # the fast exact check merely because it has no conditional edge.
+        or (candidate.contract_ref == "tali.guard.pii.exact.v1" and any(
+            item.contract_ref == "tali.guard.pii.semantic.v1" for item in serial_steps
+        ))
     )
     terminals = tuple(candidate for candidate in serial_steps if candidate not in prerequisites)
     prerequisite_budget = min(
@@ -743,8 +813,10 @@ def _colang_v2(
             policy_id = dict(step.parameters).get("policy_id") or (
                 binding.policy_id if binding else None
             )
-            rank = policy_order.get(policy_id, index)
+            rank = index if binding is not None and binding.parameter("execution_schedule") else policy_order.get(policy_id, index)
             if binding is not None:
+                if binding.parameter(f"parallel_leader_{phase}") == "false":
+                    continue
                 entries.append((rank, index, "action", binding))
             elif (phase, step.id) in native_steps:
                 entries.append(
@@ -818,11 +890,18 @@ def _colang_v2(
                     f'{indent}{result_var} = await {entry.action_name}('
                     f'text=$text, binding_id="{entry.id}")'
                 )
+                group = entry.parameter(f"parallel_group_{phase}")
+                if group:
+                    group_var = f"{result_var}_group"
+                    lines.append(f"{indent}{group_var} = {result_var}")
+                    for member in phase_bindings:
+                        if member.parameter(f"parallel_group_{phase}") == group:
+                            lines.append(f'{indent}{result_vars[member.id]} = {group_var}["parallel_by_id"]["{member.id}"]')
             lines.extend(
                 (
                     f"    $decision = await {ACTION_RESOLVE}(text=$text)",
                     '    $text = $decision["content"]',
-                    '    $blocked = $decision["blocked"]',
+                    f'    $blocked = $decision["{"stop" if complete_evidence_supported(plan) else "blocked"}"]',
                     f"    {message_var} = $text",
                 )
             )
@@ -964,7 +1043,8 @@ def _custom_action_bindings(
                         or rail.on_unsafe
                     ),
                     timeout_ms=rail.timeout_ms,
-                    parameters=selected.parameter_values,
+                    parameters=tuple((key, value) for key, value in selected.parameter_values
+                                     if key != "evaluation_view") + (("evaluation_view", "previous_output"),),
                     policy_id=version.policy_id,
                     policy_version=version.version,
                     flow_name=rail.flow_name,
@@ -1175,11 +1255,19 @@ def _estimated_critical_path_ms(
     plan: GuardrailPlanSnapshot,
     custom_bindings: tuple[NeMoActionBinding, ...],
 ) -> int:
-    return max((
-        sum(module.timeout_ms for module in plan.modules_for(phase))
-        + sum(item.timeout_ms for item in custom_bindings if phase in item.phases)
-        for phase in ("input", "output")
-    ), default=0)
+    budgets = []
+    for phase in ("input", "output"):
+        groups = {}
+        for module in plan.modules_for(phase):
+            steps = [s for s in plan.steps if s.id in module.step_ids]
+            group = dict(steps[0].parameters).get(f"parallel_group_{phase}") if len(steps) == 1 else None
+            key = group or module.id
+            groups.setdefault(key, []).append(module.timeout_ms)
+        # Group members start together; each Action deadline includes waiting
+        # for its model's admission slot. The old group-wide limit is gone.
+        budgets.append(sum(max(values) for values in groups.values())
+                       + sum(item.timeout_ms for item in custom_bindings if phase in item.phases))
+    return max(budgets, default=0)
 
 
 def _validate_execution_order(plan: GuardrailPlanSnapshot) -> None:
@@ -1189,6 +1277,28 @@ def _validate_execution_order(plan: GuardrailPlanSnapshot) -> None:
     for phase in ("input", "output"):
         phase_steps = [step for step in plan.steps if phase in step.phases]
         positions = {step.id: index for index, step in enumerate(phase_steps)}
+        groups = {}
+        for step in phase_steps:
+            params = dict(step.parameters)
+            group = params.get(f"parallel_group_{phase}")
+            leader = params.get(f"parallel_leader_{phase}")
+            if not group and leader is not None:
+                raise PlanCompilationError("Parallel leader requires a group.")
+            if group:
+                if leader not in {"true", "false"} or step.on_unsafe not in {"block", "allow"} or step.trigger.type != "always":
+                    raise PlanCompilationError("Parallel groups require explicit leaders and independent read-only checks.")
+                groups.setdefault(group, []).append(step)
+        for group, members in groups.items():
+            if phase == "output" and plan.output_delivery != "full_buffered":
+                raise PlanCompilationError("Parallel output checks require full-buffered delivery.")
+            if len(members) < 2 or [dict(s.parameters).get(f"parallel_leader_{phase}") for s in members] != ["true", *["false"] * (len(members) - 1)]:
+                raise PlanCompilationError("Parallel group must have one first-position leader and at least two checks.")
+            indexes = [positions[s.id] for s in members]
+            if indexes != list(range(indexes[0], indexes[0] + len(members))):
+                raise PlanCompilationError("Parallel checks must be contiguous; transformations and triggers are barriers.")
+            owners = [m for m in plan.modules_for(phase) if any(s.id in m.step_ids for s in members)]
+            if len(owners) != len(members) or any(len(m.step_ids) != 1 for m in owners) or len({(m.input_view, tuple(m.depends_on)) for m in owners}) != 1:
+                raise PlanCompilationError("Parallel checks must share their input view and prerequisites.")
         for step in phase_steps:
             owners = [module for module in plan.modules_for(phase) if step.id in module.step_ids]
             if len(owners) != 1:

@@ -14,17 +14,29 @@ from .names import ACTION_INDIRECT_PROMPT_INJECTION
 _INDIRECT_SOURCES = frozenset({"retrieved_content", "grounding_source", "tool_output"})
 _ZERO_WIDTH = re.compile(r"[\u200b-\u200f\u202a-\u202e\u2060\ufeff]")
 _WHITESPACE = re.compile(r"\s+")
-_ENCODED = re.compile(r"(?<![A-Za-z0-9+/=_-])[A-Za-z0-9+/_-]{24,1024}={0,2}(?![A-Za-z0-9+/=_-])")
+_ENCODED = re.compile(r"(?<![A-Za-z0-9+/=_-])[A-Za-z0-9+/_-]{24,}={0,2}(?![A-Za-z0-9+/=_-])")
+_DECODE_CHAR_BUDGET = 32_768
+_DECODE_CANDIDATE_BUDGET = 64
 
 _ATTACK_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
     (
         "instruction_override",
         re.compile(
-            r"\b(?:ignore|disregard|forget|override)\s+(?:all\s+)?"
+            r"\b(?:ignore|disregard|forget|override)\s+(?:(?:all|the)\s+)?"
             r"(?:(?:previous|prior|above)(?:\s+(?:system|developer|user))?|"
             r"system|developer|user)\s+"
             r"(?:instructions?|rules?|messages?|prompts?)\b",
             re.IGNORECASE,
+        ),
+    ),
+    (
+        "task_override",
+        re.compile(
+            r"\b(?:ignore|disregard|abandon)\s+(?:(?:the|your|current|original)\s+){1,3}"
+            r"(?:task|question|request)\b.{0,100}\b(?:instead|answer|respond|output|print)\b|"
+            r"\b(?:answer|respond|output|print)\s+(?:only|exactly)\b.{0,100}"
+            r"\binstead of\s+(?:answering|following|completing)\b",
+            re.IGNORECASE | re.DOTALL,
         ),
     ),
     (
@@ -84,27 +96,20 @@ class IndirectPromptInjectionActionProvider:
         if request.target_source not in _INDIRECT_SOURCES:
             return action_result(
                 request,
-                "safe",
+                "not_matched",
                 request.content,
                 reason="The active block is not retrieval context or a tool result.",
             )
 
-        normalized = _normalize(request.content)
-        detected = _detected_pattern(normalized)
-        encoded = False
-        if detected is None:
-            for candidate in _decoded_candidates(request.content):
-                detected = _detected_pattern(_normalize(candidate))
-                if detected is not None:
-                    encoded = True
-                    break
+        detected, encoded, complete = detect_instruction(request.content)
 
         if detected is None:
             return action_result(
                 request,
-                "safe",
+                "not_matched" if complete else "unknown",
                 request.content,
-                reason="No embedded instruction override or prompt-extraction command was detected.",
+                reason=("No supported embedded instruction pattern was detected."
+                        if complete else "Encoded content exceeded the bounded inspection budget; coverage is incomplete."),
             )
 
         source_label = request.target_source.replace("_", " ")
@@ -115,14 +120,14 @@ class IndirectPromptInjectionActionProvider:
         )
         return action_result(
             request,
-            "unsafe",
+            "matched",
             request.content,
             findings=(
                 RiskFinding(
                     risk=request.capability,
                     taxonomy_id=taxonomy_for_evaluator(request.capability),
-                    verdict="unsafe",
-                    confidence=0.99 if not encoded else 0.97,
+                    verdict="matched",
+                    confidence=None,  # Pattern matches are not calibrated probabilities.
                     evidence=reason,
                     recommended_action=request.proposed_action,
                 ),
@@ -144,12 +149,28 @@ def _detected_pattern(value: str) -> str | None:
     )
 
 
-def _decoded_candidates(value: str) -> tuple[str, ...]:
+def detect_instruction(value: str) -> tuple[str | None, bool, bool]:
+    """Scan all plain text, then bounded decoded data; never label overflow safe."""
+    detected = _detected_pattern(_normalize(value))
+    if detected:
+        return detected, False, True
+    candidates, complete = _decoded_candidates(value)
+    for candidate in candidates:
+        detected = _detected_pattern(_normalize(candidate))
+        if detected:
+            return detected, True, complete
+    return None, False, complete
+
+
+def _decoded_candidates(value: str) -> tuple[tuple[str, ...], bool]:
     decoded: list[str] = []
-    for match in _ENCODED.finditer(value):
-        if len(decoded) >= 8:
-            break
+    consumed = 0
+    normalized = _ZERO_WIDTH.sub("", unicodedata.normalize("NFKC", value))
+    for index, match in enumerate(_ENCODED.finditer(normalized)):
         token = match.group(0)
+        consumed += len(token)
+        if index >= _DECODE_CANDIDATE_BUDGET or consumed > _DECODE_CHAR_BUDGET:
+            return tuple(decoded), False
         padded = token + "=" * (-len(token) % 4)
         try:
             raw = base64.b64decode(padded, altchars=b"-_", validate=True)
@@ -158,4 +179,4 @@ def _decoded_candidates(value: str) -> tuple[str, ...]:
             continue
         if text and sum(character.isprintable() for character in text) / len(text) >= 0.9:
             decoded.append(text)
-    return tuple(decoded)
+    return tuple(decoded), True

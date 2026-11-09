@@ -1,0 +1,15 @@
+{
+  "valid": [
+    {"name": "key order is code point, not locale", "value": {"b": 1, "B": 2, "_": 3, "a_b": 4, "aB": 5}, "canonical": "{\"B\":2,\"_\":3,\"aB\":5,\"a_b\":4,\"b\":1}"},
+    {"name": "whole-number floats encode as integers", "value": {"threshold": 1.0, "zero": 0.0, "negative": -2.0}, "canonical": "{\"negative\":-2,\"threshold\":1,\"zero\":0}"},
+    {"name": "fractional floats keep shortest decimal digits", "value": [0.5, 0.0001, 0.85, 123456.789, 1e15], "canonical": "[0.5,0.0001,0.85,123456.789,1000000000000000]"},
+    {"name": "non-ASCII strings are not escaped", "value": {"text": "客户 · ü —  "}, "canonical": "{\"text\":\"客户 · ü —  \"}"},
+    {"name": "control characters use lowercase unicode escapes", "value": ["line\nbreak\ttab\u0001"], "canonical": "[\"line\\nbreak\\ttab\\u0001\"]"},
+    {"name": "nesting and literals", "value": {"z": [true, false, null, {"y": [], "x": {}}], "a": ""}, "canonical": "{\"a\":\"\",\"z\":[true,false,null,{\"x\":{},\"y\":[]}]}"}
+  ],
+  "invalid": [
+    {"name": "tiny fractional numbers use exponent notation in one language", "value": {"x": 0.00001}},
+    {"name": "unsafe integers", "value": [9007199254740993]},
+    {"name": "non-ASCII keys", "value": {"客户": 1}}
+  ]
+}

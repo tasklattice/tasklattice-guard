@@ -95,7 +95,7 @@ async def test_self_signed_provider_opt_in_reaches_real_data_plane_clients(self_
             requests += [(ACTION_EVALUATE, _jailbreak_request()), (ACTION_TOPIC_JUDGE, _topic_request())]
         for name, request in requests:
             result = await providers[(name, "1.0.0")].execute(request)
-            assert result.verdict == ("unsafe" if skip_tls_verify else "error"), (name, result)
+            assert result.verdict == ("matched" if skip_tls_verify else "error"), (name, result)
 
 
 @pytest.mark.asyncio
@@ -116,10 +116,10 @@ async def test_jailbreak_detect_revision_uses_scoped_tls_and_protobuf_without_ch
             configuration, {"provider-nvidia": "test-key"},
         ))
         result = await providers[(ACTION_EVALUATE, "1.0.0")].execute(_jailbreak_request())
-        assert result.verdict == ("unsafe" if skip_tls_verify else "error"), result
+        assert result.verdict == ("matched" if skip_tls_verify else "error"), result
         if skip_tls_verify:
-            assert (await providers[(ACTION_EVALUATE, "1.0.0")].execute(_content_safety_request())).verdict == "unsafe"
-            assert (await providers[(ACTION_TOPIC_JUDGE, "1.0.0")].execute(_topic_request())).verdict == "unsafe"
+            assert (await providers[(ACTION_EVALUATE, "1.0.0")].execute(_content_safety_request())).verdict == "matched"
+            assert (await providers[(ACTION_TOPIC_JUDGE, "1.0.0")].execute(_topic_request())).verdict == "matched"
 
 
 def test_controller_model_revision_builds_a_complete_dynamic_provider_registry() -> None:
@@ -227,9 +227,9 @@ async def test_deepseek_control_plane_and_split_guard_models_execute_as_one_repl
         _topic_request()
     )
 
-    assert content.verdict == "unsafe"
-    assert jailbreak.verdict == "unsafe"
-    assert topic.verdict == "unsafe"
+    assert content.verdict == "matched"
+    assert jailbreak.verdict == "matched"
+    assert topic.verdict == "matched"
     assert [request["model"] for request in requests] == [
         "nvidia/llama-3.1-nemotron-safety-guard-8b-v3",
         "example/jailbreak-judge",
@@ -272,7 +272,7 @@ async def test_qwen3guard_mock_replaces_the_nvidia_data_plane_without_changing_r
     pii = await evaluation.execute(_pii_request())
 
     assert [content.verdict, jailbreak.verdict, pii.verdict] == [
-        "unsafe", "unsafe", "unsafe",
+        "matched", "matched", "matched",
     ]
     assert [request["model"] for request in requests] == [
         "Qwen/Qwen3Guard-Gen-8B",
@@ -332,7 +332,7 @@ async def test_dynamic_safety_model_executes_with_a_mock_client_and_leased_crede
         _content_safety_request()
     )
 
-    assert result.verdict == "unsafe"
+    assert result.verdict == "matched"
     assert result.findings[0].risk == "content_safety"
     assert len(captured) == 1
     assert captured[0].base_url == "http://mock-safety/v1"
@@ -392,7 +392,7 @@ async def test_dedicated_jailbreak_slot_overrides_a_bundled_guard_contract(
         _jailbreak_request()
     )
 
-    assert result.verdict == "unsafe"
+    assert result.verdict == "matched"
     assert [request.model for request in captured] == [
         "example/jailbreak-judge"
     ]
@@ -472,7 +472,6 @@ def _split_guard_configuration() -> protocol.DataPlaneModelConfiguration:
                 profile_ref="tali.nemoguard-topic-control.v1",
                 contract_refs=[
                     "tali.guard.topic-control.semantic.v1",
-                    "tali.guard.company-policy.v1",
                 ],
             ),
             capability_binding(
@@ -532,21 +531,21 @@ def _content_safety_request() -> ActionRequest:
         rail_type="input",
         guardrail_id=plan.guardrail_id,
         guardrail_version=plan.guardrail_version,
-        policy_id="builtin-content-safety",
+        policy_id="content-safety-model",
         policy_version="1.0.0",
         trusted_context=(),
         content_blocks=(),
         deadline=time.monotonic() + 5,
         parameters=(),
         capability="content_safety",
-        proposed_action="reject",
+        proposed_action="block",
         plan=plan,
         binding=NeMoActionBinding(
             id="content-safety:primary",
             capability="content_safety",
             contract_ref=CONTRACT_CONTENT_SAFETY,
             phases=("input",),
-            on_unsafe="reject",
+            on_unsafe="block",
         ),
     )
 
@@ -565,21 +564,21 @@ def _jailbreak_request() -> ActionRequest:
         rail_type="input",
         guardrail_id=plan.guardrail_id,
         guardrail_version=plan.guardrail_version,
-        policy_id="builtin-jailbreak",
+        policy_id="prompt-instruction-attacks",
         policy_version="1.0.0",
         trusted_context=(),
         content_blocks=(),
         deadline=time.monotonic() + 5,
         parameters=(),
         capability="jailbreak",
-        proposed_action="reject",
+        proposed_action="block",
         plan=plan,
         binding=NeMoActionBinding(
             id="jailbreak:primary",
             capability="jailbreak",
             contract_ref=CONTRACT_JAILBREAK,
             phases=("input",),
-            on_unsafe="reject",
+            on_unsafe="block",
         ),
     )
 
@@ -598,21 +597,21 @@ def _pii_request() -> ActionRequest:
         rail_type="input",
         guardrail_id=plan.guardrail_id,
         guardrail_version=plan.guardrail_version,
-        policy_id="builtin-pii",
+        policy_id="pii-semantic",
         policy_version="1.0.0",
         trusted_context=(),
         content_blocks=(),
         deadline=time.monotonic() + 5,
         parameters=(),
         capability="pii",
-        proposed_action="reject",
+        proposed_action="block",
         plan=plan,
         binding=NeMoActionBinding(
             id="pii-semantic:primary",
             capability="pii",
             contract_ref=CONTRACT_PII_SEMANTIC,
             phases=("input",),
-            on_unsafe="reject",
+            on_unsafe="block",
         ),
     )
 
@@ -631,7 +630,7 @@ def _topic_request() -> ActionRequest:
         rail_type="input",
         guardrail_id=plan.guardrail_id,
         guardrail_version=plan.guardrail_version,
-        policy_id="builtin-topic-safety",
+        policy_id="business-topics",
         policy_version="1.0.0",
         trusted_context=(),
         content_blocks=(),
@@ -641,13 +640,37 @@ def _topic_request() -> ActionRequest:
             ("restricted_topics", "Celebrity gossip"),
         ),
         capability="topic_control",
-        proposed_action="reject",
+        proposed_action="block",
         plan=plan,
         binding=NeMoActionBinding(
             id="topic-semantic:primary",
             capability="topic_control",
             contract_ref="tali.guard.topic-control.semantic.v1",
             phases=("input",),
-            on_unsafe="reject",
+            on_unsafe="block",
         ),
     )
+
+
+@pytest.mark.asyncio
+async def test_topic_judge_uses_configured_completion_budget_instead_of_truncating_at_16_tokens():
+    configuration = _split_guard_configuration()
+    topic = next(item for item in configuration.runtimes if item.id == 'nvidia-topic')
+    topic.max_tokens = 2048
+    calls = []
+
+    def complete(request):
+        payload = json.loads(request.content)
+        calls.append(payload)
+        # Reasoning models can exhaust a short budget before producing any
+        # answer. That incomplete response must never become a safe verdict.
+        content = 'off-topic' if payload['max_tokens'] == 2048 else None
+        return httpx.Response(200, json={'choices': [{'message': {'content': content}}]})
+
+    providers = action_providers(*dynamic_runtime_action_providers(
+        configuration, {'provider-nvidia': 'synthetic-key'}, transport=httpx.MockTransport(complete),
+    ))
+    result = await providers[(ACTION_TOPIC_JUDGE, '1.0.0')].execute(_topic_request())
+    assert result.verdict == 'matched'
+    assert calls[0]['max_tokens'] == 2048
+    assert calls[0]['messages'][-1]['content'] == _topic_request().content

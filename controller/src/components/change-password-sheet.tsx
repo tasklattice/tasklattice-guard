@@ -2,7 +2,7 @@ import { useEffect, useState, type FormEvent } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { KeyRound } from "lucide-react";
 import { useTranslation } from "react-i18next";
-import { toast } from "sonner";
+import { toast } from "@/components/ui/notifications";
 
 import { EntitySheet } from "@/components/entity-sheet";
 import { Alert, AlertDescription } from "@/components/ui/alert";
@@ -47,7 +47,7 @@ export function ChangePasswordSheet({ open, onOpenChange }: { open: boolean; onO
     mutation.mutate();
   }
 
-  const canSubmit = Boolean(currentPassword) && newPassword.length >= 12 && confirmation.length >= 12 && !mutation.isPending;
+  const canSubmit = Boolean(currentPassword) && newPassword.length >= 8 && confirmation.length >= 8 && !mutation.isPending;
 
   return (
     <EntitySheet
@@ -68,13 +68,13 @@ export function ChangePasswordSheet({ open, onOpenChange }: { open: boolean; onO
     >
       <form id={FORM_ID} className="grid gap-5" onSubmit={submit}>
         <Field label={t("auth.currentPassword")}>
-          <Input className="h-11" autoFocus type="password" autoComplete="current-password" value={currentPassword} onChange={(event) => setCurrentPassword(event.target.value)} required />
+          <Input className="field:h-11" autoFocus type="password" autoComplete="current-password" value={currentPassword} onChange={(event) => setCurrentPassword(event.target.value)} required />
         </Field>
         <Field label={t("auth.newPassword")} hint={t("auth.passwordHint")}>
-          <Input className="h-11" type="password" autoComplete="new-password" minLength={12} value={newPassword} onChange={(event) => setNewPassword(event.target.value)} required />
+          <Input className="field:h-11" type="password" autoComplete="new-password" minLength={8} value={newPassword} onChange={(event) => setNewPassword(event.target.value)} required />
         </Field>
         <Field label={t("auth.confirmNewPassword")}>
-          <Input className="h-11" type="password" autoComplete="new-password" minLength={12} value={confirmation} onChange={(event) => setConfirmation(event.target.value)} required />
+          <Input className="field:h-11" type="password" autoComplete="new-password" minLength={8} value={confirmation} onChange={(event) => setConfirmation(event.target.value)} required />
         </Field>
         {error ? <Alert variant="destructive"><AlertDescription>{error}</AlertDescription></Alert> : null}
         <div className="rounded-xl border bg-muted/35 p-4 text-xs leading-5 text-muted-foreground">{t("auth.passwordSessionNotice")}</div>

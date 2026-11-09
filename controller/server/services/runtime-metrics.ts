@@ -1,3 +1,4 @@
+import { executionError, executionTimeout } from "./runtime-execution.js";
 import {
   and,
   count,
@@ -12,7 +13,6 @@ import {
   lte,
   max,
   min,
-  or,
   sum,
   type SQL,
   type SQLWrapper,
@@ -21,7 +21,7 @@ import { unionAll } from "drizzle-orm/pg-core";
 import type { ControllerDatabase } from "../db/client.js";
 import { boundedRead } from "../db/read-budget.js";
 import {
-  routers,
+  trafficRouters,
   guardrails,
   endpoints,
   runtimeEvents as event,
@@ -35,12 +35,12 @@ import {
   distinctArray,
   distinctCountWhere,
   findingSeverity,
+  securityFinding,
   jsonArrayKey,
   jsonElements,
   jsonText,
   jsonValue,
   literal,
-  lowerText,
   numericJson,
   percentiles,
   timeBucket,
@@ -50,6 +50,7 @@ import {
   metricWindows,
   type MetricScope,
 } from "./runtime-metric-results.js";
+import { currentProjectId, resourceReadPredicate, resourceWritePredicate } from "./project-context.js";
 
 export {
   assembleMetrics,
@@ -75,6 +76,7 @@ export async function queryRuntimeMetrics(
     "1d": 86_400_000,
   }[interval];
   const predicate = and(
+    currentProjectId() ? eq(event.projectId, currentProjectId()!) : undefined,
     gte(event.occurredAt, new Date(now - duration * 2)),
     // Allow small clock skew between the app process and PostgreSQL.
     lte(event.occurredAt, new Date(now + 60_000)),
@@ -84,46 +86,7 @@ export async function queryRuntimeMetrics(
   const currentPredicate = and(predicate, gte(event.occurredAt, start));
 
   return boundedRead(db, async (tx, execute) => {
-    const decision = lowerText(event.decision);
-    const outcome = choose<string>(
-      inArray(decision, ["allow", "allowed", "pass", "passed"]),
-      literal("allow"),
-      choose(
-        inArray(decision, [
-          "transform",
-          "transformed",
-          "redact",
-          "redacted",
-          "rewrite",
-          "rewritten",
-          "intervene",
-          "intervened",
-        ]),
-        literal("transform"),
-        choose(
-          inArray(decision, [
-            "block",
-            "blocked",
-            "reject",
-            "rejected",
-            "deny",
-            "denied",
-          ]),
-          literal("block"),
-          choose(
-            inArray(decision, [
-              "error",
-              "failed",
-              "failure",
-              "timeout",
-              "timed_out",
-            ]),
-            literal("error"),
-            event.decision,
-          ),
-        ),
-      ),
-    );
+    const outcome = choose(executionError(event.metadata), literal("error"), event.decision);
 
     // Referenced by multiple dimensions: PostgreSQL materializes this compact CTE.
     // Neither event contents nor individual traces are selected into the result.
@@ -137,11 +100,7 @@ export async function queryRuntimeMetrics(
           router_id: event.routerId,
           duration_ms: event.durationMs,
           current: gte(event.occurredAt, start).as("current"),
-          timed_out: or(
-            inArray(decision, ["timeout", "timed_out"]),
-            eq(jsonText(event.metadata, "timedOut"), "true"),
-            eq(jsonText(event.metadata, "timed_out"), "true"),
-          )!.as("timed_out"),
+          timed_out: executionTimeout(event.metadata).as("timed_out"),
           has_evidence: isNotNull(jsonText(event.metadata, "captureLevel")).as(
             "has_evidence",
           ),
@@ -386,11 +345,11 @@ export async function queryRuntimeMetrics(
           rail_types: distinctArray(c.rail_type),
           parallel_groups: distinctArray(c.parallel_group),
           passed: countWhere(
-            inArray(c.outcome, ["passed", "safe", "allow", "complete"]),
+            inArray(c.outcome, ["passed", "not_matched", "allow", "complete"]),
           ),
           intervened: countWhere(
             inArray(c.outcome, [
-              "unsafe",
+              "matched",
               "block",
               "transform",
               "intervene",
@@ -398,7 +357,7 @@ export async function queryRuntimeMetrics(
             ]),
           ),
           errors: countWhere(eq(c.outcome, "error")),
-          uncertain: countWhere(eq(c.outcome, "uncertain")),
+          unknown: countWhere(eq(c.outcome, "unknown")),
           timeouts: countWhere(c.timed_out),
           latency: percentiles(c.duration),
           provider: percentiles(c.provider),
@@ -424,7 +383,7 @@ export async function queryRuntimeMetrics(
         })
         .from(event)
         .innerJoin(finding.source, eq(event.id, event.id))
-        .where(currentPredicate),
+        .where(and(currentPredicate, securityFinding(finding.item))),
     );
     const risks = await execute(
       tx
@@ -442,6 +401,8 @@ export async function queryRuntimeMetrics(
           high: countWhere(eq(findingRows.severity, "high")),
           medium: countWhere(eq(findingRows.severity, "medium")),
           low: countWhere(eq(findingRows.severity, "low")),
+          informational: countWhere(eq(findingRows.severity, "informational")),
+          unclassified: countWhere(eq(findingRows.severity, "unclassified")),
           affected_traces: countDistinct(findingRows.request_id),
           latest_at: max(findingRows.occurred_at),
         })
@@ -474,24 +435,34 @@ export async function queryRuntimeMetrics(
         })
         .from(guardrails)
         .leftJoinLateral(validation, eq(guardrails.id, guardrails.id))
-        .where(isNull(guardrails.deletedAt)),
+        .where(and(isNull(guardrails.deletedAt), resourceReadPredicate("guardrail", guardrails.id, guardrails.projectId))),
     );
-    const deps = await execute(
+    // One row per published Router target so Guardrail scoping keeps working;
+    // consumers de-duplicate by Router id when counting.
+    const deps = (await execute(
       tx
         .select({
-          id: routers.id,
-          name: routers.name,
-          guardrail_id: routers.guardrailId,
-          enabled: routers.enabled,
+          id: trafficRouters.id,
+          name: trafficRouters.name,
+          active_revision: trafficRouters.activeRevision,
+          active_snapshot: trafficRouters.activeSnapshot,
         })
-        .from(routers)
-        .where(isNull(routers.deletedAt)),
-    );
+        .from(trafficRouters)
+        .where(and(isNull(trafficRouters.deletedAt), resourceWritePredicate(trafficRouters.projectId))),
+    )).flatMap((router) => {
+      const guardrailIds = [...new Set((router.active_snapshot?.routes ?? []).flatMap((route) => route.targets.map((target) => target.guardrailId)))];
+      return (guardrailIds.length ? guardrailIds : [null]).map((guardrail_id) => ({
+        id: router.id,
+        name: router.name,
+        guardrail_id,
+        enabled: router.active_revision !== null,
+      }));
+    });
     const ints = await execute(
       tx
         .select({ id: endpoints.id, name: endpoints.name })
         .from(endpoints)
-        .where(isNull(endpoints.deletedAt)),
+        .where(and(isNull(endpoints.deletedAt), resourceReadPredicate("endpoint", endpoints.id, endpoints.projectId))),
     );
     return {
       ...assembleMetrics(

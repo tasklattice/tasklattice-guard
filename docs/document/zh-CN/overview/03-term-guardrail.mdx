@@ -1,0 +1,292 @@
+---
+id: "term-guardrail"
+title: "Guardrails"
+summary: "了解 Guardrail 由什么组成、版本如何测试和发布，Decision 如何执行，以及模型费用如何核算。"
+order: 2
+---
+Guardrail 为一个业务场景组合保护能力。草稿选择 Policy Versions、启用的 Rules、参数、动作和测试。发布后，这些配置固定为 Guardrail Version。
+
+运行事件、指标、运行模式与费用描述本环境的使用情况，独立于不可变的版本内容。
+
+<a id="glossary-resource-map" />
+## 资源关系
+
+<ResourceMap locale="zh-CN" />
+
+Guardrail 绑定 Policy Version。Policy 包含 Rule 和 Test Case。Endpoint 认证调用，绑定的 Router 选择一个确切的 Guardrail Version。
+
+<a id="glossary-term-guardrail" />
+## Guardrail 配置
+
+稳定的 Guardrail 身份可以保留一个可编辑草稿和多个不可变版本。不同 Router 可以同时使用不同版本，不存在整个资源唯一的“当前版本”。
+
+<a id="term-policy-binding" />
+### Policy Binding
+
+Binding 固定 Policy Version，并保存场景设置，包括启用的 Rules 和 Rails、参数值及动作覆盖。默认值由 Policy 提供。
+
+例如，两个应用可以绑定同一个关键词 Policy Version，但使用不同的 `blocked_words`。各自的 Guardrail 发布经过审阅的配置。
+
+<a id="term-parameter" />
+### Binding Parameter
+
+Binding Parameter 是经过审阅的配置值。先在草稿中填写必需参数，再测试和发布。不可信的运行时内容不能替换这些值。
+
+<a id="term-guardrail-version" />
+### Guardrail Version
+
+版本固定 Policy Bindings、Rules、参数、测试、编译后的 Artifact、依赖和 checksum。修改草稿不会改变已有版本。
+
+Router 和导出都引用确切版本。发布新修订不会让固定已有修订的 Router 自动切换。流量切换需要经过审阅的 Router 变更。
+
+<a id="term-checksum" />
+### Checksum
+
+SHA-256 checksum 标识编译配置。核对测试或部署使用的 Artifact 时，可以比较该值。checksum 本身不能证明测试通过。
+
+<a id="term-validation-run" />
+## 测试报告与发布
+
+Testing Report 记录草稿或版本的一次测试执行，从 Queued、Running 进入 Passed 或 Failed。已完成结果不再修改，复测创建新报告。
+
+草稿测试绑定草稿修订与候选内容。发布可复用相同修订的编译内容，也可独立编译；单独测试不会创建不可变版本。
+
+导入版本初始为 Pending，可直接发布，也可按需测试冻结内容。发布不调用模型、不执行测试，也不会更改测试结果。编译或结构错误会保留旧版本，修正后可重试。
+
+系统通常为每个不可变版本保留两份 Passed 报告和一份 Failed 报告。未形成版本的历史使用独立保留组。所有来源使用相同的报告保留规则。
+
+自动清理可保留精简的最近测试或发布依据，不保留详细结果与正文。完整报告不可查看，不等于发布失效。手动删除报告会另行检查影响。
+
+<a id="glossary-states" />
+## 生命周期与就绪状态
+
+<StateLegend locale="zh-CN" />
+
+一个 Guardrail 最多保留 **10 个不可变版本**，Pending 与 Released 合计计算。复测和 Release 不占新版本名额，系统不会自动删除旧版本。
+
+<a id="state-guardrail-readiness" />
+### 保护状态与运行模式
+
+界面显示 **Not ready、Enforce、Monitor 或 Bypass**。就绪要求保留至少一个 Released 版本及其可执行 Artifact。
+
+Default、人工创建和 Profile 创建的 Guardrail 使用同一套发布规则。历史平台发布凭证与测试豁免仅作为审计来源保留。
+
+已测但未发布的草稿不构成就绪，新导入的 Pending 版本也不构成就绪。
+
+<StateMachineDiagram kind="guardrail-readiness" locale="zh-CN" />
+
+| 状态 | 在线行为 |
+| --- | --- |
+| Not ready | 先发布或 Release 合格版本，再选择运行模式。 |
+| Enforce | 检测并执行配置的保护动作，是默认模式。 |
+| Monitor | 检测并记录发现、错误和超时，放行原始内容。 |
+| Bypass | 跳过检测并放行原始内容，日志明确标记旁路，不伪造通过的检查。 |
+
+具备 Guardrail 写入权限的用户通过**操作 → 修改模式**进入面板。选择模式，审阅行为和可选原因，再应用变更。
+
+下发期间，主徽标保留上次完整应用的模式。面板展示请求模式、确认进度，以及等待、离线、不支持或拒绝的实例。修复后选择**重试下发**。
+
+模式覆盖该 Guardrail 的全部在线版本和 Endpoint 引用。新的检测使用已应用模式，已打开的 Output 流保留开始时的模式。
+
+Monitor 立即转发流式片段，在流结束后检测完整回复。认证、Endpoint 状态、路由和传输限制仍然生效。Bypass 不获取检测器。
+
+草稿测试、版本测试和显式 Playground 试验始终执行真实检测。只要仍有合格发布版本，编辑、发布、复测失败和 Router 变更都保留模式。
+
+移除最后的合格发布版本、删除资源或恢复资源时，模式重置为 Enforce。模式和审计历史是本环境运行数据，不随导出与导入迁移。
+
+<a id="guardrail-registry-columns" />
+### 阅读 Guardrails 列表
+
+| 列 | 含义 |
+| --- | --- |
+| Guardrail | 按名称和稳定身份打开资源。 |
+| 保护状态 | 显示就绪状态或运行模式；未完成的应用进度另行显示。 |
+| 请求速率 | 展示近期已上报请求速率，点击可查看运行窗口。 |
+| 更新时间 | 资源更新时间，不是最后请求时间或 Router 变更时间。 |
+| 操作 | 提供当前有权限执行的资源操作。 |
+
+Policy 数量与测试结果要针对具体草稿或版本查看。路由引用与 Router 下发状态也要单独核对。费用统一在[账单](/$projectId/billing)查看。
+
+就绪不能证明 Runner 健康或已有真实流量。还要检查 Endpoint、Router 与运行记录。切换期间，多个版本和在途调用可以同时存在。
+
+<a id="state-guardrail" />
+### 区分资源、草稿、版本与报告状态
+
+<StateMachineDiagram kind="guardrail-lifecycle" locale="zh-CN" />
+
+| 范围 | 状态 | 含义 |
+| --- | --- | --- |
+| 资源生命周期 | `draft / active / disabled` | 保存的生命周期，不实时重算发布依据。软删除记录 disabled 和删除时间。 |
+| 工作草稿 | Untested / Testing / Test failed / Tested / Published | 描述草稿修改与该修订的测试。版本复测不验证工作草稿。 |
+| 不可变版本 | Pending / Released（`pending / ready`） | 表示本环境是否已 Release 该版本，内容保持不可变。 |
+| 测试报告 | Queued / Running / Passed / Failed | 描述一次执行，完成后的结果为终态。 |
+
+创建 Guardrail 只产生草稿，不自动路由。发布会冻结并编译草稿，创建 Released 版本。修改配置或 Test Case 后可按需测试；未测试、测试进行中和失败都不阻止发布。
+
+导入会验证签名内容并创建 Pending 版本。首次导入建立可编辑草稿，增量导入保留该草稿。来源环境的报告与发布状态不会迁移。
+
+复测不修改版本内容，失败本身不会撤销已有发布。路由变更也不修改保护内容或测试依据。
+
+<a id="state-guardrail-version" />
+### 不可变版本：Pending 与 Released
+
+<StateMachineDiagram kind="guardrail-version" locale="zh-CN" />
+
+存储状态为 `pending` 和 `ready`。版本的 `ready` 在界面显示为 **Released**，与资源的 Enforce、Monitor、Bypass 不同。
+
+部署通过固定版本的 Default Profile（`local-baseline@1.0.0`） 创建一次名为 Default 的普通 Guardrail，使用普通资源 ID 与发布流程。改名、编辑、删除后重启都不会覆盖或重新创建。
+
+<a id="guardrail-build-states" />
+#### 版本状态详解
+
+<StateCards>
+<StateCard title="待发布" code="pending" state="distributing">
+<StateDetail label="含义">本环境尚未发布这些内容，或资源删除重置了发布状态。</StateDetail>
+<StateDetail label="状态变化">有权限的用户显式发布，测试结果独立保留。</StateDetail>
+<StateDetail label="下一步">审阅配置并发布，按需运行测试。</StateDetail>
+</StateCard>
+<StateCard title="已发布" code="Released" state="ready">
+<StateDetail label="含义">保存的发布状态允许选择该版本，仍须验证环境依赖。</StateDetail>
+<StateDetail label="状态变化">复测失败和删除报告均保留发布状态。</StateDetail>
+<StateDetail label="下一步">在 Router 中固定确切版本，确认下发与实际请求。</StateDetail>
+</StateCard>
+</StateCards>
+
+<a id="guardrail-deletion-restoration" />
+### 删除与恢复
+
+**测试报告。** 删除已完成报告前，先审阅影响。Queued 和 Running 报告不能删除。
+
+删除报告会清理报告引用，保留已发布版本、路由和运行模式。历史发布原因仍可审计。
+
+**不可变版本。** 删除释放一个版本名额。已发布 Router、修改中的 Router 草稿、待审批变更和已批准的回退目标都可能阻止删除。近期调用、退流量窗口和未完成的 Runner 应用也会阻止删除。
+
+版本删除后保留 Artifact、报告和审计历史。孤立报告不能使 Guardrail 就绪。引用已删版本的历史 Router 不能直接恢复。
+
+**Guardrail。** Default 使用相同的删除检查。先移除已发布路由和待审批变更引用，再通过五分钟调用保留与退流量检查。删除不会自动移除 Router Target。
+
+软删除保留身份、静态版本、Artifact、草稿、用例、来源和审计。它清理本环境报告、待执行测试、已存运行事件与路由调用记录，并将保留版本退回 Pending。重置前的迟到结果会被忽略。
+
+**重新导入恢复。** 只支持来自原归属来源的已导入身份。在导入审阅中确认同一 ID 后，保留的静态内容与草稿继续使用。必须在本环境显式发布，测试可选，流量不会自动恢复。
+
+重新导入不能恢复无关的本地创建身份，不是通用恢复机制。
+
+<a id="guardrail-implementation-boundaries" />
+### 一致的发布交互
+
+界面、API 和 CLI 使用同一套发布规则。编译错误会保留已有版本，修正后可重试。
+发布不调用模型、不执行测试、不修改测试结果，也不切换流量。模型依赖、Runner
+可运行性和 Router 下发状态独立检查。
+
+<a id="user-decisions" />
+## 执行检测结果
+
+调用方必须在内容继续流转前执行结果。HTTP 成功本身不代表内容可以放行。
+
+<a id="term-decision" />
+### Decision
+
+| Decision | 调用方职责 |
+| --- | --- |
+| Allow | 使用允许的内容继续执行。 |
+| Transform | 使用返回的替换内容或有效补丁。 |
+| Block | 停止当前阶段，不向模型发送被阻断的 Input，不交付被阻断的 Output。 |
+
+[Playground](/$projectId/playground)展示完整链路，[运行日志](/$projectId/logs)展示检测证据。
+
+<a id="term-enforcement-action" />
+### Enforcement Action
+
+Rule 命中后请求 allow、block 或 transform。Policy 设置默认值，Binding 可以覆盖允许调整的动作。参见[动作优先级](/document/overview/glossary-definition#term-rule-actions)。
+
+检测器的 verdict、Rule 的动作与最终 Decision 各有职责。NeMo Python Action 是实现依赖，不是 Enforcement Action。
+
+<a id="term-output-delivery" />
+### Output 交付
+
+流式检测支持 interruptible、window-buffered 和 full-buffered。缓冲会等待相应检测完成后再交付。更大的缓冲范围可以保留更多内容，也会增加延迟。
+
+interruptible 无法撤回已经发送的内容。[网关协议](/document/developer/gateway-connect#gateway-stream-delivery)说明交付边界和 Provider 限制。
+
+<a id="term-failure-mode" />
+### 失败模式
+
+检测失败或超时时，按失败配置处理：
+
+- **Fail-open：** 继续执行，并记录失败。
+- **Fail-closed：** 阻止继续执行。
+
+请核对版本配置与集成行为。技术失败不等于检测通过。
+
+<a id="concept-boundaries" />
+### 认证与执行边界
+
+Controller 管理配置与版本，Runner 执行检测。应用或网关调用业务模型，并执行 Decision。
+
+个人 Access Token 授权管理 API，Endpoint 凭据授权运行时检测。两者不能互换，调用方传入的 claims 也不会自动成为可信身份。
+
+<a id="guardrail-logging-level" />
+## 日志与原始正文采集
+
+具备 Guardrail 写入权限的用户通过**操作 → 编辑日志等级**选择 INFO、DEBUG 或 TRACE。下发后用于新调用，无需发布版本。关联调用保留首次检查时的日志级别。
+
+| 级别 | 原始正文采集 |
+| --- | --- |
+| INFO，默认 | 不采集原始正文，仍保留检测记录、发现和执行 trace。 |
+| DEBUG | 任一阶段命中 Medium、High 或 Critical Rule 时，采集原始 request 和 response 正文。 |
+| TRACE | 采集实际收到的全部原始正文，不要求命中。 |
+
+动作不改变采集门槛。High 命中后 allow 也符合 DEBUG，Low block 不符合。系统不额外采集改写副本，也不补造不存在的 response。
+
+启用正文采集前，先阅读[采集条件与隐私边界](/document/admin/concept-logs#runtime-log-request-response)。
+
+<a id="guardrail-usage-cost" />
+## 用量与模型费用
+
+在[账单](/$projectId/billing)按 Guardrail 筛选。统计覆盖各版本的运行调用、草稿测试、版本测试和 Playground 检测，周期边界使用 UTC。
+
+金额用于估计内部检测成本，不包含应用业务模型、连接探测或控制面编写辅助。未调用模型的本地检查不产生模型费用。
+
+<a id="guardrail-price-sources" />
+### 单价来源
+
+应用内置源自 LiteLLM 的 USD 价格表，支持离线部署。管理员可在[模型 → 模型价格](/settings/models?tab=pricing)配置覆盖值。
+
+价格按实际供应商与模型匹配。人工价格对该组合全局优先。未收录模型需要设置人工价格或明确免费，缺少价格不能当作免费使用。
+
+<a id="guardrail-cost-calculation" />
+### 费用计算
+
+Token 单价使用 USD／百万 Token：
+
+```text
+费用 =（未缓存输入 Token × 输入单价
+        + 缓存输入 Token × 缓存单价
+        + 输出 Token × 输出单价）/ 1,000,000
+```
+
+缓存输入属于总输入，需要先扣除再计算未缓存部分。例如无缓存时，1,000 输入 Token 按 USD 0.20/百万、100 输出 Token 按 USD 0.60/百万计费，合计 USD 0.00026。
+
+按请求计费使用 USD／千次调用，费用等于调用次数乘单价再除以 1,000。明确免费时，即使没有 Token 计数也为 USD 0。
+
+<a id="guardrail-unaccounted-calls" />
+### 已核算与未核算用量
+
+缺少价格、模型身份、必需用量或遇到不支持的计价项时，调用可能显示**未核算**。缓存用量需要缓存单价。部分可核算时显示金额与未核算次数，没有模型调用时为 USD 0。
+
+遥测可能延迟，失败的模型请求也会出现。缺少用量时，其成本可能仍未核算。估算不推测折扣、税费、订阅或硬件成本。
+
+每次调用保留当时有效的单价与金额，改价只影响后续调用。费用是本环境运行数据，不随版本包迁移。
+
+<a id="export-a-guardrail" />
+## 导出与导入发布包
+
+1. 在 Guardrails 列表或不可变版本中，打开**操作 → 导出**。
+2. 选择符合条件的 Released 版本。面板不会自动选中版本。
+3. 下载签名的 `.zip` 包。
+
+包包含所选签名 Artifact、冻结测试与实现依赖，不包含未发布草稿、本环境报告、路由、凭据、日志或费用。
+
+在目标环境选择**创建 Guardrail → 导入发布包**，审阅并确认。配置所需运行能力与凭据，执行各导入版本的测试，再显式 Release 通过的版本。
+
+目标环境需要兼容的 TaskLattice 与 NeMo 执行能力。导入不会启用流量，还需单独配置并审批路由。

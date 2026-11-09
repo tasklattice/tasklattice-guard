@@ -1,0 +1,52 @@
+---
+id: "platform-runtime"
+title: "平台组件、Runner 与运行健康"
+summary: "区分 Controller、Runner 与网关的职责，并理解 Runner 和模型配置状态。"
+order: 0
+---
+平台健康说明环境是否具备执行保护的条件。配置已发布、Runner 已应用和真实流量已接入是不同信号。
+
+<a id="platform-components" />
+## 理解组件职责
+
+| 组件 | 职责 |
+| --- | --- |
+| Controller | 保存资源与版本，下发目标配置。 |
+| Runner | 认证 Endpoint 调用、执行检测，并回报应用状态。 |
+| 应用或网关 | 调用业务模型、提交待检内容，并执行每次 Decision。 |
+
+Default 仅在首次安装时预配置本地防护和随包版本，不宣称本环境执行过测试。用户可以像普通 Guardrail 一样编辑、测试、发布和删除它；重启保留修改与删除结果。流量防护由 Router 规则和 Fallback 指定。
+
+<a id="platform-health" />
+## 查看健康与下发状态
+
+先查看[平台健康](/settings/health)，再到 [Runner](/settings/runner) 核对实例同步和容量。
+
+Router 显示 Active，要求默认池至少有一个 Runner。所有目标实例都需确认目标 generation，且心跳有效。一个实例 Ready 不能证明下发完成。
+
+出现 Distributing 或 Failed 时，先比较目标和已应用的 generation。查看心跳是否有效及拒绝原因，再检查依赖和容量。详见 [Router 下发状态](/document/overview/term-router#state-router)。
+
+<a id="state-runner" />
+## 区分同步与容量
+
+<StateMachineDiagram kind="runner" locale="zh-CN" />
+
+| 状态 | 含义 |
+| --- | --- |
+| Syncing | 实例尚未应用目标 generation。 |
+| Ready、Busy 或 Saturated | 配置已收敛，可用容量取决于当前负载。 |
+| Offline | 连接或心跳已失效。 |
+
+重新连接后需再次完成配置收敛。这些状态同时描述同步与负载，不是单一的持久生命周期。
+
+<a id="state-models" />
+## 单独检查模型配置
+
+<StateMachineDiagram kind="model-probe" locale="zh-CN" />
+<StateMachineDiagram kind="model-revision" locale="zh-CN" />
+
+Provider 和 Model 的检查状态为 Pending、Validated 或 Failed。配置或协议改变后需要重新检查。连接检查与能力行为测试回答不同问题。
+
+模型分配草稿使用 Draft 或 Validated。应用配置会创建 Activating 快照，收敛后为 Active，激活出错时为 Failed。修改生效快照会创建新的 revision。
+
+管理员可激活未测试或失败的绑定，真实结果仍会保留。激活不会把结果变成测试通过。详见[模型配置](/document/admin/platform-models)。

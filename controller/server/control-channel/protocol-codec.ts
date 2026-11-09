@@ -10,9 +10,18 @@ import type { TrafficScope } from "../generated/control-protocol/tasklattice/gua
 import type { ValidationCaseResult__Output } from "../generated/control-protocol/tasklattice/guard/control/v1/ValidationCaseResult.js";
 import type { ValidationMetrics__Output } from "../generated/control-protocol/tasklattice/guard/control/v1/ValidationMetrics.js";
 import type { ValidationTestCase } from "../generated/control-protocol/tasklattice/guard/control/v1/ValidationTestCase.js";
+import { EvaluatorVerdict } from "../generated/control-protocol/tasklattice/guard/control/v1/EvaluatorVerdict.js";
+import { EnforcementAction } from "../generated/control-protocol/tasklattice/guard/control/v1/EnforcementAction.js";
 
 import type { ValidationCaseResult, ValidationMetrics } from "../domain/models.js";
 import { isGuardrailVersionId } from "../../shared/guardrail-version.js";
+
+const detectorVerdicts = new Set<string>(Object.values(EvaluatorVerdict).filter(
+  value => value !== EvaluatorVerdict.EVALUATOR_VERDICT_UNSPECIFIED,
+));
+const enforcementActions = new Set<string>(Object.values(EnforcementAction).filter(
+  value => value !== EnforcementAction.ENFORCEMENT_ACTION_UNSPECIFIED,
+));
 
 /** Convert the Controller plan document into the generated transport type. */
 export function planToWire(value: unknown): GuardrailPlan {
@@ -62,6 +71,7 @@ export function planToWire(value: unknown): GuardrailPlan {
         flowName: string(binding.flow_name),
         executionMode: wireEnum("POLICY_EXECUTION_MODE", binding.execution_mode),
         onUnsafe: wireEnum("ENFORCEMENT_ACTION", binding.on_unsafe),
+        ...(binding.risk_severity ? { riskSeverity: string(binding.risk_severity) } : {}),
         ...(optionalString(binding.parallel_group) === null ? {} : { parallelGroup: string(binding.parallel_group) }),
         ...(binding.priority === undefined || binding.priority === null ? {} : { priority: number(binding.priority) }),
         timeoutMs: number(binding.timeout_ms),
@@ -81,11 +91,12 @@ export function planToWire(value: unknown): GuardrailPlan {
     policyBindings: records(plan.policy_bindings).map((binding) => ({
       policyId: string(binding.policy_id),
       policyVersion: string(binding.policy_version),
-      ...(optionalString(binding.action) === null ? {} : { action: wireEnum("ENFORCEMENT_ACTION", binding.action) }),
+      ...(binding.action === undefined || binding.action === null ? {} : { action: wireEnum("ENFORCEMENT_ACTION", binding.action) }),
       parameterValues: pairsToWire(binding.parameter_values),
       enabledRuleIds: strings(binding.enabled_rule_ids),
       ruleOrder: strings(binding.rule_order),
       ruleActions: pairsToWire(binding.rule_actions),
+      ruleSeverities: pairsToWire(binding.rule_severities),
       enabledRails: strings(binding.enabled_rails).map((rail) => wireEnum("RAIL_TYPE", rail)),
     })),
   };
@@ -138,6 +149,7 @@ export function planFromWire(plan: GuardrailPlan__Output): Record<string, unknow
         flow_name: binding.flowName,
         execution_mode: domainEnum("POLICY_EXECUTION_MODE", binding.executionMode),
         on_unsafe: domainEnum("ENFORCEMENT_ACTION", binding.onUnsafe),
+        ...(binding.riskSeverity ? { risk_severity: binding.riskSeverity } : {}),
         ...(binding.parallelGroup === undefined ? {} : { parallel_group: binding.parallelGroup }),
         ...(binding.priority === undefined ? {} : { priority: binding.priority }),
         timeout_ms: binding.timeoutMs,
@@ -160,6 +172,7 @@ export function planFromWire(plan: GuardrailPlan__Output): Record<string, unknow
       enabled_rule_ids: [...binding.enabledRuleIds],
       rule_order: [...binding.ruleOrder],
       rule_actions: pairsFromWire(binding.ruleActions),
+      rule_severities: pairsFromWire(binding.ruleSeverities),
       enabled_rails: binding.enabledRails.map((rail) => domainEnum("RAIL_TYPE", rail)),
     })),
   };
@@ -265,6 +278,8 @@ export function validationTestToWire(value: unknown): ValidationTestCase {
 
 export function validationMetricsFromWire(value: ValidationMetrics__Output): ValidationMetrics {
   return {
+    skipped: value.skipped,
+    executed: value.executed || value.total - value.skipped,
     total: value.total,
     passed: value.passed,
     complianceRate: value.complianceRate,
@@ -277,18 +292,27 @@ export function validationMetricsFromWire(value: ValidationMetrics__Output): Val
 
 export function validationCaseFromWire(value: ValidationCaseResult__Output): ValidationCaseResult {
   return {
+    evidenceStatus: domainEnum("VALIDATION_EVIDENCE_STATUS", value.evidenceStatus),
+    evidenceDetail: value.evidenceDetail,
+    verifiedRuleIds: [...value.verifiedRuleIds],
+    supersededBy: value.supersededBy.map(item => ({ policyId: item.policyId, ruleId: item.ruleId })),
+    ruleContractSatisfied: value.ruleContractSatisfied,
+    skipped: value.skipped,
+    skipReason: value.skipReason,
     caseId: value.caseId,
     name: value.name,
     policyId: value.policyId,
     expectedDecision: domainEnum("VALIDATION_DECISION", value.expectedDecision),
-    actualDecision: domainEnum("VALIDATION_DECISION", value.actualDecision),
+    actualDecision: value.skipped && value.actualDecision === "VALIDATION_DECISION_UNSPECIFIED"
+      ? "" : domainEnum("VALIDATION_DECISION", value.actualDecision),
     passed: value.passed,
     evaluatorIds: [...value.evaluatorIds],
     latencyMs: value.latencyMs,
     reason: value.reason,
     phase: domainEnum("GUARDRAIL_PHASE", value.phase) === "output" ? "output" : "input",
     inputContent: value.inputContent,
-    action: domainEnum("ENFORCEMENT_ACTION", value.action),
+    action: value.skipped && value.action === "ENFORCEMENT_ACTION_UNSPECIFIED"
+      ? "" : domainEnum("ENFORCEMENT_ACTION", value.action),
     outputContent: value.outputContent,
     findings: value.findings.map(findingFromWire),
     trace: value.trace.map(traceFromWire),
@@ -302,13 +326,13 @@ export function validationCaseFromWire(value: ValidationCaseResult__Output): Val
     required: value.required,
     expectedFailure: optionalDomainEnum("VALIDATION_FAILURE", value.expectedFailure),
     actualFailure: optionalDomainEnum("VALIDATION_FAILURE", value.actualFailure),
+    modelStatus: value.modelStatus, executionStatus: value.executionStatus,
     concurrencyGroup: value.concurrencyGroup ?? null,
     sourcePolicyId: value.sourcePolicyId ?? null,
     sourcePolicyVersion: value.sourcePolicyVersion ?? null,
     sourceCaseId: value.sourceCaseId ?? null,
     coveredRuleIds: [...value.coveredRuleIds],
     matchedRuleIds: [...value.matchedRuleIds],
-    preemptingMatches: value.preemptingMatches.map(item => ({ policyId: item.policyId, ruleId: item.ruleId })),
     evaluationContracts: [...value.evaluationContracts],
     escalated: value.escalated,
     modelInvocations: value.modelInvocations,
@@ -337,8 +361,9 @@ function expectationToWire(value: unknown): import("../generated/control-protoco
   };
 }
 
-export function validationStatusFromWire(value: unknown): "passed" | "failed" {
-  return domainEnum("VALIDATION_STATUS", value) === "passed" ? "passed" : "failed";
+export function validationStatusFromWire(value: unknown): "passed" | "failed" | "cancelled" {
+  const status = domainEnum("VALIDATION_STATUS", value);
+  return status === "passed" || status === "cancelled" ? status : "failed";
 }
 
 function promptToWire(prompt: Record<string, unknown>): PromptDefinition {
@@ -433,6 +458,8 @@ function findingFromWire(value: RiskFinding__Output): Record<string, unknown> {
     taxonomy_id: value.taxonomyId,
     verdict: domainEnum("EVALUATOR_VERDICT", value.verdict),
     confidence: value.confidence ?? null,
+    risk_severity: value.riskSeverity ?? null,
+    policy_version: value.policyVersion ?? null,
     evidence: value.evidence,
     recommended_action: domainEnum("ENFORCEMENT_ACTION", value.recommendedAction),
     replacement: value.replacement ?? null,
@@ -482,13 +509,26 @@ function pairsFromWire(value: ReadonlyArray<{ key: string; value: string }>): Ar
 function wireEnum<T extends string | number>(prefix: string, value: unknown): T {
   const normalized = string(value).trim().toUpperCase();
   if (!normalized) throw new Error(`${prefix} requires a value.`);
-  return `${prefix}_${normalized}` as T;
+  const wireValue = `${prefix}_${normalized}`;
+  if (prefix === "EVALUATOR_VERDICT" && !detectorVerdicts.has(wireValue)) {
+    throw new Error(`Invalid detector result ${string(value)}.`);
+  }
+  if (prefix === "ENFORCEMENT_ACTION" && !enforcementActions.has(wireValue)) {
+    throw new Error(`Invalid enforcement action ${string(value)}; expected allow, block or transform.`);
+  }
+  return wireValue as T;
 }
 
 function domainEnum(prefix: string, value: unknown): string {
   const normalized = string(value);
   const marker = `${prefix}_`;
   if (!normalized.startsWith(marker)) throw new Error(`Invalid ${prefix} value ${normalized}.`);
+  if (prefix === "EVALUATOR_VERDICT" && !detectorVerdicts.has(normalized)) {
+    throw new Error(`Invalid detector result ${normalized}.`);
+  }
+  if (prefix === "ENFORCEMENT_ACTION" && !enforcementActions.has(normalized)) {
+    throw new Error(`Invalid enforcement action ${normalized}; expected allow, block or transform.`);
+  }
   return normalized.slice(marker.length).toLowerCase();
 }
 

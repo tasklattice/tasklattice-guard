@@ -1,0 +1,22 @@
+.provider-catalog-picker { position: relative; }
+.provider-catalog-field { position: relative; }
+.provider-catalog-field input { padding-inline-end: 3rem; min-block-size: 3rem; }
+.provider-catalog-field > button { position: absolute; inset-block: 0; inset-inline-end: 0; display: grid; place-items: center; width: 3rem; border: 0; background: transparent; color: var(--cds-text-primary); cursor: pointer; }
+.provider-catalog-field > button:disabled { color: var(--cds-text-disabled); cursor: not-allowed; }
+.provider-catalog-field .is-open { transform: rotate(180deg); }
+.provider-catalog-popup { position: absolute; inset-inline: 0; z-index: 10; background: var(--cds-layer-01); border: 1px solid var(--cds-border-subtle-01); box-shadow: var(--shadow-overlay); }
+.provider-catalog-heading { display: flex; align-items: center; justify-content: space-between; gap: 1rem; padding: 0.75rem 1rem; border-block-end: 1px solid var(--cds-border-subtle-01); font-size: 0.75rem; color: var(--cds-text-secondary); }
+.provider-catalog-groups { max-block-size: min(30rem, 45vh); overflow-y: auto; overscroll-behavior: contain; }
+.provider-catalog-groups section { padding: 0.75rem 1rem; border-block-end: 1px solid var(--cds-border-subtle-01); }
+.provider-catalog-groups section:last-child { border-block-end: 0; }
+.provider-catalog-groups h3 { margin-block-end: 0.5rem; color: var(--cds-text-secondary); font-size: 0.75rem; font-weight: 600; }
+.provider-catalog-options { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.25rem 0.75rem; }
+.provider-catalog-option { display: flex; align-items: flex-start; gap: 0.75rem; min-block-size: 4rem; padding: 0.75rem; cursor: pointer; border: 2px solid transparent; }
+.provider-catalog-option img { width: 1.5rem; height: 1.5rem; object-fit: contain; flex-shrink: 0; }
+.provider-catalog-option > span { flex: 1; min-width: 0; }
+.provider-catalog-option strong { display: block; font-size: 0.875rem; font-weight: 600; line-height: 1.4; }
+.provider-catalog-option small { display: block; margin-block-start: 0.25rem; color: var(--cds-text-secondary); font-size: 0.75rem; line-height: 1.4; }
+.provider-catalog-option[aria-selected="true"] { background: var(--cds-layer-selected-01); }
+.provider-catalog-option[data-highlighted] { background: var(--cds-layer-hover-01); border-color: var(--cds-focus); }
+.provider-catalog-option > svg { flex-shrink: 0; }
+.provider-catalog-empty { padding: 2rem 1rem; font-size: 0.875rem; color: var(--cds-text-secondary); }

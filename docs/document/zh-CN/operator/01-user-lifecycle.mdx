@@ -1,0 +1,44 @@
+---
+id: "user-lifecycle"
+title: "构建并发布 Guardrail"
+summary: "选择 Policy，创建 Guardrail 草稿，验证并发布版本，再让业务流量使用它。"
+outcome: "最终产出：已验证、已发布并可通过 Router 接入流量的 Guardrail Version。"
+order: 0
+---
+业务 Guardrail 由 `user` 账户创建和管理。平台管理员准备共享服务，并维护 Default 基线。详见[账户角色](/document/admin/platform-access#admin-governance)。
+
+<a id="guardrail-build-steps" />
+## 组合并测试草稿
+
+1. 在 [Policy Library](/$projectId/policy-library) 中查看可用 Policy，阅读其 Rule、参数和 Test Case。
+2. 为业务场景创建 Guardrail，选择确切的 Policy Version。
+3. 核对启用的 Rule、检查阶段、参数值和动作覆盖。
+4. 添加正常、违规与边界样例。
+5. 运行当前草稿的测试，检查生成的测试报告。
+
+编译成功不能单独证明检测行为正确。发布前请修复测试失败。
+
+<a id="guardrail-publish-steps" />
+## 发布并接入流量
+
+1. 将已测试的草稿发布为不可变 Guardrail Version。
+2. 为应用或网关创建 Endpoint。
+3. 通过 Router 的 Route 指向确切版本，保留最后的 fallback。
+4. 提交路由变更，由另一位具备权限的用户批准。
+5. 确认 Runner 已应用发布的配置。
+6. 发送真实应用请求，检查 Decision 和实际交付内容。
+
+模型调用由应用负责。应用必须执行阻断或替换。详见 [Endpoint 接入指南](/document/developer/endpoint-setup)和[路由审批](/document/operator/operator-routing)。
+
+<a id="guardrail-build-readiness" />
+## 检查就绪状态并改进行为
+
+Guardrail 至少保留一个 Released 版本，且仍有可执行 Artifact时，才满足就绪条件。就绪不证明工作草稿已通过测试，也不证明流量正在使用该版本。
+
+导入版本先为 Pending。请在本环境运行其冻结测试，通过后显式 Release。
+
+在 [Playground](/$projectId/playground) 试用行为，在[运行日志](/$projectId/logs)核对真实请求。保护行为变化后，请发布新版本。已有 Router Target 继续固定旧版本，直到路由变更经审阅后更新。
+
+容量、删除与恢复规则见[生命周期与测试依据](/document/overview/term-guardrail#state-guardrail-readiness)。
+
+[管理 Guardrails](/$projectId/guardrails)

@@ -1,0 +1,168 @@
+from __future__ import annotations
+
+from dataclasses import dataclass, field
+from typing import Any, Literal
+
+from ..runtime.contracts import OutputDeliveryMode, RailType, SafetyLevel
+
+
+PolicySource = Literal["built_in", "custom"]
+PolicyRail = RailType
+PolicyTestDecision = Literal["allow", "block", "transform", "intervene"]
+PolicyTestKind = Literal["rule_acceptance", "scenario"]
+PolicyTagSource = Literal["declared", "derived"]
+PolicyTagNamespace = Literal[
+    "protection",
+    "guardrail_category",
+    "collection",
+    "domain",
+    "framework",
+    "implementation",
+    "jurisdiction",
+    "rail",
+]
+
+
+@dataclass(frozen=True, slots=True)
+class PolicyTag:
+    """One non-exclusive, searchable Policy label.
+
+    ``namespace`` is a reviewed discovery facet. Keeping the vocabulary
+    explicit prevents retired or product-irrelevant categories from silently
+    reappearing in the Policy Library.
+    """
+
+    namespace: PolicyTagNamespace
+    value: str
+    label: str
+    source: PolicyTagSource = "declared"
+
+    @property
+    def id(self) -> str:
+        return f"{self.namespace}:{self.value}"
+
+
+@dataclass(frozen=True, slots=True)
+class PolicyParameterSpec:
+    name: str
+    label: str
+    kind: str
+    required: bool
+    placeholder: str = ""
+    description: str = ""
+    default: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class PolicyImplementationRef:
+    """Technical provenance for one Rule; not another product hierarchy."""
+
+    engine: str
+    execution: Literal["local", "platform", "programmable"]
+    binding_id: str
+    implementation_rule_id: str
+    detector: str | None = None
+    flow_name: str | None = None
+    action_name: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class PolicyDetectorRef:
+    ref: str
+    version: str
+
+
+@dataclass(frozen=True, slots=True)
+class PolicyRuleSpec:
+    id: str
+    name: str
+    description: str
+    detector: PolicyDetectorRef
+    effect: str
+    rails: tuple[PolicyRail, ...]
+    implementation: PolicyImplementationRef
+    taxonomy_ids: tuple[str, ...]
+    risk_severity: str | None = None
+    detector_options: dict[str, Any] = field(default_factory=dict)
+    rule_expansion: dict[str, str] | None = None
+    validators: tuple[dict[str, Any], ...] = ()
+    expression: str | None = None
+    context_expression: str | None = None
+    context_max_gap_words: int | None = None
+    allow_word_numbers: bool = False
+    redaction: str | None = None
+    severity_threshold: str | None = None
+    identifiers: tuple[str, ...] = ()
+    conditions: tuple[str, ...] = ()
+    keywords: tuple[tuple[str, str], ...] = ()
+    always_block: tuple[tuple[str, str], ...] = ()
+    exceptions: tuple[str, ...] = ()
+    phrase_patterns: tuple[str, ...] = ()
+    binding_id: str | None = None
+    rule_id: str | None = None
+    rule_version: str | None = None
+    variant_id: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class PolicyTestContextSpec:
+    target_source: str | None = None
+    trusted_instruction: str = ""
+    query: str = ""
+    grounding_sources: tuple[str, ...] = ()
+    expected_reasoning_result: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class PolicyTestCaseSpec:
+    id: str
+    name: str
+    description: str
+    phase: PolicyRail
+    content: str
+    expected_decision: PolicyTestDecision
+    covered_rule_ids: tuple[str, ...]
+    group: str = "General"
+    kind: PolicyTestKind = "scenario"
+    required: bool = True
+    parameter_names: tuple[str, ...] = ()
+    context: PolicyTestContextSpec | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class PolicySpec:
+    id: str
+    name: str
+    description: str
+    source: PolicySource
+    version: str
+    tags: tuple[PolicyTag, ...]
+    parameters: tuple[PolicyParameterSpec, ...]
+    rules: tuple[PolicyRuleSpec, ...]
+    test_cases: tuple[PolicyTestCaseSpec, ...]
+    safety_level: SafetyLevel = "balanced"
+    output_delivery: OutputDeliveryMode = "window_buffered"
+
+    @property
+    def rails(self) -> tuple[PolicyRail, ...]:
+        configured = {rail for rule in self.rules for rail in rule.rails}
+        order: tuple[PolicyRail, ...] = (
+            "input",
+            "retrieval",
+            "dialog",
+            "execution",
+            "output",
+        )
+        return tuple(rail for rail in order if rail in configured)
+
+    @property
+    def effects(self) -> tuple[str, ...]:
+        return tuple(sorted({rule.effect for rule in self.rules}))
+
+    @property
+    def detectors(self) -> tuple[str, ...]:
+        return tuple(sorted({rule.detector.ref for rule in self.rules}))
+
+    @property
+    def test_count(self) -> int:
+        return len(self.test_cases)

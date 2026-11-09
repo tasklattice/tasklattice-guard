@@ -1,15 +1,18 @@
+import { isPlatformAdministrator } from "../../shared/rbac";
+import { useAuth } from "@/lib/auth";
 import { useQuery } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { Button } from "./ui/button";
 import { Badge } from "./ui/badge";
-import { getModelConfiguration } from "@/lib/controller-api";
+import { getModelReadiness } from "@/lib/controller-api";
 import { selectedModelDependencies, dependencyAssignment } from "@/lib/protection-dependencies";
 import type { GuardrailPolicyBinding, Policy } from "@/lib/api-types";
 
 export function ProtectionDependencies({ bindings, policies }: { bindings: GuardrailPolicyBinding[]; policies: Policy[] }) {
   const { t } = useTranslation();
+  const administrator = isPlatformAdministrator(useAuth().user?.role);
   const dependencies = selectedModelDependencies(bindings, policies);
-  const query = useQuery({ queryKey: ["resources", "model-configuration"], queryFn: getModelConfiguration,
+  const query = useQuery({ queryKey: ["resources", "model-readiness"], queryFn: getModelReadiness,
     enabled: dependencies.required.length > 0, retry: false, refetchInterval: 10_000 });
   if (!dependencies.required.length && !dependencies.unknownPolicies.length) return null;
   return <section aria-label={t("protection.dependencies.title")} className="space-y-3 rounded-lg border bg-card p-4">
@@ -35,7 +38,7 @@ export function ProtectionDependencies({ bindings, policies }: { bindings: Guard
           </li>;
         })}
       </ul>}
-      <a className="inline-flex min-h-11 items-center text-sm text-primary underline-offset-4 hover:underline" href="/settings/guardrail-catalog" target="_blank" rel="noopener noreferrer">{t("protection.dependencies.configure")}</a>
+      {administrator ? <a className="inline-flex min-h-11 items-center text-sm text-primary underline-offset-4 hover:underline" href="/settings/protection-capabilities" target="_blank" rel="noopener noreferrer">{t("protection.dependencies.configure")}</a> : <p className="text-sm text-muted-foreground">{t("auth.platformSetupRequired")}</p>}
     </> : null}
   </section>;
 }

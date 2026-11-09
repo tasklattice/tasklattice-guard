@@ -1,0 +1,35 @@
+---
+id: "user-review-policy"
+title: "使用前审阅 Policy"
+summary: "从保护目标、Rule、Test Case、版本和绑定参数判断一条 Policy 实际会做什么。"
+order: 1
+---
+选择 Policy 前，请先阅读 Rule 和测试。名称不能单独定义保护范围。业务用户可在 Policy Studio 维护平台提供、本地创建和导入的 Policy。
+
+<a id="policy-review-goal" />
+## 阅读用途与覆盖范围
+
+1. 阅读保护目标与合规来源。
+2. 查看每条 Rule 及其检查阶段。
+3. 核对检测参数、风险级别和命中动作。
+4. 阅读验收用例、正常放行样例和容易误判的场景。
+5. 确认 Guardrail 实际使用的 Policy Version。
+
+Policy 提供可复用行为，Guardrail 为应用选择这些行为。Router 决定一次请求使用哪个 Guardrail Version。
+
+<a id="policy-review-binding" />
+## 核对实际生效的绑定
+
+| 项目 | 核对内容 |
+| --- | --- |
+| 版本 | 确切的已发布 Policy Version。后续编辑不会自动更新绑定。 |
+| Rule 与阶段 | 实际启用的 Rule，以及 Input 或 Output 检测点。停用 Rule 会改变可执行行为。 |
+| 参数 | 声明的默认值与本 Guardrail 提供的值。必填参数须在执行前解析。 |
+| 动作 | Rule 默认值、Policy 级覆盖与单条 Rule 覆盖。 |
+| 测试 | 预期 Decision、命中 Rule 身份，以及替换场景的完整输出。 |
+
+Policy 的默认动作可能与 Guardrail 实际应用的动作不同。发布 Guardrail 前，请测试最终生效的绑定。
+
+编写步骤参见[创建、测试和发布 Policy](/document/operator/operator-create-policy)。
+
+[打开 Policy Library](/$projectId/policy-library)

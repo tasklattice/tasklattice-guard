@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+from ..runtime.enforcement_action_generated import ENFORCEMENT_ACTIONS
+
 from functools import lru_cache
 
-from .domain import PolicySpec
+from ..policy_runtime.domain import PolicySpec
 from .loader import load_builtin_policies
 from .protection import policy_protection
 from ..safety.taxonomy import taxonomy
@@ -99,6 +101,8 @@ class PolicyLibraryRegistry:
         rule_ids: set[str] = set()
         taxonomy_registry = taxonomy()
         for rule in item.rules:
+            if rule.effect not in ENFORCEMENT_ACTIONS:
+                raise ValueError(f"Rule {rule.id!r} has unknown action {rule.effect!r}.")
             _required(rule.id, f"Policy {item.id!r} Rule ID")
             _required(rule.name, f"Policy {item.id!r} Rule {rule.id!r} name")
             if rule.id in rule_ids:
@@ -106,6 +110,8 @@ class PolicyLibraryRegistry:
                     f"Policy {item.id!r} contains duplicate Rule {rule.id!r}."
                 )
             rule_ids.add(rule.id)
+            if rule.rule_id is not None:
+                rule_ids.add(rule.rule_id)
             if not rule.taxonomy_ids:
                 raise ValueError(
                     f"Policy {item.id!r} Rule {rule.id!r} has no TALI Taxonomy category."
@@ -170,7 +176,10 @@ class PolicyLibraryRegistry:
             if case.required and case.kind == "rule_acceptance":
                 accepted_rules.update(case.covered_rule_ids)
 
-        uncovered = sorted(rule_ids.difference(accepted_rules))
+        uncovered = sorted(
+            rule.id for rule in item.rules
+            if rule.id not in accepted_rules and rule.rule_id not in accepted_rules
+        )
         if uncovered:
             raise ValueError(
                 f"Policy {item.id!r} Rules lack required acceptance tests: "

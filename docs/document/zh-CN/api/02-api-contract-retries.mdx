@@ -1,0 +1,55 @@
+---
+id: "api-contract-retries"
+title: "版本化契约与重试"
+summary: "以当前 OpenAPI 为准，区分权限、幂等键、异步状态与安全重试。"
+order: 1
+---
+每次调用前，先查看 OpenAPI 中的权限、幂等和重试规则。网络超时表示客户端没有收到结果，服务端仍可能完成操作。
+
+<a id="api-contract-annotations" />
+## 读取 OpenAPI 标记
+
+| 标记 | 含义 |
+| --- | --- |
+| `x-token-permission` | 所需模块及 read 或 write 授权。账户角色限制同时生效。 |
+| `x-idempotency` | 重复请求的处理方式。不同操作采用的机制可能不同。 |
+| `x-retry-policy` | 重试前是否应先查状态，以及必须保持不变的请求值。 |
+
+这些标记描述操作，不是 HTTP 请求 Header。具体参数以对应操作的请求定义为准。
+
+Router 批准操作通过已有变更单的状态转换处理重复请求，不接受接入方传入的发布 `idempotencyKey`。
+
+<a id="api-contract-async" />
+## 收到 202 后查询异步结果
+
+`202 Accepted` 表示操作已被接受，不证明操作完成或下发成功。
+
+启动 Guardrail 测试后，使用返回的运行 ID，通过 `GET /api/v1/test-runs/{runId}` 读取报告。批准路由变更后，还需核对发布 revision 与 Router 下发状态。
+
+<a id="api-contract-router-publish" />
+## 审阅并提交 Router 变更
+
+1. 读取 Router 及其草稿修订号。
+2. 调用 `PUT /api/v1/routers/{id}/draft`，携带对应的 `expectedDraftRevision`。
+3. 请求 `POST /api/v1/routers/{id}/publication-preview`。核对确切的版本引用和 Endpoint 绑定。
+4. 调用 `POST /api/v1/routers/{id}/change-requests`，提交已审阅的修订号、快照、Endpoint ID、原因及可选单号。
+5. 由另一位具备 Router 写权限的用户调用 `POST /api/v1/routers/{id}/change-requests/{changeId}/approve` 批准。
+
+提交本身不发布。批准后，系统发布提交时的快照。紧急应用需要填写原因，并记录执行人。详见[路由审批](/document/operator/operator-routing#operator-routing-approval)。
+
+保存或提交超时后，请先读取 Router。比较草稿内容和 `pendingChangeRequest`，不要自动换用新的修订号。
+
+同一位审批人可以重复已完成的批准操作。请检查 `publication.replayed` 和返回的 revision。其他操作的重试规则可能不同，例如启动测试运行不保证幂等。
+
+<a id="api-contract-resource-ids" />
+## 区分资源 ID
+
+| ID | 查询位置 |
+| --- | --- |
+| `caseId` | `/api/v1/guardrails/{guardrailId}/test-cases/{caseId}` |
+| `runId` | `/api/v1/test-runs/{runId}` |
+| `changeId` | `/api/v1/routers/{id}/change-requests/{changeId}` |
+
+Test Case ID 不等于测试运行 ID。请使用对应操作返回的 ID。
+
+[完整 OpenAPI](/api/openapi.json)

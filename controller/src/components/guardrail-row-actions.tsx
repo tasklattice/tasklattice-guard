@@ -1,29 +1,36 @@
+import { hasPermission } from "../../shared/rbac";
+import { useTranslation } from "react-i18next";
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Copy, MoreHorizontal, Trash2 } from 'lucide-react';
+import { Copy, Download, MoreHorizontal, Trash2 } from 'lucide-react';
+import { useAuth } from '@/lib/auth';
 import { Button } from './ui/button';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from './ui/dropdown-menu';
 import { DuplicateGuardrailSheet } from './guardrail-duplicate';
 import { DeleteGuardrailSheet, type GuardrailDeletionConfirmation } from './guardrail-delete-sheet';
+import { ExportGuardrailSheet } from './guardrail-export-sheet';
 import { queryKeys } from '@/features/query-keys';
 import { deleteGuardrail, getGuardrailDeletionImpact, type Guardrail } from '@/lib/api';
-import { useRoutingText } from './traffic-routing/form';
+
 
 export function GuardrailRowActions({ guardrail }: { guardrail: Guardrail }) {
-  const t = useRoutingText();
-  const [action, setAction] = useState<'delete' | 'duplicate' | null>(null);
+  const { t } = useTranslation();
+  const canEdit = hasPermission(useAuth().user?.role, "guardrails", "write");
+  const [action, setAction] = useState<'delete' | 'duplicate' | 'export' | null>(null);
   return <>
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <Button variant="ghost" size="icon" className="size-11" aria-label={`${t('操作', 'Actions')}: ${guardrail.name}`}><MoreHorizontal className="size-4" /></Button>
+        <Button variant="ghost" size="icon" className="size-11" aria-label={`${t("routing.actions")}: ${guardrail.name}`}><MoreHorizontal className="size-4" /></Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" onCloseAutoFocus={event => { if (action) event.preventDefault(); }}>
-        <DropdownMenuItem onSelect={() => setAction('duplicate')}><Copy />{t('创建副本', 'Duplicate')}</DropdownMenuItem>
-        <DropdownMenuItem variant="destructive" onSelect={() => setAction('delete')}><Trash2 />{t('删除', 'Delete')}</DropdownMenuItem>
+        <DropdownMenuItem onSelect={() => setAction('export')}><Download />{t('guardrails.exportEllipsis')}</DropdownMenuItem>
+        {canEdit && <DropdownMenuItem onSelect={() => setAction('duplicate')}><Copy />{t("routing.duplicate")}</DropdownMenuItem>}
+        {canEdit && <DropdownMenuItem variant="destructive" onSelect={() => setAction('delete')}><Trash2 />{t("routing.delete")}</DropdownMenuItem>}
       </DropdownMenuContent>
     </DropdownMenu>
     {action === 'duplicate' && <DuplicateGuardrailSheet id={guardrail.id} name={guardrail.name} close={() => setAction(null)} />}
     {action === 'delete' && <DeleteAction guardrail={guardrail} close={() => setAction(null)} />}
+    {action === 'export' && <ExportGuardrailSheet guardrailId={guardrail.id} guardrailName={guardrail.name} onClose={() => setAction(null)} />}
   </>;
 }
 
@@ -35,6 +42,9 @@ function DeleteAction({ guardrail, close }: { guardrail: Guardrail; close: () =>
     onSuccess: async () => {
       await Promise.all([
         client.invalidateQueries({ queryKey: queryKeys.guardrails }),
+        client.invalidateQueries({ queryKey: queryKeys.guardrailVersions(guardrail.id) }),
+        client.invalidateQueries({ queryKey: queryKeys.allValidationRuns }),
+        client.invalidateQueries({ queryKey: queryKeys.runtimeEvents }),
         client.invalidateQueries({ queryKey: ['routing-guardrails'] }),
         client.invalidateQueries({ queryKey: ['traffic-routers'] }),
         client.invalidateQueries({ queryKey: queryKeys.routers }),

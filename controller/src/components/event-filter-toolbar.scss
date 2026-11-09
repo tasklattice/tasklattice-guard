@@ -1,0 +1,32 @@
+@use '@carbon/react/scss/themes';
+@use '@carbon/react/scss/theme';
+@use '@carbon/react/scss/spacing' as spacing;
+@use '@carbon/react/scss/utilities/layout';
+
+// Load only used components in this white layer; console tokens live in design-system.scss.
+.guard-carbon {
+  @include theme.theme(themes.$white);
+  @include layout.emit-layout-tokens;
+
+  font-family: var(--font-sans);
+  color: var(--cds-text-primary);
+  background: var(--cds-background);
+
+  .event-filter-toolbar {
+    display: flex;
+    align-items: center;
+    gap: spacing.$spacing-05;
+    padding: spacing.$spacing-05;
+  }
+  .event-filter-time { width: 12rem; }
+  .event-filter-risk { width: 17rem; }
+  .event-filter-label { display: inline-flex; align-items: center; gap: spacing.$spacing-03; }
+  .event-filter-option { display: flex; width: 100%; align-items: center; justify-content: space-between; gap: spacing.$spacing-05; }
+  .event-filter-count { font-variant-numeric: tabular-nums; color: var(--cds-text-secondary); }
+  .event-filter-help { margin-inline-start: auto; }
+  .event-filter-help .cds--toggletip-button { display: inline-flex; align-items: center; gap: spacing.$spacing-03; font-size: .75rem; }
+  .event-filter-applied { display: flex; flex-wrap: wrap; align-items: center; gap: spacing.$spacing-03; padding: 0 spacing.$spacing-05 spacing.$spacing-04; }
+  .cds--list-box__menu-item__option { width: 100%; }
+  .event-filter-risk .cds--list-box__menu { max-block-size: 20rem; }
+}
+.dark .guard-carbon { @include theme.theme(themes.$g100); }

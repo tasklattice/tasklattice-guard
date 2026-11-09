@@ -31,11 +31,11 @@ export const jsonObject = (values: Record<string, SQLWrapper>) =>
 export const jsonAggregate = (value: SQLWrapper) =>
   sql`coalesce(jsonb_agg(${value}), '[]'::jsonb)`;
 export const scalar = <T>(query: SQLWrapper) => sql<T>`(${query})`;
+// Historical evidence without an explicit Rule snapshot stays unclassified.
+export const securityFinding = (finding: SQLWrapper) => sql<boolean>`${jsonText(finding, "verdict")} IN ('matched', 'unknown')`;
 export const findingSeverity = (finding: SQLWrapper) => sql<string>`CASE
-  WHEN ${jsonText(finding, "verdict")}='error' THEN 'critical'
-  WHEN ${jsonText(finding, "verdict")}='unsafe' AND CASE WHEN jsonb_typeof(${jsonValue(finding, "confidence")})='number' THEN (${jsonText(finding, "confidence")})::float8 >= .9 ELSE false END THEN 'high'
-  WHEN ${jsonText(finding, "verdict")}='unsafe' OR CASE WHEN jsonb_typeof(${jsonValue(finding, "confidence")})='number' THEN (${jsonText(finding, "confidence")})::float8 >= .7 ELSE false END THEN 'medium'
-  ELSE 'low' END`;
+  WHEN ${jsonText(finding, "riskSeverity")} IN ('critical','high','medium','low','informational')
+  THEN ${jsonText(finding, "riskSeverity")} ELSE 'unclassified' END`;
 export const literal = <T extends string | number>(value: T) =>
   sql<T>`${value}`;
 export const coalesce = <T>(...values: SQLWrapper[]) =>

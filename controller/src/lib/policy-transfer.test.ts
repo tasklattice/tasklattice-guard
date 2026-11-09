@@ -25,7 +25,7 @@ const policy: ProgrammablePolicy = {
       rail_type: "input",
       flow_name: "check_request",
       execution_mode: "detect",
-      on_unsafe: "reject",
+      on_unsafe: "block",
       parallel_group: null,
       priority: null,
       timeout_ms: 500,

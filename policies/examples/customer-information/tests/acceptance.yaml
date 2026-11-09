@@ -1,0 +1,24 @@
+# yaml-language-server: $schema=../../../schemas/tests.schema.json
+- id: redact-customer
+  name: 遮盖客户编号
+  kind: rule_acceptance
+  scope: rule
+  phase: output
+  content: 客户编号：CUS-123456。
+  expected_decision: transform
+  covered_rule_ids:
+  - customer-id
+  expected_matched_rules:
+  - customer-id
+  expected_text: 客户编号：[客户编号已隐藏]。
+- id: block-secret
+  name: 阻断密钥标签
+  kind: rule_acceptance
+  scope: rule
+  phase: output
+  content: INTERNAL_SECRET
+  expected_decision: block
+  covered_rule_ids:
+  - internal-secret
+  expected_matched_rules:
+  - internal-secret

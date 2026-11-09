@@ -1,7 +1,8 @@
 """Canonical Policy Library: Policy -> Rule -> Test Case."""
 
 from .catalog import policy_catalog, policy_payload
-from .domain import (
+from ..policy_runtime.domain import (
+    PolicyDetectorRef,
     PolicyImplementationRef,
     PolicyParameterSpec,
     PolicyRuleSpec,
@@ -14,6 +15,7 @@ from .domain import (
 from .registry import policies, policy
 
 __all__ = (
+    "PolicyDetectorRef",
     "PolicyImplementationRef",
     "PolicyParameterSpec",
     "PolicyRuleSpec",

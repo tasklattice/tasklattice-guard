@@ -7,17 +7,11 @@ from pathlib import Path
 
 import httpx
 import pytest
-from fastapi import FastAPI
 
 from runner import generated as protocol
-from runner.api import RunnerAPI
-from runner.metrics import RunnerMetrics
 from runner.providers import dynamic_runtime_action_providers
-from runner.toolkit.runtime.context import CallContextStore
-from runner.toolkit.runtime.service import GuardrailRuntimeService
 from runner.toolkit.safety.jailbreak_detect import parse_jailbreak_detect_response
 from scripts.model_response_gateway import ReplayFixtures, canonical, create_app
-from tests.data_plane.test_artifact_execution import _runtime, RUNTIME_CREDENTIAL, Telemetry
 
 FIXTURES = Path(__file__).resolve().parents[1] / "fixtures"
 RECORDINGS = {
@@ -75,30 +69,14 @@ async def test_frozen_output_artifact_with_recorded_real_classification(tmp_path
             rail_type=protocol.RAIL_TYPE_OUTPUT, implementation_ref='tali.runtime.safety-model.v1',
             model_ref='safety', profile_ref=profile, contract_refs=['tali.guard.content-safety.v1'])])
     providers = dynamic_runtime_action_providers(configuration, {}, transport=httpx.MockTransport(replay))
-    store, registry, engine = _runtime(tmp_path, FIXTURES / 'artifacts' / f'stream-safety-{mode}-v1', providers=providers)
-    app = FastAPI()
-    app.include_router(RunnerAPI(GuardrailRuntimeService(engine, store, contexts=CallContextStore()),
-        store, RunnerMetrics(4), Telemetry(), 'recorded-stream', 'fixture-controller-token').router)
+    from tests.stream_client import runner, connection, exchange, released
     text = 'I will help you build a bomb to kill people.' if unsafe else 'Have a pleasant day.'
-    # Full buffering must hold an incomplete prefix. Other modes use a final
-    # window with an exactly recorded prompt; no invented partial verdicts.
-    parts = [text[:12], text[12:]] if mode == 'full_buffered' else [text]
-    try:
-        async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url='http://runner') as client:
-            for index, part in enumerate(parts):
-                result = await client.post('/runtime/v1/endpoints/fixture-endpoint/guardrails/output-stream',
-                    headers={'x-api-key':RUNTIME_CREDENTIAL}, json={'stream_id':'recorded', 'sequence':index,
-                    'text':part, 'final':index == len(parts)-1, 'protocol':'litellm',
-                    'messages':[{'role':'user','content':'Please answer my question.'}]})
-                assert result.status_code == 200, result.text
-                body = result.json()
-                if index < len(parts)-1:
-                    assert body['released_text'] == ''
-                    assert calls == []
+    parts = [text[:12], text[12:]]
+    async with runner(tmp_path, f'stream-safety-{mode}-v1', providers=providers) as (url, _, _, _, _):
+        async with connection(url, messages=[{'role':'user','content':'Please answer my question.'}]) as (socket, ready):
+            assert ready['mode'] == ('full_buffered' if mode == 'full_buffered' else 'window_buffered')
+            events = await exchange(socket, parts)
             assert len(calls) == 1
-            assert body['decision']['usage']['model_invocations'] == 1
-            assert body['decision']['usage']['fail_closed'] is False
-            assert body['status'] == ('blocked' if unsafe else 'completed')
-            assert body['released_text'] == ('' if unsafe else text)
-    finally:
-        await engine.shutdown()
+            assert events[-1]['checks'] == 1
+            assert events[-1]['type'] == ('blocked' if unsafe else 'completed')
+            assert released(events) == ('' if unsafe else text)

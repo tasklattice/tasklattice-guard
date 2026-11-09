@@ -8,11 +8,23 @@ const binding = (id: string): GuardrailPolicyBinding => ({
 });
 
 describe("business protection composition", () => {
+  it("combines regional Rule selections within one capability while retaining current settings and execution order", () => {
+    const current = { ...binding("identity-documents"), enabled_rule_ids: ["au-abn", "au-medicare"],
+      rule_order: ["au-medicare"], rule_actions: { "au-abn": "allow" as const }, enabled_rails: ["input"] as ["input"] };
+    const regional = { ...binding(current.policy_id), enabled_rule_ids: ["sg-nric", "au-abn"], rule_order: ["sg-nric", "au-abn"] };
+    const merged = mergePresetBindings([current], [regional]);
+    expect(merged).toEqual([{ ...current, enabled_rule_ids: ["au-abn", "au-medicare", "sg-nric"],
+      rule_order: ["au-medicare", "au-abn", "sg-nric"] }]);
+    expect(mergePresetBindings(merged, [regional])).toEqual(merged);
+    expect(current.enabled_rule_ids).toEqual(["au-abn", "au-medicare"]);
+    expect(mergePresetBindings([current], [{ ...regional, policy_version: "another-version" }])).toEqual([current]);
+  });
+
   it("edits a directory without regrouping other Policies or overriding order", () => {
     const first = binding("privacy-a");
     const middle = binding("attacks");
     const last = binding("privacy-b");
-    const edited = { ...last, rule_actions: { rule: "reject" as const } };
+    const edited = { ...last, rule_actions: { rule: "block" as const } };
     const current = [first, middle, last];
     expect(mergeDirectoryBindings(current, new Set([first.policy_id, last.policy_id, "privacy-new"]), [edited, binding("privacy-new")]))
       .toEqual([middle, edited, binding("privacy-new")]);
@@ -21,11 +33,11 @@ describe("business protection composition", () => {
 
   it("does not accept out-of-directory changes", () => {
     const current = [binding("a"), binding("b")];
-    expect(mergeDirectoryBindings(current, new Set(["a"]), [binding("a"), { ...binding("b"), action: "reject" }, binding("c")])).toEqual(current);
+    expect(mergeDirectoryBindings(current, new Set(["a"]), [binding("a"), { ...binding("b"), action: "block" }, binding("c")])).toEqual(current);
   });
 
   it("applies presets idempotently, preserves overrides, and does not share mutable state", () => {
-    const customized = { ...binding("baseline"), action: "pass" as const, rule_order: ["rule"], enabled_rails: ["input"] as ["input"] };
+    const customized = { ...binding("baseline"), action: "allow" as const, rule_order: ["rule"], enabled_rails: ["input"] as ["input"] };
     const preset = [binding("baseline"), binding("banking"), binding("banking")];
     const merged = mergePresetBindings([customized], preset);
     expect(merged).toEqual([customized, binding("banking")]);
@@ -35,16 +47,22 @@ describe("business protection composition", () => {
   });
 
   it("derives full-response delivery from selected Output checks, not a two-ID allowlist", () => {
-    const policy = { id: "local-passports", version: "2", name: "Passports", protection: { outputStreaming: "complete_response" } } as Policy;
-    const classifier = { id: "builtin-content-safety", version: "2", name: "Content safety", protection: { outputStreaming: "incremental_check" } } as Policy;
+    const policy = { id: "identity-documents", version: "2", name: "Passports", protection: { outputStreaming: "complete_response" } } as Policy;
+    const classifier = { id: "content-safety-model", version: "2", name: "Content safety", protection: { outputStreaming: "incremental_check" } } as Policy;
     expect(completeResponsePolicies([binding(policy.id)], [policy])).toEqual(["Passports"]);
     expect(completeResponsePolicies([{ ...binding(policy.id), enabled_rails: ["input"] }], [policy])).toEqual([]);
     expect(completeResponsePolicies([binding(classifier.id)], [classifier])).toEqual([]);
-    expect(completeResponsePolicies([{ ...binding(classifier.id), action: "redact" }], [classifier])).toEqual(["Content safety"]);
+    expect(completeResponsePolicies([{ ...binding(classifier.id), action: "transform" }], [classifier])).toEqual(["Content safety"]);
     expect(completeResponsePolicies([binding("unknown")], [])).toEqual(["unknown"]);
   });
 
   it("keeps unclassified custom Policies visible for manual selection", () => {
     expect(policyDirectory({ id: "custom" } as Policy)).toBe("business_rules");
+  });
+
+  it("classifies a released definition by its declared protection tag", () => {
+    const released = { id: "network", tags: [{ id: "protection:privacy", namespace: "protection", value: "privacy", label: "", source: "declared" }] } as unknown as Policy;
+    expect(policyDirectory(released)).toBe("privacy");
+    expect(policyDirectory({ ...released, tags: [{ ...released.tags[0]!, value: "unknown" }] })).toBe("business_rules");
   });
 });

@@ -20,7 +20,7 @@ const imported: PolicyImport = {
   name: "Synthetic check", description: "Directory regression", owner: "author@example.test", sourcePolicyId: null, sourceDraftRevision: null,
   draft: { guardrail_category: "pii_detection", colang_version: "2.x", sources: [{ path: "main.co", content: "flow check_request $text\n  pass" }],
     parameter_schema: [], action_references: [], evaluation_contracts: [], prompt_dependencies: [], execution_contract: [],
-    rail_bindings: [{ rail_type: "input", flow_name: "check_request", execution_mode: "detect", on_unsafe: "reject",
+    rail_bindings: [{ rail_type: "input", flow_name: "check_request", execution_mode: "detect", on_unsafe: "block", risk_severity: "high",
       parallel_group: null, priority: null, timeout_ms: 500, failure_mode: "fail_closed", required: true, depends_on: [] }],
     test_cases: [{ id: "one", name: "Safe", description: "", rail_type: "input", content: "Hello", expected_decision: "allow",
       covered_rule_ids: ["flow/input/check_request"], case_type: "input_rail", required: true, expected_failure: null,
@@ -53,6 +53,28 @@ beforeEach(() => {
 });
 
 describe("Policy Studio business directory", () => {
+  it("saves the chosen Rule risk independently of its action", async () => {
+    show();
+    fireEvent.click(screen.getByRole("button", { name: "common.next" }));
+    fireEvent.keyDown(screen.getByRole("combobox", { name: "securityEvents.riskLevel" }), { key: "Enter" });
+    fireEvent.click(await screen.findByRole("option", { name: "routerDetail.severity.informational" }));
+    fireEvent.click(screen.getByRole("button", { name: "common.next" }));
+    fireEvent.click(screen.getByRole("button", { name: "policyStudio.validateAndRun" }));
+    await waitFor(() => expect(api.create).toHaveBeenCalledWith(expect.objectContaining({
+      draft: expect.objectContaining({ rail_bindings: [expect.objectContaining({ risk_severity: "informational", on_unsafe: "block" })] }),
+    })));
+  });
+
+  it("requires classification of imported Rules with missing classification before continuing to testing", async () => {
+    show(vi.fn(), { ...imported, draft: { ...imported.draft, rail_bindings: imported.draft.rail_bindings.map(rail => ({ ...rail, risk_severity: null })) } });
+    fireEvent.click(screen.getByRole("button", { name: "common.next" }));
+    expect(screen.getByText("securityEvents.classificationPending")).toBeTruthy();
+    expect((screen.getByRole("button", { name: "common.next" }) as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.keyDown(screen.getByRole("combobox", { name: "securityEvents.riskLevel" }), { key: "Enter" });
+    fireEvent.click(await screen.findByRole("option", { name: "routerDetail.severity.high" }));
+    expect((screen.getByRole("button", { name: "common.next" }) as HTMLButtonElement).disabled).toBe(false);
+  });
+
   it("retries an unconfirmed publication with the same validated revision without saving again", async () => {
     api.publish.mockRejectedValueOnce(new Error("Connection closed after commit"))
       .mockResolvedValueOnce({ policy_id: "regression", version: "7" });
@@ -127,7 +149,7 @@ describe("Policy Studio business directory", () => {
     await act(async () => finish({ items: [{ ...selected, supported_rails: ["input"], timeout_ms: 500, failure_mode: "fail_closed" }] }));
     await waitFor(() => expect(screen.queryByText("policyStudio.actionsUnavailable")).toBeNull());
     fireEvent.click(screen.getByText("policyStudio.actionsTitle"));
-    expect(screen.getByRole("checkbox").getAttribute("aria-checked")).toBe("true");
+    expect((screen.getByRole("checkbox") as HTMLInputElement).checked).toBe(true);
     fireEvent.click(screen.getByRole("button", { name: "common.next" }));
     fireEvent.click(screen.getByRole("button", { name: "policyStudio.validateAndRun" }));
     await waitFor(() => expect(api.create).toHaveBeenCalledWith(expect.objectContaining({ draft: expect.objectContaining({ action_references: [selected] }) })));
@@ -150,7 +172,7 @@ describe("Policy Studio business directory", () => {
     api.catalog.mockRejectedValueOnce(new Error("Refresh failed"));
     await act(async () => { await client.invalidateQueries({ queryKey: queryKeys.actionCatalog }); });
     await screen.findByText("policyStudio.actionsUnavailable");
-    expect(screen.getByRole("checkbox").getAttribute("aria-checked")).toBe("true");
+    expect((screen.getByRole("checkbox") as HTMLInputElement).checked).toBe(true);
     expect(screen.getByText("GuardCustomerIdentifierAction@1.0.0")).toBeTruthy();
     expect(screen.queryByText("policyStudio.actionsEmpty")).toBeNull();
   });

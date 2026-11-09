@@ -10,6 +10,8 @@ from ...runtime.contracts import (
     EnforcementAction,
     EnforcementMode,
     EvidenceScope,
+    ExecutionPurpose,
+    EVALUATOR_VERDICTS,
     EvaluatorVerdict,
     GuardContentBlock,
     GuardrailPhase,
@@ -43,6 +45,7 @@ class EvaluationRequest:
     target_source: str = "user_input"
     mode: EnforcementMode = "enforce"
     evidence_scope: EvidenceScope = "interventions"
+    execution_purpose: ExecutionPurpose = "online"
     content_view: ContentViewSnapshot | None = None
     active_block_id: str | None = None
     request_context: RequestContext | None = None
@@ -51,6 +54,7 @@ class EvaluationRequest:
 
 ModelCallResult = Literal[
     "success",
+    "cancelled",
     "timeout",
     "rate_limited",
     "client_error",
@@ -81,6 +85,15 @@ class ModelCallUsage:
     retries: int = 0
     backoff_ms: int = 0
     error_type: str = "none"
+    error_source: str | None = None
+    error_category: str | None = None
+    http_status: int | None = None
+    call_id: str = ""
+    queue_duration_ms: int = 0
+    request_sent: bool | None = None
+    usage_known: bool = False
+    cached_input_tokens: int = 0
+    unsupported_usage: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -98,11 +111,20 @@ class EvaluationResult:
     findings: tuple[RiskFinding, ...] = ()
     patches: tuple[ContentPatch, ...] = ()
     confidence: float | None = None
-    proposed_action: EnforcementAction = "pass"
+    proposed_action: EnforcementAction = "allow"
     evidence: str = ""
     reason: str | None = None
     trace: tuple[RuntimeTraceStep, ...] = ()
     usage: EvaluationUsage = EvaluationUsage()
+    # Successful classifier abstention is distinct from an incomplete check.
+    # Previous/unspecified unknown results remain conservative.
+    unknown_reason: Literal["uncertain", "needs_context"] = "needs_context"
+
+    def __post_init__(self) -> None:
+        if self.verdict not in EVALUATOR_VERDICTS:
+            raise ValueError("Detector result must be matched, not_matched, unknown, or error.")
+        if self.unknown_reason not in {"uncertain", "needs_context"}:
+            raise ValueError("Invalid unknown-result reason.")
 
 
 class GuardEvaluator(Protocol):
@@ -136,9 +158,19 @@ def evaluation_result(
     reason: str | None = None,
     trace: tuple[RuntimeTraceStep, ...] = (),
     usage: EvaluationUsage = EvaluationUsage(),
+    unknown_reason: Literal["uncertain", "needs_context"] = "needs_context",
+    error_source: str | None = None,
+    error_category: str | None = None,
 ) -> EvaluationResult:
     """Build the normalized result returned by every Guard evaluator."""
 
+    if error_source and verdict == "error":
+        from dataclasses import replace
+        trace = tuple(replace(step, error_source=error_source, error_category=error_category) for step in trace) or (
+            RuntimeTraceStep(id=f"{request.binding.id}:preflight", kind="evaluation", name=request.binding.action_name or request.binding.id,
+                status="error", verdict="error", detail=reason or "Check configuration failed.",
+                error_source=error_source, error_category=error_category, policy_id=request.policy_id),
+        )
     confidence = next((item.confidence for item in findings), None)
     return EvaluationResult(
         verdict=verdict,
@@ -151,4 +183,5 @@ def evaluation_result(
         reason=reason,
         trace=trace,
         usage=usage,
+        unknown_reason=unknown_reason,
     )

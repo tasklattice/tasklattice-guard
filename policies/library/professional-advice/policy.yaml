@@ -1,0 +1,30 @@
+schema_version: 1
+kind: Policy
+metadata:
+  id: professional-advice
+  name: Professional Advice
+  description: 'Target taxonomy Policy: Professional Advice.'
+  source: built_in
+  version: 1.0.0
+  tags:
+  - namespace: protection
+    value: business_rules
+    label: Business Rules
+  - namespace: collection
+    value: policy-library
+    label: Policy Library
+  safety_level: balanced
+  output_delivery: full_buffered
+parameters: []
+rules: []
+rule_refs:
+- id: claims-medical-advice-filter/claims_medical_advice
+  version: 1.0.0
+- id: category/denied_financial_advice
+  version: 1.0.0
+- id: category/denied_legal_advice
+  version: 1.0.0
+- id: category/denied_medical_advice
+  version: 1.0.0
+tests:
+- tests/acceptance.yaml

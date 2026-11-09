@@ -1,25 +1,33 @@
 from __future__ import annotations
 
+from .evaluation_evidence import execution_status
+from .toolkit.runtime.outcome import GuardrailExecutionError
+
 import hmac
+import asyncio
 import base64
 import json
+import logging
 import os
 import time
 import uuid
 from dataclasses import asdict, replace
 from typing import Any, Literal
 
-from fastapi import APIRouter, Header, HTTPException, Request, Response
+from fastapi import Depends, APIRouter, Header, HTTPException, Request, Response
 from fastapi.encoders import jsonable_encoder
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 from opentelemetry import trace
+from redis.exceptions import OutOfMemoryError
 
 from runner.toolkit.runtime.contracts import GuardContentBlock, ProtectionDecision, ProtectionRequest, RequestContext
+from runner.toolkit.runtime.content_views import text_blocks
 from runner.toolkit.runtime.service import GuardrailRuntimeService
 
-from .artifact_store import ArtifactStore
-from .routing import RoutingError
+from .guard_context import GuardrailContext, MemoryBoundaryContext, _request_content
+from .artifact_store import ArtifactStore, EndpointAccess
+from .routing import RoutingError, public_route_assignment
 from .draft_preview import DraftPreviewRuntime
 from .metrics import (
     GuardrailRequestObservation,
@@ -28,9 +36,11 @@ from .metrics import (
     UNMATCHED_METRIC_ID,
     UNRESOLVED_METRIC_ID,
 )
-from .output_streaming import OutputStreamEvaluationError, OutputStreamProcessor, OutputStreamSessionStore
-from .toolkit.runtime.streaming import output_stream_contract
+from .output_streaming import register_output_stream
 from .telemetry import RuntimeTelemetryExporter
+from .runtime_log_capture import RuntimeLogCapture
+from .project_admission import AdmissionRejected, AdmissionUnavailable, AdmissionPermit, EndpointAdmission
+from .model_http_evidence import capture_model_http_evidence, failed_model_http_evidence
 
 
 LITELLM_ADAPTER_ID = "litellm-generic-guardrail"
@@ -40,83 +50,34 @@ _TRACER = trace.get_tracer("tasklattice.guard-runner.api")
 GUARDRAIL_VERSION_PATTERN = r"^\d{8}-\d{6}\.\d{3}Z$"
 
 
-class EvaluateRequest(BaseModel):
+class InternalEvaluationRequest(BaseModel):
+    """Controller-only Playground evaluation; never an Endpoint wire adapter."""
     model_config = ConfigDict(extra="forbid")
-
     phase: Literal["input", "output"] | None = None
     input_type: Literal["request", "response"] | None = None
-    texts: list[str] = Field(default_factory=list, max_length=64)
-    content: list["HTTPContentBlock"] = Field(default_factory=list, max_length=64)
+    texts: list[str] = Field(min_length=1, max_length=64)
     call_id: str | None = Field(default=None, min_length=1, max_length=256)
-    protocol: Literal["http", "a2a"] = "http"
+    protocol: Literal["playground"] = "playground"
     messages: list[dict[str, Any]] = Field(default_factory=list, max_length=20)
     attributes: dict[str, str] = Field(default_factory=dict)
-    # Endpoint clients cannot downgrade an enforced Router to detect-only.
     mode: Literal["enforce"] = "enforce"
-    model: str | None = None
-    method: str | None = None
-    path: str | None = None
-    host: str | None = None
-    jwt_claims: dict[str, str] = Field(default_factory=dict)
-    business_request: dict[str, str | list[str]] | None = None
-    output_sink: Literal["display", "markdown", "html", "sql", "shell", "url", "json", "tool_argument"] | None = None
-    content_type: str | None = Field(default=None, min_length=1, max_length=128)
-    schema_id: str | None = Field(default=None, min_length=1, max_length=256)
-    tool_name: str | None = Field(default=None, min_length=1, max_length=256)
-    target_environment: str | None = Field(default=None, min_length=1, max_length=128)
-    a2a_operation: str | None = None
-    a2a_context_id: str | None = None
-    a2a_task_id: str | None = None
-    output_scope: Literal["interventions", "full"] = "interventions"
+    guardrail_context: GuardrailContext | None = None
 
     @model_validator(mode="after")
-    def validate_content_shape(self):
-        if bool(self.texts) == bool(self.content):
-            raise ValueError("Provide exactly one of texts or content.")
-        expected_phase = "input" if self.input_type == "request" else "output"
-        if self.phase is not None and self.input_type is not None and self.phase != expected_phase:
+    def validate_phase(self):
+        expected = "input" if self.input_type == "request" else "output"
+        if self.phase is not None and self.input_type is not None and self.phase != expected:
             raise ValueError("phase and input_type describe different protection phases.")
-        ids = [item.id or f"{self.resolved_phase}:{index}" for index, item in enumerate(self.content)]
-        if len(ids) != len(set(ids)):
-            raise ValueError("Content block identifiers must be unique.")
+        if self.guardrail_context and self.guardrail_context.memory and self.resolved_phase != "input":
+            raise ValueError("Memory read/write checks use the input phase before consuming or storing the record.")
         return self
 
     @property
     def resolved_phase(self) -> Literal["input", "output"]:
-        if self.phase is not None:
-            return self.phase
-        return "output" if self.input_type == "response" else "input"
+        return self.phase or ("output" if self.input_type == "response" else "input")
 
 
-class HTTPContentBlock(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-    id: str | None = Field(default=None, min_length=1, max_length=160)
-    text: str = Field(min_length=1, max_length=100_000)
-    role: Literal["user_input", "query", "retrieved_content", "grounding_source", "tool_output", "model_output"]
-    source: Literal["user_input", "query", "retrieved_content", "grounding_source", "tool_output", "model_output"] | None = None
-    qualifiers: list[Literal["guard_content", "query", "grounding_source"]] = Field(default_factory=list, max_length=3)
-    source_id: str | None = Field(default=None, min_length=1, max_length=256)
-    source_type: str | None = Field(default=None, min_length=1, max_length=64)
-    tool_name: str | None = Field(default=None, min_length=1, max_length=256)
-    retrieval_index: int | None = Field(default=None, ge=0, le=1_000_000)
-    provenance_id: str | None = Field(default=None, min_length=1, max_length=256)
-    mime_type: str | None = Field(default=None, min_length=1, max_length=128)
-    origin_hash: str | None = Field(default=None, min_length=16, max_length=128, pattern=r"^[A-Za-z0-9:_-]+$")
-
-    @model_validator(mode="after")
-    def validate_qualifiers(self):
-        if "query" in self.qualifiers and self.role != "query":
-            raise ValueError("The query qualifier requires the query role.")
-        if "grounding_source" in self.qualifiers and self.role not in {"retrieved_content", "grounding_source"}:
-            raise ValueError("The grounding_source qualifier requires a grounding-source role.")
-        return self
-
-
-EvaluateRequest.model_rebuild()
-
-
-class GuardrailEvaluateRequest(EvaluateRequest):
+class GuardrailEvaluateRequest(InternalEvaluationRequest):
     protocol: Literal["playground"] = "playground"
     guardrail_version: str = Field(pattern=GUARDRAIL_VERSION_PATTERN)
 
@@ -132,7 +93,7 @@ class DraftPreviewPrepareRequest(BaseModel):
     runtime_profile: str = Field(min_length=1, max_length=128)
 
 
-class DraftPreviewEvaluateRequest(EvaluateRequest):
+class DraftPreviewEvaluateRequest(InternalEvaluationRequest):
     preview_id: str = Field(min_length=1, max_length=256)
     draft_revision: int = Field(gt=0)
     candidate_version: str = Field(pattern=GUARDRAIL_VERSION_PATTERN)
@@ -147,6 +108,7 @@ class LiteLLMGuardrailRequest(BaseModel):
     model_config = ConfigDict(extra="allow")
 
     input_type: Literal["request", "response"]
+    guardrail_context: GuardrailContext | None = None
     litellm_call_id: str | None = None
     litellm_trace_id: str | None = None
     structured_messages: list[dict[str, Any]] | None = None
@@ -160,6 +122,12 @@ class LiteLLMGuardrailRequest(BaseModel):
     tool_calls: list[dict[str, Any]] | None = None
     model: str | None = None
 
+    @model_validator(mode="after")
+    def memory_boundary_phase(self):
+        if self.guardrail_context and self.guardrail_context.memory and self.input_type != "request":
+            raise ValueError("Memory read/write checks use input_type=request before consuming or storing the record.")
+        return self
+
 
 class LiteLLMGuardrailResponse(BaseModel):
     action: Literal["NONE", "BLOCKED", "GUARDRAIL_INTERVENED"]
@@ -167,31 +135,6 @@ class LiteLLMGuardrailResponse(BaseModel):
     texts: list[str] | None = None
     images: list[str] | None = None
     tools: list[dict[str, Any]] | None = None
-
-
-class OutputStreamRequest(BaseModel):
-    """One ordered model-output chunk for Guardrail-controlled release."""
-
-    model_config = ConfigDict(extra="forbid")
-
-    stream_id: str = Field(min_length=1, max_length=256)
-    sequence: int = Field(ge=0)
-    text: str = Field(default="", max_length=100_000)
-    final: bool = False
-    call_id: str | None = Field(default=None, min_length=1, max_length=256)
-    protocol: Literal["http", "a2a", "litellm"] = "http"
-    messages: list[dict[str, Any]] = Field(default_factory=list, max_length=20)
-    request_data: dict[str, Any] = Field(default_factory=dict)
-    request_headers: dict[str, str] = Field(default_factory=dict)
-    attributes: dict[str, str] = Field(default_factory=dict)
-    model: str | None = None
-    output_sink: Literal["display", "markdown", "html", "sql", "shell", "url", "json", "tool_argument"] | None = None
-
-    @model_validator(mode="after")
-    def validate_chunk(self):
-        if not self.text and not self.final:
-            raise ValueError("A non-final output stream chunk must contain text.")
-        return self
 
 
 class RunnerAPI:
@@ -205,9 +148,12 @@ class RunnerAPI:
         controller_token: str,
         runtime_log_encryption_key: bytes | None = None,
         draft_previews: DraftPreviewRuntime | None = None,
-        output_streams: OutputStreamProcessor | None = None,
+        scan_max_body_bytes: int = 1_048_576,
+        scan_timeout_seconds: float = 25,
+        runtime_log_capture: RuntimeLogCapture | None = None,
+        project_admission: EndpointAdmission | None = None,
     ) -> None:
-        self.router = APIRouter()
+        self.router = APIRouter(dependencies=[Depends(self._model_evidence_scope)])
         self._runtime = runtime
         self._store = store
         self._metrics = metrics
@@ -219,17 +165,47 @@ class RunnerAPI:
         self._runner_id = runner_id
         self._controller_token = controller_token
         self._runtime_log_encryption_key = runtime_log_encryption_key
+        self._runtime_log_capture = runtime_log_capture or RuntimeLogCapture()
         self._draft_previews = draft_previews
-        self._output_streams = output_streams or OutputStreamSessionStore()
+        self._project_admission = project_admission
         self._register()
+        register_output_stream(self)
         from .path_testing import register_path_testing
         register_path_testing(self)
+        from .scan import register_scan
+        register_scan(self, max_body_bytes=scan_max_body_bytes, timeout_seconds=scan_timeout_seconds)
+
+    async def _model_evidence_scope(self):
+        with capture_model_http_evidence(enabled=bool(self._runtime_log_encryption_key)):
+            yield
 
     def _trace_request_id(self, fallback: str) -> str:
-        """Prefer the active trace id without requiring legacy metric fakes to expose one."""
+        """Prefer the active trace id when the metrics implementation exposes one."""
 
         trace_id = getattr(self._metrics, "current_trace_id", None)
         return (trace_id() if callable(trace_id) else None) or fallback
+
+    def _authenticate_endpoint(self, endpoint_id: str, credential: str | None):
+        factory = getattr(self._store, "authenticate_endpoint_snapshot", None)
+        if factory is not None:
+            snapshot = factory(endpoint_id, credential)
+            if snapshot is None:
+                return EndpointAccess(self._store.endpoint_adapter(endpoint_id), False, False), None
+            return EndpointAccess(snapshot.adapter, True, snapshot.authenticated), snapshot
+        # Custom/legacy stores may authorize but cannot mint provenance.
+        authorize = getattr(self._store, "authorize_endpoint", None)
+        if callable(authorize):
+            return authorize(endpoint_id, credential), None
+        authenticated = self._store.authenticate_endpoint(endpoint_id, credential)
+        return EndpointAccess(self._store.endpoint_adapter(endpoint_id), authenticated, authenticated), None
+
+    async def _acquire_project_permit(self, endpoint_id: str, credential: str | None) -> AdmissionPermit | None:
+        return await self._project_admission.acquire(self._store, endpoint_id, credential) if self._project_admission is not None else None
+
+    @staticmethod
+    async def _release_project_permit(permit: AdmissionPermit | None) -> None:
+        if permit is not None:
+            await asyncio.shield(permit.release())
 
     def _register(self) -> None:
         @self.router.get("/")
@@ -244,7 +220,7 @@ class RunnerAPI:
                     "metrics": "/metrics",
                     "verify": "/runtime/v1/endpoints/{endpoint_id}/verify",
                     "litellm": "/runtime/v1/endpoints/{endpoint_id}/beta/litellm_basic_guardrail_api",
-                    "evaluate": "/runtime/v1/endpoints/{endpoint_id}/guardrails/evaluate",
+                    "scan": "/runtime/v1/endpoints/{endpoint_id}/backend/v1/scans",
                     "output_stream": "/runtime/v1/endpoints/{endpoint_id}/guardrails/output-stream",
                     "controller_evaluate": "/internal/v1/guardrails/{guardrail_id}/evaluate",
                     "draft_preview": "/internal/v1/playground/draft-previews/{preview_id}",
@@ -256,11 +232,11 @@ class RunnerAPI:
             endpoint_id: str,
             x_api_key: str | None = Header(default=None),
         ):
-            authenticated = self._store.authenticate_endpoint(endpoint_id, x_api_key)
-            self._metrics.observe_authentication("litellm", authenticated)
-            if not authenticated:
+            access = self._store.authorize_endpoint(endpoint_id, x_api_key)
+            self._metrics.observe_authentication("litellm", access.authenticated)
+            if not access.allowed:
                 raise HTTPException(status_code=401, detail="Endpoint credential is invalid.")
-            adapter = self._store.endpoint_adapter(endpoint_id)
+            adapter = access.adapter
             if adapter != LITELLM_ADAPTER_ID:
                 raise HTTPException(status_code=409, detail="Endpoint adapter is not compatible with LiteLLM.")
             return {
@@ -282,259 +258,89 @@ class RunnerAPI:
             x_api_key: str | None = Header(default=None),
         ) -> LiteLLMGuardrailResponse:
             phase = "input" if payload.input_type == "request" else "output"
-            authenticated = self._store.authenticate_endpoint(endpoint_id, x_api_key)
-            self._metrics.observe_authentication("litellm", authenticated)
-            adapter_matches = self._store.endpoint_adapter(endpoint_id) == LITELLM_ADAPTER_ID
-            if not authenticated:
+            access, endpoint_snapshot = self._authenticate_endpoint(endpoint_id, x_api_key)
+            self._metrics.observe_authentication("litellm", access.authenticated)
+            adapter_matches = access.adapter == LITELLM_ADAPTER_ID
+            if not access.allowed:
                 self._metrics.reject_request("litellm", phase=phase, result="authentication_rejected")
                 raise HTTPException(status_code=401, detail="Endpoint credential is invalid.")
             if not adapter_matches:
                 self._metrics.reject_request("litellm", phase=phase, result="adapter_mismatch")
                 raise HTTPException(status_code=409, detail="Endpoint adapter is not compatible with LiteLLM.")
-            request_id = str(uuid.uuid4())
-            started = time.perf_counter()
             try:
-                protection_request = _litellm_protection_request(payload, endpoint_id, request)
-            except RoutingError as error:
-                raise HTTPException(status_code=503, detail=error.reason) from error
-            decision = None
-            with self._metrics.request(
-                "runtime", "litellm", phase, endpoint_id=endpoint_id,
-            ) as observation:
-                request_id = self._trace_request_id(request_id)
+                permit = await self._acquire_project_permit(endpoint_id, x_api_key)
+            except AdmissionRejected as error:
+                self._metrics.reject_request("litellm", phase=phase, result="project_admission_rejected")
+                raise HTTPException(status_code=429, detail="Project admission capacity is unavailable. Retry shortly.", headers={"Retry-After": str(error.retry_after)}) from error
+            except AdmissionUnavailable as error:
+                self._metrics.reject_request("litellm", phase=phase, result="project_admission_unavailable")
+                raise HTTPException(status_code=503, detail="Endpoint admission allocation is unavailable.", headers={"Retry-After": "1"}) from error
+            try:
+                request_id = str(uuid.uuid4())
+                started = time.perf_counter()
                 try:
-                    route_matched = True
+                    protection_request = _litellm_protection_request(payload, endpoint_id, request, authenticated=access.authenticated is True)
+                    protection_request = replace(protection_request, context=replace(protection_request.context, endpoint_snapshot=endpoint_snapshot))
+                except RoutingError as error:
+                    raise HTTPException(status_code=503, detail=error.reason) from error
+                decision = None
+                with self._metrics.request(
+                    "runtime", "litellm", phase, endpoint_id=endpoint_id,
+                ) as observation:
+                    request_id = self._trace_request_id(request_id)
                     try:
                         decision = await self._runtime.evaluate(
                             protection_request, on_resolved=observation.resolve,
                         )
-                    except LookupError:
-                        route_matched = False
-                        observation.set_identity(
-                            guardrail_id=UNMATCHED_METRIC_ID,
-                            guardrail_version=UNMATCHED_METRIC_ID,
-                            router_id=UNMATCHED_METRIC_ID,
-                        )
-                        decision = ProtectionDecision(
-                            decision="block",
-                            action="reject",
-                            reason="No Router matches this request.",
-                            mode=protection_request.mode,
-                        )
-                    self._metrics.observe_route("litellm", phase, route_matched)
-                    observation.complete(decision)
-                    self._path_response_headers(response, decision)
-                    return _litellm_response(decision)
-                except RoutingError as error:
-                    observation.fail("runtime", error.reason)
-                    raise HTTPException(status_code=503, detail=str(error)) from error
-                except Exception as error:
-                    reason_class = _request_failure_reason(error)
-                    observation.fail("runtime", reason_class)
-                    self._metrics.observe_failure("runtime", reason_class)
-                    raise
-                finally:
-                    await self._emit_telemetry(
-                        request_id=request_id,
-                        call_id=protection_request.call_id,
-                        endpoint_id=endpoint_id,
-                        phase=phase,
-                        protocol="litellm",
-                        mode=protection_request.mode,
-                        started=started,
-                        decision=decision,
-                        content_before=protection_request.texts,
-                        observation=observation,
-                    )
-
-        @self.router.post("/runtime/v1/endpoints/{endpoint_id}/guardrails/evaluate")
-        async def evaluate(
-            endpoint_id: str,
-            payload: EvaluateRequest,
-            request: Request,
-            response: Response,
-            x_api_key: str | None = Header(default=None),
-        ):
-            expected_adapter = "a2a-guard" if payload.protocol == "a2a" else "generic-http-guard"
-            authenticated = self._store.authenticate_endpoint(endpoint_id, x_api_key)
-            self._metrics.observe_authentication(payload.protocol, authenticated)
-            adapter_matches = self._store.endpoint_adapter(endpoint_id) == expected_adapter
-            if not authenticated:
-                self._metrics.reject_request(
-                    payload.protocol, payload.resolved_phase, "authentication_rejected",
-                )
-                raise HTTPException(status_code=401, detail="Endpoint credential is invalid.")
-            if not adapter_matches:
-                self._metrics.reject_request(payload.protocol, payload.resolved_phase, "adapter_mismatch")
-                raise HTTPException(status_code=409, detail="Endpoint adapter does not match this protocol.")
-            request_id = str(uuid.uuid4())
-            started = time.perf_counter()
-            decision = None
-            try:
-                protection_request = _http_protection_request(payload, request, endpoint_id)
-            except RoutingError as error:
-                raise HTTPException(status_code=503, detail=error.reason) from error
-            with self._metrics.request(
-                "runtime", payload.protocol, payload.resolved_phase,
-                endpoint_id=endpoint_id,
-            ) as observation:
-                request_id = self._trace_request_id(request_id)
-                try:
-                    route_matched = True
-                    try:
-                        decision = await self._runtime.evaluate(
-                            protection_request, on_resolved=observation.resolve,
-                        )
-                    except LookupError:
-                        route_matched = False
-                        observation.set_identity(
-                            guardrail_id=UNMATCHED_METRIC_ID,
-                            guardrail_version=UNMATCHED_METRIC_ID,
-                            router_id=UNMATCHED_METRIC_ID,
-                        )
-                        decision = ProtectionDecision(
-                            decision="block", action="reject",
-                            reason="No Router matches this request.",
-                            mode=payload.mode,
-                        )
-                    self._metrics.observe_route(
-                        payload.protocol, payload.resolved_phase, route_matched,
-                    )
-                    observation.complete(decision)
-                    self._path_response_headers(response, decision)
-                    return {**jsonable_encoder(asdict(decision)), "call_id": protection_request.call_id}
-                except RoutingError as error:
-                    observation.fail("runtime", error.reason)
-                    raise HTTPException(status_code=503, detail=str(error)) from error
-                except Exception as error:
-                    reason_class = _request_failure_reason(error)
-                    observation.fail("runtime", reason_class)
-                    self._metrics.observe_failure("runtime", reason_class)
-                    raise
-                finally:
-                    await self._emit_telemetry(
-                        request_id=request_id,
-                        call_id=protection_request.call_id,
-                        endpoint_id=endpoint_id,
-                        phase=payload.resolved_phase,
-                        protocol=payload.protocol,
-                        mode=payload.mode,
-                        started=started,
-                        decision=decision,
-                        content_before=_request_content(protection_request),
-                        observation=observation,
-                    )
-
-        @self.router.post("/runtime/v1/endpoints/{endpoint_id}/guardrails/output-stream")
-        async def evaluate_output_stream(
-            endpoint_id: str,
-            payload: OutputStreamRequest,
-            request: Request,
-            x_api_key: str | None = Header(default=None),
-        ):
-            expected_adapter = {
-                "a2a": "a2a-guard", "http": "generic-http-guard", "litellm": LITELLM_ADAPTER_ID,
-            }[payload.protocol]
-            authenticated = self._store.authenticate_endpoint(endpoint_id, x_api_key)
-            self._metrics.observe_authentication(payload.protocol, authenticated)
-            if not authenticated:
-                self._metrics.reject_request(payload.protocol, "output", "authentication_rejected")
-                raise HTTPException(status_code=401, detail="Endpoint credential is invalid.")
-            if self._store.endpoint_adapter(endpoint_id) != expected_adapter:
-                self._metrics.reject_request(payload.protocol, "output", "adapter_mismatch")
-                raise HTTPException(status_code=409, detail="Endpoint adapter does not match this protocol.")
-
-            if payload.protocol == "litellm":
-                # Preserve the same principal, routing fields and call identity
-                # used by the pre-call Generic Guardrail API callback.
-                protection_request = _litellm_protection_request(LiteLLMGuardrailRequest(
-                    input_type="response", texts=[payload.text or " "],
-                    litellm_call_id=payload.call_id or payload.stream_id,
-                    structured_messages=payload.messages, model=payload.model,
-                    request_data=payload.request_data, request_headers=payload.request_headers,
-                ), endpoint_id, request)
-            else:
-                evaluate_payload = EvaluateRequest(
-                    phase="output", texts=[payload.text or " "],
-                    call_id=payload.call_id or payload.stream_id, protocol=payload.protocol,
-                    messages=payload.messages, attributes=payload.attributes,
-                    model=payload.model, output_sink=payload.output_sink,
-                )
-                protection_request = _http_protection_request(evaluate_payload, request, endpoint_id)
-            protection_request = replace(protection_request, context=replace(protection_request.context,
-                fields=(*protection_request.context.fields, ("routing.stream", "true"))))
-            try:
-                resolutions = []
-                mode = self._runtime.output_delivery(protection_request, on_resolved=resolutions.append,
-                                                     require_existing=payload.sequence > 0,
-                                                     allow_new_output=payload.call_id is None)
-                resolution = resolutions[0]
-                if isinstance(self._runtime, GuardrailRuntimeService):
-                    await self._runtime.publish_assignment(resolution, protection_request.call_id)
-                contract = output_stream_contract(resolution.plan)
-
-                async def evaluate_candidate(candidate: ProtectionRequest) -> ProtectionDecision:
-                    started = time.perf_counter()
-                    decision = None
-                    try:
-                        decision = await self._runtime.evaluate(candidate)
-                        return decision
+                        self._metrics.observe_route("litellm", phase, True)
+                        observation.complete(decision)
+                        self._path_response_headers(response, decision)
+                        if request.headers.get("x-guard-evidence") == "evaluations-v1":
+                            from .evaluation_evidence import RESPONSE_HEADER, evaluation_evidence
+                            response.headers[RESPONSE_HEADER] = evaluation_evidence(decision)
+                        return _litellm_response(decision)
+                    except GuardrailExecutionError as error:
+                        decision = error.decision
+                        observation.complete(decision)
+                        observation.fail("runtime", "timeout" if error.timed_out else "runtime_exception")
+                        headers = {}
+                        if request.headers.get("x-guard-evidence") == "evaluations-v1":
+                            from .evaluation_evidence import RESPONSE_HEADER, evaluation_evidence
+                            headers[RESPONSE_HEADER] = evaluation_evidence(decision)
+                        raise HTTPException(status_code=504 if error.timed_out else 503,
+                            detail={"code": error.code, "message": str(error)}, headers=headers) from error
+                    except LookupError as error:
+                        self._metrics.observe_route("litellm", phase, False)
+                        observation.set_identity(guardrail_id=UNMATCHED_METRIC_ID,
+                            guardrail_version=UNMATCHED_METRIC_ID, router_id=UNMATCHED_METRIC_ID)
+                        observation.fail("runtime", "dependency_missing")
+                        raise HTTPException(status_code=503, detail="The Guardrail route or runtime is unavailable.") from error
+                    except RoutingError as error:
+                        observation.fail("runtime", error.reason)
+                        raise HTTPException(status_code=503, detail=str(error)) from error
+                    except Exception as error:
+                        reason_class = _request_failure_reason(error)
+                        observation.fail("runtime", reason_class)
+                        self._metrics.observe_failure("runtime", reason_class)
+                        raise
                     finally:
                         await self._emit_telemetry(
-                            request_id=str(uuid.uuid4()),
-                            call_id=candidate.call_id,
+                            request_id=request_id,
+                            call_id=protection_request.call_id,
                             endpoint_id=endpoint_id,
-                            phase="output",
-                            protocol=f"{payload.protocol}-stream",
-                            mode=candidate.mode,
+                            endpoint_context_id=getattr(endpoint_snapshot, "telemetry_context_id", None),
+                            phase=phase,
+                            protocol="litellm",
+                            mode=protection_request.mode,
+                            stream_metadata={"authentication": "credential" if access.authenticated else "anonymous"},
                             started=started,
                             decision=decision,
-                            content_before=candidate.texts,
-                            stream_metadata={"streamId": payload.stream_id, "streamSequence": payload.sequence,
-                                             "streamFinalCheck": payload.final and decision is not None,
-                                             "effectiveOutputDelivery": mode},
+                            content_before=protection_request.texts,
+                            http_request=request,
+                            observation=observation,
                         )
-
-                result = await self._output_streams.process(
-                    stream_key=f"{endpoint_id}:{payload.stream_id}",
-                    sequence=payload.sequence,
-                    text=payload.text,
-                    final=payload.final,
-                    mode=mode,
-                    request=protection_request,
-                    evaluate=evaluate_candidate,
-                )
-                if isinstance(self._runtime, GuardrailRuntimeService) and (result.final or result.terminate):
-                    await self._runtime.complete_call(resolution, protection_request.call_id,
-                        result.decision.decision if result.decision else "allow")
-            except RoutingError as error:
-                raise HTTPException(status_code=503, detail=error.reason) from error
-            except OutputStreamEvaluationError as error:
-                if isinstance(self._runtime, GuardrailRuntimeService) and resolutions:
-                    await self._runtime.complete_call(resolutions[0], protection_request.call_id,
-                        "timeout" if error.timed_out else "error", type(error).__name__)
-                raise HTTPException(status_code=504 if error.timed_out else 502, detail=str(error)) from error
-            except LookupError as error:
-                raise HTTPException(status_code=404, detail=str(error)) from error
-            except ValueError as error:
-                raise HTTPException(status_code=409, detail=str(error)) from error
-            response = {
-                "stream_id": payload.stream_id,
-                "sequence": result.sequence,
-                "next_sequence": result.next_sequence,
-                "mode": result.mode,
-                "requested_mode": contract.requested_mode,
-                "delivery_reason": contract.reason,
-                "effective_release_id": resolution.effective_release_id,
-                "model_revision_id": resolution.model_revision_id,
-                "status": result.status,
-                "released_text": result.released_text,
-                "terminate": result.terminate,
-                "final": result.final,
-            }
-            if result.decision is not None:
-                response["decision"] = jsonable_encoder(asdict(result.decision))
-            return response
+            finally:
+                await self._release_project_permit(permit)
 
         @self.router.post("/internal/v1/guardrails/{guardrail_id}/evaluate")
         async def evaluate_guardrail(
@@ -552,6 +358,8 @@ class RunnerAPI:
             protection_request = ProtectionRequest(
                 phase=payload.resolved_phase,
                 texts=tuple(payload.texts),
+                content_blocks=_request_content(payload.resolved_phase, payload.texts, payload.guardrail_context,
+                    payload.attributes.get("target_source", "user_input")),
                 context=RequestContext(
                     protocol=payload.protocol,
                     endpoint_id=None,
@@ -584,7 +392,9 @@ class RunnerAPI:
                         on_resolved=observation.resolve,
                     )
                     observation.complete(decision)
-                    return jsonable_encoder(asdict(decision))
+                    result = asdict(decision)
+                    result["route_assignment"] = public_route_assignment(result.get("route_assignment"))
+                    return jsonable_encoder(result)
                 except LookupError as error:
                     observation.fail("routing", "guardrail_not_loaded")
                     self._metrics.observe_failure("runtime", "guardrail_not_loaded")
@@ -600,6 +410,7 @@ class RunnerAPI:
                         started=started,
                         decision=decision,
                         content_before=protection_request.texts,
+                        http_request=request,
                         observation=observation,
                     )
 
@@ -643,6 +454,8 @@ class RunnerAPI:
             protection_request = ProtectionRequest(
                 phase=payload.resolved_phase,
                 texts=tuple(payload.texts),
+                content_blocks=_request_content(payload.resolved_phase, payload.texts, payload.guardrail_context,
+                    payload.attributes.get("target_source", "user_input")),
                 context=RequestContext(
                     protocol=payload.protocol,
                     endpoint_id=None,
@@ -681,8 +494,18 @@ class RunnerAPI:
                         runtime_profile=payload.runtime_profile,
                     )
                     observation.complete(decision)
-                    # Draft previews are deliberately excluded from Runtime Evidence telemetry.
-                    return jsonable_encoder(asdict(decision))
+                    # Meter drafts separately without adding them to Runtime Evidence.
+                    if decision.usage is not None and decision.usage.model_calls:
+                        await self._telemetry.emit({
+                            "id": str(uuid.uuid4()), "requestId": payload.call_id or str(uuid.uuid4()),
+                            "runnerId": self._runner_id, "guardrailId": payload.plan.get("guardrail_id", ""),
+                            "occurredAt": _iso_now(), "direction": "incoming" if payload.resolved_phase == "input" else "outgoing",
+                            "decision": "testing", "durationMs": 0,
+                            "metadata": {"costOnly": True, "costSource": "testing", "usage": asdict(decision.usage)},
+                        })
+                    result = asdict(decision)
+                    result["route_assignment"] = public_route_assignment(result.get("route_assignment"))
+                    return jsonable_encoder(result)
                 except LookupError as error:
                     raise HTTPException(status_code=404, detail=str(error)) from error
                 except ValueError as error:
@@ -696,7 +519,7 @@ class RunnerAPI:
     def _path_response_headers(self, response: Response, decision: ProtectionDecision) -> None:
         response.headers["x-guard-runner-id"] = self._runner_id
         if decision.route_assignment:
-            response.headers["x-guard-route-assignment"] = json.dumps(decision.route_assignment, ensure_ascii=True, separators=(",", ":"))
+            response.headers["x-guard-route-assignment"] = json.dumps(public_route_assignment(decision.route_assignment), ensure_ascii=True, separators=(",", ":"))
 
     async def _emit_telemetry(
         self,
@@ -710,12 +533,24 @@ class RunnerAPI:
         started: float,
         decision: ProtectionDecision | None,
         content_before: tuple[str, ...] = (),
+        http_request: Request | None = None,
         observation: GuardrailRequestObservation | None = None,
         stream_metadata: dict[str, Any] | None = None,
+        endpoint_context_id: str | None = None,
     ) -> None:
-        capture_level = self._store.logging_level(
-            decision.guardrail_id if decision is not None else None
-        )
+        guardrail_id = decision.guardrail_id if decision is not None else getattr(observation, "guardrail_id", None)
+        capture_level = self._store.logging_level(guardrail_id)
+        capture_key = self._runtime_log_capture.key(endpoint_id, guardrail_id, protocol, call_id) if call_id else None
+        capture_failed = False
+        capture_capacity = False
+        if capture_key:
+            try:
+                capture_level = await self._runtime_log_capture.level(capture_key, capture_level)
+            except OutOfMemoryError:
+                capture_failed = capture_capacity = True
+            except Exception:
+                capture_failed = True
+                logging.getLogger(__name__).exception("Runtime log correlation unavailable; preserving audit metadata.")
         runtime_log_captured = _runtime_log_qualifies(capture_level, decision)
         event = {
             "id": request_id,
@@ -731,26 +566,81 @@ class RunnerAPI:
                 "captureLevel": capture_level,
                 "runtimeLogCaptured": runtime_log_captured,
                 "contentAvailable": False,
+                "originalContentOnly": True,
+                **({"executionStatus": "timeout" if getattr(observation, "failure_reason_class", None) == "timeout" else "error"}
+                   if decision is None else {}),
                 **(stream_metadata or {}),
             },
         }
         if endpoint_id is not None:
             event["endpointId"] = endpoint_id
+            provenance = (getattr(decision, "allocation_context_id", None)
+                or getattr(observation, "allocation_context_id", None) or endpoint_context_id)
+            if provenance:
+                event["allocationContextId"] = provenance
         if decision is not None:
             event["metadata"].update(_telemetry_metadata(decision))
-            if runtime_log_captured and self._runtime_log_encryption_key:
-                event["metadata"]["contentCiphertext"] = _encrypt_runtime_log_content(
-                    self._runtime_log_encryption_key,
-                    phase,
-                    content_before,
-                    decision.texts or content_before,
-                )
             if decision.guardrail_id:
                 event["guardrailId"] = decision.guardrail_id
             if decision.guardrail_version:
                 event["guardrailVersion"] = decision.guardrail_version
             if decision.router_id:
                 event["routerId"] = decision.router_id
+        elif guardrail_id and guardrail_id not in {UNRESOLVED_METRIC_ID, UNMATCHED_METRIC_ID}:
+            event["guardrailId"] = guardrail_id
+            event["guardrailVersion"] = getattr(observation, "guardrail_version", None)
+            observed_router = getattr(observation, "router_id", None)
+            if observed_router and observed_router not in {UNRESOLVED_METRIC_ID, UNMATCHED_METRIC_ID}:
+                event["routerId"] = observed_router
+            event["metadata"].update(_telemetry_route_metadata(getattr(observation, "route_assignment", None)))
+
+        failed_calls = {c.call_id for c in decision.usage.model_calls if c.result not in {"success", "cancelled"}} if decision and decision.usage else None
+        model_exchanges = failed_model_http_evidence({c.call_id for c in decision.usage.model_calls} if decision and decision.usage else None)
+        has_model_failure = bool(failed_calls or model_exchanges)
+        if has_model_failure:
+            runtime_log_captured = True
+            event["metadata"]["modelEvidenceCount"] = len(model_exchanges)
+            event["metadata"]["modelEvidenceStatus"] = ("captured" if model_exchanges else
+                "encryption_unavailable" if not self._runtime_log_encryption_key else "not_recorded")
+        ciphertext = None
+        # DEBUG holds encrypted candidates briefly, so an output finding can
+        # select the original input even when it ran on another replica.
+        if (capture_level in {"debug", "trace"} or model_exchanges) and self._runtime_log_encryption_key:
+            try:
+                ciphertext = _encrypt_runtime_log_content(
+                    self._runtime_log_encryption_key, phase, content_before if capture_level != "info" else (),
+                    await _runtime_http_request(http_request) if http_request is not None and capture_level != "info" else None,
+                    model_exchanges=model_exchanges,
+                )
+            except Exception:
+                capture_failed = True
+                if has_model_failure:
+                    event["metadata"]["modelEvidenceStatus"] = "storage_unavailable"
+                logging.getLogger(__name__).warning("Runtime body capture unavailable; preserving audit metadata.")
+        pending = []
+        incomplete = capture_failed
+        if capture_key and capture_level == "debug" and not capture_failed:
+            candidate = {**event, "metadata": {**event["metadata"],
+                **({"contentCiphertext": ciphertext} if ciphertext else {})}}
+            try:
+                runtime_log_captured, pending, incomplete = await self._runtime_log_capture.record(
+                    capture_key, capture_level, candidate, runtime_log_captured)
+            except OutOfMemoryError:
+                incomplete = capture_capacity = True
+            except Exception:
+                incomplete = True
+                logging.getLogger(__name__).exception("Runtime log body buffering unavailable; preserving audit metadata.")
+        event["metadata"]["runtimeLogCaptured"] = runtime_log_captured
+        event["metadata"]["contentCaptureStatus"] = (
+            "captured" if runtime_log_captured and ciphertext else
+            "storage_unavailable" if runtime_log_captured else
+            "disabled" if capture_level == "info" else "not_selected")
+        if incomplete:
+            event["metadata"]["callCaptureIncomplete"] = True
+        if capture_capacity:
+            event["metadata"]["callCaptureUnavailableReason"] = "redis_capacity"
+        if runtime_log_captured and ciphertext:
+            event["metadata"]["contentCiphertext"] = ciphertext
         try:
             with _TRACER.start_as_current_span(
                 "guardrail.telemetry.append",
@@ -767,6 +657,20 @@ class RunnerAPI:
                 },
             ):
                 await self._telemetry.emit(event)
+                for previous in pending:
+                    if previous["id"] == event["id"]:
+                        continue
+                    previous["metadata"].update({"runtimeLogCaptured": True,
+                        "contentCaptureStatus": "captured" if previous["metadata"].get("contentCiphertext") else "storage_unavailable"})
+                    if incomplete:
+                        previous["metadata"]["callCaptureIncomplete"] = True
+                    await self._telemetry.emit(previous)
+                if pending and capture_key:
+                    try:
+                        await self._runtime_log_capture.acknowledge(capture_key, capture_level, [item["id"] for item in pending])
+                    except Exception:
+                        # WAL delivery already succeeded; replay is idempotent.
+                        logging.getLogger(__name__).exception("Runtime log candidates will be retried or expire.")
         except TimeoutError:
             self._metrics.observe_failure("telemetry", "timeout")
             if observation is None or observation.failure_stage is None:
@@ -779,6 +683,10 @@ class RunnerAPI:
                 if observation is not None:
                     observation.fail("telemetry", "telemetry_append_failed")
                 raise
+
+
+def _telemetry_route_metadata(assignment) -> dict[str, Any]:
+    return {key: value for key, value in (assignment or {}).items() if key in {"routeId", "targetId", "routerRevision", "decisionId"}}
 
 
 def _telemetry_metadata(decision: ProtectionDecision) -> dict[str, Any]:
@@ -795,6 +703,8 @@ def _telemetry_metadata(decision: ProtectionDecision) -> dict[str, Any]:
             "recommendedAction": item.recommended_action,
             "policyId": item.policy_id,
             "ruleId": item.rule_id,
+            "riskSeverity": item.risk_severity,
+            "policyVersion": item.policy_version,
             "providerEvidence": [asdict(evidence) for evidence in item.provider_evidence],
         }
         for index, item in enumerate(decision.findings, start=1)
@@ -834,6 +744,9 @@ def _telemetry_metadata(decision: ProtectionDecision) -> dict[str, Any]:
             "modelOperation": item.model_operation,
             "modelResult": item.model_result,
             "errorType": item.error_type,
+            "errorSource": item.error_source, "errorCategory": item.error_category,
+            "httpStatus": item.http_status, "modelCallId": item.model_call_id,
+            "affectsResult": item.affects_result,
             "modelTimeToFirstTokenMs": item.model_time_to_first_token_ms,
             "modelInputTokens": item.model_input_tokens,
             "modelOutputTokens": item.model_output_tokens,
@@ -848,9 +761,19 @@ def _telemetry_metadata(decision: ProtectionDecision) -> dict[str, Any]:
     ]
     risks = sorted({item.risk for item in decision.findings})
     return {
+        **_telemetry_route_metadata(decision.route_assignment),
         "action": decision.action,
+        "protectionMode": decision.protection_mode,
+        "detectionDecision": decision.detection_decision,
+        "detectionError": decision.detection_error,
         "risks": risks,
         "findings": findings,
+        "executionStatus": execution_status(decision),
+        "modelStatus": decision.model_status,
+        "terminationReason": decision.termination_reason,
+        "diagnostics": [{"code": d.code, "message": d.message, "stepId": d.step_id,
+                         "policyId": d.policy_id, "affectsResult": d.affects_result,
+                         "source": d.source, "category": d.category, "httpStatus": d.http_status, "modelCallId": d.model_call_id} for d in decision.diagnostics],
         "trace": trace,
         "usage": usage,
         "coverage": coverage,
@@ -864,27 +787,26 @@ def _runtime_log_qualifies(
     level: str,
     decision: ProtectionDecision | None,
 ) -> bool:
-    if decision is None:
-        return True
-    timed_out = any(item.timed_out for item in decision.trace)
-    fail_closed = bool(decision.usage and decision.usage.fail_closed)
     if level == "trace":
         return True
-    if decision.decision == "block" or timed_out or fail_closed:
-        return True
-    return level == "debug" and decision.decision == "transform"
+    return level == "debug" and decision is not None and any(
+        item.verdict == "matched" and item.risk_severity in {"medium", "high", "critical"}
+        for item in decision.findings
+    )
 
 
 def _encrypt_runtime_log_content(
     key: bytes,
     phase: Literal["input", "output"],
     before: tuple[str, ...],
-    after: tuple[str, ...],
+    http_request: dict[str, Any] | None = None,
+    *, model_exchanges: list[dict[str, Any]] | None = None,
 ) -> str:
     role = "user_input" if phase == "input" else "model_output"
     payload = {
         "contentBefore": _runtime_log_blocks(before, role),
-        "contentAfter": _runtime_log_blocks(after, role),
+        **({"httpRequest": http_request} if http_request is not None else {}),
+        **({"modelExchanges": model_exchanges} if model_exchanges else {}),
     }
     nonce = os.urandom(12)
     encrypted = AESGCM(key).encrypt(
@@ -901,6 +823,30 @@ def _encrypt_runtime_log_content(
     ))
 
 
+async def _runtime_http_request(request: Request) -> dict[str, Any]:
+    """Keep the received HTTP body byte-for-byte; never retain transport credentials."""
+    headers = []
+    redacted = set()
+    for name, value in request.scope.get("headers", []):
+        header = name.decode("latin-1")
+        if header.lower() in SENSITIVE_HEADERS:
+            redacted.add(header)
+            text = "[REDACTED]"
+        else:
+            text = value.decode("latin-1")
+        headers.append([header, text])
+    path = request.scope.get("raw_path", request.url.path.encode()).decode("latin-1")
+    query = request.scope.get("query_string", b"").decode("latin-1")
+    return {
+        "method": request.method,
+        "target": path + (f"?{query}" if query else ""),
+        "httpVersion": request.scope.get("http_version", "1.1"),
+        "headers": headers,
+        "bodyBase64": base64.b64encode(await request.body()).decode("ascii"),
+        "redactedHeaders": sorted(redacted),
+    }
+
+
 def _runtime_log_blocks(values: tuple[str, ...], role: str) -> list[dict[str, Any]]:
     result = []
     for index, value in enumerate(values[:64], start=1):
@@ -908,129 +854,17 @@ def _runtime_log_blocks(values: tuple[str, ...], role: str) -> list[dict[str, An
             "id": f"content-{index}",
             "role": role,
             "source": role,
-            "text": value[:8_000],
-            "truncated": len(value) > 8_000,
+            "text": value,
+            "truncated": False,
         })
     return result
-
-
-def _http_protection_request(
-    payload: EvaluateRequest,
-    request: Request,
-    endpoint_id: str,
-) -> ProtectionRequest:
-    headers = {
-        key.lower(): value
-        for key, value in request.headers.items()
-        if key.lower() not in SENSITIVE_HEADERS
-    }
-    method = (payload.method or headers.get("x-original-method") or request.method).upper()
-    path = payload.path or headers.get("x-original-uri") or request.url.path
-    host = payload.host or headers.get("x-forwarded-host") or request.url.hostname or ""
-    fields = {
-        **{str(key): str(value) for key, value in payload.attributes.items()},
-        "protocol": payload.protocol,
-        "endpoint.id": endpoint_id,
-        "auth.principal": endpoint_id,
-        "http.method": method,
-        "http.path": path,
-        "http.host": host,
-        "model": payload.model or "",
-    }
-    fields.update({
-        key: value
-        for key, value in {
-            "output.sink": payload.output_sink,
-            "output.content_type": payload.content_type,
-            "output.schema_id": payload.schema_id,
-            "tool.name": payload.tool_name,
-            "target.environment": payload.target_environment,
-        }.items()
-        if value is not None
-    })
-    if payload.jwt_claims:
-        fields["auth.claim_source"] = "endpoint_asserted"
-    if payload.protocol == "a2a":
-        fields.update({
-            "a2a.version": headers.get("a2a-version", ""),
-            "a2a.extensions": headers.get("a2a-extensions", ""),
-            "a2a.operation": payload.a2a_operation or "",
-            "a2a.context_id": payload.a2a_context_id or "",
-            "a2a.task_id": payload.a2a_task_id or "",
-        })
-    external_call_id = payload.call_id or payload.a2a_task_id or payload.a2a_context_id
-    if external_call_id is None and payload.resolved_phase == "input":
-        external_call_id = f"http-{uuid.uuid4().hex}"
-    return ProtectionRequest(
-        phase=payload.resolved_phase,
-        texts=tuple(payload.texts),
-        content_blocks=_http_content_blocks(payload),
-        context=RequestContext(
-            protocol=payload.protocol,
-            endpoint_id=endpoint_id,
-            headers=tuple(sorted(headers.items())),
-            # Unverified endpoint assertions are not authenticated JWT claims.
-            jwt_claims=(),
-            fields=tuple(sorted(fields.items())),
-            endpoint_request=_endpoint_source(request),
-            business_request=_source_pairs(payload.business_request),
-        ),
-        call_id=_scoped_call_id(endpoint_id, external_call_id),
-        messages=tuple(payload.messages),
-        mode=payload.mode,
-        evidence_scope=payload.output_scope,
-    )
-
-
-def _http_content_blocks(payload: EvaluateRequest) -> tuple[GuardContentBlock, ...]:
-    blocks: list[GuardContentBlock] = []
-    for index, item in enumerate(payload.content):
-        qualifiers = set(item.qualifiers)
-        if item.role == "query":
-            qualifiers.add("query")
-        if item.role in {"retrieved_content", "grounding_source"}:
-            qualifiers.add("grounding_source")
-        if payload.resolved_phase == "input" or item.role in {"user_input", "tool_output", "model_output"}:
-            qualifiers.add("guard_content")
-        source = item.source or item.role
-        blocks.append(GuardContentBlock(
-            id=item.id or f"{payload.resolved_phase}:{index}",
-            text=item.text,
-            role=item.role,
-            trust="untrusted",
-            source=source,
-            qualifiers=tuple(
-                qualifier
-                for qualifier in ("guard_content", "query", "grounding_source")
-                if qualifier in qualifiers
-            ),
-            metadata=tuple(
-                (key, str(value))
-                for key, value in (
-                    ("source_id", item.source_id),
-                    ("source_type", item.source_type),
-                    ("tool_name", item.tool_name),
-                    ("retrieval_index", item.retrieval_index),
-                    ("provenance_id", item.provenance_id),
-                    ("mime_type", item.mime_type),
-                    ("origin_hash", item.origin_hash),
-                )
-                if value is not None
-            ),
-        ))
-    return tuple(blocks)
-
-
-def _request_content(request: ProtectionRequest) -> tuple[str, ...]:
-    if request.content_blocks:
-        return tuple(item.text for item in request.content_blocks if item.guard_content)
-    return request.texts
 
 
 def _litellm_protection_request(
     payload: LiteLLMGuardrailRequest,
     endpoint_id: str,
     request: Request | None = None,
+    *, authenticated: bool = True,
 ) -> ProtectionRequest:
     headers = {
         str(key).lower(): str(value)
@@ -1073,18 +907,18 @@ def _litellm_protection_request(
     fields.update({
         "protocol": "litellm",
         "endpoint.id": endpoint_id,
-        "auth.principal": principal,
+        **({"auth.principal": principal} if authenticated else {}),
+        "auth.mode": "credential" if authenticated else "anonymous",
         "model": str(payload.model or payload.request_data.get("model") or ""),
         "litellm.operation": payload.input_type,
         "http.method": headers.get("x-original-method", "POST").upper(),
         "http.path": headers.get("x-original-uri", ""),
         "http.host": headers.get("x-forwarded-host", headers.get("host", "")),
-        "a2a.version": headers.get("a2a-version", ""),
-        "a2a.extensions": headers.get("a2a-extensions", ""),
     })
     return ProtectionRequest(
         phase="input" if payload.input_type == "request" else "output",
         texts=tuple(payload.texts or ()),
+        content_blocks=_request_content("input" if payload.input_type == "request" else "output", payload.texts, payload.guardrail_context),
         context=RequestContext(
             protocol="litellm",
             endpoint_id=endpoint_id,
@@ -1094,7 +928,7 @@ def _litellm_protection_request(
             fields=tuple(sorted(fields.items())),
         ),
         call_id=(
-            _scoped_call_id(endpoint_id, payload.litellm_call_id)
+            ("" if authenticated else "anonymous:") + _scoped_call_id(endpoint_id, payload.litellm_call_id)
             if payload.litellm_call_id
             else None
         ),

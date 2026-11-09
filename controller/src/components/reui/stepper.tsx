@@ -8,7 +8,7 @@ import {
   useRef,
   useState,
 } from "react"
-import { Slot } from "radix-ui"
+import * as Slot from "@radix-ui/react-slot"
 
 import { cn } from "@/lib/utils"
 

@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useEffect, type ReactNode } from "react";
+import { Fragment, createContext, useCallback, useContext, useEffect, type ReactNode } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import i18n, { setApplicationLanguage, type SupportedLanguage } from "@/i18n";
@@ -12,9 +12,8 @@ import {
 } from "@/lib/identity-api";
 import { queryKeys } from "@/features/query-keys";
 
-type LoginInput = { email: string; password: string };
+type LoginInput = { username: string; password: string };
 type ProfileInput = {
-  display_name?: string;
   preferred_language?: SupportedLanguage;
 };
 
@@ -25,6 +24,7 @@ type AuthContextValue = {
   error: unknown;
   login: (input: LoginInput) => Promise<void>;
   logout: () => Promise<void>;
+  refreshSession: () => Promise<void>;
   setLanguage: (language: SupportedLanguage) => Promise<void>;
   updateProfile: (input: ProfileInput) => Promise<void>;
   loginPending: boolean;
@@ -41,6 +41,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       previous?.authenticated === next.authenticated
       && previous?.user?.id === next.user?.id
       && previous?.user?.role === next.user?.role
+      && previous?.user?.project_id === next.user?.project_id
       && previous?.user?.enabled === next.user?.enabled
     ) return;
 
@@ -89,6 +90,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   });
 
   const user = statusQuery.data?.user ?? null;
+  const { refetch } = statusQuery;
+  const refreshSession = useCallback(async () => { await refetch({ throwOnError: true }); }, [refetch]);
 
   useEffect(() => {
     if (user?.preferred_language && user.preferred_language !== i18n.language) {
@@ -133,13 +136,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         error: statusQuery.error,
         login: async (input) => { await loginMutation.mutateAsync(input); },
         logout: async () => { await logoutMutation.mutateAsync(); },
+        refreshSession,
         setLanguage,
         updateProfile,
         loginPending: loginMutation.isPending,
         logoutPending: logoutMutation.isPending,
       }}
     >
-      {children}
+      <Fragment key={`${user?.id ?? "anonymous"}:${user?.role ?? ""}:${user?.project_id ?? ""}`}>{children}</Fragment>
     </AuthContext.Provider>
   );
 }

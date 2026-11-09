@@ -1,0 +1,37 @@
+# Standalone example, not automatically installed by the chart.
+# Matches the shared-host values snippet in README.md (namespace uat, fullname tali-guard-uat).
+# Merge these ordered routes into the VirtualService already serving the UI.
+# Replace the host, namespace, Gateway reference and Service names for UAT.
+# The existing Gateway + ingress load balancer expose external port 8443.
+# TLS must terminate at the Gateway or before it so HTTP paths are visible.
+apiVersion: networking.istio.io/v1
+kind: VirtualService
+metadata:
+  name: tali-guard-uat
+  namespace: uat
+spec:
+  hosts:
+    - guard-uat.example.com
+  gateways:
+    - istio-system/uat-gateway
+  http:
+    - name: endpoint-runtime
+      match:
+        - uri:
+            prefix: /runtime/v1/endpoints/
+      # Preserve the Endpoint UUID and protocol suffix; no rewrite.
+      route:
+        - destination:
+            host: tali-guard-uat-runtime.uat.svc.cluster.local
+            port:
+              number: 8091
+      # Keep LiteLLM WebSocket streams open; clients/Runner own deadlines.
+      timeout: 0s
+      retries:
+        attempts: 0
+    - name: controller-ui-api
+      route:
+        - destination:
+            host: tali-guard-uat-controller.uat.svc.cluster.local
+            port:
+              number: 8080

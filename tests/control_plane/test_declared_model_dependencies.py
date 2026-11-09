@@ -79,8 +79,6 @@ async def test_declared_model_dependency_is_required_even_when_test_branch_does_
 @pytest.mark.parametrize("contract,capability,action,phase", [
     ("tali.guard.topic-control.semantic.v1", "topic_control", "GuardTopicJudgeAction", "input"),
     ("tali.guard.topic-control.semantic.v1", "topic_control", "GuardTopicJudgeAction", "output"),
-    ("tali.guard.company-policy.v1", "company_policy", "GuardTopicJudgeAction", "input"),
-    ("tali.guard.company-policy.v1", "company_policy", "GuardTopicJudgeAction", "output"),
     ("tali.guard.contextual-grounding.v1", "contextual_grounding", "GuardGroundingAction", "output"),
     ("tali.guard.automated-reasoning.v1", "automated_reasoning", "GuardReasoningAction", "output"),
 ])

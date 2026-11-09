@@ -7,7 +7,7 @@ import { ControlPlaneService } from "./control-plane.js";
 const draft = programmablePolicyDraftSchema.parse({
   guardrail_category: "content_safety",
   sources: [{ path: "main.co", content: 'flow check $text\n  # await MissingAction()\n  $s = "import llm"\n  pass\n' }],
-  rail_bindings: [{ rail_type: "input", flow_name: "check", execution_mode: "detect", on_unsafe: "reject" }],
+  rail_bindings: [{ rail_type: "input", flow_name: "check", execution_mode: "detect", on_unsafe: "block", risk_severity: "medium" }],
   test_cases: [{ name: "safe", rail_type: "input", content: "ordinary", expected_decision: "allow", covered_rule_ids: ["flow/input/check"], case_type: "input_rail" }],
 });
 
@@ -28,6 +28,18 @@ function harness(status: string | null, revision = 2, source = draft.sources[0]!
 }
 
 describe("Policy validation authority", () => {
+  it.each(["testing", "publication"])("requires explicit Rule risk before %s, even with earlier passing evidence", async phase => {
+    const { service, tx, reads } = harness("passed");
+    const record = reads[0]![0] as { draft: typeof draft };
+    record.draft = { ...record.draft, rail_bindings: record.draft.rail_bindings.map(rail => ({ ...rail, risk_severity: null })) };
+    if (phase === "publication") reads.splice(1, 0, []); // No existing publication for this draft.
+    const operation = phase === "testing"
+      ? service.requestPolicyValidation({ id: "fixture", actorId: "author", compilerAvailable: true })
+      : service.publishPolicy({ id: "fixture", actorId: "author" });
+    await expect(operation).rejects.toThrow("Choose a risk level for every Rule");
+    expect(tx.insert).not.toHaveBeenCalled();
+  });
+
   it.each([null, "queued", "running", "failed", "passed"])("uses current Runner evidence, not metadata alone (%s)", async status => {
     const { service, reads } = harness(status);
     expect(await service.validatePolicy("fixture")).toMatchObject({

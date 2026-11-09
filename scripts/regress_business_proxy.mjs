@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 /** Real Relay/LiteLLM -> Guard Runner -> controlled business-model HTTP replay. */
 import assert from "node:assert/strict";
+import {attachStreamTransport} from "./stream-transport.mjs";
 import { execFile } from "node:child_process";
 import { createServer } from "node:http";
 import { randomUUID } from "node:crypto";
@@ -54,14 +55,6 @@ const guardTransport = createServer(async (request, response) => {
     const chunks = [];
     for await (const chunk of request) chunks.push(chunk);
     const body = Buffer.concat(chunks);
-    if (request.url.endsWith("/guardrails/output-stream") && guardTransportFault) {
-      const payload = JSON.parse(body.toString());
-      if (guardTransportFault === "any-check" || payload.final === true) {
-        injectedFailures += 1;
-        response.writeHead(503, { "content-type": "application/json" }).end(JSON.stringify({ detail: "Synthetic Guard transport outage" }));
-        return;
-      }
-    }
     const target = new URL(runner);
     target.pathname = request.url;
     const forwarded = await fetch(target, { method: request.method,
@@ -71,6 +64,16 @@ const guardTransport = createServer(async (request, response) => {
       .end(Buffer.from(await forwarded.arrayBuffer()));
   } catch {
     response.writeHead(502, { "content-type": "application/json" }).end(JSON.stringify({ detail: "Guard transport failed" }));
+  }
+});
+
+const closeStreams = attachStreamTransport(guardTransport, {target: runner,
+  fault: (direction, event) => {
+    if (direction === "input" && guardTransportFault &&
+        (guardTransportFault === "any-check" || event.type === "end")) {
+      injectedFailures += 1; return true;
+    }
+    return false;
   }
 });
 
@@ -117,21 +120,22 @@ const upstream = createServer(async (request, response) => {
 });
 
 try {
-  // A stale dev tag may use legacy per-token checks and violate full buffering.
+  // A stale dev tag may use per-token checks and violate full buffering.
   // Verify baked code before creating any Controller resources or credentials.
   const verifiedImage = JSON.parse((await exec(".venv/bin/python", ["scripts/verify_relay_stream_image.py", image])).stdout).image;
   // Port collisions fail without touching another user's process/container.
   await new Promise((resolve, reject) => { upstream.once("error", reject); upstream.listen(businessPort, "127.0.0.1", resolve); });
   await new Promise((resolve, reject) => { guardTransport.once("error", reject); guardTransport.listen(guardTransportPort, "127.0.0.1", resolve); });
-  const auth = await api("/api/auth/sign-in/email", { email: required("GUARD_REGRESSION_EMAIL"), password: required("GUARD_REGRESSION_PASSWORD") });
+  const auth = await api("/api/auth/sign-in/username", { username: required("GUARD_REGRESSION_USERNAME"), password: required("GUARD_REGRESSION_PASSWORD") });
   cookie = auth.response.headers.getSetCookie().map((value) => value.split(";")[0]).join("; ");
   const guardrail = (await api(`/api/v1/guardrails/${guardrailId}`)).result;
   const allowDefault = guardrailId === "guardrail-default" && process.env.GUARD_REGRESSION_ALLOW_DEFAULT === "1";
-  assert((guardrail.name.startsWith("Regression ") || allowDefault) && guardrail.activeArtifactId,
+  // The release of the current draft: the ready version published from this draft revision.
+  const published = guardrail.versions.find(version => version.status === "ready" && version.sourceDraftRevision === guardrail.draftRevision);
+  assert((guardrail.name.startsWith("Regression ") || allowDefault) && guardrail.versions.some(version => version.status === "ready"),
     "Select a published regression Guardrail, or explicitly allow the isolated Default. Never select a user draft.");
   assert.equal(guardrail.draftConfig.outputDelivery, "full_buffered", "This suite verifies the complete-buffering contract.");
-  const published = guardrail.versions.find(version => version.version === guardrail.activeVersion);
-  assert(published?.status === "ready" && published.sourceDraftRevision === guardrail.draftRevision,
+  assert(published,
     "Replay the current reviewed published revision, not an older artifact.");
   assert(published.plan.steps.length > 0 && published.plan.steps.every(step => step.capability === "builtin_content_filter"),
     "This zero-external-call regression only permits local Policy execution.");
@@ -156,7 +160,7 @@ try {
     "-e", `REPLAY_PROXY_MASTER_KEY=${proxyKey}`, "-e", "LITELLM_LOCAL_MODEL_COST_MAP=True", "-e", "DISABLE_ADMIN_UI=true",
     verifiedImage, "--config", "/tmp/replay.yaml", "--host", "0.0.0.0", "--port", "4000"], { timeout: 30_000 });
   started = Boolean(containerId.trim());
-  report("proxy-starting", { image: imageId.trim(), endpointId: endpoint.id, routerId: router.id, guardrailId, version: guardrail.activeVersion });
+  report("proxy-starting", { image: imageId.trim(), endpointId: endpoint.id, routerId: router.id, guardrailId, version: published.version });
   ready = false;
   for (let attempt = 0; attempt < 90; attempt++) {
     try { if ((await fetch(`http://127.0.0.1:${proxyPort}/health/liveliness`, { signal: AbortSignal.timeout(1_000) })).ok) { ready = true; break; } } catch { /* bounded startup wait */ }
@@ -313,10 +317,10 @@ try {
   report("case", outcomes.at(-1));
   assert(outcomes.every((item) => item.passed), "Business-proxy replay failed; inspect the per-case evidence.");
   const after = (await api(`/api/v1/guardrails/${guardrailId}`)).result;
-  assert.equal(after.activeArtifactId, guardrail.activeArtifactId, "Published artifact changed during replay.");
+  assert.equal(after.versions.find(version => version.version === published.version)?.artifactId, published.artifactId, "Published artifact changed during replay.");
   assert.equal(after.draftRevision, guardrail.draftRevision, "Draft changed during replay.");
-  report("passed", { cases: outcomes.length, guardrailId, version: guardrail.activeVersion,
-    artifactId: guardrail.activeArtifactId, image: imageId.trim(),
+  report("passed", { cases: outcomes.length, guardrailId, version: published.version,
+    artifactId: published.artifactId, image: imageId.trim(),
     scope: "actual Relay/LiteLLM proxy and Guard runtime; controlled business responses and explicit HTTP transport-failure injection; no mocked safety verdict" });
 } catch (error) {
   if (started) {
@@ -332,6 +336,6 @@ try {
   }
   upstream.closeAllConnections();
   await new Promise((resolve) => upstream.close(resolve));
-  guardTransport.closeAllConnections();
+  closeStreams();guardTransport.closeAllConnections();
   await new Promise((resolve) => guardTransport.close(resolve));
 }

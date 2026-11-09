@@ -47,19 +47,51 @@ const revision = {
 const view = { providers: [], models: [], draft: revision, active: null, activating: null, failed: null };
 
 describe("Model configuration HTTP routes", () => {
-  it("keeps GET read-only even when a regular session observes a ready activation", async () => {
+  it("refuses platform apply before mutation when no pool consumes platform defaults", async () => {
+    const models = { groupRuntime: { platformActivationPoolId: vi.fn().mockResolvedValue(null) }, applyConfiguration: vi.fn() };
+    const runner = { distributeDesiredState: vi.fn() };
+    const response = await appWith("admin", models as unknown as Partial<ModelConfigurationService>, runner)
+      .request("/api/v1/model-configuration/apply", { method: "POST", headers: { "content-type": "application/json" },
+        body: JSON.stringify({ bindingIds: ["content_safety.input"], expectedDraftToken: "token", expectedActiveId: null }) });
+    expect(response.status).toBe(409);
+    expect(models.applyConfiguration).not.toHaveBeenCalled();
+    expect(runner.distributeDesiredState).not.toHaveBeenCalled();
+  });
+
+  it("pins the platform revision and reports pending if the pool policy changes before finalization", async () => {
+    const models = { groupRuntime: { platformActivationPoolId: vi.fn().mockResolvedValue("pool-c") },
+      applyConfiguration: vi.fn().mockResolvedValue(revision), finalizeActivation: vi.fn().mockResolvedValue(false), view: vi.fn().mockResolvedValue(view) };
+    const runner = { distributeDesiredState: vi.fn().mockResolvedValue({ desiredGeneration: 9, distributionStatus: "ready" }) };
+    const response = await appWith("admin", models as unknown as Partial<ModelConfigurationService>, runner)
+      .request("/api/v1/model-configuration/apply", { method: "POST", headers: { "content-type": "application/json" },
+        body: JSON.stringify({ bindingIds: ["content_safety.input"], expectedDraftToken: "token", expectedActiveId: null }) });
+    expect(response.status).toBe(202);
+    expect(runner.distributeDesiredState).toHaveBeenCalledWith("pool-c", 10000, revision.id);
+    expect(models.finalizeActivation).toHaveBeenCalledWith(revision.id, "pool-c");
+    expect((await response.json()).distribution.distributionStatus).toBe("syncing");
+  });
+  it("routes operational concurrency updates through the project Model service boundary", async () => {
+    const models = { configureRuntimeSettings: vi.fn().mockResolvedValue({ id: "model-1", maxConcurrency: 3 }) };
+    const options = { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify({ maxConcurrency: 3 }) };
+    expect((await appWith("user", models).request("/api/v1/models/model-1/runtime-settings", options)).status).toBe(200);
+    expect(models.configureRuntimeSettings).toHaveBeenCalledWith("model-1", { maxConcurrency: 3 }, "user-1");
+    expect((await appWith("admin", models).request("/api/v1/models/model-1/runtime-settings", options)).status).toBe(200);
+    expect(models.configureRuntimeSettings).toHaveBeenCalledWith("model-1", { maxConcurrency: 3 }, "admin-1");
+  });
+
+  it("keeps administrator GET read-only even when activation is ready", async () => {
     const models = { view: vi.fn().mockResolvedValue({ ...view, activating: { ...revision, state: "activating", generation: 9 } }), finalizeActivation: vi.fn() };
     const runner = { distributionStatus: vi.fn().mockResolvedValue({ distributionStatus: "ready", desiredGeneration: 9 }) };
-    expect((await appWith("user", models, runner).request("/api/v1/model-configuration")).status).toBe(200);
+    expect((await appWith("admin", models, runner).request("/api/v1/model-configuration")).status).toBe(200);
     expect(models.finalizeActivation).not.toHaveBeenCalled();
     expect(runner.distributionStatus).not.toHaveBeenCalled();
   });
-  it("only lets administrators configure a registered model protocol", async () => {
+  it("lets project users configure their own Models through the service boundary", async () => {
     const input = { profile: "tali.qwen3guard.v1", timeoutSeconds: 20, maxTokens: 512 };
     const models = { configureModel: vi.fn().mockResolvedValue({ id: "model-1", status: "pending", ...input }) };
     const options = { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify(input) };
-    expect((await appWith("user", models).request("/api/v1/models/model-1/protocol", options)).status).toBe(403);
-    expect(models.configureModel).not.toHaveBeenCalled();
+    expect((await appWith("user", models).request("/api/v1/models/model-1/protocol", options)).status).toBe(200);
+    expect(models.configureModel).toHaveBeenCalledWith("model-1", input, "user-1");
     expect((await appWith("admin", models).request("/api/v1/models/model-1/protocol", options)).status).toBe(200);
     expect(models.configureModel).toHaveBeenCalledWith("model-1", input, "admin-1");
   });
@@ -84,25 +116,28 @@ describe("Model configuration HTTP routes", () => {
     expect(models.discoverProviderDraft).toHaveBeenCalledWith({ ...connection, skipTlsVerify: false });
     const result = await app.request("/api/v1/model-provider-registrations", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ connection, models: [selection] }) });
     expect(result.status).toBe(201);
-    expect(models.registerProviderModels).toHaveBeenCalledWith({ connection: { ...connection, skipTlsVerify: false }, models: [selection] }, "admin-1");
+    expect(models.registerProviderModels).toHaveBeenCalledWith({ connection: { ...connection, skipTlsVerify: false }, models: [{ ...selection, maxConcurrency: 2, rateLimitAttempts: 3, lowerThreshold: 0.1, upperThreshold: 0.9 }] }, "admin-1");
   });
-  it("lets authenticated members read the safe configuration projection", async () => {
-    const models = { view: vi.fn().mockResolvedValue(view) };
+  it("lets users read the sanitized project Model configuration projection", async () => {
+    const projectView = { ...view, draft: null };
+    const models = { view: vi.fn().mockResolvedValue(projectView) };
     const app = appWith("user", models);
     const response = await app.request("/api/v1/model-configuration");
     expect(response.status).toBe(200);
-    expect(await response.json()).toMatchObject({ draft: { revision: 1 }, providers: [] });
+    expect(await response.json()).toMatchObject({ draft: null, active: null });
+    expect(models.view).toHaveBeenCalledTimes(1);
   });
 
-  it("lists the safe provider and model projections for authenticated readers", async () => {
+  it("lists provider and model projections for administrators", async () => {
     const models = {
+      listProviders: vi.fn().mockResolvedValue([{ id: "provider-1", name: "Private gateway" }]),
       view: vi.fn().mockResolvedValue({
         ...view,
         providers: [{ id: "provider-1", name: "Private gateway" }],
         models: [{ id: "model-1", name: "Safety model" }],
       }),
     };
-    const app = appWith("user", models);
+    const app = appWith("admin", models);
 
     const providers = await app.request("/api/v1/model-providers");
     const listedModels = await app.request("/api/v1/models");
@@ -111,7 +146,20 @@ describe("Model configuration HTTP routes", () => {
     expect(await providers.json()).toEqual([{ id: "provider-1", name: "Private gateway" }]);
     expect(listedModels.status).toBe(200);
     expect(await listedModels.json()).toEqual([{ id: "model-1", name: "Safety model" }]);
-    expect(models.view).toHaveBeenCalledTimes(2);
+    expect(models.view).toHaveBeenCalledTimes(1);
+    expect(models.listProviders).toHaveBeenCalledTimes(1);
+  });
+
+  it("provides users only the model evidence needed by Guardrail workflows", async () => {
+    const models = { readinessView: vi.fn().mockResolvedValue({ ...view,
+      providers: [{ id: "provider", baseUrl: "https://private.test", credentialHint: "secret-hint" }],
+      models: [{ id: "model", name: "Safety model", providerId: "provider", timeoutSeconds: 60 }],
+      draft: { ...revision, reviewToken: "private-review", assignments: { controlPlane: "private-model", bindings: { "content_safety.input": "model" } }, validationReport: { checkedAt: now.toISOString(), checks: [{ id: "probe:content_safety.input:model", status: "passed", evidenceKind: "nemo-rail-v1", message: "private-evidence", cases: [{ inputContent: "private-prompt" }] }] } },
+    }) };
+    const response = await appWith("user", models).request("/api/v1/guardrail-capabilities");
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({ models: [{ id: "model", name: "Safety model" }], active: null, activating: null,
+      draft: { revision: 1, assignments: { bindings: { "content_safety.input": "model" } }, validationReport: { checkedAt: now.toISOString(), checks: [{ id: "probe:content_safety.input:model", status: "passed", evidenceKind: "nemo-rail-v1" }] } } });
   });
 
   it("routes save and validation to one assignment target", async () => {
@@ -126,7 +174,11 @@ describe("Model configuration HTTP routes", () => {
     })).status).toBe(200);
     expect(models.updateAssignment).toHaveBeenCalledWith("content_safety.input", modelId, "admin-1", undefined);
     expect((await app.request("/api/v1/model-configuration/draft/assignments/content_safety.input/validations", { method: "POST" })).status).toBe(200);
-    expect(models.validateAssignment).toHaveBeenCalledWith("content_safety.input", "admin-1");
+    expect(models.validateAssignment).toHaveBeenCalledWith("content_safety.input", "admin-1", undefined);
+    expect((await app.request("/api/v1/model-configuration/draft/assignments/content_safety.input/validations", {
+      method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ modelId }),
+    })).status).toBe(200);
+    expect(models.validateAssignment).toHaveBeenLastCalledWith("content_safety.input", "admin-1", { modelId });
   });
 
   it("requires an administrator to create Providers", async () => {
@@ -145,8 +197,9 @@ describe("Model configuration HTTP routes", () => {
     expect(response.status).toBe(200);
     expect(models.testModelConnection).toHaveBeenCalledWith("model-1", "admin-1");
     expect(models.revalidateModel).not.toHaveBeenCalled();
-    expect((await appWith("user", models).request("/api/v1/models/model-1/connection-tests", { method: "POST" })).status).toBe(403);
-    expect(models.testModelConnection).toHaveBeenCalledOnce();
+    expect((await appWith("user", models).request("/api/v1/models/model-1/connection-tests", { method: "POST" })).status).toBe(200);
+    expect(models.testModelConnection).toHaveBeenLastCalledWith("model-1", "user-1");
+    expect(models.testModelConnection).toHaveBeenCalledTimes(2);
   });
 
   it("discovers Models from stored Provider credentials", async () => {
@@ -170,14 +223,14 @@ describe("Model configuration HTTP routes", () => {
   it("returns a conflict when Runner rejects an activation", async () => {
     const failed = { ...revision, state: "failed", failureReason: "Provider prewarm failed." };
     const models = {
-      beginActivation: vi.fn().mockResolvedValue({ ...revision, state: "activating", generation: 9 }),
+      applyConfiguration: vi.fn().mockResolvedValue({ ...revision, state: "activating", generation: 9 }),
       finalizeActivation: vi.fn(),
       view: vi.fn().mockResolvedValue({ ...view, failed }),
     };
     const app = appWith("admin", models, {
       distributeDesiredState: vi.fn().mockResolvedValue({ desiredGeneration: 9, distributionStatus: "syncing" }),
     });
-    const response = await app.request(`/api/v1/model-configuration/revisions/${revision.id}/activate`, { method: "POST" });
+    const response = await app.request('/api/v1/model-configuration/apply', { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ bindingIds: ['content_safety.input'], expectedDraftToken: 'token', expectedActiveId: null }) });
     expect(response.status).toBe(409);
     expect(JSON.stringify(await response.json())).toContain("Provider prewarm failed");
   });
@@ -203,10 +256,34 @@ describe("Model configuration HTTP routes", () => {
     expect(models.validateDraft).toHaveBeenCalledWith("admin-1");
   });
 
+  it("forwards selected bindings and review preconditions and finalizes the new snapshot", async () => {
+    const selection = { bindingIds: ["content_safety.input"], expectedDraftToken: "review-token", expectedActiveId: null };
+    const models = {
+      applyConfiguration: vi.fn().mockResolvedValue({ ...revision, id: "new-snapshot", state: "activating", generation: 9 }),
+      finalizeActivation: vi.fn(), view: vi.fn().mockResolvedValue(view),
+    };
+    const app = appWith("admin", models, { distributeDesiredState: vi.fn().mockResolvedValue({ desiredGeneration: 9, distributionStatus: "ready" }) });
+    const response = await app.request('/api/v1/model-configuration/apply', {
+      method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(selection),
+    });
+    expect(response.status).toBe(200);
+    expect(models.applyConfiguration).toHaveBeenCalledWith("admin-1", selection);
+    expect(models.finalizeActivation).toHaveBeenCalledWith("new-snapshot", "default");
+  });
+
+  it.each([[], ["control_plane"], ["content_safety.input", "content_safety.input"]])("rejects invalid activation selection %j", async bindingIds => {
+    const models = { applyConfiguration: vi.fn() };
+    const response = await appWith("admin", models).request('/api/v1/model-configuration/apply', {
+      method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ bindingIds, expectedDraftToken: "token", expectedActiveId: null }),
+    });
+    expect(response.status).toBe(400);
+    expect(models.applyConfiguration).not.toHaveBeenCalled();
+  });
+
   it("finalizes an activation only after Runner distribution reports ready", async () => {
     const activeView = { ...view, draft: { ...revision, state: "draft" }, active: { ...revision, state: "active" } };
     const models = {
-      beginActivation: vi.fn().mockResolvedValue({ ...revision, state: "activating", generation: 9 }),
+      applyConfiguration: vi.fn().mockResolvedValue({ ...revision, state: "activating", generation: 9 }),
       finalizeActivation: vi.fn(),
       view: vi.fn().mockResolvedValue(activeView),
     };
@@ -214,10 +291,14 @@ describe("Model configuration HTTP routes", () => {
       distributeDesiredState: vi.fn().mockResolvedValue({ desiredGeneration: 9, distributionStatus: "ready" }),
     });
 
-    const response = await app.request(`/api/v1/model-configuration/revisions/${revision.id}/activate`, { method: "POST" });
+    const response = await app.request('/api/v1/model-configuration/apply', { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ bindingIds: ['content_safety.input'], expectedDraftToken: 'token', expectedActiveId: null }) });
 
     expect(response.status).toBe(200);
-    expect(models.finalizeActivation).toHaveBeenCalledWith(revision.id);
+    expect(models.finalizeActivation).toHaveBeenCalledWith(revision.id, "default");
+  });
+
+  it.each(['/api/v1/model-configuration/rollback', '/api/v1/model-configuration/revisions/old/activate'])("removes the historical operation %s", async path => {
+    expect((await appWith('admin', {}).request(path, { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{}' })).status).toBe(404);
   });
 
   it("leases only allow-listed credentials to an authenticated Runner", async () => {
@@ -248,19 +329,38 @@ describe("Model configuration HTTP routes", () => {
       "33dcc196-94f6-42ac-b104-0c975b3be5ef",
     ], undefined);
   });
+
+  it("requires pool credentials for model resolution when pool identities are enabled", async () => {
+    const poolA = "pool-a-token-with-at-least-32-characters";
+    const poolB = "pool-b-token-with-at-least-32-characters";
+    const scopedConfig = { ...config, runnerPoolTokens: new Map([["pool-a", poolA], ["pool-b", poolB]]) };
+    const models = { resolveCredentials: vi.fn().mockResolvedValue({}) };
+    const app = appWith("admin", models, {}, scopedConfig);
+    const body = JSON.stringify({ refs: ["2da89935-e001-4a43-a47b-95f419666bb0"], leaseId: "2da89935-e001-4a43-a47b-95f419666bb1" });
+    const request = (token: string) => app.request("/api/internal/v1/model-credentials/resolve", {
+      method: "POST", headers: { "content-type": "application/json", authorization: `Bearer ${token}` }, body,
+    });
+    expect((await request(config.runnerToken)).status).toBe(401);
+    expect(models.resolveCredentials).not.toHaveBeenCalled();
+    expect((await request(poolA)).status).toBe(200);
+    expect(models.resolveCredentials).toHaveBeenLastCalledWith(["2da89935-e001-4a43-a47b-95f419666bb0"], "2da89935-e001-4a43-a47b-95f419666bb1", "pool-a");
+    expect((await request(poolB)).status).toBe(200);
+    expect(models.resolveCredentials).toHaveBeenLastCalledWith(["2da89935-e001-4a43-a47b-95f419666bb0"], "2da89935-e001-4a43-a47b-95f419666bb1", "pool-b");
+  });
 });
 
 function appWith(
   role: "admin" | "user",
   models: Partial<ModelConfigurationService>,
   runnerControl: Partial<RunnerControlServer> = {},
+  appConfig = config,
 ) {
   const auth = {
-    api: { getSession: vi.fn().mockResolvedValue({ user: { id: `${role}-1`, role } }) },
+    api: { getSession: vi.fn().mockResolvedValue({ session: { id: "fixture-session", activeProjectId: "projectA" }, user: { id: `${role}-1`, role } }) },
     handler: vi.fn(),
   } as unknown as ControllerAuth;
   return createHttpApp({
-    config,
+    config: appConfig,
     auth,
     service: {} as ControlPlaneService,
     runnerControl: {

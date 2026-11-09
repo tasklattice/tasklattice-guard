@@ -24,11 +24,11 @@ function validate(schema: object, value: unknown) {
   const check = ajv.compile({ ...schema, components: contract.components });
   return { valid: check(value), errors: check.errors };
 }
-function setup() {
+function setup(authenticated = true) {
   const config = loadConfig({ NODE_ENV: "test", CONTROLLER_DATABASE_URL: "postgresql://test:test@localhost/test",
     CONTROLLER_RUNNER_TOKEN: "runner-token-that-is-at-least-32-characters", CONTROLLER_ARTIFACT_SIGNING_KEY_PATH: "/tmp/test-key.pem",
     CONTROLLER_POLICY_CATALOG_DIR: resolve("../runner/toolkit/policy_library/assets"), BETTER_AUTH_SECRET: "better-auth-secret-that-is-at-least-32-characters" });
-  return createHttpApp({ config, auth: { api: { getSession: vi.fn().mockResolvedValue({ user: { id: "reader", role: "user" } }) } } as unknown as ControllerAuth,
+  return createHttpApp({ config, auth: { api: { getSession: vi.fn().mockResolvedValue(authenticated ? { session: { id: "fixture-session", activeProjectId: "projectA" }, user: { id: "reader", role: "user", projectId: "projectA" } } : null) } } as unknown as ControllerAuth,
     service: { trafficRouting: { list: async () => [] } } as unknown as ControlPlaneService,
     runnerControl: {} as RunnerControlServer, metrics: { registry: new Registry() } as ControllerMetrics });
 }
@@ -55,10 +55,23 @@ describe("Generated OpenAPI contract", () => {
       const operation = contract.paths[path.replace(/:([^/]+)/g, "{$1}")][method.toLowerCase()];
       expect(operation["x-token-permission"]).toEqual({ module, access });
       expect(operation.security).toContainEqual({ personalAccessToken: [] });
-      if (access === "write") expect(operation["x-token-account-role"]).toBe("admin");
+      expect(operation["x-token-account-role"]).toBe(operation["x-account-role"]);
     }
     expect(contract.paths["/api/v1/account/access-tokens"].post.security).toEqual([{ sessionCookie: [] }]);
     expect(contract.paths["/api/v1/system/status"].get.security).toEqual([]);
+  });
+  it("documents the separate user and administrator configuration authority", () => {
+    expect(contract.paths["/api/v1/guardrails"].post["x-account-roles"]).toEqual(["user"]);
+    expect(contract.paths["/api/v1/models"].post["x-account-roles"]).toEqual(["admin", "user"]);
+    expect(contract.paths["/api/v1/model-providers"].post["x-account-roles"]).toEqual(["admin"]);
+    expect(contract.paths["/api/v1/model-providers"].post["x-token-permission"]).toEqual({ module: "providers", access: "write" });
+    expect(contract.paths["/api/v1/guardrails"].get["x-account-roles"]).toEqual(["admin", "user"]);
+    expect(contract.paths["/api/v1/telemetry/events"].get["x-account-roles"]).toEqual(["user"]);
+    expect(contract.paths["/api/v1/telemetry/events/{id}"].get["x-account-roles"]).toEqual(["user"]);
+    expect(contract.paths["/api/v1/audit-events"].get["x-account-roles"]).toEqual(["admin"]);
+    expect(contract.paths["/api/v1/runner-pools/{id}"].patch["x-account-roles"]).toEqual(["admin"]);
+    expect(contract.paths["/api/v1/runner-instances/{runnerId}"].delete["x-account-roles"]).toEqual(["admin"]);
+    expect(contract.paths).not.toHaveProperty("/api/v1/system/baseline");
   });
   it("separates product tags from grants and describes retry boundaries for every operation", () => {
     for (const methods of Object.values(contract.paths) as any[]) {
@@ -72,9 +85,23 @@ describe("Generated OpenAPI contract", () => {
     const traffic = contract.paths["/api/v1/routers/{id}/traffic-distribution"].get;
     expect(traffic.tags).toEqual(["telemetry"]);
     expect(traffic["x-token-permission"]).toEqual({ module: "routers", access: "read" });
-    const publish = contract.paths["/api/v1/routers/{id}/publish"].post;
-    expect(publish["x-idempotency"]).toMatchObject({ mode: "keyed", conflictStatus: 409 });
-    expect(publish.description).toContain("publication.revision");
+    const approve = contract.paths["/api/v1/routers/{id}/change-requests/{changeId}/approve"].post;
+    expect(approve["x-idempotency"]).toMatchObject({ mode: "state-transition" });
+    expect(approve["x-token-permission"]).toEqual({ module: "routers", access: "write" });
+    expect(approve.description).toContain("must differ from the submitter");
+    expect(contract.paths["/api/v1/routers/{id}/publish"]).toBeUndefined();
+  });
+  it("documents project selection and entity grants without restoring administrator business writes", () => {
+    for (const path of ["/api/v1/guardrails", "/api/v1/guardrails/{id}", "/api/v1/routers", "/api/v1/endpoints", "/api/v1/policies"]) {
+      expect(contract.paths[path].get["x-admin-project-scope"]).toBe("required");
+      expect(contract.paths[path].get.parameters).toContainEqual(expect.objectContaining({ name: "X-Project-ID", in: "header", "x-required-for-roles": ["admin"] }));
+    }
+    expect(contract.paths["/api/v1/models"].get["x-admin-project-scope"]).toBe("optional");
+    expect(contract.paths["/api/v1/projects"].post["x-token-permission"]).toEqual({ module: "projects", access: "write" });
+    expect(contract.paths["/api/v1/projects"].post.security).toContainEqual({ personalAccessToken: [] });
+    expect(contract.paths["/api/v1/guardrails/{id}/publish"].post["x-account-roles"]).toEqual(["user"]);
+    const schema = contract.paths["/api/v1/account/access-tokens"].post.requestBody.content["application/json"].schema;
+    expect(validate(schema, { name: "Legacy", expiresInDays: 7, permissions: { settings: "write" } }).valid).toBe(false);
   });
   it("returns JSON 404 for removed API routes rather than the SPA", async () => {
     const app = setup();
@@ -89,13 +116,21 @@ describe("Generated OpenAPI contract", () => {
     expect(validate(tokens, { name: "Automation", permissions: { routers: "read" }, expiresInDays: 30 }).valid).toBe(true);
     expect(validate(tokens, { name: "Automation", permissions: { routers: "read" }, expiresInDays: 31 }).valid).toBe(false);
     expect(validate(tokens, { name: "Automation", permissions: { audit: "write" }, expiresInDays: 30 }).valid).toBe(false);
-    const publish = contract.paths["/api/v1/routers/{id}/publish"].post;
-    expect(validate(publish.requestBody.content["application/json"].schema, { expectedDraftRevision: 1, idempotencyKey: "review-1" }).valid).toBe(true);
-    expect(validate(publish.requestBody.content["application/json"].schema, { expectedDraftRevision: 1 }).valid).toBe(false);
-    expect(validate(publish.requestBody.content["application/json"].schema, { expectedDraftRevision: 0, idempotencyKey: "review-1" }).valid).toBe(false);
-    expect(publish.responses[202].description).toContain("does not guarantee");
+    const submit = contract.paths["/api/v1/routers/{id}/change-requests"].post.requestBody.content["application/json"].schema;
+    const snapshot = { routes: [{ id: "fallback", name: "Fallback", kind: "fallback", enabled: true, selector: { expression: { combinator: "and", conditions: [] } }, targets: [{ id: "t", guardrailId: "g", guardrailVersion: "1", weightBps: 10000 }] }] };
+    expect(validate(submit, { expectedDraftRevision: 1, reviewedSnapshot: snapshot, reviewedEndpointIds: [], reason: "Enable v7" }).valid).toBe(true);
+    expect(validate(submit, { expectedDraftRevision: 1, reviewedSnapshot: snapshot, reviewedEndpointIds: [] }).valid).toBe(false);
+    expect(validate(submit, { expectedDraftRevision: 0, reviewedSnapshot: snapshot, reviewedEndpointIds: [], reason: "Enable v7" }).valid).toBe(false);
+    expect(validate(submit, { expectedDraftRevision: 2, reviewedSnapshot: snapshot, reviewedEndpointIds: [], reason: "Restore", restore: { revision: 1, expectedActiveRevision: 2 } }).valid).toBe(true);
+    expect(validate(submit, { expectedDraftRevision: 2, reviewedSnapshot: snapshot, reviewedEndpointIds: [], reason: "Restore", restore: { revision: 1 } }).valid).toBe(false);
+    const emergency = contract.paths["/api/v1/routers/{id}/change-requests/{changeId}/emergency-apply"].post;
+    expect(validate(emergency.requestBody.content["application/json"].schema, { reason: "Abuse" }).valid).toBe(true);
+    expect(validate(emergency.requestBody.content["application/json"].schema, {}).valid).toBe(false);
+    expect(validate(emergency.requestBody.content["application/json"].schema, { reason: "" }).valid).toBe(false);
+    expect(emergency.responses[202].description).toContain("does not guarantee");
     const intent = contract.paths["/api/v1/authoring/intent-analyses"].post.requestBody.content["application/json"].schema;
-    expect(validate(intent, { purpose: "Block unsafe user requests and protect personal information." }).valid).toBe(true);
+    expect(validate(intent, { purpose: "Explain account features", deniedPurpose: "Refuse unauthorized account access", topicControlMode: "permissive" }).valid).toBe(true);
+    expect(validate(intent, { purpose: "Explain account features" }).valid).toBe(true);
     const version = contract.components.schemas.deleteGuardrailsByIdVersionsByVersionParamVersion;
     expect(version.description).toContain("YYYYMMDD-HHmmss.SSSZ");
     expect(version["x-runtime-validation"]).toBeDefined();
@@ -107,18 +142,18 @@ describe("Generated OpenAPI contract", () => {
     expect(Object.keys(filtered.components.schemas).length).toBeLessThan(Object.keys(contract.components.schemas).length);
   });
   it("serves docs and a single-operation contract without a session, rejects unknown filters", async () => {
-    const app = setup();
-    const response = await app.request("/api/openapi.json?operationId=postRoutersByIdPublish");
+    const app = setup(false);
+    const response = await app.request("/api/openapi.json?operationId=postRoutersByIdChangeRequestsByChangeIdApprove");
     expect(response.status).toBe(200);
     const document = await response.json() as any;
-    expect(Object.keys(document.paths)).toEqual(["/api/v1/routers/{id}/publish"]);
+    expect(Object.keys(document.paths)).toEqual(["/api/v1/routers/{id}/change-requests/{changeId}/approve"]);
     await SwaggerParser.validate(document);
     expect((await app.request("/api/openapi.json?module=missing")).status).toBe(404);
     expect((await app.request("/api/openapi.json?module=routers&operationId=getGuardrails")).status).toBe(404);
     const html = await app.request("/api/docs");
     expect(html.headers.get("content-type")).toContain("text/html");
     expect(await html.text()).toContain("Download full OpenAPI JSON");
-    expect(await (await app.request("/api/llms.txt")).text()).toContain("postRoutersByIdPublish: POST");
+    expect(await (await app.request("/api/llms.txt")).text()).toContain("postRoutersByIdChangeRequestsByChangeIdApprove: POST");
   });
   it("validates serialized handler responses including identity, nulls and errors", async () => {
     const app = setup();

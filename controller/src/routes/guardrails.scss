@@ -1,0 +1,36 @@
+.caller-distribution-table.cds--data-table {
+  min-inline-size: 64rem;
+  table-layout: fixed;
+}
+
+.caller-endpoint-column { width: 18%; }
+.caller-scope-column { width: 29%; }
+.caller-volume-column { width: 13%; }
+.caller-version-column { width: 17%; }
+.caller-outcome-column { width: 13%; }
+.caller-latency-column { width: 10%; }
+
+.caller-distribution-table th {
+  white-space: normal;
+}
+
+.caller-distribution-table td {
+  white-space: normal;
+  overflow-wrap: anywhere;
+  vertical-align: top;
+}
+
+.caller-traffic-scope .flex > span {
+  min-inline-size: 0;
+  max-inline-size: 100%;
+}
+
+.caller-volume-share .cds--progress-bar {
+  flex: 0 1 4rem;
+  min-inline-size: 0;
+}
+
+.caller-volume-share > span {
+  flex-shrink: 0;
+  white-space: nowrap;
+}

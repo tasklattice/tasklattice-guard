@@ -1,0 +1,27 @@
+.project-runner-detail { display: grid; gap: 28px; }
+.project-runner-detail > section + section { padding-block-start: 24px; border-block-start: 1px solid var(--border); }
+.project-runner-detail h3 { margin: 0; font-size: 16px; font-weight: 600; }
+.project-runner-heading { display: flex; align-items: center; gap: 10px; }
+.project-runner-heading h3 { flex: 1; }
+.project-runner-setting-heading { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+.project-runner-muted { margin: 8px 0 16px; color: var(--muted-foreground); font-size: 14px; line-height: 1.6; }
+.project-runner-facts { margin: 20px 0; display: grid; gap: 16px; font-size: 14px; }
+.project-runner-facts > div { display: grid; grid-template-columns: 160px minmax(0, 1fr); gap: 16px; }
+.project-runner-facts dt { color: var(--muted-foreground); }
+.project-runner-facts dd { margin: 0; overflow-wrap: anywhere; }
+.project-runner-status { display: flex; align-items: center; gap: 24px; }
+.project-runner-status a { color: var(--primary); font-size: 14px; }
+.project-runner-status a:hover { text-decoration: underline; }
+.project-runner-form { display: grid; gap: 10px; }
+.project-runner-form label { font-size: 14px; font-weight: 500; }
+.project-runner-form .project-runner-muted { margin: 0 0 16px; font-size: 13px; }
+.project-runner-back { justify-self: start; margin-block-end: 10px; }
+.project-runner-impact { margin: 0 0 20px; padding: 16px; background: var(--muted); font-size: 14px; line-height: 1.6; }
+.project-runner-saved { color: var(--foreground); font-size: 14px; }
+
+.project-runner-status { justify-content: space-between; font-size: 14px; }
+.project-runner-choice { border: 0; margin: 0 0 16px; padding: 0; display: grid; gap: 16px; }
+.project-runner-choice legend { margin-block-end: 16px; font-size: 14px; font-weight: 600; }
+.project-runner-choice label { display: flex; align-items: start; gap: 12px; cursor: pointer; }
+.project-runner-choice input { margin-block-start: 4px; accent-color: var(--primary); }
+.project-runner-choice small { display: block; margin-block-start: 4px; color: var(--muted-foreground); font-size: 13px; line-height: 1.6; font-weight: 400; }

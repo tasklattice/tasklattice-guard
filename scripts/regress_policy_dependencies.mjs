@@ -19,8 +19,8 @@ async function call(path, body, expected = 200, method = body === undefined ? "G
   assert.equal(response.status, expected, `${path}: ${JSON.stringify(result)}`);
   return { result, response };
 }
-const auth = await call("/api/auth/sign-in/email", {
-  email: required("GUARD_REGRESSION_EMAIL"), password: required("GUARD_REGRESSION_PASSWORD"),
+const auth = await call("/api/auth/sign-in/username", {
+  username: required("GUARD_REGRESSION_USERNAME"), password: required("GUARD_REGRESSION_PASSWORD"),
 });
 cookie = auth.response.headers.getSetCookie().map(value => value.split(";")[0]).join("; ");
 assert(cookie);
@@ -28,7 +28,7 @@ const safeSource = 'flow check $text\n  # await MissingAction() is documentation
 const draft = {
   guardrail_category: "content_safety", protection_directory: "content_filters", colang_version: "2.x",
   sources: [{ path: "checks.co", content: safeSource }],
-  rail_bindings: [{ rail_type: "input", flow_name: "check", execution_mode: "detect", on_unsafe: "reject" }],
+  rail_bindings: [{ rail_type: "input", flow_name: "check", execution_mode: "detect", on_unsafe: "block" }],
   action_references: [{ name: "GuardRecordPolicyAction", version: "1.0.0" }],
   test_cases: [{ name: "Ordinary content", rail_type: "input", content: "ordinary", expected_decision: "allow",
     covered_rule_ids: ["flow/input/check"], case_type: "input_rail", required: true }],
@@ -40,10 +40,10 @@ const created = (await call("/api/v1/policies", {
 const path = `/api/v1/policies/${created.id}`;
 console.log(JSON.stringify({ stage: "created", policyId: created.id }));
 async function validate() {
-  await call(`${path}/validation-runs`, {}, 202);
+  await call(`${path}/test-runs`, {}, 202);
   const deadline = Date.now() + 120_000;
   while (Date.now() < deadline) {
-    const result = (await call(`${path}/validation-runs/latest`)).result;
+    const result = (await call(`${path}/test-runs/latest`)).result;
     if (["passed", "failed"].includes(result.status)) return result;
     await delay(500);
   }

@@ -1,3 +1,4 @@
+import { eventSeverity } from "../../shared/security-severity.js";
 import { randomUUID } from "node:crypto";
 
 import { z } from "zod";
@@ -38,6 +39,7 @@ const traceStep = z.object({
 }).passthrough();
 
 const runnerDecision = z.object({
+  model_status: z.enum(["ok", "error", "not_called", "unknown"]).optional(),
   decision: z.enum(["allow", "transform", "block"]),
   action: z.string(),
   reason: z.string().nullable().optional(),
@@ -86,6 +88,7 @@ export type PlaygroundTarget = PublishedPlaygroundTarget | DraftPlaygroundTarget
 
 export type PlaygroundDraftPreview = DraftPlaygroundTarget & {
   actorId: string;
+  allocation: { poolId: string; groupId: string; runtimeUrl: string };
   guardrailId: string;
   guardrailName: string;
   compilerVersion: string;
@@ -214,7 +217,12 @@ export class RunnerPlaygroundClient {
     this.#fetch = input.fetcher ?? globalThis.fetch;
   }
 
-  async testPath(input: PathTestInput): Promise<PathTestResult> {
+  /** Retain the transport while selecting the allocated pool's HTTP authority. */
+  forBaseUrl(baseUrl: string, token = this.#token): RunnerPlaygroundClient {
+    return new RunnerPlaygroundClient({ baseUrl, token, fetcher: this.#fetch });
+  }
+
+  async testPath(input: PathTestInput, endpointAdapter?: string): Promise<PathTestResult> {
     const parsed = parseHttpRequest(input.request);
     const started = performance.now();
     let path: string;
@@ -224,12 +232,13 @@ export class RunnerPlaygroundClient {
       path = `/internal/v1/playground/routers/${encodeURIComponent(input.targetId)}/test`;
       headers = { authorization: `Bearer ${this.#token}`, "content-type": "application/json" };
       body = JSON.stringify({ revision: input.expectedRevision, endpoint_id: input.endpointId,
-        action: input.action, call_id: input.callId, fields: { protocol: "http", ...input.fields },
+        action: input.action, call_id: input.callId, fields: input.fields,
         business_request: requestSource(parsed), endpoint_request: input.endpointRequest,
         text: parsed.body });
     } else {
       const prefix = `/runtime/v1/endpoints/${encodeURIComponent(input.targetId)}`;
-      const allowed = [`${prefix}/guardrails/evaluate`, `${prefix}/beta/litellm_basic_guardrail_api`];
+      const scan = endpointAdapter === "f5-scan";
+      const allowed = scan ? [`${prefix}/backend/v1/scans`] : endpointAdapter === "litellm-generic-guardrail" ? [`${prefix}/beta/litellm_basic_guardrail_api`] : [];
       if (parsed.method !== "POST" || !allowed.includes(parsed.path)) {
         throw new ValidationError("Use the selected Endpoint's POST evaluation path. Arbitrary URLs and query strings are not supported.");
       }
@@ -240,7 +249,8 @@ export class RunnerPlaygroundClient {
         if (values.length > 1) throw new ValidationError("Repeated Endpoint headers are not supported by this test transport.");
         headers[name] = values[0] ?? "";
       }
-      headers["x-api-key"] = input.credential || parsed.headers["x-api-key"]?.[0] || "";
+      if (scan) headers.authorization = `Bearer ${input.credential}`;
+      else headers["x-api-key"] = input.credential || parsed.headers["x-api-key"]?.[0] || "";
       headers["content-type"] ??= "application/json";
       body = parsed.body;
     }
@@ -301,8 +311,8 @@ export class RunnerPlaygroundClient {
     if (!response.ok) {
       throw new ControllerError(
         response.status === 404
-          ? (draft ? "The prepared Guardrail draft preview expired." : "The selected Guardrail Version has not reached GuardRails 0 yet.")
-          : "GuardRails 0 could not evaluate the Playground request.",
+          ? (draft ? "The prepared Guardrail draft preview expired." : "The selected Guardrail Version has not reached the assigned Runner yet.")
+          : "The assigned Runner could not evaluate the Playground request.",
         response.status === 404 ? 409 : 502,
         response.status === 404 ? "playground_artifact_not_ready" : "playground_runner_failed",
       );
@@ -338,7 +348,7 @@ export class RunnerPlaygroundClient {
     );
     if (!response.ok) {
       throw new ControllerError(
-        "GuardRails 0 could not prepare the draft preview.",
+        "The assigned Runner could not prepare the draft preview.",
         response.status === 409 ? 409 : 502,
         response.status === 409 ? "playground_draft_preview_stale" : "playground_draft_preview_failed",
       );
@@ -368,9 +378,13 @@ export async function runPlaygroundInteraction(input: {
   modelId: string;
   message: string;
   history: Array<{ role: "user" | "assistant"; content: string }>;
+  registerInvocation: (callId: string) => Promise<void>;
 }) {
   const interactionId = randomUUID();
   const callId = `playground:${interactionId}`;
+  // Persist before the first Runner call; its telemetry can arrive before the
+  // HTTP response and may be replayed asynchronously after an interruption.
+  await input.registerInvocation(callId);
   const inputResult = await input.runner.evaluate({
     guardrailId: input.guardrail.id,
     target: input.target,
@@ -459,6 +473,7 @@ function checkResult(
     },
     phase,
     decision: result.decision.decision,
+    model_status: result.decision.model_status,
     action: result.decision.action,
     output_content: outputContent,
     latency_ms: result.latencyMs,
@@ -467,20 +482,21 @@ function checkResult(
     triggered_policy: firstFinding?.policy_id ? { id: firstFinding.policy_id, name: firstFinding.policy_id } : null,
     triggered_rule: firstFinding?.rule_id ? { id: firstFinding.rule_id, name: firstFinding.rule_id } : null,
     policies,
-    findings: result.decision.findings.map((finding, index) => ({
+    findings: result.decision.findings.filter(finding => finding.verdict === "matched" || finding.verdict === "unknown").map((finding, index) => ({
       id: `finding-${index + 1}`,
-      severity: (finding.verdict === "unsafe" ? "high" : finding.verdict === "uncertain" ? "medium" : "low") as "high" | "medium" | "low",
+      severity: eventSeverity(finding.risk_severity),
       title: finding.taxonomy_id,
       taxonomy_id: finding.taxonomy_id,
       detail: finding.evidence,
       confidence: finding.confidence,
       recommended_action: finding.recommended_action,
       policy_id: finding.policy_id ?? null,
+      policy_version: typeof finding.policy_version === "string" ? finding.policy_version : null,
       rule_id: finding.rule_id ?? null,
     })),
     trace_summary: {
       steps: result.decision.trace.length,
-      matched_steps: result.decision.trace.filter((step) => step.verdict === "unsafe" || step.outcome === "unsafe").length,
+      matched_steps: result.decision.trace.filter((step) => step.verdict === "matched" || step.outcome === "matched").length,
     },
     trace: result.decision.trace,
   };

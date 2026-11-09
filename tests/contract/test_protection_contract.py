@@ -25,6 +25,14 @@ def test_controller_runner_protection_metadata_agree() -> None:
     assert controller == runner
 
 
+def test_topic_rule_parameters_own_the_current_context_requirements() -> None:
+    current = next(item for item in policy_catalog() if item["id"] == "business-topics")
+    # Context and capability contracts remain stable across Policy upgrades.
+    assert current["protection"]["execution"] == "model"
+    assert current["protection"]["requiredContext"] == ["allowed_topics"]
+    assert current["protection"]["modelCapabilities"] == ["topic_control"]
+
+
 def test_native_contracts_have_explicit_supported_surfaces() -> None:
     contract = protection_contracts()
     assert len(set(contract["directories"])) == 8

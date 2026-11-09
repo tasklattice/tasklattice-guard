@@ -1,0 +1,130 @@
+---
+id: "contextual-grounding"
+title: "Contextual grounding"
+summary: "Check whether a model answer is supported by the user query and supplied reference sources."
+order: 0
+---
+
+Contextual grounding checks **Output** only. It answers one limited question:
+
+> Is this answer supported by the reference sources supplied with this request, and is it relevant to the query?
+
+It is not general fact checking and it does not retrieve company documents. The caller must supply reference material through `grounding_sources`.
+
+<a id="grounding-boundary" />
+
+## Protection object and boundary
+
+| Item | Description |
+| --- | --- |
+| Protected object | The final model answer |
+| Evidence | `query` and at least one nonempty `grounding_sources` entry |
+| Not responsible for | Absolute world truth, internal document retrieval, input safety |
+| Execution stage | Output |
+
+Without a query or sources, the check cannot silently pass. The caller must provide the complete context.
+
+<a id="grounding-factuality" />
+
+## Difference from a factuality judge
+
+The current implementation is **contextual grounding**:
+
+```text
+answer vs supplied evidence
+```
+
+A model that directly decides whether a sentence is obviously false is a **factuality judge**, not this capability. Do not disguise a source-free request as grounding. That changes the evidence contract.
+
+A factuality judge needs its own profile, prompt, response contract and tests. It is not part of this capability.
+
+<a id="grounding-model" />
+
+## Model requirements
+
+Grounding uses OpenAI-compatible chat completion. The model must support:
+
+- `POST {baseUrl}/chat/completions`;
+- `Authorization: Bearer <credential>`;
+- `temperature: 0`;
+- `response_format: {type: "json_object"}`;
+- Strict JSON output without extra prose.
+
+DeepSeek `deepseek-flash` has been validated with `tali.grounding-judge.v1`. Other OpenAI-compatible models require their own validation. A successful chat call alone is not compatibility evidence.
+
+<a id="grounding-request" />
+
+## Backend API contract
+
+```http
+POST {baseUrl}/chat/completions
+Authorization: Bearer <credential>
+Content-Type: application/json
+```
+
+```json
+{
+  "model": "deepseek-flash",
+  "temperature": 0.0,
+  "max_tokens": 1200,
+  "response_format": {"type": "json_object"},
+  "messages": [
+    {"role": "system", "content": "<grounding judge prompt>"},
+    {"role": "user", "content": "{\"queries\":[{\"block_id\":\"query\",\"text\":\"How long is the warranty?\"}],\"grounding_sources\":[{\"block_id\":\"source-1\",\"text\":\"The product warranty lasts one year.\"}],\"response\":{\"block_id\":\"answer\",\"text\":\"The product warranty lasts one year.\"}}"}
+  ]
+}
+```
+
+The OpenAI chat response must contain this JSON in `choices[0].message.content`:
+
+```json
+{
+  "grounding_score": 0.95,
+  "relevance_score": 0.9,
+  "claims": [
+    {
+      "id": "claim-1",
+      "claim": "The product warranty lasts one year",
+      "support": "supported",
+      "confidence": 0.95,
+      "source_block_ids": ["source-1"],
+      "rationale": "source-1 states the one-year warranty."
+    }
+  ],
+  "reason": "The answer is supported by the reference source and relevant to the query."
+}
+```
+
+Constraints:
+
+| Field | Requirement |
+| --- | --- |
+| `grounding_score` | `0..1` |
+| `relevance_score` | `0..1` |
+| `claims` | At most 100 |
+| `support` | `supported`, `unsupported`, or `uncertain` |
+| `source_block_ids` | Must reference source blocks in the request |
+
+<a id="grounding-limits" />
+
+## Limits and failures
+
+| Input | Limit |
+| --- | ---: |
+| Query | 1,000 characters |
+| Joined grounding sources | 100,000 characters |
+| Answer | 5,000 characters |
+
+The check fails closed when the service is unavailable, JSON is invalid, a source reference is unknown, or context is missing. Runtime evidence retains thresholds and failure classification.
+
+<a id="grounding-config" />
+
+## Configuration
+
+1. Register an OpenAI-compatible Provider.
+2. Register a Model with `tali.grounding-judge.v1`.
+3. Select it for `contextual_grounding.output` in Protection Capabilities.
+4. Validate the binding with a query and source sample.
+5. Enable `model/grounding` on Output only.
+
+The capability needs a model binding and complete reference context. The Full-feature default Profile does not enable it.

@@ -1,31 +1,39 @@
 // @vitest-environment node
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { Pool } from 'pg';
-import { drizzle } from 'drizzle-orm/node-postgres';
 import { sql } from 'drizzle-orm';
 import { queryRuntimeMetrics } from './runtime-metrics.js';
+import { loadConfig } from '../config.js';
+import type { ControllerDatabase } from '../db/client.js';
 import { ControlPlaneService } from './control-plane.js';
 import { boundedRead } from '../db/read-budget.js';
+import { createTestDatabase } from '../db/postgres-test-database.js';
 
 // Uses session-local temporary tables only; never inserts/deletes application records.
-describe.skipIf(!process.env.TEST_DATABASE_URL)('bounded runtime observability (PostgreSQL)', () => {
-  const pool = new Pool({ connectionString: process.env.TEST_DATABASE_URL, max: 1 });
-  const db = drizzle(pool);
-  const service = Object.assign(Object.create(ControlPlaneService.prototype), { db, runtimeLogEncryptionKey: null }) as ControlPlaneService;
+describe.skipIf(!process.env.GUARD_TEST_POSTGRES_URL)('bounded runtime observability (PostgreSQL)', () => {
+  let database: Awaited<ReturnType<typeof createTestDatabase>>;
+  let db: ControllerDatabase;
+  const config = loadConfig({ NODE_ENV: 'test', CONTROLLER_DATABASE_URL: process.env.GUARD_TEST_POSTGRES_URL ?? 'postgresql://unused:unused@localhost/unused',
+    CONTROLLER_RUNNER_TOKEN: 'runner-token-that-is-at-least-32-characters', CONTROLLER_ARTIFACT_SIGNING_KEY_PATH: '/tmp/unused-signing-key.pem',
+    BETTER_AUTH_SECRET: 'better-auth-secret-that-is-at-least-32-characters' });
+  const makeService = () => new ControlPlaneService(db, config);
+  let service: ControlPlaneService;
   beforeAll(async () => {
-    for (const name of ['runtime_event','guardrail','guardrail_router','endpoint','guardrail_validation_run']) {
-      await db.execute(sql.raw(`CREATE TEMP TABLE ${name} (LIKE public.${name} INCLUDING DEFAULTS)`));
+    database = await createTestDatabase(process.env.GUARD_TEST_POSTGRES_URL!, 'runtime_observability', { maxConnections: 1 });
+    db = database.db;
+    service = makeService();
+    for (const name of ['runtime_event','guardrail','traffic_router','endpoint','guardrail_validation_run','route_assignment']) {
+      await db.execute(sql`CREATE TEMP TABLE ${sql.identifier(name)} (LIKE ${sql.identifier(database.schema)}.${sql.identifier(name)} INCLUDING DEFAULTS)`);
     }
     await db.execute(sql`INSERT INTO runtime_event(id,occurred_at,request_id,runner_id,guardrail_id,router_id,direction,decision,duration_ms,metadata)
       SELECT 'event-'||lpad(n::text,6,'0'),now()-interval '1 hour','request-'||n,'runner','guard','router','incoming',
         CASE WHEN n%2=0 THEN 'block' ELSE 'allow' END,n,
-        jsonb_build_object('captureLevel','trace','contentBefore',repeat('private content',2500),'contentCiphertext','private ciphertext',
-          'trace',jsonb_build_array(jsonb_build_object('kind','action','name','same-action','policyId','same-policy','durationMs',n,'outcome','safe')),
-          'findings', CASE WHEN n%2=0 THEN jsonb_build_array(jsonb_build_object('risk','test','verdict','unsafe','confidence',.95,'evidence',repeat('private evidence',100))) ELSE '[]'::jsonb END,
+        jsonb_build_object('executionStatus','complete','captureLevel','trace','contentBefore',repeat('private content',2500),'contentCiphertext','private ciphertext','httpRequest',jsonb_build_object('bodyBase64',repeat('aaaa',1000)),
+          'trace',jsonb_build_array(jsonb_build_object('kind','action','name','same-action','policyId','same-policy','durationMs',n,'outcome','not_matched')),
+          'findings', CASE WHEN n%2=0 THEN jsonb_build_array(jsonb_build_object('risk','test','verdict','matched','confidence',.95,'riskSeverity','high','evidence',repeat('private evidence',100))) ELSE '[]'::jsonb END,
           'usage',jsonb_build_object('model_invocations',1))
       FROM generate_series(1,10001) n`);
   }, 30_000);
-  afterAll(async () => { await pool.end(); });
+  afterAll(async () => { await database?.drop(); });
 
   it('aggregates more than 10000 events exactly without returning raw evidence', async () => {
     const result = await queryRuntimeMetrics(db as any, { window: '24h', routerId: 'router' });
@@ -62,10 +70,12 @@ describe.skipIf(!process.env.TEST_DATABASE_URL)('bounded runtime observability (
     expect(detail.metadata.trace).toHaveLength(1);
     expect(detail.metadata).not.toHaveProperty('contentBefore');
     expect(detail.metadata).not.toHaveProperty('contentCiphertext');
+    expect(detail.metadata).not.toHaveProperty('httpRequest');
+    expect(detail.metadata.contentAvailable).toBe(true);
   });
 
   it('finds older critical events before applying the page limit', async () => {
-    await db.execute(sql`UPDATE runtime_event SET metadata=jsonb_build_object('findings',jsonb_build_array(jsonb_build_object('verdict','error'))) WHERE id='event-000001'`);
+    await db.execute(sql`UPDATE runtime_event SET metadata=jsonb_build_object('findings',jsonb_build_array(jsonb_build_object('verdict','matched','riskSeverity','critical','recommendedAction','allow'))) WHERE id='event-000001'`);
     try {
       const page = await service.queryRuntimeEvents({ limit:1, severity:'critical', routerId:'router' });
       expect(page.items.map(r => r.id)).toEqual(['event-000001']);
@@ -73,6 +83,60 @@ describe.skipIf(!process.env.TEST_DATABASE_URL)('bounded runtime observability (
     } finally {
       await db.execute(sql`UPDATE runtime_event SET metadata='{}'::jsonb WHERE id='event-000001'`);
     }
+  });
+
+  it('keeps unclassified history and runtime errors separate from the five risk levels', async () => {
+    const fixtures = [
+      ['missing-severity', { verdict:'matched', confidence:1, recommendedAction:'block' }],
+      ['informational', { verdict:'unknown', riskSeverity:'informational', recommendedAction:'allow' }],
+      ['error', { verdict:'error', riskSeverity:'critical', recommendedAction:'block' }],
+      ['not_matched', { verdict:'not_matched', riskSeverity:'high', recommendedAction:'allow' }],
+      ['low', { verdict:'matched', riskSeverity:'low', recommendedAction:'block' }],
+    ] as const;
+    for (const [id, finding] of fixtures) await db.execute(sql`INSERT INTO runtime_event(id,occurred_at,request_id,runner_id,guardrail_id,router_id,direction,decision,duration_ms,metadata)
+      VALUES (${id},now(),${id},'runner','classification','classification','incoming','allow',1,${JSON.stringify({ findings:[finding] })}::jsonb)`);
+    try {
+      const result = await queryRuntimeMetrics(db as any, {window:'24h',guardrailId:'classification'});
+      expect(result.findings_summary).toMatchObject({total:3,critical:0,high:0,medium:0,low:1,informational:1,unclassified:1});
+      for (const [severity,id] of [['unclassified','missing-severity'],['informational','informational'],['low','low']] as const) {
+        const page = await service.queryRuntimeEvents({ guardrailId:'classification', findingsOnly:true, severity });
+        expect(page.items.map(row => row.id)).toEqual([id]);
+      }
+      const first = await service.queryRuntimeEvents({ guardrailId:'classification', findingsOnly:true, severity:['informational','low'], limit:1 });
+      expect(first.items).toHaveLength(1);
+      expect(first.nextCursor).toBeTruthy();
+      const second = await service.queryRuntimeEvents({ guardrailId:'classification', findingsOnly:true, severity:['informational','low'], limit:1, cursor:first.nextCursor! });
+      expect([first.items[0]!.id, second.items[0]!.id].sort()).toEqual(['informational','low']);
+      expect(second.nextCursor).toBeNull();
+      const security = await service.queryRuntimeEvents({guardrailId:'classification', findingsOnly:true});
+      expect(security.items).toHaveLength(3);
+      const runtime = await service.queryRuntimeEvents({guardrailId:'classification'});
+      expect(runtime.items).toHaveLength(5);
+    } finally { await db.execute(sql`DELETE FROM runtime_event WHERE guardrail_id='classification'`); }
+  });
+
+  it('queries call failures alongside fail-closed checkpoints with exact scope and pagination', async () => {
+    await db.execute(sql`INSERT INTO route_assignment(decision_id,call_id,occurred_at,endpoint_id,router_id,router_revision,route_id,target_id,guardrail_id,guardrail_version,assignment_status,completed_at,completion_inferred,outcome,duration_ms)
+      VALUES ('inferred','error-call','2026-09-19T10:00:00Z','error-endpoint','error-router',2,'fallback','target','error-guard','v1','assigned','2026-09-19T10:05:00Z',true,'timeout',300000),
+             ('out-of-window','later-call','2026-09-19T11:00:00Z','error-endpoint','error-router',2,'fallback','target','error-guard','v1','assigned','2026-09-19T11:05:00Z',false,'error',100)`);
+    await db.execute(sql`INSERT INTO runtime_event(id,occurred_at,request_id,runner_id,endpoint_id,router_id,guardrail_id,direction,decision,duration_ms,metadata)
+      VALUES ('failed-check','2026-09-19T10:00:00Z','error-call','runner','error-endpoint','error-router','error-guard','incoming','block',50,'{"executionStatus":"error","trace":[{"id":"span","outcome":"error","errorType":"AuthenticationError"}],"routerRevision":2,"routeId":"fallback","targetId":"target"}'),
+             ('allowed-check','2026-09-19T09:59:59Z','error-call','runner','error-endpoint','error-router','error-guard','incoming','allow',2,'{}')`);
+    const scope = { outcome:'error', routerId:'error-router', endpointId:'error-endpoint', routerRevision:2, routeId:'fallback', targetId:'target', since:new Date('2026-09-19T09:00:00Z'), until:new Date('2026-09-19T10:30:00Z'), limit:1 };
+    const first = await service.queryRuntimeEvents(scope);
+    const second = await service.queryRuntimeEvents({...scope, cursor:first.nextCursor!});
+    expect([first.items[0]!.id, second.items[0]!.id].sort()).toEqual(['call:inferred','failed-check']);
+    expect(second.nextCursor).toBeNull();
+    expect(first.items[0]!.metadata.executionStatus).toBe('error');
+    expect(JSON.stringify(first)).not.toContain('AuthenticationError');
+    const detail = await service.getRuntimeEvent('call:inferred');
+    expect(detail).toMatchObject({requestId:'error-call',direction:'completion',durationMs:300000,metadata:{executionStatus:"timeout",completionInferred:true,decisionId:'inferred',routerRevision:2}});
+    const related = await service.queryRuntimeEvents({requestId:detail.requestId});
+    expect(related.items.map(row=>row.id).sort()).toEqual(['allowed-check','call:inferred','failed-check']);
+    await expect(service.getRuntimeEvent('call:missing')).rejects.toThrow();
+    // A late real completion resolves the inferred failure without stale duplicate logs.
+    await db.execute(sql`UPDATE route_assignment SET outcome='allow',completion_inferred=false WHERE decision_id='inferred'`);
+    expect((await service.queryRuntimeEvents(scope)).items.map(row=>row.id)).toEqual(['failed-check']);
   });
 
   it('cancels SQL at the shared deadline and releases the only pool connection', async () => {
@@ -86,9 +150,9 @@ describe.skipIf(!process.env.TEST_DATABASE_URL)('bounded runtime observability (
   });
 
   it('preserves old endpoint activity while counting only recent requests', async () => {
-    await db.execute(sql`INSERT INTO endpoint(id,name,adapter) VALUES ('activity','Activity','test')`);
+    await db.execute(sql`INSERT INTO endpoint (project_id,id,name,adapter) VALUES ('projectA','activity','Activity','test')`);
     await db.execute(sql`INSERT INTO runtime_event(id,occurred_at,request_id,runner_id,endpoint_id,direction,decision,duration_ms,metadata) VALUES
-      ('old-activity',now()-interval '40 days','old','runner','activity','outgoing','error',1,'{"streamFinalCheck":true}'),
+      ('old-activity',now()-interval '40 days','old','runner','activity','outgoing','error',1,'{"executionStatus":"error","streamFinalCheck":true}'),
       ('recent-activity',now()-interval '1 hour','recent','runner','activity','incoming','allow',1,'{}')`);
     const result = await service.runtimeEndpointActivity();
     expect(result.items[0]).toMatchObject({id:'activity',request_count:1,error_count:0});
@@ -100,15 +164,15 @@ describe.skipIf(!process.env.TEST_DATABASE_URL)('bounded runtime observability (
   });
 
   it('deduplicates failed requests, includes blocks as success, and computes detection P95', async () => {
-    await db.execute(sql`INSERT INTO endpoint(id,name,adapter) VALUES ('quality','Quality','test'), ('idle','Idle','test')`);
+    await db.execute(sql`INSERT INTO endpoint (project_id,id,name,adapter) VALUES ('projectA','quality','Quality','test'),('projectA','idle','Idle','test')`);
     await db.execute(sql`INSERT INTO runtime_event(id,occurred_at,request_id,runner_id,endpoint_id,direction,decision,duration_ms,metadata) VALUES
-      ('quality-1',now(),'failed-request','runner','quality','incoming','error',10,'{}'),
-      ('quality-2',now(),'failed-request','runner','quality','outgoing','timeout',90,'{}'),
+      ('quality-1',now(),'failed-request','runner','quality','incoming','error',10,'{"executionStatus":"error"}'),
+      ('quality-2',now(),'failed-request','runner','quality','outgoing','timeout',90,'{"executionStatus":"timeout"}'),
       ('quality-3',now(),'blocked-request','runner','quality','incoming','block',20,'{}'),
       ('quality-4',now(),'allowed-request','runner','quality','incoming','allow',30,'{}'),
-      ('quality-old',now()-interval '2 days','old-failure','runner','quality','incoming','error',9999,'{}'),
+      ('quality-old',now()-interval '2 days','old-failure','runner','quality','incoming','error',9999,'{"executionStatus":"error"}'),
       ('idle-old',now()-interval '8 days','idle-old','runner','idle','incoming','allow',99,'{}')`);
-    const freshService = Object.assign(Object.create(ControlPlaneService.prototype), { db }) as ControlPlaneService;
+    const freshService = makeService();
     const result = await freshService.runtimeEndpointActivity();
     expect(result.items.find(item => item.id === 'quality')).toMatchObject({ request_count: 3, error_count: 1, detection_p95_ms: 90 });
     expect(result.items.find(item => item.id === 'idle')).toMatchObject({ request_count: 0, error_count: 0, detection_p95_ms: null });
@@ -123,5 +187,49 @@ describe.skipIf(!process.env.TEST_DATABASE_URL)('bounded runtime observability (
     expect(result.policy_distribution[0]).toMatchObject({policy_id:'policy-a',invocations:2,hit_share:100});
     expect(result.action_metrics).toHaveLength(1);
     expect(result.rail_metrics).toHaveLength(0);
+  });
+});
+
+// The shared predicate is also tested without a database by runtime-outcome.test.
+// Cases below exercise actual SQL filtering, projection and metric aggregation.
+describe.skipIf(!process.env.GUARD_TEST_POSTGRES_URL)('authoritative Guardrail status (PostgreSQL)', () => {
+  let database: Awaited<ReturnType<typeof createTestDatabase>>;
+  let db: Awaited<ReturnType<typeof createTestDatabase>>['db'];
+  let service: ControlPlaneService;
+  beforeAll(async () => {
+    database = await createTestDatabase(process.env.GUARD_TEST_POSTGRES_URL!, 'guardrail_status', { maxConnections: 1 });
+    db = database.db;
+    service = Object.assign(Object.create(ControlPlaneService.prototype), { db, runtimeLogEncryptionKey: null });
+    for (const name of ['runtime_event','guardrail','traffic_router','endpoint','guardrail_validation_run','route_assignment']) {
+      await db.execute(sql`CREATE TEMP TABLE ${sql.identifier(name)} (LIKE ${sql.identifier(database.schema)}.${sql.identifier(name)} INCLUDING DEFAULTS)`);
+    }
+    const values = [
+      ['blocked', 'block', 'complete', [{ status:'error', timedOut:true }]],
+      ['failed', 'block', 'error', []],
+      ['timeout', 'block', 'timeout', []],
+      ['fail-open', 'allow', 'degraded', [{ status:'error', timedOut:true }]],
+    ] as const;
+    for (const [id, decision, status, trace] of values) {
+      const metadata = { executionStatus:status, trace,
+        diagnostics: [{ code:'needs_context', message:'A required check is missing context.', affectsResult: status === 'error' }] };
+      await db.execute(sql`INSERT INTO runtime_event(id,occurred_at,request_id,runner_id,router_id,direction,decision,duration_ms,metadata)
+        VALUES (${id},now(),${id},'runner','contract','incoming',${decision},10,${JSON.stringify(metadata)}::jsonb)`);
+    }
+  });
+  afterAll(async () => { await database?.drop(); });
+  it('does not turn an independent diagnostic into a request error', async () => {
+    const rows = await service.queryRuntimeEvents({ routerId:'contract', outcome:'error' });
+    expect(rows.items.map(r => r.id).sort()).toEqual(['failed','timeout']);
+    const all = await service.queryRuntimeEvents({ routerId:'contract' });
+    expect(all.items.find(r => r.id === 'blocked')?.metadata).toMatchObject({ executionStatus:'complete' });
+    expect(all.items.find(r => r.id === 'timeout')?.metadata.executionStatus).toBe('timeout');
+    const detail = await service.getRuntimeEvent('failed');
+    expect(detail.metadata.diagnostics).toEqual([{ code:'needs_context', message:'A required check is missing context.', affectsResult:true }]);
+  });
+  it('uses final execution status for request error and timeout counts', async () => {
+    const result = await queryRuntimeMetrics(db as any, { window:'24h', routerId:'contract' });
+    expect(result.total_decisions).toBe(4);
+    expect(result.error_rate).toBe(50);
+    expect(result.block_rate).toBe(25);
   });
 });

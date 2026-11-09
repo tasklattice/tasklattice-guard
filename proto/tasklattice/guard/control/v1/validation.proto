@@ -2,10 +2,28 @@ syntax = "proto3";
 
 package tasklattice.guard.control.v1;
 
+import "artifact.proto";
 import "common.proto";
 import "enforcement_action.proto";
 import "evaluation.proto";
 import "runtime.proto";
+
+// Coarse execution stage reported while a validation run is in progress.
+enum ValidationExecutionPhase {
+  VALIDATION_EXECUTION_PHASE_UNSPECIFIED = 0;
+  VALIDATION_EXECUTION_PHASE_PREPARING = 1;
+  VALIDATION_EXECUTION_PHASE_EXECUTING = 2;
+  VALIDATION_EXECUTION_PHASE_FINALIZING = 3;
+}
+
+// Actual execution observations. Completion is confirmed separately by ValidationResult.
+message ValidationProgress {
+  string runner_id = 1;
+  string run_id = 2;
+  ValidationExecutionPhase phase = 3;
+  int32 completed_cases = 4;
+  int32 passed_cases = 5;
+}
 
 // Reviewed Guardrail-local composition assertion; never inferred from observed output.
 message ValidationExpectedMatch {
@@ -78,6 +96,22 @@ message ValidationMetrics {
   double escalation_rate = 6;
   // End-to-end case latency p95 in milliseconds.
   int32 p95_latency_ms = 7;
+  int32 skipped = 8;
+  int32 executed = 9;
+}
+
+// Rule evidence is independent of the final composed decision.
+enum ValidationEvidenceStatus {
+  VALIDATION_EVIDENCE_STATUS_UNSPECIFIED = 0;
+  VALIDATION_EVIDENCE_STATUS_NOT_REQUIRED = 1;
+  VALIDATION_EVIDENCE_STATUS_OBSERVED = 2;
+  VALIDATION_EVIDENCE_STATUS_ABSENT = 3;
+  VALIDATION_EVIDENCE_STATUS_NOT_MATCHED = 4;
+  VALIDATION_EVIDENCE_STATUS_NOT_REACHED = 5;
+  VALIDATION_EVIDENCE_STATUS_PREEMPTED_BY = 6;
+  VALIDATION_EVIDENCE_STATUS_SHADOWED_BY = 7;
+  VALIDATION_EVIDENCE_STATUS_MISSING = 8;
+  VALIDATION_EVIDENCE_STATUS_UNVERIFIABLE = 9;
 }
 
 // Observed decision, evidence, and trace for one validation case.
@@ -133,9 +167,22 @@ message ValidationCaseResult {
   // Original unmodified source expectation, present when a local override was applied.
   optional ValidationDecision template_expected_decision = 36;
   repeated string assertion_failures = 37;
-  // Terminal Rule evidence preceding the source target in Policy/Rule execution order.
-  // The target is not claimed as matched; this satisfies only the ordered composition contract.
-  repeated ValidationExpectedMatch preempting_matches = 38;
+  reserved 38, 46;
+  bool skipped = 39;
+  string skip_reason = 40;
+  // Actual target Rule evidence, independent of the final decision.
+  ValidationEvidenceStatus evidence_status = 41;
+  // Related interventions explain missing evidence, never automatic acceptance.
+  repeated ValidationExpectedMatch superseded_by = 42;
+  // Only actually observed matches on the declared view, never counterfactuals.
+  repeated string verified_rule_ids = 43;
+  // Human-readable explanation of the recorded evidence status.
+  string evidence_detail = 44;
+  // Effective Rule assertion, including an explicitly reviewed override.
+  bool rule_contract_satisfied = 45;
+  // Model transport/response health is independent of case assertion quality.
+  string model_status = 47;
+  string execution_status = 48;
 }
 
 // Command to execute an immutable candidate plan against its test cases.
@@ -151,6 +198,30 @@ message ValidationRequest {
   // Extensible runtime registry identifier used to compile/execute the candidate.
   string runtime_profile = 6;
   repeated ValidationTestCase test_cases = 7;
+  // A released version to test as it is: when set, the Runner verifies this
+  // signed Artifact and runs the cases against it without compiling; `plan`
+  // is not used. Absent for a draft, which is compiled into a candidate.
+  Artifact artifact = 8;
+  // Absent means full testing for existing clients. False only affects testing.
+  optional bool test_model_rules = 9;
+}
+
+// A model-dependent Rule excluded from this test run, not from publication.
+message ValidationSkippedRule {
+  string policy_id = 1;
+  string rule_id = 2;
+  // Human-readable explanation of why this Rule was excluded from execution.
+  string reason = 3;
+}
+
+// Frozen execution scope and evidence for the full or local-only test run.
+message ValidationScope {
+  bool test_model_rules = 1;
+  repeated ValidationSkippedRule skipped_rules = 2;
+  int32 model_invocations = 3;
+  string execution_digest = 4;
+  // Full publication Artifact successfully loaded without invoking its models.
+  bool full_artifact_loaded = 5;
 }
 
 // Validation response. `accepted` reports whether the Runner executed the
@@ -172,4 +243,23 @@ message ValidationResult {
   ValidationMetrics metrics = 6;
   // Per-case results; meaningful only when accepted is true.
   repeated ValidationCaseResult results = 7;
+  // The exact compiled Artifact the cases ran against, without envelope or
+  // signature. Present for accepted Guardrail runs with PASSED status; the
+  // Controller publishes this content unchanged instead of recompiling.
+  optional Artifact candidate_artifact = 8;
+  // Runtime that compiled and executed the candidate.
+  ValidationRuntime runtime = 9;
+  ValidationScope test_scope = 10;
+}
+
+// Runtime fingerprint recorded with validation evidence.
+message ValidationRuntime {
+  string runner_id = 1;
+  string runner_version = 2;
+  // NeMo Guardrails version that compiled and executed the candidate.
+  string nemo_version = 3;
+  // Applied model configuration revision; empty when none was configured.
+  string model_revision_id = 4;
+  // Native model types the compiler bound into the candidate configuration.
+  repeated string compiler_model_types = 5;
 }

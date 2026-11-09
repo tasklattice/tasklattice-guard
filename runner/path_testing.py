@@ -5,11 +5,11 @@ import time
 import uuid
 from typing import Literal
 
-from fastapi import Header, HTTPException
+from fastapi import Header, HTTPException, Request
 from fastapi.encoders import jsonable_encoder
 from pydantic import BaseModel, ConfigDict, Field
 
-from .routing import RoutingError
+from .routing import RoutingError, public_route_assignment
 from .toolkit.runtime.contracts import ProtectionRequest, RequestContext
 
 
@@ -27,13 +27,13 @@ class RouterPathRequest(BaseModel):
 
 def register_path_testing(api):
     @api.router.post("/internal/v1/playground/routers/{router_id}/test")
-    async def test_router(router_id: str, payload: RouterPathRequest, authorization: str | None = Header(default=None)):
+    async def test_router(router_id: str, payload: RouterPathRequest, request: Request, authorization: str | None = Header(default=None)):
         if authorization is None or not hmac.compare_digest(authorization, f"Bearer {api._controller_token}"):
             raise HTTPException(status_code=401, detail="Controller authentication failed.")
         from .api import _source_pairs, _scoped_call_id
         fields = tuple((k, v) for k, raw in payload.fields.items() for v in (raw if isinstance(raw, list) else [raw]))
         call_id = _scoped_call_id(payload.endpoint_id, payload.call_id)
-        context = RequestContext(protocol=str(payload.fields.get("protocol", "http")), endpoint_id=payload.endpoint_id,
+        context = RequestContext(protocol=str(payload.fields.get("protocol", "playground")), endpoint_id=payload.endpoint_id,
                                  call_id=call_id, fields=fields, business_request=_source_pairs(payload.business_request),
                                  endpoint_request=_source_pairs(payload.endpoint_request))
         try:
@@ -63,9 +63,16 @@ def register_path_testing(api):
                     finally:
                         await api._emit_telemetry(request_id=str(uuid.uuid4()), call_id=call_id,
                             endpoint_id=payload.endpoint_id, phase="input", protocol="playground", mode="enforce",
-                            started=started, decision=decision, content_before=(payload.text,), observation=observation)
+                            started=started, decision=decision, content_before=(payload.text,), http_request=request, observation=observation)
+            # The Controller forwards these results to users. Internal
+            # provenance tokens must never be copied into that response.
+            preview["assignment"] = public_route_assignment(preview.get("assignment"))
+            decision_payload = asdict(decision) if decision is not None else None
+            if decision_payload is not None:
+                decision_payload.pop("allocation_context_id", None)
+                decision_payload["route_assignment"] = public_route_assignment(decision_payload.get("route_assignment"))
             return jsonable_encoder({**preview, "runnerId": api._runner_id, "simulation": payload.action == "simulate",
-                                     "decision": asdict(decision) if decision is not None else None})
+                                     "decision": decision_payload})
         except RoutingError as error:
-            raise HTTPException(status_code=409, detail={"reason": error.reason, "assignment": getattr(error, "assignment", None),
+            raise HTTPException(status_code=409, detail={"reason": error.reason, "assignment": public_route_assignment(getattr(error, "assignment", None)),
                                                        "runnerId": api._runner_id}) from error

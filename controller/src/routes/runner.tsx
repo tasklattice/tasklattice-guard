@@ -1,23 +1,32 @@
+import { SettingsNavigation } from "@/components/settings-navigation";
+import type { ReactNode } from "react";
 import { useIsFetching, useQueryClient } from "@tanstack/react-query";
 import { RefreshCw } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
 import { PageHeader } from "@/components/product-shell";
-import { RunnerCapacitySection, runnerPoolKey } from "@/components/runner-capacity";
-import { SettingsNavigation } from "@/components/settings-navigation";
+import { ProjectRunnerCapacity, RunnerCapacitySection, runnerPoolKey } from "@/components/runner-capacity";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
 export function RunnerPage() {
+  return <RunnerPageLayout><RunnerCapacitySection showHeader={false} /></RunnerPageLayout>;
+}
+
+export function ProjectRunnerPage() {
+  return <RunnerPageLayout><ProjectRunnerCapacity /></RunnerPageLayout>;
+}
+
+function RunnerPageLayout({ children }: { children: ReactNode }) {
   const { t } = useTranslation();
   const queryClient = useQueryClient();
   const refreshing = useIsFetching({ queryKey: runnerPoolKey }) > 0;
 
   return (
-    <section className="py-6 sm:py-8">
+    <section className="py-8">
       <PageHeader
         title={t("runners.pageTitle")}
-        description={t("runners.description")}
+        description={t("runnerView.description")}
         action={(
           <Button
             type="button"
@@ -27,13 +36,13 @@ export function RunnerPage() {
             onClick={() => void queryClient.invalidateQueries({ queryKey: runnerPoolKey })}
           >
             <RefreshCw className={cn(refreshing && "animate-spin motion-reduce:animate-none")} />
-            {t(refreshing ? "runners.refreshing" : "runners.refresh")}
+            {t(refreshing ? "runnerView.refreshing" : "runnerView.refresh")}
           </Button>
         )}
       />
       <SettingsNavigation />
       <div className="mt-6">
-        <RunnerCapacitySection showHeader={false} />
+        {children}
       </div>
     </section>
   );

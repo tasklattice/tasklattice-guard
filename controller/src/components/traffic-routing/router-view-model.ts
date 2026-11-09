@@ -1,3 +1,4 @@
+import i18n from "@/i18n";
 import { guardrailVersionId } from "../../../shared/guardrail-version";
 import type {
   RouterDraft,
@@ -11,15 +12,15 @@ export const conditionCount = (expression: SelectorExpression): number =>
     0,
   );
 export function selectorSummary(expression: SelectorExpression): string {
-  if (!expression.conditions.length) return "No matching conditions";
+  if (!expression.conditions.length) return i18n.t("routing.noConditions");
   return expression.conditions
     .map((c) => {
       if ("conditions" in c) return `(${selectorSummary(c)})`;
       const source =
         c.requestSource === "business_request"
-          ? "Business request"
+          ? i18n.t("routing.businessRequest")
           : c.requestSource === "endpoint_request"
-            ? "Endpoint request"
+            ? i18n.t("routing.endpointRequest")
             : "";
       return [
         source,
@@ -67,14 +68,14 @@ export function duplicateRoute(route: TrafficRoute): TrafficRoute {
   return {
     ...structuredClone(route),
     id: crypto.randomUUID(),
-    name: `${route.name} copy`,
+    name: i18n.t("routing.routeCopy", { name: route.name }),
     targets: route.targets.map((t) => ({ ...t, id: crypto.randomUUID() })),
   };
 }
 export function newRoute(): TrafficRoute {
   return {
     id: crypto.randomUUID(),
-    name: "New Route",
+    name: i18n.t("routing.newRoute"),
     kind: "normal",
     enabled: true,
     selector: { expression: { combinator: "and", conditions: [] } },

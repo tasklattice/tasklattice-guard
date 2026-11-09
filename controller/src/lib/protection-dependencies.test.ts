@@ -39,6 +39,15 @@ describe("selected runtime dependencies", () => {
   it("keeps active evidence despite a newer failing draft", () => {
     expect(dependencyAssignment("content_safety.input", { ...view, active: revision("active"), draft: revision("draft", "nemo-rail-v1", "failed") }).state).toBe("active");
   });
+  it.each(["failed", "skipped"])("retains active assignments with %s evidence for retesting", status => {
+    expect(dependencyAssignment("content_safety.input", { ...view, active: revision("active", "nemo-rail-v1", status) }))
+      .toMatchObject({ state: "active", validation: status === "failed" ? "failed" : "unverified" });
+  });
+  it("does not substitute an output assignment or infer another capability from the same model", () => {
+    const active = { ...revision("active"), assignments: { ...revision().assignments, bindings: { "content_safety.output": "model" } } };
+    expect(dependencyAssignment("content_safety.input", { ...view, draft: null, active }).state).toBe("missing");
+    expect(dependencyAssignment("jailbreak.input", { ...view, active: revision("active") }).state).toBe("missing");
+  });
   it("distinguishes activation, failure and missing registered models", () => {
     expect(dependencyAssignment("content_safety.input", { ...view, activating: revision("activating") }).state).toBe("activating");
     expect(dependencyAssignment("content_safety.input", { ...view, draft: revision("draft", "nemo-rail-v1", "failed") }).state).toBe("failed");

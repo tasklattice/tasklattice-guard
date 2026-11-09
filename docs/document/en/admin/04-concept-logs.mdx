@@ -1,0 +1,108 @@
+---
+id: "concept-logs"
+title: "Runtime logs: verify protection ran"
+summary: "Understand INFO, DEBUG, and TRACE, how they relate to Rule risk levels, and when request and response content is captured."
+order: 3
+---
+Runtime logs show which protection inspected content and what happened. They belong to the `user` workspace, including captured request and response bodies. Administrators inspect management activity through [Audit log](/audit-log).
+
+For an unexpected block, filter by Guardrail, time range and outcome. Open the interaction. Inspect the version, checkpoint, matched Rule and execution steps.
+
+<a id="runtime-log-views" />
+## Choose a log view
+
+| View | Purpose |
+| --- | --- |
+| Interactions | Overall outcome of a correlated interaction. |
+| Guardrail checkpoints | Results of individual Input and Output inspections. |
+| System events | Runtime metadata such as route, Decision and latency. This view excludes request and response bodies. |
+
+Filters include Guardrail, time, direction and outcome. Router Monitoring can supply Route, Target and revision filters. There is no separate Endpoint filter here. Correlate caller records through request IDs and routing context.
+
+<a id="term-evidence" />
+### Read execution evidence
+
+Evidence includes findings, Policy and Rule identities, execution steps and version information. Start with the outcome and matched Rule. Then inspect errors, latency and the pinned version.
+
+Router rollout describes configuration application. Runtime evidence describes an individual inspection. A blocked request alone does not indicate an unhealthy Guardrail.
+
+<a id="runtime-log-capture" />
+## Configure body capture
+
+Logging level belongs to the Guardrail and applies across its versions. The default is **INFO**. Users change it under **Guardrail → Actions → Edit log level**. DEBUG and TRACE require acknowledgement of capture costs.
+
+After configuration synchronization, new calls use the new level. A correlated call retains its initial level. Raising the level cannot recover earlier bodies.
+
+Every level retains runtime records, findings, actions, versions and execution traces. The tables below describe **Enforce** body capture.
+
+| Content | INFO | DEBUG | TRACE |
+| --- | --- | --- | --- |
+| Runtime records, findings and traces | Retained | Retained | Retained |
+| Original bodies received for the call | Not retained | Retained after a Medium, High or Critical Rule match. | Retained for all calls. |
+| Additional transformed body copies | Not retained | Not retained | Not retained |
+
+<a id="concept-event-log-levels" />
+### Select bodies by matched Rule risk
+
+| Highest known matched risk in the call | INFO | DEBUG | TRACE |
+| --- | --- | --- | --- |
+| Critical, High or Medium | Records and trace | Records, trace and original bodies | Records, trace and original bodies |
+| Low or Informational | Records and trace | Records and trace | Records, trace and original bodies |
+| No match or no known matched risk | Records and trace | Records and trace | Records, trace and original bodies |
+
+Only actual Rule matches select DEBUG bodies. Non-matches, inconclusive results and execution errors do not establish a high-risk match.
+
+Actions do not change the risk threshold. A High Rule using `allow` selects DEBUG bodies. A Low Rule using `block` does not. INFO retains no bodies, including for blocks, timeouts and fail-closed outcomes.
+
+Rule `informational` describes risk. Log INFO describes capture. Logging changes neither protection mode nor Rule risk.
+
+<a id="runtime-log-request-response" />
+## Correlate request and response bodies
+
+Capture uses the complete correlated call. Submit Input and Output with the same Call ID. Different Runners can inspect the two phases.
+
+| Enforce example | Bodies retained |
+| --- | --- |
+| INFO, including an Output block | Neither body. Runtime evidence remains. |
+| DEBUG with a Medium-or-higher match in either phase | Both received originals. An Output match can select the earlier Input body. |
+| DEBUG with Low matches only | Neither body, regardless of action. |
+| TRACE, including calls without matches | Both received originals. |
+| Selected call with blocked Input and no model invocation | Input only. No model response exists. |
+
+LiteLLM uses `litellm_call_id` for correlation. Missing Output or missing IDs cannot produce a counterpart. Scan calls remain independent. `requestPromptId` does not link them.
+
+<a id="runtime-log-content-boundary" />
+### Understand the captured content
+
+Capture includes only content that Guard receives. Supported HTTP inspections can retain the original body, method, target and redacted request headers. Capture excludes authorization credentials and cookies.
+
+An Output inspection body contains the answer submitted by the integration. It is not the model provider's complete HTTP response envelope. Transformed copies are not additional captured originals.
+
+Streaming capture contains original text received during inspection. It excludes future text and the complete HTTP stream envelope. See [streaming inspection](/document/developer/gateway-connect#gateway-stream-protocol).
+
+<a id="runtime-log-missing-content" />
+### Diagnose missing bodies
+
+Check the initial logging level, matched risk, Call ID and submitted content. Users load captured bodies on demand in [Runtime logs](/$projectId/logs). System events do not display them.
+
+DEBUG holds candidate bodies for up to five minutes from the first check. Expiry, buffer limits, storage errors or delivery failures can leave incomplete content. Existing runtime records remain.
+
+Monitor selects DEBUG bodies from actual detections even when the final Decision allows traffic. Bypass creates no detection match, so DEBUG cannot select bodies from one. TRACE can still retain received originals.
+
+<a id="concept-security-events" />
+## Investigate security events
+
+Open **Guardrail → Security Events**. Select a time range. Use Filters to select risk levels. Counts and the matching summary follow that range. Remove individual conditions or clear filters to restore all levels.
+
+Filters persist in the page URL. A Rule's versioned risk determines the event level. Confidence and action do not change severity.
+
+1. Inspect the Policy, Rule, Endpoint and evaluation phase.
+2. Inspect the requested action. A High event with record-only handling remains High.
+3. Open the runtime log to inspect the actual Decision and execution errors.
+4. Inspect Policy and Guardrail versions. A missing confidence value displays **Not provided**.
+
+The application must apply `block` and `transform`. Logs do not prove downstream delivery completed correctly.
+
+Each finding retains its own risk. Router request summaries use the highest level. A normal passing inspection does not create an event by itself. Operational failures remain in runtime logs, independently of the final allow or block result.
+
+Severity is not an investigation status. Assignment, closure and suppression workflows are currently unavailable. See [risk definitions](/document/overview/glossary-definition#term-rule-risk-severity).

@@ -1,10 +1,18 @@
 from __future__ import annotations
 
 import asyncio
+import json
+import hashlib
 import importlib.metadata
 import logging
 import time
 import uuid
+from dataclasses import asdict
+from datetime import UTC, datetime
+from contextvars import ContextVar
+from .telemetry import RuntimeTelemetryExporter
+from .toolkit.nemo.actions.model_call import begin_cost_collection, end_cost_collection
+from collections import OrderedDict
 from collections.abc import Awaitable, Callable
 from pathlib import Path
 
@@ -12,23 +20,45 @@ import grpc
 import httpx
 
 from runner.toolkit.nemo.action_registry import ActionProviders, action_providers
-from runner.toolkit.nemo.native_models import native_rail_models
+from runner.toolkit.nemo.native_models import NativeRailModel, native_rail_models
 
-from . import __version__
+from .report_chunks import ReportSpool
+from .software_version import SOFTWARE_VERSION
 from .artifact_store import ArtifactStore
 from .compiler import DefaultRunnerCompiler
 from .capability_validation import validate_capability
 from .config import RunnerSettings
+from .diagnostics import diagnostic_phase
+from .preparation import prepare
 from .control_transport import CONTROL_CHANNEL_OPTIONS
 from . import generated as protocol
 from .generated import runner_control_pb2_grpc as services
 from .metrics import RunnerMetrics
+from .admission_snapshot_codec import admission_snapshot_to_proto
 from .providers import dynamic_runtime_action_providers
 from .protocol_codec import validation_case_result_to_proto, validation_metrics_to_proto
 from .validator import DefaultRunnerValidator
+from .serving_lease import ServingLease, LeaseChallenge
+from .validation_logging import validation_event
+
+VALIDATION_TIMEOUT_SECONDS = 30 * 60
 
 
 logger = logging.getLogger("tasklattice.guard.runner.control")
+_LEASE_RESPONSE_TIMEOUT_SECONDS = 5.0
+
+
+class _LeaseAuthorityLost(RuntimeError):
+    pass
+
+
+def _prepare_model_dependencies(
+    configuration: protocol.DataPlaneModelConfiguration, credentials: dict[str, str],
+) -> tuple[ActionProviders, tuple[NativeRailModel, ...]]:
+    with diagnostic_phase("desired_state.models", model_revision_id=configuration.revision_id):
+        providers = action_providers(*dynamic_runtime_action_providers(
+            configuration, credentials))
+        return providers, native_rail_models(configuration, credentials)
 
 
 class RunnerControlClient:
@@ -40,7 +70,9 @@ class RunnerControlClient:
         providers: ActionProviders | None = None,
         provider_observer: Callable[[ActionProviders], Awaitable[None]] | None = None,
         compiler: DefaultRunnerCompiler | None = None,
+        telemetry: RuntimeTelemetryExporter | None = None,
     ) -> None:
+        self._telemetry = telemetry
         self._settings = settings
         self._store = store
         self._metrics = metrics
@@ -49,19 +81,42 @@ class RunnerControlClient:
         self._stop = asyncio.Event()
         self._connected = asyncio.Event()
         self._synchronized = asyncio.Event()
-        if store.generation > 0:
-            self._synchronized.set()
+        # Restored artifacts are a cache, not proof of the current pool/group
+        # allocation. Every control stream must synchronize before serving.
+        self._synchronization_lost = asyncio.Event()
+        self._synchronization_lost.set()
+        self._synchronization_epoch = 0
+        lease_enforcement = getattr(settings, "experimental_lease_enforcement", False)
+        if lease_enforcement and not settings.control_token:
+            raise ValueError("Experimental lease enforcement requires a Runner pool token.")
+        self._serving_lease = ServingLease(5.0) if lease_enforcement else None
+        self._lease_snapshot_nonce: str | None = None
+        self._lease_snapshot_ready = asyncio.Event()
+        self._lease_reply = asyncio.Event()
+        self._lease_reconnect = asyncio.Event()
+        self._pending_lease: tuple[LeaseChallenge, str] | None = None
+        self._work_period: ContextVar[asyncio.Event | None] = ContextVar("runner_private_work_period", default=None)
+        self._queued_work_periods: dict[int, asyncio.Event] = {}
+        self._safe_control_rejections: set[int] = set()
         self._metrics.set_control_state(connected=False, synchronized=self._synchronized.is_set())
         self._heartbeat_interval = 10
         self._sequence = 0
         self._capability_tasks: set[asyncio.Task] = set()
+        self._validation_lock = asyncio.Lock()
+        self._validation_tasks: dict[str, asyncio.Task] = {}
+        self._report_spools: OrderedDict[str, ReportSpool] = OrderedDict()
+        self._report_spool_bytes = 0
+        self._chunk_acks: dict[tuple[str, str, int], asyncio.Future] = {}
+        # Only small terminal notices live in memory; report bytes stay on disk.
+        self._validation_notices: OrderedDict[str, protocol.ValidationStatusNotice] = OrderedDict()
         self._compiler = None
         if settings.compiler_capable:
-            self._compiler = compiler or DefaultRunnerCompiler(settings)
+            self._compiler = compiler or DefaultRunnerCompiler()
         self._providers = providers
+        self._materialization_key: str | None = None
         self._provider_observer = provider_observer
         self._validator = (
-            DefaultRunnerValidator(self._compiler, providers)
+            DefaultRunnerValidator(self._compiler, providers, self._store.verify)
             if self._compiler
             else None
         )
@@ -72,72 +127,165 @@ class RunnerControlClient:
 
     @property
     def synchronized(self) -> bool:
-        """Whether a verified last-known-good desired state can be served."""
-        return self._synchronized.is_set()
+        """Whether this control stream verified the current serving allocation."""
+        return self._synchronized.is_set() and (self._serving_lease is None or self._serving_lease.synchronized)
+
+    @property
+    def synchronization_lost(self) -> asyncio.Event:
+        """A per-serving-period fence; reconnect never clears an older fence."""
+        return self._serving_lease.synchronization_lost if self._serving_lease is not None else self._synchronization_lost
+
+    def _revoke_synchronization(self) -> None:
+        self._synchronization_epoch += 1
+        self._synchronized.clear()
+        self._synchronization_lost.set()
+        if self._serving_lease is not None:
+            self._serving_lease.revoke()
+        self._lease_snapshot_nonce = None
+        self._lease_snapshot_ready.clear()
+        self._pending_lease = None
+        self._lease_reply.set()
+        self._metrics.set_control_state(synchronized=False)
+
+    def _allow_synchronized_serving(self) -> None:
+        self._synchronization_lost = asyncio.Event()
+        self._synchronized.set()
+        self._metrics.set_control_state(synchronized=self.synchronized)
 
     async def run(self) -> None:
         delay = 1.0
-        while not self._stop.is_set():
-            try:
-                await self._connect_once()
-                delay = 1.0
-            except asyncio.CancelledError:
-                raise
-            except Exception:
-                self._connected.clear()
-                self._metrics.set_control_state(connected=False)
-                self._metrics.observe_control_reconnect("stream_error")
-                logger.exception("Runner control stream failed; reconnecting in %.1f seconds.", delay)
+        try:
+            while not self._stop.is_set():
                 try:
-                    await asyncio.wait_for(self._stop.wait(), timeout=delay)
-                except TimeoutError:
-                    pass
-                delay = min(30.0, delay * 2)
+                    await self._connect_once()
+                    delay = 1.0
+                except asyncio.CancelledError:
+                    raise
+                except Exception:
+                    self._connected.clear()
+                    self._revoke_synchronization()
+                    self._metrics.set_control_state(connected=False)
+                    self._metrics.observe_control_reconnect("stream_error")
+                    logger.exception("Runner control stream failed; reconnecting in %.1f seconds.", delay)
+                    try:
+                        await asyncio.wait_for(self._stop.wait(), timeout=delay)
+                    except TimeoutError:
+                        pass
+                    delay = min(30.0, delay * 2)
+        finally:
+            self._close_report_spools()
+
+    def _close_report_spools(self) -> None:
+        for spool in self._report_spools.values():
+            spool.close()
+        self._report_spools.clear()
+        self._report_spool_bytes = 0
 
     async def stop(self) -> None:
+        self._revoke_synchronization()
         self._stop.set()
+        for future in self._chunk_acks.values():
+            if not future.done():
+                future.cancel()
+        if not self._chunk_acks and not self._validation_tasks:
+            self._close_report_spools()
 
     async def _connect_once(self) -> None:
+        self._revoke_synchronization()
+        self._lease_reconnect.clear()
         # Results from a failed stream are retried by Controller reconciliation.
         # A fresh queue guarantees that registration is the first message on
         # every new stream instead of sitting behind stale heartbeats.
         self._outgoing = asyncio.Queue(maxsize=1_000)
+        self._queued_work_periods.clear()
+        self._safe_control_rejections.clear()
         channel = self._channel()
         stub = services.RunnerControlStub(channel)
         heartbeat = asyncio.create_task(self._heartbeats())
-        metadata = (("authorization", f"Bearer {self._settings.controller_token}"),)
+        metadata = (("authorization", f"Bearer {self._settings.control_token or self._settings.controller_token}"),)
         # Own the sender task explicitly. gRPC's iterator consumer can remain
         # blocked on our empty queue after the server has closed the RPC.
         response_stream = stub.Connect(metadata=metadata)
+        lease_task = asyncio.create_task(self._lease_renewals(response_stream.cancel)) if self._serving_lease is not None else None
         sender = asyncio.create_task(
             self._write_messages(response_stream), name="guard-control-writer",
         )
         try:
-            async for message in response_stream:
-                self._connected.set()
-                self._metrics.set_control_state(connected=True)
-                message_type = message.WhichOneof("body") or "unknown"
-                try:
-                    await self._handle(message)
-                    self._metrics.observe_control_message("received", message_type)
-                except Exception:
-                    self._metrics.observe_control_message("received", message_type, "error")
-                    raise
+            await self._receive_messages(response_stream)
+        except asyncio.CancelledError:
+            # gRPC reports cancellation when the lease watchdog intentionally
+            # closes this RPC. That is a reconnect, not cancellation of the
+            # long-lived control task. Preserve real caller cancellation.
+            task = asyncio.current_task()
+            if self._lease_reconnect.is_set() and not self._stop.is_set() and task is not None and not task.cancelling():
+                return
+            raise
+        except ExceptionGroup as errors:
+            # Preserve the transport error contract for callers and reconnect logic.
+            if len(errors.exceptions) == 1:
+                raise errors.exceptions[0] from None
+            raise
         finally:
             response_stream.cancel()
             sender.cancel()
             self._connected.clear()
+            self._revoke_synchronization()
             self._metrics.set_control_state(connected=False)
             heartbeat.cancel()
+            if lease_task is not None:
+                lease_task.cancel()
             for task in self._capability_tasks:
                 task.cancel()
             await asyncio.gather(*self._capability_tasks, return_exceptions=True)
             self._capability_tasks.clear()
+            # Stream loss is retryable, not an operator cancellation.
+            validation_tasks = list(self._validation_tasks.values())
+            for task in validation_tasks:
+                task.cancel()
+            await asyncio.gather(*validation_tasks, return_exceptions=True)
+            self._validation_tasks.clear()
             await asyncio.gather(heartbeat, sender, return_exceptions=True)
+            if lease_task is not None:
+                await asyncio.gather(lease_task, return_exceptions=True)
             await channel.close()
+            if self._stop.is_set():
+                self._close_report_spools()
+
+    async def _receive_messages(self, stream) -> None:
+        # Keep ordinary commands ordered while emergency modes can overtake
+        # model preparation or version tests already in progress.
+        pending = asyncio.Queue(maxsize=64)
+
+        async def handle(message):
+            kind = message.WhichOneof("body") or "unknown"
+            try:
+                await self._handle(message)
+                self._metrics.observe_control_message("received", kind)
+            except Exception:
+                self._metrics.observe_control_message("received", kind, "error")
+                raise
+
+        async def consume():
+            while (message := await pending.get()) is not None:
+                await handle(message)
+
+        async with asyncio.TaskGroup() as tasks:
+            tasks.create_task(consume())
+            async for message in stream:
+                self._connected.set()
+                self._metrics.set_control_state(connected=True)
+                if message.WhichOneof("body") in {"protection_state", "serving_lease_response", "validation_cancel_request", "validation_report_chunk_ack", "validation_report_ack"}:
+                    await handle(message)
+                else:
+                    # Reconnect on overflow instead of blocking mode delivery.
+                    pending.put_nowait(message)
+            await pending.put(None)
 
     async def _write_messages(self, stream) -> None:
         async for message in self._messages(self._registration()):
+            period = self._queued_work_periods.get(id(message))
+            if period is not None and (period.is_set() or not self.synchronized):
+                continue
             await stream.write(message)
 
     async def _messages(self, registration: protocol.RunnerMessage):
@@ -145,9 +293,22 @@ class RunnerControlClient:
         yield registration
         while not self._stop.is_set():
             message = await self._outgoing.get()
+            # Work results belong to the serving period in which they were
+            # produced. Never release a queued result after authority is lost.
+            period = self._queued_work_periods.get(id(message))
+            if self._serving_lease is not None and id(message) not in self._safe_control_rejections and message.WhichOneof("body") in {
+                "validation_progress", "validation_report_chunk", "validation_status_notice", "capability_validation_result", "artifact_admission_result", "artifact_compilation_result",
+            } and (period is None or period.is_set() or not self.synchronized):
+                self._queued_work_periods.pop(id(message), None)
+                self._safe_control_rejections.discard(id(message))
+                continue
             self._metrics.set_control_queue_depth(self._outgoing.qsize())
             self._metrics.observe_control_message("sent", message.WhichOneof("body") or "unknown")
-            yield message
+            try:
+                yield message
+            finally:
+                self._queued_work_periods.pop(id(message), None)
+                self._safe_control_rejections.discard(id(message))
 
     async def _heartbeats(self) -> None:
         while not self._stop.is_set():
@@ -164,7 +325,10 @@ class RunnerControlClient:
                 boot_id=self._boot_id,
                 sequence=self._sequence,
                 applied_generation=self._store.generation,
+                applied_protection_generation=self._store.protection_generation,
                 load=self._metrics.heartbeat(),
+                project_admission_snapshot=(admission_snapshot_to_proto(self._metrics.project_admission_snapshot_json())
+                    if callable(getattr(self._metrics, "project_admission_snapshot_json", None)) else None),
             ),
         ))
         self._metrics.observe_heartbeat_sent()
@@ -174,12 +338,59 @@ class RunnerControlClient:
         if body == "registration_accepted":
             self._heartbeat_interval = max(2, message.registration_accepted.heartbeat_interval_seconds)
             self._metrics.set_desired_generation(message.registration_accepted.desired_generation)
+        elif body == "protection_state":
+            state = message.protection_state
+            reason, accepted = "", True
+            try:
+                self._store.apply_protection_modes(state)
+            except Exception as error:
+                reason, accepted = str(error) or type(error).__name__, False
+            await self._send(protocol.RunnerMessage(message_id=str(uuid.uuid4()), sent_at_unix_ms=_now_ms(),
+                protection_result=protocol.GuardrailProtectionResult(runner_id=self._settings.runner_id,
+                    generation=state.generation, accepted=accepted, reason=reason)))
+        elif body == "validation_report_chunk_ack":
+            ack = message.validation_report_chunk_ack
+            future = self._chunk_acks.get((ack.run_id, ack.upload_id, ack.sequence))
+            if future is not None and not future.done():
+                future.set_result(ack.rejection_code)
+        elif body == "validation_report_ack":
+            validation_event("validation.report_saved", run_id=message.validation_report_ack.run_id,
+                             runner_id=self._settings.runner_id)
         elif body == "desired_state":
             await self._apply_desired_state(message.desired_state)
-        elif body == "compile_request":
-            await self._compile(message.compile_request)
+        elif body == "serving_lease_response":
+            self._accept_lease_response(message.serving_lease_response)
         elif body == "validation_request":
-            await self._validate(message.validation_request)
+            request = message.validation_request
+            validation_event("validation.received", run_id=request.run_id, guardrail_id=request.guardrail_id,
+                             runner_id=self._settings.runner_id, boot_id=self._boot_id, total_cases=len(request.test_cases))
+            if request.run_id not in self._validation_tasks:
+                # A finished report may still be cleaning up its runtime. Keep
+                # one following job queued on the lock instead of failing it.
+                if len(self._validation_tasks) >= 2:
+                    await self._publish_validation_notice(protocol.ValidationResult(
+                        runner_id=self._settings.runner_id, run_id=request.run_id,
+                        status=protocol.VALIDATION_STATUS_FAILED, reason="Testing Runner is busy."))
+                    return
+                task = asyncio.create_task(self._validate(request), name=f"validation:{request.run_id}")
+                self._validation_tasks[request.run_id] = task
+                def done(completed):
+                    if self._validation_tasks.get(request.run_id) is completed:
+                        self._validation_tasks.pop(request.run_id, None)
+                    if not completed.cancelled() and completed.exception() is not None:
+                        validation_event("validation.delivery_failed", level=logging.ERROR, run_id=request.run_id,
+                                         error_type=type(completed.exception()).__name__)
+                task.add_done_callback(done)
+        elif body == "validation_cancel_request":
+            await self._cancel_validation(message.validation_cancel_request.run_id)
+        elif body == "artifact_compilation_request":
+            request = message.artifact_compilation_request
+            if len(self._capability_tasks) >= 4:
+                await self._send_compilation_result(request.compile_id, error="Compiler capacity reached. Retry shortly.")
+            else:
+                task = asyncio.create_task(self._compile_artifact(request))
+                self._capability_tasks.add(task)
+                task.add_done_callback(self._capability_tasks.discard)
         elif body == "capability_validation_request":
             if len(self._capability_tasks) >= 4:
                 await self._send_capability_result(protocol.CapabilityValidationResult(
@@ -190,10 +401,26 @@ class RunnerControlClient:
                 task = asyncio.create_task(self._validate_capability(message.capability_validation_request))
                 self._capability_tasks.add(task)
                 task.add_done_callback(self._capability_tasks.discard)
+        elif body == "artifact_admission_request":
+            if len(self._capability_tasks) >= 4:
+                await self._send_admission_result(message.artifact_admission_request.request_id, False,
+                                                  "Runner check capacity reached. Retry shortly.")
+            else:
+                task = asyncio.create_task(self._admit(message.artifact_admission_request))
+                self._capability_tasks.add(task)
+                task.add_done_callback(self._capability_tasks.discard)
         elif body == "drain_request":
             logger.warning("Controller requested Runner drain: %s", message.drain_request.reason)
 
     async def _apply_desired_state(self, desired_state: protocol.DesiredState) -> None:
+        # A connected, already-authorized stream may retain its last good state
+        # through ordinary updates. A prior stream may never reopen serving.
+        group_rate = getattr(self._settings, "group_rate_admission", None)
+        if self._serving_lease is not None or group_rate is not None:
+            # An ordinary allocation/snapshot refresh must not fence serving;
+            # the WAL can contain delayed events while serving itself is fenced.
+            self._revoke_synchronization()
+        synchronization_epoch = self._synchronization_epoch
         started = time.perf_counter()
         self._metrics.set_desired_generation(desired_state.generation)
         model_revision_id = (
@@ -202,34 +429,49 @@ class RunnerControlClient:
             else ""
         )
         try:
+            if group_rate is not None:
+                if (not desired_state.HasField("snapshot_nonce") or not desired_state.snapshot_nonce or
+                    not desired_state.HasField("allocation_group_id") or not desired_state.HasField("allocation_epoch") or
+                    desired_state.allocation_group_id != group_rate.group_id or
+                    desired_state.allocation_epoch != group_rate.pool_epochs.get(self._settings.pool_id)):
+                    raise ValueError("Group rate admission requires the matching challenged Controller group and epoch.")
+            if self._serving_lease is not None and (
+                not desired_state.HasField("snapshot_nonce") or not desired_state.snapshot_nonce or
+                not desired_state.HasField("allocation_epoch") or desired_state.allocation_epoch < 0
+            ):
+                raise ValueError("Lease enforcement requires a challenged Controller allocation epoch.")
             providers = None
             native_models = None
             if desired_state.HasField("model_configuration"):
-                credentials = await self._model_credentials(
-                    desired_state.model_configuration
-                )
-                providers = action_providers(*dynamic_runtime_action_providers(
-                    desired_state.model_configuration,
-                    credentials,
-                ))
-                native_models = native_rail_models(
-                    desired_state.model_configuration,
-                    credentials,
-                )
-            if providers is None:
-                await asyncio.to_thread(self._store.apply, desired_state)
+                with diagnostic_phase("desired_state.credentials", generation=desired_state.generation,
+                                      model_revision_id=model_revision_id):
+                    credentials = await self._model_credentials(
+                        desired_state.model_configuration
+                    )
+                # Include leased credential values: a rotation must not reuse clients
+                # merely because the assignment's revision ID stayed the same.
+                materialization_key = hashlib.sha256(
+                    desired_state.model_configuration.SerializeToString(deterministic=True)
+                    + json.dumps(credentials, sort_keys=True, separators=(",", ":")).encode()
+                ).hexdigest()
+                if materialization_key != self._materialization_key:
+                    providers, native_models = await prepare(
+                        _prepare_model_dependencies, desired_state.model_configuration, credentials,
+                    )
             else:
-                await asyncio.to_thread(
-                    self._store.apply,
-                    desired_state,
-                    providers=providers,
-                    native_models=native_models,
-                )
+                materialization_key = None
+            if synchronization_epoch != self._synchronization_epoch:
+                return
+            await prepare(self._store.apply, desired_state, providers=providers, native_models=native_models,
+                          materialization_key=materialization_key)
+            if synchronization_epoch != self._synchronization_epoch:
+                return
+            self._materialization_key = materialization_key
             if providers is not None:
                 self._providers = providers
                 if self._compiler is not None:
-                    self._compiler.configure_native_models(native_models or ())
-                    self._validator = DefaultRunnerValidator(self._compiler, providers)
+                    await prepare(self._compiler.configure_native_models, native_models or ())
+                    self._validator = DefaultRunnerValidator(self._compiler, providers, self._store.verify)
                 if self._provider_observer is not None:
                     try:
                         await self._provider_observer(providers)
@@ -245,8 +487,13 @@ class RunnerControlClient:
                 routes=route_count,
                 endpoints=endpoint_count,
             )
-            self._synchronized.set()
-            self._metrics.set_control_state(synchronized=True)
+            if synchronization_epoch != self._synchronization_epoch:
+                return
+            if not self._synchronized.is_set():
+                if self._serving_lease is not None:
+                    self._serving_lease.activate_allocation(desired_state.allocation_epoch, desired_state.generation)
+                    self._lease_snapshot_nonce = desired_state.snapshot_nonce
+                self._allow_synchronized_serving()
             self._metrics.observe_desired_state_apply("success", time.perf_counter() - started)
         except Exception as error:
             self._metrics.observe_desired_state_apply("rejected", time.perf_counter() - started)
@@ -259,7 +506,13 @@ class RunnerControlClient:
                 False,
                 str(error),
                 model_revision_id,
+                desired_state.snapshot_nonce if desired_state.HasField("snapshot_nonce") else None,
             )
+            if self._serving_lease is not None:
+                # A rejected allocation cannot become a renewal source. Wake
+                # the supervisor even when no snapshot was ever ready, so it
+                # obtains fresh challenged state on a new stream.
+                self._fail_lease()
             return
         for artifact in desired_state.artifacts:
             await self._artifact_result(artifact, desired_state.generation, True, "")
@@ -268,7 +521,11 @@ class RunnerControlClient:
             True,
             "",
             model_revision_id,
+            desired_state.snapshot_nonce if desired_state.HasField("snapshot_nonce") else None,
         )
+        # Queue the exact snapshot ACK before allowing a renewal request.
+        if self._serving_lease is not None:
+            self._lease_snapshot_ready.set()
         # A desired state can contain only Endpoint or route changes and no
         # artifact acknowledgements. Report the applied generation immediately
         # so Controller mutations do not expose a Secret or route before the
@@ -295,7 +552,7 @@ class RunnerControlClient:
             response = await client.post(
                 f"{base_url}/api/internal/v1/model-credentials/resolve",
                 headers={
-                    "authorization": f"Bearer {self._settings.controller_token}",
+                    "authorization": f"Bearer {self._settings.control_token or self._settings.controller_token}",
                     "content-type": "application/json",
                 },
                 json={"refs": refs, **({"leaseId": lease_id} if lease_id else {})},
@@ -312,13 +569,146 @@ class RunnerControlClient:
             )
         return {ref: str(credentials[ref]) for ref in refs}
 
+    def _fail_lease(self) -> None:
+        self._lease_reconnect.set()
+        self._revoke_synchronization()
+
+    def _accept_lease_response(self, response: protocol.ServingLeaseResponse) -> None:
+        if self._serving_lease is None or self._pending_lease is None:
+            return
+        challenge, snapshot_nonce = self._pending_lease
+        if response.nonce != challenge.nonce:
+            return  # Late response from another challenge or stream.
+        self._pending_lease = None
+        if (not response.granted or response.snapshot_nonce != snapshot_nonce or
+            snapshot_nonce != self._lease_snapshot_nonce or
+            not self._serving_lease.accept(challenge, epoch=response.epoch, generation=response.generation,
+                nonce=response.nonce, duration_seconds=response.duration_ms / 1000)):
+            self._fail_lease()
+        else:
+            self._metrics.set_control_state(synchronized=self.synchronized)
+        self._lease_reply.set()
+
+    async def _lease_renewals(self, cancel_stream: Callable[[], object]) -> None:
+        """Renew while this stream owns a fully applied challenged snapshot.
+
+        Requests are timed before queueing, so transport/queue delay never
+        extends authorization. Expiry or rejection forces a fresh stream and
+        snapshot instead of reviving cached state on a late response.
+        """
+        assert self._serving_lease is not None
+        try:
+            while not self._stop.is_set():
+                ready = asyncio.create_task(self._lease_snapshot_ready.wait())
+                reconnect = asyncio.create_task(self._lease_reconnect.wait())
+                try:
+                    await asyncio.wait((ready, reconnect), return_when=asyncio.FIRST_COMPLETED)
+                finally:
+                    ready.cancel()
+                    reconnect.cancel()
+                    await asyncio.gather(ready, reconnect, return_exceptions=True)
+                if self._lease_reconnect.is_set():
+                    cancel_stream()
+                    return
+                synchronization_epoch = self._synchronization_epoch
+                snapshot_nonce = self._lease_snapshot_nonce
+                if not snapshot_nonce:
+                    continue
+                try:
+                    challenge = self._serving_lease.challenge()
+                except RuntimeError:
+                    self._fail_lease()
+                    cancel_stream()
+                    return
+                self._pending_lease = (challenge, snapshot_nonce)
+                self._lease_reply = asyncio.Event()
+                try:
+                    async with asyncio.timeout(_LEASE_RESPONSE_TIMEOUT_SECONDS):
+                        await self._send(protocol.RunnerMessage(message_id=str(uuid.uuid4()), sent_at_unix_ms=_now_ms(),
+                            serving_lease_request=protocol.ServingLeaseRequest(
+                                runner_id=self._settings.runner_id, boot_id=self._boot_id, nonce=challenge.nonce,
+                                epoch=challenge.epoch, generation=challenge.generation, snapshot_nonce=snapshot_nonce)))
+                        await self._lease_reply.wait()
+                except TimeoutError:
+                    self._fail_lease()
+                if self._lease_reconnect.is_set():
+                    cancel_stream()
+                    return
+                if synchronization_epoch != self._synchronization_epoch:
+                    continue  # An ordered new snapshot superseded this request.
+                if not self.synchronized:
+                    self._fail_lease()
+                    cancel_stream()
+                    return
+                await asyncio.sleep(1.0)
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            self._fail_lease()
+            cancel_stream()
+            logger.exception("Runner serving lease renewal failed.")
+
+    async def _lease_bound_work(self, work: Callable[[], Awaitable[None]]) -> None:
+        if self._serving_lease is None:
+            await work()
+            return
+        revoked = self.synchronization_lost
+        if not self.synchronized or revoked.is_set():
+            raise _LeaseAuthorityLost("Runner serving lease is unavailable.")
+        token = self._work_period.set(revoked)
+        try:
+            worker = asyncio.create_task(work())
+        finally:
+            self._work_period.reset(token)
+        lost = asyncio.create_task(revoked.wait())
+        try:
+            done, _ = await asyncio.wait((worker, lost), return_when=asyncio.FIRST_COMPLETED)
+            if lost in done or not self.synchronized or revoked.is_set():
+                raise _LeaseAuthorityLost("Runner serving lease was lost.")
+            await worker
+        finally:
+            worker.cancel()
+            lost.cancel()
+            await asyncio.gather(worker, lost, return_exceptions=True)
+
+    async def _compile_artifact(self, request: protocol.CompileRequest) -> None:
+        try:
+            await self._lease_bound_work(lambda: self._compile_artifact_work(request))
+        except _LeaseAuthorityLost:
+            await self._send_lease_rejection(protocol.RunnerMessage(message_id=str(uuid.uuid4()), sent_at_unix_ms=_now_ms(),
+                artifact_compilation_result=protocol.ArtifactCompilationResult(compile_id=request.compile_id,
+                    runner_id=self._settings.runner_id, error="Runner serving lease is unavailable.")))
+
+    async def _compile_artifact_work(self, request: protocol.CompileRequest) -> None:
+        try:
+            if self._compiler is None:
+                raise ValueError("This Runner is not compiler-capable.")
+            artifact = await prepare(self._compiler.compile_offline, request)
+        except Exception as error:
+            await self._send_compilation_result(request.compile_id, error=str(error) or type(error).__name__)
+            return
+        await self._send_compilation_result(request.compile_id, artifact=artifact)
+
+    async def _send_compilation_result(self, compile_id: str, *, artifact=None, error: str = "") -> None:
+        await self._send(protocol.RunnerMessage(message_id=str(uuid.uuid4()), sent_at_unix_ms=_now_ms(),
+            artifact_compilation_result=protocol.ArtifactCompilationResult(
+                compile_id=compile_id, runner_id=self._settings.runner_id, artifact=artifact, error=error)))
+
     async def _validate_capability(self, request: protocol.CapabilityValidationRequest) -> None:
+        try:
+            await self._lease_bound_work(lambda: self._validate_capability_work(request))
+        except _LeaseAuthorityLost:
+            await self._send_lease_rejection(protocol.RunnerMessage(message_id=str(uuid.uuid4()), sent_at_unix_ms=_now_ms(),
+                capability_validation_result=protocol.CapabilityValidationResult(request_id=request.request_id,
+                    message="Runner serving lease is unavailable. Retry after synchronization.")))
+
+    async def _validate_capability_work(self, request: protocol.CapabilityValidationRequest) -> None:
         try:
             if self._compiler is None:
                 raise ValueError("This Runner is not compiler-capable.")
             async with asyncio.timeout(90):
                 credentials = await self._model_credentials(request.configuration, request.credential_lease_id)
-                result = await validate_capability(request, credentials)
+                result = await validate_capability(request, credentials, runner_id=self._settings.runner_id)
         except Exception as error:
             result = protocol.CapabilityValidationResult(request_id=request.request_id,
                 message=f"Rail validation could not complete ({type(error).__name__}). Check Runner availability and retry.")
@@ -328,69 +718,280 @@ class RunnerControlClient:
         await self._send(protocol.RunnerMessage(message_id=str(uuid.uuid4()), sent_at_unix_ms=_now_ms(),
                                               capability_validation_result=result))
 
-    async def _compile(self, request: protocol.CompileRequest) -> None:
-        if self._compiler is None:
-            return
-        self._metrics.job("compile", True)
+    async def _admit(self, request: protocol.ArtifactAdmissionRequest) -> None:
         try:
-            artifact = await asyncio.to_thread(self._compiler.compile, request)
-            result = protocol.CompileResult(
-                runner_id=self._settings.runner_id,
-                compile_id=request.compile_id,
-                accepted=True,
-                artifact=artifact,
-            )
+            await self._lease_bound_work(lambda: self._admit_work(request))
+        except _LeaseAuthorityLost:
+            await self._send_lease_rejection(protocol.RunnerMessage(message_id=str(uuid.uuid4()), sent_at_unix_ms=_now_ms(),
+                artifact_admission_result=protocol.ArtifactAdmissionResult(runner_id=self._settings.runner_id,
+                    request_id=request.request_id, admitted=False, reason="Runner serving lease is unavailable.")))
+
+    async def _admit_work(self, request: protocol.ArtifactAdmissionRequest) -> None:
+        try:
+            with diagnostic_phase("artifact.admission", request_id=request.request_id,
+                                  guardrail_id=request.artifact.guardrail_id, version=request.artifact.guardrail_version):
+                await prepare(self._store.admit, request.artifact)
         except Exception as error:
-            logger.exception("Guardrail compile %s failed.", request.compile_id)
-            result = protocol.CompileResult(
-                runner_id=self._settings.runner_id,
-                compile_id=request.compile_id,
-                accepted=False,
-                reason=str(error),
-                artifact=protocol.Artifact(
-                    guardrail_id=request.guardrail_id,
-                    guardrail_version=request.guardrail_version,
-                    generation=request.generation,
-                ),
-            )
-        finally:
-            self._metrics.job("compile", False)
+            logger.warning("Artifact admission check %s rejected: %s", request.request_id, error)
+            await self._send_admission_result(request.request_id, False, str(error) or type(error).__name__)
+            return
+        await self._send_admission_result(request.request_id, True, "")
+
+    async def _send_admission_result(self, request_id: str, admitted: bool, reason: str) -> None:
         await self._send(protocol.RunnerMessage(
-            message_id=str(uuid.uuid4()), sent_at_unix_ms=_now_ms(), compile_result=result,
+            message_id=str(uuid.uuid4()), sent_at_unix_ms=_now_ms(),
+            artifact_admission_result=protocol.ArtifactAdmissionResult(
+                runner_id=self._settings.runner_id, request_id=request_id, admitted=admitted, reason=reason,
+                nemo_version=importlib.metadata.version("nemoguardrails"),
+                model_revision_id=self._store.model_revision_id,
+            ),
         ))
 
+    async def _cancel_validation(self, run_id: str) -> None:
+        validation_event("validation.cancel_requested", run_id=run_id, runner_id=self._settings.runner_id)
+        task = self._validation_tasks.get(run_id)
+        if task is not None:
+            task.cancel()
+            await asyncio.gather(task, return_exceptions=True)
+            if self._validation_tasks.get(run_id) is task:
+                self._validation_tasks.pop(run_id, None)
+        # Remember stops received before a racing execution command, too.
+        await self._publish_validation_notice(protocol.ValidationResult(
+            runner_id=self._settings.runner_id, run_id=run_id, accepted=False,
+            status=protocol.VALIDATION_STATUS_CANCELLED, reason="Cancelled by user."))
+        validation_event("validation.cancelled", run_id=run_id, runner_id=self._settings.runner_id)
+
     async def _validate(self, request: protocol.ValidationRequest) -> None:
-        if self._validator is None:
-            return
-        self._metrics.job("validation", True)
         try:
-            status, metrics, results = await self._validator.validate(request)
-            result = protocol.ValidationResult(
-                runner_id=self._settings.runner_id,
-                run_id=request.run_id,
-                accepted=True,
-                status=(
-                    protocol.VALIDATION_STATUS_PASSED
-                    if status == "passed"
-                    else protocol.VALIDATION_STATUS_FAILED
+            await self._lease_bound_work(lambda: self._validate_work(request))
+        except _LeaseAuthorityLost:
+            await self._send_lease_rejection(protocol.RunnerMessage(message_id=str(uuid.uuid4()), sent_at_unix_ms=_now_ms(),
+                validation_status_notice=protocol.ValidationStatusNotice(runner_id=self._settings.runner_id,
+                    run_id=request.run_id, reason="Runner serving lease is unavailable.",
+                    status=protocol.VALIDATION_STATUS_FAILED)))
+
+    async def _validate_work(self, request: protocol.ValidationRequest) -> None:
+        async with self._validation_lock:
+            spool = self._report_spools.get(request.run_id)
+            if spool is not None:
+                self._report_spools.move_to_end(request.run_id)
+                await self._send_report_chunks(spool)
+                return
+            cached = self._validation_notices.get(request.run_id)
+            if cached is not None:
+                validation_event("validation.replayed", run_id=request.run_id, runner_id=self._settings.runner_id)
+                self._validation_notices.move_to_end(request.run_id)
+                await self._send(protocol.RunnerMessage(validation_status_notice=cached))
+                return
+            await self._execute_validation(request)
+
+    async def _execute_validation(self, request: protocol.ValidationRequest) -> None:
+        if self._validator is None:
+            await self._publish_validation_notice(protocol.ValidationResult(runner_id=self._settings.runner_id,
+                run_id=request.run_id, status=protocol.VALIDATION_STATUS_FAILED, reason="Runner cannot execute tests."))
+            return
+        started = time.perf_counter()
+        validation_event("validation.started", run_id=request.run_id, guardrail_id=request.guardrail_id,
+                         runner_id=self._settings.runner_id, boot_id=self._boot_id,
+                         model_revision_id=self._store.model_revision_id, total_cases=len(request.test_cases))
+        async def report_progress(phase: str, completed: int, passed: int) -> None:
+            validation_event("validation.progress", run_id=request.run_id, runner_id=self._settings.runner_id,
+                             phase=phase, completed_cases=completed, passed_cases=passed)
+            await self._send(protocol.RunnerMessage(
+                message_id=str(uuid.uuid4()), sent_at_unix_ms=_now_ms(),
+                validation_progress=protocol.ValidationProgress(
+                    runner_id=self._settings.runner_id, run_id=request.run_id,
+                    phase=protocol.ValidationExecutionPhase.Value(f"VALIDATION_EXECUTION_PHASE_{phase.upper()}"),
+                    completed_cases=completed, passed_cases=passed,
                 ),
-                metrics=validation_metrics_to_proto(metrics),
-                results=[validation_case_result_to_proto(item) for item in results],
-            )
+            ))
+        self._metrics.job("validation", True)
+        cost_calls, cost_token = begin_cost_collection()
+        cost_event_id = str(uuid.uuid4())
+        outcome = None
+        try:
+            with diagnostic_phase("guardrail.validation", run_id=request.run_id,
+                                  guardrail_id=request.guardrail_id, cases=len(request.test_cases)):
+                async with asyncio.timeout(VALIDATION_TIMEOUT_SECONDS):
+                    outcome = await self._validator.run(request, on_progress=report_progress, defer_cleanup=True)
+            if request.HasField("test_model_rules") and not request.test_model_rules and cost_calls:
+                raise RuntimeError("Local-only validation recorded a model call, including preparation.")
+            validation_event("validation.report_packing", run_id=request.run_id, cases=len(outcome.results))
+            # Packing hundreds of full traces must not starve heartbeats or stops.
+            result = await asyncio.to_thread(self._build_validation_result, request, outcome)
+        except asyncio.CancelledError:
+            validation_event("validation.interrupted", run_id=request.run_id, runner_id=self._settings.runner_id,
+                             duration_ms=round((time.perf_counter() - started) * 1_000))
+            try:
+                await self._record_validation_cost(request, cost_calls, cost_event_id)
+            finally:
+                if outcome is not None:
+                    await self._finish_validation_cleanup(request.run_id, outcome)
+            raise
         except Exception as error:
-            logger.exception("Guardrail Validation %s failed.", request.run_id)
+            validation_event("validation.error", level=logging.ERROR, run_id=request.run_id,
+                             runner_id=self._settings.runner_id, error_type=type(error).__name__)
             result = protocol.ValidationResult(
                 runner_id=self._settings.runner_id,
                 run_id=request.run_id,
                 accepted=False,
-                reason=str(error),
+                reason=(f"Testing exceeded its {VALIDATION_TIMEOUT_SECONDS}-second deadline."
+                        if isinstance(error, TimeoutError) else str(error) or type(error).__name__),
                 status=protocol.VALIDATION_STATUS_FAILED,
             )
         finally:
+            end_cost_collection(cost_token)
             self._metrics.job("validation", False)
-        await self._send(protocol.RunnerMessage(
-            message_id=str(uuid.uuid4()), sent_at_unix_ms=_now_ms(), validation_result=result,
-        ))
+
+        validation_event("validation.completed", run_id=request.run_id, runner_id=self._settings.runner_id,
+                         status=protocol.ValidationStatus.Name(result.status), accepted=result.accepted,
+                         duration_ms=round((time.perf_counter() - started) * 1_000),
+                         total_cases=result.metrics.total, passed_cases=result.metrics.passed)
+        try:
+            # Neither teardown nor cost accounting may gate the report's delivery.
+            if result.accepted and outcome is not None:
+                try:
+                    spool = await asyncio.to_thread(ReportSpool, result, (validation_case_result_to_proto(item) for item in outcome.results))
+                except Exception as error:
+                    validation_event("validation.report_encoding_failed", level=logging.ERROR, run_id=result.run_id, error_type=type(error).__name__)
+                    await self._publish_validation_notice(protocol.ValidationResult(runner_id=result.runner_id, run_id=result.run_id,
+                        accepted=False, status=protocol.VALIDATION_STATUS_FAILED, reason="Report exceeds the bounded encoding budget."))
+                else:
+                    self._cache_report_spool(spool)
+                    await self._send_report_chunks(spool)
+            else:
+                await self._publish_validation_notice(result)
+        finally:
+            try:
+                await self._record_validation_cost(request, cost_calls, cost_event_id)
+            finally:
+                if outcome is not None:
+                    await self._finish_validation_cleanup(request.run_id, outcome)
+
+    async def _record_validation_cost(self, request, calls, event_id) -> None:
+        if self._telemetry is None or not calls:
+            return
+        try:
+            await self._telemetry.emit({
+                "id": event_id, "requestId": request.run_id,
+                "runnerId": self._settings.runner_id, "guardrailId": request.guardrail_id,
+                "occurredAt": datetime.now(UTC).isoformat(), "direction": "incoming",
+                "decision": "testing", "durationMs": 0,
+                "metadata": {"costOnly": True, "costSource": "testing", "usage": {
+                    "model_calls": [asdict(call) for call in calls], "model_invocations": len(calls),
+                }},
+            })
+        except Exception as error:
+            validation_event("validation.cost_record_error", level=logging.ERROR, run_id=request.run_id,
+                             error_type=type(error).__name__)
+
+    async def _finish_validation_cleanup(self, run_id, outcome) -> None:
+        task = getattr(outcome, "cleanup_task", None)
+        if task is None:
+            return
+        validation_event("validation.cleanup_started", run_id=run_id)
+        try:
+            if not task.done():
+                done, _ = await asyncio.wait({task}, timeout=5)
+                if not done:
+                    validation_event("validation.cleanup_slow", level=logging.WARNING, run_id=run_id)
+            await asyncio.shield(task)
+        except asyncio.CancelledError:
+            # A stop must acknowledge actual cleanup, not just its request.
+            while not task.done():
+                try:
+                    await asyncio.shield(task)
+                except asyncio.CancelledError:
+                    continue
+            raise
+        except Exception as error:
+            validation_event("validation.cleanup_error", level=logging.ERROR, run_id=run_id,
+                             error_type=type(error).__name__)
+        else:
+            validation_event("validation.cleanup_completed", run_id=run_id)
+
+    def _build_validation_result(self, request, outcome) -> protocol.ValidationResult:
+        result = protocol.ValidationResult(
+            runner_id=self._settings.runner_id, run_id=request.run_id, accepted=True,
+            status=protocol.VALIDATION_STATUS_PASSED if outcome.status == "passed" else protocol.VALIDATION_STATUS_FAILED,
+            metrics=validation_metrics_to_proto(outcome.metrics),
+            runtime=protocol.ValidationRuntime(runner_id=self._settings.runner_id,
+                runner_version=SOFTWARE_VERSION["version"], nemo_version=importlib.metadata.version("nemoguardrails"),
+                model_revision_id=self._store.model_revision_id, compiler_model_types=list(self._validator.compiler_model_types)),
+        )
+        if not request.HasField("artifact"):
+            result.candidate_artifact.CopyFrom(outcome.artifact)
+        if outcome.test_scope is not None:
+            scope = outcome.test_scope
+            result.test_scope.CopyFrom(protocol.ValidationScope(
+                test_model_rules=scope["testModelRules"], model_invocations=scope["modelInvocations"],
+                execution_digest=scope["executionDigest"], full_artifact_loaded=scope["fullArtifactLoaded"],
+                skipped_rules=[protocol.ValidationSkippedRule(policy_id=r["policyId"], rule_id=r["ruleId"], reason=r["reason"])
+                               for r in scope["skippedRules"]]))
+        return result
+
+    def _cache_report_spool(self, spool: ReportSpool) -> None:
+        previous = self._report_spools.pop(spool.run_id, None)
+        if previous:
+            self._report_spool_bytes -= previous.size
+            previous.close()
+        while self._report_spools and (len(self._report_spools) >= 64 or self._report_spool_bytes + spool.size > 512 * 1024 * 1024):
+            _, old = self._report_spools.popitem(last=False)
+            self._report_spool_bytes -= old.size
+            old.close()
+        self._report_spools[spool.run_id] = spool
+        self._report_spool_bytes += spool.size
+
+    async def _send_report_chunks(self, spool: ReportSpool) -> None:
+        for message in spool.messages():
+            part = message.validation_report_chunk
+            key = (part.run_id, part.upload_id, part.sequence)
+            future = asyncio.get_running_loop().create_future()
+            self._chunk_acks[key] = future
+            try:
+                while not self._stop.is_set():
+                    message.message_id, message.sent_at_unix_ms = str(uuid.uuid4()), _now_ms()
+                    await self._send(message)
+                    try:
+                        rejection = await asyncio.wait_for(asyncio.shield(future), timeout=30)
+                        if rejection:
+                            retained = self._report_spools.pop(spool.run_id, None)
+                            if retained is not None:
+                                self._report_spool_bytes -= retained.size
+                                retained.close()
+                            validation_event("validation.report_rejected", run_id=part.run_id)
+                            return
+                        break
+                    except TimeoutError:
+                        validation_event("validation.report_chunk_retry", run_id=part.run_id, sequence=part.sequence)
+                else:
+                    raise asyncio.CancelledError
+            finally:
+                self._chunk_acks.pop(key, None)
+                if not future.done():
+                    future.cancel()
+            validation_event("validation.report_chunk_acknowledged", run_id=part.run_id, sequence=part.sequence,
+                             raw_bytes=part.raw_size_bytes, wire_bytes=message.ByteSize())
+
+    async def _publish_validation_notice(self, result: protocol.ValidationResult) -> None:
+        if result.results or result.accepted or result.status not in (protocol.VALIDATION_STATUS_FAILED, protocol.VALIDATION_STATUS_CANCELLED):
+            raise ValueError("Executed reports must use the chunk channel.")
+        if result.status == protocol.VALIDATION_STATUS_CANCELLED:
+            old_spool = self._report_spools.pop(result.run_id, None)
+            if old_spool is not None:
+                self._report_spool_bytes -= old_spool.size
+                old_spool.close()
+        notice = protocol.ValidationStatusNotice(runner_id=result.runner_id, run_id=result.run_id,
+            status=result.status, reason=result.reason[:1024])
+        self._validation_notices[result.run_id] = notice
+        self._validation_notices.move_to_end(result.run_id)
+        while len(self._validation_notices) > 64:
+            self._validation_notices.popitem(last=False)
+        message = protocol.RunnerMessage(message_id=str(uuid.uuid4()), sent_at_unix_ms=_now_ms(), validation_status_notice=notice)
+        if result.status == protocol.VALIDATION_STATUS_CANCELLED and result.reason == "Cancelled by user.":
+            await self._send_lease_rejection(message)
+        else:
+            await self._send(message)
 
     async def _artifact_result(self, artifact, generation: int, accepted: bool, reason: str) -> None:
         await self._send(protocol.RunnerMessage(
@@ -410,6 +1011,7 @@ class RunnerControlClient:
         accepted: bool,
         reason: str,
         model_revision_id: str,
+        snapshot_nonce: str | None = None,
     ) -> None:
         await self._send(protocol.RunnerMessage(
             message_id=str(uuid.uuid4()), sent_at_unix_ms=_now_ms(),
@@ -419,11 +1021,34 @@ class RunnerControlClient:
                 accepted=accepted,
                 reason=reason,
                 model_revision_id=model_revision_id,
+                **({"snapshot_nonce": snapshot_nonce} if snapshot_nonce is not None else {}),
             ),
         ))
 
     async def _send(self, message: protocol.RunnerMessage) -> None:
-        await self._outgoing.put(message)
+        if self._serving_lease is not None and message.WhichOneof("body") in {
+            "validation_progress", "validation_report_chunk", "validation_status_notice", "capability_validation_result", "artifact_admission_result", "artifact_compilation_result",
+        }:
+            period = self._work_period.get() or self.synchronization_lost
+            if period.is_set() or not self.synchronized:
+                raise _LeaseAuthorityLost("Runner work belongs to a revoked serving period.")
+            self._queued_work_periods[id(message)] = period
+        try:
+            await self._outgoing.put(message)
+        except BaseException:
+            self._queued_work_periods.pop(id(message), None)
+            raise
+        self._metrics.set_control_queue_depth(self._outgoing.qsize())
+
+    async def _send_lease_rejection(self, message: protocol.RunnerMessage) -> None:
+        # Only the fixed, source-free rejection payloads above use this path.
+        # Private result/progress payloads must always carry their work period.
+        self._safe_control_rejections.add(id(message))
+        try:
+            await self._outgoing.put(message)
+        except BaseException:
+            self._safe_control_rejections.discard(id(message))
+            raise
         self._metrics.set_control_queue_depth(self._outgoing.qsize())
 
     def _registration(self) -> protocol.RunnerMessage:
@@ -434,11 +1059,15 @@ class RunnerControlClient:
                 runner_id=self._settings.runner_id,
                 boot_id=self._boot_id,
                 pool_id=self._settings.pool_id,
-                runner_version=__version__,
+                runner_version=SOFTWARE_VERSION["version"],
+                labels={"tasklattice.build": json.dumps(SOFTWARE_VERSION), "tasklattice.protection-modes": "1",
+                        "tasklattice.snapshot-ack": "1", "tasklattice.offline-compilation": "1",
+                        **({"tasklattice.lease-probe": "1"} if self._serving_lease is not None else {})},
                 nemo_version=importlib.metadata.version("nemoguardrails"),
                 max_concurrency=self._settings.max_concurrency,
                 compiler_capable=self._settings.compiler_capable,
                 applied_generation=self._store.generation,
+                applied_protection_generation=self._store.protection_generation,
             ),
         )
 

@@ -81,6 +81,9 @@ message PolicySource {
 
 // Resolved execution contract binding a policy flow to one NeMo rail.
 message PolicyRailBinding {
+  // Versioned Rule risk, independent of detector confidence and requested action.
+  // Absent for older artifacts without a recorded risk level; never infer it.
+  optional string risk_severity = 12;
   RailType rail_type = 1;
   string flow_name = 2;
   PolicyExecutionMode execution_mode = 3;
@@ -138,4 +141,6 @@ message GuardrailPolicyBinding {
   repeated RailType enabled_rails = 7;
   // Guardrail-local order. Unlisted Rules retain pinned template order after these.
   repeated string rule_order = 8;
+  // Compiler-owned Rule risk levels, pinned to this Policy version.
+  repeated StringPair rule_severities = 9;
 }

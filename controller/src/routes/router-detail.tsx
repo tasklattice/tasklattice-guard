@@ -1,17 +1,25 @@
+import { projectParams } from "@/lib/project-paths";
+import { hasPermission } from "../../shared/rbac";
+import { useTranslation } from "react-i18next";
+import { discardRouterDraft } from "@/components/traffic-routing/discard-router-draft";
 import { DistributionOverview } from "@/components/traffic-routing/distribution";
-import { ReviewPublishSheet } from "@/components/traffic-routing/review-publish-sheet";
+import { ReviewSubmitSheet, type ChangeSubmission } from "@/components/traffic-routing/review-submit-sheet";
+import { ChangeRequestHistory, ChangeRequestDetails, PendingChangeNotice, RestoreRevisionSheet } from "@/components/traffic-routing/change-requests";
 import { useEffect, useRef, useState } from "react";
+import { Activity, Cable, ClipboardCheck, GitBranch, History, LayoutDashboard, AlertTriangle, FlaskConical, Pencil } from "lucide-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Link, useParams, useSearch, useBlocker } from "@tanstack/react-router";
-import { toast } from "sonner";
+import { Link, useParams, useSearch, useNavigate, useBlocker } from "@tanstack/react-router";
+import { usePageUpdateBlocker } from "@/lib/page-updates";
+import { toast } from "@/components/ui/notifications";
 import { useAuth } from "@/lib/auth";
-import { getEndpoints } from "@/lib/endpoints-api";
+import { endpointsQueryOptions } from "@/features/endpoints-query";
 import { listControllerGuardrails } from "@/lib/controller-api";
-import { queryKeys } from "@/features/query-keys";
 import * as api from "@/lib/traffic-routing-api";
 import { PageHeader, ErrorNotice } from "@/components/product-shell";
+import { RouterRolloutBadge } from "@/components/traffic-routing/router-rollout-badge";
 import { EntitySheet } from "@/components/entity-sheet";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 
 import { RouterEndpoints } from "@/components/traffic-routing/router-endpoints";
@@ -24,14 +32,14 @@ import {
   RouterRevisions,
   Changes,
 } from "@/components/traffic-routing/router-revisions";
-import { revisionLabel } from "@/components/traffic-routing/router-view-model";
-import { RouterStatus } from "./routers";
+import "@/components/traffic-routing/router-workspace.scss";
 export {
   DeleteRouterSheet,
   RouterRuntimeEventTable,
 } from "@/components/traffic-routing/runtime-events";
 
 export function RouterDetailPage() {
+  const { t: localize } = useTranslation();
   const { routerId } = useParams({ strict: false });
   const query = useQuery({
     queryKey: api.trafficRouterKeys.detail(routerId!),
@@ -43,21 +51,17 @@ export function RouterDetailPage() {
     return query.error ? (
       <section className="py-8">
         <ErrorNotice error={query.error} />
-        <Button onClick={() => void query.refetch()}>Retry</Button>
+        <Button onClick={() => void query.refetch()}>{localize("routing.retry")}</Button>
       </section>
     ) : (
-      <p role="status" className="py-8">
-        Loading Router…
-      </p>
+      <p role="status" className="py-8">{localize("routing.loadingRouter")}</p>
     );
   return (
     <>
       {query.error && (
         <div className="pt-4">
           <ErrorNotice error={query.error} />
-          <Button variant="outline" onClick={() => void query.refetch()}>
-            Retry refresh
-          </Button>
+          <Button variant="outline" onClick={() => void query.refetch()}>{localize("routing.retryRefresh")}</Button>
         </div>
       )}
       <RouterWorkspace key={query.data.id} router={query.data} />
@@ -65,36 +69,62 @@ export function RouterDetailPage() {
   );
 }
 export function RouterWorkspace({ router }: { router: api.TrafficRouter }) {
+  const { t: localize } = useTranslation();
   const auth = useAuth(),
-    canEdit = auth.user?.role === "admin";
+    canEdit = hasPermission(auth.user?.role, "routers", "write") && (!router.projectId || router.projectId === auth.user?.project_id);
+  const awaiting = router.pendingChangeRequest;
   const client = useQueryClient();
   const search = useSearch({ strict: false }) as { routeId?: string; tab?: string };
-  const [tab, setTab] = useState(search.routeId ? "routing" : search.tab ?? "overview");
+  const navigate = useNavigate();
+  const tab = search.tab ?? (search.routeId ? "routing" : "overview");
+  const setTab = (nextTab: string, routeId = search.routeId) => void navigate({
+    to: "/$projectId/integration/routers/$routerId",
+    params: { ...projectParams(), routerId: router.id },
+    search: previous => ({ ...previous, tab: nextTab, routeId }),
+    resetScroll: false,
+  });
+  // Canonicalize direct links without adding a browser-history entry.
+  useEffect(() => {
+    if (!search.tab) void navigate({
+      to: "/$projectId/integration/routers/$routerId",
+      params: { ...projectParams(), routerId: router.id },
+      search: previous => ({ ...previous, tab }),
+      replace: true,
+      resetScroll: false,
+    });
+  }, [navigate, router.id, search.tab, tab]);
   const [selected, setSelected] = useState<string | null>(
     search.routeId ?? null,
   );
+  useEffect(() => setSelected(search.routeId ?? null), [search.routeId]);
   const [editing, setEditing] = useState(false);
   const [base, setBase] = useState(router);
   const [draft, setDraft] = useState(router.draft);
-  const [review, setReview] = useState<
-    | (api.RouterPublicationPreview & {
-        key: string;
-        sourceDraft: api.RouterDraft;
-      })
-    | null
-  >(null);
+  // Keep the pre-edit draft across Review's save boundary. An unpublished
+  // Router has no active snapshot, but its existing configuration is still
+  // the baseline for discarding edits made in this workspace.
+  const [initialDraft] = useState(router.draft);
+  const discardTarget = router.activeSnapshot ?? initialDraft;
+  const hasDraftChanges = JSON.stringify(draft) !== JSON.stringify(discardTarget);
+  const [review, setReview] = useState<api.RouterPublicationPreview | null>(null);
   const [dialog, setDialog] = useState<"discard" | "cancel" | null>(
     null,
   );
   const [restore, setRestore] = useState<api.RouterRevision | null>(null);
+  const [selectedChangeId, setSelectedChangeId] = useState<string | null>(null);
+  const [selectedRevision, setSelectedRevision] = useState<number | null>(null);
+  const openChange = (id: string) => { setSelectedRevision(null); setSelectedChangeId(id); setTab("change-requests"); };
+  const openRevision = (revision: number) => { setSelectedChangeId(null); setSelectedRevision(revision); setTab("revisions"); };
   const opener = useRef<HTMLElement | null>(null);
   const dirty = JSON.stringify(draft) !== JSON.stringify(base.draft);
+  usePageUpdateBlocker(editing || dirty || Boolean(review));
   const unpublished =
     dirty ||
     (router.draftRevision !== router.activeDraftRevision &&
       JSON.stringify(router.draft) !== JSON.stringify(router.activeSnapshot));
   const blocker = useBlocker({
-    shouldBlockFn: () => dirty,
+    // Tab navigation keeps this workspace mounted and does not discard drafts.
+    shouldBlockFn: ({ current, next }) => dirty && current.pathname !== next.pathname,
     withResolver: true,
     enableBeforeUnload: dirty,
   });
@@ -104,10 +134,7 @@ export function RouterWorkspace({ router }: { router: api.TrafficRouter }) {
       setDraft(router.draft);
     }
   }, [router, editing, dirty, review]);
-  const endpoints = useQuery({
-    queryKey: queryKeys.endpoints,
-    queryFn: getEndpoints,
-  });
+  const endpoints = useQuery(endpointsQueryOptions());
   const guardrails = useQuery({
     queryKey: ["routing-guardrails"],
     queryFn: listControllerGuardrails,
@@ -136,11 +163,7 @@ export function RouterWorkspace({ router }: { router: api.TrafficRouter }) {
         setDraft(next.draft);
         await accept(next);
       }
-      return {
-        ...(await api.previewTrafficRouter(router.id, next.draftRevision)),
-        key: crypto.randomUUID(),
-        sourceDraft: next.draft,
-      };
+      return api.previewTrafficRouter(router.id, next.draftRevision);
     },
     onSuccess: (result) => {
       setReview(result);
@@ -148,41 +171,32 @@ export function RouterWorkspace({ router }: { router: api.TrafficRouter }) {
     },
   });
   const release = useMutation({
-    mutationFn: () =>
-      api.publishTrafficRouter(router.id, review!.draftRevision, review!.key, {
+    // Submission freezes the reviewed snapshot; another administrator applies it.
+    mutationFn: (submission: ChangeSubmission) =>
+      api.submitRouterChange(router.id, {
+        expectedDraftRevision: review!.draftRevision,
         reviewedSnapshot: review!.snapshot,
         reviewedEndpointIds: review!.endpointIds,
+        ...submission,
       }),
-    onSuccess: async (next) => {
+    onSuccess: async (change) => {
       setReview(null);
       setEditing(false);
-      setBase(next);
-      setDraft(next.draft);
-      setTab("overview");
-      await accept(next);
-      await client.invalidateQueries({
-        queryKey: [...api.trafficRouterKeys.detail(router.id), "revisions"],
-      });
-      toast.success(
-        next.rolloutStatus === "active"
-          ? "Revision is active."
-          : "Revision published. Waiting for Runner deployment.",
-      );
+      openChange(change.id);
+      await client.invalidateQueries({ queryKey: api.trafficRouterKeys.all });
+      toast.success(localize("routing.changeSubmitted"));
     },
   });
   const discard = useMutation({
-    mutationFn: () =>
-      api.saveTrafficRouter(
-        router.id,
-        base.draftRevision,
-        router.activeSnapshot!,
-      ),
+    mutationFn: () => discardRouterDraft(base, discardTarget),
     onSuccess: async (next) => {
       setBase(next);
       setDraft(next.draft);
       setEditing(false);
       setReview(null);
       setDialog(null);
+      prepare.reset();
+      release.reset();
       await accept(next);
     },
   });
@@ -201,7 +215,7 @@ export function RouterWorkspace({ router }: { router: api.TrafficRouter }) {
     prepare.reset();
   };
   const openRule = (id: string) => {
-    setTab("routing");
+    setTab("routing", id);
     setSelected(id);
   };
   const openReview = () => {
@@ -209,67 +223,59 @@ export function RouterWorkspace({ router }: { router: api.TrafficRouter }) {
     prepare.mutate();
   };
   const serverChanged = router.draftRevision !== base.draftRevision;
+  const draftIsAwaiting = Boolean(awaiting) && !dirty && awaiting!.sourceDraftRevision === router.draftRevision;
   return (
-    <section className="space-y-5 py-7">
-      <Link
+    <section className="router-workspace space-y-5 py-8">
+      <Link params={projectParams()}
         className="inline-flex min-h-11 items-center text-sm text-primary"
-        to="/integration/routers"
-      >
-        ← Traffic Routers
-      </Link>
+        to="/$projectId/integration/routers"
+      >{localize("routing.trafficRouters2")}</Link>
       <PageHeader
+        className="router-workspace-header"
         title={router.name}
-        description="Manage traffic routing from incoming Endpoints to GuardRails."
-        action={<Button asChild variant="outline" className="min-h-11"><Link to="/playground" search={{ mode: "advanced", router: router.id }}>Test Router</Link></Button>}
+        description={localize("routing.manageTrafficRoutingFromIncomingEndpointsToGuardRails")}
+        action={<div className="flex shrink-0 items-center gap-2">
+          <Button asChild variant="testing" className="router-workspace-action"><Link params={projectParams()} to="/$projectId/playground" search={{ mode: "advanced", router: router.id }}><FlaskConical aria-hidden="true" />{localize("routing.testRouter")}</Link></Button>
+
+        </div>}
       />
-      <div className="space-y-2 text-sm">
-        <RouterStatus
-          router={router}
-          revisionLabel={revisionLabel(
-            revisions.data?.items.find(
-              (r) => r.revision === router.activeRevision,
-            ),
-          )}
-        />
+      
+      <div className="router-workspace-status">
+        <RouterRolloutBadge router={router} revision={revisions.data?.items.find(revision => revision.revision === router.activeRevision)} />
         <p className="text-muted-foreground">
-          {router.endpointIds.length} Endpoints ·{" "}
-          {active?.routes.filter((r) => r.kind === "normal").length ?? 0} Routes
-          ·{" "}
-          {
-            new Set(
-              active?.routes.flatMap((r) =>
-                r.targets.map((t) => t.guardrailId),
-              ) ?? [],
-            ).size
-          }{" "}
-          GuardRails
+          {localize("routing.summary", {
+            endpoints: router.endpointIds.length,
+            routes: active?.routes.filter(r => r.kind === "normal").length ?? 0,
+            guardrails: new Set(active?.routes.flatMap(r => r.targets.map(t => t.guardrailId)) ?? []).size,
+          })}
         </p>
       </div>
       {router.rolloutStatus === "failed" && (
-        <p role="alert" className="text-sm text-destructive">
-          Runner deployment failed. Review the configuration and publish a new
-          revision to retry.
-        </p>
+        <p role="alert" className="router-deployment-error">
+          <AlertTriangle aria-hidden="true" />{localize("routing.runnerDeploymentFailedReviewTheConfigurationAndPublishA")}</p>
       )}
-      {unpublished && !editing && (
-        <div className="flex flex-wrap items-center justify-between gap-4 rounded-lg border bg-muted/30 p-4">
-          <div>
-            <p className="text-sm font-medium">Draft changes</p>
+      {awaiting && <PendingChangeNotice change={awaiting} onOpen={() => openChange(awaiting.id)} />}
+      {unpublished && !draftIsAwaiting && (!editing || tab !== "routing") && (
+        <div className="router-draft-notice" role="status">
+          <Pencil aria-hidden="true" className="router-draft-icon" />
+          <div className="router-draft-copy">
+            <p className="text-sm font-medium">{hasDraftChanges ? localize("routing.draftChanges") : localize("routing.unpublishedConfiguration")}</p>
             <p className="mt-1 text-sm text-muted-foreground">
-              Routing configuration has unpublished changes.
+              {hasDraftChanges
+                ? localize("routing.routingConfigurationHasUnpublishedChanges")
+                : localize("routing.thisRouterHasNotBeenPublishedReviewItsConfiguration")}
             </p>
           </div>
           {canEdit && (
             <div className="flex gap-2">
-              <Button
+              {hasDraftChanges && <Button
                 variant="outline"
-                disabled={busy || !router.activeSnapshot}
-                onClick={() => setDialog("discard")}
-              >
-                Discard
-              </Button>
-              <Button
                 disabled={busy}
+                onClick={() => { discard.reset(); setDialog("discard"); }}
+              >{localize("routing.discard")}</Button>}
+              <Button
+                disabled={busy || Boolean(awaiting)}
+                title={awaiting ? localize("routing.waitForPendingChange") : undefined}
                 onClick={() => {
                   if (errors.length) {
                     beginEdit();
@@ -280,7 +286,7 @@ export function RouterWorkspace({ router }: { router: api.TrafficRouter }) {
                   } else openReview();
                 }}
               >
-                {prepare.isPending ? "Preparing…" : "Review & publish"}
+                {prepare.isPending ? localize("routing.preparing") : localize("routing.reviewSubmit")}
               </Button>
             </div>
           )}
@@ -288,17 +294,10 @@ export function RouterWorkspace({ router }: { router: api.TrafficRouter }) {
       )}
       {serverChanged && editing && (
         <div role="alert" className="space-y-2 rounded-lg border p-4 text-sm">
-          <p>
-            The server draft changed. Your edits are preserved. Cancel editing
-            to load the current draft before retrying.
-          </p>
-          <Button variant="outline" onClick={() => setDialog("cancel")}>
-            Compare with current draft
-          </Button>
+          <p>{localize("routing.theServerDraftChangedYourEditsArePreservedCancel")}</p>
+          <Button variant="outline" onClick={() => setDialog("cancel")}>{localize("routing.compareWithCurrentDraft")}</Button>
           <details>
-            <summary className="cursor-pointer py-2">
-              Current server changes
-            </summary>
+            <summary className="cursor-pointer py-2">{localize("routing.currentServerChanges")}</summary>
             <Changes before={base.draft} after={router.draft} names={names} />
           </details>
         </div>
@@ -310,48 +309,54 @@ export function RouterWorkspace({ router }: { router: api.TrafficRouter }) {
             variant="outline"
             disabled={busy || serverChanged}
             onClick={openReview}
-          >
-            Retry review
-          </Button>
+          >{localize("routing.retryReview")}</Button>
         </div>
       )}
       <Tabs
         value={tab}
         onValueChange={setTab}
-        className="gap-0 overflow-hidden rounded-xl border bg-card"
+        className="mt-7"
       >
-        <div className="overflow-x-auto border-b px-4">
-          <TabsList className="min-w-max border-b-0" aria-label="Router views">
-            {["overview", "endpoints", "routing", "monitoring", "revisions"].map((value) => (
+        <div className="overflow-x-auto">
+          <TabsList className="min-w-max" aria-label={localize("routing.routerViews")}>
+            {([
+              ["overview", LayoutDashboard],
+              ["endpoints", Cable],
+              ["routing", GitBranch],
+              ["monitoring", Activity],
+              ["revisions", History],
+              ["change-requests", ClipboardCheck],
+            ] as const).map(([value, Icon]) => (
               <TabsTrigger value={value} key={value}>
-                {value[0]!.toUpperCase() + value.slice(1)}
+                <Icon aria-hidden="true" />
+                {localize(`routing.tabs.${value}`)}
+                {value === "change-requests" && awaiting ? <Badge variant="secondary">1</Badge> : null}
               </TabsTrigger>
             ))}
           </TabsList>
         </div>
-        <TabsContent value="overview" className="min-w-0 p-4 sm:p-6">
+        <TabsContent value="overview" className="min-w-0 pt-5">
           {endpoints.error && <ErrorNotice error={endpoints.error} />}
           {guardrails.error && <ErrorNotice error={guardrails.error} />}
           {revisions.error && <ErrorNotice error={revisions.error} />}
           {endpoints.isPending ||
           guardrails.isPending ||
           revisions.isPending ? (
-            <p role="status">Loading traffic flow…</p>
+            <p role="status">{localize("routing.loadingTrafficFlow")}</p>
           ) : !endpoints.data || !revisions.data ? (
-            <p className="text-sm text-muted-foreground">
-              Traffic flow is unavailable until its source and revision data can
-              be loaded.
-            </p>
+            <p className="text-sm text-muted-foreground">{localize("routing.trafficFlowIsUnavailableUntilItsSourceAndRevision")}</p>
           ) : (
             <RouterOverview
               canEdit={canEdit}
+              refreshing={endpoints.isFetching}
+              onRefresh={() => { void endpoints.refetch(); }}
               router={router}
               endpoints={incoming}
               guardrails={names}
               revisions={revisions.data?.items ?? []}
               onRule={openRule}
               onEndpoints={() => setTab("endpoints")}
-              onRevisions={() => setTab("revisions")}
+              onRouting={() => setTab("routing")}
             />
           )}
           {(endpoints.error || guardrails.error || revisions.error) && (
@@ -362,26 +367,22 @@ export function RouterWorkspace({ router }: { router: api.TrafficRouter }) {
                 void guardrails.refetch();
                 void revisions.refetch();
               }}
-            >
-              Retry overview
-            </Button>
+            >{localize("routing.retryOverview")}</Button>
           )}
         </TabsContent>
-        <TabsContent value="endpoints" className="min-w-0 p-4 sm:p-6">
+        <TabsContent value="endpoints" className="min-w-0 pt-5">
           <RouterEndpoints
             router={router}
             canEdit={canEdit && !busy}
             onBound={accept}
           />
         </TabsContent>
-        <TabsContent value="routing" className="min-w-0 space-y-5 p-4 sm:p-6">
+        <TabsContent value="routing" className="min-w-0 space-y-5 pt-5">
           {editing && (
             <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border bg-muted/30 p-4">
               <div>
-                <p className="text-sm font-medium">Editing draft</p>
-                <p className="text-sm text-muted-foreground">
-                  Changes are not serving traffic until published.
-                </p>
+                <p className="text-sm font-medium">{localize("routing.editingDraft")}</p>
+                <p className="text-sm text-muted-foreground">{awaiting ? localize("routing.waitForPendingChange") : localize("routing.changesAreNotServingTrafficUntilPublished")}</p>
               </div>
               <div className="flex gap-2">
                 <Button
@@ -390,12 +391,11 @@ export function RouterWorkspace({ router }: { router: api.TrafficRouter }) {
                   onClick={() =>
                     dirty ? setDialog("cancel") : setEditing(false)
                   }
-                >
-                  Cancel
-                </Button>
+                >{localize("routing.cancel")}</Button>
                 <Button
                   disabled={
                     busy ||
+                    Boolean(awaiting) ||
                     errors.length > 0 ||
                     serverChanged ||
                     fields.isPending ||
@@ -403,7 +403,7 @@ export function RouterWorkspace({ router }: { router: api.TrafficRouter }) {
                   }
                   onClick={openReview}
                 >
-                  {prepare.isPending ? "Preparing…" : "Review changes"}
+                  {prepare.isPending ? localize("routing.preparing") : localize("routing.reviewChanges")}
                 </Button>
               </div>
             </div>
@@ -411,9 +411,7 @@ export function RouterWorkspace({ router }: { router: api.TrafficRouter }) {
           {fields.error && (
             <>
               <ErrorNotice error={fields.error} />
-              <Button variant="outline" onClick={() => void fields.refetch()}>
-                Retry selector fields
-              </Button>
+              <Button variant="outline" onClick={() => void fields.refetch()}>{localize("routing.retrySelectorFields")}</Button>
             </>
           )}
           {guardrails.error && (
@@ -422,17 +420,13 @@ export function RouterWorkspace({ router }: { router: api.TrafficRouter }) {
               <Button
                 variant="outline"
                 onClick={() => void guardrails.refetch()}
-              >
-                Retry GuardRails
-              </Button>
+              >{localize("routing.retryGuardRails")}</Button>
             </>
           )}
           {guardrails.isPending ? (
-            <p role="status">Loading routing targets…</p>
+            <p role="status">{localize("routing.loadingRoutingTargets")}</p>
           ) : (
             <RouterRouting
-              routerId={router.id}
-              endpointIds={router.endpointIds}
               draft={editing ? draft : (router.activeSnapshot ?? router.draft)}
               editableDraft={draft}
               editing={editing}
@@ -447,41 +441,57 @@ export function RouterWorkspace({ router }: { router: api.TrafficRouter }) {
             />
           )}
         </TabsContent>
-        <TabsContent value="monitoring" className="min-w-0 space-y-5 p-4 sm:p-6">
+        <TabsContent value="monitoring" className="min-w-0 space-y-5 pt-5">
           <div>
-            <h2 className="text-lg font-semibold">Monitoring</h2>
-            <p className="mt-1 text-sm text-muted-foreground">
-              Monitor actual traffic distribution and runtime outcomes. Filter by time, revision, or source Endpoint.
-            </p>
+            <h2 className="text-lg font-semibold">{localize("routing.monitoring")}</h2>
+            <p className="mt-1 text-sm text-muted-foreground">{localize("routing.monitorActualTrafficDistributionAndRuntimeOutcomesFilterBy")}</p>
           </div>
           {endpoints.error ? <>
             <ErrorNotice error={endpoints.error} />
-            <Button variant="outline" onClick={() => void endpoints.refetch()}>Retry monitoring</Button>
-          </> : endpoints.isPending ? <p role="status">Loading monitoring…</p> :
+            <Button variant="outline" onClick={() => void endpoints.refetch()}>{localize("routing.retryMonitoring")}</Button>
+          </> : endpoints.isPending ? <p role="status">{localize("routing.loadingMonitoring")}</p> :
             <DistributionOverview router={router} endpoints={incoming} />}
         </TabsContent>
-        <TabsContent value="revisions" className="min-w-0 p-4 sm:p-6">
+        <TabsContent value="revisions" className="min-w-0 pt-5">
           {revisions.error ? (
             <>
               <ErrorNotice error={revisions.error} />
-              <Button onClick={() => void revisions.refetch()}>
-                Retry revisions
-              </Button>
+              <Button onClick={() => void revisions.refetch()}>{localize("routing.retryRevisions")}</Button>
             </>
           ) : revisions.isPending ? (
-            <p role="status">Loading revisions…</p>
+            <p role="status">{localize("routing.loadingRevisions")}</p>
           ) : (
-            <RouterRevisions
-              router={router}
-              revisions={revisions.data?.items ?? []}
-              canEdit={canEdit && !busy}
-              onRestore={setRestore}
-            />
+              <RouterRevisions
+                router={router}
+                revisions={revisions.data?.items ?? []}
+                canEdit={canEdit && !busy}
+                onRestore={setRestore}
+                selectedRevision={selectedRevision}
+                onSelectRevision={setSelectedRevision}
+                onOpenChange={openChange}
+              />
           )}
         </TabsContent>
+        <TabsContent value="change-requests" className="min-w-0 pt-5">
+          <ChangeRequestHistory routerId={router.id} revisions={revisions.data?.items ?? []} onOpenChange={openChange} onOpenRevision={openRevision} />
+        </TabsContent>
       </Tabs>
+      {selectedChangeId && (
+        <ChangeRequestDetails
+          key={selectedChangeId}
+          changeId={selectedChangeId}
+          router={router}
+          revisions={revisions.data?.items ?? []}
+          names={names}
+          endpoints={endpoints.data?.items ?? []}
+          currentUserId={auth.user?.id}
+          canDecide={canEdit}
+          onClose={() => setSelectedChangeId(null)}
+          onOpenRevision={openRevision}
+        />
+      )}
       {review && (
-        <ReviewPublishSheet
+        <ReviewSubmitSheet
           review={review}
           before={router.activeSnapshot}
           names={names}
@@ -491,62 +501,43 @@ export function RouterWorkspace({ router }: { router: api.TrafficRouter }) {
           error={release.error}
           opener={opener}
           onClose={() => setReview(null)}
-          onPublish={() => release.mutate()}
+          onSubmit={(submission) => release.mutate(submission)}
           onReviewAgain={() => prepare.mutate()}
         />
       )}
       {restore && (
-        <EntitySheet
-          open
-          eyebrow="Router"
-          title={`Restore ${revisionLabel(restore)} as draft`}
-          description="Copy the historical routing configuration into a new draft. Existing Endpoint bindings stay unchanged. Review before publishing a new revision."
-          onOpenChange={(open) => {
-            if (!open) setRestore(null);
+        <RestoreRevisionSheet
+          router={router}
+          target={restore}
+          revisions={revisions.data?.items ?? []}
+          names={names}
+          endpoints={endpoints.data?.items ?? []}
+          hasLocalEdits={dirty}
+          onClose={() => setRestore(null)}
+          onSubmitted={change => {
+            setRestore(null);
+            setEditing(false);
+            setDraft(change.snapshot);
+            setBase({ ...router, draft: change.snapshot, draftRevision: change.sourceDraftRevision! });
+            openChange(change.id);
           }}
-          footer={
-            <>
-              <Button variant="outline" onClick={() => setRestore(null)}>
-                Cancel
-              </Button>
-              <Button
-                onClick={() => {
-                  setBase(router);
-                  setDraft(structuredClone(restore.snapshot));
-                  setEditing(true);
-                  setSelected(null);
-                  setTab("routing");
-                  setRestore(null);
-                  prepare.reset();
-                }}
-              >
-                Create draft
-              </Button>
-            </>
-          }
-        >
-          <p className="text-sm">
-            {dirty
-              ? "This replaces your unsaved routing edits."
-              : "This replaces the routing configuration in the editor."}{" "}
-            Revision {revisionLabel(restore)} remains immutable. Its pinned
-            GuardRail versions are preserved.
-          </p>
-        </EntitySheet>
+        />
       )}
       {dialog && (
         <EntitySheet
           open
-          eyebrow="Router"
+          eyebrow={localize("routing.router")}
           title={
             dialog === "discard"
-              ? "Discard draft changes?"
-              : "Cancel editing?"
+              ? localize("routing.discardDraftChanges")
+              : localize("routing.cancelEditing")
           }
           description={
             dialog === "discard"
-              ? "Restore the currently published routing configuration. Live traffic is unchanged."
-              : "Unsaved edits will be discarded. The last saved server draft will remain."
+              ? router.activeSnapshot
+                ? localize("routing.discardRoutingChangesAndRestoreTheCurrentlyPublishedConfiguration")
+                : localize("routing.discardRoutingChangesMadeInThisWorkspaceAndRestore")
+              : localize("routing.unsavedEditsWillBeDiscardedTheLastSavedServer")
           }
           closeDisabled={busy}
           onOpenChange={(open) => {
@@ -558,9 +549,7 @@ export function RouterWorkspace({ router }: { router: api.TrafficRouter }) {
                 variant="outline"
                 disabled={busy}
                 onClick={() => setDialog(null)}
-              >
-                Keep editing
-              </Button>
+              >{localize("routing.keepEditing")}</Button>
               <Button
                 disabled={busy}
                 onClick={() => {
@@ -574,8 +563,8 @@ export function RouterWorkspace({ router }: { router: api.TrafficRouter }) {
                 }}
               >
                 {dialog === "discard"
-                  ? "Discard changes"
-                  : "Cancel editing"}
+                  ? localize("routing.discardChanges")
+                  : localize("routing.cancelEditing2")}
               </Button>
             </>
           }
@@ -586,22 +575,18 @@ export function RouterWorkspace({ router }: { router: api.TrafficRouter }) {
       {blocker.status === "blocked" && (
         <EntitySheet
           open
-          eyebrow="Router"
-          title="Unsaved edits"
-          description="Leaving discards local routing edits."
+          eyebrow={localize("routing.router")}
+          title={localize("routing.unsavedEdits")}
+          description={localize("routing.leavingDiscardsLocalRoutingEdits")}
           onOpenChange={() => blocker.reset()}
           footer={
             <>
-              <Button variant="outline" onClick={() => blocker.reset()}>
-                Keep editing
-              </Button>
-              <Button onClick={() => blocker.proceed()}>
-                Discard and leave
-              </Button>
+              <Button variant="outline" onClick={() => blocker.reset()}>{localize("routing.keepEditing")}</Button>
+              <Button onClick={() => blocker.proceed()}>{localize("routing.discardAndLeave")}</Button>
             </>
           }
         >
-          <p>Review changes to save this draft before leaving.</p>
+          <p>{localize("routing.reviewChangesToSaveThisDraftBeforeLeaving")}</p>
         </EntitySheet>
       )}
     </section>

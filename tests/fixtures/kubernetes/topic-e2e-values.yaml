@@ -1,4 +1,4 @@
-# Overlay values-dev.yaml for disposable OrbStack-only lifecycle acceptance.
+# Overlay values-dev-uat.yaml for disposable OrbStack-only lifecycle acceptance.
 # Separate release/database: never edits the user's active model assignments.
 fullnameOverride: tali-topic-e2e
 controller:

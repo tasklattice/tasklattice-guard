@@ -1,0 +1,500 @@
+{
+  "testExclusions": [
+    {
+      "policyId": "payment-data",
+      "policyVersion": "1.0.0",
+      "sourceCaseId": "local-payment-data/rule-financial-pii/credit_card-acceptance/input",
+      "reason": "Duplicate Visa fixture: the specific Visa Rule redacts this value before the generic credit-card fallback. Keep the generic detector acceptance in isolated Policy tests."
+    },
+    {
+      "policyId": "payment-data",
+      "policyVersion": "1.0.0",
+      "sourceCaseId": "local-payment-data/rule-financial-pii/credit_card-acceptance/output",
+      "reason": "Duplicate Visa fixture: the specific Visa Rule redacts this value before the generic credit-card fallback. Keep the generic detector acceptance in isolated Policy tests."
+    },
+    {
+      "policyId": "payment-data",
+      "policyVersion": "1.0.0",
+      "sourceCaseId": "local-payment-data/advanced-au-pii-protection/rule-financial-pii/credit_card-acceptance",
+      "reason": "Duplicate Visa fixture: the specific Visa Rule redacts this value before the generic credit-card fallback. Keep the generic detector acceptance in isolated Policy tests."
+    },
+    {
+      "policyId": "payment-data",
+      "policyVersion": "1.0.0",
+      "sourceCaseId": "local-payment-data/baseline-pii-protection/rule-financial-pii/credit_card-acceptance",
+      "reason": "Duplicate Visa fixture: the specific Visa Rule redacts this value before the generic credit-card fallback. Keep the generic detector acceptance in isolated Policy tests."
+    },
+    {
+      "policyId": "payment-data",
+      "policyVersion": "1.0.0",
+      "sourceCaseId": "local-payment-data/pattern-matching/accept/credit_card",
+      "reason": "Duplicate Visa fixture: the specific Visa Rule redacts this value before the generic credit-card fallback. Keep the generic detector acceptance in isolated Policy tests."
+    },
+    {
+      "policyId": "payment-data",
+      "policyVersion": "1.0.0",
+      "sourceCaseId": "local-payment-data/pattern-matching/accept/credit_card/output",
+      "reason": "Duplicate Visa fixture: the specific Visa Rule redacts this value before the generic credit-card fallback. Keep the generic detector acceptance in isolated Policy tests."
+    },
+    {
+      "policyId": "payment-data",
+      "policyVersion": "1.0.0",
+      "sourceCaseId": "local-payment-data/pdpa-singapore/rule-sg-pdpa-financial-data/credit_card-acceptance",
+      "reason": "Duplicate Visa fixture: the specific Visa Rule redacts this value before the generic credit-card fallback. Keep the generic detector acceptance in isolated Policy tests."
+    },
+    {
+      "policyId": "payment-data",
+      "policyVersion": "1.0.0",
+      "sourceCaseId": "local-payment-data/uae-regulatory-compliance/rule-uae-data-protection-pii/credit_card-acceptance",
+      "reason": "Duplicate Visa fixture: the specific Visa Rule redacts this value before the generic credit-card fallback. Keep the generic detector acceptance in isolated Policy tests."
+    },
+    {
+      "policyId": "identity-documents",
+      "policyVersion": "1.0.1",
+      "sourceCaseId": "local-government-identifiers/accept/au_tfn/input",
+      "reason": "Duplicate TFN detector: au-pii-tax-identifiers/au_tfn owns this identical span in the combined Profile. Keep the alias acceptance in isolated Policy tests."
+    },
+    {
+      "policyId": "identity-documents",
+      "policyVersion": "1.0.1",
+      "sourceCaseId": "local-government-identifiers/accept/au_tfn/output",
+      "reason": "Duplicate TFN detector: au-pii-tax-identifiers/au_tfn owns this identical span in the combined Profile. Keep the alias acceptance in isolated Policy tests."
+    },
+    {
+      "policyId": "identity-documents",
+      "policyVersion": "1.0.1",
+      "sourceCaseId": "local-government-identifiers/pattern-matching/accept/au_tfn",
+      "reason": "Duplicate TFN detector: au-pii-tax-identifiers/au_tfn owns this identical span in the combined Profile. Keep the alias acceptance in isolated Policy tests."
+    },
+    {
+      "policyId": "identity-documents",
+      "policyVersion": "1.0.1",
+      "sourceCaseId": "local-government-identifiers/pattern-matching/accept/au_tfn/output",
+      "reason": "Duplicate TFN detector: au-pii-tax-identifiers/au_tfn owns this identical span in the combined Profile. Keep the alias acceptance in isolated Policy tests."
+    },
+    {
+      "policyId": "identity-documents",
+      "policyVersion": "1.0.1",
+      "sourceCaseId": "local-passports/advanced-au-pii-protection/rule-international-pii-identifiers/passport_uk-acceptance",
+      "reason": "The bare nine-digit fixture is shared with the US passport format. It cannot assert both country-specific Rule identities after the first redaction; retain isolated Policy acceptance."
+    },
+    {
+      "policyId": "identity-documents",
+      "policyVersion": "1.0.1",
+      "sourceCaseId": "local-passports/advanced-au-pii-protection/rule-international-pii-identifiers/passport_japan-acceptance",
+      "reason": "The bare two-letter/seven-digit fixture overlaps the Netherlands passport format. Retain the country-specific assertion in isolated Policy tests."
+    },
+    {
+      "policyId": "identity-documents",
+      "policyVersion": "1.0.1",
+      "sourceCaseId": "local-passports/pattern-matching/accept/passport_uk",
+      "reason": "The bare nine-digit fixture is shared with the US passport format. It cannot assert both country-specific Rule identities after the first redaction; retain isolated Policy acceptance."
+    },
+    {
+      "policyId": "identity-documents",
+      "policyVersion": "1.0.1",
+      "sourceCaseId": "local-passports/pattern-matching/accept/passport_australia",
+      "reason": "The bare letter/seven-digit fixture overlaps the India passport format. Retain the country-specific assertion in isolated Policy tests."
+    },
+    {
+      "policyId": "identity-documents",
+      "policyVersion": "1.0.1",
+      "sourceCaseId": "local-passports/pattern-matching/accept/passport_japan",
+      "reason": "The bare two-letter/seven-digit fixture overlaps the Netherlands passport format. Retain the country-specific assertion in isolated Policy tests."
+    },
+    {
+      "policyId": "identity-documents",
+      "policyVersion": "1.0.1",
+      "sourceCaseId": "local-passports/pattern-matching/accept/passport_uk/output",
+      "reason": "The bare nine-digit fixture is shared with the US passport format. It cannot assert both country-specific Rule identities after the first redaction; retain isolated Policy acceptance."
+    },
+    {
+      "policyId": "identity-documents",
+      "policyVersion": "1.0.1",
+      "sourceCaseId": "local-passports/pattern-matching/accept/passport_australia/output",
+      "reason": "The bare letter/seven-digit fixture overlaps the India passport format. Retain the country-specific assertion in isolated Policy tests."
+    },
+    {
+      "policyId": "identity-documents",
+      "policyVersion": "1.0.1",
+      "sourceCaseId": "local-passports/pattern-matching/accept/passport_japan/output",
+      "reason": "The bare two-letter/seven-digit fixture overlaps the Netherlands passport format. Retain the country-specific assertion in isolated Policy tests."
+    }
+  ],
+  "testCaseOverrides": [
+    {
+      "policyId": "identity-documents",
+      "policyVersion": "1.0.1",
+      "sourceCaseId": "local-government-identifiers/accept/br_cpf_unformatted/input",
+      "reason": "Numeric privacy formats overlap across jurisdictions. The earlier identity Policy redacts the complete identifier; the composed contract checks the selected Rule and exact output. Format-specific acceptance remains in isolated Policy tests.",
+      "expectedDecision": "transform",
+      "expectedOutputContent": "Acceptance sample: [au_medicare_REDACTED]",
+      "expectedMatches": [
+        {
+          "policyId": "identity-documents",
+          "ruleId": "au-pii-tax-identifiers/au_medicare"
+        }
+      ]
+    },
+    {
+      "policyId": "identity-documents",
+      "policyVersion": "1.0.1",
+      "sourceCaseId": "local-government-identifiers/accept/br_cpf_unformatted/output",
+      "reason": "Numeric privacy formats overlap across jurisdictions. The earlier identity Policy redacts the complete identifier; the composed contract checks the selected Rule and exact output. Format-specific acceptance remains in isolated Policy tests.",
+      "expectedDecision": "transform",
+      "expectedOutputContent": "Acceptance sample: [au_medicare_REDACTED]",
+      "expectedMatches": [
+        {
+          "policyId": "identity-documents",
+          "ruleId": "au-pii-tax-identifiers/au_medicare"
+        }
+      ]
+    },
+    {
+      "policyId": "identity-documents",
+      "policyVersion": "1.0.1",
+      "sourceCaseId": "local-government-identifiers/pattern-matching/accept/br_cpf_unformatted",
+      "reason": "Numeric privacy formats overlap across jurisdictions. The earlier identity Policy redacts the complete identifier; the composed contract checks the selected Rule and exact output. Format-specific acceptance remains in isolated Policy tests.",
+      "expectedDecision": "transform",
+      "expectedOutputContent": "Acceptance sample: [au_medicare_REDACTED]",
+      "expectedMatches": [
+        {
+          "policyId": "identity-documents",
+          "ruleId": "au-pii-tax-identifiers/au_medicare"
+        }
+      ]
+    },
+    {
+      "policyId": "identity-documents",
+      "policyVersion": "1.0.1",
+      "sourceCaseId": "local-government-identifiers/pattern-matching/accept/br_cpf_unformatted/output",
+      "reason": "Numeric privacy formats overlap across jurisdictions. The earlier identity Policy redacts the complete identifier; the composed contract checks the selected Rule and exact output. Format-specific acceptance remains in isolated Policy tests.",
+      "expectedDecision": "transform",
+      "expectedOutputContent": "Acceptance sample: [au_medicare_REDACTED]",
+      "expectedMatches": [
+        {
+          "policyId": "identity-documents",
+          "ruleId": "au-pii-tax-identifiers/au_medicare"
+        }
+      ]
+    },
+    {
+      "policyId": "identity-documents",
+      "policyVersion": "1.0.1",
+      "sourceCaseId": "local-passports/local-passport-formats/accept/eu_passport_generic/input",
+      "reason": "The contextual passport Rule precedes country-only patterns. Assert its identity and the complete redacted output in the combined Profile.",
+      "expectedDecision": "transform",
+      "expectedOutputContent": "Acceptance sample: [REDACTED]",
+      "expectedMatches": [
+        {
+          "policyId": "identity-documents",
+          "ruleId": "identity/passport"
+        }
+      ]
+    },
+    {
+      "policyId": "identity-documents",
+      "policyVersion": "1.0.1",
+      "sourceCaseId": "local-passports/local-passport-formats/accept/eu_passport_generic/output",
+      "reason": "The contextual passport Rule precedes country-only patterns. Assert its identity and the complete redacted output in the combined Profile.",
+      "expectedDecision": "transform",
+      "expectedOutputContent": "Acceptance sample: [REDACTED]",
+      "expectedMatches": [
+        {
+          "policyId": "identity-documents",
+          "ruleId": "identity/passport"
+        }
+      ]
+    },
+    {
+      "policyId": "identity-documents",
+      "policyVersion": "1.0.1",
+      "sourceCaseId": "local-passports/local-passport-formats/accept/passport_singapore/input",
+      "reason": "The contextual passport Rule precedes country-only patterns. Assert its identity and the complete redacted output in the combined Profile.",
+      "expectedDecision": "transform",
+      "expectedOutputContent": "Acceptance sample: [REDACTED]",
+      "expectedMatches": [
+        {
+          "policyId": "identity-documents",
+          "ruleId": "identity/passport"
+        }
+      ]
+    },
+    {
+      "policyId": "identity-documents",
+      "policyVersion": "1.0.1",
+      "sourceCaseId": "local-passports/local-passport-formats/accept/passport_singapore/output",
+      "reason": "The contextual passport Rule precedes country-only patterns. Assert its identity and the complete redacted output in the combined Profile.",
+      "expectedDecision": "transform",
+      "expectedOutputContent": "Acceptance sample: [REDACTED]",
+      "expectedMatches": [
+        {
+          "policyId": "identity-documents",
+          "ruleId": "identity/passport"
+        }
+      ]
+    },
+    {
+      "policyId": "identity-documents",
+      "policyVersion": "1.0.1",
+      "sourceCaseId": "local-passports/pattern-matching/accept/passport_singapore",
+      "reason": "The contextual passport Rule precedes country-only patterns. Assert its identity and the complete redacted output in the combined Profile.",
+      "expectedDecision": "transform",
+      "expectedOutputContent": "Acceptance sample: [REDACTED]",
+      "expectedMatches": [
+        {
+          "policyId": "identity-documents",
+          "ruleId": "identity/passport"
+        }
+      ]
+    },
+    {
+      "policyId": "identity-documents",
+      "policyVersion": "1.0.1",
+      "sourceCaseId": "local-passports/pattern-matching/accept/passport_singapore/output",
+      "reason": "The contextual passport Rule precedes country-only patterns. Assert its identity and the complete redacted output in the combined Profile.",
+      "expectedDecision": "transform",
+      "expectedOutputContent": "Acceptance sample: [REDACTED]",
+      "expectedMatches": [
+        {
+          "policyId": "identity-documents",
+          "ruleId": "identity/passport"
+        }
+      ]
+    },
+    {
+      "policyId": "contact-data",
+      "policyVersion": "1.0.1",
+      "sourceCaseId": "local-contact-data/local-regional-contact-formats/accept/fr_phone/input",
+      "reason": "Numeric privacy formats overlap across jurisdictions. The earlier identity Policy redacts the complete identifier; the composed contract checks the selected Rule and exact output. Format-specific acceptance remains in isolated Policy tests.",
+      "expectedDecision": "transform",
+      "expectedOutputContent": "Acceptance sample: +[au_medicare_REDACTED]",
+      "expectedMatches": [
+        {
+          "policyId": "identity-documents",
+          "ruleId": "au-pii-tax-identifiers/au_medicare"
+        }
+      ]
+    },
+    {
+      "policyId": "contact-data",
+      "policyVersion": "1.0.1",
+      "sourceCaseId": "local-contact-data/local-regional-contact-formats/accept/fr_phone/output",
+      "reason": "Numeric privacy formats overlap across jurisdictions. The earlier identity Policy redacts the complete identifier; the composed contract checks the selected Rule and exact output. Format-specific acceptance remains in isolated Policy tests.",
+      "expectedDecision": "transform",
+      "expectedOutputContent": "Acceptance sample: +[au_medicare_REDACTED]",
+      "expectedMatches": [
+        {
+          "policyId": "identity-documents",
+          "ruleId": "au-pii-tax-identifiers/au_medicare"
+        }
+      ]
+    },
+    {
+      "policyId": "contact-data",
+      "policyVersion": "1.0.1",
+      "sourceCaseId": "local-contact-data/china-personal-identifiers/mainland-mobile/input",
+      "reason": "Numeric privacy formats overlap across jurisdictions. The earlier identity Policy redacts the complete identifier; the composed contract checks the selected Rule and exact output. Format-specific acceptance remains in isolated Policy tests.",
+      "expectedDecision": "transform",
+      "expectedOutputContent": "\u624b\u673a\u53f7\u7801\uff1a[au_medicare_REDACTED]",
+      "expectedMatches": [
+        {
+          "policyId": "identity-documents",
+          "ruleId": "au-pii-tax-identifiers/au_medicare"
+        }
+      ]
+    },
+    {
+      "policyId": "contact-data",
+      "policyVersion": "1.0.1",
+      "sourceCaseId": "local-contact-data/china-personal-identifiers/mainland-mobile/output",
+      "reason": "Numeric privacy formats overlap across jurisdictions. The earlier identity Policy redacts the complete identifier; the composed contract checks the selected Rule and exact output. Format-specific acceptance remains in isolated Policy tests.",
+      "expectedDecision": "transform",
+      "expectedOutputContent": "\u624b\u673a\u53f7\u7801\uff1a[au_medicare_REDACTED]",
+      "expectedMatches": [
+        {
+          "policyId": "identity-documents",
+          "ruleId": "au-pii-tax-identifiers/au_medicare"
+        }
+      ]
+    },
+    {
+      "policyId": "contact-data",
+      "policyVersion": "1.0.1",
+      "sourceCaseId": "local-contact-data/gdpr-eu-pii-protection/rule-gdpr-eu-contact-information/fr_phone-acceptance",
+      "reason": "Numeric privacy formats overlap across jurisdictions. The earlier identity Policy redacts the complete identifier; the composed contract checks the selected Rule and exact output. Format-specific acceptance remains in isolated Policy tests.",
+      "expectedDecision": "transform",
+      "expectedOutputContent": "Acceptance sample: +[au_medicare_REDACTED]",
+      "expectedMatches": [
+        {
+          "policyId": "identity-documents",
+          "ruleId": "au-pii-tax-identifiers/au_medicare"
+        }
+      ]
+    },
+    {
+      "policyId": "contact-data",
+      "policyVersion": "1.0.1",
+      "sourceCaseId": "local-contact-data/pattern-matching/accept/fr_phone",
+      "reason": "Numeric privacy formats overlap across jurisdictions. The earlier identity Policy redacts the complete identifier; the composed contract checks the selected Rule and exact output. Format-specific acceptance remains in isolated Policy tests.",
+      "expectedDecision": "transform",
+      "expectedOutputContent": "Acceptance sample: +[au_medicare_REDACTED]",
+      "expectedMatches": [
+        {
+          "policyId": "identity-documents",
+          "ruleId": "au-pii-tax-identifiers/au_medicare"
+        }
+      ]
+    },
+    {
+      "policyId": "contact-data",
+      "policyVersion": "1.0.1",
+      "sourceCaseId": "local-contact-data/pattern-matching/accept/fr_phone/output",
+      "reason": "Numeric privacy formats overlap across jurisdictions. The earlier identity Policy redacts the complete identifier; the composed contract checks the selected Rule and exact output. Format-specific acceptance remains in isolated Policy tests.",
+      "expectedDecision": "transform",
+      "expectedOutputContent": "Acceptance sample: +[au_medicare_REDACTED]",
+      "expectedMatches": [
+        {
+          "policyId": "identity-documents",
+          "ruleId": "au-pii-tax-identifiers/au_medicare"
+        }
+      ]
+    },
+    {
+      "policyId": "risk-content-terms",
+      "policyVersion": "1.0.0",
+      "sourceCaseId": "local-risk-content-terms/accept/terrorism/input",
+      "reason": "The composed safety Policy blocks this harmful sample before keyword redaction. Assert the blocking Rule and the original risk-term detection, rather than the isolated Transform decision.",
+      "expectedDecision": "block",
+      "expectedMatches": [
+        {
+          "policyId": "content-safety-local",
+          "ruleId": "category/harmful_violence"
+        },
+        {
+          "policyId": "risk-content-terms",
+          "ruleId": "pattern/terrorism"
+        }
+      ]
+    },
+    {
+      "policyId": "risk-content-terms",
+      "policyVersion": "1.0.0",
+      "sourceCaseId": "local-risk-content-terms/accept/terrorism/output",
+      "reason": "The composed safety Policy blocks this harmful sample before keyword redaction. Assert the blocking Rule and the original risk-term detection, rather than the isolated Transform decision.",
+      "expectedDecision": "block",
+      "expectedMatches": [
+        {
+          "policyId": "content-safety-local",
+          "ruleId": "category/harmful_violence"
+        },
+        {
+          "policyId": "risk-content-terms",
+          "ruleId": "pattern/terrorism"
+        }
+      ]
+    },
+    {
+      "policyId": "risk-content-terms",
+      "policyVersion": "1.0.0",
+      "sourceCaseId": "local-risk-content-terms/accept/self_harm_suicide/input",
+      "reason": "The composed safety Policy blocks this harmful sample before keyword redaction. Assert the blocking Rule and the original risk-term detection, rather than the isolated Transform decision.",
+      "expectedDecision": "block",
+      "expectedMatches": [
+        {
+          "policyId": "content-safety-local",
+          "ruleId": "category/harmful_self_harm"
+        },
+        {
+          "policyId": "risk-content-terms",
+          "ruleId": "pattern/self_harm_suicide"
+        }
+      ]
+    },
+    {
+      "policyId": "risk-content-terms",
+      "policyVersion": "1.0.0",
+      "sourceCaseId": "local-risk-content-terms/accept/self_harm_suicide/output",
+      "reason": "The composed safety Policy blocks this harmful sample before keyword redaction. Assert the blocking Rule and the original risk-term detection, rather than the isolated Transform decision.",
+      "expectedDecision": "block",
+      "expectedMatches": [
+        {
+          "policyId": "content-safety-local",
+          "ruleId": "category/harmful_self_harm"
+        },
+        {
+          "policyId": "risk-content-terms",
+          "ruleId": "pattern/self_harm_suicide"
+        }
+      ]
+    },
+    {
+      "policyId": "risk-content-terms",
+      "policyVersion": "1.0.0",
+      "sourceCaseId": "local-risk-content-terms/pattern-matching/accept/terrorism",
+      "reason": "The composed safety Policy blocks this harmful sample before keyword redaction. Assert the blocking Rule and the original risk-term detection, rather than the isolated Transform decision.",
+      "expectedDecision": "block",
+      "expectedMatches": [
+        {
+          "policyId": "content-safety-local",
+          "ruleId": "category/harmful_violence"
+        },
+        {
+          "policyId": "risk-content-terms",
+          "ruleId": "pattern/terrorism"
+        }
+      ]
+    },
+    {
+      "policyId": "risk-content-terms",
+      "policyVersion": "1.0.0",
+      "sourceCaseId": "local-risk-content-terms/pattern-matching/accept/self_harm_suicide",
+      "reason": "The composed safety Policy blocks this harmful sample before keyword redaction. Assert the blocking Rule and the original risk-term detection, rather than the isolated Transform decision.",
+      "expectedDecision": "block",
+      "expectedMatches": [
+        {
+          "policyId": "content-safety-local",
+          "ruleId": "category/harmful_self_harm"
+        },
+        {
+          "policyId": "risk-content-terms",
+          "ruleId": "pattern/self_harm_suicide"
+        }
+      ]
+    },
+    {
+      "policyId": "risk-content-terms",
+      "policyVersion": "1.0.0",
+      "sourceCaseId": "local-risk-content-terms/pattern-matching/accept/terrorism/output",
+      "reason": "The composed safety Policy blocks this harmful sample before keyword redaction. Assert the blocking Rule and the original risk-term detection, rather than the isolated Transform decision.",
+      "expectedDecision": "block",
+      "expectedMatches": [
+        {
+          "policyId": "content-safety-local",
+          "ruleId": "category/harmful_violence"
+        },
+        {
+          "policyId": "risk-content-terms",
+          "ruleId": "pattern/terrorism"
+        }
+      ]
+    },
+    {
+      "policyId": "risk-content-terms",
+      "policyVersion": "1.0.0",
+      "sourceCaseId": "local-risk-content-terms/pattern-matching/accept/self_harm_suicide/output",
+      "reason": "The composed safety Policy blocks this harmful sample before keyword redaction. Assert the blocking Rule and the original risk-term detection, rather than the isolated Transform decision.",
+      "expectedDecision": "block",
+      "expectedMatches": [
+        {
+          "policyId": "content-safety-local",
+          "ruleId": "category/harmful_self_harm"
+        },
+        {
+          "policyId": "risk-content-terms",
+          "ruleId": "pattern/self_harm_suicide"
+        }
+      ]
+    }
+  ]
+}

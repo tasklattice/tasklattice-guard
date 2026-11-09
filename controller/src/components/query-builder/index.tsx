@@ -1,26 +1,26 @@
 import type { ControlElementsProp, FullField, QueryBuilderContextProvider } from "react-querybuilder";
 import { getCompatContextProvider } from "react-querybuilder";
 
-import { ShadcnActionElement } from "./ShadcnActionElement";
-import { ShadcnNotToggle } from "./ShadcnNotToggle";
-import { ShadcnShiftActions } from "./ShadcnShiftActions";
-import { ShadcnValueEditor } from "./ShadcnValueEditor";
-import { ShadcnValueSelector } from "./ShadcnValueSelector";
+import { CarbonActionElement } from "./CarbonActionElement";
+import { CarbonNotToggle } from "./CarbonNotToggle";
+import { CarbonShiftActions } from "./CarbonShiftActions";
+import { CarbonValueEditor } from "./CarbonValueEditor";
+import { CarbonValueSelector } from "./CarbonValueSelector";
 
-export * from "./ShadcnActionElement";
-export * from "./ShadcnNotToggle";
-export * from "./ShadcnShiftActions";
-export * from "./ShadcnValueEditor";
-export * from "./ShadcnValueSelector";
+export * from "./CarbonActionElement";
+export * from "./CarbonNotToggle";
+export * from "./CarbonShiftActions";
+export * from "./CarbonValueEditor";
+export * from "./CarbonValueSelector";
 
-export const shadcnControlElements: ControlElementsProp<FullField, string> = {
-  actionElement: ShadcnActionElement,
-  notToggle: ShadcnNotToggle,
-  shiftActions: ShadcnShiftActions,
-  valueEditor: ShadcnValueEditor,
-  valueSelector: ShadcnValueSelector,
+export const carbonControlElements: ControlElementsProp<FullField, string> = {
+  actionElement: CarbonActionElement,
+  notToggle: CarbonNotToggle,
+  shiftActions: CarbonShiftActions,
+  valueEditor: CarbonValueEditor,
+  valueSelector: CarbonValueSelector,
 };
 
-export const QueryBuilderShadcn: QueryBuilderContextProvider = getCompatContextProvider({
-  controlElements: shadcnControlElements,
+export const QueryBuilderCarbon: QueryBuilderContextProvider = getCompatContextProvider({
+  controlElements: carbonControlElements,
 });

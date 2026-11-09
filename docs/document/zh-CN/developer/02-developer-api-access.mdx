@@ -1,0 +1,59 @@
+---
+id: "developer-api-access"
+title: "控制面 API 集成"
+summary: "用 Controller 管理 API 将 Policy、Guardrail、Router 的草稿、验证和发布接入自己的编辑器、审批流或自动化。"
+outcome: "最终产出：有权限、有审阅步骤、能追踪版本与异步状态的配置工作流。"
+order: 3
+---
+通过 Controller API，可以将配置编辑、测试和发布接入自己的工具。模型调用前后的内容检测见 [Endpoint 接入指南](/document/developer/endpoint-setup)。
+
+<a id="developer-control-workflow" />
+## 建立配置工作流
+
+| 步骤 | Controller 操作 | 接入方职责 |
+| --- | --- | --- |
+| 读取 | 查询 Policy、Guardrail 和 Router | 展示当前资源、版本和修订号。 |
+| 编辑 | 创建资源、更新草稿 | 区分草稿与已发布版本，处理修订冲突。 |
+| 测试 | 更新 Test Case、启动运行、查询报告 | 跟踪返回的运行 ID，展示实际结果。 |
+| 发布 | 发布 Policy 或 Guardrail | 发布前审阅当前已测试的内容。 |
+| 路由 | Router 预览、提交变更和批准 | 核对确切版本与 Endpoint 绑定，分离提交人与审批人。 |
+| 观察 | 查询发布与下发状态 | 区分请求已接受、配置已发布与配置已应用。 |
+
+Router 变更使用已审阅的 `expectedDraftRevision`、`reviewedSnapshot` 和 `reviewedEndpointIds`。提交创建变更单，另行批准才会发布。步骤见[路由与重试流程](/document/api/api-contract-retries#api-contract-router-publish)。
+
+接入方负责编辑器、审批展示、变更来源和最终状态消息。Controller 校验账户权限、模块授权、资源引用和版本约束。
+
+<a id="developer-control-auth" />
+## 认证管理请求
+
+控制台使用浏览器 Session。后端或自动化可使用所属账户的个人 Access Token。在[账户 → Access Tokens](/account/access-tokens)中选择模块授权和有效期。完整密钥只显示一次。
+
+创建、列出和撤销个人 Token 必须使用所属账户的浏览器 Session。已有 Token 不能创建其他 Token。请将 Token 保存在后端配置中。
+
+先调用 `GET /api/v1/account/identity`，携带 `Authorization: Bearer <token>`。启动工作流前，检查 `effectivePermissions`：
+
+- `user` 账户管理业务 Guardrail、Policy、Router 和 Endpoint。
+- `admin` 账户管理平台设置与账户，并查看操作审计。
+- Token 有效权限取当前角色与模块授权的交集。write 包含 read。
+
+凭据无效或过期返回 `401`，权限不足返回 `403`。详见[角色边界](/document/admin/platform-access#admin-governance)。
+
+```bash
+curl --fail-with-body "{controllerOrigin}/api/v1/account/identity"   -H "Authorization: Bearer $GUARD_ACCESS_TOKEN"
+```
+
+Endpoint 凭据只认证运行时检测，不能代替管理请求的个人 Token。个人 Token 也不能代替 Endpoint 凭据检测内容。
+
+<a id="developer-api-contract" />
+## 使用当前契约与重试规则
+
+| 入口 | 用途 |
+| --- | --- |
+| [API 文档](/api/docs) | 人工查阅操作详情。 |
+| [OpenAPI](/api/openapi.json) | 读取请求与响应模型、权限和重试规则。 |
+| [Router 契约](/api/openapi.json?module=routers) | 只读取路由相关的操作契约。 |
+| [工具索引](/api/llms.txt) | 查找紧凑的操作索引。 |
+
+逐项阅读 `x-token-permission`、`x-idempotency` 和 `x-retry-policy`。产品 Tag 不定义权限。
+
+超时不证明写入失败。结果不确定时，先读取资源再决定是否重试，并保留该操作重试规则要求的值。

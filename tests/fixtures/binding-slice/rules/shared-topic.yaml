@@ -1,0 +1,23 @@
+id: shared/topic-check
+name: Shared topic check
+description: Shared detector with binding-specific parameters and output variants.
+stages:
+- input
+detector:
+  ref: text/keyword
+  version: 1.0.0
+  parameters:
+    keywords:
+    - - BASE_TOPIC
+      - low
+on_match:
+  action: block
+  replacement: '[TOPIC_REDACTED]'
+variants:
+- variant_id: allow
+  replacement: '[ALLOW_REDACTED]'
+  description: Allowlist output variant.
+metadata:
+  taxonomy_ids:
+  - TALI-BUSINESS-POLICY
+risk_level: low

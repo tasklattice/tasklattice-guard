@@ -4,13 +4,14 @@ import { PlaygroundDraftPreviewStore } from "./service.js";
 
 const candidate = {
   actorId: "admin-1",
+  allocation: { poolId: "pool-1", groupId: "group-1", runtimeUrl: "http://pool-1" },
   guardrailId: "guardrail-1",
   guardrailName: "Guardrail 1",
   draftRevision: 7,
   candidateVersion: "20260904-040000.004Z",
   plan: { guardrail_id: "guardrail-1", guardrail_version: "20260904-040000.004Z" },
   runtimeProfile: "auto",
-  compilerVersion: "controller-plan-v2",
+  compilerVersion: "controller-plan-v1",
 };
 
 describe("PlaygroundDraftPreviewStore", () => {

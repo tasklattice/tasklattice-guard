@@ -1,21 +1,24 @@
 // Generate from the actual Hono handlers, their Zod parsers and TypeScript response types.
-// This runs at build time only; it never starts the app or connects to a database.
+// This runs before development, tests and builds; it never starts the app or connects to a database.
 import { API, TypeFlags as F, SymbolFlags } from 'typescript/unstable/sync';
 import * as ast from 'typescript/unstable/ast';
-import { readFile, writeFile, mkdir, rm } from 'node:fs/promises';
+import { readFile, writeFile, mkdir, rename, rm } from 'node:fs/promises';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { z } from 'zod';
 import { apiTags, operationContract } from '../shared/api-contract.ts';
 import SwaggerParser from '@apidevtools/swagger-parser';
 import { GUARD_AUTH_COOKIE_PREFIX } from '../server/auth.ts';
-import { tokenRoutePermissions } from '../server/http/token-permissions.ts';
+import { adminProjectScope, requiredAccountPermission, tokenRoutePermissions } from '../server/http/token-permissions.ts';
+import { accountRoles, hasPermission } from '../shared/rbac.ts';
+import { projectIdSchema, createProjectSchema } from '../shared/projects.ts';
 import { createAccessTokenSchema } from '../shared/access-tokens.ts';
-import { assignmentInputSchema, modelConfigurationInputSchema } from '../server/model-config/domain.ts';
+import { assignmentInputSchema, modelConfigurationInputSchema, modelRuntimeSettingsInputSchema } from '../server/model-config/domain.ts';
 import { MAX_DOCUMENTS, MAX_DOCUMENT_BYTES, MAX_TOTAL_BYTES } from '../server/control-plane-ai/document-ingestion.ts';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const output = resolve(root, 'openapi/controller.openapi.json');
+const pendingOutput = resolve(root, `openapi/.controller.openapi-${process.pid}.tmp`);
 const api = new API({ cwd: root });
 const temp = resolve(root, `scripts/.openapi-inputs-${process.pid}.ts`);
 const nodes = root => { const result = []; function visit(node) { result.push(node); node.forEachChild(visit); } visit(root); return result; };
@@ -46,7 +49,7 @@ try {
     const specifier = n.moduleSpecifier.text;
     return n.getText().replace(n.moduleSpecifier.getText(), JSON.stringify(specifier.startsWith('.') ? resolve(dirname(source.fileName),specifier) : specifier));
   });
-  const declarations = source.statements.filter(n => n.end < createApp.pos && !ast.isImportDeclaration(n)).map(n=>n.getText());
+  const declarations = source.statements.filter(n => n.end <= createApp.pos && !ast.isImportDeclaration(n)).map(n=>n.getText());
   const distribution = allNodes.find(n => ast.isVariableDeclaration(n) && n.name.getText() === 'distributionQuery');
   if (distribution) declarations.push(`const distributionQuery = ${distribution.initializer.getText()};`);
   const parsers = [];
@@ -126,24 +129,38 @@ try {
   components.Error = errorSchema;
   const statusDescription = {200:'Successful response.',201:'Resource created.',202:'Accepted for asynchronous processing; this does not guarantee deployment or completion.',204:'Successful response with no body.',400:'Request schema validation failed.',401:'Missing, invalid, expired or revoked credential.',403:'Insufficient token permission, account role, or session requirement.',404:'Resource not found.',409:'State conflict; reload and review before retrying.',415:'Unsupported content type.',422:'Domain validation failed.',500:'Internal server error.',503:'Required service or runtime is unavailable.'};
   const bodyOverrides = new Map([
+    ['POST /api/v1/projects',createProjectSchema],
     ['POST /api/v1/account/access-tokens',createAccessTokenSchema],
     ['PUT /api/v1/models/:id/protocol',modelConfigurationInputSchema],
+    ['PUT /api/v1/models/:id/runtime-settings',modelRuntimeSettingsInputSchema],
     ['PUT /api/v1/model-configuration/draft',assignmentInputSchema],
   ]);
   for (const route of entries) {
     const {id,method,path,middleware} = route; const template = path.replace(/:([^/]+)/g,'{$1}');
     const permission = tokenRoutePermissions.find(([m,p])=>m===method && p===path);
-    const sessionOnly = middleware.includes('accountSession'); const authenticated = middleware.includes('authenticated');
+    const sessionOnly = middleware.includes('accountSession') || middleware.includes('browserSession'); const authenticated = middleware.includes('authenticated');
+    const sharingRoute = path.startsWith('/api/v1/account/shares') || path === '/api/v1/account/shareable-resources' || path === '/api/v1/account/share-recipients';
     assert(!authenticated || permission || sessionOnly || path === '/api/v1/account/identity', `Missing token policy: ${method} ${path}`);
-    const role = middleware.includes('administrator') ? 'admin' : 'user';
+    const accountPermission = requiredAccountPermission(method, path);
+    const allowedRoles = middleware.includes('projectAdministrator') ? ['admin'] : middleware.includes('projectUser') || sharingRoute ? ['user'] : accountPermission ? accountRoles.filter(role => hasPermission(role, accountPermission.resource, accountPermission.action)) : [...accountRoles];
+    const role = allowedRoles.length === 1 ? allowedRoles[0] : 'user';
     const operation = { operationId:id, summary: `${method} ${template}`, tags:[sessionOnly || path==='/api/v1/account/identity' ? 'Account' : permission?.[2] ?? 'System'],
-      description: permission ? `Requires ${permission[2]}:${permission[3]} for personal access tokens. ${permission[3]==='write' ? 'Write includes read access and requires a current administrator account. ' : ''}${role==='admin' ? 'This operation also requires the admin account role. ' : ''}Token access covers all resources in the selected module.` : sessionOnly ? 'Browser session only. Personal access tokens cannot manage credentials. Ownership is taken from the authenticated session.' : path==='/api/v1/account/identity' ? 'Returns the authenticated identity and token permissions. Effective permissions are capped by the current account role.' : 'Public system health information; no credential is required.',
+      description: permission ? `Requires ${permission[2]}:${permission[3]} for personal access tokens. ${permission[3]==='write' ? 'Write includes read access; account role restrictions still apply. ' : ''}Allowed account roles: ${allowedRoles.join(', ')}. Token access is capped by the authenticated account role and project ownership or explicit sharing.` : sessionOnly ? sharingRoute ? 'Project user browser session only. Read-only sharing grants are scoped to the authenticated project; personal access tokens cannot manage shares.' : 'Browser session only. Personal access tokens cannot manage credentials. Ownership is taken from the authenticated session.' : path==='/api/v1/account/identity' ? 'Returns the authenticated identity, project and token permissions. Effective permissions are capped by the current account role.' : 'Public system health information; no credential is required.',
       security: authenticated ? sessionOnly ? [{sessionCookie:[]}] : [{personalAccessToken:[]},{sessionCookie:[]}] : [],
       ...(permission ? {'x-token-permission':{module:permission[2],access:permission[3]}} : {}),
-      'x-account-role':role, ...(permission ? {'x-token-account-role':permission[3]==='write' ? 'admin' : role} : {}), 'x-source':`server/http/app.ts#${source.getLineAndCharacterOfPosition(route.handler.pos).line+1}`,
+      'x-account-role':role, 'x-account-roles':allowedRoles, ...(permission ? {'x-token-account-role':role} : {}), 'x-source':`server/http/app.ts#${source.getLineAndCharacterOfPosition(route.handler.pos).line+1}`,
       parameters:[], responses:{} };
     const semantics = operationContract(method, path);
     Object.assign(operation, semantics, { description: `${semantics.description} ${operation.description}` });
+    const projectScope = adminProjectScope(method, path);
+    if (projectScope) {
+      operation['x-admin-project-scope'] = projectScope;
+      const description = projectScope === 'required'
+        ? 'Administrators must send X-Project-ID for every request (including detail reads); missing/invalid selection returns 400, unknown project or resource outside it returns 404. Only resources owned by that project are returned. Project user tokens use their persisted project; the header cannot change it.'
+        : 'Administrators read platform Models/configuration without this header. X-Project-ID selects a project read-only; unknown projects return 404. Project user tokens use their persisted project.';
+      operation.description += ` ${description} The projectId query parameter is not a project selector.`;
+      operation.parameters.push({ name: 'X-Project-ID', in: 'header', required: false, 'x-required-for-roles': projectScope === 'required' ? ['admin'] : [], schema: inputSchema(projectIdSchema, 'ProjectSelection'), description });
+    }
     for (const match of path.matchAll(/:([^/]+)/g)) operation.parameters.push({name:match[1],in:'path',required:true,schema:{type:'string'}});
     for (const parser of route.parsers) {
       const schema = inputs[parser.key];
@@ -170,12 +187,18 @@ try {
     if (bodyOverrides.has(`${method} ${path}`)) operation.requestBody={required:true,content:{'application/json':{schema:inputSchema(bodyOverrides.get(`${method} ${path}`),`${id}Body`)}}};
     const hasBody = route.nodes.some(n=>ast.isCallExpression(n)&&['context.req.json','context.req.text'].includes(n.expression.getText()));
     assert(!hasBody||operation.requestBody,`Undocumented request body: ${id}`);
-    if (route.nodes.some(n=>ast.isCallExpression(n)&&n.expression.getText()==='context.req.formData')) {
+    if (route.nodes.some(n=>ast.isCallExpression(n)&&n.expression.getText()==='context.req.formData') && path==='/api/v1/guardrail-packages') {
+      operation.requestBody={required:true,content:{'multipart/form-data':{schema:{type:'object',required:['package'],properties:{package:{type:'string',format:'binary',description:'A V1 .guardrail.zip release package; at most 32 MiB.'}}}}}};
+    } else if (route.nodes.some(n=>ast.isCallExpression(n)&&n.expression.getText()==='context.req.formData')) {
       assert(path==='/api/v1/authoring/document-analyses',`Undocumented multipart body: ${id}`);
       operation.requestBody={required:true,content:{'multipart/form-data':{schema:{type:'object',required:['files'],properties:{language:{type:'string',enum:['en','zh-CN'],default:'en'},files:{type:'array',minItems:1,maxItems:MAX_DOCUMENTS,items:{type:'string',format:'binary'},description:`DOC, DOCX or TXT; each file <= ${MAX_DOCUMENT_BYTES} bytes; combined <= ${MAX_TOTAL_BYTES} bytes.`}}}}}};
     }
     for(const call of route.nodes.filter(ast.isCallExpression)) {
       if(!['context.json','context.body'].includes(call.expression.getText()))continue;
+      if(call.expression.getText()==='context.body' && path==='/api/v1/guardrails/:id/package'){
+        operation.responses[200]={description:'Signed Guardrail release package (.guardrail.zip).',content:{'application/zip':{schema:{type:'string',format:'binary'}}}};
+        continue;
+      }
       const statusType=call.arguments[1] ? checker.getTypeAtLocation(call.arguments[1]) : null;
       const statuses=statusType ? (statusType.isUnionType()?statusType.getTypes():[statusType]).map(t=>t.value) : [200];
       assert(statuses.every(s=>Number.isInteger(s)&&s>=100&&s<=599),`Dynamic response status: ${id}`);
@@ -192,6 +215,9 @@ try {
         operation.responses[status]=response;
       }
     }
+    if (!Object.keys(operation.responses).some(code=>Number(code)<400) && route.nodes.some(n=>ast.isCallExpression(n)&&n.expression.getText()==='stream')) {
+      operation.responses[200]={description:'Streaming JSON export.',content:{'application/json':{schema:{type:'object'}}}};
+    }
     assert(Object.keys(operation.responses).some(code=>Number(code)<400),`No success response: ${id}`);
     for(const status of [400,404,409,422,500,503,...(authenticated?[401,403]:[]),...(sessionOnly?[415]:[])])
       operation.responses[status]??={description:statusDescription[status],content:{'application/json':{schema:ref('Error')}}};
@@ -204,7 +230,14 @@ try {
   const document={openapi:'3.1.0',info:{title:'TaskLattice Guard Controller API',version:pkg.version,description:'Generated from Hono handlers, runtime Zod schemas, TypeScript JSON response types, and the token permission allowlist. Personal tokens use Authorization: Bearer <token>. Never put tokens in URLs. A supplied invalid credential does not fall back to a browser cookie. Runner data-plane and internal control APIs, metrics, and Better Auth endpoints are separate contracts.'},servers:[{url:'/',description:'The Controller serving this document.'}],tags:apiTags,paths,components:{securitySchemes:{personalAccessToken:{type:'http',scheme:'bearer',bearerFormat:'tlg_pat_<opaque-secret>',description:'Personal access token; module permissions and current account role both apply.'},sessionCookie:{type:'apiKey',in:'cookie',name:`${GUARD_AUTH_COOKIE_PREFIX}.session_token`,description:'Better Auth browser session. Production deployments may use the __Secure- cookie prefix.'}},schemas:components}};
   await SwaggerParser.validate(structuredClone(document));
   const text=JSON.stringify(stable(document),null,2)+'\n';
-  if(process.argv.includes('--check'))assert(await readFile(output,'utf8')===text,'OpenAPI document is stale. Run npm run openapi:generate and commit the generated artifact.');
-  else {await mkdir(dirname(output),{recursive:true});await writeFile(output,text);}
-  console.log(`${process.argv.includes('--check')?'Checked':'Generated'} ${entries.length} operations and ${Object.keys(components).length} schemas: openapi/controller.openapi.json`);
-} finally { api.close(); await rm(temp,{force:true}); }
+  const previous = await readFile(output, 'utf8').catch(error => {
+    if (error.code === 'ENOENT') return null;
+    throw error;
+  });
+  if (previous !== text) {
+    await mkdir(dirname(output), { recursive: true });
+    await writeFile(pendingOutput, text);
+    await rename(pendingOutput, output);
+  }
+  console.log(`Generated ${entries.length} operations and ${Object.keys(components).length} schemas: openapi/controller.openapi.json`);
+} finally { api.close(); await rm(temp,{force:true}); await rm(pendingOutput,{force:true}); }

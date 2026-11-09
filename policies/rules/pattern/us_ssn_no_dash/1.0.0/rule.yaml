@@ -1,0 +1,22 @@
+id: pattern/us_ssn_no_dash
+version: 1.0.0
+name: SSN (No Dashes)
+description: Detects US SSN without dashes (XXXXXXXXX format)
+stages:
+- input
+- output
+detector:
+  ref: text/regex
+  version: 1.0.0
+  parameters:
+    expression: \b(?!000|666|9\d{2})\d{3}(?!00)\d{2}(?!0000)\d{4}\b
+on_match:
+  action: transform
+  replacement: '[us_ssn_no_dash_REDACTED]'
+risk_level: medium
+metadata:
+  taxonomy_ids:
+  - TALI-PRIVACY-PII
+runtime_adapter:
+  binding_id: local-government-identifiers
+  implementation_rule_id: pattern/us_ssn_no_dash

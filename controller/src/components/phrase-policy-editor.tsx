@@ -28,14 +28,14 @@ export function PhrasePolicyEditor({ value, onChange }: { value: string; onChang
   return <section className="min-w-0 space-y-3 sm:col-span-2" aria-label={t("protection.phrases.title")}>
     <div className="flex flex-wrap items-center justify-between gap-3">
       <h5 className="text-sm font-medium">{t("protection.phrases.title")}</h5>
-      <Button type="button" variant="outline" className="min-h-11" disabled={malformed || entries.length >= 50} onClick={() => save([...entries, { id: crypto.randomUUID(), phrase: "", action: "reject", replacement: "[REDACTED]" }])}><Plus />{t("protection.phrases.add")}</Button>
+      <Button type="button" variant="outline" className="min-h-11" disabled={malformed || entries.length >= 50} onClick={() => save([...entries, { id: crypto.randomUUID(), phrase: "", action: "block", replacement: "[REDACTED]" }])}><Plus />{t("protection.phrases.add")}</Button>
     </div>
     <p className="text-xs leading-5 text-muted-foreground">{t("protection.phrases.hint")}</p>
     {malformed ? <p role="alert" className="text-sm text-destructive">{t("protection.phrases.malformed")}</p> : <ol className="divide-y rounded-lg border bg-card">
       {entries.map((entry, index) => <li key={entry.id} className="space-y-3 p-3">
         <div className="flex flex-wrap items-end gap-2">
           <label className="grid min-w-0 flex-[1_1_12rem] gap-2 text-xs font-medium">{t("protection.phrases.match", { index: index + 1 })}
-            <Input className="min-h-11" value={entry.phrase} maxLength={240} onChange={(event) => update(index, { phrase: event.target.value })} />
+            <Input className="field:min-h-11" value={entry.phrase} maxLength={240} onChange={(event) => update(index, { phrase: event.target.value })} />
           </label>
           <div className="ml-auto flex gap-1">
             <Button type="button" size="icon" variant="ghost" className="size-11" aria-label={t("protection.phrases.up", { index: index + 1 })} disabled={index === 0} onClick={() => move(index, -1)}><ArrowUp /></Button>
@@ -46,12 +46,12 @@ export function PhrasePolicyEditor({ value, onChange }: { value: string; onChang
         <div className="grid gap-3 sm:grid-cols-[10rem_minmax(0,1fr)]">
           <label className="grid gap-2 text-xs font-medium">{t("protection.phrases.action")}
             <Select value={entry.action} onValueChange={(action) => update(index, { action: action as PhraseEntry["action"] })}>
-              <SelectTrigger className="min-h-11"><SelectValue /></SelectTrigger>
-              <SelectContent><SelectItem value="reject">{t("protection.phrases.block")}</SelectItem><SelectItem value="redact">{t("protection.phrases.replace")}</SelectItem></SelectContent>
+              <SelectTrigger className="field:min-h-11"><SelectValue /></SelectTrigger>
+              <SelectContent>{(["allow", "block", "transform"] as const).map(action => <SelectItem key={action} value={action}>{t(`securityEvents.actions.${action}`)}</SelectItem>)}</SelectContent>
             </Select>
           </label>
-          {entry.action === "redact" ? <label className="grid gap-2 text-xs font-medium">{t("protection.phrases.replacement")}
-            <Input className="min-h-11" value={entry.replacement} maxLength={240} onChange={(event) => update(index, { replacement: event.target.value })} />
+          {entry.action === "transform" ? <label className="grid gap-2 text-xs font-medium">{t("protection.phrases.replacement")}
+            <Input className="field:min-h-11" value={entry.replacement} maxLength={240} onChange={(event) => update(index, { replacement: event.target.value })} />
           </label> : null}
         </div>
       </li>)}

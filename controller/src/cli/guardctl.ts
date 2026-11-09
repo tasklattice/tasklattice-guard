@@ -1,11 +1,10 @@
 import readline from 'readline';
+import { Writable } from 'node:stream';
 import axios, { AxiosRequestConfig } from 'axios';
 import { readFileSync, existsSync, writeFileSync } from 'node:fs';
-import { resolve, dirname } from 'node:path';
-import { fileURLToPath } from 'node:url';
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = dirname(__filename);
+import { resolve, dirname, basename } from 'node:path';
+import { configurationHelp, runConfiguration } from './configure.js';
+const cliDirectory = dirname(resolve(process.argv[1]));
 
 function loadEnvFile(path: string): Record<string, string> {
   const result: Record<string, string> = {};
@@ -43,9 +42,9 @@ function resolveBaseUrl(): { url: string; source: string } {
 
   const searchDirs = [
     process.cwd(),
-    resolve(__dirname, '../../..'),
-    resolve(__dirname, '../..'),
-    resolve(__dirname, '..'),
+    resolve(cliDirectory, '../../..'),
+    resolve(cliDirectory, '../..'),
+    resolve(cliDirectory, '..'),
   ];
   for (const dir of searchDirs) {
     const envPath = resolve(dir, '.env');
@@ -89,7 +88,7 @@ function parseFlags(args: string[]): { positional: string[]; flags: Record<strin
   return { positional, flags };
 }
 
-function buildQs(flags: Record<string, string>, allowList: string[]): string {
+function buildQs(flags: Record<string, string | undefined>, allowList: string[]): string {
   const params = new URLSearchParams();
   for (const k of allowList) {
     if (flags[k] !== undefined) params.set(k, flags[k]);
@@ -192,11 +191,11 @@ function outputHuman(resource: string, data: any, detail = false) {
     ],
     policies: [
       { label: 'ID', value: (r) => r.id }, { label: 'NAME', value: (r) => r.name }, { label: 'STATUS', value: (r) => r.status },
-      { label: 'VERSION', value: (r) => r.activeVersion ?? r.version }, { label: 'UPDATED', value: (r) => r.updatedAt },
+      { label: 'VERSION', value: (r) => r.version }, { label: 'UPDATED', value: (r) => r.updatedAt },
     ],
     guardrails: [
       { label: 'ID', value: (r) => r.id }, { label: 'NAME', value: (r) => r.name }, { label: 'STATUS', value: (r) => r.status },
-      { label: 'ACTIVE VERSION', value: (r) => r.activeVersion }, { label: 'DRAFT', value: (r) => r.draftRevision },
+      { label: 'DRAFT', value: (r) => r.draftRevision },
       { label: 'GENERATION', value: (r) => r.desiredGeneration }, { label: 'TESTS', value: (r) => r.testCaseCount },
     ],
     endpoints: [
@@ -212,7 +211,7 @@ function outputHuman(resource: string, data: any, detail = false) {
     ],
     routes: [
       { label: 'ID', value: (r) => r.id }, { label: 'NAME', value: (r) => r.name }, { label: 'ENABLED', value: (r) => r.enabled },
-      { label: 'ORDER', value: (r) => r.order ?? r.routeOrder }, { label: 'TARGETS', value: (r) => r.targets?.length ?? 0 },
+      { label: 'ORDER', value: (r) => r.order }, { label: 'TARGETS', value: (r) => r.targets?.length ?? 0 },
       { label: 'FALLBACK', value: (r) => r.fallback ?? r.isFallback },
     ],
     'telemetry-events': [
@@ -251,49 +250,52 @@ const session: Session = {
   urlSource,
 };
 
+// readline owns terminal input and echoing. Muting its output is essential:
+// a second stdin listener alone does not prevent readline echoing credentials.
+let hiddenInput = false;
+const terminalOutput = new Writable({
+  write(chunk, encoding, callback) {
+    if (!hiddenInput) process.stdout.write(chunk, encoding);
+    callback();
+  },
+});
 const rl = readline.createInterface({
   input: process.stdin,
-  output: process.stdout,
+  output: terminalOutput,
+  terminal: Boolean(process.stdin.isTTY && process.stdout.isTTY),
 });
+const inputLines: string[] = [];
+let inputClosed = false;
+let waitingForLine: ((line: string | null) => void) | null = null;
+rl.on('line', (line) => {
+  if (waitingForLine) {
+    const resolve = waitingForLine;
+    waitingForLine = null;
+    resolve(line);
+  } else inputLines.push(line);
+});
+rl.on('close', () => {
+  inputClosed = true;
+  waitingForLine?.(null);
+  waitingForLine = null;
+});
+rl.on('SIGINT', () => rl.close());
 
-function promptHidden(text: string): Promise<string> {
-  return new Promise((resolve) => {
-    const wasRaw = process.stdin.isRaw;
-    process.stdin.setRawMode?.(true);
-    let value = '';
-    process.stdout.write(text);
-    const onData = (buf: Buffer) => {
-      const data = buf.toString('utf-8');
-      for (const ch of data) {
-        if (ch === '\r' || ch === '\n' || ch === '\u0004') {
-          process.stdin.setRawMode?.(wasRaw ?? false);
-          process.stdin.off('data', onData);
-          process.stdout.write('\n');
-          return resolve(value);
-        } else if (ch === '\u0003') {
-          process.stdin.setRawMode?.(wasRaw ?? false);
-          process.stdin.off('data', onData);
-          process.stdout.write('\n');
-          return resolve('');
-        } else if (ch === '\u007f' || ch === '\b') {
-          if (value.length) {
-            value = value.slice(0, -1);
-            process.stdout.write('\b \b');
-          }
-        } else {
-          value += ch;
-          process.stdout.write('*');
-        }
-      }
-    };
-    process.stdin.on('data', onData);
-  });
+async function prompt(text: string): Promise<string | null> {
+  if (process.stdin.isTTY) process.stdout.write(text);
+  if (inputLines.length) return inputLines.shift()!;
+  if (inputClosed) return null;
+  return new Promise(resolve => { waitingForLine = resolve; });
 }
 
-async function prompt(text: string): Promise<string> {
-  return new Promise((resolve) => {
-    rl.question(text, (answer) => resolve(answer));
-  });
+async function promptHidden(text: string): Promise<string | null> {
+  hiddenInput = true;
+  try {
+    return await prompt(text);
+  } finally {
+    hiddenInput = false;
+    if (process.stdin.isTTY) process.stdout.write('\n');
+  }
 }
 
 async function runApi(
@@ -320,6 +322,7 @@ async function runApi(
       data,
       headers,
       withCredentials: Boolean(session.authCookie),
+      timeout: 15_000,
       ...axiosConfig,
       validateStatus: () => true,
     });
@@ -330,12 +333,113 @@ async function runApi(
       } else if (typeof setCookies === 'string') {
         session.authCookie = setCookies.split(';')[0];
       }
-      return { ok: true, status: response.status, data: response.data as any };
+      return { ok: true, status: response.status, data: response.data as any, headers: response.headers as Record<string, unknown> };
     }
     return { ok: false, status: response.status, data: response.data as any };
   } catch (error: any) {
     return { ok: false, status: -1, error: error.message as string };
   }
+}
+
+function option(args: string[], name: string): string | undefined {
+  return args.find(arg => arg.startsWith(`--${name}=`))?.slice(name.length + 3);
+}
+
+function apiError(response: { status: number; data?: any; error?: string }): string {
+  let data = response.data;
+  if (data instanceof ArrayBuffer || Buffer.isBuffer(data)) {
+    try { data = JSON.parse(Buffer.from(data as ArrayBuffer).toString('utf8')); } catch { data = undefined; }
+  }
+  const detail = data?.error?.detail ? `\n${JSON.stringify(data.error.detail, null, 2)}` : '';
+  return `${data?.error?.code ?? `HTTP ${response.status}`}: ${data?.error?.message ?? response.error ?? 'request failed'}${detail}`;
+}
+
+/** Download a signed release package for published versions. */
+async function handleExport(args: string[]) {
+  const id = args.find(arg => !arg.startsWith('--'));
+  if (!id) {
+    console.log('Usage: export <guardrail-id> --versions=a,b [--out=<file>]');
+    return;
+  }
+  // A package always names its versions; nothing is exported by default.
+  const versions = option(args, 'versions');
+  if (!versions) {
+    console.error('Export failed: choose the versions with --versions=a,b.');
+    process.exitCode = 1;
+    return;
+  }
+  const response = await runApi('GET', `/api/v1/guardrails/${encodeURIComponent(id)}/package?versions=${encodeURIComponent(versions)}`,
+    undefined, { responseType: 'arraybuffer', timeout: 60_000 });
+  if (!response.ok) {
+    console.error(`Export failed: ${apiError(response)}`);
+    process.exitCode = 1;
+    return;
+  }
+  const disposition = String(response.headers?.['content-disposition'] ?? '');
+  const out = option(args, 'out') ?? /filename="([^"]+)"/.exec(disposition)?.[1] ?? `${id}.guardrail.zip`;
+  writeFileSync(out, Buffer.from(response.data as ArrayBuffer));
+  console.log(`Wrote ${out}`);
+}
+
+/** Read a package, preview its contents, and import with --confirm. */
+async function handleImport(args: string[]) {
+  const file = args.find(arg => !arg.startsWith('--'));
+  if (!file || !existsSync(file)) {
+    console.log('Usage: import <file> [--versions=a,b] [--restore-deleted] [--confirm]');
+    return;
+  }
+  const form = new FormData();
+  form.append('package', new Blob([readFileSync(file)], { type: 'application/zip' }), basename(file));
+  const uploaded = await runApi('POST', '/api/v1/guardrail-packages', form, { timeout: 120_000 });
+  if (!uploaded.ok) {
+    console.error(`Package rejected: ${apiError(uploaded)}`);
+    process.exitCode = 1;
+    return;
+  }
+  const preview = uploaded.data;
+  console.log(`Guardrail: ${preview.guardrail.name} (${preview.guardrail.id})${preview.guardrail.deleted ? ' — deleted; restoration required' : preview.guardrail.exists ? '' : ' — new'}`);
+  // Leaves first: Policy versions that would join this Library, then the Guardrail versions.
+  const policies = (preview.policies ?? []) as Array<{ id: string; version: string; state: string }>;
+  for (const item of policies.filter(policy => policy.state !== 'existing')) console.log(`  Policy ${item.id}@${item.version}  ${item.state}`);
+  if (policies.some(policy => policy.state === 'existing')) console.log(`  ${policies.filter(policy => policy.state === 'existing').length} Policy version(s) already here`);
+  for (const item of preview.versions) {
+    console.log(`  ${item.version}  ${item.state.padEnd(8)} test suite: ${item.testSuite.total} cases`);
+  }
+  for (const blocker of preview.blockers) console.log(`Blocked: ${blocker.message}`);
+  const requested = option(args, 'versions')?.split(',').filter(Boolean);
+  const fresh = preview.versions.filter((item: any) => item.state === 'new' && (!requested || requested.includes(item.version)));
+  if (preview.blockers.length || (!fresh.length && !preview.guardrail.deleted)) {
+    console.log(preview.blockers.length ? 'Nothing was imported.' : 'Nothing new to import.');
+    if (preview.blockers.length) process.exitCode = 1;
+    return;
+  }
+  if (preview.guardrail.deleted) {
+    console.log('Restore clears previous Testing Reports and runtime data. Identity, version definitions, Test Cases and audit history are retained; every version requires new local tests and release.');
+  }
+  if (preview.guardrail.deleted && !args.includes('--restore-deleted')) {
+    console.log('This Guardrail was deleted. Re-run with --restore-deleted --confirm to restore its retained versions and import new ones. Router bindings and traffic are not restored.');
+    if (args.includes('--confirm')) process.exitCode = 1;
+    return;
+  }
+  let confirmed = args.includes('--confirm');
+  if (!confirmed && process.stdin.isTTY) {
+    confirmed = (await prompt(`${preview.guardrail.deleted ? 'Restore this Guardrail and import' : 'Import'} ${fresh.length} new version(s)? [y/N] `))?.trim().toLowerCase() === 'y';
+  } else if (!confirmed) {
+    console.log('Preview only. Re-run with --confirm to import.');
+    return;
+  }
+  if (!confirmed) {
+    console.log('Nothing was imported.');
+    return;
+  }
+  const imported = await runApi('POST', `/api/v1/guardrail-packages/${preview.packageId}/imports`, { ...(requested ? { versions: requested } : {}), restoreDeleted: Boolean(preview.guardrail.deleted) });
+  if (!imported.ok) {
+    console.error(`Import failed: ${apiError(imported)}`);
+    process.exitCode = 1;
+    return;
+  }
+  if (imported.data.restored) console.log('Guardrail restored.');
+  console.log(`Imported ${imported.data.imported.length} version(s), ${imported.data.existing.length} already present; ${imported.data.policies?.imported.length ?? 0} Policy version(s) added to the Policy Library.`);
 }
 
 async function handleShow(args: string[]) {
@@ -344,10 +448,10 @@ async function handleShow(args: string[]) {
     console.log('Resources:');
     console.log('  system  | identity | access-tokens');
     console.log('  providers | models | model-configuration');
-    console.log('  policies [<id>] | policy-validation <policy-id> [<run-id>]');
+    console.log('  policies [<id>] | policy-test <policy-id> [<run-id>]');
     console.log('  protection-presets | actions');
     console.log('  guardrails [<id>] | guardrail-logging <id> | test-cases <guardrail-id>');
-    console.log('  validation-runs [--guardrail <id>]');
+    console.log('  test-runs [--guardrail <id>]');
     console.log('  endpoints [<id>] | routers [<id>]');
     console.log('  router-revisions <router-id> [<revision>]');
     console.log('  routes <router-id> [--revision <n>]');
@@ -390,15 +494,16 @@ async function handleShow(args: string[]) {
     case 'policies':
       res = await runApi('GET', `/api/v1/policies${p1 ? '/' + encodeURIComponent(p1) : ''}`);
       break;
+    case 'policy-test':
     case 'policy-validation':
       if (!p1) {
-        console.log('Usage: show policy-validation <policy-id> [<run-id>]');
+        console.log('Usage: show policy-test <policy-id> [<run-id>]');
         return;
       }
       if (p2) {
-        res = await runApi('GET', `/api/v1/policies/${encodeURIComponent(p1)}/validation-runs/${encodeURIComponent(p2)}`);
+        res = await runApi('GET', `/api/v1/policies/${encodeURIComponent(p1)}/test-runs/${encodeURIComponent(p2)}`);
       } else {
-        res = await runApi('GET', `/api/v1/policies/${encodeURIComponent(p1)}/validation-runs/latest`);
+        res = await runApi('GET', `/api/v1/policies/${encodeURIComponent(p1)}/test-runs/latest`);
       }
       break;
     case 'protection-presets':
@@ -418,9 +523,10 @@ async function handleShow(args: string[]) {
       if (!p1) { console.log('Usage: show test-cases <guardrail-id>'); return; }
       res = await runApi('GET', `/api/v1/guardrails/${encodeURIComponent(p1)}/test-cases`);
       break;
+    case 'test-runs':
     case 'validation-runs': {
-      const qs = buildQs(flags, ['guardrail']);
-      res = await runApi('GET', `/api/v1/validation-runs${qs}`);
+      const qs = buildQs({ guardrailId: flags.guardrail }, ['guardrailId']);
+      res = await runApi('GET', `/api/v1/test-runs${qs}`);
       break;
     }
     case 'endpoints':
@@ -442,7 +548,7 @@ async function handleShow(args: string[]) {
         res = await runApi('GET', `/api/v1/routers/${encodeURIComponent(p1)}`);
       }
       if (res?.ok && res?.data) {
-        const routes = res.data.routes ?? res.data.draft?.routes ?? res.data.active?.routes ?? null;
+        const routes = res.data.routes ?? res.data.draft?.routes ?? res.data.active?.routes ?? res.data.snapshot?.routes ?? null;
         if (routes) {
           if (flags.output ?? flags.out) outputJson(routes, flags.output ?? flags.out);
           else outputHuman('routes', routes, flags.detail === 'true');
@@ -457,9 +563,16 @@ async function handleShow(args: string[]) {
       if (!p1) { console.log('Usage: show route-distribution <router-id> [--route <id>] [--endpoint <id>] [--window <dur>] [--revision <n>]'); return; }
       const routeId = flags.route;
       const ep = flags.endpoint;
-      const window = flags.window;
+      const window = flags.window ?? '24h';
+      const duration = /^(\d+(?:\.\d+)?)(h|d)$/.exec(window);
+      const hours = duration ? Number(duration[1]) * (duration[2] === 'd' ? 24 : 1) : NaN;
+      if (!Number.isFinite(hours) || hours < 0.25 || hours > 168) {
+        console.error('Error: --window must be between 0.25h and 7d.');
+        if (!process.stdin.isTTY) process.exitCode = 1;
+        return;
+      }
       const revision = flags.revision;
-      const qs = buildQs({ endpoint: ep, window, revision }, ['endpoint', 'window', 'revision']);
+      const qs = buildQs({ endpointId: ep, hours: String(hours), revision }, ['endpointId', 'hours', 'revision']);
       if (routeId) {
         res = await runApi('GET', `/api/v1/routers/${encodeURIComponent(p1)}/routes/${encodeURIComponent(routeId)}/traffic-distribution${qs}`);
       } else {
@@ -468,20 +581,20 @@ async function handleShow(args: string[]) {
       break;
     }
     case 'selector-fields': {
-      const qs = buildQs(flags, ['endpoints']);
+      const qs = buildQs({ endpointIds: flags.endpoints }, ['endpointIds']);
       res = await runApi('GET', `/api/v1/routing/selector-fields${qs}`);
       break;
     }
     case 'runner-pools':
-      res = await runApi('GET', `/api/v1/runner-pools${p1 ? '/' + encodeURIComponent(p1) : ''}`);
-      break;
     case 'runners': {
-      const qs = buildQs(flags, ['pool']);
-      res = await runApi('GET', `/api/v1/runner-pools${qs}`);
+      // The API exposes a collection, not GET /runner-pools/:id or ?pool=.
+      res = await runApi('GET', '/api/v1/runner-pools');
+      const pool = resource === 'runner-pools' ? p1 : flags.pool;
+      if (res.ok && pool) res.data = { items: listItems(res.data).filter(item => item.id === pool) };
       break;
     }
     case 'telemetry-events': {
-      const qs = buildQs(flags, ['router', 'route', 'target', 'endpoint', 'guardrail', 'request', 'since', 'before', 'cursor', 'limit']);
+      const qs = buildQs({ routerId: flags.router, routeId: flags.route, targetId: flags.target, endpointId: flags.endpoint, guardrailId: flags.guardrail, requestId: flags.request, since: flags.since, before: flags.before, cursor: flags.cursor, limit: flags.limit }, ['routerId', 'routeId', 'targetId', 'endpointId', 'guardrailId', 'requestId', 'since', 'before', 'cursor', 'limit']);
       res = await runApi('GET', `/api/v1/telemetry/events${qs}`);
       break;
     }
@@ -490,7 +603,7 @@ async function handleShow(args: string[]) {
       res = await runApi('GET', `/api/v1/telemetry/events/${encodeURIComponent(p1)}`);
       break;
     case 'telemetry-metrics': {
-      const qs = buildQs(flags, ['router', 'guardrail', 'window']);
+      const qs = buildQs({ routerId: flags.router, guardrailId: flags.guardrail, window: flags.window }, ['routerId', 'guardrailId', 'window']);
       res = await runApi('GET', `/api/v1/telemetry/metrics${qs}`);
       break;
     }
@@ -512,8 +625,10 @@ async function handleShow(args: string[]) {
     if (flags.output ?? flags.out) outputJson(res.data, flags.output ?? flags.out);
     else outputHuman(resource, res.data, flags.detail === 'true');
   } else if (res.error) {
+    if (!process.stdin.isTTY) process.exitCode = 1;
     console.error(`Network Error: ${res.error}`);
   } else {
+    if (!process.stdin.isTTY) process.exitCode = 1;
     const body = typeof res.data === 'object' && res.data ? JSON.stringify(res.data) : String(res.data ?? '');
     console.error(`Error: ${res.status} ${body ? ' — ' + body : ''}`);
     if (res.status === 401 && !session.token && !session.authCookie) {
@@ -532,7 +647,7 @@ async function handleCommand(line: string) {
   if (cmd === 'exit' || cmd === 'quit') {
     console.log('Exiting...');
     rl.close();
-    process.exit(0);
+    process.exit(process.exitCode ?? 0);
   }
 
   if (cmd === 'help') {
@@ -543,7 +658,12 @@ async function handleCommand(line: string) {
     console.log('  disable                      Drop back to read-only credentials');
     console.log('  show <resource> ...          Read a resource; run "show" for list');
     console.log('  d | detail                   Repeat the last show with all rows');
+    console.log('  export <guardrail-id> --versions=a,b [--out=<file>]');
+    console.log('                               Download a V1 .guardrail.zip of those versions');
+    console.log('  import <file> [--versions=a,b] [--restore-deleted] [--confirm]');
+    console.log('                               Verify and preview a package; --confirm imports it');
     console.log('  exit | quit                  Close the CLI');
+    console.log(configurationHelp);
     return;
   }
 
@@ -582,37 +702,40 @@ async function handleCommand(line: string) {
     const ident = await runApi('GET', '/api/v1/account/identity');
     if (ident.ok && ident.data) {
       const user = ident.data.user ?? ident.data;
-      const role = user?.role ?? user?.roleId ?? 'member';
-      const mods = ident.data.modulePermissions ?? ident.data.grants ?? [];
-      console.log(`Signed in: ${(user?.email ?? user?.name ?? 'unknown')} (${role})`);
-      if (Array.isArray(mods) && mods.length) {
-        console.log(`Permissions: ${mods.slice(0, 8).map((m: any) => typeof m === 'string' ? m : (m.module ?? '')).filter(Boolean).join(', ')}${mods.length > 8 ? ', …' : ''}`);
+      const role = user?.role ?? user?.roleId ?? 'user';
+      const permissions = ident.data.effectivePermissions ?? ident.data.permissions;
+      console.log(`Signed in: ${(user?.username ?? ident.data.userId ?? 'unknown')} (${role})`);
+      if (permissions && typeof permissions === 'object') {
+        console.log(`Permissions: ${Object.entries(permissions).map(([module, access]) => `${module}:${access}`).join(', ')}`);
       }
     } else {
-      console.log('Token stored (could not fetch identity).');
+      session.token = null;
+      console.error(`Token authentication failed: ${ident.error ?? `HTTP ${ident.status}`}`);
+      if (!process.stdin.isTTY) process.exitCode = 1;
     }
     return;
   }
 
   if (cmd === 'enable') {
-    let email: string;
-    let password: string;
+    let username: string;
+    let password: string | null;
     if (args[0]?.startsWith('--password=')) {
       password = args[0].slice('--password='.length);
-      email = (await prompt('Admin email (blank → admin@tasklattice.local): ')).trim() || 'admin@tasklattice.local';
+      username = (await prompt('Admin username (blank → admin): '))?.trim() || 'admin';
     } else {
-      email = (await prompt('Admin email (blank → admin@tasklattice.local): ')).trim() || 'admin@tasklattice.local';
-      password = await promptHidden('Admin password (blank → simulates local-default "admin"): ');
+      username = (await prompt('Admin username (blank → admin): '))?.trim() || 'admin';
+      password = await promptHidden('Admin password (blank → password): ');
     }
-    const pwForApi = password === '' ? 'admin' : password;
-    const resp = await runApi('POST', '/api/auth/sign-in/email', {
-      email,
+    if (password === null || inputClosed) return;
+    const pwForApi = password === '' ? 'password' : password;
+    const resp = await runApi('POST', '/api/auth/sign-in/username', {
+      username,
       password: pwForApi,
     }, { withCredentials: true, omitCredentials: true });
     if (resp.ok && resp.data && !resp.data.error) {
       session.privileged = true;
       const user = resp.data?.user ?? resp.data?.identity?.user ?? {};
-      console.log(`Privileged mode enabled (${String(user.email ?? email)}).`);
+      console.log(`Privileged mode enabled (${String(user.username ?? username)}).`);
     } else {
       const msg = resp.data?.message ?? resp.data?.error?.message ?? `HTTP ${resp.status}`;
       console.error(`Admin sign-in failed: ${msg}`);
@@ -632,6 +755,16 @@ async function handleCommand(line: string) {
     return;
   }
 
+  if (cmd === 'export') {
+    await handleExport(args);
+    return;
+  }
+
+  if (cmd === 'import') {
+    await handleImport(args);
+    return;
+  }
+
   if (cmd === 'd' || cmd === 'detail') {
     if (!lastShowArgs) {
       console.log('No previous show command. Run show <resource> first.');
@@ -645,6 +778,13 @@ async function handleCommand(line: string) {
 }
 
 async function main() {
+  // One-shot commands preserve shell argument boundaries and never prompt for input.
+  const argv = process.argv.slice(2);
+  if (argv[0] === 'platform' || argv[0] === 'project') {
+    rl.close();
+    await runConfiguration(argv[0], argv.slice(1), session.baseUrl);
+    return;
+  }
   console.log('Welcome to Guard Controller CLI (guardctl)');
   console.log(`Connected to: ${session.baseUrl} (via ${session.urlSource})`);
   if (process.env.GUARD_ACCESS_TOKEN) {
@@ -659,13 +799,15 @@ async function main() {
     return `${prefix} `;
   };
 
-  const loop = async () => {
+  while (!inputClosed || inputLines.length) {
     const line = await prompt(getPrompt());
+    if (line === null) break;
     await handleCommand(line);
-    setImmediate(loop);
-  };
-
-  loop();
+  }
 }
 
-main();
+main().catch(error => {
+  console.error(`Error: ${error instanceof Error ? error.message : String(error)}`);
+  process.exitCode = 1;
+  rl.close();
+});

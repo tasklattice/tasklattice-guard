@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from .domain import PolicyTestCaseSpec
+from ..policy_runtime.domain import PolicyTestCaseSpec
 
 
 def materialize_test_content(

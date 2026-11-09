@@ -21,4 +21,4 @@ def test_control_transport_budgets_agree() -> None:
     assert controller == {
         "limit": CONTROL_MESSAGE_MAX_BYTES, "options": dict(CONTROL_CHANNEL_OPTIONS),
     }
-    assert CONTROL_MESSAGE_MAX_BYTES == 32 * 1024 * 1024  # never unlimited (-1)
+    assert CONTROL_MESSAGE_MAX_BYTES == 128 * 1024 * 1024  # never unlimited (-1)

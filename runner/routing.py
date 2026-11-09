@@ -10,7 +10,7 @@ from typing import Any
 
 from .protocol_codec import traffic_scope_from_proto
 
-SELECTOR_FIELDS = set("protocol endpoint.id auth.principal model output.sink output.content_type output.schema_id tool.name target.environment litellm.api_key_alias litellm.team_id litellm.user_id a2a.version a2a.extensions a2a.operation a2a.context_id a2a.task_id http.method http.host http.path http.header auth.jwt_claim adapter.field".split())
+SELECTOR_FIELDS = set("protocol endpoint.id auth.principal model output.sink output.content_type output.schema_id tool.name target.environment litellm.api_key_alias litellm.team_id litellm.user_id http.method http.host http.path http.header auth.jwt_claim adapter.field".split())
 CUSTOM_FIELDS = {"http.header", "auth.jwt_claim", "adapter.field"}
 SENSITIVE_HEADERS = {"authorization", "cookie", "proxy-authorization", "x-api-key"}
 
@@ -133,6 +133,20 @@ def validate_router(router, artifacts: dict) -> None:
                 a = artifacts.get(t.artifact_id)
                 if a is None or (a.plan.guardrail_id,a.plan.guardrail_version) != (t.guardrail_id,t.guardrail_version): raise ValueError("Target artifact/version is unavailable.")
     if fallbacks != 1: raise ValueError("Router requires exactly one fallback.")
+
+
+_PUBLIC_ASSIGNMENT_FIELDS = frozenset({
+    "decisionId", "routerId", "routerRevision", "endpointId", "decisionAt",
+    "assignmentStatus", "routeId", "targetId", "guardrailId", "guardrailVersion",
+    "failureReason",
+})
+
+
+def public_route_assignment(assignment):
+    """Expose only the established routing fields, never internal capabilities."""
+    if assignment is None:
+        return None
+    return {key: value for key, value in assignment.items() if key in _PUBLIC_ASSIGNMENT_FIELDS}
 
 
 def select(router, context):

@@ -11,7 +11,7 @@ import {
 } from "lucide-react";
 import { useEffect, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
-import { toast } from "sonner";
+import { toast } from "@/components/ui/notifications";
 
 import { EntitySheet } from "@/components/entity-sheet";
 import { StateBadge } from "@/components/product-shell";
@@ -151,7 +151,7 @@ export function ProviderManagementSheet({
           ? t("modelSettings.providerRetestConfirmationTitle", { name: provider.name })
           : t("modelSettings.removeResourceTitle", { name: provider.name });
   const description = view === "overview"
-    ? t("modelSettings.manageProviderDescription")
+    ? null
     : view === "credential"
       ? t("modelSettings.updateCredentialDescription")
       : view === "tls"
@@ -190,7 +190,7 @@ export function ProviderManagementSheet({
             </Button>
           ) : null}
           {view === "retest" ? (
-            <Button type="button" disabled={!administrator || pending} onClick={() => retestMutation.mutate()}>
+            <Button type="button" variant="testing" disabled={!administrator || pending} onClick={() => retestMutation.mutate()}>
               {retestMutation.isPending ? <LoaderCircle className="animate-spin motion-reduce:animate-none" /> : <RefreshCw />}
               {t(retestMutation.isPending ? "modelSettings.retestingProvider" : "modelSettings.providerRetestConfirmationAction")}
             </Button>
@@ -206,26 +206,29 @@ export function ProviderManagementSheet({
     >
       {view === "overview" ? (
         <div className="space-y-4">
-          <section className="rounded-xl border bg-card p-4 shadow-sm">
+          <section className="border-b pb-3">
             <div className="flex items-start gap-3">
               <ProviderMark provider={provider.name} kind={provider.kind} />
               <div className="min-w-0 flex-1">
-                <div className="flex flex-wrap items-center gap-2">
-                  <h2 className="font-semibold">{provider.name}</h2>
-                  <StateBadge
-                    state={provider.status === "validated" ? "ready" : provider.status === "failed" ? "failed" : "not evaluated"}
-                    label={t(provider.status === "validated" ? "modelSettings.connected" : provider.status === "failed" ? "modelSettings.connectionFailed" : "modelSettings.notChecked")}
-                  />
+                <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="text-sm font-medium leading-5">{provider.kind}</span>
+                    <StateBadge
+                      state={provider.status === "validated" ? "ready" : provider.status === "failed" ? "failed" : "not evaluated"}
+                      label={t(provider.status === "validated" ? "modelSettings.connected" : provider.status === "failed" ? "modelSettings.connectionFailed" : "modelSettings.notChecked")}
+                    />
+                  </div>
+                  {checkedAt ? <time dateTime={provider.validatedAt!} className="text-xs leading-5 tabular-nums text-muted-foreground">{t("modelSettings.lastChecked", { time: checkedAt, latency: provider.validationLatencyMs ?? "—" })}</time> : null}
                 </div>
-                <p className="mt-1 text-xs text-muted-foreground">{provider.kind}</p>
-                <code className="mt-3 block break-all rounded-md bg-muted/60 px-3 py-2 text-xs text-muted-foreground">{provider.baseUrl}</code>
-                {checkedAt ? <p className="mt-2 text-xs text-muted-foreground">{t("modelSettings.lastChecked", { time: checkedAt, latency: provider.validationLatencyMs ?? "—" })}</p> : null}
-                {provider.validationMessage && provider.status === "failed" ? <p role="alert" className="mt-3 break-words text-sm leading-5 text-destructive">{provider.validationMessage}</p> : null}
+                <p className="mt-1 break-all text-sm leading-5 text-muted-foreground">{provider.baseUrl}</p>
+                {provider.validationMessage && provider.status === "failed" ? <p role="alert" className="mt-2 break-words text-sm leading-5 text-destructive">{provider.validationMessage}</p> : null}
               </div>
             </div>
           </section>
 
-          <ActionCard
+          <div className="divide-y border bg-card">
+          <ActionRow
+            actionVariant="testing"
             icon={<RefreshCw />}
             title={t("modelSettings.connectionCardTitle")}
             description={t("modelSettings.connectionCardDescription")}
@@ -233,7 +236,7 @@ export function ProviderManagementSheet({
             disabled={!administrator || pending}
             onAction={() => changeView("retest")}
           />
-          <ActionCard
+          <ActionRow
             icon={<KeyRound />}
             title={t("modelSettings.credentialCardTitle")}
             description={t("modelSettings.currentCredential", { credential: provider.credentialHint ?? t("modelSettings.notConfigured") })}
@@ -241,7 +244,7 @@ export function ProviderManagementSheet({
             disabled={!administrator || pending}
             onAction={() => changeView("credential")}
           />
-          {isHttps ? <ActionCard
+          {isHttps ? <ActionRow
             icon={<ShieldCheck />}
             title={t("modelSettings.transportSecurityCardTitle")}
             description={t(provider.skipTlsVerify ? "modelSettings.tlsVerificationDisabled" : "modelSettings.tlsVerificationEnabled")}
@@ -251,7 +254,7 @@ export function ProviderManagementSheet({
             disabled={!administrator || pending}
             onAction={() => changeView("tls")}
           /> : null}
-          <ActionCard
+          <ActionRow
             icon={<PackagePlus />}
             title={t("modelSettings.registeredModelsCardTitle", { count: providerModels.length })}
             description={providerModels.length ? providerModels.slice(0, 3).map((model) => model.name).join(" · ") : t("modelSettings.noRegisteredModelsDescription")}
@@ -263,9 +266,9 @@ export function ProviderManagementSheet({
             }}
           />
 
-          <section className="rounded-xl border border-destructive/25 bg-card p-4">
-            <p className="text-xs font-semibold uppercase tracking-wide text-destructive">{t("modelSettings.dangerZone")}</p>
-            <div className="mt-3 flex items-start justify-between gap-4">
+          </div>
+          <section className="border-t pt-4">
+            <div className="flex items-start justify-between gap-4">
               <div>
                 <h3 className="text-sm font-semibold">{t("modelSettings.removeProvider")}</h3>
                 <p className="mt-1 text-xs leading-5 text-muted-foreground">{removalBlocked ? t("modelSettings.providerRemovalModelCount", { count: providerModels.length }) : t("modelSettings.removeProviderDescription")}</p>
@@ -289,7 +292,7 @@ export function ProviderManagementSheet({
             <Label htmlFor={`provider-new-credential-${provider.id}`}>{t("modelSettings.newCredential")}</Label>
             <Input
               id={`provider-new-credential-${provider.id}`}
-              className="h-11 font-mono"
+              className="field:h-11 field:font-mono"
               type="password"
               autoComplete="new-password"
               spellCheck={false}
@@ -316,7 +319,7 @@ export function ProviderManagementSheet({
 
       {view === "retest" ? (
         <div className="space-y-4">
-          <Alert variant="info"><RefreshCw /><AlertTitle>{t("modelSettings.providerRetestConfirmationSummary")}</AlertTitle><AlertDescription>{t("modelSettings.providerRetestConfirmationImpact")}</AlertDescription></Alert>
+          <div className="space-y-2"><h3 className="text-sm font-semibold">{t("modelSettings.providerRetestConfirmationSummary")}</h3><p className="text-sm leading-6 text-muted-foreground">{t("modelSettings.providerRetestConfirmationImpact")}</p></div>
           <section className="rounded-xl border bg-card p-4"><h3 className="font-semibold">{provider.name}</h3><code className="mt-1 block break-all text-xs text-muted-foreground">{provider.baseUrl}</code></section>
           <MutationError error={retestMutation.error} />
           {retestMutation.data?.status === "failed" ? <p role="alert" className="whitespace-pre-wrap break-words rounded-lg border border-destructive/20 bg-destructive/5 px-4 py-3 text-sm text-destructive">{retestMutation.data.validationMessage}</p> : null}
@@ -338,7 +341,8 @@ export function ProviderManagementSheet({
   );
 }
 
-function ActionCard({ actionLabel, badge, badgeVariant, description, disabled, icon, onAction, title }: {
+function ActionRow({ actionVariant = "outline", actionLabel, badge, badgeVariant, description, disabled, icon, onAction, title }: {
+  actionVariant?: "outline" | "testing";
   actionLabel: string;
   badge?: string;
   badgeVariant?: "warning";
@@ -349,8 +353,8 @@ function ActionCard({ actionLabel, badge, badgeVariant, description, disabled, i
   title: string;
 }) {
   return (
-    <section className="rounded-xl border bg-card p-4 shadow-sm">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+    <section className="p-4">
+      <div className="flex items-center gap-4">
         <div className="flex min-w-0 flex-1 items-start gap-3">
           <span className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-muted text-muted-foreground [&_svg]:size-4" aria-hidden="true">{icon}</span>
           <div className="min-w-0 flex-1">
@@ -358,7 +362,7 @@ function ActionCard({ actionLabel, badge, badgeVariant, description, disabled, i
             <p className="mt-1 break-words text-xs leading-5 text-muted-foreground">{description}</p>
           </div>
         </div>
-        <Button type="button" variant="outline" className="h-11 w-full justify-between sm:w-auto" disabled={disabled} onClick={onAction}>
+        <Button type="button" variant={actionVariant} className="h-11 shrink-0" disabled={disabled} onClick={onAction}>
           {actionLabel}<ChevronRight />
         </Button>
       </div>

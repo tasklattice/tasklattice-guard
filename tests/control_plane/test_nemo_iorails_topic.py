@@ -9,6 +9,7 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
 import pytest
+import yaml
 from nemoguardrails.actions.rail_outcome import RailOutcome
 from nemoguardrails.exceptions import LLMCallException
 from nemoguardrails.rails.llm.options import RailsResult, RailStatus
@@ -58,12 +59,16 @@ def _compiler() -> NeMoConfigCompiler:
 
 class _ControlStore:
     generation = 0
+    protection_generation = 0
 
     def __init__(self, *, fail: bool = False) -> None:
         self.fail = fail
         self.native_models = ()
 
-    def apply(self, desired_state, *, providers=None, native_models=None):
+    def verify(self, message):
+        raise AssertionError("These tests never verify released Artifacts.")
+
+    def apply(self, desired_state, *, providers=None, native_models=None, materialization_key=None):
         if self.fail:
             raise RuntimeError("provider prewarm failed")
         self.native_models = native_models
@@ -82,6 +87,8 @@ class _ControlMetrics:
 
 
 def _plan(*steps: GuardrailPlanStep) -> GuardrailPlanSnapshot:
+    steps = tuple(replace(step, parameters=(*step.parameters, ("precedence", str(index))))
+                  for index, step in enumerate(steps))
     phases = tuple(dict.fromkeys(phase for step in steps for phase in step.phases))
     return GuardrailPlanSnapshot(
         guardrail_id="topic-guard",
@@ -112,10 +119,11 @@ def _semantic_input(
         capability="topic_control",
         contract_ref="tali.guard.topic-control.semantic.v1",
         phases=("input",),
-        on_unsafe="reject",
+        on_unsafe="block",
         trigger=trigger,
         parameters=(
-            ("topic_mode", "allowlist"),
+            ("evaluation_view", "original"),
+            ("topic_mode", "strict"),
             ("allowed_topics", "Product support"),
         ),
     )
@@ -134,7 +142,7 @@ def test_pure_dedicated_topic_input_compiles_to_valid_iorails_manifest() -> None
         TOPIC_CONTROL_PROFILE,
     ) in snapshot.dependency_manifest
     assert "topic safety check input $model=topic_control" in snapshot.config_yaml
-    assert "Allowed topics (strict allowlist)" in snapshot.config_yaml
+    assert "Allowed business tasks" in snapshot.config_yaml
     assert "Product support" in snapshot.config_yaml
     assert "Authorized purpose" not in snapshot.config_yaml
     assert "leased-secret" not in snapshot.config_yaml
@@ -150,25 +158,27 @@ def test_pure_dedicated_topic_input_compiles_to_valid_iorails_manifest() -> None
 
 def test_mixed_topic_plan_uses_official_input_action_and_custom_output_action() -> None:
     rules = GuardrailPlanStep(
+        parameters=(("evaluation_view", "original"),),
         id="topic:rules:input",
         capability="topic_control",
         contract_ref="tali.guard.topic-control.rules.v1",
         phases=("input",),
-        on_unsafe="reject",
+        on_unsafe="block",
     )
     semantic = _semantic_input(
         trigger=EvaluationTrigger(
             type="on_result",
             step_ref=rules.id,
-            verdicts=("uncertain",),
+            verdicts=("unknown",),
         )
     )
     output = GuardrailPlanStep(
+        parameters=(("evaluation_view", "original"),),
         id="topic:semantic:output",
         capability="topic_control",
         contract_ref="tali.guard.topic-control.semantic.v1",
         phases=("output",),
-        on_unsafe="reject",
+        on_unsafe="block",
     )
 
     snapshot = _compiler().compile(_plan(rules, semantic, output))
@@ -179,7 +189,7 @@ def test_mixed_topic_plan_uses_official_input_action_and_custom_output_action() 
     assert f'binding_id="{semantic.id}"' in snapshot.colang_content
     assert "Support product questions" not in snapshot.config_yaml
     assert "Product support" in snapshot.config_yaml
-    assert "strict allowlist" in snapshot.config_yaml
+    assert "Strict allowlist" in snapshot.config_yaml
     assert "Restricted topics" not in snapshot.config_yaml
     assert {binding.id for binding in snapshot.action_bindings} == {
         rules.id,
@@ -189,11 +199,12 @@ def test_mixed_topic_plan_uses_official_input_action_and_custom_output_action() 
 
 def test_content_safety_remains_on_the_evidence_preserving_custom_evaluator() -> None:
     content = GuardrailPlanStep(
+        parameters=(("evaluation_view", "original"),),
         id="content:input",
         capability="content_safety",
         contract_ref="tali.guard.content-safety.v1",
         phases=("input",),
-        on_unsafe="reject",
+        on_unsafe="block",
     )
 
     snapshot = _compiler().compile(_plan(content))
@@ -267,6 +278,7 @@ async def test_real_iorails_registry_uses_live_model_and_rejects_bad_label() -> 
     model = replace(
         _native_model(),
         base_url=f"http://127.0.0.1:{server.server_port}/v1",
+        max_concurrency=1,
     )
     plan = _plan(_semantic_input())
     config = NeMoConfigCompiler(models=(model.compiler_config(),)).compile(plan)
@@ -291,9 +303,10 @@ async def test_real_iorails_registry_uses_live_model_and_rejects_bad_label() -> 
     )
     runtime = NeMoRuntime(registry)
     try:
-        allowed = await runtime.evaluate(
+        # A single permit exposes accidental nested admission immediately.
+        allowed = await asyncio.wait_for(runtime.evaluate(
             EngineRequest(phase="input", text="product help", plan=plan)
-        )
+        ), 3)
         state["label"] = "off-topic"
         blocked = await runtime.evaluate(
             EngineRequest(phase="input", text="politics", plan=plan)
@@ -310,6 +323,11 @@ async def test_real_iorails_registry_uses_live_model_and_rejects_bad_label() -> 
         assert allowed.usage.model_invocations == 1
         assert blocked.usage.model_invocations == 1
         assert malformed.usage.model_invocations == 1
+        assert allowed.model_status == blocked.model_status == "ok"
+        assert malformed.model_status == "error"
+        assert any(step.error_source == "model" and step.error_category == "response_schema"
+                   for step in malformed.trace)
+        assert not any(step.error_source == "guard" for step in malformed.trace)
         assert state["requests"] == 3
         assert state["authorization"] == "Bearer leased-secret"
     finally:
@@ -358,7 +376,7 @@ def test_iorails_prewarm_rejects_missing_model_and_invalid_manifest() -> None:
 @pytest.mark.parametrize(
     ("result", "expected_decision", "expected_action", "fail_closed"),
     [
-        (RailsResult(status=RailStatus.PASSED, content="hello"), "allow", "pass", False),
+        (RailsResult(status=RailStatus.PASSED, content="hello"), "allow", "allow", False),
         (
             RailsResult(
                 status=RailStatus.BLOCKED,
@@ -366,7 +384,7 @@ def test_iorails_prewarm_rejects_missing_model_and_invalid_manifest() -> None:
                 rail="topic safety check input",
             ),
             "block",
-            "reject",
+            "block",
             False,
         ),
         (
@@ -376,7 +394,7 @@ def test_iorails_prewarm_rejects_missing_model_and_invalid_manifest() -> None:
                 rail="topic safety check input",
             ),
             "block",
-            "reject",
+            "block",
             True,
         ),
     ],
@@ -409,7 +427,7 @@ async def test_iorails_check_async_maps_to_protection_decision(
     )
 
     class Registry:
-        def acquire(self, _plan):
+        async def acquire_async(self, _plan):
             return instance, False, 0
 
     decision = await NeMoRuntime(Registry()).evaluate(  # type: ignore[arg-type]
@@ -452,7 +470,7 @@ async def test_official_topic_action_rejects_malformed_model_output() -> None:
             if False:
                 yield None
 
-    with pytest.raises(LLMCallException, match="exactly 'on-topic' or 'off-topic'"):
+    with pytest.raises(LLMCallException, match="response_schema.*InvalidTopicLabel"):
         await actions.topic_safety_check_input(
             llms={"topic_control": Model()},
             llm_task_manager=TaskManager(),
@@ -562,3 +580,47 @@ def _topic_model_desired_state(*, generation: int) -> protocol.DesiredState:
             ],
         ),
     )
+
+
+@pytest.mark.parametrize("mode", ["strict", "permissive"])
+def test_topic_modes_compile_identical_boundaries_into_native_and_action_paths(mode: str) -> None:
+    from runner.toolkit.nemo.actions.topic import topic_judge_prompt
+    step = replace(_semantic_input(), parameters=(("evaluation_view", "original"), ("topic_mode", mode), ("allowed_topics", "Order support"), ("restricted_topics", "Fabricating refund evidence")))
+    snapshot = _compiler().compile(_plan(step))
+    config = yaml.safe_load(snapshot.config_yaml)
+    prompt = next(item for item in config["prompts"] if item["task"].startswith("topic_safety_check_input"))
+    assert prompt["content"] == topic_judge_prompt(step.parameters)
+    assert "Fabricating refund evidence" in prompt["content"]
+
+
+def test_split_topic_rules_use_isolated_action_prompts_and_preserve_deny_first() -> None:
+    """The official native flow has one global prompt and cannot host two Rules."""
+    from dataclasses import replace
+    from runner.toolkit.nemo.actions.topic import topic_judge_prompt
+
+    deny = replace(_semantic_input(), id="topic:deny", parameters=(
+        ("evaluation_view", "original"),
+        ("policy_id", "business-topics"), ("policy_version", "2.0.0"),
+        ("rule_id", "topic/denylist"), ("topic_mode", "permissive"),
+        ("allowed_topics", ""), ("restricted_topics", "Refund fraud"),
+    ))
+    allow = replace(deny, id="topic:allow", on_unsafe="block", parameters=(
+        ("evaluation_view", "original"),
+        ("policy_id", "business-topics"), ("policy_version", "2.0.0"),
+        ("rule_id", "topic/allowlist"), ("topic_mode", "strict"),
+        ("allowed_topics", "Order support"), ("restricted_topics", ""),
+    ))
+    for steps in ((deny,), (allow,), (deny, allow)):
+        snapshot = _compiler().compile(_plan(*steps))
+        assert [binding.id for binding in snapshot.action_bindings] == [step.id for step in steps]
+        assert "TopicSafetyCheckInputAction" not in snapshot.colang_content
+        for binding in snapshot.action_bindings:
+            prompt = topic_judge_prompt(binding.parameters)
+            if binding.id == deny.id:
+                assert "Refund fraud" in prompt and "Order support" not in prompt
+                assert "tasks matching neither list are on-topic" in prompt
+            else:
+                assert "Order support" in prompt and "Refund fraud" not in prompt
+                assert "Strict allowlist mode" in prompt
+        if len(steps) == 2:
+            assert snapshot.colang_content.index('binding_id="topic:deny"') < snapshot.colang_content.index('binding_id="topic:allow"')

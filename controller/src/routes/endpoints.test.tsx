@@ -1,9 +1,11 @@
+import { uiCopyEn } from "../ui-copy-i18n";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { createMemoryHistory, createRootRoute, createRouter, RouterContextProvider } from "@tanstack/react-router";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { Endpoint, EndpointRegistration } from "@/lib/api";
+import { queryKeys } from "@/features/query-keys";
 
 import { CreateEndpointSheet, DeleteEndpointSheet, EndpointsPage, SetupChecklist } from "./endpoints";
 
@@ -12,11 +14,14 @@ const getEndpointMock = vi.fn();
 const getEndpointsMock = vi.fn();
 const getEndpointDeletionImpactMock = vi.fn();
 const deleteEndpointMock = vi.fn();
+const scanDefaultMock = vi.fn();
+const credentialRequiredMock = vi.fn();
 
 vi.mock("react-i18next", () => ({
   initReactI18next: { type: "3rdParty", init: () => undefined },
   useTranslation: () => ({
     t: (key: string, values?: Record<string, string | number>) => {
+      if (key.startsWith("uiCopy.")) return uiCopyEn[key.slice(7) as keyof typeof uiCopyEn];
       const labels: Record<string, string> = {
         "common.cancel": "Cancel",
         "common.back": "Back",
@@ -31,9 +36,15 @@ vi.mock("react-i18next", () => ({
         "endpoints.name": "Endpoint name",
         "endpoints.namePlaceholder": "Corporate AI Gateway",
         "endpoints.endpointProtocol": "Adapter protocol",
+        "endpoints.adapters.f5-scan": "F5 Scan",
+        "endpoints.scanDefaultLabel": "Default flagOnly",
+        "endpoints.scanDefaultTrue": "true · Return flagged for interventions",
+        "endpoints.scanDefaultFalse": "false · Distinguish blocked and redacted",
         "endpoints.adapters.litellm-generic-guardrail": "TaskLattice Guard for LiteLLM",
         "endpoints.adapterDescriptions.litellm-generic-guardrail": "Connect with an Endpoint and Secret.",
         "endpoints.credential": "Credential",
+        "endpoints.credentialRequired": "Require Credential",
+        "endpoints.credentialNotRequired": "No credential required",
         "endpoints.setupChecklist": "Gateway setup checklist",
         "endpoints.stepsComplete": "{{count}} / 3 complete",
         "endpoints.setupStatuses.awaiting_callback": "Awaiting callback",
@@ -50,43 +61,16 @@ vi.mock("react-i18next", () => ({
         "endpoints.revealCredential": "Reveal credential",
         "endpoints.hideCredential": "Hide credential",
         "endpoints.configureAdapter": "Configure {{adapter}}",
-        "endpoints.configureAdapterDescription": "Deploy the generated configuration.",
         "endpoints.configureTaskLatticeProvider": "Connect the TaskLattice Guard Provider",
         "endpoints.configureTaskLatticeProviderDescription": "Connect Endpoint and Secret, then choose Provider settings.",
         "endpoints.protocolShort.litellm": "LiteLLM",
-        "endpoints.taskLatticeGuardProvider": "TaskLattice Guard",
-        "endpoints.taskLatticeGuardProviderDescription": "Built into the TaskLattice LiteLLM image",
-        "endpoints.litellmProviderStepOpen": "Open Guardrails > Guardrail Garden.",
-        "endpoints.litellmProviderStepSelect": "Open TaskLattice Guard and choose Create Guardrail.",
-        "endpoints.litellmProviderStepConnect": "Paste Endpoint and Secret, select an inspection point, then choose Verify & connect.",
+        "endpoints.testEndpoint": "Test Endpoint",
+        "endpoints.setupGuide": "Setup guide",
         "endpoints.endpointUrl": "Endpoint",
-        "endpoints.endpointSecret": "Secret",
         "endpoints.endpointSecretDescription": "Use the complete one-time Secret saved in step 1.",
-        "endpoints.endpointSecretDetailsDescription": "Use any active Secret.",
-        "endpoints.endpointSecretAvailable": "Active Secret available",
-        "endpoints.litellmProviderSettings": "Provider settings",
-        "endpoints.litellmProviderSettingsDescription": "These settings are enforced by LiteLLM.",
-        "endpoints.protectionStages": "Inspection points",
-        "endpoints.protectionStagesDescription": "Select Before model, After model, or both. At least one checkpoint is required.",
-        "endpoints.guardUnavailable": "Guard unavailable",
-        "endpoints.guardUnavailableDescription": "Block request is recommended; Continue without protection favors availability.",
-        "endpoints.advancedProviderSettings": "Advanced",
-        "endpoints.advancedProviderSettingsDescription": "Runtime timeout defaults to 10 seconds. Apply to every request is on by default.",
-        "endpoints.failOpenScopeTitle": "Continue is limited to availability failures",
-        "endpoints.failOpenScopeDescription": "Continue applies only to network failures, timeouts, and HTTP 502, 503, or 504.",
-        "endpoints.noLiteLLMRestartTitle": "No LiteLLM restart required",
-        "endpoints.noLiteLLMRestartDescription": "Verify & connect saves and activates this Provider immediately.",
-        "endpoints.apiBaseUrl": "TaskLattice API base URL",
         "endpoints.apiBaseEnvironmentVariable": "API base environment variable",
-        "endpoints.configurationTemplate": "Adapter configuration",
-        "endpoints.copyTemplate": "Copy configuration",
+        "endpoints.copyCommand": "Copy command",
         "endpoints.copyItem": "Copy {{item}}",
-        "endpoints.modes": "Recommended modes",
-        "endpoints.defaultBehavior": "Application",
-        "endpoints.defaultOn": "Default on",
-        "endpoints.failureBehavior": "Failure behavior",
-        "endpoints.failClosed": "Fail closed",
-        "endpoints.blockOnError": "block on error",
         "endpoints.verifyCallbacks": "Verify real traffic",
         "endpoints.verifyCallbacksDescription": "Send a real model request.",
         "endpoints.inputCallback": "Input callback",
@@ -103,10 +87,10 @@ vi.mock("react-i18next", () => ({
         "endpoints.deleteEyebrow": "Endpoint / protected deletion",
         "endpoints.deleteDialogTitle": "Delete this Endpoint?",
         "endpoints.deleteDialogDescription": "{{name}} will be marked deleted.",
-        "endpoints.recentIncomingRequests": "Incoming requests · last {{minutes}} min",
-        "endpoints.activeRoutersAffected": "Active Routers affected",
+        "endpoints.recentIncomingRequests": "Visible incoming requests · last {{minutes}} min",
+        "endpoints.activeRoutersAffected": "Visible active Routers affected",
         "endpoints.activeCredentialsRetained": "Active credentials retained",
-        "endpoints.protectedDeleteWarning": "This Endpoint has protected activity.",
+        "endpoints.protectedDeleteWarning": "The safety check found recent traffic, which may include traffic outside your visible counts.",
         "endpoints.noProtectedActivity": "No protected activity.",
         "endpoints.deleteRetentionNote": "Audit and runtime history remain stored.",
         "endpoints.deleteReason": "Reason for deletion",
@@ -116,8 +100,8 @@ vi.mock("react-i18next", () => ({
         "endpoints.deleteConfirm": "Delete Endpoint",
         "endpoints.deleting": "Deleting…",
         "endpoints.deleteProtectedTitle": "Confirm protected Endpoint deletion",
-        "endpoints.deleteProtectedDescription": "{{requests}} requests and {{routers}} Routers remain.",
-        "endpoints.deleteStopsTraffic": "{{routers}} Routers stop and {{credentials}} credentials stop authenticating.",
+        "endpoints.deleteProtectedDescription": "The safety check considers all recent traffic, including activity outside your visible counts.",
+        "endpoints.deleteStopsTraffic": "Affected routes will stop receiving traffic, and the Endpoint's credentials will stop authenticating.",
         "endpoints.typeNameToConfirm": "Type {{name}} to confirm",
         "endpoints.deleteDespiteProtection": "Delete and stop traffic",
       };
@@ -127,7 +111,7 @@ vi.mock("react-i18next", () => ({
   }),
 }));
 
-vi.mock("@/lib/auth", () => ({ useAuth: () => ({ user: { role: "admin" } }) }));
+vi.mock("@/lib/auth", () => ({ useAuth: () => ({ user: { role: "user", project_id: "projectB" } }) }));
 
 vi.mock("@/lib/api", async (importOriginal) => {
   const original = await importOriginal<typeof import("@/lib/api")>();
@@ -138,6 +122,8 @@ vi.mock("@/lib/api", async (importOriginal) => {
     getEndpoints: (...args: unknown[]) => getEndpointsMock(...args),
     getEndpointDeletionImpact: (...args: unknown[]) => getEndpointDeletionImpactMock(...args),
     deleteEndpoint: (...args: unknown[]) => deleteEndpointMock(...args),
+    setEndpointCredentialRequired: (...args: unknown[]) => credentialRequiredMock(...args),
+    setEndpointScanFlagOnlyDefault: (...args: unknown[]) => scanDefaultMock(...args),
   };
 });
 
@@ -149,6 +135,7 @@ function endpoint(overrides: Partial<Endpoint> = {}): Endpoint {
     name: "Beijing primary",
     description: "",
     enabled: true,
+    credential_required: true,
     key_hint: "tali_••••8NzQ",
     credentials: [{ id: "credential-1", key_hint: "tali_••••8NzQ", created_at: "2026-08-12T08:00:00Z" }],
     setup_status: "awaiting_callback",
@@ -192,8 +179,8 @@ function registration(overrides: Partial<Endpoint> = {}): EndpointRegistration {
 
 function renderWithProviders(node: React.ReactNode) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
-  const router = createRouter({ routeTree: createRootRoute(), history: createMemoryHistory({ initialEntries: ["/integration/endpoint"] }) });
-  return render(<QueryClientProvider client={client}><RouterContextProvider router={router}>{node}</RouterContextProvider></QueryClientProvider>);
+  const router = createRouter({ routeTree: createRootRoute(), history: createMemoryHistory({ initialEntries: ["/integration/endpoints"] }) });
+  return { ...render(<QueryClientProvider client={client}><RouterContextProvider router={router}>{node}</RouterContextProvider></QueryClientProvider>), client };
 }
 
 describe("Endpoint onboarding", () => {
@@ -203,6 +190,8 @@ describe("Endpoint onboarding", () => {
     getEndpointsMock.mockReset();
     getEndpointDeletionImpactMock.mockReset();
     deleteEndpointMock.mockReset();
+    scanDefaultMock.mockReset();
+    credentialRequiredMock.mockReset();
   });
 
   afterEach(() => {
@@ -210,7 +199,118 @@ describe("Endpoint onboarding", () => {
     vi.restoreAllMocks();
   });
 
-  it("guides the packaged TaskLattice Guard Provider through connection and runtime settings", () => {
+
+  it("defaults to requiring credentials and lets anonymous onboarding close without saving a key", async () => {
+    const result = registration({ credential_required: false });
+    createEndpointMock.mockResolvedValue(result);
+    getEndpointMock.mockResolvedValue(result.endpoint);
+    const onCreated = vi.fn().mockResolvedValue(undefined);
+    renderWithProviders(<CreateEndpointSheet open onOpenChange={vi.fn()} onCreated={onCreated} />);
+    const toggle = screen.getByRole("switch", { name: "Require Credential" });
+    expect(toggle.getAttribute("aria-checked")).toBe("true");
+    fireEvent.click(toggle);
+    fireEvent.change(screen.getByPlaceholderText("Corporate AI Gateway"), { target: { value: "Anonymous" } });
+    fireEvent.click(screen.getByRole("button", { name: "Add endpoint" }));
+    expect(await screen.findByText("No credential required")).toBeTruthy();
+    expect(screen.queryByText("tali_endpoint_one_time_value")).toBeNull();
+    expect(createEndpointMock).toHaveBeenCalledWith({ name: "Anonymous", adapter_id: "litellm-generic-guardrail", credential_required: false });
+    fireEvent.click(screen.getByRole("button", { name: "Finish later" }));
+    await waitFor(() => expect(onCreated).toHaveBeenCalledWith(result.endpoint, false));
+    expect(screen.queryByText("This credential has not been marked as saved")).toBeNull();
+  });
+
+  it("preserves the credential requirement after a failed save and supports retry", async () => {
+    const item = endpoint();
+    getEndpointsMock.mockResolvedValue({ items: [item], count: 1 });
+    getEndpointMock.mockImplementation(async () => item);
+    credentialRequiredMock.mockRejectedValueOnce(new Error("Authentication setting failed")).mockImplementationOnce(async () => {
+      item.credential_required = false;
+      return { ...item };
+    });
+    renderWithProviders(<EndpointsPage />);
+    fireEvent.click(await screen.findByText(item.name));
+    fireEvent.click(await screen.findByRole("switch", { name: "Require Credential" }));
+    expect(await screen.findByText("Authentication setting failed")).toBeTruthy();
+    expect(screen.getByRole("switch", { name: "Require Credential" }).getAttribute("aria-checked")).toBe("true");
+    fireEvent.click(screen.getByRole("switch", { name: "Require Credential" }));
+    await waitFor(() => expect(screen.getByRole("switch", { name: "Require Credential" }).getAttribute("aria-checked")).toBe("false"));
+    expect(credentialRequiredMock).toHaveBeenLastCalledWith(item.id, false);
+  });
+
+  it("omits the Bearer header from anonymous Scan examples", () => {
+    const item = endpoint({ protocol: "scan", adapter_id: "f5-scan", credential_required: false });
+    const { container } = renderWithProviders(<SetupChecklist endpoint={item} credential={registration().credential}
+      credentialSaved={false} configurationCopied={false} onCredentialSavedChange={vi.fn()} onConfigurationCopied={vi.fn()} />);
+    expect(container.textContent).toContain("curl --request POST");
+    expect(container.textContent).not.toContain("Authorization: Bearer");
+    expect(container.textContent).not.toContain("<CALYPSOAI_TOKEN>");
+  });
+
+  it("offers only LiteLLM and Scan in the creation selector", async () => {
+    renderWithProviders(<CreateEndpointSheet open onOpenChange={vi.fn()} onCreated={vi.fn().mockResolvedValue(undefined)} />);
+    fireEvent.keyDown(screen.getByRole("combobox", { name: "Adapter protocol" }), { key: "ArrowDown" });
+    const options = await screen.findAllByRole("option");
+    expect(options).toHaveLength(2);
+    expect(options.map(option => option.textContent)).toEqual([
+      expect.stringContaining("TaskLattice Guard for LiteLLM"),
+      expect.stringContaining("F5 Scan"),
+    ]);
+    fireEvent.click(options[1]!);
+    expect(screen.getByRole("combobox", { name: "Adapter protocol" }).textContent).toContain("F5 Scan");
+  });
+
+  it("only offers the Scan default for F5 and preserves a false value on creation", async () => {
+    const result = registration({ adapter_id: "f5-scan", protocol: "scan", scan_flag_only_default: false });
+    createEndpointMock.mockResolvedValue(result);
+    getEndpointMock.mockResolvedValue(result.endpoint);
+    renderWithProviders(<CreateEndpointSheet open onOpenChange={vi.fn()} onCreated={vi.fn()} />);
+    expect(screen.queryByRole("combobox", { name: "Default flagOnly" })).toBeNull();
+    fireEvent.keyDown(screen.getByRole("combobox", { name: "Adapter protocol" }), { key: "ArrowDown" });
+    fireEvent.click(await screen.findByRole("option", { name: /F5 Scan/ }));
+    const selector = screen.getByRole("combobox", { name: "Default flagOnly" });
+    expect(selector.textContent).toContain("true");
+    fireEvent.keyDown(selector, { key: "ArrowDown" });
+    fireEvent.click(await screen.findByRole("option", { name: /false ·/ }));
+    fireEvent.change(screen.getByPlaceholderText("Corporate AI Gateway"), { target: { value: "Scan" } });
+    fireEvent.click(screen.getByRole("button", { name: "Add endpoint" }));
+    await waitFor(() => expect(createEndpointMock).toHaveBeenCalledWith({ name: "Scan", adapter_id: "f5-scan", credential_required: true, scan_flag_only_default: false }));
+  });
+
+  it("keeps the stored Scan default after a failed save and supports retry", async () => {
+    const item = endpoint({ adapter_id: "f5-scan", protocol: "scan", scan_flag_only_default: true });
+    getEndpointsMock.mockResolvedValue({ items: [item], count: 1 });
+    getEndpointMock.mockResolvedValue(item);
+    scanDefaultMock.mockRejectedValueOnce(new Error("Save failed")).mockResolvedValueOnce({ ...item, scan_flag_only_default: false });
+    renderWithProviders(<EndpointsPage />);
+    fireEvent.click(await screen.findByText(item.name));
+    let selector = await screen.findByRole("combobox", { name: "Default flagOnly" });
+    fireEvent.keyDown(selector, { key: "ArrowDown" });
+    fireEvent.click(await screen.findByRole("option", { name: /false ·/ }));
+    expect(await screen.findByText("Save failed")).toBeTruthy();
+    selector = screen.getByRole("combobox", { name: "Default flagOnly" });
+    expect(selector.textContent).toContain("true");
+    fireEvent.keyDown(selector, { key: "ArrowDown" });
+    fireEvent.click(await screen.findByRole("option", { name: /false ·/ }));
+    await waitFor(() => expect(screen.getByRole("combobox", { name: "Default flagOnly" }).textContent).toContain("false"));
+    expect(scanDefaultMock).toHaveBeenLastCalledWith(item.id, false);
+  });
+
+  it("keeps shared Endpoint settings and credentials read-only", async () => {
+    const item = endpoint({ project_id: "projectA", adapter_id: "f5-scan", protocol: "scan", scan_flag_only_default: true });
+    getEndpointsMock.mockResolvedValue({ items: [item], count: 1 });
+    getEndpointMock.mockResolvedValue(item);
+    renderWithProviders(<EndpointsPage />);
+    fireEvent.click(await screen.findByText(item.name));
+    expect((await screen.findByRole("combobox", { name: "Default flagOnly" })).hasAttribute("disabled")).toBe(true);
+    expect(screen.getByRole("switch", { name: "endpoints.acceptCallbacks" }).hasAttribute("disabled")).toBe(true);
+    expect(screen.queryByRole("button", { name: "endpoints.generateCredential" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "endpoints.deleteAction" })).toBeNull();
+    expect(scanDefaultMock).not.toHaveBeenCalled();
+    expect(deleteEndpointMock).not.toHaveBeenCalled();
+    expect(screen.getByRole("link", { name: "Test Endpoint" })).toBeTruthy();
+  });
+
+  it("keeps connection values in onboarding and links to the LiteLLM setup guide", () => {
     const item = endpoint({
       setup_status: "verified",
       runtime_status: "waiting",
@@ -234,22 +334,20 @@ describe("Endpoint onboarding", () => {
     expect(screen.getByText("tali_••••8NzQ")).toBeTruthy();
     expect(screen.getByRole("button", { name: "Reveal credential" })).toBeTruthy();
     expect(screen.getByText("Connect the TaskLattice Guard Provider")).toBeTruthy();
-    expect(screen.getByText("Open TaskLattice Guard and choose Create Guardrail.")).toBeTruthy();
-    expect(screen.getByText("Paste Endpoint and Secret, select an inspection point, then choose Verify & connect.")).toBeTruthy();
     expect(screen.getByText("Endpoint")).toBeTruthy();
     expect(screen.getByText(item.setup.api_base_url)).toBeTruthy();
-    expect(screen.getByText("Secret")).toBeTruthy();
-    expect(screen.getByText("Inspection points")).toBeTruthy();
-    expect(screen.getByText("Guard unavailable")).toBeTruthy();
-    expect(screen.getByText("Advanced")).toBeTruthy();
-    expect(screen.getByText("Continue is limited to availability failures")).toBeTruthy();
-    expect(screen.getByText("No LiteLLM restart required")).toBeTruthy();
+    expect(screen.getByText("Use the complete one-time Secret saved in step 1.")).toBeTruthy();
+    const guide = screen.getByRole("link", { name: "Setup guide" });
+    expect(guide.getAttribute("href")).toBe("/document/developer/endpoint-setup#endpoint-litellm");
+    expect(guide.getAttribute("target")).toBe("_blank");
     expect(screen.getAllByText("Complete").length).toBe(3);
     expect(screen.queryByText(/config\.yaml/i)).toBeNull();
     expect(screen.queryByText(/guardrail_name: tasklattice-guard/)).toBeNull();
     expect(screen.queryByText(`TASKLATTICE_GUARD_API_BASE=${item.setup.api_base_url}`)).toBeNull();
     expect(screen.getByText("An authenticated callback has been received. This Gateway connection is verified; other checkpoints are optional.")).toBeTruthy();
   });
+
+
 
   it("hides a saved credential and supports explicit reveal and hide without clearing the saved state", async () => {
     const result = registration();
@@ -351,6 +449,22 @@ describe("Endpoint onboarding", () => {
     expect(onConfirm).toHaveBeenCalledWith({ reason: "Gateway has been decommissioned", confirm_recent_traffic: true, confirmation_name: item.name });
   });
 
+  it("requires a second confirmation when global safety detects traffic outside visible counts", () => {
+    const item = endpoint({ name: "Shared Gateway" });
+    const onConfirm = vi.fn();
+    renderWithProviders(<DeleteEndpointSheet endpoint={item} open impact={{ endpoint_id: item.id,
+      endpoint_name: item.name, window_minutes: 30, incoming_request_count: 0, active_router_count: 0,
+      active_credential_count: 1, last_request_at: null, telemetry_fresh: true, telemetry_watermark: null,
+      requires_second_confirmation: true, requires_confirmation: true }} loading={false} deleting={false}
+      error={null} locale="en" onOpenChange={vi.fn()} onRetry={vi.fn()} onConfirm={onConfirm} />);
+    expect(screen.getByText("Visible incoming requests · last 30 min")).toBeTruthy();
+    expect(screen.getByText(/may include traffic outside your visible counts/)).toBeTruthy();
+    fireEvent.change(screen.getByLabelText("Reason for deletion"), { target: { value: "Decommissioned" } });
+    fireEvent.click(screen.getByRole("button", { name: "Continue" }));
+    expect(screen.getByText(/safety check considers all recent traffic/)).toBeTruthy();
+    expect(onConfirm).not.toHaveBeenCalled();
+  });
+
   it("blocks Endpoint deletion when Runner telemetry is stale", () => {
     const item = endpoint({ name: "Unobserved Gateway" });
     const onConfirm = vi.fn();
@@ -408,7 +522,7 @@ describe("Endpoint onboarding", () => {
     renderWithProviders(<EndpointsPage />);
 
     fireEvent.click(await screen.findByText(item.name));
-    const playgroundLink = await screen.findByRole("link", { name: "Advanced mode · Endpoint" });
+    const playgroundLink = await screen.findByRole("link", { name: "Test Endpoint" });
     const playgroundUrl = new URL(playgroundLink.getAttribute("href")!, "http://localhost");
     expect(playgroundUrl.pathname).toBe("/playground");
     expect(playgroundUrl.searchParams.get("mode")).toBe("advanced");
@@ -441,7 +555,9 @@ describe("Endpoint onboarding", () => {
     });
     deleteEndpointMock.mockResolvedValue(undefined);
 
-    renderWithProviders(<EndpointsPage />);
+    const { client } = renderWithProviders(<EndpointsPage />);
+    const sidebarKey = [...queryKeys.endpoints, "project", "projectB"];
+    client.setQueryData(sidebarKey, { items: [item] });
 
     fireEvent.click(await screen.findByText(item.name));
     fireEvent.click(await screen.findByRole("button", { name: "endpoints.deleteAction" }));
@@ -455,10 +571,26 @@ describe("Endpoint onboarding", () => {
       reason: "Gateway contract ended",
       confirm_recent_traffic: false,
     }));
+    await waitFor(() => expect(client.getQueryState(sidebarKey)?.isInvalidated).toBe(true));
   });
 });
 
 describe("Endpoint request quality", () => {
+  afterEach(cleanup);
+  it("keeps the row action menu separate from opening the Endpoint drawer", async () => {
+    const item = endpoint();
+    const onEndpointChange = vi.fn();
+    deleteEndpointMock.mockClear();
+    getEndpointsMock.mockResolvedValue({ items: [item] });
+    renderWithProviders(<EndpointsPage onEndpointChange={onEndpointChange} />);
+    fireEvent.click(await screen.findByRole("button", { name: "resourceList.actionsFor" }));
+    expect(onEndpointChange).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("menuitem", { name: "resourceList.viewDetails" }));
+    expect(onEndpointChange).toHaveBeenCalledExactlyOnceWith(item.id);
+    expect(deleteEndpointMock).not.toHaveBeenCalled();
+  });
+
+
   it("shows observed success rate and detection P95 with a request sample", async () => {
     getEndpointsMock.mockResolvedValue({ items: [endpoint({ request_count: 4, error_count: 1, detection_p95_ms: 90 })] });
     renderWithProviders(<EndpointsPage />);

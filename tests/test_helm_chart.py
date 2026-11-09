@@ -4,20 +4,45 @@ import json
 import subprocess
 from pathlib import Path
 
+import pytest
 import yaml
 
 ROOT = Path(__file__).resolve().parent.parent
 CHART = ROOT / "charts" / "tali-guard"
-DEV_VALUES = CHART / "values-dev.yaml"
+DEV_VALUES = CHART / "values-dev-uat.yaml"
 DEFAULT_VALUES = CHART / "values.yaml"
-DEBUG_VALUES = CHART / "values-debug.yaml"
 REQUIRED = (
-    "--set", "database.url=postgresql://guard:guard@postgres:5432/guard",
+    "--set", "database.existingSecret=guard-database",
     "--set", "security.artifactSigning.existingSecret=artifact-signing",
     "--set", "security.controlTls.existingSecret=control-tls",
     "--set", "security.bootstrapAdmin.existingSecret=bootstrap-admin",
+    "--set", "security.bootstrapUser.existingSecret=bootstrap-user",
     "--set", "runner.callContextRedisUrl=redis://redis:6379/0",
 )
+
+
+def test_context_capacity_defaults_are_applied_to_default_runner():
+    docs = render_dev()
+    redis = next(d for d in docs if d["kind"] == "Deployment" and d["metadata"]["name"].endswith("-redis"))
+    container = redis["spec"]["template"]["spec"]["containers"][0]
+    assert container["args"][-4:] == ["--maxmemory", "4gb", "--maxmemory-policy", "noeviction"]
+    assert container["resources"]["limits"]["memory"] == "6Gi"
+    runners = [d for d in docs if d["kind"] == "StatefulSet" and "runner" in d["metadata"]["name"]]
+    assert len(runners) == 1
+    for runner in runners:
+        env = {v["name"]: v.get("value") for v in runner["spec"]["template"]["spec"]["containers"][0]["env"]}
+        assert env["GUARD_RUNNER_CALL_CONTEXT_TTL_SECONDS"] == "300"
+        assert env["GUARD_RUNNER_CALL_CONTEXT_COMPRESS_PLANS"] == "true"
+        assert env["GUARD_RUNNER_CALL_CONTEXT_CAPACITY_FALLBACK"] == "true"
+
+
+def test_context_capacity_alerts_are_release_scoped():
+    docs = render()
+    rule = next(d for d in docs if d["kind"] == "PrometheusRule")
+    group = next(g for g in rule["spec"]["groups"] if g["name"] == "tasklattice-guard.context-capacity")
+    assert len(group["rules"]) == 5
+    assert all('namespace="default"' in r["expr"] and 'app_kubernetes_io_instance="contract"' in r["expr"] for r in group["rules"])
+    assert next(r for r in group["rules"] if r["alert"] == "TaskLatticeGuardContextCapacityDegraded")["for"] == "0m"
 
 
 def render(*values: str) -> list[dict]:
@@ -51,6 +76,34 @@ def render_error(*values: str) -> str:
     return result.stderr
 
 
+def controller_config(documents):
+    return next(doc for doc in documents if doc["kind"] == "ConfigMap" and doc["metadata"]["name"].endswith("controller-config"))
+
+
+def test_controller_database_budgets_and_runner_concurrency_reach_the_deployment():
+    for args, expected in [([], ["30000", "5000", "30000", "4"]),
+        (["--set", "controller.databaseTimeouts.statementMs=12000", "--set", "controller.databaseTimeouts.lockMs=1500",
+          "--set", "controller.databaseTimeouts.idleTransactionMs=9000", "--set", "controller.runnerSyncConcurrency=2"],
+         ["12000", "1500", "9000", "2"])]:
+        docs = render(*args)
+        deployment = next(d for d in docs if d["kind"] == "Deployment" and d["metadata"]["name"].endswith("-controller"))
+        env = resolved_environment(docs, deployment["spec"]["template"]["spec"]["containers"][0])
+        names = ["CONTROLLER_DATABASE_STATEMENT_TIMEOUT_MS", "CONTROLLER_DATABASE_LOCK_TIMEOUT_MS",
+                 "CONTROLLER_DATABASE_IDLE_TRANSACTION_TIMEOUT_MS", "CONTROLLER_RUNNER_SYNC_CONCURRENCY"]
+        assert [env[name]["value"] for name in names] == expected
+
+
+def resolved_environment(documents, container):
+    environment = {entry["name"]: dict(entry) for entry in container["env"]}
+    config = controller_config(documents)
+    configs = {config["metadata"]["name"]: config["data"]}
+    for entry in environment.values():
+        ref = entry.get("valueFrom", {}).get("configMapKeyRef")
+        if ref:
+            entry["value"] = configs[ref["name"]][ref["key"]]
+    return environment
+
+
 def load_values(path: Path) -> dict:
     return yaml.safe_load(path.read_text())
 
@@ -66,40 +119,46 @@ def test_default_values_are_the_production_observability_profile():
     assert defaults["observability"]["grafanaDashboard"]["enabled"] is True
 
 
-def test_debug_values_explicitly_enable_every_performance_debug_component():
-    debug = load_values(DEBUG_VALUES)["observability"]
+def test_normal_security_configuration_needs_no_generated_credential_details():
+    security = load_values(DEFAULT_VALUES)["security"]
+    assert set(security) == {"controlTls", "bootstrapAdmin"}
+    assert security["controlTls"] == {"enabled": True}
+    documents = render("--set", "security.controlTls.existingSecret=", "--set", "security.artifactSigning.existingSecret=")
+    job = next(item for item in documents if item["kind"] == "Job")
+    env = {entry["name"]: entry.get("value") for entry in job["spec"]["template"]["spec"]["containers"][0]["env"]}
+    assert {spec["kind"] for spec in json.loads(env["BOOTSTRAP_SECRETS"])} == {"ed25519", "tokens", "encryption", "mtls"}
+    assert "BEGIN" not in json.dumps(documents)
+    for item in documents:
+        if item["kind"] in {"Deployment", "StatefulSet"}:
+            for volume in item["spec"]["template"]["spec"].get("volumes", []):
+                if volume["name"] == "control-tls":
+                    assert all(key["key"] != "ca.key" for key in volume["secret"]["items"])
 
-    assert debug["performanceDebug"]["enabled"] is True
-    assert debug["tracing"]["enabled"] is True
-    assert debug["tracing"]["sampleRatio"] == 1.0
-    assert debug["tracing"]["otlpEndpoint"]
-    assert debug["profiling"]["enabled"] is True
-    assert debug["profiling"]["serverAddress"]
-    assert debug["serviceMonitor"]["enabled"] is True
-    assert debug["prometheusRule"]["enabled"] is True
-    assert debug["grafanaDashboard"]["enabled"] is True
 
-
-def test_minimum_install_has_controller_and_two_stable_guardrails_zero_runners():
+def test_minimum_install_has_controller_and_one_stable_default_runner():
     documents = render()
     deployments = [item for item in documents if item.get("kind") == "Deployment"]
     stateful_sets = [item for item in documents if item.get("kind") == "StatefulSet"]
 
     assert [item["metadata"]["name"] for item in deployments] == ["contract-tali-guard-controller"]
-    assert [item["metadata"]["name"] for item in stateful_sets] == ["contract-tali-guard-runner"]
+    assert [item["metadata"]["name"] for item in stateful_sets] == ["runner-default"]
     runner = stateful_sets[0]
-    assert runner["spec"]["replicas"] == 2
-    assert runner["spec"]["serviceName"] == "contract-tali-guard-runner-headless"
+    assert runner["spec"]["replicas"] == 1
+    assert runner["spec"]["serviceName"] == "runner-default-headless"
     assert runner["spec"]["podManagementPolicy"] == "Parallel"
     assert runner["spec"]["minReadySeconds"] == 5
     runner_pod_spec = runner["spec"]["template"]["spec"]
     assert runner_pod_spec["terminationGracePeriodSeconds"] == 30
-    assert runner_pod_spec["containers"][0]["lifecycle"]["preStop"]["exec"]["command"] == [
+    runner_container = runner_pod_spec["containers"][0]
+    assert runner_container["startupProbe"]["timeoutSeconds"] == 10
+    assert runner_container["readinessProbe"]["timeoutSeconds"] == 10
+    assert runner_container["livenessProbe"]["timeoutSeconds"] == 10
+    assert runner_container["lifecycle"]["preStop"]["exec"]["command"] == [
         "/bin/sh", "-c", "sleep 5",
     ]
-    assert deployments[0]["spec"]["replicas"] + runner["spec"]["replicas"] == 3
+    assert deployments[0]["spec"]["replicas"] + runner["spec"]["replicas"] == 2
     pdb = next(item for item in documents if item.get("kind") == "PodDisruptionBudget")
-    assert pdb["metadata"]["name"] == "contract-tali-guard-runner-availability"
+    assert pdb["metadata"]["name"] == "runner-default-availability"
     assert pdb["spec"]["minAvailable"] == 1
 
 
@@ -109,7 +168,7 @@ def test_controller_and_runner_have_distinct_images_ports_and_responsibilities()
     runner_workload = next(item for item in documents if item.get("kind") == "StatefulSet")
     controller = controller_workload["spec"]["template"]["spec"]["containers"][0]
     runner = runner_workload["spec"]["template"]["spec"]["containers"][0]
-    controller_env = {item["name"]: item for item in controller["env"]}
+    controller_env = resolved_environment(documents, controller)
     runner_env = {item["name"]: item for item in runner["env"]}
 
     assert controller["image"].startswith("ghcr.io/tasklattice/tali-guard-controller:")
@@ -120,11 +179,13 @@ def test_controller_and_runner_have_distinct_images_ports_and_responsibilities()
     assert controller_env["CONTROLLER_RUNTIME_SERVICE_URL"]["value"] == (
         "http://contract-tali-guard-runtime.default.svc.cluster.local:8091"
     )
-    assert controller_env["BETTER_AUTH_MIN_PASSWORD_LENGTH"]["value"] == "12"
-    assert controller_env["CONTROLLER_ALLOW_LOCAL_DEFAULT_CREDENTIALS"]["value"] == "false"
+    assert controller_env["CONTROLLER_RUNTIME_PUBLIC_URL"]["value"] == ""
+    assert controller_env["CONTROLLER_MIN_LOGIN_LENGTH"]["value"] == "8"
     assert "GUARD_CONTROLLER_TARGET" in runner_env
-    assert controller_env["CONTROLLER_METRICS_TOKEN"]["valueFrom"]["secretKeyRef"]["name"] == "contract-tali-guard-metrics"
-    assert runner_env["GUARD_METRICS_TOKEN"]["valueFrom"]["secretKeyRef"]["name"] == "contract-tali-guard-metrics"
+    assert runner_env["GUARD_URL"]["value"] == "http://contract-tali-guard-controller:8080"
+    assert "GUARD_ACCESS_TOKEN" not in runner_env
+    assert controller_env["CONTROLLER_METRICS_TOKEN"]["valueFrom"]["secretKeyRef"]["name"] == "contract-tali-guard-metrics-init"
+    assert runner_env["GUARD_METRICS_TOKEN"]["valueFrom"]["secretKeyRef"]["name"] == "contract-tali-guard-metrics-init"
     assert "CONTROLLER_DATABASE_URL" not in runner_env
     assert runner_env["GUARD_RUNNER_COMPILER_CAPABLE"]["value"] == "true"
     assert runner_env["GUARD_RUNNER_ID"]["valueFrom"]["fieldRef"]["fieldPath"] == "metadata.name"
@@ -133,16 +194,10 @@ def test_controller_and_runner_have_distinct_images_ports_and_responsibilities()
     assert "GUARD_PYROSCOPE_SERVER_ADDRESS" not in runner_env
 
 
-def test_custom_ca_secret_is_mounted_into_controller_and_every_runner_system_certificate_directory():
+def test_custom_ca_secret_is_mounted_into_controller_and_default_runner_system_certificate_directory():
     documents = render(
         "--set", "security.customCa.existingSecret=model-provider-ca",
         "--set", "security.customCa.certificateKey=company-root.crt",
-        "--set", "runner.pools[0].name=gpu",
-        "--set", "runner.pools[0].replicaCount=1",
-        "--set", "runner.pools[0].maxConcurrency=128",
-        "--set", "runner.pools[0].resources.requests.cpu=1",
-        "--set", "runner.pools[0].resources.requests.memory=2Gi",
-        "--set", "runner.pools[0].resources.limits.memory=8Gi",
     )
     workloads = [
         item for item in documents
@@ -150,7 +205,7 @@ def test_custom_ca_secret_is_mounted_into_controller_and_every_runner_system_cer
         and item["metadata"]["labels"]["app.kubernetes.io/component"] in {"controller", "runner"}
     ]
 
-    assert len(workloads) == 3
+    assert len(workloads) == 2
     for workload in workloads:
         pod_spec = workload["spec"]["template"]["spec"]
         container = pod_spec["containers"][0]
@@ -206,9 +261,15 @@ def test_runner_trace_and_profile_backends_are_explicit_and_independently_enable
     assert environment["GUARD_PYROSCOPE_SAMPLE_RATE"] == "200"
 
 
-def test_performance_debug_is_one_switch_for_full_runner_observability():
-    documents = render("--values", str(DEBUG_VALUES))
-    runner = next(item for item in documents if item.get("kind") == "StatefulSet")
+@pytest.mark.parametrize("render_profile", [render, render_dev], ids=["production", "development"])
+def test_performance_debug_is_one_switch_for_full_runner_observability(render_profile):
+    documents = render_profile(
+        "--set", "observability.performanceDebug.enabled=true",
+        "--set", "observability.tracing.otlpEndpoint=http://tempo.monitoring.svc.cluster.local:4318",
+        "--set", "observability.profiling.serverAddress=http://pyroscope.monitoring.svc.cluster.local:4040",
+    )
+    runner = next(item for item in documents if item.get("kind") == "StatefulSet"
+                  and item["metadata"]["labels"]["app.kubernetes.io/component"] == "runner")
     environment = {
         item["name"]: item["value"]
         for item in runner["spec"]["template"]["spec"]["containers"][0]["env"]
@@ -283,53 +344,50 @@ def test_chart_renders_without_model_configuration_sections():
     assert_settings_managed_models(render_dev())
 
 
-def test_legacy_model_values_do_not_override_settings_or_mount_credentials():
-    documents = render(
-        "--set", "controlPlaneAgent.provider.baseUrl=http://legacy.invalid/v1",
-        "--set", "controlPlaneAgent.provider.model=legacy-chat",
-        "--set-string", "controlPlaneAgent.provider.apiKey=unused-key",
-        "--set-json", 'models.runtimes=[{"id":"legacy","base_url":"http://legacy.invalid/v1","model":"legacy"}]',
-        "--set", "models.credentials.existingSecret=legacy-provider-keys",
-        "--set-string", "models.credentials.values.LEGACY_KEY=unused-key",
-        "--set-json", 'evaluators.bindings=[{"id":"legacy","model_ref":"missing"}]',
-        "--set", "evaluators.automatedReasoning.endpointUrl=http://legacy.invalid/reasoning",
-        "--set-string", "evaluators.automatedReasoning.apiKey=unused-key",
-        "--set", "runner.pools[0].name=gpu",
-        "--set", "runner.pools[0].replicaCount=1",
-        "--set", "runner.pools[0].maxConcurrency=128",
-        "--set", "runner.pools[0].resources.requests.cpu=1",
-        "--set", "runner.pools[0].resources.requests.memory=2Gi",
-        "--set", "runner.pools[0].resources.limits.memory=8Gi",
-    )
-    assert_settings_managed_models(documents)
-    assert len([
-        item for item in documents
-        if item.get("kind") == "StatefulSet"
-        and item["metadata"]["labels"]["app.kubernetes.io/component"] == "runner"
-    ]) == 2
+@pytest.mark.parametrize("setting,unknown_key", [
+    ("controlPlaneAgent.provider.model=unused", "controlPlaneAgent"),
+    ("models.credentials.existingSecret=unused", "models"),
+    ("evaluators.automatedReasoning.endpointUrl=http://unused.invalid", "evaluators"),
+    ("controller.promotion.export.existingSecret=unused", "promotion"),
+    ("controller.promotion.trust.existingConfigMap=unused", "promotion"),
+    ("database.url=", "url"),
+    ("security.artifactSigning.privateKey=", "privateKey"),
+    ("security.artifactSigning.publicKey=", "publicKey"),
+    ("observability.slo.runtimeP90Seconds=1", "runtimeP90Seconds"),
+    ("controller.replicaCount=2", "replicaCount"),
+    ("controller.service.httpPort=8888", "httpPort"),
+    ("controller.service.grpcPort=9999", "grpcPort"),
+    ("runner.service.port=8881", "port"),
+    ("postgresql.service.port=5544", "service"),
+    ("redis.service.port=6380", "service"),
+    ("serviceAccount.automount=true", "automount"),
+    ("runner.scan.maxBodyBytes=65536", "scan"),
+    ("runner.scan.timeoutSeconds=15", "scan"),
+    ("controller.auth.allowLocalDefaultCredentials=true", "allowLocalDefaultCredentials"),
+    ("unknownOption=true", "unknownOption"),
+    ("runner.default.maxConcurency=128", "maxConcurency"),
+])
+def test_removed_and_unknown_options_do_not_change_rendered_resources(setting, unknown_key):
+    assert render("--set", setting) == render(), unknown_key
 
 
 def test_endpoint_tracks_runner_service_namespace_and_port():
     documents = render(
         "--namespace", "guard-system",
-        "--set", "runner.service.port=8091",
     )
     controller = next(
         item for item in documents
         if item.get("kind") == "Deployment"
         and item["metadata"]["labels"]["app.kubernetes.io/component"] == "controller"
     )
-    controller_env = {
-        item["name"]: item
-        for item in controller["spec"]["template"]["spec"]["containers"][0]["env"]
-    }
+    controller_env = resolved_environment(documents, controller["spec"]["template"]["spec"]["containers"][0])
 
     assert controller_env["CONTROLLER_RUNTIME_SERVICE_URL"]["value"] == (
         "http://contract-tali-guard-runtime.guard-system.svc.cluster.local:8091"
     )
 
 
-def test_guardrails_zero_cannot_drop_below_one_replica():
+def test_default_runner_cannot_drop_below_one_replica():
     result = subprocess.run(
         ["helm", "template", "contract", str(CHART), *REQUIRED, "--set", "runner.default.replicaCount=0"],
         check=False,
@@ -338,25 +396,266 @@ def test_guardrails_zero_cannot_drop_below_one_replica():
     )
 
     assert result.returncode != 0
-    assert "GuardRails 0" in result.stderr or "minimum: got 0, want 1" in result.stderr
+    assert "runner-default" in result.stderr
 
 
-def test_controller_is_singleton_in_this_release():
-    result = subprocess.run(
-        ["helm", "template", "contract", str(CHART), *REQUIRED, "--set", "controller.replicaCount=2"],
-        check=False,
-        capture_output=True,
-        text=True,
+def test_runtime_public_url_changes_advertising_and_controller_rollout_only():
+    baseline = render("--namespace", "uat")
+    documents = render("--namespace", "uat", "--set", "runner.publicUrl=https://guard-uat.example.com:8443/base/")
+    config = controller_config(documents)["data"]
+    assert config["CONTROLLER_RUNTIME_PUBLIC_URL"] == "https://guard-uat.example.com:8443/base/"
+    assert config["CONTROLLER_RUNTIME_SERVICE_URL"] == "http://contract-tali-guard-runtime.uat.svc.cluster.local:8091"
+    assert config["CONTROLLER_PUBLIC_URL"] == controller_config(baseline)["data"]["CONTROLLER_PUBLIC_URL"]
+    before = next(doc for doc in baseline if doc["kind"] == "Deployment")
+    after = next(doc for doc in documents if doc["kind"] == "Deployment")
+    assert before["spec"]["template"]["metadata"]["annotations"]["checksum/controller-config"] != after["spec"]["template"]["metadata"]["annotations"]["checksum/controller-config"]
+    env = resolved_environment(documents, after["spec"]["template"]["spec"]["containers"][0])
+    assert env["CONTROLLER_RUNTIME_PUBLIC_URL"]["value"] == config["CONTROLLER_RUNTIME_PUBLIC_URL"]
+    assert [doc for doc in baseline if doc["kind"] in {"Service", "StatefulSet"}] == [doc for doc in documents if doc["kind"] in {"Service", "StatefulSet"}]
+
+
+@pytest.mark.parametrize(("public_url", "origin"), [
+    ("https://guard-uat.example.com:8443", "https://guard-uat.example.com:8443"),
+    ("https://guard-uat.example.com:8443/", "https://guard-uat.example.com:8443"),
+    ("https://Guard-UAT.example.com:443/", "https://guard-uat.example.com"),
+    ("http://Guard-UAT.example.com:80/", "http://guard-uat.example.com"),
+])
+def test_shared_public_url_updates_ui_auth_and_runtime_without_changing_internal_services(public_url, origin):
+    baseline = render("--namespace", "uat")
+    documents = render("--namespace", "uat", "--set-string", f"publicUrl={public_url}")
+    config = controller_config(documents)["data"]
+    assert config["CONTROLLER_PUBLIC_URL"] == origin
+    assert config["CONTROLLER_RUNTIME_PUBLIC_URL"] == config["CONTROLLER_PUBLIC_URL"]
+    assert config["BETTER_AUTH_TRUSTED_ORIGINS"] == config["CONTROLLER_PUBLIC_URL"]
+    assert config["CONTROLLER_RUNTIME_SERVICE_URL"] == "http://contract-tali-guard-runtime.uat.svc.cluster.local:8091"
+    assert [doc for doc in documents if doc["kind"] in {"Service", "StatefulSet"}] == [
+        doc for doc in baseline if doc["kind"] in {"Service", "StatefulSet"}
+    ]
+    before = next(doc for doc in baseline if doc["kind"] == "Deployment")
+    after = next(doc for doc in documents if doc["kind"] == "Deployment")
+    assert before["spec"]["template"]["metadata"]["annotations"]["checksum/controller-config"] != after["spec"]["template"]["metadata"]["annotations"]["checksum/controller-config"]
+
+
+def test_shared_public_url_overrides_local_ui_addresses_and_derives_ingress_host():
+    documents = render_dev("--set-string", "publicUrl=https://guard-uat.example.com:8443", "--set", "ingress.enabled=true")
+    config = controller_config(documents)["data"]
+    assert config["CONTROLLER_PUBLIC_URL"] == config["CONTROLLER_RUNTIME_PUBLIC_URL"] == "https://guard-uat.example.com:8443"
+    assert config["BETTER_AUTH_TRUSTED_ORIGINS"] == "https://guard-uat.example.com:8443"
+    assert config["CONTROLLER_RUNTIME_SERVICE_URL"] == "http://tali-guard-runtime.tali.svc.cluster.local:8091"
+    ingress = next(doc for doc in documents if doc["kind"] == "Ingress")
+    assert [rule["host"] for rule in ingress["spec"]["rules"]] == ["guard-uat.example.com"]
+
+
+def test_shared_public_url_is_trusted_with_extra_origins_and_separate_runtime_domain():
+    documents = render(
+        "--set-string", "publicUrl=https://guard-uat.example.com:8443",
+        "--set-string", "runner.publicUrl=https://runtime.example.com:9443/base",
+        "--set-json", 'controller.trustedOrigins=["https://old-ui.example.com","https://guard-uat.example.com:8443"]',
     )
+    config = controller_config(documents)["data"]
+    assert config["CONTROLLER_PUBLIC_URL"] == "https://guard-uat.example.com:8443"
+    assert config["CONTROLLER_RUNTIME_PUBLIC_URL"] == "https://runtime.example.com:9443/base"
+    assert config["BETTER_AUTH_TRUSTED_ORIGINS"] == "https://guard-uat.example.com:8443,https://old-ui.example.com"
 
-    assert result.returncode != 0
-    assert "controller.replicaCount" in result.stderr or "maximum: got 2, want 1" in result.stderr
+
+def test_shared_host_virtualservice_example_matches_rendered_services(tmp_path):
+    # Validate the documented override directly; no separate example values file.
+    section = (CHART / "README.md").read_text().split("### Share the UI domain and port with runtime requests", 1)[1]
+    values = tmp_path / "values-shared-host.yaml"
+    values.write_text(section.split("```yaml\n", 1)[1].split("```", 1)[0])
+    output = subprocess.run(
+        ["helm", "template", "tali-guard-uat", str(CHART), "--namespace", "uat",
+         "--values", str(values)],
+        check=True, capture_output=True, text=True,
+    ).stdout
+    documents = [item for item in yaml.safe_load_all(output) if item]
+    config = controller_config(documents)["data"]
+    assert config["CONTROLLER_RUNTIME_PUBLIC_URL"] == config["CONTROLLER_PUBLIC_URL"] == "https://guard-uat.example.com:8443"
+    assert config["BETTER_AUTH_TRUSTED_ORIGINS"] == "https://guard-uat.example.com:8443"
+    assert config["CONTROLLER_RUNTIME_SERVICE_URL"] == "http://tali-guard-uat-runtime.uat.svc.cluster.local:8091"
+    assert not any(doc["kind"] in {"Ingress", "ServiceMonitor", "PrometheusRule"} for doc in documents)
+    controller_deployment = next(doc for doc in documents if doc["kind"] == "Deployment")
+    controller_env = resolved_environment(documents, controller_deployment["spec"]["template"]["spec"]["containers"][0])
+    assert controller_env["CONTROLLER_DATABASE_URL"]["valueFrom"]["secretKeyRef"] == {
+        "name": "tali-guard-uat-database", "key": "database-url",
+    }
+    assert controller_env["CONTROLLER_BOOTSTRAP_ADMIN_DIRECTORY"]["value"] == "/var/run/tasklattice/bootstrap-admin"
+    assert next(volume for volume in controller_deployment["spec"]["template"]["spec"]["volumes"] if volume["name"] == "bootstrap-admin")["secret"]["secretName"] == "tali-guard-uat-bootstrap-admin"
+    runner = next(doc for doc in documents if doc["kind"] == "StatefulSet")
+    assert runner["spec"]["replicas"] == 1
+    runner_env = {entry["name"]: entry.get("value") for entry in runner["spec"]["template"]["spec"]["containers"][0]["env"]}
+    assert runner_env["GUARD_URL"] == "http://tali-guard-uat-controller:8080"
+    assert runner_env["GUARD_CONTROLLER_TARGET"] == "tali-guard-uat-controller:9090"
+    example = load_values(CHART / "examples" / "virtualservice-shared-host.yaml")
+    assert example["spec"]["hosts"] == ["guard-uat.example.com"]
+    runtime, controller = example["spec"]["http"]
+    assert runtime["match"] == [{"uri": {"prefix": "/runtime/v1/endpoints/"}}]
+    assert runtime["timeout"] == "0s"
+    assert runtime["retries"] == {"attempts": 0}
+    assert "rewrite" not in runtime
+    assert "match" not in controller
+    services = {f'{doc["metadata"]["name"]}.uat.svc.cluster.local': doc for doc in documents if doc["kind"] == "Service"}
+    for route, component in ((runtime, "runner"), (controller, "controller")):
+        destination = route["route"][0]["destination"]
+        service = services[destination["host"]]
+        assert service["spec"]["type"] == "ClusterIP"
+        assert service["spec"]["selector"]["app.kubernetes.io/component"] == component
+        assert destination["port"]["number"] in {port["port"] for port in service["spec"]["ports"]}
 
 
-def test_control_channel_mtls_secret_is_mandatory():
+def test_internal_wiring_uses_fixed_ports_and_controller_replica_count():
+    documents = render_dev()
+    for item in documents:
+        if item["kind"] in {"Deployment", "StatefulSet"}:
+            assert item["spec"]["template"]["spec"]["automountServiceAccountToken"] is False
+            if item["metadata"]["labels"]["app.kubernetes.io/component"] == "controller":
+                assert item["spec"]["replicas"] == 1
+        if item["kind"] == "Service" and not item["metadata"]["name"].endswith("-public"):
+            for port in item["spec"]["ports"]:
+                assert port["port"] == {"http":8080, "grpc":9090, "runtime":8091, "postgresql":5432, "redis":6379}[port["name"]]
+
+
+def test_public_url_derives_origin_and_ingress_host_with_explicit_overrides():
+    documents = render("--set", "controller.publicUrl=https://guard.company.test:8443/app", "--set", "ingress.enabled=true")
+    assert controller_config(documents)["data"]["BETTER_AUTH_TRUSTED_ORIGINS"] == "https://guard.company.test:8443"
+    ingress = next(item for item in documents if item["kind"] == "Ingress")
+    assert ingress["spec"]["rules"][0]["host"] == "guard.company.test"
+    documents = render("--set", "controller.publicUrl=https://guard.company.test", "--set", "ingress.enabled=true",
+                       "--set", "ingress.host=proxy.company.test",
+                       "--set-json", 'controller.trustedOrigins=["https://login.company.test"]')
+    assert controller_config(documents)["data"]["BETTER_AUTH_TRUSTED_ORIGINS"] == "https://login.company.test"
+    assert next(item for item in documents if item["kind"] == "Ingress")["spec"]["rules"][0]["host"] == "proxy.company.test"
+
+
+def test_public_url_array_derives_all_origins_and_unique_ingress_hosts():
+    urls = ["https://guard.company.test:8443/app", "https://test.company.test", "https://guard.company.test:9443", "https://test.company.test/other", "http://localhost:8092"]
+    documents = render("--set-json", "controller.publicUrl=" + json.dumps(urls), "--set", "ingress.enabled=true")
+    config = controller_config(documents)["data"]
+    assert config["CONTROLLER_PUBLIC_URL"] == urls[0]
+    assert config["BETTER_AUTH_TRUSTED_ORIGINS"].split(",") == [
+        "https://guard.company.test:8443", "https://test.company.test", "https://guard.company.test:9443", "http://localhost:8092",
+    ]
+    ingress = next(item for item in documents if item["kind"] == "Ingress")
+    assert [rule["host"] for rule in ingress["spec"]["rules"]] == ["guard.company.test", "test.company.test", "localhost"]
+    assert all(rule["http"]["paths"][0]["backend"]["service"]["name"] == "contract-tali-guard-controller" for rule in ingress["spec"]["rules"])
+
+
+def test_public_url_array_keeps_explicit_origin_and_ingress_overrides():
+    documents = render("--set-json", 'controller.publicUrl=["https://primary.test","https://secondary.test"]',
+                       "--set-json", 'controller.trustedOrigins=["https://custom.test"]',
+                       "--set", "ingress.enabled=true", "--set", "ingress.host=custom.test")
+    assert controller_config(documents)["data"]["CONTROLLER_PUBLIC_URL"] == "https://primary.test"
+    assert controller_config(documents)["data"]["BETTER_AUTH_TRUSTED_ORIGINS"] == "https://custom.test"
+    assert [r["host"] for r in next(d for d in documents if d["kind"] == "Ingress")["spec"]["rules"]] == ["custom.test"]
+
+
+def test_endpoint_ingress_routes_ui_and_runtime():
+    documents = render("--set-json", 'controller.publicUrl=["https://primary.test","https://secondary.test"]',
+                       "--set", "ingress.enabled=true")
+    ingress = next(item for item in documents if item["kind"] == "Ingress")
+    for rule in ingress["spec"]["rules"]:
+        path = next(path for path in rule["http"]["paths"] if path["path"] == "/runtime/v1/endpoints")
+        assert path["pathType"] == "Prefix"
+        assert not any(path["path"] == "/backend/v1/scans" for path in rule["http"]["paths"])
+        assert path["backend"]["service"] == {"name": "contract-tali-guard-runtime", "port": {"name": "runtime"}}
+        ui = next(path for path in rule["http"]["paths"] if path["path"] == "/")
+        assert ui["backend"]["service"] == {"name": "contract-tali-guard-controller", "port": {"name": "http"}}
+
+
+def test_adapter_limits_use_application_defaults():
+    documents = render()
+    runtime = next(item for item in documents if item["kind"] == "StatefulSet" and item["metadata"]["name"] == "runner-default")
+    env = {item["name"] for item in runtime["spec"]["template"]["spec"]["containers"][0]["env"]}
+    assert "GUARD_SCAN_MAX_BODY_BYTES" not in env
+    assert "GUARD_SCAN_TIMEOUT_SECONDS" not in env
+
+
+def test_image_versions_follow_chart_with_explicit_overrides():
+    version = str(load_values(CHART / "Chart.yaml")["appVersion"])
+    documents = render()
+    for item in documents:
+        if item["kind"] in {"Deployment", "StatefulSet"}:
+            assert item["spec"]["template"]["spec"]["containers"][0]["image"].endswith(":" + version)
+    documents = render("--set", "controller.image.tag=custom-controller", "--set", "runner.image.tag=custom-runner")
+    for item in documents:
+        if item["kind"] in {"Deployment", "StatefulSet"}:
+            component = item["metadata"]["labels"]["app.kubernetes.io/component"]
+            assert item["spec"]["template"]["spec"]["containers"][0]["image"].endswith(":custom-" + component)
+
+
+def test_advanced_partial_overrides_keep_runtime_defaults():
+    documents = render("--set", "podSecurityContext.runAsUser=10001", "--set", "securityContext.readOnlyRootFilesystem=false",
+                       "--set", "observability.serviceMonitor.interval=30s")
+    controller = next(item for item in documents if item["kind"] == "Deployment")
+    pod = controller["spec"]["template"]["spec"]
+    assert pod["securityContext"]["runAsUser"] == 10001
+    assert pod["securityContext"]["runAsNonRoot"] is True
+    assert pod["containers"][0]["securityContext"]["readOnlyRootFilesystem"] is False
+    for monitor in (item for item in documents if item["kind"] == "ServiceMonitor"):
+        for endpoint in monitor["spec"]["endpoints"]:
+            assert endpoint["interval"] == "30s"
+            assert endpoint["scrapeTimeout"] == "10s"
+
+
+def test_explicit_internal_defaults_preserve_rendered_resources(tmp_path):
+    defaults = load_values(CHART / "files" / "runtime-defaults.yaml")
+    defaults["security"] = load_values(CHART / "files" / "security-defaults.yaml")
+    overrides = tmp_path / "explicit-defaults.yaml"
+    overrides.write_text(yaml.safe_dump(defaults))
+    assert render("--values", str(overrides), *REQUIRED) == render()
+
+
+def test_platform_metadata_at_root_and_nested_values_does_not_block_rendering(tmp_path):
+    labels = {"company.example/team": "platform", "company.example/cost-center": "0123"}
+    overrides = tmp_path / "platform-values.yaml"
+    overrides.write_text(yaml.safe_dump({
+        "global": {"labels": labels, "deploymentId": 123, "managed": True},
+        "labels": labels,
+        "commonLabels": labels,
+        "controller": {"labels": labels, "image": {"metadata": {"source": "internal"}}},
+        "runner": {"default": {"labels": labels}},
+        "security": {"bootstrapAdmin": {"metadata": {"owner": "platform"}}},
+        "observability": {"serviceMonitor": {"metadata": {"labels": labels}}},
+    }))
+    # The platform owns injection into rendered metadata. Extra Values must
+    # neither block rendering nor change chart-owned selectors or settings.
+    assert render("--values", str(overrides)) == render()
+
+
+def test_kubernetes_overrides_and_custom_secret_keys_are_preserved(tmp_path):
+    overrides = tmp_path / "kubernetes-overrides.yaml"
+    overrides.write_text(yaml.safe_dump({
+        "imagePullSecrets": [{"name": "registry-login"}],
+        "serviceAccount": {"annotations": {"example.com/identity": "guard"}},
+        "controller": {"resources": {"limits": {"ephemeral-storage": "1Gi"}}},
+        "runner": {"state": {"sizeLimit": "3Gi"}},
+        "podSecurityContext": {"supplementalGroups": [10001]},
+        "securityContext": {"runAsGroup": 10001},
+        "ingress": {"enabled": True, "annotations": {"example.com/ingress": "guard"},
+                    "tls": [{"secretName": "public-tls", "hosts": ["guard.example.com"]}]},
+        "security": {"controlSecret": {"runnerTokenKey": "custom-runner-token"},
+                     "artifactSigning": {"privateKeyKey": "signing-key", "publicKeyKey": "verify-key"}},
+    }))
+    documents = render("--values", str(overrides))
+    pod = _controller(documents)
+    assert pod["imagePullSecrets"] == [{"name": "registry-login"}]
+    assert pod["securityContext"]["supplementalGroups"] == [10001]
+    container = pod["containers"][0]
+    assert container["resources"]["limits"]["ephemeral-storage"] == "1Gi"
+    assert container["securityContext"]["runAsGroup"] == 10001
+    env = resolved_environment(documents, container)
+    assert env["CONTROLLER_RUNNER_TOKEN"]["valueFrom"]["secretKeyRef"]["key"] == "custom-runner-token"
+    ingress = next(doc for doc in documents if doc["kind"] == "Ingress")
+    assert ingress["spec"]["tls"] == [{"secretName": "public-tls", "hosts": ["guard.example.com"]}]
+    assert ingress["metadata"]["annotations"]["example.com/ingress"] == "guard"
+    account = next(doc for doc in documents if doc["kind"] == "ServiceAccount" and not doc["metadata"].get("annotations", {}).get("helm.sh/hook"))
+    assert account["metadata"]["annotations"]["example.com/identity"] == "guard"
+
+
+def test_explicitly_disabling_all_tls_initialization_requires_an_external_secret():
     required_without_tls = REQUIRED[:4] + REQUIRED[6:]
     result = subprocess.run(
-        ["helm", "template", "contract", str(CHART), *required_without_tls],
+        ["helm", "template", "contract", str(CHART), *required_without_tls, "--set", "security.controlTls.autoGenerate=false"],
         check=False,
         capture_output=True,
         text=True,
@@ -377,27 +676,26 @@ def test_development_values_are_self_contained_and_keep_two_app_components():
         "tali-guard-controller", "tali-guard-redis",
     }
     assert {item["metadata"]["name"] for item in stateful_sets} == {
-        "tali-guard-postgresql", "tali-guard-runner",
+        "tali-guard-postgresql", "runner-default",
     }
     controller_pod = deployments_by_name["tali-guard-controller"]["spec"]["template"]["spec"]
-    runner_workload = next(item for item in stateful_sets if item["metadata"]["name"] == "tali-guard-runner")
+    runner_workload = next(item for item in stateful_sets if item["metadata"]["name"] == "runner-default")
     runner_pod = runner_workload["spec"]["template"]["spec"]
-    assert runner_workload["spec"]["serviceName"] == "tali-guard-runner-headless"
+    assert runner_workload["spec"]["serviceName"] == "runner-default-headless"
     assert runner_workload["spec"]["replicas"] == 1
     assert runner_pod["containers"][0]["image"].endswith(":dev")
     assert controller_pod["containers"][0]["image"].endswith(":dev")
-    controller_env = {item["name"]: item for item in controller_pod["containers"][0]["env"]}
+    controller_env = resolved_environment(documents, controller_pod["containers"][0])
     assert controller_env["CONTROLLER_RUNTIME_SERVICE_URL"]["value"] == (
         "http://tali-guard-runtime.tali.svc.cluster.local:8091"
     )
-    assert controller_env["BETTER_AUTH_MIN_PASSWORD_LENGTH"]["value"] == "12"
-    assert controller_env["CONTROLLER_ALLOW_LOCAL_DEFAULT_CREDENTIALS"]["value"] == "true"
+    assert controller_env["CONTROLLER_MIN_LOGIN_LENGTH"]["value"] == "8"
     assert controller_pod["initContainers"][0]["name"] == "wait-for-postgresql"
     services = {item["metadata"]["name"]: item for item in documents if item.get("kind") == "Service"}
     controller_service = services["tali-guard-controller"]
     controller_public_service = services["tali-guard-controller-public"]
     runner_service = services["tali-guard-runtime"]
-    runner_headless_service = services["tali-guard-runner-headless"]
+    runner_headless_service = services["runner-default-headless"]
     runner_public_service = services["tali-guard-runtime-public"]
     assert controller_service["spec"]["type"] == "ClusterIP"
     assert {item["port"] for item in controller_service["spec"]["ports"]} == {8080, 9090}
@@ -416,37 +714,67 @@ def test_development_values_are_self_contained_and_keep_two_app_components():
     assert runner_public_service["spec"]["type"] == "LoadBalancer"
     assert runner_public_service["spec"]["sessionAffinity"] == "None"
     assert runner_public_service["spec"]["ports"][0]["port"] == 38082
-    assert "tali-guard-bootstrap-admin" in secrets
-    assert secrets["tali-guard-bootstrap-admin"]["stringData"] == {
-        "email": "admin@tasklattice.local",
-        "password": "admin",
-        "name": "Local Administrator",
+    assert not secrets
+    specs = bootstrap_specs(documents)
+    assert any(spec["kind"] == "database" for spec in specs)
+    assert any(spec["kind"] == "account" and spec.get("username") == "admin" for spec in specs)
+    assert "tali-guard-artifact-signing-init" not in secrets
+    for pod in (controller_pod, runner_pod):
+        signing_volume = next(volume for volume in pod["volumes"] if volume["name"] == "artifact-signing")
+        assert signing_volume["secret"]["secretName"] == "tali-guard-artifact-signing-init"
+    assert "tali-guard-control-tls-init" not in secrets
+    assert controller_env["CONTROLLER_GRPC_TRANSPORT"]["value"] == "mtls"
+    assert any(item.get("kind") == "Job" and item["metadata"]["name"] == "tali-guard-bootstrap" for item in documents)
+
+
+def test_initialization_reuses_the_controller_image_including_registry_overrides():
+    documents = render_dev(
+        "--set", "controller.image.repository=registry.example.test/guard/controller",
+        "--set", "controller.image.tag=test-release",
+        "--set", "controller.image.pullPolicy=IfNotPresent",
+        "--set", "imagePullSecrets[0].name=registry-login",
+    )
+    controller = next(item for item in documents if item["kind"] == "Deployment" and item["metadata"]["name"].endswith("controller"))["spec"]["template"]["spec"]
+    bootstrap = next(item for item in documents if item["kind"] == "Job")["spec"]["template"]["spec"]
+    main = controller["containers"][0]
+    wait = controller["initContainers"][0]
+    init = bootstrap["containers"][0]
+    health_pod = next(item for item in documents if item["kind"] == "Pod" and item["metadata"]["annotations"].get("helm.sh/hook") == "test")["spec"]
+    health = health_pod["containers"][0]
+    for container in (main, wait, init, health):
+        assert container["image"] == "registry.example.test/guard/controller:test-release"
+        assert container["imagePullPolicy"] == "IfNotPresent"
+    assert wait["env"] == [next(env for env in main["env"] if env["name"] == "CONTROLLER_DATABASE_URL")]
+    assert wait["command"] == ["node", "/opt/tasklattice/guard-controller/scripts/runtime/wait-for-postgresql.mjs"]
+    assert init["command"] == ["node", "/opt/tasklattice/guard-controller/scripts/runtime/bootstrap-secrets.mjs"]
+    assert controller["imagePullSecrets"] == [{"name": "registry-login"}]
+    assert health_pod["imagePullSecrets"] == controller["imagePullSecrets"]
+    assert health_pod["automountServiceAccountToken"] is False
+    service_account = next(item for item in documents if item["kind"] == "ServiceAccount" and item["metadata"]["name"] == bootstrap["serviceAccountName"])
+    assert service_account["imagePullSecrets"] == controller["imagePullSecrets"]
+    images = {
+        container["image"]
+        for item in documents if item["kind"] in {"Deployment", "StatefulSet", "Job"}
+        for field in ("containers", "initContainers")
+        for container in item["spec"]["template"]["spec"].get(field, [])
     }
-    assert "tali-guard-artifact-signing" in secrets
-    assert set(secrets["tali-guard-control-tls"]["stringData"]) == {
-        "ca.crt", "tls.crt", "tls.key", "runner.crt", "runner.key",
-    }
+    images.update(container["image"] for item in documents if item["kind"] == "Pod" for container in item["spec"]["containers"])
+    assert len(images) == 4  # Controller, Runner, PostgreSQL and Redis; no helper image.
 
 
 def test_production_profile_does_not_install_development_postgresql():
     documents = render()
 
     stateful_sets = [item for item in documents if item.get("kind") == "StatefulSet"]
-    assert [item["metadata"]["name"] for item in stateful_sets] == ["contract-tali-guard-runner"]
+    assert [item["metadata"]["name"] for item in stateful_sets] == ["runner-default"]
     assert all(not item["metadata"]["name"].endswith("postgresql") for item in stateful_sets)
     controller = next(item for item in documents if item.get("kind") == "Deployment" and item["metadata"]["name"].endswith("controller"))
     assert "initContainers" not in controller["spec"]["template"]["spec"]
 
 
-def test_rollout_revision_updates_controller_and_every_runner_pool():
+def test_rollout_revision_updates_controller_and_default_runner():
     documents = render(
         "--set", "rolloutRevision=dev-build-42",
-        "--set", "runner.pools[0].name=gpu",
-        "--set", "runner.pools[0].replicaCount=1",
-        "--set", "runner.pools[0].maxConcurrency=128",
-        "--set", "runner.pools[0].resources.requests.cpu=1",
-        "--set", "runner.pools[0].resources.requests.memory=2Gi",
-        "--set", "runner.pools[0].resources.limits.memory=8Gi",
     )
     workloads = [
         item for item in documents
@@ -454,43 +782,39 @@ def test_rollout_revision_updates_controller_and_every_runner_pool():
         and item["metadata"]["labels"].get("app.kubernetes.io/component") in {"controller", "runner"}
     ]
 
-    assert len(workloads) == 3
+    assert len(workloads) == 2
     assert all(
         item["spec"]["template"]["metadata"]["annotations"]["tasklattice.io/rollout-revision"] == "dev-build-42"
         for item in workloads
     )
 
 
-def test_extension_pool_is_an_additional_runner_not_a_new_component_type():
+def test_default_runner_capacity_and_resources_are_configurable():
     documents = render(
-        "--set", "runner.pools[0].name=gpu",
-        "--set", "runner.pools[0].replicaCount=3",
-        "--set", "runner.pools[0].maxConcurrency=128",
-        "--set", "runner.pools[0].resources.requests.cpu=1",
-        "--set", "runner.pools[0].resources.requests.memory=2Gi",
-        "--set", "runner.pools[0].resources.limits.memory=8Gi",
-        "--set", "runner.callContextRedisUrl=redis://redis:6379/0",
+        "--set", "runner.default.replicaCount=3",
+        "--set", "runner.default.maxConcurrency=128",
+        "--set", "runner.default.resources.requests.cpu=1",
+        "--set", "runner.default.resources.requests.memory=2Gi",
+        "--set", "runner.default.resources.limits.memory=8Gi",
     )
-    stateful_sets = [item for item in documents if item.get("kind") == "StatefulSet"]
-
-    assert len(stateful_sets) == 2
-    extension = next(item for item in stateful_sets if item["metadata"]["name"].endswith("runner-gpu"))
-    assert extension["metadata"]["labels"]["app.kubernetes.io/component"] == "runner"
-    assert extension["spec"]["replicas"] == 3
-    assert extension["spec"]["serviceName"] == "contract-tali-guard-runner-gpu-headless"
-    services = {item["metadata"]["name"]: item for item in documents if item.get("kind") == "Service"}
-    assert "contract-tali-guard-runtime" in services
-    assert "contract-tali-guard-runtime-gpu" in services
-    assert "contract-tali-guard-runner-default" not in services
-    assert "contract-tali-guard-runner-headless" in services
-    assert "contract-tali-guard-runner-gpu-headless" in services
+    runner, = [item for item in documents if item["kind"] == "StatefulSet"]
+    assert runner["metadata"]["name"] == "runner-default"
+    assert runner["spec"]["replicas"] == 3
+    assert runner["spec"]["serviceName"] == "runner-default-headless"
+    container = runner["spec"]["template"]["spec"]["containers"][0]
+    assert container["resources"] == {"requests": {"cpu": 1, "memory": "2Gi"}, "limits": {"memory": "8Gi"}}
+    env = {item["name"]: item.get("value") for item in container["env"]}
+    assert env["GUARD_RUNNER_MAX_CONCURRENCY"] == "128"
+    assert env["GUARD_RUNNER_COMPILER_CAPABLE"] == "true"
+    services = {item["metadata"]["name"]: item for item in documents if item["kind"] == "Service"}
+    assert "runner-default-headless" in services
     assert services["contract-tali-guard-runtime"]["spec"]["sessionAffinity"] == "None"
 
 
 def test_multiple_runner_replicas_require_shared_call_context():
     required_without_redis = REQUIRED[:-2]
     result = subprocess.run(
-        ["helm", "template", "contract", str(CHART), *required_without_redis],
+        ["helm", "template", "contract", str(CHART), *required_without_redis, "--set", "runner.default.replicaCount=2"],
         check=False,
         capture_output=True,
         text=True,
@@ -498,6 +822,92 @@ def test_multiple_runner_replicas_require_shared_call_context():
 
     assert result.returncode != 0
     assert "shared Redis is required" in result.stderr
+
+
+@pytest.fixture(params=[False, True], ids=["enabled", "performance-debug"])
+def service_monitor_flags(request) -> tuple[str, ...]:
+    if request.param:
+        return (
+            "--set", "observability.serviceMonitor.enabled=false",
+            "--set", "observability.performanceDebug.enabled=true",
+            "--set-string", "observability.tracing.otlpEndpoint=http://tempo.monitoring:4318",
+            "--set-string", "observability.profiling.serverAddress=http://pyroscope.monitoring:4040",
+        )
+    return ("--set", "observability.serviceMonitor.enabled=true")
+
+
+@pytest.mark.parametrize("labels", [
+    pytest.param({}, id="empty"),
+    pytest.param({
+        "release": "monitoring",
+        "team": "platform",
+        "example.com/build": "123",
+        "example.com/enabled": "true",
+        "example.com/optional": "",
+    }, id="custom"),
+])
+def test_service_monitor_labels_only_extend_both_resource_metadata(tmp_path, service_monitor_flags, labels):
+    baseline = {
+        item["metadata"]["name"]: item
+        for item in render(*service_monitor_flags)
+        if item.get("kind") == "ServiceMonitor"
+    }
+    values = tmp_path / "monitoring-labels.yaml"
+    values.write_text(yaml.safe_dump({"observability": {"serviceMonitor": {"labels": labels}}}))
+    monitors = [
+        item for item in render(*service_monitor_flags, "--values", str(values))
+        if item.get("kind") == "ServiceMonitor"
+    ]
+
+    assert len(monitors) == 2
+    assert {item["metadata"]["labels"]["app.kubernetes.io/component"] for item in monitors} == {"controller", "runner"}
+    for monitor in monitors:
+        original = baseline[monitor["metadata"]["name"]]
+        assert monitor["metadata"] == {
+            **original["metadata"],
+            "labels": original["metadata"]["labels"] | labels,
+        }
+        # Resource labels must not leak into selectors, target labels or endpoints.
+        assert monitor["spec"] == original["spec"]
+
+
+def test_service_monitor_null_label_override_removes_label(tmp_path):
+    values = tmp_path / "monitoring-labels.yaml"
+    values.write_text(yaml.safe_dump({"observability": {"serviceMonitor": {
+        "labels": {"release": "monitoring", "team": "platform"},
+    }}}))
+    monitors = [
+        item for item in render(
+            "--values", str(values),
+            "--set-json", "observability.serviceMonitor.labels.team=null",
+        )
+        if item.get("kind") == "ServiceMonitor"
+    ]
+
+    assert len(monitors) == 2
+    for monitor in monitors:
+        assert monitor["metadata"]["labels"]["release"] == "monitoring"
+        assert "team" not in monitor["metadata"]["labels"]
+
+
+@pytest.mark.parametrize(("key", "value"), [
+    ("helm.sh/chart", "custom-chart"),
+    # Even supplying the chart's current value must not duplicate its label key.
+    ("app.kubernetes.io/name", "tali-guard"),
+    ("app.kubernetes.io/instance", "other-release"),
+    ("app.kubernetes.io/version", "custom-version"),
+    ("app.kubernetes.io/managed-by", "custom-manager"),
+    ("app.kubernetes.io/part-of", "custom-platform"),
+    ("app.kubernetes.io/component", "custom-component"),
+])
+def test_service_monitor_chart_label_keys_are_reserved(service_monitor_flags, key, value):
+    error = render_error(
+        *service_monitor_flags,
+        "--set-json", "observability.serviceMonitor.labels=" + json.dumps({key: value}),
+    )
+
+    assert "observability.serviceMonitor.labels" in error
+    assert f'label "{key}" is reserved by the chart' in error
 
 
 def test_runner_service_monitor_maps_pod_identity_to_runner_id():
@@ -534,7 +944,7 @@ def test_observability_bundle_scrapes_with_auth_and_provisions_rules_and_dashboa
         endpoint = monitor["spec"]["endpoints"][0]
         assert endpoint["path"] == "/metrics"
         assert endpoint["authorization"]["credentials"] == {
-            "name": "contract-tali-guard-metrics",
+            "name": "contract-tali-guard-metrics-init",
             "key": "metrics-token",
         }
     group_rules = [rule for group in rules["spec"]["groups"] for rule in group["rules"]]
@@ -774,3 +1184,382 @@ def test_observability_bundle_scrapes_with_auth_and_provisions_rules_and_dashboa
     )
     assert "$latency_quantile" not in json.dumps(parsed_dashboard)
     assert "or vector(0)" not in json.dumps(parsed_dashboard)
+
+
+def test_chart_sources_do_not_bundle_private_key_material():
+    import re
+
+    private_key = re.compile(rb"-----BEGIN (?:[A-Z0-9]+ )?PRIVATE KEY-----")
+    for path in CHART.rglob("*"):
+        if path.is_file():
+            assert not private_key.search(path.read_bytes()), f"Private key bundled in {path.relative_to(CHART)}"
+    assert not load_values(DEV_VALUES)["security"].get("artifactSigning", {}).get("privateKey")
+
+
+def test_external_secrets_render_references_without_private_keys():
+    documents = render(
+        "--set", "database.existingSecret=database",
+        "--set", "security.controlSecret.existingSecret=control",
+        "--set", "security.metrics.existingSecret=metrics",
+        "--set", "security.runtimeLogs.existingSecret=runtime-logs",
+    )
+    assert all(item.get("kind") != "Secret" for item in documents)
+
+
+def bootstrap_specs(documents):
+    job = next(item for item in documents if item["kind"] == "Job")
+    env = {item["name"]: item.get("value") for item in job["spec"]["template"]["spec"]["containers"][0]["env"]}
+    return json.loads(env["BOOTSTRAP_SECRETS"])
+
+
+def test_bootstrap_reads_only_current_managed_secret_names():
+    documents = render_dev()
+    specs = bootstrap_specs(documents)
+    role = next(item for item in documents if item["kind"] == "Role")
+    names = role["rules"][0]["resourceNames"]
+    assert not any(item["kind"] == "Secret" for item in documents)
+    assert set(names) == {spec["name"] for spec in specs}
+
+
+def test_bootstrap_accounts_are_mounted_without_protocol_environment_names():
+    documents = render_dev()
+    pod = next(item for item in documents if item["kind"] == "Deployment")["spec"]["template"]["spec"]
+    env = {item["name"]: item for item in pod["containers"][0]["env"]}
+    assert env["CONTROLLER_BOOTSTRAP_ADMIN_DIRECTORY"]["value"] == "/var/run/tasklattice/bootstrap-admin"
+    assert next(volume for volume in pod["volumes"] if volume["name"] == "bootstrap-admin")["secret"]["secretName"] == "tali-guard-bootstrap-admin-init"
+    assert not any("PASSWORD" in name for name in env)
+
+
+@pytest.mark.parametrize("field", ["password", "passwordHash"])
+def test_bootstrap_ignores_inline_login_material(field):
+    assert render_dev("--set", f"security.bootstrapAdmin.{field}=unsupported",
+                      "--set", f"security.bootstrapUser.{field}=unsupported") == render_dev()
+
+
+def test_plaintext_bootstrap_renders_no_private_keys_or_random_secret_material():
+    first = render_dev("--set", "security.controlTls.enabled=false")
+    second = render_dev("--set", "security.controlTls.enabled=false")
+    assert first == second  # Stable offline rendering for repeated ArgoCD syncs.
+    assert "BEGIN" not in json.dumps(first)
+    workloads = [item for item in first if item.get("kind") in {"Deployment", "StatefulSet"} and item["metadata"]["labels"]["app.kubernetes.io/component"] in {"controller", "runner"}]
+    assert len(workloads) == 2
+    for workload in workloads:
+        pod = workload["spec"]["template"]["spec"]
+        environment = {entry["name"]: entry for entry in pod["containers"][0]["env"]}
+        assert not any(name in environment for name in ["CONTROLLER_GRPC_TLS_CERT_PATH", "CONTROLLER_GRPC_TLS_KEY_PATH", "CONTROLLER_GRPC_TLS_CLIENT_CA_PATH", "GUARD_CONTROLLER_CA_PATH", "GUARD_RUNNER_CLIENT_CERT_PATH", "GUARD_RUNNER_CLIENT_KEY_PATH"])
+        assert all(volume["name"] != "control-tls" for volume in pod["volumes"])
+        assert all(mount["name"] != "control-tls" for mount in pod["containers"][0]["volumeMounts"])
+        token = "CONTROLLER_RUNNER_TOKEN" if workload["kind"] == "Deployment" else "GUARD_CONTROLLER_TOKEN"
+        assert environment[token]["valueFrom"]["secretKeyRef"]["name"] == "tali-guard-control-init"
+    job = next(item for item in first if item.get("kind") == "Job")
+    assert job["metadata"]["annotations"]["helm.sh/hook"] == "pre-install,pre-upgrade,pre-rollback"
+    env = {entry["name"]: entry.get("value") for entry in job["spec"]["template"]["spec"]["containers"][0]["env"]}
+    generated = {spec["name"] for spec in json.loads(env["BOOTSTRAP_SECRETS"])}
+    assert generated == {"tali-guard-control-init", "tali-guard-artifact-signing-init", "tali-guard-metrics-init", "tali-guard-runtime-logs-init", "tali-guard-postgresql-init", "tali-guard-bootstrap-admin-init", "tali-guard-bootstrap-user-init"}
+    assert not generated.intersection(item["metadata"]["name"] for item in first if item.get("kind") == "Secret")
+
+
+def test_mtls_is_initialized_by_the_same_job_without_rendering_private_keys():
+    options = ("--set", "security.controlTls.enabled=true")
+    documents = render_dev(*options)
+    assert documents == render_dev(*options)
+    assert "BEGIN" not in json.dumps(documents)
+    assert not any(item["kind"] == "Secret" and item["metadata"]["name"] == "tali-guard-control-tls-init" for item in documents)
+    job = next(item for item in documents if item["kind"] == "Job")
+    env = {entry["name"]: entry.get("value") for entry in job["spec"]["template"]["spec"]["containers"][0]["env"]}
+    specs = json.loads(env["BOOTSTRAP_SECRETS"])
+    assert len(specs) == 8
+    tls = next(spec for spec in specs if spec["kind"] == "mtls")
+    assert tls["serverDnsNames"] == ["tali-guard-controller", "tali-guard-controller.tali", "tali-guard-controller.tali.svc", "tali-guard-controller.tali.svc.cluster.local"]
+    config = controller_config(documents)
+    namespace_role = next(item for item in documents if item["kind"] == "ClusterRole")
+    assert namespace_role["rules"] == [{"apiGroups": [""], "resources": ["namespaces"], "verbs": ["get"], "resourceNames": ["tali"]}]
+    assert "helm.sh/hook" not in config["metadata"]["annotations"]
+    assert config["data"]["CONTROLLER_GRPC_TRANSPORT"] == "mtls"
+    for item in documents:
+        if item.get("kind") in {"Deployment", "StatefulSet"} and item["metadata"]["labels"]["app.kubernetes.io/component"] in {"controller", "runner"}:
+            assert any(volume["name"] == "control-tls" for volume in item["spec"]["template"]["spec"]["volumes"])
+    external = render_dev("--set", "security.controlTls.enabled=true", "--set", "security.controlTls.existingSecret=external-tls", "--set", "security.controlTls.autoGenerate=true")
+    job = next(item for item in external if item["kind"] == "Job")
+    env = {entry["name"]: entry.get("value") for entry in job["spec"]["template"]["spec"]["containers"][0]["env"]}
+    assert all(spec["kind"] != "mtls" for spec in json.loads(env["BOOTSTRAP_SECRETS"]))
+
+
+def test_mtls_autogenerate_works_without_bootstrapping_other_credentials():
+    documents = render("--set", "security.bootstrap.enabled=false", "--set", "security.controlSecret.existingSecret=control", "--set", "security.metrics.existingSecret=metrics", "--set", "security.runtimeLogs.existingSecret=logs", "--set", "security.controlTls.existingSecret=", "--set", "security.controlTls.autoGenerate=true")
+    job = next(item for item in documents if item["kind"] == "Job")
+    env = {entry["name"]: entry.get("value") for entry in job["spec"]["template"]["spec"]["containers"][0]["env"]}
+    assert [spec["kind"] for spec in json.loads(env["BOOTSTRAP_SECRETS"])] == ["mtls"]
+
+
+def test_controller_config_changes_trigger_rollout_without_replacing_owner():
+    accounts = ("--set", "security.bootstrapAdmin.existingSecret=bootstrap-admin", "--set", "security.bootstrapUser.existingSecret=bootstrap-user")
+    original = render_dev(*accounts)
+    changed = render_dev(*accounts, "--set", "controller.auth.minLoginLength=14")
+    configs = [controller_config(docs) for docs in (original, changed)]
+    assert configs[0]["metadata"] == configs[1]["metadata"]
+    assert configs[0]["data"] != configs[1]["data"]
+    pods = [next(item for item in docs if item["kind"] == "Deployment" and item["metadata"]["name"].endswith("controller"))["spec"]["template"] for docs in (original, changed)]
+    assert pods[0]["metadata"]["annotations"]["checksum/controller-config"] != pods[1]["metadata"]["annotations"]["checksum/controller-config"]
+
+
+def test_helm_health_script_checks_http_status_and_component():
+    from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+    from threading import Thread
+
+    documents = render()
+    health = next(item for item in documents if item["kind"] == "Pod" and item["metadata"]["annotations"].get("helm.sh/hook") == "test")["spec"]["containers"][0]
+
+    class Handler(BaseHTTPRequestHandler):
+        def do_GET(self):
+            self.send_response(503 if self.path == "/unavailable" else 200)
+            self.send_header("Content-Type", "application/json")
+            self.end_headers()
+            body = {"status": "ready", "component": "guard-controller"} if self.path == "/controller" else {"status": "ok", "component": "guard-runner"}
+            self.wfile.write(json.dumps(body).encode())
+
+        def log_message(self, *_args):
+            pass
+
+    server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+    thread = Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    base = f"http://127.0.0.1:{server.server_port}"
+    try:
+        for controller_path, expected_code, error in [("/controller", 0, None), ("/unavailable", 1, "HTTP 503"), ("/wrong-component", 1, "unexpected health response")]:
+            result = subprocess.run([*health["command"], health["args"][0], base + controller_path, base + "/runner"], capture_output=True, text=True, timeout=15)
+            assert result.returncode == expected_code, result.stderr
+            if error:
+                assert error in result.stderr
+            else:
+                assert "guard-controller: ready" in result.stdout
+                assert "guard-runner: ok" in result.stdout
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join()
+
+
+def _controller(documents):
+    deployment = next(doc for doc in documents if doc["kind"] == "Deployment" and doc["metadata"]["name"].endswith("controller"))
+    return deployment["spec"]["template"]["spec"]
+
+
+def test_promotion_defaults_mount_no_promotion_material_and_switch_no_feature():
+    spec = _controller(render())
+    container = spec["containers"][0]
+    environment = {entry["name"]: entry.get("value") for entry in container["env"]}
+    # Every installation has the same features; there is no authoring switch.
+    assert "CONTROLLER_AUTHORING_ENABLED" not in environment
+    assert not {"CONTROLLER_PACKAGE_SIGNING_KEY_PATH", "CONTROLLER_PACKAGE_TRUST_PATH", "CONTROLLER_BASELINE_PACKAGE_PATH"} & environment.keys()
+    assert not {"package-signing", "package-trust", "baseline-package"} & {volume["name"] for volume in spec["volumes"]}
+
+
+def test_removed_startup_baseline_configuration_has_no_effect():
+    assert render(
+        "--set", "controller.promotion.baselinePackage.existingConfigMap=guard-baseline",
+    ) == render()
+
+
+def test_development_uat_keeps_local_service_names_and_needs_no_package_configuration():
+    documents = render_dev()
+    environment = {entry["name"] for entry in _controller(documents)["containers"][0]["env"]}
+    assert not any(name.startswith(("CONTROLLER_PACKAGE_", "CONTROLLER_AUTHORING")) for name in environment)
+    services = {doc["metadata"]["name"]: doc for doc in documents if doc["kind"] == "Service"}
+    assert services["tali-guard-controller-public"]["spec"]["ports"][0]["port"] == 38081
+    assert services["tali-guard-runtime-public"]["spec"]["ports"][0]["port"] == 38082
+    assert controller_config(documents)["data"]["CONTROLLER_RUNTIME_PUBLIC_URL"] == "http://localhost:38082"
+    assert controller_config(documents)["data"]["CONTROLLER_RUNTIME_SERVICE_URL"] == "http://tali-guard-runtime.tali.svc.cluster.local:8091"
+
+
+@pytest.mark.parametrize("host", ["localhost", "127.0.0.1", "[::1]"])
+def test_local_endpoint_address_uses_runtime_load_balancer_port(host):
+    documents = render_dev("--set-json", f'controller.publicUrl=["http://{host}:38081"]',
+                           "--set", "runner.service.public.port=39082")
+    config = controller_config(documents)["data"]
+    assert config["CONTROLLER_PUBLIC_URL"] == f"http://{host}:38081"
+    assert config["CONTROLLER_RUNTIME_PUBLIC_URL"] == f"http://{host}:39082"
+    assert config["CONTROLLER_RUNTIME_SERVICE_URL"] == "http://tali-guard-runtime.tali.svc.cluster.local:8091"
+
+
+@pytest.mark.parametrize("overrides", [
+    ("--set", "runner.service.public.enabled=false"),
+    ("--set", "runner.service.public.type=NodePort"),
+    ("--set-json", 'controller.publicUrl=["https://console.example.com"]'),
+])
+def test_runtime_address_is_not_inferred_without_local_load_balancer(overrides):
+    assert controller_config(render_dev(*overrides))["data"]["CONTROLLER_RUNTIME_PUBLIC_URL"] == ""
+
+
+def test_development_bootstraps_both_roles_with_separate_secrets():
+    documents = render_dev()
+    deployment = next(item for item in documents if item["kind"] == "Deployment" and item["metadata"]["name"].endswith("-controller"))
+    env = {item["name"]: item.get("value") for item in deployment["spec"]["template"]["spec"]["containers"][0]["env"]}
+    assert env["CONTROLLER_BOOTSTRAP_USER_PROJECT"] == "test1"
+    accounts = [spec for spec in bootstrap_specs(documents) if spec["kind"] == "account"]
+    assert len(accounts) == 2
+    for role in ("admin", "user"):
+        account = next(spec for spec in accounts if spec["username"] == role)
+        assert account["name"] == f"tali-guard-bootstrap-{role}-init"
+        assert "localDefault" not in account
+        assert not any("password" in key.lower() for key in account)
+
+
+def test_bootstrap_user_is_enabled_by_default_and_supports_existing_secrets():
+    documents = render()
+    deployment = next(item for item in documents if item.get("kind") == "Deployment")
+    assert any(item["name"].startswith("CONTROLLER_BOOTSTRAP_USER_") for item in deployment["spec"]["template"]["spec"]["containers"][0]["env"])
+    documents = render("--set", "security.bootstrapUser.enabled=true", "--set", "security.bootstrapUser.existingSecret=project-bootstrap")
+    pod = next(item for item in documents if item["kind"] == "Deployment")["spec"]["template"]["spec"]
+    assert next(volume for volume in pod["volumes"] if volume["name"] == "bootstrap-user")["secret"]["secretName"] == "project-bootstrap"
+    assert not any(spec["kind"] == "account" for spec in bootstrap_specs(documents))
+
+
+@pytest.mark.parametrize("settings,error", [
+    (["--set", "security.bootstrapUser.existingSecret=", "--set", "security.bootstrapUser.username=bad@name"], "requires a username"),
+    (["--set", "security.bootstrapUser.username=same", "--set", "security.bootstrapAdmin.username=same"], "different usernames"),
+])
+def test_bootstrap_user_rejects_invalid_configuration(settings, error):
+    assert error.lower() in render_error("--set", "security.bootstrapUser.enabled=true", *settings).lower()
+
+
+def test_default_chart_profiles_keep_credentials_out_of_rendered_manifests():
+    # The opt-in Keycloak fixture intentionally contains the requested test
+    # credentials. Standard profiles must continue to expose only Secret refs.
+    for enabled in ("false", "true"):
+        output = subprocess.run(["helm", "template", "scan", str(CHART), "-f", str(DEV_VALUES), "--set", f"litellm-provider.enabled={enabled}"], capture_output=True, text=True, check=True).stdout
+        assert "password" not in output.lower()
+        assert not any(item and item["kind"] == "Secret" for item in yaml.safe_load_all(output))
+
+
+def test_database_workload_uses_the_initialized_secret_and_job_runs_before_workloads():
+    documents = render_dev()
+    spec = next(spec for spec in bootstrap_specs(documents) if spec["kind"] == "database")
+    postgres = next(item for item in documents if item["kind"] == "StatefulSet" and item["metadata"]["name"].endswith("-postgresql"))
+    assert postgres["spec"]["template"]["spec"]["containers"][0]["envFrom"] == [{"secretRef": {"name": spec["name"]}}]
+    job = next(item for item in documents if item["kind"] == "Job")
+    assert job["metadata"]["annotations"]["helm.sh/hook"] == "pre-install,pre-upgrade,pre-rollback"
+    assert job["spec"]["activeDeadlineSeconds"] == 120
+
+
+@pytest.mark.parametrize("storage_class", ["", "database-storage"])
+def test_database_storage_template_is_stable_across_application_upgrades(storage_class):
+    values = ("--set", f"postgresql.persistence.storageClass={storage_class}")
+    installed = render_dev(*values)
+    upgraded = render_dev(*values, "--is-upgrade", "--set", "controller.image.tag=next", "--set", "rolloutRevision=next")
+
+    def database(documents):
+        return next(doc for doc in documents if doc["kind"] == "StatefulSet" and doc["metadata"]["name"].endswith("-postgresql"))
+
+    before, after = database(installed), database(upgraded)
+    claims = before["spec"]["volumeClaimTemplates"]
+    assert claims == after["spec"]["volumeClaimTemplates"]
+    assert claims[0]["apiVersion"] == "v1"
+    assert claims[0]["kind"] == "PersistentVolumeClaim"
+    assert claims[0]["spec"]["volumeMode"] == "Filesystem"
+    assert claims[0]["spec"]["resources"]["requests"]["storage"] == "20Gi"
+    assert claims[0]["spec"].get("storageClassName", "") == storage_class
+    assert before["spec"]["persistentVolumeClaimRetentionPolicy"] == {"whenDeleted": "Retain", "whenScaled": "Retain"}
+    assert before["spec"]["template"] != after["spec"]["template"]
+
+
+def test_ephemeral_database_has_no_persistent_claim_or_retention_policy():
+    documents = render_dev("--set", "postgresql.persistence.enabled=false")
+    postgres = next(doc for doc in documents if doc["kind"] == "StatefulSet" and doc["metadata"]["name"].endswith("-postgresql"))
+    assert "volumeClaimTemplates" not in postgres["spec"]
+    assert "persistentVolumeClaimRetentionPolicy" not in postgres["spec"]
+    assert next(volume for volume in postgres["spec"]["template"]["spec"]["volumes"] if volume["name"] == "data") == {"name": "data", "emptyDir": {}}
+
+
+def test_bundled_database_synchronizes_before_serving_using_existing_images():
+    documents = render_dev("--set", "controller.image.repository=registry.example.test/controller", "--set", "controller.image.tag=sync-test")
+    postgres = next(doc for doc in documents if doc["kind"] == "StatefulSet" and doc["metadata"]["name"].endswith("-postgresql"))
+    pod = postgres["spec"]["template"]["spec"]
+    prepare, synchronize = pod["initContainers"]
+    serving = pod["containers"][0]
+    assert prepare["image"] == "registry.example.test/controller:sync-test"
+    assert prepare["imagePullPolicy"] == "Never"
+    assert prepare["command"] == ["cp", "/opt/tasklattice/guard-controller/scripts/runtime/sync-postgresql.sh", "/opt/tasklattice/postgresql/sync.sh"]
+    assert synchronize["command"] == ["bash", "/opt/tasklattice/postgresql/sync.sh"]
+    assert synchronize["image"] == serving["image"]
+    assert synchronize["env"] == serving["env"]
+    assert synchronize["envFrom"] == serving["envFrom"]
+    assert next(mount for mount in synchronize["volumeMounts"] if mount["name"] == "data") == next(mount for mount in serving["volumeMounts"] if mount["name"] == "data")
+    assert pod["automountServiceAccountToken"] is False
+    controller = next(doc for doc in documents if doc["kind"] == "Deployment" and doc["metadata"]["name"].endswith("-controller"))
+    for workload in (postgres, controller):
+        assert workload["spec"]["template"]["metadata"]["annotations"]["tasklattice.io/database-revision"] == "1"
+    external = next(doc for doc in render() if doc["kind"] == "Deployment" and doc["metadata"]["name"].endswith("-controller"))
+    assert "tasklattice.io/database-revision" not in external["spec"]["template"]["metadata"]["annotations"]
+
+
+def test_bootstrap_accounts_use_the_same_contract_on_external_public_urls():
+    documents = render_dev("--set", "publicUrl=https://guard.example.com")
+    accounts = [spec for spec in bootstrap_specs(documents) if spec["kind"] == "account"]
+    assert {spec["username"] for spec in accounts} == {"admin", "user"}
+    assert all("localDefault" not in spec for spec in accounts)
+
+
+def test_long_managed_secret_names_are_unique_and_fit_kubernetes_limits():
+    specs = bootstrap_specs(render_dev("--set", "fullnameOverride=" + "guard-" + "x" * 50))
+    names = [spec["name"] for spec in specs]
+    assert len(names) == len(set(names))
+    assert all(len(name) <= 63 for name in names)
+
+
+def test_local_profile_never_pulls_any_workload_or_helper_image():
+    for item in render_dev():
+        pod = item["spec"] if item["kind"] == "Pod" else item.get("spec", {}).get("template", {}).get("spec", {})
+        for field in ("containers", "initContainers"):
+            assert all(container["imagePullPolicy"] == "Never" for container in pod.get(field, []))
+
+
+def test_trusted_proxy_cidrs_are_opt_in_and_reach_the_controller():
+    # Directly connected clients need no proxy contract: the socket peer is used.
+    assert "CONTROLLER_TRUSTED_PROXY_CIDRS" not in controller_config(render())["data"]
+    config = controller_config(render(
+        "--set-json", 'controller.trustedProxyCidrs=["10.244.0.0/16","fd00::/8"]',
+    ))["data"]
+    assert config["CONTROLLER_TRUSTED_PROXY_CIDRS"] == "10.244.0.0/16,fd00::/8"
+
+
+def test_model_settings_are_not_runner_deployment_configuration():
+    values = yaml.safe_load(DEFAULT_VALUES.read_text())["runner"]
+    assert not {"validation", "jev", "laya"} & values.keys()
+    runner = next(item for item in render() if item["kind"] == "StatefulSet" and item["metadata"]["name"] == "runner-default")
+    names = {entry["name"] for entry in runner["spec"]["template"]["spec"]["containers"][0]["env"]}
+    assert not {"GUARD_VALIDATION_MAX_CONCURRENCY", "GUARD_MODEL_RATE_LIMIT_ATTEMPTS",
+                "GUARD_JEV_LOWER_THRESHOLD", "GUARD_JEV_UPPER_THRESHOLD",
+                "GUARD_LAYA_LOWER_THRESHOLD", "GUARD_LAYA_UPPER_THRESHOLD"} & names
+
+
+def test_keycloak_development_profile_initializes_two_sso_identities_and_only_default_runner():
+    docs = render_dev('--values', str(CHART / 'values-dev-keycloak.yaml'))
+    config = next(doc for doc in docs if doc['kind'] == 'ConfigMap' and doc['metadata']['name'].endswith('-keycloak-realm'))
+    realm = json.loads(config['data']['tali-realm.json'])
+    identities = json.loads(config['data']['identities.json'])
+    assert len(realm['users']) == 2
+    for index, user in enumerate(realm['users'], 1):
+        assert user['username'] == f'sso-user{index}'
+        assert user['groups'] == [f'/tali/d/dep1/p/test{index}/r/ROLE_AGENT_DEVELOPER']
+        assert user['credentials'] == [{'type': 'password', 'value': 'password', 'temporary': False}]
+        assert user['emailVerified'] is True
+        assert user['id'] == identities['projects'][index - 1]['userId']
+    client = realm['clients'][0]
+    assert client['publicClient'] is False
+    assert client['directAccessGrantsEnabled'] is False
+    assert 'groups' in client['defaultClientScopes']
+    assert client['secret'] == '${TALI_KEYCLOAK_CLIENT_SECRET}'
+    controller = next(doc for doc in docs if doc['kind'] == 'Deployment' and doc['metadata']['name'].endswith('-controller'))
+    containers = controller['spec']['template']['spec']['containers']
+    environment = resolved_environment(docs, containers[0])
+    assert environment['NODE_ENV']['value'] == 'development'
+    assert environment['CONTROLLER_SSO_ISSUER']['value'] == 'http://localhost:38083/realms/tali'
+    keycloak = next(container for container in containers if container['name'] == 'keycloak')
+    assert '--import-realm' in keycloak['args']
+    runners = [doc for doc in docs if doc['kind'] == 'StatefulSet' and doc['metadata']['name'].startswith('runner-')]
+    assert {runner['metadata']['name']: runner['spec']['replicas'] for runner in runners} == {'runner-default': 1}
+    job = next(doc for doc in docs if doc['kind'] == 'Job' and '-keycloak-init-' in doc['metadata']['name'])
+    assert 'helm.sh/hook' not in job['metadata'].get('annotations', {})
+    assert job['spec']['template']['spec']['automountServiceAccountToken'] is False
+    assert not any(doc['metadata']['name'].endswith('-keycloak-realm') for doc in render_dev())

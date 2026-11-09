@@ -1,14 +1,13 @@
 import { useNavigate } from "@tanstack/react-router";
 import { AccessTokens } from "@/components/account/access-tokens";
 import { useEffect, useState, type FormEvent } from "react";
-import { useMutation } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import { KeyRound, Languages, ShieldCheck, UserRound } from "lucide-react";
 import { useTranslation } from "react-i18next";
-import { toast } from "sonner";
+import { toast } from "@/components/ui/notifications";
 
 import { UserAvatar } from "@/components/account-menu";
 import { ChangePasswordSheet } from "@/components/change-password-sheet";
-import { ConfirmationSheet } from "@/components/confirmation-sheet";
 import { PageHeader } from "@/components/product-shell";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -19,35 +18,36 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import type { SupportedLanguage } from "@/i18n";
 import { useAuth } from "@/lib/auth";
+import { getAccountSignInMethod } from "@/lib/identity-api";
 
 export function AccountPage({ section = "general" }: { section?: "general" | "security" | "access-tokens" }) {
+  const { t: uiText } = useTranslation();
   const navigate = useNavigate();
   const { t, i18n } = useTranslation();
   const { user, updateProfile } = useAuth();
-  const [displayName, setDisplayName] = useState(user?.display_name ?? "");
   const [language, setLanguage] = useState<SupportedLanguage>(user?.preferred_language ?? "en");
   const [passwordOpen, setPasswordOpen] = useState(false);
-  const [confirmOpen, setConfirmOpen] = useState(false);
+  const signInMethod = useQuery({ queryKey: ["account-sign-in-method", user?.id], queryFn: getAccountSignInMethod, enabled: Boolean(user), retry: false });
+  const usesSso = signInMethod.data === "sso";
 
   useEffect(() => {
-    setDisplayName(user?.display_name ?? "");
     setLanguage(user?.preferred_language ?? "en");
-  }, [user?.display_name, user?.preferred_language]);
+  }, [user?.preferred_language]);
 
   const mutation = useMutation({
-    mutationFn: () => updateProfile({ display_name: displayName.trim(), preferred_language: language }),
-    onSuccess: () => { setConfirmOpen(false); toast.success(t("account.saved")); },
+    mutationFn: () => updateProfile({ preferred_language: language }),
+    onSuccess: () => toast.success(t("account.saved")),
     onError: (error) => toast.error(error instanceof Error ? error.message : t("common.unknownError")),
   });
 
   if (!user) return null;
 
-  const dirty = displayName.trim() !== user.display_name || language !== user.preferred_language;
+  const dirty = language !== user.preferred_language;
   const formatDate = (value: string) => new Intl.DateTimeFormat(i18n.language, { dateStyle: "medium", timeStyle: "short" }).format(new Date(value));
 
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (displayName.trim() && dirty) setConfirmOpen(true);
+    if (dirty && !mutation.isPending) mutation.mutate();
   }
 
   return (
@@ -59,7 +59,7 @@ export function AccountPage({ section = "general" }: { section?: "general" | "se
         <TabsList aria-label={t("account.sections")} className="min-w-max">
           <TabsTrigger value="general"><UserRound />{t("account.general")}</TabsTrigger>
           <TabsTrigger value="security"><KeyRound />{t("account.security")}</TabsTrigger>
-          <TabsTrigger value="access-tokens"><ShieldCheck />Access Tokens</TabsTrigger>
+          <TabsTrigger value="access-tokens"><ShieldCheck />{uiText("uiCopy.accessTokens")}</TabsTrigger>
         </TabsList>
         </div>
 
@@ -72,10 +72,10 @@ export function AccountPage({ section = "general" }: { section?: "general" | "se
               </CardHeader>
               <CardContent>
                 <div className="mb-6 flex items-center gap-3 rounded-xl border bg-muted/25 p-4">
-                  <UserAvatar name={user.display_name} size="large" />
+                  <UserAvatar username={user.username} size="large" />
                   <div className="min-w-0 flex-1">
-                    <p className="truncate text-sm font-semibold">{user.display_name}</p>
-                    <p className="mt-0.5 truncate text-xs text-muted-foreground">{user.email}</p>
+                    <p className="truncate text-sm font-semibold">{user.username}</p>
+                    {usesSso && <p className="mt-0.5 truncate text-xs text-muted-foreground">{user.email}</p>}
                   </div>
                   <Badge variant="outline" className="gap-1.5 font-normal">
                     <ShieldCheck className="text-primary" />
@@ -85,15 +85,9 @@ export function AccountPage({ section = "general" }: { section?: "general" | "se
 
                 <form className="grid gap-5" onSubmit={submit}>
                   <div className="grid gap-2">
-                    <Label htmlFor="account-display-name">{t("account.displayName")}</Label>
-                    <Input id="account-display-name" autoComplete="name" value={displayName} onChange={(event) => setDisplayName(event.target.value)} />
-                    <p className="text-xs leading-5 text-muted-foreground">{t("account.displayNameHint")}</p>
-                  </div>
-
-                  <div className="grid gap-2">
-                    <Label htmlFor="account-email">{t("account.email")}</Label>
-                    <Input id="account-email" type="email" value={user.email} readOnly aria-readonly />
-                    <p className="text-xs leading-5 text-muted-foreground">{t("account.emailReadOnly")}</p>
+                    <Label htmlFor="account-username">{t(usesSso ? "account.ssoEmail" : "account.username")}</Label>
+                    <Input id="account-username" type="text" value={usesSso ? user.email ?? "" : user.username} readOnly aria-readonly />
+                    <p className="text-xs leading-5 text-muted-foreground">{t(usesSso ? "account.ssoManaged" : "account.usernameReadOnly")}</p>
                   </div>
 
                   <div className="grid gap-2">
@@ -112,7 +106,7 @@ export function AccountPage({ section = "general" }: { section?: "general" | "se
                   </div>
 
                   <div className="flex justify-end border-t pt-5">
-                    <Button type="submit" disabled={!displayName.trim() || !dirty || mutation.isPending}>
+                    <Button type="submit" disabled={!dirty || mutation.isPending}>
                       {mutation.isPending ? t("common.saving") : t("account.saveChanges")}
                     </Button>
                   </div>
@@ -149,10 +143,11 @@ export function AccountPage({ section = "general" }: { section?: "general" | "se
                   <span className="flex size-10 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary"><KeyRound className="size-4.5" /></span>
                   <div>
                     <p className="text-sm font-medium">{t("account.password")}</p>
-                    <p className="mt-1 max-w-xl text-xs leading-5 text-muted-foreground">{t("account.passwordManagedLocally")}</p>
+                    <p className="mt-1 max-w-xl text-xs leading-5 text-muted-foreground">{t(signInMethod.isError ? "account.signInMethodUnavailable" : signInMethod.isPending ? "common.loading" : usesSso ? "account.ssoManaged" : "account.passwordManagedLocally")}</p>
                   </div>
                 </div>
-                <Button variant="outline" onClick={() => setPasswordOpen(true)}><KeyRound />{t("auth.changePassword")}</Button>
+                {signInMethod.data === "password" ? <Button variant="outline" onClick={() => setPasswordOpen(true)}><KeyRound />{t("auth.changePassword")}</Button> : null}
+                {signInMethod.isError ? <Button variant="outline" onClick={() => void signInMethod.refetch()}>{t("auth.ssoRetry")}</Button> : null}
               </div>
             </CardContent>
           </Card>
@@ -161,24 +156,6 @@ export function AccountPage({ section = "general" }: { section?: "general" | "se
       </Tabs>
 
       <ChangePasswordSheet open={passwordOpen} onOpenChange={setPasswordOpen} />
-      <ConfirmationSheet
-        open={confirmOpen}
-        onOpenChange={setConfirmOpen}
-        eyebrow={t("account.confirmEyebrow")}
-        title={t("account.confirmTitle")}
-        description={t("account.confirmDescription")}
-        cancelLabel={t("common.cancel")}
-        confirmLabel={t("account.saveChanges")}
-        pendingLabel={t("common.saving")}
-        pending={mutation.isPending}
-        onConfirm={() => mutation.mutate()}
-      >
-        <dl className="divide-y rounded-lg border bg-card px-4 text-sm">
-          <AccountFact label={t("account.displayName")} value={displayName.trim()} />
-          <AccountFact label={t("account.interfaceLanguage")} value={t(language === "zh-CN" ? "common.chinese" : "common.english")} />
-        </dl>
-        {mutation.error ? <p role="alert" className="rounded-lg border border-destructive/20 bg-destructive/5 px-4 py-3 text-sm text-destructive">{mutation.error instanceof Error ? mutation.error.message : t("common.unknownError")}</p> : null}
-      </ConfirmationSheet>
     </section>
   );
 }

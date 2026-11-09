@@ -1,3 +1,4 @@
+import i18n from "@/i18n";
 import type { TrafficRoute } from "@/lib/traffic-routing-api";
 import { routingIssues } from "../../../shared/traffic-routing";
 export function ruleErrors(route: TrafficRoute): string[] {
@@ -17,10 +18,10 @@ export function ruleErrors(route: TrafficRoute): string[] {
     ],
   };
   const simple = [
-    !route.name.trim() && "Enter a rule name.",
-    !route.targets.length && "Choose a GuardRail.",
+    !route.name.trim() && i18n.t("routing.enterRuleName"),
+    !route.targets.length && i18n.t("routing.chooseGuardrail"),
     route.targets.some((t) => !t.guardrailId) &&
-      "Choose a GuardRail for every target.",
+      i18n.t("routing.chooseEveryGuardrail"),
   ].filter((s): s is string => Boolean(s));
   if (simple.length) return simple;
   return [

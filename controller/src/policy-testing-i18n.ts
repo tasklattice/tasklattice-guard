@@ -1,0 +1,26 @@
+export const policyTestingEn = {
+  test: "Test", running: "Testing…", checking: "Checking test dependencies…", unavailable: "Could not check test dependencies.",
+  description: "Run every test for this Policy version using the current environment's Protection configuration.",
+  blocked: "Testing is unavailable", missing: "No active model for {{capability}} · {{stage}}.",
+  configure: "Configure Protection", contactAdmin: "Ask a platform administrator to configure the missing Protection.",
+  progress: "{{completed}} / {{total}} completed", summary: "{{passed}} / {{total}} passed", version: "Policy version {{version}}",
+  export: "Export Evidence", exporting: "Exporting…", sourceCases: "Test definitions ({{count}})",
+  changed: "Protection configuration has changed since this report. Run the tests again to verify the current configuration.",
+  environment: "Test environment", parameters: "Test parameters", output: "Output", rules: "Matched Rules", trace: "Execution details",
+  failed: "Could not start the Policy test.", readFailed: "Could not load the latest test report.",
+  permission: "You do not have permission to run Policy tests.",
+  noCalls: "This case made no model HTTP calls.", noCapturedCalls: "No HTTP evidence was captured. Run Test again to capture it.",
+};
+export const policyTestingZh = {
+  test: "测试", running: "测试中…", checking: "正在检查测试依赖…", unavailable: "无法检查测试依赖。",
+  description: "使用当前环境已生效的 Protection 配置，执行此 Policy 版本的全部测试用例。",
+  blocked: "暂时无法测试", missing: "{{capability}} · {{stage}} 尚未配置已生效的模型。",
+  configure: "配置 Protection", contactAdmin: "请联系平台管理员配置缺失的 Protection。",
+  progress: "已完成 {{completed}} / {{total}}", summary: "通过 {{passed}} / {{total}}", version: "Policy 版本 {{version}}",
+  export: "导出 Evidence", exporting: "正在导出…", sourceCases: "测试用例定义（{{count}}）",
+  changed: "Protection 配置已发生变化，请重新测试以验证当前配置。",
+  environment: "测试环境", parameters: "测试参数", output: "输出", rules: "命中的 Rule", trace: "执行详情",
+  failed: "无法启动 Policy 测试。", readFailed: "无法加载最近的测试报告。",
+  permission: "你没有执行 Policy 测试的权限。",
+  noCalls: "此用例未发起模型 HTTP 调用。", noCapturedCalls: "未捕获 HTTP 证据，请重新测试以获取证据。",
+};

@@ -1,0 +1,17 @@
+// Keep the inspection action visible alongside the runtime evidence on desktop.
+.runtime-history-table {
+  min-inline-size: 56rem;
+}
+.runtime-history-table th:nth-child(3) { inline-size: 21%; }
+.runtime-history-table th:nth-child(4) { inline-size: 10rem; }
+.runtime-history-table td:nth-child(4) .cds--tag__label { white-space: nowrap; }
+.runtime-history-table th:last-child,
+.runtime-history-table td:last-child {
+  position: sticky;
+  inset-inline-end: 0;
+  z-index: 1;
+  inline-size: 3.5rem;
+  padding-inline: 0.25rem;
+}
+.runtime-history-table td:last-child { background: var(--cds-layer-01); }
+.runtime-history-table tr:hover td:last-child { background: var(--cds-layer-hover-01); }

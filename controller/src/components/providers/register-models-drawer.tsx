@@ -11,15 +11,15 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
   createModelDefinition, discoverModelProvider, discoverProviderDraft, registerProviderModels, testModelConnection,
-  type DiscoveredProviderModels, type ModelDefinition, type ModelProvider, type ProviderModelSelection,
+  type DiscoveredProviderModels, type ModelDefinition, type ModelProvider, type ModelProviderKind, type ProviderModelSelection,
 } from "@/lib/controller-api";
 import { cn } from "@/lib/utils";
-import { displayNameForModel, suggestedProfile } from "./model-selection";
+import { displayNameForModel, isLayaModel, layaRequestModeLabelKey, suggestedProfile } from "./model-selection";
 import { ProviderMark } from "./provider-mark";
 import { ProviderPicker } from "./provider-picker";
 import { ProviderTlsControl } from "./provider-tls-control";
 import { ModelCallEvidence } from "./model-call-evidence";
-import { createProviderDraft, providerPresets, type ProviderPresetId } from "./provider-ui-registry";
+import { createProviderDraft, providerModelSuggestions, providerPresets, type ProviderPresetId } from "./provider-ui-registry";
 
 type Step = "source" | "models" | "complete";
 type Summary = { providerName: string; models: ModelDefinition[]; failures: Array<{ model: ProviderModelSelection; message: string }> };
@@ -28,18 +28,19 @@ type Discovery = Omit<DiscoveredProviderModels, "providerId">;
 // Port of Relay's RegisterModelsDrawer: source -> review models -> complete.
 // Registration checks actual model calls. Scenario assignments and semantic
 // detection validation belong to Capabilities rather than this selection step.
-export function RegisterModelsDrawer({ providers, registeredModels, initialProviderId, intent, open, onOpenChange, onChanged }: {
+export function RegisterModelsDrawer({ providers, registeredModels, initialProviderId, intent, allowProviderCreation = true, open, onOpenChange, onChanged }: {
   providers: ModelProvider[];
   registeredModels: ModelDefinition[];
   initialProviderId?: string;
   intent: "add-provider" | "register-models";
+  allowProviderCreation?: boolean;
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onChanged: () => Promise<void>;
 }) {
   const { t } = useTranslation();
   const [step, setStep] = useState<Step>("source");
-  const [credentialMode, setCredentialMode] = useState<"existing" | "new">(intent === "add-provider" || !providers.length ? "new" : "existing");
+  const [credentialMode, setCredentialMode] = useState<"existing" | "new">(allowProviderCreation && (intent === "add-provider" || !providers.length) ? "new" : "existing");
   const [providerId, setProviderId] = useState(initialProviderId ?? providers[0]?.id ?? "");
   const [presetId, setPresetId] = useState<ProviderPresetId>();
   const [draft, setDraft] = useState(() => createProviderDraft("openai"));
@@ -55,12 +56,15 @@ export function RegisterModelsDrawer({ providers, registeredModels, initialProvi
   const existing = registeredModels.filter((item) => credentialMode === "existing" && item.providerId === providerId);
   const existingIds = new Set(existing.map((item) => item.model));
   const preset = providerPresets.find((item) => item.id === presetId);
+  const providerKind = credentialMode === "existing" ? activeProvider?.kind : draft.kind;
+  const suggestions = providerKind ? providerModelSuggestions[providerKind] : undefined;
 
   const discover = useMutation({
     mutationFn: () => credentialMode === "existing" ? discoverModelProvider(providerId) : discoverProviderDraft(draft),
     onSuccess: (result) => {
       setDiscovery(result);
-      setModels([]);
+      // An optional refresh must not discard a pinned version or manual IDs.
+      if (step === "source") setModels([]);
       setManualDiscoveryError("");
       setStep("models");
     },
@@ -116,6 +120,7 @@ export function RegisterModelsDrawer({ providers, registeredModels, initialProvi
   const needsAttention = Boolean(summary?.failures.length || summary?.models.some((model) => model.connectionStatus !== "validated"));
   const invalidSelection = models.some((model) => model.name.trim().length < 2
     || !Number.isInteger(model.timeoutSeconds) || model.timeoutSeconds < 1 || model.timeoutSeconds > 120
+    || !Number.isInteger(model.maxConcurrency ?? 2) || (model.maxConcurrency ?? 2) < 1 || (model.maxConcurrency ?? 2) > 64
     || !Number.isInteger(model.maxTokens) || model.maxTokens < 1 || model.maxTokens > 32768);
   const sourceChanged = () => { discover.reset(); register.reset(); setFormError(""); setDiscovery(undefined); setModels([]); setSearch(""); setManualModelId(""); setManualDiscoveryError(""); };
   const steps = [
@@ -124,16 +129,26 @@ export function RegisterModelsDrawer({ providers, registeredModels, initialProvi
     { label: t("providerRegistration.complete"), description: t("providerRegistration.reviewResults") },
   ];
   const chooseProvider = (id: ProviderPresetId) => { sourceChanged(); setPresetId(id); setDraft(createProviderDraft(id)); };
-  const validateAndDiscover = () => {
+  const continueFromSource = () => {
     if (!formRef.current?.reportValidity()) return;
     if (credentialMode === "new" && !presetId) { setFormError(t("modelSettings.selectProvider")); return; }
     setFormError("");
-    discover.mutate();
+    if (suggestions) {
+      if (!discovery) {
+        setDiscovery({ providerName: credentialMode === "existing" ? activeProvider!.name : draft.name, models: [] });
+        setModels(existingIds.has(suggestions.defaultModel) ? [] : [selection(suggestions.defaultModel, providerKind)]);
+      }
+      setStep("models");
+    } else discover.mutate();
   };
-  const toggle = (id: string) => setModels((current) => current.some((item) => item.model === id) ? current.filter((item) => item.model !== id) : [...current, selection(id)]);
-  const catalog = [
+  const toggle = (id: string) => setModels((current) => current.some((item) => item.model === id) ? current.filter((item) => item.model !== id) : [...current, selection(id, credentialMode === "existing" ? activeProvider?.kind : draft.kind)]);
+  const availableModels = [...new Map([
+    ...(suggestions?.models ?? []),
     ...(discovery?.models ?? []),
-    ...models.filter((item) => !discovery?.models.some((candidate) => candidate.id === item.model)).map((item) => ({ id: item.model, name: item.name })),
+  ].map((item) => [item.id, item])).values()];
+  const catalog = [
+    ...availableModels,
+    ...models.filter((item) => !availableModels.some((candidate) => candidate.id === item.model)).map((item) => ({ id: item.model, name: item.name })),
   ].filter((item) => `${item.name} ${item.id}`.toLowerCase().includes(search.toLowerCase()));
 
   return (
@@ -151,8 +166,8 @@ export function RegisterModelsDrawer({ providers, registeredModels, initialProvi
           {step === "complete" ? <Button className="ml-auto h-11" disabled={pending} onClick={() => onOpenChange(false)}>{t("providerRegistration.done")}</Button> : <>
             <Button type="button" variant="outline" className="h-11" disabled={pending} onClick={() => { if (step === "source") onOpenChange(false); else { setStep("source"); register.reset(); } }}>{step === "models" ? <ArrowLeft /> : null}{t(step === "source" ? "common.cancel" : "common.back")}</Button>
             <Button type="button" className="h-11" disabled={pending || (step === "source" ? credentialMode === "existing" ? !activeProvider : !presetId : !models.length || models.length > 50 || invalidSelection)}
-              onClick={() => step === "source" ? validateAndDiscover() : register.mutate()}>
-              {pending ? <LoaderCircle className="animate-spin motion-reduce:animate-none" /> : null}{t(step === "source" ? "providerRegistration.discoverModels" : "providerRegistration.registerSelected", { count: models.length })}<ArrowRight />
+              onClick={() => step === "source" ? continueFromSource() : register.mutate()}>
+              {pending ? <LoaderCircle className="animate-spin motion-reduce:animate-none" /> : null}{t(step === "source" ? suggestions ? "providerRegistration.chooseModels" : "providerRegistration.discoverModels" : "providerRegistration.registerSelected", { count: models.length })}<ArrowRight />
             </Button>
           </>}
         </div>
@@ -164,9 +179,9 @@ export function RegisterModelsDrawer({ providers, registeredModels, initialProvi
           <CreationFlow steps={steps} currentStep={step === "source" ? 0 : step === "models" ? 1 : 2} progressLabel={t("providerRegistration.progress")} orientation="sidebar"
             onStepChange={(next) => { if (!pending && step !== "complete" && next === 0) { setStep("source"); register.reset(); } }}>
             {step === "source" ? (
-              <form ref={formRef} onSubmit={(event) => { event.preventDefault(); validateAndDiscover(); }}>
+              <form ref={formRef} onSubmit={(event) => { event.preventDefault(); continueFromSource(); }}>
                 <fieldset disabled={pending} className="min-w-0 space-y-6">
-                  {intent !== "add-provider" && !initialProviderId && providers.length ? (
+                  {allowProviderCreation && intent !== "add-provider" && !initialProviderId && providers.length ? (
                     <div role="radiogroup" aria-label={t("providerRegistration.credentialSource")} className="grid gap-2 sm:grid-cols-2">
                       {(["existing", "new"] as const).map((mode) => <button key={mode} type="button" role="radio" aria-checked={credentialMode === mode}
                         className={cn("min-h-24 border p-3 text-left transition-colors focus-visible:ring-3 focus-visible:ring-ring/20", credentialMode === mode ? "border-primary bg-primary/5" : "hover:bg-muted/40")}
@@ -178,7 +193,7 @@ export function RegisterModelsDrawer({ providers, registeredModels, initialProvi
                   {credentialMode === "existing" ? (
                     <Field id="provider-credentials" label={t("providerRegistration.savedCredentials")}>
                       <Select value={providerId} disabled={pending} onValueChange={(id) => { sourceChanged(); setProviderId(id); }}>
-                        <SelectTrigger id="provider-credentials" className="h-12 w-full"><SelectValue /></SelectTrigger>
+                        <SelectTrigger id="provider-credentials" className="field:h-12 w-full"><SelectValue /></SelectTrigger>
                         <SelectContent position="popper">{providers.map((provider) => <SelectItem key={provider.id} value={provider.id}><span className="flex items-center gap-2"><ProviderMark provider={provider.name} kind={provider.kind} size="sm" />{provider.name}</span></SelectItem>)}</SelectContent>
                       </Select>
                       {activeProvider ? <p className="break-all font-mono text-xs text-muted-foreground">{activeProvider.baseUrl}</p> : null}
@@ -193,25 +208,27 @@ export function RegisterModelsDrawer({ providers, registeredModels, initialProvi
                       </section>
                       {preset ? <section className="space-y-5">
                         <div className="flex items-start gap-2.5"><KeyRound className="mt-0.5 size-4 shrink-0" /><div><h3 className="text-sm font-semibold">{t("providerRegistration.credentialsEndpoint")}</h3><p className="mt-1 text-xs leading-5 text-muted-foreground">{t("providerRegistration.credentialsStoredOnRegistration")}</p></div></div>
-                        <Field id="provider-name" label={t("modelSettings.providerName")}><Input id="provider-name" className="h-11" required minLength={3} maxLength={80} value={draft.name} onChange={(event) => { sourceChanged(); setDraft({ ...draft, name: event.target.value }); }} /></Field>
-                        {presetId === "qwen" ? <Field id="qwen-region" label={t("providerRegistration.endpointRegion")}><Select value={draft.baseUrl.includes("dashscope.aliyuncs.com") ? "cn" : "international"} disabled={pending} onValueChange={(region) => { sourceChanged(); setDraft({ ...draft, baseUrl: region === "cn" ? "https://dashscope.aliyuncs.com/compatible-mode/v1" : "https://dashscope-intl.aliyuncs.com/compatible-mode/v1" }); }}><SelectTrigger id="qwen-region" className="h-11"><SelectValue /></SelectTrigger><SelectContent position="popper"><SelectItem value="international">{t("providerRegistration.international")}</SelectItem><SelectItem value="cn">{t("providerRegistration.mainlandChina")}</SelectItem></SelectContent></Select></Field> : null}
-                        <Field id="provider-url" label={t("modelSettings.baseUrl")}><Input id="provider-url" className="h-11 font-mono" type="url" required pattern="https?://.*" value={draft.baseUrl} placeholder="https://api.example.com/v1" onChange={(event) => { sourceChanged(); setDraft({ ...draft, baseUrl: event.target.value, ...(event.target.value.startsWith("https:") ? {} : { skipTlsVerify: false }) }); }} /><p className="text-xs leading-5 text-muted-foreground">{t("modelSettings.baseUrlHint")}</p></Field>
+                        <Field id="provider-name" label={t("modelSettings.providerName")}><Input id="provider-name" className="field:h-11" required minLength={3} maxLength={80} value={draft.name} onChange={(event) => { sourceChanged(); setDraft({ ...draft, name: event.target.value }); }} /></Field>
+                        {presetId === "qwen" ? <Field id="qwen-region" label={t("providerRegistration.endpointRegion")}><Select value={draft.baseUrl.includes("dashscope.aliyuncs.com") ? "cn" : "international"} disabled={pending} onValueChange={(region) => { sourceChanged(); setDraft({ ...draft, baseUrl: region === "cn" ? "https://dashscope.aliyuncs.com/compatible-mode/v1" : "https://dashscope-intl.aliyuncs.com/compatible-mode/v1" }); }}><SelectTrigger id="qwen-region" className="field:h-11"><SelectValue /></SelectTrigger><SelectContent position="popper"><SelectItem value="international">{t("providerRegistration.international")}</SelectItem><SelectItem value="cn">{t("providerRegistration.mainlandChina")}</SelectItem></SelectContent></Select></Field> : null}
+                        <Field id="provider-url" label={t("modelSettings.baseUrl")}><Input id="provider-url" className="field:h-11 field:font-mono" type="url" required pattern="https?://.*" value={draft.baseUrl} placeholder="https://api.example.com/v1" onChange={(event) => { sourceChanged(); setDraft({ ...draft, baseUrl: event.target.value, ...(event.target.value.startsWith("https:") ? {} : { skipTlsVerify: false }) }); }} /><p className="text-xs leading-5 text-muted-foreground">{t(providerKind === "laya" ? "providerRegistration.layaBaseUrlHint" : providerKind === "typesafe" ? "providerRegistration.typesafeBaseUrlHint" : "modelSettings.baseUrlHint")}</p></Field>
                         {draft.baseUrl.startsWith("https:") ? <ProviderTlsControl checked={draft.skipTlsVerify === true} disabled={pending} onChange={(skipTlsVerify) => { sourceChanged(); setDraft({ ...draft, skipTlsVerify }); }} /> : null}
-                        <Field id="provider-key" label={t("modelSettings.apiKey")}><Input id="provider-key" className="h-11" type="password" autoComplete="new-password" required={preset.keyRequired} value={draft.apiKey} onChange={(event) => { sourceChanged(); setDraft({ ...draft, apiKey: event.target.value }); }} /><p className="text-xs leading-5 text-muted-foreground">{t(preset.keyRequired ? "providerRegistration.keyRequired" : "modelSettings.apiKeyHint")}</p></Field>
+                        <Field id="provider-key" label={t("modelSettings.apiKey")}><Input id="provider-key" className="field:h-11" type="password" autoComplete="new-password" required={preset.keyRequired} value={draft.apiKey} onChange={(event) => { sourceChanged(); setDraft({ ...draft, apiKey: event.target.value }); }} /><p className="text-xs leading-5 text-muted-foreground">{t(preset.keyRequired ? "providerRegistration.keyRequired" : "modelSettings.apiKeyHint")}</p></Field>
                       </section> : null}
                     </div>
                   )}
+                  {suggestions ? <p className="border-l-2 border-primary bg-primary/5 px-4 py-3 text-sm leading-6">{t(providerKind === "laya" ? "providerRegistration.layaModelHint" : "providerRegistration.jevVersionHint")}</p> : null}
                   {formError || discover.error ? <ErrorMessage>{formError || errorMessage(discover.error)}</ErrorMessage> : null}
-                  {discover.error ? <Button type="button" variant="outline" className="min-h-11" onClick={() => { setDiscovery({ providerName: activeProvider?.name ?? draft.name, models: [] }); setModels([]); setManualDiscoveryError(errorMessage(discover.error)); setStep("models"); }}>{t("providerRegistration.continueManually")}</Button> : null}
+                  {discover.error && !suggestions ? <Button type="button" variant="outline" className="min-h-11" onClick={() => { setDiscovery({ providerName: credentialMode === "existing" ? activeProvider!.name : draft.name, models: [] }); setModels([]); setManualDiscoveryError(errorMessage(discover.error)); setStep("models"); }}>{t("providerRegistration.continueManually")}</Button> : null}
                 </fieldset>
               </form>
             ) : step === "models" && discovery ? (
               <fieldset disabled={pending} className="min-w-0 space-y-6">
-                <div className={cn("border-l-2 px-4 py-3 text-sm", manualDiscoveryError ? "border-destructive bg-destructive/5" : "border-primary bg-primary/5")}>
-                  <strong>{t(manualDiscoveryError ? "providerRegistration.manualRegistration" : "providerRegistration.liveCatalog")}</strong>
-                  <p className="mt-1 text-xs leading-5 text-muted-foreground">{manualDiscoveryError || t("providerRegistration.reviewDescription", { provider: discovery.providerName })}</p>
+                <div className={cn("text-sm", manualDiscoveryError && "border-l-2 border-destructive bg-destructive/5 px-4 py-3")}>
+                  <strong>{t(manualDiscoveryError ? "providerRegistration.manualRegistration" : suggestions ? providerKind === "laya" ? "providerRegistration.layaModels" : "providerRegistration.jevVersions" : "providerRegistration.liveCatalog")}</strong>
+                  <p className="mt-1 text-xs leading-5 text-muted-foreground">{manualDiscoveryError || t(suggestions ? providerKind === "laya" ? "providerRegistration.layaModelHint" : "providerRegistration.jevVersionHint" : "providerRegistration.reviewDescription", { provider: discovery.providerName })}</p>
                 </div>
-                <section aria-label={t("providerRegistration.selectedModels")} className="rounded-lg border border-primary/25 bg-card p-4">
+                {suggestions && discover.error ? <div className="space-y-2"><ErrorMessage>{errorMessage(discover.error)}</ErrorMessage><p className="text-xs text-muted-foreground">{t("providerRegistration.optionalDiscoveryFailed")}</p></div> : null}
+                <section aria-label={t("providerRegistration.selectedModels")} className={models.length ? "rounded-lg border border-primary/25 bg-card p-4" : undefined}>
                   <div className="flex items-center justify-between gap-3">
                     <h3 className="text-sm font-semibold">{t("providerRegistration.selectedModels")}</h3>
                     <span role="status" aria-live="polite" className="text-sm font-medium text-primary">{t("providerRegistration.selected", { count: models.length })}</span>
@@ -220,14 +237,18 @@ export function RegisterModelsDrawer({ providers, registeredModels, initialProvi
                     <li key={model.model} className="flex min-h-11 items-center gap-2 py-1">
                       <CheckCircle2 className="size-4 shrink-0 text-primary" aria-hidden="true" />
                       <code className="min-w-0 flex-1 break-all text-xs">{model.model}</code>
-                      {!discovery.models.some((item) => item.id === model.model) ? <span className="text-xs text-muted-foreground">{t("providerRegistration.manual")}</span> : null}
+                      <div className="w-28 shrink-0"><Label htmlFor={`concurrency-${model.model}`} className="text-xs">{t("modelSettings.maxConcurrency")}</Label><Input id={`concurrency-${model.model}`} type="number" required min={1} max={64} disabled={pending} value={model.maxConcurrency ?? 2} onChange={(event) => setModels((current) => current.map((item) => item.model === model.model ? { ...item, maxConcurrency: Number(event.target.value) } : item))} /></div>
+                      {!availableModels.some((item) => item.id === model.model) ? <span className="text-xs text-muted-foreground">{t("providerRegistration.manual")}</span> : null}
                       <Button type="button" size="icon" variant="ghost" className="size-11 shrink-0" disabled={pending} aria-label={t("providerRegistration.deselectModel", { model: model.model })} onClick={() => toggle(model.model)}><X /></Button>
                     </li>
-                  ))}</ul> : <p className="mt-2 text-xs leading-5 text-muted-foreground">{t("providerRegistration.selectAtLeastOne")}</p>}
+                  ))}</ul> : null}
                 </section>
                 <section className="space-y-3">
-                  <h3 className="text-sm font-semibold">{t("providerRegistration.discoveredModels")}</h3>
-                  <Input className="h-11" aria-label={t("providerRegistration.searchModels")} placeholder={t("providerRegistration.searchModels")} value={search} onChange={(event) => setSearch(event.target.value)} />
+                  <div className="flex items-center justify-between gap-3">
+                    <h3 className="text-sm font-semibold">{t(suggestions ? "providerRegistration.modelVersions" : "providerRegistration.discoveredModels")}</h3>
+                    {suggestions ? <Button type="button" variant="outline" className="h-11" disabled={pending} onClick={() => discover.mutate()}>{t("providerRegistration.refreshCatalog")}</Button> : null}
+                  </div>
+                  <Input className="field:h-11" aria-label={t("providerRegistration.searchModels")} placeholder={t("providerRegistration.searchModels")} value={search} onChange={(event) => setSearch(event.target.value)} />
                   <div className="max-h-64 divide-y overflow-y-auto rounded-lg border">
                     {catalog.map((item) => {
                       const model = models.find((candidate) => candidate.model === item.id);
@@ -235,7 +256,7 @@ export function RegisterModelsDrawer({ providers, registeredModels, initialProvi
                       return <div key={item.id} className={cn("border-l-2 border-l-transparent px-3 py-2", model && "border-l-primary bg-primary/10")}>
                         <button type="button" aria-label={`${item.name} ${item.id}${alreadyRegistered ? ` ${t("providerRegistration.registered")}` : ""}`} aria-pressed={Boolean(model)} disabled={alreadyRegistered || pending} onClick={() => toggle(item.id)} className="flex min-h-11 w-full items-center gap-3 text-left disabled:opacity-60">
                           <span className={cn("grid size-5 shrink-0 place-items-center border", (model || alreadyRegistered) && "border-primary bg-primary text-primary-foreground")}>{model || alreadyRegistered ? <Check className="size-3.5" /> : null}</span>
-                          <span className="min-w-0 flex-1"><strong className="block break-words text-sm">{item.name}</strong><span className="block break-all font-mono text-xs text-muted-foreground">{item.id}</span></span>
+                          <span className="min-w-0 flex-1"><strong className="block break-words text-sm">{item.name}</strong>{item.name !== item.id ? <span className="block break-all font-mono text-xs text-muted-foreground">{item.id}</span> : null}</span>
                           {alreadyRegistered || model ? <span className={cn("shrink-0 text-xs font-medium", model ? "text-primary" : "text-muted-foreground")}>{t(alreadyRegistered ? "providerRegistration.registered" : "providerRegistration.selectedLabel")}</span> : null}
                         </button>
                       </div>;
@@ -246,7 +267,7 @@ export function RegisterModelsDrawer({ providers, registeredModels, initialProvi
                 <section className="space-y-3 border bg-muted/10 p-4">
                   <h3 className="text-sm font-semibold">{t("providerRegistration.manualRegistration")}</h3>
                   <p className="text-xs leading-5 text-muted-foreground">{t("providerRegistration.manualHint")}</p>
-                  <div className="flex gap-2"><Input aria-label={t("providerRegistration.manualModelId")} className="h-11 min-w-0 font-mono" maxLength={256} value={manualModelId} onChange={(event) => setManualModelId(event.target.value)} placeholder={t("modelSettings.modelId")} /><Button type="button" variant="outline" className="h-11" disabled={!manualModelId.trim() || existingIds.has(manualModelId.trim()) || models.some((item) => item.model === manualModelId.trim())} onClick={() => { setModels([...models, selection(manualModelId.trim())]); setManualModelId(""); setSearch(""); }}><Plus />{t("providerRegistration.add")}</Button></div>
+                  <div className="flex gap-2"><Input aria-label={t("providerRegistration.manualModelId")} className="field:h-11 min-w-0 field:font-mono" maxLength={256} value={manualModelId} onChange={(event) => setManualModelId(event.target.value)} placeholder={t("modelSettings.modelId")} /><Button type="button" variant="outline" className="h-11" disabled={!manualModelId.trim() || existingIds.has(manualModelId.trim()) || models.some((item) => item.model === manualModelId.trim())} onClick={() => { setModels([...models, selection(manualModelId.trim(), credentialMode === "existing" ? activeProvider?.kind : draft.kind)]); setManualModelId(""); setSearch(""); }}><Plus />{t("providerRegistration.add")}</Button></div>
                 </section>
               </fieldset>
             ) : summary ? (
@@ -255,7 +276,7 @@ export function RegisterModelsDrawer({ providers, registeredModels, initialProvi
                   {needsAttention ? <TriangleAlert className="mt-0.5 size-5 shrink-0" /> : <CheckCircle2 className="mt-0.5 size-5 shrink-0 text-primary" />}
                   <div><strong>{t(summary.models.length ? "providerRegistration.registrationComplete" : "providerRegistration.registrationFailed")}</strong><p className="mt-1 text-xs leading-5 text-muted-foreground">{t("providerRegistration.resultSummary", { provider: summary.providerName, count: summary.models.length })}</p></div>
                 </div>
-                {summary.models.length ? <section><h3 className="mb-2 text-sm font-semibold">{t("providerRegistration.readyModels")}</h3><p className="mb-3 text-xs leading-5 text-muted-foreground">{t("providerRegistration.configureLater")}</p><div className="divide-y border">{summary.models.map((model) => <div key={model.id} className="space-y-3 px-3 py-3"><div className="flex flex-wrap items-start justify-between gap-3"><span className="min-w-0 flex-1"><strong className="block break-words text-sm">{model.name}</strong><span className="break-all font-mono text-xs text-muted-foreground">{model.model}</span></span><ModelCallEvidence model={model} checking={retryConnection.isPending && retryConnection.variables === model.id} /></div>{model.connectionStatus !== "validated" ? <Button type="button" variant="outline" className="h-11" disabled={pending} aria-label={`${t("modelSettings.testCall")} ${model.name}`} onClick={() => retryConnection.mutate(model.id)}>{t("modelSettings.testCall")}</Button> : null}</div>)}</div></section> : null}
+                {summary.models.length ? <section><h3 className="mb-2 text-sm font-semibold">{t("providerRegistration.readyModels")}</h3><p className="mb-3 text-xs leading-5 text-muted-foreground">{t("providerRegistration.configureLater")}</p><div className="divide-y border">{summary.models.map((model) => <div key={model.id} className="space-y-3 px-3 py-3"><div className="flex flex-wrap items-start justify-between gap-3"><span className="min-w-0 flex-1"><strong className="block break-words text-sm">{model.name}</strong><span className="break-all font-mono text-xs text-muted-foreground">{model.model}</span>{isLayaModel(model) ? <span className="mt-1 block text-xs leading-5 text-muted-foreground">{t("providerRegistration.layaRequestMode")}{" · "}<span className={cn("font-medium", model.layaRequestMode ? "text-foreground" : "text-amber-700 dark:text-amber-400")}>{t(layaRequestModeLabelKey(model.layaRequestMode))}</span>{model.layaRequestMode ? null : <>{" · "}{t("providerRegistration.layaRequestModeNotDetectedHint")}</>}</span> : null}</span><ModelCallEvidence model={model} checking={retryConnection.isPending && retryConnection.variables === model.id} /></div>{model.connectionStatus !== "validated" ? <Button type="button" variant="testing" className="h-11" disabled={pending} aria-label={`${t("modelSettings.testCall")} ${model.name}`} onClick={() => retryConnection.mutate(model.id)}>{t("modelSettings.testCall")}</Button> : null}</div>)}</div></section> : null}
                 {summary.failures.length ? <section><h3 className="mb-2 text-sm font-semibold">{t("providerRegistration.needsAttention")}</h3><div className="divide-y border border-destructive/30">{summary.failures.map((failure) => <div key={failure.model.model} className="p-3"><strong className="break-all text-sm">{failure.model.name}</strong><p className="mt-1 whitespace-pre-wrap break-words text-xs leading-5 text-destructive">{failure.message}</p></div>)}</div><Button type="button" variant="outline" className="mt-3 h-11" disabled={pending} onClick={() => retryFailures.mutate()}>{t("providerRegistration.retryFailed")}</Button></section> : null}
               </div>
             ) : null}
@@ -267,9 +288,9 @@ export function RegisterModelsDrawer({ providers, registeredModels, initialProvi
   );
 }
 
-function selection(id: string): ProviderModelSelection {
+function selection(id: string, kind?: ModelProviderKind): ProviderModelSelection {
   const name = displayNameForModel(id).slice(0, 120);
-  return { name: name.length >= 2 ? name : `Model ${id}`, model: id, profile: suggestedProfile(id), timeoutSeconds: 20, maxTokens: 512 };
+  return { name: name.length >= 2 ? name : `Model ${id}`, model: id, profile: kind === "laya" ? "tali.laya.v1" : kind === "typesafe" ? "tali.typesafe-jev.v1" : suggestedProfile(id), timeoutSeconds: 20, maxTokens: 512, maxConcurrency: 2 };
 }
 function Field({ id, label, children }: { id: string; label: string; children: ReactNode }) {
   return <div className="space-y-2"><Label htmlFor={id}>{label}</Label>{children}</div>;

@@ -1,0 +1,37 @@
+.access-token-identity,
+.access-token-permission-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 12rem;
+  align-items: center;
+  gap: 1.5rem;
+}
+
+.access-token-identity { align-items: start; }
+.access-token-identity .cds--label { margin-block-end: 0; }
+
+.access-token-permissions {
+  border: 1px solid var(--cds-border-subtle-01);
+  background: var(--cds-layer-01);
+}
+
+.access-token-permission-row { padding: 1rem; }
+.access-token-permission-row + .access-token-permission-row {
+  border-block-start: 1px solid var(--cds-border-subtle-01);
+}
+
+.access-token-form .cds--form-item,
+.access-token-form .cds--select,
+.access-token-form .cds--select-input__wrapper {
+  min-inline-size: 0;
+  inline-size: 100%;
+}
+
+.access-token-form .cds--select-input,
+.access-token-form .cds--text-input {
+  block-size: 3rem;
+  min-block-size: 3rem;
+}
+
+.access-token-permissions .cds--select-input {
+  background: var(--cds-field-02);
+}

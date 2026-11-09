@@ -9,6 +9,15 @@ export type DeletionImpact = {
   requiresSecondConfirmation: boolean;
 };
 
+/** Runtime that compiled and executed a validation candidate. */
+export type ValidationRuntimeFingerprint = {
+  runnerId: string;
+  runnerVersion: string;
+  nemoVersion: string;
+  modelRevisionId: string;
+  compilerModelTypes: string[];
+};
+
 export type CompiledArtifactInput = {
   id: string;
   guardrailId: string;
@@ -36,6 +45,7 @@ export type RuntimeEventInput = {
   guardrailVersion?: string | undefined;
   endpointId?: string | undefined;
   routerId?: string | undefined;
+  allocationContextId?: string | undefined;
   direction: "incoming" | "outgoing";
   decision: string;
   durationMs: number;
@@ -43,6 +53,8 @@ export type RuntimeEventInput = {
 };
 
 export type ValidationMetrics = {
+  skipped?: number;
+  executed?: number;
   total: number;
   passed: number;
   complianceRate: number;
@@ -53,6 +65,15 @@ export type ValidationMetrics = {
 };
 
 export type ValidationCaseResult = {
+  modelStatus?: string;
+  executionStatus?: string;
+  evidenceStatus: string;
+  evidenceDetail: string;
+  verifiedRuleIds: string[];
+  supersededBy: Array<{ policyId: string; ruleId: string }>;
+  ruleContractSatisfied: boolean;
+  skipped?: boolean;
+  skipReason?: string;
   expectationOverride?: import("./guardrail-plan.js").ValidationExpectationOverride;
   templateExpectedDecision?: string;
   assertionFailures?: string[];
@@ -87,7 +108,6 @@ export type ValidationCaseResult = {
   sourceCaseId: string | null;
   coveredRuleIds: string[];
   matchedRuleIds: string[];
-  preemptingMatches: Array<{ policyId: string; ruleId: string }>;
   evaluationContracts: string[];
   escalated: boolean;
   modelInvocations: number;

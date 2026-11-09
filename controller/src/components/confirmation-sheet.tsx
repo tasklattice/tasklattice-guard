@@ -1,5 +1,5 @@
-import { LoaderCircle, Save, Trash2, TriangleAlert } from "lucide-react";
-import type { ReactNode } from "react";
+import { FlaskConical, LoaderCircle, Save, Trash2, TriangleAlert } from "lucide-react";
+import type { ReactNode, RefObject } from "react";
 
 import { EntitySheet } from "@/components/entity-sheet";
 import { Button } from "@/components/ui/button";
@@ -17,6 +17,7 @@ export function ConfirmationSheet({
   open,
   pending = false,
   pendingLabel,
+  returnFocusRef,
   title,
   variant = "default",
 }: {
@@ -32,13 +33,15 @@ export function ConfirmationSheet({
   open: boolean;
   pending?: boolean;
   pendingLabel?: string;
+  returnFocusRef?: RefObject<HTMLElement | null>;
   title: ReactNode;
-  variant?: "default" | "warning" | "destructive";
+  variant?: "default" | "warning" | "destructive" | "testing";
 }) {
-  const Icon = variant === "destructive" ? Trash2 : variant === "warning" ? TriangleAlert : Save;
+  const Icon = variant === "destructive" ? Trash2 : variant === "warning" ? TriangleAlert : variant === "testing" ? FlaskConical : Save;
   return (
     <EntitySheet
       open={open}
+      returnFocusRef={returnFocusRef}
       closeDisabled={pending}
       onOpenChange={(next) => { if (!pending) onOpenChange(next); }}
       eyebrow={eyebrow}
@@ -48,7 +51,7 @@ export function ConfirmationSheet({
       density="compact"
       footer={<>
         <Button type="button" variant="outline" disabled={pending} onClick={() => onOpenChange(false)}>{cancelLabel}</Button>
-        <Button type="button" variant={variant === "destructive" ? "destructive" : variant === "warning" ? "edit" : "default"} disabled={pending || confirmDisabled} onClick={onConfirm}>
+        <Button type="button" variant={variant === "destructive" ? "destructive" : variant === "warning" ? "edit" : variant === "testing" ? "testing" : "default"} disabled={pending || confirmDisabled} onClick={onConfirm}>
           {pending ? <LoaderCircle className="animate-spin motion-reduce:animate-none" /> : confirmIcon ?? <Icon />}
           {pending ? pendingLabel ?? confirmLabel : confirmLabel}
         </Button>

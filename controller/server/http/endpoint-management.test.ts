@@ -21,8 +21,10 @@ const config = loadConfig({
 
 const endpoint = {
   id: "endpoint-1",
+  projectId: "projectA",
   name: "Primary gateway",
   adapter: "litellm-generic-guardrail",
+  credentialRequired: true,
   status: "active",
   createdAt: new Date("2026-08-20T00:00:00Z"),
   updatedAt: new Date("2026-08-20T00:00:00Z"),
@@ -34,9 +36,132 @@ const endpoint = {
 };
 
 describe("Endpoint management HTTP routes", () => {
+  it.each(["litellm-generic-guardrail", "f5-scan"])("passes an explicit false credential requirement through %s routes and examples", async adapter => {
+    const resource = { ...endpoint, adapter, credentialRequired: false };
+    const createEndpoint = vi.fn().mockResolvedValue(resource);
+    const updateEndpoint = vi.fn().mockResolvedValue(resource);
+    const app = appWith({ session: { id: "fixture-session", activeProjectId: "projectA" }, user: { id: "member-1", role: "user", projectId: "projectA" } }, { createEndpoint, updateEndpoint });
+    for (const method of ["POST", "PATCH"]) {
+      const body = method === "POST" ? { name: "Anonymous", adapter, credentialRequired: false } : { credentialRequired: false };
+      const response = await app.request(`/api/v1/endpoints${method === "POST" ? "" : "/endpoint-1"}`, {
+        method, headers: { "content-type": "application/json" }, body: JSON.stringify(body),
+      });
+      expect(response.status).toBe(method === "POST" ? 201 : 200);
+      const result = await response.json();
+      expect(result.credentialRequired).toBe(false);
+      expect(result.setup.auth_header).toBe("");
+      expect(result.setup.yaml_template).not.toMatch(/Authorization|credential_name|api_key/);
+    }
+    expect(createEndpoint).toHaveBeenCalledWith({ name: "Anonymous", adapter, credentialRequired: false, actorId: "member-1" });
+    expect(updateEndpoint).toHaveBeenCalledWith({ id: "endpoint-1", credentialRequired: false, actorId: "member-1" });
+  });
+
+  it.each([null, "false", 0, {}, []])("rejects invalid credentialRequired %j before mutation", async credentialRequired => {
+    const createEndpoint = vi.fn(), updateEndpoint = vi.fn();
+    const app = appWith({ session: { id: "fixture-session", activeProjectId: "projectA" }, user: { id: "member-1", role: "user", projectId: "projectA" } }, { createEndpoint, updateEndpoint });
+    for (const method of ["POST", "PATCH"]) {
+      const response = await app.request(`/api/v1/endpoints${method === "POST" ? "" : "/endpoint-1"}`, {
+        method, headers: { "content-type": "application/json" },
+        body: JSON.stringify({ ...(method === "POST" ? { name: "Invalid", adapter: "f5-scan" } : {}), credentialRequired }),
+      });
+      expect(response.status).toBe(400);
+    }
+    expect(createEndpoint).not.toHaveBeenCalled();
+    expect(updateEndpoint).not.toHaveBeenCalled();
+  });
+
+  it.each(["f5-scan", "litellm-generic-guardrail"])("uses the incoming origin across all %s setup responses", async (adapter) => {
+    const resource = { ...endpoint, adapter, credential: "tg_one_time" };
+    const app = appWith({ session: { id: "fixture-session", activeProjectId: "projectA" }, user: { id: "admin-1", role: "user", projectId: "projectA" } }, {
+      listEndpoints: vi.fn().mockResolvedValue([resource]),
+      getEndpoint: vi.fn().mockResolvedValue(resource),
+      createEndpoint: vi.fn().mockResolvedValue(resource),
+      updateEndpoint: vi.fn().mockResolvedValue(resource),
+      rotateEndpointCredential: vi.fn().mockResolvedValue(resource),
+    });
+    const requests = [
+      { path: "", method: "GET" },
+      { path: "/endpoint-1", method: "GET" },
+      { path: "", method: "POST", body: JSON.stringify({ name: "New endpoint", adapter }) },
+      { path: "/endpoint-1", method: "PATCH", body: JSON.stringify({ enabled: false }) },
+      { path: "/endpoint-1/credentials", method: "POST" },
+    ];
+    for (const request of requests) {
+      const response = await app.request(`https://console.example.test:8443/api/v1/endpoints${request.path}`, {
+        ...request, headers: { "content-type": "application/json" },
+      });
+      expect(response.status).toBe(request.method === "POST" ? 201 : 200);
+      const body = await response.json();
+      const result = body.items?.[0] ?? body;
+      expect(result.setup.api_base_url).toBe("https://console.example.test:8443/runtime/v1/endpoints/endpoint-1");
+      expect(result.setup.callback_url).toBe(`${result.setup.api_base_url}${adapter === "f5-scan" ? "/backend/v1/scans" : "/beta/litellm_basic_guardrail_api"}`);
+      if (adapter === "f5-scan") expect(result.setup.yaml_template).toContain(result.setup.callback_url);
+      expect(result.credential).toBe("tg_one_time");
+    }
+  });
+
+  it("uses the proxy's external origin and preserves an explicit runtime override", async () => {
+    const session = { session: { id: "fixture-session", activeProjectId: "projectA" }, user: { id: "member-1", role: "user", projectId: "projectA" } };
+    const service = { getEndpoint: vi.fn().mockResolvedValue(endpoint) };
+    const headers = { "x-forwarded-host": "guard.example.test:9443", "x-forwarded-proto": "https" };
+    for (const runtimePublicUrl of [null, "https://runtime.example.test:8443/guard"]) {
+      const app = appWith(session, service, { ...config, runtimePublicUrl });
+      const response = await app.request("http://controller.internal:8080/api/v1/endpoints/endpoint-1", { headers });
+      expect(response.status).toBe(200);
+      expect((await response.json()).setup.api_base_url).toBe(`${runtimePublicUrl ?? "https://guard.example.test:9443"}/runtime/v1/endpoints/endpoint-1`);
+    }
+  });
+
+  it("retains an explicit false default during creation and updates", async () => {
+    const createEndpoint = vi.fn().mockResolvedValue({ ...endpoint, adapter: "f5-scan", scanFlagOnlyDefault: false });
+    const updateEndpoint = vi.fn().mockResolvedValue({ ...endpoint, adapter: "f5-scan", scanFlagOnlyDefault: false });
+    const app = appWith({ session: { id: "fixture-session", activeProjectId: "projectA" }, user: { id: "admin-1", role: "user", projectId: "projectA" } }, { createEndpoint, updateEndpoint });
+    const created = await app.request("/api/v1/endpoints", {
+      method: "POST", headers: { "content-type": "application/json" },
+      body: JSON.stringify({ name: "Scan", adapter: "f5-scan", scanFlagOnlyDefault: false }),
+    });
+    expect(created.status).toBe(201);
+    expect(createEndpoint).toHaveBeenCalledWith({ name: "Scan", adapter: "f5-scan", scanFlagOnlyDefault: false, actorId: "admin-1" });
+    const updated = await app.request("/api/v1/endpoints/endpoint-1", {
+      method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ scanFlagOnlyDefault: false }),
+    });
+    expect(updated.status).toBe(200);
+    expect(updateEndpoint).toHaveBeenCalledWith({ id: "endpoint-1", scanFlagOnlyDefault: false, actorId: "admin-1" });
+  });
+
+  it.each([{}, { scanFlagOnlyDefault: "false" }, { scanFlagOnlyDefault: null }, { scanFlagOnlyDefault: 0 }])("rejects invalid Scan default updates %j", async body => {
+    const updateEndpoint = vi.fn();
+    const app = appWith({ session: { id: "fixture-session", activeProjectId: "projectA" }, user: { id: "admin-1", role: "user", projectId: "projectA" } }, { updateEndpoint });
+    expect((await app.request("/api/v1/endpoints/endpoint-1", {
+      method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify(body),
+    })).status).toBe(400);
+    expect(updateEndpoint).not.toHaveBeenCalled();
+  });
+  it.each(["litellm-generic-guardrail", "f5-scan"])("creates the supported Endpoint adapter %s", async (adapter) => {
+    const createEndpoint = vi.fn().mockResolvedValue({ ...endpoint, adapter });
+    const app = appWith({ session: { id: "fixture-session", activeProjectId: "projectA" }, user: { id: "admin-1", role: "user", projectId: "projectA" } }, { createEndpoint });
+    const response = await app.request("/api/v1/endpoints", {
+      method: "POST", headers: { "content-type": "application/json" },
+      body: JSON.stringify({ name: "Supported endpoint", adapter }),
+    });
+    expect(response.status).toBe(201);
+    expect(createEndpoint).toHaveBeenCalledExactlyOnceWith({ name: "Supported endpoint", adapter, actorId: "admin-1" });
+  });
+
+  it.each(["generic-http-guard", "a2a-guard", "http", "a2a", "scan", "unknown"])("rejects unsupported Endpoint adapter %s before creating anything", async (adapter) => {
+    const createEndpoint = vi.fn();
+    const app = appWith({ session: { id: "fixture-session", activeProjectId: "projectA" }, user: { id: "admin-1", role: "user", projectId: "projectA" } }, { createEndpoint });
+    const response = await app.request("/api/v1/endpoints", {
+      method: "POST", headers: { "content-type": "application/json" },
+      body: JSON.stringify({ name: "Invalid endpoint", adapter }),
+    });
+    expect(response.status).toBe(400);
+    expect(createEndpoint).not.toHaveBeenCalled();
+  });
+
   it("allows authenticated users to read detail without exposing a digest", async () => {
     const getEndpoint = vi.fn().mockResolvedValue(endpoint);
-    const app = appWith({ user: { id: "member-1", role: "user" } }, { getEndpoint });
+    const app = appWith({ session: { id: "fixture-session", activeProjectId: "projectA" }, user: { id: "member-1", role: "user", projectId: "projectA" } }, { getEndpoint });
 
     const response = await app.request("/api/v1/endpoints/endpoint-1");
     expect(response.status).toBe(200);
@@ -44,18 +169,21 @@ describe("Endpoint management HTTP routes", () => {
     expect(getEndpoint).toHaveBeenCalledWith("endpoint-1");
     expect(body).toMatchObject({
       credentials: [{ id: "credential-1", keyHint: "tg_abcd…wxyz" }],
-      setup: { callback_url: "https://runtime.example.test/runtime/v1/endpoints/endpoint-1/beta/litellm_basic_guardrail_api" },
+      setup: { callback_url: "http://localhost/runtime/v1/endpoints/endpoint-1/beta/litellm_basic_guardrail_api" },
     });
     expect(JSON.stringify(body)).not.toContain("sha256");
   });
 
-  it("requires an administrator for status and credential mutations", async () => {
-    const app = appWith({ user: { id: "member-1", role: "user" } }, {});
+  it("rejects unknown roles before status and credential mutations", async () => {
+    const app = appWith({ session: { id: "fixture-session", activeProjectId: "projectA" }, user: { id: "member-1", role: "unknown", projectId: "projectA" } }, {});
 
     expect((await app.request("/api/v1/endpoints/endpoint-1", {
       method: "PATCH",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ enabled: false }),
+    })).status).toBe(403);
+    expect((await app.request("/api/v1/endpoints/endpoint-1", {
+      method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ scanFlagOnlyDefault: false }),
     })).status).toBe(403);
     expect((await app.request("/api/v1/endpoints/endpoint-1/credentials", {
       method: "POST",
@@ -65,13 +193,14 @@ describe("Endpoint management HTTP routes", () => {
     })).status).toBe(403);
   });
 
-  it("forwards the administrator actor and route parameters to the service", async () => {
-    const setEndpointEnabled = vi.fn().mockResolvedValue({ ...endpoint, status: "disabled" });
+  it.each(["user"])("forwards the %s actor and route parameters to the service", async role => {
+    const updateEndpoint = vi.fn().mockResolvedValue({ ...endpoint, status: "disabled" });
     const rotateEndpointCredential = vi.fn().mockResolvedValue({ ...endpoint, credential: "tg_one_time" });
     const revokeEndpointCredential = vi.fn().mockResolvedValue(undefined);
+    const getEndpoint = vi.fn().mockResolvedValue(endpoint);
     const app = appWith(
-      { user: { id: "admin-1", role: "admin" } },
-      { setEndpointEnabled, rotateEndpointCredential, revokeEndpointCredential },
+      { session: { id: "fixture-session", activeProjectId: "projectA" }, user: { id: "admin-1", role, projectId: "projectA" } },
+      { updateEndpoint, rotateEndpointCredential, revokeEndpointCredential, getEndpoint },
     );
 
     const toggled = await app.request("/api/v1/endpoints/endpoint-1", {
@@ -85,7 +214,8 @@ describe("Endpoint management HTTP routes", () => {
     expect(toggled.status).toBe(200);
     expect(rotated.status).toBe(201);
     expect(revoked.status).toBe(204);
-    expect(setEndpointEnabled).toHaveBeenCalledWith({ id: "endpoint-1", enabled: false, actorId: "admin-1" });
+    expect(getEndpoint).toHaveBeenCalledWith("endpoint-1");
+    expect(updateEndpoint).toHaveBeenCalledWith({ id: "endpoint-1", enabled: false, actorId: "admin-1" });
     expect(rotateEndpointCredential).toHaveBeenCalledWith({ id: "endpoint-1", actorId: "admin-1" });
     expect(revokeEndpointCredential).toHaveBeenCalledWith({
       id: "endpoint-1",
@@ -96,15 +226,16 @@ describe("Endpoint management HTTP routes", () => {
 });
 
 function appWith(
-  session: { user: { id: string; role: string } } | null,
+  session: { user: { id: string; role: string; projectId?: string } } | null,
   service: Partial<ControlPlaneService>,
+  appConfig = config,
 ) {
   const auth = {
     api: { getSession: vi.fn().mockResolvedValue(session) },
     handler: vi.fn(),
   } as unknown as ControllerAuth;
   return createHttpApp({
-    config,
+    config: appConfig,
     auth,
     service: service as ControlPlaneService,
     runnerControl: {

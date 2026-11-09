@@ -9,11 +9,10 @@ function version(overrides: Partial<GuardrailVersionDetail> = {}): GuardrailVers
     guardrail_id: "guardrail-dev",
     version: "20260814-075544.381Z",
     source_draft_version: 1,
-    compiler_version: "tasklattice-nemo-config-v7",
+    compiler_version: "tasklattice-nemo-config-v1",
     plan_checksum: "plan-one",
     config_checksum: "config-one",
     created_at: "2026-08-14T07:55:44.381Z",
-    active: false,
     runtime_engine: "llmrails",
     execution_mode: "nemo_only",
     safety_level: "balanced",
@@ -40,7 +39,7 @@ describe("Guardrail version workspace", () => {
       safety_level: "strict",
       policy_bindings: [
         { policy_id: "content-filter", policy_version: "2", action: "block", enabled_rule_ids: ["sql", "code"], enabled_rails: ["input"] },
-        { policy_id: "pii", policy_version: "1", action: "redact", enabled_rule_ids: ["email"], enabled_rails: ["input", "output"] },
+        { policy_id: "pii", policy_version: "1", action: "transform", enabled_rule_ids: ["email"], enabled_rails: ["input", "output"] },
       ],
       models: ["content-safety"],
     });

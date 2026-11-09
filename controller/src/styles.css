@@ -1,30 +1,33 @@
 @import "tailwindcss" source(".");
 @import "@xyflow/react/dist/style.css";
 @import "tw-animate-css";
-@import "shadcn/tailwind.css";
+
+/* Carbon className belongs to a wrapper. Keep layout there; apply field:
+   utilities to the visible control, including its padding and focus surface. */
+@custom-variant field (& :is(input.cds--text-input, textarea.cds--text-area, select.cds--select-input, button.cds--list-box__field));
 
 @font-face {
-  font-family: "Hanken Grotesk";
+  font-family: "IBM Plex Sans";
   font-style: normal;
   font-display: swap;
   font-weight: 400;
-  src: url("@fontsource/hanken-grotesk/files/hanken-grotesk-latin-400-normal.woff2") format("woff2");
+  src: url("@fontsource/ibm-plex-sans/files/ibm-plex-sans-latin-400-normal.woff2") format("woff2");
 }
 
 @font-face {
-  font-family: "Hanken Grotesk";
+  font-family: "IBM Plex Sans";
   font-style: normal;
   font-display: swap;
   font-weight: 500;
-  src: url("@fontsource/hanken-grotesk/files/hanken-grotesk-latin-500-normal.woff2") format("woff2");
+  src: url("@fontsource/ibm-plex-sans/files/ibm-plex-sans-latin-500-normal.woff2") format("woff2");
 }
 
 @font-face {
-  font-family: "Hanken Grotesk";
+  font-family: "IBM Plex Sans";
   font-style: normal;
   font-display: swap;
   font-weight: 600;
-  src: url("@fontsource/hanken-grotesk/files/hanken-grotesk-latin-600-normal.woff2") format("woff2");
+  src: url("@fontsource/ibm-plex-sans/files/ibm-plex-sans-latin-600-normal.woff2") format("woff2");
 }
 
 @font-face {
@@ -52,36 +55,28 @@
 }
 
 @font-face {
-  font-family: "Noto Serif SC";
-  font-style: normal;
-  font-display: swap;
-  font-weight: 600;
-  src: url("@fontsource/noto-serif-sc/files/noto-serif-sc-chinese-simplified-600-normal.woff2") format("woff2");
-}
-
-@font-face {
-  font-family: "Chivo Mono";
+  font-family: "IBM Plex Mono";
   font-style: normal;
   font-display: swap;
   font-weight: 400;
-  src: url("@fontsource/chivo-mono/files/chivo-mono-latin-400-normal.woff2") format("woff2");
+  src: url("@fontsource/ibm-plex-mono/files/ibm-plex-mono-latin-400-normal.woff2") format("woff2");
 }
 
 @font-face {
-  font-family: "Chivo Mono";
+  font-family: "IBM Plex Mono";
   font-style: normal;
   font-display: swap;
   font-weight: 500;
-  src: url("@fontsource/chivo-mono/files/chivo-mono-latin-500-normal.woff2") format("woff2");
+  src: url("@fontsource/ibm-plex-mono/files/ibm-plex-mono-latin-500-normal.woff2") format("woff2");
 }
 
 @custom-variant dark (&:is(.dark *));
 
 @theme inline {
-  --font-display: "Noto Serif SC", "Songti SC", STSong, serif;
-  --font-heading: "Hanken Grotesk", "Noto Sans SC", "PingFang SC", system-ui, sans-serif;
-  --font-sans: "Hanken Grotesk", "Noto Sans SC", "PingFang SC", system-ui, sans-serif;
-  --font-mono: "Chivo Mono", "Noto Sans SC", "PingFang SC", "SFMono-Regular", Consolas, monospace;
+  --font-display: var(--font-sans);
+  --font-heading: "IBM Plex Sans", "Noto Sans SC", "PingFang SC", system-ui, sans-serif;
+  --font-sans: "IBM Plex Sans", "Noto Sans SC", "PingFang SC", system-ui, sans-serif;
+  --font-mono: "IBM Plex Mono", "Noto Sans SC", "PingFang SC", "SFMono-Regular", Consolas, monospace;
   --color-ring: var(--ring);
   --color-input: var(--input);
   --color-border: var(--border);
@@ -114,49 +109,32 @@
   --radius-xl: var(--radius-large);
 }
 
+/* Semantic colors are provided by design-system.scss from Carbon's g10 theme. */
 :root {
-  --background: #f7f8fa;
-  --foreground: #182230;
-  --card: #ffffff;
-  --card-foreground: #182230;
-  --popover: #ffffff;
-  --popover-foreground: #182230;
-  --primary: #2563eb;
-  --primary-foreground: #ffffff;
-  --secondary: #f2f4f7;
-  --secondary-foreground: #344054;
-  --muted: #f2f4f7;
-  --muted-foreground: #667085;
-  --accent: #eff4ff;
-  --accent-foreground: #1849a9;
-  --destructive: #d92d20;
-  --border: #e4e7ec;
-  --input: #d0d5dd;
-  --ring: #2e90fa;
-  --sidebar: #ffffff;
-  --sidebar-foreground: #344054;
-  --sidebar-primary: #2563eb;
-  --sidebar-primary-foreground: #ffffff;
-  --sidebar-accent: #f2f4f7;
-  --sidebar-accent-foreground: #182230;
-  --sidebar-border: #e4e7ec;
-  --sidebar-ring: #2e90fa;
-  --radius-badge: 0.25rem;
-  --radius-control: 0.375rem;
-  --radius-card: 0.5rem;
-  --radius-large: 0.625rem;
-  --shadow-surface: 0 1px 2px rgb(16 24 40 / 0.04), 0 1px 3px rgb(16 24 40 / 0.08);
-  --shadow-overlay: 0 12px 32px rgb(16 24 40 / 0.16);
-  --chart-1: #2563eb;
-  --chart-2: #667085;
-  --chart-3: #0e7490;
-  --chart-4: #b7791f;
-  --chart-5: #5b6b88;
-  --chart-6: #7c6f64;
-  --chart-grid: #edf0f3;
-  --outcome-allow: #3f8f72;
-  --outcome-transform: #c28b37;
-  --outcome-block: #b6544b;
+  --radius-badge: 0;
+  --radius-control: 0;
+  --radius-card: 0;
+  --radius-large: 0;
+  --shadow-surface: none;
+  --shadow-overlay: 0 4px 12px rgb(0 0 0 / 0.2);
+  --brand-signal: #008ca3;
+  --brand-surface: var(--sidebar);
+}
+
+.dark {
+  --brand-signal: #42e3ff;
+}
+
+.brand-lattice-mark {
+  display: block;
+  overflow: visible;
+  color: currentColor;
+}
+
+.brand-on-primary {
+  --brand-signal: #42e3ff;
+  --brand-surface: var(--primary);
+  color: var(--primary-foreground);
 }
 
 [data-slot="sidebar"] svg:not(.brand-lattice-mark) {
@@ -177,7 +155,7 @@
     margin: 0;
     min-width: 320px;
     min-height: 100vh;
-    font-size: 0.9375rem;
+    font-size: 0.875rem;
     line-height: 1.5;
   }
 
@@ -204,8 +182,8 @@
   }
 
   ::selection {
-    background: #dbeafe;
-    color: #1849a9;
+    background: var(--cds-highlight);
+    color: var(--foreground);
   }
 }
 
@@ -267,11 +245,31 @@
   }
 }
 
+/* Chapter disclosure keeps the desktop outline compact; short windows retain
+   a narrow scroll affordance when the expanded chapter still exceeds it. */
+.document-page-contents {
+  scrollbar-width: thin;
+  scrollbar-color: var(--border) transparent;
+}
+
+/* Keep code terms distinct from prose without changing fenced code blocks. */
+.document-article :not(pre) > code {
+  border: 1px solid var(--border);
+  border-radius: 0.25rem;
+  background: var(--muted);
+  padding: 0.1em 0.3em;
+  font-family: var(--font-mono);
+  font-size: 0.875em;
+  overflow-wrap: anywhere;
+  box-decoration-break: clone;
+}
+
 /* Scope layout overrides to the Router editor. The query-builder vendor CSS
    is unlayered, so these rules also stay unlayered. */
+.router-selector { --router-selector-control-height: 3rem; }
 .router-selector .ruleGroup .rule {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) 2.75rem;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) var(--router-selector-control-height);
   border: 1px solid var(--border);
   background: var(--card);
   align-items: start;
@@ -282,7 +280,13 @@
 .router-selector .router-selector-field,
 .router-selector .router-selector-operator {
   width: 100%;
-  min-height: 2.75rem;
+}
+.router-selector .cds--list-box,
+.router-selector .cds--list-box__field,
+.router-selector .cds--text-input,
+.router-selector .cds--select-input {
+  height: var(--router-selector-control-height);
+  min-height: var(--router-selector-control-height);
 }
 .router-selector .router-selector-value {
   grid-column: 1 / -1;
@@ -294,17 +298,25 @@
 .router-selector .router-selector-remove {
   grid-column: 3;
   grid-row: 1;
-  width: 2.75rem;
-  min-height: 2.75rem;
+  width: var(--router-selector-control-height);
+  height: var(--router-selector-control-height);
+  min-height: var(--router-selector-control-height);
   padding: 0;
 }
 .router-selector .ruleGroup-header {
   flex-wrap: wrap;
+  align-items: center;
   gap: 0.5rem;
 }
 .router-selector .ruleGroup-header > button {
   width: auto;
-  min-height: 2.75rem;
+  height: var(--router-selector-control-height);
+  min-height: var(--router-selector-control-height);
+}
+.router-selector .ruleGroup-header > .ruleGroup-removeGroup {
+  width: var(--router-selector-control-height);
+  padding: 0;
+  margin-inline-start: auto;
 }
 .router-selector .ruleGroup-header > .ruleGroup-combinators {
   width: 12rem;

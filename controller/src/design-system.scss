@@ -1,0 +1,568 @@
+@use "sass:map";
+@use "@carbon/react/scss/utilities/layout";
+@use "@carbon/react/scss/themes";
+@use "@carbon/react/scss/theme";
+@use "@carbon/themes/scss/component-tokens" as components;
+
+// Carbon productive UI: g10 canvas and white surfaces.
+// Native Carbon controls and domain-specific views share one semantic palette.
+:root {
+  @include theme.theme(themes.$g10);
+  @include layout.emit-layout-tokens;
+  --cds-button-primary-hover: #{map.get(components.$button-primary-hover, g-10)};
+  --cds-button-primary-active: #{map.get(
+      components.$button-primary-active,
+      g-10
+    )};
+  --cds-button-secondary: #{map.get(components.$button-secondary, g-10)};
+  --cds-button-secondary-hover: #{map.get(
+      components.$button-secondary-hover,
+      g-10
+    )};
+  --cds-button-danger-hover: #{map.get(components.$button-danger-hover, g-10)};
+  --background: var(--cds-background);
+  --foreground: var(--cds-text-primary);
+  --card: var(--cds-layer-01);
+  --card-foreground: var(--cds-text-primary);
+  --popover: var(--cds-layer-01);
+  --popover-foreground: var(--cds-text-primary);
+  --primary: var(--cds-interactive);
+  --primary-foreground: var(--cds-text-on-color);
+  --secondary: var(--cds-layer-02);
+  --secondary-foreground: var(--cds-text-primary);
+  --muted: var(--cds-layer-02);
+  --muted-foreground: var(--cds-text-secondary);
+  --accent: var(--cds-layer-hover-01);
+  --accent-foreground: var(--cds-text-primary);
+  --destructive: var(--cds-support-error);
+  --border: var(--cds-border-subtle-01);
+  --input: var(--cds-border-strong-01);
+  --ring: var(--cds-focus);
+  --sidebar: var(--cds-layer-01);
+  --sidebar-foreground: var(--cds-text-secondary);
+  --sidebar-primary: var(--cds-interactive);
+  --sidebar-primary-foreground: var(--cds-text-on-color);
+  --sidebar-accent: var(--cds-layer-selected-01);
+  --sidebar-accent-foreground: var(--cds-text-primary);
+  --sidebar-border: var(--cds-border-subtle-01);
+  --sidebar-ring: var(--cds-focus);
+  --success: #198038;
+  --notice-success: #defbe6;
+  --warning: #8e6a00;
+  --notice-warning: #fff1c7;
+  --button-testing: #f1c21b;
+  --button-testing-hover: #e0b10a;
+  --button-testing-active: #d2a106;
+  --button-testing-text: #161616;
+  --button-save: #198038;
+  --button-save-hover: #166f31;
+  --button-save-active: #0e6027;
+  --button-save-text: #ffffff;
+  --notice-info: #edf5ff;
+  --notice-danger: #fff1f1;
+  --chart-1: #0f62fe;
+  --chart-2: #6929c4;
+  --chart-3: #007d79;
+  --chart-4: #9f1853;
+  --chart-5: #1192e8;
+  --chart-6: #570408;
+  --chart-grid: var(--border);
+  --outcome-allow: #198038;
+  --outcome-transform: #8e6a00;
+  --outcome-block: #da1e28;
+}
+
+.console-header,
+.console-brand {
+  background: #161616;
+  color: #f4f4f4;
+  border-color: #393939;
+}
+.console-header {
+  --foreground: #f4f4f4;
+  --muted-foreground: #c6c6c6;
+  --muted: #353535;
+  --border: #525252;
+  --ring: #ffffff;
+  .console-account:hover,
+  .console-account[data-state="open"] {
+    background: #353535;
+  }
+}
+.console-nav-item {
+  border-inline-start: 3px solid transparent;
+  &[data-active="true"] {
+    border-inline-start-color: var(--primary);
+  }
+}
+
+// Health has one system conclusion, followed by the evidence for each plane.
+.health-summary {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 2rem;
+  min-height: 9.5rem;
+  padding-block: 1.5rem;
+  border-bottom: 1px solid var(--border);
+}
+.health-conclusion {
+  display: flex;
+  align-items: center;
+  gap: 0.625rem;
+  font-size: 1.75rem;
+  line-height: 1.25;
+  font-weight: 500;
+}
+.health-component-state {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+.health-page :is(.health-conclusion, .health-component-state) {
+  color: var(--muted-foreground);
+  &[data-health="healthy"] { color: var(--success); }
+  &[data-health="unhealthy"] { color: var(--destructive); }
+}
+.health-panel .health-table {
+  th { height: 2rem; font-size: 0.75rem; font-weight: 400; color: var(--muted-foreground); }
+  td { height: 6rem; padding-block: 1.25rem; vertical-align: top; white-space: normal; line-height: 1.5; }
+  tbody tr[data-health="unhealthy"] td { background: color-mix(in srgb, var(--notice-danger) 55%, var(--card)); }
+}
+.health-runner-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-height: 2.75rem;
+  color: var(--primary);
+  &:hover { text-decoration: underline; }
+}
+.health-feedback { min-height: 2rem; padding-top: 0.75rem; }
+
+// Accessible keyboard focus stays crisp instead of a translucent halo.
+:where(
+  [data-slot="dropdown-menu-item"],
+  [data-slot="select-item"]
+):focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: -2px;
+}
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+.guard-button {
+  // Application buttons center the icon and label together. Carbon reserves
+  // asymmetric end padding for its trailing-icon pattern, which we do not use.
+  justify-content: center;
+  align-items: center;
+  text-align: center;
+  padding-inline: 1rem;
+  gap: 0.5rem;
+  max-inline-size: none;
+}
+.guard-button svg {
+  width: 1rem;
+  height: 1rem;
+  flex-shrink: 0;
+}
+.guard-testing-button.cds--btn--primary {
+  background-color: var(--button-testing);
+  border-color: var(--button-testing);
+  color: var(--button-testing-text);
+  &:hover { background-color: var(--button-testing-hover); border-color: var(--button-testing-hover); }
+  &:active { background-color: var(--button-testing-active); border-color: var(--button-testing-active); }
+  &:focus { border-color: var(--cds-focus); box-shadow: inset 0 0 0 1px var(--cds-focus), inset 0 0 0 2px var(--cds-background); }
+  &:disabled { background-color: var(--cds-button-disabled); border-color: var(--cds-button-disabled); color: var(--cds-text-on-color-disabled); }
+}
+.guard-save-button.cds--btn--primary {
+  background-color: var(--button-save);
+  border-color: var(--button-save);
+  color: var(--button-save-text);
+  &:hover { background-color: var(--button-save-hover); border-color: var(--button-save-hover); }
+  &:active { background-color: var(--button-save-active); border-color: var(--button-save-active); }
+  &:focus { border-color: var(--cds-focus); box-shadow: inset 0 0 0 1px var(--cds-focus), inset 0 0 0 2px var(--cds-background); }
+  &:disabled { background-color: var(--cds-button-disabled); border-color: var(--cds-button-disabled); color: var(--cds-text-on-color-disabled); }
+}
+.guard-icon-button {
+  padding-inline: 0.75rem;
+  min-inline-size: 2rem;
+}
+.guard-link-button {
+  padding-inline: 0.5rem;
+}
+.guard-tag {
+  margin: 0;
+  // Status text must stay inside its background, including long translations.
+  // Carbon's default 208px cap is intended for truncated taxonomy tags.
+  max-inline-size: 100%;
+}
+.guard-overflow-menu .guard-menu-trigger-content {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.guard-actions-menu .cds--menu-button__trigger {
+  // Use the same Carbon button sizing and border as adjacent actions, with
+  // compact trailing-icon spacing instead of the default 12rem minimum width.
+  min-inline-size: auto;
+  padding-inline: 1rem 2.5rem;
+  white-space: nowrap;
+}
+.guard-actions-menu .cds--menu-button__trigger::before {
+  // Carbon MenuButton accepts a text label only; a decorative mask preserves
+  // its accessible name and follows the button's hover/open text color.
+  content: "";
+  inline-size: 1rem;
+  block-size: 1rem;
+  flex-shrink: 0;
+  margin-inline-end: 0.5rem;
+  background-color: currentColor;
+  mask: url("./assets/icons/settings-2.svg") center / contain no-repeat;
+}
+.guard-create-button .cds--combo-button__primary-action .cds--btn {
+  // Carbon lays this button out as a block; a flex row places the icon before the text.
+  display: flex;
+  align-items: center;
+}
+.guard-create-button .cds--combo-button__primary-action .cds--btn::before {
+  // Carbon ComboButton accepts a text label only; the same decorative mask
+  // puts the create icon before it, like the other primary actions.
+  content: "";
+  inline-size: 1rem;
+  block-size: 1rem;
+  flex-shrink: 0;
+  margin-inline-end: 0.5rem;
+  background-color: currentColor;
+  mask: url("./assets/icons/plus.svg") center / contain no-repeat;
+}
+// The create split button's menu spans the whole button (see CreateSplitButton).
+.cds--menu.cds--combo-button__bottom-end {
+  inline-size: var(--guard-create-button-width, auto);
+  max-inline-size: none;
+}
+.guard-menu-item-content {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+.guard-menu-item-content svg {
+  width: 1rem;
+  height: 1rem;
+}
+.guard-menu-options {
+  min-width: 12rem;
+  z-index: 10000;
+}
+.guard-menu-label {
+  padding: 1rem;
+}
+.guard-menu-separator {
+  border-top: 1px solid var(--border);
+}
+.guard-notification {
+  max-inline-size: none;
+  inline-size: 100%;
+}
+.guard-notification .cds--inline-notification__text-wrapper {
+  display: block;
+  min-inline-size: 0;
+}
+.guard-notification .cds--inline-notification__title {
+  display: block;
+  margin-bottom: 0.25rem;
+}
+.guard-toast-region {
+  position: fixed;
+  inset: 4rem 1rem auto auto;
+  z-index: 11000;
+  display: grid;
+  gap: 0.5rem;
+}
+.guard-option {
+  display: block;
+  padding-block: 0.375rem;
+  white-space: normal;
+}
+.guard-option > span {
+  display: flex;
+  align-items: baseline;
+  gap: 0.5rem;
+}
+.guard-option small,
+.guard-provider-option small {
+  display: block;
+  color: var(--muted-foreground);
+  font-size: 0.75rem;
+  line-height: 1.4;
+}
+.guard-provider-option {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.75rem;
+  padding-block: 0.5rem;
+  white-space: normal;
+}
+.guard-provider-option img {
+  height: 1.5rem;
+  width: 1.5rem;
+  object-fit: contain;
+}
+.cds--list-box__menu {
+  z-index: 10001;
+}
+.cds--list-box__menu-item:has(.guard-option),
+.cds--list-box__menu-item:has(.guard-provider-option) {
+  height: auto;
+  min-height: 2.5rem;
+}
+.cds--list-box__menu-item:has(.guard-option) .cds--list-box__menu-item__option,
+.cds--list-box__menu-item:has(.guard-provider-option)
+  .cds--list-box__menu-item__option {
+  height: auto;
+  min-height: 2.5rem;
+}
+.guard-tabs .cds--tab-content {
+  padding: 1.5rem 0 0;
+}
+.guard-tabs .cds--tabs__nav-link {
+  display: flex;
+  align-items: center;
+}
+.guard-tabs .cds--tabs__nav-item-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+.guard-tabs .cds--tabs__nav-item-label > svg {
+  inline-size: 1rem;
+  block-size: 1rem;
+  flex-shrink: 0;
+}
+
+svg.lucide {
+  fill: none;
+}
+.guard-notification .cds--actionable-notification__text-wrapper {
+  display: block;
+  min-inline-size: 0;
+}
+.guard-notification .cds--actionable-notification__title {
+  display: block;
+  margin-bottom: 0.25rem;
+}
+.guard-readiness-notification .cds--actionable-notification__content {
+  display: block;
+}
+.cds--text-input__counter-alert:empty,
+.cds--text-area__counter-alert:empty {
+  display: none;
+}
+// Rich dropdown options must wrap without clipping descriptions.
+.guard-select .cds--list-box__menu-item,
+.guard-select .cds--list-box__menu-item__option {
+  height: auto;
+  min-height: 2.5rem;
+}
+.guard-select .cds--list-box__menu-item__option {
+  padding-block: 0.5rem;
+  white-space: normal;
+}
+.guard-select-option {
+  display: block;
+  width: 100%;
+}
+
+// Icon + title + description selections share one full-size field and focus
+// outline. Size the Carbon field itself, not a padded wrapper around it.
+.guard-select--rich .cds--list-box {
+  block-size: auto;
+  max-block-size: none;
+  transition-property: background-color;
+}
+.guard-select--rich .cds--list-box__field {
+  block-size: auto;
+  min-block-size: 4rem;
+  padding-block: 0.75rem;
+}
+.guard-select--rich .cds--list-box__label {
+  min-inline-size: 0;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+.guard-select--rich .cds--list-box__menu-item__option {
+  min-block-size: 4rem;
+  padding-block: 0.75rem;
+}
+
+// Compact checkboxes sit alongside application labels, rather than occupying
+// the full flex row as standalone Carbon form fields do.
+.guard-checkbox.cds--form-item {
+  flex: 0 0 auto;
+  width: auto;
+  margin: 0;
+}
+.guard-protection-tabs.cds--tabs {
+  height: auto;
+  min-height: 4.5rem;
+  margin-bottom: 1.5rem;
+}
+.guard-protection-tabs .cds--tab--list {
+  width: 100%;
+}
+.guard-protection-tab.cds--tabs__nav-link {
+  flex: 1 0 auto;
+  height: 4.5rem;
+  padding: 0.75rem 1rem;
+}
+.guard-protection-tab .cds--tabs__nav-item-label {
+  display: grid;
+  gap: 0.375rem;
+}
+.guard-tag .cds--tag__label {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  min-inline-size: 0;
+  max-inline-size: 100%;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+.guard-tag .cds--tag__label > svg {
+  width: 0.75rem;
+  height: 0.75rem;
+  flex-shrink: 0;
+}
+.testing-report-status .guard-tag {
+  max-inline-size: none;
+}
+.testing-report-status .cds--tag__label {
+  white-space: nowrap;
+  overflow-wrap: normal;
+}
+
+// Carbon tooltips wrap their trigger; keep collapsed navigation centered within
+// the original sidebar row instead of shrinking to the icon button's width.
+[data-sidebar="menu-item"] > .cds--tooltip,
+[data-sidebar="menu-item"] > .cds--tooltip > .cds--tooltip-trigger__wrapper {
+  width: 100%;
+}
+
+// Let each dropdown's visible button determine its height. Carbon's default
+// fixed-height list box otherwise clips short fields and leaves tall wrappers.
+@layer components {
+  .guard-select .cds--list-box {
+    block-size: auto;
+    max-block-size: none;
+    border-block-end: 0;
+  }
+  .guard-select .cds--list-box__field {
+    block-size: var(--cds-layout-size-height-local, 2.5rem);
+    border-block-end: 1px solid var(--cds-border-strong);
+  }
+}
+
+// Destructive actions stay red before hover, matching registry overflow menus.
+.cds--menu-item--danger:not(.cds--menu-item--disabled) {
+  color: var(--cds-text-error);
+  &:hover, &:focus { color: var(--cds-text-on-color); }
+  svg { fill: none; }
+}
+
+// Menu rows must share the panel's hit area and keyboard focus geometry.
+.guard-menu-options {
+  max-inline-size: calc(100vw - 2rem);
+  &::after { display: none; }
+  .cds--overflow-menu-options__option {
+    block-size: auto;
+    min-block-size: 2.75rem;
+  }
+  .cds--overflow-menu-options__btn {
+    inline-size: 100%;
+    max-inline-size: none;
+    min-block-size: 2.75rem;
+  }
+  .guard-testing-menu-item:not(:disabled) {
+    background-color: var(--button-testing);
+    color: var(--button-testing-text);
+    &:hover, &:focus { background-color: var(--button-testing-hover); color: var(--button-testing-text); }
+    &:active { background-color: var(--button-testing-active); }
+    svg { fill: none; }
+  }
+  // Destructive actions are red before hover, as required by the action spec.
+  .cds--overflow-menu-options__option--danger:not(.cds--overflow-menu-options__option--disabled) .cds--overflow-menu-options__btn {
+    color: var(--cds-text-error);
+    &:hover, &:focus { color: var(--cds-text-on-color); }
+    // Lucide icons use strokes; Carbon's default danger fill hides their detail.
+    svg { fill: none; }
+  }
+  .guard-menu-label, .guard-menu-separator { inline-size: 100%; }
+  .guard-menu-separator { margin-block: 0.25rem; }
+}
+.guard-overflow-menu.cds--overflow-menu--open,
+.guard-overflow-menu.cds--overflow-menu--open .cds--overflow-menu__trigger {
+  box-shadow: none;
+  background-color: var(--cds-layer-hover);
+}
+.account-menu-options .guard-menu-label {
+  padding: 0.75rem 1rem;
+}
+
+.validation-case .execution-trace-title {
+  font-size: var(--text-xs);
+  font-weight: var(--font-weight-medium);
+}
+
+.validation-run-progress {
+  padding-block: 1rem;
+
+  &__steps {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 0.75rem;
+    padding: 0;
+    margin: 1rem 0 0;
+    list-style: none;
+
+    li {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      padding-top: 0.75rem;
+      border-top: 2px solid var(--cds-border-subtle-01);
+      color: var(--cds-text-secondary);
+      font-size: 0.75rem;
+    }
+
+    li[aria-current="step"], li[data-complete] {
+      border-color: var(--cds-interactive);
+      color: var(--cds-text-primary);
+    }
+
+    li[aria-current="step"] {
+      font-weight: 600;
+    }
+  }
+
+  &__marker {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex: 0 0 1.25rem;
+    height: 1.25rem;
+    border: 1px solid var(--cds-border-strong-01);
+    border-radius: 50%;
+  }
+
+  [aria-current="step"] &__marker, [data-complete] &__marker {
+    border-color: var(--cds-interactive);
+    background: var(--cds-interactive);
+    color: var(--cds-text-on-color);
+  }
+}

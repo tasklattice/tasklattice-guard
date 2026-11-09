@@ -21,7 +21,7 @@ export function ProtectionPresetPicker({ presets, policies, selected, onSelect, 
     <label className="block space-y-2 text-sm font-medium">
       <span>{t("protection.preset")}</span>
       <Select value={selected} onValueChange={onSelect}>
-        <SelectTrigger className="min-h-11 bg-card"><SelectValue /></SelectTrigger>
+        <SelectTrigger className="field:min-h-11 field:bg-card"><SelectValue /></SelectTrigger>
         <SelectContent>
           <SelectItem value="blank">{t("protection.blank")}</SelectItem>
           {presets.map((item) => <SelectItem key={item.id} value={item.id}>{item.name}</SelectItem>)}
@@ -64,7 +64,7 @@ export function ProtectionDirectoryEditor({ directory, policies, bindings, onCha
   onChange: (bindings: GuardrailPolicyBinding[]) => void;
 }) {
   const { t } = useTranslation();
-  const available = policies.filter((policy) => policyDirectory(policy) === directory && (policy.source === "built_in" || policy.version !== "0")
+  const available = policies.filter((policy) => policyDirectory(policy) === directory && (policy.version !== "0")
     );
   return <div className="space-y-5">
     {available.length ? <div className="divide-y overflow-hidden rounded-xl border bg-card">

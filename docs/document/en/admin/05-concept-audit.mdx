@@ -1,0 +1,44 @@
+---
+id: "concept-audit"
+title: "Audit log: trace management changes"
+summary: "Trace control-plane changes by actor, time, and resource, then verify rollout and runtime results."
+order: 4
+---
+Audit log records management changes by actor, time and resource. Administrators access it through **Access & audit → Audit log**. Business users cannot read this page or API.
+
+Request Decisions and captured content belong to the user [runtime-log workspace](/document/admin/concept-logs).
+
+<a id="audit-how-to-use" />
+## Trace a change through to traffic
+
+For a Router change between two immutable Guardrail revisions:
+
+1. The administrator finds the publication or rollback event by time, actor and resource ID.
+2. Open the event details. Inspect its kind, actor and recorded change. System actions identify System as the actor.
+3. A business user checks the Router revision, Target and rollout status in [Routers](/$projectId/integration/routers).
+4. The business user checks [runtime logs](/$projectId/logs) for actual versions and Decisions after the change.
+
+An audit event proves that a management action occurred. It does not prove rollout or correct application delivery.
+
+<a id="audit-scope" />
+## Search and inspect retained events
+
+Search runs on the server across retained events in the selected time range. Results include the matching total. Page sizes are 25, 50 or 100.
+
+| Control | Use |
+| --- | --- |
+| Search | Enter event text, actor ID, resource ID or recorded details. Select Search or press Enter. |
+| Time range | Select 24 hours, 7 days, 30 days or all retained time. |
+| Filters | Select actor type, event type and resource type. Remove conditions individually or together. |
+| Details | Open an event name or row in the right-side drawer. |
+
+To inspect a Router's recent publications, select 30 days. Filter to its resource and publication event type. Search for the Router ID.
+
+<a id="audit-pagination" />
+### Keep a stable query while paging
+
+The URL retains filters, page and query cutoff. Paging keeps the cutoff fixed so incoming events do not move existing rows.
+
+Refresh preserves filters, advances the cutoff and returns to page one. The table displays the cutoff. Browser Back and Forward restore the query state.
+
+[Open audit log](/audit-log)

@@ -1,10 +1,12 @@
+{{- include "tali-guard.defaults" . -}}
 TaskLattice Guard installed two application component types:
 
   Controller: {{ include "tali-guard.controllerName" . }}
-  GuardRails 0: {{ include "tali-guard.defaultRunnerName" . }} ({{ .Values.runner.default.replicaCount }} replicas)
+  runner-default: {{ include "tali-guard.defaultRunnerName" . }} ({{ .Values.runner.default.replicaCount }} replicas)
 
-GuardRails 0 is the mandatory baseline and authoritative NeMo compiler.
+runner-default is the mandatory baseline and authoritative NeMo compiler.
 Its PodDisruptionBudget keeps at least one Runner available.
+Helm deploys only the Default Runner. Manage other Runners manually in the administrator UI.
 
 Check both rollouts:
 
@@ -25,14 +27,37 @@ Development Redis call-context dependency:
 
 Controller UI/API:
 
-  {{ .Values.controller.publicUrl }}
-  curl {{ trimSuffix "/" .Values.controller.publicUrl }}/api/v1/system/status
+{{ range (include "tali-guard.publicUrls" . | fromJsonArray) }}
+  {{ . }}
+{{ end }}
+  curl {{ trimSuffix "/" (include "tali-guard.primaryPublicUrl" .) }}/api/v1/system/status
 
-Runner data-plane traffic enters through the stable service/{{ include "tali-guard.runtimeName" . }} on port {{ .Values.runner.service.port }}.
+{{- if .Values.keycloak.enabled }}
+
+Development Keycloak: http://localhost:{{ .Values.keycloak.port }}
+Sign in using the "Keycloak" button in Guard:
+{{- $identities := .Files.Get "files/keycloak-dev-identities.json" | fromJson }}
+{{ range $identities.projects }}
+  {{ .username }} / password -> Project {{ .name }}
+{{ end }}
+Local user sign-in remains available. Configure the test2 Runner in the administrator UI.
+Upgrade this profile with: npm run helm:deploy:dev:keycloak
+{{- end }}
+
+Runner data-plane traffic enters through the stable service/{{ include "tali-guard.runtimeName" . }} on port 8091.
 Upstream callers never address an individual Runner Pod.
 {{- if .Values.runner.service.public.enabled }}
 
 Local host-facing Runner endpoint:
 
   http://localhost:{{ .Values.runner.service.public.port }}
+{{- end }}
+
+{{- if (index .Values "litellm-provider").enabled }}
+
+Development LiteLLM gateway (same release):
+
+  kubectl -n {{ .Release.Namespace }} rollout status deployment/{{ include "tali-guard.litellm.fullname" . }}
+  UI: http://localhost:{{ (index .Values "litellm-provider").service.port }}/ui
+  Generated credentials: Secret {{ include "tali-guard.litellm.runtimeSecretName" . }}
 {{- end }}

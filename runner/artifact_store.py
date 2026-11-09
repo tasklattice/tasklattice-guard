@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import fnmatch
 import hashlib
 import hmac
 import importlib.metadata
@@ -27,12 +26,14 @@ from runner.toolkit.runtime.contracts import (
 
 from . import generated as protocol
 from .artifact_config import config_snapshot_from_artifact
+from .diagnostics import diagnostic_phase
 from .protocol_codec import (
     artifact_content,
-    endpoint_verification_from_proto,
+    canonical_json,
     traffic_scope_from_proto,
 )
 from .serialization import plan_from_dict
+from .toolkit.compiler.semantics import validate_artifact_execution_contract
 from .routing import RoutingError, select, validate_router, selector_matches, condition_matches
 
 
@@ -49,13 +50,41 @@ class RuntimeArtifact:
 
 
 @dataclass(frozen=True, slots=True)
-class RouterRoute:
-    router_id: str
-    guardrail_id: str
-    artifact_id: str
-    endpoint_id: str | None
-    route_order: int
-    traffic_scope: dict[str, Any]
+class AuthenticatedEndpointAllocation:
+    project_id: str
+    group_id: str
+    epoch: int
+    generation: int
+
+
+@dataclass(frozen=True, slots=True)
+class AuthenticatedEndpointSnapshot:
+    """Private references into one immutable authenticated local snapshot."""
+    owner: object
+    endpoint_id: str
+    adapter: str
+    endpoint: dict[str, Any]
+    routers: dict[str, Any]
+    artifacts: dict[str, RuntimeArtifact]
+    release_id: str | None
+    model_revision_id: str | None
+    authenticated: bool | None
+
+    @property
+    def telemetry_context_id(self) -> str | None:
+        return self.endpoint.get("_telemetry_context_id")
+
+    @property
+    def scan_flag_only_default(self) -> bool:
+        return self.endpoint.get("_scan_flag_only_default", True)
+
+
+@dataclass(frozen=True, slots=True)
+class EndpointAccess:
+    adapter: str | None
+    allowed: bool
+    # None means authentication was deliberately skipped for anonymous access.
+    authenticated: bool | None
 
 
 class ArtifactStore:
@@ -69,17 +98,27 @@ class ArtifactStore:
         self._nemo_version = importlib.metadata.version("nemoguardrails")
         self._state_path = state_path
         self._lock = threading.RLock()
+        self._protection_modes: dict[str, str] = {}
+        self._protection_generation = 0
+        protection_path = state_path / "protection-modes.pb"
+        if protection_path.exists():
+            protection = protocol.GuardrailProtectionState()
+            protection.ParseFromString(protection_path.read_bytes())
+            self.apply_protection_modes(protection, persist=False)
         # Serialize writers without holding the reader lock during NeMo work.
         self._apply_lock = threading.Lock()
         self._registry: NeMoRuntimeRegistry | None = None
         self._generation = 0
+        self._allocation_group_id: str | None = None
+        self._allocation_epoch: int | None = None
         self._release_id: str | None = None
         self._model_revision_id: str | None = None
         self._artifacts: dict[str, RuntimeArtifact] = {}
-        self._routes: tuple[RouterRoute, ...] = ()
         self._router_revisions: dict[str, Any] = {}
         self._endpoints: dict[str, dict[str, Any]] = {}
         self._logging_levels: dict[str, str] = {}
+        self._artifact_digests: dict[str, str] = {}
+        self._materialization_key = ""
         self._persisted_state: protocol.DesiredState | None = self._read_snapshot()
 
     def attach_registry(self, registry: NeMoRuntimeRegistry) -> None:
@@ -100,10 +139,39 @@ class ArtifactStore:
         with self._lock:
             return self._generation
 
-    def observability_counts(self) -> tuple[int, int, int]:
-        """Return loaded artifact, router-route, and Endpoint counts."""
+    @property
+    def protection_generation(self) -> int:
         with self._lock:
-            return len(self._artifacts), len(self._routes), len(self._endpoints)
+            return self._protection_generation
+
+    def protection_mode(self, guardrail_id: str) -> str:
+        with self._lock:
+            return self._protection_modes.get(guardrail_id, "enforce")
+
+    def apply_protection_modes(self, state, *, persist: bool = True) -> None:
+        """Apply independently of model leases, runtime builds and Artifact loading."""
+        modes = dict(state.modes)
+        if any(not key or mode not in {"enforce", "monitor", "bypass"} for key, mode in modes.items()):
+            raise ValueError("Invalid Guardrail protection mode.")
+        with self._lock:
+            if state.generation < self._protection_generation:
+                raise ValueError("Protection generation is older than the applied generation.")
+            if state.generation == self._protection_generation and self._protection_generation and modes != self._protection_modes:
+                raise ValueError("Protection generation already contains different settings.")
+            if persist:
+                self._state_path.mkdir(parents=True, exist_ok=True)
+                target = self._state_path / "protection-modes.pb"
+                temporary = target.with_suffix(".tmp")
+                temporary.write_bytes(state.SerializeToString())
+                temporary.replace(target)
+            self._protection_modes = modes
+            self._protection_generation = int(state.generation)
+
+    def observability_counts(self) -> tuple[int, int, int]:
+        """Return loaded artifact, composed Route, and Endpoint counts."""
+        with self._lock:
+            routes = sum(len(router.routes) for router in self._router_revisions.values())
+            return len(self._artifacts), routes, len(self._endpoints)
 
     def plan(self, guardrail_id: str, version: str) -> GuardrailPlanSnapshot:
         with self._lock:
@@ -125,8 +193,8 @@ class ArtifactStore:
 
     def active_plan_keys(self) -> tuple[tuple[str, str], ...]:
         with self._lock:
-            active_artifact_ids = {route.artifact_id for route in self._routes}
-            active_artifact_ids.update(t.artifact_id for r in self._router_revisions.values() for route in r.routes for t in route.targets if t.weight_bps)
+            active_artifact_ids = {t.artifact_id for r in self._router_revisions.values()
+                                   for route in r.routes if route.enabled for t in route.targets if t.weight_bps > 0}
             return tuple(
                 (artifact.plan.guardrail_id, artifact.plan.guardrail_version)
                 for artifact_id, artifact in self._artifacts.items()
@@ -169,55 +237,32 @@ class ArtifactStore:
 
     def resolve(self, context: RequestContext) -> PlanResolution:
         with self._lock:
-            endpoint = self._endpoints.get(context.endpoint_id, {})
-            router_id = endpoint.get("_router_id")
-            if self._router_revisions or router_id:
-                router = self._router_revisions.get(router_id)
-                if router is None:
-                    raise RoutingError("endpoint_router_unavailable")
-                target, assignment = select(router, context)
-                artifact = self._artifacts.get(target.artifact_id)
-                if artifact is None:
-                    raise RoutingError("target_unavailable", assignment)
-                return PlanResolution(plan=artifact.plan, router_id=router.router_id,
-                    endpoint_id=context.endpoint_id, effective_release_id=self._release_id,
-                    model_revision_id=self._model_revision_id, route_assignment=assignment)
-            # Legacy snapshots are only accessible to internal/test callers;
-            # an unbound authenticated Endpoint never inherits a global Router.
-            if context.endpoint_id in self._endpoints:
+            # An Endpoint reaches Guardrails only through its bound Router
+            # revision; an unbound or unknown Endpoint never inherits one.
+            snapshot = context.endpoint_snapshot
+            if snapshot is not None and (not isinstance(snapshot, AuthenticatedEndpointSnapshot)
+                    or snapshot.owner is not self or snapshot.endpoint_id != context.endpoint_id):
+                raise RoutingError("endpoint_snapshot_invalid")
+            endpoint = snapshot.endpoint if snapshot is not None else self._endpoints.get(context.endpoint_id, {})
+            routers = snapshot.routers if snapshot is not None else self._router_revisions
+            router = routers.get(endpoint.get("_router_id"))
+            if router is None:
                 raise RoutingError("endpoint_router_unavailable")
-            candidates = tuple(
-                route
-                for route in self._routes
-                if route.endpoint_id == context.endpoint_id
-                and _scope_matches(route.traffic_scope, context)
-            ) or tuple(route for route in self._routes if route.endpoint_id is None)
-            candidates = tuple(route for route in candidates if _scope_matches(route.traffic_scope, context))
-            if not candidates:
-                raise LookupError("No active Runner router matches this request.")
-            route = min(candidates, key=lambda item: (
-                -_scope_specificity(item.traffic_scope)[0],
-                -_scope_specificity(item.traffic_scope)[1],
-                item.route_order,
-                item.router_id,
-            ))
-            artifact = self._artifacts[route.artifact_id]
-            return PlanResolution(
-                plan=artifact.plan,
-                effective_release_id=self._release_id,
-                model_revision_id=self._model_revision_id,
-                router_id=route.router_id,
-                endpoint_id=route.endpoint_id,
-                trace=(RuntimeTraceStep(
-                    id=f"router:{route.router_id}",
-                    kind="router",
-                    name=route.router_id,
-                    status="selected",
-                    detail=f"Runner selected immutable Artifact {route.artifact_id}.",
-                    guardrail_id=artifact.plan.guardrail_id,
-                    guardrail_version=artifact.plan.guardrail_version,
-                ),),
-            )
+            try:
+                target, assignment = select(router, context)
+            except RoutingError as error:
+                if snapshot is not None and snapshot.telemetry_context_id and error.assignment:
+                    error.assignment["allocationContextId"] = snapshot.telemetry_context_id
+                raise
+            if snapshot is not None and snapshot.telemetry_context_id:
+                assignment["allocationContextId"] = snapshot.telemetry_context_id
+            artifact = (snapshot.artifacts if snapshot is not None else self._artifacts).get(target.artifact_id)
+            if artifact is None:
+                raise RoutingError("target_unavailable", assignment)
+            return PlanResolution(plan=artifact.plan, router_id=router.router_id,
+                endpoint_id=context.endpoint_id, effective_release_id=snapshot.release_id if snapshot is not None else self._release_id,
+                model_revision_id=snapshot.model_revision_id if snapshot is not None else self._model_revision_id,
+                route_assignment=assignment, allocation_context_id=snapshot.telemetry_context_id if snapshot is not None else None)
 
     def resolve_guardrail(self, guardrail_id: str, version: str) -> PlanResolution:
         """Resolve an explicit immutable version for Controller-owned tools such as Playground."""
@@ -233,11 +278,7 @@ class ArtifactStore:
             )
             if artifact is None:
                 raise LookupError(f"Guardrail {guardrail_id}@{version} is not available on this Runner.")
-            route = next(
-                (item for item in self._routes if item.artifact_id == artifact.artifact_id),
-                None,
-            )
-            router_id = route.router_id if route else f"playground:{guardrail_id}:{version}"
+            router_id = f"playground:{guardrail_id}:{version}"
             return PlanResolution(
                 plan=artifact.plan,
                 effective_release_id=self._release_id,
@@ -256,26 +297,29 @@ class ArtifactStore:
             )
 
     def authenticate_endpoint(self, endpoint_id: str, credential: str | None) -> bool:
-        if not credential:
-            return False
         with self._lock:
             endpoint = self._endpoints.get(endpoint_id)
-        if not endpoint:
+        return self._credential_matches(endpoint, credential)
+
+    def authorize_endpoint(self, endpoint_id: str, credential: str | None) -> EndpointAccess:
+        # Read the mode, adapter and verifier set from one immutable snapshot.
+        with self._lock:
+            endpoint = self._endpoints.get(endpoint_id)
+        if endpoint is None:
+            return EndpointAccess(None, False, False)
+        if not endpoint["_credential_required"]:
+            return EndpointAccess(endpoint["_adapter"], True, None)
+        authenticated = self._credential_matches(endpoint, credential)
+        return EndpointAccess(endpoint["_adapter"], authenticated, authenticated)
+
+    @staticmethod
+    def _credential_matches(endpoint: dict[str, Any] | None, credential: str | None) -> bool:
+        if not endpoint or not credential:
             return False
-        expected_digests: list[str] = []
-        credentials = endpoint.get("credentials")
-        if isinstance(credentials, list):
-            for item in credentials:
-                if not isinstance(item, dict):
-                    continue
-                if item.get("revokedAt") is not None:
-                    continue
-                digest = item.get("sha256")
-                if isinstance(digest, str):
-                    expected_digests.append(digest)
         actual = hashlib.sha256(credential.encode()).hexdigest()
         authenticated = False
-        for expected in expected_digests:
+        # Compare every active digest, including those after a match.
+        for expected in endpoint["_credential_digests"]:
             authenticated = hmac.compare_digest(actual, expected) or authenticated
         return authenticated
 
@@ -284,6 +328,52 @@ class ArtifactStore:
             endpoint = self._endpoints.get(endpoint_id)
             adapter = endpoint.get("_adapter") if endpoint else None
         return adapter if isinstance(adapter, str) else None
+
+    def authenticate_endpoint_snapshot(self, endpoint_id: str, credential: str | None) -> AuthenticatedEndpointSnapshot | None:
+        """Pin auth, adapter, routing and provenance in the same local snapshot.
+
+        Snapshot dictionaries are replaced atomically, never modified by apply.
+        Keeping their references prevents a concurrent update from relabeling a
+        request authenticated against the previous verifier.
+        """
+        with self._lock:
+            access = self.authorize_endpoint(endpoint_id, credential)
+            if not access.allowed:
+                return None
+            endpoint = self._endpoints[endpoint_id]
+            return AuthenticatedEndpointSnapshot(self, endpoint_id, endpoint.get("_adapter", ""), endpoint,
+                getattr(self, "_router_revisions", {}), getattr(self, "_artifacts", {}),
+                getattr(self, "_release_id", None), getattr(self, "_model_revision_id", None), access.authenticated)
+
+    def authenticated_endpoint_project(self, endpoint_id: str, credential: str | None) -> str | None:
+        """Authenticate and read the owner from the same local state snapshot.
+
+        Legacy snapshots with no owner fail closed for optional project
+        admission. This read alone does not fence a subsequent allocation move.
+        """
+        with self._lock:
+            if not self.authorize_endpoint(endpoint_id, credential).allowed:
+                return None
+            project = self._endpoints.get(endpoint_id, {}).get("_project_id")
+            return project if isinstance(project, str) and project and project.strip() == project else None
+
+    def authenticated_endpoint_allocation(self, endpoint_id: str, credential: str | None) -> AuthenticatedEndpointAllocation | None:
+        """Read auth, owner and Controller allocation from one atomic snapshot.
+
+        Restored metadata alone is not serving authority; callers must also
+        check current control synchronization/lease state before executing.
+        """
+        with self._lock:
+            project = self.authenticated_endpoint_project(endpoint_id, credential)
+            group = getattr(self, "_allocation_group_id", None)
+            epoch = getattr(self, "_allocation_epoch", None)
+            if project is None or group is None or epoch is None:
+                return None
+            return AuthenticatedEndpointAllocation(project, group, epoch, self._generation)
+
+    def endpoint_scan_flag_only_default(self, endpoint_id: str) -> bool:
+        with self._lock:
+            return self._endpoints.get(endpoint_id, {}).get("_scan_flag_only_default", True)
 
     def logging_level(self, guardrail_id: str | None) -> str:
         if guardrail_id is None:
@@ -303,9 +393,12 @@ class ArtifactStore:
         persist: bool = True,
         providers: ActionProviders | None = None,
         native_models: tuple[NativeRailModel, ...] | None = None,
+        materialization_key: str | None = None,
     ) -> None:
-        with self._apply_lock:
-            self._apply(desired_state, persist=persist, providers=providers, native_models=native_models)
+        with diagnostic_phase("desired_state.apply", generation=int(desired_state.generation),
+                              artifacts=len(desired_state.artifacts), endpoints=len(desired_state.endpoints),
+                              replace_providers=providers is not None), self._apply_lock:
+            self._apply(desired_state, persist=persist, providers=providers, native_models=native_models, materialization_key=materialization_key)
 
     def _apply(
         self,
@@ -314,26 +407,34 @@ class ArtifactStore:
         persist: bool,
         providers: ActionProviders | None,
         native_models: tuple[NativeRailModel, ...] | None,
+        materialization_key: str | None,
     ) -> None:
         generation = int(desired_state.generation)
+        allocation_group_id = (desired_state.allocation_group_id if desired_state.HasField("allocation_group_id") else None)
+        allocation_epoch = (int(desired_state.allocation_epoch) if desired_state.HasField("allocation_epoch") else None)
+        if allocation_group_id is not None:
+            if (not allocation_group_id or allocation_group_id != allocation_group_id.strip() or len(allocation_group_id) > 256 or
+                allocation_epoch is None):
+                raise ValueError("Controller group allocation requires a valid group and epoch.")
+            allocation_group_id.encode("utf-8")
+        if allocation_epoch is not None and not 0 <= allocation_epoch <= 9_007_199_254_740_991:
+            raise ValueError("Controller allocation epoch must be a nonnegative safe integer.")
         with self._lock:
             if generation < self._generation:
-                return
-        staged = {
-            message.artifact_id: self._artifact_from_message(message)
-            for message in desired_state.artifacts
-        }
-        routes = tuple(
-            RouterRoute(
-                router_id=item.router_id,
-                guardrail_id=item.guardrail_id,
-                artifact_id=item.artifact_id,
-                endpoint_id=item.endpoint_id or None,
-                route_order=item.route_order,
-                traffic_scope=traffic_scope_from_proto(item.traffic_scope),
-            )
-            for item in desired_state.routers
-        )
+                raise ValueError("Desired generation is older than the applied generation.")
+        with self._lock:
+            previous_artifacts, previous_digests = self._artifacts, self._artifact_digests
+        with diagnostic_phase("desired_state.verify", generation=generation, artifacts=len(desired_state.artifacts)):
+            staged = {}
+            digests = {}
+            for message in desired_state.artifacts:
+                if message.artifact_id in staged:
+                    raise ValueError("Duplicate Artifact ID in desired state.")
+                digest = hashlib.sha256(message.SerializeToString(deterministic=True)).hexdigest()
+                staged[message.artifact_id] = (previous_artifacts[message.artifact_id]
+                    if previous_digests.get(message.artifact_id) == digest
+                    else self._artifact_from_message(message))
+                digests[message.artifact_id] = digest
         router_revisions = {}
         for item in desired_state.router_revisions:
             if item.router_id in router_revisions: raise ValueError("Duplicate Router ID.")
@@ -341,59 +442,78 @@ class ArtifactStore:
             snapshot = protocol.RouterRevision()
             snapshot.CopyFrom(item)
             router_revisions[item.router_id] = snapshot
-        missing = {route.artifact_id for route in routes} - set(staged)
-        if missing:
-            raise ValueError("Desired state references unavailable Artifacts: " + ", ".join(sorted(missing)))
         endpoints: dict[str, dict[str, Any]] = {}
         for item in desired_state.endpoints:
-            verification = endpoint_verification_from_proto(item.verification)
-            endpoints[item.endpoint_id] = {**verification, "_adapter": item.adapter, "_router_id": item.router_id}
+            # Prepare an immutable verifier set before publishing the snapshot.
+            # Revoked credential history is not needed on the request path.
+            endpoints[item.endpoint_id] = {"_adapter": item.adapter, "_router_id": item.router_id,
+                "_credential_digests": tuple(credential.sha256 for credential in item.verification.credentials
+                    if not credential.HasField("revoked_at")),
+                "_credential_required": item.credential_required,
+                "_project_id": item.project_id if item.HasField("project_id") else None,
+                "_telemetry_context_id": item.telemetry_context_id if item.HasField("telemetry_context_id") else None,
+                "_scan_flag_only_default": item.scan_flag_only_default if item.HasField("scan_flag_only_default") else True}
         registry = self._registry
         if registry is None:
             raise RuntimeError("NeMo Runtime Registry is not attached.")
-        if providers is None and native_models is None:
-            for artifact in staged.values():
-                registry.validate(artifact.plan, artifact.config)
-        else:
-            if providers is None:
-                raise ValueError(
-                    "Native model configuration must be swapped with a complete Action provider registry."
-                )
-            registry.replace_providers(
-                providers,
-                tuple((artifact.plan, artifact.config) for artifact in staged.values()),
-                native_models,
-            )
+        active_ids = {target.artifact_id for router in router_revisions.values()
+                      for route in router.routes if route.enabled
+                      for target in route.targets if target.weight_bps > 0}
+        active = frozenset((staged[key].plan.guardrail_id, staged[key].plan.guardrail_version) for key in active_ids)
         candidates = tuple((artifact.plan, artifact.config) for artifact in staged.values())
+        prepared = registry.prepare_release(candidates, active, providers=providers, native_models=native_models)
+        model_key = materialization_key if materialization_key is not None else self._materialization_key
         release_id = hashlib.sha256(
-            str(generation).encode() + b":"
+            str(generation).encode() + b":" + model_key.encode() + b":"
             + desired_state.model_configuration.SerializeToString(deterministic=True)
             + ":".join(sorted(artifact.checksum for artifact in staged.values())).encode()
         ).hexdigest()
-        # Publish materialized instances before exposing their routing identity.
-        # Registry observers acquire registry -> store; never take those locks
-        # in the reverse order here. Existing requests keep their old release.
-        registry.publish_release(release_id, candidates)
-        with self._lock:
-            self._artifacts = staged
-            self._routes = routes
-            self._router_revisions = router_revisions
-            self._endpoints = endpoints
-            self._logging_levels = dict(desired_state.guardrail_logging_levels)
-            self._generation = generation
-            self._release_id = release_id
-            self._model_revision_id = desired_state.model_configuration.revision_id or None
+
+        def publish():
+            with self._lock:
+                self._artifacts = staged
+                self._artifact_digests = digests
+                self._router_revisions = router_revisions
+                self._endpoints = endpoints
+                self._logging_levels = dict(desired_state.guardrail_logging_levels)
+                self._generation = generation
+                self._allocation_group_id = allocation_group_id
+                self._allocation_epoch = allocation_epoch
+                self._release_id = release_id
+                self._model_revision_id = desired_state.model_configuration.revision_id or None
+                self._materialization_key = model_key
+
+        try:
             if persist:
-                self._persist_snapshot(desired_state)
-        if providers is None and native_models is None:
-            registry.reload()
-        else:
-            registry.readiness()
+                with diagnostic_phase("desired_state.persist", generation=generation):
+                    self._persist_snapshot(desired_state)
+            # Neither the serving registry lock nor store lock covers prewarm or disk I/O.
+            registry.publish_release(release_id, prepared, publish)
+        except BaseException:
+            registry.discard_prepared(prepared)
+            raise
+
+    @property
+    def model_revision_id(self) -> str:
+        """Model configuration revision of the currently applied desired state."""
+        with self._lock:
+            return self._model_revision_id or ""
+
+    def admit(self, message: Any) -> None:
+        """Dry-run load: verify the Artifact and build its runtime, then discard it."""
+        artifact = self.verify(message)
+        registry = self._registry
+        if registry is None:
+            raise RuntimeError("NeMo Runtime Registry is not attached.")
+        registry.check_candidate(artifact.plan, artifact.config)
+
+    def verify(self, message: Any) -> RuntimeArtifact:
+        """Verify a signed Artifact exactly as distribution would, without activating it."""
+        return self._artifact_from_message(message)
 
     def _artifact_from_message(self, message: Any) -> RuntimeArtifact:
         content = artifact_content(message)
-        canonical = _stable_json(content)
-        checksum = hashlib.sha256(canonical.encode()).hexdigest()
+        checksum = hashlib.sha256(canonical_json(content).encode()).hexdigest()
         if not hmac.compare_digest(checksum, message.checksum):
             raise ValueError(f"Artifact {message.artifact_id} checksum does not match its content.")
         self._public_key.verify(_base64(message.signature), checksum.encode())
@@ -403,16 +523,15 @@ class ArtifactStore:
                 f"{message.nemo_version!r}; this Runner requires "
                 f"{self._nemo_version!r}. Recompile the Guardrail before router."
             )
-        plan_payload = content["plan"]
+        plan = plan_from_dict(content["plan"])
+        config = config_snapshot_from_artifact(message, verified_content=content)
+        validate_artifact_execution_contract(plan, config)
         return RuntimeArtifact(
             artifact_id=message.artifact_id,
             generation=int(message.generation),
             checksum=checksum,
-            plan=plan_from_dict(plan_payload),
-            config=config_snapshot_from_artifact(
-                message,
-                verified_content=content,
-            ),
+            plan=plan,
+            config=config,
         )
 
     def _persist_snapshot(self, desired_state: Any) -> None:
@@ -421,7 +540,7 @@ class ArtifactStore:
         temporary = self._state_path / "last-known-good.json.tmp"
         temporary.write_text(
             json.dumps({
-                "generation": self._generation,
+                "generation": int(desired_state.generation),
                 "desired_state_b64": _encode_base64(desired_state.SerializeToString()),
             }, sort_keys=True),
             encoding="utf-8",
@@ -443,10 +562,6 @@ class ArtifactStore:
         return desired_state
 
 
-def _stable_json(value: Any) -> str:
-    return json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
-
-
 def _base64(value: str) -> bytes:
     import base64
     return base64.b64decode(value, validate=True)
@@ -455,65 +570,3 @@ def _base64(value: str) -> bytes:
 def _encode_base64(value: bytes) -> str:
     import base64
     return base64.b64encode(value).decode("ascii")
-
-
-def _scope_matches(scope: dict[str, Any], context: RequestContext) -> bool:
-    conditions = scope.get("conditions", ())
-    if not conditions:
-        return True
-    values = [
-        _scope_matches(item, context) if isinstance(item, dict) and "conditions" in item
-        else _condition_matches(item, context)
-        for item in conditions
-    ]
-    return all(values) if scope.get("combinator", "and") == "and" else any(values)
-
-
-def _condition_matches(condition: Any, context: RequestContext) -> bool:
-    if not isinstance(condition, dict):
-        return False
-    field = str(condition.get("field", ""))
-    key = str(condition.get("key", ""))
-    if field == "protocol":
-        actual = context.protocol
-    elif field == "endpoint.id":
-        actual = context.endpoint_id
-    elif field == "http.header":
-        actual = context.value("header", key)
-    elif field == "auth.jwt_claim":
-        actual = context.value("jwt_claim", key)
-    elif field == "adapter.field":
-        actual = context.value("field", key)
-    else:
-        actual = context.value("field", field)
-    if actual is None:
-        return False
-    expected = str(condition.get("value", ""))
-    operator = condition.get("operator", "equals")
-    if operator == "equals":
-        return actual == expected
-    if operator == "contains":
-        return expected in actual
-    if operator == "starts_with":
-        return actual.startswith(expected)
-    if operator == "glob":
-        return fnmatch.fnmatchcase(actual, expected)
-    return False
-
-
-def _scope_specificity(scope: dict[str, Any]) -> tuple[int, int]:
-    weights = {"equals": 4, "starts_with": 3, "contains": 2, "glob": 1}
-    conditions = scope.get("conditions", ())
-    if not conditions:
-        return (0, 0)
-    children = [
-        _scope_specificity(item) if isinstance(item, dict) and "conditions" in item
-        else (1, weights.get(str(item.get("operator", "")), 0))
-        for item in conditions
-        if isinstance(item, dict)
-    ]
-    if not children:
-        return (0, 0)
-    if scope.get("combinator", "and") == "and":
-        return (sum(item[0] for item in children), sum(item[1] for item in children))
-    return min(children)

@@ -1,3 +1,9 @@
+import {directorySearch,type PageQuery} from "./directory-query";
+import type {DirectoryPage} from "../../shared/directory";
+import type { FormalValidation } from "../../shared/formal-validation";
+import { currentProjectId } from "./project-context";
+import type { EndpointAdapterId } from "./api-types";
+import type { AuditQuery } from "../../shared/audit-query";
 import type { EnforcementAction } from "../../shared/enforcement-action.generated";
 import type {
   GuardrailLifecycleState,
@@ -8,13 +14,17 @@ import type {
 } from "../../shared/lifecycle";
 import type { CapabilityBindingId, ImplementedGuardrailRailType } from "../../shared/guardrail-catalog";
 import type { PlatformStatusSnapshot } from "../../shared/platform-status";
+import type { SystemHealthSnapshot } from "../../shared/component-health";
+export type { SystemHealthSnapshot } from "../../shared/component-health";
+import type { GuardrailVersionDeletionImpact } from "../../shared/guardrail-version-deletion";
+export type { GuardrailVersionDeletionImpact } from "../../shared/guardrail-version-deletion";
 
 export type Collection<T> = { items: T[]; count?: number; nextCursor?: string | null };
 
 export type SystemStatus = PlatformStatusSnapshot;
 
-export type ModelProviderKind = "openai" | "qwen" | "deepseek" | "vllm" | "ollama" | "custom-openai-compatible";
-export type ModelProfile = "generic-chat" | "tali.qwen3guard.v1" | "tali.llama-guard-3.v1" | "tali.nemotron-content-safety.v1" | "tali.nemotron-safety-guard-v3.v1" | "tali.nemoguard-topic-control.v1" | "tali.openai-compatible-jailbreak.v1" | "tali.nemoguard-jailbreak-detect.v1" | "tali.taxonomy-judge.v1" | "tali.grounding-judge.v1" | "tali.automated-reasoning.v1";
+export type ModelProviderKind = "openai" | "qwen" | "typesafe" | "laya" | "deepseek" | "vllm" | "ollama" | "custom-openai-compatible";
+export type ModelProfile = "tali.classifier-review.v1" | "tali.laya.v1" | "tali.laya-topic.v1" | "generic-chat" | "tali.qwen3guard.v1" | "tali.llama-guard-3.v1" | "tali.nemotron-content-safety.v1" | "tali.nemotron-safety-guard-v3.v1" | "tali.nemoguard-topic-control.v1" | "tali.typesafe-jev-topic.v1" | "tali.typesafe-jev.v1" | "tali.openai-compatible-pii.v1" | "tali.openai-compatible-jailbreak.v1" | "tali.nemoguard-jailbreak-detect.v1" | "tali.taxonomy-judge.v1" | "tali.grounding-judge.v1" | "tali.automated-reasoning.v1";
 export type { CapabilityBindingId };
 export type ModelAssignments = {
   controlPlane: string | null;
@@ -42,6 +52,7 @@ export type DiscoveredProviderModels = {
 };
 
 export type ModelDefinition = {
+  projectId?: string | null;
   protocolEditable?: boolean;
   connectionStatus?: "pending" | "validated" | "failed";
   connectionMessage?: string | null;
@@ -56,6 +67,12 @@ export type ModelDefinition = {
   profile: ModelProfile;
   timeoutSeconds: number;
   maxTokens: number;
+  maxConcurrency?: number;
+  rateLimitAttempts?: number;
+  lowerThreshold?: number;
+  upperThreshold?: number;
+  /** Laya only: transport determined once at registration / connection test. Null on legacy rows. */
+  layaRequestMode?: "native" | "compatible" | null;
   status: "pending" | "validated" | "failed";
   validationMessage: string | null;
   validationLatencyMs: number | null;
@@ -65,6 +82,7 @@ export type ModelDefinition = {
 export type ModelValidationReport = {
   valid: boolean;
   checkedAt: string;
+  runtimeFingerprint?: string;
   checks: Array<{
     id: string;
     scope: "configuration" | "provider" | "model" | "capability";
@@ -80,7 +98,9 @@ export type ModelValidationReport = {
 
 export type ModelConfigurationRevision = {
   id: string;
-  revision: number;
+  reviewToken?: string;
+  /** Previous field; current API exposes configuration state, not version history. */
+  revision?: number;
   state: "draft" | "validated" | "activating" | "active" | "superseded" | "failed";
   generation: number | null;
   assignments: ModelAssignments;
@@ -96,15 +116,16 @@ export type ModelConfigurationView = {
   providers: ModelProvider[];
   models: ModelDefinition[];
   draft: ModelConfigurationRevision | null;
-  rollbackTarget?: string | null;
   active: ModelConfigurationRevision | null;
   activating: ModelConfigurationRevision | null;
   failed: ModelConfigurationRevision | null;
 };
 
 export type GuardrailDraftConfig = {
+  profileOrigin?: import("../../shared/protection-map").ProfileOrigin;
   allowedTopics: string[];
   restrictedTopics: string[];
+  topicControlMode?: "strict" | "permissive";
   policyBindings: Array<{
     policyId: string;
     policyVersion: string;
@@ -127,28 +148,45 @@ export type GuardrailDraftConfig = {
 };
 
 export type Guardrail = {
+  projectId?: string;
+  monthlyCost?: import("../../shared/model-pricing").GuardrailMonthlyCost;
+  protection?: import("../../shared/protection-mode").ProtectionModeSettings;
   copyOrigin?: { sourceGuardrailId: string; sourceName: string; sourceVersion: string | null; sourceDraftRevision: number | null; copiedAt: string; contentDigest: string } | null;
   id: string;
   name: string;
   draftConfig: GuardrailDraftConfig;
   runtimeProfile: string;
   status: GuardrailLifecycleState;
+  readiness?: "not_ready" | "ready";
+  versionSummary?: { total: number; released: number; pending: number; missingEvidence: number };
   desiredGeneration: number;
   draftRevision: number;
   excludedTestCaseIds: string[];
   loggingLevel: "info" | "debug" | "trace";
-  activeVersion: string | null;
-  activeSourceDraftRevision: number | null;
-  activeArtifactId: string | null;
+  /** Draft revision the most recent publication came from; null before any. */
+  publishedSourceDraftRevision: number | null;
+  hasUnpublishedChanges?: boolean;
   createdAt: string;
   updatedAt: string;
+  /** Latest draft run: used only for draft readiness. */
   latestValidationRun: ValidationRun | null;
+  /** Latest local report across draft and immutable version tests; not resource readiness. */
+  latestTestingReport?: ValidationRun | null;
   testCaseCount: number;
   excludedTestCaseCount: number;
+  /** Provenance only: imported and locally created Guardrails share the same draft lifecycle. */
+  origin?: "local" | "imported";
+  sourceId?: string | null;
 };
 
 export type GuardrailVersion = {
+  publication?: import("../../shared/guardrail-publication").GuardrailPublication | null;
+  testWaiver?: import("../../shared/default-release").DefaultTestWaiver | null;
+  sourceValidationRunId?: string | null;
+  testingEvidence?: import("../../shared/testing-report-retention").VersionTestingEvidence | null;
   hasSourceSnapshot?: boolean;
+  /** Frozen Test Cases in this version; null when published before suites were frozen. */
+  testSuiteCount?: number | null;
   guardrailId: string;
   version: string;
   generation: number;
@@ -157,11 +195,80 @@ export type GuardrailVersion = {
   runtimeProfile: string;
   plan: Record<string, unknown>;
   artifactId: string | null;
-  failureReason: string | null;
   createdBy: string | null;
   createdAt: string;
+  /** When and by whom it was released in this environment; null while pending. */
+  releasedAt: string | null;
+  releasedBy: string | null;
   artifact?: GuardrailArtifact | null;
+  origin?: "local" | "imported";
+  /** The passed test run it was released with here; null while pending. */
+  validationRunId?: string | null;
+  /** Read-only description frozen with the version (names of its Policies and Rules). */
+  inspection?: { policies: Array<{ policyId: string; policyVersion: string; name: string }> } | null;
+  environmentCheck?: EnvironmentCheck | null;
+  provenance?: VersionProvenance | null;
 };
+
+export type EnvironmentCheck = {
+  status: "compatible" | "missing" | "pending";
+  checkedAt: string;
+  pools: Array<{ poolId: string; runnerId: string; admitted: boolean; unavailable: boolean; reason: string; nemoVersion: string; modelRevisionId: string }>;
+};
+
+export type ArtifactRequirements = {
+  contentContract: string;
+  runtime: { nemoVersion: string; runtimeProfile: string; compilerVersion: string; planCompilerVersion: string };
+  actions: Array<{ name: string; version: string }>;
+  models: Array<{ type: string; profile: string }>;
+  evaluationContracts: Array<{ contract: string; capability: string; phases: string[] }>;
+};
+
+export type VersionProvenance = {
+  sourceId: string;
+  sourceKeyId: string | null;
+  contentDigest: string;
+  packageId: string;
+  importedAt: string;
+  importedBy: string | null;
+  requirements: ArtifactRequirements;
+};
+
+export type PackagePreview = {
+  packageId: string;
+  source: { id: string; name: string };
+  keyId: string | null;
+  exportedAt: string;
+  guardrail: { id: string; name: string; exists: boolean; deleted: boolean };
+  /** The tree's leaves: Policy versions, imported into the Library before the Guardrail. */
+  policies: Array<{ id: string; version: string; kind: "catalog" | "programmable"; name: string; state: "new" | "existing" | "conflict"; digest: string }>;
+  versions: Array<{
+    version: string;
+    state: "new" | "existing" | "conflict";
+    contentDigest: string;
+    /** The Test Cases the version carries, to be run in this environment. */
+    testSuite: { total: number; digest: string };
+    requirements: ArtifactRequirements;
+    environment: EnvironmentCheck | null;
+  }>;
+  blockers: Array<{ code: string; message: string }>;
+};
+
+export type PackageImportResult = { guardrailId: string; restored: boolean; imported: string[]; existing: string[]; policies: { imported: string[]; existing: string[] } };
+
+export type DeploymentCapabilities = {
+  packageExport: { available: boolean; sourceId: string | null };
+  packageImport: { available: boolean };
+};
+
+
+/** One Test Case frozen into a Guardrail version: its input and expected behaviour. */
+export type FrozenTestCase = {
+  id: string; name: string; origin: string; policyId: string; phase: string; content: string; expectedDecision: string;
+  caseType: string; required: boolean; sourcePolicyId: string | null; sourcePolicyVersion: string | null; sourceCaseId: string | null;
+  coveredRuleIds: string[]; expectationOverride: { reason: string; expectedDecision: string; sourcePolicyVersion: string } | null;
+};
+export type VersionTestSuite = { guardrailId: string; version: string; recorded: boolean; digest: string | null; items: FrozenTestCase[]; count: number };
 
 export type GuardrailArtifact = {
   id: string;
@@ -197,9 +304,12 @@ export type GuardrailPlanPreview = {
 };
 
 export type Endpoint = {
+  projectId?: string;
   id: string;
   name: string;
-  adapter: string;
+  adapter: EndpointAdapterId;
+  credentialRequired: boolean;
+  scanFlagOnlyDefault?: boolean;
   status: EndpointLifecycleState;
   createdAt: string;
   updatedAt: string;
@@ -208,27 +318,23 @@ export type Endpoint = {
   distributionStatus?: "ready" | "syncing";
 };
 
-export type Router = {
-  id: string;
-  name: string;
-  guardrailId: string;
-  endpointId: string | null;
-  poolId: string;
-  guardrailVersion: string | null;
-  routeOrder: number;
-  enabled: boolean;
-  trafficScope: Record<string, unknown>;
-  createdAt: string;
-  updatedAt: string;
-};
-
 export type ValidationRun = {
+  testModelRules?: boolean;
+  testScope?: import("../../shared/validation-scope").ValidationTestScope | null;
   id: string;
   guardrailId: string;
   guardrailVersion: string;
   sourceDraftRevision: number;
+  /** "draft": a draft compiled into a candidate; "version": an existing version tested as it is. */
+  subject: "draft" | "version";
+  /** Digest of the content the run tested. */
+  candidateDigest: string | null;
+  testSuiteDigest: string | null;
   status: ValidationRunState;
+  progress?: import("../../shared/validation-progress").ValidationProgress | null;
   metrics: {
+    skipped?: number;
+    executed?: number;
     total: number;
     passed: number;
     complianceRate: number;
@@ -237,7 +343,7 @@ export type ValidationRun = {
     escalationRate: number;
     p95LatencyMs: number;
   };
-  results: Array<Record<string, unknown>>;
+  results?: Array<Record<string, unknown>>;
   excludedCaseIds: string[];
   failureReason: string | null;
   createdAt: string;
@@ -322,7 +428,7 @@ export type RuntimeEvent = {
   guardrailVersion: string | null;
   endpointId: string | null;
   routerId: string | null;
-  direction: "incoming" | "outgoing";
+  direction: "incoming" | "outgoing" | "completion";
   decision: string;
   durationMs: number;
   metadata: Record<string, unknown>;
@@ -338,26 +444,45 @@ export type AuditEvent = {
   occurredAt: string;
 };
 
-export async function requestController<T>(path: string, init?: RequestInit): Promise<T> {
+export class ControllerRequestError extends Error {
+  constructor(message: string, readonly status: number, readonly code?: string, readonly detail?: unknown) {
+    super(message);
+    this.name = "ControllerRequestError";
+  }
+}
+
+export async function requestController<T>(path: string, options?: RequestInit & { timeoutMs?: number }): Promise<T> {
+  const { timeoutMs = 30_000, ...init } = options ?? {};
   const formData = typeof FormData !== "undefined" && init?.body instanceof FormData;
+  const headers = new Headers(init.headers);
+  if (init.body && !formData && !headers.has("content-type")) headers.set("content-type", "application/json");
+  const projectId = currentProjectId();
+  if (projectId && path.startsWith("/api/v1/")) headers.set("x-project-id", projectId);
   const response = await fetch(path, {
     credentials: "same-origin",
     ...init,
-    ...(!init?.method || init.method === 'GET' ? { signal: init?.signal ? AbortSignal.any([init.signal, AbortSignal.timeout(30_000)]) : AbortSignal.timeout(30_000) } : {}),
-    headers: init?.body && !formData ? { "content-type": "application/json", ...init.headers } : init?.headers,
+    ...(!init?.method || init.method === 'GET' ? { signal: init?.signal ? AbortSignal.any([init.signal, AbortSignal.timeout(timeoutMs)]) : AbortSignal.timeout(timeoutMs) } : {}),
+    headers: projectId ? headers : init.body && !formData ? { "content-type": "application/json", ...init.headers } : init.headers,
   });
   if (response.status === 204) return undefined as T;
-  const payload = await response.json().catch(() => ({})) as { error?: { message?: string; detail?: unknown }; detail?: unknown; message?: string };
+  const rawResponse = response.ok ? undefined : response.clone?.();
+  const payload = await response.json().catch(async error => {
+    if (response.ok) throw error; // Never treat an interrupted large report as an empty success.
+    return { message: await rawResponse?.text().catch(() => "") };
+  }) as { error?: { code?: string; message?: string; detail?: unknown }; detail?: unknown; message?: string };
   if (!response.ok) {
     // A forbidden write may mean the user's role changed. Recheck identity,
     // without treating every 403 as a logout or retrying the rejected write.
-    if (response.status === 401 || response.status === 403) window.dispatchEvent(new CustomEvent("tasklattice:unauthorized"));
-    throw new Error(formatApiError(payload.error?.detail ?? payload.error?.message ?? payload.detail ?? payload.message, response.status));
+    if (response.status === 401 || response.status === 403 || payload.error?.code === "project_changed") window.dispatchEvent(new CustomEvent("tasklattice:unauthorized"));
+    throw new ControllerRequestError(
+      formatApiError(payload.error?.detail ?? payload.detail) ?? payload.error?.message ?? payload.message ?? `Request failed with status ${response.status}.`,
+      response.status, payload.error?.code, payload.error?.detail ?? payload.detail,
+    );
   }
   return payload as T;
 }
 
-function formatApiError(detail: unknown, status: number): string {
+function formatApiError(detail: unknown): string | undefined {
   if (typeof detail === "string" && detail.trim()) return detail;
   if (Array.isArray(detail)) {
     const messages = detail.map((item) => {
@@ -373,11 +498,21 @@ function formatApiError(detail: unknown, status: number): string {
     if (messages.length) return messages.join("; ");
   }
   if (detail && typeof detail === "object") {
-    const issue = detail as { msg?: unknown; message?: unknown };
+    const issue = detail as { msg?: unknown; message?: unknown; fieldErrors?: unknown; formErrors?: unknown };
     if (typeof issue.msg === "string" && issue.msg) return issue.msg;
     if (typeof issue.message === "string" && issue.message) return issue.message;
+    // Controller Zod validation uses flatten(), unlike FastAPI's issue array.
+    const messages = Array.isArray(issue.formErrors) ? issue.formErrors.filter((item): item is string => typeof item === "string" && Boolean(item.trim())) : [];
+    if (issue.fieldErrors && typeof issue.fieldErrors === "object" && !Array.isArray(issue.fieldErrors)) {
+      for (const [field, errors] of Object.entries(issue.fieldErrors)) {
+        if (Array.isArray(errors)) for (const error of errors) {
+          if (typeof error === "string" && error.trim()) messages.push(`${field}: ${error}`);
+        }
+      }
+    }
+    if (messages.length) return messages.join("; ");
   }
-  return `Request failed with status ${status}.`;
+  return undefined;
 }
 
 const json = (method: string, body?: unknown): RequestInit => ({ method, body: body === undefined ? undefined : JSON.stringify(body) });
@@ -387,15 +522,29 @@ export const getControllerSystemStatus = async () => {
   if (response.status === 200 || response.status === 503) return response.json() as Promise<SystemStatus>;
   throw new Error(`System status failed with status ${response.status}.`);
 };
+export const getControllerSystemHealth = async (signal?: AbortSignal) => {
+  const timeout = AbortSignal.timeout(10_000);
+  const snapshot = await requestController<SystemHealthSnapshot>("/api/v1/system/health", {
+    signal: signal ? AbortSignal.any([signal, timeout]) : timeout,
+  });
+  if (!snapshot?.components?.controlPlane || !snapshot.components.dataPlane
+    || !["healthy", "unhealthy", "unknown"].includes(snapshot.status)
+    || !Number.isFinite(Date.parse(snapshot.observedAt))) {
+    throw new Error("Component health response is unavailable.");
+  }
+  return snapshot;
+};
+export const getModelReadiness = () => requestController<import("../../shared/model-readiness").ModelReadinessView>("/api/v1/guardrail-capabilities");
+
 export const getModelConfiguration = async () => {
   const view = await requestController<ModelConfigurationView>("/api/v1/model-configuration");
   if (!view.draft?.assignments?.bindings) {
-    throw new Error("The Controller is serving an incompatible legacy Model configuration. Deploy the matching Controller backend before using Guardrail Catalog.");
+    throw new Error("The Controller is serving a Model configuration with an unsupported schema. Deploy the matching Controller backend before using Protection Capabilities.");
   }
   return view;
 };
 export type ProviderConnectionDraft = { name: string; kind: ModelProviderKind; baseUrl: string; apiKey: string; skipTlsVerify?: boolean };
-export type ProviderModelSelection = { name: string; model: string; profile: ModelProfile; timeoutSeconds: number; maxTokens: number };
+export type ProviderModelSelection = { name: string; model: string; profile: ModelProfile; timeoutSeconds: number; maxTokens: number; maxConcurrency?: number };
 export type ProviderRegistrationResult = { provider: ModelProvider; models: ModelDefinition[]; failures: Array<{ model: ProviderModelSelection; message: string }> };
 export const discoverProviderDraft = (input: ProviderConnectionDraft) => requestController<Omit<DiscoveredProviderModels, "providerId">>("/api/v1/model-provider-discoveries", json("POST", input));
 export const registerProviderModels = (input: { connection: ProviderConnectionDraft; models: ProviderModelSelection[] }) => requestController<ProviderRegistrationResult>("/api/v1/model-provider-registrations", json("POST", input));
@@ -405,8 +554,10 @@ export const updateProviderTls = (id: string, skipTlsVerify: boolean) => request
 export const revalidateModelProvider = (id: string) => requestController<ModelProvider>(`/api/v1/model-providers/${encodeURIComponent(id)}/connection-tests`, json("POST"));
 export const discoverModelProvider = (id: string) => requestController<DiscoveredProviderModels>(`/api/v1/model-providers/${encodeURIComponent(id)}/model-discoveries`, json("POST"));
 export const deleteModelProvider = (id: string) => requestController<void>(`/api/v1/model-providers/${encodeURIComponent(id)}`, json("DELETE"));
-export const createModelDefinition = (input: { providerId: string; name: string; model: string; profile: ModelProfile; timeoutSeconds: number; maxTokens: number }) => requestController<ModelDefinition>("/api/v1/models", json("POST", input));
-export const configureModelDefinition = (id: string, input: Pick<ModelDefinition, "profile" | "timeoutSeconds" | "maxTokens">) => requestController<ModelDefinition>(`/api/v1/models/${encodeURIComponent(id)}/protocol`, json("PUT", input));
+export const createModelDefinition = (input: { providerId: string; name: string; model: string; profile: ModelProfile; timeoutSeconds: number; maxTokens: number; maxConcurrency?: number }) => requestController<ModelDefinition>("/api/v1/models", json("POST", input));
+export type ModelRuntimeSettings = { maxConcurrency: number; rateLimitAttempts: number; lowerThreshold: number; upperThreshold: number };
+export const configureModelRuntimeSettings = (id: string, settings: ModelRuntimeSettings) => requestController<ModelDefinition>(`/api/v1/models/${encodeURIComponent(id)}/runtime-settings`, json("PUT", settings));
+export const configureModelDefinition = (id: string, input: Pick<ModelDefinition, "profile" | "timeoutSeconds" | "maxTokens"> & ModelRuntimeSettings) => requestController<ModelDefinition>(`/api/v1/models/${encodeURIComponent(id)}/protocol`, json("PUT", input));
 export const revalidateModelDefinition = (id: string) => requestController<ModelDefinition>(`/api/v1/models/${encodeURIComponent(id)}/capability-tests`, json("POST"));
 export const testModelConnection = (id: string) => requestController<ModelDefinition>(`/api/v1/models/${encodeURIComponent(id)}/connection-tests`, json("POST"));
 export const deleteModelDefinition = (id: string) => requestController<void>(`/api/v1/models/${encodeURIComponent(id)}`, json("DELETE"));
@@ -414,26 +565,59 @@ export const saveModelAssignments = (assignments: ModelAssignments) => requestCo
 export const validateModelConfiguration = () => requestController<ModelConfigurationRevision>("/api/v1/model-configuration/draft/validations", json("POST"));
 export type ModelAssignmentTarget = "control_plane" | CapabilityBindingId;
 export const saveModelAssignment = (target: ModelAssignmentTarget, modelId: string | null, validationId?: string) => requestController<ModelConfigurationRevision>(`/api/v1/model-configuration/draft/assignments/${encodeURIComponent(target)}`, json("PUT", { modelId, validationId }));
-export const validateModelAssignment = (target: ModelAssignmentTarget, modelId?: string) => requestController<ModelConfigurationRevision & { validationId?: string }>(`/api/v1/model-configuration/draft/assignments/${encodeURIComponent(target)}/${modelId ? "candidate-validations" : "validations"}`, json("POST", modelId ? { modelId } : undefined));
-export const activateModelConfiguration = (revisionId: string) => requestController<ModelConfigurationView & { distribution: { desiredGeneration: number; distributionStatus: "ready" | "syncing" } }>(`/api/v1/model-configuration/revisions/${encodeURIComponent(revisionId)}/activate`, json("POST"));
-export const rollbackModelConfiguration = (targetRevisionId: string) => requestController<ModelConfigurationView & { distribution: { desiredGeneration: number; distributionStatus: "ready" | "syncing" } }>("/api/v1/model-configuration/rollback", json("POST", { targetRevisionId }));
+export const validateModelAssignment = (target: ModelAssignmentTarget, modelId?: string, formalValidation?: FormalValidation) => requestController<ModelConfigurationRevision & { validationId?: string }>(`/api/v1/model-configuration/draft/assignments/${encodeURIComponent(target)}/${modelId ? "candidate-validations" : "validations"}`, json("POST", modelId ? { modelId, ...(formalValidation ? { formalValidation } : {}) } : undefined));
+export const validateSavedModelAssignment = (target: CapabilityBindingId, modelId: string, formalValidation?: FormalValidation) => requestController<ModelConfigurationRevision>(`/api/v1/model-configuration/draft/assignments/${encodeURIComponent(target)}/validations`, json("POST", { modelId, formalValidation }));
+export const applyModelConfiguration = (selection: import("../../shared/model-activation").PartialModelActivation) => requestController<ModelConfigurationView & { distribution: { desiredGeneration: number; distributionStatus: "ready" | "syncing" } }>("/api/v1/model-configuration/apply", json("POST", selection));
 export const listControllerGuardrails = () => requestController<Collection<Guardrail>>("/api/v1/guardrails");
 export const getControllerGuardrail = (id: string) => requestController<GuardrailDetail>(`/api/v1/guardrails/${encodeURIComponent(id)}`);
 export const createControllerGuardrail = (input: Pick<Guardrail, "name" | "draftConfig" | "runtimeProfile">) => requestController<Guardrail>("/api/v1/guardrails", json("POST", input));
 export const previewControllerGuardrailPlan = (input: Pick<Guardrail, "name" | "draftConfig" | "runtimeProfile">) => requestController<GuardrailPlanPreview>("/api/v1/authoring/plan-previews", json("POST", input));
-export const updateControllerGuardrail = (id: string, input: Partial<Pick<Guardrail, "name" | "draftConfig" | "runtimeProfile">>) => requestController<Guardrail>(`/api/v1/guardrails/${encodeURIComponent(id)}`, json("PATCH", input));
+export const updateControllerGuardrail = (id: string, input: Partial<Pick<Guardrail, "name" | "draftConfig" | "runtimeProfile">> & { expectedDraftRevision?: number }) => requestController<Guardrail>(`/api/v1/guardrails/${encodeURIComponent(id)}`, json("PATCH", input));
 export const publishControllerGuardrail = (id: string, expectedDraftRevision: number) => requestController<{ status: string; version: string }>(`/api/v1/guardrails/${encodeURIComponent(id)}/publish`, json("POST", { expectedDraftRevision }));
-export const rollbackControllerGuardrail = (id: string, version: string) => requestController<GuardrailVersion>(`/api/v1/guardrails/${encodeURIComponent(id)}/rollback`, json("POST", { version }));
+export const getDeploymentCapabilities = () => requestController<DeploymentCapabilities>("/api/v1/deployment/capabilities");
+export const uploadGuardrailPackage = (file: File) => {
+  const body = new FormData();
+  body.append("package", file);
+  return requestController<PackagePreview>("/api/v1/guardrail-packages", { method: "POST", body });
+};
+export const importGuardrailPackage = (packageId: string, options: { versions?: string[]; restoreDeleted?: boolean } = {}) => requestController<PackageImportResult>(
+  `/api/v1/guardrail-packages/${encodeURIComponent(packageId)}/imports`, { method: "POST", body: JSON.stringify(options) });
+export const checkGuardrailVersionEnvironment = (id: string, version: string) => requestController<EnvironmentCheck>(
+  `/api/v1/guardrails/${encodeURIComponent(id)}/versions/${encodeURIComponent(version)}/environment-check`, { method: "POST" });
+export const getGuardrailVersionTestSuite = (guardrailId: string, version: string) => requestController<VersionTestSuite>(`/api/v1/guardrails/${encodeURIComponent(guardrailId)}/versions/${encodeURIComponent(version)}/test-suite`);
+
+/** Download a signed release package; JSON errors become ControllerRequestError. */
+export async function downloadGuardrailPackage(id: string, versions: string[]): Promise<string> {
+  const response = await fetch(`/api/v1/guardrails/${encodeURIComponent(id)}/package?versions=${versions.map(encodeURIComponent).join(",")}`, { credentials: "same-origin" });
+  if (!response.ok) {
+    const payload = await response.json().catch(() => ({})) as { error?: { code?: string; message?: string; detail?: unknown } };
+    throw new ControllerRequestError(payload.error?.message ?? `Request failed with status ${response.status}.`, response.status, payload.error?.code, payload.error?.detail);
+  }
+  const filename = /filename="([^"]+)"/.exec(response.headers.get("content-disposition") ?? "")?.[1] ?? `${id}.guardrail.zip`;
+  const url = URL.createObjectURL(await response.blob());
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  // Allow the browser to begin the download before releasing its Blob URL.
+  setTimeout(() => URL.revokeObjectURL(url), 1_000);
+  return filename;
+}
 export const getControllerGuardrailDeletionImpact = (id: string) => requestController<DeletionImpact>(`/api/v1/guardrails/${encodeURIComponent(id)}/deletion-impact`);
 export const deleteControllerGuardrail = (id: string, input: { reason: string; confirmRecentTraffic: boolean; confirmationName?: string | undefined }) => requestController<void>(`/api/v1/guardrails/${encodeURIComponent(id)}`, json("DELETE", input));
 
 export const listControllerEndpoints = () => requestController<Collection<Endpoint>>("/api/v1/endpoints");
-export const createControllerEndpoint = (input: { name: string; adapter: string }) => requestController<Endpoint>("/api/v1/endpoints", json("POST", input));
+export const createControllerEndpoint = (input: { name: string; adapter: EndpointAdapterId; credentialRequired?: boolean; scanFlagOnlyDefault?: boolean }) => requestController<Endpoint>("/api/v1/endpoints", json("POST", input));
 export const getControllerEndpointDeletionImpact = (id: string) => requestController<DeletionImpact>(`/api/v1/endpoints/${encodeURIComponent(id)}/deletion-impact`);
 export const deleteControllerEndpoint = (id: string, input: { reason: string; confirmRecentTraffic: boolean; confirmationName?: string | undefined }) => requestController<void>(`/api/v1/endpoints/${encodeURIComponent(id)}`, json("DELETE", input));
 
 export { listTrafficRouters as listControllerRouters } from "./traffic-routing-api";
-export const listRunnerPools = () => requestController<Collection<RunnerPool>>("/api/v1/runner-pools");
+export type RunnerPoolSummary = {id:string;name:string;totalCount:number;connectedCount:number};
+export type RunnerPoolDetail = RunnerPool & {nextCursor:string|null;counts:{total:number;connected:number;pending:number;syncing:number;hasMetrics:boolean}};
+export const listRunnerPools = (query:PageQuery={},signal?:AbortSignal) => requestController<DirectoryPage<RunnerPoolSummary>>(`/api/v1/runner-pools${directorySearch(query)}`,{signal});
+export const getRunnerPool = (id:string,query:PageQuery={},signal?:AbortSignal) => requestController<RunnerPoolDetail>(`/api/v1/runner-pools/${encodeURIComponent(id)}${directorySearch(query)}`,{signal});
 export const updateRunnerPool = (id: string, input: Pick<RunnerPool, "desiredReplicas" | "safeRpsPerRunner" | "maxConcurrencyPerRunner">) => requestController<RunnerPool>(`/api/v1/runner-pools/${encodeURIComponent(id)}`, json("PATCH", input));
 export const removeRunnerInstance = (runnerId: string, options?: { force: true; bootId: string }) => {
   const query = options ? `?${new URLSearchParams({ force: "true", bootId: options.bootId })}` : "";
@@ -444,7 +628,22 @@ export const listRuntimeEvents = (limit = 100, filters: { guardrailId?: string; 
   for (const [key, value] of Object.entries(filters)) if (value) query.set(key, String(value));
   return requestController<Collection<RuntimeEvent>>(`/api/v1/telemetry/events?${query.toString()}`, signal ? { signal } : undefined);
 };
-export const getRuntimeEvent = (id: string, signal?: AbortSignal) => requestController<RuntimeEvent>(`/api/v1/telemetry/events/${encodeURIComponent(id)}`, signal ? { signal } : undefined);
-export const listAuditEvents = (limit = 100) => requestController<Collection<AuditEvent>>(`/api/v1/audit-events?limit=${Math.min(500, Math.max(1, limit))}`);
+export const getRuntimeEvent = (id: string, signal?: AbortSignal, includeContent = false) => requestController<RuntimeEvent>(`/api/v1/telemetry/events/${encodeURIComponent(id)}${includeContent ? "?includeContent=true" : ""}`, signal ? { signal } : undefined);
+export type AuditEventPage = { items: AuditEvent[]; total: number; page: number; limit: number; before: string; facets: { kinds: string[]; resourceTypes: string[] } };
+export const listAuditEvents = (query: Partial<AuditQuery> = {}, signal?: AbortSignal) => {
+  const search = new URLSearchParams();
+  for (const [key, value] of Object.entries(query)) if (value !== undefined && value !== "") search.set(key, String(value));
+  return requestController<AuditEventPage>(`/api/v1/audit-events?${search}`, signal ? { signal } : undefined);
+};
 
+export const getGuardrailVersionDeletionImpact = (id: string, version: string) => requestController<GuardrailVersionDeletionImpact>(`/api/v1/guardrails/${encodeURIComponent(id)}/versions/${encodeURIComponent(version)}/deletion-impact`);
 export const deleteControllerGuardrailVersion = (id: string, version: string) => requestController<void>(`/api/v1/guardrails/${encodeURIComponent(id)}/versions/${encodeURIComponent(version)}`, { method: "DELETE" });
+
+export type SystemVersion = {
+  controlPlane: import("../../shared/software-version").SoftwareVersion;
+  dataPlane: Array<{ runnerId: string; poolId: string; status: RunnerStatus; lastHeartbeatAt: string | null; software: import("../../shared/software-version").SoftwareVersion }>;
+};
+export const getSystemVersion = () => requestController<SystemVersion>("/api/v1/system/version");
+
+export const getTestingReportDeletionImpact = (runId: string) => requestController<import("../../shared/testing-report-deletion").TestingReportDeletionImpact>(`/api/v1/test-runs/${encodeURIComponent(runId)}/deletion-impact`);
+export const deleteTestingReport = (runId: string) => requestController<void>(`/api/v1/test-runs/${encodeURIComponent(runId)}`, { method: "DELETE" });

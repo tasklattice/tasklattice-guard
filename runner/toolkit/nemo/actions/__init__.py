@@ -2,6 +2,7 @@
 from .content_filter import ContentFilterActionProvider
 from .evaluate import EvaluationActionProvider, EvaluationRoute
 from .indirect_prompt_injection import IndirectPromptInjectionActionProvider
+from .memory_poisoning import MemoryPoisoningActionProvider
 from .prompt_leakage import PromptLeakageActionProvider
 from .prompt_security import PromptSecurityActionProvider
 from .secrets import SecretsActionProvider
@@ -16,6 +17,7 @@ def local_action_providers(
     TopicRulesActionProvider,
     PromptSecurityActionProvider,
     IndirectPromptInjectionActionProvider,
+    MemoryPoisoningActionProvider,
     PromptLeakageActionProvider,
 ]:
     """Return local providers registered directly as versioned NeMo Actions."""
@@ -25,6 +27,7 @@ def local_action_providers(
         TopicRulesActionProvider(),
         prompt_security or PromptSecurityActionProvider(),
         IndirectPromptInjectionActionProvider(),
+        MemoryPoisoningActionProvider(),
         PromptLeakageActionProvider(),
     )
 
@@ -34,6 +37,7 @@ __all__ = [
     "EvaluationActionProvider",
     "EvaluationRoute",
     "IndirectPromptInjectionActionProvider",
+    "MemoryPoisoningActionProvider",
     "PromptSecurityActionProvider",
     "PromptLeakageActionProvider",
     "SecretsActionProvider",

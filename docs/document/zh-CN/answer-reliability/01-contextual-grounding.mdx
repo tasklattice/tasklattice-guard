@@ -1,0 +1,132 @@
+---
+id: "contextual-grounding"
+title: "回答依据核验（Contextual Grounding）"
+summary: "检查模型回答是否被用户问题和调用方提供的参考资料支持。"
+order: 0
+---
+
+回答依据核验只检查 **Output**。它回答一个有限的问题：
+
+> 当前回答是否被本次请求提供的参考资料支持，并且与用户问题相关？
+
+它不是通用事实核查，也不自动检索公司文档。参考资料必须由调用方通过 `grounding_sources` 提供。
+
+<a id="grounding-boundary" />
+
+## 保护对象和边界
+
+| 项目 | 说明 |
+| --- | --- |
+| 保护对象 | 模型最终回答 |
+| 校验依据 | `query` 和至少一条非空 `grounding_sources` |
+| 不负责 | 判断世界上某个事实是否绝对正确、搜索内部知识库、判断输入是否安全 |
+| 执行阶段 | Output |
+
+没有 query 或没有参考资料时，系统不能静默通过。调用方必须提供完整上下文。
+
+<a id="grounding-factuality" />
+
+## 与 Factuality Judge 的区别
+
+当前实现是 **Contextual Grounding**：
+
+```text
+answer vs supplied evidence
+```
+
+如果你只需要“模型直接判断一句话是否明显错误”，那是 **Factuality Judge**，不是当前能力。不要用没有 source 的请求伪装成 Grounding；这会产生错误的证据语义。
+
+Factuality Judge 需要单独的 profile、提示词、响应契约和测试，目前未作为本能力的一部分提供。
+
+<a id="grounding-model" />
+
+## 模型要求
+
+Grounding 使用 OpenAI-compatible chat completion。模型必须：
+
+- 支持 `POST {baseUrl}/chat/completions`；
+- 支持 `Authorization: Bearer <credential>`；
+- 支持 `temperature: 0`；
+- 支持 `response_format: {type: "json_object"}`；
+- 能稳定返回严格 JSON，不额外包裹解释文本。
+
+DeepSeek `deepseek-flash` 已在 `tali.grounding-judge.v1` 上验证通过。其他 OpenAI-compatible 模型必须单独验证，不能只凭“模型可调用”认定兼容。
+
+<a id="grounding-request" />
+
+## 后端 API 契约
+
+```http
+POST {baseUrl}/chat/completions
+Authorization: Bearer <credential>
+Content-Type: application/json
+```
+
+请求体：
+
+```json
+{
+  "model": "deepseek-flash",
+  "temperature": 0.0,
+  "max_tokens": 1200,
+  "response_format": {"type": "json_object"},
+  "messages": [
+    {"role": "system", "content": "<grounding judge prompt>"},
+    {"role": "user", "content": "{\"queries\":[{\"block_id\":\"query\",\"text\":\"保修期多久？\"}],\"grounding_sources\":[{\"block_id\":\"source-1\",\"text\":\"产品保修期为一年。\"}],\"response\":{\"block_id\":\"answer\",\"text\":\"产品保修期为一年。\"}}"}
+  ]
+}
+```
+
+模型返回 OpenAI chat 结构，`choices[0].message.content` 必须是：
+
+```json
+{
+  "grounding_score": 0.95,
+  "relevance_score": 0.9,
+  "claims": [
+    {
+      "id": "claim-1",
+      "claim": "产品保修期为一年",
+      "support": "supported",
+      "confidence": 0.95,
+      "source_block_ids": ["source-1"],
+      "rationale": "source-1 明确写了保修期为一年"
+    }
+  ],
+  "reason": "回答被参考资料支持且与问题相关"
+}
+```
+
+字段约束：
+
+| 字段 | 要求 |
+| --- | --- |
+| `grounding_score` | `0..1` |
+| `relevance_score` | `0..1` |
+| `claims` | 最多 100 条 |
+| `support` | `supported`、`unsupported` 或 `uncertain` |
+| `source_block_ids` | 必须引用请求中存在的 source block |
+
+<a id="grounding-limits" />
+
+## 输入限制和失败语义
+
+| 输入 | 上限 |
+| --- | ---: |
+| query | 1,000 字符 |
+| 拼接后的 grounding sources | 100,000 字符 |
+| 单段待核验回答 | 5,000 字符 |
+
+服务不可用、JSON 无效、source 引用未知或缺少上下文时，检查失败并按 fail-closed 处理。阈值配置和错误分类会保留在运行证据中。
+
+<a id="grounding-config" />
+
+## 配置入口
+
+1. 在模型提供商中注册 OpenAI-compatible Provider。
+2. 在模型中注册 `tali.grounding-judge.v1`。
+3. 在 Protection Capabilities 的 `contextual_grounding.output` 选择模型。
+4. 使用带 query 和 source 的样例验证绑定。
+5. 在 Guardrail 中启用 `model/grounding`，仅限 Output。
+
+该能力依赖模型绑定和完整参考资料，因此不在 Full-feature 默认 Profile 中启用。

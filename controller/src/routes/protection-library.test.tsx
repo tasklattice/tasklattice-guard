@@ -1,3 +1,4 @@
+import { setCurrentProjectId } from "@/lib/project-context";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -6,19 +7,21 @@ import type { Policy } from "@/lib/api";
 import { PolicyLibraryPage } from "./policy-library";
 
 vi.mock("@/components/policy-studio", () => ({ PolicyStudioSheet: () => null }));
-vi.mock("@/lib/auth", () => ({ useAuth: () => ({ user: { role: "member" } }) }));
+vi.mock("@/lib/auth", () => ({ useAuth: () => ({ user: { role: "user" } }) }));
 const routing = vi.hoisted(() => ({ search: {} as { policy?: string; version?: string }, navigate: vi.fn() }));
 vi.mock("@tanstack/react-router", () => ({ useNavigate: () => routing.navigate, useSearch: () => routing.search, Link: ({ children }: { children: React.ReactNode }) => <span>{children}</span> }));
 vi.mock("react-i18next", () => ({ useTranslation: () => ({ t: (key: string) => key.startsWith("protection.") ? key.slice(11).split(".").reduce((value: unknown, part) => (value as Record<string, unknown>)?.[part], protectionEn) ?? key : key }) }));
 const api = vi.hoisted(() => ({ getPolicies: vi.fn() }));
-vi.mock("@/lib/api", async (original) => ({ ...await original<typeof import("@/lib/api")>(), getPolicies: api.getPolicies }));
+vi.mock("@/lib/api", async (original) => ({ ...await original<typeof import("@/lib/api")>(), getPolicies: api.getPolicies,
+  getGuardrailProfiles: vi.fn().mockResolvedValue({ items: [], count: 0 }) }));
 
 const current: Policy = {
   id: "passport", name: "Passport identifiers", description: "Contextual passport checks", source: "built_in", version: "2",
   implementation: "rules", tags: [], parameters: [], rails: ["input", "output"], rules: [], test_cases: [], test_count: 4,
-  effects: ["redact"], forms: ["regex"], safety_level: "balanced", output_delivery: "full_buffered",
+  effects: ["transform"], detectors: ["text/regex"], safety_level: "balanced", output_delivery: "full_buffered",
   protection: { directory: "privacy", execution: "local", modelCapabilities: [], requiredContext: [], outputStreaming: "complete_response", limitations: [] },
 };
+beforeEach(() => { setCurrentProjectId("test1"); });
 afterEach(cleanup);
 beforeEach(() => { routing.search = {}; routing.navigate.mockReset(); });
 
@@ -43,7 +46,7 @@ describe("focused protection library", () => {
     expect(alert.textContent).toContain("No other version has been substituted");
     expect(screen.queryByRole("dialog")).toBeNull();
     fireEvent.click(within(alert).getByRole("button", { name: "common.close" }));
-    expect(routing.navigate).toHaveBeenCalledWith({ to: "/policy-library", search: { policy: undefined, version: undefined }, replace: true });
+    expect(routing.navigate).toHaveBeenCalledWith({ to: "/$projectId/policy-library", params: { projectId: "test1" }, search: { policy: undefined, version: undefined }, replace: true });
   });
 
   it("shows the complete map and respects an empty directory", async () => {

@@ -1,0 +1,64 @@
+---
+id: "platform-models"
+title: "Configure Providers, Models, and protection capabilities"
+summary: "Connect a Provider, register and test a Model, then assign a compatible Model to the Rail that needs it."
+order: 1
+---
+Platform administrators configure shared model services and detector bindings. Business users select the resulting capabilities in their Guardrails.
+
+Default needs no detection model. It uses reviewed local Rules. Model-backed Policies remain available for other Guardrails. Local matching does not replace semantic model detection.
+
+<a id="platform-model-steps" />
+## Configure dependencies in order
+
+1. Register the service address and credential under [Providers](/settings/providers).
+2. Check connectivity. Private-CA and TLS settings apply only to that Provider.
+3. Register the physical model under [Models](/settings/models) and set its concurrency limit, which defaults to 2.
+4. Make a real test call. Model discovery alone does not prove callability. Use **Test all models** to run that call for each registered Model in sequence and get one reachability summary.
+5. Assign the Model to a compatible capability under [Protection Capabilities](/settings/protection-capabilities).
+6. Save the binding, then review and apply the configuration. Validation is optional.
+7. Inspect application progress under [platform health](/settings/health).
+
+Protection Capabilities shows one row per capability. Input and output share a model by default; choose **Configure by stage** to assign different models. Existing different assignments are preserved. A shared model must support both stages; JEV and Laya content safety support shared and stage-specific configuration.
+
+Each capability has separate **Validate** and **Save** buttons. Optional validation checks each configured stage and shows input and output results separately. **Save** saves the stage bindings; if one stage fails to save, its selection and error remain available for retry. Saved bindings can be reviewed and applied without validation, including when tests failed. Input and output still require compatible contracts; test results remain separate from activation.
+
+Health checks the bindings used by the runtime baseline and enabled published routes. Unused assignments and historical versions do not make a local installation unhealthy.
+
+Administrators can activate untested or failed bindings. Activation preserves the actual results and does not prove detection passed. Validate your own positive and negative cases before publication.
+
+<a id="platform-model-deadlines" />
+### Execution deadlines
+
+Model concurrency accepts 1–64. Checks and requests that reference the same registered model share its allowance within a Runner; different models can execute concurrently. Queue time counts against the execution deadline. Short-circuited requests cancel their queued model calls.
+
+You can update concurrency for an assigned model in model settings. Saving distributes the change to Runners without repeating behavioral validation. The allowance is per Runner; it is not a fleet-wide Provider quota.
+
+Remote detector modules have a maximum execution budget of 30 seconds. Capability probes use the same upper bound. A longer Model timeout does not extend this budget. Timeouts cannot count as passing inspection evidence.
+
+For Grounding through NVIDIA's hosted `nvidia/nemotron-3.5-lightning-30b-a3b`, the adapter disables optional thinking. This setting applies to that adapter only. It does not modify portable Policy definitions.
+
+<a id="platform-model-evidence" />
+### Read validation evidence before assigning blame
+
+Every Validate run keeps the captured request and response for each sample, whether it passed or failed. Open **Failed evidence** or **Pass evidence** to inspect the exact endpoint, request body, request headers, response body, status, duration, prompt revision and configured thresholds. Credentials are redacted; the export keeps the full JSON.
+
+A failed sample reports one attribution instead of a bare "failed":
+
+- **Capability** — the protocol was answered correctly but the direction was wrong.
+- **Threshold** — the score fell inside the configured gray area. The operating point did not confirm a judgement, and this is not a model-quality finding.
+- **Protocol** — the response did not match the agreed schema or labels. Treat it as an adapter or deployment mismatch, not detection quality.
+- **Endpoint** — the call failed or timed out before a usable response. This is a platform, network or provider-availability question.
+- **Configuration** — the credential, permission, endpoint or model ID did not allow the call.
+- **Platform** — the Runner or Guard failed while evaluating.
+
+Attribution is derived from captured evidence. It never changes the pass/fail result, and two smoke samples still cannot establish detection quality for a whole capability. A gray-area sample therefore stays unvalidated even when the Policy fallback blocks it.
+
+<a id="platform-model-boundary" />
+## Distinguish capabilities from Policies
+
+A capability binding supplies a detector dependency. A Policy defines reusable protection behavior. A successful model connection does not establish that a particular Rule detects the intended content.
+
+An existing Generic chat Model, including DeepSeek, can also be selected for **Independent classifier review** while retaining its Control Plane assignment. The built-in prompt automatically includes the original criteria, evaluated input/output and context; enable `review_unknown=true` in a supported Guard Policy binding to review JEV/Laya input or content-safety output gray-area results. The stages may share a model or use separate models, with independent validation results. Primary detectors still require their supported specialized protocols. Controller distributes only the Models and credentials referenced by active data-plane bindings.
+
+For proof-service setup and known validation examples, see [formal verification](/document/operator/operator-create-policy#operator-policy-formal-service). Deployment and protocol details remain in `docs/model-configuration.md` in the repository.

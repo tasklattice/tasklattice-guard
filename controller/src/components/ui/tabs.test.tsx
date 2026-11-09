@@ -1,4 +1,10 @@
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "./tabs";
@@ -25,8 +31,8 @@ describe("Tabs", () => {
     const list = screen.getByRole("tablist", { name: "Example views" });
     const overview = screen.getByRole("tab", { name: "Overview" });
 
-    expect(list.className).toContain("border-b");
-    expect(overview.className).toContain("shrink-0");
+    expect(list.className).toContain("cds--tab--list");
+    expect(overview.className).toContain("cds--tabs__nav-link");
     expect(overview.className).not.toContain("flex-1");
     expect(overview.getAttribute("data-state")).toBe("active");
     expect(overview.getAttribute("aria-selected")).toBe("true");

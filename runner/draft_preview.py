@@ -20,6 +20,7 @@ from runner.toolkit.runtime.contracts import (
 from runner.toolkit.runtime.service import GuardrailRuntimeService
 
 from .compiler import DefaultRunnerCompiler
+from .preparation import prepare
 from .artifact_config import config_snapshot_from_artifact
 from . import generated as protocol
 from .protocol_codec import (
@@ -51,7 +52,8 @@ class DraftPreviewRuntime:
         max_entries: int = 32,
         max_concurrency_per_guardrail: int = 8,
     ) -> None:
-        self._compiler = compiler
+        self._source_compiler = compiler
+        self._compiler = compiler.snapshot()
         self._providers = providers
         self._ttl_seconds = max(1.0, ttl_seconds)
         self._max_entries = max(1, max_entries)
@@ -83,41 +85,11 @@ class DraftPreviewRuntime:
                 current.expires_at = time.monotonic() + self._ttl_seconds
                 return _descriptor(current, draft_revision, self._ttl_seconds)
 
-            artifact = await asyncio.to_thread(
-                self._compiler.compile,
-                protocol.CompileRequest(
-                    compile_id=preview_id,
-                    guardrail_id=guardrail_id,
-                    guardrail_version=candidate_version,
-                    generation=0,
-                    plan=plan_to_proto(plan),
-                    runtime_profile=runtime_profile,
-                ),
-            )
-            compiled_plan = plan_from_dict(plan_from_proto(artifact.plan))
-            config = _config_from_artifact(artifact)
-            store = _PreviewStore(preview_id, draft_revision, compiled_plan, config)
-            registry = NeMoRuntimeRegistry(
-                store,
-                self._providers,
-                max_entries=1,
-                max_concurrency_per_guardrail=self._max_concurrency,
-                native_models=self._compiler.native_models,
-            )
-            runtime = NeMoRuntime(registry)
-            service = GuardrailRuntimeService(
-                runtime,
-                store,
-                contexts=CallContextStore(ttl_seconds=self._ttl_seconds, max_entries=1_000),
-            )
-            entry = _PreviewEntry(
-                fingerprint=fingerprint,
-                compiler_version=artifact.compiler_version,
-                runtime_profile=artifact.runtime_profile,
-                service=service,
-                runtime=runtime,
-                expires_at=time.monotonic() + self._ttl_seconds,
-            )
+            async def discard(entry):
+                await entry.runtime.shutdown()
+
+            entry = await prepare(self._prepare, preview_id, guardrail_id, draft_revision,
+                                  candidate_version, plan, runtime_profile, fingerprint, on_cancel=discard)
             self._items[preview_id] = entry
             cleanup = asyncio.create_task(
                 self._expire(preview_id, fingerprint),
@@ -135,6 +107,44 @@ class DraftPreviewRuntime:
                 retired.append(self._items.pop(oldest_id))
         await _shutdown(retired)
         return _descriptor(entry, draft_revision, self._ttl_seconds)
+
+    def _prepare(self, preview_id, guardrail_id, draft_revision, candidate_version,
+                 plan, runtime_profile, fingerprint):
+        artifact = self._compiler.compile(
+            protocol.CompileRequest(
+                compile_id=preview_id,
+                guardrail_id=guardrail_id,
+                guardrail_version=candidate_version,
+                generation=0,
+                plan=plan_to_proto(plan),
+                runtime_profile=runtime_profile,
+            ),
+        )
+        compiled_plan = plan_from_dict(plan_from_proto(artifact.plan))
+        config = _config_from_artifact(artifact)
+        store = _PreviewStore(preview_id, draft_revision, compiled_plan, config)
+        registry = NeMoRuntimeRegistry(
+            store,
+            self._providers,
+            max_entries=1,
+            max_concurrency_per_guardrail=self._max_concurrency,
+            native_models=self._compiler.native_models,
+        )
+        runtime = NeMoRuntime(registry)
+        service = GuardrailRuntimeService(
+            runtime,
+            store,
+            contexts=CallContextStore(ttl_seconds=self._ttl_seconds, max_entries=1_000),
+        )
+        entry = _PreviewEntry(
+            fingerprint=fingerprint,
+            compiler_version=artifact.compiler_version,
+            runtime_profile=artifact.runtime_profile,
+            service=service,
+            runtime=runtime,
+            expires_at=time.monotonic() + self._ttl_seconds,
+        )
+        return entry
 
     async def evaluate(
         self,
@@ -181,6 +191,7 @@ class DraftPreviewRuntime:
             entries = list(self._items.values())
             self._items.clear()
             self._providers = providers
+            self._compiler = self._source_compiler.snapshot()
         await _shutdown(entries)
 
     def _prune_locked(self) -> list[_PreviewEntry]:

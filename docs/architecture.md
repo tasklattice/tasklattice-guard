@@ -11,15 +11,48 @@ TaskLattice Guard has two application component types:
 | **Guard Controller** | React/TanStack UI, Hono management API, Better Auth identity, PostgreSQL state, publication, reconciliation, audit, runtime logs, capacity recommendations | `controller/` |
 | **Guard Runner** | FastAPI runtime API, local Endpoint authentication, routing, NVIDIA NeMo Guardrails compilation/evaluation, artifact activation, telemetry export | `runner/` |
 
-`GuardRails 0` is the mandatory compiler-capable Runner pool, identified
-internally as `default`. It is a Runner role. NeMo code lives in
+`runner-default` is the mandatory compiler-capable Runner pool, identified
+internally as `default`. The display name is independent of the pool ID. NeMo code lives in
 `runner/toolkit/`; Controller does not load NeMo, and Runner receives no
 Controller database credentials. PostgreSQL, Redis, and observability backends
 are supporting dependencies.
 
+Project names are canonical, unique and immutable: 1–45 lowercase letters, digits
+and single hyphens. Creation normalizes whitespace and underscores to hyphens;
+`default` is reserved. Existing Project IDs and Keycloak Group Path mappings remain
+independent of the name.
+
+A Project uses its one dedicated Runner pool, or the shared `default` pool when it
+has no dedicated allocation and belongs to the default runtime group. Instances
+are named `runner-<project-name>-<ordinal>`, starting at `0`; the shared pool uses
+`runner-default-0`, `runner-default-1`, and so on. Pool labels omit the ordinal.
+The Controller rejects registration with the wrong Project name or ordinal format.
+The administrator UI manages allocation from Projects; runtime groups remain an
+internal routing and model-authorization boundary. Registering dedicated capacity
+atomically allocates the pool and an exclusive authorization scope, reusing an
+existing exclusive scope when possible. New scopes start without model grants.
+Sharing model authorization never gives a pool another Project's resources.
+Allocation changes retain the offline and stale-assignment checks.
+
+Helm deploys only the Default Runner as the platform baseline. Administrators
+create and manage all other Runners in the admin UI; their workloads and compiler
+capability are configured outside the chart. Registering a pool does not deploy
+a workload. Each Runtime Service
+balances its own replicas; an offline dedicated pool does not fall back to shared
+capacity.
+
+Upgrade migration canonicalizes legacy Project names without changing their IDs.
+Only unambiguous legacy pools are bound automatically. An unbound custom pool gets
+no Project configuration and cannot register until an administrator selects its
+Project in Runner connectivity settings while the group's Runners are offline.
+Existing pool IDs, tokens and historical Runner IDs are retained. Deploy the new
+StatefulSets to adopt the new instance names; existing live instances are not
+renamed by a database migration.
+
+
 ## Deployment topology
 
-The chart runs one Controller and at least two GuardRails 0 Runners. Every
+The chart runs one Controller and at least two runner-default Runners. Every
 Runner pool is a StatefulSet with stable ordinal identities. A stable Runtime
 Service balances across ready replicas with `sessionAffinity: None`; a private
 headless Service provides StatefulSet identity. Upstreams use the Runtime
@@ -28,7 +61,7 @@ Service, not individual Pod names.
 ```text
 AI Gateway / LiteLLM / AI App -> Runtime Service -> Guard Runner -> NeMo / models
                                                        |
-                                                       +-> Redis call/stream state
+                                                       +-> Redis call context
 
 Operator / API client -> Guard Controller -> PostgreSQL
                               ^      |
@@ -57,13 +90,39 @@ See the [deployment guide](../charts/tali-guard/README.md) for configuration.
 
 ## Resources and routing
 
+### Policy source packages
+
+Policy authoring uses one directory per Policy and one YAML file per Rule.
+The `policy.yaml` manifest explicitly owns Rule order, tests, resources and
+optional documentation. Built-in and custom packages use the same schema,
+coverage checks and detector adapter registry. See the [authoring guide](../policies/README.md)
+for the directory contract and commands.
+
+`scripts/policy_sources.py` resolves package-local resources and compiles the
+sources into the shared JSON catalog. Runtime requests never parse source
+YAML. Controller pins local Policy definitions and resolved parameters into
+the Guardrail plan; Runner uses that snapshot instead of looking up mutable
+catalog definitions during execution. Existing native model capabilities
+continue through their registered platform adapters.
+
+Package regression runs the actual Controller plan builder and NeMo runtime.
+Rule-scoped cases isolate selected Rules; Policy-scoped cases preserve the
+complete sequence. Assertions include decisions, exact transformed text and
+ordered Rule matches. CI checks generated catalog drift and runs local cases;
+model-dependent cases are explicitly `not_run` until tested in a configured
+model environment. Custom package transfer uses directory import or a ZIP
+containing declared files, file hashes and detector dependencies. Import does
+not publish or activate a Guardrail.
+
+### Runtime resources
+
 | Resource | Responsibility |
 | --- | --- |
 | Policy | Versioned Rules, actions, parameters, and test cases |
 | Guardrail | Ordered Policy composition, draft validation, immutable compiled versions |
 | Router | Ordered Routes selecting weighted, fixed Guardrail versions in a published Revision |
 | Endpoint | Runtime integration configuration, credentials, and explicit Router binding |
-| Provider / Model / Guardrail Catalog | Provider connectivity, physical model callability, and validated Rail assignment respectively |
+| Provider / Model / Protection Capabilities | Provider connectivity, physical model callability, and validated Rail assignment respectively |
 
 Policies and Rules execute in configured order. Rejection stops execution;
 transformations change the content seen by subsequent Rules. Guardrail identity
@@ -92,8 +151,10 @@ serves its generated OpenAPI contract at `/api/openapi.json` and reference UI at
 
 ## Control protocol
 
-Runner initiates a long-lived gRPC stream authenticated with a Runner token and,
-in production, mutual TLS. It registers first, then sends heartbeats, load,
+Runner initiates a long-lived gRPC stream authenticated with a Runner token.
+Production defaults to mutual TLS; explicitly disabling `security.controlTls.enabled`
+selects plaintext gRPC without changing Token authentication or artifact signing.
+It registers first, then sends heartbeats, load,
 compile/validation results, and ACK/NACK messages. Controller sends desired
 state, compile/validation requests, and drain commands.
 
@@ -121,14 +182,17 @@ Generated bindings live in `runner/generated/` and
 protocol boundary codecs. Enforcement-action helpers are also generated from
 Proto. Contract comments document field semantics, absence, units, and ranges.
 Run `make proto-generate` after changes and `make proto-check` to detect stale
-outputs. Management OpenAPI has separate `openapi:generate` and `openapi:check`
-scripts in `controller/`.
+outputs. Management OpenAPI is an ignored build artifact generated before
+development, tests, typechecking, and server builds. Its `openapi:check` script
+generates the document and validates the API contract; production serves the
+generated JSON packaged with the compiled Controller.
 
 ## Publication and model execution
 
 1. Controller validates the current Guardrail draft and builds a canonical Plan.
    The browser does not submit raw NeMo YAML or Colang for publication.
-2. A healthy GuardRails 0 Runner compiles the Plan with the pinned NeMo toolkit.
+2. A healthy compiler-capable Runner in the project's runtime group compiles the
+   Plan with the pinned NeMo toolkit. Platform presets use the default pool.
 3. Controller verifies the returned checksum, signs the artifact with Ed25519,
    stores it, marks the version `ready`, and advances desired state as applicable.
 4. Target Runners verify checksums/signatures, stage and prewarm the complete
@@ -138,10 +202,13 @@ A version's `ready` build status does not imply Runner deployment convergence.
 PostgreSQL is authoritative; the stream accelerates convergence.
 
 Provider connectivity, model callability, and Rail validation are separate
-checks. Guardrail Catalog revisions assign models to stable bindings such as
+checks. Protection Capabilities revisions assign models to stable bindings such as
 `content_safety.input` and `content_safety.output`. Input and Output execute
 today; Retrieval, Dialog, and Execution are reserved Rail types. DeepSeek
-Providers are control-plane-only. The active data-plane projection includes
+Providers support Control Plane work and explicit `classifier_review.input` / `classifier_review.output`
+bindings using a Generic chat or dedicated review profile. Laya content safety supports
+both Rails with direction-specific questions; its reviewer binding is scoped to the same Rail. Primary detector
+contracts remain specialized. The active data-plane projection includes
 only models referenced by its bindings; credentials are resolved separately and
 are not embedded in artifacts or desired-state snapshots.
 
@@ -158,35 +225,115 @@ compatible contracts. Artifacts pin behavior and dependencies, while active
 bindings select physical models. Semantic PII results without trustworthy span
 offsets redact the complete evaluated content block.
 
+Detector results use one contract across local evaluators, model adapters,
+NeMo Actions, traces, and the control protocol:
+
+| `verdict` | Meaning |
+| --- | --- |
+| `matched` | The detector found its configured target condition. |
+| `not_matched` | The detector completed and did not find that condition. |
+| `unknown` | The detector could not establish whether the condition holds, for example because context or proof is insufficient. |
+| `error` | The detector failed to execute correctly, including invalid configuration, timeouts, and malformed provider responses. |
+
+A target is the violation being detected: PII presence or a topic-boundary
+violation, for example. An allowed topic therefore yields `not_matched`.
+`not_matched` does not certify overall safety. Detection is independent of the
+Policy's `allow`, `block`, or `transform` decision; the same match can lead to
+any of these actions. Existing escalation and failure policies resolve
+`unknown` and `error` without relabeling them as a match.
+
+Provider-native labels such as `safe`, `unsafe`, and `controversial` remain in
+provider parsing and evidence, and are normalized at the evaluator boundary.
+Grounding claim support and formal proof results retain their domain-specific
+values; inconclusive claims or proofs produce `unknown` unless a violation is
+established. A malformed response produces `error` rather than `unknown`.
+
+Controller and Runner must use the same V1 detector and artifact contracts. Unsupported artifact contracts fail admission before activation.
+
 ## Effective releases and streaming
 
-Each call pins an effective release derived from desired generation, signed
-artifact checksums, and model configuration. Old materialized runtimes remain
-leased until their calls drain. A replica unable to serve the pinned release
-fails closed; shared Redis does not replicate historical model clients or
-guarantee uninterrupted calls across cold rollouts.
+### Native output engine
 
-Every pool with multiple replicas requires Redis. Call context is keyed by a
-SHA-256 digest of `call_id`, with a default five-minute TTL. It includes routing
-and release identity, up to 20 messages, and input content blocks. Stream state
-also retains output buffers, sequence, and completion state with an idle TTL.
-These values can contain protected content and are JSON, not application-level
-encrypted payloads. Production Redis needs private access, authentication, and
-transport encryption.
+The V1 compiler enables NeMo 0.24's public `stream_async(generator=...)` for
+unconditional, non-transforming Content Safety output rules using required,
+fail-closed modules and an incremental delivery mode. It emits direct Action
+rails in Policy order, `parallel: false`, and `stream_first: false`. Actions
+return NeMo `RailOutcome`; their metadata retains the existing Policy evidence.
+Every complete-response `NeMoRuntime.evaluate()` output call becomes a one-item
+source for `NeMoRuntime.protect_output()`. Configurations compiled for native
+streaming therefore also use its direct rail dispatch for complete checks,
+avoiding Colang 1's per-rail event limit for larger output Policy collections.
 
-The output-stream API accepts ordered chunks; it does not proxy upstream
-text generation or serve SSE. Callers must retain `call_id` and `stream_id`,
-submit increasing sequences serially, await each response, forward only
-`released_text`, and send `final=true` on completion. They must cancel upstream
-generation on `terminate=true` or transport failure. Lost responses must not
-cause speculative text delivery or sequence advancement.
+`NeMoRuntime.protect_output(request, source, ready=..., emit=..., observe=...)`
+is the single output execution boundary for all published configurations.
+It acquires the pinned NeMo instance once, then announces the compiled delivery
+contract through `ready`. Native configurations delegate windowing, overlap and
+ordered rail dispatch to NeMo. Other configurations collect the bounded source
+and invoke NeMo's complete evaluation once, preserving transformations and
+programmable flows. The Service handles routing and release assignment without
+choosing a delivery mode, accumulating output, or scheduling Policy checks.
 
-`full_buffered` checks the complete response. Incremental modes release checked
-text with bounded buffering; they cannot recall text released before later
-context changes a verdict. Policies requiring complete-response checks force
-the effective mode to full buffering. The API reports requested/effective modes,
-fallback reason, and effective release. LiteLLM pre/post callbacks or a successful
-connectivity check alone do not prove incremental stream protection.
+Both modes share source limits, deadline, cancellation, safe error handling and
+the `guardrail.output` span. All NeMo API paths reuse the same request context,
+model-observation scope and concurrency admission lifecycle. No additional
+event queue or producer task is introduced inside the engine.
+`emit` and `observe` are awaited async callbacks; only `emit` supplies approved
+text. `observe` supplies each check's `ProtectionDecision`, including failed
+checks. NeMo diagnostic JSON is never forwarded as model content. Valid model
+text that happens to look like an error JSON object remains deliverable.
+
+The default window is 200 iterator items with 50 retained items. For external
+generators these are **frames, not characters or tokenizer tokens**. The overlap
+must be positive and smaller than the window: in pinned NeMo 0.24 a zero overlap
+retains the buffer because of its `[-context_size:]` slice. The adapter does not
+patch that implementation. NeMo may check the retained tail again at EOF, even
+when it has no new content to release. These are overlapping-window checks,
+not accumulated-prefix checks; previously delivered content cannot be recalled.
+Model clients should yield incremental deltas without pre-buffering large
+batches. Full-response guarantees still require `full_buffered`.
+
+The result distinguishes `completed` from `blocked`. Evaluation, upstream or
+delivery failure raises `OutputStreamEvaluationError`; it never permits raw-output
+fallback. Block, error and cancellation close the source and release admission.
+The source must end only on confirmed normal upstream completion and raise on
+truncation. Defaults cap a stream at 300 seconds, one million characters and
+100,000 frames. Input checks, Endpoint authorization and route resolution remain
+the caller's responsibility. Transforming, conditional, arbitrary Colang and
+full-buffered policies use this same entry with complete-response delivery.
+The lower-level native streaming adapter is limited to the configurations the
+compiler explicitly enables; it does not act as a second general executor.
+The existing NeMo public API calls remain encapsulated behind this boundary;
+no NeMo fork or private streaming implementation is patched.
+
+### WebSocket delivery protocol
+
+Runner exposes `/runtime/v1/endpoints/{id}/guardrails/output-stream` as a WebSocket.
+One connection pins the call context, release and model revision, supplies the
+source generator to NeMo and forwards approved deltas. The old per-chunk HTTP
+state machine and Redis output-buffer/lock storage have been removed.
+
+The `start → ready → delta/ack → end → completed|blocked|error` protocol separates
+input credits from approved delivery. Eight outstanding frames bound Relay's
+lookahead while NeMo checks. The socket reader continues listening for disconnects
+during model calls, cancelling execution and freeing admission on disconnect.
+Relay serves normal SSE to clients and closes the model iterator on block, error
+or cancellation. It verifies upstream completion before sending `end`.
+
+Requested incremental modes use NeMo window buffering. Full-response policies
+collect the complete source and run the same NeMo evaluation path once, preserving
+transformations. Client delivery always uses the approved output events.
+
+Redis still shares Input/Output call context (default TTL 300 seconds), including
+release identity, up to 20 messages and input blocks. These can contain protected
+content; production Redis requires private access and appropriate protection.
+An output connection cannot resume on another replica. If its pinned release is
+unavailable, the call fails closed. Release leases keep existing runtimes alive
+while calls drain; Redis does not replicate model clients or native iterators.
+
+See [the protocol](gateway-integration.md#6-streaming-output-guard),
+[native engine tests](../tests/control_plane/test_native_output_stream.py),
+[network tests](../tests/data_plane/test_stream_safety_network.py) and
+[actual Relay SSE tests](../tests/e2e/test_relay_stream_delivery.py).
 
 ## State ownership and lifecycles
 
@@ -197,30 +344,31 @@ Router deployment projections. Values on the gRPC wire are defined in Proto.
 
 | State axis | Meaning |
 | --- | --- |
-| Guardrail resource | `draft` or `active`; `disabled` is terminal after soft deletion |
-| Guardrail version | `compiling` -> `ready` or `failed`; compilation does not interrupt an already active version |
+| Guardrail resource | `draft` / `active`; soft deletion records `disabled`; confirmed package re-import restores the identity to `draft` |
+| Guardrail version | `pending` -> `ready` after local tests and Release; deletion of the final matching Passed report returns it to `pending` |
 | Validation run | `queued` -> `running` -> `passed` or `failed`; a fast result may complete directly from `queued` |
 | Endpoint | Reversible `active` / `disabled` until terminal soft deletion |
 | Runner | `syncing` / `offline` reflect convergence/connectivity; synchronized Runners report `ready`, `busy`, or `saturated` pressure |
 | Router rollout | `unpublished`, `distributing`, `active`, or `failed`, derived from publication, generation, fresh Runner ACKs, and errors |
 
-UI readiness (`needs_validation`, `ready`, `protected`), empty validation history
+UI readiness (`not_ready`, `ready`), empty validation history
 (`not_run`), and Endpoint setup progress are derived views, not writable resource
-lifecycles. Router rollout can return from `active` to `distributing` when Runner
+lifecycles. Guardrail Ready requires a retained released immutable version with a local Passed report for the same content and frozen suite; draft edits and Router references do not determine it. The registry shows version counts and exact traffic references instead of resource-wide Policy counts or the latest report. Router rollout can return from `active` to `distributing` when Runner
 heartbeats expire or replicas fall behind.
 
 Guardrail and Endpoint soft deletion checks recent traffic and telemetry
 freshness. Recent traffic requires explicit second confirmation and the exact
 resource name; the API records a reason and preserves versions, artifacts, and
-audit/runtime evidence. Historical version deletion is a separate operation
+audit evidence. Guardrail deletion permanently clears local test reports/tasks and runtime data, resetting retained versions to pending. Historical version deletion is a separate operation
 with reference, convergence, and in-flight retention checks. Router rollback
-publishes a new Revision; Guardrail rollback activates an existing ready version.
+publishes a new Revision; switching Guardrail versions means explicitly changing a Router target or the pinned runtime baseline.
 See [revision lifecycles](revision-lifecycle.md) for the exact constraints.
 
 ## Identity, secrets, and retained data
 
 - Better Auth owns human identity, sessions, passwords, and roles. Local
-  OrbStack credentials are `admin` / `admin`; production requires a strong
+  OrbStack accounts are `admin` / `password` (admin) and `user` / `password`
+  (user); production requires a strong
   bootstrap Secret. Bootstrap creates a missing identity without resetting an
   existing password.
 - Management API clients can use personal Access Tokens with module permissions,
@@ -230,13 +378,67 @@ See [revision lifecycles](revision-lifecycle.md) for the exact constraints.
 - Endpoint credentials are shown once; Controller stores SHA-256 verifiers and
   projects them to Runners for local authentication. Controller holds the artifact
   signing private key; Runners receive the verification public key.
-- Runtime events contain bounded metadata by default. When the Guardrail logging
-  level qualifies and an encryption key is configured, Runner encrypts captured
-  before/after content with AES-GCM before writing the WAL or exporting it.
-  Controller stores ciphertext and decrypts content for authorized reads.
+- Runtime events retain audit metadata, findings, versions, and execution traces
+  at every logging level. INFO never captures bodies. DEBUG selects an entire
+  correlated call when any finding has `verdict=matched` and Rule risk Medium,
+  High, or Critical. TRACE selects every call. Actions, errors, confidence, and
+  encryption availability do not change this selection. Only original received
+  content is retained; new events set `originalContentOnly=true` and do not store
+  `contentAfter`. Existing transformed-content history remains readable.
+  Runner encrypts selected originals with AES-GCM before writing the WAL or
+  exporting them. A missing storage key reports `storage_unavailable` rather
+  than changing the capture decision or exporting plaintext.
+  The same encrypted payload includes the HTTP request received at the Runner:
+  method, target, HTTP version, ordered headers (including duplicates), and the
+  complete body bytes. Authentication header values are replaced with
+  `[REDACTED]` before encryption. Controller exposes this envelope only on
+  administrator detail reads with `includeContent=true`; lists and ordinary
+  detail reads exclude it in SQL, before allocating a body in Controller.
+  Opening an Item loads metadata and Trace only. Expanding a content panel or
+  clicking download fetches that checkpoint's body on demand; closing the panel's
+  sheet aborts pending reads and releases its content. Previews are bounded to
+  64 KiB with limits on JSON tokens and nesting; downloads remain complete.
+  The console displays only the body, formatting and highlighting valid JSON
+  without changing numeric precision. HTTP downloads retain the captured body
+  bytes and headers. Older records without an HTTP envelope offer retained-text
+  downloads only; missing headers and original bodies cannot be reconstructed.
+
 - Runtime logs and routing events are batched from the local Runner WAL to
   Controller over authenticated HTTP outside the synchronous protection path.
   Redis call/stream content has the separate retention boundary described above.
+
+### Whole-call runtime body capture
+
+`runner/runtime_log_capture.py` pins the logging level at the first checkpoint,
+scoped by Endpoint, Guardrail, protocol family, and call ID. LiteLLM HTTP Input
+and streaming Output share the same protocol scope. Existing request IDs,
+checkpoint IDs, traces, and version evidence are reused without a new audit
+schema. Calls without an ID are selected independently; Scan remains standalone.
+
+DEBUG encrypts candidate originals before buffering them. The default correlation
+window is 300 seconds, matching the call-context window. Configuring the existing
+call-context Redis URL also shares capture state across Runner replicas. Without
+Redis, state is local to the Runner. Pending candidates are bounded to 8 MiB per
+call; the local fallback additionally caps memory at 64 MiB and 10,000 calls.
+Expiry removes unselected bodies without sending them to Controller storage.
+Buffer failures or overflow preserve audit delivery and mark incomplete capture
+on affected events. No content is fabricated for absent output.
+
+An Input or Output match selects the call and releases pending encrypted bodies.
+Later checkpoints in that call inherit selection. Audit metadata is emitted
+immediately, even while bodies are pending. Candidates are acknowledged only
+after enriched events reach the disk-backed telemetry WAL, allowing idempotent
+replay after delivery failures. `runtime-event-write.ts` enriches an existing
+event by ID and validates its call, Runner, Endpoint, and Guardrail identity.
+It merges capture fields only: decisions, timestamps, findings, traces, and
+already retained ciphertext are not replaced. Out-of-order delivery creates one
+event without duplicating audit evidence.
+
+HTTP bodies retain their original bytes; text-only and streaming capture retains
+original received text instead of the transformed decision text. Streaming
+checkpoints carry successive received text segments under the same call ID.
+INFO retains the existing execution trace without body capture; DEBUG and TRACE
+do not filter or remove audit evidence.
 
 ## Capacity and verification
 
@@ -248,7 +450,7 @@ Kubernetes/Helm or an external autoscaler.
 
 Metrics distinguish policy decisions from technical failures and expose control
 convergence and telemetry freshness. See the
-[observability contract](../observability/README.md) for metrics and alerts.
+[observability contract](observability.md) for metrics and alerts.
 
 Architecture acceptance covers chart topology/Redis/mTLS constraints, independent
 component builds, signed artifact verification and atomic activation, direct
@@ -256,3 +458,131 @@ Runner traffic, pinned call/stream behavior, authenticated telemetry with encryp
 content capture, and deletion evidence retention. Run the relevant Controller,
 Runner, protocol, and Helm checks through the repository's Makefile and package
 scripts; this document is not a test-results ledger.
+
+
+## Topic Control boundaries
+
+Topic Control drafts carry `allowedTopics`, `restrictedTopics`, and
+`topicControlMode` (`strict` or `permissive`). New drafts and intent analyses
+default to permissive mode. Existing drafts without a mode
+remain strict. A denied task takes precedence over an allowed task. Strict mode
+requires every substantive requested task to fit the allow-list; permissive mode
+allows unmatched tasks after denied-topic checks. Other safety Policies and
+fail-closed handling of model errors remain in effect.
+
+The authoring UI uses one intent description with placeholder examples for the
+business purpose, allowed tasks, prohibited behavior, and exceptions. The configured
+control-plane AI returns editable `allowed_topics` and `restricted_topics` lists;
+the user-selected mode is preserved, and applying the proposal is explicit.
+Document analysis extracts both lists from source evidence. Draft editing,
+candidate previews, immutable plans and both NeMo topic execution paths preserve
+the same configuration. Strict and permissive modes require semantic judgment;
+mentioning an allowed phrase cannot skip denied-topic evaluation. Semantic
+classification is probabilistic, so validation covers unmatched and denied topics.
+
+Intent and document authoring use at least a 60-second model timeout, or the
+configured model timeout when longer, because structured proposals take longer
+than short connection probes. Timeout failures return HTTP 504; upstream HTTP,
+transport, response decoding, and proposal validation failures return HTTP 502
+with a distinct `stage`. Administrator responses include provider/model,
+endpoint, a diagnostic ID, elapsed time, upstream status/request ID when
+available, and redacted response/validation evidence. The UI preserves the
+message and displays expandable diagnostic details. Server logs retain only
+correlation and timing metadata, never prompt/document or response content.
+A socket disconnect before TLS establishment is retried once within the same
+request deadline. Certificate errors, provider HTTP failures, timeouts, and
+response validation failures are not retried automatically.
+
+
+Guardrail creation checks the active `topic_control.input` assignment on the
+Configure protections step. Missing, unverified, failed or inactive assignments
+keep Topic Control visible with a setup explanation, but disable model-dependent
+Policy selection and topic boundary authoring. Local keyword Policies remain
+selectable. Preset selections are preserved and removable; unavailable topic
+bindings block candidate preview and creation. Both intent and document authoring
+entry points are hidden until the runtime capability is ready. The five protection
+sections are Safety & attacks, Data & privacy, Business rules, Topic Control and
+Correctness checks. Classification follows policy purpose; model readiness is a
+separate state. Local keyword rules remain under Business rules. Availability refreshes while the
+wizard is open; the control-plane authoring model is not runtime capability evidence.
+
+Contextual Grounding and Automated Reasoning independently require a verified,
+active `contextual_grounding.output` or `automated_reasoning.output` assignment.
+Creation and draft editing disable unavailable checks and their configuration,
+while allowing existing bindings to be removed. Preset and document proposals
+cannot bypass this requirement, and unavailable bindings block preview/save.
+A control-plane model or connection-only probe is not capability evidence.
+Grounding additionally needs query/source content; reasoning needs a versioned
+formal policy and a compatible reasoning service, not a generic chat endpoint.
+
+### Guardrail Profiles
+
+A Profile is a preconfigured starting template, distinct from a Guardrail draft
+and from an evaluator/model profile. `guardrail_profile` stores its category,
+default flag, enabled state, display order, and versioned definition, including
+ordered Policy/version references, Rails, parameter values, handling actions,
+reviewed test overlays, Rule order and optional complete draft settings.
+Migration 0052 narrows built-in discovery to Default, Full-feature baseline,
+Bank, Securities & brokerage and Internet platform support, in that order.
+Default retains `local-baseline@1.0.0`; Bank retains `banking-assistant@2.0.0`.
+The migration disables only the 11 retired built-in records and changes display
+metadata for retained choices. It leaves Policy pins, Guardrail drafts, test
+cases, source snapshots, signed Artifacts and the provisioning marker untouched.
+User-owned records and disabled state are preserved. The partial unique index
+allows one enabled default per category.
+Seeds run once through the migration journal; runtime startup never replaces
+operator changes. Add new defaults through a migration, not a request-time seed.
+
+`GET /api/v1/guardrail-profiles` reads enabled records from PostgreSQL on each
+request and expands their pinned Policy references. The
+`/api/v1/policy-catalog/protection-presets` route remains a database-backed alias.
+Both require authenticated Policies read access. Profile application copies
+bindings and draft settings into the draft; later Profile changes do not rewrite existing Guardrails.
+Each Profile response has an `availability` result. A missing pinned version
+disables only that Profile, and never substitutes another version.
+The UI initially selects Default (`local-baseline`) and lists enabled Profiles in one dropdown,
+with the name followed by industry/use-case and default tags. It preserves
+explicit append/replace/cancel/undo behavior.
+Choosing blank is respected. Model readiness is checked for execution, including
+bindings inherited from a Profile. Topic model setup does not block manual
+draft creation or editing; AI-assisted authoring still requires it.
+
+Migration 0049 introduced the original eight-Policy benchmark Profile.
+Migration 0053 upgrades its untouched built-in definition to
+`full-feature-baseline@2.0.0`: 14 Policies and 127 Rules, including output
+content safety, semantic PII, direct/indirect injection, memory poisoning,
+data-use boundaries and a prefilled Topic denylist. Disabled state and custom
+definitions are preserved; existing Guardrail snapshots and test outcomes are
+unchanged. The six directional model requirements derive from the selected
+Rules and Rails and shrink when protections are removed.
+The Profile uses a bundled declarative
+`builtin-jailbreak-strict@1.0.0` instead of an installation-specific Policy.
+`profileOrigin` records the template ID and version in the editable draft;
+it does not introduce runtime inheritance or embed model credentials.
+Replacing a Profile applies all settings; appending preserves existing settings.
+Undo restores settings, bindings and provenance together. Model readiness is
+shown immediately; missing jailbreak/content-safety assignments do not prevent
+draft creation, editing or publication. Testing model behavior requires the
+corresponding platform assignments; failed tests do not block publication.
+
+Before saving or previewing a selection, unchanged inherited expectation
+overlays are reconciled against the exact source Profile (creation) or previous
+saved draft (editing). Deselected Policies, Rules or Rails remove only overlays
+whose source Case or expected Rule became unavailable. Remaining generated
+Cases retain the original Policy assertions; tests are not silently excluded.
+Edited, unknown and version-stale overlays still fail validation. Composition
+changes require a fresh validation run. See [the Profile guide](full-feature-baseline.md).
+
+### Unified Rule detector contract
+
+Policy source packages use one Rule contract: stages, a versioned detector reference with parameters, and post-match handling. The compiled Rule retains `detector.ref` and `detector.version`; the former `form` enum and Policy `forms` aggregate are removed. Catalog/API discovery exposes `detectors` instead. Internal `implementation.execution` routes local checks, platform capabilities, and existing programmable Flows; it is not another author-facing Rule type. Local content filtering dispatches on the resolved detector and uses common Rule ordering, effect application, and rejection handling. Unknown local detectors raise an error instead of silently passing. Registered adapters own NeMo bindings, while source packages cannot supply executable code.
+
+Pattern detection uses `text/regex` with optional candidate validators (`date`, `weighted_checksum`, `luhn`). Business-specific identifier formats, date offsets, alphabets, weights, and check-character maps live in the Policy Rule. Controller snapshots retain the validated configuration, and Runner applies every configured check to both literal and normalized number candidates before recording a match. Country-specific detector entries and dispatch branches are removed; adding a format supported by these algorithms needs Rule data and regression cases, not another runtime detector.
+
+### Rule detection and Gateway directives
+
+A Policy is a collection of Rules plus metadata, resources and tests. Each Rule is the smallest business-processing unit and owns its stages, detector configuration, risk level and on-match directive. LocalDetector accepts only technical DetectorInput and returns evidence/spans; the Policy executor separately attaches Rule identity, pinned risk and handling requirements. Detection must not branch on a handling action. Runner may compute a replacement view for subsequent checks, but Gateway/application enforcement remains authoritative for the actual model request and delivery.
+
+Local category heuristics and competitor vocabulary are now source-owned text/conditions predicates. Code structure and execution-request detection are separate Rules. Parameterized phrase entries materialize into ordinary keyword Rules before plan publication; concrete IDs, actions and risk levels are included in immutable snapshots. No phrase-sequence detector interprets actions.
+
+Model classification references share model/classifier with explicit compatible profiles. Grounding and formal verification retain distinct contracts. Existing platform-native execution adapters remain; this change does not claim that custom source packages can register model-backed Rules yet.

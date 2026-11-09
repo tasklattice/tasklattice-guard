@@ -1,30 +1,30 @@
-import * as React from "react";
-import { Avatar as AvatarPrimitive } from "radix-ui";
-
+import type { ComponentProps } from "react";
 import { cn } from "@/lib/utils";
-
-function Avatar({ className, ...props }: React.ComponentProps<typeof AvatarPrimitive.Root>) {
+// TaskLattice account initials: a product identity element, not a second widget library.
+export function Avatar({ className, ...props }: ComponentProps<"span">) {
   return (
-    <AvatarPrimitive.Root
+    <span
       data-slot="avatar"
-      className={cn("relative flex size-8 shrink-0 overflow-hidden rounded-lg bg-muted", className)}
+      className={cn(
+        "inline-flex size-8 shrink-0 overflow-hidden bg-muted",
+        className,
+      )}
       {...props}
     />
   );
 }
-
-function AvatarImage({ className, ...props }: React.ComponentProps<typeof AvatarPrimitive.Image>) {
-  return <AvatarPrimitive.Image data-slot="avatar-image" className={cn("size-full object-cover", className)} {...props} />;
-}
-
-function AvatarFallback({ className, ...props }: React.ComponentProps<typeof AvatarPrimitive.Fallback>) {
+export function AvatarFallback({
+  className,
+  ...props
+}: ComponentProps<"span">) {
   return (
-    <AvatarPrimitive.Fallback
+    <span
       data-slot="avatar-fallback"
-      className={cn("flex size-full items-center justify-center bg-primary/10 text-xs font-semibold text-primary", className)}
+      className={cn(
+        "flex size-full items-center justify-center text-xs font-semibold",
+        className,
+      )}
       {...props}
     />
   );
 }
-
-export { Avatar, AvatarFallback, AvatarImage };

@@ -49,7 +49,6 @@ SEMANTIC_FIELD_NAMES = {
     "required",
     "required_for_release",
     "revoked_at",
-    "route_order",
     "runtime_profile",
     "sequence",
     "sha256",
@@ -174,7 +173,7 @@ def test_nested_traffic_scope_and_endpoint_credentials_are_typed() -> None:
     scope = {
         "combinator": "and",
         "conditions": [
-            {"field": "header", "key": "x-tenant", "operator": "equals", "value": "acme"},
+            {"field": "header", "key": "x-project", "operator": "equals", "value": "acme"},
             {
                 "combinator": "or",
                 "conditions": [
@@ -239,7 +238,7 @@ def test_validation_result_represents_no_evaluator_without_a_sentinel() -> None:
         "reason": "",
         "phase": "input",
         "inputContent": "hello",
-        "action": "pass",
+        "action": "allow",
         "outputContent": "hello",
         "findings": [],
         "trace": [],
@@ -266,7 +265,7 @@ def _plan() -> dict[str, object]:
     return {
         "guardrail_id": "guardrail-1",
         "guardrail_version": "20260904-030000.003Z",
-        "compiler_version": "tasklattice-controller-plan-v3",
+        "compiler_version": "tasklattice-controller-plan-v1",
         "safety_level": "strict",
         "output_delivery": "full_buffered",
         "steps": [{
@@ -274,11 +273,11 @@ def _plan() -> dict[str, object]:
             "capability": "pii",
             "contract_ref": "tali.guard.pii.semantic.v1",
             "phases": ["input", "output"],
-            "on_unsafe": "redact",
+            "on_unsafe": "transform",
             "trigger": {
                 "type": "on_result",
                 "step_ref": "pii:exact",
-                "verdicts": ["uncertain"],
+                "verdicts": ["unknown"],
             },
             "parameters": [["entity_types", "passport,phone"]],
         }],
@@ -311,7 +310,7 @@ def _plan() -> dict[str, object]:
                 "rail_type": "input",
                 "flow_name": "passport input",
                 "execution_mode": "mutate",
-                "on_unsafe": "redact",
+                "on_unsafe": "transform",
                 "parallel_group": "data-protection",
                 "priority": 10,
                 "timeout_ms": 500,
@@ -329,11 +328,12 @@ def _plan() -> dict[str, object]:
         "policy_bindings": [{
             "policy_id": "passport-policy",
             "policy_version": "1.0.0",
-            "action": "redact",
+            "action": "transform",
             "parameter_values": [["entity_types", "passport"]],
             "enabled_rule_ids": ["pii/passport"],
             "rule_order": [],
-            "rule_actions": [["pii/passport", "redact"]],
+            "rule_actions": [["pii/passport", "transform"]],
+            "rule_severities": [["pii/passport", "medium"]],
             "enabled_rails": ["input", "output"],
         }],
     }

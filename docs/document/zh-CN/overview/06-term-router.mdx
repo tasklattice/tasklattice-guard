@@ -1,0 +1,140 @@
+---
+id: "term-router"
+title: "Routers：路由与灰度"
+summary: "认识 Route、Selector、Target 与 Router Revision，并判断 Runner 是否已应用。"
+order: 5
+---
+Router 为 Endpoint 流量选择执行检测的 Guardrail Version。一个 Router 可以服务多个 Endpoint，每个 Endpoint 最多绑定一个 Router。
+
+<a id="router-routes-targets" />
+## Route 与 Target
+
+Router 按顺序检查 Route，第一条匹配的 Route 选择一个加权 Target。最后的 fallback 无条件匹配。
+
+每个 Target 固定一个确切的已 Release Guardrail Version。同一 Route 的权重合计 100%。90%／10% 会将命中的逻辑调用分配给两个 Target，不会让每次调用同时经过两个 Guardrail。
+
+发布新的 Guardrail Version 不会更新 Router Target。切换流量需要修改 Router 草稿。[路由指南](/document/operator/operator-routing)说明预览、审批和下发流程。
+
+<a id="term-traffic-scope" />
+## Selector：Route 的匹配条件
+
+Selector（Traffic Scope，流量范围）用 AND／OR 组合受支持的请求事实。可用字段取决于绑定的 Endpoint 协议。
+
+例如，匹配已认证的 `endpoint.id`、`protocol`，或适配器提取的模型。调用方传入的 Header 和 claims 不会自动成为可信身份。
+
+协议提供共享 Call ID 时，Input 和 Output 沿用所选版本。Scan 请求彼此独立。参见[调用关联](/document/developer/gateway-connect#gateway-call-correlation)。
+
+<a id="state-router" />
+
+## Router 下发状态机
+
+<StateMachineDiagram kind="router" locale="zh-CN" />
+
+Router 状态<strong>不是 Router Revision 里保存的字段</strong>。Controller 根据 activeRevision、desiredGeneration、默认池 Runner 的应用确认和最近的心跳推导状态：
+
+- 尚未发布：unpublished。
+- 发布或回滚生成新的 revision 和 generation：distributing。
+- 至少有一个 Runner，全部应用了目标 generation，且心跳有效：active。
+- 没有收敛，并有 rolloutError：failed。
+
+失败后重新发布，会清除旧错误并重新下发。active 状态下，如果心跳过期或新 Runner 尚未追上，会退回 distributing。仍有错误时为 failed。旧的 revision 是 historical，不代表它曾经下发成功。
+
+<a id="router-rollout-states" />
+
+### Router 下发状态详解
+
+以下卡片解释状态含义，不显示系统实时状态。
+
+<StateCards>
+
+<StateCard title="尚未发布" code="unpublished">
+
+<StateDetail label="含义">
+
+尚无活动 Router revision，路由配置尚未发布。
+
+</StateDetail>
+
+<StateDetail label="状态变化">
+
+首次发布生成 revision 和 desired generation，进入 distributing。
+
+</StateDetail>
+
+<StateDetail label="下一步">
+
+完成 Route 和 Target 配置后，提交变更审批。
+
+</StateDetail>
+
+</StateCard>
+
+<StateCard title="正在下发" code="distributing">
+
+<StateDetail label="含义">
+
+已有活动 revision，但默认池 Runner 尚未全部确认当前 generation，或心跳已过期。
+
+</StateDetail>
+
+<StateDetail label="状态变化">
+
+所有 Runner 确认且心跳有效后，进入 active。没有收敛且存在下发错误时，进入 failed。
+
+</StateDetail>
+
+<StateDetail label="下一步">
+
+检查 Runner 连接、预热过程及 desired/applied generation。
+
+</StateDetail>
+
+</StateCard>
+
+<StateCard title="已生效" code="active">
+
+<StateDetail label="含义">
+
+默认池至少有一个 Runner，所有 Runner 已应用目标 generation 或更新版本，且心跳有效。
+
+</StateDetail>
+
+<StateDetail label="状态变化">
+
+发布新 revision 后，重新确认是否收敛。心跳过期或没有应用新 generation 时，不再视为 active。
+
+</StateDetail>
+
+<StateDetail label="下一步">
+
+观察流量和运行日志。进行中的调用仍使用开始时固定的版本。
+
+</StateDetail>
+
+</StateCard>
+
+<StateCard title="下发失败" code="failed">
+
+<StateDetail label="含义">
+
+当前 generation 尚未收敛，并记录了下发错误。这不代表所有 Runner 都已停止服务。
+
+</StateDetail>
+
+<StateDetail label="状态变化">
+
+修复后重新发布，会清除旧错误并重新下发。全部 Runner 有效确认后，进入 active。
+
+</StateDetail>
+
+<StateDetail label="下一步">
+
+查看 rolloutError 和 Runner 拒绝原因，修复依赖或配置后重新发布。
+
+</StateDetail>
+
+</StateCard>
+
+</StateCards>
+
+> Runner 准备并应用整代配置后才确认生效。拒绝新配置时继续使用此前已应用的配置。API 接受请求本身不能证明下发已经完成。

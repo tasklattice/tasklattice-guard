@@ -1,0 +1,187 @@
+---
+id: "glossary-definition"
+title: "Policy Library: Policies, Rules, and implementations"
+summary: "Split business requirements into Rules, and understand detectors, Rails, actions, tests and versions."
+order: 3
+---
+The Policy Library stores reusable protection. Review a Policy's Rules, parameters and tests before binding its exact version in a Guardrail.
+
+<a id="term-policy" />
+## Policy
+
+A Policy groups Rules for a protection purpose, such as preventing customer-information disclosure. It includes Test Cases, optional parameters, a runtime contract and compliance sources. The **Compliance** tab displays those sources.
+
+Compliance text does not execute detection by itself. Rules define executable behavior. Multiple Guardrails can reuse one Policy Version with different reviewed parameters.
+
+Use [Policy Studio](/document/operator/operator-create-policy) to create, test and publish declarative Policies.
+
+<a id="term-rule" />
+## Rule
+
+A Rule is one executable business check. It has a stable ID and defines these choices:
+
+- **Stage:** Input, Output, or both when supported.
+- **Detector and parameters:** how to recognize the issue.
+- **Risk level:** the possible impact of a match.
+- **Action:** what to request after a match.
+
+The Rule ID connects configuration, test results and runtime findings. Disabling a Rule changes compiled behavior and requires testing the changed Guardrail draft.
+
+Read a Rule in this order: business requirement, inspection stage, detector, parameters, evidence, risk, action and tests.
+
+<a id="term-rule-implementation" />
+### Select a detector
+
+The platform registers nine detectors. These are implementation capabilities, not different Rule formats.
+
+| Detector | Purpose | Stages and requirements |
+| --- | --- | --- |
+| `text/regex` | Matches formats and optionally validates candidate values. | Input or Output. Supports replacement. |
+| `text/keyword` | Matches explicit words or phrases. | Input or Output. Supports replacement. |
+| `text/conditions` | Combines all, any, exclusion or same-sentence conditions. | Input or Output. Does not supply text replacement. |
+| `code/fenced-block` | Detects Markdown fenced blocks, languages and context. | Input or Output. Does not analyze code execution. |
+| `agent/indirect-injection` | Detects instruction manipulation in external content through local rules. | Input only. Studio acceptance currently has an external-source limitation. |
+| `agent/memory-poisoning` | Detects instruction manipulation in memory through local rules. | Input only. Does not establish factual accuracy. The same Studio limitation applies. |
+| `model/classifier` | Classifies content through a compatible model contract. | Stage depends on classification. Requires an active capability binding. |
+| `model/grounding` | Checks whether reference material supports an answer. | Output only. Requires a query, sources and an active binding. |
+| `service/formal-verification` | Checks an answer against versioned formal constraints. | Output only. Requires query context and an active proof-service binding. |
+
+Studio supports custom model and formal-verification Rules. Both `agent/` choices appear, but their external-source acceptance tests currently cannot complete. Use published bundled Policies and test actual Guardrail scenarios. See [current authoring limits](/document/operator/operator-create-policy#operator-policy-declarative).
+
+Model classification supports topic, safety, jailbreak and PII profiles. Jailbreak and topic control use Input. A general chat model does not necessarily implement these contracts.
+
+Regex validators include `date`, `weighted_checksum` and `luhn`. Validators check candidate values within the same detector. They are not separate detectors. All configured validators must pass before the Rule matches.
+
+For example, this Rule masks customer identifiers in Output:
+
+```yaml
+id: customer-id
+name: Redact customer identifiers
+stages: [output]
+detector:
+  ref: text/regex
+  version: 1.0.0
+  parameters:
+    expression: '\bCUS-\d{6}\b'
+risk_level: medium
+on_match:
+  action: transform
+  replacement: '[CUSTOMER_ID]'
+metadata:
+  taxonomy_ids: [TALI-PRIVACY-PII]
+```
+
+The expected result for `Customer ID CUS-123456` is `Customer ID [CUSTOMER_ID]`. To block the whole response, select `block` and remove `replacement`. Then test the changed behavior.
+
+The business identity belongs to the Rule. The reusable detection mechanism belongs to the detector. New formats can reuse regex validators with different configured offsets, weights and mappings.
+
+A detector name alone does not provide coverage. Local patterns do not establish general semantic understanding. Model and service checks require compatible dependencies and actual execution. A model case that did not execute cannot count as passed.
+
+<a id="term-rule-risk-severity" />
+### Set risk independently from action
+
+The risk level describes possible impact. The requested action describes handling. A Guardrail Binding can override permitted actions, but not the versioned Rule risk.
+
+| Risk level | Meaning | Example |
+| --- | --- | --- |
+| `critical` | Possible major harm to data, privileges or business. | Manipulating a privileged Agent into a destructive operation. |
+| `high` | An issue affects an important security boundary or sensitive data. | Production credentials or unauthorized execution. |
+| `medium` | A material content or business risk. | Ordinary personal information or an unsupported consequential answer. |
+| `low` | A limited business or content-convention issue. | Non-sensitive off-topic content or brand wording. |
+| `informational` | An observation without a severity judgment. | Feature identification for reporting. |
+
+Risk levels do not prove harm or human confirmation. Findings without a versioned risk level display **Unclassified**. This does not mean Low or Informational.
+
+A High Rule stays High whether its action allows, blocks or transforms. A Low Rule can block. Stricter handling does not increase risk.
+
+Confidence describes detector certainty for one evaluation. A missing score means Not provided. Different detectors can use incomparable scores. A 99% score does not mean Critical.
+
+Risk and logging level jointly select original bodies. INFO captures no bodies. DEBUG captures a correlated call when either phase matches Medium or higher. TRACE captures all received originals. Action does not change this threshold. See [capture rules](/document/admin/concept-logs#concept-event-log-levels).
+
+Errors, timeouts and unavailable dependencies are operational failures. They are not Critical findings automatically. Safe results do not create Low findings.
+
+<a id="term-rule-actions" />
+### Handle a matching Rule
+
+`on_match.action` requests one of three actions:
+
+| Action | Meaning | Example |
+| --- | --- | --- |
+| `allow` | Record the match and continue. | Observe a new Rule before enforcement. |
+| `block` | Stop the current content. | Prevent a prohibited Input from reaching the model. |
+| `transform` | Return replacement content or valid patches for the caller to use. | Replace a phone number with `[PHONE]`. |
+
+Independent results use precedence **block → transform → allow**. An allow never overrides another Rule's block.
+
+Rules execute in order. Each Rule reads the text that the preceding Rule processed. A block ends the current chain. Several weighted Router Targets do not form a Rule chain.
+
+Text replacement can target matched spans or the complete text. A missing required replacement, conflicting patches or transformation failure fails closed. Unchanged unsafe text must not count as a successful transformation.
+
+The application owns regeneration, clarification, fallback and human handoff. If it generates another answer after a block, it must inspect that answer again.
+
+Runtime Decisions also use allow, block and transform. Adapters can map them to `NONE`, `BLOCKED` and `GUARDRAIL_INTERVENED`. HTTP `200` alone does not mean allow.
+
+<a id="term-rule-effective-action" />
+### Review defaults and Binding overrides
+
+The Policy defines a Rule's default action. Its normalized runtime contract calls this value `effect`. A Guardrail Binding can override the Policy action or an individual Rule action.
+
+The usual order is **Rule override → Policy Binding override → Rule default**. Some Policies constrain available actions. For example, Topic Control's denylist requires block.
+
+Changing a phone-number Rule from transform to block changes the delivered behavior. The same match now blocks the whole response. Test the changed Binding and publish a new Guardrail Version.
+
+<a id="term-catalog" />
+## Distinguish the available libraries
+
+| Library | Purpose |
+| --- | --- |
+| Policy Library | Review, create and reuse Policy definitions and versions. |
+| Protection Capabilities | Configure platform capabilities that model and service detectors require. |
+
+A category helps organize definitions. It does not supply a detection algorithm. A capability binding supplies an environment dependency, not a new Policy Version.
+
+<a id="term-test-case" />
+## Tests and versions
+
+A Test Case supplies content, expected behavior and inspection context. Required Rule acceptance cases exercise one Rule and must demonstrate a match. Scenarios exercise the complete Policy and can test ordinary passes.
+
+Keep matching, normal, boundary and failure examples. Transformation tests need the complete expected replacement, including spaces and line breaks.
+
+For example, allow an ordinary order question and block an internal-prompt disclosure request. Together they test protection and false positives.
+
+<a id="term-policy-version" />
+### Policy Version
+
+A Policy Version freezes published source and its runtime contract. Guardrails pin exact versions. Editing a Policy creates a new draft, without changing existing Bindings.
+
+Publish the tested revision as a new version. Then update each intended Guardrail Binding explicitly. Test and publish the changed Guardrail separately.
+
+<a id="state-validation" />
+### Test-run states
+
+<StateMachineDiagram kind="validation" locale="en" />
+
+Saving a draft does not run its tests. Starting tests creates a queued execution. It normally progresses to Running, then Passed or Failed. A queued execution can also complete directly.
+
+Required cases must pass. Execution and assertion failures produce Failed. Editing a draft invalidates results for the current content. Passing permits publication but does not activate traffic.
+
+<a id="state-policy-version" />
+### Policy drafts and publication
+
+Policies do not use a separate `draft / active / disabled` resource lifecycle. Each edit advances the draft revision. Publication requires passing required tests for that revision.
+
+Published Policy Versions remain immutable. Built-in or imported origin records provenance, not automatic editing authority. Users with Policy write access maintain supported definitions.
+
+<a id="term-rail" />
+## Input and Output inspection stages
+
+A Rail is an inspection checkpoint around one model call:
+
+**Input → Input inspection → model call → Output inspection → delivery**
+
+| Stage | Timing | Caller responsibility |
+| --- | --- | --- |
+| Input | Before the business-model call. | Stop blocked Input. Use transformed Input for the model call. |
+| Output | After generation, before delivery of the applicable content. | Deliver permitted or transformed content. Withhold blocked content. |
+
+TaskLattice Endpoints integrate Input and Output. Other NeMo Rail types do not imply Endpoint support. Streaming inspection handles Output only. See [streaming delivery rules](/document/developer/gateway-connect#gateway-stream-delivery).

@@ -19,13 +19,13 @@ const ready: ModelDefinition = { id: "model-1", name: "Chat", model: "chat", pro
 let client: QueryClient;
 const onChanged = vi.fn(async () => {});
 const onOpenChange = vi.fn();
-function mount(intent: "add-provider" | "register-models" = "register-models", models: ModelDefinition[] = []) {
+function mount(intent: "add-provider" | "register-models" = "register-models", models: ModelDefinition[] = [], providers = [provider]) {
   client = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
-  return render(<QueryClientProvider client={client}><RegisterModelsDrawer open intent={intent} providers={[provider]} registeredModels={models} onChanged={onChanged} onOpenChange={onOpenChange} /></QueryClientProvider>);
+  return render(<QueryClientProvider client={client}><RegisterModelsDrawer open intent={intent} providers={providers} registeredModels={models} onChanged={onChanged} onOpenChange={onOpenChange} /></QueryClientProvider>);
 }
 async function chooseProvider(name: string) {
-  fireEvent.click(screen.getByRole("button", { name: "Select Provider" }));
-  fireEvent.click(await screen.findByRole("button", { name: new RegExp(name) }));
+  fireEvent.click(screen.getByRole("combobox", { name: "Select Provider" }));
+  fireEvent.click(await screen.findByRole("option", { name: new RegExp(name) }));
 }
 describe("Relay registration workflow", () => {
   beforeEach(async () => {
@@ -46,6 +46,22 @@ describe("Relay registration workflow", () => {
     expect(suggestedProfile("nvidia/llama-3.1-nemoguard-8b-topic-control")).toBe("tali.nemoguard-topic-control.v1");
     expect(suggestedProfile("nvidia/llama-3.1-nemoguard-8b-content-safety")).toBe("tali.nemotron-content-safety.v1");
     expect(suggestedProfile("Qwen/Qwen3Guard-Gen-8B")).toBe("tali.qwen3guard.v1");
+  });
+
+  it("restricts project registration to existing platform providers and never offers credential creation", async () => {
+    client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(<QueryClientProvider client={client}><RegisterModelsDrawer open allowProviderCreation={false} intent="register-models" providers={[provider]} registeredModels={[]} onChanged={onChanged} onOpenChange={onOpenChange} /></QueryClientProvider>);
+    expect(screen.queryByRole("radio")).toBeNull();
+    expect(screen.queryByLabelText("API key")).toBeNull();
+    expect(screen.queryByLabelText("Base URL")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Discover models" }));
+    await screen.findByRole("heading", { name: "Discovered models" });
+    fireEvent.click(screen.getByRole("button", { name: "Chat chat" }));
+    fireEvent.click(screen.getByRole("button", { name: "Register 1 model" }));
+    await screen.findByText("Registration complete");
+    expect(createModelDefinition).toHaveBeenCalledWith(expect.objectContaining({ providerId: provider.id, model: "chat" }));
+    expect(discoverProviderDraft).not.toHaveBeenCalled();
+    expect(registerProviderModels).not.toHaveBeenCalled();
   });
 
   it("discovers first, selects multiple models, and registers only on confirmation", async () => {
@@ -78,6 +94,85 @@ describe("Relay registration workflow", () => {
     expect(onOpenChange).toHaveBeenCalledWith(false);
   });
 
+  it("offers Laya independently and registers its suggested decision model without catalog discovery", async () => {
+    mount("add-provider");
+    await chooseProvider("Laya");
+    expect((screen.getByLabelText("Base URL") as HTMLInputElement).value).toBe("");
+    fireEvent.change(screen.getByLabelText("Base URL"), { target: { value: "https://laya.test/v1" } });
+    fireEvent.change(screen.getByLabelText("API key"), { target: { value: "synthetic-laya-key" } });
+    fireEvent.click(screen.getByRole("button", { name: "Choose models" }));
+    await screen.findByText("Choose a Laya decision model");
+    expect(discoverProviderDraft).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: /^Register 1 model/ }));
+    await waitFor(() => expect(registerProviderModels).toHaveBeenCalledWith({
+      connection: { name: "Laya", kind: "laya", baseUrl: "https://laya.test/v1", apiKey: "synthetic-laya-key" },
+      models: [expect.objectContaining({ model: "auto", profile: "tali.laya.v1" })],
+    }));
+  });
+
+  it("shows the Laya request mode detected during registration", async () => {
+    const layaProvider: ModelProvider = { ...provider, kind: "laya", name: "Laya", baseUrl: "https://laya.test/v1" };
+    vi.mocked(registerProviderModels).mockResolvedValue({
+      provider: layaProvider,
+      models: [{ ...ready, id: "model-laya", name: "Laya", model: "auto", profile: "tali.laya.v1", providerKind: "laya", providerName: "Laya", layaRequestMode: "native" }],
+      failures: [],
+    });
+    mount("add-provider");
+    await chooseProvider("Laya");
+    fireEvent.change(screen.getByLabelText("Base URL"), { target: { value: "https://laya.test/v1" } });
+    fireEvent.change(screen.getByLabelText("API key"), { target: { value: "synthetic-laya-key" } });
+    fireEvent.click(screen.getByRole("button", { name: "Choose models" }));
+    await screen.findByText("Choose a Laya decision model");
+    fireEvent.click(screen.getByRole("button", { name: /^Register 1 model/ }));
+    await screen.findByText("Registration complete");
+    expect(screen.getByText(/Laya request mode/).textContent).toBe("Laya request mode · Native laya-serve");
+  });
+
+  it("shows a Laya request mode that is not detected yet and refreshes it after the Test call", async () => {
+    const layaProvider: ModelProvider = { ...provider, kind: "laya", name: "Laya", baseUrl: "https://laya.test/v1" };
+    const pending: ModelDefinition = { ...ready, id: "model-laya", name: "Laya", model: "auto", profile: "tali.laya.v1", providerKind: "laya", providerName: "Laya", connectionStatus: "pending", layaRequestMode: null };
+    vi.mocked(registerProviderModels).mockResolvedValue({ provider: layaProvider, models: [pending], failures: [] });
+    vi.mocked(testModelConnection).mockResolvedValue({ ...pending, connectionStatus: "validated", layaRequestMode: "native" });
+    mount("add-provider");
+    await chooseProvider("Laya");
+    fireEvent.change(screen.getByLabelText("Base URL"), { target: { value: "https://laya.test/v1" } });
+    fireEvent.change(screen.getByLabelText("API key"), { target: { value: "synthetic-laya-key" } });
+    fireEvent.click(screen.getByRole("button", { name: "Choose models" }));
+    await screen.findByText("Choose a Laya decision model");
+    fireEvent.click(screen.getByRole("button", { name: /^Register 1 model/ }));
+    await screen.findByText("Registration complete");
+    expect(screen.getByText(/Laya request mode/).textContent).toBe("Laya request mode · Not detected yet · Run Test call to detect the request mode.");
+    expect(screen.queryByText("Native laya-serve")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Test call Laya" }));
+    expect(await screen.findByText(/Native laya-serve/)).toBeTruthy();
+    expect(screen.queryByText(/Not detected yet/)).toBeNull();
+  });
+
+  it("keeps the provider catalog grouped and supports search and keyboard selection", async () => {
+    mount("add-provider");
+    const picker = screen.getByRole("combobox", { name: "Select Provider" });
+    fireEvent.click(picker);
+    expect(within(screen.getByRole("group", { name: "Popular" })).getByRole("option", { name: /OpenAI/ })).toBeTruthy();
+    expect(within(screen.getByRole("group", { name: "Chinese Providers" })).getAllByRole("option")).toHaveLength(2);
+    expect(within(screen.getByRole("group", { name: "Infrastructure" })).getByRole("option", { name: /NVIDIA/ })).toBeTruthy();
+    expect(within(screen.getByRole("group", { name: "Self-Hosted \/ Custom" })).getAllByRole("option")).toHaveLength(3);
+    fireEvent.change(picker, { target: { value: "NVIDIA" } });
+    expect(screen.queryByRole("group", { name: "Popular" })).toBeNull();
+    expect(screen.getAllByRole("option")).toHaveLength(1);
+    fireEvent.keyDown(picker, { key: "ArrowDown" });
+    fireEvent.keyDown(picker, { key: "Enter" });
+    expect((screen.getByLabelText("Base URL") as HTMLInputElement).value).toBe("https://integrate.api.nvidia.com/v1");
+    expect(screen.queryByRole("listbox")).toBeNull();
+    expect(registerProviderModels).not.toHaveBeenCalled();
+    fireEvent.click(picker);
+    fireEvent.change(picker, { target: { value: "missing-provider" } });
+    expect(screen.getByRole("status").textContent).toBe("No providers match this search.");
+    fireEvent.keyDown(picker, { key: "Escape" });
+    expect(screen.queryByRole("listbox")).toBeNull();
+    expect(onOpenChange).not.toHaveBeenCalled();
+    expect((picker as HTMLInputElement).value).toBe("NVIDIA NIM");
+  });
+
   it("uses the branded provider catalog and does not save credentials at discovery", async () => {
     mount("add-provider");
     await chooseProvider("DeepSeek");
@@ -91,6 +186,77 @@ describe("Relay registration workflow", () => {
     fireEvent.click(screen.getByRole("button", { name: "Register 1 model" }));
     await screen.findByText("Registration complete");
     expect(registerProviderModels).toHaveBeenCalledWith({ connection: { name: "DeepSeek", kind: "deepseek", baseUrl: "https://api.deepseek.com/v1", apiKey: "test-key" }, models: [expect.objectContaining({ model: "chat", profile: "generic-chat" })] });
+  });
+
+  it("registers a pinned Jev version without requiring discovery", async () => {
+    mount("add-provider");
+    await chooseProvider("TypeSafe AI");
+    expect((screen.getByLabelText("Base URL") as HTMLInputElement).value).toBe("https://api.typesafe.ai/v1");
+    fireEvent.change(screen.getByLabelText("API key"), { target: { value: "test-key" } });
+    fireEvent.click(screen.getByRole("button", { name: "Choose models" }));
+    expect(screen.getByRole("heading", { name: "Model versions" })).toBeTruthy();
+    expect(discoverProviderDraft).not.toHaveBeenCalled();
+    expect(registerProviderModels).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: "Register 1 model" }));
+    await screen.findByText("Registration complete");
+    expect(registerProviderModels).toHaveBeenCalledWith({
+      connection: { name: "TypeSafe AI", kind: "typesafe", baseUrl: "https://api.typesafe.ai/v1", apiKey: "test-key" },
+      models: [expect.objectContaining({ model: "jev-1.13.0", profile: "tali.typesafe-jev.v1" })],
+    });
+  });
+
+  it("preserves pinned and manual Jev versions when refreshing an alias-only catalog", async () => {
+    mount("add-provider");
+    await chooseProvider("TypeSafe AI");
+    fireEvent.change(screen.getByLabelText("API key"), { target: { value: "test-key" } });
+    fireEvent.click(screen.getByRole("button", { name: "Choose models" }));
+    fireEvent.change(screen.getByRole("textbox", { name: "Manual model ID" }), { target: { value: "jev-custom" } });
+    fireEvent.click(screen.getByRole("button", { name: "Add", exact: true }));
+    fireEvent.click(screen.getByRole("button", { name: "Fetch catalog (optional)" }));
+    await screen.findByRole("button", { name: "Chat chat" });
+    const selected = screen.getByRole("region", { name: "Selected models" });
+    expect(within(selected).getByText("jev-1.13.0")).toBeTruthy();
+    expect(within(selected).getByText("jev-custom")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Chat chat" }));
+    fireEvent.click(screen.getByRole("button", { name: "Register 3 models" }));
+    await screen.findByText("Registration complete");
+    expect(vi.mocked(registerProviderModels).mock.calls[0]?.[0].models).toEqual([
+      expect.objectContaining({ model: "jev-1.13.0", profile: "tali.typesafe-jev.v1" }),
+      expect.objectContaining({ model: "jev-custom", profile: "tali.typesafe-jev.v1" }),
+      expect.objectContaining({ model: "chat", profile: "tali.typesafe-jev.v1" }),
+    ]);
+  });
+
+  it("allows registration after optional TypeSafe discovery fails and preserves choices on Back", async () => {
+    vi.mocked(discoverProviderDraft).mockRejectedValueOnce(new Error("Catalog unavailable"));
+    mount("add-provider");
+    await chooseProvider("TypeSafe AI");
+    fireEvent.change(screen.getByLabelText("API key"), { target: { value: "test-key" } });
+    fireEvent.click(screen.getByRole("button", { name: "Choose models" }));
+    fireEvent.click(screen.getByRole("button", { name: "Deselect jev-1.13.0" }));
+    fireEvent.click(screen.getByRole("button", { name: "Jev latest jev-latest" }));
+    fireEvent.click(screen.getByRole("button", { name: "Fetch catalog (optional)" }));
+    await screen.findByText("Catalog unavailable");
+    fireEvent.click(screen.getByRole("button", { name: "Back" }));
+    fireEvent.click(screen.getByRole("button", { name: "Choose models" }));
+    fireEvent.click(screen.getByRole("button", { name: "Register 1 model" }));
+    await screen.findByText("Registration complete");
+    expect(registerProviderModels).toHaveBeenCalledWith(expect.objectContaining({
+      models: [expect.objectContaining({ model: "jev-latest", profile: "tali.typesafe-jev.v1" })],
+    }));
+  });
+
+  it("does not preselect an already registered Jev version on a saved Provider", async () => {
+    const typesafe: ModelProvider = { ...provider, kind: "typesafe", name: "Saved TypeSafe" };
+    mount("register-models", [{ ...ready, model: "jev-1.13.0" }], [typesafe]);
+    fireEvent.click(screen.getByRole("button", { name: "Choose models" }));
+    expect((screen.getByRole("button", { name: "Jev 1.13.0 jev-1.13.0 Registered" }) as HTMLButtonElement).disabled).toBe(true);
+    expect((screen.getByRole("button", { name: "Register 0 models" }) as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.click(screen.getByRole("button", { name: "Jev latest jev-latest" }));
+    fireEvent.click(screen.getByRole("button", { name: "Register 1 model" }));
+    await screen.findByText("Registration complete");
+    expect(discoverModelProvider).not.toHaveBeenCalled();
+    expect(createModelDefinition).toHaveBeenCalledWith(expect.objectContaining({ model: "jev-latest", profile: "tali.typesafe-jev.v1" }));
   });
 
   it("retains a registered model whose call failed and retries it without registering twice", async () => {
@@ -146,10 +312,10 @@ describe("Relay registration workflow", () => {
     mount("add-provider");
     await chooseProvider("DeepSeek");
     fireEvent.change(screen.getByLabelText("API key"), { target: { value: "do-not-reuse" } });
-    fireEvent.click(screen.getByRole("button", { name: "Selected Provider: DeepSeek" }));
-    fireEvent.change(screen.getByRole("textbox", { name: "Search providers…" }), { target: { value: "NVIDIA" } });
-    expect(screen.queryByRole("button", { name: /OpenAI models/ })).toBeNull();
-    fireEvent.click(screen.getByRole("button", { name: /NVIDIA NIM/ }));
+    fireEvent.click(screen.getByRole("combobox", { name: "Select Provider" }));
+    fireEvent.change(screen.getByRole("combobox", { name: "Select Provider" }), { target: { value: "NVIDIA" } });
+    expect(screen.queryByRole("option", { name: /OpenAI models/ })).toBeNull();
+    fireEvent.click(screen.getByRole("option", { name: /NVIDIA NIM/ }));
     expect((screen.getByLabelText("API key") as HTMLInputElement).value).toBe("");
     expect((screen.getByLabelText("Base URL") as HTMLInputElement).value).toBe("https://integrate.api.nvidia.com/v1");
   });

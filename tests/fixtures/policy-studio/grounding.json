@@ -1,0 +1,103 @@
+{
+  "kind": "Policy",
+  "rules": [
+    {
+      "id": "rule-8c19666f-ee6f-46c0-b099-39872343ad3d",
+      "name": "Reject unsupported warranty claims",
+      "stages": [
+        "output"
+      ],
+      "detector": {
+        "ref": "model/grounding",
+        "version": "1.0.0",
+        "parameters": {
+          "grounding_threshold": 0.7,
+          "relevance_threshold": 0.7
+        }
+      },
+      "metadata": {
+        "taxonomy_ids": [
+          "TALI-BUSINESS-POLICY"
+        ]
+      },
+      "on_match": {
+        "action": "block"
+      },
+      "risk_level": "medium",
+      "description": ""
+    }
+  ],
+  "tests": [
+    {
+      "id": "test-f397cb6f-e642-4155-b103-a860b99e6032",
+      "kind": "rule_acceptance",
+      "name": "Blocks unsupported warranty",
+      "group": "Policy tests",
+      "phase": "output",
+      "scope": "rule",
+      "content": "The warranty lasts ten years.",
+      "context": {
+        "query": "How long is the warranty?",
+        "grounding_sources": [
+          "The product warranty lasts one year."
+        ],
+        "trusted_instruction": "",
+        "expected_reasoning_result": null
+      },
+      "required": true,
+      "description": "",
+      "parameter_names": [],
+      "covered_rule_ids": [
+        "rule-8c19666f-ee6f-46c0-b099-39872343ad3d"
+      ],
+      "expected_decision": "block"
+    },
+    {
+      "id": "test-99b27508-1cbc-4205-841e-a10438e533ab",
+      "kind": "scenario",
+      "name": "Allows supported warranty",
+      "group": "Policy tests",
+      "phase": "output",
+      "scope": "policy",
+      "content": "The warranty lasts one year.",
+      "context": {
+        "query": "How long is the warranty?",
+        "grounding_sources": [
+          "The product warranty lasts one year."
+        ],
+        "trusted_instruction": "",
+        "expected_reasoning_result": null
+      },
+      "required": true,
+      "description": "",
+      "parameter_names": [],
+      "covered_rule_ids": [
+        "rule-8c19666f-ee6f-46c0-b099-39872343ad3d"
+      ],
+      "expected_decision": "allow"
+    }
+  ],
+  "metadata": {
+    "id": "policy-9d6ad7d1-9d7c-4aa4-92d3-fb6712931f58",
+    "name": "Studio acceptance · grounding",
+    "tags": [
+      {
+        "label": "Words & content filters",
+        "value": "content_filters",
+        "source": "declared",
+        "namespace": "protection"
+      }
+    ],
+    "version": "0",
+    "description": "Online grounding checks against supplied warranty sources; real model calls and immutable publication.",
+    "safety_level": "balanced",
+    "output_delivery": "full_buffered"
+  },
+  "execution": {
+    "mode": "sequential",
+    "input": "previous_output",
+    "stop_on": "block"
+  },
+  "parameters": [],
+  "schema_version": 1
+}

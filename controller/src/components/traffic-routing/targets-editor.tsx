@@ -1,4 +1,6 @@
+import { useTranslation } from "react-i18next";
 import { useEffect } from "react";
+import { Plus, Trash2 } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import {
   getControllerGuardrail,
@@ -16,7 +18,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Field, percent, useRoutingText } from "./form";
+import { percent } from "./form";
+import { EnvironmentStatus } from "@/components/guardrail-import-sheet";
 
 export function distributeEqually(targets: RouteTarget[]): RouteTarget[] {
   const weight = targets.length ? Math.floor(10000 / targets.length) : 0;
@@ -29,15 +32,13 @@ export function distributeEqually(targets: RouteTarget[]): RouteTarget[] {
 export function TargetsEditor({
   value,
   onChange,
-  allowLatest = false,
   fallback = false,
 }: {
   value: RouteTarget[];
   onChange: (value: RouteTarget[]) => void;
-  allowLatest?: boolean;
   fallback?: boolean;
 }) {
-  const t = useRoutingText();
+  const { t } = useTranslation();
   const query = useQuery({
     queryKey: ["routing-guardrails"],
     queryFn: listControllerGuardrails,
@@ -52,7 +53,6 @@ export function TargetsEditor({
           target={target}
           index={index}
           single={value.length === 1}
-          allowLatest={allowLatest}
           fallback={fallback}
           options={query.data?.items ?? []}
           onChange={(next) =>
@@ -78,24 +78,13 @@ export function TargetsEditor({
                   guardrailId: "",
                   guardrailVersion: "",
                   weightBps: 0,
-                  ...(allowLatest
-                    ? { versionStrategy: "latest" as const }
-                    : {}),
                 },
               ]),
             )
           }
         >
-          {t("添加 Guardrail", "Add Guardrail")}
+          <Plus />{t("routing.addGuardrail")}
         </Button>
-      )}
-      {value.length === 1 && (
-        <p className="text-xs text-muted-foreground">
-          {t(
-            "匹配的流量全部转发到此 Guardrail（100%）。",
-            "All matching traffic goes to this Guardrail (100%).",
-          )}
-        </p>
       )}
       {value.length > 1 && (
         <p
@@ -106,8 +95,8 @@ export function TargetsEditor({
               : "text-xs text-destructive"
           }
         >
-          {t("分发比例合计", "Total distribution")}: {percent(total)}
-          {total !== 10000 && t("，请调整为 100%。", ". Adjust to 100%.")}
+          {t("routing.totalDistribution")}: {percent(total)}
+          {total !== 10000 && t("routing.adjustTo100")}
         </p>
       )}
     </div>
@@ -121,7 +110,6 @@ function TargetRow({
   options,
   onChange,
   onRemove,
-  allowLatest,
   fallback,
 }: {
   target: RouteTarget;
@@ -130,40 +118,26 @@ function TargetRow({
   options: Array<{ id: string; name: string }>;
   onChange: (value: RouteTarget) => void;
   onRemove: () => void;
-  allowLatest: boolean;
   fallback: boolean;
 }) {
-  const t = useRoutingText();
+  const { t } = useTranslation();
   const query = useQuery({
     queryKey: ["routing-guardrail", target.guardrailId],
     queryFn: () => getControllerGuardrail(target.guardrailId),
     enabled: Boolean(target.guardrailId),
   });
-  const versions =
-    query.data?.versions.filter(
-      (version) => version.status === "ready" && version.artifactId,
-    ) ?? [];
-  const defaultVersion = versions[0]?.version;
+  // Newest first. Every target pins one immutable version, chosen explicitly.
+  // Pending versions are listed but cannot be chosen until released here.
+  const listed =
+    query.data?.versions.filter((version) => version.artifactId)
+      .sort((left, right) => right.version.localeCompare(left.version)) ?? [];
+  const versions = listed.filter((version) => version.status === "ready");
+  // Imported content is served only after Runners here confirm they can load it.
+  const chosen = versions.find((version) => version.version === target.guardrailVersion);
+  const chosenImported = chosen?.origin === "imported" ? chosen : undefined;
   useEffect(() => {
-    const guardrailVersion =
-      target.versionStrategy === "latest"
-        ? ""
-        : target.guardrailVersion || defaultVersion || "";
-    const weightBps = single ? 10000 : target.weightBps;
-    if (
-      guardrailVersion !== target.guardrailVersion ||
-      weightBps !== target.weightBps
-    ) {
-      onChange({ ...target, guardrailVersion, weightBps });
-    }
-  }, [
-    target.guardrailId,
-    target.guardrailVersion,
-    target.versionStrategy,
-    target.weightBps,
-    defaultVersion,
-    single,
-  ]);
+    if (single && target.weightBps !== 10000) onChange({ ...target, weightBps: 10000 });
+  }, [target.guardrailId, target.guardrailVersion, target.weightBps, single]);
   return (
     <div className="space-y-2 rounded-md border p-3">
       <div className={`grid items-center gap-2 ${single ? (fallback ? "grid-cols-1" : "grid-cols-[minmax(0,1fr)_3rem]") : "grid-cols-[minmax(0,1fr)_6rem_3rem]"}`}>
@@ -171,6 +145,7 @@ function TargetRow({
           <MultiSelectCombobox
             ariaLabel={`Guardrail ${index + 1}`}
             selectionMode="single"
+            size="lg"
             options={options.map((option) => ({
               value: option.id,
               label: option.name,
@@ -183,17 +158,14 @@ function TargetRow({
                 guardrailVersion: "",
               })
             }
-            placeholder={t(
-              "搜索或选择 Guardrail…",
-              "Search or select a Guardrail…",
-            )}
+            placeholder={t("routing.searchOrSelectAGuardrail")}
           />
         </div>
         {!single && (
           <div className="relative min-w-0">
               <Input
                 aria-label={`Guardrail ${index + 1} %`}
-                className="h-12 pr-7 [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+                className="field:h-12 field:pr-7 [appearance:textfield] field:[&::-webkit-inner-spin-button]:appearance-none field:[&::-webkit-outer-spin-button]:appearance-none"
                 type="number"
                 min="0"
                 max="100"
@@ -212,65 +184,42 @@ function TargetRow({
         {!fallback && (
           <Button
             variant="destructive"
-            className="size-12 shrink-0"
-            aria-label={`Remove Guardrail ${index + 1}`}
+            size="icon-lg"
+            className="shrink-0"
+            aria-label={t("routing.removeGuardrail", { index: index + 1 })}
             onClick={onRemove}
           >
-            ×
+            <Trash2 />
           </Button>
         )}
       </div>
-      {target.guardrailId && allowLatest && (
-        <Field label={t("版本策略", "Version strategy")}>
-          <Select
-            value={target.versionStrategy ?? "pinned"}
-            onValueChange={(strategy) =>
-              onChange({
-                ...target,
-                versionStrategy: strategy as "latest" | "pinned",
-                guardrailVersion:
-                  strategy === "latest" ? "" : (defaultVersion ?? ""),
-              })
-            }
-          >
-            <SelectTrigger
-              aria-label={`Guardrail ${index + 1} version strategy`}
-            >
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="latest">Latest when published</SelectItem>
-              <SelectItem value="pinned">Pin version</SelectItem>
-            </SelectContent>
-          </Select>
-        </Field>
-      )}
-      {target.guardrailId && target.versionStrategy !== "latest" && (
+      {target.guardrailId && (
         <Select
           value={target.guardrailVersion}
           onValueChange={(guardrailVersion) =>
             onChange({ ...target, guardrailVersion })
           }
         >
-          <SelectTrigger aria-label={`Guardrail ${index + 1} version`}>
-            <SelectValue placeholder={t("选择版本", "Select version")} />
+          <SelectTrigger className="field:h-12" aria-label={t("routing.targetVersion", { index: index + 1 })}>
+            <SelectValue placeholder={t("routing.selectVersion")} />
           </SelectTrigger>
           <SelectContent>
-            {versions.map((version) => (
-              <SelectItem key={version.version} value={version.version}>
-                {version.version}
+            {listed.map((version) => (
+              <SelectItem key={version.version} value={version.version} disabled={version.status !== "ready"}>
+                {version.status === "ready" ? version.version : t("routing.pendingVersionOption", { version: version.version })}
               </SelectItem>
             ))}
           </SelectContent>
         </Select>
       )}
+      {chosenImported ? <div className="space-y-1">
+        <EnvironmentStatus check={chosenImported.environmentCheck} />
+        <p className="text-xs text-muted-foreground">{t("routing.importedVersionCheckedOnSubmit")}</p>
+      </div> : null}
       {query.error && <ErrorNotice error={query.error} />}
       {query.data && !versions.length && (
         <p className="text-xs text-muted-foreground">
-          {t(
-            "此 Guardrail 尚无就绪版本，请先发布。",
-            "Publish this Guardrail to make a version available.",
-          )}
+          {t(listed.length ? "routing.noReleasedVersion" : "routing.publishThisGuardrailToMakeAVersionAvailable")}
         </p>
       )}
     </div>

@@ -1,0 +1,23 @@
+id: prompt-injection-blocker/blocked-word-5
+version: 1.0.0
+name: forget your instructions
+description: Prompt injection attempt
+stages:
+- input
+- output
+detector:
+  ref: text/keyword
+  version: 1.0.0
+  parameters:
+    keywords:
+    - - forget your instructions
+      - medium
+on_match:
+  action: block
+risk_level: high
+metadata:
+  taxonomy_ids:
+  - TALI-MODEL-SECURITY-PROMPT-INJECTION
+runtime_adapter:
+  binding_id: local-injection-protection
+  implementation_rule_id: prompt-injection-blocker/blocked-word-5

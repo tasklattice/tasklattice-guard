@@ -1,0 +1,123 @@
+---
+id: "endpoint-setup"
+title: "Endpoint integration guide"
+summary: "Choose LiteLLM or Scan, configure an Endpoint and credentials, and verify that check results affect actual delivery."
+order: 0
+---
+Start here when connecting an application to Guard. Choose an inspection protocol, obtain an Endpoint address and credential, then test actual delivery.
+
+For resource editing and publication automation, use [control-plane integration](/document/developer/developer-api-access).
+
+<a id="endpoint-protocols" />
+## Choose the inspection protocol
+
+Both Endpoint types require credentials by default and use a published Router to select a Guardrail Version.
+
+| Type | Authentication | Input and complete Output | Streaming Output | Call correlation |
+| --- | --- | --- | --- | --- |
+| [LiteLLM protocol](/document/developer/gateway-connect) | `x-api-key` | Supported | WebSocket extension | A shared Call ID can pin the version across Input and Output. |
+| [Scan, F5 compatible](/document/developer/scan-protocol) | Bearer credential | Supported | Unsupported | Each scan uses a new independent route assignment. |
+
+A custom gateway or Agent can implement the LiteLLM contract without deploying LiteLLM. HTTP is a transport, not a third Endpoint type. The protocol guides define fields, errors and result handling.
+
+<a id="endpoint-prepare" />
+## Obtain the address and credential
+
+1. Confirm the target Guardrail Version's Released status. Check its dependencies.
+2. Prepare a published Router that targets this exact version.
+3. Create an Endpoint under [Endpoints](/$projectId/integration/endpoints). Select its type and Router.
+4. When **Require Credential** is enabled, save the complete credential when it appears. Copy the Endpoint runtime address, including `/runtime/v1/endpoints/<endpoint_id>`.
+5. Confirm that the runtime applied the configuration before testing traffic.
+
+Use the Endpoint credential for inspection. Personal management tokens cannot replace it. Caller-provided headers or JSON claims do not automatically establish trusted identity.
+
+<a id="endpoint-credential-requirement" />
+### Require Credential
+
+The **Require Credential** switch in creation and details is on by default. The management API field is `credentialRequired`: omitted on creation means `true`; omitted in PATCH preserves the current value.
+
+When off, LiteLLM HTTP, `/verify`, WebSocket and Scan accept anonymous requests and ignore any supplied credential. Connection examples omit authentication headers; Scan needs no `CALYPSOAI_TOKEN`. Router selection and Guardrail inspection still run. Anonymous requests have no `auth.principal`; use `endpoint.id` for Endpoint attribution and routing.
+
+Every Endpoint still receives and retains at least one active credential. Disabling authentication does not revoke it; re-enabling accepts the same credential. If its complete value was not saved, generate a new credential in details before enabling authentication.
+
+After Runners apply the setting, it affects new requests and new WebSocket connections. Existing requests and streams finish normally. Anonymous and authenticated calls use separate Call ID contexts.
+
+<a id="endpoint-address-configuration" />
+### Deployment address settings
+
+Administrators can set Helm `runner.publicUrl`, corresponding to `CONTROLLER_RUNTIME_PUBLIC_URL`. Helm can also inherit top-level `publicUrl`. Without an override, generated addresses use the incoming Controller request origin.
+
+A reverse proxy must supply the correct external host and scheme. Route `/runtime/v1/endpoints/` to the runtime service. Other UI and management paths go to Controller. Internal calls use `CONTROLLER_RUNTIME_SERVICE_URL` independently.
+
+Copy the full Endpoint address. The console's host alone may not be the runtime address.
+
+<a id="endpoint-litellm" />
+## Connect through the LiteLLM Provider example
+
+The TaskLattice LiteLLM image includes the TaskLattice Guard Provider. Its configuration belongs to LiteLLM, not the Endpoint details.
+
+1. Open **Guardrails → Guardrail Garden → TaskLattice Guard → Create Guardrail** in LiteLLM Admin.
+2. Enter the Endpoint address and complete Secret.
+3. Select inspection points and failure handling.
+4. Select **Verify & connect**. The Provider applies the configuration without a restart.
+5. Send real Input and Output checks. Inspect Endpoint runtime activity and actual client delivery.
+
+`/verify` checks Endpoint access and adapter compatibility, validating credentials when required. It does not execute a Policy inspection.
+
+| Provider setting | Default | Behavior |
+| --- | --- | --- |
+| Inspection points | Select for your integration | Before model checks Input. After model checks Output. Protected streaming requires both. |
+| Guard unavailable | Block request | Continue without protection applies only to eligible failures of non-streaming callbacks. |
+| Runtime timeout | 10 seconds | Range: 1–60 seconds. |
+| Apply to every request | Enabled | Disable only when callers explicitly select the Guardrail. |
+
+For non-streaming callbacks, eligible failures include network errors, timeouts and HTTP 502, 503 or 504. They exclude Policy blocks, 4xx, 500 and invalid responses.
+
+Protected streaming requires **Block request**, both inspection points and **Enforce** mode. The example Provider supports `full_buffered` and `window_buffered`, but rejects `interruptible`. Business clients retain SSE while the Provider uses WebSocket with Guard.
+
+See [Provider limits](/document/developer/gateway-connect#gateway-litellm-provider-limits) before reusing this example. Other gateways implement the [protocol contract](/document/developer/gateway-connect) through their own adapters.
+
+<a id="endpoint-scan" />
+## Connect Scan
+
+Set `CALYPSOAI_URL` to the full Endpoint base address. Set `CALYPSOAI_TOKEN` to its complete credential. Append `/backend/v1/scans` without discarding the Endpoint path.
+
+Users with Endpoint write access can configure **Default flagOnly**. New Endpoints default to `true`. Requests that omit the field use this setting. An explicit boolean overrides it.
+
+Submit a real scan with the [Scan request example](/document/developer/scan-protocol#scan-connection). Scan does not support `/verify`. Compatibility placeholders cannot select projects, configure Scanners or correlate requests.
+
+<a id="endpoint-delivery" />
+## Apply results around model calls
+
+Inspect Input before calling the model. Apply any block or replacement first. For complete Output, inspect the answer before delivery. For streaming Output, deliver only Guard's released `delta.text`.
+
+Read LiteLLM `action` or Scan `result.outcome`. HTTP `200` or Python `raise_for_status()` alone does not permit delivery. Unknown values, invalid JSON and timeouts do not prove inspection passed.
+
+Fail-closed stops the flow without a valid result. Fail-open applies only to failures that the integration explicitly permits. It cannot reinterpret a block, replacement or flag as a pass.
+
+Guardrail Monitor and Bypass modes have separate semantics. They can return original content without enforcing detections. Check the mode when assessing protection. The application owns model calls, retries, cancellation and final delivery.
+
+<a id="endpoint-verification" />
+## Verify actual delivery
+
+Compare known examples, [runtime logs](/$projectId/logs) and delivered content. A published version, applied configuration and a correctly integrated caller are separate requirements.
+
+| Check | LiteLLM protocol | Scan |
+| --- | --- | --- |
+| Authentication and execution | Verify connection, then inspect actual Input and Output. | Submit actual request and response scans. |
+| Result handling | Handle all three actions and replacement arrays. | Handle all four outcomes and Endpoint defaults. |
+| Correlation | Test shared Call IDs and expired context. | Confirm scans remain independent. |
+| Delivery | Check replacements and server-released stream text. | Wait for complete JSON before applying the outcome. |
+| Failures | Test credentials, field types, expired context, disconnects and invalid replacements. | Test credentials, types, body limits, media types, inspection failures and timeouts. |
+
+An Endpoint's Verified setup state requires actual inspection traffic. One direction does not prove the other ran. Keep execution failures separate from content judgments in evaluation reports.
+
+<a id="endpoint-credentials" />
+## Rotate credentials or disable the Endpoint
+
+1. Select **Generate new credential**. Save its complete value securely.
+2. Update the application credential.
+3. Send a real request with the new credential.
+4. Revoke the old credential after successful verification. Retain at least one active credential.
+
+Credential hints cannot recover the secret. Turning off **Accept callbacks** rejects all inspection requests, including anonymous ones.

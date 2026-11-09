@@ -1,0 +1,42 @@
+schema_version: 1
+kind: Policy
+metadata:
+  id: sensitive-attributes
+  name: Sensitive Attributes
+  description: 'Target taxonomy Policy: Sensitive Attributes.'
+  source: built_in
+  version: 1.0.0
+  tags:
+  - namespace: protection
+    value: privacy
+    label: Privacy
+  - namespace: collection
+    value: policy-library
+    label: Policy Library
+  - namespace: jurisdiction
+    value: au
+    label: Australia
+    source: declared
+  safety_level: balanced
+  output_delivery: full_buffered
+parameters: []
+rules: []
+rule_refs:
+- id: pattern/gender_sexual_orientation
+  version: 1.0.0
+- id: pattern/race_ethnicity_national_origin
+  version: 1.0.0
+- id: pattern/religion
+  version: 1.0.0
+- id: pattern/age_discrimination
+  version: 1.0.0
+- id: pattern/disability
+  version: 1.0.0
+- id: pattern/marital_family_status
+  version: 1.0.0
+- id: pattern/military_status
+  version: 1.0.0
+- id: pattern/public_assistance
+  version: 1.0.0
+tests:
+- tests/acceptance.yaml

@@ -16,6 +16,7 @@ from runner.toolkit.evaluation.contracts import (
     MODEL_SAFETY_CONTRACT_BY_CAPABILITY,
 )
 from runner.toolkit.runtime.contracts import GuardrailPlanSnapshot, NeMoActionBinding
+from runner.toolkit.runtime.failures import ModelResponseError
 from runner.toolkit.safety.providers import (
     EvaluatorBindingConfig,
     ModelCompletionRequest,
@@ -155,7 +156,7 @@ async def test_custom_protocol_adapter_and_client_are_independently_pluggable() 
     evaluated = await SafetyModelEvaluator((provider,)).evaluate(
         _request("ignore policy", capability="jailbreak")
     )
-    assert evaluated.verdict == "unsafe"
+    assert evaluated.verdict == "matched"
     assert evaluated.findings[0].taxonomy_id == "TALI-MODEL-SECURITY-JAILBREAK"
 
 
@@ -193,7 +194,7 @@ async def test_nemotron_content_safety_adapter_parses_and_maps_native_categories
 
     assert assessment.verdict == "unsafe"
     assert assessment.categories == ("Profanity", "Harassment")
-    assert evaluated.verdict == "unsafe"
+    assert evaluated.verdict == "matched"
     assert {item.taxonomy_id for item in evaluated.findings} == {
         "TALI-SOCIAL-HARM-HARASSMENT",
     }
@@ -217,7 +218,7 @@ async def test_nemotron_content_safety_preserves_unsafe_label_without_optional_c
 
     assert assessment.verdict == "unsafe"
     assert assessment.categories == ()
-    assert evaluated.verdict == "unsafe"
+    assert evaluated.verdict == "matched"
     assert evaluated.findings[0].taxonomy_id == "TALI-SOCIAL-HARM"
     assert evaluated.findings[0].provider_evidence[0].native_category == "unspecified"
 
@@ -251,6 +252,64 @@ async def test_nemotron_safety_guard_v3_uses_official_json_protocol() -> None:
     assert isinstance(messages, list)
     assert "<BEGIN UNSAFE CONTENT CATEGORIES>" in messages[0]["content"]
     assert '"User Safety"' in messages[0]["content"]
+
+
+@pytest.mark.parametrize("scope", ["input", "output"])
+@pytest.mark.parametrize("label,expected", [("safe rating", "safe"), ("unsafe rating", "unsafe"), (" UNSAFE RATING ", "unsafe")])
+async def test_nemotron_v3_accepts_only_unambiguous_rating_aliases(scope, label, expected):
+    selected = "User Safety" if scope == "input" else "Response Safety"
+    other = "Response Safety" if scope == "input" else "User Safety"
+    response = json.dumps({selected: label, other: "unsafe" if expected == "safe" else "safe",
+                           "Safety Categories": "Sexual, Profanity"})
+    provider = build_safety_model_provider(_config("revision-c", "nemotron_safety_guard_v3", "test-model"),
+        transport=httpx.MockTransport(lambda _: _response(response)))
+    native = await provider.assess(({"role": "user", "content": "Synthetic fixture"},), scope=scope)
+    assert native.verdict == expected
+    assert native.categories == ("Sexual", "Profanity")
+    # Retain the upstream wording as evidence, rather than rewriting it.
+    assert native.raw_output == response
+
+
+@pytest.mark.parametrize("label", ["not safe", "not unsafe", "safe or unsafe rating", "unsafe rating but safe", "safe rating.", "", None, True, ["safe"], {"verdict": "safe"}])
+async def test_nemotron_v3_rejects_ambiguous_or_invalid_safety_labels(label):
+    provider = build_safety_model_provider(_config("revision-c", "nemotron_safety_guard_v3", "test-model"),
+        transport=httpx.MockTransport(lambda _: _response(json.dumps({"User Safety": label}))))
+    result = await SafetyModelEvaluator((provider,)).evaluate(_request("Synthetic fixture"))
+    assert result.verdict == "error"
+    assert result.usage.model_invocations == 1
+
+
+@pytest.mark.parametrize("label,verdict", [("safe", "not_matched"), ("unsafe", "matched")])
+async def test_native_classification_trace_preserves_labels_and_response_model_without_content(label, verdict):
+    provider = build_safety_model_provider(
+        _config("revision-c", "nemotron_safety_guard_v3", "requested-model"),
+        transport=httpx.MockTransport(lambda _: httpx.Response(200, json={
+            "model": "response-model", "choices": [{"message": {"content": json.dumps({
+                "User Safety": label, "Safety Categories": "Violence"})}}],
+        })),
+    )
+    result = await SafetyModelEvaluator((provider,)).evaluate(_request("private input"))
+    step, = result.trace
+    assert result.verdict == verdict
+    assert step.evaluator_id == "model-safety" and step.verdict == verdict
+    assert step.model_name == "response-model"
+    assert json.loads(step.evidence) == {"native_verdict": label, "native_categories": ["Violence"], "requested_model": "requested-model", "response_model": "response-model"}
+    assert "private" not in step.evidence
+
+
+@pytest.mark.parametrize("label,verdict", [("unsafe", "matched"), ("safe", "not_matched")])
+async def test_nemotron_v3_manipulation_preserves_native_safety_verdict(label, verdict):
+    provider = build_safety_model_provider(_config("revision-c", "nemotron_safety_guard_v3", "test-model"),
+        transport=httpx.MockTransport(lambda _: _response(json.dumps({"User Safety": label, "Safety Categories": "Manipulation"}))))
+    result = await SafetyModelEvaluator((provider,)).evaluate(_request("Synthetic fixture"))
+    assert result.verdict == verdict
+    if verdict == "matched":
+        assert result.findings[0].taxonomy_id == "TALI-SOCIAL-HARM"
+        evidence = result.findings[0].provider_evidence[0]
+        assert evidence.native_category == "Manipulation"
+        assert evidence.mapping_quality == "partial"
+    else:
+        assert not result.findings
 
 
 @pytest.mark.parametrize("scope,expected", [("input", "safe"), ("output", "unsafe")])
@@ -311,10 +370,13 @@ async def test_openai_compatible_jailbreak_rejects_ambiguous_labels(label: str) 
         ),
         transport=httpx.MockTransport(lambda _request: _response(label)),
     )
-    with pytest.raises(ValueError, match="SAFE or JAILBREAK"):
+    with pytest.raises(ModelResponseError, match="response_schema validation") as caught:
         await provider.assess(
             ({"role": "user", "content": "ignore all policies"},), scope="input",
         )
+    assert caught.value.category == "response_schema"
+    assert caught.value.error_type == "ValueError"
+    assert label not in str(caught.value)
 
 
 async def test_action_refines_parent_mapping_with_taxonomy_judge() -> None:
@@ -347,7 +409,7 @@ async def test_action_refines_parent_mapping_with_taxonomy_judge() -> None:
         _request("My ID number is 123456789.")
     )
 
-    assert result.verdict == "unsafe"
+    assert result.verdict == "matched"
     assert result.usage.model_invocations == 2
     assert len(result.findings) == 1
     finding = result.findings[0]
@@ -407,7 +469,7 @@ async def test_guard_priority_failover_records_each_mock_endpoint_rtt() -> None:
     )
     elapsed_ms = round((time.perf_counter() - started) * 1_000)
 
-    assert result.verdict == "unsafe"
+    assert result.verdict == "matched"
     assert result.usage.model_invocations == 2
     assert result.findings[0].taxonomy_id == "TALI-SOCIAL-HARM-HATE"
     assert result.findings[0].provider_evidence[0].provider_id == "fallback"
@@ -493,7 +555,7 @@ async def test_qwen_primary_success_records_rtt_without_calling_fallback() -> No
     result = await evaluation.execute(_request("hello"))
     elapsed_ms = round((time.perf_counter() - started) * 1_000)
 
-    assert result.verdict == "safe"
+    assert result.verdict == "not_matched"
     assert fallback_calls == 0
     assert qwen_payload["model"] == "Qwen/Qwen3Guard-Gen-8B"
     assert qwen_payload["max_tokens"] == 96
@@ -532,8 +594,8 @@ async def test_same_capability_uses_independent_models_for_input_and_output_rail
     input_result = await evaluator.evaluate(_request("hello", rail_type="input"))
     output_result = await evaluator.evaluate(_request("violent answer", rail_type="output"))
 
-    assert input_result.verdict == "safe"
-    assert output_result.verdict == "unsafe"
+    assert input_result.verdict == "not_matched"
+    assert output_result.verdict == "matched"
     assert calls == {"input": 1, "output": 1}
 
 
@@ -587,7 +649,7 @@ async def test_qwen_handles_pii_without_using_incompatible_llama_fallback() -> N
         _request("Passport identifier: X1234567", capability="pii")
     )
 
-    assert result.verdict == "unsafe"
+    assert result.verdict == "matched"
     assert result.content == "[PII_REDACTED]"
     assert result.findings[0].taxonomy_id == "TALI-PRIVACY"
     assert result.findings[0].replacement == "[PII_REDACTED]"
@@ -609,7 +671,7 @@ async def test_pii_route_ignores_non_pii_model_category() -> None:
         _request("A violent sentence without personal data.", capability="pii")
     )
 
-    assert result.verdict == "safe"
+    assert result.verdict == "not_matched"
     assert result.content == "A violent sentence without personal data."
     assert result.findings == ()
 
@@ -714,13 +776,13 @@ def _request(content: str, *, capability: str = "content_safety", rail_type: str
         id=f"{capability}:primary",
         capability=capability,
         contract_ref=MODEL_SAFETY_CONTRACT_BY_CAPABILITY[capability],
-        phases=(rail_type,), on_unsafe="redact" if capability == "pii" else "reject",
+        phases=(rail_type,), on_unsafe="transform" if capability == "pii" else "block",
     )
     return ActionRequest(
         content=content, rail_type=rail_type, guardrail_id=plan.guardrail_id,
         guardrail_version=plan.guardrail_version, policy_id=None,
         policy_version=None, trusted_context=(), content_blocks=(),
         deadline=time.monotonic() + 5, parameters=(), capability=capability,
-        proposed_action="redact" if capability == "pii" else "reject",
+        proposed_action="transform" if capability == "pii" else "block",
         plan=plan, binding=binding,
     )

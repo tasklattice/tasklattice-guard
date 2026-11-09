@@ -8,7 +8,7 @@ vi.mock("react-i18next", () => ({ useTranslation: () => ({ t: (key: string) => k
 const catalog = vi.hoisted(() => ({ items: [] as Policy[], search: {} as { policy?: string } }));
 vi.mock("@tanstack/react-router", () => ({ useNavigate: () => vi.fn(), useSearch: () => catalog.search }));
 vi.mock("@/hooks/use-mobile", () => ({ useIsMobile: () => false }));
-vi.mock("@/lib/auth", () => ({ useAuth: () => ({ user: { email: "author@example.test", role: "admin" } }) }));
+vi.mock("@/lib/auth", () => ({ useAuth: () => ({ user: { email: "author@example.test", role: "user" } }) }));
 vi.mock("@/lib/api", async original => ({ ...await original<typeof import("@/lib/api")>(),
   getPolicies: async () => ({ items: catalog.items }), getActionCatalog: async () => ({ items: [] }),
 }));
@@ -21,11 +21,24 @@ afterEach(cleanup);
 beforeEach(() => { catalog.items = []; catalog.search = {}; });
 
 describe("Policy Library actual Studio opener", () => {
+  it("keeps system-managed declarative definitions editable without delete or native-package export", async () => {
+    catalog.items = [{ id: "from-file", name: "Imported Rules", description: "File-owned definition", source: "custom", implementation: "rules",
+      version: "1.0.0", tags: [], parameters: [], rails: ["output"], effects: [], detectors: [], rules: [], test_count: 0, test_cases: [],
+      safety_level: "balanced", output_delivery: "full_buffered",
+    } as Policy];
+    catalog.search = { policy: "from-file" };
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(<QueryClientProvider client={client}><PolicyLibraryPage /></QueryClientProvider>);
+    await screen.findByRole("dialog", { name: "Imported Rules" });
+    expect(screen.getByRole("button", { name: "policyLibrary.editPolicy" })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "policyLibrary.deleteAction" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "policyStudio.exportPolicy" })).toBeNull();
+  });
   it("returns to the Edit button in the underlying Policy inspector", async () => {
     const draft = { guardrail_category: "pii_detection", sources: [{ path: "main.co", content: "flow check_request $text\n  pass" }],
       parameter_schema: [], action_references: [], evaluation_contracts: [], prompt_dependencies: [], execution_contract: [], rail_bindings: [], test_cases: [] };
     catalog.items = [{ id: "custom", name: "Local Policy", description: "Focus regression", source: "custom", implementation: "nemo_native",
-      version: "1", tags: [], parameters: [], rails: [], effects: [], forms: [], rules: [], test_count: 0, test_cases: [],
+      version: "1", tags: [], parameters: [], rails: [], effects: [], detectors: [], rules: [], test_count: 0, test_cases: [],
       safety_level: "balanced", output_delivery: "full_buffered",
       implementation_detail: { id: "custom", name: "Local Policy", description: "Focus regression", owner: "author@example.test", draft },
     } as Policy];
@@ -44,10 +57,12 @@ describe("Policy Library actual Studio opener", () => {
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     const { container } = render(<QueryClientProvider client={client}><PolicyLibraryPage /></QueryClientProvider>);
     for (const name of ["policyLibrary.newPolicy", "policyStudio.importPolicy"]) {
-      const opener = screen.getByRole("button", { name, exact: true });
+      // Import waits behind the arrow; focus returns to the control that opened it.
+      const opener = screen.getByRole("button", { name: name === "policyStudio.importPolicy" ? "common.moreCreateOptions" : name, exact: true });
       // Pointer clicks need not focus a button on macOS; do not pre-focus it.
       fireEvent.click(opener);
       if (name === "policyStudio.importPolicy") {
+        fireEvent.click(await screen.findByRole("menuitem", { name }));
         fireEvent.change(container.querySelector('input[type="file"]')!, { target: { files: [{ text: async () => "{}" }] } });
       }
       const dialog = await screen.findByRole("dialog");

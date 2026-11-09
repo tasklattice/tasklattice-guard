@@ -13,7 +13,7 @@ import { protectionDirectoryIds } from "../../shared/protection-map.js";
 
 const draft = programmablePolicyDraftSchema.parse({ guardrail_category: "content_safety", colang_version: "2.x",
   sources: [{ path: "check.co", content: "flow custom_check $text\n  pass" }],
-  rail_bindings: ["input", "output"].map(rail_type => ({ rail_type, flow_name: "custom_check", execution_mode: "detect", on_unsafe: "reject" })),
+  rail_bindings: ["input", "output"].map(rail_type => ({ rail_type, flow_name: "custom_check", execution_mode: "detect", on_unsafe: "block" })),
   evaluation_contracts: ["tali.guard.content-safety.v1", "unregistered.external-service"],
 });
 
@@ -84,17 +84,11 @@ describe("custom Policy protection facts", () => {
       const selected = selectedModelDependencies([binding], [policy]);
       const snapshot: ProgrammablePolicySnapshot = { ...draft, policy_id: "custom", version: "1", name: "Custom",
         description: "", source: "custom", owner: "owner", checksum: "fixture", published_at: "2026-09-06T00:00:00Z" };
-      const plan = buildGuardrailPlan({ guardrailId: "custom-bound", guardrailVersion: "1", programmablePolicies: [snapshot],
+      expect(() => buildGuardrailPlan({ guardrailId: "custom-bound", guardrailVersion: "1", programmablePolicies: [snapshot],
         draft: { allowedTopics: [], restrictedTopics: [], safetyLevel: "balanced", outputDelivery: "full_buffered",
           policyBindings: [{ policyId: "custom", policyVersion: "1", enabledRuleIds: binding.enabled_rule_ids,
-            enabledRails: [phase], parameterValues: {}, ruleActions: {}, action: null, reasoningPolicy: null }] } });
-      expect(plan.policy_versions).toEqual([expect.objectContaining({ evaluation_contracts: draft.evaluation_contracts })]);
-      const coverage = publishedProtectionCoverage(plan)!;
-      expect(selected.required.map(item => item.id)).toEqual(coverage.requiredModelBindings);
-      expect(coverage.requiredModelBindings).toEqual([`content_safety.${phase}`]);
-      expect(selected.unknownPolicies).toEqual(["Custom"]);
-      expect(coverage.hasUnknownDependencies).toBe(true);
-      expect(isModelIndependent(coverage)).toBe(false);
+            enabledRails: [phase], parameterValues: {}, ruleActions: {}, action: null, reasoningPolicy: null }] } }))
+        .toThrow(/Rank Mode does not support custom Colang flows/);
     }
   });
 

@@ -1,9 +1,10 @@
+import "@/i18n";
 import { useState } from 'react';
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, expect, it, vi } from 'vitest';
 import { SelectorEditor } from './selector-editor';
 import type { SelectorExpression } from '@/lib/traffic-routing-api';
-vi.mock('react-i18next', () => ({ useTranslation: () => ({ t: (key: string) => key, i18n: { language: 'en' } }) }));
+
 afterEach(cleanup);
 function Harness({ initial }: { initial: SelectorExpression }) {
   const [value, setValue] = useState(initial);

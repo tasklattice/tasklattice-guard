@@ -1,22 +1,18 @@
-import * as React from "react"
-import { Label as LabelPrimitive } from "radix-ui"
-
-import { cn } from "@/lib/utils"
-
-function Label({
+import type { ComponentProps } from "react";
+import { cn } from "@/lib/utils";
+export function Label({
   className,
+  htmlFor,
+  id,
   ...props
-}: React.ComponentProps<typeof LabelPrimitive.Root>) {
+}: ComponentProps<"label">) {
   return (
-    <LabelPrimitive.Root
+    <label
+      htmlFor={htmlFor}
+      id={id ?? (htmlFor ? `${htmlFor}-label` : undefined)}
       data-slot="label"
-      className={cn(
-        "flex items-center gap-2 text-sm leading-none font-medium select-none group-data-[disabled=true]:pointer-events-none group-data-[disabled=true]:opacity-50 peer-disabled:cursor-not-allowed peer-disabled:opacity-50",
-        className
-      )}
+      className={cn("cds--label", className)}
       {...props}
     />
-  )
+  );
 }
-
-export { Label }

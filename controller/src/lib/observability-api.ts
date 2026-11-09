@@ -1,10 +1,13 @@
+import { hasRuntimeError, runtimeOutcome, type RuntimeLogOutcome, type RuntimeOutcome } from "../../shared/runtime-outcome";
+import { selectedSeverities, type EventSeverity } from "../../shared/security-severity";
 import * as controllerApi from "@/lib/controller-api";
+import { runtimeLogDiagnostics } from "./runtime-log-diagnostics";
 import {
   arrayOfRecords,
   arrayOfStrings,
   enumValue,
   isTimedOut,
-  normalizeOutcome,
+  numberValue,
   runtimeFindings,
   runtimeTraceSteps,
   stringValue,
@@ -13,8 +16,10 @@ import type {
   Collection,
   GuardrailFindingPage,
   Metrics,
+  MetricTrendSeries,
   MetricWindow,
   RuntimeLogInteraction,
+  RuntimeHttpRequest,
 } from "@/lib/api-types";
 
 export function metricWindowMilliseconds(window: MetricWindow): number {
@@ -28,58 +33,84 @@ export function metricWindowMilliseconds(window: MetricWindow): number {
 }
 
 export const getGuardrailFindings = async (
-  guardrailId: string, window: MetricWindow, limit = 100, cursor?: string, signal?: AbortSignal, severity?: string,
+  guardrailId: string, window: MetricWindow, limit: 25 | 50 = 25, cursor?: string, signal?: AbortSignal,
+  severity?: string | EventSeverity[], until?: string,
 ): Promise<GuardrailFindingPage> => {
-  const since = new Date(Date.now() - metricWindowMilliseconds(window)).toISOString();
-  const [events, metrics] = await Promise.all([
-    controllerApi.listRuntimeEvents(limit, { guardrailId, since, findingsOnly: 'true', ...(cursor ? { cursor } : {}), ...(severity && severity !== 'all' ? { severity } : {}) }, signal),
-    controllerApi.requestController<Metrics>(`/api/v1/telemetry/metrics?${new URLSearchParams({guardrailId,window})}`, signal ? { signal } : undefined),
-  ]);
-  const items = events.items.flatMap(runtimeFindings).filter(f => !severity || severity === 'all' || f.severity === severity);
-  if (!metrics.findings_summary) throw new Error("Runtime findings summary is unavailable. Update the Controller and retry.");
-  return {
-    items, count: items.length, nextCursor: events.nextCursor,
-    summary: metrics.findings_summary,
-    collection_status: !metrics.total_decisions ? "no_events" : metrics.data_availability?.execution_evidence === "collected" ? "collected" : "not_collected",
-  };
+  const severities = selectedSeverities(severity);
+  const query = new URLSearchParams({ guardrailId, window, limit: String(limit) });
+  if (cursor) query.set("cursor", cursor);
+  if (until) query.set("until", until);
+  if (severities.length) query.set("severity", severities.join(","));
+  const page = await controllerApi.requestController<import("../../shared/security-events").SecurityEventPage>(
+    `/api/v1/telemetry/security-events?${query}`, signal ? { signal } : undefined,
+  );
+  const items = page.items.flatMap(event => runtimeFindings({
+    id: event.eventId, requestId: event.requestId, occurredAt: event.occurredAt,
+    guardrailId: event.guardrailId, guardrailVersion: event.guardrailVersion,
+    routerId: event.routerId, endpointId: event.endpointId, direction: event.direction, decision: event.decision,
+    metadata: { protocol: event.protocol, action: event.action,
+      findings: [{ ...event.finding, id: `${event.eventId}:finding:${event.findingIndex}` }] },
+  }));
+  return { items, count: items.length, nextCursor: page.nextCursor };
 };
 
 function runtimeLogEntry(event: controllerApi.RuntimeEvent): RuntimeLogInteraction["entries"][number] {
   const before = runtimeLogContent(event.metadata.contentBefore);
   const after = runtimeLogContent(event.metadata.contentAfter);
+  const httpRequest = runtimeHttpRequest(event.metadata.httpRequest);
+  const trace = arrayOfRecords(event.metadata.trace);
   return {
     id: event.id,
     trace_id: event.requestId,
     created_at: event.occurredAt,
-    phase: event.direction === "incoming" ? "input" : "output",
-    outcome: normalizeOutcome(event.decision),
+    phase: event.direction === "completion" ? "completion" : event.direction === "incoming" ? "input" : "output",
+    outcome: runtimeOutcome(event.decision),
     action: stringValue(event.metadata.action) ?? event.decision,
     risk: runtimeFindings(event)[0]?.risk ?? arrayOfStrings(event.metadata.risks)[0] ?? null,
     latency_ms: event.durationMs,
     timed_out: isTimedOut(event),
+    protection_mode: event.metadata.protectionMode === "monitor" ? "monitor" : event.metadata.protectionMode === "bypass" ? "bypass" : "enforce",
+    detection_decision: stringValue(event.metadata.detectionDecision),
+    detection_error: stringValue(event.metadata.detectionError),
+    model_status: enumValue(event.metadata.modelStatus, ["ok", "error", "not_called", "unknown"] as const) ?? undefined,
+    execution_status: hasRuntimeError(event) ? "error" : event.metadata.executionStatus === "complete" ? "complete" : event.metadata.executionStatus === "degraded" ? "degraded" : event.metadata.executionStatus === "bypassed" ? "bypassed" : "unknown",
+    model_exchanges: Array.isArray(event.metadata.modelExchanges) ? event.metadata.modelExchanges as import("./api-types").ModelHttpExchange[] : null,
+    model_evidence_status: stringValue(event.metadata.modelEvidenceStatus),
+    model_evidence_count: numberValue(event.metadata.modelEvidenceCount) ?? 0,
+    termination_reason: stringValue(event.metadata.terminationReason),
+    fail_closed: event.metadata.terminationReason === "fail_closed" || (event.metadata.usage as Record<string, unknown> | null)?.fail_closed === true,
+    ...(event.metadata.logKind === "call_completion" ? { call_completion: {
+      inferred: event.metadata.completionInferred === true, reason: stringValue(event.metadata.failureReason),
+      completed_at: stringValue(event.metadata.completedAt), decision_id: stringValue(event.metadata.decisionId),
+      route_id: stringValue(event.metadata.routeId), target_id: stringValue(event.metadata.targetId), router_revision: numberValue(event.metadata.routerRevision),
+    } } : {}),
+    error_details: runtimeLogDiagnostics(arrayOfRecords(event.metadata.diagnostics), trace),
     detail: `Runner ${event.runnerId} reported ${event.direction} decision “${event.decision}” in ${event.durationMs} ms.`,
+    http_request: httpRequest,
     content_before: before,
     content_after: after,
-    content_available: Boolean(event.metadata.contentAvailable) && (before !== null || after !== null),
+    original_content_only: event.metadata.originalContentOnly === true,
+    content_available: Boolean(event.metadata.contentAvailable),
     findings: runtimeFindings(event),
     steps: runtimeTraceSteps(event),
   };
 }
 
-function worstOutcome(values: string[]): string {
-  const rank = (value: string) => ({ error: 4, block: 3, transform: 2, allow: 1 }[normalizeOutcome(value)] ?? 0);
-  return [...values].sort((left, right) => rank(right) - rank(left))[0] ?? "allow";
+function worstOutcome(values: string[]): RuntimeOutcome | null {
+  const outcomes = values.map(runtimeOutcome).filter((value): value is RuntimeOutcome => value !== null);
+  const rank = { block: 3, transform: 2, allow: 1 };
+  return outcomes.sort((left, right) => rank[right] - rank[left])[0] ?? null;
 }
 
 export function runtimeLogInteractions(events: controllerApi.RuntimeEvent[], filters: {
+  includeUncaptured?: boolean;
   phase?: "input" | "output";
-  outcome?: "allow" | "transform" | "block" | "error";
+  outcome?: RuntimeLogOutcome;
 } = {}): RuntimeLogInteraction[] {
   const matching = events
-    .filter((event): event is controllerApi.RuntimeEvent & { guardrailId: string } => Boolean(event.guardrailId))
-    .filter((event) => event.metadata.runtimeLogCaptured === true)
-    .filter((event) => !filters.phase || (event.direction === "incoming" ? "input" : "output") === filters.phase)
-    .filter((event) => !filters.outcome || normalizeOutcome(event.decision) === filters.outcome);
+    .filter((event) => filters.includeUncaptured || event.metadata.runtimeLogCaptured === true)
+    .filter((event) => !filters.phase || (event.direction === "completion" ? "completion" : event.direction === "incoming" ? "input" : "output") === filters.phase)
+    .filter((event) => !filters.outcome || (filters.outcome === "error" ? hasRuntimeError(event) : runtimeOutcome(event.decision) === filters.outcome));
   const grouped = new Map<string, typeof matching>();
   for (const event of matching) {
     const key = `${event.requestId}:${event.guardrailId}`;
@@ -106,6 +137,21 @@ export function runtimeLogInteractions(events: controllerApi.RuntimeEvent[], fil
   }).sort((left, right) => Date.parse(right.created_at) - Date.parse(left.created_at));
 }
 
+function runtimeHttpRequest(value: unknown): RuntimeHttpRequest | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const request = value as Record<string, unknown>;
+  if (typeof request.method !== "string" || typeof request.target !== "string" ||
+      typeof request.httpVersion !== "string" || typeof request.bodyBase64 !== "string" ||
+      !Array.isArray(request.headers) || !request.headers.every(header =>
+        Array.isArray(header) && header.length === 2 && header.every(part => typeof part === "string"))) return null;
+  try { atob(request.bodyBase64); } catch { return null; }
+  return {
+    method: request.method, target: request.target, httpVersion: request.httpVersion,
+    headers: request.headers as [string, string][], bodyBase64: request.bodyBase64,
+    redactedHeaders: arrayOfStrings(request.redactedHeaders),
+  };
+}
+
 function runtimeLogContent(value: unknown): RuntimeLogInteraction["entries"][number]["content_before"] {
   if (!Array.isArray(value)) return null;
   return value.flatMap((item) => {
@@ -130,5 +176,57 @@ export async function getMetrics(filters: {
     controllerApi.requestController<Omit<Metrics, "system_status" | "system_reasons">>(`/api/v1/telemetry/metrics?${query}`, signal ? { signal } : undefined),
     controllerApi.getControllerSystemStatus(),
   ]);
+  // A successful HTTP response can still be a collection or an incomplete
+  // snapshot. Reject it before rendering; missing telemetry is not zero traffic.
+  if (!metrics || ![
+    metrics.total_decisions, metrics.allowed, metrics.blocked, metrics.intervened,
+    metrics.errors, metrics.intervention_rate, metrics.error_rate, metrics.timeout_count,
+    metrics.runtime_p95_ms, metrics.fail_closed_count, metrics.degraded_endpoints,
+    metrics.total_guardrails, metrics.guardrails_needing_test, metrics.total_routers,
+  ].every(Number.isFinite)
+    || !metrics.comparison || ![
+      metrics.comparison.request_delta_pct, metrics.comparison.intervention_rate_delta_pp,
+      metrics.comparison.runtime_p95_delta_ms, metrics.comparison.error_rate_delta_pp,
+    ].every(value => value === null || Number.isFinite(value))
+    || !["healthy", "breached"].includes(metrics.latency_slo?.p95_status)
+    || !["1h", "24h", "7d", "15d", "30d"].includes(metrics.window)
+    || !["1m", "15m", "1h", "6h", "1d"].includes(metrics.interval)
+    || !validMetricSeries(metrics.trend_series?.none)) {
+    throw new Error("Runtime metrics are unavailable or incomplete. Check the Controller response and retry.");
+  }
   return { ...metrics, system_status: status.status === "healthy" ? "healthy" : "degraded", system_reasons: status.reasons };
+}
+
+export type RequestRatePoint = { timestamp: string; total: number };
+export type GuardrailRequestRates = {
+  byGuardrail: Record<string, RequestRatePoint[]>;
+  zeroPoints: RequestRatePoint[];
+};
+
+/** One shared snapshot for the registry; no extra system-status request per row. */
+export async function getGuardrailRequestRates(signal?: AbortSignal): Promise<GuardrailRequestRates> {
+  const metrics = await controllerApi.requestController<Metrics>("/api/v1/telemetry/metrics?window=1h", signal ? { signal } : undefined);
+  const all = metrics?.trend_series?.none;
+  const grouped = metrics?.trend_series?.guardrail;
+  if (metrics?.window !== "1h" || metrics.interval !== "1m"
+    || !validMetricSeries(all) || all.length !== 1 || !all[0].points.length
+    || !validMetricSeries(grouped)
+    || grouped.some(series => !series.guardrailId || series.points.length !== all[0].points.length
+      || series.points.some((point, index) => point.total < 0 || point.timestamp !== all[0].points[index].timestamp))
+    || new Set(grouped.map(series => series.guardrailId)).size !== grouped.length) {
+    throw new Error("Guardrail request rates are unavailable or incomplete.");
+  }
+  return {
+    byGuardrail: Object.fromEntries(grouped.map(series => [series.guardrailId!, series.points.map(({ timestamp, total }) => ({ timestamp, total }))])),
+    // Successful snapshots omit Guardrails with no recorded requests.
+    zeroPoints: all[0].points.map(({ timestamp }) => ({ timestamp, total: 0 })),
+  };
+}
+
+function validMetricSeries(series: MetricTrendSeries[] | undefined): boolean {
+  return Array.isArray(series) && series.every(item => item && typeof item.name === "string"
+    && Array.isArray(item.points) && item.points.every(point => point
+      && typeof point.timestamp === "string" && Number.isFinite(Date.parse(point.timestamp))
+      && [point.total, point.allowed, point.blocked, point.transformed, point.errored,
+        point.timed_out, point.p50_latency_ms, point.p95_latency_ms, point.p99_latency_ms].every(Number.isFinite)));
 }

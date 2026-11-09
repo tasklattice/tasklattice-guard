@@ -21,11 +21,9 @@ type CurrentEndpoint = controllerApi.Endpoint & {
   distributionStatus?: "ready" | "syncing";
 };
 
-function endpointAdapter(adapter: string): { id: EndpointAdapterId; protocol: "litellm" | "http" | "a2a" } {
-  const normalized = adapter.toLowerCase();
-  if (normalized.includes("litellm")) return { id: "litellm-generic-guardrail", protocol: "litellm" };
-  if (normalized.includes("a2a")) return { id: "a2a-guard", protocol: "a2a" };
-  if (normalized === "http" || normalized === "generic-http-guard") return { id: "generic-http-guard", protocol: "http" };
+function endpointAdapter(adapter: string): { id: EndpointAdapterId; protocol: Endpoint["protocol"] } {
+  if (adapter === "f5-scan") return { id: "f5-scan", protocol: "scan" };
+  if (adapter === "litellm-generic-guardrail") return { id: "litellm-generic-guardrail", protocol: "litellm" };
   throw new Error(`Unknown Endpoint adapter: ${adapter}`);
 }
 
@@ -41,6 +39,26 @@ function endpointSetup(): Endpoint["setup"] {
     fail_on_error: true,
     unreachable_fallback: "fail_closed",
     yaml_template: "",
+  };
+}
+
+function browserEndpointSetup(setup: Endpoint["setup"]): Endpoint["setup"] {
+  // TLS may terminate before the Controller; the browser knows the public scheme.
+  const protocol = window.location.protocol;
+  if (protocol !== "http:" && protocol !== "https:") return setup;
+  const connectionUrl = (url: string) => url
+    .replace(/^https?:\/\//, `${protocol}//`)
+    .replace(/^wss?:\/\//, protocol === "https:" ? "wss://" : "ws://");
+  let template = setup.yaml_template;
+  for (const url of [setup.api_base_url, setup.callback_url, setup.stream_callback_url]) {
+    if (url) template = template.replaceAll(url, connectionUrl(url));
+  }
+  return {
+    ...setup,
+    api_base_url: connectionUrl(setup.api_base_url),
+    callback_url: connectionUrl(setup.callback_url),
+    ...(setup.stream_callback_url ? { stream_callback_url: connectionUrl(setup.stream_callback_url) } : {}),
+    yaml_template: template,
   };
 }
 
@@ -65,11 +83,14 @@ function mapEndpoint(value: CurrentEndpoint, events: controllerApi.RuntimeEvent[
   const credentials = (value.credentials ?? []).map(mapCredential);
   return {
     id: value.id,
+    project_id: value.projectId,
     adapter_id: adapter.id,
     protocol: adapter.protocol,
+    ...(adapter.protocol === "scan" ? { scan_flag_only_default: value.scanFlagOnlyDefault ?? true } : {}),
     name: value.name,
     description: "",
     enabled: value.status === "active",
+    credential_required: value.credentialRequired,
     key_hint: credentials[0]?.key_hint ?? "",
     credentials,
     setup_status: value.status === "disabled"
@@ -90,7 +111,7 @@ function mapEndpoint(value: CurrentEndpoint, events: controllerApi.RuntimeEvent[
     last_error_at: errors.map((event) => event.occurredAt).sort().at(-1) ?? null,
     request_count: new Set(matching.map((event) => event.requestId)).size,
     error_count: errors.length,
-    setup: value.setup ?? endpointSetup(),
+    setup: browserEndpointSetup(value.setup ?? endpointSetup()),
     created_at: value.createdAt,
     updated_at: value.updatedAt,
     ...(activity ? { ...activity, runtime_status: activity.error_count ? 'degraded' as const : activity.request_count > 0 ? 'healthy' as const : 'unknown' as const } : {}),
@@ -132,15 +153,29 @@ function oneTimeRegistration(value: CurrentEndpoint): EndpointRegistration {
   };
 }
 
-export async function createEndpoint(input: { name: string; adapter_id: EndpointAdapterId }): Promise<EndpointRegistration> {
-  const created = await controllerApi.createControllerEndpoint({ name: input.name, adapter: input.adapter_id }) as CurrentEndpoint;
+export async function createEndpoint(input: { name: string; adapter_id: EndpointAdapterId; credential_required?: boolean; scan_flag_only_default?: boolean }): Promise<EndpointRegistration> {
+  const created = await controllerApi.createControllerEndpoint({ name: input.name, adapter: input.adapter_id,
+    credentialRequired: input.credential_required ?? true,
+    ...(input.scan_flag_only_default !== undefined ? { scanFlagOnlyDefault: input.scan_flag_only_default } : {}) }) as CurrentEndpoint;
   return oneTimeRegistration(created);
 }
 
 export async function setEndpointEnabled(id: string, enabled: boolean): Promise<Endpoint> {
+  return updateEndpoint(id, { enabled });
+}
+
+export async function setEndpointScanFlagOnlyDefault(id: string, flagOnly: boolean): Promise<Endpoint> {
+  return updateEndpoint(id, { scanFlagOnlyDefault: flagOnly });
+}
+
+export async function setEndpointCredentialRequired(id: string, credentialRequired: boolean): Promise<Endpoint> {
+  return updateEndpoint(id, { credentialRequired });
+}
+
+async function updateEndpoint(id: string, settings: { enabled?: boolean; credentialRequired?: boolean; scanFlagOnlyDefault?: boolean }): Promise<Endpoint> {
   const updated = await controllerApi.requestController<CurrentEndpoint>(`/api/v1/endpoints/${encodeURIComponent(id)}`, {
     method: "PATCH",
-    body: JSON.stringify({ enabled }),
+    body: JSON.stringify(settings),
   });
   const events = await getActivity();
   return mapEndpoint(updated, [], events.items.find(item=>item.id===id));

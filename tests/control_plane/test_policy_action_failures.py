@@ -40,7 +40,7 @@ async def test_action_dispatch_and_body_errors_fail_closed(phase, call, referenc
 
 
 @pytest.mark.parametrize("phase", ["input", "output"])
-@pytest.mark.parametrize("expected_failure", [None, "provider_failure", "timeout"])
+@pytest.mark.parametrize("expected_failure", [None, "guard_failure", "timeout"])
 async def test_validator_requires_explicit_matching_action_failure_expectation(phase, expected_failure):
     from runner import generated as protocol
     from runner.protocol_codec import plan_to_proto, validation_test_to_proto
@@ -55,8 +55,8 @@ async def test_validator_requires_explicit_matching_action_failure_expectation(p
         test_cases=[validation_test_to_proto({"id": "failure", "name": "Failure classification", "phase": phase,
             "content": "ordinary", "expectedDecision": "block", "required": True,
             "expectedFailure": expected_failure})]))
-    assert results[0]["actualFailure"] == "provider_failure"
-    assert (status == "passed") is (expected_failure == "provider_failure")
+    assert results[0]["actualFailure"] == "guard_failure"
+    assert (status == "passed") is (expected_failure == "guard_failure")
     assert results[0]["matchedRuleIds"] == []
 
 
@@ -64,7 +64,7 @@ async def test_validator_requires_explicit_matching_action_failure_expectation(p
 async def test_false_boolean_and_empty_string_replacement_are_valid(phase):
     plan = custom_plan('flow check $text\n  await GuardRecordPolicyAction(flow_name="check", safe=False, text=$text, replacement="")\n',
         ["GuardRecordPolicyAction"])
-    plan["policy_versions"][0]["rail_bindings"][0].update(rail_type=phase, on_unsafe="redact", execution_mode="mutate")
+    plan["policy_versions"][0]["rail_bindings"][0].update(rail_type=phase, on_unsafe="transform", execution_mode="mutate")
     plan["policy_bindings"][0]["enabled_rails"] = [phase]
     runtime = DraftPreviewRuntime(DefaultRunnerCompiler(), action_providers())
     try:

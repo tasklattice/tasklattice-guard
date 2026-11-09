@@ -18,6 +18,7 @@ const widthClasses = {
 } as const;
 
 export function EntitySheet({
+  allowPageUpdates = false,
   bodyClassName,
   children,
   closeDisabled = false,
@@ -31,6 +32,7 @@ export function EntitySheet({
   title,
   width = "lg",
 }: {
+  allowPageUpdates?: boolean;
   bodyClassName?: string;
   children: ReactNode;
   closeDisabled?: boolean;
@@ -47,11 +49,12 @@ export function EntitySheet({
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent
+        allowPageUpdates={allowPageUpdates}
         side="right"
         closeDisabled={closeDisabled}
         onCloseAutoFocus={(event) => {
           const target = returnFocusRef?.current;
-          // Controlled sheets may be opened without a Radix SheetTrigger. Restore
+          // Controlled sheets may be opened without a SheetTrigger. Restore
           // their actual opener, but do not focus elements removed by navigation.
           if (target?.isConnected && target !== document.body && !target.matches(":disabled")) {
             event.preventDefault();
@@ -65,7 +68,7 @@ export function EntitySheet({
       >
         <SheetHeader className={cn("shrink-0 gap-1.5 border-b bg-card px-4 pr-14 sm:px-6 sm:pr-16", density === "compact" ? "py-4" : "py-5")}>
           <p className="text-xs font-medium text-primary">{eyebrow}</p>
-          <SheetTitle className={cn("font-display font-semibold tracking-[-0.015em] text-foreground", density === "compact" ? "text-xl" : "text-2xl")}>
+          <SheetTitle className={cn("font-sans font-normal tracking-normal text-foreground", density === "compact" ? "text-xl" : "text-2xl")}>
             {title}
           </SheetTitle>
           <SheetDescription className="max-w-2xl leading-5 text-muted-foreground">
@@ -83,9 +86,9 @@ export function EntitySheet({
           {children}
         </div>
 
-        <SheetFooter className={cn("shrink-0 flex-row items-center justify-end gap-2 border-t bg-card px-4 sm:px-6 [&_[data-slot=button]]:min-h-11", density === "compact" ? "py-3" : "py-4")}>
+        {footer != null && <SheetFooter className={cn("shrink-0 flex-row items-center justify-end gap-2 border-t bg-card px-4 sm:px-6 [&_[data-slot=button]]:min-h-11", density === "compact" ? "py-3" : "py-4")}>
           {footer}
-        </SheetFooter>
+        </SheetFooter>}
       </SheetContent>
     </Sheet>
   );

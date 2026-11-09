@@ -1,0 +1,58 @@
+id: category/bias_religious
+version: 1.0.1
+name: Bias Religious
+description: Detects religious discrimination, stereotypes, and biased content
+stages:
+- input
+- output
+detector:
+  ref: text/conditions
+  version: 1.0.0
+  parameters:
+    detector_options:
+      match:
+        within_sentence:
+          all:
+          - keywords:
+            - muslim
+            - muslims
+            - islam
+            - islamic
+            - jew
+            - jews
+            - jewish
+            - christian
+            - christians
+            - christianity
+            - atheist
+            - atheists
+            - hindu
+            - hindus
+            - hinduism
+            - buddhist
+            - buddhists
+            - buddhism
+            - sikh
+            - sikhs
+            - catholic
+            - catholics
+            - protestant
+            - protestants
+            - mormon
+            - mormons
+            - religious extremist
+            - religious fanatic
+            - infidel
+            - infidels
+            - jihad
+            - crusade
+          - regex: (?i)\b(?:inferior|subhuman|vermin|hate|exterminate|deport|ban|kill|untrustworthy|unwelcome)\b
+on_match:
+  action: block
+risk_level: medium
+metadata:
+  taxonomy_ids:
+  - TALI-SOCIAL-HARM-DISCRIMINATION
+runtime_adapter:
+  binding_id: local-content-safety
+  implementation_rule_id: category/bias_religious

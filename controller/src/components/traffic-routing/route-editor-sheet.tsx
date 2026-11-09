@@ -1,6 +1,6 @@
+import { useTranslation } from "react-i18next";
 import { useState } from "react";
 import type {
-  RouterDraft,
   TrafficRoute,
   SelectorField,
 } from "@/lib/traffic-routing-api";
@@ -10,15 +10,11 @@ import { Input } from "../ui/input";
 import { Field } from "./form";
 import { SelectorEditor } from "./selector-editor";
 import { TargetsEditor } from "./targets-editor";
-import { SelectorPreviewPanel } from "./selector-preview";
 import { ruleErrors } from "./route-rule-validation";
 
 export function RouteEditorSheet({
   initialRoute,
   isNew,
-  draft,
-  routerId,
-  endpointIds,
   fields,
   busy,
   onApply,
@@ -26,49 +22,36 @@ export function RouteEditorSheet({
 }: {
   initialRoute: TrafficRoute;
   isNew: boolean;
-  draft: RouterDraft;
-  routerId: string;
-  endpointIds: string[];
   fields?: SelectorField[];
   busy: boolean;
   onApply: (route: TrafficRoute) => void;
   onClose: () => void;
 }) {
+  const { t: localize } = useTranslation();
   const [route, setRoute] = useState(() => structuredClone(initialRoute));
   const [submitted, setSubmitted] = useState(false);
   const fallback = route.kind === "fallback";
   const errors = ruleErrors(route);
-  const previewDraft = {
-    routes: isNew
-      ? [
-          ...draft.routes.filter((r) => r.kind !== "fallback"),
-          route,
-          ...draft.routes.filter((r) => r.kind === "fallback"),
-        ]
-      : draft.routes.map((r) => (r.id === route.id ? route : r)),
-  };
   return (
     <EntitySheet
       open
       width="xl"
-      eyebrow="Routing rule"
+      eyebrow={localize("routing.routingRule")}
       title={
         fallback
-          ? "Edit fallback"
+          ? localize("routing.editFallback")
           : isNew
-            ? "Create routing rule"
-            : "Edit routing rule"
+            ? localize("routing.createRoutingRule")
+            : localize("routing.editRoutingRule")
       }
-      description="Select incoming traffic, then choose its GuardRail destinations. Changes apply to the draft until you publish."
+      description={localize(fallback ? "routing.fallbackDraftDescription" : "routing.selectIncomingTrafficThenChooseItsGuardRailDestinationsChanges")}
       closeDisabled={busy}
       onOpenChange={(open) => {
         if (!open && !busy) onClose();
       }}
       footer={
         <>
-          <Button variant="outline" disabled={busy} onClick={onClose}>
-            Cancel
-          </Button>
+          <Button variant="outline" disabled={busy} onClick={onClose}>{localize("routing.cancel")}</Button>
           <Button
             variant={isNew ? "create" : "edit"}
             disabled={busy}
@@ -78,54 +61,41 @@ export function RouteEditorSheet({
                 onApply({ ...route, name: route.name.trim() });
             }}
           >
-            {isNew ? "Add rule" : "Apply changes"}
+            {isNew ? localize("routing.addRule") : localize("routing.applyChanges")}
           </Button>
         </>
       }
     >
       <fieldset disabled={busy} className="min-w-0 space-y-6">
         {!fallback && (
-          <Field label="Route name">
+          <Field label={localize("routing.routeName")}>
             <Input
               value={route.name}
               onChange={(e) => setRoute({ ...route, name: e.target.value })}
             />
           </Field>
         )}
-        <section className="min-w-0 space-y-4">
+        {!fallback && <section className="min-w-0 space-y-4">
           <div>
-            <h3 className="font-semibold">
-              {fallback ? "Unmatched traffic" : "Traffic Selector"}
-            </h3>
-            <p className="mt-1 text-sm text-muted-foreground">
-              {fallback
-                ? "All traffic that did not match an earlier rule."
-                : "Describe which requests this rule should receive."}
-            </p>
+            <h3 className="font-semibold">{localize("routing.trafficSelector")}</h3>
+            <p className="mt-1 text-sm text-muted-foreground">{localize("routing.describeWhichRequestsThisRuleShouldReceive")}</p>
           </div>
-          {!fallback && (
-            <>
-              <SelectorEditor
-                value={route.selector.expression}
-                fields={fields}
-                onChange={(expression) =>
-                  setRoute({ ...route, selector: { expression } })
-                }
-              />
-            </>
-          )}
-        </section>
-        <section className="min-w-0 space-y-4 border-t pt-6">
+          <SelectorEditor
+            value={route.selector.expression}
+            fields={fields}
+            onChange={(expression) => setRoute({ ...route, selector: { expression } })}
+          />
+        </section>}
+        <section className={`min-w-0 space-y-4${fallback ? "" : " border-t pt-6"}`}>
           <div>
-            <h3 className="font-semibold">GuardRails</h3>
+            <h3 className="font-semibold">{localize("routing.guardRails")}</h3>
             <p className="mt-1 text-sm text-muted-foreground">
               {fallback
-                ? "One GuardRail receives 100% of unmatched traffic."
-                : "One target receives all matching traffic. Multiple targets split it by percentage; each request reaches one target."}
+                ? localize("routing.oneGuardRailReceives100OfUnmatchedTraffic")
+                : localize("routing.oneTargetReceivesAllMatchingTrafficMultipleTargetsSplit")}
             </p>
           </div>
           <TargetsEditor
-            allowLatest
             fallback={fallback}
             value={route.targets}
             onChange={(targets) => setRoute({ ...route, targets })}
@@ -142,18 +112,6 @@ export function RouteEditorSheet({
           </ul>
         )}
       </fieldset>
-      {!fallback && (
-        <details className="mt-6 border-t pt-3">
-          <summary className="min-h-11 cursor-pointer py-3 text-sm">
-            Test matching
-          </summary>
-          <SelectorPreviewPanel
-            routerId={routerId}
-            endpointIds={endpointIds}
-            draft={previewDraft}
-          />
-        </details>
-      )}
     </EntitySheet>
   );
 }

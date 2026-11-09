@@ -33,7 +33,7 @@ def plan_from_dict(payload: dict[str, Any]) -> GuardrailPlanSnapshot:
                 capability=str(item["capability"]),
                 contract_ref=str(item["contract_ref"]),
                 phases=tuple(item.get("phases", ("input", "output"))),
-                on_unsafe=str(item.get("on_unsafe", "reject")),
+                on_unsafe=str(item.get("on_unsafe", "block")),
                 trigger=_evaluation_trigger(item.get("trigger")),
                 parameters=_pairs(item.get("parameters", ())),
             )
@@ -67,6 +67,7 @@ def plan_from_dict(payload: dict[str, Any]) -> GuardrailPlanSnapshot:
                 enabled_rule_ids=tuple(item.get("enabled_rule_ids", ())),
                 rule_order=tuple(item.get("rule_order", ())),
                 rule_actions=_pairs(item.get("rule_actions", ())),
+                rule_severities=_pairs(item.get("rule_severities", ())),
                 enabled_rails=tuple(item.get("enabled_rails", ("input", "output"))),
             )
             for item in payload.get("policy_bindings", ())

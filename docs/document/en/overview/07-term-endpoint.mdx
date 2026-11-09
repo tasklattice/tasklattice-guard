@@ -1,0 +1,45 @@
+---
+id: "term-endpoint"
+title: "Endpoints: application identity and integration"
+summary: "Understand the LiteLLM and Scan Endpoint types, plus credentials, Router binding, and integration health."
+order: 6
+---
+An Endpoint requires application, agent or gateway authentication by default and selects its inspection protocol. Separate trust boundaries need separate credentials. Caller-supplied headers do not replace authentication.
+
+For example, a support application and an internal test gateway use separate Endpoints. Runtime records can then distinguish their calls.
+
+<a id="endpoint-integration-types" />
+## Choose an integration type
+
+Both types support the **Require Credential** switch (on by default) and use a bound Router to select the Guardrail Version. When the switch is off, requests are anonymous; credentials are retained for later use.
+
+| Type | Intended client | Inspection contract |
+| --- | --- | --- |
+| LiteLLM (`litellm-generic-guardrail`) | LiteLLM or a caller implementing its Generic Guardrail contract | Non-streaming Input and complete Output through HTTP. Streaming Output through WebSocket. Authenticate HTTP with `x-api-key`. |
+| Scan (`f5-scan`) | Independent text checks, scripts or dataset evaluation | Submit `input` with `scanDirection=request` or `response`. Authenticate with the Endpoint's Bearer credential. |
+
+A shared `litellm_call_id` correlates Input and Output. Without it, the inspections do not share a pinned call context. Each Scan request is independent. Neither protocol generates the application's model response.
+
+The [LiteLLM Provider example](/document/developer/gateway-connect#gateway-litellm-provider-example) implements the gateway contract. Its streaming support requires fail-closed operation, Enforce mode, and full or window buffering.
+
+Follow [Endpoint setup](/document/developer/endpoint-setup) for addresses, credentials and verification. The caller must apply inspection results before content continues.
+
+<a id="state-endpoint" />
+## Distinguish enablement, setup and health
+
+<StateMachineDiagram kind="endpoint" locale="en" />
+
+| Dimension | Meaning |
+| --- | --- |
+| Enablement | Stored `active` or `disabled` state. An authorized user can change it. Soft deletion is separate. |
+| Setup | Progress such as `applying`, `awaiting_callback`, `verified` or `disabled`. |
+| Runtime health | Observations such as `healthy`, `waiting` or `degraded`. |
+
+A successful setup does not establish healthy real traffic. Check credentials, Router rollout and inspection results. Credential issuance, rotation and revocation remain separate operations.
+
+<a id="state-credentials" />
+## Keep credentials and Decisions separate from resource state
+
+Personal Access Tokens authorize management calls. Endpoint credentials authorize runtime inspection. Each credential has its own issuance and revocation state.
+
+Allow, transform and block describe one inspection result. They do not change the Endpoint or Router lifecycle.

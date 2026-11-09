@@ -1,0 +1,121 @@
+---
+id: "quickstart-protection"
+title: "快速开始：完成一条保护链路"
+summary: "用客服助手的例子认识保护链路，再完成选择能力、验证、发布和接入。"
+order: 0
+---
+本文以回答订单问题的客服助手为例，完成三种保护行为：
+
+- 放行正常的订单问题。
+- 在调用模型前，阻断要求泄露内部提示词的输入。
+- 在交付回复前，遮盖客户手机号。
+
+每种行为都需要配置并测试。新建 Guardrail 不会自动具备这些保护能力。
+
+**Policy** 通过 **Rule** 定义可复用的检测行为。**Guardrail** 为一个场景组合所需 Policy 和测试。**Endpoint** 认证应用身份，**Router** 选择确切的 Guardrail Version。应用执行检测返回的 **Decision**。
+
+<a id="quickstart-before" />
+## 开始前
+
+使用测试环境，以及可以修改的应用。先检查所需 Policy 的 Rules 和 Test Cases，不要只凭名称判断覆盖范围。
+
+User 账户配置业务资源。Administrator 准备检测模型、运行容量等平台依赖。集成开发者修改调用方。这些任务可以由不同人员完成。
+
+<a id="quickstart-steps" />
+## 六步完成保护链路
+
+1. **准备 Guardrail。** 选择确切的 Policy Versions，检查启用的 Rules、参数和动作。运行草稿测试，通过后将该草稿发布为不可变的 Guardrail Version。
+2. **创建 Endpoint。** 为测试应用选择协议，签发 Endpoint 凭据。参见 [Endpoint 接入指南](/document/developer/endpoint-setup)。
+3. **配置路由。** 将 Endpoint 绑定到 Router。添加指向已 Release 的 Guardrail Version 的 Route，保留最后的无条件 fallback。
+4. **提交 Router 变更。** 预览匹配行为，审阅版本、权重和 Endpoint 绑定。提交后由另一位有权限的用户批准。
+5. **确认配置下发。** 检查 Router 是否达到 Active，Runner 是否已应用目标 generation，并核对 Guardrail 的运行模式。
+6. **接入并测试真实请求。** 调用模型前检查 Input，交付前检查 Output。执行 allow、transform 和 block，并比较应用行为与运行记录。
+
+[路由指南](/document/operator/operator-routing)说明审批和紧急生效流程。[网关集成指南](/document/developer/gateway-connect)分别介绍非流式检测与流式 Output 检测。
+
+<a id="quickstart-check" />
+## 检查完成结果
+
+确认以下条件全部成立：
+
+- Router 指向预期的已 Release Guardrail Version。
+- Runner 已应用目标配置。
+- 本次保护测试使用 Enforce 模式。
+- 正常问题放行，违规 Input 被阻断，命中的 Output 使用遮盖后的文本。
+- 运行记录中的 Endpoint、Router 和版本符合预期。
+
+Monitor 和 Bypass 会放行原始内容，不能用来证明阻断或遮盖已生效。测试报告通过也不能代替应用测试。
+
+<a id="overview" />
+## 跟随一条请求
+
+下图按 01–06 编号阅读：上排从左向右，下排从右向左。
+
+<WorkflowDiagram src="/docs/diagrams/request-decision-v1.png" alt="Endpoint 认证、Router 选择、固定的 Guardrail Version、检测、Decision 与运行证据。" openLabel="查看原图">
+
+TaskLattice 返回检测结果，应用或网关执行 Decision。
+
+</WorkflowDiagram>
+
+<FlowSteps>
+<FlowStep title="Endpoint">
+认证调用方的应用、Agent 或网关身份。
+</FlowStep>
+<FlowStep title="Router">
+按顺序匹配 Route，并选择一个加权 Target。
+</FlowStep>
+<FlowStep title="Guardrail Version">
+固定 Policies、Rules、参数和编译配置。
+</FlowStep>
+<FlowStep title="NeMo Rail / Flow">
+执行配置的 Input 或 Output 检查。
+</FlowStep>
+<FlowStep title="Action">
+执行本地检测、专用评估或内容变换。
+</FlowStep>
+<FlowStep title="Decision & Evidence">
+返回 allow、transform 或 block，并按日志级别记录证据。
+</FlowStep>
+</FlowSteps>
+
+<a id="overview-boundary" />
+## 产品与调用方的职责
+
+TaskLattice 定义并测试保护能力，下发固定配置，记录检测结果。调用方负责业务模型调用、会话和内容交付，必须在内容继续流转前执行结果。
+
+个人 Access Token 用于管理 API，Endpoint 凭据用于运行时检测 API，两者不能互换。
+
+<a id="developer-policy-or-guardrail" />
+## 选择要修改的资源
+
+| 资源 | 回答的问题 | 何时修改 |
+| --- | --- | --- |
+| Policy | 这项检测如何工作？ | 现有 Rule 不能提供所需行为时。 |
+| Guardrail | 这个场景使用哪些保护？ | 为应用选择 Policy、参数、动作和测试时。 |
+| Router | 哪些调用使用哪个版本？ | 接入 Endpoint，或在已 Release 版本之间切换流量时。 |
+
+[进入 Policy Studio](/$projectId/policy-library) · [管理 Guardrails](/$projectId/guardrails)
+
+<a id="concept-lifecycle" />
+## 将保护投入生产
+
+先准备依赖，再测试并发布所需保护。提交路由变更，确认下发后再评估新流量。
+
+<WorkflowDiagram src="/docs/diagrams/policy-release-v1.png" alt="Policy Library、Guardrail 草稿、测试报告、不可变 Guardrail Version、Router 发布和 Runner 确认。" openLabel="查看原图">
+
+发布形成固定配置，运行确认表明配置已应用，真实请求用于验证调用方行为。
+
+</WorkflowDiagram>
+
+<a id="concept-objects" />
+## 区分版本与运行证据
+
+- **Policy Version** 固定可复用的检测行为。
+- **Guardrail Version** 固定所选 Policy Versions、配置和测试。测试通过允许发布，但本身不会创建版本。
+- **Router revision** 固定路由配置。发布 Guardrail 不会更新 Router 的 Targets。
+- **运行记录** 描述一次实际检测，不能证明所有执行节点都已应用配置。
+
+<a id="overview-next" />
+## 继续阅读
+
+[Guardrails](/document/overview/term-guardrail)介绍 Release 和运行模式。具体任务参见[操作指南](/document/operator/user-lifecycle)、[平台与观测](/document/admin/platform-runtime)或[集成参考](/document/developer/endpoint-setup)。

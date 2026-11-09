@@ -21,9 +21,27 @@ data/
 node_modules/
 controller/dist/
 controller/dist-server/
+controller/dist-cli/
 controller/*.tsbuildinfo
 controller/vite.config.js
 controller/vite.config.d.ts
 /unused.db
+output
+/.local-archives/
+/deploy/laya/
 
 controller/scripts/.openapi-inputs-*.ts
+/controller/openapi/controller.openapi.json
+/controller/openapi/.controller.openapi-*.tmp
+
+# Generated from the bundled Default Profile; rebuild with scripts/generate_default_baseline.py
+/controller/server/domain/default-baseline.json
+# Tool-generated contracts and catalog assets. Generate with `npm run generate`.
+/controller/server/generated/
+/runner/generated/*
+!/runner/generated/__init__.py
+/controller/shared/enforcement-action.generated.ts
+/runner/toolkit/runtime/enforcement_action_generated.py
+/runner/toolkit/policy_library/assets/detectors.generated.json
+/runner/toolkit/policy_library/assets/policy-definitions.generated.json
+review-reports/

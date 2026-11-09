@@ -1,3 +1,4 @@
+import { useTranslation } from "react-i18next";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -45,8 +46,6 @@ import { percent } from "./form";
 import { conditionCount, newRoute, selectorSummary } from "./router-view-model";
 
 type Props = {
-  routerId: string;
-  endpointIds: string[];
   draft: RouterDraft;
   editableDraft?: RouterDraft;
   editing: boolean;
@@ -60,6 +59,7 @@ type Props = {
   guardrails: Array<{ id: string; name: string }>;
 };
 export function RouterRouting(props: Props) {
+  const { t: localize } = useTranslation();
   const { draft, editing, busy, onChange } = props;
   const [editor, setEditor] = useState<{
     route: TrafficRoute;
@@ -92,11 +92,8 @@ export function RouterRouting(props: Props) {
     <section className="space-y-5">
       <div className="flex flex-col items-start justify-between gap-4 sm:flex-row">
         <div>
-          <h2 className="text-lg font-semibold">Routing</h2>
-          <p className="mt-1 text-sm text-muted-foreground">
-            Rules are evaluated from top to bottom. The first matching rule
-            determines the GuardRail distribution.
-          </p>
+          <h2 className="text-lg font-semibold">{localize("routing.routing")}</h2>
+          <p className="mt-1 text-sm text-muted-foreground">{localize("routing.rulesAreEvaluatedFromTopToBottomTheFirst")}</p>
         </div>
         {props.canEdit && (
           <Button
@@ -105,16 +102,11 @@ export function RouterRouting(props: Props) {
             disabled={busy || source.routes.length >= 128}
             onClick={() => configure(newRoute(), true)}
           >
-            <Plus />
-            Add routing rule
-          </Button>
+            <Plus />{localize("routing.addRoutingRule")}</Button>
         )}
       </div>
-      {!normal.length && (
-        <p className="rounded-lg border border-dashed p-4 text-sm text-muted-foreground">
-          No routing rules configured. Unmatched traffic will use the fallback
-          GuardRail.
-        </p>
+      {!normal.length && !fallback && (
+        <p className="rounded-lg border border-dashed p-4 text-sm text-muted-foreground">{localize("routing.noRoutingRulesConfiguredUnmatchedTrafficWillUseThe")}</p>
       )}
       <div className="overflow-x-auto">
         <div className="min-w-[36rem] divide-y rounded-lg border">
@@ -122,12 +114,12 @@ export function RouterRouting(props: Props) {
             {editing && <span className="w-11 shrink-0" />}
             <div className="grid min-w-0 flex-1 grid-cols-[3rem_1fr_1fr_1.5fr] gap-4 px-1">
               <span>#</span>
-              <span>Rule</span>
-              <span>Match</span>
-              <span>Target</span>
+              <span>{localize("routing.rule")}</span>
+              <span>{localize("routing.match")}</span>
+              <span>{localize("routing.target")}</span>
             </div>
             {props.canEdit && (
-              <span className="ml-3 w-11 shrink-0 text-center">Actions</span>
+              <span className="ml-3 w-11 shrink-0 text-center">{localize("routing.actions")}</span>
             )}
           </div>
           <DndContext
@@ -178,9 +170,6 @@ export function RouterRouting(props: Props) {
           key={editor.route.id}
           initialRoute={editor.route}
           isNew={editor.isNew}
-          draft={draft}
-          routerId={props.routerId}
-          endpointIds={props.endpointIds}
           fields={props.fields}
           busy={busy}
           onClose={() => setEditor(null)}
@@ -198,17 +187,15 @@ export function RouterRouting(props: Props) {
       {deleting && (
         <EntitySheet
           open
-          eyebrow="Routing rule"
-          title="Delete routing rule?"
-          description={`Remove “${deleting.name}” from the draft. Published traffic is unchanged until you review and publish.`}
+          eyebrow={localize("routing.routingRule")}
+          title={localize("routing.deleteRoutingRule")}
+          description={localize("routing.removeRuleDescription", { name: deleting.name })}
           onOpenChange={(open) => {
             if (!open) setDeleting(null);
           }}
           footer={
             <>
-              <Button variant="outline" onClick={() => setDeleting(null)}>
-                Cancel
-              </Button>
+              <Button variant="outline" onClick={() => setDeleting(null)}>{localize("routing.cancel")}</Button>
               <Button
                 variant="destructive"
                 disabled={busy}
@@ -219,16 +206,11 @@ export function RouterRouting(props: Props) {
                   props.select(null);
                   setDeleting(null);
                 }}
-              >
-                Delete rule
-              </Button>
+              >{localize("routing.deleteRule")}</Button>
             </>
           }
         >
-          <p className="text-sm">
-            Requests that matched this rule will continue to the next matching
-            rule or the fallback after publication.
-          </p>
+          <p className="text-sm">{localize("routing.requestsThatMatchedThisRuleWillContinueToThe")}</p>
         </EntitySheet>
       )}
     </section>
@@ -242,6 +224,7 @@ function RuleRow(
     onDelete: (route: TrafficRoute) => void;
   },
 ) {
+  const { t: localize } = useTranslation();
   const { route, index, editing, busy, selected, select, draft, guardrails } =
     props;
   const fallback = route.kind === "fallback";
@@ -270,7 +253,7 @@ function RuleRow(
             disabled={busy}
             {...sortable.attributes}
             {...sortable.listeners}
-            aria-label={`Reorder ${route.name}`}
+            aria-label={localize("routing.reorderRule", { name: route.name })}
           >
             <GripVertical />
           </Button>
@@ -280,7 +263,7 @@ function RuleRow(
           className="grid min-h-16 min-w-0 flex-1 grid-cols-[3rem_1fr_1fr_1.5fr] items-center gap-4 rounded-md px-1 py-4 text-left text-sm outline-none hover:bg-muted/40 focus-visible:ring-2 focus-visible:ring-ring"
           aria-label={
             fallback
-              ? "Fallback · All unmatched traffic"
+              ? localize("routing.fallbackAllUnmatchedTraffic")
               : `${String(index + 1).padStart(2, "0")} ${route.name}`
           }
           aria-expanded={expanded}
@@ -291,17 +274,15 @@ function RuleRow(
             {fallback ? "↳" : String(index + 1).padStart(2, "0")}
           </span>
           <span className="font-medium">
-            {fallback ? "Fallback" : route.name}
+            {fallback ? localize("routing.fallback") : route.name}
             {!route.enabled && (
-              <span className="block text-xs text-muted-foreground">
-                Disabled
-              </span>
+              <span className="block text-xs text-muted-foreground">{localize("routing.disabled")}</span>
             )}
           </span>
           <span className="text-xs text-muted-foreground">
             {fallback
-              ? "All unmatched"
-              : `${conditionCount(route.selector.expression)} conditions`}
+              ? localize("routing.allUnmatched")
+              : localize("routing.conditionCount", { count: conditionCount(route.selector.expression) })}
           </span>
           <span className="flex items-center justify-between gap-3">
             <span className="min-w-0">
@@ -313,12 +294,12 @@ function RuleRow(
                     >
                       <span>
                         {guardrails.find((g) => g.id === t.guardrailId)?.name ??
-                          "GuardRail unavailable"}
+                          localize("routing.guardRailUnavailable")}
                       </span>
                       <span>{percent(t.weightBps)}</span>
                     </span>
                   ))
-                : "Choose a GuardRail"}
+                : localize("routing.chooseAGuardRail")}
             </span>
             <ChevronDown
               className={`size-4 shrink-0 ${expanded ? "rotate-180" : ""}`}
@@ -332,7 +313,7 @@ function RuleRow(
                 <Button
                   variant="ghost"
                   className="size-11"
-                  aria-label={`Actions for ${fallback ? "Fallback" : route.name}`}
+                  aria-label={localize("routing.ruleActions", { name: fallback ? localize("routing.fallback") : route.name })}
                   disabled={
                     busy ||
                     !(props.editableDraft ?? draft).routes.some(
@@ -345,17 +326,13 @@ function RuleRow(
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end">
                 <DropdownMenuItem variant="edit" onSelect={() => props.onConfigure(route)}>
-                  <Pencil />
-                  Edit
-                </DropdownMenuItem>
+                  <Pencil />{localize("routing.edit")}</DropdownMenuItem>
                 {!fallback && (
                   <DropdownMenuItem
                     variant="destructive"
                     onSelect={() => props.onDelete(route)}
                   >
-                    <Trash2 />
-                    Delete
-                  </DropdownMenuItem>
+                    <Trash2 />{localize("routing.delete")}</DropdownMenuItem>
                 )}
               </DropdownMenuContent>
             </DropdownMenu>
@@ -366,15 +343,15 @@ function RuleRow(
         <div id={`rule-${route.id}`} className="space-y-5 border-t p-4 sm:p-6">
           <div
             className="grid grid-cols-[minmax(0,1fr)_3rem_minmax(0,1fr)] items-center gap-4"
-            aria-label="Rule traffic flow"
+            aria-label={localize("routing.ruleTrafficFlow")}
           >
             <section className="col-start-1 row-start-1 min-w-0 rounded-lg border bg-muted/20 p-4">
               <h3 className="text-xs font-medium text-muted-foreground">
-                {fallback ? "Unmatched traffic" : "Traffic Selector"}
+                {fallback ? localize("routing.unmatchedTraffic") : localize("routing.trafficSelector")}
               </h3>
               <p className="mt-2 whitespace-pre-wrap break-words text-sm leading-6">
                 {fallback
-                  ? "Used when no routing rules match."
+                  ? localize("routing.usedWhenNoRoutingRulesMatch")
                   : selectorSummary(route.selector.expression)}
               </p>
             </section>
@@ -393,12 +370,10 @@ function RuleRow(
                   <div className="min-w-0 flex-1">
                     <p className="break-words text-sm font-medium">
                       {guardrails.find((g) => g.id === target.guardrailId)
-                        ?.name ?? "GuardRail unavailable"}
+                        ?.name ?? localize("routing.guardRailUnavailable")}
                     </p>
                     <p className="mt-1 break-all text-xs text-muted-foreground">
-                      {target.versionStrategy === "latest"
-                        ? "Latest when published"
-                        : target.guardrailVersion || "Version not selected"}
+                      {target.guardrailVersion || localize("routing.versionNotSelected")}
                     </p>
                   </div>
                   <span className="text-sm font-semibold tabular-nums">
@@ -413,9 +388,7 @@ function RuleRow(
                   className="col-start-2 mx-auto size-6 text-muted-foreground"
                   aria-hidden="true"
                 />
-                <p className="col-start-3 rounded-lg border border-dashed p-4 text-sm text-muted-foreground">
-                  Choose a GuardRail
-                </p>
+                <p className="col-start-3 rounded-lg border border-dashed p-4 text-sm text-muted-foreground">{localize("routing.chooseAGuardRail")}</p>
               </>
             )}
           </div>

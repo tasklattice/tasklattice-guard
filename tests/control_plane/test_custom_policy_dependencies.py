@@ -19,7 +19,7 @@ def custom_plan(source, references=()):
             "colang_version": "2.x", "checksum": "test",
             "sources": [{"path": "main.co", "content": source}],
             "rail_bindings": [{"rail_type": "input", "flow_name": "check",
-                "execution_mode": "detect", "on_unsafe": "reject"}],
+                "execution_mode": "detect", "on_unsafe": "block"}],
             "action_references": [{"name": name, "version": "1.0.0"} for name in references],
         }],
         "policy_bindings": [{"policy_id": "custom", "policy_version": "1", "enabled_rails": ["input"]}],

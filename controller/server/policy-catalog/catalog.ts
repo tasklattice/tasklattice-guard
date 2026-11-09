@@ -1,13 +1,20 @@
+import { policyDefinitionSchema, policyTestContextSchema } from "../../shared/policy-definition.js";
 import { readFileSync } from "node:fs";
+import { existsSync } from "node:fs";
 import { join } from "node:path";
 
 import { z } from "zod";
+import { enforcementActions } from "../../shared/enforcement-action.generated.js";
+import { patternValidatorSchema } from "../../shared/pattern-validator.js";
+import { riskSeverities } from "../../shared/security-severity.js";
+import { policyComplianceSchema, type PolicyCompliance } from "../../shared/policy-compliance.js";
 import { guardrailCategoryIds } from "../../shared/guardrail-catalog.js";
 import type { PolicyProtection } from "../../shared/protection-map.js";
 import { policyProtection, protectionContractsSchema, type ProtectionContracts } from "./protection.js";
+import { builtInPolicyCompliance, customPolicyCompliance } from "./compliance.js";
 
 const railTypeSchema = z.enum(["input", "retrieval", "dialog", "execution", "output"]);
-const ruleFormSchema = z.enum(["regex", "keyword", "category", "code_block", "competitor_intent", "colang_flow"]);
+const detectorReferenceSchema = z.object({ ref: z.string().min(1), version: z.string().min(1) });
 const policyTagNamespaceSchema = z.enum([
   "protection",
   "guardrail_category",
@@ -39,7 +46,7 @@ const parameterSchema = z.object({
 });
 const implementationSchema = z.object({
   engine: z.string().min(1),
-  form: ruleFormSchema,
+  execution: z.enum(["local", "platform", "programmable"]),
   binding_id: z.string().min(1),
   implementation_rule_id: z.string().min(1),
   detector: z.string().nullable().default(null),
@@ -49,12 +56,20 @@ const implementationSchema = z.object({
 const stringPairSchema = z.tuple([z.string(), z.string()]);
 const ruleSchema = z.object({
   id: z.string().min(1),
+  binding_id: z.string().nullable().default(null),
+  rule_id: z.string().nullable().default(null),
+  rule_version: z.string().nullable().default(null),
+  variant_id: z.string().nullable().default(null),
   name: z.string().min(1),
   description: z.string(),
-  form: ruleFormSchema,
-  effect: z.string().min(1),
+  detector: detectorReferenceSchema,
+  effect: z.enum(enforcementActions),
+  risk_severity: z.enum(riskSeverities).nullable().default(null),
   rails: z.array(railTypeSchema),
   implementation: implementationSchema,
+  validators: z.array(patternValidatorSchema).default([]),
+  detector_options: z.record(z.string(), z.unknown()).default({}),
+  rule_expansion: z.object({ parameter: z.string(), text_field: z.string(), action_field: z.string(), replacement_field: z.string() }).nullable().default(null),
   expression: z.string().nullable().default(null),
   context_expression: z.string().nullable().default(null),
   context_max_gap_words: z.number().int().nonnegative().nullable().default(null),
@@ -81,19 +96,22 @@ const testCaseSchema = z.object({
   kind: z.enum(["rule_acceptance", "scenario"]).default("scenario"),
   required: z.boolean().default(true),
   parameter_names: z.array(z.string()).default([]),
+  context: policyTestContextSchema.optional(),
 });
-const policyAssetSchema = z.object({
+export const policyAssetSchema = z.object({
   id: z.string().min(1),
   name: z.string().min(1),
   description: z.string(),
   source: z.enum(["built_in", "custom"]),
   version: z.string().min(1),
+  compliance: policyComplianceSchema.optional(),
   tags: z.array(tagSchema).default([]),
   parameters: z.array(parameterSchema).default([]),
   rules: z.array(ruleSchema).default([]),
   test_cases: z.array(testCaseSchema).default([]),
   safety_level: z.enum(["balanced", "strict"]).default("balanced"),
   output_delivery: z.enum(["interruptible", "window_buffered", "full_buffered"]).default("window_buffered"),
+  definition: policyDefinitionSchema.optional(),
 });
 
 type PolicyAsset = z.output<typeof policyAssetSchema>;
@@ -103,6 +121,15 @@ type PolicyParameter = z.output<typeof parameterSchema>;
 
 export type PolicyTag = z.output<typeof tagSchema> & { id: string };
 export type PolicyDto = {
+  /** Resource may be deleted, subject to reference checks. */
+  deletable?: boolean;
+  /** Kept only to resolve existing pinned drafts; omitted from new selections. */
+  retired?: boolean;
+  project_id?: string;
+  definition?: import("../../shared/policy-definition.js").PolicyDefinition;
+  maintenance?: { revision: number; maintainer: string };
+  published_versions?: PolicyDto[];
+  compliance?: PolicyCompliance;
   implementation: "rules";
   id: string;
   name: string;
@@ -113,7 +140,7 @@ export type PolicyDto = {
   parameters: PolicyParameter[];
   rails: Array<z.output<typeof railTypeSchema>>;
   effects: string[];
-  forms: Array<z.output<typeof ruleFormSchema>>;
+  detectors: string[];
   rules: PolicyRule[];
   test_cases: PolicyTestCase[];
   test_count: number;
@@ -122,68 +149,15 @@ export type PolicyDto = {
   protection: PolicyProtection;
 };
 
-export const POLICY_CATALOG_FILE_NAMES = [
-  "builtin_policies.json",
-  "local_content_filters.json",
-  "model_capability_policies.json",
-  "focused_policies.json",
-  "configurable_policies.json",
-] as const;
+export const POLICY_CATALOG_FILE_NAMES = ["policies.json"] as const;
 
 const RAIL_ORDER: PolicyDto["rails"] = ["input", "retrieval", "dialog", "execution", "output"];
-
-// Keep the Controller's discovery metadata compatible with the canonical
-// Runner toolkit catalog. These tags are centrally reviewed metadata, not an
-// assertion that every Rule covers every OWASP risk.
-const OWASP_LLM_2025_POLICY_IDS = new Set([
-  "builtin-prompt-injection",
-  "builtin-indirect-prompt-injection",
-  "builtin-jailbreak",
-  "builtin-system-prompt-leakage",
-  "prompt-injection-protection",
-  "filter-prompt-injection-jailbreak",
-  "filter-prompt-injection-data-exfiltration",
-  "filter-prompt-injection-system-prompt",
-  "claims-agent-safety",
-  "builtin-secrets",
-  "builtin-pii",
-  "pattern-matching",
-  "baseline-pii-protection",
-  "advanced-au-pii-protection",
-  "airline-passenger-data-protection-uae",
-  "gdpr-eu-pii-protection",
-  "pdpa-singapore",
-  "uae-regulatory-compliance",
-  "aviation-operations-security",
-  "filter-prompt-injection-sql",
-  "filter-prompt-injection-malicious-code",
-  "block-code-execution",
-  "builtin-contextual-grounding",
-  "builtin-automated-reasoning",
-  "mas-ai-risk-management",
-]);
 
 export class PolicyCatalog {
   private constructor(private readonly policiesById: ReadonlyMap<string, PolicyDto>) {}
 
   static load(directory: string): PolicyCatalog {
-    const merged = new Map<string, PolicyDto>();
-    const contractPath = join(directory, "protection-contracts.json");
-    let contracts: ProtectionContracts;
-    try {
-      contracts = protectionContractsSchema.parse(JSON.parse(readFileSync(contractPath, "utf8")));
-    } catch (error) {
-      throw new Error(`Unable to load protection contract ${contractPath}: ${error instanceof Error ? error.message : String(error)}`);
-    }
-    for (const fileName of POLICY_CATALOG_FILE_NAMES) {
-      const path = join(directory, fileName);
-      for (const policy of readPolicyAssets(path)) {
-        // The focused local-filter collection intentionally replaces a legacy
-        // definition when it reuses a public Policy ID.
-        merged.set(policy.id, normalizePolicy(policy, contracts));
-      }
-    }
-    return new PolicyCatalog(merged);
+    return new PolicyCatalog(loadCatalogDirectory(directory));
   }
 
   list(): PolicyDto[] {
@@ -193,6 +167,26 @@ export class PolicyCatalog {
   get(policyId: string): PolicyDto | undefined {
     return this.policiesById.get(policyId);
   }
+}
+
+function loadCatalogDirectory(directory: string): Map<string, PolicyDto> {
+  const merged = new Map<string, PolicyDto>();
+  const contractPath = join(directory, "protection-contracts.json");
+  let contracts: ProtectionContracts;
+  try {
+    contracts = protectionContractsSchema.parse(JSON.parse(readFileSync(contractPath, "utf8")));
+  } catch (error) {
+    throw new Error(`Unable to load protection contract ${contractPath}: ${error instanceof Error ? error.message : String(error)}`);
+  }
+  for (const fileName of POLICY_CATALOG_FILE_NAMES) {
+    const path = join(directory, fileName);
+    if (!existsSync(path)) continue;
+    for (const policy of readPolicyAssets(path)) {
+      if (merged.has(policy.id)) throw new Error(`Duplicate bundled Policy ID: ${policy.id}`);
+      merged.set(policy.id, normalizePolicy(policy, contracts, fileName));
+    }
+  }
+  return merged;
 }
 
 function readPolicyAssets(path: string): PolicyAsset[] {
@@ -205,12 +199,18 @@ function readPolicyAssets(path: string): PolicyAsset[] {
   }
 }
 
-function normalizePolicy(policy: PolicyAsset, contracts: ProtectionContracts): PolicyDto {
-  const tags = new Map<string, PolicyTag>();
-  if (OWASP_LLM_2025_POLICY_IDS.has(policy.id)) {
-    const tag = policyTag("framework", "owasp-llm-2025", "OWASP LLM 2025", "declared");
-    tags.set(tag.id, tag);
+function normalizePolicy(policy: PolicyAsset, contracts: ProtectionContracts, sourceFile: string): PolicyDto {
+  const compliance = policyComplianceSchema.parse(policy.source === "custom"
+    ? customPolicyCompliance(policy, "Policy package author")
+    : policy.compliance ?? builtInPolicyCompliance(policy, sourceFile));
+  if (compliance) {
+    if (compliance.policy_version !== policy.version) throw new Error(`Compliance version mismatch for ${policy.id}`);
+    const ruleIds = new Set(policy.rules.map(rule => rule.id));
+    for (const entry of [...compliance.references, ...compliance.coverage]) {
+      if (entry.rule_ids.some(id => !ruleIds.has(id))) throw new Error(`Unknown compliance Rule reference for ${policy.id}`);
+    }
   }
+  const tags = new Map<string, PolicyTag>();
   for (const item of policy.tags) {
     const tag = policyTag(item.namespace, item.value, item.label, item.source);
     tags.set(tag.id, tag);
@@ -218,7 +218,7 @@ function normalizePolicy(policy: PolicyAsset, contracts: ProtectionContracts): P
 
   const configuredRails = new Set(policy.rules.flatMap((rule) => rule.rails));
   const effects = [...new Set(policy.rules.map((rule) => rule.effect))].sort();
-  const forms = [...new Set(policy.rules.map((rule) => rule.form))].sort();
+  const detectors = [...new Set(policy.rules.map((rule) => rule.detector.ref))].sort();
   return {
     implementation: "rules",
     id: policy.id,
@@ -226,11 +226,13 @@ function normalizePolicy(policy: PolicyAsset, contracts: ProtectionContracts): P
     description: policy.description,
     source: policy.source,
     version: policy.version,
+    compliance,
     tags: [...tags.values()],
     parameters: policy.parameters,
     rails: RAIL_ORDER.filter((rail) => configuredRails.has(rail)),
     effects,
-    forms,
+    detectors,
+    ...(policy.definition ? { definition: policy.definition } : {}),
     rules: policy.rules,
     test_cases: policy.test_cases,
     test_count: policy.test_cases.length,

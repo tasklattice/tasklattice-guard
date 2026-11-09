@@ -1,0 +1,23 @@
+{
+  "name": "F5 Scan Compatibility Demo",
+  "runtimeProfile": "llmrails_colang1_standard",
+  "draftConfig": {
+    "allowedTopics": [],
+    "restrictedTopics": [],
+    "safetyLevel": "balanced",
+    "outputDelivery": "full_buffered",
+    "policyBindings": [
+      {
+        "policyId": "configured-phrase-filter",
+        "policyVersion": "1.0.0",
+        "action": null,
+        "parameterValues": {
+          "phrase_entries": "[{\"id\":\"block\",\"phrase\":\"F5_SCAN_BLOCK_ME\",\"action\":\"block\"},{\"id\":\"redact\",\"phrase\":\"F5_SCAN_REDACT_ME\",\"action\":\"transform\",\"replacement\":\"[REDACTED]\"}]"
+        },
+        "enabledRuleIds": ["configured/phrases"],
+        "ruleActions": {},
+        "enabledRails": ["input", "output"]
+      }
+    ]
+  }
+}

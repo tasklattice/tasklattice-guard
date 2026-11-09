@@ -6,3 +6,11 @@
 *.swp
 *.tmp
 *.tgz
+
+# Deployment secrets must never be included in published charts.
+*.pem
+*.key
+*.p12
+*.pfx
+values-private*.yaml
+values-secret*.yaml

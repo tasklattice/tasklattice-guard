@@ -1,31 +1,129 @@
-import type { GuardrailPolicyBindingConfig } from "../domain/guardrail-plan.js";
+import { normalizeGuardrailDraft, type GuardrailDraftConfig, type GuardrailPolicyBindingConfig } from "../domain/guardrail-plan.js";
 import type { ProtectionPreset } from "../../shared/protection-map.js";
-import type { PolicyDto } from "./catalog.js";
+import { appendProfileRules } from "../../shared/profile-rule-selection.js";
+import { activePolicyParameters } from "../../shared/policy-parameters.js";
+import type { PolicyDefinition } from "../../shared/policy-definition.js";
+type ProfilePolicy = { test_cases?: readonly { id: string; phase: string; covered_rule_ids: readonly string[] }[]; id: string; version: string; rails: readonly string[]; parameters: readonly { name: string; required?: boolean; default?: string | null | undefined }[]; rules: readonly { id: string; binding_id?: string | null; detector?: { ref: string } }[]; definition?: PolicyDefinition; published_versions?: readonly ProfilePolicy[] };
 
 /** Validate a preset against this exact installed catalog, never best-effort. */
-export function expandProtectionPreset(preset: ProtectionPreset, policies: readonly PolicyDto[], current: readonly GuardrailPolicyBindingConfig[] = []): GuardrailPolicyBindingConfig[] {
+export function expandProtectionPreset(preset: ProtectionPreset, policies: readonly ProfilePolicy[], current: readonly GuardrailPolicyBindingConfig[] = []): GuardrailPolicyBindingConfig[] {
   const byId = new Map(policies.map((policy) => [policy.id, policy]));
   const selected = new Set(current.map((binding) => binding.policyId));
   const result = structuredClone([...current]);
   for (const reference of preset.policies) {
-    const policy = byId.get(reference.policyId);
-    if (!policy) throw new Error(`Preset ${preset.id}: Policy ${reference.policyId} is unavailable.`);
-    if (policy.version !== reference.policyVersion) throw new Error(`Preset ${preset.id}: Policy ${policy.id} requires version ${reference.policyVersion}, found ${policy.version}.`);
+    const head = byId.get(reference.policyId);
+    if (!head) throw new Error(`Profile ${preset.id}: Policy ${reference.policyId} is unavailable.`);
+    const policy = [head, ...head.published_versions ?? []].find(item => item.version === reference.policyVersion);
+    if (!policy) throw new Error(`Profile ${preset.id}: Policy ${head.id} requires version ${reference.policyVersion}, found ${head.version}.`);
     if (!reference.enabledRails.length || reference.enabledRails.some((rail) => !policy.rails.includes(rail))) {
-      throw new Error(`Preset ${preset.id}: Policy ${policy.id} has unsupported Rails.`);
+      throw new Error(`Profile ${preset.id}: Policy ${policy.id} has unsupported Rails.`);
     }
     const parameterValues = Object.fromEntries(policy.parameters.flatMap((parameter) => parameter.default == null ? [] : [[parameter.name, parameter.default]]));
+    for (const pack of preset.parameterPacks ?? []) Object.assign(parameterValues, pack.values);
     Object.assign(parameterValues, reference.parameterValues);
-    for (const parameter of policy.parameters) {
-      if (parameter.required && !parameterValues[parameter.name]?.trim()) throw new Error(`Preset ${preset.id}: Policy ${policy.id} needs ${parameter.name}.`);
+    const knownRules = new Set(policy.rules.map(rule => rule.id));
+    const bindingRules = new Map(policy.rules.map(rule => [rule.binding_id ?? rule.id, rule.id]));
+    const selectedRules = reference.enabledBindingIds?.map(bindingId => bindingRules.get(bindingId)).filter((id): id is string => id !== undefined);
+    if (reference.enabledBindingIds && selectedRules?.length !== reference.enabledBindingIds.length) {
+      throw new Error(`Profile ${preset.id}: Policy ${policy.id} has an unknown binding selection.`);
     }
-    if (selected.has(policy.id)) continue; // Never replace user overrides, versions, directions or order.
+    const enabledRuleIds = selectedRules ?? reference.enabledRuleIds ?? policy.rules.map(rule => rule.id);
+    const requiredParameters = policy.definition
+      ? activePolicyParameters(policy.definition, enabledRuleIds, reference.enabledRails)
+      : policy.parameters;
+    for (const parameter of requiredParameters) {
+      if (parameter.required && !parameterValues[parameter.name]?.trim()) throw new Error(`Profile ${preset.id}: Policy ${policy.id} needs ${parameter.name}.`);
+    }
+    const ruleOrder = reference.bindingOrder
+      ? reference.bindingOrder.map(bindingId => bindingRules.get(bindingId)).filter((id): id is string => id !== undefined)
+      : reference.ruleOrder ?? [];
+    if (!enabledRuleIds.length || new Set(enabledRuleIds).size !== enabledRuleIds.length || enabledRuleIds.some(id => !knownRules.has(id))) {
+      throw new Error(`Profile ${preset.id}: Policy ${policy.id} has an invalid Rule selection.`);
+    }
+    if (new Set(ruleOrder).size !== ruleOrder.length || ruleOrder.some(id => !enabledRuleIds.includes(id))) {
+      throw new Error(`Profile ${preset.id}: Policy ${policy.id} has an invalid Rule order.`);
+    }
+    if (selected.has(policy.id)) {
+      const existing = result.find(binding => binding.policyId === policy.id)!;
+      // Rule IDs from a different version cannot be safely added to a user pin.
+      if (existing.policyVersion === policy.version) {
+        const selection = appendProfileRules(existing, { enabledRuleIds, ruleOrder });
+        if (selection) Object.assign(existing, selection);
+      }
+      continue; // Keep user actions, parameters, directions and reviewed expectations.
+    }
     selected.add(policy.id);
     result.push({
-      policyId: policy.id, policyVersion: policy.version, action: null,
-      parameterValues, enabledRuleIds: policy.rules.map((rule) => rule.id), ruleOrder: [],
-      testCaseOverrides: {}, ruleActions: {}, enabledRails: [...reference.enabledRails], reasoningPolicy: null,
+      policyId: policy.id, policyVersion: policy.version, action: reference.action ?? null,
+      parameterValues, enabledRuleIds: [...enabledRuleIds], ruleOrder: [...ruleOrder],
+      testCaseOverrides: structuredClone(reference.testCaseOverrides ?? {}), ruleActions: structuredClone(reference.ruleActions ?? {}), enabledRails: [...reference.enabledRails], reasoningPolicy: structuredClone(reference.reasoningPolicy ?? null),
     });
   }
+  validateProfileTestExclusions(preset, policies);
   return result;
+}
+
+export function profileRequiresModels(preset: ProtectionPreset, policies: readonly ProfilePolicy[]): boolean {
+  const modelDetectors = new Set(["model/classifier", "model/grounding", "service/formal-verification"]);
+  const byId = new Map(policies.map(policy => [policy.id, policy]));
+  for (const reference of preset.policies) {
+    const policy = byId.get(reference.policyId);
+    if (!policy) continue;
+    const selected = reference.enabledBindingIds
+      ? policy.rules.filter(rule => reference.enabledBindingIds!.includes(rule.binding_id ?? rule.id))
+      : reference.enabledRuleIds
+        ? policy.rules.filter(rule => reference.enabledRuleIds!.includes(rule.id))
+        : policy.rules;
+    if (selected.some(rule => rule.detector && modelDetectors.has(rule.detector.ref))) return true;
+  }
+  return false;
+}
+
+export function profileDraft(profile: ProtectionPreset, policies: readonly ProfilePolicy[]): GuardrailDraftConfig {
+  return normalizeGuardrailDraft({ ...profile.draftSettings,
+    policyBindings: expandProtectionPreset(profile, policies),
+    profileOrigin: { id: profile.id, version: profile.version },
+  });
+}
+
+/** One unavailable version must not hide all other starting configurations. */
+export function previewProtectionProfile<T extends ProtectionPreset>(profile: T, policies: readonly ProfilePolicy[]): T & {
+  policyBindings: GuardrailPolicyBindingConfig[];
+  availability: { available: boolean; reason: string | null };
+} {
+  try {
+    return { ...profile, policyBindings: expandProtectionPreset(profile, policies), availability: { available: true, reason: null } };
+  } catch (error) {
+    return { ...profile, policyBindings: [], availability: { available: false, reason: error instanceof Error ? error.message : "Profile is unavailable." } };
+  }
+}
+
+/** Reject stale scope declarations before a Profile can be selected or imported. */
+export function validateProfileTestExclusions(profile: ProtectionPreset, policies: readonly ProfilePolicy[]): void {
+  const seen = new Set<string>();
+  for (const item of profile.testExclusions ?? []) {
+    const reference = profile.policies.find(p => p.policyId === item.policyId && p.policyVersion === item.policyVersion);
+    const head = policies.find(p => p.id === item.policyId);
+    const policy = head && [head, ...head.published_versions ?? []].find(p => p.version === item.policyVersion);
+    const test = policy?.test_cases?.find(test => test.id === item.sourceCaseId);
+    const key = JSON.stringify([item.policyId, item.policyVersion, item.sourceCaseId]);
+    const enabled = reference?.enabledBindingIds
+      ? policy?.rules.filter(rule => reference.enabledBindingIds!.includes(rule.binding_id ?? rule.id)).map(rule => rule.id) ?? []
+      : reference?.enabledRuleIds ?? policy?.rules.map(rule => rule.id) ?? [];
+    if (!reference || !test || !item.reason?.trim() || seen.has(key)
+      || !reference.enabledRails.includes(test.phase as "input" | "output")
+      || !test.covered_rule_ids.every(id => enabled.includes(id))) {
+      throw new Error(`Profile ${profile.id}: invalid test exclusion ${item.policyId}@${item.policyVersion}/${item.sourceCaseId}.`);
+    }
+    if (reference.testCaseOverrides?.[item.sourceCaseId]) throw new Error(`Profile ${profile.id}: a Test Case cannot be both excluded and overridden.`);
+    seen.add(key);
+  }
+}
+
+/** Apply defaults only to matching pins/cases in a newly created Guardrail. */
+export function profileExcludedCaseIds(profile: ProtectionPreset, cases: readonly {
+  id: string; sourcePolicyId: string | null; sourcePolicyVersion: string | null; sourceCaseId: string | null;
+}[]): string[] {
+  const keys = new Set((profile.testExclusions ?? []).map(item => JSON.stringify([item.policyId, item.policyVersion, item.sourceCaseId])));
+  return cases.filter(test => keys.has(JSON.stringify([test.sourcePolicyId, test.sourcePolicyVersion, test.sourceCaseId]))).map(test => test.id);
 }

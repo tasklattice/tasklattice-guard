@@ -5,11 +5,14 @@ import os
 from typing import Any
 
 import httpx
+from runner.model_validation_diagnostics import validation_http_hooks
+from ...runtime.failures import model_response
 
 from ...runtime.contracts import (
     GroundingClaimEvidence,
     GroundingFilterAssessment,
     RiskFinding,
+    RuntimeTraceStep,
 )
 from ...safety.taxonomy import taxonomy_for_evaluator
 from .contracts import ActionRequest, ActionResult, action_result, action_view
@@ -49,14 +52,21 @@ class GroundingActionProvider:
         self._timeout_seconds = timeout_seconds
         self._transport = transport
         self._skip_tls_verify = skip_tls_verify
-        self._request_options = dict(request_options or {})
+        self._request_options = {}
+        # NVIDIA's hosted Lightning defaults to reasoning, which can exhaust the
+        # Guardrail's 30s deadline before emitting its JSON classification. This
+        # vendor option stays out of the portable Policy and other providers.
+        # https://build.nvidia.com/nvidia/nemotron-3.5-lightning-30b-a3b/build
+        if self._base_url == "https://integrate.api.nvidia.com/v1" and model == "nvidia/nemotron-3.5-lightning-30b-a3b":
+            self._request_options["chat_template_kwargs"] = {"enable_thinking": False}
+        self._request_options.update(request_options or {})
 
     async def execute(self, request: ActionRequest) -> ActionResult:
         view = action_view(request)
         active = view.active_block
         if "query" in active.qualifiers or "grounding_source" in active.qualifiers:
             return action_result(request,
-                "safe",
+                "not_matched",
                 request.content,
                 reason="The active block supplies grounding context and is not a response target.",
             )
@@ -79,32 +89,37 @@ class GroundingActionProvider:
                 missing = "query"
             reason = f"Contextual grounding requires a {missing} before evaluating output."
             return action_result(request,
-                "uncertain",
+                "unknown",
                 request.content,
                 findings=(
                     RiskFinding(
                         risk=request.capability,
                         taxonomy_id=taxonomy_for_evaluator(request.capability),
-                        verdict="uncertain",
+                        verdict="unknown",
                         confidence=0.0,
                         evidence=reason,
-                        recommended_action="clarify",
+                        recommended_action="block",
                     ),
                 ),
                 reason=reason,
+                trace=(RuntimeTraceStep(id=f"{request.binding.id}:context", kind="evaluation",
+                    name="Grounding context", status="unknown", verdict="unknown", detail=reason,
+                    policy_id=request.policy_id, content_block_id=request.active_block_id,
+                    error_source="configuration", error_category=("missing_grounding_sources" if queries
+                        else "missing_query" if sources else "missing_grounding_context")),),
             )
 
         query_text = "\n".join(block.text for block in queries)
         source_text = "\n".join(block.text for block in sources)
         limit_error = _limit_error(query_text, source_text, request.content)
         if limit_error:
-            return action_result(request, "error", request.content, reason=limit_error)
+            return action_result(request, "error", request.content, reason=limit_error, error_source="configuration", error_category="configuration")
 
         try:
             grounding_threshold = _threshold(request, "grounding_threshold")
             relevance_threshold = _threshold(request, "relevance_threshold")
         except ValueError as error:
-            return action_result(request, "error", request.content, reason=str(error))
+            return action_result(request, "error", request.content, reason=str(error), error_source="configuration", error_category="configuration")
 
         credential = (self._api_key or "").strip() or (
             os.environ.get(self._api_key_env_var, "").strip()
@@ -116,6 +131,7 @@ class GroundingActionProvider:
                 "error",
                 request.content,
                 reason=f"{self.name} credential is not configured.",
+                error_source="configuration", error_category="configuration",
             )
 
         call = None
@@ -129,7 +145,7 @@ class GroundingActionProvider:
                 async with httpx.AsyncClient(
                     timeout=self._timeout_seconds,
                     transport=self._transport,
-                    verify=not self._skip_tls_verify,
+                    verify=not self._skip_tls_verify, event_hooks=validation_http_hooks(),
                 ) as client:
                     response = await client.post(
                         f"{self._base_url}/chat/completions",
@@ -166,13 +182,14 @@ class GroundingActionProvider:
                         },
                     )
                     response.raise_for_status()
-                    raw_payload = response.json()
-                    payload = _response_payload(
-                        raw_payload,
-                        frozenset(block.id for block in sources),
-                    )
+                    with model_response():
+                        raw_payload = response.json()
+                        payload = _response_payload(
+                            raw_payload,
+                            frozenset(block.id for block in sources),
+                        )
                     call.complete(payload=raw_payload)
-        except (httpx.HTTPError, KeyError, TypeError, ValueError, json.JSONDecodeError) as error:
+        except (httpx.HTTPError, KeyError, IndexError, TypeError, ValueError, json.JSONDecodeError) as error:
             return action_result(request,
                 "error",
                 request.content,
@@ -197,13 +214,16 @@ class GroundingActionProvider:
             ),
         )
         claims = payload["claims"]
-        unsafe = any(item.detected for item in grounding) or any(
+        matched = any(item.detected for item in grounding) or any(
             claim.support == "unsupported" for claim in claims
         )
-        verdict = "unsafe" if unsafe else "safe"
+        unknown = any(claim.support == "uncertain" for claim in claims)
+        verdict = "matched" if matched else "unknown" if unknown else "not_matched"
         reason = payload["reason"] or (
             "The response failed contextual grounding thresholds."
-            if unsafe
+            if matched
+            else "The supplied sources do not establish support for every claim."
+            if unknown
             else "The response is grounded in the supplied sources and relevant to the query."
         )
         finding = RiskFinding(
@@ -212,14 +232,14 @@ class GroundingActionProvider:
             verdict=verdict,
             confidence=min(grounding_score, relevance_score),
             evidence=reason,
-            recommended_action=request.proposed_action if unsafe else "pass",
+            recommended_action=request.proposed_action if verdict != "not_matched" else "allow",
             grounding=grounding,
             claims=claims,
         )
         return action_result(request,
             verdict,
             request.content,
-            findings=(finding,) if unsafe or request.evidence_scope == "full" else (),
+            findings=(finding,) if verdict != "not_matched" or request.evidence_scope == "full" else (),
             reason=reason,
             usage=action_usage(call, len(request.content)),
         )
@@ -269,7 +289,7 @@ def _response_payload(
     for index, item in enumerate(raw_claims):
         if not isinstance(item, dict):
             raise TypeError("Each contextual grounding claim must be an object.")
-        support = str(item.get("support", "uncertain")).casefold()
+        support = str(item.get("support", "")).casefold()
         if support not in {"supported", "unsupported", "uncertain"}:
             raise ValueError("Contextual grounding claim support is invalid.")
         raw_references = item.get("source_block_ids", ())

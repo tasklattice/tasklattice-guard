@@ -2,7 +2,7 @@ import { capabilityBindingDefinitions, type CapabilityBindingId } from "../../sh
 import { evaluationContractDependencies } from "../../shared/protection-dependencies";
 import type { GuardrailPolicyBinding, Policy } from "./api-types";
 import { boundPolicy } from "./bound-policy";
-import type { ModelConfigurationView, ModelConfigurationRevision } from "./controller-api";
+import type { ModelReadinessView, ModelReadinessRevision } from "../../shared/model-readiness";
 
 /** Navigation categories never imply executable dependencies. Directions and enabled Rules do. */
 export function selectedModelDependencies(bindings: GuardrailPolicyBinding[], policies: Policy[]) {
@@ -43,20 +43,23 @@ export function selectedModelDependencies(bindings: GuardrailPolicyBinding[], po
 }
 
 export type DependencyAssignmentState = "active" | "activating" | "validated" | "failed" | "unverified" | "missing";
-export function dependencyAssignment(id: CapabilityBindingId, view: ModelConfigurationView) {
-  const inspect = (revision: ModelConfigurationRevision, stage: "active" | "activating" | "draft") => {
+export function dependencyAssignment(id: CapabilityBindingId, view: ModelReadinessView) {
+  const inspect = (revision: ModelReadinessRevision, stage: "active" | "activating" | "draft") => {
     const modelId = revision.assignments.bindings[id];
     if (!modelId) return null;
     const model = view.models.find(item => item.id === modelId);
     const probe = revision.validationReport?.checks.find(check => check.id === `probe:${id}:${modelId}`);
-    const state: DependencyAssignmentState = probe?.status === "failed" ? "failed"
-      : model && probe?.status === "passed" && probe.evidenceKind === "nemo-rail-v1"
-        ? stage === "draft" ? "validated" : stage : "unverified";
-    return { state, modelName: model?.name ?? modelId, checkedAt: revision.validationReport?.checkedAt ?? null, revision: revision.revision };
+    const validation = probe?.status === "failed" ? "failed" as const
+      : probe?.status === "passed" && probe.evidenceKind === "nemo-rail-v1" ? "passed" as const : "unverified" as const;
+    // Activation installs the provider; test evidence describes its quality.
+    // Failed or absent evidence must not prevent testing an installed model.
+    const state: DependencyAssignmentState = !model ? "unverified"
+      : stage !== "draft" ? stage : validation === "passed" ? "validated" : validation;
+    return { state, validation, modelName: model?.name ?? modelId, checkedAt: revision.validationReport?.checkedAt ?? null, revision: revision.revision };
   };
   // A failed/newer draft does not replace the last active runtime assignment.
   return (view.active && inspect(view.active, "active"))
     || (view.activating && inspect(view.activating, "activating"))
     || (view.draft && inspect(view.draft, "draft"))
-    || { state: "missing" as const, modelName: null, checkedAt: null, revision: null };
+    || { state: "missing" as const, validation: "unverified" as const, modelName: null, checkedAt: null, revision: null };
 }

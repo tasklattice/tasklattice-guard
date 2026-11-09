@@ -1,0 +1,124 @@
+---
+id: "formal-reasoning"
+title: "形式化推理（Automated Reasoning）"
+summary: "检查模型回答是否符合版本化形式策略，而不是检查文本是否有参考资料。"
+order: 1
+---
+
+形式化推理只检查 **Output**。它回答的问题是：
+
+> 当前回答的逻辑结论是否与一个版本化的形式策略一致？
+
+它使用独立的形式化证明服务，不是普通聊天模型。
+
+<a id="reasoning-boundary" />
+
+## 保护对象和边界
+
+| 项目 | 说明 |
+| --- | --- |
+| 保护对象 | 模型最终回答 |
+| 校验依据 | 形式策略 ID、版本和完整回答 |
+| 不负责 | 检查引用来源、检索文档、判断开放世界事实 |
+| 执行阶段 | Output |
+
+形式策略与 Policy Studio 的 Policy 是不同对象。Rule 中的“形式化策略 ID/版本”指向证明服务里的策略，不指向 Guardrail Policy。
+
+<a id="reasoning-service" />
+
+## 证明服务要求
+
+证明服务必须实现同一个 `baseUrl` 上的两个接口。`baseUrl` 应直接指向 `/evaluate`。
+
+<a id="reasoning-health" />
+
+### 健康检查
+
+```http
+GET {baseUrl}
+Authorization: Bearer <credential>
+```
+
+```json
+{
+  "protocol": "tali.automated-reasoning.v1",
+  "ready": true
+}
+```
+
+可以额外返回 `solver` 和 `policies`，但 `protocol` 与 `ready` 必须存在。
+
+<a id="reasoning-proof" />
+
+### 执行证明
+
+```http
+POST {baseUrl}
+Authorization: Bearer <credential>
+Content-Type: application/json
+```
+
+```json
+{
+  "policy": {"id": "warranty-duration", "version": "1"},
+  "query_content": "How long is the warranty?",
+  "guard_content": "The warranty lasts ten years.",
+  "confidence_threshold": 0.8
+}
+```
+
+<a id="reasoning-response" />
+
+## 证明响应
+
+```json
+{
+  "findings": [
+    {
+      "id": "proof-1",
+      "result": "invalid",
+      "confidence": 1.0,
+      "translation": {
+        "premises": ["warranty_years == 1"],
+        "claims": ["warranty_years == 10"],
+        "untranslated": []
+      },
+      "contradicting_rules": [
+        {"id": "warranty-term", "expression": "warranty_years == 1", "description": "The warranty lasts exactly one year."}
+      ],
+      "claims_false_scenario": {"variable_values": {"warranty_years": "1"}},
+      "message": "The policy contradicts the answer."
+    }
+  ],
+  "solver": {"name": "Z3", "version": "4.16.0", "policy_sha256": "..."}
+}
+```
+
+`findings` 必须是非空数组，最多 100 条；finding ID 必须唯一。
+
+结果语义：
+
+| 结果 | 含义 | 典型处理 |
+| --- | --- | --- |
+| `valid` | 策略能推出回答 | allow |
+| `invalid` | 回答与策略矛盾 | block |
+| `satisfiable` | 回答与策略兼容但未被推出 | 按阈值处理 |
+| `impossible` | 形式策略自身不一致 | fail closed |
+| `translation_ambiguous` | 无法明确翻译 | fail closed |
+| `no_translations` | 无法翻译 | fail closed |
+| `too_complex` | 超出证明能力 | fail closed |
+
+只有 `valid` 是比较明确的通过信号。服务不可用、策略不存在、翻译失败或证明错误都应按 fail-closed 处理。
+
+<a id="reasoning-config" />
+
+## 配置入口
+
+1. 部署可从检测环境访问的证明服务。
+2. 注册 `custom-openai-compatible` Provider，地址指向 `/evaluate`。
+3. 注册 `tali.automated-reasoning.v1` Model。
+4. 在 Protection Capabilities 的 `automated_reasoning.output` 选择模型。
+5. 使用一个已知有效回答和一个已知无效回答完成绑定验证。
+6. 在 Guardrail 中启用 `service/formal-verification`，仅限 Output。
+
+该能力需要稳定的证明服务和版本化形式策略，因此不在 Full-feature 默认 Profile 中启用。

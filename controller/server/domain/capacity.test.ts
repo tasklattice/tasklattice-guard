@@ -20,9 +20,9 @@ describe("Runner pool capacity", () => {
     expect(result.recommendedReplicas).toBe(4);
   });
 
-  it("respects the GuardRails 0 rolling-availability floor", () => {
-    const result = calculatePoolCapacity([], 50, 0, 1.25, 2);
+  it("recommends one replica when a pool has no load", () => {
+    const result = calculatePoolCapacity([], 50, 0);
 
-    expect(result.recommendedReplicas).toBe(2);
+    expect(result.recommendedReplicas).toBe(1);
   });
 });

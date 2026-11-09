@@ -1,0 +1,100 @@
+{
+  "kind": "Policy",
+  "rules": [
+    {
+      "id": "rule-b74372ac-b44f-4e7f-995b-edf3977da208",
+      "name": "Enforce proven warranty terms",
+      "stages": [
+        "output"
+      ],
+      "detector": {
+        "ref": "service/formal-verification",
+        "version": "1.0.0",
+        "parameters": {
+          "policy_id": "warranty-duration",
+          "policy_version": "1",
+          "confidence_threshold": 0.8
+        }
+      },
+      "metadata": {
+        "taxonomy_ids": [
+          "TALI-BUSINESS-POLICY"
+        ]
+      },
+      "on_match": {
+        "action": "block"
+      },
+      "risk_level": "medium",
+      "description": ""
+    }
+  ],
+  "tests": [
+    {
+      "id": "test-a5843be0-1b5a-4f86-a18c-cddac4ab2577",
+      "kind": "rule_acceptance",
+      "name": "Blocks disproved warranty",
+      "group": "Policy tests",
+      "phase": "output",
+      "scope": "rule",
+      "content": "The warranty lasts ten years.",
+      "context": {
+        "query": "How long is the warranty?",
+        "grounding_sources": [],
+        "trusted_instruction": "",
+        "expected_reasoning_result": "invalid"
+      },
+      "required": true,
+      "description": "",
+      "parameter_names": [],
+      "covered_rule_ids": [
+        "rule-b74372ac-b44f-4e7f-995b-edf3977da208"
+      ],
+      "expected_decision": "block"
+    },
+    {
+      "id": "test-932b58f4-7a0f-43bb-9f3e-a4adf5f7da57",
+      "kind": "scenario",
+      "name": "Allows proven warranty",
+      "group": "Policy tests",
+      "phase": "output",
+      "scope": "policy",
+      "content": "The warranty lasts one year.",
+      "context": {
+        "query": "How long is the warranty?",
+        "grounding_sources": [],
+        "trusted_instruction": "",
+        "expected_reasoning_result": "valid"
+      },
+      "required": true,
+      "description": "",
+      "parameter_names": [],
+      "covered_rule_ids": [
+        "rule-b74372ac-b44f-4e7f-995b-edf3977da208"
+      ],
+      "expected_decision": "allow"
+    }
+  ],
+  "metadata": {
+    "id": "policy-34c86efd-edaa-4882-957d-ef4cad5f58d5",
+    "name": "Studio acceptance · formal proof",
+    "tags": [
+      {
+        "label": "Words & content filters",
+        "value": "content_filters",
+        "source": "declared",
+        "namespace": "protection"
+      }
+    ],
+    "version": "0",
+    "description": "Real Z3 proof service validates versioned warranty constraints and preserves proof evidence.",
+    "safety_level": "balanced",
+    "output_delivery": "full_buffered"
+  },
+  "execution": {
+    "mode": "sequential",
+    "input": "previous_output",
+    "stop_on": "block"
+  },
+  "parameters": [],
+  "schema_version": 1
+}

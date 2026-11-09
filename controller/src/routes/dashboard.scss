@@ -1,0 +1,79 @@
+.dashboard-metric-card {
+  border-top: 3px solid var(--border);
+  &[data-attention="warning"] { border-top-color: var(--warning); }
+  &[data-attention="critical"] { border-top-color: var(--destructive); }
+}
+.dashboard-metric-card__content {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+}
+.dashboard-metric-card__actions {
+  margin-top: auto;
+  padding-top: 0.25rem;
+}
+.dashboard-contact-action {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-height: 2.75rem;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--primary);
+  font-size: 0.75rem;
+  font-weight: 500;
+  cursor: pointer;
+  &:hover { text-decoration: underline; }
+  &:focus-visible { outline: 2px solid var(--ring); outline-offset: 3px; }
+}
+.dashboard-runtime-grid { display: grid; grid-template-columns: minmax(0, 1fr) 20rem; align-items: start; gap: 1rem; min-width: 0; }
+.dashboard-attention-issue,
+.dashboard-attention-link {
+  display: flex;
+  width: 100%;
+  align-items: flex-start;
+  gap: 0.625rem;
+  padding: 0.75rem 0;
+  border: 0;
+  border-bottom: 1px solid var(--border);
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+  &:last-child { border-bottom: 0; }
+  &:hover { background: var(--accent); }
+  &:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; }
+}
+.dashboard-attention-issue {
+  &[data-status="warning"] > svg { color: var(--warning); }
+  &[data-status="critical"] > svg { color: var(--destructive); }
+}
+.runtime-investigation-sheet[data-slot="sheet-content"] { width: 38rem; max-width: 38rem; }
+.runtime-investigation-footer {
+  flex-shrink: 0;
+  gap: 0;
+  padding: 1rem 1.5rem;
+}
+.runtime-investigation-footer__status:not(:empty) {
+  margin-bottom: 0.75rem;
+}
+.runtime-investigation-footer__actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.75rem;
+
+  > [data-slot="button"] {
+    width: 100%;
+    max-width: none;
+    min-height: 2.5rem;
+    justify-content: center;
+    padding-inline: 1rem;
+    white-space: nowrap;
+  }
+}
+.runtime-investigation-focus {
+  padding: 1rem;
+  border-left: 3px solid var(--warning);
+  background: var(--notice-warning);
+  &[data-status="critical"] { border-left-color: var(--destructive); background: var(--notice-danger); }
+}

@@ -7,6 +7,7 @@ export const localGuardrailContracts = [
   "tali.guard.content-filter.rules.v1",
   "tali.guard.prompt-injection.v1",
   "tali.guard.indirect-prompt-injection.v1",
+  "tali.guard.memory-poisoning.v1",
   "tali.guard.system-prompt-leakage.v1",
   "tali.guard.topic-control.rules.v1",
 ] as const;

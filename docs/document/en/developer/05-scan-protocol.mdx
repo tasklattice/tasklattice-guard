@@ -1,0 +1,347 @@
+---
+id: "scan-protocol"
+title: "Scan Endpoint protocol"
+summary: "Inspect Input or complete Output through the F5 Backend V1 Scans compatible API, with authentication, request fields, protection modes, responses and errors."
+order: 2
+---
+The Scan Endpoint (`f5-scan`) provides an API compatible with F5 Backend V1 Scans. The client submits text, and Guard returns inspection results. The client uses these results to decide whether to call the model or deliver text.
+
+This API supports **Input and complete Output**. It does not call the business model or retrieve model responses. See [gateway integration](/document/developer/gateway-connect#gateway-stream-protocol) for Output streaming.
+
+Compatibility covers text scans only. It excludes F5 project management, history queries, Scanner configuration APIs and `/scans/raw`.
+
+<a id="scan-connection" />
+## Address and authentication
+
+The API address is `POST {endpoint}/backend/v1/scans`. `{endpoint}` includes the Endpoint ID, for example `https://guard-runtime.example.com/runtime/v1/endpoints/your-endpoint-id`.
+
+Requests require these headers:
+
+| Header | Required / optional | Value |
+| --- | --- | --- |
+| `Authorization` | Required when credential checking is on | `Bearer <Scan Endpoint credential>`. The credential must belong to the Endpoint in the path. |
+| `Content-Type` | Required | `application/json`. Guard accepts parameters such as `charset=utf-8`. |
+
+The following examples assume **Require Credential** is on (the default). When off, omit `Authorization` and `CALYPSOAI_TOKEN`; supplied credentials are ignored and requests are anonymous. Inspection still runs.
+
+Minimal request:
+
+```http
+POST /runtime/v1/endpoints/your-endpoint-id/backend/v1/scans HTTP/1.1
+Host: guard-runtime.example.com
+Authorization: Bearer <Scan Endpoint credential>
+Content-Type: application/json
+
+{"input":"Text to inspect"}
+```
+
+HTTP examples include the headers required for integration and the JSON body. A blank line separates headers from the body. Domains, IDs and credentials are examples. Examples omit automatic headers such as `Content-Length` and `Date`, and additional diagnostic headers.
+
+The path selects the Endpoint. Its published Router then selects a Guardrail Version. When **Require Credential** is on, Guard returns `401` if the credential does not match the Endpoint. The root path `/backend/v1/scans` does not accept scans.
+
+When you use a URL library, preserve the Endpoint path. A path that starts with `/` can reset the address to the host root.
+
+The cURL command below uses environment variable names common in existing Scan scripts. `CALYPSOAI_URL` is `{endpoint}`, and `CALYPSOAI_TOKEN` is the complete Endpoint credential.
+
+```bash
+export CALYPSOAI_URL='https://guard-runtime.example.com/runtime/v1/endpoints/your-endpoint-id'
+export CALYPSOAI_TOKEN='<Scan Endpoint credential>'
+curl -sS --fail-with-body -X POST "${CALYPSOAI_URL%/}/backend/v1/scans" \
+  -H "Authorization: Bearer $CALYPSOAI_TOKEN" \
+  -H 'Content-Type: application/json' \
+  --data '{"input":"Text to inspect"}'
+```
+
+The Scan Endpoint does not support connection checks through `/verify`. Submit a real scan to check authentication, routing and inspection.
+
+<a id="scan-request" />
+## Request fields and examples
+
+These fields form the JSON body for `POST {endpoint}/backend/v1/scans`:
+
+| Field | Required / optional | JSON data type | Default | Constraint and effect |
+| --- | --- | --- | --- | --- |
+| `input` | Required | string | None | The text for this inspection. Empty strings are valid. Arrays, objects and `null` are invalid. |
+| `scanDirection` | Optional | string | `"request"` | `"request"` inspects Input. `"response"` inspects complete Output. Values are case-sensitive. |
+| `flagOnly` | Optional | boolean | Endpoint setting, initially `true` | `true` reports interventions as `flagged`. `false` distinguishes `blocked` from `redacted`, but some results remain `flagged`. |
+| `verbose` | Optional | boolean | `false` | In Enforce, `true` returns one aggregate Guardrail result. Monitor and Bypass always return an empty list. |
+
+Guard validates these four fields with strict types. `"false"`, `0` and `1` cannot replace booleans. Explicit `null` cannot replace an omitted field. A missing `input`, incorrect type or invalid enum value returns `422`.
+
+Input scan:
+
+```http
+POST /runtime/v1/endpoints/your-endpoint-id/backend/v1/scans HTTP/1.1
+Host: guard-runtime.example.com
+Authorization: Bearer <Scan Endpoint credential>
+Content-Type: application/json
+
+{
+  "input": "Text to inspect",
+  "scanDirection": "request",
+  "flagOnly": false,
+  "verbose": false
+}
+```
+
+Output scans use the same API. Put the complete model response in `input`. Set `scanDirection` to `"response"`:
+
+```http
+POST /runtime/v1/endpoints/your-endpoint-id/backend/v1/scans HTTP/1.1
+Host: guard-runtime.example.com
+Authorization: Bearer <Scan Endpoint credential>
+Content-Type: application/json
+
+{
+  "input": "Here is the generated response.",
+  "scanDirection": "response",
+  "flagOnly": false,
+  "verbose": true
+}
+```
+
+Each request selects the route again and creates a new Scan ID. Input and Output scans are independent. They do not share a session or a fixed version. Each repeat submission creates a new scan. The API provides no deduplication or idempotency guarantee.
+
+This API does not correlate conversation messages or link Input and Output. Use the [gateway integration API](/document/developer/gateway-connect) for that lifecycle. The explicit context extension below supports independent context-aware scans.
+
+### TaskLattice context extension
+
+`guardrail_context` is an optional TaskLattice extension, **not an upstream F5 standard field**. It uses the same untrusted content boundaries as the gateway API:
+
+```json
+{
+  "input": "The actual retrieved document or memory record",
+  "scanDirection": "request",
+  "flagOnly": false,
+  "guardrail_context": {
+    "query": "Summarize the information relevant to my task",
+    "target_source": "retrieved_content",
+    "memory": {"operation": "read", "source_query": "The original acquisition task"}
+  }
+}
+```
+
+`query` and `memory.source_query` are optional strings, each limited to 100,000 characters. `target_source` is `user_input`, `retrieved_content`, or `tool_output`. Omit `memory` for ordinary external-document checks; only real memory boundaries use `read` (retrieved content) or `write` (tool output). An explicit source must agree with the operation. External content and memory operations require `scanDirection=request`. `grounding_sources` optionally supplies up to 32 reference strings, totaling at most 500,000 characters. The existing whole-request body limit still applies. Unknown context fields, invalid types, and conflicting boundaries return `422` without echoing their contents.
+
+The original `input` is the only scanned candidate; the task and references are contextual evidence, not additional user messages. All supplied blocks are untrusted. The extension cannot select a Router, change policy, mark content trusted, or inject a test's expected answer. Do not replace the actual memory candidate with an attacker-desired memory value.
+
+Accepted context is acknowledged by `X-TaskLattice-Scan-Context: v1` and recorded in telemetry as `scanContextVersion`. Clients relying on this extension must reject a successful response without that acknowledgement; old or other F5 servers may ignore unknown fields. Plain text scans retain their previous behavior. `requestPromptId` and `externalMetadata` remain compatibility placeholders and do not supply this context.
+
+<a id="scan-flag-only-default" />
+### Default flagOnly
+
+Users with Endpoint write access can set **Default flagOnly** in Scan Endpoint creation or details. New Endpoints default to `true`. Changes apply after the service synchronizes the configuration. The Router does not require another publication.
+
+An explicit boolean in the request overrides the Endpoint setting. Guard uses the Endpoint setting only when the request omits `flagOnly`. The integration page's cURL example omits this field.
+
+`flagOnly` changes the `outcome` label only. It does not change inspection, text replacement or the Guardrail protection mode. To observe results without blocking, ask a user with Guardrail write permission to select Monitor.
+
+<a id="scan-placeholders" />
+### Accepted but ignored compatibility fields
+
+| Field | Behavior |
+| --- | --- |
+| `project` | Does not select a project, Endpoint or Guardrail. |
+| `externalMetadata` | Does not affect routing. The response does not return it. |
+| `requestPromptId` | Does not link Input and Output or reuse a previous scan. |
+| `configOverrides` | Does not override Scanner, Policy or Router configuration. |
+| `disabled`, `forceEnabled` | Do not disable inspection or force a specific Scanner. |
+
+These compatibility fields accept any valid JSON value, including strings, arrays, objects and `null`. Guard also ignores unknown extra fields, such as `messages`, `mode` and `dry_run`. They cannot supply context or change the protection mode. Their bytes still count toward the body limit. The declared `guardrail_context` extension is validated separately.
+
+The client must retain its own mapping between dataset rows, expected labels and returned Scan IDs.
+
+<a id="scan-protection-modes" />
+## Guardrail protection modes
+
+Scan uses the protection mode of the Guardrail that the Router selects. The client cannot override this mode through request JSON.
+
+| Mode | Inspection and processing | Successful `outcome` | `scannerResults` |
+| --- | --- | --- | --- |
+| Enforce | Inspects text and returns the actual pass, flag, block or replacement result. | One of four values, according to the inspection and `flagOnly`. | One aggregate result when `verbose=true`, otherwise `[]`. |
+| Monitor | Inspects text but returns the original text despite matches, detector failures or detector timeouts. | `cleared` | Always `[]`. |
+| Bypass | Skips inspection and returns the original text. | `cleared` | Always `[]`. |
+
+In Monitor and Bypass, `cleared` does not mean that the content passed inspection. Use runtime logs to review the protection mode and Monitor results.
+
+All modes require valid credentials, an enabled Endpoint, a valid request and an available route. Guard returns errors when these conditions fail. Monitor permits detector failures only. It does not guarantee `200` for every request.
+
+<a id="scan-response" />
+## Response fields and client actions
+
+A successful scan returns HTTP `200`. This status means that Guard processed the request. It does not permit content delivery. The client must read `result.outcome`.
+
+| Response field | JSON data type | Description |
+| --- | --- | --- |
+| `id` | string (UUID) | The new ID for this scan. It equals `X-Request-ID`. It does not link Input and Output. |
+| `result.outcome` | string | `cleared`, `flagged`, `blocked` or `redacted`. See the actions below. |
+| `redactedInput` | string | The text Guard returns. It contains replacements when applicable. Otherwise, it can contain the original text, even after a block. It does not permit delivery. |
+| `result.response` | string or null | Always `null` for Input scans. For Output scans, `null` after a block, otherwise the processed text. |
+| `result.scannerResults` | array | One aggregate result only in Enforce with `verbose=true`. Otherwise `[]`. It does not list individual Rules or F5 Scanners. |
+| `scanners` | null | Always `null`. It does not provide Scanner configuration. |
+
+The aggregate `outcome` is `passed` or `failed`. `passed` means no intervention. `failed` means an intervention, not a detector execution failure.
+
+`scannerId` is the Guardrail ID, or `null` if that ID is not a valid UUID. `startedDate`, `completedDate` and `scanDirection` describe this scan's times and direction.
+
+Other detail fields always use these values: `data.type="custom"`, `scannerVersionMeta=null`, `message=null` and `customConfig=false`.
+
+<a id="scan-decision-mapping" />
+### outcome and flagOnly
+
+This table applies to **successful scans in Enforce**. Input and Output use the same rules.
+
+| Inspection result | `flagOnly=true` | `flagOnly=false` | Client action |
+| --- | --- | --- | --- |
+| Passed without an intervention | `cleared` | `cleared` | Continue the current business flow. |
+| An intervention remains, without a block or replacement | `flagged` | `flagged` | Apply your business rules to the flag. Do not treat it as a pass. |
+| Block | `flagged` | `blocked` | Stop the current phase. Do not deliver the original text. |
+| Text replacement | `flagged` | `redacted` | Use the processed text. |
+
+The client must handle all four outcomes. `flagOnly=false` can still return `flagged`. With `flagOnly=true`, the outcome does not distinguish a block from a replacement.
+
+`flagOnly` does not undo text replacement. A replacement with `flagOnly=true` returns `flagged`, but `redactedInput` still contains the processed text. An Output block still returns `null` in `result.response`.
+
+`redacted` can mean a partial replacement or a complete replacement. This mapping is specific to this system. It does not imply the use of F5 Policies or equivalent inspection results.
+
+In Enforce, Guard does not report detector failures or timeouts as `cleared`. It returns errors for missing required context, no applicable inspections or incomplete required inspections. A confirmed block can end the scan before the remaining inspections run.
+
+<a id="scan-response-examples" />
+### Successful response examples
+
+These examples show the response format. Published Policies and protection modes determine actual results.
+
+An Input scan passes in Enforce with `verbose=false`:
+
+```http
+HTTP/1.1 200 OK
+Content-Type: application/json
+X-Request-ID: 11111111-1111-4111-8111-111111111111
+X-TaskLattice-Scan-Compatibility: v1
+
+{
+  "id": "11111111-1111-4111-8111-111111111111",
+  "result": {"outcome": "cleared", "response": null, "scannerResults": []},
+  "redactedInput": "Text to inspect",
+  "scanners": null
+}
+```
+
+An Input scan blocks in Enforce with `flagOnly=true` and `verbose=false`:
+
+```http
+HTTP/1.1 200 OK
+Content-Type: application/json
+X-Request-ID: 22222222-2222-4222-8222-222222222222
+X-TaskLattice-Scan-Compatibility: v1
+
+{
+  "id": "22222222-2222-4222-8222-222222222222",
+  "result": {"outcome": "flagged", "response": null, "scannerResults": []},
+  "redactedInput": "Text that matched a blocking policy",
+  "scanners": null
+}
+```
+
+The same block returns `blocked` with `flagOnly=false`:
+
+```http
+HTTP/1.1 200 OK
+Content-Type: application/json
+X-Request-ID: 33333333-3333-4333-8333-333333333333
+X-TaskLattice-Scan-Compatibility: v1
+
+{
+  "id": "33333333-3333-4333-8333-333333333333",
+  "result": {"outcome": "blocked", "response": null, "scannerResults": []},
+  "redactedInput": "Text that matched a blocking policy",
+  "scanners": null
+}
+```
+
+An Output scan replaces text in Enforce with `flagOnly=false` and `verbose=true`:
+
+```http
+HTTP/1.1 200 OK
+Content-Type: application/json
+X-Request-ID: 44444444-4444-4444-8444-444444444444
+X-TaskLattice-Scan-Compatibility: v1
+
+{
+  "id": "44444444-4444-4444-8444-444444444444",
+  "result": {
+    "outcome": "redacted",
+    "response": "Email: [REDACTED]",
+    "scannerResults": [
+      {
+        "outcome": "failed",
+        "data": {"type": "custom"},
+        "startedDate": "2026-10-09T08:00:00Z",
+        "completedDate": "2026-10-09T08:00:01Z",
+        "scanDirection": "response",
+        "scannerId": "55555555-5555-4555-8555-555555555555",
+        "scannerVersionMeta": null,
+        "message": null,
+        "customConfig": false
+      }
+    ]
+  },
+  "redactedInput": "Email: [REDACTED]",
+  "scanners": null
+}
+```
+
+<a id="scan-errors" />
+## Error responses and limits
+
+| HTTP status | `detail.code` | Meaning |
+| --- | --- | --- |
+| `401` | `invalid_credential` | The Bearer credential is missing, invalid, revoked or for another Endpoint. The Endpoint can also be disabled. |
+| `403` | `adapter_mismatch` | The credential is valid, but the Endpoint in the path does not support Scan. |
+| `413` | `request_too_large` | The complete body exceeds the size limit. |
+| `415` | `unsupported_media_type` | The request does not use `application/json`. |
+| `422` | None, `detail` is an array | Invalid JSON, a missing field, an incorrect type or an invalid enum value. |
+| `503` | `scan_unavailable` | The route or inspection service is unavailable. |
+| `503` | `scan_execution_failed` | A required inspection failed or could not complete in Enforce. |
+| `504` | `scan_timeout` | Scan processing exceeded the execution deadline. |
+| `500` | `invalid_scan_result` / `scan_internal_error` | The inspection result is invalid, or another processing error occurred. |
+
+Errors from the Scan API use this format, except for `422`:
+
+```http
+HTTP/1.1 504 Gateway Timeout
+Content-Type: application/json
+X-Request-ID: 66666666-6666-4666-8666-666666666666
+X-TaskLattice-Scan-Compatibility: v1
+
+{
+  "detail": {
+    "code": "scan_timeout",
+    "message": "The scan timed out.",
+    "requestId": "66666666-6666-4666-8666-666666666666"
+  }
+}
+```
+
+For a missing `input`, the `422` response contains a `detail` array:
+
+```http
+HTTP/1.1 422 Unprocessable Entity
+Content-Type: application/json
+X-Request-ID: 77777777-7777-4777-8777-777777777777
+X-TaskLattice-Scan-Compatibility: v1
+
+{
+  "detail": [
+    {"loc": ["body", "input"], "msg": "Field required", "type": "missing"}
+  ]
+}
+```
+
+All responses from the Scan API include `X-Request-ID` and `X-TaskLattice-Scan-Compatibility: v1`. The success `id` and error `requestId` equal `X-Request-ID`. For `422`, use the header because the body has no `requestId`.
+
+A `401` response also includes `WWW-Authenticate: Bearer`. Errors from a proxy can use other formats or headers.
+
+The default body limit is **1 MiB (1,048,576 bytes)**, including all JSON fields. The default scan execution deadline is **25 seconds**. It excludes the time to upload the body. Deployment configuration determines the actual limits.
+
+Set a separate network timeout in the client. Record API errors separately from Policy matches. A retry creates a new independent scan. See the [Endpoint integration checks](/document/developer/endpoint-setup#endpoint-verification).

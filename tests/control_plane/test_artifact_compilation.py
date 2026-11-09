@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -32,7 +33,7 @@ def test_custom_full_response_requirement_applies_only_to_enabled_output(mode, s
                 f'flow check_{rail} $text\n  $r = await GuardRecordPolicyAction(flow_name="check_{rail}", safe=True, text=$text)\n'
                 for rail in ("input", "output"))}],
             "rail_bindings": [{"rail_type": rail, "flow_name": f"check_{rail}",
-                "execution_mode": "detect", "on_unsafe": "reject"} for rail in ("input", "output")],
+                "execution_mode": "detect", "on_unsafe": "block"} for rail in ("input", "output")],
             "action_references": [{"name": "GuardRecordPolicyAction", "version": "1.0.0"}],
             "execution_contract": [["output_delivery", "full_buffered"]],
         }],
@@ -66,7 +67,7 @@ def test_control_plane_flags_compile_into_the_signed_artifact_contract(
         safety_level=safety_level,
         output_delivery=output_delivery,
         phases=["input", "output"],
-        on_unsafe="reject",
+        on_unsafe="block",
     )
 
     plan = plan_from_proto(artifact.plan)
@@ -83,15 +84,15 @@ def test_control_plane_flags_compile_into_the_signed_artifact_contract(
     assert artifact.checksum
     assert len(bindings) == 1
     assert bindings[0]["capability"] == "secrets"
-    assert bindings[0]["on_unsafe"] == "reject"
+    assert bindings[0]["on_unsafe"] == "block"
 
 
 @pytest.mark.parametrize(
     ("phases", "on_unsafe"),
     [
-        (["input"], "reject"),
-        (["output"], "redact"),
-        (["input", "output"], "rewrite"),
+        (["input"], "block"),
+        (["output"], "transform"),
+        (["input", "output"], "transform"),
     ],
 )
 def test_rail_and_enforcement_flags_survive_compilation(
@@ -112,6 +113,14 @@ def test_rail_and_enforcement_flags_survive_compilation(
     assert binding["timeout_ms"] == 750
 
 
+# Regenerating every signed Artifact fixture and comparing its checksum costs
+# several seconds and multiple Node subprocesses. It is a fixture-maintenance
+# gate, not a per-run regression: run it explicitly with `npm run fixtures:check`
+# (CI runs it once) so ordinary test runs do not repeat that work.
+@pytest.mark.skipif(
+    os.environ.get("GUARD_VERIFY_TEST_FIXTURES") != "1",
+    reason="Set GUARD_VERIFY_TEST_FIXTURES=1 (or run npm run fixtures:check) to regenerate and verify checked-in Artifact fixtures.",
+)
 def test_checked_in_runner_fixture_is_the_current_compiler_output() -> None:
     result = subprocess.run(
         [sys.executable, "scripts/generate_test_artifacts.py", "--check"],
@@ -127,7 +136,7 @@ def test_model_capability_compiles_to_a_provider_agnostic_action_binding() -> No
     plan = {
         "guardrail_id": "model-contract",
         "guardrail_version": "20260904-010000.001Z",
-        "compiler_version": "tasklattice-controller-plan-v3",
+        "compiler_version": "tasklattice-controller-plan-v1",
         "safety_level": "balanced",
         "output_delivery": "full_buffered",
         "steps": [{
@@ -135,9 +144,9 @@ def test_model_capability_compiles_to_a_provider_agnostic_action_binding() -> No
             "capability": "content_safety",
             "contract_ref": CONTRACT_CONTENT_SAFETY,
             "phases": ["input"],
-            "on_unsafe": "reject",
+            "on_unsafe": "block",
             "trigger": {"type": "always", "verdicts": []},
-            "parameters": [],
+            "parameters": [["evaluation_view", "previous_output"], ["precedence", "0"]],
         }],
         "modules": [{
             "id": "interaction_safety:input",
@@ -180,7 +189,7 @@ def _compile(
     plan = {
         "guardrail_id": "flag-contract",
         "guardrail_version": "20260904-010000.001Z",
-        "compiler_version": "tasklattice-controller-plan-v3",
+        "compiler_version": "tasklattice-controller-plan-v1",
         "safety_level": safety_level,
         "output_delivery": output_delivery,
         "steps": [{
@@ -190,7 +199,7 @@ def _compile(
             "phases": phases,
             "on_unsafe": on_unsafe,
             "trigger": {"type": "always", "verdicts": []},
-            "parameters": [],
+            "parameters": [["evaluation_view", "previous_output"], ["precedence", "0"]],
         }],
         "modules": [
             {

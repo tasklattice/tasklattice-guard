@@ -19,24 +19,6 @@ PII_PATTERNS: tuple[tuple[re.Pattern[str], str], ...] = (
     ),
     (re.compile(r"\b\d{3}-\d{2}-\d{4}\b"), "US social security number"),
     (re.compile(r"\b(?:\d[ -]*?){13,19}\b"), "payment card-like number"),
-    (
-        re.compile(
-            r"身份证号(?:码)?|护照号|社会安全号码|银行卡号",
-            re.IGNORECASE,
-        ),
-        "personal-data label",
-    ),
-)
-
-_PII_CANDIDATE = re.compile(
-    r"\b(?:passport|identity|identifier|id\s*(?:number|no\.?|#)|ssn|"
-    r"social\s+security|phone|telephone|address|date\s+of\s+birth|"
-    r"driver'?s?\s+licen[cs]e)\b|身份证|护照|社会安全|手机号|电话|住址|出生日期",
-    re.IGNORECASE,
-)
-_LONG_IDENTIFIER = re.compile(
-    r"\b(?=[A-Z0-9-]{7,}\b)(?=[A-Z0-9-]*\d)[A-Z0-9-]+\b",
-    re.IGNORECASE,
 )
 
 
@@ -59,33 +41,31 @@ class PiiEvaluator:
                 evidence.append(label)
         if not matches:
             escalation = _semantic_escalation(request)
-            if escalation == "always" or (
-                escalation == "on_uncertain" and _looks_like_pii_candidate(request.content)
-            ):
+            if escalation is not None:
                 return evaluation_result(
                     request,
-                    "uncertain",
+                    "unknown",
                     request.content,
                     reason=(
-                        "No exact PII pattern matched, but candidate identity "
-                        "signals require the semantic PII evaluator."
+                        "No exact PII pattern matched; semantic review is required "
+                        "because personal information need not contain identifier keywords."
                     ),
                 )
             return evaluation_result(
                 request,
-                "safe",
+                "not_matched",
                 request.content,
                 reason="No PII pattern matched.",
             )
         return evaluation_result(
             request,
-            "unsafe",
+            "matched",
             _redact(request.content, matches, "[PII_REDACTED]"),
             findings=(
                 RiskFinding(
                     risk="pii",
                     taxonomy_id=taxonomy_for_evaluator("pii"),
-                    verdict="unsafe",
+                    verdict="matched",
                     confidence=0.97,
                     evidence=f"Detected {', '.join(sorted(set(evidence)))}.",
                     recommended_action=request.proposed_action,
@@ -107,13 +87,9 @@ def _semantic_escalation(request: EvaluationRequest) -> str | None:
     )
     if any(trigger.type == "always" for trigger in triggers):
         return "always"
-    if any("uncertain" in trigger.verdicts for trigger in triggers):
-        return "on_uncertain"
+    if any("unknown" in trigger.verdicts for trigger in triggers):
+        return "on_unknown"
     return None
-
-
-def _looks_like_pii_candidate(content: str) -> bool:
-    return bool(_PII_CANDIDATE.search(content) or _LONG_IDENTIFIER.search(content))
 
 
 def _redact(

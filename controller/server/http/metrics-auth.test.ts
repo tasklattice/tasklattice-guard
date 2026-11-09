@@ -58,15 +58,6 @@ describe("Controller metrics authentication", () => {
     } as unknown as ControllerMetrics;
     const service = {
       listRunnerPoolsWithCapacity: vi.fn().mockResolvedValue([]),
-      defaultGuardrailReadiness: vi.fn().mockResolvedValue({
-        status: "unavailable",
-        guardrailStatus: "unavailable",
-        routerStatus: "unavailable",
-        activeVersion: null,
-        modelIndependent: null,
-        coverage: null,
-        draft: { revision: 0, activeRevision: null, validationStatus: null, validationFailureReason: null },
-      }),
       desiredGeneration: vi.fn().mockResolvedValue(3),
     } as unknown as ControlPlaneService;
     const app = createHttpApp({
@@ -81,17 +72,10 @@ describe("Controller metrics authentication", () => {
     expect(response.status).toBe(503);
     await expect(response.json()).resolves.toMatchObject({
       status: "unavailable",
-      reasons: ["default_guardrail_unavailable", "no_connected_runners"],
+      reasons: ["no_connected_runners"],
       desiredGeneration: 3,
       components: {
         controller: { status: "operational" },
-        basicProtection: {
-          status: "unavailable",
-          guardrailStatus: "unavailable",
-          routerStatus: "unavailable",
-          activeVersion: null,
-          modelIndependent: null,
-        },
         runnerFleet: { status: "unavailable", servingRunners: 0, connectedRunners: 0 },
         controlPlaneModel: { status: "unconfigured", provider: null, model: null },
         runtimeModels: { status: "unconfigured", models: [] },

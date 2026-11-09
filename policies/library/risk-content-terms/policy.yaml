@@ -1,0 +1,38 @@
+schema_version: 1
+kind: Policy
+metadata:
+  id: risk-content-terms
+  name: Risk Content Terms
+  description: 'Target taxonomy Policy: Risk Content Terms.'
+  source: built_in
+  version: 1.0.0
+  tags:
+  - namespace: protection
+    value: content_safety
+    label: Content Safety
+  - namespace: collection
+    value: policy-library
+    label: Policy Library
+  safety_level: balanced
+  output_delivery: full_buffered
+parameters: []
+rules: []
+rule_refs:
+- id: pattern/explosives
+  version: 1.0.0
+- id: pattern/weapons_firearms
+  version: 1.0.0
+- id: pattern/weapons_other
+  version: 1.0.0
+- id: pattern/violence_threats
+  version: 1.0.0
+- id: pattern/terrorism
+  version: 1.0.0
+- id: pattern/self_harm_suicide
+  version: 1.0.0
+- id: pattern/illegal_activities
+  version: 1.0.0
+- id: pattern/harassment_hate
+  version: 1.0.0
+tests:
+- tests/acceptance.yaml

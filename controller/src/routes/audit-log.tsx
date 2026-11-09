@@ -1,103 +1,166 @@
-import { useMemo, useState } from "react";
+import { Dropdown, DismissibleTag, Pagination, Search, Table, TableHead, TableBody, TableRow, TableHeader, TableCell } from "@carbon/react";
+import { useEffect, useId, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Bot, Clock3, Search, UserRound } from "lucide-react";
+import { useNavigate, useSearch } from "@tanstack/react-router";
+import { Bot, Filter, RefreshCw, UserRound } from "lucide-react";
 import { useTranslation } from "react-i18next";
-
+import type { AuditQuery } from "../../shared/audit-query";
 import { EntitySheet } from "@/components/entity-sheet";
 import { EmptyState, ErrorNotice, PageHeader } from "@/components/product-shell";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { queryKeys } from "@/features/query-keys";
 import { listAuditEvents, type AuditEvent } from "@/lib/controller-api";
-
-type ActorFilter = "all" | "human" | "system";
-type AuditWindow = "24h" | "7d" | "30d" | "all";
+import "./audit-log.scss";
 
 export function AuditLogPage() {
   const { t, i18n } = useTranslation();
-  const [search, setSearch] = useState("");
-  const [actor, setActor] = useState<ActorFilter>("all");
-  const [window, setWindow] = useState<AuditWindow>("7d");
+  const search = useSearch({ from: "/audit-log" });
+  const navigate = useNavigate({ from: "/audit-log" });
+  const initialBefore = useRef(new Date().toISOString());
+  const query = { ...search, before: search.before ?? initialBefore.current };
+  const [text, setText] = useState(search.q);
+  const [filtersOpen, setFiltersOpen] = useState(false);
   const [selected, setSelected] = useState<AuditEvent | null>(null);
-  const audit = useQuery({ queryKey: queryKeys.auditEvents, queryFn: () => listAuditEvents(500), refetchInterval: 30_000 });
-  const filtered = useMemo(() => {
-    const term = search.trim().toLowerCase();
-    const since = window === "all" ? null : Date.now() - auditWindowMilliseconds(window);
-    return (audit.data?.items ?? [])
-      .filter((event) => since === null || Date.parse(event.occurredAt) >= since)
-      .filter((event) => actor === "all" || (actor === "system" ? event.actorId === null : event.actorId !== null))
-      .filter((event) => !term || [event.kind, event.actorId ?? "system", event.resourceType, event.resourceId, JSON.stringify(event.detail)].some((value) => value.toLowerCase().includes(term)))
-      .sort((left, right) => Date.parse(right.occurredAt) - Date.parse(left.occurredAt));
-  }, [actor, audit.data, search, window]);
-
-  return (
-    <section className="py-6 sm:py-8">
-      <PageHeader title={t("auditLog.title")} description={t("auditLog.description")} />
-
-      <Card className="mt-6 gap-0 overflow-hidden p-0 shadow-none">
-        <div className="grid gap-3 border-b bg-muted/20 p-4 sm:grid-cols-2 xl:grid-cols-[minmax(16rem,1fr)_12rem_12rem_auto] xl:items-center">
-          <label className="relative sm:col-span-2 xl:col-span-1">
-            <span className="sr-only">{t("auditLog.search")}</span>
-            <Search className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
-            <Input value={search} onChange={(event) => setSearch(event.target.value)} className="min-h-11 bg-card pl-9" placeholder={t("auditLog.search")} />
-          </label>
-          <Select value={actor} onValueChange={(value) => setActor(value as ActorFilter)}>
-            <SelectTrigger className="min-h-11 bg-card" aria-label={t("auditLog.actorFilter")}><SelectValue /></SelectTrigger>
-            <SelectContent><SelectItem value="all">{t("auditLog.allActors")}</SelectItem><SelectItem value="human">{t("auditLog.humanActors")}</SelectItem><SelectItem value="system">{t("auditLog.systemActors")}</SelectItem></SelectContent>
-          </Select>
-          <Select value={window} onValueChange={(value) => setWindow(value as AuditWindow)}>
-            <SelectTrigger className="min-h-11 bg-card" aria-label={t("auditLog.windowFilter")}><SelectValue /></SelectTrigger>
-            <SelectContent><SelectItem value="24h">{t("dashboard.windows.24h")}</SelectItem><SelectItem value="7d">{t("dashboard.windows.7d")}</SelectItem><SelectItem value="30d">{t("dashboard.windows.30d")}</SelectItem><SelectItem value="all">{t("auditLog.allTime")}</SelectItem></SelectContent>
-          </Select>
-          <p className="text-xs text-muted-foreground sm:col-span-2 xl:col-span-1 xl:text-right">{t("auditLog.eventCount", { count: filtered.length })}</p>
+  const filterId = useId();
+  useEffect(() => { setText(search.q); }, [search.q]);
+  useEffect(() => {
+    if (!search.before) void navigate({ search: previous => ({ ...previous, before: initialBefore.current }), replace: true, resetScroll: false });
+  }, [search.before, navigate]);
+  const update = (patch: Partial<AuditQuery>) => void navigate({
+    search: previous => ({ ...previous, before: query.before, page: 1, ...patch }), resetScroll: false,
+  });
+  const audit = useQuery({
+    queryKey: [...queryKeys.auditEvents, query],
+    queryFn: ({ signal }) => listAuditEvents(query, signal),
+    refetchOnWindowFocus: false,
+  });
+  useEffect(() => {
+    if (audit.data && audit.data.page !== search.page) void navigate({
+      search: previous => ({ ...previous, page: audit.data.page }), replace: true, resetScroll: false,
+    });
+  }, [audit.data, search.page, navigate]);
+  const events = audit.data?.items ?? [];
+  const facets = audit.data?.facets;
+  const windowLabel = (value: string) => value === "all" ? t("auditLog.allTime") : t(`dashboard.windows.${value}`);
+  const actorLabel = (value: string) => t(value === "human" ? "auditLog.humanActors" : value === "system" ? "auditLog.systemActors" : "auditLog.allActors");
+  const filters: { key: "q" | "actor" | "window" | "kind" | "resourceType"; label: string; reset: string }[] = [
+    ...(search.q ? [{ key: "q" as const, label: `${t("auditLog.keyword")}: ${search.q}`, reset: "" }] : []),
+    ...(search.window !== "7d" ? [{ key: "window" as const, label: windowLabel(search.window), reset: "7d" }] : []),
+    ...(search.actor !== "all" ? [{ key: "actor" as const, label: actorLabel(search.actor), reset: "all" }] : []),
+    ...(search.kind ? [{ key: "kind" as const, label: `${t("auditLog.eventType")}: ${formatKind(search.kind)}`, reset: "" }] : []),
+    ...(search.resourceType ? [{ key: "resourceType" as const, label: `${t("auditLog.resourceType")}: ${search.resourceType}`, reset: "" }] : []),
+  ];
+  const extraCount = [search.actor !== "all", Boolean(search.kind), Boolean(search.resourceType)].filter(Boolean).length;
+  const clear = () => { setText(""); update({ q: "", actor: "all", kind: "", resourceType: "", window: "7d" }); };
+  return <section className="audit-page py-8">
+    <PageHeader title={t("auditLog.title")} description={t("auditLog.description")} />
+    <section className="audit-results" aria-label={t("auditLog.results")}>
+      <div className="audit-toolbar">
+        <form className="audit-search" aria-label={t("auditLog.search")} onSubmit={event => { event.preventDefault(); update({ q: text.trim() }); }}>
+          <Search size="lg" labelText={t("auditLog.search")} placeholder={t("auditLog.search")} value={text}
+            onChange={event => setText(event.target.value.slice(0, 300))} closeButtonLabelText={t("auditLog.clearSearch")}
+            onClear={() => { setText(""); update({ q: "" }); }} />
+          <Button type="submit" variant="secondary" size="lg">{t("auditLog.submitSearch")}</Button>
+        </form>
+        <div className="audit-time"><AuditFilter label={t("auditLog.windowFilter")} hideLabel value={search.window} items={["24h", "7d", "30d", "all"]} itemLabel={windowLabel} onChange={value => update({ window: value as AuditQuery["window"] })} /></div>
+        <Button variant={filtersOpen ? "secondary" : "ghost"} size="lg" aria-expanded={filtersOpen} aria-controls={filterId} onClick={() => setFiltersOpen(!filtersOpen)}>
+          <Filter aria-hidden="true" />{t("auditLog.filters")}{extraCount ? ` (${extraCount})` : ""}
+        </Button>
+        <Button variant="ghost" size="lg" disabled={audit.isFetching} onClick={() => update({ before: new Date().toISOString() })}>
+          <RefreshCw aria-hidden="true" />{t("auditLog.refresh")}
+        </Button>
+      </div>
+      {filtersOpen && <div id={filterId} className="audit-filter-panel" role="group" aria-label={t("auditLog.filters")}>
+        <AuditFilter label={t("auditLog.actorFilter")} value={search.actor} items={["all", "human", "system"]} itemLabel={actorLabel} onChange={value => update({ actor: value as AuditQuery["actor"] })} />
+        <AuditFilter label={t("auditLog.eventType")} value={search.kind} items={["", ...new Set([...(facets?.kinds ?? []), ...(search.kind ? [search.kind] : [])])]} itemLabel={value => value ? formatKind(value) : t("auditLog.allEventTypes")} onChange={value => update({ kind: value })} />
+        <AuditFilter label={t("auditLog.resourceType")} value={search.resourceType} items={["", ...new Set([...(facets?.resourceTypes ?? []), ...(search.resourceType ? [search.resourceType] : [])])]} itemLabel={value => value || t("auditLog.allResourceTypes")} onChange={value => update({ resourceType: value })} />
+      </div>}
+      {filters.length > 0 && <div className="audit-applied" aria-label={t("auditLog.appliedFilters")}>
+        {filters.map(filter => <DismissibleTag key={filter.key} type="cool-gray" text={filter.label} title={filter.label} dismissTooltipLabel={t("auditLog.removeFilter", { name: filter.label })} onClose={() => update({ [filter.key]: filter.reset })} />)}
+        <Button variant="ghost" size="sm" onClick={clear}>{t("auditLog.clearFilters")}</Button>
+      </div>}
+      <div className="audit-summary">
+        <span role="status">{audit.isFetching ? t("auditLog.loading") : audit.data ? t("auditLog.eventCount", { count: audit.data.total }) : "—"}</span>
+        <span>{t("auditLog.snapshot", { time: formatDate(query.before, i18n.language) })}</span>
+      </div>
+      {audit.isPending ? <div className="p-4"><Skeleton className="h-72 w-full" /></div> : audit.error ? <div className="p-4"><ErrorNotice error={audit.error} /><Button variant="ghost" onClick={() => void audit.refetch()}>{t("common.retry")}</Button></div> : !events.length ? <div className="p-6"><EmptyState title={t("auditLog.noAuditTitle")} description={t("auditLog.noMatchingAuditDescription")} />{filters.length > 0 && <Button variant="ghost" onClick={clear}>{t("auditLog.clearFilters")}</Button>}</div> : (
+        <div className="audit-table-scroll">
+          <Table size="lg" className="audit-table" aria-label={t("auditLog.results")}>
+            <TableHead><TableRow>
+              <TableHeader className="audit-time-column">{t("auditLog.columns.time")}</TableHeader>
+              <TableHeader>{t("auditLog.columns.event")}</TableHeader>
+              <TableHeader>{t("auditLog.columns.resource")}</TableHeader>
+              <TableHeader className="audit-actor-column">{t("auditLog.columns.actor")}</TableHeader>
+            </TableRow></TableHead>
+            <TableBody>{events.map(event => <TableRow key={event.id} className="audit-row" onClick={() => setSelected(event)}>
+              <TableCell><time dateTime={event.occurredAt} className="audit-timestamp">{formatDate(event.occurredAt, i18n.language)}</time></TableCell>
+              <TableCell><button type="button" className="audit-event-link" onClick={() => setSelected(event)}>{formatKind(event.kind)}</button><code className="audit-secondary">{event.kind}</code></TableCell>
+              <TableCell><span>{typeof event.detail.name === "string" && event.detail.name ? event.detail.name : event.resourceType}</span><code className="audit-secondary" title={formatResource(event)}>{formatResource(event)}</code></TableCell>
+              <TableCell><ActorBadge event={event} /></TableCell>
+            </TableRow>)}</TableBody>
+          </Table>
         </div>
-
-        {audit.isLoading ? <Skeleton className="m-4 h-72 rounded-lg" /> : audit.error ? <div className="p-4"><ErrorNotice error={audit.error} /></div> : !filtered.length ? <div className="p-4"><EmptyState title={t("auditLog.noAuditTitle")} description={t(audit.data?.items.length ? "auditLog.noMatchingAuditDescription" : "auditLog.noAuditDescription")} /></div> : (
-          <>
-            <div className="divide-y xl:hidden">{filtered.map((event) => <button key={event.id} type="button" onClick={() => setSelected(event)} className="block w-full p-4 text-left outline-none hover:bg-muted/30 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring/30"><div className="flex items-start justify-between gap-3"><div className="min-w-0"><strong className="block truncate text-sm font-medium">{formatKind(event.kind)}</strong><time className="mt-1 flex items-center gap-1.5 font-mono text-[11px] text-muted-foreground"><Clock3 className="size-3" />{formatDate(event.occurredAt, i18n.language)}</time></div><ActorBadge event={event} /></div><p className="mt-3 truncate text-xs text-muted-foreground">{formatResource(event)}</p></button>)}</div>
-            <div className="hidden overflow-x-auto xl:block"><table className="w-full min-w-[56rem] table-fixed text-left text-xs"><thead className="border-b bg-muted/40 text-muted-foreground"><tr><th className="h-10 w-44 px-4 font-medium">{t("auditLog.columns.time")}</th><th className="h-10 w-64 px-4 font-medium">{t("auditLog.columns.event")}</th><th className="h-10 px-4 font-medium">{t("auditLog.columns.resource")}</th><th className="h-10 w-48 px-4 font-medium">{t("auditLog.columns.actor")}</th></tr></thead><tbody className="divide-y">{filtered.map((event) => <tr key={event.id} tabIndex={0} role="button" onClick={() => setSelected(event)} onKeyDown={(keyboardEvent) => { if (keyboardEvent.key === "Enter" || keyboardEvent.key === " ") setSelected(event); }} className="h-14 cursor-pointer outline-none hover:bg-muted/30 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring/30"><td className="px-4 font-mono text-[11px] text-muted-foreground">{formatDate(event.occurredAt, i18n.language)}</td><td className="px-4"><strong className="block truncate text-xs font-medium">{formatKind(event.kind)}</strong><span className="mt-0.5 block truncate font-mono text-[10px] text-muted-foreground">{event.kind}</span></td><td className="px-4"><span className="block truncate capitalize">{event.resourceType}</span><span className="mt-0.5 block truncate font-mono text-[10px] text-muted-foreground">{event.resourceId}</span></td><td className="px-4"><ActorBadge event={event} /></td></tr>)}</tbody></table></div>
-          </>
-        )}
-      </Card>
-
-      <AuditEventSheet event={selected} open={Boolean(selected)} onOpenChange={(open) => { if (!open) setSelected(null); }} />
+      )}
+      {audit.data && !audit.error && <Pagination size="md" totalItems={audit.data.total} page={audit.data.page} pageSize={search.limit}
+        pageSizes={[...new Set([25, 50, 100, search.limit])].sort((a, b) => a - b)} disabled={audit.isFetching}
+        onChange={({ page, pageSize }) => update({ limit: pageSize, page: pageSize === search.limit ? page : 1 })}
+        itemsPerPageText={t("auditLog.itemsPerPage")} backwardText={t("eventPagination.previous")} forwardText={t("eventPagination.next")}
+        pageNumberText={t("auditLog.pageNumber")} pageSelectLabelText={() => t("auditLog.pageNumber")}
+        itemRangeText={(min, max, total) => t("auditLog.itemRange", { min, max, total })}
+        pageRangeText={(_current, total) => t("auditLog.pageRange", { total })} />}
     </section>
-  );
+    <AuditEventSheet event={selected} open={Boolean(selected)} onOpenChange={open => { if (!open) setSelected(null); }} />
+  </section>;
+}
+
+function AuditFilter({ label, hideLabel = false, value, items, itemLabel, onChange }: {
+  label: string; hideLabel?: boolean; value: string; items: string[]; itemLabel: (value: string) => string; onChange: (value: string) => void;
+}) {
+  const id = useId();
+  const { t } = useTranslation();
+  const options = items.map(value => ({ value, label: itemLabel(value) }));
+  return <Dropdown<{ value: string; label: string }> id={id} size={hideLabel ? "lg" : "md"} titleText={label} label={label} hideLabel={hideLabel} items={options} selectedItem={options.find(item => item.value === value)}
+    itemToString={item => item?.label ?? ""} onChange={({ selectedItem }) => { if (selectedItem) onChange(selectedItem.value); }}
+    translateWithId={key => t(key === "close.menu" ? "common.closeOptions" : "common.openOptions", { name: "" })} />;
 }
 
 function ActorBadge({ event }: { event: AuditEvent }) {
   const { t } = useTranslation();
   const system = event.actorId === null;
   const Icon = system ? Bot : UserRound;
-  return <Badge variant="outline" className="max-w-full font-normal" title={event.actorId ?? undefined}><Icon className="size-3" /><span className="truncate">{system ? t("auditLog.systemActor") : shortIdentifier(event.actorId!)}</span></Badge>;
+  return <span className="audit-actor" title={event.actorId ?? undefined}><Icon aria-hidden="true" size={16} /><span>{system ? t("auditLog.systemActor") : shortIdentifier(event.actorId!)}</span></span>;
 }
 
 function AuditEventSheet({ event, open, onOpenChange }: { event: AuditEvent | null; open: boolean; onOpenChange: (open: boolean) => void }) {
   const { t, i18n } = useTranslation();
   if (!event) return null;
   const detail = Object.entries(event.detail);
-  return <EntitySheet open={open} onOpenChange={onOpenChange} eyebrow={t("auditLog.detailEyebrow")} title={formatKind(event.kind)} description={event.id} width="lg" footer={<Button variant="outline" onClick={() => onOpenChange(false)}>{t("common.close")}</Button>}>
+  const fields = detail.filter(([, value]) => value === null || typeof value !== "object");
+  const structured = detail.filter(([, value]) => value !== null && typeof value === "object");
+  return <EntitySheet open={open} onOpenChange={onOpenChange} eyebrow={t("auditLog.detailEyebrow")} title={formatKind(event.kind)} description={<span className="break-all font-mono text-xs">{event.id}</span>} width="lg" footer={<Button variant="outline" onClick={() => onOpenChange(false)}>{t("common.close")}</Button>}>
     <div className="grid gap-5">
-      <dl className="grid overflow-hidden rounded-lg border sm:grid-cols-2"><Fact label={t("auditLog.columns.time")} value={formatDate(event.occurredAt, i18n.language)} /><Fact label={t("auditLog.columns.actor")} value={event.actorId ?? t("auditLog.systemActor")} /><Fact label={t("auditLog.columns.event")} value={event.kind} mono /><Fact label={t("auditLog.columns.resource")} value={formatResource(event)} mono /></dl>
-      <section><div className="mb-3"><h3 className="text-sm font-semibold">{t("auditLog.changeDetail")}</h3><p className="mt-1 text-xs leading-5 text-muted-foreground">{t("auditLog.changeDetailDescription")}</p></div>{detail.length ? <dl className="divide-y overflow-hidden rounded-lg border">{detail.map(([key, value]) => <div key={key} className="grid gap-1 px-4 py-3 sm:grid-cols-[11rem_minmax(0,1fr)] sm:gap-4"><dt className="font-mono text-[11px] text-muted-foreground">{key}</dt><dd className="break-all text-xs leading-5">{formatDetailValue(value)}</dd></div>)}</dl> : <div className="rounded-lg border border-dashed p-5 text-center text-xs text-muted-foreground">{t("auditLog.noChangeDetail")}</div>}</section>
+      <dl className="grid grid-cols-2 gap-x-6 gap-y-4 border-b pb-5"><Fact label={t("auditLog.columns.time")} value={formatDate(event.occurredAt, i18n.language)} /><Fact label={t("auditLog.columns.actor")} value={event.actorId ?? t("auditLog.systemActor")} mono /><Fact label={t("auditLog.columns.event")} value={event.kind} mono wide /><Fact label={t("auditLog.columns.resource")} value={formatResource(event)} mono wide /></dl>
+      <section>
+        <h3 className="mb-3 text-sm font-semibold">{t("auditLog.changeDetail")}</h3>
+        {detail.length ? <div className="divide-y border-y">
+          {fields.length ? <dl className="divide-y">{fields.map(([key, value]) => <div key={key} className="grid grid-cols-[11rem_minmax(0,1fr)] items-baseline gap-4 py-3"><dt className="break-words font-mono text-xs leading-5 text-muted-foreground">{key}</dt><dd className="min-w-0 whitespace-pre-wrap break-words text-sm leading-5 [overflow-wrap:anywhere]">{formatDetailValue(value)}</dd></div>)}</dl> : null}
+          {structured.map(([key, value]) => <details key={key} className="group">
+            <summary className="min-h-11 cursor-pointer content-center py-3 font-mono text-xs text-muted-foreground focus-visible:outline-2 focus-visible:outline-ring">{key}</summary>
+            <pre className="mb-3 max-h-96 overflow-auto whitespace-pre-wrap break-words bg-muted/25 p-3 font-mono text-xs leading-5 [overflow-wrap:anywhere]">{formatDetailValue(value)}</pre>
+          </details>)}
+        </div> : <p className="text-sm text-muted-foreground">{t("auditLog.noChangeDetail")}</p>}
+      </section>
     </div>
   </EntitySheet>;
 }
 
-function Fact({ label, value, mono = false }: { label: string; value: string; mono?: boolean }) {
-  return <div className="border-b p-4 last:border-b-0 sm:border-r sm:[&:nth-child(even)]:border-r-0 sm:[&:nth-last-child(-n+2)]:border-b-0"><dt className="text-xs text-muted-foreground">{label}</dt><dd className={`mt-1 break-all text-sm font-medium ${mono ? "font-mono text-xs" : ""}`}>{value}</dd></div>;
-}
-
-function auditWindowMilliseconds(window: Exclude<AuditWindow, "all">): number {
-  return { "24h": 86_400_000, "7d": 604_800_000, "30d": 2_592_000_000 }[window];
+function Fact({ label, value, mono = false, wide = false }: { label: string; value: string; mono?: boolean; wide?: boolean }) {
+  return <div className={wide ? "col-span-2 min-w-0" : "min-w-0"}><dt className="text-xs text-muted-foreground">{label}</dt><dd className={`mt-1 break-words leading-5 [overflow-wrap:anywhere] ${mono ? "font-mono text-xs" : "text-sm font-medium"}`}>{value}</dd></div>;
 }
 
 function formatDate(value: string, locale: string) {
-  return new Intl.DateTimeFormat(locale, { dateStyle: "medium", timeStyle: "short" }).format(new Date(value));
+  return new Intl.DateTimeFormat(locale, { dateStyle: "medium", timeStyle: "medium" }).format(new Date(value));
 }
 
 function formatKind(value: string) {
@@ -117,7 +180,7 @@ function shortIdentifier(value: string) {
 
 function formatDetailValue(value: unknown) {
   if (value === null || value === undefined) return "—";
-  if (typeof value === "string") return value;
+  if (typeof value === "string") return value || "—";
   if (typeof value === "number" || typeof value === "boolean") return String(value);
-  return JSON.stringify(value);
+  return JSON.stringify(value, null, 2);
 }

@@ -9,18 +9,14 @@ export const platformStatusReasons = [
   "runner_errors",
   "no_serving_runners",
   "no_connected_runners",
-  "default_guardrail_initializing",
-  "default_guardrail_unavailable",
-  "default_model_bindings_missing",
-  "default_dependencies_unknown",
+  "model_validation_required",
+  "required_model_bindings_missing",
   "runner_heartbeat_stale",
 ] as const;
 export type PlatformStatusReason = (typeof platformStatusReasons)[number];
 
 export type ModelConfigurationStatus = "configured" | "unconfigured";
 export type RuntimeModelStatus = ModelConfigurationStatus;
-export type BasicProtectionStatus = "ready" | "initializing" | "unavailable";
-
 /** Coverage of the published plan, never the editable draft or a preset name. */
 export type ProtectionCoverage = {
   policyCount: number;
@@ -30,21 +26,6 @@ export type ProtectionCoverage = {
   hasUnknownDependencies: boolean;
 };
 
-export type BasicProtectionSnapshot = {
-  status: BasicProtectionStatus;
-  guardrailStatus: "active" | "initializing" | "unavailable";
-  routerStatus: "active" | "initializing" | "unavailable";
-  activeVersion: string | null;
-  modelIndependent: boolean | null;
-  coverage: ProtectionCoverage | null;
-  draft: {
-    revision: number;
-    activeRevision: number | null;
-    validationStatus: ValidationRunState | null;
-    validationFailureReason: string | null;
-  };
-};
-
 export type PlatformStatusSnapshot = {
   status: PlatformOperationalStatus;
   reasons: PlatformStatusReason[];
@@ -52,7 +33,6 @@ export type PlatformStatusSnapshot = {
   desiredGeneration: number;
   components: {
     controller: { status: "operational" };
-    basicProtection: BasicProtectionSnapshot;
     runnerFleet: {
       status: PlatformOperationalStatus;
       servingRunners: number;
@@ -75,4 +55,3 @@ export type PlatformStatusSnapshot = {
   };
 };
 import type { CapabilityBindingId } from "./guardrail-catalog.js";
-import type { ValidationRunState } from "./lifecycle.js";

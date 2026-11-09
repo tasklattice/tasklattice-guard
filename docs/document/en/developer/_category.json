@@ -1,0 +1,5 @@
+{
+  "title": "Integration guides",
+  "description": "Start with Endpoint setup, implement LiteLLM or Scan, and use Controller APIs for configuration automation.",
+  "order": 3
+}

@@ -1,0 +1,236 @@
+{
+  "$defs": {
+    "TestContext": {
+      "additionalProperties": false,
+      "properties": {
+        "target_source": {
+          "anyOf": [
+            {
+              "enum": [
+                "user_input",
+                "retrieved_content",
+                "tool_output",
+                "model_output"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Target Source"
+        },
+        "trusted_instruction": {
+          "default": "",
+          "title": "Trusted Instruction",
+          "type": "string"
+        },
+        "query": {
+          "default": "",
+          "title": "Query",
+          "type": "string"
+        },
+        "grounding_sources": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Grounding Sources",
+          "type": "array"
+        },
+        "expected_reasoning_result": {
+          "anyOf": [
+            {
+              "enum": [
+                "valid",
+                "invalid",
+                "satisfiable",
+                "impossible",
+                "translation_ambiguous",
+                "too_complex",
+                "no_translations"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Expected Reasoning Result"
+        }
+      },
+      "title": "TestContext",
+      "type": "object"
+    },
+    "TestDefinition": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "minLength": 1,
+          "title": "Id",
+          "type": "string"
+        },
+        "name": {
+          "minLength": 1,
+          "title": "Name",
+          "type": "string"
+        },
+        "description": {
+          "default": "",
+          "title": "Description",
+          "type": "string"
+        },
+        "phase": {
+          "enum": [
+            "input",
+            "output"
+          ],
+          "title": "Phase",
+          "type": "string"
+        },
+        "content": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "title": "Content",
+              "type": "string"
+            },
+            {
+              "type": "object",
+              "properties": {
+                "$ref": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "$ref"
+              ],
+              "additionalProperties": false
+            }
+          ]
+        },
+        "expected_decision": {
+          "enum": [
+            "allow",
+            "block",
+            "transform",
+            "intervene"
+          ],
+          "title": "Expected Decision",
+          "type": "string"
+        },
+        "covered_rule_ids": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Covered Rule Ids",
+          "type": "array"
+        },
+        "kind": {
+          "default": "scenario",
+          "enum": [
+            "rule_acceptance",
+            "scenario"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "required": {
+          "default": true,
+          "title": "Required",
+          "type": "boolean"
+        },
+        "parameter_names": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Parameter Names",
+          "type": "array"
+        },
+        "group": {
+          "default": "General",
+          "title": "Group",
+          "type": "string"
+        },
+        "expected_text": {
+          "anyOf": [
+            {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Expected Text"
+            },
+            {
+              "type": "object",
+              "properties": {
+                "$ref": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "$ref"
+              ],
+              "additionalProperties": false
+            }
+          ]
+        },
+        "expected_matched_rules": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Expected Matched Rules"
+        },
+        "scope": {
+          "default": "policy",
+          "enum": [
+            "rule",
+            "policy"
+          ],
+          "title": "Scope",
+          "type": "string"
+        },
+        "context": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/TestContext"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      },
+      "required": [
+        "id",
+        "name",
+        "phase",
+        "content",
+        "expected_decision",
+        "covered_rule_ids"
+      ],
+      "title": "TestDefinition",
+      "type": "object"
+    }
+  },
+  "items": {
+    "$ref": "#/$defs/TestDefinition"
+  },
+  "type": "array"
+}

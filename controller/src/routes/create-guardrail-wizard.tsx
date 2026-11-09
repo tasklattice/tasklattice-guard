@@ -1,3 +1,6 @@
+import { hasPermission } from "../../shared/rbac";
+import { isSplitTopicPolicy } from "../../shared/topic-policy";
+import { CorrectnessUnavailable, useCorrectnessAvailability } from "@/components/correctness-availability";
 import { useEffect, useId, useMemo, useRef, useState, type ReactNode, type RefObject } from "react";
 import { boundPolicy } from "@/lib/bound-policy";
 import { useMutation, useQuery } from "@tanstack/react-query";
@@ -14,16 +17,20 @@ import {
   Sparkles,
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
-import { toast } from "sonner";
+import { toast } from "@/components/ui/notifications";
 
+import { TopicControlUnavailable, useTopicControlAvailability } from "@/components/topic-control-availability";
+import { TopicControlFields, TopicModeField, type TopicControlMode } from "@/components/topic-control-fields";
 import { ComplianceDocumentImport } from "@/components/compliance-document-import";
-import { CreationFlow } from "@/components/creation-flow";
+import { CreationFlow, WizardSection } from "@/components/creation-flow";
 import { EntitySheet } from "@/components/entity-sheet";
 import { defaultPolicyBinding, getPolicyBindingValidation } from "@/components/policy-binding-editor";
 import { ProtectionOrderEditor } from "@/components/protection-workspace";
-import { GuardrailProtectionPicker } from "@/components/guardrail-protection-picker";
-import { GuardrailStartingPoint } from "@/components/guardrail-starting-point";
+import { GuardrailProtectionPicker, protectionSection, type ProtectionSection } from "@/components/guardrail-protection-picker";
+import { GuardrailProfilePicker } from "@/components/guardrail-profile-picker";
 import { ProtectionDependencies } from "@/components/protection-dependencies";
+import type { ProfileDraftSettings, ProfileOrigin } from "../../shared/protection-map";
+import { canonicalJson } from "../../shared/canonical-json";
 import { protectionDirectories } from "../../shared/protection-map";
 import { completeResponsePolicies, mergePresetBindings, policyDirectory } from "@/lib/protection-composition";
 import { ErrorNotice, InfoNotice } from "@/components/product-shell";
@@ -36,13 +43,13 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
 import { queryKeys } from "@/features/query-keys";
 import { useAuth } from "@/lib/auth";
-import { policyRequiresTopicAllowlist } from "@/lib/protection-requirements";
+import { policyRequiresTopicAllowlist, policyRequiresTopicModel } from "@/lib/protection-requirements";
 import {
   analyzeGuardrailIntent,
   createGuardrail,
   getIntentAnalysisStatus,
   getPolicies,
-  getProtectionPresets,
+  getGuardrailProfiles,
   previewGuardrailCandidate,
   type ComplianceDocumentAnalysis,
   type GuardrailPolicyBinding,
@@ -52,6 +59,7 @@ import {
 } from "@/lib/api";
 
 const EMPTY_POLICIES: Policy[] = [];
+const DEFAULT_SETTINGS: ProfileDraftSettings = { allowedTopics: [], restrictedTopics: [], topicControlMode: "permissive", safetyLevel: "balanced", outputDelivery: "window_buffered" };
 const PROTECTIONS_STEP = 1;
 const REVIEW_STEP = 2;
 type PolicyWorkspace = "main" | "intent" | "documents";
@@ -62,19 +70,23 @@ export function CreateGuardrailWizard({
   onOpenChange,
   onCreated,
   returnFocusRef,
+  initialProfileId,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onCreated: (id: string) => void;
   returnFocusRef?: RefObject<HTMLElement | null>;
+  initialProfileId?: string;
 }) {
+  const { t: uiText } = useTranslation();
   const { t, i18n } = useTranslation();
   const { user } = useAuth();
-  const canManage = user?.role === "admin";
+  const canManage = hasPermission(user?.role, "guardrails", "write");
   const policiesQuery = useQuery({ queryKey: queryKeys.policies, queryFn: getPolicies, enabled: open });
-  const presetsQuery = useQuery({ queryKey: queryKeys.protectionPresets, queryFn: getProtectionPresets, enabled: open, retry: false });
+  const presetsQuery = useQuery({ queryKey: queryKeys.guardrailProfiles, queryFn: getGuardrailProfiles, enabled: open, retry: false });
   const intentStatusQuery = useQuery({ queryKey: queryKeys.intentAnalysisStatus, queryFn: getIntentAnalysisStatus, enabled: open, retry: false });
   const policies = policiesQuery.data?.items ?? EMPTY_POLICIES;
+  const splitTopicCatalog = policies.some(policy => isSplitTopicPolicy(policy.id, policy.version));
   // A cleared identity-scoped cache is not evidence that a pinned Policy was
   // deleted. Do not classify bindings or allow writes until the catalog loads.
   const catalogReady = policiesQuery.isSuccess;
@@ -82,21 +94,38 @@ export function CreateGuardrailWizard({
   const [step, setStep] = useState(0);
   const [policyWorkspace, setPolicyWorkspace] = useState<PolicyWorkspace>("main");
   const [name, setName] = useState("");
+  const initialProfileApplied = useRef(false);
   const [selectedPreset, setSelectedPreset] = useState("blank");
   const [presetFeedback, setPresetFeedback] = useState("");
   const [pendingPreset, setPendingPreset] = useState<string | null>(null);
-  const [presetUndo, setPresetUndo] = useState<{ selected: string; bindings: GuardrailPolicyBinding[] } | null>(null);
+  const [presetUndo, setPresetUndo] = useState<{ selected: string; bindings: GuardrailPolicyBinding[]; settings: ProfileDraftSettings; origin: ProfileOrigin | undefined } | null>(null);
+  const [protectionTab, setProtectionTab] = useState<ProtectionSection>("safety");
   const [expandedPolicy, setExpandedPolicy] = useState<string | null>(null);
   const [intentText, setIntentText] = useState("");
+  const [topicMode, setTopicMode] = useState<TopicControlMode>("permissive");
+  const [denied, setDenied] = useState("");
   const [intentProposal, setIntentProposal] = useState<IntentAnalysis | null>(null);
   const [allowed, setAllowed] = useState("");
   const [boundarySource, setBoundarySource] = useState<BoundarySource>(null);
   const [bindings, setBindings] = useState<GuardrailPolicyBinding[]>([]);
+  const [profileOrigin, setProfileOrigin] = useState<ProfileOrigin>();
+  const [safetyLevel, setSafetyLevel] = useState<"balanced" | "strict">("balanced");
   const [outputDelivery, setOutputDelivery] = useState<OutputDelivery>("window_buffered");
   const [showBoundaries, setShowBoundaries] = useState(false);
   const [documentImportReset, setDocumentImportReset] = useState(0);
   const nextBlockedReasonId = useId();
   const topicField = useRef<HTMLTextAreaElement>(null);
+  const topicStatusRef = useRef<HTMLDivElement>(null);
+  const topicAvailability = useTopicControlAvailability(open);
+  const correctnessAvailability = useCorrectnessAvailability(open);
+  // Topic model readiness gates execution and AI authoring, not draft editing.
+  const unavailableReason = (policy: Policy | undefined) => correctnessAvailability.reason(policy);
+  const dependencyBlockedReason = bindings.map(binding => unavailableReason(boundPolicy(policies, binding))).find(Boolean) ?? null;
+  const documentApplyBlocker = (analysis: ComplianceDocumentAnalysis) => analysis.recommended_policy_ids.map(id => unavailableReason(policies.find(policy => policy.id === id))).find(Boolean) ?? (!topicAvailability.ready
+    && (analysis.allowed_topics.length > 0 || analysis.restricted_topics.length > 0
+      || analysis.recommended_policy_ids.some(id => policyRequiresTopicModel(policies.find(policy => policy.id === id))))
+    ? topicAvailability.reason : null);
+
 
   const steps = [
     { label: t("protection.start"), description: t("protection.startDescription") },
@@ -107,8 +136,10 @@ export function CreateGuardrailWizard({
   useEffect(() => {
     if (!open) return;
     setStep(0);
+    setProtectionTab("safety");
     setPolicyWorkspace("main");
     setName("");
+    initialProfileApplied.current = false;
     setSelectedPreset("blank");
     setPresetFeedback("");
     setPendingPreset(null);
@@ -116,19 +147,40 @@ export function CreateGuardrailWizard({
     setExpandedPolicy(null);
     setShowBoundaries(false);
     setIntentText("");
+    setDenied("");
+    setTopicMode("permissive");
     setIntentProposal(null);
     setAllowed("");
     setBoundarySource(null);
     setBindings([]);
     setOutputDelivery("window_buffered");
+    setProfileOrigin(undefined);
+    setSafetyLevel("balanced");
     setDocumentImportReset((current) => current + 1);
   }, [open]);
+
+  useEffect(() => {
+    if (!open || !catalogReady || !presetsQuery.isSuccess || initialProfileApplied.current) return;
+    initialProfileApplied.current = true;
+    // Profiles are platform starting configurations: open the draft on the
+    // default one, or on the Profile a deep link points at.
+    const profile = initialProfileId ? presetsQuery.data.items.find(item => item.id === initialProfileId)
+      : presetsQuery.data.items.find(item => item.isDefault);
+    if (profile && profile.availability?.available !== false && !bindings.length && selectedPreset === "blank" && step === 0) {
+      setSelectedPreset(profile.id);
+      setBindings(structuredClone(profile.bindings));
+      applySettings(profile.draftSettings ?? DEFAULT_SETTINGS);
+      setProfileOrigin(profile.version ? { id: profile.id, version: profile.version } : undefined);
+      setPresetFeedback(t("protection.applied", { count: profile.bindings.length }));
+    }
+  }, [open, catalogReady, presetsQuery.isSuccess, presetsQuery.data, bindings.length, selectedPreset, step, t, initialProfileId]);
 
   const language = user?.preferred_language ?? (i18n.language.toLowerCase().startsWith("zh") ? "zh-CN" : "en");
   const analyzeIntent = useMutation({
     mutationFn: async () => {
       if (!canManage) throw new Error(t("protection.adminAccessRequired"));
-      return analyzeGuardrailIntent({ purpose: intentText.trim(), language });
+      if (!topicAvailability.ready) throw new Error(topicAvailability.reason ?? "Topic Control unavailable");
+      return analyzeGuardrailIntent({ purpose: intentText.trim(), topicControlMode: topicMode, language });
     },
     networkMode: "always",
     retry: false,
@@ -142,15 +194,18 @@ export function CreateGuardrailWizard({
   const payload = useMemo(() => ({
     name: name.trim(),
     allowed_topics: lines(allowed),
+    restricted_topics: lines(denied),
+    topic_control_mode: topicMode,
     policy_bindings: bindings,
-    safety_level: "balanced" as const,
+    safety_level: safetyLevel,
+    ...(profileOrigin ? { profile_origin: profileOrigin } : {}),
     output_delivery: effectiveDelivery,
-  }), [allowed, bindings, name, effectiveDelivery]);
+  }), [allowed, denied, topicMode, bindings, name, effectiveDelivery, safetyLevel, profileOrigin]);
 
   const preview = useQuery({
     queryKey: ["guardrail-candidate-preview", payload],
     queryFn: () => previewGuardrailCandidate(payload),
-    enabled: open && canManage && catalogReady && step === REVIEW_STEP && Boolean(name.trim()) && bindingsValid(bindings, policies, allowed),
+    enabled: open && canManage && catalogReady && !dependencyBlockedReason && step === REVIEW_STEP && Boolean(name.trim()) && bindingsValid(bindings, policies, allowed, topicMode),
     retry: false,
   });
 
@@ -158,6 +213,7 @@ export function CreateGuardrailWizard({
     mutationFn: async () => {
       if (!canManage) throw new Error(t("protection.adminAccessRequired"));
       if (!catalogReady) throw new Error(catalogStatus);
+      if (dependencyBlockedReason) throw new Error(dependencyBlockedReason);
       return createGuardrail(payload);
     },
     // Creation is an explicit write, not a queued offline task. Surface a
@@ -188,8 +244,11 @@ export function CreateGuardrailWizard({
   }
 
   function applyIntentProposal() {
-    if (!intentProposal) return;
+    if (!intentProposal || !topicAvailability.ready) return;
+    setProtectionTab("topics");
     setAllowed(intentProposal.allowed_topics.join("\n"));
+    setDenied(intentProposal.restricted_topics.join("\n"));
+    setTopicMode(intentProposal.topic_control_mode ?? topicMode);
     setBoundarySource("intent");
     const topicPolicy = recommendedTopicPolicy(policies);
     if (topicPolicy) addPolicies([topicPolicy.id]);
@@ -198,7 +257,10 @@ export function CreateGuardrailWizard({
   }
 
   function applyDocumentAnalysis(analysis: ComplianceDocumentAnalysis) {
+    if (!topicAvailability.ready || documentApplyBlocker(analysis)) return;
+    setProtectionTab("topics");
     setAllowed(analysis.allowed_topics.join("\n"));
+    setDenied(analysis.restricted_topics.join("\n"));
     setBoundarySource("documents");
     addPolicies(analysis.recommended_policy_ids);
     setPolicyWorkspace("main");
@@ -211,21 +273,35 @@ export function CreateGuardrailWizard({
   }
 
   const hasOutputPolicy = bindings.some((binding) => binding.enabled_rails.includes("output"));
-  const policyBlocker = catalogReady ? getPolicyBindingsBlocker(bindings, policies, allowed) : null;
-  const policyBlockedReason = policyBlocker ? t(policyBlocker.key, policyBlocker.values) : null;
+  const policyBlocker = catalogReady ? getPolicyBindingsBlocker(bindings, policies, allowed, topicMode) : null;
+  const policyBlockedReason = dependencyBlockedReason ? dependencyBlockedReason : policyBlocker ? t(policyBlocker.key, policyBlocker.values) : null;
   const nextBlockedReason = step === 0
     ? !name.trim() ? t("guardrailWizard.nextBlocked.name") : pendingPreset !== null ? t("protection.wizard.resolvePreset") : null
     : !catalogReady ? catalogStatus : !name.trim() ? t("protection.missingName") : policyBlockedReason;
   const inPolicyWorkspace = step === PROTECTIONS_STEP && policyWorkspace !== "main";
   function issueFor(binding: GuardrailPolicyBinding) {
-    const issue = getPolicyBindingsBlocker([binding], policies, allowed);
+    const unavailable = unavailableReason(boundPolicy(policies, binding));
+    if (unavailable) return unavailable;
+    const issue = getPolicyBindingsBlocker([binding], policies, allowed, topicMode);
     return issue ? t(issue.key, issue.values) : null;
   }
   const incompleteBindings = catalogReady ? bindings.filter(binding => issueFor(binding)) : [];
+  function applySettings(settings: ProfileDraftSettings) {
+    setAllowed(settings.allowedTopics.join("\n")); setDenied(settings.restrictedTopics.join("\n"));
+    setTopicMode(settings.topicControlMode); setSafetyLevel(settings.safetyLevel); setOutputDelivery(settings.outputDelivery);
+  }
+  const currentSettings: ProfileDraftSettings = { allowedTopics: lines(allowed), restrictedTopics: lines(denied), topicControlMode: topicMode, safetyLevel, outputDelivery };
+  const sourceProfile = presetsQuery.data?.items.find(item => item.id === profileOrigin?.id && item.version === profileOrigin.version);
+  const profileCustomized = Boolean(sourceProfile && (canonicalJson(bindings) !== canonicalJson(sourceProfile.bindings)
+    || canonicalJson(currentSettings) !== canonicalJson(sourceProfile.draftSettings ?? DEFAULT_SETTINGS)));
   function applyPreset(id: string, mode: "replace" | "add") {
     const preset = presetsQuery.data?.items.find(item => item.id === id);
-    if (id !== "blank" && !preset) return;
-    setPresetUndo({ selected: selectedPreset, bindings: structuredClone(bindings) });
+    if (id !== "blank" && (!preset || preset.availability?.available === false)) return;
+    setPresetUndo({ selected: selectedPreset, bindings: structuredClone(bindings), settings: currentSettings, origin: profileOrigin });
+    if (mode === "replace") {
+      applySettings(preset?.draftSettings ?? DEFAULT_SETTINGS);
+      setProfileOrigin(preset?.version ? { id: preset.id, version: preset.version } : undefined);
+    }
     const next = mode === "add" ? mergePresetBindings(bindings, preset?.bindings ?? []) : structuredClone(preset?.bindings ?? []);
     setBindings(next);
     setSelectedPreset(id);
@@ -234,7 +310,14 @@ export function CreateGuardrailWizard({
     setPresetFeedback(t("protection.applied", { count: next.length }));
   }
   function fixPolicy(binding: GuardrailPolicyBinding) {
-    if (getPolicyBindingsBlocker([binding], policies, allowed)?.key === "guardrailWizard.nextBlocked.allowedTopics") {
+    const policy = boundPolicy(policies, binding);
+    if (policy) setProtectionTab(protectionSection(policy));
+    if (unavailableReason(policy)) {
+      topicStatusRef.current?.focus();
+      topicStatusRef.current?.scrollIntoView?.({ block: "center" });
+      return;
+    }
+    if (getPolicyBindingsBlocker([binding], policies, allowed, topicMode)?.key === "guardrailWizard.nextBlocked.allowedTopics") {
       topicField.current?.focus();
       topicField.current?.scrollIntoView?.({ block: "center" });
     } else setExpandedPolicy(binding.policy_id);
@@ -305,12 +388,12 @@ export function CreateGuardrailWizard({
           <WizardSection title={t("protection.startTitle")} description={t("protection.startHint")}>
             <div className="grid min-w-0 grid-cols-[minmax(0,1fr)] gap-5">
               <Field label={`${t("guardrailWizard.name")} *`}>
-                <Input autoFocus className="min-h-11 bg-card" value={name} onChange={(event) => setName(event.target.value)} placeholder={t("guardrailWizard.namePlaceholder")} />
+                <Input autoFocus className="field:min-h-11 field:bg-card" value={name} onChange={(event) => setName(event.target.value)} placeholder={t("guardrailWizard.namePlaceholder")} />
               </Field>
-              <InfoNotice title={t("guardrailWizard.draftOnlyTitle")}>{t("guardrailWizard.draftOnlyDescription")}</InfoNotice>
               {!catalogReady || presetsQuery.isLoading ? <Skeleton className="h-32" /> : presetsQuery.error ? <div className="space-y-2"><p className="text-sm text-muted-foreground">{t("protection.presetUnavailable")}</p><Button variant="outline" onClick={() => void presetsQuery.refetch()}>{t("common.retry")}</Button></div> : (
-                <GuardrailStartingPoint presets={presetsQuery.data?.items ?? []} policies={policies} selected={selectedPreset} pending={pendingPreset}
+                <GuardrailProfilePicker presets={presetsQuery.data?.items ?? []} selected={selectedPreset} pending={pendingPreset}
                   onSelect={id => {
+                    initialProfileApplied.current = true;
                     setPresetFeedback("");
                     if (id === selectedPreset) { setPendingPreset(null); return; }
                     if (bindings.length) setPendingPreset(id);
@@ -320,22 +403,25 @@ export function CreateGuardrailWizard({
                     else if (pendingPreset !== null) applyPreset(pendingPreset, mode);
                   }} />
               )}
+              {catalogReady && bindings.length > 0 ? <ProtectionDependencies bindings={bindings} policies={policies} /> : null}
               {presetFeedback ? <p role="status" className="text-sm font-medium text-primary">{presetFeedback}</p> : null}
+              {initialProfileId && presetsQuery.isSuccess && !presetsQuery.data.items.some(item => item.id === initialProfileId) ? <p role="alert" className="text-sm text-destructive">{t("protection.profileUnavailable")}</p> : null}
               {presetUndo && pendingPreset === null ? <Button variant="outline" className="min-h-11 justify-self-start" onClick={() => {
-                setBindings(presetUndo.bindings); setSelectedPreset(presetUndo.selected); setPresetUndo(null); setPresetFeedback(t("protection.wizard.undone"));
+                applySettings(presetUndo.settings); setProfileOrigin(presetUndo.origin); setBindings(presetUndo.bindings); setSelectedPreset(presetUndo.selected); setPresetUndo(null); setPresetFeedback(t("protection.wizard.undone"));
               }}>{t("protection.wizard.undoPreset")}</Button> : null}
             </div>
           </WizardSection>
         ) : null}
 
         {step === PROTECTIONS_STEP && policyWorkspace === "main" ? (
-          <WizardSection title={t("protection.wizard.protections")} description={t("protection.wizard.protectionsHint")}>
+          <WizardSection title={t("protection.wizard.protections")}>
             <div className="space-y-6">
               <p role="status" className="text-sm font-medium">{catalogReady ? t("protection.wizard.selectionSummary", { count: bindings.length, pending: incompleteBindings.length }) : catalogStatus}</p>
               {incompleteBindings.length ? <div className="flex flex-wrap gap-2">{incompleteBindings.map(binding => <Button key={binding.policy_id} className="min-h-11 h-auto max-w-full whitespace-normal break-words py-2" variant="outline" onClick={() => fixPolicy(binding)}>{t("protection.wizard.fixPolicy", { name: boundPolicy(policies, binding)?.name ?? binding.policy_id })}</Button>)}</div> : null}
-              {!catalogReady ? <Skeleton className="h-80 rounded-xl" /> : <GuardrailProtectionPicker policies={policies} bindings={bindings} onChange={next => { setBindings(next); setPresetUndo(null); }} issueFor={issueFor}
-                expanded={expandedPolicy} onExpand={setExpandedPolicy} businessControls={<div className="space-y-3">
-                  <details className="rounded-lg border px-4"><summary className="min-h-11 cursor-pointer py-3 text-sm font-medium">{t("protection.wizard.businessAssistant")}</summary>
+              {!catalogReady ? <Skeleton className="h-80 rounded-xl" /> : <GuardrailProtectionPicker policies={policies} bindings={bindings} onChange={next => { setBindings(next); setPresetUndo(null); }} issueFor={issueFor} unavailableReason={unavailableReason}
+                expanded={expandedPolicy} onExpand={setExpandedPolicy} section={protectionTab} onSectionChange={setProtectionTab} correctnessStatus={correctnessAvailability.status} correctnessControls={<CorrectnessUnavailable availability={correctnessAvailability} />} topicUnavailable={!topicAvailability.ready} businessControls={<div className="space-y-3">
+                  {!topicAvailability.ready ? <div ref={topicStatusRef} tabIndex={-1}><TopicControlUnavailable availability={topicAvailability} /></div> : null}
+                  {topicAvailability.ready && !splitTopicCatalog ? <details className="rounded-lg border px-4"><summary className="min-h-11 cursor-pointer py-3 text-sm font-medium">{t("protection.wizard.businessAssistant")}</summary>
                   <section className="rounded-xl border bg-muted/15 p-4">
                 <header className="mb-4">
                   <h4 className="text-sm font-semibold">{t("guardrailWizard.policyAssistantTitle")}</h4>
@@ -346,14 +432,14 @@ export function CreateGuardrailWizard({
                     icon={<MessageSquareText />}
                     title={t("guardrailWizard.generateFromIntent")}
                     description={t("guardrailWizard.generateFromIntentDescription")}
-                    disabled={!canManage || !catalogReady || !intentStatusQuery.data?.available}
+                    disabled={!canManage || !catalogReady || !topicAvailability.ready || !intentStatusQuery.data?.available}
                     onClick={() => setPolicyWorkspace("intent")}
                   />
                   <PolicyChoiceCard
                     icon={<FileText />}
                     title={t("guardrailWizard.generateFromDocuments")}
                     description={t("guardrailWizard.generateFromDocumentsDescription")}
-                    disabled={!canManage || !catalogReady || !intentStatusQuery.data?.document_analysis_available}
+                    disabled={!canManage || !catalogReady || !topicAvailability.ready || !intentStatusQuery.data?.document_analysis_available}
                     onClick={() => setPolicyWorkspace("documents")}
                   />
                 </div>
@@ -361,10 +447,10 @@ export function CreateGuardrailWizard({
                   <p className="mt-3 text-xs leading-5 text-muted-foreground">{t("guardrailWizard.policyAssistantUnavailable")}</p>
                 ) : null}
               </section>
-                  </details>
-                  {hasTopicControlBinding(bindings, policies) || showBoundaries || boundarySource || allowed.trim() ? (
-                  <TopicBoundaryEditor fieldRef={topicField} allowed={allowed} source={boundarySource} onAllowedChange={setAllowed} />
-                ) : <Button variant="outline" onClick={() => setShowBoundaries(true)}>{t("guardrailWizard.addBoundaries")}</Button>}
+                  </details> : null}
+                  {!splitTopicCatalog ? (hasTopicControlBinding(bindings, policies) || showBoundaries || boundarySource || allowed.trim() || denied.trim() ? (
+                  <TopicBoundaryEditor fieldRef={topicField} allowed={allowed} source={boundarySource} onAllowedChange={setAllowed} denied={denied} mode={topicMode} onDeniedChange={setDenied} onModeChange={setTopicMode} />
+                ) : <Button variant="outline" onClick={() => setShowBoundaries(true)}>{t("guardrailWizard.addBoundaries")}</Button>) : null}
                 </div>} />}
               {catalogReady && hasOutputPolicy ? <div className="rounded-lg border p-4 text-sm leading-6"><strong>{t("protection.effectiveDelivery")}: {t(`guardrailWizard.outputDeliveryOptions.${effectiveDelivery}`)}</strong>
                 <p className="mt-1 text-muted-foreground">{fullResponsePolicies.length ? t("protection.bufferSummary", { count: fullResponsePolicies.length }) : t("protection.incrementalHint")}</p>
@@ -382,8 +468,11 @@ export function CreateGuardrailWizard({
 
         {step === PROTECTIONS_STEP && policyWorkspace === "intent" ? (
           <IntentPolicyWorkspace
-            available={canManage && catalogReady && Boolean(intentStatusQuery.data?.available)}
+            available={canManage && catalogReady && topicAvailability.ready && Boolean(intentStatusQuery.data?.available)}
+            unavailableReason={!topicAvailability.ready ? topicAvailability.reason : null}
             intent={intentText}
+            mode={topicMode}
+            onModeChange={value => { setTopicMode(value); setIntentProposal(null); analyzeIntent.reset(); }}
             proposal={intentProposal}
             pending={analyzeIntent.isPending}
             error={analyzeIntent.error}
@@ -397,7 +486,8 @@ export function CreateGuardrailWizard({
           />
         ) : null}
 
-        {step === PROTECTIONS_STEP && policyWorkspace === "documents" ? (
+        {step === PROTECTIONS_STEP && policyWorkspace === "documents" && !topicAvailability.ready ? <TopicControlUnavailable availability={topicAvailability} /> : null}
+        {step === PROTECTIONS_STEP && policyWorkspace === "documents" && topicAvailability.ready ? (
           <ComplianceDocumentImport
             available={canManage && catalogReady && Boolean(intentStatusQuery.data?.document_analysis_available)}
             analystProvider={intentStatusQuery.data?.provider}
@@ -406,17 +496,18 @@ export function CreateGuardrailWizard({
             policies={policies}
             resetKey={documentImportReset}
             onApply={applyDocumentAnalysis}
+            applyBlockedReason={documentApplyBlocker}
           />
         ) : null}
 
         {step === REVIEW_STEP ? (
           <WizardSection title={t("guardrailWizard.reviewTitle")} description={t("guardrailWizard.reviewDescription")}>
-            <InfoNotice title={t("guardrailWizard.reviewDraftTitle")}>{t("guardrailWizard.reviewDraftDescription")}</InfoNotice>
             <section className="mt-4 overflow-hidden rounded-xl border bg-card">
               <ReviewRow label={t("guardrailWizard.name")} value={name} />
+              {profileOrigin ? <ReviewRow label={t("uiCopy.profile")} value={`${sourceProfile?.name ?? profileOrigin.id} · ${profileOrigin.version}${profileCustomized ? ` · ${t("protection.profile.customized")}` : ""}`} /> : null}
               <ReviewRow label={t("guardrailWizard.policies")} value={t("protection.selected", { count: bindings.length })} />
               <ReviewRow label={t("guardrailWizard.policyRules")} value={String(bindings.reduce((total, binding) => total + binding.enabled_rule_ids.length, 0))} />
-              {boundarySource || allowed.trim() ? <ReviewRow label={t("guardrailWizard.topicControl")} value={t("guardrailWizard.topicControlSummary", { allowed: lines(allowed).length })} /> : null}
+              {boundarySource || allowed.trim() || denied.trim() ? <ReviewRow label={t("guardrailWizard.topicControl")} value={t("topicControl.summary", { allowed: lines(allowed).length, denied: lines(denied).length, mode: t(`topicControl.${topicMode}`) })} /> : null}
               {hasOutputPolicy ? <ReviewRow label={t("protection.effectiveDelivery")} value={catalogReady ? t(`guardrailWizard.outputDeliveryOptions.${effectiveDelivery}`) : t("protection.catalogPending")} /> : null}
             </section>
 
@@ -446,8 +537,8 @@ export function CreateGuardrailWizard({
                   <ReviewRow label={t("guardrailWizard.runtimeProfile")} value={`${preview.data.engine} · Colang ${preview.data.colang_version}`} mono />
                   <ReviewRow label={t("guardrailWizard.planIdentity")} value={preview.data.checksum} mono />
                   <div className="flex flex-wrap gap-2 p-4">
-                    <Badge variant="outline"><Braces />{preview.data.rails.length} Rails</Badge>
-                    <Badge variant="outline">{preview.data.actions.length} Actions</Badge>
+                    <Badge variant="outline"><Braces />{preview.data.rails.length}{uiText("uiCopy.rails")}</Badge>
+                    <Badge variant="outline">{preview.data.actions.length}{uiText("uiCopy.actions")}</Badge>
                     <Badge variant="outline">{preview.data.estimated_critical_path_ms} ms</Badge>
                     <Badge variant="outline"><Check />{t("guardrailWizard.planReady")}</Badge>
                   </div>
@@ -462,8 +553,9 @@ export function CreateGuardrailWizard({
 }
 
 function IntentPolicyWorkspace({
-  available,
+  available, unavailableReason,
   intent,
+  mode, onModeChange,
   proposal,
   pending,
   error,
@@ -472,7 +564,9 @@ function IntentPolicyWorkspace({
   onApply,
 }: {
   available: boolean;
+  unavailableReason: string | null;
   intent: string;
+  mode: TopicControlMode; onModeChange: (value: TopicControlMode) => void;
   proposal: IntentAnalysis | null;
   pending: boolean;
   error: unknown;
@@ -484,11 +578,14 @@ function IntentPolicyWorkspace({
   return (
     <WizardSection title={t("guardrailWizard.intentWorkspaceTitle")} description={t("guardrailWizard.intentWorkspaceDescription")}>
       <div className="space-y-4">
-        {!available ? <InfoNotice title={t("guardrailWizard.intentUnavailable")}>{t("guardrailWizard.intentUnavailableDescription")}</InfoNotice> : null}
+        {!available ? <InfoNotice title={t("guardrailWizard.intentUnavailable")}>{unavailableReason ?? t("guardrailWizard.intentUnavailableDescription")}</InfoNotice> : null}
+        <TopicModeField mode={mode} onChange={onModeChange} disabled={!available || pending} />
         <Field label={t("guardrailWizard.intentInputLabel")} hint={t("guardrailWizard.intentInputHint")}>
           <Textarea
             autoFocus
-            className="min-h-40 bg-card"
+            aria-label={t("guardrailWizard.intentInputLabel")}
+            maxLength={2000}
+            className="field:min-h-56 field:bg-card field:leading-6"
             disabled={!available || pending}
             value={intent}
             onChange={(event) => onIntentChange(event.target.value)}
@@ -498,7 +595,7 @@ function IntentPolicyWorkspace({
         {error ? <ErrorNotice error={error} /> : null}
         {!proposal ? (
           <div className="flex justify-end">
-            <Button disabled={!available || intent.trim().length < 20 || pending} onClick={onAnalyze}>
+            <Button disabled={!available || !intent.trim() || pending} onClick={onAnalyze}>
               {pending ? <LoaderCircle className="animate-spin" /> : <Sparkles />}
               {t(pending ? "guardrailWizard.intentAnalyzing" : "guardrailWizard.intentAnalyze")}
             </Button>
@@ -520,11 +617,13 @@ function IntentPolicyWorkspace({
                 <ReviewRow label={t("guardrailWizard.purposeProtect")} value={proposal.structured_purpose.protect} />
                 <ReviewRow label={t("guardrailWizard.purposeOutOfScope")} value={proposal.structured_purpose.out_of_scope} />
               </div> : null}
-              <BoundaryPreview label={t("guardrailWizard.allowedDomains")} values={proposal.allowed_topics} />
+              <BoundaryPreview label={t("topicControl.allowed")} values={proposal.allowed_topics} />
+              <BoundaryPreview label={t("topicControl.denied")} values={proposal.restricted_topics} />
+              <p className="text-xs text-muted-foreground">{t("topicControl.denyPriority")}</p>
               {proposal.review_notes.length ? <InfoNotice title={t("guardrailWizard.documentReviewNotes")}>{proposal.review_notes.join(" · ")}</InfoNotice> : null}
               <div className="flex flex-col gap-2 border-t pt-4 sm:flex-row sm:items-center sm:justify-between">
                 <p className="text-xs leading-5 text-muted-foreground">{t("guardrailWizard.intentApplyDescription")}</p>
-                <Button onClick={onApply}><Check />{t("guardrailWizard.applyProposal")}</Button>
+                <Button disabled={!available} onClick={onApply}><Check />{t("guardrailWizard.applyProposal")}</Button>
               </div>
             </div>
           </section>
@@ -535,12 +634,12 @@ function IntentPolicyWorkspace({
 }
 
 function TopicBoundaryEditor({
-  allowed,
+  allowed, denied, mode, onDeniedChange, onModeChange,
   source,
   onAllowedChange,
   fieldRef,
 }: {
-  allowed: string;
+  allowed: string; denied: string; mode: TopicControlMode; onDeniedChange: (value: string) => void; onModeChange: (value: TopicControlMode) => void;
   source: BoundarySource;
   onAllowedChange: (value: string) => void;
   fieldRef?: RefObject<HTMLTextAreaElement | null>;
@@ -550,12 +649,12 @@ function TopicBoundaryEditor({
     <section className="rounded-xl border bg-card p-4">
       <header className="mb-4 flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h4 className="text-sm font-semibold">{t("guardrailWizard.topicControl")}</h4>
+          <h4 className="text-base font-semibold">{t("topicControl.boundariesTitle")}</h4>
           <p className="mt-1 text-xs leading-5 text-muted-foreground">{t("guardrailWizard.topicControlDescription")}</p>
         </div>
         {source ? <Badge variant="secondary"><Sparkles />{t(`guardrailWizard.boundarySources.${source}`)}</Badge> : null}
       </header>
-      <Field label={t("guardrailWizard.allowedDomains")} hint={t("guardrailWizard.topicAllowlistHint")}><Textarea ref={fieldRef} aria-label={t("guardrailWizard.allowedDomains")} className="min-h-32 bg-card" value={allowed} onChange={(event) => onAllowedChange(event.target.value)} placeholder={t("guardrailWizard.onePerLine")} /></Field>
+      <TopicControlFields allowed={allowed} denied={denied} mode={mode} onAllowedChange={onAllowedChange} onDeniedChange={onDeniedChange} onModeChange={onModeChange} fieldRef={fieldRef} allowedLabel={t("guardrailWizard.allowedDomains")} />
     </section>
   );
 }
@@ -568,7 +667,7 @@ function OutputDeliveryField({ value, onChange, requiredComplete = [] }: { value
       <Label htmlFor={id}>{t("guardrailWizard.outputDelivery")}</Label>
       <p className="mt-1 text-xs leading-5 text-muted-foreground">{t("guardrailWizard.outputDeliveryConditionalDescription")}</p>
       <Select value={value} disabled={requiredComplete.length > 0} onValueChange={(next) => onChange(next as OutputDelivery)}>
-        <SelectTrigger id={id} aria-describedby={`${id}-description`} className="mt-3 min-h-11 bg-card"><SelectValue /></SelectTrigger>
+        <SelectTrigger id={id} aria-describedby={`${id}-description`} className="mt-3 field:min-h-11 field:bg-card"><SelectValue /></SelectTrigger>
         <SelectContent>
           <SelectItem value="interruptible">{t("guardrailWizard.outputDeliveryOptions.interruptible")}</SelectItem>
           <SelectItem value="window_buffered">{t("guardrailWizard.outputDeliveryOptions.window_buffered")}</SelectItem>
@@ -602,28 +701,25 @@ function PolicyChoiceCard({ icon, title, description, disabled, onClick }: { ico
 }
 
 function BoundaryPreview({ label, values }: { label: string; values: string[] }) {
+  const { t } = useTranslation();
   return (
     <div>
       <p className="text-xs font-medium text-muted-foreground">{label}</p>
-      <div className="mt-2 flex flex-wrap gap-2">{values.map((value) => <Badge key={value} variant="secondary">{value}</Badge>)}</div>
+      <div className="mt-2 flex flex-wrap gap-2">{values.map((value) => <Badge key={value} variant="secondary">{value}</Badge>)}{!values.length ? <span className="text-xs text-muted-foreground">{t("topicControl.empty")}</span> : null}</div>
     </div>
   );
 }
 
 function recommendedTopicPolicy(policies: Policy[]) {
-  const preferred = ["builtin-topic-safety", "builtin-company-policy"];
-  for (const id of preferred) {
-    const policy = policies.find((item) => item.id === id);
-    if (policy && isBindablePolicy(policy)) return policy;
-  }
-  return undefined;
+  const policy = policies.find((item) => item.id === "business-topics");
+  return isBindablePolicy(policy) ? policy : undefined;
 }
 
 function isBindablePolicy(policy: Policy | undefined): policy is Policy {
-  return Boolean(policy && (policy.source === "built_in" || policy.version !== "0"));
+  return Boolean(policy && (policy.version !== "0"));
 }
 
-function getPolicyBindingsBlocker(bindings: GuardrailPolicyBinding[], policies: Policy[], allowedTopics: string) {
+function getPolicyBindingsBlocker(bindings: GuardrailPolicyBinding[], policies: Policy[], allowedTopics: string, mode: TopicControlMode = "strict") {
   if (!bindings.length) return { key: "guardrailWizard.nextBlocked.selectPolicy" };
   for (const binding of bindings) {
     const policy = boundPolicy(policies, binding);
@@ -640,24 +736,21 @@ function getPolicyBindingsBlocker(bindings: GuardrailPolicyBinding[], policies: 
         },
       };
     }
+    if (validation.parameterIssues.length) return { key: "guardrailWizard.nextBlocked.parameterValues", values: { name: policy.name, reason: validation.parameterIssues.join(" ") } };
     if (validation.missingReasoningPolicy) return { key: "guardrailWizard.nextBlocked.reasoningPolicy", values: { name: policy.name } };
   }
-  if (hasTopicControlBinding(bindings, policies) && !lines(allowedTopics).length) {
+  if (hasTopicControlBinding(bindings, policies) && mode === "strict" && !lines(allowedTopics).length) {
     return { key: "guardrailWizard.nextBlocked.allowedTopics" };
   }
   return null;
 }
 
-function bindingsValid(bindings: GuardrailPolicyBinding[], policies: Policy[], allowedTopics: string) {
-  return !getPolicyBindingsBlocker(bindings, policies, allowedTopics);
+function bindingsValid(bindings: GuardrailPolicyBinding[], policies: Policy[], allowedTopics: string, mode: TopicControlMode = "strict") {
+  return !getPolicyBindingsBlocker(bindings, policies, allowedTopics, mode);
 }
 
 function hasTopicControlBinding(bindings: GuardrailPolicyBinding[], policies: Policy[]): boolean {
-  return bindings.some((binding) => policyRequiresTopicAllowlist(boundPolicy(policies, binding) ?? { id: binding.policy_id }));
-}
-
-function WizardSection({ title, description, children }: { title: string; description: string; children: ReactNode }) {
-  return <section><header className="mb-5"><h3 className="text-lg font-semibold">{title}</h3><p className="mt-1 max-w-2xl text-sm leading-6 text-muted-foreground">{description}</p></header>{children}</section>;
+  return bindings.some((binding) => policyRequiresTopicAllowlist(boundPolicy(policies, binding) ?? { id: binding.policy_id, version: binding.policy_version }));
 }
 
 function Field({ label, hint, children }: { label: string; hint?: string; children: ReactNode }) {

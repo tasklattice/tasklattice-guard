@@ -45,7 +45,7 @@ Recovers the TaskLattice Guard local host-mode stack by:
 
 Options:
   --no-ui      Skip the Vite UI server on port 8092
-  --no-sync    Skip "make sync"
+  --no-sync    Skip "npm run sync"
   --dry-run    Print actions without executing them
   --help       Show this help text
 EOF
@@ -140,6 +140,19 @@ write_env_value() {
   mv "${temp_file}" "${ENV_FILE}"
 }
 
+remove_env_value() {
+  local key="$1"
+  local temp_file
+  if [[ "${DRY_RUN}" -eq 1 ]]; then
+    printf '+ remove_env %s\n' "${key}"
+    return 0
+  fi
+  backup_env_once
+  temp_file="$(mktemp)"
+  awk -F= -v key="${key}" '$1 != key { print }' "${ENV_FILE}" > "${temp_file}"
+  mv "${temp_file}" "${ENV_FILE}"
+}
+
 random_secret() {
   openssl rand -hex 24
 }
@@ -147,11 +160,6 @@ random_secret() {
 is_real_secret() {
   local value="${1:-}"
   [[ -n "${value}" && "${value}" != replace-* && "${value}" != "<"* && "${#value}" -ge 32 ]]
-}
-
-is_real_api_key() {
-  local value="${1:-}"
-  [[ -n "${value}" && "${value}" != replace-* && "${value}" != replace-me* && "${value}" != "<"* ]]
 }
 
 ensure_signing_keys() {
@@ -171,11 +179,6 @@ normalize_local_env() {
   local runner_token
   local metrics_token
   local auth_secret
-  local control_plane_api_key
-  local deepseek_api_key
-  local nvidia_api_key
-  local automated_reasoning_endpoint
-  local automated_reasoning_api_key
 
   ensure_env_file
 
@@ -200,12 +203,6 @@ normalize_local_env() {
     write_env_value "BETTER_AUTH_SECRET" "${auth_secret}"
   fi
 
-  control_plane_api_key="$(read_env_value MODEL_GUARDRAILS_CONTROL_PLANE_AI_API_KEY || true)"
-  deepseek_api_key="$(read_env_value DEEPSEEK_API_KEY || true)"
-  if ! is_real_api_key "${control_plane_api_key}" && is_real_api_key "${deepseek_api_key}"; then
-    write_env_value "MODEL_GUARDRAILS_CONTROL_PLANE_AI_API_KEY" "${deepseek_api_key}"
-  fi
-
   write_env_value "NODE_ENV" "development"
   write_env_value "CONTROLLER_HTTP_HOST" "0.0.0.0"
   write_env_value "CONTROLLER_HTTP_PORT" "${CONTROLLER_HTTP_PORT}"
@@ -215,12 +212,17 @@ normalize_local_env() {
   write_env_value "CONTROLLER_PUBLIC_URL" "http://localhost:${CONTROLLER_HTTP_PORT}"
   write_env_value "CONTROLLER_RUNTIME_SERVICE_URL" "http://localhost:${RUNNER_HTTP_PORT}"
   write_env_value "BETTER_AUTH_TRUSTED_ORIGINS" "http://localhost:${CONTROLLER_HTTP_PORT},http://localhost:${UI_HTTP_PORT}"
-  write_env_value "CONTROLLER_ALLOW_LOCAL_DEFAULT_CREDENTIALS" "true"
-  write_env_value "CONTROLLER_BOOTSTRAP_ADMIN_EMAIL" "admin@tasklattice.local"
-  write_env_value "CONTROLLER_BOOTSTRAP_ADMIN_PASSWORD" "admin"
+  write_env_value "BETTER_AUTH_MIN_PASSWORD_LENGTH" "8"
+  for role in ADMIN USER; do
+    remove_env_value "CONTROLLER_BOOTSTRAP_${role}_EMAIL"
+    remove_env_value "CONTROLLER_BOOTSTRAP_${role}_PASSWORD_HASH"
+    write_env_value "CONTROLLER_BOOTSTRAP_${role}_USERNAME" "$(printf '%s' "$role" | tr '[:upper:]' '[:lower:]')"
+    write_env_value "CONTROLLER_BOOTSTRAP_${role}_PASSWORD" "password"
+  done
   write_env_value "CONTROLLER_BOOTSTRAP_ADMIN_NAME" "Local Administrator"
+  write_env_value "CONTROLLER_BOOTSTRAP_USER_NAME" "Local User"
 
-  write_env_value "GUARD_RUNNER_ID" "local-default-1"
+  write_env_value "GUARD_RUNNER_ID" "runner-default-0"
   write_env_value "GUARD_RUNNER_POOL_ID" "default"
   write_env_value "GUARD_RUNNER_COMPILER_CAPABLE" "true"
   write_env_value "GUARD_RUNNER_MAX_CONCURRENCY" "64"
@@ -228,27 +230,7 @@ normalize_local_env() {
   write_env_value "GUARD_CONTROLLER_TELEMETRY_ENDPOINT" "http://localhost:${CONTROLLER_HTTP_PORT}/api/internal/v1/runtime-events"
   write_env_value "GUARD_RUNNER_STATE_PATH" "${RUNNER_STATE_DIR}"
 
-  nvidia_api_key="$(read_env_value NVAPI_API_KEY || true)"
-  if ! is_real_api_key "${nvidia_api_key}"; then
-    nvidia_api_key="$(read_env_value MODEL_GUARDRAILS_NVIDIA_API_KEY || true)"
-  else
-    write_env_value "MODEL_GUARDRAILS_NVIDIA_API_KEY_ENV_VAR" "NVAPI_API_KEY"
-  fi
-  if ! is_real_api_key "${nvidia_api_key}"; then
-    log "No NVIDIA API key found; disabling optional runner evaluators so the runner can boot locally"
-    write_env_value "MODEL_GUARDRAILS_NVIDIA_BASE_URL" ""
-    write_env_value "MODEL_GUARDRAILS_CONTENT_SAFETY_MODEL" ""
-    write_env_value "MODEL_GUARDRAILS_TOPIC_CONTROL_MODEL" ""
-    write_env_value "MODEL_GUARDRAILS_JAILBREAK_MODEL" ""
-    write_env_value "MODEL_GUARDRAILS_GROUNDING_MODEL" ""
-  fi
 
-  automated_reasoning_endpoint="$(read_env_value MODEL_GUARDRAILS_AUTOMATED_REASONING_ENDPOINT_URL || true)"
-  automated_reasoning_api_key="$(read_env_value MODEL_GUARDRAILS_AUTOMATED_REASONING_API_KEY || true)"
-  if [[ -n "${automated_reasoning_endpoint}" ]] && ! is_real_api_key "${automated_reasoning_api_key}"; then
-    warn "Automated reasoning endpoint is configured without an API key; disabling it for local recovery"
-    write_env_value "MODEL_GUARDRAILS_AUTOMATED_REASONING_ENDPOINT_URL" ""
-  fi
 }
 
 port_pids() {
@@ -370,7 +352,7 @@ sync_dependencies() {
     return 0
   fi
   log "Syncing Python and controller dependencies"
-  run make -C "${ROOT_DIR}" sync
+  run npm --prefix "${ROOT_DIR}" run sync
 }
 
 start_background_service() {
@@ -479,7 +461,7 @@ EOF
     printf '[recover] UI:         http://127.0.0.1:%s\n' "${UI_HTTP_PORT}"
   fi
   cat <<EOF
-[recover] Login:      admin / admin
+[recover] Initial login: admin / password (existing accounts are not reset)
 [recover] Logs:       ${LOG_DIR}
 
 [recover] Notes:

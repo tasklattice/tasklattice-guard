@@ -1,0 +1,53 @@
+# Optional local proof service, deployed separately from the Guard Helm chart.
+# Create the Secret formal-proof-credential with key api-key before applying.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: policy-formal-proof
+spec:
+  replicas: 1
+  selector:
+    matchLabels: {app: policy-formal-proof}
+  template:
+    metadata:
+      labels: {app: policy-formal-proof}
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65532
+        runAsGroup: 65532
+        seccompProfile: {type: RuntimeDefault}
+      containers:
+        - name: proof
+          image: tali-formal-proof:policy-studio-20261012
+          imagePullPolicy: Never
+          ports: [{name: http, containerPort: 8093}]
+          env:
+            - name: FORMAL_SERVICE_API_KEY
+              valueFrom:
+                secretKeyRef: {name: formal-proof-credential, key: api-key}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: {drop: [ALL]}
+          resources:
+            requests: {cpu: 100m, memory: 128Mi}
+            limits: {cpu: "1", memory: 512Mi}
+          readinessProbe:
+            tcpSocket: {port: http}
+            initialDelaySeconds: 2
+            periodSeconds: 5
+          livenessProbe:
+            tcpSocket: {port: http}
+            initialDelaySeconds: 10
+            periodSeconds: 10
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: policy-formal-proof
+spec:
+  type: ClusterIP
+  selector: {app: policy-formal-proof}
+  ports: [{name: http, port: 8093, targetPort: http}]

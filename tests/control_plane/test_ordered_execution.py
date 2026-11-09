@@ -11,9 +11,9 @@ from runner.toolkit.nemo.actions.contracts import action_result
 from runner.toolkit.nemo.actions.names import ACTION_SECRETS
 from runner.toolkit.nemo.actions import content_filter
 from runner.toolkit.policy_library import policy
+from runner.toolkit.policy_runtime.domain import PolicyDetectorRef, PolicyImplementationRef, PolicyRuleSpec, PolicySpec
 from runner.toolkit.safety.taxonomy import taxonomy_for_evaluator
 from runner.toolkit.runtime.contracts import ProtectionRequest, RequestContext, RiskFinding
-from runner.toolkit.runtime.interventions import fallback_content
 
 
 class RecordingSecrets:
@@ -24,19 +24,21 @@ class RecordingSecrets:
 
     def __init__(self):
         self.calls = []
+        self.contexts = []
 
     async def execute(self, request):
         self.calls.append((request.binding.id, request.content))
+        self.contexts.append(request.context_messages)
         # Evaluators reading content blocks must see the same transformed text.
         assert request.content_view.active_block.text == request.content
         parameters = dict(request.parameters)
         if parameters["needle"] not in request.content:
-            return action_result(request, "safe", request.content)
+            return action_result(request, "not_matched", request.content)
         return action_result(
-            request, "unsafe",
+            request, "matched",
             request.content.replace(parameters["needle"], parameters["replacement"]),
             findings=(RiskFinding(
-                risk="secrets", taxonomy_id=taxonomy_for_evaluator("secrets"), verdict="unsafe",
+                risk="secrets", taxonomy_id=taxonomy_for_evaluator("secrets"), verdict="matched",
                 confidence=1.0, evidence="Synthetic ordered-execution fixture.",
                 recommended_action=request.proposed_action,
             ),),
@@ -50,8 +52,9 @@ def chain_plan(steps, phase, programmable=False):
             "id": identity, "capability": "secrets",
             "contract_ref": "tali.guard.secrets.exact.v1", "phases": [phase],
             "on_unsafe": action,
-            "parameters": [["policy_id", identity], ["needle", needle], ["replacement", replacement]],
-            "trigger": {"type": "on_result", "step_ref": steps[index - 1][0], "verdicts": ["safe", "unsafe"]}
+            "parameters": [["policy_id", identity], ["needle", needle], ["replacement", replacement],
+                           ["evaluation_view", "previous_output"], ["precedence", str(index)]],
+            "trigger": {"type": "on_result", "step_ref": steps[index - 1][0], "verdicts": ["not_matched", "matched"]}
             if programmable and index else {"type": "always"},
         })
     return {
@@ -89,9 +92,9 @@ async def run_chain(steps, *, phase="input", programmable=False):
 @pytest.mark.parametrize("phase", ["input", "output"])
 async def test_modifications_are_threaded_and_order_is_not_sorted_by_id(phase, programmable):
     result, calls = await run_chain([
-        ("z-first", "alpha", "[A]", "redact"),
-        ("a-second", "alpha", "unused", "reject"),
-        ("m-third", "beta", "[B]", "redact"),
+        ("z-first", "alpha", "[A]", "transform"),
+        ("a-second", "alpha", "unused", "block"),
+        ("m-third", "beta", "[B]", "transform"),
     ], phase=phase, programmable=programmable)
     assert result.decision == "transform"
     assert result.texts == ("[A] [B]",)
@@ -100,10 +103,43 @@ async def test_modifications_are_threaded_and_order_is_not_sorted_by_id(phase, p
 
 @pytest.mark.parametrize("programmable", [False, True])
 @pytest.mark.parametrize("phase", ["input", "output"])
+@pytest.mark.parametrize("source", ["conversation", "retrieved_content"])
+async def test_transformed_current_message_reaches_later_evaluators_without_original_duplicate(phase, programmable, source):
+    from runner.toolkit.runtime.content_views import text_blocks
+
+    role = "user" if phase == "input" else "assistant"
+    history = ({"role": role, "content": "alpha beta"},
+               {"role": "assistant" if phase == "input" else "user", "content": "Earlier follow-up."},
+               {"role": role, "content": "alpha beta"})
+    provider = RecordingSecrets()
+    previews = DraftPreviewRuntime(DefaultRunnerCompiler(), action_providers(provider))
+    steps = [("redact", "alpha", "[A]", "transform"), ("inspect", "missing", "unused", "allow")]
+    try:
+        result = await previews.evaluate(
+            ProtectionRequest(phase=phase, texts=("alpha beta",), messages=history,
+                content_blocks=text_blocks(phase, ("alpha beta",), source) if source != "conversation" else (),
+                context=RequestContext(protocol="playground")),
+            preview_id="context-order", guardrail_id="ordered", draft_revision=1,
+            candidate_version="20260904-010000.001Z", plan=chain_plan(steps, phase, programmable), runtime_profile="auto",
+        )
+        assert result.decision == "transform", result.reason
+        assert provider.calls[-1] == ("inspect", "[A] beta")
+        # A separate retrieved input must not rewrite a coincidentally identical
+        # conversation message. Output blocks always represent model output.
+        expected = (*history[:-1], {"role": role, "content": "[A] beta"}) if source == "conversation" or phase == "output" else history
+        assert provider.contexts[-1] == expected
+        assert provider.contexts[0] == history
+        assert history[-1]["content"] == "alpha beta"
+    finally:
+        await previews.shutdown()
+
+
+@pytest.mark.parametrize("programmable", [False, True])
+@pytest.mark.parametrize("phase", ["input", "output"])
 async def test_reject_stops_before_any_later_policy_action(phase, programmable):
     result, calls = await run_chain([
-        ("reject-first", "alpha", "unused", "reject"),
-        ("later-redact", "alpha", "[A]", "redact"),
+        ("reject-first", "alpha", "unused", "block"),
+        ("later-redact", "alpha", "[A]", "transform"),
     ], phase=phase, programmable=programmable)
     assert result.decision == "block"
     assert calls == [("reject-first", "alpha beta")]
@@ -113,11 +149,28 @@ async def test_reject_stops_before_any_later_policy_action(phase, programmable):
 @pytest.mark.parametrize("programmable", [False, True])
 async def test_pass_does_not_allow_globally_or_modify_downstream_input(programmable):
     result, calls = await run_chain([
-        ("pass-first", "alpha", "[A]", "pass"),
-        ("reject-next", "alpha", "unused", "reject"),
+        ("pass-first", "alpha", "[A]", "allow"),
+        ("reject-next", "alpha", "unused", "block"),
     ], programmable=programmable)
     assert result.decision == "block"
     assert calls == [("pass-first", "alpha beta"), ("reject-next", "alpha beta")]
+
+
+@pytest.mark.parametrize("programmable", [False, True])
+async def test_combined_rail_attributes_each_action_to_its_own_policy(programmable):
+    result, _ = await run_chain([
+        ("safe-first", "missing", "unused", "block"),
+        ("redact-next", "alpha", "[A]", "transform"),
+        ("reject-last", "beta", "unused", "block"),
+    ], programmable=programmable)
+    trace = {step.id: step for step in result.trace}
+    policies = {step.policy_id: step for step in result.trace if step.kind == "policy"}
+    assert {key: step.status for key, step in policies.items()} == {
+        "safe-first": "passed", "redact-next": "modified", "reject-last": "blocked"}
+    for step in result.trace:
+        if step.kind == "action":
+            assert trace[step.parent_id].policy_id == step.policy_id
+    assert result.assessments[0].status == "allow"
 
 
 @pytest.mark.parametrize("phase", ["input", "output"])
@@ -126,12 +179,12 @@ async def test_large_standard_policy_chain_preserves_order_and_short_circuit(pha
     # Multiple individually configured input/output rails exhausted upstream
     # Colang 1's 300-event guard before an ordinary 32-Policy Default completed.
     # Exercise a larger chain through real NeMo, without changing that limit.
-    middle = [(f"check-{index:02d}", "alpha", "unused", "reject") for index in range(36)]
+    middle = [(f"check-{index:02d}", "alpha", "unused", "block") for index in range(36)]
     steps = [
-        ("z-mask-alpha", "alpha", "[A]", "redact"), *middle,
-        ("b-mask-beta", "beta", "[B]", "redact"),
-        ("end-check", "[B]" if reject_at_end else "missing", "unused", "reject"),
-        ("after-end", "missing", "unused", "pass"),
+        ("z-mask-alpha", "alpha", "[A]", "transform"), *middle,
+        ("b-mask-beta", "beta", "[B]", "transform"),
+        ("end-check", "[B]" if reject_at_end else "missing", "unused", "block"),
+        ("after-end", "missing", "unused", "allow"),
     ]
     result, calls = await run_chain(steps, phase=phase)
     assert result.decision == ("block" if reject_at_end else "transform")
@@ -145,44 +198,52 @@ async def test_large_standard_policy_chain_preserves_order_and_short_circuit(pha
     assert [step.policy_id for step in result.trace if step.kind == "action"] == [identity for identity, _ in expected]
 
 
-def test_local_rules_use_current_text_and_stop_on_reject(monkeypatch):
-    template = policy("pattern-matching")
+def ordering_policy():
+    """A synthetic regex contract must not inherit evolving PII detector options."""
+    return PolicySpec(id="ordering-fixture", name="Ordering", description="Synthetic ordering fixture",
+        source="custom", version="1", tags=(), parameters=(), test_cases=(), rules=(PolicyRuleSpec(
+            id="base", name="Base", description="", detector=PolicyDetectorRef("text/regex", "1.0.0"),
+            effect="transform", rails=("input", "output"),
+            implementation=PolicyImplementationRef("nemo-guardrails", "local", "ordering-fixture", "base", detector="regex"),
+            taxonomy_ids=("TALI-BUSINESS-POLICY",), risk_severity="low", expression="alpha", redaction="[A]"),))
+
+
+def test_local_rules_use_current_text_and_stop_on_reject():
+    template = ordering_policy()
     rule = template.rules[0]
-    first = replace(rule, id="z-first", expression="alpha", context_expression=None, effect="redact", redaction="[A]")
-    second = replace(rule, id="a-second", expression="alpha", context_expression=None, effect="reject")
-    third = replace(rule, id="m-third", expression="beta", context_expression=None, effect="redact", redaction="[B]")
+    first = replace(rule, id="z-first", expression="alpha", context_expression=None, effect="transform", redaction="[A]")
+    second = replace(rule, id="a-second", expression="alpha", context_expression=None, effect="block")
+    third = replace(rule, id="m-third", expression="beta", context_expression=None, effect="transform", redaction="[B]")
     definition = replace(template, id="ordered-rules", rules=(first, second, third))
-    monkeypatch.setattr(content_filter, "policy", lambda name: definition)
     engine = content_filter.BuiltinContentFilter()
-    result = engine.evaluate(text="alpha beta", phase="input", policies=[definition.id])
+    result = engine.evaluate(definitions={definition.id: definition}, text="alpha beta", phase="input", policies=[definition.id])
     assert result.content == "[A] [B]"
     assert [f.rule_id for f in result.findings] == ["z-first", "m-third"]
     definition = replace(definition, rules=(second, first, third))
-    result = engine.evaluate(text="alpha beta", phase="input", policies=[definition.id])
+    result = engine.evaluate(definitions={definition.id: definition}, text="alpha beta", phase="input", policies=[definition.id])
     assert result.content == "alpha beta"
     assert [f.rule_id for f in result.findings] == ["a-second"]
-    definition = replace(definition, rules=(replace(first, effect="rewrite"), second))
-    result = engine.evaluate(text="alpha beta", phase="input", policies=[definition.id])
-    assert result.content == fallback_content("rewrite", "alpha beta")
+    definition = replace(definition, rules=(replace(first, effect="transform"), second))
+    result = engine.evaluate(definitions={definition.id: definition}, text="alpha beta", phase="input", policies=[definition.id])
+    assert result.content == "[A] beta"
     assert [f.rule_id for f in result.findings] == ["z-first"]
 
 
-def test_guardrail_rule_order_is_independent_of_enabled_membership_and_template(monkeypatch):
-    template = policy("pattern-matching")
+def test_guardrail_rule_order_is_independent_of_enabled_membership_and_template():
+    template = ordering_policy()
     base = template.rules[0]
     definition = replace(template, id="local-order", rules=(
-        replace(base, id="redact", expression="alpha", context_expression=None, effect="redact", redaction="[A]"),
-        replace(base, id="reject", expression="alpha", context_expression=None, effect="reject"),
-        replace(base, id="tail", expression="beta", context_expression=None, effect="redact", redaction="[B]"),
+        replace(base, id="transform", expression="alpha", context_expression=None, effect="transform", redaction="[A]"),
+        replace(base, id="block", expression="alpha", context_expression=None, effect="block"),
+        replace(base, id="tail", expression="beta", context_expression=None, effect="transform", redaction="[B]"),
     ))
-    monkeypatch.setattr(content_filter, "policy", lambda name: definition)
     engine = content_filter.BuiltinContentFilter()
-    args = dict(text="alpha beta", phase="input", policies=[definition.id], enabled_rules={definition.id: ["reject", "redact", "tail"]})
+    args = dict(definitions={definition.id: definition}, text="alpha beta", phase="input", policies=[definition.id], enabled_rules={definition.id: ["block", "transform", "tail"]})
     assert engine.evaluate(**args).content == "[A] [B]"
-    result = engine.evaluate(**args, rule_order={definition.id: ["reject"]})
-    assert [f.rule_id for f in result.findings] == ["reject"]
-    assert [r.id for r in definition.rules] == ["redact", "reject", "tail"]
-    for order in (["missing"], ["redact", "redact"]):
+    result = engine.evaluate(**args, rule_order={definition.id: ["block"]})
+    assert [f.rule_id for f in result.findings] == ["block"]
+    assert [r.id for r in definition.rules] == ["transform", "block", "tail"]
+    for order in (["missing"], ["transform", "transform"]):
         assert engine.evaluate(**args, rule_order={definition.id: order}).verdict == "error"
 
 
@@ -191,13 +252,13 @@ def test_guardrail_rule_order_is_independent_of_enabled_membership_and_template(
 async def test_custom_rules_interleave_with_builtin_policies_without_priority_sorting(reject_custom, local_order):
     provider = RecordingSecrets()
     plan = chain_plan([
-        ("before", "alpha", "[A]", "redact"),
-        ("after", "missing", "unused", "pass"),
+        ("before", "alpha", "[A]", "transform"),
+        ("after", "missing", "unused", "allow"),
     ], "input")
     plan["policy_bindings"] = [{
         "policy_id": identity, "policy_version": "1", "enabled_rails": ["input"],
         "enabled_rule_ids": ["flow/input/z_first", "flow/input/a_second"] if identity == "custom" else [],
-        "rule_actions": [["flow/input/z_first", "reject"]] if reject_custom and identity == "custom" else [],
+        "rule_actions": [["flow/input/z_first", "block"]] if reject_custom and identity == "custom" else [],
     } for identity in ("before", "custom", "after")]
     plan["policy_versions"] = [{
         "policy_id": "custom", "version": "1", "name": "Ordered custom", "source": "custom",
@@ -216,7 +277,7 @@ flow a_second $text
 '''}],
         "rail_bindings": [{
             "rail_type": "input", "flow_name": name, "execution_mode": "mutate",
-            "on_unsafe": "redact", "priority": priority, "timeout_ms": 500,
+            "on_unsafe": "transform", "priority": priority, "timeout_ms": 500,
             "failure_mode": "fail_closed", "required": True, "depends_on": [],
         } for name, priority in (("z_first", 100), ("a_second", 1))],
         "action_references": [{"name": "GuardRecordPolicyAction", "version": "1.0.0"}],
@@ -246,3 +307,200 @@ flow a_second $text
             assert provider.calls == [("before", "alpha beta"), ("after", "CUSTOM [B]")]
     finally:
         await previews.shutdown()
+
+
+@pytest.mark.parametrize("enabled,denied,expected,calls", [
+    (["topic/denylist", "topic/allowlist"], True, "block", ["topic/denylist"]),
+    (["topic/denylist", "topic/allowlist"], False, "allow", ["topic/denylist", "topic/allowlist"]),
+    (["topic/allowlist"], True, "allow", ["topic/allowlist"]),
+    (["topic/denylist"], False, "allow", ["topic/denylist"]),
+])
+@pytest.mark.parametrize("scope", ["interventions", "full"])
+async def test_split_topic_rules_short_circuit_and_trace_their_own_identity(enabled, denied, expected, calls, scope):
+    from runner.toolkit.nemo.actions.names import ACTION_TOPIC_JUDGE
+
+    class RecordingTopic:
+        name = ACTION_TOPIC_JUDGE
+        version = "1.0.0"
+        capabilities = frozenset({"topic_control"})
+        rails = frozenset({"input"})
+
+        def __init__(self):
+            self.calls = []
+
+        async def execute(self, request):
+            rule = dict(request.parameters)["rule_id"]
+            self.calls.append(rule)
+            unsafe = denied and rule == "topic/denylist"
+            return action_result(request, "matched" if unsafe else "not_matched", request.content,
+                findings=(RiskFinding(risk="topic_control", taxonomy_id=taxonomy_for_evaluator("topic_control"),
+                    verdict="matched", confidence=1.0, evidence="Synthetic topic test", recommended_action="block"),) if unsafe else ())
+
+    plan = chain_plan([(rule, "", "", "block") for rule in enabled], "input")
+    for index, step in enumerate(plan["steps"]):
+        step.update(capability="topic_control", contract_ref="tali.guard.topic-control.semantic.v1",
+            parameters=[["evaluation_view", "original"], ["precedence", str(index)], ["policy_id", "business-topics"], ["policy_version", "1.0.0"], ["rule_id", step["id"]]])
+    plan["policy_bindings"] = [{"policy_id": "business-topics", "policy_version": "1.0.0",
+        "enabled_rule_ids": enabled, "enabled_rails": ["input"], "parameter_values": [], "rule_actions": []}]
+    provider = RecordingTopic()
+    previews = DraftPreviewRuntime(DefaultRunnerCompiler(), action_providers(provider))
+    try:
+        result = await previews.evaluate(
+            ProtectionRequest(phase="input", texts=("Order support and fraud",), evidence_scope=scope, execution_purpose="validation" if scope == "full" else "online", context=RequestContext(protocol="playground")),
+            preview_id="split", guardrail_id="ordered", draft_revision=1, candidate_version="20260904-010000.001Z",
+            plan=plan, runtime_profile="auto")
+        assert not result.usage.fail_closed, result.reason
+        assert result.decision == expected
+        executed = enabled if scope == "full" else calls
+        assert provider.calls == executed
+        assert [step.id.removeprefix("nemo:action:") for step in result.trace if step.kind == "action"] == executed
+        if denied and "topic/denylist" in enabled:
+            assert any(finding.rule_id == "topic/denylist" for finding in result.findings)
+            assert [item.fragment_id for item in result.interventions if item.kind == "block"] == ["nemo:topic/denylist:block"]
+    finally:
+        await previews.shutdown()
+
+
+@pytest.mark.parametrize("programmable", [False, True])
+async def test_transform_missing_result_fails_closed_in_real_nemo(programmable):
+    provider = RecordingSecrets()
+    previews = DraftPreviewRuntime(DefaultRunnerCompiler(), action_providers(provider))
+    try:
+        outcome = await previews.evaluate(
+            ProtectionRequest(phase="input", texts=("alpha beta",), context=RequestContext(protocol="playground")),
+            preview_id="missing-transform", guardrail_id="ordered", draft_revision=1,
+            candidate_version="20260904-010000.001Z",
+            plan=chain_plan([("missing-output", "alpha", "alpha", "transform")], "input", programmable), runtime_profile="auto")
+        assert outcome.decision == outcome.action == "block"
+        assert outcome.usage.fail_closed
+        assert not outcome.texts
+        assert any(step.status == "error" for step in outcome.trace)
+    finally:
+        await previews.shutdown()
+
+
+@pytest.mark.parametrize("views", [[], [["evaluation_view", "unknown"]],
+                                  [["evaluation_view", "original"], ["evaluation_view", "previous_output"]]])
+def test_compilation_and_execution_reject_missing_or_ambiguous_views(views):
+    from runner.serialization import plan_from_dict
+    from runner.toolkit.compiler.nemo_compiler import NeMoConfigCompiler
+    from runner.toolkit.compiler.domain import PlanCompilationError
+    from runner.toolkit.nemo.runtime import NeMoActionBridge
+    from runner.toolkit.runtime.contracts import NeMoActionBinding
+
+    plan = chain_plan([("target", "alpha", "unused", "block")], "input")
+    plan["steps"][0]["parameters"] = views
+    with pytest.raises(PlanCompilationError, match="exactly one valid evaluation_view"):
+        NeMoConfigCompiler().compile(plan_from_dict(plan))
+    binding = NeMoActionBinding(id="target", capability="secrets", contract_ref="test",
+                                phases=("input",), on_unsafe="block", parameters=tuple(map(tuple, views)))
+    with pytest.raises(ValueError, match="exactly one valid evaluation_view"):
+        NeMoActionBridge._declared_view(binding)
+
+
+@pytest.mark.parametrize("positions", [[], ["-1"], ["1.5"], ["NaN"], [""], [" 1"], ["+1"], ["01"], ["１"], ["0", "1"]])
+def test_compiler_rejects_missing_or_invalid_precedence(positions):
+    from runner.serialization import plan_from_dict
+    from runner.toolkit.compiler.nemo_compiler import NeMoConfigCompiler
+    from runner.toolkit.compiler.domain import PlanCompilationError
+
+    plan = chain_plan([("target", "alpha", "unused", "block")], "input")
+    parameters = plan["steps"][0]["parameters"]
+    plan["steps"][0]["parameters"] = [entry for entry in parameters if entry[0] != "precedence"] + [
+        ["precedence", value] for value in positions]
+    with pytest.raises(PlanCompilationError, match="exactly one non-negative integer precedence"):
+        NeMoConfigCompiler().compile(plan_from_dict(plan))
+
+
+def test_precedence_is_unique_but_not_derived_from_execution_order():
+    from runner.serialization import plan_from_dict
+    from runner.toolkit.compiler.nemo_compiler import NeMoConfigCompiler
+    from runner.toolkit.compiler.domain import PlanCompilationError
+
+    plan = chain_plan([("first", "alpha", "unused", "block"), ("second", "beta", "unused", "allow")], "input")
+    for step, position in zip(plan["steps"], ["7", "3"]):
+        step["parameters"] = [entry for entry in step["parameters"] if entry[0] != "precedence"] + [["precedence", position]]
+    snapshot = NeMoConfigCompiler().compile(plan_from_dict(plan))
+    assert [dict(item.parameters)["precedence"] for item in snapshot.action_bindings] == ["7", "3"]
+    plan["steps"][1]["parameters"][-1][1] = "7"
+    with pytest.raises(PlanCompilationError, match="precedence values must be unique"):
+        NeMoConfigCompiler().compile(plan_from_dict(plan))
+
+
+def chained_plan():
+    """A Transform followed by a read-only step that triggers on it."""
+    plan = chain_plan([("mask", "alpha", "[A]", "transform"), ("check", "beta", "unused", "block")], "input", True)
+    return plan
+
+
+@pytest.mark.parametrize("declared,allowed", [("previous_output", True), ("original", False)])
+def test_a_step_that_depends_on_a_transform_must_inspect_the_derived_text(declared, allowed):
+    from runner.serialization import plan_from_dict
+    from runner.toolkit.compiler.domain import PlanCompilationError
+    from runner.toolkit.compiler.nemo_compiler import NeMoConfigCompiler
+
+    plan = chained_plan()
+    # The second step already triggers on the Transform, so the only safe view is
+    # the derived one: scheduling it ahead would inspect text it did not authorise.
+    assert plan["steps"][1]["trigger"] == {"type": "on_result", "step_ref": "mask", "verdicts": ["not_matched", "matched"]}
+    plan["steps"][1]["parameters"] = [
+        [key, declared if key == "evaluation_view" else value] for key, value in plan["steps"][1]["parameters"]]
+    if allowed:
+        assert NeMoConfigCompiler().compile(plan_from_dict(plan)) is not None
+    else:
+        with pytest.raises(PlanCompilationError, match="depends on a Transform step"):
+            NeMoConfigCompiler().compile(plan_from_dict(plan))
+
+
+def test_a_more_conservative_view_is_accepted_for_the_custom_flow_barrier():
+    """Custom Flows keep the whole plan threaded; declaring that is not an error."""
+    from runner.serialization import plan_from_dict
+    from runner.toolkit.compiler.nemo_compiler import NeMoConfigCompiler
+    from runner.toolkit.compiler.semantics import derived_evaluation_view
+
+    plan = chain_plan([("first", "alpha", "unused", "block"), ("second", "beta", "unused", "allow")], "input")
+    for step in plan["steps"]:
+        step["parameters"] = [
+            [key, "previous_output" if key == "evaluation_view" else value] for key, value in step["parameters"]]
+    snapshot = plan_from_dict(plan)
+    assert [derived_evaluation_view(snapshot, step) for step in snapshot.steps] == ["original", "original"]
+    assert NeMoConfigCompiler().compile(snapshot) is not None
+
+
+def test_authored_precedence_must_follow_the_trigger_graph():
+    from runner.serialization import plan_from_dict
+    from runner.toolkit.compiler.domain import PlanCompilationError
+    from runner.toolkit.compiler.nemo_compiler import NeMoConfigCompiler
+
+    plan = chain_plan([("mask", "alpha", "[A]", "transform"), ("check", "beta", "unused", "block")], "input", True)
+    positions = {step["id"]: str(index) for index, step in enumerate(plan["steps"])}
+    # Report the dependent step as if it were authored first. The execution list
+    # still follows the trigger, so only the metadata is a lie - and it is caught.
+    for step in plan["steps"]:
+        target = "1" if step["id"] == "mask" else "0"
+        step["parameters"] = [
+            [key, target if key == "precedence" else value] for key, value in step["parameters"]]
+    assert positions == {"mask": "0", "check": "1"}
+    with pytest.raises(PlanCompilationError, match="precedence .* must follow its trigger"):
+        NeMoConfigCompiler().compile(plan_from_dict(plan))
+
+
+def test_the_load_gate_rejects_a_signed_plan_whose_metadata_contradicts_its_graph():
+    from runner.serialization import plan_from_dict
+    from runner.toolkit.compiler.semantics import (
+        PLAN_COMPILER_VERSION, NEMO_COMPILER_VERSION, validate_artifact_execution_contract,
+    )
+    from runner.toolkit.runtime.contracts import NeMoConfigSnapshot
+
+    plan = chained_plan()
+    plan["compiler_version"] = PLAN_COMPILER_VERSION
+    plan["steps"][1]["parameters"] = [
+        [key, "original" if key == "evaluation_view" else value] for key, value in plan["steps"][1]["parameters"]]
+    snapshot = plan_from_dict(plan)
+    config = NeMoConfigSnapshot(
+        guardrail_id=snapshot.guardrail_id, guardrail_version=snapshot.guardrail_version,
+        compiler_version=NEMO_COMPILER_VERSION, output_delivery=snapshot.output_delivery,
+        config_yaml="", colang_content="", action_bindings=snapshot.steps,
+    )
+    with pytest.raises(ValueError, match="artifact_recompile_required.*depends on a Transform step"):
+        validate_artifact_execution_contract(snapshot, config)

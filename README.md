@@ -18,7 +18,9 @@ without embedding policy logic in every gateway.
   harmful content, and application-specific restrictions using configurable
   local rules and model-backed checks.
 - **Build and test your own protection.** Compose versioned Policies into a
-  Guardrail, tune rules and actions, and validate changes before publishing.
+  Guardrail, tune rules and actions, and test or publish independently.
+  The directory-based [Policy packages](policies/README.md) bootstrap
+  the built-in catalog and support directory/ZIP import and export for custom local checks.
 - **Route traffic to the right Guardrail.** Match request characteristics such
   as headers or model names, then distribute matching calls across Guardrail
   versions with configurable percentages.
@@ -28,10 +30,43 @@ without embedding policy logic in every gateway.
 - **Understand what happened.** Inspect runtime decisions, routing distribution,
   validation results, and publication history in the console.
 
-The included Default Guardrail provides local checks without a detection-model
-setup. Model-backed protection can be configured separately. Coverage depends
+Each deployment provisions an ordinary Guardrail named Default from the pinned
+Default Profile (`local-baseline@1.0.0`). It provides local checks without a detection model.
+Rename, edit, publish or delete it through the same workflow as any Guardrail;
+restarts never recreate a deleted preset. Model-backed protection can be configured separately. Coverage depends
 on the policies you enable and the content you submit; streamed output may
 need to be buffered when a policy requires the complete response.
+
+The built-in Profile list contains five starting points:
+
+| Profile | Intended use |
+| --- | --- |
+| Default | The local protection configuration used at deployment |
+| Full-feature baseline | Benchmark-family protections, including input/output model checks |
+| Bank | Local checks plus identity-check evasion and misleading guarantees |
+| Securities & brokerage | Local checks plus insider trading and market manipulation |
+| Internet platform support | Local checks plus phishing, session theft and injection |
+
+Upgrades retire the other built-in choices from discovery. Existing Guardrails
+keep their copied configuration, tests and published versions; they can still
+be edited, tested and published. Custom Profile records are preserved.
+
+For the benchmark configuration, select **Full-feature baseline** when creating
+a Guardrail. Version 2.0.0 copies 14 pinned Policies and 127 Rules into an
+editable draft: credentials/PII, input/output content safety, jailbreak,
+direct/indirect injection, memory poisoning, data-use boundaries and a filled
+harmful-task denylist. Remove any protections you do not need. Model checks
+reuse six platform capability/direction assignments, so each Guardrail does
+not need its own model setup. Existing Guardrails retain their snapshots.
+See the
+[Profile guide](docs/full-feature-baseline.md) for versions, dependencies and
+what happens to tests after a deletion.
+
+Publishing freezes and compiles the selected configuration without calling models
+or running tests. Untested, running or failed tests do not prevent publication,
+and deleting a report does not revoke a version. Compilation errors leave earlier
+versions intact. Model availability, Runner readiness and Router rollout remain
+separate from publication; publishing does not switch traffic.
 
 ## How it fits into your application
 
@@ -69,13 +104,33 @@ With this repository checked out, enable OrbStack Kubernetes and have Docker,
 Helm, `kubectl`, and `make` available. From the repository root, run:
 
 ```bash
-make helm-install
+npm run helm:deploy:dev
 ```
 
-This builds the local images, installs or upgrades the development deployment,
-and waits for workload readiness. Open [the console](http://localhost:38081)
-and sign in with `admin` / `admin`. These credentials belong to the local
-profile only; an existing account keeps its password if you have changed it.
+To include the real Keycloak development identities and Project setup, run:
+
+```bash
+npm run helm:deploy:dev:keycloak
+```
+
+This adds `sso-user1` / `password` → `test1` and `sso-user2` / `password` →
+`test2`. Both profiles deploy only the Default Runner; `test1` uses
+`runner-default-0`, while `test2` requires manual Runner setup in the administrator
+UI. Sign in with the **Keycloak** button; local `admin` and `user` sign-in remain
+available. `Test2` is normalized to the immutable Project name `test2`.
+See [Keycloak development bootstrap](charts/tali-guard/README.md#keycloak-development-bootstrap).
+
+Both commands build the local images, install or upgrade the development deployment,
+and wait for workload readiness. Open [the console](http://localhost:38081)
+and sign in with `admin` / `password` or `user` / `password`.
+The local `user` joins `test1` automatically, using the default shared Runner
+and the Project's published Default Guardrail.
+All environments use username/password authentication through Better Auth.
+Initialization overwrites configured bootstrap accounts and revokes old sessions;
+account Secrets contain Base64-decodable initial passwords for debugging.
+The local profile uses Runner Token authentication with mTLS. A chart bootstrap
+Job creates internal Secrets, so no External Secrets operator or private key in
+Values is required.
 
 Start with the Default Guardrail to explore local protection, then configure
 model-backed checks as needed. See the [local installation guide](charts/tali-guard/README.md#orbstacklocal-installation)
@@ -85,21 +140,51 @@ Prefer to run the services from source? Follow the
 [development guide](docs/development.md). For a shared or production environment,
 use the [production deployment guide](charts/tali-guard/README.md#production-installation).
 
+Deploy Controller and Runner from the same release. They use one execution
+contract, without compatibility branches for older plans or testing reports.
+See the [scheduling contract](docs/policy-scheduling-optimization-design.zh-CN.md)
+for explicit views, Rule evidence, and execution limits.
+
 ## Documentation
 
 | I want to… | Guide |
 | --- | --- |
 | Integrate an application or gateway | [Runtime API, streaming, dry run, and verification](docs/gateway-integration.md) |
-| Configure protection and validation | [Policies, the Default Guardrail, and execution order](docs/guardrail-policies.md) |
-| Connect models for protection checks | [Providers, Models, and Guardrail Catalog](docs/model-configuration.md) |
+| Configure protection and validation | [Policies and validation](docs/guardrail-policies.md), [execution order and PII conflicts](docs/policy-composition.md), [scheduling optimisation design](docs/policy-scheduling-optimization-design.zh-CN.md), [schedule benchmark](docs/policy-scheduling-benchmark.md) |
+| Connect models for protection checks | [Providers, Models, and Guardrail Catalog](docs/model-configuration.md), [semantic PII decision-model design](docs/semantic-pii-decision-model.zh-CN.md) |
 | Route traffic across Guardrails | [Routes, selectors, and weighted distribution](docs/router-route-weighted-distribution-design.md) |
 | Test a Router or Endpoint | [Playground advanced path testing](docs/playground-advanced-mode.md) |
 | Publish, restore, or delete versions | [Revision lifecycles](docs/revision-lifecycle.md) |
 | Automate management operations | [Controller API conventions](docs/api-contract.md) and [Access Tokens](docs/account-access-tokens.md) |
-| Deploy and operate Guard | [Helm deployment](charts/tali-guard/README.md), [operations and security](docs/operations.md), and [observability](observability/README.md) |
+| Deploy and operate Guard | [Helm deployment](charts/tali-guard/README.md), [operations and security](docs/operations.md), and [observability](docs/observability.md) |
+| Learn guardctl and inspect the control plane | [guardctl command-line manual](bin/README.md) |
+| Configure models and publish a Default copy through APIs | [guardctl configuration](docs/guardctl-configuration.md) |
 | Develop or understand the internals | [Development and tests](docs/development.md) and [architecture](docs/architecture.md) |
 
 A running Controller also serves an interactive API reference at `/api/docs`,
 its OpenAPI contract at `/api/openapi.json`, and an agent-oriented index at
 `/api/llms.txt`. These describe the management API; application checks use the
 separate runtime integration guide above.
+
+### Git source versions
+
+`/settings/version` shows the Controller's startup identity and each registered
+Runner's own identity. Versions use `git describe --tags --always --long` plus
+`-dirty` when staged, unstaged, or untracked files exist anywhere in the repository
+(ignored files are excluded). The page also shows the full commit, branch, and
+workspace state. Restart a local process to capture subsequent source changes.
+
+`npm run images:build:dev` and the release workflow capture the workspace before
+building and pass `TALI_BUILD_INFO` to both Docker images. For direct Docker builds,
+pass `--build-arg "TALI_BUILD_INFO=$(node scripts/git-build-info.mjs)"`.
+Images without metadata and without Git report an unknown source state, never a
+clean workspace. Older Runners retain their reported version with unknown Git
+metadata until rebuilt and restarted. The authenticated
+`GET /api/v1/system/version` endpoint accepts the `runners:read` token permission.
+
+Both Controller and Runner also expose public `GET /version`, which returns that
+process's startup build identity and `component` without authentication, database
+queries, or calls to another service. Use it to identify a Pod during an outage;
+the authenticated management endpoint remains the project-scoped fleet inventory.
+See [operational endpoints](docs/operations.md#health-and-version-endpoints) for
+the health probe contract and examples.

@@ -1,5 +1,15 @@
 /** Business navigation, deliberately independent of NeMo engines and providers. */
 import type { GuardrailCategoryId } from "./guardrail-catalog.js";
+import type { EnforcementAction } from "./enforcement-action.generated.js";
+
+export type ProfileOrigin = { id: string; version: string };
+export type ProfileDraftSettings = {
+  allowedTopics: string[];
+  restrictedTopics: string[];
+  topicControlMode: "strict" | "permissive";
+  safetyLevel: "balanced" | "strict";
+  outputDelivery: "interruptible" | "window_buffered" | "full_buffered";
+};
 
 export const protectionDirectoryIds = [
   "content_safety", "privacy", "business_topics", "content_filters",
@@ -53,14 +63,42 @@ export type ProtectionPreset = {
   description: string;
   industry: "general" | "banking" | "securities" | "internet";
   jurisdictions: string[];
+  benchmarkOnly?: boolean;
+  parameterPacks?: Array<{ id: string; version: string; values: Record<string, string> }>;
+  /** Reviewed composition exclusions, pinned to source cases rather than instance IDs. */
+  testExclusions?: Array<{ policyId: string; policyVersion: string; sourceCaseId: string; reason: string }>;
   /** Ordered ordinary Policy references, not nested executable Policies. */
   policies: Array<{
     policyId: string;
     policyVersion: string;
     enabledRails: Array<"input" | "output">;
     parameterValues: Record<string, string>;
+    action?: EnforcementAction | null;
+    ruleActions?: Record<string, EnforcementAction>;
+    reasoningPolicy?: { policyId: string; policyVersion: string; confidenceThreshold: number } | null;
+    /** Omit to select the complete capability; built-in Profiles pin reviewed Rules. */
+    enabledRuleIds?: string[];
+    /** Binding-aware selection; resolves to the bound Rule IDs. */
+    enabledBindingIds?: string[];
+    ruleOrder?: string[];
+    bindingOrder?: string[];
+    testCaseOverrides?: Record<string, {
+      sourcePolicyVersion: string;
+      reason: string;
+      expectedDecision: "allow" | "block" | "transform" | "intervene";
+      expectedOutputContent?: string;
+      expectedMatches: Array<{ policyId: string; ruleId: string }>;
+    }>;
   }>;
+  draftSettings?: ProfileDraftSettings;
   suggestedTopics: string[];
   optionalPolicyIds: string[];
   limitations: string[];
+};
+
+/** A database-backed, versioned starting configuration for one industry or use case. */
+export type GuardrailProfile = ProtectionPreset & {
+  category: string;
+  categoryName: string;
+  isDefault: boolean;
 };

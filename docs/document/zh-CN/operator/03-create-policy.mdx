@@ -1,0 +1,221 @@
+---
+id: "operator-create-policy"
+title: "创建、测试和发布 Policy"
+summary: "选择 Detector，配置 Rule 和参数，用验收用例与场景测试检查行为，再发布可供 Guardrail 绑定的版本。"
+order: 2
+---
+Policy Studio 将 Detector 组合为可复用的 Policy。Detector 负责检测，Rule 指定检查阶段和命中动作，Test Case 检查实际行为。
+
+具备 Policy 写权限的业务用户可维护平台提供、本地创建和导入的 Policy。来源用于合规与追溯，不决定编辑权限。维护人的名字记录责任，不授予写权限。
+
+<a id="operator-policy-create" />
+## 创建和维护草稿
+
+在 [Policy Library](/$projectId/policy-library) 选择 **创建 Policy**。维护已有 Policy 时，打开详情后选择 **编辑**。
+
+左侧步骤为 **基本信息 → Rules → Test Cases → 审查与发布**：
+
+1. 在 **基本信息** 中填写名称和 **Maintenance · 维护人**。这两个字段必填。用途用于说明 Policy 检查什么内容。
+2. 在 **Rules** 中添加 Rule。选择 Detector、检查阶段和命中动作。填写检测参数。
+3. 在 **Test Cases** 中为每条 Rule 的每个检查阶段添加必选验收用例。按需补充整套 Policy 的场景测试。
+4. 选择 **运行测试**。
+5. 在 **审查与发布** 中查看实际动作、命中 Rule 和输出。修复失败后重新测试。通过后选择 **发布**。
+
+切换步骤会保留当前编辑内容。**保存草稿** 将内容保存到 Library。新建且未发布的 Policy 显示 Draft，不能绑定到 Guardrail。退出前请保存草稿。
+
+修改 Rule 名称不会改变 Rule ID。删除 Rule 会同时删除引用它的草稿测试。
+
+<a id="operator-policy-declarative" />
+## 选择 Detector 与配置 Rule
+
+每条 Rule 引用一个有版本的 Detector。复杂条件仍可使用 **高级定义** 中的 JSON 编辑器。
+
+| Detector | 检查阶段 | 用途与配置 |
+| --- | --- | --- |
+| `text/keyword` | Input、Output | 匹配关键词或短语。支持命中后替换文本。 |
+| `text/regex` | Input、Output | 按正则表达式匹配。支持命中后替换文本。 |
+| `text/conditions` | Input、Output | 组合文本条件，不提供文本替换。 |
+| `code/fenced-block` | Input、Output | 检测 Markdown 围栏代码块，可指定代码语言。 |
+| `agent/indirect-injection` | 仅 Input | 用本地规则检查外部内容中的指令操控。Studio 验收限制见下文。 |
+| `agent/memory-poisoning` | 仅 Input | 用本地规则检查记忆中的指令操控，不验证事实真伪。Studio 验收限制见下文。 |
+| `model/classifier` | 按分类类型选择 | 内容安全、越狱、语义 PII 或话题控制。越狱与话题控制使用 Input。 |
+| `model/grounding` | 仅 Output | 根据用户问题和参考资料检查回答。 |
+| `service/formal-verification` | 仅 Output | 根据外部服务中的形式化策略版本检查回答。 |
+
+模型分类、事实依据检查和形式验证使用[防护能力](/settings/protection-capabilities)中已激活的能力绑定。缺少绑定或服务调用失败会导致测试失败。模型地址与凭据保留在环境配置中。
+
+两类 `agent/` Detector 已出现在表单中，但当前 Studio 尚不能完成其外部内容来源的验收。请先使用已发布的预置 Policy。再到 Guardrail 中验证实际场景。
+
+Rule 按顺序执行。后续 Rule 读取前一条 Rule 处理后的文本。阻断会结束本次检测。请用场景测试检查替换与阻断的执行顺序。
+
+<a id="operator-policy-risk-severity" />
+### 风险级别与命中动作
+
+风险级别属于 Rule。新 Rule 默认使用中等风险。命中动作决定如何处理文本：
+
+| 动作 | 作用 |
+| --- | --- |
+| `allow` | 命中后继续处理。它仍是一次 Rule 命中。 |
+| `block` | 命中后阻断当前检测。 |
+| `transform` | 替换文本，再交给后续 Rule。仅对支持替换的 Detector 使用。 |
+
+可在高级定义中修改风险级别和风险分类。Guardrail 可覆盖命中动作，不能覆盖 Policy 的风险级别。修改风险后，请重新测试。通过后发布新的 Policy 版本。
+
+<a id="operator-policy-parameters" />
+### 参数与测试值
+
+参数用于复用同一套规则。选择模型类或形式验证 Detector 后，Studio 会为可配置字段创建参数引用。字段可选择 **Guardrail 参数** 或 **固定值**。
+
+使用参数引用时，请在 **Policy 测试参数** 中填写测试值。高级定义中的对应位置是 `testing.parameters`。这些值只用于 Studio 测试，不会成为 Guardrail 的业务配置。
+
+在 Guardrail 中绑定 Policy 后，需要另行配置参数。参数声明中的默认值仍可作为缺省值。必填参数没有可用值时，测试或绑定校验会报错。请勿将密钥写入定义、默认值或测试值。
+
+短语展开规则按实际条目生成独立的验收用例。请检查每个条目的预期动作和替换文本。
+
+<a id="operator-policy-mechanism" />
+## 编写并运行测试
+
+每条 Rule 的每个检查阶段至少需要一个必选的 **Rule 验收** 用例。验收用例隔离运行目标 Rule，必须证明该 Rule 实际命中。
+
+| 用例类型 | 检查范围 | 适用场景 |
+| --- | --- | --- |
+| Rule 验收 | 目标 Rule | 检查命中动作、Rule 身份和替换结果。 |
+| 场景测试 | 当前阶段的整套 Policy | 检查正常放行、规则组合和执行顺序。取消“Rule 验收”即可创建。 |
+
+正常放行且没有命中的文本应使用场景测试。若 Rule 的命中动作本身为 `allow`，验收用例仍需证明该 Rule 命中。
+
+替换用例必须填写完整的预期输出。系统按完整文本精确比较，包含空格和换行。
+
+<a id="operator-policy-test-context" />
+### 填写测试上下文
+
+测试用例中的 **输入文本** 指本次要检测的文本。对于 Output 用例，这里填写模型回答，用户问题另填在 **测试上下文** 中。
+
+| Detector | 测试上下文要求 |
+| --- | --- |
+| 模型分类 | 可按场景填写可信指令。 |
+| 事实依据检查 | 必须填写用户问题和至少一条参考资料。参考资料每行一条。 |
+| 形式验证 | 必须填写用户问题和预期证明结果。策略 ID、版本和阈值配置在 Rule 或其参数中。 |
+
+<a id="operator-policy-test-results" />
+### 运行和检查结果
+
+**运行测试** 会先保存草稿，再使用真实检测器执行测试。请检查预期动作、实际动作、命中 Rule 和实际输出。模型类用例显示调用次数。形式验证用例还显示实际证明结果。
+
+执行错误、未知判定或缺少结果不能作为命中证据。最终动作恰好为 `block`，也不代表目标 Rule 通过了验收。
+
+修改草稿后，原有测试结果失效。检测服务不可用时，测试返回错误。请恢复服务后重新运行测试。
+
+<a id="operator-policy-release" />
+## 发布、绑定与迁移
+
+当前草稿通过必选测试后，才可发布。服务端同时检查草稿版本和测试结果。重复提交同一版本的发布请求不会创建重复版本。已发布版本不可变。
+
+发布后，在 Guardrail 中绑定确切的 Policy 版本。随后配置参数。完成 Guardrail 自己的测试后，发布 Guardrail。最后配置路由。
+
+编辑已有 Policy 会产生新草稿。已绑定旧版本的 Guardrail 继续使用旧版本，直到显式更新绑定。
+
+<a id="operator-policy-transfer" />
+### 导出与导入
+
+**导出定义** 下载可编辑的 JSON。Library 的导入入口将该定义载入 Studio，作为新的草稿。
+
+完整 Guardrail 的跨环境迁移使用 Guardrail 资源包。资源包保留引用的 Policy 版本、完整规则与测试定义。裁剪未使用的资源不会删除已引用 Policy 内的 Rule。
+
+导入后，具备 Policy 写权限的业务用户可维护新草稿。目标环境仍需配置模型或外部服务绑定。
+
+<a id="operator-policy-formal-service" />
+## 配置和测试形式验证
+
+形式验证检查回答是否符合证明服务中的规则。它仅支持 Output，需要用户问题和完整的待检回答。
+
+这里有两个不同的版本对象：Policy Studio 发布的 Policy 版本，以及证明服务提供的形式化策略版本。Rule 的“形式化策略 ID”和“形式化策略版本”引用后者。
+
+<a id="operator-policy-formal-binding" />
+### 准备并验证服务绑定
+
+以下 Provider、Model 和能力绑定步骤由平台管理员完成。先由部署管理员提供证明服务地址和凭据。该地址必须能从检测环境访问，服务协议须为 `tali.automated-reasoning.v1`。
+
+1. 在[模型提供商](/settings/providers)中注册自定义 Provider，填写服务地址与凭据。
+2. 在[模型](/settings/models)中注册对应 Model，协议选择 `tali.automated-reasoning.v1`。
+3. 在[防护能力](/settings/protection-capabilities)的 **Output → 自动推理** 中选择该 Model。
+4. 选择验证，填写服务中已有的策略 ID、版本、阈值和用户问题。
+5. 提供结果已知且互不相同的有效回答与无效回答。
+6. 检查两条样例的实际结果。通过后保存绑定。再激活配置。
+
+检查连接只证明服务可访问。保存或激活配置不代表行为测试通过。绑定验证通过后，Policy 自己的验收用例仍然必需。
+
+参考服务包含以下验证数据：
+
+| 字段 | 示例值 |
+| --- | --- |
+| 形式化策略 ID | `warranty-duration` |
+| 形式化策略版本 | `1` |
+| 证明置信度阈值 | `0.8` |
+| 用户问题 | `How long is the warranty?` |
+| 有效回答 | `The warranty lasts one year.` |
+| 无效回答 | `The warranty lasts ten years.` |
+
+<a id="operator-policy-formal-rule" />
+### 配置 Rule 和测试用例
+
+在 **Rules** 中选择 `service/formal-verification`，检查阶段使用 **Output**。本例将命中动作设为 `block`。
+
+| 字段 | 是否必填 | 类型 | 默认值 | 本例配置 |
+| --- | --- | --- | --- | --- |
+| 形式化策略 ID | 是 | 文本 | 无 | `warranty-duration` |
+| 形式化策略版本 | 是 | 文本 | 无 | `1` |
+| 证明置信度阈值 | 是 | 数值，范围 0–1 | `0.8` | `0.8` |
+
+新建 Rule 默认引用 `formal_policy_id`、`formal_policy_version` 和 `confidence_threshold` 参数。请在 **Policy 测试参数** 中填写本例的值。也可将对应字段切换为 **固定值**。
+
+在 **Test Cases** 中添加以下两条 Output 用例。两条用例的用户问题均为 `How long is the warranty?`：
+
+| 用例 | “输入文本”填写内容 | 预期动作 | 预期证明结果 | Rule 验收 |
+| --- | --- | --- | --- | --- |
+| 无效回答 | `The warranty lasts ten years.` | `block` | `invalid` | 勾选，保留为必选验收用例。 |
+| 有效回答 | `The warranty lasts one year.` | `allow` | `valid` | 取消，作为整套 Policy 的放行场景。 |
+
+若同一 Policy 还有其他 Rule，请检查它们是否改变有效回答场景的结果。运行测试后，无效回答必须有目标 Rule 的命中记录。有效回答应通过该形式验证 Rule，而非证明它命中。
+
+<a id="operator-policy-formal-results" />
+### 理解证明结果
+
+| 证明结果 | 含义 | 能否证明目标 Rule 命中 |
+| --- | --- | --- |
+| `valid` | 回答符合形式化策略。 | 否，表示该 Rule 无需干预。 |
+| `invalid` | 回答与形式化策略矛盾。 | 达到置信度阈值时，可以作为命中依据。 |
+| `satisfiable` | 回答可能成立，但策略不足以证明它。 | 否。 |
+| `impossible` | 策略自身的约束矛盾。 | 否。 |
+| `translation_ambiguous` | 回答存在多种可能的逻辑解释。 | 否。 |
+| `too_complex` | 服务无法在资源或时间限制内完成证明。 | 否。 |
+| `no_translations` | 服务未能提取可验证的断言。 | 否。 |
+
+低于阈值的结果不能作为命中依据，即使标签为 `invalid`。未能确定的结果或服务错误也不能记为通过。请同时检查动作、证明结果和目标 Rule 的命中记录。
+
+<a id="operator-policy-formal-reference" />
+### 可选：启动参考 Z3 服务
+
+已有兼容证明服务时，可直接使用其地址。仓库另提供参考 Z3 服务，用于验证有限整数约束。
+
+在仓库根目录执行：
+
+```bash
+uv sync --extra formal
+export FORMAL_SERVICE_API_KEY='<证明服务凭据>'
+.venv/bin/uvicorn runner.formal_service.app:create_app --factory --host 127.0.0.1 --port 8093
+```
+
+本地示例地址为 `http://127.0.0.1:8093/evaluate`。Provider 凭据使用上面的 `FORMAL_SERVICE_API_KEY` 值。容器或远程检测环境需使用它们可访问的服务地址。
+
+参考策略 `warranty-duration` 的版本 `1` 规定保修期为一年。服务接受上面的完整英文保修期句式，也接受有界整数的 JSON 断言。以下 JSON 可作为测试用例的“输入文本”：
+
+```json
+{"claims":[{"variable":"warranty_years","operator":"eq","value":1}]}
+```
+
+参考服务不验证任意自然语言。额外文字、未知变量或不支持的格式会返回 `no_translations`。用户问题提供上下文，证明依据来自外部策略规则。
+
+外部策略目录需单独部署和维护。修改规则时，请使用新的外部策略版本并重新测试。Guardrail 资源包携带策略引用，不包含证明服务的规则目录。
+
+服务部署和策略格式见仓库的 `runner/formal_service/README.md`。模型与能力绑定的完整步骤见[配置 Provider、Model 与保护能力](/document/admin/platform-models)。

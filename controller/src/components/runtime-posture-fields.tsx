@@ -38,7 +38,7 @@ export function RuntimePostureFields({
         description={t(`guardrailWizard.safetyLevelDescriptions.${safetyLevel}`)}
       >
         <Select value={safetyLevel} onValueChange={(value) => onSafetyLevelChange(value as SafetyLevel)}>
-          <SelectTrigger id={safetyId} aria-describedby={safetyDescriptionId} className="min-h-11 bg-card">
+          <SelectTrigger id={safetyId} aria-describedby={safetyDescriptionId} className="field:min-h-11 field:bg-card">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
@@ -58,7 +58,7 @@ export function RuntimePostureFields({
         description={t(`guardrailWizard.outputDeliveryDescriptions.${outputDelivery}`)}
       >
         <Select value={outputDelivery} onValueChange={(value) => onOutputDeliveryChange(value as OutputDelivery)}>
-          <SelectTrigger id={deliveryId} aria-describedby={deliveryDescriptionId} className="min-h-11 bg-card">
+          <SelectTrigger id={deliveryId} aria-describedby={deliveryDescriptionId} className="field:min-h-11 field:bg-card">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>

@@ -15,6 +15,7 @@ from .actions.names import (
     ACTION_EVALUATE,
     ACTION_GROUNDING,
     ACTION_INDIRECT_PROMPT_INJECTION,
+    ACTION_MEMORY_POISONING,
     ACTION_PROMPT_SECURITY,
     ACTION_PROMPT_LEAKAGE,
     ACTION_RECORD_NATIVE,
@@ -69,14 +70,15 @@ ActionProviders = Mapping[tuple[str, str], ActionProvider]
 
 
 _BUILTIN_RUNTIME_ACTIONS = (
-    (ACTION_EVALUATE, ("pii", "content_safety", "jailbreak"), ("input", "output")),
+    (ACTION_EVALUATE, ("pii", "content_safety", "jailbreak", "classifier_review"), ("input", "output")),
     (ACTION_SECRETS, ("secrets",), ("input", "output")),
     (ACTION_CONTENT_FILTER, ("builtin_content_filter",), ("input", "output")),
     (ACTION_TOPIC_RULES, ("topic_control",), ("input", "output")),
     (ACTION_PROMPT_SECURITY, ("prompt_injection",), ("input",)),
     (ACTION_INDIRECT_PROMPT_INJECTION, ("indirect_prompt_injection",), ("input",)),
+    (ACTION_MEMORY_POISONING, ("memory_poisoning",), ("input",)),
     (ACTION_PROMPT_LEAKAGE, ("system_prompt_leakage",), ("output",)),
-    (ACTION_TOPIC_JUDGE, ("topic_control", "company_policy"), ("input", "output")),
+    (ACTION_TOPIC_JUDGE, ("topic_control",), ("input", "output")),
     (ACTION_GROUNDING, ("contextual_grounding",), ("output",)),
     (ACTION_AUTOMATED_REASONING, ("automated_reasoning",), ("output",)),
 )
@@ -100,7 +102,7 @@ def _dynamic_action_name(capability: str) -> str:
 
 def action_name_for(capability: str, contract_ref: str) -> str:
     """Return the stable NeMo Action name for one evaluation contract."""
-    if capability in {"pii", "content_safety", "jailbreak"}:
+    if capability in {"pii", "content_safety", "jailbreak", "classifier_review"}:
         return ACTION_EVALUATE
     if capability == "topic_control":
         return ACTION_TOPIC_RULES if contract_ref == CONTRACT_TOPIC_RULES else ACTION_TOPIC_JUDGE
@@ -109,8 +111,8 @@ def action_name_for(capability: str, contract_ref: str) -> str:
         "builtin_content_filter": ACTION_CONTENT_FILTER,
         "prompt_injection": ACTION_PROMPT_SECURITY,
         "indirect_prompt_injection": ACTION_INDIRECT_PROMPT_INJECTION,
+        "memory_poisoning": ACTION_MEMORY_POISONING,
         "system_prompt_leakage": ACTION_PROMPT_LEAKAGE,
-        "company_policy": ACTION_TOPIC_JUDGE,
         "contextual_grounding": ACTION_GROUNDING,
         "automated_reasoning": ACTION_AUTOMATED_REASONING,
     }.get(capability, _dynamic_action_name(capability))

@@ -5,23 +5,60 @@ import { AuthProvider, useAuth } from "./auth";
 import { queryKeys } from "@/features/query-keys";
 import type { AuthStatus, IdentityUser } from "./identity-api";
 
-const mocks = vi.hoisted(() => ({ getAuthStatus: vi.fn(), login: vi.fn() }));
+const mocks = vi.hoisted(() => ({ getAuthStatus: vi.fn(), login: vi.fn(), logout: vi.fn() }));
 vi.mock("./identity-api", () => ({
-  getAuthStatus: mocks.getAuthStatus, login: mocks.login, logout: vi.fn(), updateMe: vi.fn(),
+  getAuthStatus: mocks.getAuthStatus, login: mocks.login, logout: mocks.logout, updateMe: vi.fn(),
 }));
 vi.mock("@/i18n", () => ({ default: { language: "en" }, setApplicationLanguage: vi.fn() }));
 
-const user: IdentityUser = { id: "first", display_name: "First", email: "first@guard.test", role: "admin",
+const user: IdentityUser = { id: "first", username: "first", role: "admin",
+  project_id: "projectA",
   enabled: true, preferred_language: "en", last_login_at: null, created_at: "2026-09-06", updated_at: "2026-09-06" };
+const dashboardKeys = [
+  queryKeys.metricsScope({ window: "7d" }),
+  queryKeys.metricsScope({ window: "1h", guardrailId: "private-guardrail" }),
+  queryKeys.runtimeEventsScope({ window: "7d", limit: 50 }),
+  queryKeys.runtimeEventsScope({ window: "1h", limit: 50, guardrailId: "private-guardrail" }),
+];
 function Probe() { const auth = useAuth(); return <><p>{auth.user ? `${auth.user.id}:${auth.user.role}` : "signed-out"}</p>
-  <button onClick={() => void auth.login({ email: "second@guard.test", password: "test-only" })}>Sign in</button></>; }
+  <button onClick={() => void auth.login({ username: "second", password: "test-only" })}>Sign in</button><button onClick={() => void auth.logout()}>Sign out</button></>; }
 afterEach(() => { cleanup(); vi.clearAllMocks(); });
 
 describe("Authenticated cache boundaries", () => {
+  it("discards open form state when another tab switches the active project", async () => {
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    client.setQueryData(queryKeys.auth, { authenticated: true, user: {...user, role: "user"} });
+    mocks.getAuthStatus.mockResolvedValue({ authenticated: true, user: {...user, role: "user", project_id: "projectB"} });
+    render(<QueryClientProvider client={client}><AuthProvider><input aria-label="Draft" defaultValue="" /></AuthProvider></QueryClientProvider>);
+    fireEvent.change(screen.getByLabelText("Draft"), {target: {value: "Project A unsaved data"}});
+    await act(async () => { await client.invalidateQueries({queryKey: queryKeys.auth}); });
+    await waitFor(() => expect((screen.getByLabelText("Draft") as HTMLInputElement).value).toBe(""));
+    client.clear();
+  });
+
+  it.each([
+    { authenticated: false, user: null },
+    { authenticated: true, user: { ...user, role: "user" as const, id: "second" } },
+    { authenticated: true, user: { ...user, role: "admin" as const } },
+  ])("clears dashboard metrics and events when the project user's authority changes", async (next: AuthStatus) => {
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    client.setQueryData(queryKeys.auth, { authenticated: true, user: { ...user, role: "user" } });
+    for (const key of dashboardKeys) client.setQueryData(key, { private: "first-account-data" });
+    mocks.getAuthStatus.mockResolvedValue(next);
+    render(<QueryClientProvider client={client}><AuthProvider><Probe /></AuthProvider></QueryClientProvider>);
+    expect(screen.getByText("first:user")).toBeTruthy();
+    await act(async () => { await client.invalidateQueries({ queryKey: queryKeys.auth }); });
+    await waitFor(() => expect(screen.getByText(next.user ? `${next.user.id}:${next.user.role}` : "signed-out")).toBeTruthy());
+    for (const key of dashboardKeys) expect(client.getQueryData(key)).toBeUndefined();
+    client.clear();
+  });
+
   it.each([
     { authenticated: false, user: null },
     { authenticated: true, user: { ...user, id: "second" } },
-    { authenticated: true, user: { ...user, role: "member" as const } },
+    { authenticated: true, user: { ...user, role: "user" as const } },
+    { authenticated: true, user: { ...user, project_id: "projectB" } },
+    { authenticated: true, user: { ...user, enabled: false } },
   ])("clears prior resource data before exposing changed identity $user.id", async (next: AuthStatus) => {
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     client.setQueryData(queryKeys.auth, { authenticated: true, user });
@@ -38,11 +75,26 @@ describe("Authenticated cache boundaries", () => {
     client.clear();
   });
 
+  it.each(["login", "logout"])("clears every identity-scoped cache and mutation on %s", async (action) => {
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    client.setQueryData(queryKeys.auth, { authenticated: true, user });
+    for (const key of [["identity", "users"], ["resources", "model-configuration"], ["provider-discovery"]]) client.setQueryData(key, { private: "projectA" });
+    client.getMutationCache().build(client, { mutationKey: ["old-project-operation"], mutationFn: async () => ({ private: "projectA" }) });
+    mocks.login.mockResolvedValue({ user: { ...user, id: "second", role: "user", project_id: "projectB" } });
+    mocks.logout.mockResolvedValue(undefined);
+    render(<QueryClientProvider client={client}><AuthProvider><Probe /></AuthProvider></QueryClientProvider>);
+    fireEvent.click(screen.getByRole("button", { name: action === "login" ? "Sign in" : "Sign out" }));
+    await waitFor(() => expect(screen.getByText(action === "login" ? "second:user" : "signed-out")).toBeTruthy());
+    expect(client.getQueryCache().getAll().map(query => query.queryKey)).toEqual([queryKeys.auth]);
+    expect(client.getMutationCache().getAll()).toHaveLength(0);
+    client.clear();
+  });
+
   it("keeps resource data when the same authorized identity is refreshed", async () => {
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     client.setQueryData(queryKeys.auth, { authenticated: true, user });
     client.setQueryData(queryKeys.guardrails, { items: ["retained"] });
-    mocks.getAuthStatus.mockResolvedValue({ authenticated: true, user: { ...user, display_name: "Renamed" } });
+    mocks.getAuthStatus.mockResolvedValue({ authenticated: true, user: { ...user, preferred_language: "zh-CN" } });
     render(<QueryClientProvider client={client}><AuthProvider><Probe /></AuthProvider></QueryClientProvider>);
     await client.invalidateQueries({ queryKey: queryKeys.auth });
     expect(client.getQueryData(queryKeys.guardrails)).toEqual({ items: ["retained"] });

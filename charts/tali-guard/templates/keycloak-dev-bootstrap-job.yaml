@@ -1,0 +1,47 @@
+{{- include "tali-guard.defaults" . -}}
+{{- if .Values.keycloak.enabled }}
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ include "tali-guard.fullname" . }}-keycloak-init-{{ .Release.Revision }}
+  labels:
+    app.kubernetes.io/instance: {{ .Release.Name }}
+    app.kubernetes.io/component: keycloak-init
+spec:
+  backoffLimit: 2
+  activeDeadlineSeconds: 300
+  ttlSecondsAfterFinished: 600
+  template:
+    spec:
+      restartPolicy: Never
+      automountServiceAccountToken: false
+      securityContext: {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      containers:
+        - name: configure
+          image: {{ include "tali-guard.controllerImage" . | quote }}
+          imagePullPolicy: {{ .Values.controller.image.pullPolicy }}
+          securityContext: {{- toYaml .Values.securityContext | nindent 12 }}
+          command: [node, /opt/tasklattice/guard-controller/scripts/runtime/bootstrap-dev-keycloak.mjs]
+          env:
+            - name: GUARD_CONTROLLER_URL
+              value: {{ printf "http://%s:8080" (include "tali-guard.controllerName" .) | quote }}
+            - name: GUARD_PUBLIC_URL
+              value: {{ include "tali-guard.primaryPublicUrl" . | quote }}
+            - { name: GUARD_DEV_IDENTITIES, value: /etc/guard-keycloak/identities.json }
+            - { name: GUARD_ADMIN_DIRECTORY, value: /var/run/guard-admin }
+            - { name: GUARD_ADMIN_USERNAME_KEY, value: {{ .Values.security.bootstrapAdmin.usernameKey | quote }} }
+            - { name: GUARD_ADMIN_PASSWORD_KEY, value: {{ .Values.security.bootstrapAdmin.credentialKey | quote }} }
+          volumeMounts:
+            - { name: identities, mountPath: /etc/guard-keycloak, readOnly: true }
+            - { name: admin, mountPath: /var/run/guard-admin, readOnly: true }
+          resources:
+            requests: { cpu: 10m, memory: 32Mi }
+            limits: { memory: 128Mi }
+      volumes:
+        - name: identities
+          configMap:
+            name: {{ include "tali-guard.fullname" . }}-keycloak-realm
+            items: [{ key: identities.json, path: identities.json }]
+        - name: admin
+          secret: { secretName: {{ include "tali-guard.bootstrapAdminSecretName" . }} }
+{{- end }}

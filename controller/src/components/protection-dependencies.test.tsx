@@ -5,8 +5,10 @@ import { ProtectionDependencies } from "./protection-dependencies";
 import { protectionEn } from "../protection-i18n";
 import type { GuardrailPolicyBinding, Policy } from "@/lib/api-types";
 
+const identity = vi.hoisted(() => ({ role: "admin" }));
+vi.mock("@/lib/auth", () => ({ useAuth: () => ({ user: { role: identity.role } }) }));
 const read = vi.hoisted(() => vi.fn());
-vi.mock("@/lib/controller-api", () => ({ getModelConfiguration: read }));
+vi.mock("@/lib/controller-api", () => ({ getModelReadiness: read }));
 vi.mock("react-i18next", () => ({ useTranslation: () => ({ t: (key: string, values: Record<string, unknown> = {}) => {
   const value = key.replace(/^protection\./, "").split(".").reduce<unknown>((object, key) => (object as Record<string, unknown>)?.[key], protectionEn);
   return Object.entries(values).reduce((text, [key, value]) => text.replaceAll(`{{${key}}}`, String(value)), typeof value === "string" ? value : key);
@@ -19,7 +21,7 @@ function show(bindings = [binding], policies = [policy]) {
   return render(<QueryClientProvider client={client}><ProtectionDependencies bindings={bindings} policies={policies} /></QueryClientProvider>);
 }
 describe("model-dependency guidance", () => {
-  beforeEach(() => { read.mockReset().mockResolvedValue(empty); });
+  beforeEach(() => { identity.role = "admin"; read.mockReset().mockResolvedValue(empty); });
   afterEach(cleanup);
   it("does not fetch model settings for local baseline Policies", () => {
     const result = show([binding], [{ ...policy, protection: { ...policy.protection!, execution: "local", modelCapabilities: [] } }]);
@@ -33,6 +35,12 @@ describe("model-dependency guidance", () => {
     expect(screen.queryByText("Content safety · Responses")).toBeNull();
     expect(screen.getByRole("link").getAttribute("target")).toBe("_blank");
     expect(screen.getByText(/You can save a draft/)).toBeTruthy();
+  });
+  it("guides users to an administrator without linking to forbidden settings", async () => {
+    identity.role = "user"; show();
+    expect(await screen.findByText("Not assigned")).toBeTruthy();
+    expect(screen.queryByRole("link")).toBeNull();
+    expect(screen.getByText("auth.platformSetupRequired")).toBeTruthy();
   });
   it("shows declared custom model requirements alongside the unresolved dependency warning", async () => {
     show([binding], [{ ...policy, protection: { ...policy.protection!, execution: "custom",
@@ -57,6 +65,14 @@ describe("model-dependency guidance", () => {
     read.mockReturnValue(new Promise(() => {}));
     show();
     expect(screen.getByRole("status").textContent).toContain("Checking saved model assignments");
+    expect(screen.queryByText("Not assigned")).toBeNull();
+  });
+  it("shows an active assignment without a capability-quality warning", async () => {
+    read.mockResolvedValue({ ...empty, models: [{ id: "model", name: "Safety model" }],
+      active: { assignments: { bindings: { "content_safety.input": "model" } }, validationReport: { checks: [{ id: "probe:content_safety.input:model", status: "failed", evidenceKind: "nemo-rail-v1" }] } } });
+    show();
+    expect(await screen.findByText("Activated assignment")).toBeTruthy();
+    expect(screen.queryByText(/capability test/i)).toBeNull();
     expect(screen.queryByText("Not assigned")).toBeNull();
   });
 });

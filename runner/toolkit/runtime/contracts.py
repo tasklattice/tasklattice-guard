@@ -1,7 +1,12 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
-from typing import Any, Literal, Protocol
+from dataclasses import dataclass, field
+from typing import Any, Literal, Protocol, TYPE_CHECKING
+from collections.abc import AsyncIterator, Awaitable, Callable
+
+if TYPE_CHECKING:
+    from ..nemo.evaluators.contracts import ModelCallUsage
+    from .streaming import OutputStreamContract, OutputStreamResult
 
 from .enforcement_action_generated import (
     ENFORCEMENT_ACTIONS,
@@ -10,11 +15,18 @@ from .enforcement_action_generated import (
 )
 
 
+RISK_SEVERITIES = frozenset({"critical", "high", "medium", "low", "informational"})
+
 GuardrailPhase = Literal["input", "output"]
 RailType = Literal["input", "output", "retrieval", "dialog", "execution"]
 # Raw evaluator evidence. It does not directly determine how an interaction is
 # handled; routing and policy resolution produce the decision below.
-EvaluatorVerdict = Literal["safe", "unsafe", "uncertain", "error"]
+# Whether the detector's declared target condition was found; never an enforcement decision.
+# unknown = a valid but inconclusive check; error = the check could not execute correctly.
+EvaluatorVerdict = Literal["matched", "not_matched", "unknown", "error"]
+EVALUATOR_VERDICTS: frozenset[EvaluatorVerdict] = frozenset(
+    ("matched", "not_matched", "unknown", "error")
+)
 RouteDecision = Literal["complete", "enforce", "escalate", "fail_open", "fail_closed"]
 # Coarse runtime outcome aligned with allow/block/transform rail semantics.
 # EnforcementAction is the separate, more specific post-decision directive.
@@ -48,10 +60,13 @@ AutomatedReasoningResult = Literal[
     "no_translations",
 ]
 FailureMode = Literal["fail_open", "fail_closed"]
-FragmentStatus = Literal["pass", "intervene", "needs_context", "uncovered", "error"]
+FragmentStatus = Literal["pass", "intervene", "uncertain", "needs_context", "uncovered", "error"]
 CoverageStatus = Literal["complete", "partial", "none"]
 EnforcementMode = Literal["enforce", "detect"]
+# Reporting never changes execution. Only internal validation may request
+# execution beyond a terminal decision; online services pin the purpose.
 EvidenceScope = Literal["interventions", "full"]
+ExecutionPurpose = Literal["online", "validation"]
 SafetyLevel = Literal["balanced", "strict"]
 OutputDeliveryMode = Literal["interruptible", "window_buffered", "full_buffered"]
 EvaluationTriggerType = Literal["always", "on_result"]
@@ -111,6 +126,11 @@ class RuntimeTraceStep:
     model_operation: str | None = None
     model_result: str | None = None
     error_type: str | None = None
+    error_source: str | None = None
+    error_category: str | None = None
+    http_status: int | None = None
+    model_call_id: str | None = None
+    affects_result: bool = False
     model_time_to_first_token_ms: int | None = None
     model_input_tokens: int = 0
     model_output_tokens: int = 0
@@ -120,6 +140,9 @@ class RuntimeTraceStep:
     finished_offset_ms: int | None = None
     evaluator_id: str | None = None
     profile_ref: str | None = None
+    precedence: int | None = None
+    evaluation_view: str | None = None
+    binding_id: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -134,6 +157,8 @@ class RequestContext:
     call_id: str | None = None
     jwt_claims: tuple[tuple[str, str], ...] = ()
     fields: tuple[tuple[str, str], ...] = ()
+    # Set only by an authenticated adapter entrypoint, never request fields.
+    endpoint_snapshot: Any | None = field(default=None, repr=False, compare=False)
 
     def value(self, kind: MatcherKind, key: str) -> str | None:
         source = {
@@ -224,6 +249,7 @@ class ProtectionRequest:
     messages: tuple[dict[str, Any], ...] = ()
     mode: EnforcementMode = "enforce"
     evidence_scope: EvidenceScope = "interventions"
+    execution_purpose: ExecutionPurpose = "online"
 
 
 @dataclass(frozen=True, slots=True)
@@ -233,6 +259,8 @@ class EvaluationTrigger:
     verdicts: tuple[EvaluatorVerdict, ...] = ()
 
     def __post_init__(self) -> None:
+        if any(verdict not in EVALUATOR_VERDICTS for verdict in self.verdicts):
+            raise ValueError("Evaluation trigger contains an invalid detector result.")
         if self.type == "always":
             if self.step_ref is not None or self.verdicts:
                 raise ValueError("An always trigger cannot reference a prior result.")
@@ -304,6 +332,7 @@ class PolicyRailBindingSnapshot:
     flow_name: str
     execution_mode: PolicyExecutionMode
     on_unsafe: EnforcementAction
+    risk_severity: str | None = None
     parallel_group: str | None = None
     priority: int | None = None
     timeout_ms: int = 2_000
@@ -346,8 +375,16 @@ class GuardrailPolicyBindingSnapshot:
     parameter_values: tuple[tuple[str, str], ...] = ()
     enabled_rule_ids: tuple[str, ...] = ()
     rule_actions: tuple[tuple[str, str], ...] = ()
+    rule_severities: tuple[tuple[str, str], ...] = ()
     enabled_rails: tuple[RailType, ...] = ()
     rule_order: tuple[str, ...] = ()
+
+    def __post_init__(self) -> None:
+        keys = [rule_id for rule_id, _ in self.rule_severities]
+        if len(keys) != len(set(keys)):
+            raise ValueError("Rule risk snapshots must have unique Rule IDs.")
+        if any(rule_id not in self.enabled_rule_ids or level not in RISK_SEVERITIES for rule_id, level in self.rule_severities):
+            raise ValueError("Rule risk snapshots require enabled Rule IDs and a supported risk level.")
 
 
 @dataclass(frozen=True, slots=True)
@@ -526,6 +563,12 @@ class RiskFinding:
     claims: tuple[GroundingClaimEvidence, ...] = ()
     reasoning: tuple[AutomatedReasoningFinding, ...] = ()
     provider_evidence: tuple[ProviderEvidence, ...] = ()
+    risk_severity: str | None = None
+    policy_version: str | None = None
+
+    def __post_init__(self) -> None:
+        if self.verdict not in EVALUATOR_VERDICTS:
+            raise ValueError("Finding contains an invalid detector result.")
 
 
 @dataclass(frozen=True, slots=True)
@@ -567,6 +610,7 @@ class RuntimeUsage:
     provider_latency_ms: int = 0
     provider_work_latency_ms: int = 0
     model_wait_latency_ms: int = 0
+    model_calls: tuple[ModelCallUsage, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -577,7 +621,7 @@ class DecisionFragment:
     module_id: str
     module: PolicyModule
     status: FragmentStatus
-    action: EnforcementAction = "pass"
+    action: EnforcementAction = "allow"
     findings: tuple[RiskFinding, ...] = ()
     patches: tuple[ContentPatch, ...] = ()
     replacement: str | None = None
@@ -622,6 +666,19 @@ class ContentBlockResult:
 
 
 @dataclass(frozen=True, slots=True)
+class ExecutionDiagnostic:
+    code: str
+    message: str
+    step_id: str | None = None
+    policy_id: str | None = None
+    affects_result: bool = True
+    source: str = "guard"
+    category: str = "execution"
+    http_status: int | None = None
+    model_call_id: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
 class ProtectionDecision:
     decision: PolicyDecision
     action: EnforcementAction
@@ -643,6 +700,15 @@ class ProtectionDecision:
     effective_release_id: str | None = None
     model_revision_id: str | None = None
     route_assignment: dict[str, Any] | None = None
+    protection_mode: Literal["enforce", "monitor", "bypass"] = "enforce"
+    detection_decision: str | None = None
+    detection_error: str | None = None
+    allocation_context_id: str | None = field(default=None, repr=False)
+    execution_status: Literal["complete", "degraded", "error", "timeout", "bypassed"] | None = None
+    termination_reason: str | None = None
+    diagnostics: tuple[ExecutionDiagnostic, ...] = ()
+    flagged: bool = False
+    model_status: Literal["ok", "error", "not_called", "unknown"] = "not_called"
 
 
 @dataclass(frozen=True, slots=True)
@@ -654,6 +720,7 @@ class PlanResolution:
     effective_release_id: str | None = None
     model_revision_id: str | None = None
     route_assignment: dict[str, Any] | None = None
+    allocation_context_id: str | None = field(default=None, repr=False)
 
 
 @dataclass(frozen=True, slots=True)
@@ -666,6 +733,7 @@ class EngineRequest:
     target_source: str = "user_input"
     mode: EnforcementMode = "enforce"
     evidence_scope: EvidenceScope = "interventions"
+    execution_purpose: ExecutionPurpose = "online"
     content_view: ContentViewSnapshot | None = None
     active_block_id: str | None = None
     request_context: RequestContext | None = None
@@ -677,6 +745,13 @@ class NeMoPolicyRuntime(Protocol):
     supported_phases: frozenset[GuardrailPhase]
 
     async def evaluate(self, request: EngineRequest) -> ProtectionDecision: ...
+
+    async def protect_output(self, request: EngineRequest, source: AsyncIterator[str], *,
+        emit: Callable[[str], Awaitable[None]],
+        observe: Callable[[ProtectionDecision], Awaitable[None]] | None = None,
+        ready: Callable[[OutputStreamContract], Awaitable[None]] | None = None,
+        timeout_seconds: float = 300,
+    ) -> OutputStreamResult: ...
 
 
 class PlanResolver(Protocol):

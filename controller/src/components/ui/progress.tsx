@@ -1,37 +1,25 @@
-"use client"
-
-import * as React from "react"
-import { Progress as ProgressPrimitive } from "radix-ui"
-
-import { cn } from "@/lib/utils"
-
-function Progress({
-  className,
-  indicatorClassName,
+import { ProgressBar } from "@carbon/react";
+import type { ComponentProps } from "react";
+export function Progress({
   value,
+  max = 100,
+  className,
+  indicatorClassName: _indicator,
   ...props
-}: React.ComponentProps<typeof ProgressPrimitive.Root> & {
-  indicatorClassName?: string
+}: ComponentProps<"div"> & {
+  value?: number | null;
+  max?: number;
+  indicatorClassName?: string;
 }) {
   return (
-    <ProgressPrimitive.Root
-      data-slot="progress"
-      className={cn(
-        "relative h-2 w-full overflow-hidden rounded-full bg-primary/10",
-        className
-      )}
+    <ProgressBar
       {...props}
-    >
-      <ProgressPrimitive.Indicator
-        data-slot="progress-indicator"
-        className={cn(
-          "h-full w-full flex-1 rounded-full bg-primary transition-transform",
-          indicatorClassName
-        )}
-        style={{ transform: `translateX(-${100 - (value || 0)}%)` }}
-      />
-    </ProgressPrimitive.Root>
-  )
+      className={className}
+      label={props["aria-label"] ?? "Progress"}
+      hideLabel
+      size="small"
+      value={value ?? undefined}
+      max={max}
+    />
+  );
 }
-
-export { Progress }

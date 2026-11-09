@@ -1,6 +1,7 @@
+import { projectParams } from "@/lib/project-paths";
 import { Link } from "@tanstack/react-router";
 import { ArrowDown, CheckCircle2, ChevronDown, ExternalLink, ShieldCheck, SkipForward } from "lucide-react";
-import { useRef, type ReactNode } from "react";
+import { useRef, type ReactNode, type Ref } from "react";
 import { useTranslation } from "react-i18next";
 
 import { ModelMark } from "@/components/playground/model-mark";
@@ -34,7 +35,7 @@ export function ProbeInspectionDrawer({ result, open, onOpenChange }: { result: 
 
           <details className="group overflow-hidden rounded-xl border bg-card">
             <summary className="flex min-h-12 cursor-pointer list-none items-center gap-3 px-4 text-sm font-medium focus-visible:outline-2 focus-visible:outline-ring [&::-webkit-details-marker]:hidden">{t("playground.runMetadata")}<ChevronDown className="ml-auto size-4 text-muted-foreground transition-transform group-open:rotate-180" /></summary>
-            <div className="border-t"><dl className="divide-y"><DrawerFact label={t("playground.model")} value={`${result.model.provider} · ${result.model.name}`} /><DrawerFact label={t("playground.modelLatency")} value={result.model.latency_ms === null ? t("playground.notCalled") : `${result.model.latency_ms} ms`} mono /><DrawerFact label={t("playground.inputTraceId")} value={result.input_check.trace_id} mono /><DrawerFact label={t("playground.outputTraceId")} value={result.output_check?.trace_id ?? t("playground.notRun")} mono /><DrawerFact label={t("playground.guardrailVersion")} value={guardrailTargetLabel(result.input_check, t)} mono /><DrawerFact label={t("playground.runtimeVersion")} value={result.input_check.guardrail.compiler_version} mono /><DrawerFact label={t("playground.evidence")} value={result.input_check.evidence_id ?? t("playground.noEvidenceCreated")} /></dl><div className="border-t p-3"><Button asChild variant="ghost" size="sm"><Link to="/guardrails/$guardrailId" params={{ guardrailId: result.input_check.guardrail.id }}>{result.input_check.guardrail.name}<ExternalLink /></Link></Button></div></div>
+            <div className="border-t"><dl className="divide-y"><DrawerFact label={t("playground.model")} value={`${result.model.provider} · ${result.model.name}`} /><DrawerFact label={t("playground.modelLatency")} value={result.model.latency_ms === null ? t("playground.notCalled") : `${result.model.latency_ms} ms`} mono /><DrawerFact label={t("playground.inputTraceId")} value={result.input_check.trace_id} mono /><DrawerFact label={t("playground.outputTraceId")} value={result.output_check?.trace_id ?? t("playground.notRun")} mono /><DrawerFact label={t("playground.guardrailVersion")} value={guardrailTargetLabel(result.input_check, t)} mono /><DrawerFact label={t("playground.runtimeVersion")} value={result.input_check.guardrail.compiler_version} mono /><DrawerFact label={t("playground.evidence")} value={result.input_check.evidence_id ?? t("playground.noEvidenceCreated")} /></dl><div className="border-t p-3"><Button asChild variant="ghost" size="sm"><Link to="/$projectId/guardrails/$guardrailId" params={{ ...projectParams(), guardrailId: result.input_check.guardrail.id }}>{result.input_check.guardrail.name}<ExternalLink /></Link></Button></div></div>
           </details>
         </div> : null}
       </SheetContent>
@@ -87,9 +88,9 @@ export function StageTabs({ result }: { result: PlaygroundInteraction }) {
   );
 }
 
-function StageTabTrigger({ value, title, description, state, stateLabel }: { value: string; title: string; description: string; state: string; stateLabel: string }) {
+function StageTabTrigger({ ref, value, title, description, state, stateLabel }: { ref?: Ref<HTMLButtonElement>; value: string; title: string; description: string; state: string; stateLabel: string }) {
   return (
-    <TabsTrigger value={value}>
+    <TabsTrigger ref={ref} value={value}>
       <span>{title}</span>
       <StateBadge state={state} label={stateLabel} />
       <span className="sr-only">{description}</span>

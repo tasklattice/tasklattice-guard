@@ -1,0 +1,121 @@
+---
+id: "quickstart-protection"
+title: "Quickstart: complete a protection path"
+summary: "Follow a support-assistant example, then select, validate, publish, and integrate your first protection path."
+order: 0
+---
+This guide protects an assistant that answers order questions. The example requires three behaviors:
+
+- Allow ordinary order questions.
+- Block requests to reveal internal prompts before the model call.
+- Mask customer phone numbers before delivering replies.
+
+Configure and test each behavior. A new Guardrail does not provide these protections automatically.
+
+A **Policy** defines reusable protection through **Rules**. A **Guardrail** combines selected Policies and tests for one scenario. An **Endpoint** authenticates the application. A **Router** selects an exact Guardrail Version. The application applies the returned **Decision**.
+
+<a id="quickstart-before" />
+## Before you begin
+
+Use a test environment and an application that you can modify. Review the Rules and Test Cases of the required Policies. A Policy name alone does not establish coverage.
+
+A User account configures business resources. An Administrator prepares platform dependencies, such as inspection models and runtime capacity. An integration developer modifies the caller. Different people can complete these tasks.
+
+<a id="quickstart-steps" />
+## Complete the protection path
+
+1. **Prepare a Guardrail.** Select exact Policy Versions. Review enabled Rules, parameters and actions. Run the draft tests. Publish the tested draft as an immutable Guardrail Version.
+2. **Create an Endpoint.** Select the protocol for the test application. Issue its Endpoint credential. See [Endpoint setup](/document/developer/endpoint-setup).
+3. **Configure routing.** Bind the Endpoint to a Router. Add a Route targeting the released Guardrail Version. Keep the unconditional fallback last.
+4. **Submit the Router change.** Preview the matching behavior. Review the versions, weights and Endpoint bindings. Submit the change for another authorized user's approval.
+5. **Confirm configuration rollout.** Check that the Router reaches Active. Verify that the Runners applied the desired generation. Review the Guardrail's operating mode.
+6. **Integrate and test real requests.** Inspect Input before the model call and Output before delivery. Apply allow, transform and block. Compare application behavior with runtime records.
+
+The [routing guide](/document/operator/operator-routing) explains approval and emergency application. The [gateway guide](/document/developer/gateway-connect) separates non-streaming inspection from streaming Output inspection.
+
+<a id="quickstart-check" />
+## Check the completed path
+
+Confirm all of these conditions:
+
+- The Router targets the intended released Guardrail Version.
+- The Runners applied the target configuration.
+- The Guardrail uses Enforce for this protection test.
+- Ordinary questions pass, prohibited Input stops, and matching Output uses the masked text.
+- Runtime records identify the expected Endpoint, Router and version.
+
+Monitor and Bypass allow original content. They do not demonstrate blocking or masking. A passing Testing Report does not replace an application test.
+
+<a id="overview" />
+## Follow one request
+
+The diagram follows steps 01–06 across the top row, then back across the bottom row.
+
+<WorkflowDiagram src="/docs/diagrams/request-decision-v1.png" alt="Endpoint authentication, Router selection, pinned Guardrail Version, inspection, Decision and evidence." openLabel="View full-size diagram">
+
+TaskLattice returns the inspection result. The application or gateway applies the Decision.
+
+</WorkflowDiagram>
+
+<FlowSteps>
+<FlowStep title="Endpoint">
+Authenticates the calling application, agent or gateway.
+</FlowStep>
+<FlowStep title="Router">
+Matches an ordered Route and selects one weighted Target.
+</FlowStep>
+<FlowStep title="Guardrail Version">
+Fixes the Policies, Rules, parameters and compiled configuration.
+</FlowStep>
+<FlowStep title="NeMo Rail / Flow">
+Runs the configured Input or Output checks.
+</FlowStep>
+<FlowStep title="Action">
+Executes local detection, a specialized evaluator or a transformation.
+</FlowStep>
+<FlowStep title="Decision & Evidence">
+Returns allow, transform or block. Records evidence according to the logging level.
+</FlowStep>
+</FlowSteps>
+
+<a id="overview-boundary" />
+## Product and caller responsibilities
+
+TaskLattice defines and tests protection, distributes fixed configurations and records inspection results. The caller owns business-model calls, sessions and delivery. It must apply the result before content continues.
+
+A personal Access Token calls management APIs. An Endpoint credential calls runtime inspection APIs. These credentials are not interchangeable.
+
+<a id="developer-policy-or-guardrail" />
+## Choose the resource to change
+
+| Resource | Question | When to change it |
+| --- | --- | --- |
+| Policy | How does this detection work? | Existing Rules do not provide the required behavior. |
+| Guardrail | Which protections does this scenario use? | Select Policies, parameters, actions and tests for an application. |
+| Router | Which calls use which version? | Connect an Endpoint or move traffic between released versions. |
+
+[Open Policy Studio](/$projectId/policy-library) · [Manage Guardrails](/$projectId/guardrails)
+
+<a id="concept-lifecycle" />
+## Move protection into production
+
+Prepare dependencies first. Test and publish the intended protection. Submit the routing change. Confirm rollout before assessing new traffic.
+
+<WorkflowDiagram src="/docs/diagrams/policy-release-v1.png" alt="Policy Library, Guardrail draft, Testing Report, immutable Guardrail Version, Router publication and Runner confirmation." openLabel="View full-size diagram">
+
+Publication creates fixed configuration. Runtime confirmation establishes configuration application. Real requests establish caller behavior.
+
+</WorkflowDiagram>
+
+<a id="concept-objects" />
+## Distinguish versions and runtime evidence
+
+- A **Policy Version** freezes reusable detection behavior.
+- A **Guardrail Version** freezes selected Policy Versions, configuration and tests. Passing tests permits publication but does not create the version itself.
+- A **Router revision** freezes routing configuration. Publishing a Guardrail does not update its Targets.
+- A **runtime record** describes an actual inspection. It does not establish deployment convergence for every execution node.
+
+<a id="overview-next" />
+## Continue reading
+
+Read [Guardrails](/document/overview/term-guardrail) for release and operating-mode details. Follow [operations](/document/operator/user-lifecycle), [platform and observability](/document/admin/platform-runtime), or [integration](/document/developer/endpoint-setup) for specific tasks.

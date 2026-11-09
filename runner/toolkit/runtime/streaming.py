@@ -1,7 +1,22 @@
 """Delivery guarantees derived from the immutable execution plan, not UI toggles."""
 from dataclasses import dataclass
+from typing import Literal
 
 from .contracts import GuardrailPlanSnapshot, OutputDeliveryMode
+
+
+class OutputStreamEvaluationError(RuntimeError):
+    def __init__(self, message: str, *, timed_out: bool = False):
+        super().__init__(message)
+        self.timed_out = timed_out
+
+
+@dataclass(frozen=True, slots=True)
+class OutputStreamResult:
+    status: Literal["completed", "blocked"]
+    released_characters: int
+    checks: int
+    transformed: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -42,11 +57,11 @@ def output_stream_contract(plan: GuardrailPlanSnapshot) -> OutputStreamContract:
     # Built-in native flows are compiled to the same steps as catalog model
     # assignments; their mere presence is not evidence of arbitrary Colang.
     incremental = not complete_response_policy and all(
-        step.capability == "content_safety" and step.on_unsafe in {"reject", "report", "pass"}
+        step.capability == "content_safety" and step.on_unsafe in {"block", "report", "allow"}
         for step in steps
     )
     if not incremental:
         return OutputStreamContract(requested, "full_buffered",
-                                    "Output rules require complete-response checks; text is held until final=true.")
-    return OutputStreamContract(requested, requested,
-                                "Checks accumulated output before release. Earlier released text cannot be recalled; cancel upstream on terminate=true.")
+                                    "Output rules require complete-response checks; text is held until a confirmed end frame.")
+    return OutputStreamContract(requested, "window_buffered",
+                                "NeMo checks each overlapping window before release; cancel upstream on block or error.")

@@ -1,3 +1,4 @@
+{{- include "tali-guard.defaults" . -}}
 {{- include "tali-guard.validateValues" . }}
 apiVersion: apps/v1
 kind: Deployment
@@ -7,7 +8,10 @@ metadata:
     {{- include "tali-guard.commonLabels" . | nindent 4 }}
     app.kubernetes.io/component: controller
 spec:
-  replicas: {{ .Values.controller.replicaCount }}
+  replicas: 1
+  # Schema contraction requires the previous Controller to stop writing first.
+  strategy:
+    type: Recreate
   selector:
     matchLabels: &selector
       app.kubernetes.io/instance: {{ .Release.Name }}
@@ -15,6 +19,13 @@ spec:
   template:
     metadata:
       annotations:
+        {{- if .Values.keycloak.enabled }}
+        checksum/keycloak-realm: {{ include (print $.Template.BasePath "/keycloak-dev.yaml") . | sha256sum }}
+        {{- end }}
+        checksum/controller-config: {{ include "tali-guard.controllerConfig" . | sha256sum }}
+      {{- if .Values.postgresql.enabled }}
+        tasklattice.io/database-revision: {{ .Release.Revision | quote }}
+      {{- end }}
       {{- with .Values.rolloutRevision }}
         tasklattice.io/rollout-revision: {{ . | quote }}
       {{- end }}
@@ -32,68 +43,89 @@ spec:
       {{- if .Values.postgresql.enabled }}
       initContainers:
         - name: wait-for-postgresql
-          image: "{{ .Values.postgresql.image.repository }}:{{ .Values.postgresql.image.tag }}"
-          imagePullPolicy: {{ .Values.postgresql.image.pullPolicy }}
+          image: {{ include "tali-guard.controllerImage" . | quote }}
+          imagePullPolicy: {{ .Values.controller.image.pullPolicy }}
           securityContext: {{- toYaml .Values.securityContext | nindent 12 }}
-          command:
-            - /bin/sh
-            - -ec
-            - >-
-              until pg_isready
-              --host={{ include "tali-guard.postgresqlName" . }}
-              --port={{ .Values.postgresql.service.port }}
-              --username={{ .Values.postgresql.auth.username }}
-              --dbname={{ .Values.postgresql.auth.database }};
-              do sleep 2; done
+          command: [node, /opt/tasklattice/guard-controller/scripts/runtime/wait-for-postgresql.mjs]
           env:
-            - name: PGPASSWORD
+            - name: CONTROLLER_DATABASE_URL
               valueFrom:
                 secretKeyRef:
-                  name: {{ include "tali-guard.postgresqlName" . }}
-                  key: {{ .Values.postgresql.auth.passwordKey }}
+                  name: {{ include "tali-guard.databaseSecretName" . }}
+                  key: {{ .Values.database.secretKey }}
           volumeMounts:
             - { name: tmp, mountPath: /tmp }
       {{- end }}
       containers:
         - name: controller
-          image: "{{ .Values.controller.image.repository }}:{{ default .Chart.AppVersion .Values.controller.image.tag }}"
+          image: {{ include "tali-guard.controllerImage" . | quote }}
           imagePullPolicy: {{ .Values.controller.image.pullPolicy }}
           securityContext: {{- toYaml .Values.securityContext | nindent 12 }}
           ports:
             - { name: http, containerPort: 8080, protocol: TCP }
             - { name: grpc, containerPort: 9090, protocol: TCP }
           env:
-            - { name: NODE_ENV, value: production }
-            - { name: CONTROLLER_PUBLIC_URL, value: {{ .Values.controller.publicUrl | quote }} }
-            - { name: CONTROLLER_RUNTIME_SERVICE_URL, value: {{ include "tali-guard.defaultRuntimeServiceUrl" . | quote }} }
-            - { name: BETTER_AUTH_TRUSTED_ORIGINS, value: {{ join "," .Values.controller.trustedOrigins | quote }} }
-            - { name: BETTER_AUTH_MIN_PASSWORD_LENGTH, value: {{ .Values.controller.auth.minPasswordLength | quote }} }
-            - { name: CONTROLLER_ALLOW_LOCAL_DEFAULT_CREDENTIALS, value: {{ .Values.controller.auth.allowLocalDefaultCredentials | quote }} }
+            {{- $config := include "tali-guard.controllerConfig" . | fromYaml }}
+            {{- range $key, $_ := $config.data }}
+            - name: {{ $key }}
+              valueFrom:
+                configMapKeyRef: { name: {{ $config.metadata.name }}, key: {{ $key }} }
+            {{- end }}
             - name: CONTROLLER_DATABASE_URL
               valueFrom: { secretKeyRef: { name: {{ include "tali-guard.databaseSecretName" . }}, key: {{ .Values.database.secretKey }} } }
             - name: CONTROLLER_RUNNER_TOKEN
               valueFrom: { secretKeyRef: { name: {{ include "tali-guard.controlSecretName" . }}, key: {{ .Values.security.controlSecret.runnerTokenKey }} } }
+            {{- if .Values.security.poolAuthentication.enabled }}
+            - name: CONTROLLER_RUNNER_POOL_TOKENS_JSON
+              valueFrom: { secretKeyRef: { name: {{ .Values.security.poolAuthentication.controllerSecret | quote }}, key: {{ .Values.security.poolAuthentication.controllerKey | quote }} } }
+            {{- end }}
+            {{- if .Values.security.runnerHttpAuthentication.enabled }}
+            - name: CONTROLLER_RUNNER_HTTP_TOKENS_JSON
+              valueFrom: { secretKeyRef: { name: {{ .Values.security.runnerHttpAuthentication.controllerSecret | quote }}, key: {{ .Values.security.runnerHttpAuthentication.controllerKey | quote }} } }
+            {{- end }}
             - name: CONTROLLER_METRICS_TOKEN
               valueFrom: { secretKeyRef: { name: {{ include "tali-guard.metricsSecretName" . }}, key: {{ .Values.security.metrics.tokenKey }} } }
             - name: BETTER_AUTH_SECRET
               valueFrom: { secretKeyRef: { name: {{ include "tali-guard.controlSecretName" . }}, key: {{ .Values.security.controlSecret.betterAuthSecretKey }} } }
+            {{- $sso := .Values.controller.sso | default dict }}
+            {{- if .Values.keycloak.enabled }}
+            - name: CONTROLLER_SSO_CLIENT_SECRET
+              valueFrom: { secretKeyRef: { name: {{ printf "%s-keycloak" (include "tali-guard.fullname" .) }}, key: client-secret } }
+            {{- else if $sso.enabled }}
+            - name: CONTROLLER_SSO_CLIENT_SECRET
+              valueFrom: { secretKeyRef: { name: {{ required "controller.sso.existingSecret is required" $sso.existingSecret | quote }}, key: {{ $sso.clientSecretKey | default "client-secret" | quote }} } }
+            {{- end }}
             - name: MODEL_GUARDRAILS_RUNTIME_LOG_ENCRYPTION_KEY
               valueFrom: { secretKeyRef: { name: {{ include "tali-guard.runtimeLogSecretName" . }}, key: {{ .Values.security.runtimeLogs.encryptionKeyKey }} } }
-            - name: CONTROLLER_BOOTSTRAP_ADMIN_EMAIL
-              valueFrom: { secretKeyRef: { name: {{ include "tali-guard.bootstrapAdminSecretName" . }}, key: {{ .Values.security.bootstrapAdmin.emailKey }} } }
-            - name: CONTROLLER_BOOTSTRAP_ADMIN_PASSWORD
-              valueFrom: { secretKeyRef: { name: {{ include "tali-guard.bootstrapAdminSecretName" . }}, key: {{ .Values.security.bootstrapAdmin.passwordKey }} } }
-            - name: CONTROLLER_BOOTSTRAP_ADMIN_NAME
-              valueFrom: { secretKeyRef: { name: {{ include "tali-guard.bootstrapAdminSecretName" . }}, key: {{ .Values.security.bootstrapAdmin.nameKey }} } }
+            {{- range $role, $account := dict "Admin" .Values.security.bootstrapAdmin "User" .Values.security.bootstrapUser }}
+            {{- if or (eq $role "Admin") $account.enabled }}
+            - name: CONTROLLER_BOOTSTRAP_{{ upper $role }}_DIRECTORY
+              value: /var/run/tasklattice/bootstrap-{{ lower $role }}
+            - name: CONTROLLER_BOOTSTRAP_{{ upper $role }}_FIELDS
+              value: {{ dict "usernameKey" $account.usernameKey "credentialKey" $account.credentialKey | toJson | quote }}
+            {{- end }}
+            {{- end }}
+            {{- if and .Values.security.bootstrapUser.enabled .Values.security.bootstrapUser.project }}
+            - name: CONTROLLER_BOOTSTRAP_USER_PROJECT
+              value: {{ .Values.security.bootstrapUser.project | quote }}
+            {{- end }}
             - { name: CONTROLLER_ARTIFACT_SIGNING_KEY_PATH, value: /var/run/tasklattice/artifact/private-key.pem }
+            {{- if .Values.security.controlTls.enabled }}
             - { name: CONTROLLER_GRPC_TLS_CERT_PATH, value: /var/run/tasklattice/control-tls/tls.crt }
             - { name: CONTROLLER_GRPC_TLS_KEY_PATH, value: /var/run/tasklattice/control-tls/tls.key }
             - { name: CONTROLLER_GRPC_TLS_CLIENT_CA_PATH, value: /var/run/tasklattice/control-tls/ca.crt }
+            {{- end }}
             - { name: CONTROLLER_PROTO_PATH, value: /opt/tasklattice/guard-controller/proto/tasklattice/guard/control/v1/runner_control.proto }
             - { name: CONTROLLER_UI_DIST, value: /opt/tasklattice/guard-controller/dist }
           volumeMounts:
+            - { name: bootstrap-admin, mountPath: /var/run/tasklattice/bootstrap-admin, readOnly: true }
+            {{- if .Values.security.bootstrapUser.enabled }}
+            - { name: bootstrap-user, mountPath: /var/run/tasklattice/bootstrap-user, readOnly: true }
+            {{- end }}
             - { name: artifact-signing, mountPath: /var/run/tasklattice/artifact, readOnly: true }
+            {{- if .Values.security.controlTls.enabled }}
             - { name: control-tls, mountPath: /var/run/tasklattice/control-tls, readOnly: true }
+            {{- end }}
             {{- if .Values.security.customCa.existingSecret }}
             - { name: custom-ca, mountPath: /etc/ssl/certs/tasklattice-custom-ca.crt, subPath: tasklattice-custom-ca.crt, readOnly: true }
             {{- end }}
@@ -102,12 +134,59 @@ spec:
           readinessProbe: { httpGet: { path: /health/ready, port: http }, periodSeconds: 10 }
           livenessProbe: { httpGet: { path: /health/live, port: http }, periodSeconds: 20 }
           resources: {{- toYaml .Values.controller.resources | nindent 12 }}
+        {{- if .Values.keycloak.enabled }}
+        # Local development only. Shared loopback keeps the OIDC issuer identical
+        # for the host browser and Controller, with no discovery URL rewriting.
+        - name: keycloak
+          image: {{ printf "%s:%s" .Values.keycloak.image.repository .Values.keycloak.image.tag | quote }}
+          imagePullPolicy: {{ .Values.keycloak.image.pullPolicy }}
+          args:
+            - start-dev
+            - --import-realm
+            - --http-port={{ .Values.keycloak.port }}
+            - --hostname=http://localhost:{{ .Values.keycloak.port }}
+            - --health-enabled=true
+          env:
+            - { name: KC_BOOTSTRAP_ADMIN_USERNAME, value: admin }
+            - name: KC_BOOTSTRAP_ADMIN_PASSWORD
+              valueFrom: { secretKeyRef: { name: {{ printf "%s-keycloak" (include "tali-guard.fullname" .) }}, key: admin-password } }
+            - name: TALI_KEYCLOAK_CLIENT_SECRET
+              valueFrom: { secretKeyRef: { name: {{ printf "%s-keycloak" (include "tali-guard.fullname" .) }}, key: client-secret } }
+          ports:
+            - { name: keycloak, containerPort: {{ .Values.keycloak.port }} }
+            - { name: kc-management, containerPort: 9000 }
+          startupProbe: { httpGet: { path: /health/started, port: kc-management }, periodSeconds: 5, failureThreshold: 60 }
+          readinessProbe: { httpGet: { path: /health/ready, port: kc-management }, periodSeconds: 5 }
+          livenessProbe: { httpGet: { path: /health/live, port: kc-management }, periodSeconds: 10 }
+          resources:
+            requests: { cpu: 50m, memory: 512Mi }
+            limits: { memory: 1Gi }
+          securityContext: { runAsUser: 1000, runAsGroup: 0, allowPrivilegeEscalation: false, capabilities: { drop: [ALL] } }
+          volumeMounts:
+            - { name: keycloak-realm, mountPath: /opt/keycloak/data/import/tali-realm.json, subPath: tali-realm.json, readOnly: true }
+            - { name: keycloak-data, mountPath: /opt/keycloak/data }
+        {{- end }}
       volumes:
+        {{- if .Values.keycloak.enabled }}
+        - name: keycloak-realm
+          configMap: { name: {{ printf "%s-keycloak-realm" (include "tali-guard.fullname" .) }} }
+        - name: keycloak-data
+          emptyDir: {}
+        {{- end }}
+        - name: bootstrap-admin
+          secret:
+            secretName: {{ include "tali-guard.bootstrapAdminSecretName" . }}
+        {{- if .Values.security.bootstrapUser.enabled }}
+        - name: bootstrap-user
+          secret:
+            secretName: {{ include "tali-guard.bootstrapUserSecretName" . }}
+        {{- end }}
         - name: artifact-signing
           secret:
             secretName: {{ include "tali-guard.artifactSigningSecretName" . }}
             items:
               - { key: {{ .Values.security.artifactSigning.privateKeyKey }}, path: private-key.pem }
+        {{- if .Values.security.controlTls.enabled }}
         - name: control-tls
           secret:
             secretName: {{ include "tali-guard.controlTlsSecretName" . }}
@@ -115,6 +194,7 @@ spec:
               - { key: {{ .Values.security.controlTls.caKey }}, path: ca.crt }
               - { key: {{ .Values.security.controlTls.controllerCertificateKey }}, path: tls.crt }
               - { key: {{ .Values.security.controlTls.controllerPrivateKeyKey }}, path: tls.key }
+        {{- end }}
         {{- if .Values.security.customCa.existingSecret }}
         - name: custom-ca
           secret:

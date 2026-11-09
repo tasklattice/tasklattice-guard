@@ -67,7 +67,7 @@ export const selectorExpressionSchema = expressionSchema(1).superRefine((express
   const count = (g: SelectorExpression): number => g.conditions.reduce((n, c) => n + ("conditions" in c ? count(c) : 1), 0);
   if (count(expression) > routingLimits.maxConditions) ctx.addIssue({ code: "custom", message: "Maximum 16 conditions" });
 });
-export const targetSchema = z.object({ id: z.string().min(1).max(128), guardrailId: z.string().min(1).max(128), guardrailVersion: z.string().max(128), versionStrategy: z.enum(["latest", "pinned"]).optional(), weightBps: z.number().int().min(0).max(10000) }).strict();
+export const targetSchema = z.object({ id: z.string().min(1).max(128), guardrailId: z.string().min(1).max(128), guardrailVersion: z.string().max(128), weightBps: z.number().int().min(0).max(10000) }).strict();
 export const routeSchema = z.object({
   id: z.string().min(1).max(128), name: z.string().trim().min(1).max(160), kind: z.enum(["normal", "fallback"]), enabled: z.boolean(),
   selector: z.object({ expression: selectorExpressionSchema }).strict(),
@@ -77,15 +77,29 @@ export const routerDraftSchema = z.object({ routes: z.array(routeSchema).min(1).
 export type RouteTarget = z.infer<typeof targetSchema>;
 export type TrafficRoute = z.infer<typeof routeSchema>;
 export type RouterDraft = z.infer<typeof routerDraftSchema>;
+export type RouterChangeRequestStatus = "pending" | "applied" | "rejected" | "withdrawn" | "superseded";
+/** A frozen Router publication. Approval applies exactly this snapshot and Endpoint set. */
+export type RouterChangeRequest = {
+  id: string; routerId: string; kind: "publish" | "revert"; status: RouterChangeRequestStatus;
+  sourceDraftRevision: number | null; baseRevision: number | null; snapshot: RouterDraft; endpointIds: string[];
+  context: { endpoints: Array<{ id: string; name: string; adapter: string }>; guardrails: Array<{ id: string; name: string; version: string }> } | null;
+  ticket: string; reason: string; submittedBy: string; submittedByUsername: string | null; submittedAt: string;
+  decidedBy: string | null; decidedByUsername: string | null; decidedAt: string | null; decisionNote: string | null;
+  emergencyReason: string | null; emergencyContact: string | null; appliedRevision: number | null; revertsChangeRequestId: string | null;
+};
 export type TrafficRouter = {
+  projectId?: string;
   id: string; name: string; description: string; draftRevision: number; draft: RouterDraft; activeRevision: number | null;
   activeDraftRevision: number | null; activeSnapshot: RouterDraft | null; desiredGeneration: number;
   rolloutStatus: RouterRolloutState; endpointIds: string[]; updatedAt: string;
+  pendingChangeRequest: RouterChangeRequest | null;
+  /** The applied change whose base revision may be restored without another approval. */
+  revertibleChangeRequest: { id: string; baseRevision: number; appliedRevision: number } | null;
 };
 export type SelectorField = { id: string; label: string; group: string; customKey?: boolean; http?: boolean; cardinality: "one" | "many"; operators: readonly string[]; valueType?: "string"; availableAt?: "first_assignment"; sourceDescription?: string };
 const strings = selectorOperators;
 export const selectorFields: SelectorField[] = [
-  ...["protocol", "endpoint.id", "auth.principal", "model", "output.sink", "output.content_type", "output.schema_id", "tool.name", "target.environment", "litellm.api_key_alias", "litellm.team_id", "litellm.user_id", "a2a.version", "a2a.extensions", "a2a.operation", "a2a.context_id", "a2a.task_id"].map(id => ({ id, label: id, group: id.split(".")[0]!, cardinality: "one" as const, operators: strings })),
+  ...["protocol", "endpoint.id", "auth.principal", "model", "output.sink", "output.content_type", "output.schema_id", "tool.name", "target.environment", "litellm.api_key_alias", "litellm.team_id", "litellm.user_id"].map(id => ({ id, label: id, group: id.split(".")[0]!, cardinality: "one" as const, operators: strings })),
   ...["http.method", "http.host", "http.path"].map(id => ({ id, label: id, group: "http", http: true, cardinality: "one" as const, operators: strings })),
   { id: "http.header", label: "HTTP Header", group: "http", customKey: true, http: true, cardinality: "many", operators: strings },
   { id: "auth.jwt_claim", label: "JWT Claim", group: "auth", customKey: true, cardinality: "one", operators: strings },
@@ -128,9 +142,10 @@ export function routingIssues(draft: RouterDraft, publish = false): string[] {
     const targetIds = new Set<string>(), refs = new Set<string>();
     for (const t of route.targets) {
       if (targetIds.has(t.id)) errors.push(`${prefix}: duplicate Target ID`); targetIds.add(t.id);
-      const ref = JSON.stringify([t.guardrailId, t.versionStrategy === "latest" ? "latest" : t.guardrailVersion]);
+      const ref = JSON.stringify([t.guardrailId, t.guardrailVersion]);
       if (refs.has(ref)) errors.push(`${prefix}: duplicate Guardrail Version`); refs.add(ref);
-      if (publish && t.versionStrategy !== "latest" && (!t.guardrailVersion.trim() || t.guardrailVersion.toLowerCase() === "latest")) errors.push(`${prefix}: pin a Guardrail Version`);
+      // Every target names an immutable version; there is no pointer to follow.
+      if (publish && !t.guardrailVersion.trim()) errors.push(`${prefix}: pin a Guardrail Version`);
     }
     if (publish && (!route.targets.length || route.targets.reduce((sum, t) => sum + t.weightBps, 0) !== 10000)) errors.push(`${prefix}: target percentages must total 100%`);
   }
@@ -146,12 +161,18 @@ export type SelectorEndpoint = { id: string; adapter: string; selectorCapabiliti
 export function endpointSelectorCapabilities(endpoint: SelectorEndpoint): SelectorCapability[] {
   if (endpoint.selectorCapabilities !== undefined) return endpoint.selectorCapabilities;
   const adapter = endpoint.adapter.toUpperCase();
+  if (["F5-SCAN", "SCAN"].includes(adapter)) return [
+    ...["protocol", "endpoint.id", "auth.principal"].map(field => ({ field, availableAt: "first_assignment" as const, cardinality: "one" as const, valueType: "string" as const })),
+    ...selectorFields.filter(field => field.http).map(field => ({ field: field.id, requestSource: "endpoint_request" as const,
+      availableAt: "first_assignment" as const, cardinality: field.cardinality, valueType: "string" as const })),
+    { field: "adapter.field", key: "scan.direction", availableAt: "first_assignment", cardinality: "one", valueType: "string" },
+  ];
+  if (!["LITELLM", "LITELLM-GENERIC-GUARDRAIL"].includes(adapter)) return [];
   return selectorFields.flatMap(field => {
-    if (field.id.startsWith("litellm.") && adapter !== "LITELLM" || field.id.startsWith("a2a.") && adapter !== "A2A") return [];
     // Dynamic keys and output descriptors need explicit first-assignment declarations.
     if (["adapter.field", "auth.jwt_claim"].includes(field.id) || field.id.startsWith("output.")) return [];
     const base = { field: field.id, availableAt: "first_assignment" as const, cardinality: field.cardinality, valueType: "string" as const };
-    return field.http ? ["endpoint_request", ...(["HTTP", "LITELLM"].includes(adapter) ? ["business_request"] : [])].map(requestSource => ({ ...base, requestSource: requestSource as RequestSource })) : [base];
+    return field.http ? ["endpoint_request", "business_request"].map(requestSource => ({ ...base, requestSource: requestSource as RequestSource })) : [base];
   });
 }
 export function selectorFieldCatalog(endpoints: SelectorEndpoint[]) {
@@ -160,6 +181,13 @@ export function selectorFieldCatalog(endpoints: SelectorEndpoint[]) {
     availability: endpoints.flatMap(endpoint => endpointSelectorCapabilities(endpoint).filter(c => c.field === field.id).map(c => ({ ...c, endpointId: endpoint.id }))),
     availableEndpoints: endpoints.filter(endpoint => endpointSelectorCapabilities(endpoint).some(c => c.field === field.id && c.availableAt === "first_assignment")).map(e => e.id),
   }));
+}
+/** Only offer fields supplied at first assignment by every selected Endpoint.
+ * Before binding, offer the common built-in adapter fields rather than unsupported options.
+ */
+export function selectableSelectorFields(endpoints: SelectorEndpoint[]) {
+  const scope = endpoints.length ? endpoints : ["litellm-generic-guardrail", "f5-scan"].map(adapter => ({ id: adapter, adapter }));
+  return selectorFieldCatalog(scope).filter(field => scope.every(endpoint => field.availableEndpoints.includes(endpoint.id)));
 }
 export function capabilityIssues(draft: RouterDraft, endpoints: SelectorEndpoint[]): string[] {
   const parsed = routerDraftSchema.safeParse(draft);

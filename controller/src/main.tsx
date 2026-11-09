@@ -5,8 +5,12 @@ import { RouterProvider } from "@tanstack/react-router";
 import { ThemeProvider } from "next-themes";
 import { AuthProvider } from "@/lib/auth";
 import { router } from "@/app-router";
+import { startPageUpdates } from "@/lib/page-updates";
 import "@/i18n";
 import "@/styles.css";
+import "@/design-system.scss";
+import "@/carbon-components.scss";
 
 const queryClient = new QueryClient({ defaultOptions: { queries: { staleTime: 10_000, retry: 1 } } });
+startPageUpdates({ isBusy: () => queryClient.isMutating() > 0 });
 ReactDOM.createRoot(document.getElementById("root")!).render(<React.StrictMode><ThemeProvider attribute="class" defaultTheme="light" forcedTheme="light"><QueryClientProvider client={queryClient}><AuthProvider><RouterProvider router={router} /></AuthProvider></QueryClientProvider></ThemeProvider></React.StrictMode>);

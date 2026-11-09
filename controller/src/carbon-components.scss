@@ -1,0 +1,38 @@
+@use "sass:meta";
+// One component library; Tailwind remains a layout utility, not a widget system.
+@layer components {
+  // Size tokens and the .cds--layout--size-* classes Carbon components carry.
+  // Without them every size falls back to lg: a "md" or "sm" button renders 48px.
+  @include meta.load-css("@carbon/styles/scss/layout");
+  @include meta.load-css("@carbon/styles/scss/utilities/visually-hidden");
+  @include meta.load-css("@carbon/react/scss/components/button");
+  @include meta.load-css("@carbon/react/scss/components/text-input");
+  @include meta.load-css("@carbon/react/scss/components/date-picker");
+  @include meta.load-css("@carbon/react/scss/components/time-picker");
+  @include meta.load-css("@carbon/react/scss/components/text-area");
+  @include meta.load-css("@carbon/react/scss/components/checkbox");
+  @include meta.load-css("@carbon/react/scss/components/toggle");
+  @include meta.load-css("@carbon/react/scss/components/radio-button");
+  @include meta.load-css("@carbon/react/scss/components/dropdown");
+  @include meta.load-css("@carbon/react/scss/components/select");
+  @include meta.load-css("@carbon/react/scss/components/combo-box");
+  @include meta.load-css("@carbon/react/scss/components/multiselect");
+  @include meta.load-css("@carbon/react/scss/components/tag");
+  @include meta.load-css("@carbon/react/scss/components/tile");
+  @include meta.load-css("@carbon/react/scss/components/data-table");
+  @include meta.load-css("@carbon/react/scss/components/search");
+  @include meta.load-css("@carbon/react/scss/components/pagination");
+  @include meta.load-css("@carbon/react/scss/components/tabs");
+  @include meta.load-css("@carbon/react/scss/components/notification");
+  @include meta.load-css("@carbon/react/scss/components/menu");
+  @include meta.load-css("@carbon/styles/scss/components/menu-button");
+  @include meta.load-css("@carbon/styles/scss/components/combo-button");
+  @include meta.load-css("@carbon/react/scss/components/overflow-menu");
+  @include meta.load-css("@carbon/react/scss/components/tooltip");
+  @include meta.load-css("@carbon/react/scss/components/toggletip");
+  @include meta.load-css("@carbon/react/scss/components/popover");
+  @include meta.load-css("@carbon/react/scss/components/ui-shell");
+  @include meta.load-css("@carbon/react/scss/components/progress-bar");
+  @include meta.load-css("@carbon/react/scss/components/breadcrumb");
+  @include meta.load-css("@carbon/react/scss/components/skeleton-styles");
+}

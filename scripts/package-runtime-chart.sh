@@ -24,13 +24,13 @@ trap cleanup EXIT
 
 cp -R "$chart_root" "$work_dir/tali-guard"
 sed -i.bak \
-  "s|repository: ghcr.io/tasklattice/tali-guard-controller|repository: ${controller_repository}|; s|repository: ghcr.io/tasklattice/tali-guard-runner|repository: ${runner_repository}|; s|tag: \"0.2.0\"|tag: \"${version}\"|g" \
+  "s|repository: ghcr.io/tasklattice/tali-guard-controller|repository: ${controller_repository}|; s|repository: ghcr.io/tasklattice/tali-guard-runner|repository: ${runner_repository}|" \
   "$work_dir/tali-guard/values.yaml"
 rm -f "$work_dir/tali-guard/values.yaml.bak"
 
 mkdir -p "$output_root"
 helm lint "$work_dir/tali-guard" --strict \
-  --set database.url=postgresql://guard:guard@postgres:5432/guard \
+  --set database.existingSecret=guard-database \
   --set security.artifactSigning.existingSecret=guard-artifact-signing \
   --set security.controlTls.existingSecret=guard-control-tls \
   --set security.customCa.existingSecret=guard-model-provider-ca \

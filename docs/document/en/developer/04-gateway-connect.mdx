@@ -1,0 +1,584 @@
+---
+id: "gateway-connect"
+title: "Gateway integration (LiteLLM protocol)"
+summary: "Use the LiteLLM Generic Guardrail specification as the gateway integration standard, covering non-streaming input and complete-output inspection, and streaming output inspection."
+order: 1
+---
+Guard uses the **LiteLLM Generic Guardrail specification** as its AI gateway integration standard. LiteLLM and custom gateways or Agents can implement this specification. They submit inspection requests through a LiteLLM Endpoint (`litellm-generic-guardrail`). They then allow, block or replace content according to the result.
+
+- **Using LiteLLM**: configure the TaskLattice Guard Provider as described in [Connect LiteLLM](/document/developer/endpoint-setup#endpoint-litellm). The Provider calls the inspection APIs below. It also applies their results. You do not need to construct these requests manually. Its source provides a [LiteLLM Guardrails Provider implementation example](#gateway-litellm-provider-example).
+- **Building a custom gateway or Agent**: implement non-streaming inspection requests according to the LiteLLM specification below. Implement the response handling described below. For streaming output, use Guard's WebSocket protocol extension. You do not need to deploy LiteLLM.
+
+This guide describes requests, result handling and call correlation for the two inspection interfaces. For Scan integration, see [Scan requests and responses](/document/developer/scan-protocol).
+
+<a id="gateway-overview" />
+## Integration overview and preparation
+
+<a id="gateway-interface-types" />
+### Interface types and inspection scope
+
+**The non-streaming interface is the core API. It inspects input and complete output. The streaming interface inspects output only.** Connection verification is a preparation step and does not inspect content.
+
+| Interface | Inspect input | Inspect output | Transport |
+| --- | --- | --- | --- |
+| [Non-streaming inspection (core API)](#gateway-checks) | Supported | Supported. Submit the complete output. | HTTP POST |
+| [Streaming inspection](#gateway-stream-protocol) | Not supported | Supported. Submit output fragments. | WebSocket |
+
+Input means model input. Output means content from the model. This guide uses these names for the participants:
+
+| Name | Responsibility |
+| --- | --- |
+| Inspection client | A gateway or Agent that sends inspection requests to Guard. In LiteLLM, the Provider performs these operations. |
+| Guard | Receives inspection requests and returns results. |
+| Business client | Sends business requests to the inspection client and receives the final output. |
+
+To inspect both input and streaming output, follow this sequence:
+
+1. The inspection client submits input to the non-streaming API.
+2. After Guard permits the input, the inspection client calls the model.
+3. The inspection client submits model output fragments to the streaming API.
+4. The inspection client delivers Guard-released text to the business client.
+
+To inspect output alone, use the corresponding output inspection interface. The inspection client does not need a prior input inspection. See [Call ID rules](#gateway-call-correlation) for call correlation.
+
+<a id="gateway-connection" />
+### Endpoint address and authentication
+
+**Require Credential** defaults to on. When off, HTTP, `/verify` and WebSocket clients may omit `x-api-key`; Guard ignores supplied credentials and processes requests anonymously. `ready` then confirms access and adapter checks, without authenticating an identity.
+
+`{endpoint}` is the integration base URL containing the Endpoint ID, for example `https://guard-runtime.example.com/runtime/v1/endpoints/your-endpoint-id`. Append the operation paths below to this address.
+
+| Method and path | Purpose |
+| --- | --- |
+| `POST {endpoint}/verify` | Verify access and interface type according to the Endpoint's credential requirement. The body is `{}`. |
+| `POST {endpoint}/beta/litellm_basic_guardrail_api` | Inspect the input or the complete output. The body is JSON. |
+| `WebSocket {endpoint}/guardrails/output-stream` | [Streaming output inspection](#gateway-stream-protocol) |
+
+When credentials are required, send `x-api-key: <Endpoint credential>` and `Content-Type: application/json`. Do not put the credential in the body. Do not substitute a console Personal Access Token or model-service key.
+
+The HTTP examples show the request or status line, integration headers and JSON body. A blank line separates headers from the body. The host, Endpoint ID and credential are illustrative. The examples omit automatic headers such as `Content-Length` and `Date`. They also omit additional diagnostic headers.
+
+<a id="gateway-verification" />
+### Connection verification
+
+Verification request:
+
+```http
+POST /runtime/v1/endpoints/your-endpoint-id/verify HTTP/1.1
+Host: guard-runtime.example.com
+x-api-key: <Endpoint credential>
+Content-Type: application/json
+
+{}
+```
+
+Equivalent cURL command:
+
+```bash
+export TALI_GUARD_ENDPOINT='https://guard-runtime.example.com/runtime/v1/endpoints/your-endpoint-id'
+export TALI_GUARD_TOKEN='<Endpoint credential>'
+curl -sS --fail-with-body -X POST "${TALI_GUARD_ENDPOINT%/}/verify" \
+  -H "x-api-key: $TALI_GUARD_TOKEN" \
+  -H 'Content-Type: application/json' -d '{}'
+```
+
+Verification response:
+
+```http
+HTTP/1.1 200 OK
+Content-Type: application/json
+
+{
+  "ready": true,
+  "adapter_id": "litellm-generic-guardrail",
+  "protocol": "litellm"
+}
+```
+
+`ready` confirms only that access and interface checks passed. This operation does not inspect content. Send an actual inspection request next to verify the integration works.
+
+<a id="gateway-call-correlation" />
+### Correlating input and output (Call ID)
+
+To correlate input and output for one model call, keep these values consistent:
+
+- Endpoint.
+- Nonempty `litellm_call_id`.
+- Routing metadata.
+
+Guard selects the route and versions on the first request. Subsequent correlated requests reuse that assignment. Metadata changes do not cause rerouting. Generate a new ID for each new model call.
+
+- A correlated output request needs the existing input context. A new ID cannot continue an expired call.
+- HTTP requests can omit the Call ID. Guard then routes each request independently, including standalone complete-output requests. Input and output have no guarantee to use the same version.
+- Call context defaults to a 300-second lifetime from creation. Later access does not refresh it. Guard keeps the selected Guardrail version for the call. Guard reads the operating mode again for each HTTP inspection.
+- Streaming IDs must also satisfy the [start-frame limits](#gateway-stream-request).
+
+These correlation rules cover both “non-streaming input → non-streaming output” and “non-streaming input → streaming output”.
+
+- For correlated streaming output, copy the input inspection's `litellm_call_id` to `start.call_id`.
+- For standalone streaming output, omit `call_id`. Use a new `stream_id`.
+
+See [Messages sent to Guard](#gateway-stream-request) for field constraints.
+
+<a id="gateway-checks" />
+## Non-streaming inspection: input and complete output
+
+The non-streaming interface is the core gateway integration API. It inspects input and complete output through the same HTTP POST endpoint, with `input_type` selecting the phase. To submit output fragments, use the [streaming inspection interface](#gateway-stream-protocol) below.
+
+<a id="gateway-http-request" />
+### API address and request headers
+
+Call `POST {endpoint}/beta/litellm_basic_guardrail_api` with a JSON request body.
+
+| HTTP header | Value | Requirement |
+| --- | --- | --- |
+| `x-api-key` | `<Endpoint credential>` | Required when **Require Credential** is on. |
+| `Content-Type` | `application/json` | Required to declare the JSON body. |
+
+`input_type: "request"` selects input inspection. `input_type: "response"` selects complete-output inspection. These values identify inspection phases. Both are HTTP requests from the inspection client to Guard. The examples below include the request line, headers and JSON body.
+
+<a id="gateway-request-fields" />
+### Request fields
+
+These fields belong to the JSON request body of `POST {endpoint}/beta/litellm_basic_guardrail_api`. Input and complete-output checks share this definition. **Required** means the API requires the field. **Optional** means the API permits omission. To inspect text, the inspection client must supply `texts`. To correlate input and output, it must also supply `litellm_call_id`.
+
+| Field | Requirement | JSON data type | Default | Behavior |
+| --- | --- | --- | --- | --- |
+| `input_type` | Required | String: `"request"` or `"response"` | None (required) | Selects the input or output phase. |
+| `texts` | Optional | String array or `null` | `null` | **Required to inspect text.** List the content to inspect. Omission or an empty array does not prove that other content passed inspection. |
+| `litellm_call_id` | Optional | String or `null` | `null` | **Required to correlate input and output.** Use a new nonempty ID for each model call. Streaming correlation limits it to 256 characters. |
+| `structured_messages` | Optional | Object array or `null` | `null` | Conversation context. Guard retains at most the latest 20 messages. |
+| `guardrail_context` | Optional | Object or `null` | `null` | Supply a query, reference sources, content source or memory boundary as required by the selected Policy. See [Inspection context and answer verification](#gateway-context-fields). |
+| `model` | Optional | String or `null` | `null` | Model routing context. Guard uses `request_data.model` when this field is absent. Guard does not call the model. |
+| `request_data` | Optional | Object (not nullable) | `{}` | Identity and routing metadata. `user_api_key_alias`, `user_api_key_team_id` and `user_api_key_user_id` supply the LiteLLM Selector fields. |
+| `request_headers` | Optional | Object or `null`. Values are strings or string arrays. | `null` | Original business-request headers, separate from the HTTP headers of this API request. Credentials, cookies and other sensitive headers do not participate in routing. |
+| `litellm_trace_id`, `litellm_version` | Optional | String or `null` | `null` | Compatibility metadata. Does not control inspection or correlation and cannot replace the Call ID. |
+| `images` | Optional | String array or `null` | `null` | Compatibility field. Guard does not inspect images as separate targets. |
+| `tools`, `tool_calls` | Optional | Object arrays or `null` | `null` | Compatibility fields. Guard does not inspect these fields as separate targets. |
+| `additional_provider_specific_params` | Optional | Object or `null` | `null` | Compatibility field. Cannot switch the operating mode or override Guardrail configuration. |
+
+Extra top-level fields do not change interface behavior. Fields such as `protocol`, `phase`, `mode`, `protection_mode` and `dry_run` cannot change the inspection direction or operating mode. Put tool output or similar content to inspect in `texts`, and identify its [content source](#gateway-context-fields) when needed.
+
+Limits on the original request headers:
+
+- At most 128 keys.
+- At most 64 values for each key.
+- At most 2,048 characters for each value.
+
+Header names and routing fields must also be valid. Guard limits the total routing context to 65,536 characters. Invalid or oversized routing context causes the request to fail.
+
+<a id="gateway-input-example" />
+### Input inspection request example
+
+Before calling the model, submit the input to inspect with `input_type: "request"`.
+
+- `texts` is the content to inspect.
+- `structured_messages` supplies context. It cannot replace `texts`.
+- The HTTP `x-api-key` header authenticates the Endpoint.
+- The JSON body field `request_headers` describes headers from the original business request. Supply these separately from the authentication header.
+
+```http
+POST /runtime/v1/endpoints/your-endpoint-id/beta/litellm_basic_guardrail_api HTTP/1.1
+Host: guard-runtime.example.com
+x-api-key: <Endpoint credential>
+Content-Type: application/json
+
+{
+  "input_type": "request",
+  "litellm_call_id": "call-123",
+  "texts": ["Please summarize this report."],
+  "structured_messages": [
+    {"role": "user", "content": "Please summarize this report."}
+  ],
+  "model": "gateway-model-alias",
+  "request_data": {
+    "user_api_key_alias": "support-service",
+    "user_api_key_team_id": "support-team",
+    "user_api_key_user_id": "user-123"
+  },
+  "request_headers": {
+    "x-channel": "support"
+  }
+}
+```
+
+Save only the JSON body after the blank line as `input.json`. Do not include the request line or headers in the file. Run the command below. cURL sets the request line and headers through its arguments:
+
+```bash
+curl -sS --fail-with-body -X POST "${TALI_GUARD_ENDPOINT%/}/beta/litellm_basic_guardrail_api" \
+  -H "x-api-key: $TALI_GUARD_TOKEN" -H 'Content-Type: application/json' \
+  --data-binary @input.json
+```
+
+<a id="gateway-output-example" />
+### Output inspection request example
+
+This example correlates output with the preceding input inspection. The inspection client follows these steps:
+
+1. Call the model after Guard permits the input.
+2. Buffer the complete output.
+3. Submit the output to the same inspection API with the same authentication headers and Call ID.
+
+```http
+POST /runtime/v1/endpoints/your-endpoint-id/beta/litellm_basic_guardrail_api HTTP/1.1
+Host: guard-runtime.example.com
+x-api-key: <Endpoint credential>
+Content-Type: application/json
+
+{
+  "input_type": "response",
+  "litellm_call_id": "call-123",
+  "texts": ["Here is the generated response."],
+  "model": "gateway-model-alias",
+  "request_data": {
+    "user_api_key_alias": "support-service",
+    "user_api_key_team_id": "support-team",
+    "user_api_key_user_id": "user-123"
+  },
+  "request_headers": {
+    "x-channel": "support"
+  }
+}
+```
+
+<a id="gateway-actions" />
+### Responses and handling actions
+
+When a non-streaming inspection request completes normally, Guard returns HTTP `200` with a JSON response body. **HTTP `200` means Guard returned a handling result. It does not mean Guard permits the content.** The inspection client must read `action`. It must then allow, block or replace content according to that value.
+
+Normal responses use `Content-Type: application/json`. The body field `action` determines how to handle content. The three examples below show the status line, this header and the body. Other response headers do not participate in business decisions. Results depend on the [operating mode](#gateway-protection-modes) and published Policies.
+
+Allow:
+
+```http
+HTTP/1.1 200 OK
+Content-Type: application/json
+
+{"action": "NONE"}
+```
+
+Block:
+
+```http
+HTTP/1.1 200 OK
+Content-Type: application/json
+
+{"action": "BLOCKED", "blocked_reason": "Policy matched."}
+```
+
+Replace:
+
+```http
+HTTP/1.1 200 OK
+Content-Type: application/json
+
+{"action": "GUARDRAIL_INTERVENED", "texts": ["Replacement text"]}
+```
+
+| `action` | Input | Output |
+| --- | --- | --- |
+| `NONE` | Call the model with the original input. | Deliver the original output. |
+| `BLOCKED` | Do not call the model. | Hold back the blocked output. |
+| `GUARDRAIL_INTERVENED` | Replace the input `texts` by position. | Deliver the returned `texts` by position. |
+
+- `action` is always present.
+- `blocked_reason` is optional text that explains a block. It is not a stable error code.
+- `texts` supplies the replacements.
+- The response omits optional fields that are null.
+
+The interface currently supports only `texts` replacements, not `images` or `tools` replacements.
+
+The replacements must match the submitted `texts` in count and order. An empty replacement string is valid. An unknown action, invalid JSON or a wrong replacement count makes the inspection response invalid. It never means `NONE`.
+
+<a id="gateway-protection-modes" />
+#### Guardrail operating modes and results
+
+The current operating mode of the Guardrail selected by the Router determines whether detection and enforcement run:
+
+| Mode | HTTP behavior |
+| --- | --- |
+| **Enforce** | Runs detection and returns `NONE`, `BLOCKED` or `GUARDRAIL_INTERVENED` according to the result. |
+| **Monitor** | Runs detection and records evidence, but does not block or replace content. Even a detection match or detector failure returns `NONE`, allowing the original content. |
+| **Bypass** | Skips detection and returns `NONE`, allowing the original content. |
+
+`NONE` permits the original content to continue. It does not prove that detection ran. Runtime logs record the mode and the actual Monitor detection result. Guard applies the Endpoint authentication setting and still performs field validation, routing and call correlation. These operations can return errors. The inspection client cannot switch the operating mode through request-body fields.
+
+<a id="gateway-errors" />
+### Error handling and retries
+
+| Status / response | Meaning and action |
+| --- | --- |
+| `401` | The Endpoint is missing or disabled, or a required credential is missing or invalid. Check the URL and `x-api-key`. |
+| `409` | The Endpoint interface type does not support LiteLLM. Check the Endpoint type. Changing the body's `protocol` cannot resolve this. |
+| `422` | JSON or field validation failed. Correct `input_type`, the types and the other fields. |
+| `503` | The routing context, call correlation or pinned version is unavailable. The request has no valid inspection result. Correlated output cannot continue the original call with a different version. |
+| `500`, other non-2xx, timeout or disconnect | The inspection client has no valid inspection result. Guard or proxy failures are not necessarily JSON. |
+| `200` + `BLOCKED` | A block. Never use an HTTP-error fallback to release the content. |
+
+Typical authentication error:
+
+```http
+HTTP/1.1 401 Unauthorized
+Content-Type: application/json
+
+{"detail": "Endpoint credential is invalid."}
+```
+
+Error responses usually have a string `detail`. HTTP `422` uses an array of validation errors. Do not parse these responses as Scan's `detail.code` object. Do not treat variable `blocked_reason` text as a stable error code.
+
+When correlating input and output, keep the same Endpoint, Call ID and routing context. A new ID cannot continue the original call after its context expires.
+
+- Retries do not guarantee deduplication. The inspection client limits retries and handles duplicate requests.
+- `BLOCKED` can come from a Policy match or protection against a runtime failure. The inspection client must always block this content. Guard normally returns `503` when the route assignment is unavailable. The inspection client must treat this as an inspection failure. Runtime evidence can distinguish causes during evaluation.
+- No request parameter enables a server `dry_run: true` mode.
+
+<a id="gateway-context-fields" />
+### Optional: inspection context and answer verification
+
+`guardrail_context` is a Guard extension. Guard accepts only the context fields below. Guard returns `422` for unknown context fields.
+
+| Field | Type and constraints | Purpose |
+| --- | --- | --- |
+| `query` | String. Default `""`. At most 100,000 characters. | The current user's question, supplied as context for verification or boundary checks. |
+| `grounding_sources` | String array. Default `[]`. At most 32 entries totaling 500,000 characters. | Reference sources for answer verification. |
+| `target_source` | `"user_input"`, `"retrieved_content"`, `"tool_output"` or `null`. Default `null`. | Identifies the source of input-phase `texts`. Output-phase texts are still inspected as model output. |
+| `memory` | Object or `null`. Default `null`. | Inspects memory before a read or write. See the object fields below. |
+
+Fields in the `memory` object:
+
+| Field | Requirement | JSON data type | Default | Behavior |
+| --- | --- | --- | --- | --- |
+| `operation` | Required | String: `"read"` or `"write"` | None (required) | Selects a memory read or write operation. |
+| `source_query` | Optional | String | `""` | The question from which the memory originated. At most 100,000 characters. |
+
+Memory inspection follows these rules:
+
+- The inspection client inspects memory before it consumes or stores the record.
+- The request must use `input_type: "request"`. Guard returns `422` for `response`.
+- `memory.operation=read` marks the texts as retrieved content.
+- `memory.operation=write` marks the texts as tool output.
+
+These source markers override `target_source`. Guard does not treat the content as trusted instructions because of these markers.
+
+<a id="gateway-grounding-context" />
+#### Supply a query and reference sources for answer verification
+
+When a published Policy enables either check below, the inspection client must supply evidence. Put the evidence in `guardrail_context` in the non-streaming inspection request. You can skip this subsection if you do not use these checks.
+
+- **Contextual grounding**: checks whether reference sources support the answer and whether it is relevant to the user's question. Supply `query` (the user's question) and at least one nonempty `grounding_sources` entry (reference material, such as RAG retrieval results).
+- **Formal rule verification**: checks whether the answer complies with formal rules in the published Policy. Supply `query`. The formal rules come from the Policy. You do not need to repeat them in the request.
+
+Consider an answer that states a one-year warranty. Put the answer in `texts`. Put the question and product reference in `guardrail_context`:
+
+```http
+POST /runtime/v1/endpoints/your-endpoint-id/beta/litellm_basic_guardrail_api HTTP/1.1
+Host: guard-runtime.example.com
+x-api-key: <Endpoint credential>
+Content-Type: application/json
+
+{
+  "input_type": "response",
+  "texts": ["The warranty lasts one year."],
+  "guardrail_context": {
+    "query": "How long is the warranty?",
+    "grounding_sources": ["The product warranty lasts one year."]
+  }
+}
+```
+
+When correlating input and output with `litellm_call_id`, inspect the input first with the same ID. Guard retains context from the input request for the correlated output inspection.
+
+[Inspection context](#gateway-context-fields) lists API acceptance limits. The checks use these stricter limits:
+
+| Check | Content | Maximum characters |
+| --- | --- | --- |
+| Contextual grounding | User query | 1,000 |
+| Contextual grounding | Joined reference sources | 100,000 |
+| Contextual grounding | Each answer | 5,000 |
+| Formal rule verification | User query | 10,000 |
+| Formal rule verification | Each answer | 10,000 |
+
+Exceeding these limits or omitting required context causes verification to fail or remain undetermined. The inspection client must not treat these outcomes as successful verification.
+
+These fields supply evidence, not system instructions or additional output targets. Guard does not include reference sources in replacement `texts`. The inspection client must supply these fields explicitly in the non-streaming inspection request. Do not assume the LiteLLM Provider automatically forwards retrieval material.
+
+The WebSocket `start` frame does not accept `guardrail_context`. If streaming output needs this context, supply it in the HTTP input inspection first. Then correlate the output stream using the same Call ID.
+
+<a id="gateway-stream-protocol" />
+## Streaming inspection: output only
+
+The streaming interface inspects model output only. It does not accept input inspection requests. To protect input, inspect it through the [non-streaming API](#gateway-input-example) first. To correlate the two phases, follow the [Call ID rules](#gateway-call-correlation).
+
+<a id="gateway-stream-connection" />
+### Connection and authentication
+
+1. To correlate input and output, complete the input inspection first and retain its `litellm_call_id`.
+2. Open one WebSocket at `{endpoint}/guardrails/output-stream`. When **Require Credential** is on, put the Endpoint credential in the `x-api-key` header of the upgrade request.
+
+Use the same Endpoint address for WebSocket. In production, change `https://` to `wss://`. The gateway keeps its SSE interface for business clients. The proxy must allow WebSocket upgrades.
+
+<a id="gateway-stream-request" />
+### Messages sent to Guard: start, delta and end
+
+```json
+{
+  "type": "start",
+  "version": 1,
+  "protocol": "litellm",
+  "call_id": "call-123",
+  "stream_id": "stream-456",
+  "messages": [],
+  "model": "gateway-model-alias",
+  "request_data": {
+    "user_api_key_alias": "support-service",
+    "user_api_key_team_id": "support-team",
+    "user_api_key_user_id": "user-123"
+  },
+  "request_headers": {"x-channel": "support"}
+}
+```
+
+To correlate input and output, reuse the input inspection's Call ID and routing metadata. To inspect output alone, you can omit `call_id`. Guard then uses `stream_id` to identify an independent output call, without correlation to a prior input inspection. If you explicitly supply an invalid or expired `call_id`, Guard returns `routing_failed`.
+
+After sending `start`, wait for Guard to return `ready`. Only then can you submit `delta` or `end` within the available [sending credits](#gateway-stream-events).
+
+Send `start` within 10 seconds after connecting. Guard enforces strict field types and rejects unknown fields.
+
+| Field | Constraint |
+| --- | --- |
+| `type`, `version`, `protocol` | Required. The values are `"start"`, integer `1` and `"litellm"`. |
+| `stream_id` | Required. A nonempty string of at most 256 characters. Generate a new ID for each stream. An independent output call must not reuse an existing Call ID. |
+| `call_id` | For correlated input, send the same Call ID, 1–256 characters. Omission creates an independent output call using the stream ID, without correlation to a prior input inspection. |
+| `messages` | Object array. Default `[]`. At most 20. This is context, not the output to inspect. |
+| `request_data` | Object. Default `{}`. For correlated input, keep the routing metadata from its inspection request. |
+| `request_headers` | Object with string values. Default `{}`. Arrays are not accepted here, unlike in the non-streaming inspection API. |
+| `model` | Optional string or `null`. For correlated input, keep the model context from its inspection request. |
+
+Each `delta` or `end` sent by the inspection client uses one sending credit. These messages share an integer `sequence`. It starts at `0` and increases by exactly `1` for every frame. Gaps and duplicates are invalid. `delta.text` contains an output fragment as a string. Omit `text` on `end` or use an empty string.
+
+Each line below is a separate JSON frame:
+
+```jsonl
+{"type":"delta","sequence":0,"text":"Hello "}
+{"type":"delta","sequence":1,"text":"world."}
+{"type":"end","sequence":2}
+```
+
+<a id="gateway-stream-events" />
+### Guard events and sending credits
+
+The inspection client must receive Guard's `ready` before sending `delta` or `end`. It must handle these fields:
+
+- `stream_id` and protocol `version`.
+- Requested delivery mode `requested_mode` and actual `mode`.
+- Sending credits in `input_credits`, currently `8`.
+
+Each `delta` or `end` uses one sending credit. `start` does not use credits. Each `ack` restores one sending credit. It does not confirm inspection completion. The inspection client must process received events while sending messages.
+
+This `full_buffered` example shows a normal delivery. The inspection client sends two output fragments and `end`. Guard then releases one joined text fragment. The example shows the event fields the inspection client needs to process. Actual events may contain additional metadata. The inspection client can ignore that metadata.
+
+Each line is a separate JSON frame. `ack.sequence` corresponds to the sequence of messages sent by the inspection client. Guard's output messages use an independent sequence.
+
+```jsonl
+{"stream_id":"stream-456","type":"ready","version":1,"input_credits":8,"mode":"full_buffered","requested_mode":"full_buffered"}
+{"stream_id":"stream-456","type":"ack","sequence":0}
+{"stream_id":"stream-456","type":"ack","sequence":1}
+{"stream_id":"stream-456","type":"ack","sequence":2}
+{"stream_id":"stream-456","type":"delta","sequence":0,"text":"Hello world."}
+{"stream_id":"stream-456","type":"completed","sequence":1,"checks":1,"released_characters":12,"transformed":false}
+```
+
+A normal block uses `type=blocked`. It has the same `sequence`, `checks`, `released_characters` and `transformed` fields as `completed`. The inspection client must stop delivery. Example failure frame:
+
+```json
+{"stream_id":"stream-456","type":"error","sequence":0,"checks":0,"code":"protection_failed","message":"Protected output stream failed; unchecked text was withheld."}
+```
+
+The `completed` and `blocked` events contain these counts:
+
+- `sequence`: the number of output `delta` events Guard sent.
+- `released_characters`: the number of characters Guard released.
+
+Compare these counts with the output received. An `error` frame contains `sequence` and `checks`, but no `released_characters` or `transformed`. Until Guard accepts a valid `start`, error frames use `stream_id: null`. A closed connection alone does not mean `completed`.
+
+<a id="gateway-stream-delivery" />
+### Output delivery rules and operating modes
+
+The inspection client can deliver only text from Guard's `delta.text` to the business client. Verify the stream ID. Verify the sequence of messages from Guard. An `ack` acknowledges a message sent by the inspection client. It never permits text delivery.
+
+- `completed` permits a normal completion after you verify the counts.
+- `blocked` stops the output.
+- `error` reports an inspection failure or a protocol failure.
+
+After `blocked` or `error`, cancel the upstream model call. A disconnect or a timeout ends the stream. The protocol does not support reconnection or replay.
+
+In **Enforce** mode, the enabled Policies determine delivery. Use `ready.mode` as the authoritative value:
+
+- `window_buffered`: buffers and inspects sections before releasing permitted text.
+- `full_buffered`: Guard holds the complete output until `end`, then inspects it. Guard may release approved output across multiple `delta` events.
+- Requesting `interruptible` does not guarantee immediate output. Either buffering mode may still apply. The inspection client cannot recall released text.
+
+**Monitor / Bypass** report `ready.mode=interruptible`. Guard delivers original fragments without waiting for enforcement.
+
+- Monitor observes the complete output once after `end`. Its `checks` value is `1`.
+- Bypass skips detection. Its `checks` value is `0`.
+
+Guard selects the operating mode when it handles connection establishment. The mode stays the same throughout the connection. `completed` indicates a normal stream end. It does not prove that Guard enforced inspection.
+
+<a id="gateway-stream-end" />
+### Normal completion and protocol limits
+
+Send `end` only after you confirm that the model completed normally. Close the stream if the upstream model fails or truncates the answer.
+
+Limits:
+
+- 300 seconds for each stream.
+- 100,000 delta frames.
+- 100,000 characters in each delta.
+- 1,000,000 characters in total.
+- 1,048,576 characters per WebSocket text message, including its JSON envelope.
+
+<a id="gateway-stream-errors" />
+### Error handling and disconnection
+
+This WebSocket extension applies only to LiteLLM Endpoints. Custom gateways can also implement it. Scan Endpoints do not support it.
+
+Guard rejects the handshake if required credentials are missing or invalid, the Endpoint is missing or disabled, or its type is incompatible. After the connection opens, Guard reports failures through `type=error` frames. Guard does not report failures as HTTP `502` or `504` messages inside the stream:
+
+| Frame `code` | Meaning |
+| --- | --- |
+| `invalid_stream` | The shape of start, delta or end is invalid, or the sequence or the credit use is invalid. |
+| `routing_failed` | The correlation, the route or the pinned version is not available. |
+| `timeout` | The wait for start, the whole stream or the inspection exceeded its deadline. |
+| `protection_failed` | A different inspection failure. |
+
+A stream failure stops delivery. Cancel the upstream call. Reconnection and chunk replay cannot resume the stream. The inspection client cannot recall text it already delivered.
+
+<a id="gateway-litellm-provider-example" />
+## Implementation example: a LiteLLM Guardrails Provider
+
+The TaskLattice Guard Provider illustrates how to connect this guide's inspection interfaces to LiteLLM's Guardrails extension mechanism.
+
+<a id="gateway-litellm-provider-implementation" />
+### Provider implementation and source
+
+A gateway can integrate Guard as one of its Guardrails Providers. The Provider inspects content before and after model calls. The [TaskLattice Guard Provider source](https://github.com/tasklattice/tasklattice-litellm-guard/tree/main/litellm/v1.87.0/overlay/litellm/proxy/guardrails/guardrail_hooks/tasklattice_guard) is an implementation example for LiteLLM 1.87.0. It registers as `tasklattice_guard`. It connects LiteLLM callbacks to the non-streaming API and WebSocket extension in this guide.
+
+| Example file | Responsibility |
+| --- | --- |
+| [\_\_init\_\_.py](https://github.com/tasklattice/tasklattice-litellm-guard/blob/main/litellm/v1.87.0/overlay/litellm/proxy/guardrails/guardrail_hooks/tasklattice_guard/__init__.py) | Registers the Provider, initializes its callback and connects it to LiteLLM's `pre_call` and `post_call` inspection points. |
+| [tasklattice_guard.py](https://github.com/tasklattice/tasklattice-litellm-guard/blob/main/litellm/v1.87.0/overlay/litellm/proxy/guardrails/guardrail_hooks/tasklattice_guard/tasklattice_guard.py) | Extends `GenericGuardrailAPI`, sets `x-api-key` and `Content-Type`, reuses standard HTTP inspection and `action` handling, and provides the streaming callback entry point. |
+| [streaming.py](https://github.com/tasklattice/tasklattice-litellm-guard/blob/main/litellm/v1.87.0/overlay/litellm/proxy/guardrails/guardrail_hooks/tasklattice_guard/streaming.py) | Sends model output to Guard over WebSocket. Delivers only Guard-released text to business clients. Handles sending credits, completion, errors and cancellation. |
+| [endpoints.py](https://github.com/tasklattice/tasklattice-litellm-guard/blob/main/litellm/v1.87.0/overlay/litellm/proxy/guardrails/guardrail_hooks/tasklattice_guard/endpoints.py) and [service.py](https://github.com/tasklattice/tasklattice-litellm-guard/blob/main/litellm/v1.87.0/overlay/litellm/proxy/guardrails/guardrail_hooks/tasklattice_guard/service.py) | Provide connection configuration, credential management and `/verify` validation for the LiteLLM management interface. |
+
+This example shows how to expose Guard as a Guardrails Provider within LiteLLM. Other gateways can implement the same contract through their own plugins or callbacks. Those integrations submit requests, handle results and control output delivery. When reusing the example's streaming implementation, follow the [current Provider streaming limits](#gateway-litellm-provider-limits).
+
+<a id="gateway-litellm-provider-limits" />
+### Current Provider usage limits
+
+Streaming integration through the current LiteLLM 1.87.0 TaskLattice Guard Provider has these additional requirements:
+
+- Enable both **Before model** and **After model** for the correlated input/output flow in this guide. The LiteLLM Call ID sent by the Provider must correspond to a valid input inspection request.
+- **Guard unavailable** must be **Block request** (`fail_closed`). `fail_open` applies only to non-streaming callbacks. The Provider rejects this setting for protected streaming.
+- The current Provider accepts only `ready.mode=full_buffered` or `window_buffered`. It does not support the `interruptible` mode from Monitor / Bypass. Select **Enforce** for protected streaming through this Provider.
+- The Provider supports only one text choice and at most 20 context messages. It rejects tool calls, audio, reasoning content and multiple choices. It does not pass them through as protected text.

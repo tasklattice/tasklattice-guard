@@ -7,6 +7,7 @@ WORKDIR /build/controller
 COPY --link controller/package.json controller/package-lock.json ./
 RUN --mount=type=cache,target=/root/.npm,sharing=locked npm ci --no-audit --no-fund
 COPY --link controller ./
+COPY --link docs/document /build/docs/document
 COPY --link proto /build/proto
 RUN npm run build
 RUN npm prune --omit=dev --omit=optional --no-audit --no-fund
@@ -21,18 +22,35 @@ ENV NODE_ENV=production \
     CONTROLLER_PROTO_PATH=/opt/tasklattice/guard-controller/proto/tasklattice/guard/control/v1/runner_control.proto \
     TALI_HELM_CHART=/opt/tali/helm/tali-guard.tgz
 WORKDIR /opt/tasklattice/guard-controller
+# Keep common troubleshooting commands available inside Controller Pods.
 RUN apt-get update \
-    && apt-get install --yes --no-install-recommends antiword ca-certificates \
+    && apt-get install --yes --no-install-recommends \
+        antiword \
+        ca-certificates \
+        curl \
+        dnsutils \
+        iproute2 \
+        iputils-ping \
+        jq \
+        less \
+        netcat-openbsd \
+        openssl \
+        procps \
+        vim-tiny \
+        wget \
     && rm -rf /var/lib/apt/lists/* \
     && useradd --system --uid 65532 --no-create-home controller
 COPY --link --from=build /build/controller/package.json ./
 COPY --link --from=build /build/controller/node_modules ./node_modules
 COPY --link --from=build /build/controller/dist ./dist
 COPY --link --from=build /build/controller/dist-server ./dist-server
+COPY --link --from=build /build/controller/scripts/runtime ./scripts/runtime
 COPY --link --from=build /build/controller/server/db/migrations ./server/db/migrations
 COPY --link --from=build /build/proto ./proto
 COPY --link runner/toolkit/policy_library/assets ./policy-catalog
 COPY --link dist/runtime-chart/tali-guard.tgz /opt/tali/helm/tali-guard.tgz
+ARG TALI_BUILD_INFO
+ENV TALI_BUILD_INFO=${TALI_BUILD_INFO}
 USER 65532:65532
 EXPOSE 8080 9090
 CMD ["node", "dist-server/server/index.js"]

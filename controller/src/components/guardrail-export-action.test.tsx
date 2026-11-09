@@ -1,0 +1,122 @@
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type { Guardrail } from "@/lib/api";
+import { downloadGuardrailPackage, getControllerGuardrail, getDeploymentCapabilities } from "@/lib/controller-api";
+import { GuardrailRowActions } from "./guardrail-row-actions";
+import { toast } from "./ui/notifications";
+
+const auth = vi.hoisted(() => ({ user: { role: "admin" } }));
+vi.mock("@/lib/auth", () => ({ useAuth: () => auth }));
+vi.mock("@/lib/controller-api", async original => ({ ...(await original<typeof import("@/lib/controller-api")>()),
+  getControllerGuardrail: vi.fn(), downloadGuardrailPackage: vi.fn(), getDeploymentCapabilities: vi.fn() }));
+vi.mock("./ui/notifications", () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
+vi.mock("react-i18next", () => ({ useTranslation: () => ({ t: (key: string, values?: Record<string, unknown>) => values && "selected" in values ? `${key}:${values.selected}/${values.total}` : key, i18n: { language: "en" } }) }));
+afterEach(() => { cleanup(); vi.clearAllMocks(); auth.user.role = "admin"; });
+
+const NEWEST = "20261007-010000.000Z", OLDER = "20261001-010000.000Z", PREVIOUS = "20260901-010000.000Z";
+const version = (id: string, extra: Record<string, unknown> = {}) => ({ version: id, status: "ready", artifactId: `artifact-${id}`, validationRunId: `run-${id}`, createdAt: "2026-10-07T01:00:00.000Z", ...extra });
+beforeEach(() => {
+  vi.mocked(getDeploymentCapabilities).mockResolvedValue({ packageExport: { available: true, sourceId: "bank-uat" }, packageImport: { available: false } });
+  vi.mocked(getControllerGuardrail).mockResolvedValue({ id: "guard-1",
+    versions: [version("20261008-010000.000Z", { status: "failed", artifactId: null }), version(NEWEST), version(OLDER), version(PREVIOUS, { validationRunId: null })] } as never);
+});
+
+function open(published = true) {
+  const guardrail = { id: "guard-1", name: "Support", status: published ? "ready" : "not_ready", published_current: false } as Guardrail;
+  const navigate = vi.fn();
+  render(<QueryClientProvider client={new QueryClient()}><div onClick={navigate}><div onClick={event => event.stopPropagation()}><GuardrailRowActions guardrail={guardrail} /></div></div></QueryClientProvider>);
+  fireEvent.click(screen.getByRole("button", { name: "routing.actions: Support" }));
+  return navigate;
+}
+async function sheet() {
+  fireEvent.click(screen.getByRole("menuitem", { name: "guardrails.exportEllipsis" }));
+  const dialog = await screen.findByRole("dialog", { name: "guardrailPackage.exportTitle" });
+  await within(dialog).findByText(NEWEST);
+  return dialog;
+}
+const checked = (dialog: HTMLElement) => within(dialog).getAllByRole("checkbox").filter(box => (box as HTMLInputElement).checked).map(box => box.getAttribute("aria-label"));
+
+describe("Guardrail release package export", () => {
+  it("opens a version choice with nothing preselected and downloads exactly what was chosen", async () => {
+    vi.mocked(downloadGuardrailPackage).mockResolvedValue("guard-1.guardrail.zip");
+    const navigate = open();
+    const dialog = await sheet();
+    expect(downloadGuardrailPackage).not.toHaveBeenCalled();
+    expect(within(dialog).queryByText("20261008-010000.000Z")).toBeNull();
+    expect(checked(dialog)).toEqual([]);
+    expect((within(dialog).getByRole("button", { name: "guardrailPackage.exportDownload" }) as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.click(within(dialog).getByRole("checkbox", { name: NEWEST }));
+    expect(within(dialog).getByText("guardrailPackage.selectedCount:1/3")).toBeTruthy();
+    fireEvent.click(within(dialog).getByRole("button", { name: "guardrailPackage.exportDownload" }));
+    await waitFor(() => expect(downloadGuardrailPackage).toHaveBeenCalledExactlyOnceWith("guard-1", [NEWEST]));
+    await waitFor(() => expect(toast.success).toHaveBeenCalled());
+    expect(navigate).not.toHaveBeenCalled();
+  });
+
+  it("exports pending imported versions without local test evidence", async () => {
+    vi.mocked(getControllerGuardrail).mockResolvedValue({ id: "guard-1", versions: [version(NEWEST, { origin: "imported" }), version(PREVIOUS, { origin: "imported", status: "pending", validationRunId: null })] } as never);
+    vi.mocked(downloadGuardrailPackage).mockResolvedValue("guard-1.guardrail.zip");
+    open();
+    const dialog = await sheet();
+    expect((within(dialog).getByRole("checkbox", { name: PREVIOUS }) as HTMLInputElement).disabled).toBe(false);
+    fireEvent.click(within(dialog).getByRole("checkbox", { name: NEWEST }));
+    fireEvent.click(within(dialog).getByRole("button", { name: "guardrailPackage.exportDownload" }));
+    await waitFor(() => expect(downloadGuardrailPackage).toHaveBeenCalledExactlyOnceWith("guard-1", [NEWEST]));
+  });
+
+  it("includes several versions in one package, for a first migration or a rollback target", async () => {
+    vi.mocked(downloadGuardrailPackage).mockResolvedValue("guard-1-2-versions.guardrail.zip");
+    open();
+    const dialog = await sheet();
+    fireEvent.click(within(dialog).getByRole("checkbox", { name: OLDER }));
+    fireEvent.click(within(dialog).getByRole("checkbox", { name: NEWEST }));
+    expect(within(dialog).getByText("guardrailPackage.selectedCount:2/3")).toBeTruthy();
+    fireEvent.click(within(dialog).getByRole("button", { name: "guardrailPackage.exportDownload" }));
+    await waitFor(() => expect(downloadGuardrailPackage).toHaveBeenCalledExactlyOnceWith("guard-1", [OLDER, NEWEST]));
+  });
+
+  it("does not require an old test report to export immutable content", async () => {
+    open();
+    const dialog = await sheet();
+    expect((within(dialog).getByRole("checkbox", { name: PREVIOUS }) as HTMLInputElement).disabled).toBe(false);
+    expect(within(dialog).queryByText("guardrailPackage.exportNoTest")).toBeNull();
+    expect((within(dialog).getByRole("button", { name: "guardrailPackage.exportDownload" }) as HTMLButtonElement).disabled).toBe(true);
+  });
+
+  it("keeps the sheet open with the error so the export can be retried", async () => {
+    vi.mocked(downloadGuardrailPackage).mockRejectedValueOnce(new Error("Version lacks test evidence"));
+    open();
+    const dialog = await sheet();
+    fireEvent.click(within(dialog).getByRole("checkbox", { name: NEWEST }));
+    fireEvent.click(within(dialog).getByRole("button", { name: "guardrailPackage.exportDownload" }));
+    expect(await within(dialog).findByText("Version lacks test evidence")).toBeTruthy();
+    vi.mocked(downloadGuardrailPackage).mockResolvedValue("guard-1.guardrail.zip");
+    fireEvent.click(within(dialog).getByRole("button", { name: "guardrailPackage.exportDownload" }));
+    await waitFor(() => expect(toast.success).toHaveBeenCalled());
+  });
+
+  it("exports without deployment capabilities or signing configuration", async () => {
+    vi.mocked(getDeploymentCapabilities).mockResolvedValue({ packageExport: { available: false, sourceId: null }, packageImport: { available: false } });
+    open();
+    const dialog = await sheet();
+    expect(within(dialog).queryByText("guardrailPackage.exportUnavailable")).toBeNull();
+    fireEvent.click(within(dialog).getByRole("checkbox", { name: NEWEST }));
+    expect(getDeploymentCapabilities).not.toHaveBeenCalled();
+    expect((within(dialog).getByRole("button", { name: "guardrailPackage.exportDownload" }) as HTMLButtonElement).disabled).toBe(false);
+  });
+
+  it("opens export independently of runtime readiness", () => {
+    open(false);
+    const item = screen.getByRole("menuitem", { name: "guardrails.exportEllipsis" });
+    expect(item.getAttribute("disabled")).toBeNull();
+  });
+
+  it("keeps export available to readers without exposing write actions", () => {
+    auth.user.role = "viewer";
+    open();
+    expect(screen.getByRole("menuitem", { name: "guardrails.exportEllipsis" })).toBeTruthy();
+    expect(screen.queryByRole("menuitem", { name: "routing.delete" })).toBeNull();
+    expect(screen.queryByRole("menuitem", { name: "routing.duplicate" })).toBeNull();
+  });
+});

@@ -5,13 +5,11 @@ import type { ControllerDatabase } from "../db/client.js";
 import { ControlPlaneService } from "./control-plane.js";
 
 describe("Guardrail publication", () => {
-  it("reactivates the Default Guardrail's ready current-draft version without recompiling", async () => {
+  it("returns the existing version when the same tested draft is published again, changing nothing", async () => {
     const guardrail = {
-      id: "guardrail-default",
+      id: "guardrail-custom",
       draftRevision: 2,
       status: "active",
-      activeVersion: "20260904-010000.001Z",
-      activeArtifactId: "artifact-1",
     };
     const validation = { id: "validation-2", sourceDraftRevision: 2, status: "passed", createdAt: new Date("2026-09-04T02:00:00.002Z") };
     const readyVersion = {
@@ -22,20 +20,14 @@ describe("Guardrail publication", () => {
       status: "ready",
       artifactId: "artifact-2",
     };
-    const defaultRouter = {
-      id: "router-default",
-      guardrailId: guardrail.id,
-      guardrailVersion: "20260904-010000.001Z",
-      endpointId: null,
-      poolId: "default",
-      routeOrder: 100,
-      enabled: true,
-      trafficScope: { combinator: "and", conditions: [] },
-    };
-    const selectResults = [[guardrail], [validation], [readyVersion], [defaultRouter]];
+    const selectResults = [[guardrail], [{ version: readyVersion, artifact: {
+      plan: { compiler_version: "tasklattice-controller-plan-v1" },
+      compilerVersion: "tasklattice-nemo-config-v1", actionBindings: [],
+    } }]];
     const select = vi.fn(() => {
       const builder = {} as Record<string, unknown>;
       builder.from = vi.fn(() => builder);
+      builder.innerJoin = vi.fn(() => builder);
       builder.where = vi.fn(() => builder);
       builder.orderBy = vi.fn(() => builder);
       builder.limit = vi.fn(async () => selectResults.shift() ?? []);
@@ -59,7 +51,7 @@ describe("Guardrail publication", () => {
         inserted.push(value);
       }),
     }));
-    const tx = { select, update, insert };
+    const tx = { select, update, insert, execute: vi.fn(async () => []) };
     const db = {
       transaction: vi.fn(async (callback: (transaction: typeof tx) => Promise<unknown>) => callback(tx)),
     } as unknown as ControllerDatabase;
@@ -70,27 +62,9 @@ describe("Guardrail publication", () => {
       compilerAvailable: false,
     });
 
-    expect(result).toMatchObject({ version: "20260904-020000.002Z", generation: 23, status: "ready" });
-    expect(updatePayloads).toContainEqual({ guardrailVersion: "20260904-020000.002Z" });
-    expect(updatePayloads).toContainEqual(expect.objectContaining({
-      status: "active",
-      activeVersion: "20260904-020000.002Z",
-      activeArtifactId: "artifact-2",
-      desiredGeneration: 23,
-    }));
-    expect(updatePayloads).toContainEqual(expect.objectContaining({ guardrailVersion: "20260904-020000.002Z" }));
-    expect(inserted).toContainEqual(expect.objectContaining({
-      kind: "runner.desired_state_changed",
-      payload: expect.objectContaining({ version: "20260904-020000.002Z", artifactId: "artifact-2", generation: 23 }),
-    }));
-    expect(inserted).toContainEqual(expect.objectContaining({
-      kind: "guardrail.version_activated",
-      actorId: "admin-1",
-      detail: { version: "20260904-020000.002Z", generation: 23, reusedArtifact: true },
-    }));
-    expect(inserted).toContainEqual(expect.objectContaining({
-      kind: "router.default.restored",
-      detail: expect.objectContaining({ guardrailVersion: "20260904-020000.002Z" }),
-    }));
+    expect(result).toMatchObject({ version: "20260904-020000.002Z", generation: 18, status: "ready" });
+    // No pointer moves and nothing is redistributed: the version already exists.
+    expect(updatePayloads.filter((value) => "desiredGeneration" in value)).toEqual([]);
+    expect(inserted).toEqual([]);
   });
 });

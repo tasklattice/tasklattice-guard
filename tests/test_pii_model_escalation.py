@@ -97,7 +97,7 @@ async def test_nemo_pii_flow_short_circuits_local_hits_and_escalates_to_qwen() -
     )
 
     assert status == "passed"
-    assert model_inputs == ["Passport identifier X1234567"]
+    assert model_inputs == ["Passport identifier X1234567", "A normal sentence."]
     assert results[0]["outputContent"] == "Contact [PII_REDACTED]"
     assert results[1]["outputContent"] == "[PII_REDACTED]"
     assert results[2]["outputContent"] == "A normal sentence."
@@ -128,7 +128,7 @@ async def test_nemo_pii_flow_short_circuits_local_hits_and_escalates_to_qwen() -
         )
     )
     assert strict_status == "passed"
-    assert model_inputs == ["Passport identifier X1234567", "A normal sentence."]
+    assert model_inputs == ["Passport identifier X1234567", "A normal sentence.", "A normal sentence."]
     assert strict_results[0]["escalated"] is True
     assert strict_results[0]["modelInvocations"] == 1
 
@@ -143,26 +143,26 @@ def _plan(*, safety_level: str = "balanced") -> dict[str, object]:
                 "capability": "pii",
                 "contract_ref": CONTRACT_PII_EXACT,
                 "phases": ["input"],
-                "on_unsafe": "redact",
+                "on_unsafe": "transform",
                 "trigger": {"type": "always"},
-                "parameters": [],
+                "parameters": [["evaluation_view", "previous_output"], ["precedence", "0"]],
             },
             {
                 "id": "pii:semantic",
                 "capability": "pii",
                 "contract_ref": CONTRACT_PII_SEMANTIC,
                 "phases": ["input"],
-                "on_unsafe": "redact",
+                "on_unsafe": "transform",
                 "trigger": {
                     "type": "on_result",
                     "step_ref": "pii:exact",
                     "verdicts": (
-                        ["safe", "uncertain"]
+                        ["not_matched", "unknown"]
                         if safety_level == "strict"
-                        else ["uncertain"]
+                        else ["unknown"]
                     ),
                 },
-                "parameters": [],
+                "parameters": [["evaluation_view", "previous_output"], ["precedence", "1"]],
             },
         ],
         "modules": [{
@@ -186,7 +186,7 @@ def _case(id: str, content: str, expected: str) -> dict[str, object]:
     return {
         "id": id,
         "name": id,
-        "policyId": "builtin-pii",
+        "policyId": "pii-semantic",
         "phase": "input",
         "content": content,
         "expectedDecision": expected,

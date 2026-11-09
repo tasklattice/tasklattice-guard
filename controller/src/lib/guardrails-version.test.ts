@@ -7,12 +7,12 @@ vi.mock("./controller-api", () => ({ getControllerGuardrail: vi.fn() }));
 describe("Immutable Guardrail version projection", () => {
   it("uses the released Policy bindings and delivery instead of the edited draft", async () => {
     const fixture = {
-      id: "guard-1", activeVersion: "v1",
+      id: "guard-1", latestVersion: "v1",
       draftConfig: { safetyLevel: "strict", outputDelivery: "interruptible", policyBindings: [{ policyId: "new-draft-policy" }] },
       versions: [{ guardrailId: "guard-1", version: "v1", sourceDraftRevision: 1, runtimeProfile: "llmrails-colang2",
         status: "ready", createdAt: "2026-09-05T00:00:00Z", failureReason: null,
         plan: { safety_level: "balanced", output_delivery: "window_buffered",
-          steps: [{ id: "pii-rule", capability: "pii", phases: ["output"], on_unsafe: "redact" }],
+          steps: [{ id: "pii-rule", capability: "pii", phases: ["output"], on_unsafe: "transform" }],
           policy_bindings: [{ policy_id: "released-policy", policy_version: "1.0.0", enabled_rule_ids: ["pii"], enabled_rails: ["output"] }],
         },
       }],
@@ -28,7 +28,7 @@ describe("Immutable Guardrail version projection", () => {
 
   it("includes compiled custom Colang flows even when there are no declarative steps", async () => {
     const fixture = {
-      id: "guard-1", activeVersion: "v1", draftConfig: {},
+      id: "guard-1", draftConfig: {},
       versions: [{ guardrailId: "guard-1", version: "v1", sourceDraftRevision: 1, runtimeProfile: "llmrails-colang2",
         status: "ready", createdAt: "2026-09-05T00:00:00Z", failureReason: null,
         plan: { steps: [], output_delivery: "full_buffered" },

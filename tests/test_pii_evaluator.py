@@ -19,7 +19,7 @@ from runner.toolkit.runtime.contracts import (
 async def test_local_pii_is_safe_without_a_dependent_contract() -> None:
     result = await PiiEvaluator().evaluate(_request("A normal sentence."))
 
-    assert result.verdict == "safe"
+    assert result.verdict == "not_matched"
     assert result.usage.model_invocations == 0
 
 
@@ -29,14 +29,14 @@ async def test_local_pii_returns_uncertain_when_semantic_contract_is_triggered()
         _request("Passport identifier X1234567", semantic=True)
     )
 
-    assert result.verdict == "uncertain"
-    assert "semantic PII evaluator" in (result.reason or "")
+    assert result.verdict == "unknown"
+    assert "semantic review is required" in (result.reason or "")
     assert result.usage.model_invocations == 0
 
     ordinary = await PiiEvaluator().evaluate(
         _request("A normal sentence.", semantic=True)
     )
-    assert ordinary.verdict == "safe"
+    assert ordinary.verdict == "unknown"
 
 
 @pytest.mark.asyncio
@@ -45,7 +45,7 @@ async def test_exact_local_pii_hit_short_circuits_with_span_redaction() -> None:
         _request("Email alice@example.com for help.", semantic=True)
     )
 
-    assert result.verdict == "unsafe"
+    assert result.verdict == "matched"
     assert result.content == "Email [PII_REDACTED] for help."
     assert result.findings[0].taxonomy_id == "TALI-PRIVACY-PII"
     assert result.usage.model_invocations == 0
@@ -57,7 +57,7 @@ def _request(content: str, *, semantic: bool = False) -> EvaluationRequest:
         capability="pii",
         contract_ref=CONTRACT_PII_EXACT,
         phases=("input",),
-        on_unsafe="redact",
+        on_unsafe="transform",
     )
     steps = (exact,)
     if semantic:
@@ -67,11 +67,11 @@ def _request(content: str, *, semantic: bool = False) -> EvaluationRequest:
                 capability="pii",
                 contract_ref=CONTRACT_PII_SEMANTIC,
                 phases=("input",),
-                on_unsafe="redact",
+                on_unsafe="transform",
                 trigger=EvaluationTrigger(
                     type="on_result",
                     step_ref=exact.id,
-                    verdicts=("uncertain",),
+                    verdicts=("unknown",),
                 ),
             ),
         )
@@ -102,7 +102,23 @@ def _request(content: str, *, semantic: bool = False) -> EvaluationRequest:
         deadline=time.monotonic() + 5,
         parameters=(),
         capability="pii",
-        proposed_action="redact",
+        proposed_action="transform",
         plan=plan,
         binding=binding,
     )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("content", ["My name is Alice Morgan.", "客户姓名是张三。", "请问护照号是什么？", "银行卡号是什么？"])
+async def test_unmatched_text_requires_semantic_review_without_keyword_gate(content):
+    result = await PiiEvaluator().evaluate(_request(content, semantic=True))
+    assert result.verdict == "unknown"
+    assert result.content == content
+    assert not result.findings
+
+
+@pytest.mark.asyncio
+async def test_document_labels_alone_are_not_exact_personal_information():
+    result = await PiiEvaluator().evaluate(_request("请问护照号是什么？"))
+    assert result.verdict == "not_matched"
+    assert result.content == "请问护照号是什么？"

@@ -41,7 +41,7 @@ async function until(label, read, ready) {
   throw Error(`Timed out: ${label}. Inspect retained test resources; do not bypass validation.`);
 }
 const credentials = secret(`${release}-bootstrap-admin`);
-const auth = await call('/api/auth/sign-in/email', { body: { email: credentials.email, password: credentials.password } });
+const auth = await call('/api/auth/sign-in/username', { body: { username: credentials.username, password: credentials.password } });
 cookie = auth.response.headers.getSetCookie().map(x => x.split(';')[0]).join('; ');
 assert(cookie);
 const before = (await call('/api/v1/model-configuration')).data;
@@ -111,8 +111,8 @@ for (const [scope, expected] of [['Product support', 'allow'], ['Cooking and rec
   assert.deepEqual(saved.excludedTestCaseIds, []);
   assert.equal(saved.draftRevision, 1);
   const requested = saved.latestValidationRun?.status === 'passed' ? saved.latestValidationRun
-    : (await call('/api/v1/validation-runs', { body: { guardrailId: created.id }, expected: 202 })).data;
-  const validation = await until('inherited Topic validation', async () => (await call(`/api/v1/validation-runs/${requested.id}`)).data,
+    : (await call(`/api/v1/guardrails/${encodeURIComponent(created.id)}/test-runs`, { body: { guardrailId: created.id }, expected: 202 })).data;
+  const validation = await until('inherited Topic validation', async () => (await call(`/api/v1/test-runs/${requested.id}`)).data,
     d => ['passed', 'failed'].includes(d.status));
   assert.equal(validation.status, 'passed', JSON.stringify(validation.results));
   assert(validation.metrics.total > 0);
@@ -122,7 +122,7 @@ for (const [scope, expected] of [['Product support', 'allow'], ['Cooking and rec
   const detail = await until('signed publication', async () => (await call(path)).data, d => {
     const v = d.versions.find(v => v.version === publication.version);
     assert.notEqual(v?.status, 'failed', v?.failureReason);
-    return d.activeVersion === publication.version && v?.status === 'ready';
+    return v?.status === 'ready';
   });
   const version = detail.versions.find(v => v.version === publication.version);
   assert(version.artifact.signature);
@@ -147,11 +147,11 @@ for (const [scope, expected] of [['Product support', 'allow'], ['Cooking and rec
     assert(verdict.effective_release_id);
     if (test.decision === 'allow') assert(!verdict.texts.length || verdict.texts.join('') === test.text);
     if (test.decision === 'transform') {
-      assert.equal(verdict.action, 'redirect');
+      assert.equal(verdict.action, 'block');
       assert.equal(verdict.texts.join(''), 'I can help with topics inside the configured allowed topics.');
-      assert(verdict.findings.some(f => f.verdict === 'unsafe' && f.policy_id === 'builtin-topic-safety'));
+      assert(verdict.findings.some(f => f.verdict === 'matched' && f.policy_id === 'builtin-topic-safety'));
     }
-    if (test.failure) assert(!verdict.findings.some(f => f.verdict === 'unsafe'), 'Infrastructure failure must not masquerade as a detected threat.');
+    if (test.failure) assert(!verdict.findings.some(f => f.verdict === 'matched'), 'Infrastructure failure must not masquerade as a detected threat.');
   }
   const result = { scope, guardrailId: created.id, version: publication.version, artifactId: version.artifactId,
     checksum: version.artifact.checksum, inheritedCases: validation.metrics.total, runtimeCases: cases.length };

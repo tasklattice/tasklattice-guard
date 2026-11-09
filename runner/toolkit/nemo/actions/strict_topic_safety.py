@@ -4,7 +4,10 @@ from functools import wraps
 from inspect import signature
 from threading import Lock
 from typing import Any
+from ...runtime.failures import ModelResponseError
+from .model_call import record_native_response, record_native_failure
 
+from runner.model_validation_diagnostics import instrument_native_validation_http, record_validation_error
 
 _INSTALL_LOCK = Lock()
 
@@ -19,16 +22,21 @@ class _StrictTopicControlModel:
         return getattr(self._delegate, name)
 
     async def generate_async(self, *args: Any, **kwargs: Any) -> Any:
-        response = await self._delegate.generate_async(*args, **kwargs)
-        content = getattr(response, "content", None)
-        if not isinstance(content, str) or content.strip().casefold() not in {
-            "on-topic",
-            "off-topic",
-        }:
-            raise ValueError(
-                "Topic Control model must return exactly 'on-topic' or 'off-topic'."
-            )
-        return response
+        instrument_native_validation_http(self._delegate)
+        try:
+            response = await self._delegate.generate_async(*args, **kwargs)
+            content = getattr(response, "content", None)
+            if not isinstance(content, str) or content.strip().casefold() not in {
+                "on-topic",
+                "off-topic",
+            }:
+                raise ModelResponseError("response_schema", "InvalidTopicLabel")
+            record_native_response(response)
+            return response
+        except BaseException as error:
+            record_native_failure(error)
+            record_validation_error(error)
+            raise
 
     async def stream_async(self, *args: Any, **kwargs: Any):
         async for chunk in self._delegate.stream_async(*args, **kwargs):

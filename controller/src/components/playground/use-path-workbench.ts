@@ -1,3 +1,4 @@
+import { useTranslation } from "react-i18next";
 import { useMemo, useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import {
@@ -6,7 +7,7 @@ import {
 } from "@/lib/traffic-routing-api";
 import { getEndpoints } from "@/lib/endpoints-api";
 import { requestController } from "@/lib/controller-api";
-import { useRoutingText } from "@/components/traffic-routing/form";
+
 import {
   pathTestSchema,
   redactHttpRequest,
@@ -31,7 +32,7 @@ export type PathTestRecord = {
   error?: string;
 };
 export function usePathWorkbench(active: boolean) {
-  const t = useRoutingText();
+  const { t } = useTranslation();
   const initial = new URLSearchParams(window.location.search);
   const [target, setTarget] = useState<"router" | "endpoint">(
     initial.has("endpoint") ? "endpoint" : "router",
@@ -79,7 +80,7 @@ export function usePathWorkbench(active: boolean) {
   const endpointKey = endpoint?.id ?? "";
   // Keep an independent editable document per Endpoint, without synchronizing derived selections through effects.
   const template = useMemo(
-    () => endpointRequest(endpointKey, endpoint?.protocol ?? "http"),
+    () => endpointRequest(endpointKey, endpoint?.protocol ?? "litellm"),
     [endpointKey, endpoint?.protocol],
   );
   const draft =
@@ -105,41 +106,32 @@ export function usePathWorkbench(active: boolean) {
   });
   const loading = routersQuery.isLoading || endpointsQuery.isLoading;
   const unavailable = loading
-    ? t("正在加载测试目标…", "Loading test targets…")
+    ? t("routing.loadingTestTargets")
     : target === "router"
       ? !router
-        ? t("请先创建 Router。", "Create a Router to test routing.")
+        ? t("routing.createARouterToTestRouting")
         : configuration === "published" && (!router.activeRevision || !endpoint)
-          ? t(
-              "已发布测试需要发布版本及绑定的 Endpoint。",
-              "Published tests require a published revision and a bound Endpoint.",
-            )
+          ? t("routing.publishedTestsRequireAPublishedRevisionAndABound")
           : ""
       : !endpoint
-        ? t(
-            "请先创建 Endpoint。",
-            "Create an Endpoint to test its request path.",
-          )
+        ? t("routing.createAnEndpointToTestItsRequestPath")
         : "";
   const loadExample = () =>
     setDraft(
       target === "router"
         ? routerRequest()
-        : endpointRequest(endpointKey, endpoint?.protocol ?? "http"),
+        : endpointRequest(endpointKey, endpoint?.protocol ?? "litellm"),
     );
   const importSource = (source: string) => {
     const imported = importRequest(source);
     if (target === "endpoint") {
       const expected = endpointRequest(
         endpointKey,
-        endpoint?.protocol ?? "http",
+        endpoint?.protocol ?? "litellm",
       ).url;
       if (imported.method !== "POST" || imported.url !== expected)
         throw new Error(
-          t(
-            "导入请求必须使用所选 Endpoint 的 POST 路径。",
-            "Use the selected Endpoint's POST path.",
-          ),
+          t("routing.useTheSelectedEndpointSPOSTPath"),
         );
       const apiKey = imported.headers.find(
         (h) => h.name.toLowerCase() === "x-api-key",
@@ -207,7 +199,7 @@ export function usePathWorkbench(active: boolean) {
       label: target === "router" ? router!.name : endpoint!.name,
       configuration:
         target === "router"
-          ? `${configuration === "draft" ? t("草稿", "Draft") : t("已发布", "Published")} r${input.expectedRevision}`
+          ? `${configuration === "draft" ? t("routing.draft") : t("routing.published")} r${input.expectedRevision}`
           : "Runner Endpoint",
       input: { ...safe, request: redactHttpRequest(input.request) },
     };

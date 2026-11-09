@@ -1,0 +1,187 @@
+---
+id: "glossary-definition"
+title: "Policy Library：Policy、Rule 与实现"
+summary: "从业务要求拆分 Rule，理解检测器、Rail、命中后处理、测试与版本。"
+order: 3
+---
+Policy Library 保存可复用的保护能力。绑定到 Guardrail 前，先审阅 Policy 的 Rules、参数和测试，再选择确切版本。
+
+<a id="term-policy" />
+## Policy
+
+Policy 将 Rules 组合为一项保护能力，例如防止客户信息泄露。它包含 Test Cases、可选参数、运行契约和合规来源。**合规**页签展示这些来源。
+
+合规文本本身不会执行检测，Rule 才定义可执行行为。多个 Guardrail 可以复用同一个 Policy Version，并使用各自经过审阅的参数。
+
+[Policy Studio](/document/operator/operator-create-policy)用于创建、测试和发布声明式 Policy。
+
+<a id="term-rule" />
+## Rule
+
+Rule 是一项可执行的业务检查，具有稳定 ID，并定义以下选择：
+
+- **阶段：** Input、Output，或检测器支持的两个阶段。
+- **检测器与参数：** 如何识别问题。
+- **风险等级：** 命中的潜在影响。
+- **动作：** 命中后请求怎样处理。
+
+Rule ID 连接配置、测试结果与运行发现。禁用 Rule 会改变编译行为，需要测试修改后的 Guardrail 草稿。
+
+按“业务要求、检查阶段、检测器、参数、证据、风险、动作、测试”的顺序审阅 Rule。
+
+<a id="term-rule-implementation" />
+### 选择检测器
+
+平台注册了九种检测器。它们是实现能力，不是九种不同的 Rule 格式。
+
+| 检测器 | 用途 | 阶段与要求 |
+| --- | --- | --- |
+| `text/regex` | 匹配格式，可进一步校验候选值。 | Input 或 Output，支持替换。 |
+| `text/keyword` | 匹配明确的词或短语。 | Input 或 Output，支持替换。 |
+| `text/conditions` | 组合全部、任一、排除或同句条件。 | Input 或 Output，不提供文本替换。 |
+| `code/fenced-block` | 检测 Markdown 代码围栏、语言与上下文。 | Input 或 Output，不分析代码执行。 |
+| `agent/indirect-injection` | 通过本地规则检测外部内容中的指令操纵。 | 仅 Input，Studio 验收目前存在外部来源限制。 |
+| `agent/memory-poisoning` | 通过本地规则检测记忆中的指令操纵。 | 仅 Input，不验证事实准确性，同样受 Studio 限制。 |
+| `model/classifier` | 按兼容模型契约分类内容。 | 阶段取决于分类类型，需要活动的能力绑定。 |
+| `model/grounding` | 检查参考资料是否支持回答。 | 仅 Output，需要问题、来源与活动绑定。 |
+| `service/formal-verification` | 检查回答是否符合版本化形式约束。 | 仅 Output，需要问题上下文与活动证明服务绑定。 |
+
+Studio 支持自建模型分类和形式验证 Rule。两个 `agent/` 选项虽已出现在表单中，但外部来源验收测试目前无法完成。请使用已发布的内置 Policy，并在 Guardrail 中测试真实场景。参见[当前编写限制](/document/operator/operator-create-policy#operator-policy-declarative)。
+
+模型分类支持主题、安全、越狱和 PII 契约。越狱与主题控制使用 Input。普通聊天模型未必实现这些契约。
+
+Regex 校验器包括 `date`、`weighted_checksum` 和 `luhn`。它们在同一检测器内校验候选值，不是独立检测器。配置的校验器必须全部通过，Rule 才命中。
+
+例如，以下 Rule 遮盖 Output 中的客户编号：
+
+```yaml
+id: customer-id
+name: Redact customer identifiers
+stages: [output]
+detector:
+  ref: text/regex
+  version: 1.0.0
+  parameters:
+    expression: '\bCUS-\d{6}\b'
+risk_level: medium
+on_match:
+  action: transform
+  replacement: '[CUSTOMER_ID]'
+metadata:
+  taxonomy_ids: [TALI-PRIVACY-PII]
+```
+
+`Customer ID CUS-123456` 的预期结果是 `Customer ID [CUSTOMER_ID]`。要阻断整段回复，选择 `block` 并移除 `replacement`，再测试修改后的行为。
+
+业务身份属于 Rule，可复用的检测机制属于检测器。新格式可以配置不同偏移、权重与映射，复用现有 regex 校验器。
+
+检测器名称本身不能证明覆盖能力。本地模式不代表通用语义理解。模型与服务检测需要兼容依赖和真实执行，没有执行的模型用例不能算作通过。
+
+<a id="term-rule-risk-severity" />
+### 分别设置风险与动作
+
+风险等级描述潜在影响，请求动作描述处理方式。Guardrail Binding 可以覆盖允许调整的动作，但不能覆盖版本化的 Rule 风险。
+
+| 风险等级 | 含义 | 示例 |
+| --- | --- | --- |
+| `critical` | 可能严重损害数据、权限或业务。 | 操纵高权限 Agent 执行破坏性操作。 |
+| `high` | 涉及重要安全边界或敏感数据。 | 生产凭据或未授权执行。 |
+| `medium` | 实质性的内容或业务风险。 | 普通个人信息，或缺少依据的重要回答。 |
+| `low` | 有限的业务或内容规范问题。 | 非敏感跑题内容或品牌措辞。 |
+| `informational` | 不判断严重程度的观察。 | 用于报表的特征识别。 |
+
+等级不证明危害已发生，也不表示人工确认。发现缺少版本化风险时显示 **Unclassified**，不等于 Low 或 Informational。
+
+High Rule 无论 allow、block 还是 transform 都保持 High。Low Rule 也可以 block，更严格的处理不会提高风险等级。
+
+Confidence 描述检测器对本次判断的把握。缺失时显示未提供。不同检测器的分数可能不可比较，99% 不代表 Critical。
+
+风险与日志级别共同决定原始正文采集。INFO 不采正文；DEBUG 在任一阶段命中 Medium 及以上时采集关联调用；TRACE 采集实际收到的全部原文。动作不改变门槛。参见[采集规则](/document/admin/concept-logs#concept-event-log-levels)。
+
+错误、超时和依赖不可用属于运行失败，不会自动成为 Critical 发现。安全结果也不会产生 Low 发现。
+
+<a id="term-rule-actions" />
+### 处理命中的 Rule
+
+`on_match.action` 请求以下三种动作之一：
+
+| 动作 | 含义 | 示例 |
+| --- | --- | --- |
+| `allow` | 记录命中并继续。 | 正式执行前观察新 Rule。 |
+| `block` | 阻止当前内容继续。 | 不让违规 Input 进入模型。 |
+| `transform` | 返回调用方必须使用的替换文本或有效补丁。 | 将手机号替换为 `[PHONE]`。 |
+
+独立结果按 **block → transform → allow** 合并。allow 不会覆盖另一条 Rule 的 block。
+
+Rules 按顺序执行，每条读取前一条处理后的文本。block 结束当前链路。多个加权 Router Target 不会形成 Rule 执行链。
+
+文本替换可以针对命中片段或全文。缺少必需替换内容、补丁冲突或变换失败时按 fail-closed 处理。未改变的不安全文本不能算作转换成功。
+
+重新生成、澄清、fallback 和人工接管由应用负责。阻断后生成了新回答，也必须重新送检。
+
+运行时 Decision 也使用 allow、block 和 transform。适配器可映射为 `NONE`、`BLOCKED` 和 `GUARDRAIL_INTERVENED`。HTTP `200` 本身不代表放行。
+
+<a id="term-rule-effective-action" />
+### 检查默认值与 Binding 覆盖
+
+Policy 定义 Rule 的默认动作，规范化运行契约将该值称为 `effect`。Guardrail Binding 可以覆盖整个 Policy 或单条 Rule 的动作。
+
+通常按 **Rule 覆盖 → Policy Binding 覆盖 → Rule 默认值** 取值。部分 Policy 会限制可选动作，例如 Topic Control 的 denylist 必须 block。
+
+将手机号 Rule 从 transform 改为 block，会改变交付行为。同样的命中现在阻断整段回复。需要测试修改后的 Binding，并发布新的 Guardrail Version。
+
+<a id="term-catalog" />
+## 区分不同的资源库
+
+| 资源库 | 用途 |
+| --- | --- |
+| Policy Library | 审阅、创建并复用 Policy 定义与版本。 |
+| 防护能力 | 配置模型和服务检测器需要的平台能力。 |
+
+分类用于组织定义，不提供检测算法。能力绑定提供环境依赖，不会创建新的 Policy Version。
+
+<a id="term-test-case" />
+## 测试与版本
+
+Test Case 提供内容、预期行为和检查上下文。必需的 Rule acceptance 单独执行一条 Rule，必须证明真实命中。Scenario 执行完整 Policy，也可验证无命中的正常放行。
+
+保留命中、正常、边界和失败示例。转换测试需要完整的预期替换结果，包括空格与换行。
+
+例如，放行正常订单问题，阻断内部提示词泄露请求。两者共同检查保护行为与误报。
+
+<a id="term-policy-version" />
+### Policy Version
+
+Policy Version 固定已发布源码和运行契约。Guardrail 绑定确切版本，编辑 Policy 只创建新草稿，不修改已有 Binding。
+
+将已测修订发布为新版本，再显式更新目标 Guardrail Binding。修改后的 Guardrail 要单独测试并发布。
+
+<a id="state-validation" />
+### 测试运行状态
+
+<StateMachineDiagram kind="validation" locale="zh-CN" />
+
+保存草稿不会执行测试。启动测试才创建 queued 执行，通常进入 Running，再到 Passed 或 Failed，也可以从 queued 直接完成。
+
+必需用例必须通过。执行失败或断言失败会得到 Failed。编辑草稿后，旧结果不能验证当前内容。测试通过允许发布，但不会启用流量。
+
+<a id="state-policy-version" />
+### Policy 草稿与发布
+
+Policy 不使用独立的 `draft / active / disabled` 资源生命周期。每次修改推进草稿修订，发布要求该修订的必需测试通过。
+
+已发布的 Policy Version 不可变。内置或导入来源记录可追溯信息，不自动决定编辑权限。具备 Policy 写入权限的用户维护受支持定义。
+
+<a id="term-rail" />
+## Input 与 Output 检查阶段
+
+Rail 是一次模型调用前后的检查点：
+
+**Input → 输入检测 → 模型调用 → 输出检测 → 交付**
+
+| 阶段 | 时机 | 调用方职责 |
+| --- | --- | --- |
+| Input | 业务模型调用前。 | 停止被阻断的 Input，使用转换后的 Input 调用模型。 |
+| Output | 生成后、相应内容交付前。 | 交付允许或转换后的内容，保留被阻断内容。 |
+
+TaskLattice Endpoint 接入 Input 和 Output。NeMo 其他 Rail 类型不代表 Endpoint 也支持。流式检测仅处理 Output，参见[流式交付规则](/document/developer/gateway-connect#gateway-stream-delivery)。

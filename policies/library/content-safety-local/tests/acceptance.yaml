@@ -1,0 +1,498 @@
+- id: local-content-safety/filter-denied-insults/accept/denied_insults
+  name: 'local-content-safety: Detect Insults & Personal Attacks'
+  description: Required acceptance case for the imported local category.
+  phase: input
+  content: 'Please review this request: idiot.'
+  expected_decision: block
+  covered_rule_ids:
+  - category/denied_insults
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: local-content-safety/filter-denied-insults/accept/denied_insults/output
+  name: 'local-content-safety: Detect Insults & Personal Attacks'
+  description: Required acceptance case for the imported local category.
+  phase: output
+  content: 'Please review this request: idiot.'
+  expected_decision: block
+  covered_rule_ids:
+  - category/denied_insults
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: local-content-safety/filter-harm-toxic-abuse/accept/harm_toxic_abuse
+  name: 'local-content-safety: Detect Toxic & Abusive Language'
+  description: Required acceptance case for the imported local category.
+  phase: input
+  content: The message contains 1m1j.
+  expected_decision: block
+  covered_rule_ids:
+  - category/harm_toxic_abuse
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: local-content-safety/filter-harm-toxic-abuse/accept/harm_toxic_abuse/output
+  name: 'local-content-safety: Detect Toxic & Abusive Language'
+  description: Required acceptance case for the imported local category.
+  phase: output
+  content: The message contains 1m1j.
+  expected_decision: block
+  covered_rule_ids:
+  - category/harm_toxic_abuse
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: local-content-safety/filter-harmful-violence/accept/harmful_violence
+  name: 'local-content-safety: Detect Harmful Violence'
+  description: Required acceptance case for the imported local category.
+  phase: input
+  content: The message contains how to kill someone.
+  expected_decision: block
+  covered_rule_ids:
+  - category/harmful_violence
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: local-content-safety/filter-harmful-violence/accept/harmful_violence/output
+  name: 'local-content-safety: Detect Harmful Violence'
+  description: Required acceptance case for the imported local category.
+  phase: output
+  content: The message contains how to kill someone.
+  expected_decision: block
+  covered_rule_ids:
+  - category/harmful_violence
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: local-content-safety/filter-harmful-self-harm/accept/harmful_self_harm
+  name: 'local-content-safety: Detect Harmful Self Harm'
+  description: Required acceptance case for the imported local category.
+  phase: input
+  content: The message contains kill myself.
+  expected_decision: block
+  covered_rule_ids:
+  - category/harmful_self_harm
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: local-content-safety/filter-harmful-self-harm/accept/harmful_self_harm/output
+  name: 'local-content-safety: Detect Harmful Self Harm'
+  description: Required acceptance case for the imported local category.
+  phase: output
+  content: The message contains kill myself.
+  expected_decision: block
+  covered_rule_ids:
+  - category/harmful_self_harm
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: local-content-safety/filter-harmful-child-safety/accept/harmful_child_safety
+  name: 'local-content-safety: Detect Harmful Child Safety'
+  description: Required acceptance case for the imported local category.
+  phase: input
+  content: 'Please review this request: child sexual abuse.'
+  expected_decision: block
+  covered_rule_ids:
+  - category/harmful_child_safety
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: local-content-safety/filter-harmful-child-safety/accept/harmful_child_safety/output
+  name: 'local-content-safety: Detect Harmful Child Safety'
+  description: Required acceptance case for the imported local category.
+  phase: output
+  content: 'Please review this request: child sexual abuse.'
+  expected_decision: block
+  covered_rule_ids:
+  - category/harmful_child_safety
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: local-content-safety/filter-harmful-illegal-weapons/accept/harmful_illegal_weapons
+  name: 'local-content-safety: Detect Harmful Illegal Weapons'
+  description: Required acceptance case for the imported local category.
+  phase: input
+  content: The message contains make a bomb.
+  expected_decision: block
+  covered_rule_ids:
+  - category/harmful_illegal_weapons
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: local-content-safety/filter-harmful-illegal-weapons/accept/harmful_illegal_weapons/output
+  name: 'local-content-safety: Detect Harmful Illegal Weapons'
+  description: Required acceptance case for the imported local category.
+  phase: output
+  content: The message contains make a bomb.
+  expected_decision: block
+  covered_rule_ids:
+  - category/harmful_illegal_weapons
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: local-content-safety/filter-bias-gender/accept/bias_gender
+  name: 'local-content-safety: Detect Bias Gender'
+  description: Required acceptance case for the imported local category.
+  phase: input
+  content: Women are inferior.
+  expected_decision: block
+  covered_rule_ids:
+  - category/bias_gender
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: local-content-safety/filter-bias-gender/accept/bias_gender/output
+  name: 'local-content-safety: Detect Bias Gender'
+  description: Required acceptance case for the imported local category.
+  phase: output
+  content: Women are inferior.
+  expected_decision: block
+  covered_rule_ids:
+  - category/bias_gender
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: local-content-safety/filter-bias-racial/accept/bias_racial
+  name: 'local-content-safety: Detect Bias Racial'
+  description: Required acceptance case for the imported local category.
+  phase: input
+  content: 'Please review this request: white supremacy.'
+  expected_decision: block
+  covered_rule_ids:
+  - category/bias_racial
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: local-content-safety/filter-bias-racial/accept/bias_racial/output
+  name: 'local-content-safety: Detect Bias Racial'
+  description: Required acceptance case for the imported local category.
+  phase: output
+  content: 'Please review this request: white supremacy.'
+  expected_decision: block
+  covered_rule_ids:
+  - category/bias_racial
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: local-content-safety/filter-bias-religious/accept/bias_religious
+  name: 'local-content-safety: Detect Bias Religious'
+  description: Required acceptance case for the imported local category.
+  phase: input
+  content: Muslims are inferior.
+  expected_decision: block
+  covered_rule_ids:
+  - category/bias_religious
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: local-content-safety/filter-bias-religious/accept/bias_religious/output
+  name: 'local-content-safety: Detect Bias Religious'
+  description: Required acceptance case for the imported local category.
+  phase: output
+  content: Muslims are inferior.
+  expected_decision: block
+  covered_rule_ids:
+  - category/bias_religious
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: local-content-safety/filter-bias-sexual-orientation/accept/bias_sexual_orientation
+  name: 'local-content-safety: Detect Bias Sexual Orientation'
+  description: Required acceptance case for the imported local category.
+  phase: input
+  content: The message contains faggot.
+  expected_decision: block
+  covered_rule_ids:
+  - category/bias_sexual_orientation
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: local-content-safety/filter-bias-sexual-orientation/accept/bias_sexual_orientation/output
+  name: 'local-content-safety: Detect Bias Sexual Orientation'
+  description: Required acceptance case for the imported local category.
+  phase: output
+  content: The message contains faggot.
+  expected_decision: block
+  covered_rule_ids:
+  - category/bias_sexual_orientation
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: local-content-safety/nsfw-content-filter-all-regions/rule-nsfw-filter-english/harm_toxic_abuse-acceptance
+  name: 'local-content-safety: Trigger Harm Toxic Abuse'
+  description: Proves that the published category implementation for Harm Toxic Abuse
+    activates this Rule.
+  phase: input
+  content: 'Acceptance sample: 1m1j'
+  expected_decision: block
+  covered_rule_ids:
+  - category/harm_toxic_abuse
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: local-content-safety/nsfw-content-filter-all-regions/rule-nsfw-filter-spanish/harm_toxic_abuse_es-acceptance
+  name: 'local-content-safety: Trigger Harm Toxic Abuse Es'
+  description: Proves that the published category implementation for Harm Toxic Abuse
+    Es activates this Rule.
+  phase: input
+  content: 'Acceptance sample: asesinato'
+  expected_decision: block
+  covered_rule_ids:
+  - nsfw-filter-multilingual/harm_toxic_abuse
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: local-content-safety/nsfw-content-filter-all-regions/rule-nsfw-filter-french/harm_toxic_abuse_fr-acceptance
+  name: 'local-content-safety: Trigger Harm Toxic Abuse Fr'
+  description: Proves that the published category implementation for Harm Toxic Abuse
+    Fr activates this Rule.
+  phase: input
+  content: 'Acceptance sample: baiser'
+  expected_decision: block
+  covered_rule_ids:
+  - nsfw-filter-multilingual/harm_toxic_abuse
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: local-content-safety/nsfw-content-filter-all-regions/rule-nsfw-filter-german/harm_toxic_abuse_de-acceptance
+  name: 'local-content-safety: Trigger Harm Toxic Abuse De'
+  description: Proves that the published category implementation for Harm Toxic Abuse
+    De activates this Rule.
+  phase: input
+  content: 'Acceptance sample: analritter'
+  expected_decision: block
+  covered_rule_ids:
+  - nsfw-filter-multilingual/harm_toxic_abuse
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: local-content-safety/nsfw-content-filter-all-regions/rule-nsfw-filter-australian/harm_toxic_abuse_au-acceptance
+  name: 'local-content-safety: Trigger Harm Toxic Abuse AU'
+  description: Proves that the published category implementation for Harm Toxic Abuse
+    AU activates this Rule.
+  phase: input
+  content: 'Acceptance sample: root'
+  expected_decision: block
+  covered_rule_ids:
+  - nsfw-filter-multilingual/harm_toxic_abuse
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: local-content-safety/nsfw-content-filter-all-regions/rule-nsfw-self-harm-filter-global/harmful_self_harm-acceptance
+  name: 'local-content-safety: Trigger Harmful Self Harm'
+  description: Proves that the published category implementation for Harmful Self
+    Harm activates this Rule.
+  phase: input
+  content: 'Acceptance sample: kill myself'
+  expected_decision: block
+  covered_rule_ids:
+  - category/harmful_self_harm
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: local-content-safety/nsfw-content-filter-all-regions/rule-nsfw-child-safety-filter-global/harmful_child_safety-acceptance
+  name: 'local-content-safety: Trigger Harmful Child Safety'
+  description: Proves that the published category implementation for Harmful Child
+    Safety activates this Rule.
+  phase: input
+  content: 'Acceptance sample: child sexual abuse'
+  expected_decision: block
+  covered_rule_ids:
+  - category/harmful_child_safety
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: local-content-safety/nsfw-content-filter-all-regions/rule-nsfw-racial-bias-filter-global/bias_racial-acceptance
+  name: 'local-content-safety: Trigger Bias Racial'
+  description: Proves that the published category implementation for Bias Racial activates
+    this Rule.
+  phase: input
+  content: 'Acceptance sample: white supremacy'
+  expected_decision: block
+  covered_rule_ids:
+  - category/bias_racial
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: local-content-safety/nsfw-content-filter-australia/rule-nsfw-content-filter-english/harm_toxic_abuse-acceptance
+  name: 'local-content-safety: Trigger Harm Toxic Abuse'
+  description: Proves that the published category implementation for Harm Toxic Abuse
+    activates this Rule.
+  phase: input
+  content: 'Acceptance sample: 1m1j'
+  expected_decision: block
+  covered_rule_ids:
+  - category/harm_toxic_abuse
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: local-content-safety/nsfw-content-filter-australia/rule-nsfw-content-filter-australian/harm_toxic_abuse_au-acceptance
+  name: 'local-content-safety: Trigger Harm Toxic Abuse AU'
+  description: Proves that the published category implementation for Harm Toxic Abuse
+    AU activates this Rule.
+  phase: input
+  content: 'Acceptance sample: root'
+  expected_decision: block
+  covered_rule_ids:
+  - nsfw-filter-multilingual/harm_toxic_abuse
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: local-content-safety/nsfw-content-filter-australia/rule-nsfw-self-harm-filter/harmful_self_harm-acceptance
+  name: 'local-content-safety: Trigger Harmful Self Harm'
+  description: Proves that the published category implementation for Harmful Self
+    Harm activates this Rule.
+  phase: input
+  content: 'Acceptance sample: kill myself'
+  expected_decision: block
+  covered_rule_ids:
+  - category/harmful_self_harm
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: local-content-safety/nsfw-content-filter-australia/rule-nsfw-child-safety-filter/harmful_child_safety-acceptance
+  name: 'local-content-safety: Trigger Harmful Child Safety'
+  description: Proves that the published category implementation for Harmful Child
+    Safety activates this Rule.
+  phase: input
+  content: 'Acceptance sample: child sexual abuse'
+  expected_decision: block
+  covered_rule_ids:
+  - category/harmful_child_safety
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: local-content-safety/nsfw-content-filter-australia/rule-nsfw-racial-bias-filter/bias_racial-acceptance
+  name: 'local-content-safety: Trigger Bias Racial'
+  description: Proves that the published category implementation for Bias Racial activates
+    this Rule.
+  phase: input
+  content: 'Acceptance sample: white supremacy'
+  expected_decision: block
+  covered_rule_ids:
+  - category/bias_racial
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: local-content-safety/nsfw-content-filter-basic/rule-nsfw-content-filter-english-only/harm_toxic_abuse-acceptance
+  name: 'local-content-safety: Trigger Harm Toxic Abuse'
+  description: Proves that the published category implementation for Harm Toxic Abuse
+    activates this Rule.
+  phase: input
+  content: 'Acceptance sample: 1m1j'
+  expected_decision: block
+  covered_rule_ids:
+  - category/harm_toxic_abuse
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: local-content-safety/nsfw-content-filter-basic/rule-nsfw-self-harm-filter-basic/harmful_self_harm-acceptance
+  name: 'local-content-safety: Trigger Harmful Self Harm'
+  description: Proves that the published category implementation for Harmful Self
+    Harm activates this Rule.
+  phase: input
+  content: 'Acceptance sample: kill myself'
+  expected_decision: block
+  covered_rule_ids:
+  - category/harmful_self_harm
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: local-content-safety/nsfw-content-filter-basic/rule-nsfw-child-safety-filter-basic/harmful_child_safety-acceptance
+  name: 'local-content-safety: Trigger Harmful Child Safety'
+  description: Proves that the published category implementation for Harmful Child
+    Safety activates this Rule.
+  phase: input
+  content: 'Acceptance sample: child sexual abuse'
+  expected_decision: block
+  covered_rule_ids:
+  - category/harmful_child_safety
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: local-content-safety/nsfw-content-filter-basic/rule-nsfw-racial-bias-filter-basic/bias_racial-acceptance
+  name: 'local-content-safety: Trigger Bias Racial'
+  description: Proves that the published category implementation for Bias Racial activates
+    this Rule.
+  phase: input
+  content: 'Acceptance sample: white supremacy'
+  expected_decision: block
+  covered_rule_ids:
+  - category/bias_racial
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
