@@ -1,7 +1,7 @@
 {
   "adapter": "litellm-generic-guardrail",
   "artifact_id": "fixture-artifact-stream-safety-interruptible-v1",
-  "checksum": "00ba8807a7d2044b870ad445957665bb0f6dff1044b1feae9976b7e7e958c133",
+  "checksum": "2fa318f3079a95939ce3748d57ef98c79d082bb5d77b5934866b8d7a3241b8f7",
   "compiler_version": "tasklattice-nemo-config-v1",
   "endpoint_id": "fixture-endpoint",
   "expected": {
@@ -14,7 +14,7 @@
   "generation": 1,
   "guardrail_id": "fixture-secrets",
   "guardrail_version": "20260904-010000.001Z",
-  "nemo_version": "0.24.0",
+  "nemo_version": "0.24.1",
   "runtime_profile": "llmrails_colang1_standard",
   "scope": "Frozen output-only model Policy; transport responses in tests are synthetic, not model quality evidence."
 }

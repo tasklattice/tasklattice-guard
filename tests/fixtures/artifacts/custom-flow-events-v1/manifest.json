@@ -1,7 +1,7 @@
 {
   "adapter": "litellm-generic-guardrail",
   "artifact_id": "fixture-artifact-custom-flow-events-v1",
-  "checksum": "e768c37d4a7743ee8d4d3a517d2db87f8c4f510d04793f542ad8b5ea4849c622",
+  "checksum": "4a610080a0acbbe13bc7fb563875b5095306e41a8ef94a9fa97e47800a71a586",
   "compiler_version": "tasklattice-nemo-config-v1",
   "endpoint_id": "fixture-endpoint",
   "expected": {
@@ -19,7 +19,7 @@
   "generation": 1,
   "guardrail_id": "fixture-secrets",
   "guardrail_version": "20260904-010000.001Z",
-  "nemo_version": "0.24.0",
+  "nemo_version": "0.24.1",
   "runtime_profile": "llmrails_colang2_programmable",
   "scope": "Synthetic explicit Flow lifecycle events; same-named Policy-local helpers, ordered mutation/rejection, real NeMo, no models."
 }

@@ -1,7 +1,7 @@
 {
   "adapter": "litellm-generic-guardrail",
   "artifact_id": "fixture-artifact-custom-symbol-ownership-v1",
-  "checksum": "b7345ce057685fadc4a0c7139633953370aca40fffd2c6af7c5da3330ae8a15e",
+  "checksum": "077683f90e5d64c183f2a6618341da02ca6ce75a6cbc04bb832bfd094da923fc",
   "compiler_version": "tasklattice-nemo-config-v1",
   "endpoint_id": "fixture-endpoint",
   "expected": {
@@ -19,7 +19,7 @@
   "generation": 1,
   "guardrail_id": "fixture-secrets",
   "guardrail_version": "20260904-010000.001Z",
-  "nemo_version": "0.24.0",
+  "nemo_version": "0.24.1",
   "runtime_profile": "llmrails_colang2_programmable",
   "scope": "Synthetic custom Colang symbol and result ownership; real NeMo, no models."
 }
