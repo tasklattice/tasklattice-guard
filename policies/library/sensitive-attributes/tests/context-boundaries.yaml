@@ -1,0 +1,266 @@
+- id: context-boundary/job-title/input
+  name: job title
+  description: Context precision and retained protection regression.
+  phase: input
+  content: Mira is a Senior Product Manager and Cole is a junior software engineer.
+  expected_decision: allow
+  covered_rule_ids:
+  - pattern/age_discrimination
+  scope: rule
+  kind: scenario
+  required: true
+  group: Context boundaries
+  parameter_names: []
+- id: context-boundary/job-title/output
+  name: job title
+  description: Context precision and retained protection regression.
+  phase: output
+  content: Mira is a Senior Product Manager and Cole is a junior software engineer.
+  expected_decision: allow
+  covered_rule_ids:
+  - pattern/age_discrimination
+  scope: rule
+  kind: scenario
+  required: true
+  group: Context boundaries
+  parameter_names: []
+- id: context-boundary/age-status/input
+  name: age status
+  description: Context precision and retained protection regression.
+  phase: input
+  content: The applicant is an elderly person.
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/age_discrimination
+  scope: rule
+  kind: rule_acceptance
+  required: true
+  group: Context boundaries
+  parameter_names: []
+- id: context-boundary/age-status/output
+  name: age status
+  description: Context precision and retained protection regression.
+  phase: output
+  content: The applicant is an elderly person.
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/age_discrimination
+  scope: rule
+  kind: rule_acceptance
+  required: true
+  group: Context boundaries
+  parameter_names: []
+- id: context-boundary/mixed-title/input
+  name: mixed title
+  description: Context precision and retained protection regression.
+  phase: input
+  content: Senior Product Manager. The applicant is elderly.
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/age_discrimination
+  scope: rule
+  kind: rule_acceptance
+  required: true
+  group: Context boundaries
+  parameter_names: []
+  expected_text: Senior Product Manager. The applicant is [age_discrimination_REDACTED].
+- id: context-boundary/mixed-title/output
+  name: mixed title
+  description: Context precision and retained protection regression.
+  phase: output
+  content: Senior Product Manager. The applicant is elderly.
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/age_discrimination
+  scope: rule
+  kind: rule_acceptance
+  required: true
+  group: Context boundaries
+  parameter_names: []
+  expected_text: Senior Product Manager. The applicant is [age_discrimination_REDACTED].
+- id: context-boundary/software-state/input
+  name: software state
+  description: Context precision and retained protection regression.
+  phase: input
+  content: Tracing is disabled by default. The disabled button cannot be clicked.
+  expected_decision: allow
+  covered_rule_ids:
+  - pattern/disability
+  scope: rule
+  kind: scenario
+  required: true
+  group: Context boundaries
+  parameter_names: []
+- id: context-boundary/software-state/output
+  name: software state
+  description: Context precision and retained protection regression.
+  phase: output
+  content: Tracing is disabled by default. The disabled button cannot be clicked.
+  expected_decision: allow
+  covered_rule_ids:
+  - pattern/disability
+  scope: rule
+  kind: scenario
+  required: true
+  group: Context boundaries
+  parameter_names: []
+- id: context-boundary/person-status/input
+  name: person status
+  description: Context precision and retained protection regression.
+  phase: input
+  content: The applicant is disabled and needs assistance.
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/disability
+  scope: rule
+  kind: rule_acceptance
+  required: true
+  group: Context boundaries
+  parameter_names: []
+- id: context-boundary/person-status/output
+  name: person status
+  description: Context precision and retained protection regression.
+  phase: output
+  content: The applicant is disabled and needs assistance.
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/disability
+  scope: rule
+  kind: rule_acceptance
+  required: true
+  group: Context boundaries
+  parameter_names: []
+- id: context-boundary/mixed-state/input
+  name: mixed state
+  description: Context precision and retained protection regression.
+  phase: input
+  content: Logging is disabled. The applicant is disabled.
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/disability
+  scope: rule
+  kind: rule_acceptance
+  required: true
+  group: Context boundaries
+  parameter_names: []
+  expected_text: Logging is disabled. The applicant is [disability_REDACTED].
+- id: context-boundary/mixed-state/output
+  name: mixed state
+  description: Context precision and retained protection regression.
+  phase: output
+  content: Logging is disabled. The applicant is disabled.
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/disability
+  scope: rule
+  kind: rule_acceptance
+  required: true
+  group: Context boundaries
+  parameter_names: []
+  expected_text: Logging is disabled. The applicant is [disability_REDACTED].
+- id: context-boundary/cultural-material/input
+  name: cultural material
+  description: Context precision and retained protection regression.
+  phase: input
+  content: The museum has Egyptian collections and Japanese pottery.
+  expected_decision: allow
+  covered_rule_ids:
+  - pattern/race_ethnicity_national_origin
+  scope: rule
+  kind: scenario
+  required: true
+  group: Context boundaries
+  parameter_names: []
+- id: context-boundary/cultural-material/output
+  name: cultural material
+  description: Context precision and retained protection regression.
+  phase: output
+  content: The museum has Egyptian collections and Japanese pottery.
+  expected_decision: allow
+  covered_rule_ids:
+  - pattern/race_ethnicity_national_origin
+  scope: rule
+  kind: scenario
+  required: true
+  group: Context boundaries
+  parameter_names: []
+- id: context-boundary/technical-color/input
+  name: technical color
+  description: Context precision and retained protection regression.
+  phase: input
+  content: Fix the race condition that causes the black screen.
+  expected_decision: allow
+  covered_rule_ids:
+  - pattern/race_ethnicity_national_origin
+  scope: rule
+  kind: scenario
+  required: true
+  group: Context boundaries
+  parameter_names: []
+- id: context-boundary/technical-color/output
+  name: technical color
+  description: Context precision and retained protection regression.
+  phase: output
+  content: Fix the race condition that causes the black screen.
+  expected_decision: allow
+  covered_rule_ids:
+  - pattern/race_ethnicity_national_origin
+  scope: rule
+  kind: scenario
+  required: true
+  group: Context boundaries
+  parameter_names: []
+- id: context-boundary/personal-attribute/input
+  name: personal attribute
+  description: Context precision and retained protection regression.
+  phase: input
+  content: The applicant is Egyptian.
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/race_ethnicity_national_origin
+  scope: rule
+  kind: rule_acceptance
+  required: true
+  group: Context boundaries
+  parameter_names: []
+- id: context-boundary/personal-attribute/output
+  name: personal attribute
+  description: Context precision and retained protection regression.
+  phase: output
+  content: The applicant is Egyptian.
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/race_ethnicity_national_origin
+  scope: rule
+  kind: rule_acceptance
+  required: true
+  group: Context boundaries
+  parameter_names: []
+- id: context-boundary/mixed-reference/input
+  name: mixed reference
+  description: Context precision and retained protection regression.
+  phase: input
+  content: Egyptian collections are on display. The applicant is Egyptian.
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/race_ethnicity_national_origin
+  scope: rule
+  kind: rule_acceptance
+  required: true
+  group: Context boundaries
+  parameter_names: []
+  expected_text: Egyptian collections are on display. The applicant is [race_ethnicity_national_origin_REDACTED].
+- id: context-boundary/mixed-reference/output
+  name: mixed reference
+  description: Context precision and retained protection regression.
+  phase: output
+  content: Egyptian collections are on display. The applicant is Egyptian.
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/race_ethnicity_national_origin
+  scope: rule
+  kind: rule_acceptance
+  required: true
+  group: Context boundaries
+  parameter_names: []
+  expected_text: Egyptian collections are on display. The applicant is [race_ethnicity_national_origin_REDACTED].

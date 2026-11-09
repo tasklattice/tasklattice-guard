@@ -5,7 +5,7 @@ metadata:
   name: Content Safety (Local)
   description: 'Target taxonomy Policy: Content Safety (Local).'
   source: built_in
-  version: 1.0.1
+  version: 1.0.2
   tags:
   - namespace: protection
     value: content_safety
@@ -29,11 +29,11 @@ rule_refs:
 - id: category/denied_insults
   version: 1.0.0
 - id: category/harm_toxic_abuse
-  version: 1.0.0
+  version: 1.0.1
 - id: category/harmful_violence
   version: 1.0.0
 - id: category/harmful_self_harm
-  version: 1.0.0
+  version: 1.0.1
 - id: category/harmful_child_safety
   version: 1.0.0
 - id: category/harmful_illegal_weapons
@@ -50,3 +50,4 @@ rule_refs:
   version: 1.0.0
 tests:
 - tests/acceptance.yaml
+- tests/context-boundaries.yaml

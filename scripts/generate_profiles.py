@@ -43,7 +43,7 @@ def policy_selection(ids, local_only=False):
  return out
 
 def profile(pid,name,industry,jurisdictions,policies_ids,local_only=False,benchmark=False,desc=''):
- return {'id':pid,'version':'1.1.1' if pid == 'full-feature' else '1.1.0','name':name,'description':desc,'industry':industry,'jurisdictions':jurisdictions,
+ return {'id':pid,'version':'1.1.2' if pid == 'full-feature' else '1.1.1','name':name,'description':desc,'industry':industry,'jurisdictions':jurisdictions,
   'benchmarkOnly':benchmark,'policies':policy_selection(ordered(policies_ids),local_only),'parameterPacks':[],
   'draftSettings':{'allowedTopics':[],'restrictedTopics':[],'topicControlMode':'strict','safetyLevel':'balanced','outputDelivery':'full_buffered'},
   'suggestedTopics':[],'optionalPolicyIds':[],'limitations':[]}

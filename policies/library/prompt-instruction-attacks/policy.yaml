@@ -5,7 +5,7 @@ metadata:
   name: Prompt & Instruction Attacks
   description: 'Target taxonomy Policy: Prompt & Instruction Attacks.'
   source: built_in
-  version: 1.0.0
+  version: 1.0.1
   tags:
   - namespace: protection
     value: attacks_and_abuse
@@ -29,18 +29,16 @@ parameters:
   kind: text
   required: false
   placeholder: block or allow
-  description: block (default) blocks valid uncertain results; allow continues this
-    Rule without skipping other Policies. Matches, errors and missing context keep
-    their own handling.
+  description: block (default) blocks valid uncertain results; allow continues this Rule without skipping
+    other Policies. Matches, errors and missing context keep their own handling.
   default: block
 - name: review_unknown
   label: Review uncertain input results
   kind: text
   required: false
   placeholder: true or false
-  description: When true, a valid JEV input gray-area result is reviewed by the separately
-    validated classifier_review.input binding. Output, matches, errors and missing
-    context keep their handling.
+  description: When true, a valid JEV input gray-area result is reviewed by the separately validated classifier_review.input
+    binding. Output, matches, errors and missing context keep their handling.
   default: 'false'
 rules: []
 rule_refs:
@@ -83,7 +81,7 @@ rule_refs:
 - id: category/prompt_injection_data_exfiltration
   version: 1.0.0
 - id: category/prompt_injection_sql
-  version: 1.0.0
+  version: 1.0.1
 - id: category/prompt_injection_malicious_code
   version: 1.0.0
 - id: category/prompt_injection_system_prompt
@@ -98,3 +96,4 @@ rule_refs:
   version: 1.0.0
 tests:
 - tests/acceptance.yaml
+- tests/context-boundaries.yaml

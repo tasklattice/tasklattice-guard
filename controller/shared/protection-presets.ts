@@ -4,7 +4,7 @@ import type { ProtectionPreset } from "./protection-map.js";
 export const protectionPresets: readonly ProtectionPreset[] = [
   {
     "id": "default",
-    "version": "1.1.0",
+    "version": "1.1.1",
     "name": "Default",
     "description": "Local-only baseline.",
     "industry": "general",
@@ -66,7 +66,7 @@ export const protectionPresets: readonly ProtectionPreset[] = [
       },
       {
         "policyId": "prompt-instruction-attacks",
-        "policyVersion": "1.0.0",
+        "policyVersion": "1.0.1",
         "enabledRails": [
           "input",
           "output"
@@ -223,7 +223,7 @@ export const protectionPresets: readonly ProtectionPreset[] = [
       },
       {
         "policyId": "content-safety-local",
-        "policyVersion": "1.0.1",
+        "policyVersion": "1.0.2",
         "enabledRails": [
           "input",
           "output"
@@ -262,7 +262,7 @@ export const protectionPresets: readonly ProtectionPreset[] = [
       },
       {
         "policyId": "professional-advice",
-        "policyVersion": "1.0.0",
+        "policyVersion": "1.0.1",
         "enabledRails": [
           "input",
           "output"
@@ -838,7 +838,7 @@ export const protectionPresets: readonly ProtectionPreset[] = [
       },
       {
         "policyId": "sensitive-attributes",
-        "policyVersion": "1.0.0",
+        "policyVersion": "1.0.1",
         "enabledRails": [
           "input",
           "output"
@@ -1160,7 +1160,7 @@ export const protectionPresets: readonly ProtectionPreset[] = [
   },
   {
     "id": "full-feature",
-    "version": "1.1.1",
+    "version": "1.1.2",
     "name": "Full-feature",
     "description": "All Policies and Rules except advanced Answer Reliability; benchmark only.",
     "industry": "general",
@@ -1222,7 +1222,7 @@ export const protectionPresets: readonly ProtectionPreset[] = [
       },
       {
         "policyId": "prompt-instruction-attacks",
-        "policyVersion": "1.0.0",
+        "policyVersion": "1.0.1",
         "enabledRails": [
           "input",
           "output"
@@ -1381,7 +1381,7 @@ export const protectionPresets: readonly ProtectionPreset[] = [
       },
       {
         "policyId": "content-safety-local",
-        "policyVersion": "1.0.1",
+        "policyVersion": "1.0.2",
         "enabledRails": [
           "input",
           "output"
@@ -1420,7 +1420,7 @@ export const protectionPresets: readonly ProtectionPreset[] = [
       },
       {
         "policyId": "professional-advice",
-        "policyVersion": "1.0.0",
+        "policyVersion": "1.0.1",
         "enabledRails": [
           "input",
           "output"
@@ -2044,7 +2044,7 @@ export const protectionPresets: readonly ProtectionPreset[] = [
       },
       {
         "policyId": "sensitive-attributes",
-        "policyVersion": "1.0.0",
+        "policyVersion": "1.0.1",
         "enabledRails": [
           "input",
           "output"
@@ -2388,7 +2388,7 @@ export const protectionPresets: readonly ProtectionPreset[] = [
   },
   {
     "id": "sg-bank",
-    "version": "1.1.0",
+    "version": "1.1.1",
     "name": "Singapore Bank",
     "description": "",
     "industry": "banking",
@@ -2452,7 +2452,7 @@ export const protectionPresets: readonly ProtectionPreset[] = [
       },
       {
         "policyId": "prompt-instruction-attacks",
-        "policyVersion": "1.0.0",
+        "policyVersion": "1.0.1",
         "enabledRails": [
           "input",
           "output"
@@ -2609,7 +2609,7 @@ export const protectionPresets: readonly ProtectionPreset[] = [
       },
       {
         "policyId": "content-safety-local",
-        "policyVersion": "1.0.1",
+        "policyVersion": "1.0.2",
         "enabledRails": [
           "input",
           "output"
@@ -2648,7 +2648,7 @@ export const protectionPresets: readonly ProtectionPreset[] = [
       },
       {
         "policyId": "professional-advice",
-        "policyVersion": "1.0.0",
+        "policyVersion": "1.0.1",
         "enabledRails": [
           "input",
           "output"
@@ -3178,7 +3178,7 @@ export const protectionPresets: readonly ProtectionPreset[] = [
       },
       {
         "policyId": "sensitive-attributes",
-        "policyVersion": "1.0.0",
+        "policyVersion": "1.0.1",
         "enabledRails": [
           "input",
           "output"
@@ -3500,7 +3500,7 @@ export const protectionPresets: readonly ProtectionPreset[] = [
   },
   {
     "id": "cn-financial-services",
-    "version": "1.1.0",
+    "version": "1.1.1",
     "name": "China Financial Services",
     "description": "",
     "industry": "banking",
@@ -3564,7 +3564,7 @@ export const protectionPresets: readonly ProtectionPreset[] = [
       },
       {
         "policyId": "prompt-instruction-attacks",
-        "policyVersion": "1.0.0",
+        "policyVersion": "1.0.1",
         "enabledRails": [
           "input",
           "output"
@@ -3721,7 +3721,7 @@ export const protectionPresets: readonly ProtectionPreset[] = [
       },
       {
         "policyId": "content-safety-local",
-        "policyVersion": "1.0.1",
+        "policyVersion": "1.0.2",
         "enabledRails": [
           "input",
           "output"
@@ -3760,7 +3760,7 @@ export const protectionPresets: readonly ProtectionPreset[] = [
       },
       {
         "policyId": "professional-advice",
-        "policyVersion": "1.0.0",
+        "policyVersion": "1.0.1",
         "enabledRails": [
           "input",
           "output"
@@ -4261,7 +4261,7 @@ export const protectionPresets: readonly ProtectionPreset[] = [
       },
       {
         "policyId": "sensitive-attributes",
-        "policyVersion": "1.0.0",
+        "policyVersion": "1.0.1",
         "enabledRails": [
           "input",
           "output"
@@ -4583,7 +4583,7 @@ export const protectionPresets: readonly ProtectionPreset[] = [
   },
   {
     "id": "cn-internet",
-    "version": "1.1.0",
+    "version": "1.1.1",
     "name": "China Internet",
     "description": "",
     "industry": "internet",
@@ -4647,7 +4647,7 @@ export const protectionPresets: readonly ProtectionPreset[] = [
       },
       {
         "policyId": "prompt-instruction-attacks",
-        "policyVersion": "1.0.0",
+        "policyVersion": "1.0.1",
         "enabledRails": [
           "input",
           "output"
@@ -4804,7 +4804,7 @@ export const protectionPresets: readonly ProtectionPreset[] = [
       },
       {
         "policyId": "content-safety-local",
-        "policyVersion": "1.0.1",
+        "policyVersion": "1.0.2",
         "enabledRails": [
           "input",
           "output"
@@ -4843,7 +4843,7 @@ export const protectionPresets: readonly ProtectionPreset[] = [
       },
       {
         "policyId": "professional-advice",
-        "policyVersion": "1.0.0",
+        "policyVersion": "1.0.1",
         "enabledRails": [
           "input",
           "output"
@@ -5319,7 +5319,7 @@ export const protectionPresets: readonly ProtectionPreset[] = [
       },
       {
         "policyId": "sensitive-attributes",
-        "policyVersion": "1.0.0",
+        "policyVersion": "1.0.1",
         "enabledRails": [
           "input",
           "output"

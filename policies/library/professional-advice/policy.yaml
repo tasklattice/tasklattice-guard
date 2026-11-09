@@ -5,7 +5,7 @@ metadata:
   name: Professional Advice
   description: 'Target taxonomy Policy: Professional Advice.'
   source: built_in
-  version: 1.0.0
+  version: 1.0.1
   tags:
   - namespace: protection
     value: business_rules
@@ -21,10 +21,11 @@ rule_refs:
 - id: claims-medical-advice-filter/claims_medical_advice
   version: 1.0.0
 - id: category/denied_financial_advice
-  version: 1.0.0
+  version: 1.0.1
 - id: category/denied_legal_advice
   version: 1.0.0
 - id: category/denied_medical_advice
   version: 1.0.0
 tests:
 - tests/acceptance.yaml
+- tests/context-boundaries.yaml

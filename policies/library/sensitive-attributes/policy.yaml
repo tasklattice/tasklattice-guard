@@ -5,7 +5,7 @@ metadata:
   name: Sensitive Attributes
   description: 'Target taxonomy Policy: Sensitive Attributes.'
   source: built_in
-  version: 1.0.0
+  version: 1.0.1
   tags:
   - namespace: protection
     value: privacy
@@ -25,13 +25,13 @@ rule_refs:
 - id: pattern/gender_sexual_orientation
   version: 1.0.0
 - id: pattern/race_ethnicity_national_origin
-  version: 1.0.0
+  version: 1.0.1
 - id: pattern/religion
   version: 1.0.0
 - id: pattern/age_discrimination
-  version: 1.0.0
+  version: 1.0.1
 - id: pattern/disability
-  version: 1.0.0
+  version: 1.0.1
 - id: pattern/marital_family_status
   version: 1.0.0
 - id: pattern/military_status
@@ -40,3 +40,4 @@ rule_refs:
   version: 1.0.0
 tests:
 - tests/acceptance.yaml
+- tests/context-boundaries.yaml
