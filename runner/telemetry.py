@@ -11,6 +11,7 @@ from typing import TYPE_CHECKING, Any
 
 import httpx
 
+from .outage import TransportOutage
 from .telemetry_budget import (
     MAX_BODY_BYTES,
     UnsendableTelemetryEvent,
@@ -55,6 +56,8 @@ class RuntimeTelemetryExporter:
         self._body_limit = MAX_BODY_BYTES
         self._wake = asyncio.Event()
         self._stop = asyncio.Event()
+        # Delivery is retried from the WAL; an unreachable Controller is normal.
+        self._delivery_outage = TransportOutage("controller telemetry endpoint")
         self._lock = asyncio.Lock()
         self._wal_event_count = 0
         self._wal_size_bytes = 0
@@ -100,8 +103,10 @@ class RuntimeTelemetryExporter:
                     await self._report_watermark(client)
                 except asyncio.CancelledError:
                     raise
-                except Exception:
-                    logger.exception("Runtime telemetry delivery failed; events remain in the WAL.")
+                except Exception as error:
+                    self._delivery_outage.failed(error, wal_events=self._wal_event_count)
+                else:
+                    self._delivery_outage.recovered()
 
     async def stop(self) -> None:
         self._stop.set()
@@ -150,7 +155,6 @@ class RuntimeTelemetryExporter:
             response.raise_for_status()
             _validated_receipt(response, len(events))
         except TelemetryReceiptError:
-            logger.error("Controller returned an invalid telemetry receipt; preserving the WAL for replay.")
             self._observe_export("events", "invalid_receipt", len(batch), started)
             raise
         except Exception:
@@ -191,7 +195,6 @@ class RuntimeTelemetryExporter:
             response.raise_for_status()
             _validated_receipt(response, 0)
         except TelemetryReceiptError:
-            logger.error("Controller returned an invalid telemetry watermark receipt; retrying later.")
             self._observe_export("watermark", "invalid_receipt", 0, started)
             raise
         except Exception:

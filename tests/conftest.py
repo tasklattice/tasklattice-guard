@@ -61,6 +61,7 @@ _DATA_PLANE = frozenset({
     "test_runner_model_config.py",
     "test_runner_observability.py",
     "test_runner_telemetry.py",
+    "test_runner_transport_outage.py",
     "test_safety_model_providers.py",
 })
 _CONTRACT = frozenset({

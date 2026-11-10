@@ -131,7 +131,26 @@ Recovery produces an INFO; a later outage can produce a new ERROR. Cooldown
 batches and failed batches are dropped, so traces from the outage are incomplete
 and are not replayed. Guard checks continue normally. This policy only applies
 to OpenTelemetry traces; durable Controller telemetry and its WAL delivery keep
-their existing retry and persistence behavior.
+their retry and persistence behavior.
+
+## Control stream and telemetry delivery outages
+
+The same rule applies to the two links a Runner retries against its Controller.
+A Controller that is absent, restarting or rolling is expected, so one attempt
+is not a fault: the first failure of an outage writes one warning with the
+transport reason, the target and the retry delay, and the traceback is kept at
+DEBUG. While the outage lasts, at most one summary per minute reports the attempt
+count and elapsed time. Recovery writes one INFO with the attempt count. Telemetry
+batches stay in the WAL and are replayed, so an unreachable endpoint loses no
+evidence.
+
+Failures that retrying cannot fix stay errors: a rejected or malformed credential
+(`UNAUTHENTICATED`, `PERMISSION_DENIED`, `INVALID_ARGUMENT`, HTTP 4xx) and any
+non-transport exception, including an invalid telemetry receipt. They are
+reported once per failure shape, then summarized. Events are `transport_unavailable`,
+`transport_still_unavailable`, `transport_rejected`, `transport_still_rejected`
+and `transport_restored`, logged as one JSON object per line under the
+`uvicorn.error.tasklattice.runner.transport` logger.
 
 ## Controller report persistence diagnostics
 

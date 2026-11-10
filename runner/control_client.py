@@ -34,6 +34,7 @@ from .control_transport import CONTROL_CHANNEL_OPTIONS
 from . import generated as protocol
 from .generated import runner_control_pb2_grpc as services
 from .metrics import RunnerMetrics
+from .outage import TransportOutage
 from .admission_snapshot_codec import admission_snapshot_to_proto
 from .providers import dynamic_runtime_action_providers
 from .protocol_codec import validation_case_result_to_proto, validation_metrics_to_proto
@@ -115,6 +116,7 @@ class RunnerControlClient:
         self._providers = providers
         self._materialization_key: str | None = None
         self._provider_observer = provider_observer
+        self._control_outage = TransportOutage("controller control stream")
         self._validator = (
             DefaultRunnerValidator(self._compiler, providers, self._store.verify)
             if self._compiler
@@ -161,12 +163,16 @@ class RunnerControlClient:
                     delay = 1.0
                 except asyncio.CancelledError:
                     raise
-                except Exception:
+                except Exception as error:
                     self._connected.clear()
                     self._revoke_synchronization()
                     self._metrics.set_control_state(connected=False)
                     self._metrics.observe_control_reconnect("stream_error")
-                    logger.exception("Runner control stream failed; reconnecting in %.1f seconds.", delay)
+                    # A Controller that is absent, restarting or rolling is the
+                    # normal case; one line per outage, no traceback per retry.
+                    self._control_outage.failed(
+                        error, retry_in=delay, target=self._settings.controller_target,
+                    )
                     try:
                         await asyncio.wait_for(self._stop.wait(), timeout=delay)
                     except TimeoutError:
@@ -272,6 +278,8 @@ class RunnerControlClient:
         async with asyncio.TaskGroup() as tasks:
             tasks.create_task(consume())
             async for message in stream:
+                if not self._connected.is_set():
+                    self._control_outage.recovered()
                 self._connected.set()
                 self._metrics.set_control_state(connected=True)
                 if message.WhichOneof("body") in {"protection_state", "serving_lease_response", "validation_cancel_request", "validation_report_chunk_ack", "validation_report_ack"}:
