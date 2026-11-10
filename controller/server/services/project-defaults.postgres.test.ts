@@ -14,6 +14,7 @@ import { PolicyCatalog } from "../policy-catalog/catalog.js";
 import { profileDraft } from "../policy-catalog/presets.js";
 import { createAuth } from "../auth.js";
 import { BootstrapAccountSynchronizer } from "../bootstrap.js";
+import { freezeTestSuite } from "../domain/test-suite.js";
 
 const url = process.env.GUARD_TEST_POSTGRES_URL;
 describe.skipIf(!url)("Project Default Guardrail provisioning", () => {
@@ -53,7 +54,10 @@ describe.skipIf(!url)("Project Default Guardrail provisioning", () => {
       const guardrail = await inProject(row.project_id, () => service.getGuardrail(row.id));
       expect(guardrail.readiness).toBe("ready");
       expect(guardrail.versions).toHaveLength(1);
-      expect(guardrail.versions[0]!.testSuiteCount).toBe(726);
+      const expectedSuite = freezeTestSuite((await inProject(row.project_id, () => service.listTestCases(row.id))).filter(test => !test.excluded));
+      expect(expectedSuite.length).toBeGreaterThan(0);
+      expect(guardrail.versions[0]!.testSuiteCount).toBe(expectedSuite.length);
+      expect((await inProject(row.project_id, () => service.guardrailVersionTestSuite(row.id, guardrail.versions[0]!.version))).items).toEqual(expectedSuite);
       const artifact = guardrail.versions[0]!.artifact!;
       expect(verify(null, Buffer.from(artifact.checksum, "utf8"), keys.publicKey, Buffer.from(artifact.signature, "base64"))).toBe(true);
     }

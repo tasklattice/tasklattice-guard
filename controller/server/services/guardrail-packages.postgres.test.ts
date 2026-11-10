@@ -1,4 +1,5 @@
 import { withTestProject } from "../db/postgres-test-database.js";
+import { freezeTestSuite } from "../domain/test-suite.js";
 import { completeReport, getReport } from "../db/report-test-utils.js";
 // @vitest-environment node
 import { generateKeyPairSync } from "node:crypto";
@@ -159,7 +160,9 @@ describe.skipIf(!url)("Guardrail release packages between isolated environments"
     expect(await prod.requiredPlatformModelBindings()).toEqual([]);
     const updated = await prod.getGuardrail(defaultId);
     expect(updated.draftConfig.policyBindings).toHaveLength(17);
-    expect((await prodDb.pool.query("SELECT jsonb_array_length(test_suite) AS count FROM guardrail_version WHERE guardrail_id=$1", [defaultId])).rows[0].count).toBe(726);
+    const expectedSuite = freezeTestSuite((await prod.listTestCases(defaultId)).filter(test => !test.excluded));
+    expect(expectedSuite.length).toBeGreaterThan(0);
+    expect((await prodDb.pool.query("SELECT test_suite FROM guardrail_version WHERE guardrail_id=$1", [defaultId])).rows[0].test_suite).toEqual(expectedSuite);
   });
 
   it("requires models only for enabled routed targets, not historical versions or disabled routes", async () => {

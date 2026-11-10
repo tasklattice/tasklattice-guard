@@ -8,6 +8,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { loadConfig } from "../config.js";
 import { createTestDatabase } from "../db/postgres-test-database.js";
 import { ControlPlaneService } from "./control-plane.js";
+import { freezeTestSuite } from "../domain/test-suite.js";
 
 const url = process.env.GUARD_TEST_POSTGRES_URL;
 describe.skipIf(!url)("Preconfigured Guardrail lifecycle", () => {
@@ -39,7 +40,10 @@ describe.skipIf(!url)("Preconfigured Guardrail lifecycle", () => {
     const initial = await service.getGuardrail(id);
     expect(initial.draftConfig.policyBindings).toHaveLength(17);
     expect(initial.versions).toHaveLength(1);
-    expect(initial.versions[0]!.testSuiteCount).toBe(726);
+    const expectedSuite = freezeTestSuite((await service.listTestCases(id)).filter(test => !test.excluded));
+    expect(expectedSuite.length).toBeGreaterThan(0);
+    expect(initial.versions[0]!.testSuiteCount).toBe(expectedSuite.length);
+    expect((await service.guardrailVersionTestSuite(id, initial.versions[0]!.version)).items).toEqual(expectedSuite);
     expect(initial.versions[0]!.validationRunId).toBeNull();
     const artifact = initial.versions[0]!.artifact!;
     expect(verify(null, Buffer.from(artifact.checksum, "utf8"), key.publicKey, Buffer.from(artifact.signature, "base64"))).toBe(true);

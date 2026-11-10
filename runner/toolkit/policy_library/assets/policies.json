@@ -41298,7 +41298,7 @@
     "name": "Professional Advice",
     "description": "Target taxonomy Policy: Professional Advice.",
     "source": "built_in",
-    "version": "1.0.1",
+    "version": "1.0.2",
     "tags": [
       {
         "namespace": "protection",
@@ -41564,6 +41564,216 @@
         "expected_decision": "block",
         "covered_rule_ids": [
           "category/denied_financial_advice"
+        ],
+        "kind": "rule_acceptance",
+        "required": true,
+        "parameter_names": [],
+        "group": "Context boundaries"
+      },
+      {
+        "id": "context-boundary/technical-race-condition/input",
+        "name": "technical race condition",
+        "description": "Computing terminology must not hide medical findings elsewhere in the same content.",
+        "phase": "input",
+        "content": "Fix the race condition that causes the black screen.",
+        "expected_decision": "allow",
+        "covered_rule_ids": [
+          "category/denied_medical_advice"
+        ],
+        "kind": "scenario",
+        "required": true,
+        "parameter_names": [],
+        "group": "Context boundaries"
+      },
+      {
+        "id": "context-boundary/technical-race-condition/output",
+        "name": "technical race condition",
+        "description": "Computing terminology must not hide medical findings elsewhere in the same content.",
+        "phase": "output",
+        "content": "Fix the race condition that causes the black screen.",
+        "expected_decision": "allow",
+        "covered_rule_ids": [
+          "category/denied_medical_advice"
+        ],
+        "kind": "scenario",
+        "required": true,
+        "parameter_names": [],
+        "group": "Context boundaries"
+      },
+      {
+        "id": "context-boundary/technical-race-condition-whitespace/input",
+        "name": "technical race condition whitespace",
+        "description": "Computing terminology must not hide medical findings elsewhere in the same content.",
+        "phase": "input",
+        "content": "Fix the RACE\t \nCONDITION in the cache.",
+        "expected_decision": "allow",
+        "covered_rule_ids": [
+          "category/denied_medical_advice"
+        ],
+        "kind": "scenario",
+        "required": true,
+        "parameter_names": [],
+        "group": "Context boundaries"
+      },
+      {
+        "id": "context-boundary/technical-race-condition-whitespace/output",
+        "name": "technical race condition whitespace",
+        "description": "Computing terminology must not hide medical findings elsewhere in the same content.",
+        "phase": "output",
+        "content": "Fix the RACE\t \nCONDITION in the cache.",
+        "expected_decision": "allow",
+        "covered_rule_ids": [
+          "category/denied_medical_advice"
+        ],
+        "kind": "scenario",
+        "required": true,
+        "parameter_names": [],
+        "group": "Context boundaries"
+      },
+      {
+        "id": "context-boundary/technical-race-condition-hyphen/input",
+        "name": "technical race condition hyphen",
+        "description": "Computing terminology must not hide medical findings elsewhere in the same content.",
+        "phase": "input",
+        "content": "Fix the race-condition in the cache.",
+        "expected_decision": "allow",
+        "covered_rule_ids": [
+          "category/denied_medical_advice"
+        ],
+        "kind": "scenario",
+        "required": true,
+        "parameter_names": [],
+        "group": "Context boundaries"
+      },
+      {
+        "id": "context-boundary/technical-race-condition-hyphen/output",
+        "name": "technical race condition hyphen",
+        "description": "Computing terminology must not hide medical findings elsewhere in the same content.",
+        "phase": "output",
+        "content": "Fix the race-condition in the cache.",
+        "expected_decision": "allow",
+        "covered_rule_ids": [
+          "category/denied_medical_advice"
+        ],
+        "kind": "scenario",
+        "required": true,
+        "parameter_names": [],
+        "group": "Context boundaries"
+      },
+      {
+        "id": "context-boundary/medical-condition/input",
+        "name": "medical condition",
+        "description": "Computing terminology must not hide medical findings elsewhere in the same content.",
+        "phase": "input",
+        "content": "My condition is getting worse.",
+        "expected_decision": "block",
+        "covered_rule_ids": [
+          "category/denied_medical_advice"
+        ],
+        "kind": "rule_acceptance",
+        "required": true,
+        "parameter_names": [],
+        "group": "Context boundaries"
+      },
+      {
+        "id": "context-boundary/medical-condition/output",
+        "name": "medical condition",
+        "description": "Computing terminology must not hide medical findings elsewhere in the same content.",
+        "phase": "output",
+        "content": "My condition is getting worse.",
+        "expected_decision": "block",
+        "covered_rule_ids": [
+          "category/denied_medical_advice"
+        ],
+        "kind": "rule_acceptance",
+        "required": true,
+        "parameter_names": [],
+        "group": "Context boundaries"
+      },
+      {
+        "id": "context-boundary/medical-condition-after-technical/input",
+        "name": "medical condition after technical",
+        "description": "Computing terminology must not hide medical findings elsewhere in the same content.",
+        "phase": "input",
+        "content": "The race condition is resolved. My condition is getting worse.",
+        "expected_decision": "block",
+        "covered_rule_ids": [
+          "category/denied_medical_advice"
+        ],
+        "kind": "rule_acceptance",
+        "required": true,
+        "parameter_names": [],
+        "group": "Context boundaries"
+      },
+      {
+        "id": "context-boundary/medical-condition-after-technical/output",
+        "name": "medical condition after technical",
+        "description": "Computing terminology must not hide medical findings elsewhere in the same content.",
+        "phase": "output",
+        "content": "The race condition is resolved. My condition is getting worse.",
+        "expected_decision": "block",
+        "covered_rule_ids": [
+          "category/denied_medical_advice"
+        ],
+        "kind": "rule_acceptance",
+        "required": true,
+        "parameter_names": [],
+        "group": "Context boundaries"
+      },
+      {
+        "id": "context-boundary/medical-condition-before-technical/input",
+        "name": "medical condition before technical",
+        "description": "Computing terminology must not hide medical findings elsewhere in the same content.",
+        "phase": "input",
+        "content": "My condition is getting worse; fix the race condition too.",
+        "expected_decision": "block",
+        "covered_rule_ids": [
+          "category/denied_medical_advice"
+        ],
+        "kind": "rule_acceptance",
+        "required": true,
+        "parameter_names": [],
+        "group": "Context boundaries"
+      },
+      {
+        "id": "context-boundary/medical-condition-before-technical/output",
+        "name": "medical condition before technical",
+        "description": "Computing terminology must not hide medical findings elsewhere in the same content.",
+        "phase": "output",
+        "content": "My condition is getting worse; fix the race condition too.",
+        "expected_decision": "block",
+        "covered_rule_ids": [
+          "category/denied_medical_advice"
+        ],
+        "kind": "rule_acceptance",
+        "required": true,
+        "parameter_names": [],
+        "group": "Context boundaries"
+      },
+      {
+        "id": "context-boundary/medical-request-with-technical/input",
+        "name": "medical request with technical",
+        "description": "Computing terminology must not hide medical findings elsewhere in the same content.",
+        "phase": "input",
+        "content": "Fix the race condition and recommend a medication.",
+        "expected_decision": "block",
+        "covered_rule_ids": [
+          "category/denied_medical_advice"
+        ],
+        "kind": "rule_acceptance",
+        "required": true,
+        "parameter_names": [],
+        "group": "Context boundaries"
+      },
+      {
+        "id": "context-boundary/medical-request-with-technical/output",
+        "name": "medical request with technical",
+        "description": "Computing terminology must not hide medical findings elsewhere in the same content.",
+        "phase": "output",
+        "content": "Fix the race condition and recommend a medication.",
+        "expected_decision": "block",
+        "covered_rule_ids": [
+          "category/denied_medical_advice"
         ],
         "kind": "rule_acceptance",
         "required": true,
@@ -42130,7 +42340,7 @@
         "name": "Denied Medical Advice",
         "description": "Detects requests for medical advice, diagnosis, or treatment recommendations that should be provided by licensed healthcare professionals",
         "rule_id": "category/denied_medical_advice",
-        "rule_version": "1.0.0",
+        "rule_version": "1.0.1",
         "detector": {
           "ref": "text/conditions",
           "version": "1.0.0"
@@ -42215,43 +42425,52 @@
                 }
               },
               {
-                "keywords": [
-                  "diagnose",
-                  "diagnosis",
-                  "doctor",
-                  "physician",
-                  "medication",
-                  "medicine",
-                  "prescription",
-                  "prescribe",
-                  "drug",
-                  "drugs",
-                  "treatment",
-                  "treat",
-                  "cure",
-                  "surgery",
-                  "symptoms",
-                  "symptom",
-                  "disease",
-                  "illness",
-                  "condition",
-                  "cancer",
-                  "diabetes",
-                  "depression",
-                  "anxiety",
-                  "adhd",
-                  "bipolar",
-                  "psychiatric",
-                  "vaccine",
-                  "vaccination",
-                  "dosage",
-                  "dose",
-                  "injury",
-                  "treatment",
-                  "injection"
+                "any": [
+                  {
+                    "keywords": [
+                      "diagnose",
+                      "diagnosis",
+                      "doctor",
+                      "physician",
+                      "medication",
+                      "medicine",
+                      "prescription",
+                      "prescribe",
+                      "drug",
+                      "drugs",
+                      "treatment",
+                      "treat",
+                      "cure",
+                      "surgery",
+                      "symptoms",
+                      "symptom",
+                      "disease",
+                      "illness",
+                      "cancer",
+                      "diabetes",
+                      "depression",
+                      "anxiety",
+                      "adhd",
+                      "bipolar",
+                      "psychiatric",
+                      "vaccine",
+                      "vaccination",
+                      "dosage",
+                      "dose",
+                      "injury",
+                      "treatment",
+                      "injection"
+                    ]
+                  },
+                  {
+                    "regex": "(?<!\\brace[ -])\\bcondition\\b"
+                  }
                 ]
               }
             ]
+          },
+          "normalization": {
+            "collapse_whitespace": true
           }
         },
         "taxonomy_ids": [
@@ -42272,7 +42491,7 @@
         "id": "professional-advice",
         "name": "Professional Advice",
         "description": "Target taxonomy Policy: Professional Advice.",
-        "version": "1.0.1",
+        "version": "1.0.2",
         "tags": [
           {
             "namespace": "protection",
@@ -42841,7 +43060,7 @@
         },
         {
           "id": "category/denied_medical_advice",
-          "version": "1.0.0",
+          "version": "1.0.1",
           "name": "Denied Medical Advice",
           "description": "Detects requests for medical advice, diagnosis, or treatment recommendations that should be provided by licensed healthcare professionals",
           "stages": [
@@ -42917,43 +43136,52 @@
                       }
                     },
                     {
-                      "keywords": [
-                        "diagnose",
-                        "diagnosis",
-                        "doctor",
-                        "physician",
-                        "medication",
-                        "medicine",
-                        "prescription",
-                        "prescribe",
-                        "drug",
-                        "drugs",
-                        "treatment",
-                        "treat",
-                        "cure",
-                        "surgery",
-                        "symptoms",
-                        "symptom",
-                        "disease",
-                        "illness",
-                        "condition",
-                        "cancer",
-                        "diabetes",
-                        "depression",
-                        "anxiety",
-                        "adhd",
-                        "bipolar",
-                        "psychiatric",
-                        "vaccine",
-                        "vaccination",
-                        "dosage",
-                        "dose",
-                        "injury",
-                        "treatment",
-                        "injection"
+                      "any": [
+                        {
+                          "keywords": [
+                            "diagnose",
+                            "diagnosis",
+                            "doctor",
+                            "physician",
+                            "medication",
+                            "medicine",
+                            "prescription",
+                            "prescribe",
+                            "drug",
+                            "drugs",
+                            "treatment",
+                            "treat",
+                            "cure",
+                            "surgery",
+                            "symptoms",
+                            "symptom",
+                            "disease",
+                            "illness",
+                            "cancer",
+                            "diabetes",
+                            "depression",
+                            "anxiety",
+                            "adhd",
+                            "bipolar",
+                            "psychiatric",
+                            "vaccine",
+                            "vaccination",
+                            "dosage",
+                            "dose",
+                            "injury",
+                            "treatment",
+                            "injection"
+                          ]
+                        },
+                        {
+                          "regex": "(?<!\\brace[ -])\\bcondition\\b"
+                        }
                       ]
                     }
                   ]
+                },
+                "normalization": {
+                  "collapse_whitespace": true
                 }
               }
             }
@@ -43271,6 +43499,258 @@
           "expected_decision": "block",
           "covered_rule_ids": [
             "category/denied_financial_advice"
+          ],
+          "kind": "rule_acceptance",
+          "required": true,
+          "parameter_names": [],
+          "group": "Context boundaries",
+          "expected_text": null,
+          "expected_matched_rules": null,
+          "scope": "rule"
+        },
+        {
+          "id": "context-boundary/technical-race-condition/input",
+          "name": "technical race condition",
+          "description": "Computing terminology must not hide medical findings elsewhere in the same content.",
+          "phase": "input",
+          "content": "Fix the race condition that causes the black screen.",
+          "expected_decision": "allow",
+          "covered_rule_ids": [
+            "category/denied_medical_advice"
+          ],
+          "kind": "scenario",
+          "required": true,
+          "parameter_names": [],
+          "group": "Context boundaries",
+          "expected_text": null,
+          "expected_matched_rules": null,
+          "scope": "rule"
+        },
+        {
+          "id": "context-boundary/technical-race-condition/output",
+          "name": "technical race condition",
+          "description": "Computing terminology must not hide medical findings elsewhere in the same content.",
+          "phase": "output",
+          "content": "Fix the race condition that causes the black screen.",
+          "expected_decision": "allow",
+          "covered_rule_ids": [
+            "category/denied_medical_advice"
+          ],
+          "kind": "scenario",
+          "required": true,
+          "parameter_names": [],
+          "group": "Context boundaries",
+          "expected_text": null,
+          "expected_matched_rules": null,
+          "scope": "rule"
+        },
+        {
+          "id": "context-boundary/technical-race-condition-whitespace/input",
+          "name": "technical race condition whitespace",
+          "description": "Computing terminology must not hide medical findings elsewhere in the same content.",
+          "phase": "input",
+          "content": "Fix the RACE\t \nCONDITION in the cache.",
+          "expected_decision": "allow",
+          "covered_rule_ids": [
+            "category/denied_medical_advice"
+          ],
+          "kind": "scenario",
+          "required": true,
+          "parameter_names": [],
+          "group": "Context boundaries",
+          "expected_text": null,
+          "expected_matched_rules": null,
+          "scope": "rule"
+        },
+        {
+          "id": "context-boundary/technical-race-condition-whitespace/output",
+          "name": "technical race condition whitespace",
+          "description": "Computing terminology must not hide medical findings elsewhere in the same content.",
+          "phase": "output",
+          "content": "Fix the RACE\t \nCONDITION in the cache.",
+          "expected_decision": "allow",
+          "covered_rule_ids": [
+            "category/denied_medical_advice"
+          ],
+          "kind": "scenario",
+          "required": true,
+          "parameter_names": [],
+          "group": "Context boundaries",
+          "expected_text": null,
+          "expected_matched_rules": null,
+          "scope": "rule"
+        },
+        {
+          "id": "context-boundary/technical-race-condition-hyphen/input",
+          "name": "technical race condition hyphen",
+          "description": "Computing terminology must not hide medical findings elsewhere in the same content.",
+          "phase": "input",
+          "content": "Fix the race-condition in the cache.",
+          "expected_decision": "allow",
+          "covered_rule_ids": [
+            "category/denied_medical_advice"
+          ],
+          "kind": "scenario",
+          "required": true,
+          "parameter_names": [],
+          "group": "Context boundaries",
+          "expected_text": null,
+          "expected_matched_rules": null,
+          "scope": "rule"
+        },
+        {
+          "id": "context-boundary/technical-race-condition-hyphen/output",
+          "name": "technical race condition hyphen",
+          "description": "Computing terminology must not hide medical findings elsewhere in the same content.",
+          "phase": "output",
+          "content": "Fix the race-condition in the cache.",
+          "expected_decision": "allow",
+          "covered_rule_ids": [
+            "category/denied_medical_advice"
+          ],
+          "kind": "scenario",
+          "required": true,
+          "parameter_names": [],
+          "group": "Context boundaries",
+          "expected_text": null,
+          "expected_matched_rules": null,
+          "scope": "rule"
+        },
+        {
+          "id": "context-boundary/medical-condition/input",
+          "name": "medical condition",
+          "description": "Computing terminology must not hide medical findings elsewhere in the same content.",
+          "phase": "input",
+          "content": "My condition is getting worse.",
+          "expected_decision": "block",
+          "covered_rule_ids": [
+            "category/denied_medical_advice"
+          ],
+          "kind": "rule_acceptance",
+          "required": true,
+          "parameter_names": [],
+          "group": "Context boundaries",
+          "expected_text": null,
+          "expected_matched_rules": null,
+          "scope": "rule"
+        },
+        {
+          "id": "context-boundary/medical-condition/output",
+          "name": "medical condition",
+          "description": "Computing terminology must not hide medical findings elsewhere in the same content.",
+          "phase": "output",
+          "content": "My condition is getting worse.",
+          "expected_decision": "block",
+          "covered_rule_ids": [
+            "category/denied_medical_advice"
+          ],
+          "kind": "rule_acceptance",
+          "required": true,
+          "parameter_names": [],
+          "group": "Context boundaries",
+          "expected_text": null,
+          "expected_matched_rules": null,
+          "scope": "rule"
+        },
+        {
+          "id": "context-boundary/medical-condition-after-technical/input",
+          "name": "medical condition after technical",
+          "description": "Computing terminology must not hide medical findings elsewhere in the same content.",
+          "phase": "input",
+          "content": "The race condition is resolved. My condition is getting worse.",
+          "expected_decision": "block",
+          "covered_rule_ids": [
+            "category/denied_medical_advice"
+          ],
+          "kind": "rule_acceptance",
+          "required": true,
+          "parameter_names": [],
+          "group": "Context boundaries",
+          "expected_text": null,
+          "expected_matched_rules": null,
+          "scope": "rule"
+        },
+        {
+          "id": "context-boundary/medical-condition-after-technical/output",
+          "name": "medical condition after technical",
+          "description": "Computing terminology must not hide medical findings elsewhere in the same content.",
+          "phase": "output",
+          "content": "The race condition is resolved. My condition is getting worse.",
+          "expected_decision": "block",
+          "covered_rule_ids": [
+            "category/denied_medical_advice"
+          ],
+          "kind": "rule_acceptance",
+          "required": true,
+          "parameter_names": [],
+          "group": "Context boundaries",
+          "expected_text": null,
+          "expected_matched_rules": null,
+          "scope": "rule"
+        },
+        {
+          "id": "context-boundary/medical-condition-before-technical/input",
+          "name": "medical condition before technical",
+          "description": "Computing terminology must not hide medical findings elsewhere in the same content.",
+          "phase": "input",
+          "content": "My condition is getting worse; fix the race condition too.",
+          "expected_decision": "block",
+          "covered_rule_ids": [
+            "category/denied_medical_advice"
+          ],
+          "kind": "rule_acceptance",
+          "required": true,
+          "parameter_names": [],
+          "group": "Context boundaries",
+          "expected_text": null,
+          "expected_matched_rules": null,
+          "scope": "rule"
+        },
+        {
+          "id": "context-boundary/medical-condition-before-technical/output",
+          "name": "medical condition before technical",
+          "description": "Computing terminology must not hide medical findings elsewhere in the same content.",
+          "phase": "output",
+          "content": "My condition is getting worse; fix the race condition too.",
+          "expected_decision": "block",
+          "covered_rule_ids": [
+            "category/denied_medical_advice"
+          ],
+          "kind": "rule_acceptance",
+          "required": true,
+          "parameter_names": [],
+          "group": "Context boundaries",
+          "expected_text": null,
+          "expected_matched_rules": null,
+          "scope": "rule"
+        },
+        {
+          "id": "context-boundary/medical-request-with-technical/input",
+          "name": "medical request with technical",
+          "description": "Computing terminology must not hide medical findings elsewhere in the same content.",
+          "phase": "input",
+          "content": "Fix the race condition and recommend a medication.",
+          "expected_decision": "block",
+          "covered_rule_ids": [
+            "category/denied_medical_advice"
+          ],
+          "kind": "rule_acceptance",
+          "required": true,
+          "parameter_names": [],
+          "group": "Context boundaries",
+          "expected_text": null,
+          "expected_matched_rules": null,
+          "scope": "rule"
+        },
+        {
+          "id": "context-boundary/medical-request-with-technical/output",
+          "name": "medical request with technical",
+          "description": "Computing terminology must not hide medical findings elsewhere in the same content.",
+          "phase": "output",
+          "content": "Fix the race condition and recommend a medication.",
+          "expected_decision": "block",
+          "covered_rule_ids": [
+            "category/denied_medical_advice"
           ],
           "kind": "rule_acceptance",
           "required": true,
@@ -56242,7 +56722,7 @@
     "name": "Sensitive Attributes",
     "description": "Target taxonomy Policy: Sensitive Attributes.",
     "source": "built_in",
-    "version": "1.0.1",
+    "version": "1.0.2",
     "tags": [
       {
         "namespace": "protection",
@@ -57044,6 +57524,66 @@
         "required": true,
         "parameter_names": [],
         "group": "Context boundaries"
+      },
+      {
+        "id": "context-boundary/technical-race-condition-hyphen/input",
+        "name": "technical race condition hyphen",
+        "description": "A technical phrase must not redact itself or suppress a separate protected attribute.",
+        "phase": "input",
+        "content": "Fix the race-condition in the cache.",
+        "expected_decision": "allow",
+        "covered_rule_ids": [
+          "pattern/race_ethnicity_national_origin"
+        ],
+        "kind": "scenario",
+        "required": true,
+        "parameter_names": [],
+        "group": "Context boundaries"
+      },
+      {
+        "id": "context-boundary/attribute-after-technical-hyphen/input",
+        "name": "attribute after technical hyphen",
+        "description": "A technical phrase must not redact itself or suppress a separate protected attribute.",
+        "phase": "input",
+        "content": "Fix the race-condition in the cache. She is Asian.",
+        "expected_decision": "transform",
+        "covered_rule_ids": [
+          "pattern/race_ethnicity_national_origin"
+        ],
+        "kind": "scenario",
+        "required": true,
+        "parameter_names": [],
+        "group": "Context boundaries"
+      },
+      {
+        "id": "context-boundary/technical-race-condition-hyphen/output",
+        "name": "technical race condition hyphen",
+        "description": "A technical phrase must not redact itself or suppress a separate protected attribute.",
+        "phase": "output",
+        "content": "Fix the race-condition in the cache.",
+        "expected_decision": "allow",
+        "covered_rule_ids": [
+          "pattern/race_ethnicity_national_origin"
+        ],
+        "kind": "scenario",
+        "required": true,
+        "parameter_names": [],
+        "group": "Context boundaries"
+      },
+      {
+        "id": "context-boundary/attribute-after-technical-hyphen/output",
+        "name": "attribute after technical hyphen",
+        "description": "A technical phrase must not redact itself or suppress a separate protected attribute.",
+        "phase": "output",
+        "content": "Fix the race-condition in the cache. She is Asian.",
+        "expected_decision": "transform",
+        "covered_rule_ids": [
+          "pattern/race_ethnicity_national_origin"
+        ],
+        "kind": "scenario",
+        "required": true,
+        "parameter_names": [],
+        "group": "Context boundaries"
       }
     ],
     "rules": [
@@ -57084,7 +57624,7 @@
         "name": "Race, Ethnicity & National Origin (Protected Class)",
         "description": "Detects race, ethnicity and national origin terms - protected under ECOA and Fair Housing Act Disambiguates local professional, technical or cultural phrases per occurrence; other sensitive matches in the same text remain protected.",
         "rule_id": "pattern/race_ethnicity_national_origin",
-        "rule_version": "1.0.1",
+        "rule_version": "1.0.2",
         "detector": {
           "ref": "text/regex",
           "version": "1.0.0"
@@ -57104,7 +57644,7 @@
           "binding_id": "local-sensitive-attribute-terms",
           "implementation_rule_id": "pattern/race_ethnicity_national_origin"
         },
-        "expression": "(?:(?:\\b(caucasian|african[- ]?american|black|white|asian|hispanic|latino|latina|latinx|pacific\\s+islander|native\\s+american|indigenous|first\\s+nations|aboriginal|mestizo|mulatto|biracial|multiracial|mixed[- ]?race|person\\s+of\\s+colou?r|POC|BIPOC|ethnic(ity)?|racial|race|arab|middle\\s+eastern|south\\s+asian|east\\s+asian|southeast\\s+asian|european|african|caribbean|west\\s+indian|haitian|jamaican|cuban|puerto\\s+rican|mexican|dominican|salvadoran|guatemalan|honduran|colombian|venezuelan|peruvian|brazilian|chinese|japanese|korean|vietnamese|filipino|filipina|indian|pakistani|bangladeshi|sri\\s+lankan|nepali|thai|indonesian|malaysian|burmese|cambodian|laotian|hmong|somali|ethiopian|nigerian|ghanaian|kenyan|south\\s+african|egyptian|moroccan|algerian|iranian|iraqi|syrian|lebanese|palestinian|israeli|turkish|afghan|uzbek|kazakh|russian|ukrainian|polish|german|italian|irish|british|french|spanish|portuguese|greek|albanian|serbian|croatian|bosnian|romani|roma|gypsy|jewish|ashkenazi|sephardic|mizrahi|native\\s+hawaiian|samoan|tongan|fijian|guamanian|chamorro|inuit|aleut|metis|maori|aboriginal\\s+australian|torres\\s+strait)\\b)\\s+(?:(?:art|museum|historical|ancient|traditional|modern|language|cultural|food)\\s+){0,2}(?:collections?|artifacts?|artefacts?|cuisine|cooking|recipes?|dishes?|restaurants?|languages?|grammar|vocabulary|literature|poetry|architecture|paintings?|sculptures?|ceramics|pottery|art|museums?)\\b|\\b(?:black|white)\\s+(?:screens?|backgrounds?|pixels?|boxes?|boards?|text|buttons?|colors?|colours?)\\b|\\brace\\s+(?:conditions?|cars?|tracks?)\\b)|(?P<attribute>\\b(caucasian|african[- ]?american|black|white|asian|hispanic|latino|latina|latinx|pacific\\s+islander|native\\s+american|indigenous|first\\s+nations|aboriginal|mestizo|mulatto|biracial|multiracial|mixed[- ]?race|person\\s+of\\s+colou?r|POC|BIPOC|ethnic(ity)?|racial|race|arab|middle\\s+eastern|south\\s+asian|east\\s+asian|southeast\\s+asian|european|african|caribbean|west\\s+indian|haitian|jamaican|cuban|puerto\\s+rican|mexican|dominican|salvadoran|guatemalan|honduran|colombian|venezuelan|peruvian|brazilian|chinese|japanese|korean|vietnamese|filipino|filipina|indian|pakistani|bangladeshi|sri\\s+lankan|nepali|thai|indonesian|malaysian|burmese|cambodian|laotian|hmong|somali|ethiopian|nigerian|ghanaian|kenyan|south\\s+african|egyptian|moroccan|algerian|iranian|iraqi|syrian|lebanese|palestinian|israeli|turkish|afghan|uzbek|kazakh|russian|ukrainian|polish|german|italian|irish|british|french|spanish|portuguese|greek|albanian|serbian|croatian|bosnian|romani|roma|gypsy|jewish|ashkenazi|sephardic|mizrahi|native\\s+hawaiian|samoan|tongan|fijian|guamanian|chamorro|inuit|aleut|metis|maori|aboriginal\\s+australian|torres\\s+strait)\\b)",
+        "expression": "(?:(?:\\b(caucasian|african[- ]?american|black|white|asian|hispanic|latino|latina|latinx|pacific\\s+islander|native\\s+american|indigenous|first\\s+nations|aboriginal|mestizo|mulatto|biracial|multiracial|mixed[- ]?race|person\\s+of\\s+colou?r|POC|BIPOC|ethnic(ity)?|racial|race|arab|middle\\s+eastern|south\\s+asian|east\\s+asian|southeast\\s+asian|european|african|caribbean|west\\s+indian|haitian|jamaican|cuban|puerto\\s+rican|mexican|dominican|salvadoran|guatemalan|honduran|colombian|venezuelan|peruvian|brazilian|chinese|japanese|korean|vietnamese|filipino|filipina|indian|pakistani|bangladeshi|sri\\s+lankan|nepali|thai|indonesian|malaysian|burmese|cambodian|laotian|hmong|somali|ethiopian|nigerian|ghanaian|kenyan|south\\s+african|egyptian|moroccan|algerian|iranian|iraqi|syrian|lebanese|palestinian|israeli|turkish|afghan|uzbek|kazakh|russian|ukrainian|polish|german|italian|irish|british|french|spanish|portuguese|greek|albanian|serbian|croatian|bosnian|romani|roma|gypsy|jewish|ashkenazi|sephardic|mizrahi|native\\s+hawaiian|samoan|tongan|fijian|guamanian|chamorro|inuit|aleut|metis|maori|aboriginal\\s+australian|torres\\s+strait)\\b)\\s+(?:(?:art|museum|historical|ancient|traditional|modern|language|cultural|food)\\s+){0,2}(?:collections?|artifacts?|artefacts?|cuisine|cooking|recipes?|dishes?|restaurants?|languages?|grammar|vocabulary|literature|poetry|architecture|paintings?|sculptures?|ceramics|pottery|art|museums?)\\b|\\b(?:black|white)\\s+(?:screens?|backgrounds?|pixels?|boxes?|boards?|text|buttons?|colors?|colours?)\\b|\\brace(?:[\\s-]+conditions?|\\s+(?:cars?|tracks?))\\b)|(?P<attribute>\\b(caucasian|african[- ]?american|black|white|asian|hispanic|latino|latina|latinx|pacific\\s+islander|native\\s+american|indigenous|first\\s+nations|aboriginal|mestizo|mulatto|biracial|multiracial|mixed[- ]?race|person\\s+of\\s+colou?r|POC|BIPOC|ethnic(ity)?|racial|race|arab|middle\\s+eastern|south\\s+asian|east\\s+asian|southeast\\s+asian|european|african|caribbean|west\\s+indian|haitian|jamaican|cuban|puerto\\s+rican|mexican|dominican|salvadoran|guatemalan|honduran|colombian|venezuelan|peruvian|brazilian|chinese|japanese|korean|vietnamese|filipino|filipina|indian|pakistani|bangladeshi|sri\\s+lankan|nepali|thai|indonesian|malaysian|burmese|cambodian|laotian|hmong|somali|ethiopian|nigerian|ghanaian|kenyan|south\\s+african|egyptian|moroccan|algerian|iranian|iraqi|syrian|lebanese|palestinian|israeli|turkish|afghan|uzbek|kazakh|russian|ukrainian|polish|german|italian|irish|british|french|spanish|portuguese|greek|albanian|serbian|croatian|bosnian|romani|roma|gypsy|jewish|ashkenazi|sephardic|mizrahi|native\\s+hawaiian|samoan|tongan|fijian|guamanian|chamorro|inuit|aleut|metis|maori|aboriginal\\s+australian|torres\\s+strait)\\b)",
         "detector_options": {
           "capture_group": "attribute"
         },
@@ -57325,7 +57865,7 @@
         "id": "sensitive-attributes",
         "name": "Sensitive Attributes",
         "description": "Target taxonomy Policy: Sensitive Attributes.",
-        "version": "1.0.1",
+        "version": "1.0.2",
         "tags": [
           {
             "namespace": "protection",
@@ -57382,7 +57922,7 @@
         },
         {
           "id": "pattern/race_ethnicity_national_origin",
-          "version": "1.0.1",
+          "version": "1.0.2",
           "name": "Race, Ethnicity & National Origin (Protected Class)",
           "description": "Detects race, ethnicity and national origin terms - protected under ECOA and Fair Housing Act Disambiguates local professional, technical or cultural phrases per occurrence; other sensitive matches in the same text remain protected.",
           "stages": [
@@ -57393,7 +57933,7 @@
             "ref": "text/regex",
             "version": "1.0.0",
             "parameters": {
-              "expression": "(?:(?:\\b(caucasian|african[- ]?american|black|white|asian|hispanic|latino|latina|latinx|pacific\\s+islander|native\\s+american|indigenous|first\\s+nations|aboriginal|mestizo|mulatto|biracial|multiracial|mixed[- ]?race|person\\s+of\\s+colou?r|POC|BIPOC|ethnic(ity)?|racial|race|arab|middle\\s+eastern|south\\s+asian|east\\s+asian|southeast\\s+asian|european|african|caribbean|west\\s+indian|haitian|jamaican|cuban|puerto\\s+rican|mexican|dominican|salvadoran|guatemalan|honduran|colombian|venezuelan|peruvian|brazilian|chinese|japanese|korean|vietnamese|filipino|filipina|indian|pakistani|bangladeshi|sri\\s+lankan|nepali|thai|indonesian|malaysian|burmese|cambodian|laotian|hmong|somali|ethiopian|nigerian|ghanaian|kenyan|south\\s+african|egyptian|moroccan|algerian|iranian|iraqi|syrian|lebanese|palestinian|israeli|turkish|afghan|uzbek|kazakh|russian|ukrainian|polish|german|italian|irish|british|french|spanish|portuguese|greek|albanian|serbian|croatian|bosnian|romani|roma|gypsy|jewish|ashkenazi|sephardic|mizrahi|native\\s+hawaiian|samoan|tongan|fijian|guamanian|chamorro|inuit|aleut|metis|maori|aboriginal\\s+australian|torres\\s+strait)\\b)\\s+(?:(?:art|museum|historical|ancient|traditional|modern|language|cultural|food)\\s+){0,2}(?:collections?|artifacts?|artefacts?|cuisine|cooking|recipes?|dishes?|restaurants?|languages?|grammar|vocabulary|literature|poetry|architecture|paintings?|sculptures?|ceramics|pottery|art|museums?)\\b|\\b(?:black|white)\\s+(?:screens?|backgrounds?|pixels?|boxes?|boards?|text|buttons?|colors?|colours?)\\b|\\brace\\s+(?:conditions?|cars?|tracks?)\\b)|(?P<attribute>\\b(caucasian|african[- ]?american|black|white|asian|hispanic|latino|latina|latinx|pacific\\s+islander|native\\s+american|indigenous|first\\s+nations|aboriginal|mestizo|mulatto|biracial|multiracial|mixed[- ]?race|person\\s+of\\s+colou?r|POC|BIPOC|ethnic(ity)?|racial|race|arab|middle\\s+eastern|south\\s+asian|east\\s+asian|southeast\\s+asian|european|african|caribbean|west\\s+indian|haitian|jamaican|cuban|puerto\\s+rican|mexican|dominican|salvadoran|guatemalan|honduran|colombian|venezuelan|peruvian|brazilian|chinese|japanese|korean|vietnamese|filipino|filipina|indian|pakistani|bangladeshi|sri\\s+lankan|nepali|thai|indonesian|malaysian|burmese|cambodian|laotian|hmong|somali|ethiopian|nigerian|ghanaian|kenyan|south\\s+african|egyptian|moroccan|algerian|iranian|iraqi|syrian|lebanese|palestinian|israeli|turkish|afghan|uzbek|kazakh|russian|ukrainian|polish|german|italian|irish|british|french|spanish|portuguese|greek|albanian|serbian|croatian|bosnian|romani|roma|gypsy|jewish|ashkenazi|sephardic|mizrahi|native\\s+hawaiian|samoan|tongan|fijian|guamanian|chamorro|inuit|aleut|metis|maori|aboriginal\\s+australian|torres\\s+strait)\\b)",
+              "expression": "(?:(?:\\b(caucasian|african[- ]?american|black|white|asian|hispanic|latino|latina|latinx|pacific\\s+islander|native\\s+american|indigenous|first\\s+nations|aboriginal|mestizo|mulatto|biracial|multiracial|mixed[- ]?race|person\\s+of\\s+colou?r|POC|BIPOC|ethnic(ity)?|racial|race|arab|middle\\s+eastern|south\\s+asian|east\\s+asian|southeast\\s+asian|european|african|caribbean|west\\s+indian|haitian|jamaican|cuban|puerto\\s+rican|mexican|dominican|salvadoran|guatemalan|honduran|colombian|venezuelan|peruvian|brazilian|chinese|japanese|korean|vietnamese|filipino|filipina|indian|pakistani|bangladeshi|sri\\s+lankan|nepali|thai|indonesian|malaysian|burmese|cambodian|laotian|hmong|somali|ethiopian|nigerian|ghanaian|kenyan|south\\s+african|egyptian|moroccan|algerian|iranian|iraqi|syrian|lebanese|palestinian|israeli|turkish|afghan|uzbek|kazakh|russian|ukrainian|polish|german|italian|irish|british|french|spanish|portuguese|greek|albanian|serbian|croatian|bosnian|romani|roma|gypsy|jewish|ashkenazi|sephardic|mizrahi|native\\s+hawaiian|samoan|tongan|fijian|guamanian|chamorro|inuit|aleut|metis|maori|aboriginal\\s+australian|torres\\s+strait)\\b)\\s+(?:(?:art|museum|historical|ancient|traditional|modern|language|cultural|food)\\s+){0,2}(?:collections?|artifacts?|artefacts?|cuisine|cooking|recipes?|dishes?|restaurants?|languages?|grammar|vocabulary|literature|poetry|architecture|paintings?|sculptures?|ceramics|pottery|art|museums?)\\b|\\b(?:black|white)\\s+(?:screens?|backgrounds?|pixels?|boxes?|boards?|text|buttons?|colors?|colours?)\\b|\\brace(?:[\\s-]+conditions?|\\s+(?:cars?|tracks?))\\b)|(?P<attribute>\\b(caucasian|african[- ]?american|black|white|asian|hispanic|latino|latina|latinx|pacific\\s+islander|native\\s+american|indigenous|first\\s+nations|aboriginal|mestizo|mulatto|biracial|multiracial|mixed[- ]?race|person\\s+of\\s+colou?r|POC|BIPOC|ethnic(ity)?|racial|race|arab|middle\\s+eastern|south\\s+asian|east\\s+asian|southeast\\s+asian|european|african|caribbean|west\\s+indian|haitian|jamaican|cuban|puerto\\s+rican|mexican|dominican|salvadoran|guatemalan|honduran|colombian|venezuelan|peruvian|brazilian|chinese|japanese|korean|vietnamese|filipino|filipina|indian|pakistani|bangladeshi|sri\\s+lankan|nepali|thai|indonesian|malaysian|burmese|cambodian|laotian|hmong|somali|ethiopian|nigerian|ghanaian|kenyan|south\\s+african|egyptian|moroccan|algerian|iranian|iraqi|syrian|lebanese|palestinian|israeli|turkish|afghan|uzbek|kazakh|russian|ukrainian|polish|german|italian|irish|british|french|spanish|portuguese|greek|albanian|serbian|croatian|bosnian|romani|roma|gypsy|jewish|ashkenazi|sephardic|mizrahi|native\\s+hawaiian|samoan|tongan|fijian|guamanian|chamorro|inuit|aleut|metis|maori|aboriginal\\s+australian|torres\\s+strait)\\b)",
               "detector_options": {
                 "capture_group": "attribute"
               }
@@ -58528,6 +59068,78 @@
           "parameter_names": [],
           "group": "Context boundaries",
           "expected_text": "Egyptian collections are on display. The applicant is [race_ethnicity_national_origin_REDACTED].",
+          "expected_matched_rules": null,
+          "scope": "rule"
+        },
+        {
+          "id": "context-boundary/technical-race-condition-hyphen/input",
+          "name": "technical race condition hyphen",
+          "description": "A technical phrase must not redact itself or suppress a separate protected attribute.",
+          "phase": "input",
+          "content": "Fix the race-condition in the cache.",
+          "expected_decision": "allow",
+          "covered_rule_ids": [
+            "pattern/race_ethnicity_national_origin"
+          ],
+          "kind": "scenario",
+          "required": true,
+          "parameter_names": [],
+          "group": "Context boundaries",
+          "expected_text": null,
+          "expected_matched_rules": null,
+          "scope": "rule"
+        },
+        {
+          "id": "context-boundary/attribute-after-technical-hyphen/input",
+          "name": "attribute after technical hyphen",
+          "description": "A technical phrase must not redact itself or suppress a separate protected attribute.",
+          "phase": "input",
+          "content": "Fix the race-condition in the cache. She is Asian.",
+          "expected_decision": "transform",
+          "covered_rule_ids": [
+            "pattern/race_ethnicity_national_origin"
+          ],
+          "kind": "scenario",
+          "required": true,
+          "parameter_names": [],
+          "group": "Context boundaries",
+          "expected_text": "Fix the race-condition in the cache. She is [race_ethnicity_national_origin_REDACTED].",
+          "expected_matched_rules": null,
+          "scope": "rule"
+        },
+        {
+          "id": "context-boundary/technical-race-condition-hyphen/output",
+          "name": "technical race condition hyphen",
+          "description": "A technical phrase must not redact itself or suppress a separate protected attribute.",
+          "phase": "output",
+          "content": "Fix the race-condition in the cache.",
+          "expected_decision": "allow",
+          "covered_rule_ids": [
+            "pattern/race_ethnicity_national_origin"
+          ],
+          "kind": "scenario",
+          "required": true,
+          "parameter_names": [],
+          "group": "Context boundaries",
+          "expected_text": null,
+          "expected_matched_rules": null,
+          "scope": "rule"
+        },
+        {
+          "id": "context-boundary/attribute-after-technical-hyphen/output",
+          "name": "attribute after technical hyphen",
+          "description": "A technical phrase must not redact itself or suppress a separate protected attribute.",
+          "phase": "output",
+          "content": "Fix the race-condition in the cache. She is Asian.",
+          "expected_decision": "transform",
+          "covered_rule_ids": [
+            "pattern/race_ethnicity_national_origin"
+          ],
+          "kind": "scenario",
+          "required": true,
+          "parameter_names": [],
+          "group": "Context boundaries",
+          "expected_text": "Fix the race-condition in the cache. She is [race_ethnicity_national_origin_REDACTED].",
           "expected_matched_rules": null,
           "scope": "rule"
         }

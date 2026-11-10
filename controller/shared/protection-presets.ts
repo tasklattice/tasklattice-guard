@@ -262,7 +262,7 @@ export const protectionPresets: readonly ProtectionPreset[] = [
       },
       {
         "policyId": "professional-advice",
-        "policyVersion": "1.0.1",
+        "policyVersion": "1.0.2",
         "enabledRails": [
           "input",
           "output"
@@ -838,7 +838,7 @@ export const protectionPresets: readonly ProtectionPreset[] = [
       },
       {
         "policyId": "sensitive-attributes",
-        "policyVersion": "1.0.1",
+        "policyVersion": "1.0.2",
         "enabledRails": [
           "input",
           "output"
@@ -1420,7 +1420,7 @@ export const protectionPresets: readonly ProtectionPreset[] = [
       },
       {
         "policyId": "professional-advice",
-        "policyVersion": "1.0.1",
+        "policyVersion": "1.0.2",
         "enabledRails": [
           "input",
           "output"
@@ -2044,7 +2044,7 @@ export const protectionPresets: readonly ProtectionPreset[] = [
       },
       {
         "policyId": "sensitive-attributes",
-        "policyVersion": "1.0.1",
+        "policyVersion": "1.0.2",
         "enabledRails": [
           "input",
           "output"
@@ -2648,7 +2648,7 @@ export const protectionPresets: readonly ProtectionPreset[] = [
       },
       {
         "policyId": "professional-advice",
-        "policyVersion": "1.0.1",
+        "policyVersion": "1.0.2",
         "enabledRails": [
           "input",
           "output"
@@ -3178,7 +3178,7 @@ export const protectionPresets: readonly ProtectionPreset[] = [
       },
       {
         "policyId": "sensitive-attributes",
-        "policyVersion": "1.0.1",
+        "policyVersion": "1.0.2",
         "enabledRails": [
           "input",
           "output"
@@ -3760,7 +3760,7 @@ export const protectionPresets: readonly ProtectionPreset[] = [
       },
       {
         "policyId": "professional-advice",
-        "policyVersion": "1.0.1",
+        "policyVersion": "1.0.2",
         "enabledRails": [
           "input",
           "output"
@@ -4261,7 +4261,7 @@ export const protectionPresets: readonly ProtectionPreset[] = [
       },
       {
         "policyId": "sensitive-attributes",
-        "policyVersion": "1.0.1",
+        "policyVersion": "1.0.2",
         "enabledRails": [
           "input",
           "output"
@@ -4843,7 +4843,7 @@ export const protectionPresets: readonly ProtectionPreset[] = [
       },
       {
         "policyId": "professional-advice",
-        "policyVersion": "1.0.1",
+        "policyVersion": "1.0.2",
         "enabledRails": [
           "input",
           "output"
@@ -5319,7 +5319,7 @@ export const protectionPresets: readonly ProtectionPreset[] = [
       },
       {
         "policyId": "sensitive-attributes",
-        "policyVersion": "1.0.1",
+        "policyVersion": "1.0.2",
         "enabledRails": [
           "input",
           "output"

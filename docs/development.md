@@ -194,12 +194,16 @@ Each vendor still runs against its own evaluator, profile, thresholds, prompt
 revision, and evidence collection. Vendor isolation tests remain separate.
 Provider-independent checks run once rather than once per vendor.
 
-Generated Runner fixture freshness is an explicit maintenance gate:
-`npm run fixtures:check` regenerates every checked-in signed Artifact and
-compares its checksum. It is skipped in ordinary test runs because it costs
-seconds and Node subprocesses per run; CI runs it once in the first Control plane
-shard. Generated protobuf freshness belongs to the Python contract suite, and
-CLI helper tests belong to `test:cli`. Aggregate commands and CI invoke each
+Signed Artifact fixtures are build output and are not committed. Pytest sessions
+and Vitest's global setup regenerate them with `scripts/generate_test_artifacts.py`, which writes
+only changed bytes, so a fresh checkout, CI and a working tree all test against
+current compiler output and a Policy or NeMo change never needs a binary fixture
+commit. `npm run fixtures:generate` writes them on demand. Reproducibility is an
+explicit gate: `npm run fixtures:check` generates twice and fails unless the
+second run is byte-identical. It is skipped in ordinary test runs because it
+costs seconds and Node subprocesses per run; CI runs it once in the first Control
+plane shard. Generated protobuf freshness belongs to the Python contract suite,
+and CLI helper tests belong to `test:cli`. Aggregate commands and CI invoke each
 check once.
 
 In addition to development dependencies, the contract checks require Helm and
@@ -311,7 +315,7 @@ Unit and PostgreSQL coverage:
 `GUARD_TEST_POSTGRES_URL=... npx vitest run server/services/guardrail-packages.postgres.test.ts`.
 
 The independence contract tests physically omit `policy_library/` in fresh
-processes, reproduce the checked-in Artifacts, and exercise health endpoints and
+processes, reproduce the generated Artifacts, and exercise health endpoints and
 input/output requests through the real Runner.
 
 ## Controller API reference

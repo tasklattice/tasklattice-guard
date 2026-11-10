@@ -104,6 +104,7 @@ Each request selects the route again and creates a new Scan ID. Input and Output
 
 This API does not correlate conversation messages or link Input and Output. Use the [gateway integration API](/document/developer/gateway-connect) for that lifecycle. The explicit context extension below supports independent context-aware scans.
 
+<a id="tasklattice-context-extension" />
 ### TaskLattice context extension
 
 `guardrail_context` is an optional TaskLattice extension, **not an upstream F5 standard field**. It uses the same untrusted content boundaries as the gateway API:

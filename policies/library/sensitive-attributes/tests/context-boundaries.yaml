@@ -264,3 +264,57 @@
   group: Context boundaries
   parameter_names: []
   expected_text: Egyptian collections are on display. The applicant is [race_ethnicity_national_origin_REDACTED].
+- id: context-boundary/technical-race-condition-hyphen/input
+  name: technical race condition hyphen
+  description: A technical phrase must not redact itself or suppress a separate protected attribute.
+  phase: input
+  content: Fix the race-condition in the cache.
+  expected_decision: allow
+  covered_rule_ids:
+  - pattern/race_ethnicity_national_origin
+  scope: rule
+  kind: scenario
+  required: true
+  group: Context boundaries
+  parameter_names: []
+- id: context-boundary/attribute-after-technical-hyphen/input
+  name: attribute after technical hyphen
+  description: A technical phrase must not redact itself or suppress a separate protected attribute.
+  phase: input
+  content: Fix the race-condition in the cache. She is Asian.
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/race_ethnicity_national_origin
+  scope: rule
+  kind: scenario
+  required: true
+  group: Context boundaries
+  parameter_names: []
+  expected_text: Fix the race-condition in the cache. She is [race_ethnicity_national_origin_REDACTED].
+- id: context-boundary/technical-race-condition-hyphen/output
+  name: technical race condition hyphen
+  description: A technical phrase must not redact itself or suppress a separate protected attribute.
+  phase: output
+  content: Fix the race-condition in the cache.
+  expected_decision: allow
+  covered_rule_ids:
+  - pattern/race_ethnicity_national_origin
+  scope: rule
+  kind: scenario
+  required: true
+  group: Context boundaries
+  parameter_names: []
+- id: context-boundary/attribute-after-technical-hyphen/output
+  name: attribute after technical hyphen
+  description: A technical phrase must not redact itself or suppress a separate protected attribute.
+  phase: output
+  content: Fix the race-condition in the cache. She is Asian.
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/race_ethnicity_national_origin
+  scope: rule
+  kind: scenario
+  required: true
+  group: Context boundaries
+  parameter_names: []
+  expected_text: Fix the race-condition in the cache. She is [race_ethnicity_national_origin_REDACTED].

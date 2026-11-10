@@ -74,7 +74,7 @@ jobs:
         if: matrix.shard == 1
         run: npm run test:control-plane:artifacts
 
-      - name: Verify checked-in Runner artifact fixtures
+      - name: Verify generated Runner artifact fixtures
         if: matrix.shard == 1
         run: npm run fixtures:check
 

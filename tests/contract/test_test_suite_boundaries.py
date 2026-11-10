@@ -25,7 +25,9 @@ def test_data_plane_tests_do_not_compile_or_validate_artifacts() -> None:
     assert violations == [], "\n".join(violations)
 
 
-def test_checked_in_artifact_fixture_contains_no_private_key() -> None:
+def test_artifact_fixture_contains_no_private_key() -> None:
+    # The fixtures are generated, never committed; this guards the generator
+    # from ever writing the test-only signing key into the working tree.
     fixture = TESTS / "fixtures" / "artifacts" / "local-secrets-v1"
     assert {path.name for path in fixture.iterdir()} == {
         "desired-state.pb.b64",
