@@ -67,12 +67,15 @@ describe("Declarative Policy Studio stepper", () => {
     select("Detector", "model/classifier"); select("Classification", "topic-classification");
     expect((screen.getByRole("combobox", { name: "Denied topics", exact: true }) as HTMLSelectElement).value).toBe("denied_topics");
     click("common.next"); fill("Denied topics · test value", "Cooking recipes"); click("Input"); fill("Test name", "Recipe"); fill("Input text", "Give me a cake recipe.");
+    const questions = "- id: denied_task\n  when: denied\n  instructions: Does the request match a denied topic in {restricted_topics}?";
+    expect((screen.getByRole("button", { name: "Run tests", exact: true }) as HTMLButtonElement).disabled).toBe(true);
+    fill("declarativePolicy.questions · test value", questions);
     click("Run tests"); await screen.findByText("Passed", { exact: false });
     click("Review & publish");
     expect((screen.getByRole("button", { name: "Publish", exact: true }) as HTMLButtonElement).disabled).toBe(false);
-    expect(persisted!.rules[0]!.detector).toEqual({ ref: "model/classifier", version: "1.0.0", parameters: { profile: "topic-classification", topic_mode: "{{topic_mode}}", allowed_topics: "{{allowed_topics}}", restricted_topics: "{{denied_topics}}", on_unknown: "{{on_unknown}}", review_unknown: "{{review_unknown}}" } });
+    expect(persisted!.rules[0]!.detector).toEqual({ ref: "model/classifier", version: "1.0.0", parameters: { profile: "topic-classification", questions: "{{questions}}", topic_mode: "{{topic_mode}}", allowed_topics: "{{allowed_topics}}", restricted_topics: "{{denied_topics}}", on_unknown: "{{on_unknown}}", review_unknown: "{{review_unknown}}" } });
     expect(persisted!.parameters.find(p => p.name === "denied_topics")!.default).toBeNull();
-    expect(persisted!.testing!.parameters.denied_topics).toBe("Cooking recipes");
+    expect(persisted!.testing!.parameters).toEqual({ denied_topics: "Cooking recipes", questions });
     goStep(/3 Test Cases/); fill("Denied topics · test value", "Cooking and financial advice"); goStep(/4 Review/);
     expect((screen.getByRole("button", { name: "Publish", exact: true }) as HTMLButtonElement).disabled).toBe(true);
     expect(api.mock.calls.some(([path]) => path.endsWith("/publish"))).toBe(false);
