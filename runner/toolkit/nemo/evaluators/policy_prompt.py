@@ -21,8 +21,6 @@ from functools import lru_cache
 
 import yaml
 
-from ...policy_library.loader import load_builtin_policies
-
 PROVIDERS = ("jev", "laya")
 STAGES = ("primary", "review")
 RAILS = ("input", "output")
@@ -113,6 +111,9 @@ def _policy_questions(policy_id: str | None) -> tuple[PolicyQuestion, ...]:
     """Compiled Policy default, with ``{{parameter}}`` references resolved."""
     if not policy_id:
         return ()
+    # Only validation probes need the catalog. Serving frozen artifacts works without it.
+    from ...policy_library.loader import load_builtin_policies
+
     for policy in load_builtin_policies():
         if policy.id != policy_id:
             continue
