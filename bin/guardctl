@@ -5,4 +5,6 @@ export GUARDCTL_CWD="$PWD"
 repo_dir="$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)"
 cd "$repo_dir/controller"
 
-exec node --import tsx src/cli/guardctl.ts "$@"
+# `--` stops Node from interpreting CLI options of the same name
+# (`--env-file`, `--input-type`, ...) before guardctl parses them.
+exec node --import tsx -- src/cli/guardctl.ts "$@"

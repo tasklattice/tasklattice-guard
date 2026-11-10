@@ -263,7 +263,10 @@ def compile_policy(definition: PolicyDefinition, registry: dict[str, Any]) -> di
         if detector is None or detector["version"] != rule.detector.version:
             raise ValueError(f"Rule {rule.id}: registered detector/version unavailable: {rule.detector.ref}@{rule.detector.version}")
         params = deepcopy(rule.detector.parameters)
-        runtime_parameters = ("on_unknown", "review_unknown") if rule.detector.ref == "model/classifier" and params.get("profile") in {
+        # Parameters the classifier runtime consumes directly. A Rule owns its
+        # semantic definition; the Runner only executes it.
+        semantic_parameters = ("questions",)
+        runtime_parameters = ("on_unknown", "review_unknown", *semantic_parameters) if rule.detector.ref == "model/classifier" and params.get("profile") in {
             "jailbreak-classification", "safety-classification", "topic-classification", "pii-classification",
         } else ()
         unknown = set(params) - set(detector["parameters"]) - set(runtime_parameters)
@@ -274,6 +277,9 @@ def compile_policy(definition: PolicyDefinition, registry: dict[str, Any]) -> di
             references = {"{{" + parameter.name + "}}" for parameter in definition.parameters}
             if not isinstance(value, str) or value not in {"allow", "block", *references}:
                 raise ValueError(f"Rule {rule.id}: on_unknown must be allow, block, or a declared parameter")
+        for key in semantic_parameters:
+            if key in params and not (isinstance(params[key], str) and params[key].strip()):
+                raise ValueError(f"Rule {rule.id}: {key} must be a non-empty string")
         if "review_unknown" in params:
             value = params["review_unknown"]
             references = {"{{" + parameter.name + "}}" for parameter in definition.parameters}

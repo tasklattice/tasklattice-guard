@@ -177,7 +177,7 @@ async def test_output_classifier_uses_its_own_review_binding_and_preserves_evide
     assert response.json()["result"]["outcome"] == outcome
     assert len(calls) == expected_calls
     row = evidence[classifier_backend.evidence_key][0]
-    assert row["questionRevision"] == ("laya-content-safety-output.v3" if classifier_backend.name == "laya" else "content-safety-output.v1")
+    assert row["questionRevision"].startswith(f"content_safety:{classifier_backend.name}:")
     if expected_calls == 2:
         assert row["verdict"] == "unknown" and row["decisionSource"] == "review"
         assert row["review"]["revision"] == "classifier-review-output.v2"

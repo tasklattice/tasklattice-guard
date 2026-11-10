@@ -1,8 +1,9 @@
 """Semantic PII through Laya's native System One decision questions.
 
-This adapter uses the four questions that were measured to be the best Laya
-operating point on the frozen evaluation set *and* to pass the two-sample
-control-plane capability probe at the default 0.1 / 0.9 thresholds:
+The four single-concept questions are authored in the ``pii-semantic`` Policy as
+its Laya variant; this adapter only submits and scores them. That shape was
+measured to be the best Laya operating point on the frozen evaluation set *and*
+to pass the two-sample control-plane capability probe at 0.1 / 0.9:
 
   safe:   name 0.0862, identifier 0.0742, address 0.0395, dob 0.0000
   unsafe: name 1.0000, identifier 0.9846, address 0.1128, dob 0.6728
@@ -18,33 +19,17 @@ the model does not return trustworthy character spans.
 from __future__ import annotations
 
 from .contracts import EvaluationRequest
+from .policy_prompt import definition_provenance, definition_revision, questions_for
+
+REDACTION = "[PII_REDACTED]"
 from .laya import LAYA_PROFILE, LayaNoulEvaluator
 from ...evaluation.contracts import CONTRACT_PII_SEMANTIC
-
-QUESTION_REVISION = "laya-pii-input.v1"
-OUTPUT_QUESTION_REVISION = "laya-pii-output.v1"
-REDACTION = "[PII_REDACTED]"
-
-# One question per measurable PII concept. Do not add the generic
-# "personal information" question: on this checkpoint it degenerates (already
-# redacted text scored ~0.99 and ordinary organization names also scored high).
-PII_QUESTIONS = {
-    "name": "Does this text contain a person's name?",
-    "actual_identifier": (
-        "Does this text contain an actual personal identifier value such as a social "
-        "security number, passport number, email address, phone number or home address?"
-    ),
-    "address": "Does this text contain a home or personal postal address?",
-    "dob": "Does this text contain a specific person's date of birth?",
-}
-
 
 class LayaPiiEvaluator(LayaNoulEvaluator):
     id = "laya-pii"
     scope_label = "input/output Semantic PII"
     display_name = "Laya Semantic PII"
     operation = "pii_classification"
-    question_revision = QUESTION_REVISION
     capabilities = frozenset({"pii"})
     contracts = frozenset({CONTRACT_PII_SEMANTIC})
     rails = frozenset({"input", "output"})
@@ -59,7 +44,10 @@ class LayaPiiEvaluator(LayaNoulEvaluator):
         super().__init__(profile_ref=LAYA_PROFILE, **kwargs)
 
     def revision(self, request: EvaluationRequest) -> str:
-        return OUTPUT_QUESTION_REVISION if request.rail_type == "output" else QUESTION_REVISION
+        return definition_revision(request, provider="laya")
+
+    def evidence_extra(self, request: EvaluationRequest) -> dict[str, object]:
+        return definition_provenance(request, provider="laya")
 
     def state(self, request: EvaluationRequest) -> dict[str, object]:
         context = [dict(role=m["role"], content=m["content"]) for m in request.context_messages[-12:]
@@ -78,10 +66,8 @@ class LayaPiiEvaluator(LayaNoulEvaluator):
         return {field: request.content, "context_messages": []}
 
     def questions(self, request: EvaluationRequest) -> dict[str, dict[str, object]]:
-        return {
-            key: {"type": "noul", "instructions": instructions}
-            for key, instructions in PII_QUESTIONS.items()
-        }
+        # The Policy's Laya variant keeps one question per measurable concept.
+        return questions_for(request, provider="laya", stage="primary")
 
     def _redacts(self, request: EvaluationRequest, verdict: str) -> bool:
         return verdict == "matched" and request.proposed_action == "transform"

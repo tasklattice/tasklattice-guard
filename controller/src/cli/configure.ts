@@ -16,6 +16,13 @@ const required = (flags: Flags, key: string): string => {
   assert.ok(flags[key] && flags[key] !== 'true', `--${key} is required`);
   return flags[key];
 };
+const decimal = (flags: Flags, key: string, fallback: number): number => {
+  const raw = flags[key];
+  if (raw === undefined) return fallback;
+  const value = Number(raw);
+  assert.ok(Number.isFinite(value), `--${key} must be a number`);
+  return value;
+};
 const integer = (flags: Flags, key: string, fallback: number): number => {
   const value = Number(flags[key] ?? fallback);
   assert.ok(Number.isSafeInteger(value) && value > 0, `--${key} must be a positive integer`);
@@ -27,6 +34,11 @@ export const configurationHelp = `Non-interactive configuration (existing Contro
   guardctl platform register-model --provider-name NAME --provider-kind KIND
     --provider-url URL --model NAME --profile ID --key-env ENV_NAME
     [--timeout-seconds 30] [--max-tokens 512] [--refresh-credential]
+  guardctl platform model-settings --model-id ID [--max-tokens N] [--timeout-seconds N]
+    [--max-concurrency N] [--rate-limit-attempts N]
+    [--lower-threshold X --upper-threshold Y]
+    Change Model runtime settings in place; a referenced protocol reports the
+    separate-Provider recipe instead.
   guardctl platform bind --binding content_safety.input --model-id ID --state FILE
     [--validation-id ID | --revalidate] [--wait-seconds 300]
   guardctl project test --guardrail-id ID [--version VERSION] [--local-only]
@@ -34,6 +46,9 @@ export const configurationHelp = `Non-interactive configuration (existing Contro
     [--name-prefix TEXT] [--wait-seconds 900] [--test-model-rules]
     Create one Guardrail per Profile, publish it, run validation with models off by
     default, and write a JSON report per Profile plus summary.json.
+  guardctl project publish --guardrail-id ID [--patch FILE] --state FILE
+    [--emergency-reason TEXT] [--wait-seconds 600]
+    Publish a new version of an existing Guardrail and repoint its Routers. No copy.
   guardctl project test-status --run-id ID
   guardctl project test-cases --run-id ID [--cursor CURSOR] [--filter all|failed|passed|skipped]
   guardctl project test-case --run-id ID --ordinal N [--trace-offset N]
@@ -56,7 +71,11 @@ export function parseConfigurationArgs(args: string[]): { command: string; flags
   const [command, ...rest] = args;
   const flags: Flags = {};
   const booleanFlags = new Set(['help', 'refresh-credential', 'revalidate', 'local-only', 'test-model-rules']);
-  const known = new Set(['url', 'env-file', 'provider-name', 'provider-kind', 'provider-url', 'model', 'profile', 'key-env', 'timeout-seconds', 'max-tokens', 'binding', 'model-id', 'validation-id', 'state', 'wait-seconds', 'name', 'patch', 'emergency-reason', 'source', 'adapter', 'endpoint-id', 'router-id', 'replace-change-id', 'guardrail-id', 'version', 'run-id', 'ordinal', 'trace-offset', 'filter', 'cursor', 'profiles', 'out', 'name-prefix', 'test-model-rules', ...booleanFlags]);
+  const known = new Set(['url', 'env-file', 'provider-name', 'provider-kind', 'provider-url', 'model', 'profile', 'key-env',
+  'timeout-seconds', 'max-tokens', 'max-concurrency', 'rate-limit-attempts', 'lower-threshold', 'upper-threshold',
+  'binding', 'model-id', 'validation-id', 'state', 'wait-seconds', 'name', 'patch', 'emergency-reason', 'guardrail-id',
+  'source', 'adapter', 'endpoint-id', 'router-id', 'replace-change-id', 'version', 'run-id', 'ordinal', 'trace-offset',
+  'filter', 'cursor', 'profiles', 'out', 'name-prefix', 'test-model-rules', ...booleanFlags]);
   for (let n = 0; n < rest.length; n++) {
     assert.ok(rest[n].startsWith('--'), `Unexpected argument: ${rest[n]}`);
     const [key, ...value] = rest[n].slice(2).split('=');
@@ -69,8 +88,19 @@ export function parseConfigurationArgs(args: string[]): { command: string; flags
   return { command, flags };
 }
 
+/** Older credential files name the project plane "tenant"; accept both. */
+export function projectPlaneEnv(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
+  const merged: NodeJS.ProcessEnv = { ...env };
+  for (const suffix of ['TOKEN', 'USERNAME', 'PASSWORD', 'PROJECT_ID', 'URL']) {
+    const legacy = `GUARD_TENANT_${suffix}`, current = `GUARD_PROJECT_${suffix}`;
+    if (merged[current] === undefined && merged[legacy] !== undefined) merged[current] = merged[legacy];
+  }
+  return merged;
+}
+
 /** Separate credentials per plane; never fall back to an admin session for project writes. */
 export async function configurationApi(base: string, plane: 'platform' | 'project', env: NodeJS.ProcessEnv, fetcher: typeof fetch = fetch): Promise<Api> {
+  if (plane === 'project') env = projectPlaneEnv(env);
   const url = new URL(base);
   assert.ok(['http:', 'https:'].includes(url.protocol) && !url.username && !url.password && !url.search && !url.hash, 'Use an HTTP(S) Controller URL without credentials or query parameters');
   assert.equal(url.pathname.replace(/\/$/, ''), '', 'Controller URL must be an origin');
@@ -147,6 +177,104 @@ export async function registerModel(api: Api, flags: Flags, env: NodeJS.ProcessE
   if (definition) assert.deepEqual({ timeoutSeconds: definition.timeoutSeconds, maxTokens: definition.maxTokens }, { timeoutSeconds, maxTokens }, 'Existing model settings differ; use its pinned settings');
   else definition = await api('/api/v1/models', 'POST', { providerId: provider.id, name: model, model, profile, timeoutSeconds, maxTokens });
   return { providerId: provider.id, modelId: definition.id, model, profile, reused: Boolean(models.length) };
+}
+
+/**
+ * Adjust a Model's runtime protocol (max tokens, timeout, thresholds) in place.
+ *
+ * A protocol that an active configuration already references cannot change:
+ * one Provider holds one definition per upstream model, so a second operating
+ * point needs its own Provider entry. The error states that recipe instead of
+ * offering a half-working clone flag.
+ */
+export async function configureModelSettings(api: Api, flags: Flags): Promise<any> {
+  const modelId = id(required(flags, 'model-id'));
+  const view = await api('/api/v1/model-configuration');
+  const current = view.models.find((model: any) => model.id === modelId);
+  assert.ok(current, `Unknown model ${modelId}`);
+  const settings = {
+    profile: current.profile,
+    timeoutSeconds: integer(flags, 'timeout-seconds', current.timeoutSeconds),
+    maxTokens: integer(flags, 'max-tokens', current.maxTokens),
+    maxConcurrency: integer(flags, 'max-concurrency', current.maxConcurrency),
+    rateLimitAttempts: integer(flags, 'rate-limit-attempts', current.rateLimitAttempts),
+    lowerThreshold: decimal(flags, 'lower-threshold', current.lowerThreshold),
+    upperThreshold: decimal(flags, 'upper-threshold', current.upperThreshold),
+  };
+  const unchanged = (Object.entries(settings) as Array<[string, unknown]>)
+    .every(([key, value]) => value === (current as Record<string, unknown>)[key]);
+  if (unchanged) return { modelId, name: current.name, settings, unchanged: true };
+  try {
+    const updated = await api(`/api/v1/models/${modelId}/protocol`, 'PUT', settings);
+    return { modelId: updated.id, name: updated.name, settings, unchanged: false };
+  } catch (error) {
+    if (/model_protocol_in_use/.test(String((error as Error).message))) {
+      throw new Error('This Model is referenced by an active configuration, so its protocol cannot change in place. '
+        + 'Register a separate Provider for the new operating point, then bind it:\n'
+        + `  guardctl platform register-model --provider-name "${current.name} Review" --provider-kind <kind> `
+        + '--provider-url <url> --model <model> --profile <profile> --max-tokens <n> --timeout-seconds <n> --key-env <ENV>\n'
+        + '  guardctl platform bind --binding <capability.input|output> --model-id <new-model-id> --state <file>');
+    }
+    throw error;
+  }
+}
+
+/**
+ * Publish a new Guardrail version in place: patch the draft, publish it, then
+ * repoint every Router that pins this Guardrail. No copy, no new Endpoint.
+ */
+export async function publishGuardrail(api: Api, flags: Flags, patch: any | null, journal: Journal): Promise<any> {
+  const guardrailId = id(required(flags, 'guardrail-id'));
+  const reason = flags['emergency-reason'] ?? 'guardctl publish';
+  const seconds = integer(flags, 'wait-seconds', 600);
+  assert.ok(!patch || (typeof patch === 'object' && !Array.isArray(patch) && Object.keys(patch).every(key => ['draftConfig', 'runtimeProfile'].includes(key))),
+    'Patch may contain draftConfig and runtimeProfile only');
+  const state = journal.data as any;
+  if (!state.guardrailId) { Object.assign(state, { guardrailId }); await journal.save(); }
+  assert.equal(state.guardrailId, guardrailId, 'State belongs to a different Guardrail');
+  let guard = await api(`/api/v1/guardrails/${guardrailId}`);
+  if (patch && state.version === undefined) {
+    const desired = { draftConfig: { ...guard.draftConfig, ...patch.draftConfig }, runtimeProfile: patch.runtimeProfile ?? guard.runtimeProfile };
+    guard = await api(`/api/v1/guardrails/${guardrailId}`, 'PATCH', { ...desired, expectedDraftRevision: guard.draftRevision });
+    await journal.save();
+  }
+  if (!state.version) {
+    const existing = guard.versions?.find((version: any) => version.sourceDraftRevision === guard.draftRevision && version.status === 'ready');
+    state.version = existing?.version ?? (await api(`/api/v1/guardrails/${guardrailId}/publish`, 'POST', { expectedDraftRevision: guard.draftRevision })).version;
+    await journal.save();
+  }
+  await until(() => api(`/api/v1/guardrails/${guardrailId}`), value => {
+    const version = value.versions.find((item: any) => item.version === state.version);
+    if (version?.status === 'failed') throw new Error('Guardrail compilation failed');
+    return version?.status === 'ready';
+  }, seconds, 'Guardrail publication');
+  const routerIds: string[] = [];
+  const routers = await api('/api/v1/routers');
+  for (const listed of routers.items ?? routers) {
+    const router = await api(`/api/v1/routers/${id(listed.id)}`);
+    const active = router.activeSnapshot ?? router.draft;
+    const targets = (active?.routes ?? []).flatMap((route: any) => route.targets ?? []);
+    if (!targets.some((target: any) => target.guardrailId === guardrailId)) continue;
+    const draft = { ...active, routes: (active.routes ?? []).map((route: any) => ({
+      ...route, targets: (route.targets ?? []).map((target: any) =>
+        target.guardrailId === guardrailId ? { ...target, guardrailVersion: state.version } : target),
+    })) };
+    if (digest(router.activeSnapshot) !== digest(draft)) {
+      let current = router;
+      if (digest(current.draft) !== digest(draft)) current = await api(`/api/v1/routers/${id(router.id)}/draft`, 'PUT', { expectedDraftRevision: current.draftRevision, draft });
+      const preview = await api(`/api/v1/routers/${id(router.id)}/publication-preview`, 'POST', { expectedDraftRevision: current.draftRevision });
+      const change = await api(`/api/v1/routers/${id(router.id)}/change-requests`, 'POST', {
+        expectedDraftRevision: preview.draftRevision, reviewedSnapshot: preview.snapshot,
+        reviewedEndpointIds: preview.endpointIds, reason, ticket: 'GUARDCTL',
+      });
+      await api(`/api/v1/routers/${id(router.id)}/change-requests/${id(change.id)}/emergency-apply`, 'POST', { reason });
+      await until(() => api(`/api/v1/routers/${id(router.id)}`),
+        value => value.rolloutStatus === 'active' && digest(value.activeSnapshot) === digest(draft), seconds, 'Router rollout');
+    }
+    routerIds.push(router.id);
+  }
+  state.completedAt = new Date().toISOString(); state.routers = routerIds; await journal.save();
+  return { guardrailId, version: state.version, routers: routerIds };
 }
 
 export async function bindModel(api: Api, flags: Flags, journal: Journal): Promise<any> {
@@ -292,8 +420,11 @@ export async function provisionProject(api: Api, flags: Flags, patch: any, journ
     if (change.status === 'pending') await api(`${cp}/emergency-apply`, 'POST', { reason });
   }
   router = await until(() => api(rp), value => value.rolloutStatus === 'active' && digest(value.activeSnapshot) === digest(draft), seconds, 'Router rollout');
-  const sourceAfter = await api(`/api/v1/guardrails/${id(sourceId)}`);
-  assert.equal(digest(sourceAfter.draftConfig), digest(s.source.draftConfig), 'Source changed during provisioning');
+  // A Profile-based provision has no source Guardrail to re-verify.
+  if (sourceId) {
+    const sourceAfter = await api(`/api/v1/guardrails/${id(sourceId)}`);
+    assert.equal(digest(sourceAfter.draftConfig), digest(s.source.draftConfig), 'Source changed during provisioning');
+  }
   s.completedAt = new Date().toISOString(); s.routerRevision = router.activeRevision; await journal.save();
   return { guardrailId: s.guardId, sourceGuardrailId: sourceId ?? null, profileId: profileId ?? null, version: s.version, endpointId: s.endpoint.id, adapter, routerId: s.routerId, routerRevision: s.routerRevision, changeId: s.changeId, rollout: router.rolloutStatus, credentialSaved: Boolean(s.endpoint.credential) };
 }
@@ -381,13 +512,16 @@ export async function manageTestRun(api: Api, command: 'test' | 'test-status' | 
 export async function runConfiguration(plane: 'platform' | 'project', args: string[], defaultUrl: string): Promise<void> {
   const { command, flags } = parseConfigurationArgs(args);
   if (!command || command === 'help' || command === '--help' || flags.help) { console.log(configurationHelp); return; }
-  assert.ok((plane === 'platform' && ['register-model', 'bind'].includes(command)) || (plane === 'project' && ['provision', 'profile-validation', 'test', 'test-status', 'test-cancel', 'test-cases', 'test-case'].includes(command)), 'Unknown configuration command; use platform help or project help');
+  assert.ok((plane === 'platform' && ['register-model', 'bind', 'model-settings'].includes(command))
+    || (plane === 'project' && ['provision', 'publish', 'profile-validation', 'test', 'test-status', 'test-cancel', 'test-cases', 'test-case'].includes(command)),
+    'Unknown configuration command; use platform help or project help');
   const cwd = process.env.GUARDCTL_CWD ?? process.cwd();
   const env = { ...(flags['env-file'] ? parseEnv(await readFile(resolve(cwd, flags['env-file']), 'utf8')) : {}), ...process.env };
   const base = flags.url ?? env[`GUARD_${plane.toUpperCase()}_URL`] ?? defaultUrl;
   const api = await configurationApi(base, plane, env);
   if (command === 'profile-validation') { emit(await validateProfiles(api, flags, env)); return; }
   if (command === 'register-model') { emit(await registerModel(api, flags, env)); return; }
+  if (command === 'model-settings') { emit(await configureModelSettings(api, flags)); return; }
   if (command === 'test' || command === 'test-status' || command === 'test-cancel' || command === 'test-cases' || command === 'test-case') {
     emit(await manageTestRun(api, command, flags));
     return;
@@ -398,7 +532,9 @@ export async function runConfiguration(plane: 'platform' | 'project', args: stri
     if (journal.data.connection) assert.deepEqual(journal.data.connection, connection, 'State belongs to another API connection');
     else { journal.data.connection = connection; await journal.save(); }
     const result = command === 'bind' ? await bindModel(api, flags, journal)
-      : await provisionProject(api, flags, JSON.parse(await readFile(resolve(cwd, required(flags, 'patch')), 'utf8')), journal);
+      : command === 'publish'
+        ? await publishGuardrail(api, flags, flags.patch ? JSON.parse(await readFile(resolve(cwd, flags.patch), 'utf8')) : null, journal)
+        : await provisionProject(api, flags, JSON.parse(await readFile(resolve(cwd, required(flags, 'patch')), 'utf8')), journal);
     emit({ ...result, stateFile: state });
   });
 }

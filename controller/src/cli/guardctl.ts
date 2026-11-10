@@ -3,7 +3,7 @@ import { Writable } from 'node:stream';
 import axios, { AxiosRequestConfig } from 'axios';
 import { readFileSync, existsSync, writeFileSync } from 'node:fs';
 import { resolve, dirname, basename } from 'node:path';
-import { configurationHelp, runConfiguration } from './configure.js';
+import { configurationHelp, projectPlaneEnv, runConfiguration } from './configure.js';
 const cliDirectory = dirname(resolve(process.argv[1]));
 
 function loadEnvFile(path: string): Record<string, string> {
@@ -234,12 +234,34 @@ function outputHuman(resource: string, data: any, detail = false) {
 
 const { url: resolvedUrl, source: urlSource } = resolveBaseUrl();
 
+/** Value of `--name value` or `--name=value` anywhere in the shell arguments. */
+function flagValue(name: string): string | null {
+  const argv = process.argv.slice(2);
+  for (let index = 0; index < argv.length; index++) {
+    const arg = argv[index];
+    if (arg === `--${name}` && argv[index + 1] && !argv[index + 1].startsWith('--')) return argv[index + 1];
+    if (arg.startsWith(`--${name}=`)) return arg.slice(name.length + 3);
+  }
+  return null;
+}
+
+// The interactive shell reads the same credential file as the one-shot
+// commands, so a terminal session and a script need no different setup.
+const shellEnvFile = flagValue('env-file');
+if (shellEnvFile) {
+  const loaded = loadEnvFile(resolve(process.env.GUARDCTL_CWD ?? process.cwd(), shellEnvFile));
+  for (const [key, value] of Object.entries(loaded)) if (process.env[key] === undefined) process.env[key] = value;
+}
+
+const projectEnv = projectPlaneEnv(process.env);
+
 interface Session {
   token: string | null;
   authCookie: string | null;
   privileged: boolean;
   baseUrl: string;
   urlSource: string;
+  projectId: string | null;
 }
 
 const session: Session = {
@@ -248,6 +270,7 @@ const session: Session = {
   privileged: false,
   baseUrl: resolvedUrl,
   urlSource,
+  projectId: flagValue('project') ?? projectEnv.GUARD_PROJECT_ID ?? null,
 };
 
 // readline owns terminal input and echoing. Muting its output is essential:
@@ -314,6 +337,9 @@ async function runApi(
   if (!omitCredentials && session.authCookie) {
     headers['Cookie'] = session.authCookie;
   }
+  // Project resources require the project scope on every request. The UI sends
+  // the same header; the terminal needs an explicit way to select it.
+  if (session.projectId) headers['X-Project-ID'] = session.projectId;
 
   try {
     const response = await axios({
@@ -653,6 +679,7 @@ async function handleCommand(line: string) {
   if (cmd === 'help') {
     console.log('Commands:');
     console.log('  connect [<url>]              View or change Controller URL');
+    console.log('  project [<id>]               View or select the project scope');
     console.log('  read                         Authenticate with PAT (read-only)');
     console.log('  enable                       Sign in as administrator');
     console.log('  disable                      Drop back to read-only credentials');
@@ -664,6 +691,17 @@ async function handleCommand(line: string) {
     console.log('                               Verify and preview a package; --confirm imports it');
     console.log('  exit | quit                  Close the CLI');
     console.log(configurationHelp);
+    return;
+  }
+
+  if (cmd === 'project') {
+    if (!args.length) {
+      console.log(`Project: ${session.projectId ?? '(none selected)'}`);
+      console.log('Usage: project <project-id>   (or --project <id> at launch, or GUARD_PROJECT_ID)');
+      return;
+    }
+    session.projectId = args[0];
+    console.log(`Project set to: ${session.projectId}`);
     return;
   }
 
@@ -790,13 +828,28 @@ async function main() {
   if (process.env.GUARD_ACCESS_TOKEN) {
     session.token = process.env.GUARD_ACCESS_TOKEN;
     console.log('Using token from GUARD_ACCESS_TOKEN.');
+  } else if (projectEnv.GUARD_PROJECT_TOKEN) {
+    session.token = projectEnv.GUARD_PROJECT_TOKEN;
+    console.log('Using a project token.');
+  } else if (projectEnv.GUARD_PROJECT_USERNAME && projectEnv.GUARD_PROJECT_PASSWORD) {
+    // Terminal parity with the one-shot commands: the same project credentials
+    // authenticate a shell session without an interactive prompt.
+    const signIn = await runApi('POST', '/api/auth/sign-in/username', {
+      username: projectEnv.GUARD_PROJECT_USERNAME,
+      password: projectEnv.GUARD_PROJECT_PASSWORD,
+    }, { withCredentials: true, omitCredentials: true });
+    if (signIn.ok && signIn.data && !signIn.data.error) {
+      console.log(`Signed in as ${String(signIn.data.user?.username ?? projectEnv.GUARD_PROJECT_USERNAME)}.`);
+    } else {
+      console.error('Project sign-in failed; run `enable` or `read` manually.');
+    }
   }
   console.log(`Type 'help' for commands or 'show' to list resources.`);
   console.log('');
 
   const getPrompt = () => {
     const prefix = session.privileged ? 'guardctl#' : (session.token ? 'guardctl>' : 'guardctl(disconnected)>');
-    return `${prefix} `;
+    return session.projectId ? `${prefix}[${session.projectId}] ` : `${prefix} `;
   };
 
   while (!inputClosed || inputLines.length) {

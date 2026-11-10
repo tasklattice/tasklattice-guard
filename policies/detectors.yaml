@@ -89,6 +89,9 @@ detectors:
       execution: platform
     parameters:
     - profile
+    # Semantic definitions are Policy content, never Runner content: a Rule may
+    # carry the classifier question, categories and criteria it is evaluated with.
+    - questions
     required_parameters:
     - profile
     supports_replacement: false

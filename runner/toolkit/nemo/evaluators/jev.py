@@ -102,6 +102,10 @@ class JevNoulEvaluator:
         """Replacement recorded on a matched finding, if the action is transform."""
         return None
 
+    def evidence_extra(self, request: EvaluationRequest) -> dict[str, object]:
+        """Adapter-specific provenance merged into the evaluation evidence."""
+        return {}
+
     def _trace(self, request: EvaluationRequest, verdict: str, reason: str,
                probabilities: dict[str, float], actual_model: str | None = None,
                error_type: str | None = None) -> RuntimeTraceStep:
@@ -110,7 +114,7 @@ class JevNoulEvaluator:
         evidence = json.dumps({"profile": self._profile_ref, "question_revision": self.revision(request),
                                "requested_model": self._model, "response_model": actual_model,
                                "thresholds": {"lower": self._lower, "upper": self._upper},
-                               "judgments": judgments}, sort_keys=True)
+                               "judgments": judgments, **self.evidence_extra(request)}, sort_keys=True)
         return RuntimeTraceStep(id=f"{request.binding.id}:jev", kind="evaluation", name=self.display_name,
                                 status="error" if verdict == "error" else "completed", detail=reason,
                                 evidence=evidence, verdict=verdict, error_type=error_type,

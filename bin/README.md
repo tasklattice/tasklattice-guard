@@ -19,13 +19,24 @@ bin/guardctl --url=http://localhost:38081
 # Execute a configuration workflow and exit.
 bin/guardctl platform help
 bin/guardctl platform register-model [OPTIONS]
+bin/guardctl platform model-settings [OPTIONS]
 bin/guardctl platform bind [OPTIONS]
 bin/guardctl project help
 bin/guardctl project provision [OPTIONS]
+bin/guardctl project publish --guardrail-id ID [--patch FILE] --state FILE [OPTIONS]
 bin/guardctl project test --guardrail-id ID [--version VERSION] [--local-only]
 bin/guardctl project test-status --run-id ID [--detail]
 bin/guardctl project test-cancel --run-id ID
 ```
+
+`platform model-settings` changes a Model's runtime protocol in place, and says
+so when the protocol is referenced by an active configuration; registering a
+second Provider is then the supported way to hold a second operating point.
+
+`project publish` patches an existing Guardrail draft, publishes a new version
+and repoints every Router that pins it — the same result as publishing in the
+console, without copying the Guardrail or rotating the Endpoint credential.
+Use `project provision` when you want a separate Guardrail.
 
 Only `platform` and `project` are one-shot command families. Enter `show`,
 `export`, and `import` inside the interactive shell, or pipe them on stdin.
@@ -116,6 +127,13 @@ binding, `content_safety.output`.
 
 The repository launcher needs Node.js and the Controller dependencies. Use
 Node.js 24 to match the shipped CLI runtime.
+
+The shell accepts the same `--url`, `--env-file` and `--project` flags as the
+one-shot commands. `--project` (or `GUARD_PROJECT_ID`) sets the `X-Project-ID`
+scope that reads require; the shell signs in with `GUARD_PROJECT_TOKEN` or
+`GUARD_PROJECT_USERNAME`/`GUARD_PROJECT_PASSWORD` when they are present, so a
+piped command sequence needs no interactive `enable`. `GUARD_TENANT_*` names in
+older credential files are accepted as aliases of `GUARD_PROJECT_*`.
 
 ```sh
 npm ci --prefix controller

@@ -1,0 +1,28 @@
+id: model/pii
+version: 1.2.0
+name: PII detector
+description: >-
+  Redact semantic personal data using the Policy-authored questions. The Rule
+  only references them; the Runner submits them to the configured decision model.
+  A gray result is reviewed when review_unknown is enabled, and the complete
+  evaluated block is replaced after a match.
+stages:
+- input
+- output
+detector:
+  ref: model/classifier
+  version: 1.0.0
+  parameters:
+    profile: pii-classification
+    on_unknown: '{{on_unknown}}'
+    review_unknown: '{{review_unknown}}'
+    questions: '{{questions}}'
+on_match:
+  action: transform
+risk_level: medium
+metadata:
+  taxonomy_ids:
+  - TALI-PRIVACY-PII
+runtime_adapter:
+  binding_id: pii
+  implementation_rule_id: pii

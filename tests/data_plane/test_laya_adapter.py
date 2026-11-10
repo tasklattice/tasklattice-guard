@@ -49,8 +49,8 @@ async def test_truncated_input_never_becomes_a_pass_or_a_detection(usage, probab
 @pytest.mark.parametrize("probability", [.01, .99])
 async def test_truncation_review_preserves_failure_evidence_and_complete_state(usage, probability):
     content = "Neutral context. " * 500 + "The final sentence must be checked."
-    item = replace(request(content=content, context_messages=[{"role": "user", "content": "Prior turn."}]),
-                   parameters=(("review_unknown", "true"),))
+    base = request(content=content, context_messages=[{"role": "user", "content": "Prior turn."}])
+    item = replace(base, parameters=(*base.parameters, ("review_unknown", "true")))
     seen = []
 
     class Reviewer:
@@ -135,7 +135,7 @@ async def test_review_keeps_full_taxonomy_and_context_and_runs_only_for_unknown(
         service = LayaContentSafetyEvaluator(base_url="https://laya.test/v1", model="auto", api_key="secret", reviewer=Reviewer(),
             transport=httpx.MockTransport(lambda wire: reply(json.loads(wire.content), p)))
         item = request(context_messages=[{"role": "user", "content": "Prior context."}])
-        return await service.evaluate(replace(item, parameters=(("review_unknown", "true"),)))
+        return await service.evaluate(replace(item, parameters=(*item.parameters, ("review_unknown", "true"))))
     assert (await check(.01)).verdict == "not_matched" and not seen
     assert (await check(.99)).verdict == "matched" and not seen
     assert (await check(.5)).verdict == "unknown" and len(seen) == 1
@@ -163,9 +163,9 @@ async def test_output_checks_assistant_only_and_review_retains_context(probabili
     service = LayaContentSafetyEvaluator(base_url="https://laya.test/v1", model="auto", api_key="secret",
         rail_type="output", reviewer=Reviewer(), transport=httpx.MockTransport(respond))
     item = request(content=output, rail_type="output", context_messages=context)
-    result = await service.evaluate(replace(item, parameters=(("review_unknown", "true"),)))
+    result = await service.evaluate(replace(item, parameters=(*item.parameters, ("review_unknown", "true"))))
     assert bool(seen) is reviewed
-    assert json.loads(result.trace[0].evidence)["question_revision"] == "laya-content-safety-output.v3"
+    assert json.loads(result.trace[0].evidence)["question_revision"].startswith("content_safety:laya:")
     if reviewed:
         questions, state = seen[0]
         assert state == {"current_output": output, "context_messages": context[:-1]}

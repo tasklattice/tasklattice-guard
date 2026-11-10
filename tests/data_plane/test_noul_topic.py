@@ -132,7 +132,8 @@ async def test_split_rule_questions_are_isolated_and_empty_permissive_rules_skip
     assert set(classifier_backend.topic_questions(allow)) == {"unlisted_task"}
     assert set(classifier_backend.topic_questions(deny)) == {"denied_task"}
     result = await classifier_backend.evaluator("topic_control", lambda _: pytest.fail("No model call required")).evaluate(
-        replace(_topic_request(), parameters=(("topic_mode", "permissive"),)))
+        replace(_topic_request(), parameters=(*_topic_request().parameters, ("topic_mode", "permissive"),
+                                              ("restricted_topics", ""))))
     assert result.verdict == "not_matched" and result.usage.model_invocations == 0
 
 

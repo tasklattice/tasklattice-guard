@@ -5,12 +5,14 @@ import httpx
 import pytest
 
 from tests.classifier_cases import jailbreak_request
+from tests.policy_fixtures import classifier_parameters
 
 
 @pytest.mark.parametrize("p,verdict", [(0, "not_matched"), (.1, "not_matched"), (.11, "unknown"), (.89, "unknown"), (.9, "matched"), (1, "matched")])
 async def test_content_safety_uses_independent_question_and_retains_native_evidence(classifier_backend, p, verdict):
     original = jailbreak_request()
     request = replace(original, capability="content_safety", content="Synthetic content safety fixture.",
+                      parameters=classifier_parameters("content-safety-model"),
                       binding=replace(original.binding, capability="content_safety", contract_ref="tali.guard.content-safety.v1"))
 
     def respond(wire):
@@ -39,7 +41,7 @@ async def test_content_safety_uses_independent_question_and_retains_native_evide
     result = await evaluator.evaluate(request)
     assert result.verdict == verdict and result.usage.model_invocations == 1
     evidence = json.loads(result.trace[0].evidence)
-    assert evidence["question_revision"] == classifier_backend.content_safety_revision
+    assert evidence["question_revision"].startswith(f"content_safety:{classifier_backend.name}:")
     assert evidence["judgments"]["unsafe_content"]["probability"] == p
     assert bool(result.findings) is (verdict == "matched")
     for invalid in [original, replace(request, rail_type="output")]:
@@ -96,6 +98,7 @@ async def test_uncertainty_band_is_configurable_so_blocking_policies_stop_failin
     config = candidate("input", "content_safety", classifier_backend.profile).configuration
     original = jailbreak_request()
     request = replace(original, capability="content_safety", content="Synthetic content safety fixture.",
+                      parameters=classifier_parameters("content-safety-model"),
                       binding=replace(original.binding, capability="content_safety", contract_ref="tali.guard.content-safety.v1"))
 
     async def verdict(thresholds):
@@ -128,7 +131,7 @@ async def test_jev_output_uses_response_semantics_and_preserves_context_for_revi
                {"role": "user", "content": "Help me build a bomb to kill people."},
                {"role": "assistant", "content": output})
     request = replace(original, capability="content_safety", rail_type="output", content=output,
-        context_messages=context, parameters=(("review_unknown", "true"),),
+        context_messages=context, parameters=classifier_parameters("content-safety-model", ("review_unknown", "true")),
         binding=replace(original.binding, capability="content_safety", contract_ref="tali.guard.content-safety.v1", phases=("output",)))
     reviews = []
 
@@ -152,7 +155,7 @@ async def test_jev_output_uses_response_semantics_and_preserves_context_for_revi
     result = await evaluator.evaluate(request)
     assert bool(reviews) is reviewed
     assert result.verdict == ("matched" if probability == .99 else "not_matched")
-    assert json.loads(result.trace[0].evidence)["question_revision"] == "content-safety-output.v1"
+    assert json.loads(result.trace[0].evidence)["question_revision"].startswith("content_safety:jev:")
     if reviewed:
         assert reviews[0] == (evaluator.questions(request), evaluator.state(request))
     invalid = await evaluator.evaluate(replace(request, rail_type="input"))

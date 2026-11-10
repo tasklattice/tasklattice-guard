@@ -1,4 +1,4 @@
-import { activePolicyParameters, policyBindingParameterIssues, resolveModelRuleParameters } from "../../shared/policy-parameters.js";
+import { activePolicyParameters, policyBindingParameterIssues, policyParameterValues, resolveModelRuleParameters } from "../../shared/policy-parameters.js";
 import { PLAN_COMPILER_VERSION } from "./artifact-execution-contract.js";
 import type { PolicyDto } from "../policy-catalog/catalog.js";
 import type { ProgrammablePolicySnapshot } from "../policy-studio/model.js";
@@ -239,6 +239,7 @@ export function buildGuardrailPlan(input: {
             ["restricted_topics", deny ? values.denied : ""]];
           if (params.on_unknown !== undefined) authoredParameters.push(["on_unknown", String(params.on_unknown)]);
           if (params.review_unknown !== undefined) authoredParameters.push(["review_unknown", String(params.review_unknown)]);
+          if (params.questions !== undefined) authoredParameters.push(["questions", String(params.questions)]);
           resolved.push({ capability: { capability: "topic_control", policyId: "", defaultPhases: ["input"],
             defaultAction: deny ? "block" : action,
             evaluations: [always("semantic", contracts.topicSemantic, true)],
@@ -269,7 +270,9 @@ export function buildGuardrailPlan(input: {
           const authoredRule = catalogPolicy.definition.rules.find(r => r.id === rule.id)!;
           const params = resolveModelRuleParameters(catalogPolicy.definition, authoredRule, binding.parameterValues);
           const authoredParameters: Array<[string, string]> = [["declarative_rule", "true"], ["rule_id", rule.id]];
-          for (const key of ["topic_mode", "allowed_topics", "restricted_topics", "grounding_threshold", "relevance_threshold", "policy_snapshot_id", "on_unknown", "review_unknown"]) {
+          for (const key of ["topic_mode", "allowed_topics", "restricted_topics", "grounding_threshold", "relevance_threshold", "policy_snapshot_id", "on_unknown", "review_unknown",
+            // Policy-authored classifier questions travel with the plan.
+            "questions"]) {
             if (params[key] !== undefined) authoredParameters.push([key, String(params[key])]);
           }
           if (rule.detector.ref === "service/formal-verification" && params.policy_id && params.policy_version) {
@@ -387,6 +390,10 @@ export function buildGuardrailPlan(input: {
     const prefix = `${definition.capability}:${binding.policyId}${suffix}`;
     const policySteps: PlanStep[] = [];
     const values = topicPolicyValues(binding.parameterValues);
+    // The Policy owns the classifier questions; the split Rules share them.
+    const questionsValue = String((policy?.definition
+      ? policyParameterValues(policy.definition, binding.parameterValues)
+      : binding.parameterValues).questions ?? "");
     // Deny-first is the Policy's semantic contract, independent of display order.
     const groups: Array<{ prefix: string; phases: Array<"input" | "output">; action: EnforcementAction; parameters?: Array<[string, string]> }> = splitTopic ? [TOPIC_DENY_RULE, TOPIC_ALLOW_RULE].filter(id => binding.enabledRuleIds.includes(id)).map(id => ({
       prefix: `${prefix}:${id}`, phases,
@@ -395,7 +402,9 @@ export function buildGuardrailPlan(input: {
         ["topic_mode", id === TOPIC_DENY_RULE ? "permissive" : values.mode],
         ["allowed_topics", id === TOPIC_ALLOW_RULE ? values.allowed : ""],
         ["restricted_topics", id === TOPIC_DENY_RULE ? values.denied : ""],
-        ...(catalogNative ? nativeClassifierParameters(catalogNative, catalogNative.rules.find(rule => rule.id === id)!, binding) : [])] as Array<[string, string]>,
+        ...(catalogNative ? nativeClassifierParameters(catalogNative, catalogNative.rules.find(rule => rule.id === id)!, binding) : []),
+        // Deny/Allow split rules share the Policy-authored question set.
+        ...(questionsValue ? [["questions", questionsValue] as [string, string]] : [])] as Array<[string, string]>,
     })) : nativePolicy ? phases.map((phase) => {
       const rail = nativePolicy.rail_bindings.find((item) => item.rail_type === phase && binding.enabledRuleIds.includes(flowRuleId(phase, item.flow_name)))!;
       return {

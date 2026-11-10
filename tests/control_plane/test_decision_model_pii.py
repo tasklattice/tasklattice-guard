@@ -26,13 +26,15 @@ from tests.test_pii_model_escalation import _case, _plan
 
 def request(rail_type: str = "input", content: str = "My name is Alice Morgan.",
             action: str = "transform") -> EvaluationRequest:
+    # Mirrors a published Guardrail: the plan carries the Policy-authored questions.
+    definition = _policy_questions()
     plan = GuardrailPlanSnapshot(
         guardrail_id="decision-pii", guardrail_version="offline", compiler_version="offline-v1",
         safety_level="balanced", output_delivery="full_buffered", steps=())
     return EvaluationRequest(
         content=content, rail_type=rail_type, guardrail_id=plan.guardrail_id,
         guardrail_version=plan.guardrail_version, policy_id="pii-semantic", policy_version=1,
-        trusted_context=(), content_blocks=(), deadline=time.monotonic() + 10, parameters=(),
+        trusted_context=(), content_blocks=(), deadline=time.monotonic() + 10, parameters=definition,
         capability="pii", proposed_action=action, plan=plan,
         binding=NeMoActionBinding(id="pii:semantic", capability="pii",
                                   contract_ref=CONTRACT_PII_SEMANTIC, phases=(rail_type,),
@@ -176,3 +178,87 @@ async def test_laya_pii_plan_transforms_the_whole_block_after_local_redaction():
     assert results[0]["outputContent"] == "[PII_REDACTED]"
     assert results[1]["outputContent"] == "Have a pleasant day."
     assert any("Alice Morgan" in text and "alice@example.com" not in text for text in targets)
+
+
+# The semantic PII boundary is Policy content. The Runner adapter must submit
+# exactly what the Policy package defines, and a published Guardrail may narrow
+# or widen it per binding without a code change.
+
+def _policy_questions() -> tuple[tuple[str, str], ...]:
+    from tests.policy_fixtures import published_questions
+    return published_questions("pii-semantic")
+
+
+async def test_jev_pii_question_comes_from_the_policy_package():
+    bodies = []
+
+    def handler(wire):
+        bodies.append(json.loads(wire.content))
+        return jev_reply(bodies[-1], 0.99)
+
+    evaluator = JevPiiEvaluator(base_url="https://jev.test/v1", model="jev-test",
+                                api_key="synthetic", transport=httpx.MockTransport(handler))
+    result = await evaluator.evaluate(request("input", "The customer is Alice Morgan."))
+
+    import yaml as _yaml
+    from tests.policy_fixtures import published_questions
+    authored = {row["id"]: row for row in _yaml.safe_load(published_questions("pii-semantic")[0][1])}
+    expected = authored["contains_pii"]
+    question = bodies[0]["questions"]["contains_pii"]
+    assert question["instructions"]["question"] == expected["instructions"]["question"].replace("{field}", "current_input")
+    assert question["instructions"]["personal_data_categories"] == expected["instructions"]["personal_data_categories"]
+    assert question["criteria"]["true"] == expected["criteria"]["true"].replace("{subject}", "current input")
+    assert question["criteria"]["false"] == expected["criteria"]["false"].replace("{subject}", "current input")
+    # Evidence records where the definition came from and its content fingerprint.
+    import json as _json
+    trace = json.loads(result.trace[-1].evidence)
+    assert trace["definition_source"] == "published-guardrail"
+    assert len(trace["definition_sha256"]) == 64 and trace["definition_revision"].startswith("pii:jev:")
+
+
+async def test_guardrail_parameters_override_the_policy_definition():
+    bodies = []
+
+    def handler(wire):
+        bodies.append(json.loads(wire.content))
+        return jev_reply(bodies[-1], 0.2)
+
+    evaluator = JevPiiEvaluator(base_url="https://jev.test/v1", model="jev-test",
+                                api_key="synthetic", transport=httpx.MockTransport(handler))
+    base = request("input", "Policy documents are attached.")
+    import yaml as _yaml
+    narrow = _yaml.safe_dump([{
+        "id": "contains_pii",
+        "providers": {"jev": "both"},
+        "instructions": {"question": "Does state.{field} contain a home address?",
+                         "personal_data_categories": "P1: home address"},
+        "criteria": {"true": "The {subject} states where someone lives.",
+                     "false": "The {subject} does not."},
+    }], sort_keys=False)
+    published = EvaluationRequest(**{
+        **{name: getattr(base, name) for name in base.__slots__},
+        "parameters": (("questions", narrow),),
+    })
+    await evaluator.evaluate(published)
+
+    question = bodies[0]["questions"]["contains_pii"]
+    assert question["instructions"]["question"] == "Does state.current_input contain a home address?"
+    assert question["instructions"]["personal_data_categories"] == "P1: home address"
+    assert question["criteria"]["true"] == "The current input states where someone lives."
+
+
+async def test_online_traffic_uses_only_the_published_definition():
+    """A Runner must never evaluate against questions the Guardrail did not publish."""
+    from runner.toolkit.nemo.evaluators.policy_prompt import PromptDefinitionError, policy_questions
+    # Online: no plan values, no catalog fallback.
+    with pytest.raises(PromptDefinitionError, match="published Guardrail"):
+        policy_questions("pii-semantic", "pii", ())
+    # Validation: the probe has no published plan, so the Policy default applies.
+    definition, source = policy_questions("pii-semantic", "pii", (), purpose="validation")
+    assert source == "policy-default" and any(question.id == "contains_pii" for question in definition)
+    # Published values win over the catalog, even during validation.
+    published = (("questions", "- id: contains_pii\n  instructions: Published question."),)
+    resolved, source = policy_questions("pii-semantic", "pii", published, purpose="validation")
+    assert source == "published-guardrail" and resolved[0].instructions == "Published question."
+    with pytest.raises(PromptDefinitionError):
+        policy_questions("not-a-policy", "pii", (), purpose="validation")

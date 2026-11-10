@@ -642,3 +642,74 @@ set -a; . ./.env; set +a
 
 这些脚本只读合成样本，不注册模型、不绑定、不发布 Guard；密钥来自本地文件/环境变量，
 输出中已遮蔽。它们不是生产回归的一部分，复测时请使用独立的 Provider 凭据与配额。
+
+## 附录：分类器问题归 Policy 所有（2026-11-10 变更）
+
+**问题**：JEV / Laya 适配器各自持有 P1–P5 问题文本，Policy 只声明"调用语义 PII 检测"。
+语义边界（什么算 PII、什么算越狱）是产品策略，却由 Runner 的发布节奏决定；换模型或改措辞必须改代码，
+无法按 Guardrail 灰度或回滚。
+
+**改法**：把问题文本上移为 Policy 参数，Runner 只负责"选、渲染、投影"。
+
+| 位置 | 角色 |
+| --- | --- |
+| `policies/library/<policy>/policy.yaml` | 参数 `questions` 的 default 是唯一权威文本（问题、类别、正反判据） |
+| `policies/rules/model/**/rule.yaml` | `detector.parameters.questions: '{{questions}}'`，Rule 不再含文本 |
+| `runner/toolkit/nemo/evaluators/policy_prompt.py` | 解析 YAML、校验、按 provider/Rail/边界选择、渲染占位符、投影到 provider 协议 |
+| 各适配器（`jev_*` / `laya_*`） | 只回答"何时问"与"怎么发"，不含任何 prompt 文本 |
+
+覆盖范围：
+
+| Policy | 适配器 |
+| --- | --- |
+| `pii-semantic` | `jev_pii.py`（1 个合并问题 + 类别 + 判据）、`laya_pii.py`（4 个单概念问题） |
+| `content-safety-model` | `jev_content_safety.py`（全量定义）、`laya_content_safety.py`（首判短问、复核全量问） |
+| `prompt-instruction-attacks` | `jev_jailbreak.py`、`laya_jailbreak.py`（direct / external / memory 三种边界） |
+| `business-topics` | `jev_topic.py`、`laya_topic.py`（deny / allow 两问，`{allowed_topics}` / `{restricted_topics}` 代入） |
+
+### `questions` 参数格式
+
+```yaml
+- id: contains_pii                # 模型答案键
+  rails: [input, output]          # 可选，默认两条
+  providers: {jev: both, laya: primary}   # 可选；primary / review / both
+  when: direct                    # 可选；适配器按边界选用（direct/external/memory/denied/unlisted…）
+  instructions:                   # 字符串，或命名指令字段的映射（JEV 用映射，Laya 首判必须字符串）
+    question: "…{field}…"
+    personal_data_categories: |
+      P1: …
+  criteria:                       # 可选；JEV 必填
+    "true": "…{subject}…"
+    "false": "…"
+```
+
+- `{field}` → `state.current_input` / `state.current_output`；`{subject}` → "current input" / "assistant output"；
+  其它 `{name}` 用该 Policy 的参数值代入（如 topic 的 `{allowed_topics}`）。
+- 适配器只决定**何时**问与**如何投影**；它既不能改词，也不能新增问题。`policy_prompt.py` 对重复 id、
+  未知 provider、Laya 首判收到映射指令、缺 `criteria` 等情况一律抛 `PromptDefinitionError`（fail-closed）。
+
+### 运行期边界
+
+定义随**已发布 Guardrail** 进入计划快照，Runner 只按这份快照构造模型请求：
+
+| purpose | 定义来源 | 缺失时 |
+| --- | --- | --- |
+| `online`（线上流量） | 仅 `request.parameters`（= 已发布 Guardrail 的解析值） | fail-closed，**不回退到本机 catalog** |
+| `validation`（能力探针 / 预览） | 未发布计划，回退到已编译 Policy 默认 | 同样报错 |
+
+因此滚动升级期间旧 Runner 不会用自己 catalog 里的定义去评估客户未发布的边界。
+每条评估证据额外写入 `definition_source`（`published-guardrail` / `policy-default`）、
+`definition_sha256`（渲染后问题的指纹）与 `question_revision = <capability>:<provider>:<sha12>`，
+可直接与已发布版本对账。
+
+### 默认值取舍
+
+`review_unknown` 默认 `true` 仅用于 `pii-semantic`：它的灰区正是主要失效模式。
+`content-safety-model` / `prompt-instruction-attacks` / `business-topics` 保持 `false`，
+因为开启复核会要求每个引用它们的计划都具备已校验的 `classifier_review` 绑定（延迟 + 成本），
+应由具体部署逐个打开。
+
+### 版本策略
+
+Policy / Rule 版本号沿用现有值：`questions` 是 Policy 参数，其内容变化由 `definition_sha256`
+进入每条证据可追溯。发布新语义边界时按 normal release 流程做 minor 版本升级。

@@ -318,3 +318,29 @@
   group: Context boundaries
   parameter_names: []
   expected_text: Fix the race-condition in the cache. She is [race_ethnicity_national_origin_REDACTED].
+- id: context-boundary/nationality-institution/input
+  name: nationality describing an institution
+  description: A nationality adjective that describes an economy, market or institution is not a personal attribute.
+  phase: input
+  content: Is the British economy destroyed by Corona, and how did the German Economy of 2023 react?
+  expected_decision: allow
+  covered_rule_ids:
+  - pattern/race_ethnicity_national_origin
+  scope: rule
+  kind: scenario
+  required: true
+  group: Context boundaries
+  parameter_names: []
+- id: context-boundary/relationship-not-status/input
+  name: relationship reference is not a status disclosure
+  description: A companion reference stays readable; only a stated or requested marital status is protected.
+  phase: input
+  content: My husband and I would like to create a vegetable bed in our garden.
+  expected_decision: allow
+  covered_rule_ids:
+  - pattern/marital_family_status
+  scope: rule
+  kind: scenario
+  required: true
+  group: Context boundaries
+  parameter_names: []

@@ -80,6 +80,29 @@ describe("Controller Guardrail plan", () => {
     expect(build).toThrow(/unknown Rule action overrides/);
   });
 
+  it("carries the Policy-authored semantic PII definition into the executable plan", () => {
+    // The semantic boundary belongs to the Policy package. The plan must ship the
+    // resolved question, categories and criteria, not a Runner-owned copy.
+    const policies = PolicyCatalog.load(resolve("../runner/toolkit/policy_library/assets")).list();
+    const policy = policies.find((item) => item.id === "pii-semantic")!;
+    const rule = policy.rules[0]!;
+    const questions = policy.parameters.find((item: { name: string }) => item.name === "questions")!.default!;
+    const plan = buildGuardrailPlan({
+      guardrailId: "pii-definition", guardrailVersion: "20261110-000000.000Z", policies,
+      draft: { allowedTopics: [], restrictedTopics: [], safetyLevel: "balanced", outputDelivery: "full_buffered",
+        policyBindings: [{ ...nativeBinding("pii-semantic"), policyVersion: policy.version,
+          enabledRuleIds: [rule.id], enabledRails: ["input"], parameterValues: {} }] },
+    });
+    const step = (plan.steps as Array<{ parameters: Array<[string, string]> }>).find((item) =>
+      item.parameters.some(([key]) => key === "rule_id"))!;
+    const parameters = Object.fromEntries(step.parameters);
+    expect(parameters.questions).toBe(questions);
+    expect(parameters.questions).toContain("- id: contains_pii");
+    expect(parameters.questions).toContain("{field}");
+    expect(parameters.review_unknown).toBe("true");
+    expect(parameters.on_unknown).toBe("block");
+  });
+
   it("rejects anonymous root rules instead of silently attaching or dropping them", () => {
     const draft = { ...defaultGuardrailDraft(PolicyCatalog.load(resolve("../runner/toolkit/policy_library/assets")).list()), customContentRules: [{ id: "orphan" }] };
     expect(() => buildGuardrailPlan({ guardrailId: "orphan", guardrailVersion: "v1", draft })).toThrow(/Standalone custom content rules/);

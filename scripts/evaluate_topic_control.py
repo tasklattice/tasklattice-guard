@@ -21,7 +21,8 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from runner.toolkit.nemo.actions.topic import ChatTopicEvaluator
 from runner.toolkit.nemo.evaluators.contracts import EvaluationRequest, GuardEvaluator
-from runner.toolkit.nemo.evaluators.jev_topic import JevTopicEvaluator, DEFAULT_LOWER_THRESHOLD, DEFAULT_UPPER_THRESHOLD
+from runner.toolkit.nemo.evaluators.jev import DEFAULT_LOWER_THRESHOLD, DEFAULT_UPPER_THRESHOLD
+from runner.toolkit.nemo.evaluators.jev_topic import JevTopicEvaluator
 from runner.toolkit.runtime.contracts import GuardrailPlanSnapshot, NeMoActionBinding
 
 

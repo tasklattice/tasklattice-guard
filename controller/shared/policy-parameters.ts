@@ -13,6 +13,7 @@ export function parameterReferenceName(value: unknown): string | null {
 export type ModelParameterField = { key: string; name: string; kind: "text" | "textarea" | "number"; default: string | null; required: boolean };
 export function modelParameterFields(rule: DefinitionRule): ModelParameterField[] {
   if (rule.detector.ref === "model/classifier" && rule.detector.parameters.profile === "topic-classification") return [
+    { key: "questions", name: "questions", kind: "textarea", default: null, required: true },
     { key: "topic_mode", name: "topic_mode", kind: "text", default: "permissive", required: true },
     { key: "allowed_topics", name: "allowed_topics", kind: "textarea", default: null, required: false },
     { key: "restricted_topics", name: "denied_topics", kind: "textarea", default: null, required: false },
@@ -20,8 +21,10 @@ export function modelParameterFields(rule: DefinitionRule): ModelParameterField[
     { key: "review_unknown", name: "review_unknown", kind: "text", default: "false", required: false },
   ];
   if (rule.detector.ref === "model/classifier" && ["jailbreak-classification", "safety-classification", "pii-classification"].includes(String(rule.detector.parameters.profile))) return [
+    // Every classifier question is Policy content; the Runner only executes it.
+    { key: "questions", name: "questions", kind: "textarea", default: null, required: true },
     { key: "on_unknown", name: "on_unknown", kind: "text", default: "block", required: false },
-    { key: "review_unknown", name: "review_unknown", kind: "text", default: "false", required: false },
+    { key: "review_unknown", name: "review_unknown", kind: "text", default: "true", required: false },
   ];
   if (rule.detector.ref === "model/grounding") return ["grounding_threshold", "relevance_threshold"].map(key => ({ key, name: key, kind: "number", default: "0.7", required: true }));
   if (rule.detector.ref === "service/formal-verification") return [

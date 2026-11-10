@@ -33,6 +33,7 @@ from runner.toolkit.safety.providers import (
     OpenAIChatModelClient,
 )
 from tests.capability_binding import capability_binding
+from tests.policy_fixtures import classifier_parameters, published_questions
 
 
 @pytest.fixture
@@ -635,7 +636,8 @@ def _topic_request() -> ActionRequest:
         trusted_context=(),
         content_blocks=(),
         deadline=time.monotonic() + 5,
-        parameters=(
+        parameters=classifier_parameters(
+            "business-topics",
             ("allowed_topics", "Kubernetes administration"),
             ("restricted_topics", "Celebrity gossip"),
         ),

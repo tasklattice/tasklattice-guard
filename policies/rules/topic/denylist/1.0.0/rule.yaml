@@ -12,6 +12,7 @@ detector:
     profile: topic-classification
     on_unknown: '{{on_unknown}}'
     review_unknown: '{{review_unknown}}'
+    questions: '{{questions}}'
 on_match:
   action: block
 runtime_adapter:

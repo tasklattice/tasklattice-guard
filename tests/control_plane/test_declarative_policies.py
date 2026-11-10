@@ -339,6 +339,7 @@ def test_bundled_strict_jailbreak_preserves_uncertainty_parameter():
     jailbreak = next(rule for rule in compiled["rules"] if rule["id"] == "model/jailbreak")
     assert jailbreak["detector_options"] == {
         "profile": "jailbreak-classification", "on_unknown": "{{on_unknown}}", "review_unknown": "{{review_unknown}}",
+        "questions": "{{questions}}",
     }
     assert next(p for p in compiled["parameters"] if p["name"] == "on_unknown")["default"] == "block"
     candidate = package.definition.model_dump()
@@ -375,7 +376,10 @@ def test_shipped_v1_classifiers_wire_unknown_and_review(policy):
     assert next(p for p in compiled["parameters"] if p["name"] == "on_unknown")["default"] == "block"
     classifiers = [r for r in compiled["rules"] if r["detector"]["ref"] == "model/classifier"]
     assert classifiers and all(r["detector_options"]["on_unknown"] == "{{on_unknown}}" for r in classifiers)
-    assert next(p for p in compiled["parameters"] if p["name"] == "review_unknown")["default"] == "false"
+    # Gray-area review is opt-in per Guardrail for these Policies; PII enables it
+    # by default because its gray band is the dominant failure mode.
+    authored = {item.name: item.default for item in current.definition.parameters}
+    assert next(p for p in compiled["parameters"] if p["name"] == "review_unknown")["default"] == authored["review_unknown"] == "false"
     assert all(r["detector_options"]["review_unknown"] == "{{review_unknown}}" for r in classifiers)
 
 
