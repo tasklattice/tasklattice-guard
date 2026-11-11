@@ -8,7 +8,12 @@ import { dashboardInvestigationEn } from "@/dashboard-investigation-i18n";
 import { runtimeMetricsEn } from "@/runtime-metrics-i18n";
 
 const state = vi.hoisted(() => ({ metrics: undefined as Metrics | undefined }));
-vi.mock("@/features/dashboard", () => ({ useGuardrailsDashboard: () => ({ metrics: { data: state.metrics, isLoading: false }, events: { data: { items: [] }, isLoading: false }, guardrails: { data: { items: [] } } }) }));
+vi.mock("@/features/dashboard", () => ({ useGuardrailsDashboard: () => ({
+  status: { data: { status: "healthy", reasons: [] }, isPending: false, isError: false },
+  metrics: { data: state.metrics, isLoading: false },
+  events: { data: { items: [] }, isLoading: false },
+  guardrails: { data: { items: [] } },
+}) }));
 vi.mock("@/components/dashboard/runtime-metric-chart", () => ({ RuntimeMetricChart: () => <div>Runtime chart</div> }));
 vi.mock("@/components/dashboard/runtime-event-stream", () => ({ RuntimeEventStream: () => null }));
 vi.mock("@tanstack/react-router", () => ({ Link: ({ children, to, search }: { children: ReactNode; to: string; search?: Record<string, string> }) => <a href={`${to}${search ? `?${new URLSearchParams(Object.entries(search).filter(([, value]) => value !== undefined))}` : ""}`}>{children}</a> }));

@@ -11,12 +11,12 @@ function metrics() {
   ], [], [], [{ id: "first", name: "Same name" }, { id: "second", name: "Same name" }], [], []);
 }
 afterEach(() => vi.unstubAllGlobals());
-it("fetches one hour once and assigns same-named Guardrails by stable ID", async () => {
+it("fetches one hour of overview metrics once and assigns same-named Guardrails by stable ID", async () => {
   const fetch = vi.fn().mockResolvedValue(Response.json(metrics()));
   vi.stubGlobal("fetch", fetch);
   const data = await getGuardrailRequestRates();
   expect(fetch).toHaveBeenCalledTimes(1);
-  expect(fetch.mock.calls[0][0]).toBe("/api/v1/telemetry/metrics?window=1h");
+  expect(fetch.mock.calls[0][0]).toBe("/api/v1/telemetry/metrics?window=1h&view=overview");
   expect(data.byGuardrail.first.at(-2)?.total).toBe(7);
   expect(data.byGuardrail.second.at(-2)?.total).toBe(3);
   expect(data.zeroPoints).toHaveLength(61);
