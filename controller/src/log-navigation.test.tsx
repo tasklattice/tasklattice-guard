@@ -39,6 +39,29 @@ async function setup(path = "/test1/logs", items = [event()]) {
 }
 
 describe("URL-driven log inspection", () => {
+  it("always shows milliseconds in chronological order and in details without a precision switch", async () => {
+    const earlier = { ...event("earlier"), occurredAt: "2026-09-19T12:00:00.007Z" };
+    const later = { ...event("later"), occurredAt: "2026-09-19T12:00:00.123Z" };
+    const { detail } = await setup("/test1/logs", [earlier, later]);
+    const table = await screen.findByRole("table");
+    const times = () => Array.from(table.querySelectorAll("time")).map(time => time.textContent);
+    expect(screen.queryByRole("switch")).toBeNull();
+    expect(times()[0]).toMatch(/\.123$/);
+    expect(times()[1]).toMatch(/\.007$/);
+
+    detail.mockResolvedValue(later);
+    fireEvent.click(within(table).getAllByRole("button", { name: "logs.inspectCheckpoint" })[0]!);
+    const dialog = await screen.findByRole("dialog");
+    await waitFor(() => expect(within(dialog).getAllByText(/\.123$/).length).toBeGreaterThan(0));
+    expect(within(dialog).getByRole("button", { name: /\.007.*earlier/ })).toBeTruthy();
+
+    cleanup();
+    await setup("/test1/logs", [earlier, later]);
+    const reopenedTable = await screen.findByRole("table");
+    expect(reopenedTable.querySelector("time")?.textContent).toMatch(/\.123$/);
+    expect(screen.queryByRole("switch")).toBeNull();
+  });
+
   it("opens a row in one click, updates the URL, and supports Back/Forward", async () => {
     const { router, history, detail } = await setup();
     fireEvent.click(await screen.findByRole("cell", { name: /playground.*request:1/ }));
