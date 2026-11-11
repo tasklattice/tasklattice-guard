@@ -3,13 +3,14 @@ import { useTranslation } from "react-i18next";
 
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import type { Metrics } from "@/lib/api";
+import type { PlatformOperationalStatus, PlatformStatusReason } from "../../../shared/platform-status";
 
 export type RuntimeHealthAlertMetrics = {
-  system_status: Metrics["system_status"];
-  system_reasons?: Metrics["system_reasons"];
-  latency_slo: Pick<Metrics["latency_slo"], "p95_status">;
-  fail_closed_count: number;
-  degraded_endpoints: number;
+  system_status?: PlatformOperationalStatus;
+  system_reasons?: PlatformStatusReason[];
+  latency_slo?: Pick<Metrics["latency_slo"], "p95_status">;
+  fail_closed_count?: number;
+  degraded_endpoints?: number;
 };
 
 export function RuntimeHealthAlert({ metrics }: { metrics: RuntimeHealthAlertMetrics }) {
@@ -36,9 +37,9 @@ export function RuntimeHealthAlert({ metrics }: { metrics: RuntimeHealthAlertMet
 }
 
 function runtimeHealthDetailKey(metrics: RuntimeHealthAlertMetrics) {
-  if (metrics.fail_closed_count > 0) return "dashboard.healthFailClosed";
-  if (metrics.latency_slo.p95_status === "breached") return "dashboard.healthLatency";
-  if (metrics.degraded_endpoints > 0) return "dashboard.healthEndpoint";
-  if (metrics.system_status === "degraded") return "dashboard.healthSystem";
+  if ((metrics.fail_closed_count ?? 0) > 0) return "dashboard.healthFailClosed";
+  if (metrics.latency_slo?.p95_status === "breached") return "dashboard.healthLatency";
+  if ((metrics.degraded_endpoints ?? 0) > 0) return "dashboard.healthEndpoint";
+  if (metrics.system_status && metrics.system_status !== "healthy") return "dashboard.healthSystem";
   return null;
 }

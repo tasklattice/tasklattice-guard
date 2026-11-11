@@ -24,7 +24,7 @@ const event = (id = "checkpoint-1"): controllerApi.RuntimeEvent => ({
 const clients: QueryClient[] = [];
 afterEach(() => { cleanup(); clients.splice(0).forEach(client => client.clear()); vi.restoreAllMocks(); });
 async function setup(path = "/test1/logs", items = [event()]) {
-  vi.spyOn(api, "getGuardrails").mockResolvedValue({ items: [], count: 0 });
+  vi.spyOn(controllerApi, "listGuardrailOptions").mockResolvedValue({ items: [], count: 0 });
   vi.spyOn(api, "getRouters").mockResolvedValue({ items: [], count: 0 });
   vi.spyOn(api, "getGuardrailLoggingSettings").mockResolvedValue({ level: "info" } as Awaited<ReturnType<typeof api.getGuardrailLoggingSettings>>);
   const list = vi.spyOn(controllerApi, "listRuntimeEvents").mockResolvedValue({ items, nextCursor: null });

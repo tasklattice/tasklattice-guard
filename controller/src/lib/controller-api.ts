@@ -14,6 +14,7 @@ import type {
 } from "../../shared/lifecycle";
 import type { CapabilityBindingId, ImplementedGuardrailRailType } from "../../shared/guardrail-catalog";
 import type { PlatformStatusSnapshot } from "../../shared/platform-status";
+import { platformOperationalStatuses, platformStatusReasons } from "../../shared/platform-status";
 import type { SystemHealthSnapshot } from "../../shared/component-health";
 export type { SystemHealthSnapshot } from "../../shared/component-health";
 import type { GuardrailVersionDeletionImpact } from "../../shared/guardrail-version-deletion";
@@ -517,10 +518,19 @@ function formatApiError(detail: unknown): string | undefined {
 
 const json = (method: string, body?: unknown): RequestInit => ({ method, body: body === undefined ? undefined : JSON.stringify(body) });
 
-export const getControllerSystemStatus = async () => {
-  const response = await fetch("/api/v1/system/status", { credentials: "same-origin" });
-  if (response.status === 200 || response.status === 503) return response.json() as Promise<SystemStatus>;
-  throw new Error(`System status failed with status ${response.status}.`);
+export const getControllerSystemStatus = async (signal?: AbortSignal): Promise<SystemStatus> => {
+  const timeout = AbortSignal.timeout(3_000);
+  const response = await fetch("/api/v1/system/status", {
+    credentials: "same-origin", signal: signal ? AbortSignal.any([signal, timeout]) : timeout,
+  });
+  if (response.status !== 200 && response.status !== 503) throw new Error(`System status failed with status ${response.status}.`);
+  const snapshot = await response.json() as SystemStatus;
+  if (!snapshot || !platformOperationalStatuses.includes(snapshot.status)
+    || !Array.isArray(snapshot.reasons) || !snapshot.reasons.every(reason => platformStatusReasons.includes(reason))
+    || !Number.isFinite(Date.parse(snapshot.observedAt))) {
+    throw new Error("System status response is unavailable or incomplete.");
+  }
+  return snapshot;
 };
 export const getControllerSystemHealth = async (signal?: AbortSignal) => {
   const timeout = AbortSignal.timeout(10_000);
@@ -569,6 +579,7 @@ export const validateModelAssignment = (target: ModelAssignmentTarget, modelId?:
 export const validateSavedModelAssignment = (target: CapabilityBindingId, modelId: string, formalValidation?: FormalValidation) => requestController<ModelConfigurationRevision>(`/api/v1/model-configuration/draft/assignments/${encodeURIComponent(target)}/validations`, json("POST", { modelId, formalValidation }));
 export const applyModelConfiguration = (selection: import("../../shared/model-activation").PartialModelActivation) => requestController<ModelConfigurationView & { distribution: { desiredGeneration: number; distributionStatus: "ready" | "syncing" } }>("/api/v1/model-configuration/apply", json("POST", selection));
 export const listControllerGuardrails = () => requestController<Collection<Guardrail>>("/api/v1/guardrails");
+export const listGuardrailOptions = (signal?: AbortSignal) => requestController<Collection<{ id: string; name: string }>>("/api/v1/guardrails?view=options", { signal });
 export const getControllerGuardrail = (id: string) => requestController<GuardrailDetail>(`/api/v1/guardrails/${encodeURIComponent(id)}`);
 export const createControllerGuardrail = (input: Pick<Guardrail, "name" | "draftConfig" | "runtimeProfile">) => requestController<Guardrail>("/api/v1/guardrails", json("POST", input));
 export const previewControllerGuardrailPlan = (input: Pick<Guardrail, "name" | "draftConfig" | "runtimeProfile">) => requestController<GuardrailPlanPreview>("/api/v1/authoring/plan-previews", json("POST", input));

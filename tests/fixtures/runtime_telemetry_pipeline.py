@@ -152,6 +152,10 @@ async def exercise(endpoint: str, token: str) -> dict[str, Any]:
                     # the batch but the Runner had to replay the same WAL records.
                     with wal.open("a", encoding="utf-8") as stream:
                         stream.write("".join(f"{line}\n" for line in emitted))
+                    # A restarted process recovers the replayed on-disk spool;
+                    # do not mutate a live exporter's cached queue counters.
+                    await exporter.stop()
+                    exporter = RuntimeTelemetryExporter(endpoint, token, state, BATCH_SIZE, RUNNER_ID)
                     phase["name"] = "replay"
                     for _ in range(10):
                         if not await exporter._flush_once(client):

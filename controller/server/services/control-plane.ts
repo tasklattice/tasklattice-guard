@@ -8,7 +8,7 @@ import { KeyedWorkQueue, PendingWork } from "../work-queue.js";
 import { logDatabaseFailure } from "../db/diagnostics.js";
 import type { ArtifactCompiler } from "../domain/artifact-compilation.js";
 import { artifactExecutionContractIssue } from "../domain/artifact-execution-contract.js";
-import { writeRuntimeEvent } from "./runtime-event-write.js";
+import { writeRuntimeEvents } from "./runtime-event-write.js";
 import { issueEndpointTelemetryContexts, lockEndpointTelemetryContextReaders, pruneEndpointTelemetryContexts as pruneEndpointContexts } from "./endpoint-telemetry-contexts.js";
 import { ProjectAdmissionMonitor } from "./admission-monitor.js";
 import { platformDefaultDraft, platformDefaultProfile } from "../domain/platform-default.js";
@@ -26,7 +26,7 @@ import type { z } from "zod";
 import type { TestingReportDeletionImpact } from "../../shared/testing-report-deletion.js";
 import { assertGuardrailVersionCapacity, guardrailVersionCapacityIssue } from "./guardrail-version-limit.js";
 import { clearGuardrailOperationalData, guardrailTelemetryFilter } from "./guardrail-operational-data.js";
-import { callFailureEvents, runtimeLogSource } from "./runtime-log-source.js";
+import { callFailureEvents, runtimeLogSource, runtimeLogPageSource } from "./runtime-log-source.js";
 import { advancesValidationProgress, type ValidationProgress } from "../../shared/validation-progress.js";
 import { queryAuditEvents } from "./audit-events.js";
 import type { AuditQuery } from "../../shared/audit-query.js";
@@ -663,6 +663,12 @@ export class ControlPlaneService {
       });
       return snapshot;
     });
+  }
+
+  async listGuardrailOptions() {
+    return this.db.select({ id: guardrails.id, name: guardrails.name }).from(guardrails).where(and(
+      isNull(guardrails.deletedAt), resourceReadPredicate("guardrail", guardrails.id, guardrails.projectId),
+    )).orderBy(desc(guardrails.updatedAt));
   }
 
   async listGuardrails() {
@@ -1808,16 +1814,27 @@ export class ControlPlaneService {
 
   private metricCache = new Map<string, { until: number; value: Awaited<ReturnType<typeof queryRuntimeMetrics>> }>();
   private metricJobs = new Map<string, ReturnType<typeof queryRuntimeMetrics>>();
+  private metricReads = 0;
+  private async withRuntimeReadBudget<T>(read: () => Promise<T>): Promise<T> {
+    // Project reads intentionally bypass result sharing to keep grants live,
+    // but must still share the Controller's database concurrency budget.
+    if (this.metricReads >= 2) throw new ConflictError("Metrics are busy; retry shortly.", "metrics_busy");
+    this.metricReads++;
+    try { return await read(); }
+    finally { this.metricReads--; }
+  }
+  private readRuntimeMetrics(scope: MetricScope) {
+    return this.withRuntimeReadBudget(() => queryRuntimeMetrics(this.db, scope));
+  }
   async runtimeMetrics(scope: MetricScope) {
     // Grants may be revoked between reads; project resource visibility stays live.
-    if (currentProjectId()) return queryRuntimeMetrics(this.db, scope);
-    const key = JSON.stringify([currentProjectId(), scope.window, scope.guardrailId ?? null, scope.routerId ?? null]);
+    if (currentProjectId()) return this.readRuntimeMetrics(scope);
+    const key = JSON.stringify([currentProjectId(), scope.window, scope.guardrailId ?? null, scope.routerId ?? null, scope.view ?? "diagnostics"]);
     const cached = this.metricCache.get(key);
     if (cached && cached.until > Date.now()) return cached.value;
     const pending = this.metricJobs.get(key);
     if (pending) return pending;
-    if (this.metricJobs.size >= 2) throw new ConflictError("Metrics are busy; retry shortly.", "metrics_busy");
-    const job = queryRuntimeMetrics(this.db, scope);
+    const job = this.readRuntimeMetrics(scope);
     this.metricJobs.set(key, job);
     try {
       const value = await job;
@@ -1850,18 +1867,18 @@ export class ControlPlaneService {
 
   private endpointActivityCache = new Map<string, { until: number; value: { items: Record<string, unknown>[] } }>();
   private endpointActivityJobs = new Map<string, Promise<{ items: Record<string, unknown>[] }>>();
-  async runtimeEndpointActivity() {
+  async runtimeEndpointActivity(endpointId?: string) {
     // Shared Endpoints can disappear as soon as a grant is revoked. Keep the
     // system cache, but re-evaluate project reads against the live grant table.
     const cacheable = currentProjectId() === null;
-    const key = "system";
+    const key = JSON.stringify(["system", endpointId ?? null]);
     if (cacheable) {
       const cached = this.endpointActivityCache.get(key);
       if (cached && cached.until > Date.now()) return cached.value;
       const pending = this.endpointActivityJobs.get(key);
       if (pending) return pending;
     }
-    const job = boundedRead(this.db, async tx => {
+    const job = this.withRuntimeReadBudget(() => boundedRead(this.db, async tx => {
       // Lifetime timestamps are index probes; only recent counters scan a time window.
       const scope = and(
         eq(runtimeEvents.endpointId, endpoints.id),
@@ -1899,13 +1916,17 @@ export class ControlPlaneService {
         .leftJoinLateral(incoming, join).leftJoinLateral(outgoing, join)
         .leftJoinLateral(finalCheck, join).leftJoinLateral(lastError, join)
         .innerJoinLateral(recent, join).innerJoinLateral(recentErrors, join)
-        .where(and(isNull(endpoints.deletedAt), resourceReadPredicate("endpoint", endpoints.id, endpoints.projectId)));
+        .where(and(isNull(endpoints.deletedAt), endpointId ? eq(endpoints.id, endpointId) : undefined,
+          resourceReadPredicate("endpoint", endpoints.id, endpoints.projectId)));
       return { items };
-    });
+    }));
     if (cacheable) this.endpointActivityJobs.set(key, job);
     try {
       const value = await job;
-      if (cacheable) this.endpointActivityCache.set(key, { until: Date.now() + 10_000, value });
+      if (cacheable) {
+        if (this.endpointActivityCache.size >= 16) this.endpointActivityCache.delete(this.endpointActivityCache.keys().next().value!);
+        this.endpointActivityCache.set(key, { until: Date.now() + 10_000, value });
+      }
       return value;
     } finally { if (cacheable) this.endpointActivityJobs.delete(key); }
   }
@@ -1960,6 +1981,7 @@ export class ControlPlaneService {
       input.before ? lte(runtimeEvents.occurredAt, input.before) : undefined,
     ].filter((item): item is NonNullable<typeof item> => Boolean(item));
     const predicate = conditions.length ? and(...conditions) : undefined;
+    const limit = Math.min(500, Math.max(1, input.limit ?? 100));
     // SQL projection is essential: discarding metadata after SELECT still allocates the full payload in Node.
     return boundedRead(this.db, async tx => {
     const findingSummary = jsonObject(Object.fromEntries(['id','risk','verdict','confidence','taxonomyId','recommendedAction','policyId','ruleId','riskSeverity','policyVersion'].map(key => [key, jsonValue(findings.item, key)])));
@@ -1974,11 +1996,10 @@ export class ControlPlaneService {
       endpointId: runtimeEvents.endpointId, routerId: runtimeEvents.routerId,
       direction: runtimeEvents.direction, decision: runtimeEvents.decision, durationMs: runtimeEvents.durationMs,
       metadata,
-    }).from(runtimeEvents).$dynamic();
+    }).from(runtimeLogPageSource(this.db, predicate, limit + 1)).$dynamic();
     if (predicate) {
       itemsQuery = itemsQuery.where(predicate);
     }
-    const limit = Math.min(500, Math.max(1, input.limit ?? 100));
     const rows = await itemsQuery.orderBy(desc(runtimeEvents.occurredAt), desc(runtimeEvents.id)).limit(limit + 1);
     const items = rows.slice(0, limit);
     const last = items.at(-1);
@@ -2226,13 +2247,17 @@ export class ControlPlaneService {
       if (batch.some(event => event.allocationContextId)) await lockEndpointTelemetryContextReaders(tx);
       const recordCosts = modelUsageCostRecorder(tx, authenticatedPoolId);
       const watermarks = telemetryWatermarkBatch(tx);
+      const pending: RuntimeEventInput[] = [];
       return { write: async (event: RuntimeEventInput) => {
         if (!accepts(event.guardrailId, event.occurredAt)) return;
-        if (event.metadata.costOnly !== true) await writeRuntimeEvent(tx, event, authenticatedPoolId);
+        if (event.metadata.costOnly !== true) pending.push(event);
         await recordCosts(event);
         // A pool token does not authenticate a particular Runner/boot.
         if (authenticatedPoolId === undefined) watermarks.add(event.runnerId, event.occurredAt);
-      }, finish: () => watermarks.flush() };
+      }, finish: async () => {
+        await writeRuntimeEvents(tx, pending, authenticatedPoolId);
+        await watermarks.flush();
+      } };
     };
     if (transaction) {
       const writer = await prepare(transaction, events);

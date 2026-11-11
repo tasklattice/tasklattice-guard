@@ -248,9 +248,22 @@ export class RunnerControlServer {
    * ownership check atomic with a network send or the Runner's work. */
   private async isCurrentConnection(connection: Connection): Promise<boolean> {
     if (this.connections.get(connection.runnerId) !== connection) return false;
+    const current = await this.checkControlSession(connection);
+    return current && this.connections.get(connection.runnerId) === connection;
+  }
+
+  private async checkControlSession(connection: Connection): Promise<boolean> {
     const current = await this.service.runnerControlSessions.isCurrent({ sessionId: connection.sessionId,
       runnerId: connection.runnerId, bootId: connection.bootId, poolId: connection.poolId });
-    return current && this.connections.get(connection.runnerId) === connection;
+    // A heartbeat timeout invalidates the durable session without closing gRPC.
+    // End that stream so the Runner can register again instead of silently
+    // dropping every subsequent heartbeat. An async check must never evict a
+    // replacement connection, including one with the same Runner boot ID.
+    if (!current && this.connections.get(connection.runnerId) === connection) {
+      this.releaseConnection(connection);
+      connection.stream.end();
+    }
+    return current;
   }
 
   async start(): Promise<void> {
@@ -361,8 +374,7 @@ export class RunnerControlServer {
     if (!connection.protectionCapable || !this.service.protectionModes) return;
     const protection = await this.service.protectionModes.desiredState(connection.poolId);
     if (this.connections.get(connection.runnerId) !== connection) return;
-    if (!await this.service.runnerControlSessions.isCurrent({ sessionId: connection.sessionId,
-      runnerId: connection.runnerId, bootId: connection.bootId, poolId: connection.poolId })) return;
+    if (!await this.isCurrentConnection(connection)) return;
     if (connection.lastProtectionGeneration < protection.generation) {
       this.write(connection.stream, { protectionState: { generation: String(protection.generation), modes: protection.modes } });
       connection.lastProtectionGeneration = protection.generation;
@@ -568,8 +580,9 @@ export class RunnerControlServer {
     // admission closed (especially queued reports) must still persist. Never
     // let an old stream act on a replacement connection's registration.
     if (registered !== current && (!draining || registered)) return null;
-    if (!await this.service.runnerControlSessions.isCurrent({ sessionId: current.sessionId,
-      runnerId: current.runnerId, bootId: current.bootId, poolId: current.poolId })) return null;
+    if (!await this.checkControlSession(current)) return null;
+    const afterCheck = this.connections.get(current.runnerId);
+    if (afterCheck !== current && (!draining || afterCheck)) return null;
     if (message.heartbeat) {
       const heartbeat = message.heartbeat;
       if (heartbeat.runnerId !== current.runnerId || heartbeat.bootId !== current.bootId) {
@@ -841,8 +854,7 @@ export class RunnerControlServer {
   private async reconcileOnce(connection: Connection): Promise<void> {
     const started = performance.now();
     try {
-      if (!await this.service.runnerControlSessions.isCurrent({ sessionId: connection.sessionId,
-        runnerId: connection.runnerId, bootId: connection.bootId, poolId: connection.poolId })) return;
+      if (!await this.isCurrentConnection(connection)) return;
       // Send the operating overlay before materializing any model/Artifact state.
       // Old Runners cannot ACK this message and remain visibly unsupported.
       await this.reconcileProtectionModes(connection);

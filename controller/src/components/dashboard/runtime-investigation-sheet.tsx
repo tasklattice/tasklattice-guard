@@ -21,7 +21,8 @@ export function RuntimeInvestigationSheet({ metrics, metric, onClose }: { metric
   const label = t(`dashboard.metrics.${metric}`);
   const guidance = t(`dashboardInvestigation.${metric === "p95_latency" ? "latencyGuidance" : "errorGuidance"}`);
   const value = metric === "p95_latency" ? metrics.runtime_p95_ms : metrics.error_rate;
-  const formattedValue = `${value.toLocaleString(i18n.language, { maximumFractionDigits: 2 })}${metric === "p95_latency" ? " ms" : "%"}`;
+  const estimate = metrics.latency_method === "histogram_5pct";
+  const formattedValue = `${estimate && metric === "p95_latency" ? "≈ " : ""}${value.toLocaleString(i18n.language, { maximumFractionDigits: 2 })}${metric === "p95_latency" ? " ms" : "%"}`;
   const summary = [
     `TaskLattice Guard — ${t("dashboardInvestigation.summaryTitle")}`,
     t("dashboardInvestigation.summaryIntro"),
@@ -33,7 +34,8 @@ export function RuntimeInvestigationSheet({ metrics, metric, onClose }: { metric
     t("runtimeMetrics.thresholds", runtimeStatusThresholds[metric]),
     `${t("dashboardInvestigation.configuredSlo")}: ${metrics.latency_slo.p95_budget_ms} ms`,
     `${t("dashboard.protectedTraffic")}: ${metrics.total_decisions.toLocaleString(i18n.language)}`,
-    `${t("dashboard.p95Latency")}: ${metrics.runtime_p95_ms.toLocaleString(i18n.language)} ms`,
+    `${t("dashboard.p95Latency")}: ${estimate ? "≈ " : ""}${metrics.runtime_p95_ms.toLocaleString(i18n.language)} ms`,
+    ...(estimate ? [t("dashboard.latencyEstimate")] : []),
     `${t("dashboard.errorRate")}: ${metrics.error_rate.toLocaleString(i18n.language)}%`,
     t("dashboardInvestigation.outcomeCounts", { errors: metrics.errors, timeouts: metrics.timeout_count, failClosed: metrics.fail_closed_count }),
     guidance,

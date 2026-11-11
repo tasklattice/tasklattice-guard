@@ -69,6 +69,51 @@ const activeConfiguration = (revisionId: string, revision: number, layaRequestMo
 });
 
 describe("Runner model-configuration convergence", () => {
+  it.each(["heartbeat", "reconcile"])("ends an expired session during %s so the Runner can register again", async trigger => {
+    const service = { ...serviceMock(), recordHeartbeat: vi.fn().mockResolvedValue(true) };
+    const server = new RunnerControlServer(config, service as unknown as ControlPlaneService,
+      metricsMock() as unknown as ControllerMetrics, { activeConfiguration: vi.fn().mockResolvedValue(null) } as unknown as ModelConfigurationService);
+    const stream = streamMock(), hello = registration("expired");
+    const connection = await handle(server, stream, hello, null);
+    service.runnerControlSessions.isCurrent.mockResolvedValue(false);
+    if (trigger === "heartbeat") await handle(server, stream, { heartbeat: {
+      runnerId: "expired", bootId: "boot-expired", sequence: "1", appliedGeneration: "9", load: {},
+    } }, connection);
+    else await (server as unknown as { reconcile(connection: unknown): Promise<void> }).reconcile(connection);
+    expect(stream.end).toHaveBeenCalledOnce();
+    expect(service.recordHeartbeat).not.toHaveBeenCalled();
+    expect((server as any).connections.has("expired")).toBe(false);
+
+    service.runnerControlSessions.isCurrent.mockResolvedValue(true);
+    const replacement = streamMock();
+    const fresh = await handle(server, replacement, hello, null);
+    await handle(server, replacement, { heartbeat: {
+      runnerId: "expired", bootId: "boot-expired", sequence: "2", appliedGeneration: "9", load: {},
+    } }, fresh);
+    expect(service.recordHeartbeat).toHaveBeenCalledOnce();
+    expect(replacement.end).not.toHaveBeenCalled();
+  });
+
+  it.each([false, true])("preserves a replacement session when an old ownership check resolves %s", async current => {
+    const service = { ...serviceMock(), recordHeartbeat: vi.fn().mockResolvedValue(true) };
+    const server = new RunnerControlServer(config, service as unknown as ControlPlaneService,
+      metricsMock() as unknown as ControllerMetrics, { activeConfiguration: vi.fn().mockResolvedValue(null) } as unknown as ModelConfigurationService);
+    const stream = streamMock(), hello = registration("same-boot");
+    const connection = await handle(server, stream, hello, null);
+    const check = Promise.withResolvers<boolean>();
+    service.runnerControlSessions.isCurrent.mockReturnValueOnce(check.promise);
+    const pending = handle(server, stream, { heartbeat: {
+      runnerId: "same-boot", bootId: "boot-same-boot", sequence: "1", appliedGeneration: "9", load: {},
+    } }, connection);
+    const replacement = streamMock();
+    const fresh = await handle(server, replacement, hello, null);
+    check.resolve(current);
+    await pending;
+    expect((server as any).connections.get("same-boot")).toBe(fresh);
+    expect(replacement.end).not.toHaveBeenCalled();
+    expect(service.recordHeartbeat).not.toHaveBeenCalled();
+  });
+
   it("uses the selected pool's group Models and keeps its ACK/NACK out of global activation", async () => {
     const service = serviceMock();
     const scoped = activeConfiguration("project-group-model:grant-a", 1);
@@ -183,12 +228,19 @@ describe("Runner model-configuration convergence", () => {
     await dispatch();
     expect(stale.write).not.toHaveBeenCalled();
     expect(current.write).not.toHaveBeenCalled();
-    // A missed dispatch is retryable; it must not leave this run marked busy.
+    expect(stale.end).toHaveBeenCalledOnce();
+    expect(current.end).toHaveBeenCalledOnce();
+    // An expired stream registers again. The missed dispatch must not leave
+    // its run marked busy or prevent the replacement compiler from taking it.
     service.deferOutbox.mockResolvedValue(undefined);
     service.runnerControlSessions.isCurrent.mockImplementation(async identity => identity.runnerId === "current-0");
+    const recovered = streamMock(), hello = registration("current-0");
+    hello.registration.compilerCapable = true;
+    await handle(server, recovered, hello, null);
+    recovered.write.mockClear();
     await dispatch();
     expect(stale.write).not.toHaveBeenCalled();
-    expect(current.write).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({
+    expect(recovered.write).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({
       validationRequest: expect.objectContaining({ runId: "run-current" }),
     }));
   });
@@ -335,6 +387,7 @@ describe("Runner model-configuration convergence", () => {
     await handle(server, oldStream, { desiredStateResult: { ...desiredResult("lease-runner", true).desiredStateResult, snapshotNonce: sent.snapshotNonce } }, old);
     const pending = handle(server, oldStream, { servingLeaseRequest: { runnerId: "lease-runner", bootId: "boot-lease-runner", nonce: "one",
       epoch: "0", generation: "9", snapshotNonce: sent.snapshotNonce } }, old);
+    await vi.waitFor(() => expect(ledger.issueSnapshotBound).toHaveBeenCalledOnce());
     await handle(server, replacement, hello, null, "default");
     finish();
     await pending;

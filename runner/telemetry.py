@@ -12,6 +12,7 @@ from typing import TYPE_CHECKING, Any
 import httpx
 
 from .outage import TransportOutage
+from .telemetry_wal import TelemetryWal, WalRecord
 from .telemetry_budget import (
     MAX_BODY_BYTES,
     UnsendableTelemetryEvent,
@@ -51,6 +52,7 @@ class RuntimeTelemetryExporter:
         self._runner_id = runner_id
         self._metrics = metrics
         self._wal_path = state_path / "runtime-events.wal"
+        self._wal = TelemetryWal(self._wal_path)
         # A gateway may enforce a smaller body budget than the Controller.
         # Halve this on every 413 instead of replaying the same batch forever.
         self._body_limit = MAX_BODY_BYTES
@@ -115,8 +117,8 @@ class RuntimeTelemetryExporter:
     async def _flush_once(self, client: httpx.AsyncClient) -> bool:
         started = time.perf_counter()
         async with self._lock:
-            lines = await asyncio.to_thread(self._read_lines)
-            batch = lines[: min(self._batch_size, 1000)]
+            records = await asyncio.to_thread(self._wal.peek, min(self._batch_size, 1000))
+            batch = [record.line for record in records]
         if not batch:
             return False
         try:
@@ -136,7 +138,7 @@ class RuntimeTelemetryExporter:
             )
         except UnsendableTelemetryEvent:
             return await self._quarantine_head()
-        batch, events = batch[:count], events[:count]
+        batch, events, records = batch[:count], events[:count], records[:count]
         try:
             response = await client.post(
                 self._endpoint,
@@ -162,22 +164,18 @@ class RuntimeTelemetryExporter:
             raise
         try:
             async with self._lock:
-                latest = await asyncio.to_thread(self._read_lines)
-                if latest[: len(batch)] != batch:
-                    raise RuntimeError("Runtime telemetry WAL changed unexpectedly during delivery.")
-                remaining = latest[len(batch):]
                 try:
-                    await asyncio.to_thread(self._replace_lines, remaining)
+                    await asyncio.to_thread(self._acknowledge, records)
                 except Exception:
                     if self._metrics is not None:
                         self._metrics.observe_telemetry_write_failure("replace")
                     raise
-                self._set_wal_state(remaining)
+                self._publish_wal_metrics()
         except Exception:
             self._observe_export("events", "error", len(batch), started)
             raise
         self._observe_export("events", "success", len(batch), started)
-        return bool(remaining)
+        return self._wal_event_count > 0
 
     async def _report_watermark(self, client: httpx.AsyncClient) -> None:
         """Confirm that the telemetry channel is healthy even during zero traffic."""
@@ -205,10 +203,10 @@ class RuntimeTelemetryExporter:
     async def _quarantine_head(self) -> bool:
         """Move an unsendable first line aside so later evidence can drain."""
         async with self._lock:
-            lines = await asyncio.to_thread(self._read_lines)
-            if not lines:
+            records = await asyncio.to_thread(self._wal.peek, 1)
+            if not records:
                 return False
-            first, remaining = lines[0], lines[1:]
+            first = records[0].line
             try:
                 event_id = json.loads(first).get("id", "<unknown>")
             except (json.JSONDecodeError, AttributeError):
@@ -218,15 +216,15 @@ class RuntimeTelemetryExporter:
             except Exception:
                 logger.exception("Rejected telemetry WAL cannot accept another record; preserving the main WAL.")
                 raise
-            await asyncio.to_thread(self._replace_lines, remaining)
-            self._set_wal_state(remaining)
+            await asyncio.to_thread(self._acknowledge, records)
+            self._publish_wal_metrics()
         if self._metrics is not None:
             self._metrics.observe_telemetry_quarantine("unsendable")
         logger.error(
             "Quarantined an unsendable runtime telemetry event (id=%s) into %s; the remaining WAL will continue draining.",
             event_id, self._rejected_wal_path(),
         )
-        return bool(remaining)
+        return self._wal_event_count > 0
 
     def _append_rejected(self, payload: bytes) -> None:
         path = self._rejected_wal_path()
@@ -245,34 +243,24 @@ class RuntimeTelemetryExporter:
         return self._wal_path.with_name(REJECTED_WAL_NAME)
 
     def _append(self, encoded: str) -> None:
-        self._wal_path.parent.mkdir(parents=True, exist_ok=True)
-        with self._wal_path.open("a", encoding="utf-8") as stream:
-            stream.write(encoded)
-            stream.flush()
+        self._wal.append(encoded)
 
-    def _read_lines(self) -> list[str]:
-        if not self._wal_path.exists():
-            return []
-        return [line for line in self._wal_path.read_text(encoding="utf-8").splitlines() if line]
+    def _acknowledge(self, records: list[WalRecord]) -> None:
+        self._wal.acknowledge(records)
+        self._refresh_wal_state(publish=False)
 
-    def _replace_lines(self, lines: list[str]) -> None:
-        temporary = self._wal_path.with_suffix(".wal.tmp")
-        temporary.write_text("".join(f"{line}\n" for line in lines), encoding="utf-8")
-        temporary.replace(self._wal_path)
-
-    def _refresh_wal_state(self) -> None:
-        self._set_wal_state(self._read_lines())
-
-    def _set_wal_state(self, lines: list[str]) -> None:
-        self._wal_event_count = len(lines)
-        self._wal_size_bytes = sum(len(f"{line}\n".encode("utf-8")) for line in lines)
+    def _refresh_wal_state(self, *, publish: bool = True) -> None:
+        self._wal_event_count = self._wal.count
+        self._wal_size_bytes = self._wal.pending_bytes
         self._wal_oldest_timestamp = 0.0
-        if lines:
+        records = self._wal.peek(1)
+        if records:
             try:
-                self._wal_oldest_timestamp = _event_timestamp(json.loads(lines[0]))
+                self._wal_oldest_timestamp = _event_timestamp(json.loads(records[0].line))
             except (json.JSONDecodeError, TypeError, ValueError):
                 self._wal_oldest_timestamp = time.time()
-        self._publish_wal_metrics()
+        if publish:
+            self._publish_wal_metrics()
 
     def _publish_wal_metrics(self) -> None:
         if self._metrics is None:

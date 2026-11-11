@@ -5,7 +5,7 @@ import { Link } from "@tanstack/react-router";
 import { useTranslation } from "react-i18next";
 
 import { formatEventTimestamp } from "@/components/dashboard/event-time";
-import { StateBadge } from "@/components/product-shell";
+import { ErrorNotice, StateBadge } from "@/components/product-shell";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -13,32 +13,33 @@ import type { RuntimeEvent } from "@/lib/controller-api";
 
 type GuardrailReference = { id: string; name: string };
 
-export function RuntimeEventStream({ items, loading, guardrails }: {
+export function RuntimeEventStream({ items, loading, guardrails, error, refreshing, onRetry }: {
   items: RuntimeEvent[];
   loading: boolean;
   guardrails: GuardrailReference[];
+  error?: Error | null;
+  refreshing?: boolean;
+  onRetry?: () => void;
 }) {
   const { t, i18n } = useTranslation();
   const guardrailNames = new Map(guardrails.map((item) => [item.id, item.name]));
 
   return (
     <Card className="gap-0 overflow-hidden py-0 shadow-none">
-      <header className="flex flex-col gap-2 border-b px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+      <header className="flex items-center justify-between gap-4 border-b px-4 py-3">
         <div className="min-w-0">
-          <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-            <h2 className="text-sm font-semibold">{t("dashboard.recentEvents")}</h2>
-            <span className="inline-flex items-center gap-1.5 text-[11px] font-medium text-emerald-700">
-              <span className="size-1.5 rounded-full bg-emerald-500" />
-              {t("dashboard.live")}
-            </span>
-            <span className="text-[11px] text-muted-foreground">{t("dashboard.newestFirst")} · {t("dashboard.refreshCadence")}</span>
-          </div>
+          <h2 className="text-sm font-semibold">{t("dashboard.recentEvents")}</h2>
           <p className="mt-0.5 truncate text-xs text-muted-foreground">{t("dashboard.recentEventsDescription")}</p>
         </div>
-        <Button size="sm" variant="ghost" className="h-8 shrink-0 self-start px-2 text-xs sm:self-auto" asChild>
+        <Button size="sm" variant="ghost" className="h-8 shrink-0 px-2 text-xs" asChild>
           <Link params={projectParams()} to="/$projectId/logs">{t("dashboard.viewAllEvents")}<ArrowRight /></Link>
         </Button>
       </header>
+
+      {error ? <div className="p-4">
+        <ErrorNotice error={error} />
+        {onRetry ? <Button variant="ghost" disabled={refreshing} onClick={onRetry}>{t("common.retry")}</Button> : null}
+      </div> : null}
 
       {loading ? (
         <div className="space-y-px bg-border">
@@ -76,13 +77,13 @@ export function RuntimeEventStream({ items, loading, guardrails }: {
             </CarbonTableBody>
           </CarbonTable>
         </div>
-      ) : (
+      ) : !error ? (
         <div className="flex min-h-36 flex-col items-center justify-center px-6 text-center">
           <ShieldCheck className="size-5 text-muted-foreground" />
           <p className="mt-2 text-sm font-medium">{t("dashboard.noEventsTitle")}</p>
           <p className="mt-1 max-w-md text-xs leading-5 text-muted-foreground">{t("dashboard.noEventsDescription")}</p>
         </div>
-      )}
+      ) : null}
     </Card>
   );
 }

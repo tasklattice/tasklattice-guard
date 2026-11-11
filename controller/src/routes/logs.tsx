@@ -27,11 +27,10 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Skeleton } from "@/components/ui/skeleton";
 import { queryKeys } from "@/features/query-keys";
 import { useAuth } from "@/lib/auth";
-import { getRuntimeEvent, listRuntimeEvents } from "@/lib/controller-api";
+import { getRuntimeEvent, listRuntimeEvents, listGuardrailOptions } from "@/lib/controller-api";
 import {
   getRouters,
   getGuardrailLoggingSettings,
-  getGuardrails,
   metricWindowMilliseconds,
   runtimeLogInteractions,
   type RuntimeLogInteraction,
@@ -59,7 +58,7 @@ export function LogsPage() {
   const outcome = selectedOutcome ?? "all";
   const setOutcome = (value: OutcomeFilter) => void navigate({ search: previous => ({ ...previous, outcome: value === "all" ? undefined : value }) });
   const auth = useAuth();
-  const guardrailsQuery = useQuery({ queryKey: queryKeys.guardrails, queryFn: getGuardrails });
+  const guardrailsQuery = useQuery({ queryKey: [...queryKeys.guardrails, "options"], queryFn: ({ signal }) => listGuardrailOptions(signal) });
   const routersQuery = useQuery({ queryKey: queryKeys.routers, queryFn: getRouters });
   const scopedGuardrailId = guardrailId === "all" ? undefined : guardrailId;
   const paging = useEventCursor(JSON.stringify([guardrailId, window, phase, outcome, routingFilters, eventId]));

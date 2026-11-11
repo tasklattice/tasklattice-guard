@@ -71,7 +71,8 @@ function endpointEvents(value: controllerApi.Endpoint, events: controllerApi.Run
 }
 
 type EndpointActivity = Pick<Endpoint, 'first_seen_at' | 'last_seen_at' | 'input_seen_at' | 'output_seen_at' | 'stream_final_check_seen_at' | 'last_error_at' | 'request_count' | 'error_count' | 'detection_p95_ms'> & { id: string };
-const getActivity = () => controllerApi.requestController<{ items: EndpointActivity[] }>('/api/v1/telemetry/endpoint-activity');
+const getActivity = (endpointId?: string) => controllerApi.requestController<{ items: EndpointActivity[] }>(
+  `/api/v1/telemetry/endpoint-activity${endpointId ? `?endpointId=${encodeURIComponent(endpointId)}` : ''}`);
 
 function mapEndpoint(value: CurrentEndpoint, events: controllerApi.RuntimeEvent[], activity?: EndpointActivity): Endpoint {
   const adapter = endpointAdapter(value.adapter);
@@ -131,7 +132,7 @@ export async function getEndpoints(): Promise<Collection<Endpoint>> {
 export async function getEndpoint(id: string): Promise<Endpoint> {
   const [endpoint, events] = await Promise.all([
     controllerApi.requestController<CurrentEndpoint>(`/api/v1/endpoints/${encodeURIComponent(id)}`),
-    getActivity(),
+    getActivity(id),
   ]);
   return mapEndpoint(endpoint, [], events.items.find(item=>item.id===id));
 }
@@ -177,7 +178,7 @@ async function updateEndpoint(id: string, settings: { enabled?: boolean; credent
     method: "PATCH",
     body: JSON.stringify(settings),
   });
-  const events = await getActivity();
+  const events = await getActivity(id);
   return mapEndpoint(updated, [], events.items.find(item=>item.id===id));
 }
 

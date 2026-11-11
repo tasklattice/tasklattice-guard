@@ -707,6 +707,9 @@ export const routeAssignments = pgTable("route_assignment", {
   index("route_assignment_guardrail_idx").on(t.guardrailId),
   index("route_assignment_allocation_context_idx").on(t.allocationContextId),
   index("route_assignment_project_router_time_idx").on(t.projectId, t.routerId, t.occurredAt),
+  index("route_assignment_failure_time_id_idx").on(t.occurredAt, sql`('call:' || ${t.decisionId})`).where(sql`${t.assignmentStatus} = 'assigned' AND ${t.completedAt} IS NOT NULL AND ${t.outcome} IN ('error', 'timeout')`),
+  index("route_assignment_project_failure_time_id_idx").on(t.projectId, t.occurredAt, sql`('call:' || ${t.decisionId})`).where(sql`${t.assignmentStatus} = 'assigned' AND ${t.completedAt} IS NOT NULL AND ${t.outcome} IN ('error', 'timeout')`),
+  index("route_assignment_router_failure_time_id_idx").on(t.routerId, t.occurredAt, sql`('call:' || ${t.decisionId})`).where(sql`${t.assignmentStatus} = 'assigned' AND ${t.completedAt} IS NOT NULL AND ${t.outcome} IN ('error', 'timeout')`),
 ]);
 
 export const endpoints = pgTable("endpoint", {
@@ -834,16 +837,27 @@ export const runtimeEvents = pgTable("runtime_event", {
   metadata: jsonb("metadata").$type<Record<string, unknown>>().notNull().default({}),
 }, (table) => [
   index("runtime_event_guardrail_time_id_idx").on(table.guardrailId, table.occurredAt, table.id),
-  index("runtime_event_project_time_idx").on(table.projectId, table.occurredAt),
-  index("runtime_event_endpoint_time_idx").on(table.endpointId, table.occurredAt),
+  index("runtime_event_project_time_id_idx").on(table.projectId, table.occurredAt, table.id),
+  index("runtime_event_endpoint_time_idx").on(table.endpointId, table.occurredAt, table.requestId, table.durationMs, table.projectId),
   index("runtime_event_allocation_context_idx").on(table.allocationContextId),
   index("runtime_event_router_time_idx").on(table.routerId, table.occurredAt, table.id),
   index("runtime_event_time_id_idx").on(table.occurredAt, table.id),
   index("runtime_event_request_time_idx").on(table.requestId, table.occurredAt, table.id),
   index("runtime_event_endpoint_direction_time_idx").on(table.endpointId, table.direction, table.occurredAt),
-  index("runtime_event_endpoint_error_time_idx").on(table.endpointId, table.occurredAt).where(sql`lower(${table.decision}) IN ('error','failed','failure','timeout','timed_out')`),
+  index("runtime_event_endpoint_error_time_idx").on(table.endpointId, table.occurredAt, table.requestId, table.projectId).where(sql`COALESCE(${table.metadata}->>'executionStatus' IN ('error', 'timeout'), false)`),
   index("runtime_event_endpoint_final_time_idx").on(table.endpointId, table.occurredAt).where(sql`${table.metadata}->>'streamFinalCheck'='true'`),
 ]);
+
+// Maintained transactionally by statement-level runtime_event triggers. The
+// migration also backfills existing events before enabling the overview path.
+export const runtimeOverviewBuckets = pgTable("runtime_overview_bucket", {
+  projectId: text("project_id").notNull(), guardrailId: text("guardrail_id").notNull(),
+  routerId: text("router_id").notNull(), endpointId: text("endpoint_id").notNull(),
+  resolution: integer("resolution").notNull(), bucketStart: timestamp("bucket_start", { withTimezone: true }).notNull(),
+  counts: jsonb("counts").$type<Record<string, number>>().notNull(),
+  histogram: jsonb("histogram").$type<Record<string, number>>().notNull(),
+}, t => [primaryKey({ columns: [t.projectId, t.resolution, t.bucketStart, t.guardrailId, t.routerId, t.endpointId] }),
+  index("runtime_overview_time_idx").on(t.resolution, t.bucketStart)]);
 
 export const telemetryWatermarks = pgTable("telemetry_watermark", {
   runnerId: text("runner_id").primaryKey(),

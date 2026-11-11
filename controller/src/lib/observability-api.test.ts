@@ -87,13 +87,13 @@ describe("privacy-safe runtime observability", () => {
     expect(interaction.entries[0]).toMatchObject({ outcome: null, execution_status: "error", timed_out: true });
   });
 
-  it("keeps platform readiness reasons distinct from scoped Guardrail evidence", async () => {
-    vi.stubGlobal("fetch", vi.fn(async (path: string) => new Response(JSON.stringify(path === "/api/v1/system/status"
-      ? { status: "degraded", reasons: ["runner_capacity_below_desired", "runner_configuration_syncing"] }
-      : emptyMetrics()), { status: 200, headers: { "content-type": "application/json" } })));
+  it("loads scoped Guardrail metrics without waiting for platform status", async () => {
+    const fetch = vi.fn(async (_path: string) => Response.json(emptyMetrics()));
+    vi.stubGlobal("fetch", fetch);
     const metrics = await getMetrics({ guardrailId: "local-bank" });
-    expect(metrics.system_status).toBe("degraded");
-    expect(metrics.system_reasons).toEqual(["runner_capacity_below_desired", "runner_configuration_syncing"]);
+    expect(fetch).toHaveBeenCalledOnce();
+    expect(fetch.mock.calls[0][0]).toContain("/api/v1/telemetry/metrics?");
+    expect(metrics).not.toHaveProperty("system_status");
     expect(metrics.fail_closed_count).toBe(0);
   });
 
@@ -119,7 +119,7 @@ describe("privacy-safe runtime observability", () => {
       [{ kind: "period", key: "current", total: 100, allowed: 80, blocked: 15, intervened: 5, latency: [10, 20, 30] }], [], [], [], [], []);
     vi.stubGlobal("fetch", vi.fn(async (path: string) => Response.json(path === "/api/v1/system/status"
       ? { status: "healthy", reasons: [] } : payload)));
-    expect(await getMetrics()).toEqual({ ...payload, system_status: "healthy", system_reasons: [] });
+    expect(await getMetrics()).toEqual(payload);
   });
   it("preserves setup failure evidence in a mapped Validation Run", async () => {
     vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({ id: "run", guardrailId: "guard", sourceDraftRevision: 1,

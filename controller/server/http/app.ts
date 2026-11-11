@@ -814,7 +814,10 @@ export function createHttpApp(input: {
     });
   });
 
-  app.get("/api/v1/guardrails", authenticated, async (context) => context.json({ items: await input.service.listGuardrails() }));
+  app.get("/api/v1/guardrails", authenticated, async context => {
+    const { view } = z.object({ view: z.enum(['options']).optional().describe('Only id and name for selectors; skips testing and billing summaries.') }).parse(context.req.query());
+    return context.json({ items: view === 'options' ? await input.service.listGuardrailOptions() : await input.service.listGuardrails() });
+  });
   app.get("/api/v1/playground/models", authenticated, async (context) => {
     const playgroundModel = await currentPlaygroundModel();
     const items = playgroundModel ? [playgroundModel.descriptor] : [];
@@ -1397,9 +1400,13 @@ export function createHttpApp(input: {
     const query = z.object({ includeContent: z.enum(['true', 'false']).default('false') }).parse(context.req.query());
     return context.json(await input.service.getRuntimeEvent(context.req.param('id'), query.includeContent === 'true' && hasPermission(context.get('actor').role, 'runtime')));
   });
-  app.get('/api/v1/telemetry/endpoint-activity', authenticated, async context => context.json(await input.service.runtimeEndpointActivity()));
+  app.get('/api/v1/telemetry/endpoint-activity', authenticated, async context => {
+    const { endpointId } = z.object({ endpointId: z.string().min(1).max(256).optional() }).parse(context.req.query());
+    return context.json(await input.service.runtimeEndpointActivity(endpointId));
+  });
   app.get('/api/v1/telemetry/metrics', authenticated, async context => {
-    const scope = z.object({ window: z.enum(['1h','24h','7d','15d','30d']).default('24h'), guardrailId:z.string().max(256).optional(), routerId:z.string().max(256).optional() }).parse(context.req.query());
+    const scope = z.object({ window: z.enum(['1h','24h','7d','15d','30d']).default('24h'), guardrailId:z.string().max(256).optional(), routerId:z.string().max(256).optional(),
+      view: z.enum(['overview','diagnostics']).optional().describe('overview reads persistent time buckets with exact counts and histogram latency (5% relative bucket width plus 1 ms rounding). Windows align to whole minutes; window_end can be up to one minute ahead of now. Component/finding/usage diagnostics are not collected in this view. Omit for full diagnostics with exact percentiles.') }).parse(context.req.query());
     return context.json(await input.service.runtimeMetrics(scope));
   });
   app.get("/api/v1/audit-events", authenticated, async (context) => {

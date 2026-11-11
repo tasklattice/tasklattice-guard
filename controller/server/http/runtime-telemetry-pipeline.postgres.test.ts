@@ -135,10 +135,17 @@ it.skipIf(!url)("delivers split Runtime telemetry to Controller rows and Dashboa
     // (2 + 2 + 2 + 65) even though the largest event was split into two receipts.
     const metrics = await readPortal("/api/v1/telemetry/metrics?window=24h");
     expect(metrics).toMatchObject({ total_decisions: 4, allowed: 3, blocked: 1, model_invocations: 71 });
+    const overview = await readPortal("/api/v1/telemetry/metrics?window=24h&view=overview");
+    expect(overview).toMatchObject({ total_decisions: 4, allowed: 3, blocked: 1, view: "overview", latency_method: "histogram_5pct" });
+    const options = await readPortal("/api/v1/guardrails?view=options");
+    expect(options.items).toContainEqual({ id: GUARDRAIL_ID, name: expect.any(String) });
+    expect(Object.keys(options.items[0]).sort()).toEqual(["id", "name"]);
     // Endpoint activity: four distinct request ids counted for the Endpoint.
     const activity = (await readPortal("/api/v1/telemetry/endpoint-activity")).items[0];
     expect(activity).toMatchObject({ id: ENDPOINT_ID, request_count: 4, error_count: 0 });
     expect(Number(activity.detection_p95_ms)).toBeGreaterThan(0);
+    const singleActivity = await readPortal(`/api/v1/telemetry/endpoint-activity?endpointId=${ENDPOINT_ID}`);
+    expect(singleActivity.items).toEqual([activity]);
     // Cost view: the split companion's single call is included (64 + 1 for the
     // large request), so the dashboard cost table totals 71 Runtime calls.
     const costs = await readPortal(`/api/v1/guardrails/${GUARDRAIL_ID}/usage-costs?window=7d&source=all`);

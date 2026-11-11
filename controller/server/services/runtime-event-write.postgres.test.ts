@@ -1,11 +1,11 @@
 // @vitest-environment node
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import type { ControllerDatabase } from "../db/client.js";
 import { createTestDatabase } from "../db/postgres-test-database.js";
 import { runtimeEvents } from "../db/schema.js";
 import type { RuntimeEventInput } from "../domain/models.js";
-import { writeRuntimeEvent } from "./runtime-event-write.js";
+import { writeRuntimeEvent, writeRuntimeEvents } from "./runtime-event-write.js";
 
 const url = process.env.GUARD_TEST_POSTGRES_URL;
 describe.skipIf(!url)("correlated runtime body enrichment (PostgreSQL)", () => {
@@ -51,5 +51,13 @@ describe.skipIf(!url)("correlated runtime body enrichment (PostgreSQL)", () => {
     await writeRuntimeEvent(db, { ...captured(base), [field]: "unrelated" });
     const [row] = await db.select().from(runtimeEvents).where(eq(runtimeEvents.id, base.id));
     expect(row!.metadata).toEqual(base.metadata);
+  });
+
+  it("batches captured events without changing first-write identity or enrichment order", async () => {
+    const a = event("batch-a"), b = event("batch-b");
+    await writeRuntimeEvents(db, [captured(a), b, { ...a, requestId: "wrong", metadata: { runtimeLogCaptured: true, contentCiphertext: "wrong" } }, captured(b), a]);
+    const rows = await db.select().from(runtimeEvents).where(sql`id IN ('batch-a','batch-b')`);
+    expect(rows).toHaveLength(2);
+    for (const row of rows) expect(row).toMatchObject({ requestId: "call", durationMs: 4, metadata: { contentCiphertext: "encrypted-original" } });
   });
 });

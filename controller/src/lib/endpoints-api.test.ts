@@ -25,7 +25,7 @@ describe("Endpoint connection scheme", () => {
         recommended_modes: ["request", "response"], default_on: true, fail_on_error: true,
         unreachable_fallback: "fail_closed", yaml_template: scanRequestCommand(callback, false) },
     };
-    api.requestController.mockImplementation(async (path: string) => path.endsWith("endpoint-activity") ? { items: [] } : resource);
+    api.requestController.mockImplementation(async (path: string) => path.includes("/telemetry/endpoint-activity") ? { items: [] } : resource);
     api.listControllerEndpoints.mockResolvedValue({ items: [resource] });
     api.createControllerEndpoint.mockResolvedValue({ ...resource, credential: "tg_test_only" });
 
@@ -44,13 +44,14 @@ describe("Endpoint connection scheme", () => {
       expect(endpoint.setup.auth_header).toBe("");
     }
     expect(resource.setup.callback_url).toBe(callback);
+    expect(api.requestController).toHaveBeenCalledWith("/api/v1/telemetry/endpoint-activity?endpointId=endpoint-1");
   });
 
   it.each(["https:", "http:"])("keeps LiteLLM and WebSocket connection examples consistent with %s", async pageProtocol => {
     vi.stubGlobal("window", { location: new URL(`${pageProtocol}//console.example.test/integration/endpoints`) });
     const base = "http://runtime.example.test:8091/prefix/runtime/v1/endpoints/litellm";
     const stream = "ws://runtime.example.test:8091/prefix/runtime/v1/endpoints/litellm/guardrails/output-stream";
-    api.requestController.mockImplementation(async (path: string) => path.endsWith("endpoint-activity") ? { items: [] } : {
+    api.requestController.mockImplementation(async (path: string) => path.includes("/telemetry/endpoint-activity") ? { items: [] } : {
       id: "litellm", adapter: "litellm-generic-guardrail", credentialRequired: true, status: "active",
       setup: { api_base_url: base, callback_url: `${base}/beta/litellm_basic_guardrail_api`, stream_callback_url: stream,
         auth_header: "x-api-key", yaml_template: `api_base: ${base}\nstream: ${stream}\nmodel_url: https://model.example.test/v1` },
