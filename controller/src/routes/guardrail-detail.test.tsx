@@ -581,7 +581,9 @@ afterEach(() => { cleanup(); identity.role = "user"; vi.restoreAllMocks(); });
     const onConfirm = vi.fn();
     render(<DeleteGuardrailSheet guardrail={deletableGuardrail} open impact={{ guardrail_id: deletableGuardrail.id, guardrail_name: deletableGuardrail.name, window_minutes: 30, incoming_request_count: 0, last_request_at: null, active_router_count: 2, telemetry_fresh: true, telemetry_watermark: "2026-08-20T10:00:00Z", requires_second_confirmation: false, requires_confirmation: false }} loading={false} deleting={false} error={null} onOpenChange={vi.fn()} onRetry={vi.fn()} onConfirm={onConfirm} />);
 
-    expect(screen.getByText("guardrails.deleteRetentionNote")).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "guardrails.deleteDataTitle" })).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "guardrails.deleteKeptTitle" })).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "guardrails.deleteRestoreTitle" })).toBeTruthy();
     const deleteButton = screen.getByRole("button", { name: "guardrails.deleteConfirm" }) as HTMLButtonElement;
     expect(deleteButton.disabled).toBe(true);
     fireEvent.change(screen.getByLabelText("guardrails.deleteReason"), { target: { value: "Retiring a duplicate policy" } });
