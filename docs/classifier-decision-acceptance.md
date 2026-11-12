@@ -4,10 +4,9 @@ JEV probabilities use one lower/upper operating point per registered Model. They
 Noul answers, not confidence or severity. A Rule applies its own action after
 classification; an Allow result continues the remaining Policies.
 
-The opt-in, separately versioned second-stage review is documented in
-[JEV / Laya 灰区复核](classifier-gray-review.md). With `review_unknown=true`, a valid
-first-stage unknown is reviewed before the Rule completes; first-stage failures
-are not reviewed or converted to allow.
+A valid first-stage abstention goes to the active review binding on the same
+Rail. First-stage failures retain their existing failure handling. See
+[JEV / Laya 灰区复核](classifier-gray-review.md).
 
 | Result | Dedicated acceptance configuration |
 | --- | --- |
@@ -126,6 +125,5 @@ misses instead of disappearing from a completed-only percentage.
 The review chain recovers some Aegis outcomes relative to allowing all unknowns,
 but its harmful/attack recall remains below the baseline and it introduces
 execution errors. Lower JBB false positives alone do not pass acceptance.
-`review_unknown` therefore remains opt-in and defaults to `false`. Select and
-measure a review model independently before enabling it on a production route.
+Select and measure a review model independently before assigning it to a production Rail.
 These results evaluate JEV plus the named reviewer; they do not validate Laya.

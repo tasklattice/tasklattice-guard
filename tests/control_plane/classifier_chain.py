@@ -23,7 +23,7 @@ CONTRACTS = {"jailbreak": "tali.guard.jailbreak.v1", "content_safety": "tali.gua
              "topic_control": "tali.guard.topic-control.semantic.v1"}
 
 
-def build_controller_plan(*, review=False, phase="input", pii_only=False):
+def build_controller_plan(*, phase="input", pii_only=False):
     source = """
       import { PolicyCatalog } from './server/policy-catalog/catalog.ts';
       import { DeclarativeCompiler } from './server/policy-studio/declarative.ts';
@@ -39,7 +39,7 @@ def build_controller_plan(*, review=False, phase="input", pii_only=False):
         return { policyId: id, policyVersion: p.version, action: null, enabledRails: [phase],
           enabledRuleIds: rules, ruleOrder: rules, ruleActions: {}, reasoningPolicy: null,
           parameterValues: id === 'content-filters' ? {blocked_words: 'CHAIN_BLOCK', brand_name: 'TaskLattice', competitors: 'Example', phrase_entries: JSON.stringify([{ id: 'x', phrase: 'CHAIN_BLOCK', action: 'block', replacement: '[REDACTED]' }])} :
-            {on_unknown: 'allow', review_unknown: process.env.GUARD_TEST_REVIEW ?? 'false', topic_mode: 'permissive', denied_topics: 'Synthetic forbidden task'} };
+            {on_unknown: 'allow', topic_mode: 'permissive', denied_topics: 'Synthetic forbidden task'} };
       });
       console.log(JSON.stringify(buildGuardrailPlan({guardrailId: 'classifier-chain',
         guardrailVersion: '20261029-000000.001Z', policies,
@@ -48,7 +48,7 @@ def build_controller_plan(*, review=False, phase="input", pii_only=False):
     """
     result = subprocess.run(["node", "--import", "tsx", "--input-type=module", "-e", source],
                             cwd=ROOT / "controller", capture_output=True, text=True, check=True, timeout=60,
-                            env={**os.environ,"GUARD_TEST_REVIEW":"true" if review else "false", "GUARD_TEST_PHASE":phase,
+                            env={**os.environ, "GUARD_TEST_PHASE":phase,
                                  "GUARD_TEST_PII":"true" if pii_only else "false"})
     return json.loads(result.stdout)
 

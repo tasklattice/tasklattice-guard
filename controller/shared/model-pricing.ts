@@ -37,7 +37,7 @@ export type GuardrailCostView = {
 };
 export type ModelPricingView = {
   modelId: string; model: string; provider: string; mode: "automatic" | "manual";
-  catalogKey: string | null; source: "manual" | "litellm" | null; rates: ModelRates | null; effectiveAt: string | null;
+  catalogKey: string | null; source: "manual" | "litellm" | "builtin" | null; rates: ModelRates | null; effectiveAt: string | null;
 };
 export type PricingSyncView = {
   sourceUrl: string; catalogVersion: string | null; lastSuccessAt: string | null;

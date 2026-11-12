@@ -70,14 +70,14 @@ def test_topic_parameter_defaults_do_not_break_unrelated_local_rules() -> None:
     defaults = {item.name: item.default for item in topic.parameters}
     assert {key: value for key, value in defaults.items() if key != "questions"} == {
         "allowed_topics": "", "denied_topics": "", "topic_mode": "permissive",
-        "on_unknown": "block", "review_unknown": "false",
+        "on_unknown": "block",
     }
     # The classifier questions are Policy content, so they must ship here.
     assert defaults["questions"].startswith("- id: denied_task")
     placeholders = {item.name: item.placeholder for item in topic.parameters}
     assert {key: value for key, value in placeholders.items() if key != "questions"} == {
         "allowed_topics": "", "denied_topics": "", "topic_mode": "",
-        "on_unknown": "block or allow", "review_unknown": "true or false",
+        "on_unknown": "block or allow",
     }
     credentials = policy("credentials-secrets")
     case = next(item for item in credentials.test_cases

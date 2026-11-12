@@ -129,7 +129,7 @@ def validate_router(router, artifacts: dict) -> None:
             if not t.target_id or t.target_id in targets or (t.guardrail_id,t.guardrail_version) in refs or not 0 <= t.weight_bps <= 10000: raise ValueError("Invalid or duplicate target.")
             targets.add(t.target_id); refs.add((t.guardrail_id,t.guardrail_version))
             if not t.guardrail_id or not t.guardrail_version.strip() or t.guardrail_version.lower() == "latest": raise ValueError("Target version must be fixed.")
-            if t.weight_bps:
+            if route.enabled and t.weight_bps:
                 a = artifacts.get(t.artifact_id)
                 if a is None or (a.plan.guardrail_id,a.plan.guardrail_version) != (t.guardrail_id,t.guardrail_version): raise ValueError("Target artifact/version is unavailable.")
     if fallbacks != 1: raise ValueError("Router requires exactly one fallback.")

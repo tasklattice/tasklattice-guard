@@ -9,6 +9,15 @@
 {{- end -}}
 {{- $runnerName := include "tali-guard.defaultRunnerName" . -}}
 {{- $headlessServiceName := printf "%s-headless" $runnerName -}}
+{{- $runnerResources := .Values.runner.default.resources | default dict -}}
+{{- $cpuResource := "" -}}
+{{/* Kubelet substitutes node allocatable for zero CPU limits in the Downward API. */}}
+{{- $positiveCpuQuantity := "^\\+?[0-9.]*[1-9]" -}}
+{{- if regexMatch $positiveCpuQuantity (get ($runnerResources.limits | default dict) "cpu" | toString) -}}
+{{- $cpuResource = "limits.cpu" -}}
+{{- else if regexMatch $positiveCpuQuantity (get ($runnerResources.requests | default dict) "cpu" | toString) -}}
+{{- $cpuResource = "requests.cpu" -}}
+{{- end -}}
 apiVersion: apps/v1
 kind: StatefulSet
 metadata:
@@ -62,6 +71,13 @@ spec:
             - { name: GUARD_RUNNER_POOL_ID, value: "default" }
             - { name: GUARD_RUNNER_COMPILER_CAPABLE, value: "true" }
             - { name: GUARD_RUNNER_MAX_CONCURRENCY, value: {{ .Values.runner.default.maxConcurrency | quote }} }
+            {{- with $cpuResource }}
+            - name: GUARD_RUNNER_CPU_MILLICORES
+              valueFrom:
+                resourceFieldRef:
+                  resource: {{ . | quote }}
+                  divisor: 1m
+            {{- end }}
             {{- if hasKey .Values.runner "scanTimeoutSeconds" }}
             - { name: GUARD_SCAN_TIMEOUT_SECONDS, value: {{ .Values.runner.scanTimeoutSeconds | quote }} }
             {{- end }}
@@ -98,7 +114,6 @@ spec:
             - { name: GUARD_RUNNER_CALL_CONTEXT_REDIS_URL, value: {{ . | quote }} }
             {{- end }}
             - { name: GUARD_RUNNER_CALL_CONTEXT_TTL_SECONDS, value: {{ .Values.runner.callContext.ttlSeconds | quote }} }
-            - { name: GUARD_RUNNER_CALL_CONTEXT_COMPRESS_PLANS, value: {{ .Values.runner.callContext.compressPlans | quote }} }
             - { name: GUARD_RUNNER_CALL_CONTEXT_CAPACITY_FALLBACK, value: {{ .Values.runner.callContext.capacityFallback | quote }} }
           volumeMounts:
             - { name: artifact-signing, mountPath: /var/run/tasklattice/artifact, readOnly: true }
@@ -119,7 +134,7 @@ spec:
                 # Give Service endpoint propagation time before Uvicorn receives
                 # SIGTERM and drains requests inside the remaining grace period.
                 command: [/bin/sh, -c, "sleep 5"]
-          resources: {{- toYaml .Values.runner.default.resources | nindent 12 }}
+          resources: {{- toYaml $runnerResources | nindent 12 }}
       volumes:
         - name: artifact-signing
           secret:

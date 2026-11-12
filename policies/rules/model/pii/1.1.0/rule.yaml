@@ -11,7 +11,6 @@ detector:
   parameters:
     profile: pii-classification
     on_unknown: '{{on_unknown}}'
-    review_unknown: '{{review_unknown}}'
 on_match:
   action: transform
 runtime_adapter:

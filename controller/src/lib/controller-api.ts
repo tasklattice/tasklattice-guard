@@ -38,6 +38,8 @@ export type ModelProvider = {
   name: string;
   kind: ModelProviderKind;
   baseUrl: string;
+  backend?: "builtin_laya";
+  checkpointRevision?: string;
   credentialHint: string | null;
   credentialConfigured: boolean;
   status: "pending" | "validated" | "failed";
@@ -53,6 +55,8 @@ export type DiscoveredProviderModels = {
 };
 
 export type ModelDefinition = {
+  backend?: "builtin_laya";
+  checkpointRevision?: string;
   projectId?: string | null;
   protocolEditable?: boolean;
   connectionStatus?: "pending" | "validated" | "failed";

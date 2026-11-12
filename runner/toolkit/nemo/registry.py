@@ -114,9 +114,14 @@ class _Release:
     expires_at: float
     used_until: dict[RuntimeKey, float] = field(default_factory=dict)
     pending: int = 0
+    playground: bool = False
 
 
 class RuntimeNotPrepared(LookupError):
+    pass
+
+
+class PlaygroundCapacityExceeded(RuntimeError):
     pass
 
 
@@ -125,8 +130,10 @@ class NeMoRuntimeRegistry:
 
     def __init__(self, store: NeMoConfigStore, providers: ActionProviders, *,
                  max_entries: int = 128, max_concurrency_per_guardrail: int = 64,
+                 max_playground_entries: int = 32,
                  native_models: tuple[NativeRailModel, ...] = ()) -> None:
         self._max_entries = max(1, max_entries)
+        self._max_playground_entries = max(1, max_playground_entries)
         self._max_concurrency_per_guardrail = max(1, max_concurrency_per_guardrail)
         self._lock = threading.RLock()
         self._build_lock = threading.Lock()  # Only builders use this; never serving readers.
@@ -329,6 +336,38 @@ class NeMoRuntimeRegistry:
             self._current_release_id = release_id
             staged.created.clear()
             self._staged_refs.pop(staged.token, None)
+
+    def prepare_playground_release(self, release_id: str, plan: GuardrailPlanSnapshot,
+                                   config: NeMoConfigSnapshot) -> None:
+        """Cache one verified historical version without changing serving state.
+
+        ArtifactStore serializes this with snapshot publication on the preparation
+        lane. These leases expire through the same in-flight-safe collector.
+        """
+        key = (plan.guardrail_id, plan.guardrail_version)
+        with self._lock:
+            if self._closed:
+                raise LookupError("NeMo Runtime Registry is closed.")
+            existing = self._releases.get(release_id)
+            if existing is not None:
+                existing.expires_at = time.monotonic() + self._release_ttl_seconds
+                existing.used_until[key] = existing.expires_at
+                return
+            if sum(entry.playground for entry in self._releases.values()) >= self._max_playground_entries:
+                raise PlaygroundCapacityExceeded("Playground version capacity is in use. Retry after existing leases expire.")
+        staged = self.prepare_release(((plan, config),), frozenset({key}))
+        try:
+            with self._lock:
+                if self._closed:
+                    raise LookupError("NeMo Runtime Registry is closed.")
+                entry = _Release(staged, time.monotonic() + self._release_ttl_seconds, playground=True)
+                entry.used_until[key] = entry.expires_at
+                self._releases[release_id] = entry
+                staged.created.clear()
+                self._staged_refs.pop(staged.token, None)
+        except BaseException:
+            self.discard_prepared(staged)
+            raise
 
     def _prune_items(self, entry: _Release) -> None:
         now = time.monotonic()
@@ -737,15 +776,6 @@ class _RuntimeBuilder:
         evaluation = self._providers.get((ACTION_EVALUATE, "1.0.0"))
         route_keys = frozenset(getattr(evaluation, "route_keys", ()))
         route_rail_keys = frozenset(getattr(evaluation, "route_rail_keys", ()))
-        for binding in config.action_bindings:
-            if binding.parameter("review_unknown") == "true":
-                provider = self._providers.get((binding.action_name, binding.action_version))
-                supported = getattr(provider, "supports_review", lambda *args: False)
-                for phase in binding.phases:
-                    if phase not in {"input", "output"}:
-                        continue
-                    if ("classifier_review", "tali.guard.classifier-review.v1", phase) not in route_rail_keys or not supported(binding.capability,binding.contract_ref,phase):
-                        raise PlanCompilationError(f"Gray-area review requires a compatible {phase} classifier and a validated classifier_review.{phase} binding.")
         declared_phases: dict[str, set[str]] = {}
         for policy in plan.policy_versions if plan is not None else ():
             phases = {phase for binding in config.action_bindings

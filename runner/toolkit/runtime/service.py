@@ -239,6 +239,7 @@ class GuardrailRuntimeService:
         version: str,
         *,
         on_resolved: Callable[[PlanResolution], None] | None = None,
+        prepared_resolution: PlanResolution | None = None,
     ) -> ProtectionDecision:
         self._begin_context_request()
         stored = self._contexts.get(request.call_id)
@@ -253,7 +254,7 @@ class GuardrailRuntimeService:
                 raise LookupError("The output check does not match the pinned Playground Guardrail Version.")
             resolution = stored.resolution
         else:
-            resolution = resolver(guardrail_id, version)
+            resolution = prepared_resolution or resolver(guardrail_id, version)
         if on_resolved is not None:
             on_resolved(resolution)
         return self._context_evidence(await self._evaluate_resolved(request, resolution, stored))

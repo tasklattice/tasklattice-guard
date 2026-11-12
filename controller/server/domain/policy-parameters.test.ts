@@ -113,14 +113,14 @@ describe("scoped classifier uncertainty handling", () => {
     other.rules[0]!.detector.parameters = { on_unknown: "block" };
     expect(() => compiler.compile(other)).toThrow("on_unknown requires a supported safety, jailbreak, topic or PII classifier");
   });
-  it("preserves PII uncertainty and review parameters through compilation", () => {
+  it("preserves the PII primary uncertainty action through compilation", () => {
     const definition = classifier();
     definition.rules[0]!.detector.parameters.profile = "pii-classification";
     const compiled = compiler.compile(definition);
     expect(compiled.definition!.rules[0]!.detector.parameters).toMatchObject({
-      profile: "pii-classification", on_unknown: "{{on_unknown}}", review_unknown: "{{review_unknown}}",
+      profile: "pii-classification", on_unknown: "{{on_unknown}}",
     });
-    expect(stepValues(plan(definition, { on_unknown: "block", review_unknown: "true" })))
-      .toEqual(expect.arrayContaining([expect.objectContaining({ on_unknown: "block", review_unknown: "true" })]));
+    expect(stepValues(plan(definition, { on_unknown: "block" })))
+      .toEqual(expect.arrayContaining([expect.objectContaining({ on_unknown: "block" })]));
   });
 });

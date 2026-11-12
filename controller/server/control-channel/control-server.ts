@@ -33,7 +33,8 @@ import type { RunnerControlHandlers } from "../generated/control-protocol/taskla
 import type { ValidationResult__Output } from "../generated/control-protocol/tasklattice/guard/control/v1/ValidationResult.js";
 import type { ProtoGrpcType } from "../generated/control-protocol/runner_control.js";
 import type { ControllerMetrics } from "../metrics.js";
-import { capabilityBindingContracts } from "../model-config/domain.js";
+import { capabilityBindingContracts, modelRuntimeToWire } from "../model-config/domain.js";
+import { builtinLaya, isBuiltinLaya } from "../model-config/builtin-laya.js";
 import { capabilityBindingDefinitions } from "../../shared/guardrail-catalog.js";
 import type { ModelConfigurationService } from "../model-config/service.js";
 import type { ControlPlaneService } from "../services/control-plane.js";
@@ -79,6 +80,7 @@ type Connection = {
   bootId: string;
   poolId: string;
   compilerCapable: boolean;
+  builtinLayaRevision?: string;
   offlineCompilation?: boolean;
   appliedGeneration: number;
   appliedModelRevisionId: string;
@@ -224,10 +226,17 @@ export class RunnerControlServer {
       }
     }
     if (!runner || !request.requestId) return { passed: false, message: "The Default testing Runner (ordinal 0) is unavailable. Retry after it reconnects.", latencyMs: 0 };
-    if (!request.credentialLeaseId ||
+    const [model, extraModel] = request.configuration?.runtimes ?? [];
+    const builtin = model?.backend === builtinLaya.backend;
+    if (builtin && (extraModel || !isBuiltinLaya(model.id ?? "", model.providerId ?? "") || model.baseUrl || model.credentialRef
+      || request.credentialLeaseId || model.checkpointRevision !== builtinLaya.checkpointRevision
+      || runner.builtinLayaRevision !== model.checkpointRevision)) {
+      return { passed: false, message: "The Default Runner does not have the required built-in English checkpoint.", latencyMs: 0 };
+    }
+    if (!builtin && (!request.credentialLeaseId ||
       !await this.models.bindValidationLease(request.credentialLeaseId, runner.poolId, {
         poolId: runner.poolId, runnerId: runner.runnerId, bootId: runner.bootId, sessionId: runner.sessionId,
-      })) {
+      }))) {
       return { passed: false, message: "The Runner validation credential lease is unavailable.", latencyMs: 0 };
     }
     if (!await this.isCurrentConnection(runner)) return { passed: false, message: "The Runner control session changed before Rail validation could start.", latencyMs: 0 };
@@ -290,7 +299,6 @@ export class RunnerControlServer {
     this.timers = [
       every("Validation dispatch", 1_000, () => this.dispatchValidationRequests()),
       every("Desired state dispatch", 1_000, () => this.dispatchDesiredStateChanges()),
-      every("Artifact environment checks", 5_000, () => this.connections.size ? this.service.packages?.checkPendingEnvironments?.() : undefined),
       every("Runner reconciliation", 30_000, () => this.reconcileAll()),
       every("Traffic expiry", 30_000, () => this.service.trafficRouting?.expireCalls()),
       every("Endpoint provenance retention", 60_000, () => this.service.pruneEndpointTelemetryContexts?.()),
@@ -538,6 +546,7 @@ export class RunnerControlServer {
         bootId: registration.bootId,
         poolId: registration.poolId,
         compilerCapable: registration.compilerCapable,
+        ...(registration.labels?.[builtinLaya.revisionLabel] ? { builtinLayaRevision: registration.labels[builtinLaya.revisionLabel] } : {}),
         appliedGeneration: number(registration.appliedGeneration),
         offlineCompilation: registration.labels?.[OFFLINE_COMPILATION_CAPABILITY] === "1",
         appliedModelRevisionId: "",
@@ -951,21 +960,7 @@ export class RunnerControlServer {
         modelConfiguration: modelConfiguration ? {
           revisionId: modelConfiguration.revisionId,
           revision: modelConfiguration.revision,
-          runtimes: modelConfiguration.models.filter((model) => dataModelIds.has(model.id)).map((model) => ({
-            id: model.id,
-            providerId: model.providerId,
-            providerName: model.providerName,
-            baseUrl: model.baseUrl,
-            credentialRef: model.credentialRef,
-            skipTlsVerify: model.skipTlsVerify ?? false,
-            model: model.model,
-            profileRef: model.profile,
-            ...(model.layaRequestMode ? { layaRequestMode: model.layaRequestMode } : {}),
-            timeoutSeconds: model.timeoutSeconds,
-            maxTokens: model.maxTokens,
-            maxConcurrency: model.maxConcurrency ?? 2,
-          rateLimitAttempts: model.rateLimitAttempts ?? 3, lowerThreshold: model.lowerThreshold ?? 0.1, upperThreshold: model.upperThreshold ?? 0.9,
-          })),
+          runtimes: modelConfiguration.models.filter((model) => dataModelIds.has(model.id)).map(modelRuntimeToWire),
           bindings: dataBindings,
         } : null,
       },

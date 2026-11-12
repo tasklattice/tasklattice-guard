@@ -15,6 +15,8 @@ Decision Model 的可行性与实现路径。所有实测数字来自本仓库�
 > 10/20 命中、10/20 灰区 block、11/24 正常 block、2 条误脱敏。JEV 用类别清单问，
 > 质量更好，作为横向对比。下文保留研究过程、初稿对比和验收设计；实现状态
 > 以本节和实际代码为准，早期“Laya 先离线”的建议不再适用。
+> 当前的复核触发条件见 [JEV / Laya 灰区复核](classifier-gray-review.md)。下文的
+> 早期研究方案仅用于解释语义 PII 的设计演进。
 
 ## 1. 结论
 
@@ -118,7 +120,7 @@ LayaNoulEvaluator / JevNoulEvaluator
   没有 transform 能力；直接复用会在命中时因缺少 replacement 无法解析 transform，
   最终按执行失败处理，而不是完成脱敏。
 - `ClassifierReviewer.review()` 在复核命中时同样返回原始内容（`classifier_review.py:187`），
-  若将来给 PII 开启 `review_unknown`，Runtime 的 transform 解析会因缺少 replacement
+  早期实现若直接为 PII 增加复核，Runtime 的 transform 解析会因缺少 replacement
   而报 `_PatchConflict`。
 - 阈值是**按 Model Runtime** 保存的，不是按 capability。同一个 Laya/JEV 注册同时
   用于内容安全（需要 `0.1/0.9`）和 PII（可能需要 `0.1/0.8`）时，操作点会互相牵制。
@@ -390,8 +392,8 @@ PII evaluator 覆盖这两个钩子即可；内容安全/越狱/话题的行为�
 
 ### 7.4 灰区复核（可选，第二阶段）
 
-如果产品希望减少 JEV 灰区的 block，给 `builtin-pii` 增加新版本（例如 1.1.0），
-暴露 `review_unknown` / `on_unknown`，并复用 `classifier_review.<rail>`：
+当前 Rail 的 `classifier_review.<rail>` 绑定生效后，自动复核 JEV/Laya 语义 PII 灰区。
+没有复核模型时，由 Policy 的 `on_unknown` 处理普通灰区。
 
 - 复核问题使用 PII 的完整类别与排除项；`yes` → matched、全部 `no` → not_matched、
   仍有 `unknown` → 保持 unknown（当前会 block）。
@@ -421,9 +423,7 @@ PII evaluator 覆盖这两个钩子即可；内容安全/越狱/话题的行为�
    不会冲突，但要用测试锁住。
 3. `binding_sources` 已经排除 JEV/Laya profile，因此不会和
    `SafetyModelEvaluator` 的 PII 路由重复；新增 profile 不在排除集合里时要同步更新。
-4. 传入 `reviewer=reviewers.get(phase)`，但 `builtin-pii` 1.0.0 没有
-   `review_unknown`，因此复核不会触发；`supports_review` 会返回 true，
-   编译器的 review 就绪校验只在计划启用该参数时才要求绑定。
+4. 传入 `reviewer=reviewers.get(phase)`。实际采用的复核模型由当前 Rail 的运行时绑定决定。
 
 ### 7.6 证据
 
@@ -541,8 +541,7 @@ block，必须用独立 PII 回归和灰度作为质量门。
 ### Phase 3：灰区复核与 Policy 1.1.0（可选）
 
 - 修复 `ClassifierReviewer` 的 PII transform。
-- `builtin-pii` 新版本暴露 `review_unknown` / `on_unknown`；
-  在 JEV 上开启复核，观察灰区比例（本样本约 9%）。
+- 配置当前 Rail 的复核绑定，在 JEV 上观察灰区比例（本样本约 9%）。
 - 评估是否把 Laya 重新纳入（当前不建议）。
 
 ### 回滚
@@ -704,10 +703,9 @@ set -a; . ./.env; set +a
 
 ### 默认值取舍
 
-`review_unknown` 默认 `true` 仅用于 `pii-semantic`：它的灰区正是主要失效模式。
-`content-safety-model` / `prompt-instruction-attacks` / `business-topics` 保持 `false`，
-因为开启复核会要求每个引用它们的计划都具备已校验的 `classifier_review` 绑定（延迟 + 成本），
-应由具体部署逐个打开。
+`classifier_review.input` 和 `classifier_review.output` 独立配置。每个绑定对该阶段的
+受支持 JEV/Laya 分类器生效，包括语义 PII、内容安全、越狱和话题检查。部署时用该阶段的
+实际检测组合评估复核的延迟和成本。
 
 ### 版本策略
 

@@ -272,15 +272,15 @@ describe("Session freshness and read-only access", () => {
     expect(unexpected).not.toHaveBeenCalled();
   });
 
-  it("allows an authenticated user to inspect protection presets without write privileges", async () => {
+  it("allows an authenticated user to inspect Guardrail Profiles without write privileges", async () => {
     const { app, unexpected } = setup("user");
-    const response = await app.request("/api/v1/policy-catalog/protection-presets");
+    const response = await app.request("/api/v1/guardrail-profiles");
     expect(response.status).toBe(200);
     const body = await response.json();
     expect(body.items.map((item: { id: string }) => item.id)).toEqual([
       "default", "full-feature", "sg-bank", "cn-financial-services", "cn-internet",
     ]);
     expect(unexpected).not.toHaveBeenCalled();
-    expect((await setup(null).app.request("/api/v1/policy-catalog/protection-presets")).status).toBe(401);
+    expect((await setup(null).app.request("/api/v1/guardrail-profiles")).status).toBe(401);
   });
 });

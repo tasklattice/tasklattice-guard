@@ -81,9 +81,9 @@ selected binding. Do not run tests during activation.
 The optional gray-area reviewer uses the same bind command with
 `--binding classifier_review.input` for JEV/Laya input or `--binding classifier_review.output`
 for JEV/Laya content-safety output. Its model profile is `generic-chat` or
-`tali.classifier-review.v1`; the corresponding Policy binding must explicitly enable
-`review_unknown` in a supporting Policy version. See
-[JEV 灰区复核](classifier-gray-review.md) for versions, evidence and failure behavior.
+`tali.classifier-review.v1`. The active binding automatically reviews eligible
+abstentions on the same Rail. See [JEV / Laya gray-area review](classifier-gray-review.md)
+for evidence and failure behavior.
 
 ## Project: create from a Profile and publish a test Endpoint
 

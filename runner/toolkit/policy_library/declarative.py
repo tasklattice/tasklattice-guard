@@ -266,7 +266,7 @@ def compile_policy(definition: PolicyDefinition, registry: dict[str, Any]) -> di
         # Parameters the classifier runtime consumes directly. A Rule owns its
         # semantic definition; the Runner only executes it.
         semantic_parameters = ("questions",)
-        runtime_parameters = ("on_unknown", "review_unknown", *semantic_parameters) if rule.detector.ref == "model/classifier" and params.get("profile") in {
+        runtime_parameters = ("on_unknown", *semantic_parameters) if rule.detector.ref == "model/classifier" and params.get("profile") in {
             "jailbreak-classification", "safety-classification", "topic-classification", "pii-classification",
         } else ()
         unknown = set(params) - set(detector["parameters"]) - set(runtime_parameters)
@@ -280,11 +280,6 @@ def compile_policy(definition: PolicyDefinition, registry: dict[str, Any]) -> di
         for key in semantic_parameters:
             if key in params and not (isinstance(params[key], str) and params[key].strip()):
                 raise ValueError(f"Rule {rule.id}: {key} must be a non-empty string")
-        if "review_unknown" in params:
-            value = params["review_unknown"]
-            references = {"{{" + parameter.name + "}}" for parameter in definition.parameters}
-            if not isinstance(value, str) or value not in {"true", "false", *references}:
-                raise ValueError(f"Rule {rule.id}: review_unknown must be true, false, or a declared parameter")
         if "profiles" in detector:
             profile = params.pop("profile", None)
             if not isinstance(profile, str) or profile not in detector["profiles"]:

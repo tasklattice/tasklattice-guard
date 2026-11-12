@@ -71,7 +71,6 @@ class RunnerSettings:
     # Sliding-window starts across replicas of this pool, not concurrency.
     distributed_rate_admission: DistributedRateConfiguration | None = None
     group_rate_admission: GroupRateConfiguration | None = None
-    call_context_compress_plans: bool = False
     call_context_capacity_fallback: bool = False
     call_context_ttl_seconds: int = 300
 
@@ -187,7 +186,6 @@ class RunnerSettings:
             ).strip(),
             telemetry_batch_size=_positive_int("GUARD_RUNNER_TELEMETRY_BATCH_SIZE", 100),
             call_context_redis_url=redis_url,
-            call_context_compress_plans=_boolean("GUARD_RUNNER_CALL_CONTEXT_COMPRESS_PLANS", False),
             call_context_capacity_fallback=_boolean("GUARD_RUNNER_CALL_CONTEXT_CAPACITY_FALLBACK", False),
             call_context_ttl_seconds=_positive_int("GUARD_RUNNER_CALL_CONTEXT_TTL_SECONDS", 300),
             runtime_log_encryption_key=runtime_log_encryption_key,

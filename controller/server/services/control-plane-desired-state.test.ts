@@ -40,13 +40,13 @@ function desiredStateService(results: unknown[][], snapshots = [revision]) {
   return service;
 }
 
-// Select order: pool allocation, controller state, group projects, visible ready
+// Select order: pool allocation, controller state, group projects, routed
 // artifacts, disabled Guardrails, logging levels, disabled Endpoints, active Endpoints.
 const desiredStateResults = () => [
   [{ groupId: "group-one" }],
   [{ desiredGeneration: 9 }],
   [{ id: "projectA" }],
-  [artifact("art-1"), artifact("art-2"), artifact("art-default")],
+  [artifact("art-1")],
   [], [], [],
   [{ id: "endpoint-1", projectId: "projectA", trafficRouterId: "router-1", adapter: "litellm-generic-guardrail", credentialRequired: true, verification: { credentials: [] } }],
 ] as unknown[][];
@@ -58,13 +58,13 @@ describe("desired state per pool", () => {
     const desired = await desiredStateService(results).desiredStateForPool("default");
     expect(desired.endpoints[0]).toMatchObject({ endpointId: "scan", credentialRequired: false, scanFlagOnlyDefault: false });
   });
-  it("keeps visible ready versions for Playground in every pool of the assigned group", async () => {
+  it("distributes serving artifacts within the assigned group", async () => {
     const service = desiredStateService(desiredStateResults());
     const desired = await service.desiredStateForPool("edge");
     expect(desired.generation).toBe(9);
     expect(desired.groupId).toBe("group-one");
     expect(service.trafficRouting.runtimeSnapshots).toHaveBeenCalledWith(["projectA"], expect.anything());
-    expect(desired.artifacts.map((item) => item.id).sort()).toEqual(["art-1", "art-2", "art-default"]);
+    expect(desired.artifacts.map((item) => item.id)).toEqual(["art-1"]);
     expect(desired).not.toHaveProperty("routers");
     expect(desired.routerRevisions).toEqual([expect.objectContaining({ routerId: "router-1", assignmentAlgorithm: "hmac-sha256-v1", assignmentKeyId: "v1" })]);
     expect(desired.routerRevisions[0]!.assignmentKey).toHaveLength(32);
@@ -73,7 +73,7 @@ describe("desired state per pool", () => {
 
   it("uses the default pool's allocation rather than treating its name as global authority", async () => {
     const desired = await desiredStateService(desiredStateResults()).desiredStateForPool("default");
-    expect(desired.artifacts.map((item) => item.id).sort()).toEqual(["art-1", "art-2", "art-default"]);
+    expect(desired.artifacts.map((item) => item.id)).toEqual(["art-1"]);
     expect(desired).not.toHaveProperty("routers");
   });
 
@@ -101,6 +101,7 @@ describe("desired state per pool", () => {
     results[2] = [];
     results[3] = [];
     results[7] = [];
+    results.splice(3, 1); // No artifact query without serving references.
     const service = desiredStateService(results, []);
     const desired = await service.desiredStateForPool("empty-group-pool");
     expect(service.trafficRouting.runtimeSnapshots).toHaveBeenCalledWith([], expect.anything());

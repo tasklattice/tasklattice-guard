@@ -137,14 +137,14 @@ describe.skipIf(!url)("Project Default Guardrail provisioning", () => {
     await expect(inProject("projectC", () => service.getGuardrail(second.id))).rejects.toMatchObject({ code: "not_found" });
   });
 
-  it("preloads verified Project Defaults only into their allocated Runner pool", async () => {
+  it("does not preload unrouted Project Defaults even after a successful load check", async () => {
     const pool = await service.projectGroups.createPool("default", { projectId: "projectB", runtimeUrl: "http://dedicated.invalid" }, "admin");
     const row = (await defaults()).find(item => item.project_id === "projectB")!;
     expect((await service.desiredStateForPool(pool.id)).artifacts).toEqual([]);
     // Simulate successful Runner load checks; provisioning itself must not bypass them.
     await database.pool.query(`UPDATE guardrail_version SET environment_check='{"status":"compatible"}'
       WHERE guardrail_id IN (SELECT id FROM guardrail WHERE project_id IS NOT NULL)`);
-    expect((await service.desiredStateForPool(pool.id)).artifacts.map(artifact => artifact.guardrailId)).toEqual([row.id]);
+    expect((await service.desiredStateForPool(pool.id)).artifacts).toEqual([]);
     expect((await service.desiredStateForPool("default")).artifacts.some(artifact => artifact.guardrailId === row.id)).toBe(false);
   });
 });

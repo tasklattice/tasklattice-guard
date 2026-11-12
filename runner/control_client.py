@@ -25,6 +25,7 @@ from runner.toolkit.nemo.native_models import NativeRailModel, native_rail_model
 from .report_chunks import ReportSpool
 from .software_version import SOFTWARE_VERSION
 from .artifact_store import ArtifactStore
+from .builtin_laya import BUILTIN_LAYA_BACKEND, BUILTIN_LAYA_REVISION_LABEL, BuiltinLaya
 from .compiler import DefaultRunnerCompiler
 from .capability_validation import validate_capability
 from .config import RunnerSettings
@@ -55,10 +56,11 @@ class _LeaseAuthorityLost(RuntimeError):
 
 def _prepare_model_dependencies(
     configuration: protocol.DataPlaneModelConfiguration, credentials: dict[str, str],
+    builtin_laya: BuiltinLaya | None = None,
 ) -> tuple[ActionProviders, tuple[NativeRailModel, ...]]:
     with diagnostic_phase("desired_state.models", model_revision_id=configuration.revision_id):
         providers = action_providers(*dynamic_runtime_action_providers(
-            configuration, credentials))
+            configuration, credentials, builtin_laya=builtin_laya))
         return providers, native_rail_models(configuration, credentials)
 
 
@@ -72,8 +74,10 @@ class RunnerControlClient:
         provider_observer: Callable[[ActionProviders], Awaitable[None]] | None = None,
         compiler: DefaultRunnerCompiler | None = None,
         telemetry: RuntimeTelemetryExporter | None = None,
+        builtin_laya: BuiltinLaya | None = None,
     ) -> None:
         self._telemetry = telemetry
+        self._builtin_laya = builtin_laya
         self._settings = settings
         self._store = store
         self._metrics = metrics
@@ -465,6 +469,7 @@ class RunnerControlClient:
                 if materialization_key != self._materialization_key:
                     providers, native_models = await prepare(
                         _prepare_model_dependencies, desired_state.model_configuration, credentials,
+                        self._builtin_laya,
                     )
             else:
                 materialization_key = None
@@ -545,6 +550,9 @@ class RunnerControlClient:
         configuration: protocol.DataPlaneModelConfiguration,
         lease_id: str | None = None,
     ) -> dict[str, str]:
+        if any(runtime.backend == BUILTIN_LAYA_BACKEND and runtime.credential_ref
+               for runtime in configuration.runtimes):
+            raise ValueError("Built-in Laya cannot request a Model credential lease.")
         refs = sorted({
             runtime.credential_ref
             for runtime in configuration.runtimes
@@ -716,7 +724,8 @@ class RunnerControlClient:
                 raise ValueError("This Runner is not compiler-capable.")
             async with asyncio.timeout(90):
                 credentials = await self._model_credentials(request.configuration, request.credential_lease_id)
-                result = await validate_capability(request, credentials, runner_id=self._settings.runner_id)
+                result = await validate_capability(request, credentials, runner_id=self._settings.runner_id,
+                                                   builtin_laya=self._builtin_laya)
         except Exception as error:
             result = protocol.CapabilityValidationResult(request_id=request.request_id,
                 message=f"Rail validation could not complete ({type(error).__name__}). Check Runner availability and retry.")
@@ -1060,6 +1069,7 @@ class RunnerControlClient:
         self._metrics.set_control_queue_depth(self._outgoing.qsize())
 
     def _registration(self) -> protocol.RunnerMessage:
+        builtin_revision = self._builtin_laya.revision if self._builtin_laya is not None else None
         return protocol.RunnerMessage(
             message_id=str(uuid.uuid4()),
             sent_at_unix_ms=_now_ms(),
@@ -1070,6 +1080,7 @@ class RunnerControlClient:
                 runner_version=SOFTWARE_VERSION["version"],
                 labels={"tasklattice.build": json.dumps(SOFTWARE_VERSION), "tasklattice.protection-modes": "1",
                         "tasklattice.snapshot-ack": "1", "tasklattice.offline-compilation": "1",
+                        **({BUILTIN_LAYA_REVISION_LABEL: builtin_revision} if builtin_revision else {}),
                         **({"tasklattice.lease-probe": "1"} if self._serving_lease is not None else {})},
                 nemo_version=importlib.metadata.version("nemoguardrails"),
                 max_concurrency=self._settings.max_concurrency,

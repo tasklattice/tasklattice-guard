@@ -97,7 +97,3 @@ class EvaluationActionProvider:
                 ),
             )
         return await evaluator.evaluate(request)
-
-    def supports_review(self, capability: str, contract: str, phase: str) -> bool:
-        evaluator = self._routes.get((capability, contract, phase))
-        return bool(getattr(evaluator, "review_ready", False))

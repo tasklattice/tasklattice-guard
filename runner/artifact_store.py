@@ -296,6 +296,29 @@ class ArtifactStore:
                 ),),
             )
 
+    def prepare_playground_artifact(self, message: Any, guardrail_id: str, version: str) -> PlanResolution:
+        """Load a single signed version into an expiring, non-persisted release."""
+        with self._apply_lock:
+            artifact = self.verify(message)
+            if (artifact.plan.guardrail_id, artifact.plan.guardrail_version) != (guardrail_id, version):
+                raise ValueError("The signed Artifact does not match the requested Guardrail version.")
+            registry = self._registry
+            if registry is None:
+                raise RuntimeError("NeMo Runtime Registry is not attached.")
+            with self._lock:
+                loaded = self._artifacts.get(message.artifact_id)
+                if loaded is not None and loaded.checksum == artifact.checksum:
+                    return self.resolve_guardrail(guardrail_id, version)
+                # Includes the active model/materialization revision. A cache
+                # hit must never reuse providers from a different snapshot.
+                release_id = "playground:" + hashlib.sha256(
+                    f"{self._release_id}:{artifact.checksum}".encode()
+                ).hexdigest()
+                model_revision_id = self._model_revision_id
+            registry.prepare_playground_release(release_id, artifact.plan, artifact.config)
+            return PlanResolution(plan=artifact.plan, router_id=f"playground:{guardrail_id}:{version}",
+                                  effective_release_id=release_id, model_revision_id=model_revision_id)
+
     def authenticate_endpoint(self, endpoint_id: str, credential: str | None) -> bool:
         with self._lock:
             endpoint = self._endpoints.get(endpoint_id)

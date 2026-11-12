@@ -143,17 +143,6 @@ def test_distributed_rate_admission_requires_explicit_matching_trusted_policy(mo
         RunnerSettings.from_env()
 
 
-def test_call_plan_compression_requires_explicit_rollout_opt_in(monkeypatch):
-    _required_runner_env(monkeypatch)
-    monkeypatch.delenv("GUARD_RUNNER_CALL_CONTEXT_COMPRESS_PLANS", raising=False)
-    assert RunnerSettings.from_env().call_context_compress_plans is False
-    monkeypatch.setenv("GUARD_RUNNER_CALL_CONTEXT_COMPRESS_PLANS", "true")
-    assert RunnerSettings.from_env().call_context_compress_plans is True
-    monkeypatch.setenv("GUARD_RUNNER_CALL_CONTEXT_COMPRESS_PLANS", "invalid")
-    with pytest.raises(ValueError, match="must be a boolean"):
-        RunnerSettings.from_env()
-
-
 def test_context_capacity_fallback_and_ttl_are_explicit(monkeypatch):
     _required_runner_env(monkeypatch)
     monkeypatch.delenv("GUARD_RUNNER_CALL_CONTEXT_CAPACITY_FALLBACK", raising=False)

@@ -5,7 +5,6 @@ TaskLattice Guard installed two application component types:
   runner-default: {{ include "tali-guard.defaultRunnerName" . }} ({{ .Values.runner.default.replicaCount }} replicas)
 
 runner-default is the mandatory baseline and authoritative NeMo compiler.
-Its PodDisruptionBudget keeps at least one Runner available.
 Helm deploys only the Default Runner. Manage other Runners manually in the administrator UI.
 
 Check both rollouts:

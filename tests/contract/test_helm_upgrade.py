@@ -125,18 +125,6 @@ def test_deployment_errors_are_returned_without_reinstall_or_force(
     assert len(read_calls(fake_helm)) == 2
 
 
-@pytest.mark.parametrize("suffix", ["", "-debug"])
-def test_make_helm_install_forwards_to_the_npm_entry_point(suffix: str):
-    # Build ordering, flags and failure behavior are exercised by the Node CLI
-    # tests; Make is now only a compatibility alias.
-    result = subprocess.run(
-        ["make", "--no-print-directory", "-n", f"helm-install{suffix}"],
-        cwd=ROOT, capture_output=True, text=True, check=True,
-    )
-    command = "npm run helm:deploy:dev" + (":debug" if suffix else "")
-    assert result.stdout.strip() == command
-
-
 @pytest.mark.skipif(
     not (os.environ.get("GUARD_HELM_TEST_CONTEXT") and os.environ.get("GUARD_HELM_TEST_NAMESPACE")),
     reason="Set GUARD_HELM_TEST_CONTEXT and GUARD_HELM_TEST_NAMESPACE for Kubernetes lifecycle regression.",

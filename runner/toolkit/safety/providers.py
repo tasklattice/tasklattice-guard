@@ -35,7 +35,7 @@ ModelTransport = Literal["openai_chat", "nemoguard_jailbreak_detect"]
 
 @dataclass(frozen=True, slots=True)
 class ModelRuntimeConfig:
-    """Physical model endpoint and transport configuration."""
+    """Physical model and inference backend configuration."""
 
     id: str
     base_url: str
@@ -51,14 +51,18 @@ class ModelRuntimeConfig:
     upper_threshold: float = 0.9
     skip_tls_verify: bool = False
     laya_request_mode: str = "compatible"
+    backend: Literal["http", "builtin_laya"] = "http"
 
     def __post_init__(self) -> None:
         if not self.id.strip() or not self.model.strip():
             raise ValueError("Model Runtime id and model cannot be empty.")
         if self.client != "openai_chat":
             raise ValueError(f"Unsupported Model Runtime client {self.client!r}.")
-        if not self.base_url.startswith(("http://", "https://")):
-            raise ValueError("OpenAI Chat Model Runtimes require an HTTP(S) base_url.")
+        if self.backend == "builtin_laya":
+            if self.base_url or self.api_key or self.api_key_env_var or self.skip_tls_verify:
+                raise ValueError("Built-in Laya takes no remote connection settings.")
+        elif self.backend != "http" or not self.base_url.startswith(("http://", "https://")):
+            raise ValueError("Remote Model Runtimes require an HTTP(S) base_url.")
         if type(self.max_concurrency) is not int or not 1 <= self.max_concurrency <= 64:
             raise ValueError("Model Runtime concurrency must be from 1 to 64.")
         if type(self.rate_limit_attempts) is not int or not 1 <= self.rate_limit_attempts <= 10:

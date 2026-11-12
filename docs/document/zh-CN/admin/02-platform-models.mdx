@@ -8,8 +8,10 @@ order: 1
 
 Default 无需检测模型，使用已审查的本地 Rule。模型 Policy 仍可用于其他 Guardrail。本地匹配不能替代模型的语义识别。
 
+检测英文内容时，在[防护能力](/settings/protection-capabilities)的兼容能力中直接选择 **内置 · Laya English**，保存并应用。模型提供商和模型页面会显示内置模型与 Default Runner 的就绪状态。推理使用 Runner 的 CPU，模型调用价格固定为 0 美元。外部复核模型按自身费率计价。
+
 <a id="platform-model-steps" />
-## 按顺序配置依赖
+## 配置外部模型服务
 
 1. 在[模型提供商](/settings/providers)注册服务地址和凭据。
 2. 检查连接。私有 CA 与 TLS 设置仅作用于该 Provider。
@@ -41,7 +43,7 @@ Default 无需检测模型，使用已审查的本地 Rule。模型 Policy 仍�
 <a id="platform-model-evidence" />
 ### 用验证证据区分责任
 
-每次 Validate 都会保留每个样本的请求与响应，无论通过或失败。打开 **失败证据** 或 **通过证据** 可查看实际接口地址、请求正文、请求头、响应正文、状态码、耗时、提示词版本与配置阈值。凭据已脱敏，导出保留完整 JSON。
+打开 **失败证据** 或 **通过证据** 可查看样本的验证结果。远程调用可以提供实际接口、请求与响应，凭据已脱敏。内置 Laya 的证据来自 Runner 本地推理，包含检查点版本、分数和配置阈值。
 
 失败样本会给出一个归因，而不是只显示“失败”：
 
@@ -59,6 +61,6 @@ Default 无需检测模型，使用已审查的本地 Rule。模型 Policy 仍�
 
 能力绑定提供检测器依赖，Policy 定义可复用的保护行为。模型连接成功不能证明某条 Rule 能识别目标内容。
 
-已注册的 Generic chat Model（包括 DeepSeek）也可绑定到**分类灰区复核**，并保留原有 Control Plane 用途。内置提示词自动带上原判定标准、待检查的输入/输出和上下文；在支持复核的 Guard Policy 绑定中开启 `review_unknown=true`，即可复核 JEV/Laya 输入或内容安全输出的灰区结果。两阶段可共用或分别选择模型，验证结果保持独立。第一阶段检测仍需对应的专用协议。Controller 只下发生效数据面绑定引用的 Model 和凭据。
+已注册的 Generic chat Model（包括 DeepSeek）也可绑定到**分类灰区复核**，并保留原有 Control Plane 用途。绑定生效后，自动复核同阶段的 JEV/Laya 分类器灰区结果。内置提示词包含原判定标准、待检查的输入或输出和上下文。两阶段可共用或分别选择模型，验证结果保持独立。第一阶段检测仍需对应的专用协议。Controller 只下发生效数据面绑定引用的 Model 和凭据。
 
 证明服务配置及已知结果的验证样例见[形式验证](/document/operator/operator-create-policy#operator-policy-formal-service)。部署与协议细节保留在仓库的 `docs/model-configuration.md`。

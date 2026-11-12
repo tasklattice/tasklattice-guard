@@ -3,7 +3,7 @@ import { Writable } from 'node:stream';
 import axios, { AxiosRequestConfig } from 'axios';
 import { readFileSync, existsSync, writeFileSync } from 'node:fs';
 import { resolve, dirname, basename } from 'node:path';
-import { configurationHelp, projectPlaneEnv, runConfiguration } from './configure.js';
+import { configurationHelp, runConfiguration } from './configure.js';
 const cliDirectory = dirname(resolve(process.argv[1]));
 
 function loadEnvFile(path: string): Record<string, string> {
@@ -253,8 +253,6 @@ if (shellEnvFile) {
   for (const [key, value] of Object.entries(loaded)) if (process.env[key] === undefined) process.env[key] = value;
 }
 
-const projectEnv = projectPlaneEnv(process.env);
-
 interface Session {
   token: string | null;
   authCookie: string | null;
@@ -270,7 +268,7 @@ const session: Session = {
   privileged: false,
   baseUrl: resolvedUrl,
   urlSource,
-  projectId: flagValue('project') ?? projectEnv.GUARD_PROJECT_ID ?? null,
+  projectId: flagValue('project') ?? process.env.GUARD_PROJECT_ID ?? null,
 };
 
 // readline owns terminal input and echoing. Muting its output is essential:
@@ -475,7 +473,7 @@ async function handleShow(args: string[]) {
     console.log('  system  | identity | access-tokens');
     console.log('  providers | models | model-configuration');
     console.log('  policies [<id>] | policy-test <policy-id> [<run-id>]');
-    console.log('  protection-presets | actions');
+    console.log('  guardrail-profiles | actions');
     console.log('  guardrails [<id>] | guardrail-logging <id> | test-cases <guardrail-id>');
     console.log('  test-runs [--guardrail <id>]');
     console.log('  endpoints [<id>] | routers [<id>]');
@@ -532,8 +530,8 @@ async function handleShow(args: string[]) {
         res = await runApi('GET', `/api/v1/policies/${encodeURIComponent(p1)}/test-runs/latest`);
       }
       break;
-    case 'protection-presets':
-      res = await runApi('GET', '/api/v1/policy-catalog/protection-presets');
+    case 'guardrail-profiles':
+      res = await runApi('GET', '/api/v1/guardrail-profiles');
       break;
     case 'actions':
       res = await runApi('GET', '/api/v1/policy-catalog/actions');
@@ -828,18 +826,18 @@ async function main() {
   if (process.env.GUARD_ACCESS_TOKEN) {
     session.token = process.env.GUARD_ACCESS_TOKEN;
     console.log('Using token from GUARD_ACCESS_TOKEN.');
-  } else if (projectEnv.GUARD_PROJECT_TOKEN) {
-    session.token = projectEnv.GUARD_PROJECT_TOKEN;
+  } else if (process.env.GUARD_PROJECT_TOKEN) {
+    session.token = process.env.GUARD_PROJECT_TOKEN;
     console.log('Using a project token.');
-  } else if (projectEnv.GUARD_PROJECT_USERNAME && projectEnv.GUARD_PROJECT_PASSWORD) {
+  } else if (process.env.GUARD_PROJECT_USERNAME && process.env.GUARD_PROJECT_PASSWORD) {
     // Terminal parity with the one-shot commands: the same project credentials
     // authenticate a shell session without an interactive prompt.
     const signIn = await runApi('POST', '/api/auth/sign-in/username', {
-      username: projectEnv.GUARD_PROJECT_USERNAME,
-      password: projectEnv.GUARD_PROJECT_PASSWORD,
+      username: process.env.GUARD_PROJECT_USERNAME,
+      password: process.env.GUARD_PROJECT_PASSWORD,
     }, { withCredentials: true, omitCredentials: true });
     if (signIn.ok && signIn.data && !signIn.data.error) {
-      console.log(`Signed in as ${String(signIn.data.user?.username ?? projectEnv.GUARD_PROJECT_USERNAME)}.`);
+      console.log(`Signed in as ${String(signIn.data.user?.username ?? process.env.GUARD_PROJECT_USERNAME)}.`);
     } else {
       console.error('Project sign-in failed; run `enable` or `read` manually.');
     }

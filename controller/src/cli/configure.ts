@@ -88,19 +88,8 @@ export function parseConfigurationArgs(args: string[]): { command: string; flags
   return { command, flags };
 }
 
-/** Older credential files name the project plane "tenant"; accept both. */
-export function projectPlaneEnv(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
-  const merged: NodeJS.ProcessEnv = { ...env };
-  for (const suffix of ['TOKEN', 'USERNAME', 'PASSWORD', 'PROJECT_ID', 'URL']) {
-    const legacy = `GUARD_TENANT_${suffix}`, current = `GUARD_PROJECT_${suffix}`;
-    if (merged[current] === undefined && merged[legacy] !== undefined) merged[current] = merged[legacy];
-  }
-  return merged;
-}
-
 /** Separate credentials per plane; never fall back to an admin session for project writes. */
 export async function configurationApi(base: string, plane: 'platform' | 'project', env: NodeJS.ProcessEnv, fetcher: typeof fetch = fetch): Promise<Api> {
-  if (plane === 'project') env = projectPlaneEnv(env);
   const url = new URL(base);
   assert.ok(['http:', 'https:'].includes(url.protocol) && !url.username && !url.password && !url.search && !url.hash, 'Use an HTTP(S) Controller URL without credentials or query parameters');
   assert.equal(url.pathname.replace(/\/$/, ''), '', 'Controller URL must be an origin');

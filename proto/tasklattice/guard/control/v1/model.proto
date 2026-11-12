@@ -4,7 +4,7 @@ package tasklattice.guard.control.v1;
 
 import "common.proto";
 
-// One physical model endpoint. Credentials are resolved through the
+// One model runtime. Remote credentials are resolved through the
 // authenticated Controller credential lease and are never persisted in the
 // desired-state snapshot.
 message ModelRuntime {
@@ -29,12 +29,15 @@ message ModelRuntime {
   // Inclusive positive decision boundary; unset uses 0.9.
   // Must exceed lower_threshold and be at most 1.
   optional double upper_threshold = 14;
-  // Laya only. Determines the System One request body without per-request
+  // Required for remote Laya. Determines the System One request body without per-request
   // negotiation: "native" sends max_len and head_max_len; "compatible" sends
-  // max_len only for strict wrappers such as 1Panel-dev/laya-server. The
-  // Controller determines it during the model connection probe. Empty means
-  // "compatible" so an older Controller cannot force a rejected request.
+  // max_len only for strict wrappers such as 1Panel-dev/laya-server.
+  // The Controller sets the mode before distributing the runtime.
   string laya_request_mode = 15;
+  // "builtin_laya" selects the English checkpoint packaged with the Runner.
+  // Remote runtimes leave this empty and use their declared endpoint.
+  string backend = 16;
+  string checkpoint_revision = 17;
 }
 
 // Bind one stable product capability on one Rail surface to a registered

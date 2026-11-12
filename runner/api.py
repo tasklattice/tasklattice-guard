@@ -27,6 +27,12 @@ from runner.toolkit.runtime.service import GuardrailRuntimeService
 
 from .guard_context import GuardrailContext, MemoryBoundaryContext, _request_content
 from .artifact_store import ArtifactStore, EndpointAccess
+from . import generated as protocol
+from .preparation import prepare
+from .toolkit.nemo.registry import PlaygroundCapacityExceeded
+from .toolkit.compiler.domain import PlanCompilationError
+from cryptography.exceptions import InvalidSignature
+from google.protobuf.message import DecodeError
 from .routing import RoutingError, public_route_assignment
 from .draft_preview import DraftPreviewRuntime
 from .metrics import (
@@ -48,6 +54,7 @@ SENSITIVE_HEADERS = frozenset({"authorization", "cookie", "proxy-authorization",
 RUNTIME_LOG_AAD = b"tasklattice-runtime-log-v1"
 _TRACER = trace.get_tracer("tasklattice.guard-runner.api")
 GUARDRAIL_VERSION_PATTERN = r"^\d{8}-\d{6}\.\d{3}Z$"
+MAX_PLAYGROUND_ARTIFACT_BYTES = 8 * 1024 * 1024
 
 
 class InternalEvaluationRequest(BaseModel):
@@ -80,6 +87,10 @@ class InternalEvaluationRequest(BaseModel):
 class GuardrailEvaluateRequest(InternalEvaluationRequest):
     protocol: Literal["playground"] = "playground"
     guardrail_version: str = Field(pattern=GUARDRAIL_VERSION_PATTERN)
+    # One signed protobuf Artifact, sent with both phases so pool replicas do
+    # not depend on sticky routing or an earlier prepare request reaching them.
+    artifact_b64: str | None = Field(default=None, min_length=1,
+        max_length=4 * ((MAX_PLAYGROUND_ARTIFACT_BYTES + 2) // 3))
 
 
 class DraftPreviewPrepareRequest(BaseModel):
@@ -385,11 +396,26 @@ class RunnerAPI:
             ) as observation:
                 request_id = self._trace_request_id(request_id)
                 try:
+                    prepared_resolution = None
+                    if payload.artifact_b64 is not None:
+                        try:
+                            message = protocol.Artifact()
+                            encoded = base64.b64decode(payload.artifact_b64, validate=True)
+                            if len(encoded) > MAX_PLAYGROUND_ARTIFACT_BYTES:
+                                raise ValueError("Playground Artifact exceeds the size limit.")
+                            message.ParseFromString(encoded)
+                            prepared_resolution = await prepare(self._store.prepare_playground_artifact,
+                                message, guardrail_id, payload.guardrail_version)
+                        except PlaygroundCapacityExceeded as error:
+                            raise HTTPException(status_code=503, detail=str(error)) from error
+                        except (ValueError, InvalidSignature, DecodeError, PlanCompilationError) as error:
+                            raise HTTPException(status_code=409, detail="The selected signed Guardrail version cannot be loaded on this Runner. Check compatibility and publish a new version for the current NeMo runtime.") from error
                     decision = await self._runtime.evaluate_guardrail(
                         protection_request,
                         guardrail_id,
                         payload.guardrail_version,
                         on_resolved=observation.resolve,
+                        **({"prepared_resolution": prepared_resolution} if prepared_resolution is not None else {}),
                     )
                     observation.complete(decision)
                     result = asdict(decision)

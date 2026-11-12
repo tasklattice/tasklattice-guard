@@ -46,7 +46,7 @@ The paths below omit the common `/api/v1` prefix. Old paths have been removed, w
 | Runtime observability | `/telemetry/events`, `/telemetry/metrics`, `/telemetry/endpoint-activity`. |
 | Assisted design | `/authoring/capabilities`, `intent-analyses`, `document-analyses`, `plan-previews`. capabilities describes service capabilities, not the progress of an analysis. |
 | Playground | `/playground/guardrails/{guardrailId}/interactions`, `draft-interactions`, `draft-previews`. |
-| Policy catalog | `/policy-catalog/actions`, `/policy-catalog/protection-presets`. |
+| Policy catalog | `/policy-catalog/actions`, `/guardrail-profiles`. |
 | Provider discovery/registration | `/model-provider-discoveries` queries a temporary connection; `/model-providers/{id}/model-discoveries` queries an existing one; `/model-provider-registrations` registers a Provider and selected Models together. |
 | Connection/capability tests | `/model-providers/{id}/connection-tests` and `/models/{id}/connection-tests` check connectivity; `/models/{id}/capability-tests` checks capabilities and protocols. |
 | Model configuration activation | `POST /model-configuration/revisions/{id}/activate` targets a specific revision; rollback requests must provide an explicit targetRevisionId. |

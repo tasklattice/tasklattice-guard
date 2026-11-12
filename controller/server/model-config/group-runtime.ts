@@ -9,24 +9,29 @@ import { auditEvents, controllerState, groupModelConfigurations as policies, mod
   modelDefinitions, modelProviders, outboxEvents, runnerPoolLeaseEpochs, runnerPools, projectGroups } from "../db/schema.js";
 import { ConflictError, ControllerError, NotFoundError, ValidationError } from "../domain/errors.js";
 import { assertPlatformAuthority } from "../services/project-context.js";
-import { assignmentInputSchema, assignmentTargetAcceptsModel, capabilityBindings, emptyModelAssignments,
-  layaRequestModes, modelRuntimeSettingsObjectSchema, modelProfiles, normalizeModelAssignments, resolveLayaRequestMode,
-  type ActiveModelConfiguration, type ActiveModelRuntime } from "./domain.js";
+import { activeModelRuntime, assignmentInputSchema, assignmentTargetAcceptsModel, capabilityBindings, emptyModelAssignments,
+  layaRequestModes, modelRuntimeSettingsObjectSchema, modelProfiles, normalizeModelAssignments, profileTransports,
+  type ActiveModelConfiguration } from "./domain.js";
 import { decryptModelCredential } from "./secret-crypto.js";
 import { modelBindingValidationFingerprint, modelRuntimeValidationFingerprint } from "./runtime-fingerprint.js";
+import { builtinLaya, isBuiltinLaya } from "./builtin-laya.js";
 
 export type GroupModelTransaction = Parameters<Parameters<ControllerDatabase["transaction"]>[0]>[0];
 const prefix = "project-group-model:";
-const snapshotSchema = z.object({ revisionId: z.string().min(1).max(256), revision: z.number().int().nonnegative(),
+const runtimeSettings = modelRuntimeSettingsObjectSchema.shape;
+const snapshotSchema = z.strictObject({ revisionId: z.string().min(1).max(256), revision: z.number().int().nonnegative(),
   generation: z.number().int().nonnegative().nullable(), assignments: assignmentInputSchema,
-  models: z.array(z.object({ id: z.string().uuid(), providerId: z.string().uuid(), providerName: z.string(),
-    baseUrl: z.string().url(), credentialRef: z.string().uuid(), skipTlsVerify: z.boolean().default(false),
+  models: z.array(z.strictObject({ id: z.string().uuid(), providerId: z.string().uuid(), providerName: z.string(),
+    baseUrl: z.union([z.string().url(), z.literal("")]), credentialRef: z.union([z.string().uuid(), z.literal("")]),
+    backend: z.literal(builtinLaya.backend).optional(), checkpointRevision: z.string().regex(/^[0-9a-f]{40}$/).optional(),
+    skipTlsVerify: z.boolean(),
     model: z.string().min(1), profile: z.enum(modelProfiles),
-    // Optional so snapshots frozen before the column existed still validate;
-    // they project as compatible through the resolver.
     layaRequestMode: z.enum(layaRequestModes).optional(),
     timeoutSeconds: z.number().positive(), maxTokens: z.number().int().positive(),
-    ...modelRuntimeSettingsObjectSchema.shape })).max(64),
+    maxConcurrency: runtimeSettings.maxConcurrency.removeDefault(),
+    rateLimitAttempts: runtimeSettings.rateLimitAttempts.removeDefault(),
+    lowerThreshold: runtimeSettings.lowerThreshold.removeDefault(),
+    upperThreshold: runtimeSettings.upperThreshold.removeDefault() })).max(64),
 });
 const ciphertextsSchema = z.record(z.string().uuid(), z.string().max(20_000));
 type Policy = typeof policies.$inferSelect;
@@ -158,36 +163,26 @@ export class GroupRuntimeModelService {
         throw new ConflictError("Every selected runtime binding requires matching passed Rail validation.", "group_model_validation_required");
     }
     const configuration: ActiveModelConfiguration = { revisionId: prefix + id, revision: version, generation, assignments,
-      models: models.map(model => { const provider = byProvider.get(model.providerId)!;
-        const layaRequestMode = resolveLayaRequestMode(model.profile, model.layaRequestMode); return {
-        id: model.id, providerId: provider.id, providerName: provider.name, baseUrl: provider.baseUrl, credentialRef: provider.id,
-        skipTlsVerify: provider.skipTlsVerify, ...(layaRequestMode ? { layaRequestMode } : {}),
-        model: model.model, profile: model.profile, timeoutSeconds: model.timeoutSeconds, maxTokens: model.maxTokens, maxConcurrency: model.maxConcurrency ?? 2,
-          rateLimitAttempts: model.rateLimitAttempts ?? 3, lowerThreshold: model.lowerThreshold ?? 0.1, upperThreshold: model.upperThreshold ?? 0.9,
-      }; }) };
-    const credentials = Object.fromEntries(providers.map(provider => [provider.id, provider.credentialCiphertext]));
+      models: models.map(model => activeModelRuntime(model, byProvider.get(model.providerId)!)) };
+    const credentials = Object.fromEntries(providers.filter(provider => provider.id !== builtinLaya.providerId)
+      .map(provider => [provider.id, provider.credentialCiphertext]));
     const size = await tx.execute<{ bytes: number }>(sql`select octet_length(${JSON.stringify(configuration)}::jsonb::text) + octet_length(${JSON.stringify(credentials)}::jsonb::text) as bytes`);
     if (!size.rows[0] || size.rows[0].bytes > 262144) throw new ControllerError("Group runtime Model snapshot exceeds its payload budget.", 413, "group_model_snapshot_too_large");
     return { configuration, credentials, fingerprint, digest: digest({ configuration, credentials }) };
   }
 
   private checkedSnapshot(policy: Policy) {
-    const configuration = snapshotSchema.safeParse(policy.runtimePayload), credentials = ciphertextsSchema.safeParse(policy.credentialCiphertexts);
-    if (!configuration.success || !credentials.success || configuration.data.revisionId !== prefix + policy.id
+    const snapshot = policy.runtimePayload;
+    const configuration = snapshotSchema.safeParse(snapshot), credentials = ciphertextsSchema.safeParse(policy.credentialCiphertexts);
+    if (!snapshot || !configuration.success || !credentials.success || configuration.data.revisionId !== prefix + policy.id
       || configuration.data.assignments.controlPlane !== null || configuration.data.revision !== policy.version
       || configuration.data.generation !== policy.generation || digest({ configuration: policy.runtimePayload, credentials: policy.credentialCiphertexts }) !== policy.snapshotDigest) throw unavailable();
     const selected = new Set(Object.values(configuration.data.assignments.bindings).filter(Boolean));
-    const refs = new Set(configuration.data.models.map(model => model.credentialRef));
+    const refs = new Set(configuration.data.models.map(model => model.credentialRef).filter(Boolean));
     if (configuration.data.models.length !== selected.size || new Set(configuration.data.models.map(model => model.id)).size !== selected.size || configuration.data.models.some(model =>
-      !selected.has(model.id) || model.providerId !== model.credentialRef) || refs.size !== Object.keys(credentials.data).length
+      !selected.has(model.id) || !validSnapshotRuntime(model)) || refs.size !== Object.keys(credentials.data).length
       || [...refs].some(ref => !Object.hasOwn(credentials.data, ref))) throw unavailable();
-    // Snapshots frozen before the request-mode column existed resolve through
-    // the same default as live rows and omit the field for non-Laya profiles.
-    const models: ActiveModelRuntime[] = configuration.data.models.map(({ layaRequestMode: stored, ...model }) => {
-      const layaRequestMode = resolveLayaRequestMode(model.profile, stored);
-      return { ...model, ...(layaRequestMode ? { layaRequestMode } : {}) };
-    });
-    return { configuration: { ...configuration.data, models }, credentials: credentials.data };
+    return { configuration: snapshot, credentials: credentials.data };
   }
 
   private publicPolicy(groupId: string, policy?: Policy): GroupModelConfigurationView {
@@ -197,4 +192,15 @@ export class GroupRuntimeModelService {
       modelIds: snapshot?.models.map(model => model.id) ?? [], providerIds: [...new Set(snapshot?.models.map(model => model.providerId) ?? [])],
       updatedAt: policy?.updatedAt.toISOString() ?? null };
   }
+}
+
+function validSnapshotRuntime(model: z.infer<typeof snapshotSchema>["models"][number]): boolean {
+  if (isBuiltinLaya(model.id, model.providerId)) {
+    return model.backend === builtinLaya.backend && model.profile === builtinLaya.profile && model.model === builtinLaya.model
+      && Boolean(model.checkpointRevision) && !model.baseUrl && !model.credentialRef && !model.layaRequestMode && !model.skipTlsVerify;
+  }
+  const usesLaya = profileTransports[model.profile] === "laya_systemone";
+  return model.id !== builtinLaya.modelId && model.providerId !== builtinLaya.providerId
+    && !model.backend && !model.checkpointRevision && Boolean(model.baseUrl) && model.providerId === model.credentialRef
+    && usesLaya === (model.layaRequestMode !== undefined);
 }

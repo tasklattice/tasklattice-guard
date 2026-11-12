@@ -10,6 +10,7 @@ import time
 import httpx
 
 from . import generated as protocol
+from .builtin_laya import BuiltinLaya
 from .model_http_evidence import capture_model_http_evidence, failed_model_http_evidence
 from .model_validation_diagnostics import ValidationDiagnostics, capture_validation_case
 from .software_version import SOFTWARE_VERSION
@@ -82,6 +83,7 @@ async def validate_capability(
     *,
     transport: httpx.AsyncBaseTransport | None = None,
     runner_id: str | None = None,
+    builtin_laya: BuiltinLaya | None = None,
 ) -> protocol.CapabilityValidationResult:
     started = time.perf_counter()
     result = protocol.CapabilityValidationResult(request_id=request.request_id)
@@ -115,7 +117,8 @@ async def validate_capability(
             raise ValueError("The Rail binding has no evaluation contracts.")
         native = native_rail_models(config, credentials)
         compiler = NeMoConfigCompiler(models=compiler_model_configs(native), builtin_prompts_yaml=prompt_catalog_yaml())
-        providers = action_providers(*dynamic_runtime_action_providers(config, credentials, transport=transport))
+        providers = action_providers(*dynamic_runtime_action_providers(
+            config, credentials, transport=transport, builtin_laya=builtin_laya))
         # Check each advertised contract independently; passing one cannot lend
         # evidence to another contract or to the opposite Rail.
         for contract in binding.contract_refs:
@@ -163,7 +166,8 @@ async def validate_capability(
                     "runtime_profile": snapshot.runtime_profile, "binding_id": binding.binding_id,
                     "model_id": model.id, "model": model.model, "profile": model.profile_ref,
                     "provider_id": model.provider_id, "provider_name": model.provider_name,
-                    "base_url": diagnostic_session.url(model.base_url),
+                    **({"backend": model.backend, "checkpoint_revision": model.checkpoint_revision}
+                       if model.checkpoint_revision else {"base_url": diagnostic_session.url(model.base_url)}),
                     "timeout_seconds": model.timeout_seconds, "max_tokens": model.max_tokens,
                     "skip_tls_verify": model.skip_tls_verify,
                     "parameters": dict(step.parameters),

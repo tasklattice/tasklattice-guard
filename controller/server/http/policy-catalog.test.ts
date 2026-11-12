@@ -95,14 +95,14 @@ describe("Policy catalog HTTP compatibility", () => {
     expect(detail.tags).toEqual(expect.arrayContaining([expect.objectContaining({ id: "framework:owasp-llm-2025" })]));
   });
 
-  it.each(["/api/v1/guardrail-profiles", "/api/v1/policy-catalog/protection-presets"])("provides authenticated Profile previews via %s", async route => {
+  it("provides authenticated Profile previews", async () => {
+    const route = "/api/v1/guardrail-profiles";
     expect((await appWithSession(null).request(route)).status).toBe(401);
     const response = await appWithSession({ session: { id: "fixture-session", activeProjectId: "projectA" }, user: { id: "member-1", role: "user", projectId: "projectA" } }).request(route);
     expect(response.status).toBe(200);
     const data = await response.json() as { directories: unknown[]; items: Array<{ id: string; policies: unknown[]; policyBindings: Array<{ policyId: string; policyVersion: string }> }> };
     expect(data.directories).toHaveLength(8);
     expect(data.items.map(profile => profile.id)).toEqual(guardrailProfiles.map(profile => profile.id));
-    expect(data.items.some(preset => preset.id === "restricted-general-topics")).toBe(false);
     for (const preset of data.items) {
       expect(preset.policyBindings).toHaveLength(preset.policies.length);
       expect(preset.policyBindings.every((binding) => binding.policyVersion.length > 0)).toBe(true);

@@ -717,6 +717,18 @@ export class ControlPlaneService {
     };
   }
 
+  async playgroundPublishedCandidate(id: string, version: string) {
+    const [row] = await this.db.select({ guardrailId: guardrails.id, guardrailName: guardrails.name,
+      version: guardrailVersions.version, createdAt: guardrailVersions.createdAt, artifact: artifacts,
+    }).from(guardrailVersions)
+      .innerJoin(guardrails, and(eq(guardrails.id, guardrailVersions.guardrailId), isNull(guardrails.deletedAt)))
+      .innerJoin(artifacts, eq(artifacts.id, guardrailVersions.artifactId))
+      .where(and(eq(guardrails.id, id), eq(guardrailVersions.version, version), eq(guardrailVersions.status, "ready"),
+        resourceReadPredicate("guardrail", guardrails.id, guardrails.projectId)));
+    if (!row) throw new NotFoundError("Released Guardrail version", `${id}@${version}`);
+    return row;
+  }
+
   async playgroundDraftCandidate(id: string) {
     const [guardrail] = await this.db.select().from(guardrails).where(and(
       eq(guardrails.id, id),
@@ -2418,18 +2430,15 @@ export class ControlPlaneService {
       .innerJoin(runnerPools, projectPoolAllocation).where(eq(runnerPools.id, poolId));
     const projectIds = groupProjects.map(project => project.id);
     const routerRevisions = await this.trafficRouting.runtimeSnapshots(projectIds, tx);
-    // Routed Artifacts are always included. Other visible versions need a
-    // compatible Runner load check before being preloaded for Playground.
-    const referencedArtifactIds = new Set(routerRevisions.flatMap((router) => router.routes.flatMap((route) => route.targets.map((target) => target.artifactId).filter(Boolean))));
+    // Only serving targets belong in durable Runner state. Playground sends
+    // one signed historical Artifact on demand, independently of this snapshot.
+    const referencedArtifactIds = new Set(routerRevisions.flatMap((router) => router.routes.filter(route => route.enabled)
+      .flatMap((route) => route.targets.filter(target => target.weightBps > 0).map((target) => target.artifactId).filter(Boolean))));
     const visibleGuardrail = projectIds.length ? inArray(guardrails.projectId, projectIds) : sql`false`;
-    const readyArtifacts = await tx.select({ artifact: artifacts }).from(guardrailVersions)
+    const activeArtifacts = referencedArtifactIds.size ? await tx.select({ artifact: artifacts }).from(guardrailVersions)
       .innerJoin(guardrails, and(eq(guardrails.id, guardrailVersions.guardrailId), isNull(guardrails.deletedAt)))
       .innerJoin(artifacts, eq(artifacts.id, guardrailVersions.artifactId))
-      .where(or(
-        inArray(artifacts.id, [...referencedArtifactIds]),
-        and(visibleGuardrail, eq(guardrailVersions.status, "ready"), sql`${guardrailVersions.environmentCheck}->>'status' = 'compatible'`),
-      ));
-    const activeArtifacts = readyArtifacts.filter(row => referencedArtifactIds.has(row.artifact.id) || !artifactExecutionContractIssue(row.artifact));
+      .where(inArray(artifacts.id, [...referencedArtifactIds])) : [];
     const disabledGuardrails = await tx.select({ id: guardrails.id }).from(guardrails).where(and(visibleGuardrail, eq(guardrails.status, "disabled")));
     const loggingLevels = await tx.select({ id: guardrails.id, level: guardrails.loggingLevel })
       .from(guardrails).where(and(visibleGuardrail, isNull(guardrails.deletedAt)));

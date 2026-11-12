@@ -338,7 +338,7 @@ def test_bundled_strict_jailbreak_preserves_uncertainty_parameter():
     assert compiled["version"] == package.definition.metadata.version
     jailbreak = next(rule for rule in compiled["rules"] if rule["id"] == "model/jailbreak")
     assert jailbreak["detector_options"] == {
-        "profile": "jailbreak-classification", "on_unknown": "{{on_unknown}}", "review_unknown": "{{review_unknown}}",
+        "profile": "jailbreak-classification", "on_unknown": "{{on_unknown}}",
         "questions": "{{questions}}",
     }
     assert next(p for p in compiled["parameters"] if p["name"] == "on_unknown")["default"] == "block"
@@ -349,7 +349,7 @@ def test_bundled_strict_jailbreak_preserves_uncertainty_parameter():
     next(rule for rule in candidate["rules"] if rule["id"] == "model/jailbreak")["detector"]["parameters"] = {
         "profile": "pii-classification", "on_unknown": "block", "unsupported_parameter": "value",
     }
-    with pytest.raises(ValueError, match="unknown detector parameters"):
+    with pytest.raises(ValueError, match="unknown detector parameters.*unsupported_parameter"):
         compile_policy(definition(candidate), sources.registry())
 
 
@@ -368,19 +368,14 @@ def test_classifier_uncertainty_parameter_survives_package_compilation(profile):
         compile_policy(definition(candidate), sources.registry())
 
 
-@pytest.mark.parametrize("policy", ["content-safety-model", "prompt-instruction-attacks", "business-topics"])
-def test_shipped_v1_classifiers_wire_unknown_and_review(policy):
+@pytest.mark.parametrize("policy", ["content-safety-model", "prompt-instruction-attacks", "business-topics", "pii-semantic"])
+def test_shipped_classifiers_declare_primary_uncertainty_action(policy):
     current = load_package(ROOT / "policies/library" / policy)
     compiled = compile_policy(current.definition, sources.registry())
     assert compiled["version"] == current.definition.metadata.version
     assert next(p for p in compiled["parameters"] if p["name"] == "on_unknown")["default"] == "block"
     classifiers = [r for r in compiled["rules"] if r["detector"]["ref"] == "model/classifier"]
     assert classifiers and all(r["detector_options"]["on_unknown"] == "{{on_unknown}}" for r in classifiers)
-    # Gray-area review is opt-in per Guardrail for these Policies; PII enables it
-    # by default because its gray band is the dominant failure mode.
-    authored = {item.name: item.default for item in current.definition.parameters}
-    assert next(p for p in compiled["parameters"] if p["name"] == "review_unknown")["default"] == authored["review_unknown"] == "false"
-    assert all(r["detector_options"]["review_unknown"] == "{{review_unknown}}" for r in classifiers)
 
 
 

@@ -132,8 +132,7 @@ The shell accepts the same `--url`, `--env-file` and `--project` flags as the
 one-shot commands. `--project` (or `GUARD_PROJECT_ID`) sets the `X-Project-ID`
 scope that reads require; the shell signs in with `GUARD_PROJECT_TOKEN` or
 `GUARD_PROJECT_USERNAME`/`GUARD_PROJECT_PASSWORD` when they are present, so a
-piped command sequence needs no interactive `enable`. `GUARD_TENANT_*` names in
-older credential files are accepted as aliases of `GUARD_PROJECT_*`.
+piped command sequence needs no interactive `enable`.
 
 ```sh
 npm ci --prefix controller

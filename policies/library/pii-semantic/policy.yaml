@@ -72,18 +72,9 @@ parameters:
   required: false
   placeholder: block or allow
   description: >-
-    Action for a valid uncertain result when review is disabled or the independent
-    review is itself inconclusive. Block keeps the fail-closed default.
+    Action for a valid uncertain primary result when this stage has no review
+    model binding. Block is the default.
   default: block
-- name: review_unknown
-  label: Review uncertain results
-  kind: text
-  required: false
-  placeholder: true or false
-  description: >-
-    Review valid JEV/Laya uncertainty using the separately validated
-    classifier_review binding for this input/output stage.
-  default: 'true'
 rules: []
 rule_refs:
 - id: model/pii

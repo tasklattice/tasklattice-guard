@@ -8,8 +8,10 @@ Platform administrators configure shared model services and detector bindings. B
 
 Default needs no detection model. It uses reviewed local Rules. Model-backed Policies remain available for other Guardrails. Local matching does not replace semantic model detection.
 
+For English content, select **Built-in · Laya English** in a compatible row under [Protection Capabilities](/settings/protection-capabilities), then save and apply. The Provider and Models pages show the packaged checkpoint and the Default Runner's availability. Inference uses the Runner's CPU and has a fixed USD 0 model-call price. An assigned external review model has its own price.
+
 <a id="platform-model-steps" />
-## Configure dependencies in order
+## Configure an external model service
 
 1. Register the service address and credential under [Providers](/settings/providers).
 2. Check connectivity. Private-CA and TLS settings apply only to that Provider.
@@ -41,7 +43,7 @@ For Grounding through NVIDIA's hosted `nvidia/nemotron-3.5-lightning-30b-a3b`, t
 <a id="platform-model-evidence" />
 ### Read validation evidence before assigning blame
 
-Every Validate run keeps the captured request and response for each sample, whether it passed or failed. Open **Failed evidence** or **Pass evidence** to inspect the exact endpoint, request body, request headers, response body, status, duration, prompt revision and configured thresholds. Credentials are redacted; the export keeps the full JSON.
+Open **Failed evidence** or **Pass evidence** to inspect a sample's result. Remote calls can include the endpoint, request and response, with redacted credentials. Built-in Laya uses Runner-local evidence, including the checkpoint, scores and configured thresholds.
 
 A failed sample reports one attribution instead of a bare "failed":
 
@@ -59,6 +61,6 @@ Attribution is derived from captured evidence. It never changes the pass/fail re
 
 A capability binding supplies a detector dependency. A Policy defines reusable protection behavior. A successful model connection does not establish that a particular Rule detects the intended content.
 
-An existing Generic chat Model, including DeepSeek, can also be selected for **Independent classifier review** while retaining its Control Plane assignment. The built-in prompt automatically includes the original criteria, evaluated input/output and context; enable `review_unknown=true` in a supported Guard Policy binding to review JEV/Laya input or content-safety output gray-area results. The stages may share a model or use separate models, with independent validation results. Primary detectors still require their supported specialized protocols. Controller distributes only the Models and credentials referenced by active data-plane bindings.
+An existing Generic chat Model, including DeepSeek, can also be selected for **Independent classifier review** while retaining its Control Plane assignment. An active assignment automatically reviews uncertain JEV/Laya results on the same Rail. The built-in prompt includes the original criteria, evaluated input or output, and context. The stages may share a model or use separate models, with independent validation results. Primary detectors still require their supported specialized protocols. Controller distributes only the Models and credentials referenced by active data-plane bindings.
 
 For proof-service setup and known validation examples, see [formal verification](/document/operator/operator-create-policy#operator-policy-formal-service). Deployment and protocol details remain in `docs/model-configuration.md` in the repository.

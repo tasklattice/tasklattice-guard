@@ -238,7 +238,6 @@ export function buildGuardrailPlan(input: {
             ["allowed_topics", deny ? "" : values.allowed],
             ["restricted_topics", deny ? values.denied : ""]];
           if (params.on_unknown !== undefined) authoredParameters.push(["on_unknown", String(params.on_unknown)]);
-          if (params.review_unknown !== undefined) authoredParameters.push(["review_unknown", String(params.review_unknown)]);
           if (params.questions !== undefined) authoredParameters.push(["questions", String(params.questions)]);
           resolved.push({ capability: { capability: "topic_control", policyId: "", defaultPhases: ["input"],
             defaultAction: deny ? "block" : action,
@@ -270,7 +269,7 @@ export function buildGuardrailPlan(input: {
           const authoredRule = catalogPolicy.definition.rules.find(r => r.id === rule.id)!;
           const params = resolveModelRuleParameters(catalogPolicy.definition, authoredRule, binding.parameterValues);
           const authoredParameters: Array<[string, string]> = [["declarative_rule", "true"], ["rule_id", rule.id]];
-          for (const key of ["topic_mode", "allowed_topics", "restricted_topics", "grounding_threshold", "relevance_threshold", "policy_snapshot_id", "on_unknown", "review_unknown",
+          for (const key of ["topic_mode", "allowed_topics", "restricted_topics", "grounding_threshold", "relevance_threshold", "policy_snapshot_id", "on_unknown",
             // Policy-authored classifier questions travel with the plan.
             "questions"]) {
             if (params[key] !== undefined) authoredParameters.push([key, String(params[key])]);
@@ -527,16 +526,7 @@ function nativeClassifierParameters(policy: PolicyDto, rule: PolicyDto["rules"][
   const parameter = reference ? policy.parameters.find(item => item.name === reference[1]) : undefined;
   const value = reference ? parameter && (binding.parameterValues[parameter.name] ?? parameter.default) : configured;
   if (value !== "allow" && value !== "block") throw new Error(`Policy ${policy.id}: on_unknown must be allow or block.`);
-  const values: Array<[string, string]> = [["on_unknown", value]];
-  const review = rule.detector_options.review_unknown;
-  if (review !== undefined) {
-    const reference = /^\{\{([a-zA-Z_][a-zA-Z0-9_]*)\}\}$/.exec(String(review));
-    const parameter = reference ? policy.parameters.find(item => item.name === reference[1]) : undefined;
-    const resolved = reference ? parameter && (binding.parameterValues[parameter.name] ?? parameter.default) : String(review);
-    if (resolved !== "true" && resolved !== "false") throw new Error(`Policy ${policy.id}: review_unknown must be true or false.`);
-    values.push(["review_unknown", resolved]);
-  }
-  return values;
+  return [["on_unknown", value]];
 }
 
 /**

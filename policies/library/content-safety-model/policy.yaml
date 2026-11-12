@@ -122,15 +122,6 @@ parameters:
     Block valid uncertain results by default. Allow continues this Rule without
     skipping other Policies.
   default: block
-- name: review_unknown
-  label: Review uncertain results
-  kind: text
-  required: false
-  placeholder: true or false
-  description: >-
-    Review a valid JEV/Laya gray-area result with the separately validated
-    classifier_review binding for the current input/output stage.
-  default: 'false'
 rules: []
 rule_refs:
 - id: model/content-safety

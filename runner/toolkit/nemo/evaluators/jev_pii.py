@@ -7,7 +7,7 @@ definition into JEV's Noul contract and maps the returned probability onto the
 shared uncertainty band; it cannot widen or narrow what counts as PII.
 
 A gray result is answered by the separately validated ``classifier_review``
-binding when ``review_unknown`` is enabled. A semantic match replaces the
+binding when it is configured for the current Rail. A semantic match replaces the
 complete evaluated block with ``[PII_REDACTED]``; the model does not return
 trustworthy character spans.
 
@@ -38,7 +38,7 @@ class JevPiiEvaluator(JevNoulEvaluator):
     reasons = {
         "matched": "Personal information was detected in the evaluated content.",
         "not_matched": "No personal information was detected in the evaluated content.",
-        "unknown": "Jev PII probabilities fall within the configured uncertainty interval; an independent classifier review decides when review_unknown is enabled.",
+        "unknown": "Jev PII probabilities fall within the configured uncertainty interval.",
     }
 
     def __init__(self, **kwargs):

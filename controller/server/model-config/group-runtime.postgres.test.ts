@@ -133,13 +133,14 @@ describe.skipIf(!url)("explicit group runtime Model grants", () => {
     expect((await models.configurationForPool("pool-c"))?.models[0]).toMatchObject(settings);
   });
 
-  it("freezes the resolved Laya request mode, defaulting legacy NULL rows to compatible", async () => {
+  it("freezes the remote Laya request mode until a new group grant", async () => {
     await database.pool.query("UPDATE model_provider SET kind='laya' WHERE id=$1", [providerC]);
-    await database.pool.query("UPDATE model_definition SET profile='tali.laya.v1', model='laya' WHERE id=$1", [modelC]);
+    await database.pool.query("UPDATE model_definition SET profile='tali.laya.v1', model='laya', laya_request_mode='compatible' WHERE id=$1", [modelC]);
     fingerprintC = await validateSource(sourceC, modelC);
     await grant("group-c", 0, sourceC, fingerprintC);
     expect((await models.configurationForPool("pool-c"))?.models[0]).toMatchObject({ id: modelC, layaRequestMode: "compatible" });
     await database.pool.query("UPDATE model_definition SET laya_request_mode='native' WHERE id=$1", [modelC]);
+    expect((await models.configurationForPool("pool-c"))?.models[0]?.layaRequestMode).toBe("compatible");
     // Transport detail is not part of the validation fingerprint, so the mode
     // refresh only needs a new grant, not a new capability validation.
     await grant("group-c", 1, sourceC, fingerprintC);

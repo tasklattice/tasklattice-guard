@@ -544,19 +544,10 @@ These are explicit boundaries of the calibrated design. They do not require chan
 
 Each Redis context pins the full execution plan, so traffic rate × 300-second
 TTL × serialized plan size can exceed Redis memory even at low concurrency.
-`GUARD_RUNNER_CALL_CONTEXT_COMPRESS_PLANS=true` losslessly compresses large plans
-inside the existing JSON context envelope. The atomic NX claim, expiry,
-outcome escalation and first-completion semantics remain unchanged. It does
-not shorten TTL, evict active calls, bypass checks or alter model bindings.
-
-Roll out compression-capable readers to every Runner sharing the Redis store
-before enabling compressed writes. The flag defaults to false for mixed-version
-rollouts; capable readers accept both formats regardless of the flag. To roll
-back to an older binary, first disable compressed writes everywhere and wait at
-least one full context TTL. Do not delete active pins to accelerate rollback.
-Invalid, unsupported or oversized compressed payloads fail closed; they do not
-fall back to a newer route. Compressed plans have a 64 MiB decode limit; larger
-plans remain in uncompressed JSON at write time.
+Runner losslessly compresses plans between 4 KiB and 64 MiB when compression
+reduces the stored size. Other plans are written as plain JSON. Both encodings
+use the same atomic NX claim, expiry, outcome escalation and first-completion
+semantics. Invalid, unsupported or oversized compressed payloads fail closed.
 
 ### Capacity fallback exception
 

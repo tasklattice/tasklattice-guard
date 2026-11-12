@@ -123,22 +123,21 @@ runner:
   #     type: LoadBalancer
   #     port: 38082 # Service port; NodePort is allocated by Kubernetes.
   default:
-    # Default Runner starts at one replica; scale up explicitly for availability.
+    # One replica serves the built-in English Laya model on CPU.
     replicaCount: 1
     maxConcurrency: 64
     resources:
       requests:
-        cpu: 500m
-        memory: 1Gi
+        cpu: "2"
+        memory: 3Gi
       limits:
-        memory: 4Gi
+        memory: 6Gi
   # Shared context for Default Runner replicas; required above one replica
   # unless redis.enabled=true. Cannot be combined with redis.enabled=true.
   callContextRedisUrl: ""
   # Model concurrency, retries and decision thresholds are configured in Models.
   callContext:
     ttlSeconds: 300
-    compressPlans: true
     # Only Redis allocation failures degrade to checks of current content.
     capacityFallback: true
   # Example: redis://redis.uat.svc.cluster.local:6379/0

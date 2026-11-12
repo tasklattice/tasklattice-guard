@@ -1,12 +1,14 @@
 import { resolve } from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import type { ControllerDatabase } from "../db/client.js";
-import { modelAssignmentValidations, controllerState, outboxEvents, modelConfigurationRevisions, modelDefinitions, modelProviders, policyVersions, runnerPools } from "../db/schema.js";
+import type { CapabilityValidationRequest } from "../generated/control-protocol/tasklattice/guard/control/v1/CapabilityValidationRequest.js";
+import { modelAssignmentValidations, controllerState, outboxEvents, modelConfigurationRevisions, modelDefinitions, modelProviders, policyVersions, runnerInstances, runnerPools } from "../db/schema.js";
 import { emptyModelAssignments, modelInputSchema, modelRuntimeSettingsInputSchema } from "./domain.js";
 import { ModelConfigurationService } from "./service.js";
 import { runWithProjectContext } from "../services/project-context.js";
 import { jailbreakDetectAttackInput, jailbreakDetectProfile, jailbreakDetectSafeInput } from "./jailbreak-detect.js";
 import type { ValidationCredentialLeaseStore } from "./validation-credential-leases.js";
+import { builtinLaya } from "./builtin-laya.js";
 
 const id = "7471c0eb-a533-449a-8814-98c3bc23aa98";
 const input = { profile: "tali.qwen3guard.v1", timeoutSeconds: 30, maxTokens: 512 };
@@ -37,7 +39,13 @@ function setup(state = "draft", assigned = false, failProbe = false) {
       rows.set(table, updated);
       return Object.assign(Promise.resolve(updated), { returning: async () => updated });
     } }) })),
-    insert: vi.fn((table: unknown) => ({ values: vi.fn(async (value: Record<string, unknown>) => { if (table === modelAssignmentValidations) rows.set(table, [value]); }) })),
+    insert: vi.fn((table: unknown) => ({ values: vi.fn((value: Record<string, unknown>) => {
+      if (table === modelAssignmentValidations) rows.set(table, [value]);
+      return Object.assign(Promise.resolve(), { onConflictDoNothing: async () => {
+        const existing = rows.get(table) ?? [];
+        if (!existing.some(row => row.id === value.id)) rows.set(table, [...existing, value]);
+      } });
+    }) })),
   };
   const db = { ...tx, transaction: async (run: (value: typeof tx) => unknown) => run(tx) };
   const fetcher = vi.fn(async () => failProbe ? new Response("Unavailable", { status: 503 }) : Response.json({ choices: [{ message: { content: "Safety: Safe\nCategories: None" } }] }));
@@ -58,12 +66,45 @@ function setup(state = "draft", assigned = false, failProbe = false) {
     async revoke(leaseId) { candidates.delete(leaseId); },
   };
   const service = new ModelConfigurationService(db as unknown as ControllerDatabase, "test-root-secret", resolve("../runner/toolkit/policy_library/assets"), fetcher, leases);
-  const railValidator = vi.fn(async () => ({ passed: !failProbe, message: failProbe ? "Runner Rail case failed." : "Runner safe and unsafe cases passed.", latencyMs: 12 }));
+  const railValidator = vi.fn(async (_request: CapabilityValidationRequest) => ({ passed: !failProbe, message: failProbe ? "Runner Rail case failed." : "Runner safe and unsafe cases passed.", latencyMs: 12 }));
   service.setRailValidator(railValidator);
   return { service, rows, tx, fetcher, railValidator };
 }
 
 describe("Capability configuration after registration", () => {
+  it("seeds built-in Laya, advertises the loaded revision, and validates without an endpoint or lease", async () => {
+    const { service, rows, railValidator, fetcher } = setup();
+    rows.set(modelProviders, []);
+    rows.set(modelDefinitions, []);
+    await service.initialize();
+    await service.initialize();
+    expect(rows.get(modelProviders)).toHaveLength(1);
+    expect(rows.get(modelDefinitions)).toHaveLength(1);
+    expect((await service.view()).models[0]).toMatchObject({ id: builtinLaya.modelId, status: "pending", protocolEditable: false });
+
+    rows.set(runnerInstances, [{ labels: { [builtinLaya.revisionLabel]: builtinLaya.checkpointRevision } }]);
+    expect((await service.view()).models[0]).toMatchObject({
+      backend: builtinLaya.backend, checkpointRevision: builtinLaya.checkpointRevision, status: "validated",
+    });
+    const candidate = await service.previewAssignment("content_safety.input", builtinLaya.modelId, "admin");
+    const request = railValidator.mock.calls[0]?.[0];
+    expect(request).not.toHaveProperty("credentialLeaseId");
+    expect(request).toMatchObject({
+      bindingId: "content_safety.input",
+      configuration: { runtimes: [{ id: builtinLaya.modelId, backend: builtinLaya.backend,
+        checkpointRevision: builtinLaya.checkpointRevision, baseUrl: "", credentialRef: "" }] },
+    });
+    expect(request?.configuration?.runtimes?.[0]).not.toHaveProperty("layaRequestMode");
+    await service.updateAssignment("content_safety.input", builtinLaya.modelId, "admin", candidate.validationId);
+    rows.get(modelConfigurationRevisions)![0]!.state = "active";
+    expect((await service.activeConfiguration())?.models[0]).toMatchObject({
+      backend: builtinLaya.backend, checkpointRevision: builtinLaya.checkpointRevision, baseUrl: "", credentialRef: "",
+    });
+    await expect(service.deleteModel(builtinLaya.modelId, "admin")).rejects.toThrow("managed by the platform");
+    await expect(service.deleteProvider(builtinLaya.providerId, "admin")).rejects.toThrow("managed by the platform");
+    expect(fetcher).not.toHaveBeenCalled();
+  });
+
   it.each(["projectA", "projectB"])("prevents project %s users from changing global bindings or resolving credentials", async (projectId) => {
     const { service, tx, fetcher, railValidator } = setup("validated");
     const operations = [
@@ -166,25 +207,17 @@ describe("Capability configuration after registration", () => {
     rows.get(modelProviders)![0]!.kind = "laya";
     rows.get(modelDefinitions)![0]!.profile = "tali.laya.v1";
     rows.get(modelDefinitions)![0]!.model = "laya";
+    rows.get(modelDefinitions)![0]!.layaRequestMode = "native";
     rows.get(modelConfigurationRevisions)![0]!.assignments = { ...emptyModelAssignments(), bindings: { ...emptyModelAssignments().bindings, "jailbreak.input": id } };
     const result = await service.validateAssignment("jailbreak.input", "admin");
     expect(result.validationReport?.checks.some(c => c.id === `probe:jailbreak.input:${id}` && c.status === "passed")).toBe(true);
     expect(JSON.stringify(railValidator.mock.calls)).toContain("tali.laya.v1");
     expect(JSON.stringify(railValidator.mock.calls)).toContain("tali.guard.jailbreak.v1");
-    // A legacy row without a stored mode still tells the Runner which shape to send.
     expect(railValidator).toHaveBeenCalledWith(expect.objectContaining({
-      configuration: expect.objectContaining({ runtimes: [expect.objectContaining({ id, layaRequestMode: "compatible" })] }),
+      configuration: expect.objectContaining({ runtimes: [expect.objectContaining({ id, layaRequestMode: "native" })] }),
     }));
     expect(fetcher).not.toHaveBeenCalled();
     expect(rows.get(modelConfigurationRevisions)?.filter(r => r.state === "active")).toEqual([]);
-  });
-
-  it("projects a legacy Laya mode as compatible in the active configuration", async () => {
-    const { service, rows } = setup("active");
-    rows.get(modelProviders)![0]!.kind = "laya";
-    Object.assign(rows.get(modelDefinitions)![0]!, { profile: "tali.laya.v1", model: "laya", layaRequestMode: null });
-    rows.get(modelConfigurationRevisions)![0]!.assignments = { ...emptyModelAssignments(), bindings: { ...emptyModelAssignments().bindings, "content_safety.input": id } };
-    expect((await service.activeConfiguration())?.models[0]).toMatchObject({ id, profile: "tali.laya.v1", layaRequestMode: "compatible" });
   });
 
   it("omits the Laya mode from non-Laya active runtimes", async () => {

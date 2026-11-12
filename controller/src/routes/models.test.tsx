@@ -95,6 +95,15 @@ const safetyModel = {
   id: "safety-model", name: "Qwen Guard", model: "mock/qwen-guard", profile: "tali.qwen3guard.v1" as const, maxTokens: 128,
   connectionStatus: "failed" as const, connectionMessage: "Model call returned HTTP 404: model not found.", connectionLatencyMs: 17,
 };
+const builtinProvider = {
+  ...provider, id: "builtin-provider", name: "Built-in", kind: "laya" as const,
+  baseUrl: "", credentialConfigured: false, backend: "builtin_laya" as const,
+};
+const builtinModel = {
+  ...safetyModel, id: "builtin-model", name: "Laya English", model: "laya-english",
+  providerId: builtinProvider.id, providerName: builtinProvider.name, providerKind: builtinProvider.kind,
+  backend: builtinProvider.backend, profile: "tali.laya.v1" as const, checkpointRevision: "85cc74ddae6109077ebe2853a9b3077fb6606a78",
+};
 const now = "2026-09-01T00:00:00Z";
 const view: ModelConfigurationView = {
   providers: [provider], models: [chatModel, safetyModel],
@@ -166,6 +175,23 @@ describe("Models and Protection Capabilities", { timeout: 30_000 }, () => {
   });
 
   afterEach(() => { cleanup(); client?.clear(); client = null; });
+
+  it("offers the built-in classifier directly in a compatible Protection dropdown", async () => {
+    vi.mocked(getModelConfiguration).mockResolvedValue({ ...view, providers: [builtinProvider], models: [builtinModel] });
+    renderPage(<GuardrailCatalogPage />);
+    const jailbreak = await screen.findByLabelText("modelSettings.detectors.jailbreak_detection.title", { selector: "tr" });
+    fireEvent.keyDown(within(jailbreak).getByRole("combobox", { name: "modelSettings.modelColumn" }), { key: "ArrowDown" });
+    expect(await screen.findByRole("option", { name: "modelSettings.builtin · Laya English" })).toBeTruthy();
+    expect(discoverModelProvider).not.toHaveBeenCalled();
+  });
+
+  it("shows the built-in Provider as Runner local without connection controls", async () => {
+    vi.mocked(getModelConfiguration).mockResolvedValue({ ...view, providers: [builtinProvider], models: [builtinModel] });
+    renderPage(<ProvidersPage />);
+    const row = (await screen.findByText("modelSettings.runnerLocal")).closest("tr")!;
+    expect(within(row).getByText("modelSettings.builtinReady")).toBeTruthy();
+    expect(within(row).queryByRole("button", { name: /modelSettings.manageProvider/ })).toBeNull();
+  });
 
   it("lets platform administrators manage global models without mutating project models", async () => {
     vi.mocked(getModelConfiguration).mockResolvedValue({ ...view, models: [

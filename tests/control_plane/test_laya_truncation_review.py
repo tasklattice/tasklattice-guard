@@ -18,9 +18,8 @@ CONTEXT = {'target_source': 'retrieved_content', 'query': 'Summarize the complet
 
 @pytest.fixture(scope='module')
 def plans():
-    return {(phase, pii, enabled): build_controller_plan(review=enabled, phase=phase, pii_only=pii)
-            for phase, pii in {('input', False), ('output', False), ('input', True), ('output', True)}
-            for enabled in [False, True]}
+    return {(phase, pii): build_controller_plan(phase=phase, pii_only=pii)
+            for phase, pii in {('input', False), ('output', False), ('input', True), ('output', True)}}
 
 
 @pytest.mark.parametrize('capability,phase,pii', BINDINGS)
@@ -28,7 +27,7 @@ def plans():
 @pytest.mark.parametrize('answer', ['no', 'yes', 'unknown'])
 async def test_truncated_classification_reviews_complete_text_before_deciding(plans, capability, phase, pii, score, answer):
     response, calls, evidence = await scan(
-        plans[phase, pii, True], {capability: score}, backend=LAYA, phase=phase, pii_only=pii,
+        plans[phase, pii], {capability: score}, backend=LAYA, phase=phase, pii_only=pii,
         content=CONTENT, fault=(capability, 'truncated'), review={capability: answer},
         guard_context=CONTEXT if capability == 'jailbreak' else None)
     expected = 'cleared' if answer == 'no' else 'redacted' if pii and answer == 'yes' else 'blocked'
@@ -46,11 +45,10 @@ async def test_truncated_classification_reviews_complete_text_before_deciding(pl
 
 
 @pytest.mark.parametrize('capability,phase,pii', BINDINGS)
-async def test_truncation_without_enabled_review_remains_an_execution_error(plans, capability, phase, pii):
-    # A configured reviewer and on_unknown=allow are insufficient to waive coverage.
+async def test_truncation_without_a_reviewer_remains_an_execution_error(plans, capability, phase, pii):
     response, calls, evidence = await scan(
-        plans[phase, pii, False], {capability: .01}, backend=LAYA, phase=phase, pii_only=pii,
-        fault=(capability, 'truncated'), review={capability: 'no'})
+        plans[phase, pii], {capability: .01}, backend=LAYA, phase=phase, pii_only=pii,
+        fault=(capability, 'truncated'), review={capability: 'no'}, reviewer_binding=False)
     assert response.status_code == 503
     assert evidence['execution']['status'] == 'error'
     assert 'LayaInputTruncatedError' in evidence['execution']['errorTypes']
@@ -60,7 +58,7 @@ async def test_truncation_without_enabled_review_remains_an_execution_error(plan
 @pytest.mark.parametrize('fault', ['http', 'timeout', 'malformed'])
 async def test_truncation_cannot_hide_a_failed_review(plans, fault):
     response, calls, evidence = await scan(
-        plans['input', False, True], {'jailbreak': .01}, backend=LAYA,
+        plans['input', False], {'jailbreak': .01}, backend=LAYA,
         fault=('jailbreak', 'truncated'), review={}, review_fault=('jailbreak', fault))
     assert response.status_code >= 400
     assert evidence['execution']['status'] == ('timeout' if fault == 'timeout' else 'error')
