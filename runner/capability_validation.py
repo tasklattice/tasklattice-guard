@@ -213,6 +213,7 @@ async def validate_capability(
                                      "detector_evidence": [asdict(item) for item in decision.trace if item.kind in {"action", "rail"}],
                                      **({"model_http_evidence": model_http_evidence} if model_http_evidence else {}),
                                      **({"model_exchanges": diagnostics.exchanges, "dropped_model_exchanges": diagnostics.dropped_exchanges} if diagnostics is not None else {}),
+                                     **diagnostic_session.local_evidence(),
                                      **({"formal_policy": asdict(plan.reasoning_policies[0]), "query": formal.query} if formal else {}),
                                  }), ensure_ascii=False, indent=2),
                                  reason=diagnostic_session.clean(case_reason))
@@ -238,6 +239,7 @@ async def validate_capability(
                                  "error": {"type": type(error).__name__, "message": str(error)},
                                  "model_exchanges": diagnostic_session.exchanges,
                                  "dropped_model_exchanges": diagnostic_session.dropped_exchanges,
+                                 **diagnostic_session.local_evidence(),
                              }), ensure_ascii=False, indent=2))
     finally:
         if runtime is not None:

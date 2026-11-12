@@ -1,4 +1,4 @@
-"""Capture model HTTP exchanges inside an explicit Catalog Rail validation case."""
+"""Capture model calls inside an explicit Catalog Rail validation case."""
 from __future__ import annotations
 
 import json
@@ -8,7 +8,7 @@ from datetime import datetime, timezone
 from contextlib import asynccontextmanager, contextmanager
 from contextvars import ContextVar
 from dataclasses import dataclass, field
-from typing import Any, Iterator
+from typing import Any, Callable, Iterator
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 import httpx
@@ -29,6 +29,70 @@ def _sensitive(key: str) -> bool:
     return key.casefold().replace("-", "").replace("_", "") in _SENSITIVE_KEYS
 
 
+def _clean(value: Any, secrets: tuple[str, ...], depth: int | None = None) -> Any:
+    if depth == 0:
+        return {"capture_error": "Maximum JSON nesting depth exceeded."}
+    if depth is not None:
+        depth -= 1
+    if isinstance(value, str):
+        for secret in secrets:
+            value = value.replace(secret, _REDACTED)
+        return value
+    if isinstance(value, dict):
+        return {_clean(str(key), secrets): _REDACTED if _sensitive(str(key)) else _clean(item, secrets, depth)
+                for key, item in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_clean(item, secrets, depth) for item in value]
+    return value
+
+
+def _local_model_part(name: str, value: Any, secrets: tuple[str, ...]) -> dict[str, Any]:
+    try:
+        encoded = json.dumps(_clean(value, secrets, depth=32), ensure_ascii=False,
+                             default=lambda item: {"unavailable_type": type(item).__name__})
+        # Diagnostic data must remain serializable even when the SDK returns
+        # non-finite numbers, unsupported objects, or malformed Unicode.
+        encoded = encoded.encode("utf-8", errors="replace").decode("utf-8")
+        if len(encoded) > _BODY_LIMIT:
+            return {name: {"json_preview": encoded[:_BODY_LIMIT]}, f"{name}_truncated": True}
+        return {name: json.loads(encoded, parse_constant=str)}
+    except Exception:
+        return {name: {"capture_error": "Value could not be represented as JSON."}}
+
+
+@dataclass
+class LocalModelCapture:
+    calls: list[dict[str, Any]]
+    secrets: tuple[str, ...]
+
+    def invoke(self, arguments: dict[str, Any], predict: Callable[[], dict]) -> dict:
+        call = {
+            **_local_model_part("input", arguments, self.secrets),
+            "result": {"output": None, "error": {
+                "type": "NoModelOutput", "message": "No model output was captured before the sample ended.",
+            }},
+        }
+        self.calls.append(call)
+        try:
+            output = predict()
+        except Exception as error:
+            call["result"] = {"output": None, "error": {
+                "type": type(error).__name__, "message": "Built-in Laya CPU forward failed.",
+            }}
+            raise
+        call["result"] = _local_model_part("output", output, self.secrets)
+        return output
+
+
+def local_model_capture() -> LocalModelCapture | None:
+    diagnostics = _CURRENT.get()
+    if diagnostics is None:
+        return None
+    # The executor can outlive a timed-out sample. Retain its original list,
+    # never the session whose per-sample state gets reset for the next sample.
+    return LocalModelCapture(diagnostics.local_model_calls, diagnostics.secrets)
+
+
 @dataclass
 class ValidationDiagnostics:
     identity: dict[str, str]
@@ -37,17 +101,15 @@ class ValidationDiagnostics:
     exchanges: list[dict[str, Any]] = field(default_factory=list)
     dropped_exchanges: int = 0
     started: dict[int, float] = field(default_factory=dict, repr=False)
+    local_model_calls: list[dict[str, Any]] = field(default_factory=list, repr=False)
 
     def clean(self, value: Any) -> Any:
-        if isinstance(value, str):
-            for secret in self.secrets:
-                value = value.replace(secret, _REDACTED)
-            return value
-        if isinstance(value, dict):
-            return {self.clean(str(key)): _REDACTED if _sensitive(str(key)) else self.clean(item) for key, item in value.items()}
-        if isinstance(value, (list, tuple)):
-            return [self.clean(item) for item in value]
-        return value
+        return _clean(value, self.secrets)
+
+    def local_evidence(self) -> dict[str, Any]:
+        calls = [{**{key: value for key, value in call.items() if key != "result"}, **call["result"]}
+                 for call in self.local_model_calls.copy()]
+        return {"local_model_calls": calls} if calls else {}
 
     def body(self, value: bytes | str | Any) -> dict[str, Any]:
         if isinstance(value, bytes):
@@ -125,6 +187,7 @@ def capture_validation_case(*, enabled: bool, secrets: tuple[str, ...], session:
         diagnostics.exchanges = []
         diagnostics.dropped_exchanges = 0
         diagnostics.started = {}
+        diagnostics.local_model_calls = []
     token = _CURRENT.set(diagnostics)
     try:
         yield diagnostics

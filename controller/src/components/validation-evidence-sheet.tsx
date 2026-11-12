@@ -7,8 +7,9 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "./ui/tabs";
 import { StateBadge } from "./product-shell";
 import { ValidationResultSummary, EvidenceField } from "./validation-result-summary";
 import { ValidationHttpInspector } from "./validation-http-inspector";
+import { ValidationLocalModelInspector } from "./validation-local-model-inspector";
 import { downloadLogFile } from "@/lib/http-log-content";
-import { caseFailureClass, exchanges, parse, record, resultEvidence, text, validationEvidenceDocument, type ValidationCheck } from "@/lib/validation-evidence";
+import { caseFailureClass, exchanges, list, parse, record, resultEvidence, text, validationEvidenceDocument, type ValidationCheck } from "@/lib/validation-evidence";
 
 export { validationEvidenceDocument } from "@/lib/validation-evidence";
 const key = "modelSettings.evidence.";
@@ -23,6 +24,9 @@ export function ValidationEvidenceSheet({ check, subject, label }: { check: Vali
   const context = record(output.validation_context);
   const build = record(context.runner_build);
   const calls = exchanges(output);
+  const localCalls = list(output.local_model_calls).map(record);
+  const runnerLocal = context.backend === "builtin_laya";
+  const showHttp = !runnerLocal || calls.length > 0 || Number(output.dropped_model_exchanges) > 0;
   const evaluations = resultEvidence(output).evaluations;
   const formal = text(context.binding_id).startsWith("automated_reasoning.") || check.id.startsWith("probe:automated_reasoning.");
   const caseName = (id: string) => t(key + (id.split(":").at(-1) === "safe" ? formal ? "validSample" : "safeSample" : id.split(":").at(-1) === "unsafe" ? formal ? "invalidSample" : "unsafeSample" : "sample"), { id });
@@ -71,14 +75,19 @@ export function ValidationEvidenceSheet({ check, subject, label }: { check: Vali
           </nav>
           <div key={selected.id} className="min-w-0 px-6 pb-6">
             <details className="border-b py-3 text-sm">
-              <summary className="w-fit cursor-pointer text-muted-foreground">{t(key + "execution")}</summary>
+              <summary className={`w-fit cursor-pointer ${runnerLocal ? "font-medium" : "text-muted-foreground"}`}>
+                {t(key + (runnerLocal ? "localInference" : "execution"))}
+              </summary>
               <dl className="mt-4 grid grid-cols-3 gap-x-6 gap-y-4">
                 <EvidenceField label={t(key + "recordedAt")} value={context.recorded_at} />
                 <EvidenceField label={t(key + "runner")} value={context.runner_id} />
                 <EvidenceField label={t(key + "build")} value={[text(build.version), text(build.commit), build.dirty === true ? "dirty" : ""].filter(Boolean).join(" · ")} />
                 <EvidenceField label={t(key + "model")} value={context.model} />
                 <EvidenceField label={t(key + "profile")} value={context.profile} />
-                <EvidenceField label={t(key + "endpoint")} value={context.base_url} />
+                {runnerLocal ? <>
+                  <EvidenceField label={t(key + "checkpoint")} value={context.checkpoint_revision} />
+                  <EvidenceField label={t(key + "sampleDuration")} value={typeof output.duration_ms === "number" ? t(key + "durationMs", { count: output.duration_ms }) : undefined} />
+                </> : <EvidenceField label={t(key + "endpoint")} value={context.base_url} />}
                 {evaluations.map((item, index) => <div key={index} className="col-span-3 grid grid-cols-3 gap-6">
                   <EvidenceField label={t(key + "revision")} value={item.data.question_revision ?? item.data.review_revision} />
                   <EvidenceField label={t(key + "routing")} value={record(record(item.data.model_metadata).routing).model ?? item.data.response_model} />
@@ -87,14 +96,17 @@ export function ValidationEvidenceSheet({ check, subject, label }: { check: Vali
               <p className="mt-4 whitespace-pre-wrap leading-6 [overflow-wrap:anywhere]">{check.message}</p>
               <p className="mt-2 text-xs text-muted-foreground [overflow-wrap:anywhere]">{selected.id}</p>
             </details>
-            <Tabs defaultValue="result" className="mt-3">
+            {runnerLocal && !localCalls.length ? <p className="mt-3 text-sm text-muted-foreground">{t(key + "noLocalCalls")}</p> : null}
+            {showHttp || localCalls.length > 0 ? <Tabs defaultValue="result" className="mt-3">
               <TabsList aria-label={t(key + "views")}>
                 <TabsTrigger value="result">{t(key + "result")}</TabsTrigger>
-                <TabsTrigger value="calls">{t(key + "http")} ({calls.length})</TabsTrigger>
+                {localCalls.length > 0 ? <TabsTrigger value="local">{t(key + "localModelCalls")} ({localCalls.length})</TabsTrigger> : null}
+                {showHttp ? <TabsTrigger value="calls">{t(key + "http")} ({calls.length})</TabsTrigger> : null}
               </TabsList>
               <TabsContent value="result" className="pt-4"><ValidationResultSummary sample={selected} output={output} /></TabsContent>
-              <TabsContent value="calls" className="pt-4"><ValidationHttpInspector calls={calls} output={output} /></TabsContent>
-            </Tabs>
+              {localCalls.length > 0 ? <TabsContent value="local" className="pt-4"><ValidationLocalModelInspector calls={localCalls} /></TabsContent> : null}
+              {showHttp ? <TabsContent value="calls" className="pt-4"><ValidationHttpInspector calls={calls} output={output} /></TabsContent> : null}
+            </Tabs> : <div className="pt-4"><ValidationResultSummary sample={selected} output={output} /></div>}
           </div>
         </> : <div className="space-y-4 px-6 py-6"><p className="whitespace-pre-wrap [overflow-wrap:anywhere]">{check.message}</p><p className="text-muted-foreground">{t(key + "noSamples")}</p></div>}
       </div>

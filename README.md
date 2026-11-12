@@ -1,190 +1,52 @@
 # TaskLattice Guard
 
-**Configurable input and output protection for AI applications and gateways.**
+TaskLattice Guard checks prompts and model responses for AI applications and
+gateways. It returns an allow, block, or text replacement decision for the
+caller to apply.
 
-TaskLattice Guard helps teams control what reaches their AI models and what
-comes back to users. It checks prompts and responses against your policies,
-then returns an allow, block, or text-replacement result for your application
-or gateway to apply.
+- Detect sensitive data, prompt injection, harmful content, and off-topic
+  requests with local Rules and model-backed checks.
+- Build Guardrails from versioned Policies, test them, and publish immutable
+  versions.
+- Match requests by their attributes and split traffic across versions with
+  weighted routing.
 
-It combines a web console for designing, testing, and publishing protection
-with a runtime API for checking live traffic—including streamed responses.
-Teams can manage different protection configurations for different applications
-without embedding policy logic in every gateway.
+## Quick start
 
-## What you can do
+Enable Kubernetes in OrbStack and have Docker, Node.js 24+, uv, and Helm
+available. From the repository root, run the following commands.
 
-- **Protect prompts and responses.** Check for sensitive data, prompt injection,
-  harmful content, and application-specific restrictions using configurable
-  local rules and model-backed checks.
-- **Build and test your own protection.** Compose versioned Policies into a
-  Guardrail, tune rules and actions, and test or publish independently.
-  The directory-based [Policy packages](policies/README.md) bootstrap
-  the built-in catalog and support directory/ZIP import and export for custom local checks.
-- **Route traffic to the right Guardrail.** Match request characteristics such
-  as headers or model names, then distribute matching calls across Guardrail
-  versions with configurable percentages.
-- **Try changes before enforcing them.** Use Playground to inspect behavior,
-  or integrate in dry run so your gateway observes results without changing
-  the application response.
-- **Understand what happened.** Inspect runtime decisions, routing distribution,
-  validation results, and publication history in the console.
-
-Each deployment provisions an ordinary Guardrail named Default from the pinned
-Default Profile (`local-baseline@1.0.0`). It provides local checks without a detection model.
-Rename, edit, publish or delete it through the same workflow as any Guardrail;
-restarts never recreate a deleted preset. Model-backed protection can be configured separately. Coverage depends
-on the policies you enable and the content you submit; streamed output may
-need to be buffered when a policy requires the complete response.
-
-The built-in Profile list contains five starting points:
-
-| Profile | Intended use |
-| --- | --- |
-| Default | The local protection configuration used at deployment |
-| Full-feature baseline | Benchmark-family protections, including input/output model checks |
-| Bank | Local checks plus identity-check evasion and misleading guarantees |
-| Securities & brokerage | Local checks plus insider trading and market manipulation |
-| Internet platform support | Local checks plus phishing, session theft and injection |
-
-Upgrades retire the other built-in choices from discovery. Existing Guardrails
-keep their copied configuration, tests and published versions; they can still
-be edited, tested and published. Custom Profile records are preserved.
-
-For the benchmark configuration, select **Full-feature baseline** when creating
-a Guardrail. Version 2.0.0 copies 14 pinned Policies and 127 Rules into an
-editable draft: credentials/PII, input/output content safety, jailbreak,
-direct/indirect injection, memory poisoning, data-use boundaries and a filled
-harmful-task denylist. Remove any protections you do not need. Model checks
-reuse six platform capability/direction assignments, so each Guardrail does
-not need its own model setup. Existing Guardrails retain their snapshots.
-See the
-[Profile guide](docs/full-feature-baseline.md) for versions, dependencies and
-what happens to tests after a deletion.
-
-Publishing freezes and compiles the selected configuration without calling models
-or running tests. Untested, running or failed tests do not prevent publication,
-and deleting a report does not revoke a version. Compilation errors leave earlier
-versions intact. Model availability, Runner readiness and Router rollout remain
-separate from publication; publishing does not switch traffic.
-
-## How it fits into your application
-
-Your application or gateway calls Guard before sending input to a model and
-before delivering its output. Guard checks the content; your integration applies
-the returned decision.
-
-```text
-Your application or AI gateway
-  ├─ Check input with Guard → apply the decision → call your model
-  └─ Check model output with Guard → apply the decision → deliver to the user
-```
-
-Three concepts connect configuration to live traffic:
-
-| Concept | Purpose |
-| --- | --- |
-| **Guardrail** | The protection to apply: selected Policies, settings, and a published version |
-| **Router** | The routing configuration: which requests match each Route and which Guardrail versions receive them |
-| **Endpoint** | The runtime integration identity: a base URL and credential, bound to a Router |
-
-A typical workflow is to configure and validate a Guardrail, publish it, create
-an Endpoint and bind it to a Router, then review and publish the routing
-configuration. Use Playground and the integration guide's verification examples
-to check the path before sending application traffic.
-
-Guard has two application components: **Controller** hosts the console and
-management API; **Runner**, powered by NVIDIA NeMo Guardrails, executes checks.
-Live Endpoint checks call Runner directly. See [architecture](docs/architecture.md)
-for the implementation and deployment boundaries.
-
-## Try it locally
-
-With this repository checked out, enable OrbStack Kubernetes and have Docker,
-Helm, `kubectl`, and `make` available. From the repository root, run:
-
-```bash
+```sh
+docker pull postgres:17-alpine
+docker pull redis:7.4-alpine
+npm run sync
 npm run helm:deploy:dev
 ```
 
-To include the real Keycloak development identities and Project setup, run:
+Sign in as `user` with the local development password `password` and try the
+published **Default** Guardrail in **Playground**. Default uses local Rules.
+[Local console](http://localhost:38081).
 
-```bash
-npm run helm:deploy:dev:keycloak
-```
+For model-backed checks, assign the Runner's built-in English Laya model for CPU
+inference or connect an external Provider. [Model configuration](docs/document/en/admin/02-platform-models.mdx).
 
-This adds `sso-user1` / `password` → `test1` and `sso-user2` / `password` →
-`test2`. Both profiles deploy only the Default Runner; `test1` uses
-`runner-default-0`, while `test2` requires manual Runner setup in the administrator
-UI. Sign in with the **Keycloak** button; local `admin` and `user` sign-in remain
-available. `Test2` is normalized to the immutable Project name `test2`.
-See [Keycloak development bootstrap](charts/tali-guard/README.md#keycloak-development-bootstrap).
+## Integrate an application
 
-Both commands build the local images, install or upgrade the development deployment,
-and wait for workload readiness. Open [the console](http://localhost:38081)
-and sign in with `admin` / `password` or `user` / `password`.
-The local `user` joins `test1` automatically, using the default shared Runner
-and the Project's published Default Guardrail.
-All environments use username/password authentication through Better Auth.
-Initialization overwrites configured bootstrap accounts and revokes old sessions;
-account Secrets contain Base64-decodable initial passwords for debugging.
-The local profile uses Runner Token authentication with mTLS. A chart bootstrap
-Job creates internal Secrets, so no External Secrets operator or private key in
-Values is required.
+Bind an Endpoint to a Router whose Route Targets point to published Guardrail
+versions. Use the Endpoint URL and credential to check input before calling the
+model and output before delivering the response. The integration applies the
+returned decision. [Gateway integration guide](docs/gateway-integration.md).
 
-Start with the Default Guardrail to explore local protection, then configure
-model-backed checks as needed. See the [local installation guide](charts/tali-guard/README.md#orbstacklocal-installation)
-for service addresses and deployment status.
+## Command line
 
-Prefer to run the services from source? Follow the
-[development guide](docs/development.md). For a shared or production environment,
-use the [production deployment guide](charts/tali-guard/README.md#production-installation).
-
-Deploy Controller and Runner from the same release. They use one execution
-contract, without compatibility branches for older plans or testing reports.
-See the [scheduling contract](docs/policy-scheduling-optimization-design.zh-CN.md)
-for explicit views, Rule evidence, and execution limits.
+`guardctl` uses the Controller management API. Use `platform` to configure
+Models and capability bindings. Use `project` to test and publish Guardrails
+or provision a Guardrail with an Endpoint and Router. The interactive shell
+supports resource inspection and Guardrail package import and export.
+[CLI manual](bin/README.md) and [configuration examples](docs/guardctl-configuration.md).
 
 ## Documentation
 
-| I want to… | Guide |
-| --- | --- |
-| Integrate an application or gateway | [Runtime API, streaming, dry run, and verification](docs/gateway-integration.md) |
-| Configure protection and validation | [Policies and validation](docs/guardrail-policies.md), [execution order and PII conflicts](docs/policy-composition.md), [scheduling optimisation design](docs/policy-scheduling-optimization-design.zh-CN.md), [schedule benchmark](docs/policy-scheduling-benchmark.md) |
-| Connect models for protection checks | [Providers, Models, and Guardrail Catalog](docs/model-configuration.md), [semantic PII decision-model design](docs/semantic-pii-decision-model.zh-CN.md) |
-| Route traffic across Guardrails | [Routes, selectors, and weighted distribution](docs/router-route-weighted-distribution-design.md) |
-| Test a Router or Endpoint | [Playground advanced path testing](docs/playground-advanced-mode.md) |
-| Publish, restore, or delete versions | [Revision lifecycles](docs/revision-lifecycle.md) |
-| Automate management operations | [Controller API conventions](docs/api-contract.md) and [Access Tokens](docs/account-access-tokens.md) |
-| Deploy and operate Guard | [Helm deployment](charts/tali-guard/README.md), [operations and security](docs/operations.md), and [observability](docs/observability.md) |
-| Learn guardctl and inspect the control plane | [guardctl command-line manual](bin/README.md) |
-| Configure models and publish a Default copy through APIs | [guardctl configuration](docs/guardctl-configuration.md) |
-| Develop or understand the internals | [Development and tests](docs/development.md) and [architecture](docs/architecture.md) |
-
-A running Controller also serves an interactive API reference at `/api/docs`,
-its OpenAPI contract at `/api/openapi.json`, and an agent-oriented index at
-`/api/llms.txt`. These describe the management API; application checks use the
-separate runtime integration guide above.
-
-### Git source versions
-
-`/settings/version` shows the Controller's startup identity and each registered
-Runner's own identity. Versions use `git describe --tags --always --long` plus
-`-dirty` when staged, unstaged, or untracked files exist anywhere in the repository
-(ignored files are excluded). The page also shows the full commit, branch, and
-workspace state. Restart a local process to capture subsequent source changes.
-
-`npm run images:build:dev` and the release workflow capture the workspace before
-building and pass `TALI_BUILD_INFO` to both Docker images. For direct Docker builds,
-pass `--build-arg "TALI_BUILD_INFO=$(node scripts/git-build-info.mjs)"`.
-Images without metadata and without Git report an unknown source state, never a
-clean workspace. Older Runners retain their reported version with unknown Git
-metadata until rebuilt and restarted. The authenticated
-`GET /api/v1/system/version` endpoint accepts the `runners:read` token permission.
-
-Both Controller and Runner also expose public `GET /version`, which returns that
-process's startup build identity and `component` without authentication, database
-queries, or calls to another service. Use it to identify a Pod during an outage;
-the authenticated management endpoint remains the project-scoped fleet inventory.
-See [operational endpoints](docs/operations.md#health-and-version-endpoints) for
-the health probe contract and examples.
+- [Guardrail lifecycle and testing](docs/document/en/overview/03-term-guardrail.mdx)
+- [Kubernetes deployment](charts/tali-guard/README.md) and [operations](docs/operations.md)
+- [Development and tests](docs/development.md) and [architecture](docs/architecture.md#components-and-ownership)

@@ -5,14 +5,16 @@ import hashlib
 import json
 import threading
 import time
+from copy import deepcopy
 from types import SimpleNamespace
 
 import httpx
 import pytest
 
 from runner import builtin_laya, generated as protocol, resources
-from runner.builtin_laya import BuiltinLaya, BuiltinLayaBusyError, _verify_checkpoint
+from runner.builtin_laya import BuiltinLaya, BuiltinLayaBusyError, BuiltinLayaInferenceError, _verify_checkpoint
 from runner.capability_validation import validate_capability
+from runner.model_validation_diagnostics import ValidationDiagnostics, capture_validation_case
 
 
 REVISION = "85cc74ddae6109077ebe2853a9b3077fb6606a78"
@@ -131,11 +133,13 @@ async def test_builtin_laya_rail_validation_uses_the_local_checkpoint(tmp_path, 
     calls = []
 
     def infer(state, questions, **kwargs):
-        calls.append((state, kwargs))
         probability = 0.01 if state == "Have a pleasant day." else 0.99
-        return {"model": "laya", "answers": {
+        output = {"model": "laya", "answers": {
             key: {"type": "noul", "noul": probability} for key in questions
-        }, "usage": {"input_tokens": 12, "output_tokens": 0}}
+        }, "usage": {"input_tokens": 12, "output_tokens": 0}, "sdk_detail": {"opaque": True}}
+        calls.append({"input": {"state": state, "questions": deepcopy(questions), **kwargs}, "output": deepcopy(output)})
+        next(iter(questions.values()))["test_mutation"] = True
+        return output
 
     def reject_http(_request):
         pytest.fail("Built-in Laya attempted an HTTP request")
@@ -154,7 +158,13 @@ async def test_builtin_laya_rail_validation_uses_the_local_checkpoint(tmp_path, 
         result = await validate_capability(request, {}, builtin_laya=runtime, transport=httpx.MockTransport(reject_http))
         assert result.passed, result.message
         assert [case.actual_decision for case in result.cases] == ["allow", "block"]
-        assert [options for _, options in calls] == [{"lang": "en", "max_len": 1024, "head_max_len": 512}] * 2
+        for case, call in zip(result.cases, calls, strict=True):
+            captured = json.loads(case.output_content)
+            assert captured["local_model_calls"] == [call]
+            assert captured["model_exchanges"] == []
+            assert call["input"]["lang"] == "en"
+            assert call["input"]["max_len"] == 1024
+            assert call["input"]["head_max_len"] == 512
         evidence = json.loads(result.cases[0].output_content)["evaluation_evidence"]
         local = next(json.loads(item["evidence"]) for item in evidence if item["evaluator_id"] == "laya-content-safety")
         assert local["model_metadata"]["backend"] == "builtin_laya"
@@ -164,5 +174,35 @@ async def test_builtin_laya_rail_validation_uses_the_local_checkpoint(tmp_path, 
         stale = await validate_capability(request, {}, builtin_laya=runtime, transport=httpx.MockTransport(reject_http))
         assert not stale.passed and "checkpoint is unavailable" in stale.message
         assert len(calls) == 2
+    finally:
+        await runtime.close()
+
+
+@pytest.mark.asyncio
+async def test_builtin_laya_local_evidence_handles_failed_and_non_json_sdk_returns(tmp_path, monkeypatch):
+    def infer(state, questions, **options):
+        if state == "failed":
+            raise ValueError("internal error")
+        return {"score": float("nan"), "metadata": object(), "token": "private"}
+
+    runtime = BuiltinLaya(tmp_path)
+    monkeypatch.setattr(runtime, "_load", lambda: (REVISION, SimpleNamespace(system_one=infer)))
+    await runtime.start()
+    session = ValidationDiagnostics({}, ())
+    try:
+        with capture_validation_case(enabled=True, secrets=(), session=session):
+            with pytest.raises(BuiltinLayaInferenceError):
+                await runtime.predict("failed", QUESTIONS, max_len=1024, head_max_len=512, deadline=time.monotonic() + 5)
+            failed = session.local_evidence()["local_model_calls"][0]
+            assert failed["input"]["state"] == "failed"
+            assert failed["output"] is None
+            assert failed["error"]["type"] == "ValueError"
+
+        with capture_validation_case(enabled=True, secrets=(), session=session):
+            await runtime.predict("succeeded", QUESTIONS, max_len=1024, head_max_len=512, deadline=time.monotonic() + 5)
+            [captured] = session.local_evidence()["local_model_calls"]
+            assert captured["input"]["state"] == "succeeded"
+            assert captured["output"] == {"score": "NaN", "metadata": {"unavailable_type": "object"}, "token": "[REDACTED]"}
+            assert "error" not in captured
     finally:
         await runtime.close()

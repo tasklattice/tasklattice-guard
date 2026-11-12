@@ -12,6 +12,7 @@ from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from .model_validation_diagnostics import LocalModelCapture, local_model_capture
 from .resources import cpu_capacity_cores
 from .toolkit.runtime.failures import ModelConfigurationError
 
@@ -174,7 +175,7 @@ class BuiltinLaya:
                 if time.monotonic() >= deadline:
                     raise TimeoutError("Built-in Laya inference deadline exceeded.")
                 inference = asyncio.get_running_loop().run_in_executor(
-                    self._executor, self._predict, agent, state, questions, max_len, head_max_len,
+                    self._executor, self._predict, agent, state, questions, max_len, head_max_len, local_model_capture(),
                 )
                 inference.add_done_callback(self._inference_done)
                 record_model_queue(round((time.monotonic() - started) * 1000), True)
@@ -190,9 +191,13 @@ class BuiltinLaya:
 
     @staticmethod
     def _predict(agent: Agent, state: str | dict[str, object], questions: dict[str, dict[str, object]],
-                 max_len: int, head_max_len: int) -> dict:
+                 max_len: int, head_max_len: int, capture: LocalModelCapture | None) -> dict:
+        options = {"lang": "en", "max_len": max_len, "head_max_len": head_max_len}
         try:
-            return agent.system_one(state, questions, lang="en", max_len=max_len, head_max_len=head_max_len)
+            if capture is not None:
+                return capture.invoke({"state": state, "questions": questions, **options},
+                                      lambda: agent.system_one(state, questions, **options))
+            return agent.system_one(state, questions, **options)
         except Exception:
             raise BuiltinLayaInferenceError("Built-in Laya CPU forward failed.") from None
 

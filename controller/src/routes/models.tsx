@@ -872,12 +872,16 @@ function ResourceManagement({ resource, view, administrator, onChanged }: { reso
             <TableHeader><TableRow><TableHead className="pl-5">{t("modelSettings.model")}</TableHead><TableHead>{t("modelSettings.providerConnection")}</TableHead><TableHead>{t("modelSettings.modelCall")}</TableHead><TableHead className="text-right">{t("modelSettings.maxConcurrency")}</TableHead><TableHead className="pr-5 text-right">{t("modelSettings.actions")}</TableHead></TableRow></TableHeader>
             <TableBody>{view.models.map((model) => {
               const provider = view.providers.find((item) => item.id === model.providerId);
+              const builtIn = model.backend === "builtin_laya";
+              const concurrencyHint = builtIn ? t("modelSettings.runnerManagedConcurrency") : undefined;
               return (
                 <TableRow key={model.id}>
                   <TableCell className="pl-5"><div><p className="font-medium">{model.name}</p><code className="mt-1 block max-w-80 truncate text-xs text-muted-foreground" title={model.checkpointRevision ?? model.model}>{model.checkpointRevision?.slice(0, 12) ?? model.model}</code></div></TableCell>
                   <TableCell><div className="flex items-start gap-3"><ProviderMark provider={model.providerName} kind={model.providerKind} model={model.model} /><div><p className="mb-1.5 font-medium">{model.backend === "builtin_laya" ? t("modelSettings.builtin") : model.providerName}</p>{provider?.backend === "builtin_laya" ? <ProviderTarget provider={provider} /> : provider ? <ValidationEvidence kind="provider" status={provider.status} checkedAt={provider.validatedAt} latencyMs={provider.validationLatencyMs} message={provider.validationMessage} /> : <StateBadge state="unavailable" label={t("modelSettings.providerUnavailable")} />}</div></div></TableCell>
                   <TableCell>{model.backend === "builtin_laya" ? <BuiltinModelStatus status={model.status} /> : <ModelCallEvidence model={model} checking={isTesting(model.id)} />}</TableCell>
-                  <TableCell className="text-right tabular-nums">{model.maxConcurrency ?? 2}</TableCell>
+                  <TableCell className="text-right tabular-nums" title={concurrencyHint} aria-label={concurrencyHint}>
+                    {builtIn ? <span aria-hidden="true" className="text-muted-foreground">—</span> : model.maxConcurrency ?? 2}
+                  </TableCell>
                   <TableCell className="pr-5">{ownsModel(model) ? <ResourceActions kind="model" name={model.name} checking={isTesting(model.id)} pending={pending || !administrator} onRetest={() => probeMutation.mutate({ id: model.id })} onRemove={() => setRemoveTarget({ id: model.id, name: model.name })} /> : null}</TableCell>
                 </TableRow>
               );
