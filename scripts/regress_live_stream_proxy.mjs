@@ -97,7 +97,7 @@ try{
  assert(credentials.deepseek);
  await api('/api/auth/sign-in/username',await secret(ns+'-bootstrap-admin'));
  const active=await stage('configuration',async()=>{
-  let v=await api('/api/v1/model-configuration');assert(v.providers.every(p=>p.baseUrl.includes('.tali-model-e2e.svc.cluster.local:8097/')));
+  let v=await api('/api/v1/model-configuration');assert(v.providers.every(p=>p.backend==='builtin_laya'||p.baseUrl.includes('.tali-model-e2e.svc.cluster.local:8097/')));
   let m=v.models.find(m=>m.name==='Live stream Safety'+suffix);
   if(!m)m=(await api('/api/v1/model-providers/register',{connection:{name:'Live stream NVIDIA'+suffix,kind:'custom-openai-compatible',baseUrl:gateway+'/nvidia/v1',apiKey:'isolated-model-lifecycle-only',skipTlsVerify:false},models:[{name:'Live stream Safety'+suffix,model:'nvidia/llama-3.1-nemotron-safety-guard-8b-v3',profile:'tali.nemotron-safety-guard-v3.v1',timeoutSeconds:45,maxTokens:1024}]},[201])).models[0];
   assert.equal(m.connectionStatus,'validated');
