@@ -91,7 +91,12 @@ if (!reusableActive) await call(`/api/v1/model-configuration/${checked.id}/activ
 const active = await until('model activation', async () => (await call('/api/v1/model-configuration')).data,
   d => d.active?.id === checked.id);
 report('mock-configuration-active', { revisionId: active.active.id });
-const token = secret(`${release}-control`)['runner-token'];
+const runnerWorkload = JSON.parse(execFileSync('kubectl', ['--context', 'orbstack', '-n', namespace,
+  'get', 'statefulset', 'runner-default', '-o', 'json'], { encoding: 'utf8' }));
+const httpCredential = runnerWorkload.spec.template.spec.containers.flatMap(container => container.env ?? [])
+  .find(entry => entry.name === 'GUARD_CONTROLLER_HTTP_TOKEN')?.valueFrom?.secretKeyRef;
+assert(httpCredential, 'Runner must reference its Pool HTTP token.');
+const token = secret(httpCredential.name)[httpCredential.key];
 const existing = (await call('/api/v1/guardrails')).data.items;
 const evidence = [];
 // Public runtime represents redirect as transform + a safe replacement. The

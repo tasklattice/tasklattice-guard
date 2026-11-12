@@ -76,7 +76,7 @@ describe("Capability configuration after registration", () => {
       () => service.applyConfiguration("group_b", {} as never),
       () => service.finalizeActivation("revision-1"),
       () => service.failActivation("revision-1", "Project supplied failure"),
-      () => service.resolveCredentials(["provider-1"]),
+      () => service.resolveCredentials(["provider-1"], undefined, "pool-a"),
     ];
     for (const operation of operations) {
       await expect(runWithProjectContext({ projectId, actorId: "group_b", role: "user" }, operation))
@@ -285,34 +285,15 @@ describe("Capability configuration after registration", () => {
     expect(fetcher).not.toHaveBeenCalled();
     expect(railValidator).not.toHaveBeenCalled();
   });
-  it("leases only the candidate Provider credential and revokes it after Rail validation", async () => {
-    const { service, fetcher } = setup("draft", true);
-    let leaseId = "";
-    service.setRailValidator(async (request) => {
-      leaseId = request.credentialLeaseId!;
-      expect(request.bindingId).toBe("content_safety.input");
-      expect(request.configuration?.bindings?.[0]?.railType).toBe("RAIL_TYPE_INPUT");
-      expect(await service.resolveCredentials(["provider-1"], leaseId)).toEqual({ "provider-1": "" });
-      expect(await service.resolveCredentials([], leaseId)).toEqual({});
-      expect(await service.resolveCredentials(["provider-1", "provider-1"], leaseId)).toEqual({ "provider-1": "" });
-      expect(await service.resolveCredentials(["other-provider"], leaseId)).toEqual({});
-      expect(await service.resolveCredentials(["provider-1", "other-provider"], leaseId)).toEqual({});
-      return { passed: true, message: "Rail samples passed.", latencyMs: 1 };
-    });
-    const revision = await service.validateAssignment("content_safety.input", "admin");
-    expect(await service.resolveCredentials(["provider-1"], leaseId)).toEqual({});
-    expect(fetcher).not.toHaveBeenCalled();
-    expect(revision.validationReport?.checks).toContainEqual(expect.objectContaining({ evidenceKind: "nemo-rail-v1", status: "passed" }));
-  });
-
   it("binds a validation lease to the dispatched pool and rejects other pools", async () => {
     const { service } = setup("draft", true);
+    const session = { poolId: "pool-a", runnerId: "runner-pool-a-0", bootId: "boot", sessionId: "session" };
     let leaseId = "";
     service.setRailValidator(async request => {
       leaseId = request.credentialLeaseId!;
       expect(await service.resolveCredentials(["provider-1"], leaseId, "pool-a")).toEqual({});
-      expect(await service.bindValidationLease(leaseId, "pool-a")).toBe(true);
-      expect(await service.bindValidationLease(leaseId, "pool-b")).toBe(false);
+      expect(await service.bindValidationLease(leaseId, "pool-a", session)).toBe(true);
+      expect(await service.bindValidationLease(leaseId, "pool-b", { ...session, poolId: "pool-b" })).toBe(false);
       expect(await service.resolveCredentials(["provider-1"], leaseId, "pool-b")).toEqual({});
       expect(await service.resolveCredentials([], leaseId, "pool-a")).toEqual({});
       expect(await service.resolveCredentials(["other-provider"], leaseId, "pool-a")).toEqual({});
@@ -323,7 +304,7 @@ describe("Capability configuration after registration", () => {
     });
     await service.validateAssignment("content_safety.input", "admin");
     expect(await service.resolveCredentials(["provider-1"], leaseId, "pool-a")).toEqual({});
-    expect(await service.bindValidationLease(leaseId, "pool-a")).toBe(false);
+    expect(await service.bindValidationLease(leaseId, "pool-a", session)).toBe(false);
   });
 
   it.each([true, false])("retains all sample evidence in assignment validation reports (passed=%s)", async (passed) => {

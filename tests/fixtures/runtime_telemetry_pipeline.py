@@ -33,6 +33,10 @@ from runner.telemetry import RuntimeTelemetryExporter
 RUNNER_ID = "fixture-runner"
 GUARDRAIL_ID = "fixture-guardrail"
 ENDPOINT_ID = "fixture-endpoint"
+ROUTER_ID = "fixture-router"
+GUARDRAIL_VERSION = "20260912-083000.123Z"
+ROUTE_ID = "fixture-route"
+TARGET_ID = "fixture-target"
 BATCH_SIZE = 100
 
 
@@ -62,10 +66,12 @@ def _runtime_event(event_id: str, request_id: str, calls: list[dict[str, Any]], 
         decision: str = "allow", duration_ms: int = 12) -> dict[str, Any]:
     return {
         "id": event_id, "requestId": request_id, "runnerId": RUNNER_ID,
-        "guardrailId": GUARDRAIL_ID, "endpointId": ENDPOINT_ID,
+        "guardrailId": GUARDRAIL_ID, "guardrailVersion": GUARDRAIL_VERSION,
+        "endpointId": ENDPOINT_ID, "routerId": ROUTER_ID,
         "occurredAt": datetime.now(UTC).isoformat(), "direction": "incoming",
         "decision": decision, "durationMs": duration_ms,
         "metadata": {"protocol": "litellm", "mode": "sync", "captureLevel": "info",
+            "routerRevision": 1, "routeId": ROUTE_ID, "targetId": TARGET_ID,
             "usage": _usage(calls, runtime=True)},
     }
 
@@ -111,7 +117,8 @@ def _describe(line: str) -> dict[str, Any]:
 async def exercise(endpoint: str, token: str) -> dict[str, Any]:
     logical = _logical_events()
     info = {
-        "runnerId": RUNNER_ID, "guardrailId": GUARDRAIL_ID, "endpointId": ENDPOINT_ID,
+        "runnerId": RUNNER_ID, "guardrailId": GUARDRAIL_ID, "guardrailVersion": GUARDRAIL_VERSION,
+        "endpointId": ENDPOINT_ID, "routerId": ROUTER_ID, "routeId": ROUTE_ID, "targetId": TARGET_ID,
         "logicalEvents": [{"id": event["id"], "requestId": event["requestId"],
             "calls": len(event["metadata"]["usage"]["model_calls"]),
             "costOnly": event["metadata"].get("costOnly") is True} for event in logical],
@@ -119,11 +126,15 @@ async def exercise(endpoint: str, token: str) -> dict[str, Any]:
     with TemporaryDirectory() as directory:
         state = Path(directory)
         wal = state / "runtime-events.wal"
-        exporter = RuntimeTelemetryExporter(endpoint, token, state, BATCH_SIZE, RUNNER_ID)
+        exporter = RuntimeTelemetryExporter(endpoint, token, state, BATCH_SIZE)
         result: dict[str, Any] = {"uploads": [], "replayUploads": []}
         print(json.dumps(info), flush=True)
-        # The Node test seeds the matching Controller resources before upload.
-        await asyncio.to_thread(sys.stdin.readline)
+        # The Controller fixture allocates the Endpoint context before upload.
+        context_id = (await asyncio.to_thread(sys.stdin.readline)).strip()
+        assert context_id
+        for event in logical:
+            if "endpointId" in event:
+                event["allocationContextId"] = context_id
         uploads: dict[str, list[dict[str, Any]]] = {"delivery": [], "replay": []}
         phase = {"name": "delivery"}
 
@@ -155,7 +166,7 @@ async def exercise(endpoint: str, token: str) -> dict[str, Any]:
                     # A restarted process recovers the replayed on-disk spool;
                     # do not mutate a live exporter's cached queue counters.
                     await exporter.stop()
-                    exporter = RuntimeTelemetryExporter(endpoint, token, state, BATCH_SIZE, RUNNER_ID)
+                    exporter = RuntimeTelemetryExporter(endpoint, token, state, BATCH_SIZE)
                     phase["name"] = "replay"
                     for _ in range(10):
                         if not await exporter._flush_once(client):

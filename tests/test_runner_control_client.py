@@ -12,11 +12,10 @@ from tests.capability_binding import capability_binding
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("pool_token", [None, "pool-a-token-with-at-least-32-characters"])
-async def test_control_stream_uses_pool_token_when_configured(monkeypatch, pool_token):
+async def test_control_stream_uses_pool_control_token(monkeypatch):
     from unittest.mock import Mock
 
-    settings = SimpleNamespace(controller_token="legacy-controller-token", control_token=pool_token, compiler_capable=False)
+    settings = SimpleNamespace(control_token="pool-a-token-with-at-least-32-characters", compiler_capable=False)
     channel = SimpleNamespace(close=AsyncMock())
     response_stream = SimpleNamespace(cancel=Mock())
     stub = SimpleNamespace(Connect=Mock(return_value=response_stream))
@@ -28,14 +27,13 @@ async def test_control_stream_uses_pool_token_when_configured(monkeypatch, pool_
     monkeypatch.setattr(client, "_receive_messages", AsyncMock())
 
     await client._connect_once()
-    stub.Connect.assert_called_once_with(metadata=(("authorization", f"Bearer {pool_token or settings.controller_token}"),))
+    stub.Connect.assert_called_once_with(metadata=(("authorization", f"Bearer {settings.control_token}"),))
     channel.close.assert_awaited_once()
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("pool_token", [None, "pool-a-token-with-at-least-32-characters"])
-async def test_model_credentials_use_pool_token_when_configured(monkeypatch, pool_token):
-    settings = SimpleNamespace(controller_token="legacy-controller-token", control_token=pool_token, compiler_capable=False,
+async def test_model_credentials_use_pool_control_token(monkeypatch):
+    settings = SimpleNamespace(control_token="pool-a-token-with-at-least-32-characters", compiler_capable=False,
                                telemetry_endpoint="http://controller/api/internal/v1/runtime-events")
     response = SimpleNamespace(raise_for_status=lambda: None, json=lambda: {"credentials": {"provider-1": "secret"}})
     post = AsyncMock(return_value=response)
@@ -48,7 +46,7 @@ async def test_model_credentials_use_pool_token_when_configured(monkeypatch, poo
     client = RunnerControlClient(settings, Store(), Metrics())
     configuration = protocol.DataPlaneModelConfiguration(runtimes=[protocol.ModelRuntime(credential_ref="provider-1")])
     assert await client._model_credentials(configuration, "lease-1") == {"provider-1": "secret"}
-    assert post.await_args.kwargs["headers"]["authorization"] == f"Bearer {pool_token or settings.controller_token}"
+    assert post.await_args.kwargs["headers"]["authorization"] == f"Bearer {settings.control_token}"
     assert post.await_args.kwargs["json"]["leaseId"] == "lease-1"
 
 

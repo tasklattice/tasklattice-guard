@@ -1,3 +1,4 @@
+import { runnerAuthEnv } from "../../test/runner-auth-fixture.js";
 import { seedTestProjects } from "../db/postgres-test-database.js";
 import { seedProfiles } from "../db/seed-profiles.js";
 // @vitest-environment node
@@ -58,7 +59,7 @@ describe.skipIf(!url)("multi-project password authentication and sharing in Post
       CONTROLLER_DATABASE_URL: url!,
       CONTROLLER_HTTP_HOST: "127.0.0.1",
       CONTROLLER_PUBLIC_URL: "http://localhost:8080",
-      CONTROLLER_RUNNER_TOKEN: "runner-token-that-is-at-least-32-characters",
+      ...runnerAuthEnv("runner-token-that-is-at-least-32-characters"),
       CONTROLLER_ARTIFACT_SIGNING_KEY_PATH: signingKey,
       CONTROLLER_POLICY_CATALOG_DIR: resolve("../runner/toolkit/policy_library/assets"),
       BETTER_AUTH_SECRET: "better-auth-secret-that-is-at-least-32-characters",

@@ -1,4 +1,5 @@
 // @vitest-environment node
+import { runnerAuthEnv } from "../test/runner-auth-fixture.js";
 import { createHash, generateKeyPairSync, randomUUID, sign } from "node:crypto";
 import { createServer, type Server } from "node:http";
 import { readFileSync } from "node:fs";
@@ -63,7 +64,7 @@ describe.skipIf(!databaseUrl)("OIDC authorization code flow and Relay project gr
     await new Promise<void>(resolve => idp.listen(0, "127.0.0.1", resolve));
     issuer = `http://127.0.0.1:${(idp.address() as {port:number}).port}`;
     const config = loadConfig({ NODE_ENV: "test", CONTROLLER_DATABASE_URL: databaseUrl!, CONTROLLER_PUBLIC_URL: origin,
-      CONTROLLER_RUNNER_TOKEN: "test-runner-token-at-least-32-characters", CONTROLLER_ARTIFACT_SIGNING_KEY_PATH: "/tmp/test-key.pem",
+      ...runnerAuthEnv("test-runner-token-at-least-32-characters"), CONTROLLER_ARTIFACT_SIGNING_KEY_PATH: "/tmp/test-key.pem",
       BETTER_AUTH_SECRET: "test-auth-secret-at-least-32-characters", CONTROLLER_SSO_ENABLED: "true", CONTROLLER_SSO_ISSUER: issuer,
       CONTROLLER_SSO_CLIENT_ID: "guard-test", CONTROLLER_SSO_CLIENT_SECRET: "fixture-client-secret", CONTROLLER_SSO_ALLOWED_EMAIL_DOMAINS: "example.test" });
     const db = drizzle(pool, { schema }); auth = createAuth(config, db); handleSso = createSsoHandler(config, db);

@@ -240,16 +240,13 @@ security:
   # artifactSigning:
   #   existingSecret: guard-artifact-signing # private-key.pem, public-key.pem
   # controlSecret:
-  #   existingSecret: guard-control # runner-token, better-auth-secret
-  # poolAuthentication: # optional: references only; never put token values here
-  #   enabled: true
-  #   scopedTelemetry: false # opt-in quarantine/freshness limitations; see README
+  #   existingSecret: guard-control # better-auth-secret
+  # poolAuthentication: # optional external Secret references for Runner-to-Controller requests
   #   controllerSecret: guard-pool-token-map
   #   controllerKey: pool-tokens.json
   #   runnerSecrets:
   #     default: { name: guard-default-pool-token, key: token }
-  # runnerHttpAuthentication: # optional separate Controller-to-Runner role; requires poolAuthentication
-  #   enabled: true
+  # runnerHttpAuthentication: # optional external Secret references for Controller-to-Runner HTTP requests
   #   controllerSecret: guard-http-token-map
   #   controllerKey: pool-http-tokens.json
   #   runnerSecrets:

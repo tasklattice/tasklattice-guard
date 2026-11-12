@@ -73,7 +73,8 @@ def test_runner_serves_frozen_artifacts_with_library_directory_removed(isolated_
 import asyncio, base64, json, os
 import httpx
 fixture = Path(sys.argv[1])
-os.environ.update(GUARD_CONTROLLER_TOKEN="test-token-000000000000000000000000",
+os.environ.update(GUARD_RUNNER_CONTROL_TOKEN="test-control-token-000000000000000000000000",
+    GUARD_CONTROLLER_HTTP_TOKEN="test-inbound-http-token-000000000000000000000000",
     GUARD_ARTIFACT_PUBLIC_KEY_PATH=str(fixture / "public-key.pem"),
     GUARD_RUNNER_STATE_PATH=str(Path(__file__).parent / "state"),
     GUARD_RUNNER_COMPILER_CAPABLE="false")

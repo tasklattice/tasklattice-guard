@@ -73,7 +73,7 @@ async def test_large_validation_round_trip_and_reconnect_sender_cleanup(tmp_path
     settings = SimpleNamespace(
         runner_id="e2e-runner", pool_id="default", compiler_capable=False,
         max_concurrency=4, controller_ca_path=None,
-        controller_target=f"127.0.0.1:{port}", controller_token="e2e-runner-token", control_token=None,
+        controller_target=f"127.0.0.1:{port}", control_token="e2e-runner-token",
     )
     client = RunnerControlClient(settings, ArtifactStore(FIXTURE / "public-key.pem", tmp_path), RunnerMetrics(4))
     client._validator = SimpleNamespace(compiler_model_types=(), run=AsyncMock(return_value=ValidationOutcome(
@@ -191,7 +191,7 @@ async def test_mock_controller_and_real_runner_exchange_and_apply_desired_state(
         client_key_path=None,
         client_certificate_path=None,
         controller_target=f"127.0.0.1:{port}",
-        controller_token="e2e-runner-token", control_token=None,
+        control_token="e2e-runner-token",
     )
     client = RunnerControlClient(
         settings,  # type: ignore[arg-type]
@@ -270,7 +270,7 @@ async def test_runner_accepts_replaceable_model_configuration_in_desired_state(
         client_key_path=None,
         client_certificate_path=None,
         controller_target=f"127.0.0.1:{port}",
-        controller_token="e2e-runner-token", control_token=None,
+        control_token="e2e-runner-token",
     )
     client = RunnerControlClient(
         settings,  # type: ignore[arg-type]

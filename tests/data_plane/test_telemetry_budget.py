@@ -25,12 +25,17 @@ def _event(event_id: str, calls: int, **extra) -> dict:
 
 
 def test_metered_event_split_preserves_every_call_and_runtime_identity():
-    parts = split_metered_event(_event("runtime-1", 130))
+    event = _event("runtime-1", 130, endpointId="endpoint-1", allocationContextId="context-1")
+    attribution = {"protocol": "litellm", "routerRevision": 3, "routeId": "route-1", "targetId": "target-1"}
+    event["metadata"].update(attribution)
+    parts = split_metered_event(event)
     assert [len(part["metadata"]["usage"]["model_calls"]) for part in parts] == [64, 64, 2]
     assert parts[0]["id"] == "runtime-1"
     assert parts[0]["metadata"]["usage"]["model_invocations"] == 130
     assert all(part["metadata"]["costOnly"] is True for part in parts[1:])
     assert [part["id"] for part in parts] == ["runtime-1", "runtime-1#cost-1", "runtime-1#cost-2"]
+    assert all(part["allocationContextId"] == "context-1" and part["endpointId"] == "endpoint-1" for part in parts)
+    assert all({key: part["metadata"][key] for key in attribution} == attribution for part in parts)
     assert [call["call_id"] for part in parts for call in part["metadata"]["usage"]["model_calls"]] == [
         f"runtime-1-{index}" for index in range(130)]
     assert split_metered_event(parts[0]) == [parts[0]]

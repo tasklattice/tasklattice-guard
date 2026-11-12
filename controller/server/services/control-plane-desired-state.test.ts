@@ -4,6 +4,11 @@ import type { ControllerDatabase } from "../db/client.js";
 import { NEMO_COMPILER_VERSION, PLAN_COMPILER_VERSION } from "../domain/artifact-execution-contract.js";
 import { ControlPlaneService } from "./control-plane.js";
 
+vi.mock("./endpoint-telemetry-contexts.js", async importOriginal => ({
+  ...await importOriginal<typeof import("./endpoint-telemetry-contexts.js")>(),
+  issueEndpointTelemetryContexts: vi.fn(async () => new Map()),
+}));
+
 // Every query in these paths ends in an awaited builder, so one thenable
 // builder that pops the next scripted result keeps the fixtures compact.
 function scriptedSelect(results: unknown[][]) {
@@ -15,7 +20,7 @@ function scriptedSelect(results: unknown[][]) {
   });
 }
 
-const config = { runnerToken: "runner-token-0123456789abcdef0123456789", deletionTrafficWindowMinutes: 5, offlineAfterSeconds: 60, telemetryStaleAfterSeconds: 120 } as unknown as ControllerConfig;
+const config = { betterAuthSecret: "test-secret-0123456789abcdef0123456789", deletionTrafficWindowMinutes: 5, offlineAfterSeconds: 60, telemetryStaleAfterSeconds: 120 } as unknown as ControllerConfig;
 const artifact = (id: string) => ({ artifact: {
   id, guardrailId: `guardrail-${id}`, guardrailVersion: "v1",
   compilerVersion: NEMO_COMPILER_VERSION,

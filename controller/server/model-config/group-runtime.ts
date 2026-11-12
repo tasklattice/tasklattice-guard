@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
-import { and, asc, eq, inArray, isNull, ne, or, sql } from "drizzle-orm";
+import { and, asc, eq, inArray, isNull, or, sql } from "drizzle-orm";
 import { z } from "zod";
 import { canonicalJson } from "../../shared/canonical-json.js";
 import { groupModelConfigurationInput, type GroupModelConfigurationView } from "../../shared/group-model-configuration.js";
@@ -42,12 +42,6 @@ const unavailable = () => new ControllerError("Group runtime Model configuration
 export class GroupRuntimeModelService {
   constructor(private readonly db: ControllerDatabase, private readonly rootSecret: string) {}
 
-  async assertAuthenticationCompatibility(poolAuthenticationEnabled: boolean): Promise<void> {
-    if (poolAuthenticationEnabled) return;
-    const [policy] = await this.db.select({ id: policies.id }).from(policies).where(ne(policies.mode, "platform")).limit(1);
-    if (policy) throw new Error("Pool authentication is required while scoped or blocked group Model policies exist.");
-  }
-
   async view(groupId: string): Promise<GroupModelConfigurationView> {
     assertPlatformAuthority();
     const [group] = await this.db.select({ id: projectGroups.id }).from(projectGroups).where(eq(projectGroups.id, groupId));
@@ -66,12 +60,10 @@ export class GroupRuntimeModelService {
     return pool?.id ?? null;
   }
 
-  async update(groupId: string, raw: unknown, actorId: string, poolAuthenticationEnabled: boolean): Promise<GroupModelConfigurationView> {
+  async update(groupId: string, raw: unknown, actorId: string): Promise<GroupModelConfigurationView> {
     assertPlatformAuthority();
     const input = groupModelConfigurationInput.parse(raw);
     if (input.mode === "platform" && groupId !== "default") throw new ValidationError("Only the default group can use platform runtime Models.");
-    if (input.mode !== "platform" && !poolAuthenticationEnabled) throw new ConflictError(
-      "Pool authentication must be configured before enabling a group runtime Model policy.", "group_models_require_pool_authentication");
     return this.db.transaction(async tx => {
       await advisoryTransactionLock(tx, "traffic-router-bindings");
       const [state] = await tx.select().from(controllerState).where(eq(controllerState.id, "singleton")).for("update");

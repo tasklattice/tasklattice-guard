@@ -85,6 +85,11 @@ def split_metered_event(event: dict, limit: int = MAX_EVENT_MODEL_CALLS) -> list
     if isinstance(metadata.get("protocol"), str):
         # Playground attribution reads this from each event's metadata.
         companion_metadata["protocol"] = metadata["protocol"]
+    if "allocationContextId" in event:
+        # Endpoint attribution checks each companion against the frozen target.
+        for key in ("routerRevision", "routeId", "targetId"):
+            if key in metadata:
+                companion_metadata[key] = metadata[key]
     events = [main]
     for index, chunk in enumerate(chunks[1:], start=1):
         companion = {

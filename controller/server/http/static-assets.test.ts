@@ -1,4 +1,5 @@
 // @vitest-environment node
+import { runnerAuthEnv } from "../../test/runner-auth-fixture.js";
 import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
@@ -13,7 +14,7 @@ import type { ControllerMetrics } from '../metrics.js';
 const root = mkdtempSync(join(tmpdir(), 'guard-static-assets-'));
 const html = '<!doctype html><html><head><link rel="stylesheet" href="/assets/index-current.css"></head><body>Guard UI</body></html>';
 const config = loadConfig({ NODE_ENV: 'test', CONTROLLER_UI_DIST: root,
-  CONTROLLER_DATABASE_URL: 'postgresql://test:test@localhost/test', CONTROLLER_RUNNER_TOKEN: 'runner-token-that-is-at-least-32-characters',
+  CONTROLLER_DATABASE_URL: 'postgresql://test:test@localhost/test', ...runnerAuthEnv('runner-token-that-is-at-least-32-characters'),
   CONTROLLER_ARTIFACT_SIGNING_KEY_PATH: '/tmp/test-key.pem', CONTROLLER_POLICY_CATALOG_DIR: resolve('../runner/toolkit/policy_library/assets'),
   BETTER_AUTH_SECRET: 'better-auth-secret-that-is-at-least-32-characters' });
 let app: ReturnType<typeof createHttpApp>;

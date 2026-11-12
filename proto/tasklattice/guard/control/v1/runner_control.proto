@@ -182,6 +182,8 @@ message RunnerHeartbeat {
   reserved 7;
   // Optional bounded process-local admission measurements, not quota authority.
   ProjectAdmissionSnapshot project_admission_snapshot = 8;
+  // Latest successful HTTP probe after draining the telemetry WAL, for this boot.
+  optional int64 telemetry_drained_at_unix_ms = 9;
 }
 
 // Cumulative fixed-bucket histogram; its final bucket must equal count.

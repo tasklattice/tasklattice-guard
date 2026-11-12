@@ -1,4 +1,5 @@
 // @vitest-environment node
+import { runnerAuthEnv } from "../../test/runner-auth-fixture.js";
 import { describe, expect, it, vi } from "vitest";
 import { loadConfig } from "../config.js";
 import type { ControllerAuth } from "../auth.js";
@@ -9,7 +10,7 @@ import { createHttpApp } from "./app.js";
 
 const token = "legacy-runner-token-with-at-least-32-characters";
 const config = loadConfig({ NODE_ENV: "test", CONTROLLER_DATABASE_URL: "postgresql://unused:unused@localhost/unused",
-  CONTROLLER_RUNNER_TOKEN: token, CONTROLLER_ARTIFACT_SIGNING_KEY_PATH: "/tmp/test-key.pem", BETTER_AUTH_SECRET: "better-auth-secret-with-at-least-32-characters" });
+  ...runnerAuthEnv(token), CONTROLLER_ARTIFACT_SIGNING_KEY_PATH: "/tmp/test-key.pem", BETTER_AUTH_SECRET: "better-auth-secret-with-at-least-32-characters" });
 const path = "http://controller/api/internal/v1/runtime-events";
 const make = (recordRuntimeEvents = vi.fn().mockResolvedValue(undefined)) => ({ recordRuntimeEvents,
   app: createHttpApp({ config, service: { recordRuntimeEvents, recordTelemetryWatermark: vi.fn().mockResolvedValue(undefined) } as unknown as ControlPlaneService,

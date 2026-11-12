@@ -1,3 +1,4 @@
+import { runnerAuthEnv } from "../../test/runner-auth-fixture.js";
 import { resolve } from "node:path";
 import { describe, it, expect, vi } from "vitest";
 import { loadConfig } from "../config.js";
@@ -10,7 +11,7 @@ import type { RunnerPlaygroundClient } from "../playground/service.js";
 const config = loadConfig({
   NODE_ENV: "test",
   CONTROLLER_DATABASE_URL: "postgresql://user:pass@localhost/test",
-  CONTROLLER_RUNNER_TOKEN: "runner-token-that-is-at-least-32-characters",
+  ...runnerAuthEnv("runner-token-that-is-at-least-32-characters"),
   CONTROLLER_ARTIFACT_SIGNING_KEY_PATH: "/tmp/unused.pem",
   CONTROLLER_POLICY_CATALOG_DIR: resolve(
     "../runner/toolkit/policy_library/assets",
@@ -68,7 +69,7 @@ function setup(authenticated = true, scan = false) {
     } as unknown as ControlPlaneService,
     runnerControl: {} as RunnerControlServer,
     metrics: {} as ControllerMetrics,
-    playgroundRunner: { testPath } as unknown as RunnerPlaygroundClient,
+    playgroundRunner: { forBaseUrl: () => ({ testPath }) } as unknown as RunnerPlaygroundClient,
   });
   return {
     testPath,

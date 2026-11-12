@@ -1,3 +1,4 @@
+import { runnerAuthEnv } from "../../test/runner-auth-fixture.js";
 import { withTestProject } from "../db/postgres-test-database.js";
 import { freezeTestSuite } from "../domain/test-suite.js";
 import { completeReport, getReport } from "../db/report-test-utils.js";
@@ -72,7 +73,7 @@ describe.skipIf(!url)("Guardrail release packages between isolated environments"
   let uatArtifactKey: ReturnType<typeof keyPair>;
   let prodArtifactKey: ReturnType<typeof keyPair>;
   const environment = (artifactKey: string, extra: Record<string, string>) => loadConfig({
-    NODE_ENV: "test", CONTROLLER_DATABASE_URL: url!, CONTROLLER_RUNNER_TOKEN: "runner-token-that-is-at-least-32-characters",
+    NODE_ENV: "test", CONTROLLER_DATABASE_URL: url!, ...runnerAuthEnv("runner-token-that-is-at-least-32-characters"),
     CONTROLLER_ARTIFACT_SIGNING_KEY_PATH: artifactKey, CONTROLLER_POLICY_CATALOG_DIR: catalogDir, CONTROLLER_PROTO_PATH: protoPath,
     BETTER_AUTH_SECRET: "better-auth-secret-that-is-at-least-32-characters", ...extra,
   });

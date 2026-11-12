@@ -1,4 +1,5 @@
 // @vitest-environment node
+import { runnerAuthEnv } from "../../test/runner-auth-fixture.js";
 import { randomUUID } from "node:crypto";
 import { resolve } from "node:path";
 import { Registry } from "prom-client";
@@ -21,8 +22,8 @@ const rootSecret = "group-runtime-tests-root-secret";
 const providerA = randomUUID(), providerC = randomUUID(), modelA = randomUUID(), modelC = randomUUID();
 const sourceA = randomUUID(), sourceC = randomUUID();
 const config = loadConfig({ NODE_ENV: "test", CONTROLLER_DATABASE_URL: "postgresql://unused:unused@localhost/unused",
-  CONTROLLER_RUNNER_TOKEN: "legacy-token-at-least-thirty-two-characters", BETTER_AUTH_SECRET: "better-auth-secret-at-least-thirty-two-characters",
-  CONTROLLER_RUNNER_POOL_TOKENS_JSON: JSON.stringify({ "pool-ab": "ab-pool-token-at-least-thirty-two-characters", "pool-c": "c-pool-token-at-least-thirty-two-characters" }),
+  ...runnerAuthEnv("legacy-token-at-least-thirty-two-characters"), BETTER_AUTH_SECRET: "better-auth-secret-at-least-thirty-two-characters",
+  ...runnerAuthEnv({ "pool-ab": "ab-pool-token-at-least-thirty-two-characters", "pool-c": "c-pool-token-at-least-thirty-two-characters" }),
   CONTROLLER_ARTIFACT_SIGNING_KEY_PATH: "/tmp/test-key.pem" });
 
 describe.skipIf(!url)("explicit group runtime Model grants", () => {
@@ -46,7 +47,7 @@ describe.skipIf(!url)("explicit group runtime Model grants", () => {
     return fingerprint;
   };
   const grant = (groupId = "group-c", expectedVersion = 0, sourceRevisionId = sourceC, expectedSourceFingerprint = fingerprintC) =>
-    models.groupRuntime.update(groupId, { mode: "scoped", expectedVersion, sourceRevisionId, expectedSourceFingerprint }, "group-model-admin", true);
+    models.groupRuntime.update(groupId, { mode: "scoped", expectedVersion, sourceRevisionId, expectedSourceFingerprint }, "group-model-admin");
   const credential = (refs: string[], pool = "pool-c") => models.resolveCredentials(refs, undefined, pool);
   const app = (role = "admin") => createHttpApp({ config, models, service: {} as ControlPlaneService,
     auth: { api: { getSession: vi.fn(async () => ({ user: { id: "group-model-admin", projectId: "projectA", role } })) } } as unknown as ControllerAuth,
@@ -147,18 +148,15 @@ describe.skipIf(!url)("explicit group runtime Model grants", () => {
 
   it("revokes into blocked mode and rejects platform inheritance for custom groups", async () => {
     await grant();
-    const blocked = await models.groupRuntime.update("group-c", { mode: "blocked", expectedVersion: 1 }, "group-model-admin", true);
+    const blocked = await models.groupRuntime.update("group-c", { mode: "blocked", expectedVersion: 1 }, "group-model-admin");
     expect(blocked).toMatchObject({ mode: "blocked", version: 2, modelIds: [], providerIds: [] });
     expect(await credential([providerA, providerC])).toEqual({});
     expect(await models.configurationForPool("pool-c")).toMatchObject({ models: [], assignments: emptyModelAssignments() });
-    await expect(models.groupRuntime.assertAuthenticationCompatibility(false)).rejects.toThrow("Pool authentication");
-    await expect(models.groupRuntime.update("group-c", {mode:"platform",expectedVersion:2},"group-model-admin",true)).rejects.toThrow("Only the default group");
+    await expect(models.groupRuntime.update("group-c", {mode:"platform",expectedVersion:2},"group-model-admin")).rejects.toThrow("Only the default group");
     expect(await credential([providerA])).toEqual({});
   });
 
-  it("rejects stale source validation, private Models, missing pool authentication and stale policy versions", async () => {
-    await expect(models.groupRuntime.update("group-c", { mode: "scoped", expectedVersion: 0, sourceRevisionId: sourceC, expectedSourceFingerprint: fingerprintC }, "group-model-admin", false))
-      .rejects.toMatchObject({ code: "group_models_require_pool_authentication" });
+  it("rejects stale source validation, private Models and stale policy versions", async () => {
     await expect(grant("group-c", 0, sourceC, "0".repeat(64))).rejects.toMatchObject({ code: "group_model_source_changed" });
     await database.pool.query("UPDATE model_definition SET timeout_seconds=99 WHERE id=$1", [modelC]);
     await expect(grant()).rejects.toMatchObject({ code: "group_model_validation_required" });
@@ -202,9 +200,9 @@ describe.skipIf(!url)("explicit group runtime Model grants", () => {
 
   it("uses only the default group for platform activation", async () => {
     expect(await models.groupRuntime.platformActivationPoolId()).toBe("default");
-    await models.groupRuntime.update("default", { mode: "blocked", expectedVersion: 0 }, "group-model-admin", true);
+    await models.groupRuntime.update("default", { mode: "blocked", expectedVersion: 0 }, "group-model-admin");
     expect(await models.groupRuntime.platformActivationPoolId()).toBeNull();
-    await models.groupRuntime.update("group-ab", { mode: "blocked", expectedVersion: 0 }, "group-model-admin", true);
+    await models.groupRuntime.update("group-ab", { mode: "blocked", expectedVersion: 0 }, "group-model-admin");
     await grant();
     expect(await models.groupRuntime.platformActivationPoolId()).toBeNull();
   });
@@ -225,7 +223,7 @@ describe.skipIf(!url)("explicit group runtime Model grants", () => {
     // A custom pool cannot acknowledge a platform activation.
     await database.pool.query("UPDATE model_configuration_revision SET state='activating',generation=2 WHERE id=$1", [sourceC]);
     await database.pool.query("UPDATE controller_state SET desired_generation=2 WHERE id='singleton'");
-    if (mode === "blocked") await models.groupRuntime.update("group-c", { mode: "blocked", expectedVersion: 0 }, "group-model-admin", true);
+    if (mode === "blocked") await models.groupRuntime.update("group-c", { mode: "blocked", expectedVersion: 0 }, "group-model-admin");
     else await grant("group-c", 0, sourceA, fingerprintA);
     expect(await models.finalizeActivation(sourceC, "pool-c")).toBe(false);
     await models.failActivation(sourceC, "stale group rejection", "pool-c");
@@ -249,7 +247,7 @@ describe.skipIf(!url)("explicit group runtime Model grants", () => {
     const finalize = models.finalizeActivation(sourceC, "default");
     await observed;
     let switched = false;
-    const replace = models.groupRuntime.update("default", { mode: "blocked", expectedVersion: 0 }, "group-model-admin", true)
+    const replace = models.groupRuntime.update("default", { mode: "blocked", expectedVersion: 0 }, "group-model-admin")
       .then(value => { switched = true; return value; });
     await new Promise(resolve => setTimeout(resolve, 25));
     expect(switched).toBe(false);

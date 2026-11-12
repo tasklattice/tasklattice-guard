@@ -764,6 +764,7 @@ export const runnerInstances = pgTable("runner_instance", {
   load: jsonb("load").$type<RunnerLoad>(),
   connectedAt: timestamp("connected_at", { withTimezone: true }).notNull().defaultNow(),
   lastHeartbeatAt: timestamp("last_heartbeat_at", { withTimezone: true }).notNull().defaultNow(),
+  telemetryDrainedAt: timestamp("telemetry_drained_at", { withTimezone: true }),
   disconnectedAt: timestamp("disconnected_at", { withTimezone: true }),
   updatedAt,
 }, (table) => [index("runner_instance_pool_idx").on(table.poolId, table.runnerId)]);
@@ -859,13 +860,6 @@ export const runtimeOverviewBuckets = pgTable("runtime_overview_bucket", {
 }, t => [primaryKey({ columns: [t.projectId, t.resolution, t.bucketStart, t.guardrailId, t.routerId, t.endpointId] }),
   index("runtime_overview_time_idx").on(t.resolution, t.bucketStart)]);
 
-export const telemetryWatermarks = pgTable("telemetry_watermark", {
-  runnerId: text("runner_id").primaryKey(),
-  lastEventOccurredAt: timestamp("last_event_occurred_at", { withTimezone: true }),
-  lastReceivedAt: timestamp("last_received_at", { withTimezone: true }).notNull().defaultNow(),
-  updatedAt,
-});
-
 // Operational cost records intentionally live outside Guardrail definitions/packages.
 export const modelPriceRevisions = pgTable("model_price_revision", {
   id: text("id").primaryKey(),
@@ -954,7 +948,6 @@ export const schema = {
   endpoints,
   runnerInstances,
   runtimeEvents,
-  telemetryWatermarks,
   auditEvents,
   outboxEvents,
 };

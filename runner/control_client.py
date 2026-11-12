@@ -88,8 +88,6 @@ class RunnerControlClient:
         self._synchronization_lost.set()
         self._synchronization_epoch = 0
         lease_enforcement = getattr(settings, "experimental_lease_enforcement", False)
-        if lease_enforcement and not settings.control_token:
-            raise ValueError("Experimental lease enforcement requires a Runner pool token.")
         self._serving_lease = ServingLease(5.0) if lease_enforcement else None
         self._lease_snapshot_nonce: str | None = None
         self._lease_snapshot_ready = asyncio.Event()
@@ -208,7 +206,7 @@ class RunnerControlClient:
         channel = self._channel()
         stub = services.RunnerControlStub(channel)
         heartbeat = asyncio.create_task(self._heartbeats())
-        metadata = (("authorization", f"Bearer {self._settings.control_token or self._settings.controller_token}"),)
+        metadata = (("authorization", f"Bearer {self._settings.control_token}"),)
         # Own the sender task explicitly. gRPC's iterator consumer can remain
         # blocked on our empty queue after the server has closed the RPC.
         response_stream = stub.Connect(metadata=metadata)
@@ -335,6 +333,8 @@ class RunnerControlClient:
                 applied_generation=self._store.generation,
                 applied_protection_generation=self._store.protection_generation,
                 load=self._metrics.heartbeat(),
+                telemetry_drained_at_unix_ms=(self._telemetry.drained_at_unix_ms
+                                              if self._telemetry is not None else None),
                 project_admission_snapshot=(admission_snapshot_to_proto(self._metrics.project_admission_snapshot_json())
                     if callable(getattr(self._metrics, "project_admission_snapshot_json", None)) else None),
             ),
@@ -560,7 +560,7 @@ class RunnerControlClient:
             response = await client.post(
                 f"{base_url}/api/internal/v1/model-credentials/resolve",
                 headers={
-                    "authorization": f"Bearer {self._settings.control_token or self._settings.controller_token}",
+                    "authorization": f"Bearer {self._settings.control_token}",
                     "content-type": "application/json",
                 },
                 json={"refs": refs, **({"leaseId": lease_id} if lease_id else {})},

@@ -24,7 +24,9 @@ test('setup preserves provider settings and reuses credentials and keys', async 
   const first = parseEnv(firstText);
   assert.ok(firstText.includes(providerLine));
   assert.equal(first.CONTROLLER_DATABASE_URL, 'postgresql://custom:custom@localhost:6543/custom');
-  assert.equal(first.CONTROLLER_RUNNER_TOKEN, first.GUARD_CONTROLLER_TOKEN);
+  assert.deepEqual(JSON.parse(first.CONTROLLER_RUNNER_POOL_TOKENS_JSON), { default: first.GUARD_RUNNER_CONTROL_TOKEN });
+  assert.deepEqual(JSON.parse(first.CONTROLLER_RUNNER_HTTP_TOKENS_JSON), { default: first.GUARD_CONTROLLER_HTTP_TOKEN });
+  assert.notEqual(first.GUARD_RUNNER_CONTROL_TOKEN, first.GUARD_CONTROLLER_HTTP_TOKEN);
   assert.equal(first.CONTROLLER_METRICS_TOKEN, first.GUARD_METRICS_TOKEN);
   assert.equal(first.CONTROLLER_BOOTSTRAP_ADMIN_PASSWORD, 'password');
   assert.equal(first.CONTROLLER_BOOTSTRAP_USER_USERNAME, 'user');
@@ -51,9 +53,9 @@ test('setup overwrites configured bootstrap accounts', async t => {
 });
 test('setup refuses mismatched existing tokens without changing env', async t => {
   const root = fixture(t);
-  const original = `CONTROLLER_RUNNER_TOKEN=${'a'.repeat(32)}\nGUARD_CONTROLLER_TOKEN=${'b'.repeat(32)}\n`;
+  const original = `CONTROLLER_RUNNER_POOL_TOKENS_JSON='${JSON.stringify({ default: 'a'.repeat(32) })}'\nGUARD_RUNNER_CONTROL_TOKEN=${'b'.repeat(32)}\n`;
   writeFileSync(join(root, '.env'), original);
-  await assert.rejects(setupDevelopment(root), /tokens differ/);
+  await assert.rejects(setupDevelopment(root), /disagree for the default Pool/);
   assert.equal(readFileSync(join(root, '.env'), 'utf8'), original);
 });
 test('setup never silently replaces a missing configured signing key', async t => {

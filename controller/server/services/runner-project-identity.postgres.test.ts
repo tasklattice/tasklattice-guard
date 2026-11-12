@@ -1,4 +1,5 @@
 // @vitest-environment node
+import { runnerAuthEnv } from "../../test/runner-auth-fixture.js";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { createTestDatabase } from "../db/postgres-test-database.js";
 import { loadConfig } from "../config.js";
@@ -18,7 +19,7 @@ describe.skipIf(!url)("Project names and dedicated Runner identity", () => {
     await database.pool.query(`INSERT INTO auth_user(id,username,email,role) VALUES ('admin','Admin','admin@test.invalid','admin');
       INSERT INTO runner_pool(id,name,is_default,runtime_url) VALUES ('default','runner-default',true,'http://default.invalid');
       INSERT INTO controller_state(id,desired_generation) VALUES ('singleton',0);`);
-    const config = loadConfig({NODE_ENV:"test",CONTROLLER_DATABASE_URL:url!,CONTROLLER_RUNNER_TOKEN:"test-runner-token-at-least-32-characters",
+    const config = loadConfig({NODE_ENV:"test",CONTROLLER_DATABASE_URL:url!,...runnerAuthEnv("test-runner-token-at-least-32-characters"),
       BETTER_AUTH_SECRET:"test-auth-secret-at-least-32-characters",CONTROLLER_ARTIFACT_SIGNING_KEY_PATH:"/unused.pem"});
     projects = new ProjectService(database.db, async () => {}); groups = new ProjectGroupService(database.db);
     routing = new ProjectGroupRouting(database.db, config); control = new ControlPlaneService(database.db, config);

@@ -1,4 +1,5 @@
 // @vitest-environment node
+import { runnerAuthEnv } from "../../test/runner-auth-fixture.js";
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { sql } from 'drizzle-orm';
 import { queryRuntimeMetrics } from './runtime-metrics.js';
@@ -13,7 +14,7 @@ describe.skipIf(!process.env.GUARD_TEST_POSTGRES_URL)('bounded runtime observabi
   let database: Awaited<ReturnType<typeof createTestDatabase>>;
   let db: ControllerDatabase;
   const config = loadConfig({ NODE_ENV: 'test', CONTROLLER_DATABASE_URL: process.env.GUARD_TEST_POSTGRES_URL ?? 'postgresql://unused:unused@localhost/unused',
-    CONTROLLER_RUNNER_TOKEN: 'runner-token-that-is-at-least-32-characters', CONTROLLER_ARTIFACT_SIGNING_KEY_PATH: '/tmp/unused-signing-key.pem',
+    ...runnerAuthEnv('runner-token-that-is-at-least-32-characters'), CONTROLLER_ARTIFACT_SIGNING_KEY_PATH: '/tmp/unused-signing-key.pem',
     BETTER_AUTH_SECRET: 'better-auth-secret-that-is-at-least-32-characters' });
   const makeService = () => new ControlPlaneService(db, config);
   let service: ControlPlaneService;

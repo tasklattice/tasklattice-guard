@@ -30,7 +30,7 @@ assert not os.path.exists("/build/controller")
 with tempfile.TemporaryDirectory() as directory:
     key = Path(directory) / "artifact-public.pem"
     key.write_bytes(Ed25519PrivateKey.generate().public_key().public_bytes(Encoding.PEM, PublicFormat.SubjectPublicKeyInfo))
-    os.environ.update(GUARD_CONTROLLER_TOKEN="offline-test-token-not-a-real-secret", GUARD_ARTIFACT_PUBLIC_KEY_PATH=str(key), GUARD_RUNNER_STATE_PATH=directory)
+    os.environ.update(GUARD_RUNNER_CONTROL_TOKEN="offline-test-control-token-not-a-real-secret", GUARD_CONTROLLER_HTTP_TOKEN="offline-test-http-token-not-a-real-secret", GUARD_ARTIFACT_PUBLIC_KEY_PATH=str(key), GUARD_RUNNER_STATE_PATH=directory)
     from runner.main import app
     assert app is not None
 print("Runner imports and non-root image contract: OK")

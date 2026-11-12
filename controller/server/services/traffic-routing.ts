@@ -6,7 +6,7 @@ import { isDeepStrictEqual } from "node:util";
 import { randomUUID } from "node:crypto";
 import { and, asc, desc, eq, getTableColumns, gte, inArray, isNull, lte, lt, ne, or, sql } from "drizzle-orm";
 import type { ControllerDatabase } from "../db/client.js";
-import { auditEvents, controllerState, endpoints, guardrails, guardrailVersions, routeAssignments, runnerInstances, runnerPools, telemetryWatermarks, projects, trafficRouterChangeRequests, trafficRouters, trafficRouterRevisions, user, type RouterRevisionContext } from "../db/schema.js";
+import { auditEvents, controllerState, endpoints, guardrails, guardrailVersions, routeAssignments, runnerInstances, runnerPools, projects, trafficRouterChangeRequests, trafficRouters, trafficRouterRevisions, user, type RouterRevisionContext } from "../db/schema.js";
 import { ConflictError, ControllerError, NotFoundError, ValidationError } from "../domain/errors.js";
 import { capabilityIssues, routingIssues, type RouterChangeRequest, type RouterDraft, type SelectorExpression } from "../../shared/traffic-routing.js";
 import { advisoryTransactionLock } from "../db/postgres-locks.js";
@@ -19,7 +19,7 @@ import {
   resourceWritePredicate,
   projectOwnerForCreate,
 } from "./project-context.js";
-import { telemetryBatches, telemetryWatermarkBatch } from "./telemetry-batches.js";
+import { telemetryBatches } from "./telemetry-batches.js";
 
 /** How long a Runner load check of an imported version counts as current. */
 export const IMPORTED_VERSION_CHECK_TTL_MS = 10 * 60_000;
@@ -84,7 +84,7 @@ const endpointContext = (rows: Array<{ id: string; name: string; adapter: string
 
 type Tx = Parameters<Parameters<ControllerDatabase["transaction"]>[0]>[0];
 export class TrafficRoutingService {
-  constructor(private db: ControllerDatabase, private readonly scopedTelemetry = false) {}
+  constructor(private db: ControllerDatabase) {}
   async list() {
     const [rows, bindings, runners, changes] = await Promise.all([
       this.db.select().from(trafficRouters).where(and(
@@ -509,14 +509,10 @@ export class TrafficRoutingService {
     const pools = await this.db.select({ id: runnerPools.id }).from(runnerPools)
       .innerJoin(projects, projectPoolAllocation).where(eq(projects.id, router.projectId));
     const poolIds = pools.map(pool => pool.id);
-    const watermarks = poolIds.length ? await this.db.select({ poolId: runnerInstances.poolId, at: telemetryWatermarks.lastReceivedAt, heartbeat: runnerInstances.lastHeartbeatAt }).from(runnerInstances)
-      .leftJoin(telemetryWatermarks, eq(telemetryWatermarks.runnerId, runnerInstances.runnerId))
+    const watermarks = poolIds.length ? await this.db.select({ poolId: runnerInstances.poolId, at: runnerInstances.telemetryDrainedAt, heartbeat: runnerInstances.lastHeartbeatAt }).from(runnerInstances)
       .where(and(inArray(runnerInstances.poolId, poolIds), ne(runnerInstances.status, "offline"))) : [];
     const everyPoolHasRunner = poolIds.length > 0 && poolIds.every(poolId => watermarks.some(r => r.poolId === poolId));
-    // Scoped ingestion cannot yet establish a Runner/boot watermark. A fresh
-    // watermark left by legacy mode (or a mixed-version writer) is not proof
-    // that the quarantined routing events are complete.
-    const telemetryFresh = !this.scopedTelemetry && everyPoolHasRunner && watermarks.every(r => r.at && until.getTime() - r.at.getTime() < 60000 && until.getTime() - r.heartbeat.getTime() < 60000);
+    const telemetryFresh = everyPoolHasRunner && watermarks.every(r => r.at && until.getTime() - r.at.getTime() < 60000 && until.getTime() - r.heartbeat.getTime() < 60000);
     const dates = watermarks.flatMap(r => r.at ? [r.at.getTime()] : []);
     const total = rows.reduce((n, r) => n + r.count, 0), unassigned = rows.filter(r => r.assignmentStatus === "unassigned").reduce((n, r) => n + r.count, 0);
     const revisions = await this.revisions(id);
@@ -525,7 +521,7 @@ export class TrafficRoutingService {
       .groupBy(sql`date_bin(interval '15 minutes', ${routeAssignments.occurredAt}, timestamptz '2000-01-01')`, routeAssignments.routeId);
     return { since: since.toISOString(), until: until.toISOString(), rows, total, assigned: total - unassigned, unassigned, trend,
       revisions: revisions.map(r => ({ revision: r.revision, snapshot: r.snapshot, context: r.context })),
-      telemetryFresh, completeness: telemetryFresh ? "current" : "delayed_or_unavailable", dataWatermark: !this.scopedTelemetry && everyPoolHasRunner && dates.length === watermarks.length ? new Date(Math.min(...dates)).toISOString() : null,
+      telemetryFresh, completeness: telemetryFresh ? "current" : "delayed_or_unavailable", dataWatermark: everyPoolHasRunner && dates.length === watermarks.length ? new Date(Math.min(...dates)).toISOString() : null,
       unit: "logical_call", multipleRevisions: new Set(rows.map(r => r.routerRevision)).size > 1 };
   }
   async expireCalls() {
@@ -534,7 +530,7 @@ export class TrafficRoutingService {
   }
   private lastRetentionAt = 0;
   async recordEvents(events: readonly RoutingEvent[], quarantine = false, authenticatedPoolId?: string, transaction?: Tx) {
-    const restricted = quarantine || this.scopedTelemetry || authenticatedPoolId !== undefined;
+    const restricted = quarantine || authenticatedPoolId !== undefined;
     if (Date.now() - this.lastRetentionAt > 3600000) {
       await (transaction ?? this.db).delete(routeAssignments).where(lt(routeAssignments.occurredAt, new Date(Date.now() - 30 * 86400000)));
       this.lastRetentionAt = Date.now();
@@ -548,7 +544,6 @@ export class TrafficRoutingService {
         .from(trafficRouters).where(inArray(trafficRouters.id, routerIds)) : []).map(row => [row.id, row.projectId]));
       const accepts = await guardrailTelemetryFilter(tx, batch.map(event => event.guardrailId));
       if (batch.some(event => event.allocationContextId)) await lockEndpointTelemetryContextReaders(tx);
-      const watermarks = telemetryWatermarkBatch(tx);
       return { write: async (event: RoutingEvent) => {
         if (!accepts(event.guardrailId, event.decisionAt)) return;
         if (event.decisionAt.getTime() < Date.now() - 30 * 86400000) return;
@@ -591,13 +586,11 @@ export class TrafficRoutingService {
           AND ${routeAssignments.guardrailVersion} = excluded.guardrail_version
           AND ${routeAssignments.assignmentStatus} = excluded.assignment_status
           AND ${routeAssignments.occurredAt} = excluded.occurred_at` });
-        if (!restricted) watermarks.add(event.runnerId, event.occurredAt);
-      }, finish: () => watermarks.flush() };
+      } };
     };
     if (transaction) {
       const writer = await prepare(transaction, events);
       for (const event of events) await writer.write(event);
-      await writer.finish();
     } else await telemetryBatches(this.db, events, prepare);
   }
 

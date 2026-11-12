@@ -1,4 +1,5 @@
 // @vitest-environment node
+import { runnerAuthEnv } from "../../test/runner-auth-fixture.js";
 import { describe, expect, it, vi } from "vitest";
 import { Registry } from "prom-client";
 import { createHttpApp } from "./app.js";
@@ -12,7 +13,7 @@ function setup(role: string | null) {
   const view = vi.fn(async () => ({ observedAt: 1, source: "authenticated_runner_heartbeat", controllerLocal: true, staleAfterMs: 30000,
     available: false, reason: "measurements_unavailable", selectedPoolId: null, pools: [], groups: [], projects: [], sources: [] }));
   const config = loadConfig({ NODE_ENV: "test", CONTROLLER_DATABASE_URL: "postgresql://unused:unused@localhost/unused",
-    CONTROLLER_RUNNER_TOKEN: "runner-token-that-is-at-least-32-characters", BETTER_AUTH_SECRET: "better-auth-secret-that-is-at-least-32-characters",
+    ...runnerAuthEnv("runner-token-that-is-at-least-32-characters"), BETTER_AUTH_SECRET: "better-auth-secret-that-is-at-least-32-characters",
     CONTROLLER_ARTIFACT_SIGNING_KEY_PATH: "/tmp/test-key.pem" });
   const app = createHttpApp({ config,
     auth: { api: { getSession: vi.fn(async () => role ? { session: { id: "fixture-session", activeProjectId: "projectA" }, user: { id: "actor", role, projectId: "projectA" } } : null) } } as unknown as ControllerAuth,

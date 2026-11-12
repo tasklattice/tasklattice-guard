@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import shutil
 import subprocess
 from pathlib import Path
@@ -29,112 +30,87 @@ def render(tmp_path: Path, pool_auth: dict | None = None, *, http_auth: dict | N
 
 
 def auth_refs():
-    return {"enabled": True, "controllerSecret": "controller-pool-map", "controllerKey": "map.json",
+    return {"controllerSecret": "controller-pool-map", "controllerKey": "map.json",
             "runnerSecrets": {"default": {"name": "default-pool-token", "key": "token"}}}
 
 
 def http_refs():
-    return {"enabled": True, "controllerSecret": "controller-http-map", "controllerKey": "http-map.json",
+    return {"controllerSecret": "controller-http-map", "controllerKey": "http-map.json",
             "runnerSecrets": {"default": {"name": "default-http-token", "key": "token"}}}
 
 
-def env(document, name):
-    entries = document["spec"]["template"]["spec"]["containers"][0]["env"]
-    return next(item for item in entries if item["name"] == name)
+def runner_auth_refs(documents):
+    workloads = {doc["metadata"]["labels"]["app.kubernetes.io/component"]: doc
+                 for doc in documents if doc["kind"] in {"Deployment", "StatefulSet"}}
+    names = {
+        "controller": ("CONTROLLER_RUNNER_POOL_TOKENS_JSON", "CONTROLLER_RUNNER_HTTP_TOKENS_JSON"),
+        "runner": ("GUARD_RUNNER_CONTROL_TOKEN", "GUARD_CONTROLLER_HTTP_TOKEN"),
+    }
+    return {
+        env["name"]: env["valueFrom"]["secretKeyRef"]
+        for role, keys in names.items()
+        for env in workloads[role]["spec"]["template"]["spec"]["containers"][0]["env"]
+        if env["name"] in keys
+    }
 
 
-def test_legacy_chart_does_not_enable_scoped_authentication(tmp_path: Path):
+def bootstrap_specs(documents):
+    job = next(doc for doc in documents if doc["kind"] == "Job")
+    env = job["spec"]["template"]["spec"]["containers"][0]["env"]
+    return json.loads(next(item["value"] for item in env if item["name"] == "BOOTSTRAP_SECRETS"))
+
+
+def test_default_pool_uses_matching_managed_secret_references(tmp_path: Path):
     result = render(tmp_path)
     assert result.returncode == 0, result.stderr
-    assert "CONTROLLER_RUNNER_POOL_TOKENS_JSON" not in result.stdout
-    assert "GUARD_RUNNER_CONTROL_TOKEN" not in result.stdout
-    assert "GUARD_CONTROLLER_HTTP_TOKEN" not in result.stdout
-    assert "CONTROLLER_RUNNER_HTTP_TOKENS_JSON" not in result.stdout
+    documents = [doc for doc in yaml.safe_load_all(result.stdout) if doc]
+    secret = next(spec for spec in bootstrap_specs(documents) if spec["kind"] == "runnerAuth")["name"]
+    assert runner_auth_refs(documents) == {
+        "CONTROLLER_RUNNER_POOL_TOKENS_JSON": {"name": secret, "key": "pool-tokens.json"},
+        "CONTROLLER_RUNNER_HTTP_TOKENS_JSON": {"name": secret, "key": "pool-http-tokens.json"},
+        "GUARD_RUNNER_CONTROL_TOKEN": {"name": secret, "key": "runner-control-token"},
+        "GUARD_CONTROLLER_HTTP_TOKEN": {"name": secret, "key": "controller-http-token"},
+    }
+    assert all(doc["kind"] != "Secret" or doc["metadata"]["name"] != secret for doc in documents)
+    role = next(doc for doc in documents if doc["kind"] == "Role")
+    assert secret in role["rules"][0]["resourceNames"]
 
 
-def test_pool_tokens_are_injected_only_as_secret_references(tmp_path: Path):
-    result = render(tmp_path, auth_refs())
+def test_external_runner_roles_use_only_the_referenced_secret_keys(tmp_path: Path):
+    control = auth_refs()
+    inbound = http_refs()
+    result = render(tmp_path, control, http_auth=inbound)
     assert result.returncode == 0, result.stderr
     documents = [doc for doc in yaml.safe_load_all(result.stdout) if doc]
-    controller = next(doc for doc in documents if doc.get("kind") == "Deployment"
-                      and doc["metadata"]["labels"].get("app.kubernetes.io/component") == "controller")
-    statefulsets = [doc for doc in documents if doc.get("kind") == "StatefulSet"
-                    and doc["metadata"]["labels"].get("app.kubernetes.io/component") == "runner"]
-
-    assert env(controller, "CONTROLLER_RUNNER_POOL_TOKENS_JSON")["valueFrom"]["secretKeyRef"] == {
-        "name": "controller-pool-map", "key": "map.json"}
-    assert len(statefulsets) == 1
-    for item in statefulsets:
-        pool = item["metadata"]["labels"]["tasklattice.io/runner-pool"]
-        assert env(item, "GUARD_RUNNER_CONTROL_TOKEN")["valueFrom"]["secretKeyRef"] == auth_refs()["runnerSecrets"][pool]
+    assert runner_auth_refs(documents) == {
+        "CONTROLLER_RUNNER_POOL_TOKENS_JSON": {"name": control["controllerSecret"], "key": control["controllerKey"]},
+        "CONTROLLER_RUNNER_HTTP_TOKENS_JSON": {"name": inbound["controllerSecret"], "key": inbound["controllerKey"]},
+        "GUARD_RUNNER_CONTROL_TOKEN": control["runnerSecrets"]["default"],
+        "GUARD_CONTROLLER_HTTP_TOKEN": inbound["runnerSecrets"]["default"],
+    }
+    assert all(spec["kind"] != "runnerAuth" for spec in bootstrap_specs(documents))
 
 
-@pytest.mark.parametrize("mutation", ["missing_pool", "unknown_pool", "controller_key", "missing_map", "disabled_refs"])
-def test_invalid_or_partial_pool_configuration_fails_closed(tmp_path: Path, mutation: str):
-    refs = auth_refs()
+@pytest.mark.parametrize("role", ["control", "http"])
+@pytest.mark.parametrize("mutation", ["missing_pool", "unknown_pool", "controller_key", "missing_map"])
+def test_invalid_external_runner_roles_fail_render(tmp_path: Path, role: str, mutation: str):
+    control, inbound = auth_refs(), http_refs()
+    refs = control if role == "control" else inbound
     if mutation == "missing_pool":
         del refs["runnerSecrets"]["default"]
     elif mutation == "unknown_pool":
         refs["runnerSecrets"]["typo"] = {"name": "other-token", "key": "token"}
     elif mutation == "controller_key":
         refs["runnerSecrets"]["default"] = {"name": refs["controllerSecret"], "key": refs["controllerKey"]}
-    elif mutation == "missing_map":
+    else:
         refs["controllerSecret"] = ""
-    else:
-        refs["enabled"] = False
-    result = render(tmp_path, refs)
-    assert result.returncode != 0
-    assert "security.poolAuthentication" in result.stderr or "each Runner pool" in result.stderr
-
-
-@pytest.mark.parametrize("scoped_telemetry", [False, True])
-def test_inbound_http_authority_uses_separate_per_pool_secret_refs(tmp_path: Path, scoped_telemetry: bool):
-    control = auth_refs()
-    control["scopedTelemetry"] = scoped_telemetry
-    result = render(tmp_path, control, http_auth=http_refs())
-    assert result.returncode == 0, result.stderr
-    documents = [doc for doc in yaml.safe_load_all(result.stdout) if doc]
-    controller = next(doc for doc in documents if doc.get("kind") == "Deployment"
-                      and doc["metadata"]["labels"].get("app.kubernetes.io/component") == "controller")
-    assert env(controller, "CONTROLLER_RUNNER_HTTP_TOKENS_JSON")["valueFrom"]["secretKeyRef"] == {
-        "name": "controller-http-map", "key": "http-map.json"}
-    config = next(doc for doc in documents if doc.get("kind") == "ConfigMap" and "CONTROLLER_RUNNER_SCOPED_TELEMETRY" in doc.get("data", {}))
-    assert config["data"]["CONTROLLER_RUNNER_SCOPED_TELEMETRY"] == str(scoped_telemetry).lower()
-    for runner in [doc for doc in documents if doc.get("kind") == "StatefulSet"
-                   and doc["metadata"]["labels"].get("app.kubernetes.io/component") == "runner"]:
-        pool = runner["metadata"]["labels"]["tasklattice.io/runner-pool"]
-        assert env(runner, "GUARD_CONTROLLER_HTTP_TOKEN")["valueFrom"]["secretKeyRef"] == http_refs()["runnerSecrets"][pool]
-        assert env(runner, "GUARD_RUNNER_CONTROL_TOKEN")["valueFrom"]["secretKeyRef"] == control["runnerSecrets"][pool]
-        names = {item["name"] for item in runner["spec"]["template"]["spec"]["containers"][0]["env"]}
-        assert ("GUARD_CONTROLLER_TOKEN" not in names) == scoped_telemetry
-        assert ("GUARD_RUNNER_SCOPED_TELEMETRY" in names) == scoped_telemetry
-
-
-@pytest.mark.parametrize("mutation", ["missing_pool", "unknown_pool", "controller_key", "control_role_key", "control_map_key", "missing_map", "disabled_refs", "missing_control_mode"])
-def test_invalid_http_roles_fail_closed(tmp_path: Path, mutation: str):
-    control = auth_refs()
-    inbound = http_refs()
-    if mutation == "missing_pool":
-        del inbound["runnerSecrets"]["default"]
-    elif mutation == "unknown_pool":
-        inbound["runnerSecrets"]["typo"] = {"name": "unused", "key": "token"}
-    elif mutation == "controller_key":
-        inbound["runnerSecrets"]["default"] = {"name": inbound["controllerSecret"], "key": inbound["controllerKey"]}
-    elif mutation == "control_role_key":
-        inbound["runnerSecrets"]["default"] = control["runnerSecrets"]["default"].copy()
-    elif mutation == "control_map_key":
-        inbound["controllerSecret"], inbound["controllerKey"] = control["controllerSecret"], control["controllerKey"]
-    elif mutation == "missing_map":
-        inbound["controllerSecret"] = ""
-    elif mutation == "disabled_refs":
-        inbound["enabled"] = False
-    else:
-        control = None
     result = render(tmp_path, control, http_auth=inbound)
     assert result.returncode != 0
 
 
-def test_scoped_telemetry_cannot_be_enabled_without_pool_credentials(tmp_path: Path):
-    result = render(tmp_path, {"enabled": False, "scopedTelemetry": True})
+def test_runner_roles_require_distinct_secret_keys(tmp_path: Path):
+    control, inbound = auth_refs(), http_refs()
+    inbound["runnerSecrets"]["default"] = control["runnerSecrets"]["default"]
+    result = render(tmp_path, control, http_auth=inbound)
     assert result.returncode != 0
-    assert "scopedTelemetry" in result.stderr
+    assert "distinct Secret keys" in result.stderr

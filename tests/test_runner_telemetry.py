@@ -36,7 +36,7 @@ def _wal_line(event: dict) -> str:
 
 @pytest.mark.asyncio
 async def test_runtime_events_remain_in_wal_until_controller_accepts_them(tmp_path):
-    exporter = RuntimeTelemetryExporter("http://controller/events", "token", tmp_path, 100, "runner-0")
+    exporter = RuntimeTelemetryExporter("http://controller/events", "token", tmp_path, 100)
     event = {"id": "event-1", "requestId": "request-1", "decision": "allow"}
     await exporter.emit(event)
     assert "event-1" in (tmp_path / "runtime-events.wal").read_text()
@@ -54,7 +54,7 @@ async def test_runtime_events_remain_in_wal_until_controller_accepts_them(tmp_pa
 
 @pytest.mark.asyncio
 async def test_null_optional_fields_are_omitted_when_draining_wal(tmp_path):
-    exporter = RuntimeTelemetryExporter("http://controller/events", "token", tmp_path, 100, "runner-0")
+    exporter = RuntimeTelemetryExporter("http://controller/events", "token", tmp_path, 100)
     await exporter.emit({
         "id": "event-1",
         "requestId": "playground-call",
@@ -75,27 +75,35 @@ async def test_null_optional_fields_are_omitted_when_draining_wal(tmp_path):
 
 
 @pytest.mark.asyncio
-async def test_zero_traffic_watermark_proves_the_export_channel_is_fresh(tmp_path):
-    exporter = RuntimeTelemetryExporter("http://controller/events", "token", tmp_path, 100, "runner-0")
+async def test_watermark_advances_only_after_an_accepted_empty_probe(tmp_path):
+    exporter = RuntimeTelemetryExporter("http://controller/events", "token", tmp_path, 100)
     received = []
-    transport = httpx.MockTransport(lambda request: (
-        received.append(request) or httpx.Response(202, json={"accepted": 0})
-    ))
+    event = {"id": "event-1", "requestId": "request-1", "decision": "allow"}
+    await exporter.emit(event)
 
-    async with httpx.AsyncClient(transport=transport) as client:
-        await exporter._report_watermark(client)
+    def receive(request):
+        assert request.headers["authorization"] == "Bearer token"
+        payload = json.loads(request.content)
+        received.append(payload)
+        return httpx.Response(202, json={"accepted": len(payload["events"])})
 
-    payload = json.loads(received[0].content)
-    assert payload["events"] == []
-    assert payload["runnerId"] == "runner-0"
-    assert payload["observedAt"]
+    async with httpx.AsyncClient(transport=httpx.MockTransport(receive)) as client:
+        await exporter._probe_drained_wal(client)
+        assert received == []
+        assert exporter.drained_at_unix_ms is None
+        assert await exporter._flush_once(client) is False
+        await exporter._probe_drained_wal(client)
+
+    assert received == [{"events": [event]}, {"events": []}]
+    assert exporter.drained_at_unix_ms is not None
+    assert exporter.drained_at_unix_ms > 0
 
 
 @pytest.mark.asyncio
 async def test_wal_depth_and_successful_drain_are_exported_as_metrics(tmp_path):
     metrics = RunnerMetrics(8)
     exporter = RuntimeTelemetryExporter(
-        "http://controller/events", "token", tmp_path, 100, "runner-0", metrics,
+        "http://controller/events", "token", tmp_path, 100, metrics,
     )
     await exporter.emit({"id": "event-1", "occurredAt": "2026-08-23T00:00:00Z"})
 
@@ -115,7 +123,7 @@ async def test_wal_depth_and_successful_drain_are_exported_as_metrics(tmp_path):
 
 @pytest.mark.asyncio
 async def test_batching_splits_metered_backlog_and_preserves_retry_and_concurrent_tail(tmp_path):
-    exporter = RuntimeTelemetryExporter("http://controller/events", "token", tmp_path, 100, "runner-0")
+    exporter = RuntimeTelemetryExporter("http://controller/events", "token", tmp_path, 100)
     events = [{"id": str(index), "metadata": {"usage": {"model_calls": [{"call_id": str(call)} for call in range(48)]}}}
               for index in range(6)]
     for event in events:
@@ -155,7 +163,7 @@ async def test_batching_splits_metered_backlog_and_preserves_retry_and_concurren
 async def test_batch_is_capped_at_http_event_limit(tmp_path):
     events = [{"id": str(index)} for index in range(1001)]
     (tmp_path / "runtime-events.wal").write_text("".join(json.dumps(event) + "\n" for event in events))
-    exporter = RuntimeTelemetryExporter("http://controller/events", "token", tmp_path, 2000, "runner-0")
+    exporter = RuntimeTelemetryExporter("http://controller/events", "token", tmp_path, 2000)
     received = []
 
     def receive(request):
@@ -173,7 +181,7 @@ async def test_batch_is_capped_at_http_event_limit(tmp_path):
 @pytest.mark.asyncio
 @pytest.mark.parametrize("calls,chunks", [(64, 1), (65, 2), (130, 3), (300, 5)])
 async def test_emit_splits_metered_events_into_deterministic_companions(tmp_path, calls, chunks):
-    exporter = RuntimeTelemetryExporter("http://controller/events", "token", tmp_path, 100, "runner-0")
+    exporter = RuntimeTelemetryExporter("http://controller/events", "token", tmp_path, 100)
     event = _metered_event("event-1", calls, guardrailId="guardrail-1")
     await exporter.emit(event)
 
@@ -197,7 +205,7 @@ async def test_emit_splits_metered_events_into_deterministic_companions(tmp_path
 async def test_bad_202_receipt_keeps_the_wal_and_records_the_result(tmp_path):
     metrics = RunnerMetrics(8)
     exporter = RuntimeTelemetryExporter(
-        "http://controller/events", "token", tmp_path, 100, "runner-0", metrics,
+        "http://controller/events", "token", tmp_path, 100, metrics,
     )
     await exporter.emit({"id": "event-1", "requestId": "request-1"})
     original = (tmp_path / "runtime-events.wal").read_bytes()
@@ -225,7 +233,7 @@ async def test_bad_202_receipt_keeps_the_wal_and_records_the_result(tmp_path):
     ],
 )
 async def test_non_acknowledging_202_keeps_the_wal(tmp_path, response):
-    exporter = RuntimeTelemetryExporter("http://controller/events", "token", tmp_path, 100, "runner-0")
+    exporter = RuntimeTelemetryExporter("http://controller/events", "token", tmp_path, 100)
     await exporter.emit({"id": "event-1", "requestId": "request-1"})
     original = (tmp_path / "runtime-events.wal").read_bytes()
     transport = httpx.MockTransport(lambda _request: response)
@@ -239,20 +247,21 @@ async def test_non_acknowledging_202_keeps_the_wal(tmp_path, response):
 
 @pytest.mark.asyncio
 async def test_watermark_requires_an_exact_zero_accepted_receipt(tmp_path):
-    exporter = RuntimeTelemetryExporter("http://controller/events", "token", tmp_path, 100, "runner-0")
+    exporter = RuntimeTelemetryExporter("http://controller/events", "token", tmp_path, 100)
     transport = httpx.MockTransport(lambda _request: httpx.Response(202, json={"accepted": 1}))
     async with httpx.AsyncClient(transport=transport) as client:
         with pytest.raises(TelemetryReceiptError):
-            await exporter._report_watermark(client)
+            await exporter._probe_drained_wal(client)
+    assert exporter.drained_at_unix_ms is None
 
 
 @pytest.mark.asyncio
 async def test_watermark_non_json_receipt_is_rejected(tmp_path):
-    exporter = RuntimeTelemetryExporter("http://controller/events", "token", tmp_path, 100, "runner-0")
+    exporter = RuntimeTelemetryExporter("http://controller/events", "token", tmp_path, 100)
     transport = httpx.MockTransport(lambda _request: httpx.Response(202, content=b"accepted"))
     async with httpx.AsyncClient(transport=transport) as client:
         with pytest.raises(TelemetryReceiptError):
-            await exporter._report_watermark(client)
+            await exporter._probe_drained_wal(client)
 
 
 @pytest.mark.asyncio
@@ -261,7 +270,7 @@ async def test_gateway_413_shrinks_the_batch_without_losing_events(tmp_path):
     events = [{"id": f"event-{index}", "body": "x" * 7000} for index in range(300)]
     (tmp_path / "runtime-events.wal").write_text("".join(_wal_line(event) for event in events))
     exporter = RuntimeTelemetryExporter(
-        "http://controller/events", "token", tmp_path, 1000, "runner-0", metrics,
+        "http://controller/events", "token", tmp_path, 1000, metrics,
     )
     delivered = []
     attempts = []
@@ -292,7 +301,7 @@ async def test_413_shrink_tracks_the_configured_body_default(tmp_path, monkeypat
     monkeypatch.setattr("runner.telemetry.MAX_BODY_BYTES", 4096)
     events = [{"id": f"event-{index}", "body": "x" * 100} for index in range(300)]
     (tmp_path / "runtime-events.wal").write_text("".join(_wal_line(event) for event in events))
-    exporter = RuntimeTelemetryExporter("http://controller/events", "token", tmp_path, 1000, "runner-0")
+    exporter = RuntimeTelemetryExporter("http://controller/events", "token", tmp_path, 1000)
     delivered = []
 
     def receive(request):
@@ -317,7 +326,7 @@ async def test_413_at_a_single_event_quarantines_then_drains_later_events(tmp_pa
     later = {"id": "later"}
     (tmp_path / "runtime-events.wal").write_text(_wal_line(first) + _wal_line(later))
     exporter = RuntimeTelemetryExporter(
-        "http://controller/events", "token", tmp_path, 100, "runner-0", metrics,
+        "http://controller/events", "token", tmp_path, 100, metrics,
     )
     delivered = []
 
@@ -345,7 +354,7 @@ async def test_413_at_a_single_event_quarantines_then_drains_later_events(tmp_pa
 async def test_unsendable_retained_record_is_quarantined_without_rewriting(tmp_path):
     event = _metered_event("event-1", 130)
     (tmp_path / "runtime-events.wal").write_text(_wal_line(event))
-    exporter = RuntimeTelemetryExporter("http://controller/events", "token", tmp_path, 100, "runner-0")
+    exporter = RuntimeTelemetryExporter("http://controller/events", "token", tmp_path, 100)
 
     def unexpected(_request):
         pytest.fail("An unsendable record must be identified before uploading.")
@@ -363,7 +372,7 @@ async def test_quarantine_file_cap_stops_growth_and_preserves_the_wal(tmp_path, 
     (tmp_path / "runtime-events.rejected.wal").write_text("x" * 9)
     event = {"id": "huge", "body": "x" * 100}
     (tmp_path / "runtime-events.wal").write_text(_wal_line(event))
-    exporter = RuntimeTelemetryExporter("http://controller/events", "token", tmp_path, 100, "runner-0")
+    exporter = RuntimeTelemetryExporter("http://controller/events", "token", tmp_path, 100)
 
     def unexpected(_request):
         pytest.fail("An unsendable record must be identified before uploading.")
@@ -384,7 +393,7 @@ async def test_413_on_a_single_selected_event_quarantines_immediately(tmp_path):
     event = {"id": "solo", "body": "x" * 5000}
     (tmp_path / "runtime-events.wal").write_text(_wal_line(event))
     exporter = RuntimeTelemetryExporter(
-        "http://controller/events", "token", tmp_path, 100, "runner-0", metrics,
+        "http://controller/events", "token", tmp_path, 100, metrics,
     )
     attempts = []
 

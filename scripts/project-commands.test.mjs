@@ -202,10 +202,10 @@ test('developer env loading preserves explicit shell overrides', () => {
   const root = mkdtempSync(join(tmpdir(), 'guard-env-load-'));
   try {
     const envPath = join(root, '.env');
-    writeFileSync(envPath, 'CONTROLLER_HTTP_PORT=8080\nCONTROLLER_RUNNER_TOKEN=test-token\n');
-    const result = spawnSync(process.execPath, [`--env-file=${envPath}`, '-e', 'process.stdout.write(JSON.stringify([process.env.CONTROLLER_HTTP_PORT,process.env.CONTROLLER_RUNNER_TOKEN]))'], { encoding:'utf8', env: { PATH:process.env.PATH, CONTROLLER_HTTP_PORT:'18080' } });
+    writeFileSync(envPath, 'CONTROLLER_HTTP_PORT=8080\nGUARD_RUNNER_POOL_ID=test-pool\n');
+    const result = spawnSync(process.execPath, [`--env-file=${envPath}`, '-e', 'process.stdout.write(JSON.stringify([process.env.CONTROLLER_HTTP_PORT,process.env.GUARD_RUNNER_POOL_ID]))'], { encoding:'utf8', env: { PATH:process.env.PATH, CONTROLLER_HTTP_PORT:'18080' } });
     assert.equal(result.status, 0, result.stderr);
-    assert.deepEqual(JSON.parse(result.stdout), ['18080', 'test-token']);
+    assert.deepEqual(JSON.parse(result.stdout), ['18080', 'test-pool']);
   } finally { rmSync(root, { recursive:true, force:true }); }
 });
 

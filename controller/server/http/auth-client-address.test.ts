@@ -1,4 +1,5 @@
 // @vitest-environment node
+import { runnerAuthEnv } from "../../test/runner-auth-fixture.js";
 import { serve, type ServerType } from "@hono/node-server";
 import { afterEach, describe, expect, it } from "vitest";
 import { loadConfig } from "../config.js";
@@ -11,7 +12,7 @@ import { createHttpApp } from "./app.js";
 const base = {
   NODE_ENV: "test" as const,
   CONTROLLER_DATABASE_URL: "postgresql://test:test@localhost/test",
-  CONTROLLER_RUNNER_TOKEN: "runner-token-that-is-at-least-32-characters",
+  ...runnerAuthEnv("runner-token-that-is-at-least-32-characters"),
   CONTROLLER_ARTIFACT_SIGNING_KEY_PATH: "/tmp/test-key.pem",
   BETTER_AUTH_SECRET: "better-auth-secret-that-is-at-least-32-characters",
 };
