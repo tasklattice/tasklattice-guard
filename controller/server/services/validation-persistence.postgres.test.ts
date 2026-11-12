@@ -1,3 +1,4 @@
+import { runnerAuthEnv } from "../../test/runner-auth-fixture.js";
 import { withTestProject } from "../db/postgres-test-database.js";
 import { completeReport } from "../db/report-test-utils.js";
 // @vitest-environment node
@@ -30,7 +31,7 @@ describe.skipIf(!url)("Test report persistence under connection pressure", () =>
     database.pool.options.connectionTimeoutMillis = 200;
     const catalogDir = resolve("../runner/toolkit/policy_library/assets");
     service = new ControlPlaneService(database.db, loadConfig({
-      NODE_ENV: "test", CONTROLLER_DATABASE_URL: url!, CONTROLLER_RUNNER_TOKEN: "runner-token-that-is-at-least-32-characters",
+      NODE_ENV: "test", CONTROLLER_DATABASE_URL: url!, ...runnerAuthEnv("runner-token-that-is-at-least-32-characters"),
       CONTROLLER_ARTIFACT_SIGNING_KEY_PATH: "/tmp/controller-signing-key.pem", CONTROLLER_POLICY_CATALOG_DIR: catalogDir,
       CONTROLLER_PROTO_PATH: resolve("../proto/tasklattice/guard/control/v1/runner_control.proto"),
       BETTER_AUTH_SECRET: "better-auth-secret-that-is-at-least-32-characters",

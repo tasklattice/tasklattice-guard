@@ -126,7 +126,7 @@ def test_normal_security_configuration_needs_no_generated_credential_details():
     documents = render("--set", "security.controlTls.existingSecret=", "--set", "security.artifactSigning.existingSecret=")
     job = next(item for item in documents if item["kind"] == "Job")
     env = {entry["name"]: entry.get("value") for entry in job["spec"]["template"]["spec"]["containers"][0]["env"]}
-    assert {spec["kind"] for spec in json.loads(env["BOOTSTRAP_SECRETS"])} == {"ed25519", "tokens", "encryption", "mtls"}
+    assert {spec["kind"] for spec in json.loads(env["BOOTSTRAP_SECRETS"])} == {"ed25519", "tokens", "runnerAuth", "encryption", "mtls"}
     assert "BEGIN" not in json.dumps(documents)
     for item in documents:
         if item["kind"] in {"Deployment", "StatefulSet"}:
@@ -643,7 +643,7 @@ def test_kubernetes_overrides_and_custom_secret_keys_are_preserved(tmp_path):
         "securityContext": {"runAsGroup": 10001},
         "ingress": {"enabled": True, "annotations": {"example.com/ingress": "guard"},
                     "tls": [{"secretName": "public-tls", "hosts": ["guard.example.com"]}]},
-        "security": {"controlSecret": {"runnerTokenKey": "custom-runner-token"},
+        "security": {"controlSecret": {"betterAuthSecretKey": "custom-better-auth-secret"},
                      "artifactSigning": {"privateKeyKey": "signing-key", "publicKeyKey": "verify-key"}},
     }))
     documents = render("--values", str(overrides))
@@ -654,7 +654,7 @@ def test_kubernetes_overrides_and_custom_secret_keys_are_preserved(tmp_path):
     assert container["resources"]["limits"]["ephemeral-storage"] == "1Gi"
     assert container["securityContext"]["runAsGroup"] == 10001
     env = resolved_environment(documents, container)
-    assert env["CONTROLLER_RUNNER_TOKEN"]["valueFrom"]["secretKeyRef"]["key"] == "custom-runner-token"
+    assert env["BETTER_AUTH_SECRET"]["valueFrom"]["secretKeyRef"]["key"] == "custom-better-auth-secret"
     ingress = next(doc for doc in documents if doc["kind"] == "Ingress")
     assert ingress["spec"]["tls"] == [{"secretName": "public-tls", "hosts": ["guard.example.com"]}]
     assert ingress["metadata"]["annotations"]["example.com/ingress"] == "guard"
@@ -1259,13 +1259,13 @@ def test_plaintext_bootstrap_renders_no_private_keys_or_random_secret_material()
         assert not any(name in environment for name in ["CONTROLLER_GRPC_TLS_CERT_PATH", "CONTROLLER_GRPC_TLS_KEY_PATH", "CONTROLLER_GRPC_TLS_CLIENT_CA_PATH", "GUARD_CONTROLLER_CA_PATH", "GUARD_RUNNER_CLIENT_CERT_PATH", "GUARD_RUNNER_CLIENT_KEY_PATH"])
         assert all(volume["name"] != "control-tls" for volume in pod["volumes"])
         assert all(mount["name"] != "control-tls" for mount in pod["containers"][0]["volumeMounts"])
-        token = "CONTROLLER_RUNNER_TOKEN" if workload["kind"] == "Deployment" else "GUARD_CONTROLLER_TOKEN"
-        assert environment[token]["valueFrom"]["secretKeyRef"]["name"] == "tali-guard-control-init"
+        tokens = ("CONTROLLER_RUNNER_POOL_TOKENS_JSON", "CONTROLLER_RUNNER_HTTP_TOKENS_JSON") if workload["kind"] == "Deployment" else ("GUARD_RUNNER_CONTROL_TOKEN", "GUARD_CONTROLLER_HTTP_TOKEN")
+        assert all(environment[token]["valueFrom"]["secretKeyRef"]["name"] == "tali-guard-runner-auth-init" for token in tokens)
     job = next(item for item in first if item.get("kind") == "Job")
     assert job["metadata"]["annotations"]["helm.sh/hook"] == "pre-install,pre-upgrade,pre-rollback"
     env = {entry["name"]: entry.get("value") for entry in job["spec"]["template"]["spec"]["containers"][0]["env"]}
     generated = {spec["name"] for spec in json.loads(env["BOOTSTRAP_SECRETS"])}
-    assert generated == {"tali-guard-control-init", "tali-guard-artifact-signing-init", "tali-guard-metrics-init", "tali-guard-runtime-logs-init", "tali-guard-postgresql-init", "tali-guard-bootstrap-admin-init", "tali-guard-bootstrap-user-init"}
+    assert generated == {"tali-guard-control-init", "tali-guard-runner-auth-init", "tali-guard-artifact-signing-init", "tali-guard-metrics-init", "tali-guard-runtime-logs-init", "tali-guard-postgresql-init", "tali-guard-bootstrap-admin-init", "tali-guard-bootstrap-user-init"}
     assert not generated.intersection(item["metadata"]["name"] for item in first if item.get("kind") == "Secret")
 
 
@@ -1278,7 +1278,7 @@ def test_mtls_is_initialized_by_the_same_job_without_rendering_private_keys():
     job = next(item for item in documents if item["kind"] == "Job")
     env = {entry["name"]: entry.get("value") for entry in job["spec"]["template"]["spec"]["containers"][0]["env"]}
     specs = json.loads(env["BOOTSTRAP_SECRETS"])
-    assert len(specs) == 8
+    assert len(specs) == 9
     tls = next(spec for spec in specs if spec["kind"] == "mtls")
     assert tls["serverDnsNames"] == ["tali-guard-controller", "tali-guard-controller.tali", "tali-guard-controller.tali.svc", "tali-guard-controller.tali.svc.cluster.local"]
     config = controller_config(documents)
@@ -1296,7 +1296,17 @@ def test_mtls_is_initialized_by_the_same_job_without_rendering_private_keys():
 
 
 def test_mtls_autogenerate_works_without_bootstrapping_other_credentials():
-    documents = render("--set", "security.bootstrap.enabled=false", "--set", "security.controlSecret.existingSecret=control", "--set", "security.metrics.existingSecret=metrics", "--set", "security.runtimeLogs.existingSecret=logs", "--set", "security.controlTls.existingSecret=", "--set", "security.controlTls.autoGenerate=true")
+    documents = render(
+        "--set", "security.bootstrap.enabled=false", "--set", "security.controlSecret.existingSecret=control",
+        "--set", "security.metrics.existingSecret=metrics", "--set", "security.runtimeLogs.existingSecret=logs",
+        "--set", "security.controlTls.existingSecret=", "--set", "security.controlTls.autoGenerate=true",
+        "--set", "security.poolAuthentication.controllerSecret=control-map",
+        "--set", "security.poolAuthentication.runnerSecrets.default.name=control-token",
+        "--set", "security.poolAuthentication.runnerSecrets.default.key=token",
+        "--set", "security.runnerHttpAuthentication.controllerSecret=http-map",
+        "--set", "security.runnerHttpAuthentication.runnerSecrets.default.name=http-token",
+        "--set", "security.runnerHttpAuthentication.runnerSecrets.default.key=token",
+    )
     job = next(item for item in documents if item["kind"] == "Job")
     env = {entry["name"]: entry.get("value") for entry in job["spec"]["template"]["spec"]["containers"][0]["env"]}
     assert [spec["kind"] for spec in json.loads(env["BOOTSTRAP_SECRETS"])] == ["mtls"]

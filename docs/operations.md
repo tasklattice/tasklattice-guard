@@ -365,10 +365,11 @@ five minutes; treat it as evidence loss until the file is reconciled.
    a Runner credential. For a file that fits a single upload (the same bounds
    the Runner uses: at most 64 model calls per event and 256 per request, at
    most 1000 events, and the configured body budget), a request body of
-   `{"events":[...]}` with `authorization: Bearer $CONTROLLER_RUNNER_TOKEN`
+   `{"events":[...]}` with `authorization: Bearer $GUARD_RUNNER_CONTROL_TOKEN`
    works; otherwise split the lines into several requests. Runtime event and
    cost identities are deterministic, so replaying events the Controller
-   already holds is idempotent. A `202` receipt whose `accepted` equals the
+   already holds is idempotent. Use the control token of the Pool that produced
+   the events so Controller can check their allocation. A `202` receipt whose `accepted` equals the
    sent count means every event is durable; only then delete the local copy.
 4. **Escalate a real overflow.** If a current Runner still quarantines an event,
    capture the image digest, the rejected event `id`, and its metadata shape.

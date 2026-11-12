@@ -17,7 +17,7 @@ import bundledDefault from "../domain/default-baseline.json" with { type: "json"
 import { querySecurityEvents } from "./security-events.js";
 import type { SecurityEventsQuery } from "../../shared/security-events.js";
 import { ModelPricingService, modelUsageCostRecorder } from "./model-pricing.js";
-import { telemetryBatches, telemetryWatermarkBatch } from "./telemetry-batches.js";
+import { telemetryBatches } from "./telemetry-batches.js";
 import { pruneTestingReports } from "./testing-report-retention.js";
 import { limitValidationWrite } from "./validation-write-limits.js";
 import { databasePoolState, reportSaveStage, withReportSaveDiagnostics } from "../db/diagnostics.js";
@@ -43,7 +43,7 @@ import { GuardrailPackageService } from "./guardrail-packages.js";
 import { validateTestScope } from "../domain/validation-scope.js";
 import { PolicyResourceService } from "./policy-resources.js";
 import type { ArtifactAdmission } from "../domain/environment-check.js";
-import { createHash, randomUUID } from "node:crypto";
+import { createHash, createHmac, randomUUID } from "node:crypto";
 import { canonicalJson } from "../../shared/canonical-json.js";
 import { scanRequestCommand } from "../../shared/scan-request-command.js";
 import { artifactContent, artifactContentDigest, ARTIFACT_CONTENT_DIGEST_VERSION, signArtifactDigest, type ArtifactContent } from "../domain/artifact-content.js";
@@ -92,7 +92,6 @@ import {
   runtimeEvents,
   projectGroups,
   projects,
-  telemetryWatermarks,
   testCases,
   validationRuns,
   type RunnerLoad,
@@ -164,7 +163,6 @@ export class ControlPlaneService {
   readonly runners: RunnerDirectory;
   async pruneEndpointTelemetryContexts(): Promise<number> {
     assertPlatformAuthority();
-    if (!this.config.runnerScopedTelemetry) return 0;
     return this.db.transaction(tx => pruneEndpointContexts(tx));
   }
   private lastPlaygroundInvocationCleanup = 0;
@@ -231,7 +229,7 @@ export class ControlPlaneService {
     this.runners = new RunnerDirectory(db, config.heartbeatIntervalSeconds);
     this.runnerControlSessions = new RunnerControlSessionStore(db);
     this.admissionMonitor = new ProjectAdmissionMonitor(db, { staleAfterMs: config.heartbeatIntervalSeconds * 3000 });
-    this.trafficRouting = new TrafficRoutingService(db, config.runnerScopedTelemetry);
+    this.trafficRouting = new TrafficRoutingService(db);
     this.groupRouting = new ProjectGroupRouting(db, config);
     this.reportResults = new ReportResults(db);
     this.protectionModes = new ProtectionModeService(db, config.offlineAfterSeconds);
@@ -2246,17 +2244,13 @@ export class ControlPlaneService {
       const accepts = await guardrailTelemetryFilter(tx, batch.map(event => event.guardrailId));
       if (batch.some(event => event.allocationContextId)) await lockEndpointTelemetryContextReaders(tx);
       const recordCosts = modelUsageCostRecorder(tx, authenticatedPoolId);
-      const watermarks = telemetryWatermarkBatch(tx);
       const pending: RuntimeEventInput[] = [];
       return { write: async (event: RuntimeEventInput) => {
         if (!accepts(event.guardrailId, event.occurredAt)) return;
         if (event.metadata.costOnly !== true) pending.push(event);
         await recordCosts(event);
-        // A pool token does not authenticate a particular Runner/boot.
-        if (authenticatedPoolId === undefined) watermarks.add(event.runnerId, event.occurredAt);
       }, finish: async () => {
         await writeRuntimeEvents(tx, pending, authenticatedPoolId);
-        await watermarks.flush();
       } };
     };
     if (transaction) {
@@ -2264,19 +2258,6 @@ export class ControlPlaneService {
       for (const event of events) await writer.write(event);
       await writer.finish();
     } else await telemetryBatches(this.db, events, prepare);
-  }
-
-  async recordTelemetryWatermark(runnerId: string): Promise<void> {
-    const now = new Date();
-    await this.db.insert(telemetryWatermarks).values({
-      runnerId,
-      lastEventOccurredAt: null,
-      lastReceivedAt: now,
-      updatedAt: now,
-    }).onConflictDoUpdate({
-      target: telemetryWatermarks.runnerId,
-      set: { lastReceivedAt: now, updatedAt: now },
-    });
   }
 
   async registerRunner(input: RunnerRegistration, controlSessionId?: string): Promise<number> {
@@ -2290,14 +2271,10 @@ export class ControlPlaneService {
     const [pool] = await tx.select({ id: runnerPools.id, projectId: runnerPools.projectId, projectName: projects.name }).from(runnerPools)
       .leftJoin(projects,eq(projects.id,runnerPools.projectId)).where(eq(runnerPools.id, input.poolId)).limit(1);
     if (!pool) throw new ValidationError("Runner pool is not registered. An administrator must allocate it to a project group first.");
-    if (this.config.runnerPoolTokens != null) {
-      // A pool-scoped principal must not take over a globally identified Runner
-      // registered to a different pool, even if the old registration is offline.
-      const [previous] = await tx.select({ poolId: runnerInstances.poolId }).from(runnerInstances)
-        .where(eq(runnerInstances.runnerId, input.runnerId)).limit(1);
-      if (previous && previous.poolId !== input.poolId) {
-        throw new ConflictError("Runner ID is already registered to another pool.", "runner_pool_identity_conflict");
-      }
+    const [prior] = await tx.select({ poolId: runnerInstances.poolId, sessionId: runnerInstances.controlSessionId }).from(runnerInstances)
+      .where(eq(runnerInstances.runnerId, input.runnerId));
+    if (prior && prior.poolId !== input.poolId) {
+      throw new ConflictError("Runner ID is already registered to another pool.", "runner_pool_identity_conflict");
     }
     const projectName = pool.id === "default" ? "default" : pool.projectName;
     if (!projectName || !isRunnerName(input.runnerId, projectName)) throw new ValidationError(
@@ -2307,8 +2284,6 @@ export class ControlPlaneService {
     const desiredGeneration = state.generation;
     // Superseding the same boot on another Controller must invalidate that
     // stream without erasing its grants or historical snapshot evidence.
-    const [prior] = await tx.select({ sessionId: runnerInstances.controlSessionId }).from(runnerInstances)
-      .where(eq(runnerInstances.runnerId, input.runnerId));
     if (prior?.sessionId) await tx.update(runnerControlSessions).set({ disconnectedAt: new Date() })
       .where(eq(runnerControlSessions.id, prior.sessionId));
     if (controlSessionId) await tx.insert(runnerControlSessions).values({ id: controlSessionId,
@@ -2342,6 +2317,7 @@ export class ControlPlaneService {
         status: input.appliedGeneration === desiredGeneration ? "ready" : "syncing",
         connectedAt: new Date(),
         lastHeartbeatAt: new Date(),
+        telemetryDrainedAt: null,
         disconnectedAt: null,
         updatedAt: new Date(),
       },
@@ -2351,7 +2327,8 @@ export class ControlPlaneService {
   }
 
   async recordHeartbeat(input: {
-    runnerId: string; bootId: string; sequence: number; appliedGeneration: number; load: RunnerLoad; controlSessionId?: string; admissionSnapshot?: Uint8Array;
+    runnerId: string; bootId: string; sequence: number; appliedGeneration: number; load: RunnerLoad; controlSessionId?: string;
+    admissionSnapshot?: Uint8Array; telemetryDrainedAtUnixMs?: number;
   }): Promise<boolean> {
     const accepted = await this.db.transaction(async tx => {
     await advisoryTransactionLock(tx, "traffic-router-bindings");
@@ -2371,22 +2348,30 @@ export class ControlPlaneService {
         : pressure >= 0.7
           ? "busy"
           : "ready";
-    const updated = await tx.update(runnerInstances).set({
+    const now = new Date();
+    const drainedAtMs = input.telemetryDrainedAtUnixMs;
+    const drainedAt = input.controlSessionId && drainedAtMs !== undefined && Number.isSafeInteger(drainedAtMs)
+      && drainedAtMs > 0 && drainedAtMs <= now.getTime() ? new Date(drainedAtMs).toISOString() : null;
+    const [updated] = await tx.update(runnerInstances).set({
       desiredGeneration,
       appliedGeneration: input.appliedGeneration,
       heartbeatSequence: input.sequence,
       load: input.load,
       status,
-      lastHeartbeatAt: new Date(),
-      updatedAt: new Date(),
+      lastHeartbeatAt: now,
+      // Only an accepted heartbeat on the current control session can advance
+      // the watermark. Replayed timestamps cannot extend its freshness.
+      ...(drainedAt ? { telemetryDrainedAt: sql`case when ${drainedAt}::timestamptz >= ${runnerInstances.connectedAt}
+        then greatest(${runnerInstances.telemetryDrainedAt}, ${drainedAt}::timestamptz) else ${runnerInstances.telemetryDrainedAt} end` } : {}),
+      updatedAt: now,
     }).where(and(
       eq(runnerInstances.runnerId, input.runnerId),
       eq(runnerInstances.bootId, input.bootId),
       sql`${runnerInstances.controlSessionId} IS NOT DISTINCT FROM ${input.controlSessionId ?? null}`,
       isNull(runnerInstances.disconnectedAt),
       lt(runnerInstances.heartbeatSequence, input.sequence),
-    )).returning({ runnerId: runnerInstances.runnerId, poolId: runnerInstances.poolId });
-    return updated[0] ?? null;
+    )).returning({ poolId: runnerInstances.poolId });
+    return updated ?? null;
     });
     if (accepted) this.admissionMonitor.record({ runnerId: input.runnerId, bootId: input.bootId,
       controlSessionId: input.controlSessionId ?? null, poolId: accepted.poolId, sequence: input.sequence }, input.admissionSnapshot);
@@ -2455,9 +2440,9 @@ export class ControlPlaneService {
       trafficRouterId: routerRevisions.find(router => router.routerId === endpoint.trafficRouterId && router.endpointIds.includes(endpoint.id))?.routerId ?? null,
       adapter: endpoint.adapter, verification: endpoint.verification, scanFlagOnlyDefault: endpoint.scanFlagOnlyDefault, credentialRequired: endpoint.credentialRequired }));
     const [epoch] = await tx.select({ epoch: runnerPoolLeaseEpochs.epoch }).from(runnerPoolLeaseEpochs).where(eq(runnerPoolLeaseEpochs.poolId, poolId));
-    const telemetryContexts = this.config.runnerScopedTelemetry ? await issueEndpointTelemetryContexts(tx, {
+    const telemetryContexts = await issueEndpointTelemetryContexts(tx, {
       poolId, groupId: allocation.groupId, epoch: epoch?.epoch ?? 0, generation, endpoints: endpointProjection, routers: routerRevisions,
-    }, this.config.endpointContextStorage) : new Map<string, string>();
+    }, this.config.endpointContextStorage);
     const runtimeModelConfiguration = runtimeModels ? await runtimeModels(tx) : undefined;
     return {
       ...(runtimeModels ? { runtimeModelConfiguration } : {}),
@@ -2467,7 +2452,8 @@ export class ControlPlaneService {
       artifacts: [...new Map(activeArtifacts.map((row) => [row.artifact.id, row.artifact])).values()],
       disabledGuardrailIds: disabledGuardrails.map((row) => row.id),
       disabledEndpointIds: disabledEndpoints.map((row) => row.id),
-      routerRevisions: routerRevisions.map(router => ({ ...router, assignmentAlgorithm: "hmac-sha256-v1", assignmentKeyId: "v1", assignmentKey: createHash("sha256").update("traffic-router-assignment-v1:" + this.config.runnerToken).digest() })),
+      routerRevisions: routerRevisions.map(router => ({ ...router, assignmentAlgorithm: "hmac-sha256-v1", assignmentKeyId: "v1",
+        assignmentKey: createHmac("sha256", this.config.betterAuthSecret).update("traffic-router-assignment-v1").digest() })),
       endpoints: endpointProjection.map(endpoint => ({ ...endpoint, telemetryContextId: telemetryContexts.get(endpoint.endpointId) })),
       guardrailLoggingLevels: Object.fromEntries(loggingLevels.map((item) => [item.id, item.level])),
     };
@@ -2528,7 +2514,7 @@ export class ControlPlaneService {
       return {
         ...pool,
         // Stream ownership is an internal authorization detail, not fleet UI data.
-        instances: instances.filter((runner) => runner.poolId === pool.id).map(({ controlSessionId: _session, ...runner }) => runner),
+        instances: instances.filter((runner) => runner.poolId === pool.id).map(({ controlSessionId: _session, telemetryDrainedAt: _watermark, ...runner }) => runner),
         capacity: calculatePoolCapacity(
           poolRunners,
           pool.safeRpsPerRunner,
@@ -2542,7 +2528,8 @@ export class ControlPlaneService {
 
   async observabilitySnapshot() {
     const [watermarks, pendingOutbox, guardrailRows, routerRows, endpointRows, allocations] = await Promise.all([
-      this.config.runnerScopedTelemetry ? Promise.resolve([]) : this.db.select().from(telemetryWatermarks),
+      this.db.select({ runnerId: runnerInstances.runnerId, lastReceivedAt: runnerInstances.telemetryDrainedAt })
+        .from(runnerInstances).where(isNotNull(runnerInstances.telemetryDrainedAt)),
       this.db.select({
         kind: outboxEvents.kind,
         pending: count(),
@@ -3011,25 +2998,18 @@ export class ControlPlaneService {
       poolId: runnerInstances.poolId,
       status: runnerInstances.status,
       lastHeartbeatAt: runnerInstances.lastHeartbeatAt,
-      lastReceivedAt: telemetryWatermarks.lastReceivedAt,
-    }).from(runnerInstances)
-      .leftJoin(telemetryWatermarks, eq(telemetryWatermarks.runnerId, runnerInstances.runnerId))
-      .where(inArray(runnerInstances.poolId, uniquePoolIds));
+      lastReceivedAt: runnerInstances.telemetryDrainedAt,
+    }).from(runnerInstances).where(inArray(runnerInstances.poolId, uniquePoolIds));
     const heartbeatCutoff = Date.now() - this.config.offlineAfterSeconds * 1_000;
     const servingRunners = runnerTelemetry.filter((runner) => (
       runner.status !== "offline" && runner.lastHeartbeatAt.getTime() >= heartbeatCutoff
     ));
     const telemetryCutoff = Date.now() - this.config.telemetryStaleAfterSeconds * 1_000;
-    // With scoped ingestion, Endpoint and routing evidence is quarantined and
-    // no Runner/boot watermark is authenticated. Even a Router-free resource
-    // can have direct Playground traffic. Legacy watermark rows, including
-    // rows updated by old Controllers during rollout, are not evidence of
-    // completeness in this mode.
-    const telemetryFresh = !this.config.runnerScopedTelemetry && (activeRouterCount === 0 || (
+    const telemetryFresh = activeRouterCount === 0 || (
       !missingPool && uniquePoolIds.length > 0
       && uniquePoolIds.every(poolId => servingRunners.some(runner => runner.poolId === poolId))
       && servingRunners.every((runner) => Boolean(runner.lastReceivedAt && runner.lastReceivedAt.getTime() >= telemetryCutoff))
-    ));
+    );
     const telemetryWatermark = !telemetryFresh || servingRunners.some((runner) => !runner.lastReceivedAt)
       ? null
       : servingRunners.reduce<Date | null>((oldest, runner) => (

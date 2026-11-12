@@ -18,12 +18,27 @@ from runner.providers import dynamic_runtime_action_providers
 from runner.telemetry import RuntimeTelemetryExporter
 from runner.toolkit.runtime.service import GuardrailRuntimeService
 from tests.capability_binding import capability_binding
-from tests.data_plane.test_artifact_execution import _runtime, FIXTURE, RUNTIME_CREDENTIAL
+from tests.data_plane.test_artifact_execution import _desired_state, _runtime, FIXTURE, RUNTIME_CREDENTIAL
 
 
 async def exercise(endpoint: str, token: str, scenario: str) -> dict:
     with TemporaryDirectory() as directory:
         state = Path(directory)
+        fixture = FIXTURE.parent / "jailbreak-v1" if scenario == "models" else FIXTURE
+        desired = _desired_state(fixture)
+        endpoint_runtime = desired.endpoints[0]
+        router = desired.router_revisions[0]
+        route = router.routes[0]
+        target = route.targets[0]
+        print(json.dumps({"endpointId": endpoint_runtime.endpoint_id, "routerId": router.router_id,
+                          "routerRevision": router.revision, "routeId": route.route_id, "targetId": target.target_id,
+                          "guardrailId": target.guardrail_id, "guardrailVersion": target.guardrail_version}), flush=True)
+        context_id = (await asyncio.to_thread(sys.stdin.readline)).strip()
+        assert context_id
+        desired.generation += 1
+        endpoint_runtime.project_id = "projectA"
+        endpoint_runtime.telemetry_context_id = context_id
+        providers = None
         if scenario == "models":
             profile = "tali.nemoguard-jailbreak-detect.v1"
             configuration = protocol.DataPlaneModelConfiguration(
@@ -37,13 +52,14 @@ async def exercise(endpoint: str, token: str, scenario: str) -> dict:
             # HTTP event emission and the disk-backed exporter all run normally.
             providers = dynamic_runtime_action_providers(configuration, {"fixture-provider": "test-key"},
                 transport=httpx.MockTransport(lambda _: httpx.Response(200, json={"jailbreak": False, "score": 0.01})))
-            store, _, engine = _runtime(state, FIXTURE.parent / "jailbreak-v1", providers=providers)
             texts = [f"Summarize document {index}." for index in range(50)]
         else:
-            store, _, engine = _runtime(state)
-            store._logging_levels["fixture-secrets"] = "trace"
             texts = ["Summarize this document: " + "a" * 500_000]
-        exporter = RuntimeTelemetryExporter(endpoint, token, state, 100, "fixture-runner")
+        store, _, engine = _runtime(state, fixture, providers=providers)
+        store.apply(desired)
+        if scenario == "trace":
+            store._logging_levels[target.guardrail_id] = "trace"
+        exporter = RuntimeTelemetryExporter(endpoint, token, state, 100)
         app = FastAPI()
         app.include_router(RunnerAPI(
             GuardrailRuntimeService(engine, store), store, RunnerMetrics(4), exporter,
@@ -78,9 +94,7 @@ async def exercise(endpoint: str, token: str, scenario: str) -> dict:
                         for event in runtime_events if event["metadata"].get("contentCiphertext")},
                     "routerId": next(event["routerId"] for event in events if "routerId" in event),
                     "batchBytes": len(json.dumps({"events": events}, separators=(",", ":")).encode())}
-            # Node seeds the matching resource identities before permitting upload.
             print(json.dumps(info), flush=True)
-            await asyncio.to_thread(sys.stdin.readline)
 
             async def record(response):
                 uploads.append(response.status_code)

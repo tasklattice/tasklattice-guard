@@ -5,7 +5,7 @@ import json
 import logging
 import os
 import time
-from datetime import UTC, datetime
+from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -43,14 +43,13 @@ class RuntimeTelemetryExporter:
         token: str,
         state_path: Path,
         batch_size: int,
-        runner_id: str,
         metrics: RunnerMetrics | None = None,
     ) -> None:
         self._endpoint = endpoint
         self._token = token
         self._batch_size = batch_size
-        self._runner_id = runner_id
         self._metrics = metrics
+        self.drained_at_unix_ms: int | None = None
         self._wal_path = state_path / "runtime-events.wal"
         self._wal = TelemetryWal(self._wal_path)
         # A gateway may enforce a smaller body budget than the Controller.
@@ -102,7 +101,7 @@ class RuntimeTelemetryExporter:
                     self._publish_wal_metrics()
                     while await self._flush_once(client):
                         pass
-                    await self._report_watermark(client)
+                    await self._probe_drained_wal(client)
                 except asyncio.CancelledError:
                     raise
                 except Exception as error:
@@ -177,18 +176,18 @@ class RuntimeTelemetryExporter:
         self._observe_export("events", "success", len(batch), started)
         return self._wal_event_count > 0
 
-    async def _report_watermark(self, client: httpx.AsyncClient) -> None:
-        """Confirm that the telemetry channel is healthy even during zero traffic."""
+    async def _probe_drained_wal(self, client: httpx.AsyncClient) -> None:
+        """Verify delivery at a point when no WAL events were waiting."""
+        async with self._lock:
+            if self._wal_event_count:
+                return
+            drained_at = time.time_ns() // 1_000_000
         started = time.perf_counter()
         try:
             response = await client.post(
                 self._endpoint,
                 headers={"authorization": f"Bearer {self._token}"},
-                json={
-                    "events": [],
-                    "runnerId": self._runner_id,
-                    "observedAt": datetime.now(UTC).isoformat(),
-                },
+                json={"events": []},
             )
             response.raise_for_status()
             _validated_receipt(response, 0)
@@ -198,6 +197,8 @@ class RuntimeTelemetryExporter:
         except Exception:
             self._observe_export("watermark", "error", 0, started)
             raise
+        if drained_at > (self.drained_at_unix_ms or 0):
+            self.drained_at_unix_ms = drained_at
         self._observe_export("watermark", "success", 0, started)
 
     async def _quarantine_head(self) -> bool:

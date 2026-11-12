@@ -1030,26 +1030,18 @@ export class ModelConfigurationService {
   }
 
   /** Bind before dispatch, and never allow a lease to be reassigned to another pool. */
-  async bindValidationLease(leaseId: string, poolId: string, session?: ControlSessionIdentity): Promise<boolean> {
+  async bindValidationLease(leaseId: string, poolId: string, session: ControlSessionIdentity): Promise<boolean> {
     return this.validationLeases.bind(leaseId, poolId, session);
   }
 
-  async resolveCredentials(refs: string[], leaseId?: string, poolId?: string): Promise<Record<string, string>> {
+  async resolveCredentials(refs: string[], leaseId: string | undefined, poolId: string): Promise<Record<string, string>> {
     assertPlatformAuthority();
-    if (poolId !== undefined) {
-      // A configured token is a pool identity, not proof that the allocation
-      // still exists. Stale token-map entries must not retain secret access
-      // after deprovisioning or an invalid group allocation.
-      const [pool] = await this.db.select({ id: runnerPools.id }).from(runnerPools)
-        .where(and(eq(runnerPools.id, poolId), validPoolAllocation(poolId))).limit(1);
-      if (!pool) return {};
-    }
     if (leaseId) {
       const lease = await this.validationLeases.resolve(leaseId, refs, poolId);
       if (!lease) return {};
       return { [lease.providerId]: decryptModelCredential(lease.credentialCiphertext, this.rootSecret) };
     }
-    if (poolId !== undefined) return this.db.transaction(async tx => {
+    return this.db.transaction(async tx => {
       await advisoryTransactionLock(tx, "traffic-router-bindings");
       await tx.select({ id: controllerState.id }).from(controllerState).where(eq(controllerState.id, "singleton")).for("share");
       const selected = await this.groupRuntime.selectionForPool(poolId, tx);
@@ -1058,12 +1050,10 @@ export class ModelConfigurationService {
       const configuration = await this.activeConfiguration(true, tx);
       return this.credentialsFromConfiguration(refs, configuration, tx, poolId, selected.groupId);
     });
-    const configuration = await this.activeConfiguration(true);
-    return this.credentialsFromConfiguration(refs, configuration, this.db);
   }
 
   private async credentialsFromConfiguration(refs: string[], configuration: ActiveModelConfiguration | null,
-    database: Pick<ControllerDatabase, "select">, poolId?: string, groupId?: string): Promise<Record<string, string>> {
+    database: Pick<ControllerDatabase, "select">, poolId: string, groupId: string): Promise<Record<string, string>> {
     if (!configuration) return {};
     const dataModelIds = new Set(Object.values(configuration.assignments.bindings).filter((value): value is string => Boolean(value)));
     const allowed = new Set(
@@ -1074,9 +1064,9 @@ export class ModelConfigurationService {
     const requested = [...new Set(refs)].filter((ref) => allowed.has(ref));
     if (!requested.length) return {};
     const providers = await database.select().from(modelProviders).where(and(inArray(modelProviders.id, requested),
-      poolId === undefined ? undefined : validPoolAllocation(poolId),
-      poolId === undefined ? undefined : sql`exists (select 1 from runner_pool p left join project_group_model_configuration c on c.group_id=p.group_id
-        where p.id=${poolId} and p.group_id='default' and p.group_id=${groupId ?? null} and coalesce(c.mode,'platform')='platform')`));
+      validPoolAllocation(poolId),
+      sql`exists (select 1 from runner_pool p left join project_group_model_configuration c on c.group_id=p.group_id
+        where p.id=${poolId} and p.group_id='default' and p.group_id=${groupId} and coalesce(c.mode,'platform')='platform')`));
     return Object.fromEntries(providers.map((provider) => [
       provider.id,
       decryptModelCredential(provider.credentialCiphertext, this.rootSecret),

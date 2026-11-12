@@ -125,7 +125,11 @@
 {{- $specs = append $specs (dict "name" (include "tali-guard.artifactSigningSecretName" .) "kind" "ed25519" "privateKey" .Values.security.artifactSigning.privateKeyKey "publicKey" .Values.security.artifactSigning.publicKeyKey) -}}
 {{- end -}}
 {{- if not .Values.security.controlSecret.existingSecret -}}
-{{- $specs = append $specs (dict "name" (include "tali-guard.controlSecretName" .) "kind" "tokens" "keys" (list .Values.security.controlSecret.runnerTokenKey .Values.security.controlSecret.betterAuthSecretKey)) -}}
+{{- $specs = append $specs (dict "name" (include "tali-guard.controlSecretName" .) "kind" "tokens" "keys" (list .Values.security.controlSecret.betterAuthSecretKey)) -}}
+{{- end -}}
+{{- $runnerAuth := include "tali-guard.runnerAuthRefs" . | fromJson -}}
+{{- if $runnerAuth.managed -}}
+{{- $specs = append $specs (dict "name" (include "tali-guard.runnerAuthSecretName" .) "kind" "runnerAuth") -}}
 {{- end -}}
 {{- if not .Values.security.metrics.existingSecret -}}
 {{- $specs = append $specs (dict "name" (include "tali-guard.metricsSecretName" .) "kind" "tokens" "keys" (list .Values.security.metrics.tokenKey)) -}}
@@ -221,6 +225,48 @@ app.kubernetes.io/part-of: tasklattice-guard
 {{- default (include "tali-guard.managedSecretName" (printf "%s-control" (include "tali-guard.fullname" .))) .Values.security.controlSecret.existingSecret }}
 {{- end }}
 
+{{- define "tali-guard.runnerAuthSecretName" -}}
+{{- include "tali-guard.managedSecretName" (printf "%s-runner-auth" (include "tali-guard.fullname" .)) -}}
+{{- end }}
+
+{{- define "tali-guard.runnerAuthRefs" -}}
+{{- $secret := include "tali-guard.runnerAuthSecretName" . -}}
+{{- $roles := dict
+    "control" (dict "setting" "poolAuthentication" "mapKey" "pool-tokens.json" "tokenKey" "runner-control-token")
+    "http" (dict "setting" "runnerHttpAuthentication" "mapKey" "pool-http-tokens.json" "tokenKey" "controller-http-token") -}}
+{{- $refs := dict "managed" false -}}
+{{- $used := dict (printf "%s/%s" (include "tali-guard.controlSecretName" .) .Values.security.controlSecret.betterAuthSecretKey) true -}}
+{{- range $role, $defaults := $roles -}}
+{{- $config := get $.Values.security $defaults.setting -}}
+{{- $setting := printf "security.%s" $defaults.setting -}}
+{{- if not (kindIs "map" $config) -}}{{- fail (printf "%s must be an object" $setting) -}}{{- end -}}
+{{- $controller := dict "name" $secret "key" $defaults.mapKey -}}
+{{- $runner := dict "name" $secret "key" $defaults.tokenKey -}}
+{{- if or $config.controllerSecret $config.controllerKey $config.runnerSecrets -}}
+{{- if or (not $config.controllerSecret) (not (kindIs "map" $config.runnerSecrets)) -}}
+{{- fail (printf "%s requires controllerSecret and runnerSecrets.default" $setting) -}}
+{{- end -}}
+{{- $defaultRunner := get $config.runnerSecrets "default" -}}
+{{- if or (ne (len $config.runnerSecrets) 1) (not (kindIs "map" $defaultRunner)) (not $defaultRunner.name) (not $defaultRunner.key) -}}
+{{- fail (printf "%s.runnerSecrets must provide name and key for only the default Runner pool" $setting) -}}
+{{- end -}}
+{{- $controller = dict "name" $config.controllerSecret "key" (default $defaults.mapKey $config.controllerKey) -}}
+{{- $runner = $defaultRunner -}}
+{{- else -}}
+{{- $_ := set $refs "managed" true -}}
+{{- end -}}
+{{- range $ref := list $controller $runner -}}
+{{- $identity := printf "%s/%s" $ref.name $ref.key -}}
+{{- if hasKey $used $identity -}}
+{{- fail "Runner authentication and Better Auth require distinct Secret keys for each credential and map" -}}
+{{- end -}}
+{{- $_ := set $used $identity true -}}
+{{- end -}}
+{{- $_ := set $refs $role (dict "controller" $controller "runner" $runner) -}}
+{{- end -}}
+{{- toJson $refs -}}
+{{- end }}
+
 {{- define "tali-guard.metricsSecretName" -}}
 {{- default (include "tali-guard.managedSecretName" (printf "%s-metrics" (include "tali-guard.fullname" .))) .Values.security.metrics.existingSecret }}
 {{- end }}
@@ -276,67 +322,7 @@ app.kubernetes.io/part-of: tasklattice-guard
 {{- end -}}
 {{- end -}}
 {{- end -}}
-{{- $poolAuth := .Values.security.poolAuthentication -}}
-{{- range $name := list "enabled" "scopedTelemetry" -}}
-{{- if not (kindIs "bool" (get $poolAuth $name)) -}}{{- fail (printf "security.poolAuthentication.%s must be a boolean" $name) -}}{{- end -}}
-{{- end -}}
-{{- if and $poolAuth.scopedTelemetry (not $poolAuth.enabled) -}}
-{{- fail "security.poolAuthentication.scopedTelemetry requires enabled=true" -}}
-{{- end -}}
-{{- if $poolAuth.enabled -}}
-{{- if or (not $poolAuth.controllerSecret) (not $poolAuth.controllerKey) -}}
-{{- fail "security.poolAuthentication requires controllerSecret and controllerKey" -}}
-{{- end -}}
-{{- $names := list "default" -}}
-{{- $seen := dict -}}
-{{- range $names -}}
-{{- $ref := get $poolAuth.runnerSecrets . -}}
-{{- if or (not $ref) (not $ref.name) (not $ref.key) -}}
-{{- fail (printf "security.poolAuthentication.runnerSecrets must provide name and key for Runner pool %s" .) -}}
-{{- end -}}
-{{- $identity := printf "%s/%s" $ref.name $ref.key -}}
-{{- if or (hasKey $seen $identity) (and (eq $ref.name $poolAuth.controllerSecret) (eq $ref.key $poolAuth.controllerKey)) -}}
-{{- fail "each Runner pool must use a distinct Secret key, separate from the Controller token map key" -}}
-{{- end -}}
-{{- $_ := set $seen $identity true -}}
-{{- end -}}
-{{- range $name, $_ := $poolAuth.runnerSecrets -}}
-{{- if not (has $name $names) -}}
-{{- fail (printf "security.poolAuthentication.runnerSecrets contains unknown chart pool %s" $name) -}}
-{{- end -}}
-{{- end -}}
-{{- else if or $poolAuth.controllerSecret (not (empty $poolAuth.runnerSecrets)) -}}
-{{- fail "security.poolAuthentication references require enabled=true" -}}
-{{- end -}}
-{{- $httpAuth := .Values.security.runnerHttpAuthentication -}}
-{{- if $httpAuth.enabled -}}
-{{- if not $poolAuth.enabled -}}{{- fail "security.runnerHttpAuthentication requires security.poolAuthentication.enabled=true" -}}{{- end -}}
-{{- if or (not $httpAuth.controllerSecret) (not $httpAuth.controllerKey) -}}
-{{- fail "security.runnerHttpAuthentication requires controllerSecret and controllerKey" -}}
-{{- end -}}
-{{- $names := list "default" -}}
-{{- $reserved := dict -}}
-{{- $_ := set $reserved (printf "%s/%s" (include "tali-guard.controlSecretName" .) .Values.security.controlSecret.runnerTokenKey) true -}}
-{{- $_ := set $reserved (printf "%s/%s" $poolAuth.controllerSecret $poolAuth.controllerKey) true -}}
-{{- range $poolAuth.runnerSecrets -}}{{- $_ := set $reserved (printf "%s/%s" .name .key) true -}}{{- end -}}
-{{- $mapIdentity := printf "%s/%s" $httpAuth.controllerSecret $httpAuth.controllerKey -}}
-{{- if hasKey $reserved $mapIdentity -}}{{- fail "Controller HTTP map must use a separate Secret key from Runner control and legacy credentials" -}}{{- end -}}
-{{- $_ := set $reserved $mapIdentity true -}}
-{{- range $names -}}
-{{- $ref := get $httpAuth.runnerSecrets . -}}
-{{- if or (not $ref) (not $ref.name) (not $ref.key) -}}
-{{- fail (printf "security.runnerHttpAuthentication.runnerSecrets must provide name and key for Runner pool %s" .) -}}
-{{- end -}}
-{{- $identity := printf "%s/%s" $ref.name $ref.key -}}
-{{- if hasKey $reserved $identity -}}{{- fail "each Runner HTTP credential must use a distinct Secret key, separate from control and map credentials" -}}{{- end -}}
-{{- $_ := set $reserved $identity true -}}
-{{- end -}}
-{{- range $name, $_ := $httpAuth.runnerSecrets -}}
-{{- if not (has $name $names) -}}{{- fail (printf "security.runnerHttpAuthentication.runnerSecrets contains unknown chart pool %s" $name) -}}{{- end -}}
-{{- end -}}
-{{- else if or $httpAuth.controllerSecret (not (empty $httpAuth.runnerSecrets)) -}}
-{{- fail "security.runnerHttpAuthentication references require enabled=true" -}}
-{{- end -}}
+{{- $runnerAuth := include "tali-guard.runnerAuthRefs" . | fromJson -}}
 {{- if lt (int .Values.runner.default.replicaCount) 1 }}
 {{- fail "runner.default.replicaCount must be at least 1; runner-default is the mandatory baseline Runner pool" }}
 {{- end }}
@@ -348,6 +334,9 @@ app.kubernetes.io/part-of: tasklattice-guard
 {{- fail "enable postgresql or set database.existingSecret; Controller requires PostgreSQL" -}}
 {{- end -}}
 {{- if not .Values.security.bootstrap.enabled -}}
+{{- if $runnerAuth.managed -}}
+{{- fail "enable security.bootstrap or provide external Secrets for both Runner authentication roles" -}}
+{{- end -}}
 {{- if or .Values.postgresql.enabled (not .Values.security.controlSecret.existingSecret) (not .Values.security.metrics.existingSecret) (not .Values.security.runtimeLogs.existingSecret) (not .Values.security.artifactSigning.existingSecret) (not .Values.security.bootstrapAdmin.existingSecret) (and .Values.security.bootstrapUser.enabled (not .Values.security.bootstrapUser.existingSecret)) -}}
 {{- fail "enable security.bootstrap or supply every managed Secret through existingSecret" -}}
 {{- end -}}
@@ -405,7 +394,6 @@ data:
   CONTROLLER_RUNNER_SYNC_CONCURRENCY: {{ .Values.controller.runnerSyncConcurrency | quote }}
   CONTROLLER_DEBUG_ERRORS: {{ .Values.controller.debugErrors | default false | quote }}
   CONTROLLER_GRPC_TRANSPORT: {{ ternary "mtls" "plaintext" .Values.security.controlTls.enabled | quote }}
-  CONTROLLER_RUNNER_SCOPED_TELEMETRY: {{ .Values.security.poolAuthentication.scopedTelemetry | quote }}
   {{- with .Values.controller.endpointContextStorage }}
   CONTROLLER_ENDPOINT_CONTEXT_MAX_ROWS_PER_POOL: {{ .maxRowsPerPool | int64 | quote }}
   CONTROLLER_ENDPOINT_CONTEXT_MAX_ROWS_GLOBAL: {{ .maxRowsGlobal | int64 | quote }}

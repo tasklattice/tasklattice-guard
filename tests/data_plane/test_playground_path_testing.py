@@ -45,7 +45,7 @@ def test_preview_uses_the_same_runtime_assignment_and_fallback():
 async def test_internal_probe_requires_auth_and_does_not_execute_for_simulation():
     runtime = SimpleNamespace(evaluate=AsyncMock())
     from tests.test_runner_api import Metrics
-    api = SimpleNamespace(router=FastAPI(), _metrics=Metrics(), _emit_telemetry=AsyncMock(), _runtime=runtime, _store=store(), _runner_id='runner-1', _controller_token='secret')
+    api = SimpleNamespace(router=FastAPI(), _metrics=Metrics(), _emit_telemetry=AsyncMock(), _runtime=runtime, _store=store(), _runner_id='runner-1', _controller_http_token='secret')
     register_path_testing(api)
     body = dict(revision=1, endpoint_id='endpoint', action='simulate', call_id='call', fields={}, business_request={'x-channel': ['partner']}, text='hello')
     async with httpx.AsyncClient(transport=httpx.ASGITransport(app=api.router), base_url='http://runner') as client:
@@ -85,7 +85,7 @@ async def test_internal_routing_capability_is_not_exposed_in_user_responses():
         decision='allow', action='allow', route_assignment={'routeId': 'first', 'internalCapability': secret},
     )))
     api = SimpleNamespace(router=FastAPI(), _metrics=Metrics(), _emit_telemetry=AsyncMock(), _runtime=runtime,
-                          _store=s, _runner_id='runner-1', _controller_token='secret')
+                          _store=s, _runner_id='runner-1', _controller_http_token='secret')
     register_path_testing(api)
     body = dict(revision=1, endpoint_id='endpoint', action='execute', call_id='call', fields={},
                 business_request={'x-channel': ['partner']}, text='hello')

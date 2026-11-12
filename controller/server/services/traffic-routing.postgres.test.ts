@@ -1,3 +1,4 @@
+import { runnerAuthEnv } from "../../test/runner-auth-fixture.js";
 import { withTestProject } from "../db/postgres-test-database.js";
 // @vitest-environment node
 import { createHash, randomUUID } from "node:crypto";
@@ -36,13 +37,13 @@ describe.skipIf(!url)("Traffic composition transactions in PostgreSQL", () => {
     database = await createTestDatabase(url!, "traffic");
     pool = database.pool;
     service = new ControlPlaneService(drizzle(pool, { schema }), loadConfig({ NODE_ENV: "test", CONTROLLER_DATABASE_URL: url!,
-      CONTROLLER_RUNNER_TOKEN: "runner-token-that-is-at-least-32-characters", CONTROLLER_ARTIFACT_SIGNING_KEY_PATH: "/tmp/unused-signing-key.pem",
+      ...runnerAuthEnv("runner-token-that-is-at-least-32-characters"), CONTROLLER_ARTIFACT_SIGNING_KEY_PATH: "/tmp/unused-signing-key.pem",
       CONTROLLER_POLICY_CATALOG_DIR: resolve("../runner/toolkit/policy_library/assets"), BETTER_AUTH_SECRET: "better-auth-secret-that-is-at-least-32-characters" }));
   });
   afterAll(async () => { await database?.drop(); });
   beforeEach(async () => {
     decisionTimes.clear();
-    await pool.query('TRUNCATE auth_user, guardrail, runner_pool, controller_state, traffic_router, route_assignment, telemetry_watermark, controller_outbox CASCADE');
+    await pool.query('TRUNCATE auth_user, guardrail, runner_pool, controller_state, traffic_router, route_assignment, controller_outbox CASCADE');
     await pool.query(`INSERT INTO auth_user (id,username,email,role) VALUES ('admin','Admin','admin@example.test','admin'),('approver','Approver','approver@example.test','admin');
       INSERT INTO controller_state (id) VALUES ('singleton');
       INSERT INTO runner_pool (id,name) VALUES ('default','Default');
@@ -460,7 +461,10 @@ describe.skipIf(!url)("Traffic composition transactions in PostgreSQL", () => {
     return routingEventSchema.parse({ id: `assignment-${decisionId}`, eventType: "route_assignment", decisionId, callId: `call-${decisionId}`, runnerId: "runner", endpointId: "http", routerId, routerRevision: 1,
       routeId: "fallback", targetId: "target-a", guardrailId: "guard-a", guardrailVersion: "1", occurredAt: new Date(), decisionAt, assignmentStatus: "assigned", ...overrides });
   }
-  async function runner(id = "runner") { await pool.query("INSERT INTO runner_instance (runner_id,boot_id,pool_id,runner_version,nemo_version,max_concurrency,status) VALUES ($1,'boot','default','test','test',10,'ready')", [id]); }
+  async function runner(id = "runner", drainedAt: Date | null = new Date()) {
+    await pool.query(`INSERT INTO runner_instance (runner_id,boot_id,pool_id,runner_version,nemo_version,max_concurrency,status,telemetry_drained_at)
+      VALUES ($1,'boot','default','test','test',10,'ready',$2)`, [id, drainedAt]);
+  }
 
   it("deduplicates retries and completion-before-assignment while counting unique logical decisions", async () => {
     const router = await publish(); await runner();
@@ -516,12 +520,12 @@ describe.skipIf(!url)("Traffic composition transactions in PostgreSQL", () => {
     expect(await service.trafficRouting.distribution(router.id, 24)).toMatchObject({ total: 0, telemetryFresh: false, dataWatermark: null, completeness: "delayed_or_unavailable" });
     await runner(); await service.trafficRouting.recordEvents([event(router.id, "fresh")]);
     expect((await service.trafficRouting.distribution(router.id, 24)).telemetryFresh).toBe(true);
-    await runner("silent");
+    await runner("silent", null);
     expect((await service.trafficRouting.distribution(router.id, 24)).telemetryFresh).toBe(false);
     await service.trafficRouting.recordEvents([event(router.id, "silent-event", { runnerId: "silent" })]);
-    await pool.query("UPDATE runner_instance SET last_heartbeat_at=now()-interval '2 minutes' WHERE runner_id='runner'");
+    await pool.query("UPDATE runner_instance SET telemetry_drained_at=now() WHERE runner_id='silent'; UPDATE runner_instance SET last_heartbeat_at=now()-interval '2 minutes' WHERE runner_id='runner'");
     expect((await service.trafficRouting.distribution(router.id, 24)).telemetryFresh).toBe(false);
-    await pool.query("UPDATE runner_instance SET last_heartbeat_at=now(); UPDATE telemetry_watermark SET last_received_at=now()-interval '2 minutes' WHERE runner_id='runner'");
+    await pool.query("UPDATE runner_instance SET last_heartbeat_at=now(), telemetry_drained_at=now()-interval '2 minutes' WHERE runner_id='runner'");
     const stale = await service.trafficRouting.distribution(router.id, 24);
     expect(stale.telemetryFresh).toBe(false); expect(Date.parse(stale.dataWatermark!)).toBeLessThan(Date.now() - 60000);
   });

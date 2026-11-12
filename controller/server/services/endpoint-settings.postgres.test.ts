@@ -1,3 +1,4 @@
+import { runnerAuthEnv } from "../../test/runner-auth-fixture.js";
 import { withTestProject } from "../db/postgres-test-database.js";
 // @vitest-environment node
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
@@ -15,7 +16,7 @@ describe.skipIf(!url)("Endpoint settings in PostgreSQL", () => {
     await database.pool.query("INSERT INTO controller_state(id,desired_generation) VALUES ('singleton',0)");
     const config = loadConfig({
       NODE_ENV: "test", CONTROLLER_DATABASE_URL: url,
-      CONTROLLER_RUNNER_TOKEN: "runner-token-that-is-at-least-32-characters",
+      ...runnerAuthEnv("runner-token-that-is-at-least-32-characters"),
       CONTROLLER_ARTIFACT_SIGNING_KEY_PATH: "/tmp/unused-signing-key.pem",
       BETTER_AUTH_SECRET: "better-auth-secret-that-is-at-least-32-characters",
       CONTROLLER_RUNTIME_PUBLIC_URL: "http://runtime.test",

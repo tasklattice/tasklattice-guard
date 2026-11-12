@@ -1,3 +1,4 @@
+import { runnerAuthEnv } from "../../test/runner-auth-fixture.js";
 import { guardrailProfiles } from "../../shared/guardrail-profiles.js";
 import { expandProtectionPreset } from "../policy-catalog/presets.js";
 import { resolve } from "node:path";
@@ -17,7 +18,7 @@ import { emptyPolicyDefinition } from "../../shared/policy-definition.js";
 const config = loadConfig({
   NODE_ENV: "test",
   CONTROLLER_DATABASE_URL: "postgresql://controller:controller@localhost/controller",
-  CONTROLLER_RUNNER_TOKEN: "runner-token-that-is-at-least-32-characters",
+  ...runnerAuthEnv("runner-token-that-is-at-least-32-characters"),
   CONTROLLER_ARTIFACT_SIGNING_KEY_PATH: "/tmp/controller-signing-key.pem",
   CONTROLLER_POLICY_CATALOG_DIR: resolve("../runner/toolkit/policy_library/assets"),
   BETTER_AUTH_SECRET: "better-auth-secret-that-is-at-least-32-characters",

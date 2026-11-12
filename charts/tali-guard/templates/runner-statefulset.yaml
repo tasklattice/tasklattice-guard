@@ -1,5 +1,6 @@
 {{- include "tali-guard.defaults" . -}}
 {{- include "tali-guard.validateValues" . -}}
+{{- $runnerAuth := include "tali-guard.runnerAuthRefs" . | fromJson -}}
 {{- if hasKey .Values.runner "scanTimeoutSeconds" -}}
 {{- $scanTimeout := toString .Values.runner.scanTimeoutSeconds -}}
 {{- if or (not (regexMatch "^[0-9]+$" $scanTimeout)) (lt (int $scanTimeout) 1) (gt (int $scanTimeout) 300) -}}
@@ -79,23 +80,10 @@ spec:
             - { name: GUARD_PYROSCOPE_SERVER_ADDRESS, value: {{ required "observability.profiling.serverAddress is required when profiling or performanceDebug is enabled" .Values.observability.profiling.serverAddress | quote }} }
             - { name: GUARD_PYROSCOPE_SAMPLE_RATE, value: {{ .Values.observability.profiling.sampleRate | quote }} }
             {{- end }}
-            {{- if not (and .Values.security.poolAuthentication.scopedTelemetry .Values.security.runnerHttpAuthentication.enabled) }}
-            - name: GUARD_CONTROLLER_TOKEN
-              valueFrom: { secretKeyRef: { name: {{ include "tali-guard.controlSecretName" . }}, key: {{ .Values.security.controlSecret.runnerTokenKey }} } }
-            {{- end }}
-            {{- if .Values.security.poolAuthentication.scopedTelemetry }}
-            - { name: GUARD_RUNNER_SCOPED_TELEMETRY, value: "true" }
-            {{- end }}
-            {{- if .Values.security.poolAuthentication.enabled }}
-            {{- $poolSecret := get .Values.security.poolAuthentication.runnerSecrets "default" }}
             - name: GUARD_RUNNER_CONTROL_TOKEN
-              valueFrom: { secretKeyRef: { name: {{ $poolSecret.name | quote }}, key: {{ $poolSecret.key | quote }} } }
-            {{- end }}
-            {{- if .Values.security.runnerHttpAuthentication.enabled }}
-            {{- $httpSecret := get .Values.security.runnerHttpAuthentication.runnerSecrets "default" }}
+              valueFrom: { secretKeyRef: { name: {{ $runnerAuth.control.runner.name | quote }}, key: {{ $runnerAuth.control.runner.key | quote }} } }
             - name: GUARD_CONTROLLER_HTTP_TOKEN
-              valueFrom: { secretKeyRef: { name: {{ $httpSecret.name | quote }}, key: {{ $httpSecret.key | quote }} } }
-            {{- end }}
+              valueFrom: { secretKeyRef: { name: {{ $runnerAuth.http.runner.name | quote }}, key: {{ $runnerAuth.http.runner.key | quote }} } }
             - name: GUARD_METRICS_TOKEN
               valueFrom: { secretKeyRef: { name: {{ include "tali-guard.metricsSecretName" . }}, key: {{ .Values.security.metrics.tokenKey }} } }
             - name: MODEL_GUARDRAILS_RUNTIME_LOG_ENCRYPTION_KEY

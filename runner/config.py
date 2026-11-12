@@ -31,12 +31,20 @@ def _ratio(name: str, default: float) -> float:
     return value
 
 
+def _required_pool_token(name: str) -> str:
+    token = os.environ.get(name, "")
+    if len(token) < 32 or any(not ("!" <= character <= "~") for character in token):
+        raise ValueError(f"{name} must contain at least 32 printable ASCII characters without whitespace.")
+    return token
+
+
 @dataclass(frozen=True, slots=True)
 class RunnerSettings:
     runner_id: str
     pool_id: str
     controller_target: str
-    controller_token: str
+    control_token: str
+    controller_http_token: str
     metrics_token: str | None
     artifact_public_key_path: Path
     artifact_state_path: Path
@@ -55,11 +63,6 @@ class RunnerSettings:
     pyroscope_sample_rate: int = 100
     scan_max_body_bytes: int = 1_048_576
     scan_timeout_seconds: int = 25
-    # Pool credential for gRPC and model-credential resolution.
-    control_token: str | None = None
-    # Optional distinct Controller-to-Runner HTTP credential.
-    controller_http_token: str | None = None
-    scoped_telemetry: bool = False
     # Experimental cooperative request fencing; allocation moves still need
     # Controller-side drain/epoch coordination and verified timing assumptions.
     experimental_lease_enforcement: bool = False
@@ -72,16 +75,6 @@ class RunnerSettings:
     call_context_capacity_fallback: bool = False
     call_context_ttl_seconds: int = 300
 
-    @property
-    def telemetry_token(self) -> str:
-        # from_env validates this requirement; keep it fail closed for settings
-        # built programmatically too.
-        if self.scoped_telemetry:
-            if not self.control_token:
-                raise ValueError("Scoped telemetry requires a Runner pool token.")
-            return self.control_token
-        return self.controller_token
-
     @classmethod
     def from_env(cls) -> "RunnerSettings":
         pool_id = os.environ.get("GUARD_RUNNER_POOL_ID", "default").strip()
@@ -93,36 +86,17 @@ class RunnerSettings:
         ordinal = runner_id.removeprefix(prefix)
         if not runner_id.startswith(prefix) or not re.fullmatch(r"0|[1-9][0-9]*", ordinal) or int(ordinal) > 2_147_483_647:
             raise ValueError(f"GUARD_RUNNER_ID must be {prefix}<index>, with an integer index starting at 0.")
-        legacy_token = os.environ.get("GUARD_CONTROLLER_TOKEN")
-        token = legacy_token or ""
-        control_token = os.environ.get("GUARD_RUNNER_CONTROL_TOKEN")
-        controller_http_token = os.environ.get("GUARD_CONTROLLER_HTTP_TOKEN")
+        control_token = _required_pool_token("GUARD_RUNNER_CONTROL_TOKEN")
+        controller_http_token = _required_pool_token("GUARD_CONTROLLER_HTTP_TOKEN")
+        if controller_http_token == control_token:
+            raise ValueError("GUARD_CONTROLLER_HTTP_TOKEN must differ from GUARD_RUNNER_CONTROL_TOKEN.")
         metrics_token = os.environ.get("GUARD_METRICS_TOKEN", "").strip()
         public_key = os.environ.get("GUARD_ARTIFACT_PUBLIC_KEY_PATH", "").strip()
         if not runner_id or not pool_id:
             raise ValueError("GUARD_RUNNER_ID and GUARD_RUNNER_POOL_ID cannot be empty.")
-        if control_token is not None and (
-            len(control_token) < 32 or any(not ("!" <= character <= "~") for character in control_token)
-        ):
-            raise ValueError("GUARD_RUNNER_CONTROL_TOKEN must contain at least 32 printable ASCII characters without whitespace when configured.")
-        if controller_http_token is not None and (
-            len(controller_http_token) < 32 or any(not ("!" <= character <= "~") for character in controller_http_token) or
-            not control_token or controller_http_token in {token, control_token}
-        ):
-            raise ValueError("GUARD_CONTROLLER_HTTP_TOKEN requires a pool control token and must contain at least 32 printable ASCII characters without whitespace distinct from the legacy and control tokens.")
-        scoped_telemetry = _boolean("GUARD_RUNNER_SCOPED_TELEMETRY", False)
-        if scoped_telemetry and not control_token:
-            raise ValueError("GUARD_RUNNER_SCOPED_TELEMETRY requires GUARD_RUNNER_CONTROL_TOKEN.")
         if _positive_int("GUARD_RUNNER_TELEMETRY_BATCH_SIZE", 100) > 1000:
             raise ValueError("Telemetry batch size must not exceed 1000.")
-        if legacy_token is None:
-            if not (control_token and controller_http_token and scoped_telemetry):
-                raise ValueError("GUARD_CONTROLLER_TOKEN is required unless pool control, distinct Controller HTTP authentication and scoped telemetry are all configured.")
-        elif len(token) < 32 or any(character.isspace() for character in token):
-            raise ValueError("GUARD_CONTROLLER_TOKEN must contain at least 32 non-whitespace characters when configured.")
         experimental_lease_enforcement = _boolean("GUARD_RUNNER_EXPERIMENTAL_LEASE_ENFORCEMENT", False)
-        if experimental_lease_enforcement and not control_token:
-            raise ValueError("GUARD_RUNNER_EXPERIMENTAL_LEASE_ENFORCEMENT requires GUARD_RUNNER_CONTROL_TOKEN.")
         admission_enabled = _boolean("GUARD_RUNNER_PROJECT_ADMISSION_ENABLED", False)
         admission_json = os.environ.get("GUARD_RUNNER_PROJECT_ADMISSION_JSON")
         if admission_enabled and not admission_json:
@@ -133,8 +107,8 @@ class RunnerSettings:
         rate_enabled = _boolean("GUARD_RUNNER_DISTRIBUTED_RATE_ENABLED", False)
         rate_json = os.environ.get("GUARD_RUNNER_DISTRIBUTED_RATE_JSON")
         redis_url = os.environ.get("GUARD_RUNNER_CALL_CONTEXT_REDIS_URL", "").strip() or None
-        if rate_enabled and (not rate_json or project_admission is None or not redis_url or not control_token):
-            raise ValueError("GUARD_RUNNER_DISTRIBUTED_RATE_ENABLED requires strict rate JSON, local project admission, Redis and a Runner pool control token.")
+        if rate_enabled and (not rate_json or project_admission is None or not redis_url):
+            raise ValueError("GUARD_RUNNER_DISTRIBUTED_RATE_ENABLED requires strict rate JSON, local project admission and Redis.")
         if not rate_enabled and rate_json is not None:
             raise ValueError("GUARD_RUNNER_DISTRIBUTED_RATE_JSON requires GUARD_RUNNER_DISTRIBUTED_RATE_ENABLED=true.")
         distributed_rate_admission = DistributedRateConfiguration.from_json(rate_json) if rate_enabled else None
@@ -145,8 +119,8 @@ class RunnerSettings:
             raise ValueError("Distributed rate pool_id and project IDs must match the trusted Runner pool and local admission configuration.")
         group_rate_enabled = _boolean("GUARD_RUNNER_GROUP_RATE_ENABLED", False)
         group_rate_json = os.environ.get("GUARD_RUNNER_GROUP_RATE_JSON")
-        if group_rate_enabled and (not group_rate_json or project_admission is None or not redis_url or not control_token or rate_enabled):
-            raise ValueError("GUARD_RUNNER_GROUP_RATE_ENABLED requires strict group JSON, local admission, Redis, pool control authentication and v1 distributed rate disabled.")
+        if group_rate_enabled and (not group_rate_json or project_admission is None or not redis_url or rate_enabled):
+            raise ValueError("GUARD_RUNNER_GROUP_RATE_ENABLED requires strict group JSON, local admission, Redis and v1 distributed rate disabled.")
         if not group_rate_enabled and group_rate_json is not None:
             raise ValueError("GUARD_RUNNER_GROUP_RATE_JSON requires GUARD_RUNNER_GROUP_RATE_ENABLED=true.")
         group_rate_admission = GroupRateConfiguration.from_json(group_rate_json) if group_rate_enabled else None
@@ -191,10 +165,8 @@ class RunnerSettings:
             runner_id=runner_id,
             pool_id=pool_id,
             controller_target=target,
-            controller_token=token,
             control_token=control_token,
             controller_http_token=controller_http_token,
-            scoped_telemetry=scoped_telemetry,
             experimental_lease_enforcement=experimental_lease_enforcement,
             project_admission=project_admission,
             distributed_rate_admission=distributed_rate_admission,

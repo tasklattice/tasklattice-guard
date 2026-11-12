@@ -1,4 +1,5 @@
 // @vitest-environment node
+import { runnerAuthEnv } from "../../test/runner-auth-fixture.js";
 import { resolve } from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import { Registry } from "prom-client";
@@ -13,7 +14,7 @@ import { runWithProjectContext } from "../services/project-context.js";
 import { createHttpApp } from "./app.js";
 
 const config = loadConfig({ NODE_ENV: "test", CONTROLLER_DATABASE_URL: "postgresql://unused:unused@localhost/unused",
-  CONTROLLER_RUNNER_TOKEN: "runner-token-that-is-at-least-32-characters", CONTROLLER_ARTIFACT_SIGNING_KEY_PATH: "/tmp/test-key.pem",
+  ...runnerAuthEnv("runner-token-that-is-at-least-32-characters"), CONTROLLER_ARTIFACT_SIGNING_KEY_PATH: "/tmp/test-key.pem",
   CONTROLLER_POLICY_CATALOG_DIR: resolve("../runner/toolkit/policy_library/assets"), BETTER_AUTH_SECRET: "better-auth-secret-that-is-at-least-32-characters" });
 const routes = [
   ["GET", "/project-groups"], ["POST", "/project-groups"], ["PATCH", "/project-groups/team-a"], ["DELETE", "/project-groups/team-a"],

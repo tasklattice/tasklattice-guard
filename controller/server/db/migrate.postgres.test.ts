@@ -1,4 +1,5 @@
 // @vitest-environment node
+import { runnerAuthEnv } from "../../test/runner-auth-fixture.js";
 import { randomUUID } from "node:crypto";
 import { mkdtempSync, readFileSync, rmSync, writeFileSync, cpSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -23,7 +24,7 @@ describe.skipIf(!url)("Current database schema baseline", () => {
     const target = new URL(url!); target.pathname = `/${name}`;
     pool = new Pool({ connectionString: target.toString(), max: 2 });
     config = loadConfig({ NODE_ENV: "test", CONTROLLER_DATABASE_URL: target.toString(),
-      CONTROLLER_RUNNER_TOKEN: "test-runner-token-32-characters-long",
+      ...runnerAuthEnv("test-runner-token-32-characters-long"),
       BETTER_AUTH_SECRET: "test-auth-secret-32-characters-long",
       CONTROLLER_ARTIFACT_SIGNING_KEY_PATH: "/unused-test-key.pem",
       CONTROLLER_MIGRATIONS_PATH: resolve("server/db/migrations") });

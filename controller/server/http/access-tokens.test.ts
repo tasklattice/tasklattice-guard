@@ -1,4 +1,5 @@
 // @vitest-environment node
+import { runnerAuthEnv } from "../../test/runner-auth-fixture.js";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it, vi } from "vitest";
@@ -16,7 +17,7 @@ import type { ModelConfigurationService } from "../model-config/service.js";
 import type { ProjectService } from "../services/projects.js";
 import { allowsTokenPermission } from "../../shared/access-tokens.js";
 const config = loadConfig({ NODE_ENV: "test", CONTROLLER_DATABASE_URL: "postgresql://controller:controller@localhost/controller",
-  CONTROLLER_RUNNER_TOKEN: "runner-token-that-is-at-least-32-characters", CONTROLLER_ARTIFACT_SIGNING_KEY_PATH: "/tmp/controller-signing-key.pem",
+  ...runnerAuthEnv("runner-token-that-is-at-least-32-characters"), CONTROLLER_ARTIFACT_SIGNING_KEY_PATH: "/tmp/controller-signing-key.pem",
   CONTROLLER_POLICY_CATALOG_DIR: resolve("../runner/toolkit/policy_library/assets"), BETTER_AUTH_SECRET: "better-auth-secret-that-is-at-least-32-characters" });
 function setup(identity: TokenIdentity | null = { id: "owner", role: "admin", projectId: "projectA", tokenId: "token", permissions: { routers: "read" } }) {
   const getSession = vi.fn().mockResolvedValue({ session: { id: "fixture-session", activeProjectId: "projectA" }, user: { id: "session-owner", role: "admin", projectId: "projectA" } });

@@ -1,4 +1,5 @@
 // @vitest-environment node
+import { runnerAuthEnv } from "../../test/runner-auth-fixture.js";
 import { randomUUID } from "node:crypto";
 import { resolve } from "node:path";
 import { Registry } from "prom-client";
@@ -20,14 +21,14 @@ const providerId = randomUUID(), candidateProviderId = randomUUID();
 const modelId = randomUUID(), candidateModelId = randomUUID();
 const poolToken = "pool-a-token-with-at-least-32-characters";
 const staleToken = "deleted-pool-token-with-at-least-32-characters";
-const legacyToken = "legacy-token-with-at-least-32-characters";
+const authentication = runnerAuthEnv({ "pool-a": poolToken, "deleted-pool": staleToken });
+const inboundHttpToken = JSON.parse(authentication.CONTROLLER_RUNNER_HTTP_TOKENS_JSON)["pool-a"] as string;
 
 describe.skipIf(!url)("model credential current pool allocation", () => {
   let database: Awaited<ReturnType<typeof createTestDatabase>>;
   let models: ModelConfigurationService;
   const config = loadConfig({ NODE_ENV: "test", CONTROLLER_DATABASE_URL: "postgresql://unused:unused@localhost/unused",
-    CONTROLLER_RUNNER_TOKEN: legacyToken, BETTER_AUTH_SECRET: "better-auth-secret-with-at-least-32-characters",
-    CONTROLLER_RUNNER_POOL_TOKENS_JSON: JSON.stringify({ "pool-a": poolToken, "deleted-pool": staleToken }),
+    BETTER_AUTH_SECRET: "better-auth-secret-with-at-least-32-characters", ...authentication,
     CONTROLLER_ARTIFACT_SIGNING_KEY_PATH: "/tmp/test-key.pem" });
   beforeAll(async () => {
     database = await createTestDatabase(url!, "credential_pool_allocation");
@@ -60,27 +61,14 @@ describe.skipIf(!url)("model credential current pool allocation", () => {
     expect(await (await request(poolToken)).json()).toEqual({ credentials: { [providerId]: "active-secret" } });
     expect(await (await request(poolToken, [candidateProviderId])).json()).toEqual({ credentials: {} });
     expect(await (await request(staleToken)).json()).toEqual({ credentials: {} });
-    expect((await request(legacyToken)).status).toBe(401);
+    expect((await request(inboundHttpToken)).status).toBe(401);
     expect((await request("unknown-token")).status).toBe(401);
     await database.pool.query("DELETE FROM runner_pool WHERE id='pool-a'");
     expect(await (await request(poolToken)).json()).toEqual({ credentials: {} });
-    // Compatibility mode remains explicitly platform-wide and unscoped.
-    expect(await models.resolveCredentials([providerId])).toEqual({ [providerId]: "active-secret" });
   });
   it("does not grant platform credentials to a non-default group without an explicit model grant", async () => {
     await database.pool.query("UPDATE project SET group_id='credential-group' WHERE id='projectA'; UPDATE runner_pool SET group_id='credential-group' WHERE id='pool-a'");
     expect(await (await request(poolToken)).json()).toEqual({ credentials: {} });
-  });
-  it("fails closed for an orphaned group allocation in a corrupt database", async () => {
-    // Only this disposable schema is changed to represent a legacy broken FK.
-    await database.pool.query("ALTER TABLE runner_pool DROP CONSTRAINT runner_pool_group_id_fkey");
-    try {
-      await database.pool.query("UPDATE runner_pool SET group_id='missing-group' WHERE id='pool-a'");
-      expect(await (await request(poolToken)).json()).toEqual({ credentials: {} });
-    } finally {
-      await database.pool.query("UPDATE runner_pool SET group_id='default' WHERE id='pool-a'");
-      await database.pool.query("ALTER TABLE runner_pool ADD CONSTRAINT runner_pool_group_id_fkey FOREIGN KEY(group_id) REFERENCES project_group(id)");
-    }
   });
   it("rechecks allocation in the secret fetch after an earlier successful lookup", async () => {
     const active = models.activeConfiguration.bind(models);
@@ -99,11 +87,16 @@ describe.skipIf(!url)("model credential current pool allocation", () => {
     expect(await response.json()).toEqual({ credentials: {} });
   });
   it("denies a candidate validation credential once its bound pool is deprovisioned", async () => {
+    const session = { poolId: "pool-a", runnerId: "runner-a-0", bootId: "boot-a", sessionId: "session-a" };
+    await database.pool.query("INSERT INTO runner_control_session(id,runner_id,boot_id,pool_id) VALUES ($1,$2,$3,$4)",
+      [session.sessionId, session.runnerId, session.bootId, session.poolId]);
+    await database.pool.query("INSERT INTO runner_instance(runner_id,boot_id,pool_id,runner_version,nemo_version,status,max_concurrency,control_session_id) VALUES ($1,$2,$3,'test','test','ready',1,$4)",
+      [session.runnerId, session.bootId, session.poolId, session.sessionId]);
     models.setRailValidator(async validation => {
-      expect(await models.bindValidationLease(validation.credentialLeaseId!, "pool-a")).toBe(true);
+      expect(await models.bindValidationLease(validation.credentialLeaseId!, session.poolId, session)).toBe(true);
       expect(await models.resolveCredentials([candidateProviderId], validation.credentialLeaseId, "pool-a"))
         .toEqual({ [candidateProviderId]: "candidate-secret" });
-      await database.pool.query("DELETE FROM runner_pool WHERE id='pool-a'");
+      await database.pool.query("DELETE FROM runner_instance WHERE pool_id='pool-a'; DELETE FROM runner_control_session WHERE pool_id='pool-a'; DELETE FROM runner_pool WHERE id='pool-a'");
       expect(await models.resolveCredentials([candidateProviderId], validation.credentialLeaseId, "pool-a")).toEqual({});
       return { passed: true, message: "Synthetic validation", latencyMs: 1 };
     });

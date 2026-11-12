@@ -1,4 +1,5 @@
 // @vitest-environment node
+import { runnerAuthEnv } from "../../test/runner-auth-fixture.js";
 import { spawn } from "node:child_process";
 import { createInterface } from "node:readline";
 import { fileURLToPath } from "node:url";
@@ -11,6 +12,7 @@ import type { RunnerControlServer } from "../control-channel/control-server.js";
 import { createTestDatabase } from "../db/postgres-test-database.js";
 import type { ControllerMetrics } from "../metrics.js";
 import { ControlPlaneService } from "../services/control-plane.js";
+import { issueEndpointTelemetryContexts } from "../services/endpoint-telemetry-contexts.js";
 import { createHttpApp } from "./app.js";
 
 const url = process.env.GUARD_TEST_POSTGRES_URL;
@@ -27,7 +29,7 @@ type LogicalEvent = { id: string; requestId: string; calls: number; costOnly: bo
 // reads the Portal/Dashboard performs, plus the durable rows behind them.
 it.skipIf(!url)("delivers split Runtime telemetry to Controller rows and Dashboard read APIs", async () => {
   const database = await createTestDatabase(url!, "runtime_pipeline");
-  const config = loadConfig({ NODE_ENV: "test", CONTROLLER_DATABASE_URL: url!, CONTROLLER_RUNNER_TOKEN: token,
+  const config = loadConfig({ NODE_ENV: "test", CONTROLLER_DATABASE_URL: url!, ...runnerAuthEnv(token),
     CONTROLLER_ARTIFACT_SIGNING_KEY_PATH: "/tmp/unused.pem", BETTER_AUTH_SECRET: "test-auth-secret-at-least-32-characters" });
   const service = new ControlPlaneService(database.db, config);
   const getSession = vi.fn().mockResolvedValue({ session: { id: "test-session", activeProjectId: "projectA" },
@@ -52,13 +54,22 @@ it.skipIf(!url)("delivers split Runtime telemetry to Controller rows and Dashboa
       if (line.done) throw new Error(`Runner fixture exited: ${stderr}`);
       return JSON.parse(line.value);
     };
-    const generated = await read() as { guardrailId: string; endpointId: string; logicalEvents: LogicalEvent[] };
+    const generated = await read() as { guardrailId: string; guardrailVersion: string; endpointId: string;
+      routerId: string; routeId: string; targetId: string; logicalEvents: LogicalEvent[] };
     const [normal1, normal2, normal3, large, validation] = generated.logicalEvents;
     expect(generated.logicalEvents!.map(event => event.calls)).toEqual([2, 2, 2, 65, 300]);
     // The Node side owns the claimed Controller identities; they exist before upload.
     await database.pool.query("INSERT INTO guardrail(id,project_id,name,draft_config) VALUES ($1,'projectA','Fixture','{}')", [generated.guardrailId]);
     await database.pool.query("INSERT INTO endpoint(id,project_id,name,adapter) VALUES ($1,'projectA','Fixture','litellm-generic-guardrail')", [generated.endpointId]);
-    child.stdin!.end("ready\n");
+    const contexts = await database.db.transaction(tx => issueEndpointTelemetryContexts(tx, {
+      poolId: "default", groupId: "default", epoch: 0, generation: 1,
+      endpoints: [{ endpointId: generated.endpointId, projectId: "projectA", adapter: "litellm-generic-guardrail",
+        trafficRouterId: generated.routerId, verification: { credentials: [] }, scanFlagOnlyDefault: true }],
+      routers: [{ routerId: generated.routerId, revision: 1,
+        routes: [{ id: generated.routeId, enabled: true, targets: [{ id: generated.targetId,
+          guardrailId: generated.guardrailId, guardrailVersion: generated.guardrailVersion, weightBps: 10000 }] }] }],
+    }));
+    child.stdin!.end(`${contexts.get(generated.endpointId)!}\n`);
     const delivered = await read() as {
       drainError?: string; walEvents: WalEvent[]; uploads: Upload[]; replayUploads: Upload[];
       remainingEvents: number; remainingAfterReplay: number;
@@ -110,7 +121,7 @@ it.skipIf(!url)("delivers split Runtime telemetry to Controller rows and Dashboa
 
     // Every model call is priced exactly once across the main event and its
     // companions: 3*2 + 65 + 300 = 371 rows with deterministic, idempotent ids.
-    // Legacy validation cost-only events carry no Endpoint, so those 300 testing
+    // Validation cost-only events carry no Endpoint, so those 300 testing
     // rows are intentionally not project-attributed; the 71 Runtime calls are.
     const costSummary = (await database.pool.query(`SELECT count(*)::int AS rows,
         count(DISTINCT id)::int AS ids, sum(calls)::int AS calls,

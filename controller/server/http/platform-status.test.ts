@@ -1,3 +1,4 @@
+import { runnerAuthEnv } from "../../test/runner-auth-fixture.js";
 import { resolve } from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import { Registry } from "prom-client";
@@ -13,7 +14,7 @@ import { createHttpApp } from "./app.js";
 async function snapshot({ instances = [{ status: "ready", appliedGeneration: 7, lastHeartbeatAt: new Date() }],
   required = [] as string[], modelReason = "configured", capacity = instances.length } = {}) {
   const config = loadConfig({ NODE_ENV: "test", CONTROLLER_DATABASE_URL: "postgresql://test:test@localhost/test",
-    CONTROLLER_RUNNER_TOKEN: "runner-token-that-is-at-least-32-characters", CONTROLLER_ARTIFACT_SIGNING_KEY_PATH: "/tmp/test-key.pem",
+    ...runnerAuthEnv("runner-token-that-is-at-least-32-characters"), CONTROLLER_ARTIFACT_SIGNING_KEY_PATH: "/tmp/test-key.pem",
     CONTROLLER_POLICY_CATALOG_DIR: resolve("../runner/toolkit/policy_library/assets"), BETTER_AUTH_SECRET: "better-auth-secret-that-is-at-least-32-characters" });
   const app = createHttpApp({ config, auth: { handler: vi.fn(), api: {} } as unknown as ControllerAuth,
     service: { desiredGeneration: vi.fn().mockResolvedValue(7),

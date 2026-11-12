@@ -37,37 +37,26 @@ def test_model_operating_points_are_validated_per_runtime():
             ModelRuntimeConfig(**base, rate_limit_attempts=attempts)
 
 
-def test_optional_pool_control_token_is_validated_and_kept_distinct(monkeypatch):
+@pytest.mark.parametrize("setting", ["GUARD_RUNNER_CONTROL_TOKEN", "GUARD_CONTROLLER_HTTP_TOKEN"])
+def test_pool_credentials_are_required_and_validated(monkeypatch, setting):
     _required_runner_env(monkeypatch)
-    monkeypatch.delenv("GUARD_RUNNER_CONTROL_TOKEN", raising=False)
-    assert RunnerSettings.from_env().control_token is None
-    pool_token = "pool-a-control-token-with-at-least-32-characters"
-    monkeypatch.setenv("GUARD_RUNNER_CONTROL_TOKEN", pool_token)
-    settings = RunnerSettings.from_env()
-    assert settings.control_token == pool_token
-    assert settings.controller_token != pool_token
-    for value in ("", "short", f"{pool_token} extra"):
-        monkeypatch.setenv("GUARD_RUNNER_CONTROL_TOKEN", value)
-        with pytest.raises(ValueError, match="GUARD_RUNNER_CONTROL_TOKEN"):
-            RunnerSettings.from_env()
-
-
-def test_optional_controller_http_token_is_complete_and_role_separated(monkeypatch):
-    _required_runner_env(monkeypatch)
-    monkeypatch.delenv("GUARD_CONTROLLER_HTTP_TOKEN", raising=False)
-    monkeypatch.delenv("GUARD_RUNNER_CONTROL_TOKEN", raising=False)
-    assert RunnerSettings.from_env().controller_http_token is None
-    inbound = "pool-a-inbound-http-token-with-at-least-32-characters"
-    monkeypatch.setenv("GUARD_CONTROLLER_HTTP_TOKEN", inbound)
-    with pytest.raises(ValueError, match="GUARD_CONTROLLER_HTTP_TOKEN"):
+    monkeypatch.delenv(setting)
+    with pytest.raises(ValueError, match=setting):
         RunnerSettings.from_env()
-    control = "pool-a-control-token-with-at-least-32-characters"
-    monkeypatch.setenv("GUARD_RUNNER_CONTROL_TOKEN", control)
-    assert RunnerSettings.from_env().controller_http_token == inbound
-    for invalid in ("", "short", f"{inbound} extra", control, RunnerSettings.from_env().controller_token):
-        monkeypatch.setenv("GUARD_CONTROLLER_HTTP_TOKEN", invalid)
-        with pytest.raises(ValueError, match="GUARD_CONTROLLER_HTTP_TOKEN"):
+    for value in ("", "short", "control-token-with-at-least-32-characters extra"):
+        monkeypatch.setenv(setting, value)
+        with pytest.raises(ValueError, match=setting):
             RunnerSettings.from_env()
+
+
+def test_pool_credentials_must_differ_between_roles(monkeypatch):
+    _required_runner_env(monkeypatch)
+    settings = RunnerSettings.from_env()
+    assert settings.control_token == "runner-control-token-with-at-least-32-characters"
+    assert settings.controller_http_token == "runner-inbound-http-token-with-at-least-32-characters"
+    monkeypatch.setenv("GUARD_CONTROLLER_HTTP_TOKEN", settings.control_token)
+    with pytest.raises(ValueError, match="GUARD_CONTROLLER_HTTP_TOKEN must differ"):
+        RunnerSettings.from_env()
 
 
 def test_pool_credentials_reject_non_ascii_and_control_characters_without_exposing_values(monkeypatch):
@@ -93,54 +82,11 @@ def test_pool_credentials_reject_non_ascii_and_control_characters_without_exposi
     assert RunnerSettings.from_env().controller_http_token == ascii_token
 
 
-def test_legacy_runner_token_can_be_omitted_only_for_complete_scoped_roles(monkeypatch):
-    _required_runner_env(monkeypatch)
-    monkeypatch.delenv("GUARD_CONTROLLER_TOKEN", raising=False)
-    monkeypatch.delenv("GUARD_RUNNER_CONTROL_TOKEN", raising=False)
-    monkeypatch.delenv("GUARD_CONTROLLER_HTTP_TOKEN", raising=False)
-    monkeypatch.setenv("GUARD_RUNNER_SCOPED_TELEMETRY", "false")
-    with pytest.raises(ValueError, match="GUARD_CONTROLLER_TOKEN"):
-        RunnerSettings.from_env()
-    control = "pool-a-control-token-with-at-least-32-characters"
-    inbound = "pool-a-inbound-http-token-with-at-least-32-characters"
-    monkeypatch.setenv("GUARD_RUNNER_CONTROL_TOKEN", control)
-    monkeypatch.setenv("GUARD_CONTROLLER_HTTP_TOKEN", inbound)
-    with pytest.raises(ValueError, match="GUARD_CONTROLLER_TOKEN"):
-        RunnerSettings.from_env()
-    monkeypatch.setenv("GUARD_RUNNER_SCOPED_TELEMETRY", "true")
-    settings = RunnerSettings.from_env()
-    assert settings.controller_token == ""
-    assert settings.telemetry_token == control
-    assert settings.controller_http_token == inbound
-    monkeypatch.setenv("GUARD_CONTROLLER_TOKEN", "")
-    with pytest.raises(ValueError, match="GUARD_CONTROLLER_TOKEN"):
-        RunnerSettings.from_env()
-
-
-def test_scoped_telemetry_requires_explicit_opt_in_and_pool_token(monkeypatch):
-    _required_runner_env(monkeypatch)
-    monkeypatch.delenv("GUARD_RUNNER_CONTROL_TOKEN", raising=False)
-    monkeypatch.delenv("GUARD_RUNNER_SCOPED_TELEMETRY", raising=False)
-    assert not RunnerSettings.from_env().scoped_telemetry
-    assert RunnerSettings.from_env().telemetry_token == RunnerSettings.from_env().controller_token
-    monkeypatch.setenv("GUARD_RUNNER_SCOPED_TELEMETRY", "true")
-    with pytest.raises(ValueError, match="requires GUARD_RUNNER_CONTROL_TOKEN"):
-        RunnerSettings.from_env()
-    monkeypatch.setenv("GUARD_RUNNER_CONTROL_TOKEN", "pool-a-control-token-with-at-least-32-characters")
-    settings = RunnerSettings.from_env()
-    assert settings.scoped_telemetry
-    assert settings.telemetry_token == settings.control_token
-
-
-def test_experimental_lease_enforcement_is_explicit_and_requires_a_pool_token(monkeypatch):
+def test_experimental_lease_enforcement_is_explicit(monkeypatch):
     _required_runner_env(monkeypatch)
     monkeypatch.delenv("GUARD_RUNNER_EXPERIMENTAL_LEASE_ENFORCEMENT", raising=False)
-    monkeypatch.delenv("GUARD_RUNNER_CONTROL_TOKEN", raising=False)
     assert not RunnerSettings.from_env().experimental_lease_enforcement
     monkeypatch.setenv("GUARD_RUNNER_EXPERIMENTAL_LEASE_ENFORCEMENT", "true")
-    with pytest.raises(ValueError, match="requires GUARD_RUNNER_CONTROL_TOKEN"):
-        RunnerSettings.from_env()
-    monkeypatch.setenv("GUARD_RUNNER_CONTROL_TOKEN", "pool-token-at-least-thirty-two-characters")
     assert RunnerSettings.from_env().experimental_lease_enforcement
     monkeypatch.setenv("GUARD_RUNNER_EXPERIMENTAL_LEASE_ENFORCEMENT", "maybe")
     with pytest.raises(ValueError, match="must be a boolean"):
@@ -181,10 +127,9 @@ def test_distributed_rate_admission_requires_explicit_matching_trusted_policy(mo
     monkeypatch.setenv("GUARD_RUNNER_PROJECT_ADMISSION_JSON", json.dumps(local))
     monkeypatch.setenv("GUARD_RUNNER_DISTRIBUTED_RATE_JSON", json.dumps(rate))
     monkeypatch.setenv("GUARD_RUNNER_CALL_CONTEXT_REDIS_URL", "redis://127.0.0.1:6379/0")
-    monkeypatch.setenv("GUARD_RUNNER_CONTROL_TOKEN", "pool-control-token-with-at-least-32-characters")
     settings = RunnerSettings.from_env()
     assert settings.distributed_rate_admission.pool_limit == 5
-    for required in ("GUARD_RUNNER_CONTROL_TOKEN", "GUARD_RUNNER_CALL_CONTEXT_REDIS_URL", "GUARD_RUNNER_PROJECT_ADMISSION_ENABLED"):
+    for required in ("GUARD_RUNNER_CALL_CONTEXT_REDIS_URL", "GUARD_RUNNER_PROJECT_ADMISSION_ENABLED"):
         with monkeypatch.context() as missing:
             missing.delenv(required, raising=False)
             with pytest.raises(ValueError):
@@ -265,5 +210,6 @@ def _required_runner_env(monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.delenv(name, raising=False)
     monkeypatch.setenv("GUARD_RUNNER_ID", "runner-default-0")
     monkeypatch.setenv("GUARD_RUNNER_POOL_ID", "default")
-    monkeypatch.setenv("GUARD_CONTROLLER_TOKEN", "runner-token-that-is-at-least-32-characters")
+    monkeypatch.setenv("GUARD_RUNNER_CONTROL_TOKEN", "runner-control-token-with-at-least-32-characters")
+    monkeypatch.setenv("GUARD_CONTROLLER_HTTP_TOKEN", "runner-inbound-http-token-with-at-least-32-characters")
     monkeypatch.setenv("GUARD_ARTIFACT_PUBLIC_KEY_PATH", "/tmp/public-key.pem")

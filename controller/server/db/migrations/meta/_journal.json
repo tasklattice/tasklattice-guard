@@ -71,6 +71,13 @@
       "when": 1794400000000,
       "tag": "0009_runtime_overview",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1794499200000,
+      "tag": "0010_runner_telemetry_watermark",
+      "breakpoints": true
     }
   ]
 }

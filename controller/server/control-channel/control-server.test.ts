@@ -1,3 +1,4 @@
+import { runnerAuthEnv } from "../../test/runner-auth-fixture.js";
 import { resolve } from "node:path";
 import { EventEmitter } from "node:events";
 import { createHash } from "node:crypto";
@@ -17,7 +18,7 @@ import { PLAN_COMPILER_VERSION, NEMO_COMPILER_VERSION } from "../domain/artifact
 const config = loadConfig({
   NODE_ENV: "test",
   CONTROLLER_DATABASE_URL: "postgresql://controller:controller@localhost/controller",
-  CONTROLLER_RUNNER_TOKEN: "runner-token-that-is-at-least-32-characters",
+  ...runnerAuthEnv("runner-token-that-is-at-least-32-characters"),
   CONTROLLER_ARTIFACT_SIGNING_KEY_PATH: "/tmp/controller-signing-key.pem",
   CONTROLLER_PROTO_PATH: resolve("../proto/tasklattice/guard/control/v1/runner_control.proto"),
   BETTER_AUTH_SECRET: "better-auth-secret-that-is-at-least-32-characters",
@@ -303,9 +304,9 @@ describe("Runner model-configuration convergence", () => {
   });
   it("grants only pool-authenticated, negotiated and exactly acknowledged snapshots", async () => {
     const experimental = loadConfig({ NODE_ENV: "test", CONTROLLER_DATABASE_URL: "postgresql://localhost/test",
-      CONTROLLER_RUNNER_TOKEN: "runner-token-that-is-at-least-32-characters", CONTROLLER_ARTIFACT_SIGNING_KEY_PATH: "/tmp/key",
+      ...runnerAuthEnv("runner-token-that-is-at-least-32-characters"), CONTROLLER_ARTIFACT_SIGNING_KEY_PATH: "/tmp/key",
       CONTROLLER_PROTO_PATH: config.protoPath, BETTER_AUTH_SECRET: "better-auth-secret-that-is-at-least-32-characters",
-      CONTROLLER_RUNNER_POOL_TOKENS_JSON: JSON.stringify({ default: "pool-secret-with-at-least-32-characters" }),
+      ...runnerAuthEnv({ default: "pool-secret-with-at-least-32-characters" }),
       CONTROLLER_EXPERIMENTAL_RUNNER_LEASE_GRANTS: "true" });
     const ledger = { issueSnapshotBound: vi.fn().mockResolvedValue({}) };
     const models = { activeConfiguration: vi.fn().mockResolvedValue(activeConfiguration("revision-9", 9)), finalizeActivation: vi.fn() };
@@ -355,8 +356,8 @@ describe("Runner model-configuration convergence", () => {
     expect(stream.write.mock.calls.map(([message]) => message.servingLeaseResponse).filter(Boolean)).toEqual([]);
   });
 
-  it("rejects grants when the flag, pool authentication, or capability is absent", async () => {
-    for (const [enabled, poolAuthenticated, capable] of [[false, true, true], [true, false, true], [true, true, false]] as const) {
+  it("rejects grants when the experiment or Runner capability is absent", async () => {
+    for (const [enabled, capable] of [[false, true], [true, false]] as const) {
       const ledger = { issueSnapshotBound: vi.fn() };
       const models = { activeConfiguration: vi.fn().mockResolvedValue(activeConfiguration("revision-9", 9)), finalizeActivation: vi.fn() };
       const server = new RunnerControlServer({ ...config, experimentalRunnerLeaseGrants: enabled }, serviceMock() as unknown as ControlPlaneService,
@@ -364,7 +365,7 @@ describe("Runner model-configuration convergence", () => {
       const stream = streamMock();
       const hello = registration("lease-runner");
       hello.registration.labels = { "tasklattice.snapshot-ack": "1", ...(capable ? { "tasklattice.lease-probe": "1" } : {}) };
-      const connection = await handle(server, stream, hello, null, poolAuthenticated ? "default" : undefined);
+      const connection = await handle(server, stream, hello, null, "default");
       const sent = stream.write.mock.calls.map(([message]) => message.desiredState).find(Boolean);
       await handle(server, stream, { desiredStateResult: { ...desiredResult("lease-runner", true).desiredStateResult, snapshotNonce: sent.snapshotNonce } }, connection);
       await handle(server, stream, { servingLeaseRequest: { runnerId: "lease-runner", bootId: "boot-lease-runner", nonce: "one",
@@ -1026,7 +1027,7 @@ describe("Runner model-configuration convergence", () => {
     } finally { logged.mockRestore(); }
   });
   it.each([true, false])("accepts Rail evidence only from the assigned Runner with both verdicts (complete=%s)", async (complete) => {
-    const models = { activeConfiguration: vi.fn().mockResolvedValue(null) };
+    const models = { activeConfiguration: vi.fn().mockResolvedValue(null), bindValidationLease: vi.fn().mockResolvedValue(true) };
     const server = new RunnerControlServer(config, serviceMock() as unknown as ControlPlaneService,
       metricsMock() as unknown as ControllerMetrics, models as unknown as ModelConfigurationService);
     const otherStream = streamMock();
@@ -1038,7 +1039,7 @@ describe("Runner model-configuration convergence", () => {
     hello.registration.compilerCapable = true;
     const connection = await handle(server, stream, hello, null);
     otherStream.write.mockClear();
-    const pending = server.validateRail({ requestId: "rail-test", bindingId: "content_safety.input" });
+    const pending = server.validateRail({ requestId: "rail-test", bindingId: "content_safety.input", credentialLeaseId: "lease" });
     const settled = vi.fn();
     void pending.then(settled);
     await vi.waitFor(() => expect(stream.write).toHaveBeenCalledWith(expect.objectContaining({
@@ -1208,7 +1209,7 @@ function metricsMock() {
 function streamMock() {
   return Object.assign(new EventEmitter(), {
     write: vi.fn(), end: vi.fn(),
-    metadata: { get: () => [`Bearer ${config.runnerToken}`] },
+    metadata: { get: () => [`Bearer ${config.runnerPoolTokens.get("default")!}`] },
   });
 }
 
@@ -1245,14 +1246,14 @@ async function handle(
   stream: ReturnType<typeof streamMock>,
   message: Record<string, unknown>,
   current: unknown,
-  authorizedPoolId?: string,
+  authorizedPoolId = (message.registration as { poolId?: string } | undefined)?.poolId ?? "default",
 ) {
   return (server as unknown as {
     handleMessage: (
       stream: unknown,
       message: Record<string, unknown>,
       current: unknown,
-      authorizedPoolId?: string,
+      authorizedPoolId: string,
     ) => Promise<unknown>;
   }).handleMessage(stream, message, current, authorizedPoolId);
 }

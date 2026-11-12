@@ -12,9 +12,24 @@ export async function setupDevelopment(root = projectRoot) {
   const original = existsSync(path) ? readFileSync(path, 'utf8') : '';
   const current = parseEnv(original);
   const values = { ...parseEnv(readFileSync(join(root, '.env.example'), 'utf8')), ...current };
-  const runnerTokens = [current.CONTROLLER_RUNNER_TOKEN, current.GUARD_CONTROLLER_TOKEN].filter(value => !placeholder(value));
-  if (new Set(runnerTokens).size > 1) throw new Error('Existing Controller and Runner tokens differ. Align them in .env before running dev:setup.');
-  values.CONTROLLER_RUNNER_TOKEN = values.GUARD_CONTROLLER_TOKEN = runnerTokens[0] ?? randomBytes(32).toString('hex');
+  for (const [mapKey, runnerKey] of [
+    ['CONTROLLER_RUNNER_POOL_TOKENS_JSON', 'GUARD_RUNNER_CONTROL_TOKEN'],
+    ['CONTROLLER_RUNNER_HTTP_TOKENS_JSON', 'GUARD_CONTROLLER_HTTP_TOKEN'],
+  ]) {
+    let tokens;
+    try { tokens = placeholder(values[mapKey]) ? {} : JSON.parse(values[mapKey]); }
+    catch { throw new Error(`${mapKey} must contain a JSON object of Pool tokens.`); }
+    if (!tokens || typeof tokens !== 'object' || Array.isArray(tokens) || Object.values(tokens).some(token => typeof token !== 'string')) {
+      throw new Error(`${mapKey} must contain a JSON object of Pool tokens.`);
+    }
+    const configured = [tokens.default, values[runnerKey]].filter(value => !placeholder(value));
+    if (new Set(configured).size > 1) throw new Error(`${mapKey} and ${runnerKey} disagree for the default Pool.`);
+    values[runnerKey] = tokens.default = configured[0] ?? randomBytes(32).toString('hex');
+    values[mapKey] = JSON.stringify(tokens);
+  }
+  if (values.GUARD_RUNNER_CONTROL_TOKEN === values.GUARD_CONTROLLER_HTTP_TOKEN) {
+    throw new Error('Pool control and Controller HTTP tokens must be distinct.');
+  }
   for (const key of ['BETTER_AUTH_SECRET', 'CONTROLLER_METRICS_TOKEN']) {
     if (placeholder(values[key])) values[key] = randomBytes(32).toString('hex');
   }

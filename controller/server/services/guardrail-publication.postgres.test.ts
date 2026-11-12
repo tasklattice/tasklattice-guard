@@ -1,3 +1,4 @@
+import { runnerAuthEnv } from "../../test/runner-auth-fixture.js";
 import { withTestProject } from "../db/postgres-test-database.js";
 import { completeReport, getReport } from "../db/report-test-utils.js";
 // @vitest-environment node
@@ -41,7 +42,7 @@ describe.skipIf(!url)("Publishing the tested candidate in PostgreSQL", { timeout
   beforeAll(async () => {
     database = await createTestDatabase(url!, "guard_publication");
     service = new ControlPlaneService(database.db, loadConfig({
-      NODE_ENV: "test", CONTROLLER_DATABASE_URL: url!, CONTROLLER_RUNNER_TOKEN: "runner-token-that-is-at-least-32-characters",
+      NODE_ENV: "test", CONTROLLER_DATABASE_URL: url!, ...runnerAuthEnv("runner-token-that-is-at-least-32-characters"),
       CONTROLLER_ARTIFACT_SIGNING_KEY_PATH: join(keys, "private.pem"), CONTROLLER_POLICY_CATALOG_DIR: catalogDir,
       CONTROLLER_PROTO_PATH: protoPath,
       BETTER_AUTH_SECRET: "better-auth-secret-that-is-at-least-32-characters",

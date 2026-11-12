@@ -1,4 +1,5 @@
 // @vitest-environment node
+import { runnerAuthEnv } from "../../test/runner-auth-fixture.js";
 import { generateKeyPairSync, verify } from "node:crypto";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -33,7 +34,7 @@ describe.skipIf(!url)("Project Default Guardrail provisioning", () => {
     database = await createTestDatabase(url!, "project_defaults");
     await database.pool.query("INSERT INTO auth_user(id,username,email,role) VALUES ('admin','Admin','admin@example.test','admin')");
     const config = loadConfig({ NODE_ENV: "test", CONTROLLER_DATABASE_URL: url!,
-      CONTROLLER_RUNNER_TOKEN: "runner-token-that-is-at-least-32-characters",
+      ...runnerAuthEnv("runner-token-that-is-at-least-32-characters"),
       CONTROLLER_ARTIFACT_SIGNING_KEY_PATH: keyPath,
       CONTROLLER_POLICY_CATALOG_DIR: resolve("../runner/toolkit/policy_library/assets"),
       CONTROLLER_PROTO_PATH: resolve("../proto/tasklattice/guard/control/v1/runner_control.proto"),

@@ -3,8 +3,22 @@ import { readFileSync } from "node:fs";
 import https from "node:https";
 import { generateTls, tlsFields, validateTls } from "./bootstrap-tls.mjs";
 
+const runnerAuthKeys = [
+  ["runner-control-token", "pool-tokens.json"],
+  ["controller-http-token", "pool-http-tokens.json"],
+];
+
 export function secretData(spec) {
   if (spec.kind === "account") return accountData(spec);
+  if (spec.kind === "runnerAuth") {
+    const data = {};
+    for (const [tokenKey, mapKey] of runnerAuthKeys) {
+      const token = randomBytes(32).toString("hex");
+      data[tokenKey] = token;
+      data[mapKey] = JSON.stringify({ default: token });
+    }
+    return data;
+  }
   if (spec.kind === "database") {
     const value = randomBytes(32).toString("hex");
     return { [databaseKey(spec)]: value, POSTGRES_PASSWORD: value,
@@ -39,6 +53,17 @@ function accountData(spec) {
 
 function validateExisting(spec, secret) {
   const data = decodeData(secret);
+  if (spec.kind === "runnerAuth") {
+    const tokens = new Set();
+    for (const [tokenKey, mapKey] of runnerAuthKeys) {
+      const token = data[tokenKey];
+      if (!token || token.length < 32 || /[^!-~]/.test(token) || tokens.has(token) || data[mapKey] !== JSON.stringify({ default: token })) {
+        throw new Error(`Secret ${spec.name} has inconsistent Runner credentials; refusing to replace it.`);
+      }
+      tokens.add(token);
+    }
+    return;
+  }
   if (spec.kind === "database") {
     const value = data[databaseKey(spec)];
     let matches = false;

@@ -1,4 +1,5 @@
 // @vitest-environment node
+import { runnerAuthEnv } from "../../test/runner-auth-fixture.js";
 import { sql } from "drizzle-orm";
 import { spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
@@ -13,7 +14,7 @@ function database(overrides: Record<string, string> = {}) {
   if (!["127.0.0.1", "localhost", "[::1]"].includes(new URL(url!).hostname)) throw new Error("Loopback database required");
   const connection = createDatabase(loadConfig({
     NODE_ENV: "test", CONTROLLER_DATABASE_URL: url!,
-    CONTROLLER_RUNNER_TOKEN: "runner-token-that-is-at-least-32-characters",
+    ...runnerAuthEnv("runner-token-that-is-at-least-32-characters"),
     CONTROLLER_ARTIFACT_SIGNING_KEY_PATH: "/tmp/controller-signing-key.pem",
     BETTER_AUTH_SECRET: "better-auth-secret-that-is-at-least-32-characters",
     ...overrides,
@@ -70,10 +71,11 @@ describe.skipIf(!url)("Controller transaction connection ownership (PostgreSQL)"
       import { sql } from 'drizzle-orm';
       import { createDatabase } from './server/db/client.ts';
       import { loadConfig } from './server/config.ts';
+      import { runnerAuthEnv } from './test/runner-auth-fixture.ts';
       import { databaseErrorFields, withReportSaveDiagnostics } from './server/db/diagnostics.ts';
       const url = process.env.GUARD_TEST_POSTGRES_URL;
       const { db, pool } = createDatabase(loadConfig({ NODE_ENV: 'test', CONTROLLER_DATABASE_URL: url,
-        CONTROLLER_RUNNER_TOKEN: 'runner-token-that-is-at-least-32-characters',
+        ...runnerAuthEnv('runner-token-that-is-at-least-32-characters'),
         CONTROLLER_ARTIFACT_SIGNING_KEY_PATH: '/tmp/controller-signing-key.pem',
         BETTER_AUTH_SECRET: 'better-auth-secret-that-is-at-least-32-characters' }));
       pool.options.max = 1;

@@ -89,7 +89,6 @@ type Connection = {
   snapshotAckCapable: boolean;
   pendingSnapshot: SnapshotDispatch | null;
   verifiedSnapshot: SnapshotDispatch | null;
-  poolAuthenticated: boolean;
   leaseProbeCapable: boolean;
 };
 
@@ -225,10 +224,10 @@ export class RunnerControlServer {
       }
     }
     if (!runner || !request.requestId) return { passed: false, message: "The Default testing Runner (ordinal 0) is unavailable. Retry after it reconnects.", latencyMs: 0 };
-    if (this.config.runnerPoolTokens != null && (!request.credentialLeaseId ||
+    if (!request.credentialLeaseId ||
       !await this.models.bindValidationLease(request.credentialLeaseId, runner.poolId, {
         poolId: runner.poolId, runnerId: runner.runnerId, bootId: runner.bootId, sessionId: runner.sessionId,
-      }))) {
+      })) {
       return { passed: false, message: "The Runner validation credential lease is unavailable.", latencyMs: 0 };
     }
     if (!await this.isCurrentConnection(runner)) return { passed: false, message: "The Runner control session changed before Rail validation could start.", latencyMs: 0 };
@@ -513,13 +512,13 @@ export class RunnerControlServer {
     stream: RunnerStream,
     message: RunnerMessage__Output,
     current: Connection | null,
-    authorizedPoolId: string | null = null,
+    authorizedPoolId: string,
     draining = false,
   ): Promise<Connection | null> {
     if (message.registration) {
       if (current) throw new Error("Runner registered more than once on one stream.");
       const registration = message.registration;
-      if (authorizedPoolId !== null && registration.poolId !== authorizedPoolId) throw new PoolIdentityMismatch();
+      if (registration.poolId !== authorizedPoolId) throw new PoolIdentityMismatch();
       const sessionId = randomUUID();
       const desiredGeneration = await this.service.registerRunner({
         runnerId: registration.runnerId,
@@ -549,7 +548,6 @@ export class RunnerControlServer {
         snapshotAckCapable: registration.labels?.[SNAPSHOT_ACK_CAPABILITY] === "1",
         pendingSnapshot: null,
         verifiedSnapshot: null,
-        poolAuthenticated: authorizedPoolId !== null,
         leaseProbeCapable: registration.labels?.[LEASE_PROBE_CAPABILITY] === "1",
       };
       const prior = this.connections.get(connection.runnerId);
@@ -597,6 +595,9 @@ export class RunnerControlServer {
           sequence: number(heartbeat.sequence),
           appliedGeneration: number(heartbeat.appliedGeneration),
           load: normalizeLoad(heartbeat.load),
+          ...(heartbeat.telemetryDrainedAtUnixMs === undefined ? {} : {
+            telemetryDrainedAtUnixMs: number(heartbeat.telemetryDrainedAtUnixMs),
+          }),
           ...(admissionSnapshot === undefined ? {} : { admissionSnapshot }),
         });
         this.metrics.observeHeartbeat(current.poolId, accepted ? "accepted" : "stale_or_unknown");
@@ -737,7 +738,7 @@ export class RunnerControlServer {
           snapshotNonce: request.snapshotNonce, durationMs: 0,
         } });
       };
-      if (!this.config.experimentalRunnerLeaseGrants || !this.leaseLedger || !current.poolAuthenticated ||
+      if (!this.config.experimentalRunnerLeaseGrants || !this.leaseLedger ||
           !current.leaseProbeCapable || !current.snapshotAckCapable || !snapshot ||
           request.runnerId !== current.runnerId || request.bootId !== current.bootId ||
           !Number.isSafeInteger(epoch) || epoch < 0 || !Number.isSafeInteger(generation) || generation < 0 ||

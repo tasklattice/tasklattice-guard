@@ -1,3 +1,4 @@
+import { runnerAuthEnv } from "../../test/runner-auth-fixture.js";
 import { withTestProject } from "../db/postgres-test-database.js";
 // @vitest-environment node
 import { execFile } from "node:child_process";
@@ -35,7 +36,7 @@ describe.skipIf(!url)("950-case full-feature report delivery", () => {
     const directory = await mkdtemp(join(tmpdir(), "guard-large-report-"));
     await writeFile(join(directory, "private.pem"), generateKeyPairSync("ed25519").privateKey.export({ type: "pkcs8", format: "pem" }));
     const config = loadConfig({ NODE_ENV: "test", CONTROLLER_DATABASE_URL: url!,
-      CONTROLLER_RUNNER_TOKEN: "runner-token-that-is-at-least-32-characters",
+      ...runnerAuthEnv("runner-token-that-is-at-least-32-characters"),
       CONTROLLER_ARTIFACT_SIGNING_KEY_PATH: join(directory, "private.pem"),
       CONTROLLER_POLICY_CATALOG_DIR: resolve("../runner/toolkit/policy_library/assets"),
       CONTROLLER_PROTO_PATH: resolve("../proto/tasklattice/guard/control/v1/runner_control.proto"),
@@ -46,8 +47,8 @@ describe.skipIf(!url)("950-case full-feature report delivery", () => {
       { activeConfiguration: async () => null } as unknown as ModelConfigurationService);
     const stream = { write: vi.fn(), end: vi.fn() };
     const handle = (message: object, connection: unknown) => (control as unknown as {
-      handleMessage(stream: unknown, message: object, connection: unknown): Promise<unknown>;
-    }).handleMessage(stream, message, connection);
+      handleMessage(stream: unknown, message: object, connection: unknown, poolId: string): Promise<unknown>;
+    }).handleMessage(stream, message, connection, "default");
     let http: ReturnType<typeof serve> | undefined;
     try {
       await database.pool.query("INSERT INTO auth_user (id, username, email) VALUES ('report-user', 'Tester', 'report@example.test')");

@@ -1,3 +1,4 @@
+import { runnerAuthEnv } from "../../test/runner-auth-fixture.js";
 import { describe, it, expect, vi } from "vitest";
 import { RunnerPlaygroundClient } from "./service";
 import { pathTestSchema } from "../../shared/playground-path";
@@ -23,14 +24,14 @@ describe("Runner path test transport", () => {
     const config = loadConfig({
       NODE_ENV: "test",
       CONTROLLER_DATABASE_URL: "postgresql://controller:controller@localhost/controller",
-      CONTROLLER_RUNNER_TOKEN: "runner-token-that-is-at-least-32-characters",
+      ...runnerAuthEnv("runner-token-that-is-at-least-32-characters"),
       CONTROLLER_ARTIFACT_SIGNING_KEY_PATH: "/tmp/controller-signing-key.pem",
       BETTER_AUTH_SECRET: "better-auth-secret-that-is-at-least-32-characters",
       CONTROLLER_RUNTIME_SERVICE_URL: "http://guard-runtime.uat.svc.cluster.local:8091",
       CONTROLLER_RUNTIME_PUBLIC_URL: "https://guard.example.test:8443",
     });
     const fetcher = vi.fn().mockResolvedValue(Response.json({}));
-    const client = new RunnerPlaygroundClient({ baseUrl: config.runtimeServiceUrl, token: config.runnerToken, fetcher });
+    const client = new RunnerPlaygroundClient({ baseUrl: config.runtimeServiceUrl, token: config.runnerHttpTokens.get("default")!, fetcher });
     const path = `/runtime/v1/endpoints/endpoint-1/${adapter === "f5-scan" ? "backend/v1/scans" : "beta/litellm_basic_guardrail_api"}`;
     await client.testPath(pathTestSchema.parse({ ...base, target: "endpoint", targetId: "endpoint-1", credential: "endpoint-key",
       request: `POST ${config.runtimePublicUrl}${path} HTTP/1.1\n\n{"input":"hello","texts":["hello"]}`,

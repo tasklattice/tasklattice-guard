@@ -218,12 +218,6 @@ const runtimeEventInput = z.object({
 });
 const runtimeEventBatchInput = z.object({
   events: z.array(z.union([routingEventSchema, runtimeEventInput])).max(1_000),
-  runnerId: z.string().min(1).optional(),
-  observedAt: z.coerce.date().optional(),
-}).superRefine((value, context) => {
-  if (value.events.length === 0 && !value.runnerId) {
-    context.addIssue({ code: "custom", path: ["runnerId"], message: "runnerId is required for an empty telemetry batch." });
-  }
 });
 const modelCredentialRefsInput = z.object({ refs: z.array(z.string().uuid()).max(64), leaseId: z.string().uuid().optional() });
 export function createHttpApp(input: {
@@ -270,14 +264,9 @@ export function createHttpApp(input: {
   const selectRunnerForProject = async (projectId: string) => {
     if (!playgroundRunner) throw new ControllerError("Runner is not configured.", 503, "playground_runner_unavailable");
     const pool = await projectPool(projectId);
-    if (input.config.runnerHttpTokens != null) {
-      const token = input.config.runnerHttpTokens.get(pool.poolId);
-      if (!token) throw new ControllerError("The selected Runner pool has no configured Controller HTTP credential.", 503, "runner_http_credential_unavailable");
-      return { pool, runner: playgroundRunner.forBaseUrl(pool.runtimeUrl, token) };
-    }
-    const runner = pool.poolId === "default" && pool.runtimeUrl === input.config.runtimeServiceUrl
-      ? playgroundRunner : playgroundRunner.forBaseUrl(pool.runtimeUrl);
-    return { pool, runner };
+    const token = input.config.runnerHttpTokens.get(pool.poolId);
+    if (!token) throw new ControllerError("The selected Runner pool has no configured Controller HTTP credential.", 503, "runner_http_credential_unavailable");
+    return { pool, runner: playgroundRunner.forBaseUrl(pool.runtimeUrl, token) };
   };
   const runnerForProject = async (projectId: string) => (await selectRunnerForProject(projectId)).runner;
   const hasProjectCompiler = async (projectId: string) => {
@@ -1196,8 +1185,7 @@ export function createHttpApp(input: {
   app.put("/api/v1/project-groups/:id/model-configuration", authenticated, async context => {
     if (!input.models) throw new ControllerError("Model configuration is unavailable.", 503, "model_configuration_unavailable");
     const body = groupModelConfigurationInput.parse(await context.req.json());
-    return context.json(await input.models.groupRuntime.update(context.req.param("id"), body, context.get("actor").id,
-      input.config.runnerPoolTokens != null));
+    return context.json(await input.models.groupRuntime.update(context.req.param("id"), body, context.get("actor").id));
   });
   app.post("/api/v1/project-groups", authenticated, async context => context.json(await input.service.projectGroups.create(
     createProjectGroupSchema.parse(await context.req.json()), context.get("actor").id), 201));
@@ -1415,16 +1403,10 @@ export function createHttpApp(input: {
   });
 
   app.post("/api/internal/v1/runtime-events", async (context) => {
-    let authenticatedPoolId: string | undefined;
-    if (input.config.runnerScopedTelemetry) {
-      const principal = authenticateRunnerPrincipal(context.req.header("authorization"), input.config);
-      if (!principal?.poolId) return context.json({ error: { code: "runner_unauthenticated", message: "Runner authentication failed." } }, 401);
-      authenticatedPoolId = principal.poolId;
-    } else if (context.req.header("authorization") !== `Bearer ${input.config.runnerToken}`) {
-      return context.json({ error: { code: "runner_unauthenticated", message: "Runner authentication failed." } }, 401);
-    }
+    const principal = authenticateRunnerPrincipal(context.req.header("authorization"), input.config);
+    if (!principal) return context.json({ error: { code: "runner_unauthenticated", message: "Runner authentication failed." } }, 401);
     let upload: ReturnType<TelemetryUploadAdmission["acquire"]>;
-    try { upload = telemetryUploads.acquire(authenticatedPoolId ?? "legacy"); }
+    try { upload = telemetryUploads.acquire(principal.poolId); }
     catch (error) { context.header("Retry-After", "1"); throw error; }
     try {
     const rawBody = await readBoundedTelemetryBody(context.req.raw);
@@ -1444,14 +1426,8 @@ export function createHttpApp(input: {
     try {
       const routing = body.events.filter(event => "eventType" in event);
       const runtime = body.events.filter(event => "requestId" in event);
-      if (authenticatedPoolId === undefined) {
-        if (routing.length) await input.service.trafficRouting.recordEvents(routing);
-        await input.service.recordRuntimeEvents(runtime);
-      } else {
-        if (routing.length) await input.service.trafficRouting.recordEvents(routing, true, authenticatedPoolId);
-        await input.service.recordRuntimeEvents(runtime, authenticatedPoolId);
-      }
-      if (body.runnerId && authenticatedPoolId === undefined) await input.service.recordTelemetryWatermark(body.runnerId);
+      if (routing.length) await input.service.trafficRouting.recordEvents(routing, true, principal.poolId);
+      await input.service.recordRuntimeEvents(runtime, principal.poolId);
       input.metrics.observeTelemetryBatch?.(
         "accepted", body.events.map((event) => event.occurredAt), body.events.length,
       );
@@ -1472,9 +1448,7 @@ export function createHttpApp(input: {
     if (!principal) return context.json({ error: { code: "runner_unauthenticated", message: "Runner authentication failed." } }, 401);
     if (!input.models) throw new ControllerError("Model configuration is unavailable.", 503, "model_configuration_unavailable");
     const body = modelCredentialRefsInput.parse(await context.req.json());
-    const credentials = principal.poolId === null
-      ? await input.models.resolveCredentials(body.refs, body.leaseId)
-      : await input.models.resolveCredentials(body.refs, body.leaseId, principal.poolId);
+    const credentials = await input.models.resolveCredentials(body.refs, body.leaseId, principal.poolId);
     return context.json({ credentials });
   });
 

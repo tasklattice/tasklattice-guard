@@ -1,11 +1,12 @@
 import { describe, expect, it } from "vitest";
 
+import { runnerAuthEnv } from "../test/runner-auth-fixture.js";
 import { loadConfig } from "./config.js";
 
 const requiredEnvironment = {
   NODE_ENV: "test",
   CONTROLLER_DATABASE_URL: "postgresql://controller:controller@localhost/controller",
-  CONTROLLER_RUNNER_TOKEN: "runner-token-that-is-at-least-32-characters",
+  ...runnerAuthEnv(),
   CONTROLLER_ARTIFACT_SIGNING_KEY_PATH: "/tmp/controller-signing-key.pem",
   BETTER_AUTH_SECRET: "better-auth-secret-that-is-at-least-32-characters",
 };
@@ -29,98 +30,53 @@ describe("Controller config", () => {
       { CONTROLLER_ENDPOINT_CONTEXT_MAX_PAYLOAD_BYTES_GLOBAL: "2147483648" },
     ]) expect(() => loadConfig({ ...requiredEnvironment, ...invalid })).toThrow();
   });
-  it("keeps experimental lease responses disabled and requires pool tokens to opt in", () => {
+  it("keeps experimental lease responses disabled by default", () => {
     expect(loadConfig(requiredEnvironment).experimentalRunnerLeaseGrants).toBe(false);
-    expect(() => loadConfig({ ...requiredEnvironment, CONTROLLER_EXPERIMENTAL_RUNNER_LEASE_GRANTS: "true" }))
-      .toThrow(/CONTROLLER_EXPERIMENTAL_RUNNER_LEASE_GRANTS/);
-    expect(loadConfig({ ...requiredEnvironment, CONTROLLER_EXPERIMENTAL_RUNNER_LEASE_GRANTS: "true",
-      CONTROLLER_RUNNER_POOL_TOKENS_JSON: JSON.stringify({ default: "test-pool-token-that-is-long-enough-123" }) }).experimentalRunnerLeaseGrants).toBe(true);
+    expect(loadConfig({ ...requiredEnvironment, CONTROLLER_EXPERIMENTAL_RUNNER_LEASE_GRANTS: "true" }).experimentalRunnerLeaseGrants).toBe(true);
   });
-  it("requires a pool token mapping for explicitly scoped telemetry", () => {
-    const poolTokens = JSON.stringify({ "pool-a": "pool-a-token-that-is-at-least-32-chars" });
-    expect(loadConfig({ ...requiredEnvironment, CONTROLLER_RUNNER_POOL_TOKENS_JSON: poolTokens }).runnerScopedTelemetry).toBe(false);
-    expect(loadConfig({ ...requiredEnvironment, CONTROLLER_RUNNER_POOL_TOKENS_JSON: poolTokens, CONTROLLER_RUNNER_SCOPED_TELEMETRY: "true" }).runnerScopedTelemetry).toBe(true);
-    expect(() => loadConfig({ ...requiredEnvironment, CONTROLLER_RUNNER_SCOPED_TELEMETRY: "true" })).toThrow("requires CONTROLLER_RUNNER_POOL_TOKENS_JSON");
-    expect(() => loadConfig({ ...requiredEnvironment, CONTROLLER_RUNNER_SCOPED_TELEMETRY: "yes" })).toThrow();
-  });
-  it("validates optional distinct pool-scoped control-channel credentials without leaking secrets", () => {
-    const a = "pool-a-token-that-is-at-least-32-chars";
-    const b = "pool-b-token-that-is-at-least-32-chars";
-    expect(loadConfig(requiredEnvironment).runnerPoolTokens).toBeNull();
-    expect([...loadConfig({ ...requiredEnvironment, CONTROLLER_RUNNER_POOL_TOKENS_JSON: JSON.stringify({ "pool-a": a, "pool-b": b }) }).runnerPoolTokens!])
-      .toEqual([["pool-a", a], ["pool-b", b]]);
-    for (const raw of ["", "not-json", "{}", "[]", JSON.stringify({ "BAD POOL": a }), JSON.stringify({ "pool-a": "short" }),
-      JSON.stringify({ "pool-a": `${a} token` }), JSON.stringify({ "pool-a": a, "pool-b": a }),
-      JSON.stringify({ "pool-a": requiredEnvironment.CONTROLLER_RUNNER_TOKEN })]) {
-      try {
-        loadConfig({ ...requiredEnvironment, CONTROLLER_RUNNER_POOL_TOKENS_JSON: raw });
-        throw new Error("Expected invalid pool token configuration to fail.");
-      } catch (error) {
-        expect(String(error)).toContain("CONTROLLER_RUNNER_POOL_TOKENS_JSON");
-        expect(String(error)).not.toContain(a);
-        expect(String(error)).not.toContain(requiredEnvironment.CONTROLLER_RUNNER_TOKEN);
-      }
-    }
-  });
-  it("requires a complete, role-separated Controller HTTP token map when opted in", () => {
-    const a = "pool-a-control-token-with-at-least-32-characters";
-    const b = "pool-b-control-token-with-at-least-32-characters";
-    const httpA = "pool-a-inbound-http-token-with-at-least-32-characters";
-    const httpB = "pool-b-inbound-http-token-with-at-least-32-characters";
-    const environment = { ...requiredEnvironment, CONTROLLER_RUNNER_POOL_TOKENS_JSON: JSON.stringify({ "pool-a": a, "pool-b": b }) };
-    expect(loadConfig(environment).runnerHttpTokens).toBeNull();
-    expect([...loadConfig({ ...environment, CONTROLLER_RUNNER_HTTP_TOKENS_JSON: JSON.stringify({ "pool-a": httpA, "pool-b": httpB }) }).runnerHttpTokens!])
-      .toEqual([["pool-a", httpA], ["pool-b", httpB]]);
-    for (const values of [{ "pool-a": httpA }, { "pool-a": httpA, extra: httpB }, { "pool-a": b, "pool-b": httpB },
-      { "pool-a": httpA, "pool-b": httpA }, { "pool-a": requiredEnvironment.CONTROLLER_RUNNER_TOKEN, "pool-b": httpB }]) {
-      let error: unknown;
-      try { loadConfig({ ...environment, CONTROLLER_RUNNER_HTTP_TOKENS_JSON: JSON.stringify(values) }); } catch (caught) { error = caught; }
-      expect(error).toBeInstanceOf(Error);
-      for (const token of [a, b, httpA, httpB, requiredEnvironment.CONTROLLER_RUNNER_TOKEN]) expect(String(error)).not.toContain(token);
-    }
-    expect(() => loadConfig({ ...requiredEnvironment, CONTROLLER_RUNNER_HTTP_TOKENS_JSON: JSON.stringify({ "pool-a": httpA }) }))
-      .toThrow(/requires exactly the pool IDs/);
-  });
-  it("rejects duplicate decoded pool IDs rather than overwriting secret-map entries", () => {
-    const tokenA = "pool-a-control-token-with-at-least-32-characters";
-    const tokenB = "pool-b-control-token-with-at-least-32-characters";
-    const inbound = "pool-a-inbound-http-token-with-at-least-32-characters";
-    const duplicates = [
-      `{"pool-a":${JSON.stringify(tokenA)},"pool-a":${JSON.stringify(tokenB)}}`,
-      `{"pool-a":${JSON.stringify(tokenA)},"pool\\u002da":${JSON.stringify(tokenB)}}`,
-    ];
-    for (const raw of duplicates) {
-      expect(() => loadConfig({ ...requiredEnvironment, CONTROLLER_RUNNER_POOL_TOKENS_JSON: raw })).toThrow(/CONTROLLER_RUNNER_POOL_TOKENS_JSON/);
-      expect(() => loadConfig({ ...requiredEnvironment,
-        CONTROLLER_RUNNER_POOL_TOKENS_JSON: JSON.stringify({ "pool-a": tokenA }),
-        CONTROLLER_RUNNER_HTTP_TOKENS_JSON: raw.replaceAll(tokenA, inbound) })).toThrow(/CONTROLLER_RUNNER_HTTP_TOKENS_JSON/);
-    }
-    for (const malformed of ['{"pool-a":1}', '{"pool-a":null}', '{"pool-a":{}}', '{"pool-a":"unterminated}',
-      `{"pool-a":${JSON.stringify(tokenA)},}`, `{"pool-a":${JSON.stringify(tokenA)}} trailing`]) {
-      expect(() => loadConfig({ ...requiredEnvironment, CONTROLLER_RUNNER_POOL_TOKENS_JSON: malformed })).toThrow(/CONTROLLER_RUNNER_POOL_TOKENS_JSON/);
-    }
-    const escaped = ` { "pool\\u002da" : ${JSON.stringify(tokenA)} }\n`;
-    expect(loadConfig({ ...requiredEnvironment, CONTROLLER_RUNNER_POOL_TOKENS_JSON: escaped }).runnerPoolTokens?.get("pool-a")).toBe(tokenA);
-  });
-  it("rejects non-ASCII and control characters in both pool credential roles without exposing values", () => {
+  it("requires matching maps with a default Pool and distinct credentials across both roles", () => {
     const control = "pool-a-control-token-with-at-least-32-characters";
-    for (const suffix of ["\u00e9", "\ud800", "\ud801", "\udfff", "\ufffd", "\ud83d\ude00", "\u0000", "\u001f", "\u007f", " ", "\t", "\n"]) {
-      const token = `${"s".repeat(32)}${suffix}`;
-      for (const setting of ["CONTROLLER_RUNNER_POOL_TOKENS_JSON", "CONTROLLER_RUNNER_HTTP_TOKENS_JSON"]) {
+    const inbound = "pool-a-http-token-with-at-least-32-characters";
+    const environment = { ...requiredEnvironment, ...runnerAuthEnv({ "pool-a": control }) };
+    const parsed = loadConfig(environment);
+    expect(parsed.runnerPoolTokens.get("pool-a")).toBe(control);
+    expect(parsed.runnerHttpTokens.has("default")).toBe(true);
+    for (const invalid of [
+      { CONTROLLER_RUNNER_POOL_TOKENS_JSON: undefined },
+      { CONTROLLER_RUNNER_HTTP_TOKENS_JSON: undefined },
+      { CONTROLLER_RUNNER_POOL_TOKENS_JSON: JSON.stringify({ "pool-a": control }) },
+      { CONTROLLER_RUNNER_HTTP_TOKENS_JSON: JSON.stringify({ "pool-a": inbound }) },
+      { CONTROLLER_RUNNER_HTTP_TOKENS_JSON: JSON.stringify({ default: inbound }) },
+      { CONTROLLER_RUNNER_HTTP_TOKENS_JSON: JSON.stringify({ default: inbound, "pool-a": inbound }) },
+      { CONTROLLER_RUNNER_HTTP_TOKENS_JSON: JSON.stringify({ default: control, "pool-a": inbound }) },
+    ]) {
+      let error: unknown;
+      try { loadConfig({ ...environment, ...invalid }); } catch (caught) { error = caught; }
+      expect(error).toBeInstanceOf(Error);
+      expect(String(error)).not.toContain(control);
+      expect(String(error)).not.toContain(inbound);
+    }
+  });
+  it("rejects invalid and duplicate entries in each credential role without leaking values", () => {
+    const token = "pool-a-token-with-at-least-32-characters";
+    for (const setting of ["CONTROLLER_RUNNER_POOL_TOKENS_JSON", "CONTROLLER_RUNNER_HTTP_TOKENS_JSON"]) {
+      for (const raw of [
+        "", "not-json", "{}", "[]", '{"default":null}', '{"default":1}', '{"default":{}}',
+        JSON.stringify({ "BAD POOL": token }), JSON.stringify({ default: "short" }),
+        JSON.stringify({ default: token, "pool-a": token }),
+        `{"default":${JSON.stringify(token)},"defa\\u0075lt":${JSON.stringify(token)}}`,
+        ...[" ", "\u001f", "\u007f", "\u00e9", "\ud800", "\ufffd"].map(suffix => JSON.stringify({ default: token + suffix })),
+      ]) {
         let error: unknown;
-        try {
-          loadConfig({ ...requiredEnvironment, CONTROLLER_RUNNER_POOL_TOKENS_JSON: JSON.stringify({ "pool-a": control }),
-            [setting]: JSON.stringify({ "pool-a": token }) });
-        } catch (caught) { error = caught; }
+        try { loadConfig({ ...requiredEnvironment, [setting]: raw }); } catch (caught) { error = caught; }
         expect(error).toBeInstanceOf(Error);
         expect(String(error)).toContain(setting);
-        expect(String(error)).toContain("printable ASCII");
         expect(String(error)).not.toContain(token);
       }
     }
     const ascii = "!" + "a".repeat(30) + "~";
-    expect(loadConfig({ ...requiredEnvironment, CONTROLLER_RUNNER_POOL_TOKENS_JSON: JSON.stringify({ "pool-a": control }),
-      CONTROLLER_RUNNER_HTTP_TOKENS_JSON: JSON.stringify({ "pool-a": ascii }) }).runnerHttpTokens?.get("pool-a")).toBe(ascii);
+    expect(loadConfig({ ...requiredEnvironment, ...runnerAuthEnv({ default: token }, { default: ascii }) })
+      .runnerHttpTokens.get("default")).toBe(ascii);
   });
   it("supplies finite database budgets and validates the Runner synchronization limit", () => {
     expect(loadConfig(requiredEnvironment)).toMatchObject({ databaseTimeouts: { statementMs: 30000, lockMs: 5000, idleTransactionMs: 30000 }, runnerSyncConcurrency: 4 });

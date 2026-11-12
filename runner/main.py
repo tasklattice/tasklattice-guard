@@ -40,12 +40,12 @@ def create_app(settings: RunnerSettings | None = None) -> FastAPI:
     configured = settings or RunnerSettings.from_env()
     if configured.group_rate_admission is not None:
         if (configured.distributed_rate_admission is not None or configured.project_admission is None or
-            not configured.call_context_redis_url or not configured.control_token):
-            raise ValueError("Group v2 rate requires local admission, Redis, pool control and v1 disabled.")
+            not configured.call_context_redis_url):
+            raise ValueError("Group v2 rate requires local admission, Redis and v1 disabled.")
         configured.group_rate_admission.validate_runner(configured.pool_id, configured.project_admission.project_limits)
     if configured.distributed_rate_admission is not None:
-        if configured.project_admission is None or not configured.call_context_redis_url or not configured.control_token:
-            raise ValueError("Distributed rate admission requires local admission, Redis and pool control authentication.")
+        if configured.project_admission is None or not configured.call_context_redis_url:
+            raise ValueError("Distributed rate admission requires local admission and Redis.")
         if (configured.distributed_rate_admission.pool_id != configured.pool_id or
             set(configured.distributed_rate_admission.project_limits) != set(configured.project_admission.project_limits)):
             raise ValueError("Distributed rate policy must match the trusted pool and local project configuration.")
@@ -82,10 +82,9 @@ def create_app(settings: RunnerSettings | None = None) -> FastAPI:
     )
     telemetry = RuntimeTelemetryExporter(
         configured.telemetry_endpoint,
-        configured.telemetry_token,
+        configured.control_token,
         configured.artifact_state_path,
         configured.telemetry_batch_size,
-        configured.runner_id,
         metrics,
     )
     compiler = DefaultRunnerCompiler() if configured.compiler_capable else None
@@ -128,7 +127,7 @@ def create_app(settings: RunnerSettings | None = None) -> FastAPI:
         metrics,
         telemetry,
         configured.runner_id,
-        configured.controller_http_token or configured.controller_token,
+        configured.controller_http_token,
         configured.runtime_log_encryption_key,
         draft_previews,
         scan_max_body_bytes=configured.scan_max_body_bytes,

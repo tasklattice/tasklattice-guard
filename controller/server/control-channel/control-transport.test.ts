@@ -1,3 +1,4 @@
+import { runnerAuthEnv } from "../../test/runner-auth-fixture.js";
 import { dirname, resolve } from "node:path";
 import { createHash } from "node:crypto";
 import { gzipSync } from "node:zlib";
@@ -20,7 +21,7 @@ const config = loadConfig({
   CONTROLLER_GRPC_TRANSPORT: "plaintext",
   CONTROLLER_METRICS_TOKEN: "metrics-token-that-is-at-least-32-characters",
   CONTROLLER_DATABASE_URL: "postgresql://controller:controller@localhost/controller",
-  CONTROLLER_RUNNER_TOKEN: "runner-token-that-is-at-least-32-characters",
+  ...runnerAuthEnv("runner-token-that-is-at-least-32-characters"),
   CONTROLLER_ARTIFACT_SIGNING_KEY_PATH: "/tmp/controller-signing-key.pem",
   CONTROLLER_PROTO_PATH: resolve("../proto/tasklattice/guard/control/v1/runner_control.proto"),
   BETTER_AUTH_SECRET: "better-auth-secret-that-is-at-least-32-characters",
@@ -95,7 +96,7 @@ describe("production Controller gRPC transport budget", () => {
     const port=await new Promise<number>((resolvePort,reject)=>grpcServer.bindAsync("127.0.0.1:0",(server as unknown as {credentials:()=>ServerCredentials}).credentials(),(error,value)=>error?reject(error):resolvePort(value)));
     const definition=loadSync(config.protoPath,{longs:String,enums:String,defaults:true,oneofs:true}),descriptor=loadPackageDefinition(definition) as unknown as ProtoGrpcType;
     const client=new descriptor.tasklattice.guard.control.v1.RunnerControl(`127.0.0.1:${port}`,credentials.createInsecure(),{...controlChannelOptions,"grpc.max_send_message_length":CONTROL_MESSAGE_MAX_BYTES+1024*1024});
-    const metadata=new Metadata();metadata.set("authorization",`Bearer ${config.runnerToken}`);
+    const metadata=new Metadata();metadata.set("authorization",`Bearer ${config.runnerPoolTokens.get("default")!}`);
     const stream=client.Connect(metadata,{deadline:Date.now()+15000});
     let desired:string|undefined,errorCode:number|undefined,savedRun:string|undefined;
     const acks=new Map<number,()=>void>();

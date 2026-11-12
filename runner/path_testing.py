@@ -28,7 +28,7 @@ class RouterPathRequest(BaseModel):
 def register_path_testing(api):
     @api.router.post("/internal/v1/playground/routers/{router_id}/test")
     async def test_router(router_id: str, payload: RouterPathRequest, request: Request, authorization: str | None = Header(default=None)):
-        if authorization is None or not hmac.compare_digest(authorization, f"Bearer {api._controller_token}"):
+        if authorization is None or not hmac.compare_digest(authorization, f"Bearer {api._controller_http_token}"):
             raise HTTPException(status_code=401, detail="Controller authentication failed.")
         from .api import _source_pairs, _scoped_call_id
         fields = tuple((k, v) for k, raw in payload.fields.items() for v in (raw if isinstance(raw, list) else [raw]))

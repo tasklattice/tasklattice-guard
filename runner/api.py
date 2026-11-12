@@ -145,7 +145,7 @@ class RunnerAPI:
         metrics: RunnerMetrics,
         telemetry: RuntimeTelemetryExporter,
         runner_id: str,
-        controller_token: str,
+        controller_http_token: str,
         runtime_log_encryption_key: bytes | None = None,
         draft_previews: DraftPreviewRuntime | None = None,
         scan_max_body_bytes: int = 1_048_576,
@@ -163,7 +163,7 @@ class RunnerAPI:
                 await telemetry.emit({**event, "runnerId": runner_id})
             runtime.routing_event_sink = routing_event_sink
         self._runner_id = runner_id
-        self._controller_token = controller_token
+        self._controller_http_token = controller_http_token
         self._runtime_log_encryption_key = runtime_log_encryption_key
         self._runtime_log_capture = runtime_log_capture or RuntimeLogCapture()
         self._draft_previews = draft_previews
@@ -349,7 +349,7 @@ class RunnerAPI:
             request: Request,
             authorization: str | None = Header(default=None),
         ):
-            expected = f"Bearer {self._controller_token}"
+            expected = f"Bearer {self._controller_http_token}"
             if authorization is None or not hmac.compare_digest(authorization, expected):
                 raise HTTPException(status_code=401, detail="Controller authentication failed.")
             request_id = str(uuid.uuid4())
@@ -512,7 +512,7 @@ class RunnerAPI:
                     raise HTTPException(status_code=409, detail=str(error)) from error
 
     def _authorize_controller(self, authorization: str | None) -> None:
-        expected = f"Bearer {self._controller_token}"
+        expected = f"Bearer {self._controller_http_token}"
         if authorization is None or not hmac.compare_digest(authorization, expected):
             raise HTTPException(status_code=401, detail="Controller authentication failed.")
 
