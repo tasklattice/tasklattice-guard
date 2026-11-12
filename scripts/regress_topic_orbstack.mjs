@@ -3,6 +3,7 @@
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
 import { setTimeout as delay } from 'node:timers/promises';
+import { encodePublishedArtifact } from './encode-published-artifact.mjs';
 
 assert.equal(process.env.GUARD_TOPIC_ALLOW_WRITES, '1');
 const lifecycle = process.argv.includes('--lifecycle');
@@ -51,7 +52,8 @@ const prior = otherAssignments(before.draft.assignments);
 if (lifecycle) {
   assert.equal(prior.controlPlane, null);
   assert(Object.values(prior.bindings).every(v => v === null), 'This isolated test must have no other model bindings.');
-  assert(before.providers.every(p => p.baseUrl === endpoint), 'No external Provider may exist in the test release.');
+  assert(before.providers.every(p => p.backend === 'builtin_laya' || p.baseUrl === endpoint),
+    'Only the isolated mock and built-in Providers may exist in the test release.');
 }
 const providers = before.providers.filter(p => p.baseUrl === endpoint);
 assert(providers.length <= 1, 'Ambiguous Mock Provider.');
@@ -131,10 +133,11 @@ for (const [scope, expected] of [['Product support', 'allow'], ['Cooking and rec
   });
   const version = detail.versions.find(v => v.version === publication.version);
   assert(version.artifact.signature);
+  const artifact = encodePublishedArtifact(version.artifact);
   const steps = version.plan.steps.filter(s => s.capability === 'topic_control');
   assert(steps.some(s => Object.fromEntries(s.parameters).allowed_topics === scope));
-  await until('Runner distribution', async () => (await call('/health/ready', { base: runner })).data,
-    d => d.ready && d.controller_connected && d.desired_state_synchronized && d.applied_generation > publication.generation);
+  await until('Runner model distribution', async () => (await call('/health/ready', { base: runner })).data,
+    d => d.ready && d.controller_connected && d.desired_state_synchronized && d.applied_generation >= active.active.generation);
   const cases = [
     { phase: 'input', text: 'How can I reset my product password?', decision: expected, failure: false },
     { phase: 'input', text: 'Discuss a business subject that is not on the approved list.', decision: 'transform', failure: false },
@@ -143,7 +146,7 @@ for (const [scope, expected] of [['Product support', 'allow'], ['Cooking and rec
   ];
   for (const [index, test] of cases.entries()) {
     const verdict = (await call(`/internal/v1/guardrails/${created.id}/evaluate`, { base: runner,
-      headers: { authorization: `Bearer ${token}` }, body: { guardrail_version: publication.version,
+      headers: { authorization: `Bearer ${token}` }, body: { guardrail_version: publication.version, artifact_b64: artifact,
         phase: test.phase, texts: [test.text], call_id: `${runId}:${created.id}:${index}` } })).data;
     assert.equal(verdict.decision, test.decision, JSON.stringify(verdict));
     assert.equal(verdict.usage.fail_closed, test.failure);

@@ -1,7 +1,7 @@
 """Opt-in deployed Guardrail quality replay. Never mock a safety verdict.
 
 Uses a reviewed, external corpus and the internal version evaluation API.
-Requires a Runner controller token; does not exercise Endpoint routing.
+Requires a Runner Pool HTTP token and a version loaded by an active Router target.
 No registration, compilation, publishing, retry, or generation occurs here.
 Reports full Guardrail decision quality, not isolated classifier accuracy.
 """
