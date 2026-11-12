@@ -56,6 +56,7 @@ import {
   type ModelAssignmentTarget,
   type ModelConfigurationView,
   type ModelDefinition,
+  type ModelProvider,
   type CapabilityBindingId,
 } from "@/lib/controller-api";
 import {
@@ -585,13 +586,13 @@ function CapabilityConfigurationRow({ bindings, assignments, savedAssignments, m
   const configuredIds = ids.filter(id => Boolean(assignments.bindings[id]));
   const busy = ids.some(id => savingTarget === id || validatingTarget === id || capabilityAction?.targets.includes(id));
   const sharedModels = models.filter(model => bindings.every(item => supportsBinding(model, item)))
-    .sort((left, right) => binding.profilePreference.indexOf(left.profile) - binding.profilePreference.indexOf(right.profile) || left.name.localeCompare(right.name));
+    .sort((left, right) => compareModelOptions(left, right, binding.profilePreference));
   const modelSelect = (targets: CapabilityBindingDefinition[], mixed = false) => {
     const first = targets[0]!;
     const modelId = mixed ? undefined : assignments.bindings[first.id];
     const selectedModel = models.find(model => model.id === modelId);
     const compatibleModels = targets.length > 1 ? sharedModels : models.filter(model => supportsBinding(model, first))
-      .sort((left, right) => first.profilePreference.indexOf(left.profile) - first.profilePreference.indexOf(right.profile) || left.name.localeCompare(right.name));
+      .sort((left, right) => compareModelOptions(left, right, first.profilePreference));
     const selectableModels = selectedModel && !compatibleModels.some(model => model.id === selectedModel.id)
       ? [selectedModel, ...compatibleModels] : compatibleModels;
     const selectId = `binding-model-${targets.length > 1 ? binding.capabilityRef : first.id}`;
@@ -602,7 +603,7 @@ function CapabilityConfigurationRow({ bindings, assignments, savedAssignments, m
       <Select value={mixed ? "" : modelId ?? noneValue} disabled={disabled || (!selectableModels.length && !modelId)} onValueChange={value => onChange(targets.map(item => item.id), value === noneValue ? null : value)}>
         <SelectTrigger id={selectId} className="field:h-11 w-full"><SelectValue placeholder={t("modelSettings.chooseSharedModel")} /></SelectTrigger>
         <SelectContent position="popper"><SelectItem value={noneValue}>{t(compatibleModels.length ? "modelSettings.notAssigned" : "modelSettings.noCompatibleModelsShort")}</SelectItem>
-          {selectableModels.map(model => <SelectItem key={model.id} value={model.id}><ModelOption model={model} /></SelectItem>)}
+          {selectableModels.map(model => <SelectItem key={model.id} value={model.id} textValue={modelOptionLabel(model, t("modelSettings.builtin"))}><ModelOption model={model} /></SelectItem>)}
         </SelectContent>
       </Select>
       {!compatibleModels.length ? <p className="mt-2 text-xs text-muted-foreground">{t(targets.length > 1 && models.some(model => targets.some(target => supportsBinding(model, target))) ? "modelSettings.noSharedModelHelp" : "modelSettings.noCompatibleModelsHelp")}</p> : null}
@@ -685,8 +686,36 @@ function AssignmentValidationStatus({ target, model, report, dirty, binding }: {
   return <StateBadge state="needs_validation" label={t("modelSettings.notChecked")} />;
 }
 
+function compareModelOptions(left: ModelDefinition, right: ModelDefinition, preference: readonly string[]) {
+  return Number(Boolean(right.backend)) - Number(Boolean(left.backend))
+    || preference.indexOf(left.profile) - preference.indexOf(right.profile) || left.name.localeCompare(right.name);
+}
+
+function modelOptionLabel(model: ModelDefinition, builtinLabel: string) {
+  return model.backend === "builtin_laya" ? `${builtinLabel} · ${model.name}` : `${model.name} · ${model.providerName}`;
+}
+
 function ModelOption({ model }: { model: ModelDefinition }) {
-  return <span className="flex min-w-0 items-center gap-2"><ProviderMark provider={model.providerName} kind={model.providerKind} model={model.model} size="sm" /><span className="truncate">{model.name} · {model.providerName}</span></span>;
+  const { t } = useTranslation();
+  const label = modelOptionLabel(model, t("modelSettings.builtin"));
+  return <span className="flex min-w-0 items-center gap-2">
+    <span aria-hidden="true"><ProviderMark provider={model.providerName} kind={model.providerKind} model={model.model} size="sm" /></span>
+    <span className="truncate">{label}</span>
+  </span>;
+}
+
+function BuiltinModelStatus({ status }: { status: ModelProvider["status"] }) {
+  const { t } = useTranslation();
+  const ready = status === "validated";
+  return <StateBadge state={ready ? "ready" : "unavailable"} label={t(ready ? "modelSettings.builtinReady" : "modelSettings.builtinUnavailable")} />;
+}
+
+function ProviderTarget({ provider }: { provider: ModelProvider }) {
+  const { t } = useTranslation();
+  return provider.backend === "builtin_laya" ? <span className="text-xs">{t("modelSettings.runnerLocal")}</span> : <>
+    <code className="block max-w-80 truncate text-xs text-muted-foreground" title={provider.baseUrl}>{provider.baseUrl}</code>
+    {provider.skipTlsVerify ? <p className="mt-1 text-xs font-medium text-amber-700 dark:text-amber-400">{t("providerRegistration.tlsSkipped")}</p> : null}
+  </>;
 }
 
 type BatchTestResult = { id: string; name: string; status: "passed" | "failed"; message: string | null };
@@ -694,7 +723,7 @@ type BatchTestRun = { running: boolean; total: number; current: { id: string; na
 
 function ResourceManagement({ resource, view, administrator, onChanged }: { resource: "provider" | "model"; view: ModelConfigurationView; administrator: boolean; onChanged: () => Promise<void> }) {
   const { t } = useTranslation();
-  const ownsModel = (model: ModelDefinition) => model.projectId == null;
+  const ownsModel = (model: ModelDefinition) => model.projectId == null && model.backend !== "builtin_laya";
   const ownedModels = view.models.filter(ownsModel);
   const isMobile = useIsMobile();
   const queryClient = useQueryClient();
@@ -795,10 +824,10 @@ function ResourceManagement({ resource, view, administrator, onChanged }: { reso
                     </div>
                   </div>
                   <div className="grid grid-cols-[minmax(0,1fr)_auto] gap-4 rounded-lg bg-muted/35 px-3 py-2.5">
-                    <div className="min-w-0"><p className="text-[11px] font-medium text-muted-foreground">{t("modelSettings.endpoint")}</p><code className="mt-1 block truncate text-xs" title={provider.baseUrl}>{provider.baseUrl}</code>{provider.skipTlsVerify ? <p className="mt-1 text-xs font-medium text-amber-700 dark:text-amber-400">{t("providerRegistration.tlsSkipped")}</p> : null}</div>
+                    <div className="min-w-0"><p className="text-[11px] font-medium text-muted-foreground">{t("modelSettings.endpoint")}</p><ProviderTarget provider={provider} /></div>
                     <div className="text-right"><p className="text-[11px] font-medium text-muted-foreground">{t("modelSettings.registeredModels")}</p><p className="mt-1 text-sm font-semibold">{providerModelCount}</p></div>
                   </div>
-                  {administrator ? <Button type="button" variant="outline" className="h-11 w-full justify-between" disabled={pending} aria-label={`${t("modelSettings.manageProvider")} ${provider.name}`} onClick={() => setProviderTargetId(provider.id)}>{t("modelSettings.manageProvider")}<ChevronRight /></Button> : null}
+                  {administrator && provider.backend !== "builtin_laya" ? <Button type="button" variant="outline" className="h-11 w-full justify-between" disabled={pending} aria-label={`${t("modelSettings.manageProvider")} ${provider.name}`} onClick={() => setProviderTargetId(provider.id)}>{t("modelSettings.manageProvider")}<ChevronRight /></Button> : null}
                 </article>;
               })}
             </div>
@@ -807,11 +836,11 @@ function ResourceManagement({ resource, view, administrator, onChanged }: { reso
                 <TableHeader><TableRow><TableHead className="pl-5">{t("modelSettings.provider")}</TableHead><TableHead>{t("modelSettings.endpoint")}</TableHead><TableHead>{t("modelSettings.registeredModels")}</TableHead><TableHead>{t("modelSettings.providerConnection")}</TableHead><TableHead className="pr-5 text-right">{t("modelSettings.actions")}</TableHead></TableRow></TableHeader>
                 <TableBody>{view.providers.map((provider) => (
                   <TableRow key={provider.id}>
-                    <TableCell className="pl-5"><div className="flex items-center gap-3"><ProviderMark provider={provider.name} kind={provider.kind} /><div><p className="font-medium">{provider.name}</p><p className="mt-0.5 text-xs text-muted-foreground">{provider.kind}</p></div></div></TableCell>
-                    <TableCell><code className="block max-w-80 truncate text-xs text-muted-foreground" title={provider.baseUrl}>{provider.baseUrl}</code>{provider.skipTlsVerify ? <p className="mt-1 text-xs font-medium text-amber-700 dark:text-amber-400">{t("providerRegistration.tlsSkipped")}</p> : null}</TableCell>
+                    <TableCell className="pl-5"><div className="flex items-center gap-3"><ProviderMark provider={provider.name} kind={provider.kind} /><div><p className="font-medium">{provider.backend === "builtin_laya" ? t("modelSettings.builtin") : provider.name}</p><p className="mt-0.5 text-xs text-muted-foreground">{provider.kind}</p></div></div></TableCell>
+                    <TableCell><ProviderTarget provider={provider} /></TableCell>
                     <TableCell>{view.models.filter((model) => model.providerId === provider.id).length}</TableCell>
-                    <TableCell><ValidationEvidence kind="provider" status={provider.status} checkedAt={provider.validatedAt} latencyMs={provider.validationLatencyMs} message={provider.validationMessage} /></TableCell>
-                    <TableCell className="pr-5 text-right">{administrator ? <Button type="button" variant="outline" className="h-11" disabled={pending} aria-label={`${t("modelSettings.manageProvider")} ${provider.name}`} onClick={() => setProviderTargetId(provider.id)}>{t("modelSettings.manageProvider")}<ChevronRight /></Button> : null}</TableCell>
+                    <TableCell>{provider.backend === "builtin_laya" ? <BuiltinModelStatus status={provider.status} /> : <ValidationEvidence kind="provider" status={provider.status} checkedAt={provider.validatedAt} latencyMs={provider.validationLatencyMs} message={provider.validationMessage} />}</TableCell>
+                    <TableCell className="pr-5 text-right">{administrator && provider.backend !== "builtin_laya" ? <Button type="button" variant="outline" className="h-11" disabled={pending} aria-label={`${t("modelSettings.manageProvider")} ${provider.name}`} onClick={() => setProviderTargetId(provider.id)}>{t("modelSettings.manageProvider")}<ChevronRight /></Button> : null}</TableCell>
                   </TableRow>
                 ))}</TableBody>
               </Table>
@@ -845,9 +874,9 @@ function ResourceManagement({ resource, view, administrator, onChanged }: { reso
               const provider = view.providers.find((item) => item.id === model.providerId);
               return (
                 <TableRow key={model.id}>
-                  <TableCell className="pl-5"><div><p className="font-medium">{model.name}</p><code className="mt-1 block max-w-80 truncate text-xs text-muted-foreground" title={model.model}>{model.model}</code></div></TableCell>
-                  <TableCell><div className="flex items-start gap-3"><ProviderMark provider={model.providerName} kind={model.providerKind} model={model.model} /><div><p className="mb-1.5 font-medium">{model.providerName}</p>{provider ? <ValidationEvidence kind="provider" status={provider.status} checkedAt={provider.validatedAt} latencyMs={provider.validationLatencyMs} message={provider.validationMessage} /> : <StateBadge state="unavailable" label={t("modelSettings.providerUnavailable")} />}</div></div></TableCell>
-                  <TableCell><ModelCallEvidence model={model} checking={isTesting(model.id)} /></TableCell>
+                  <TableCell className="pl-5"><div><p className="font-medium">{model.name}</p><code className="mt-1 block max-w-80 truncate text-xs text-muted-foreground" title={model.checkpointRevision ?? model.model}>{model.checkpointRevision?.slice(0, 12) ?? model.model}</code></div></TableCell>
+                  <TableCell><div className="flex items-start gap-3"><ProviderMark provider={model.providerName} kind={model.providerKind} model={model.model} /><div><p className="mb-1.5 font-medium">{model.backend === "builtin_laya" ? t("modelSettings.builtin") : model.providerName}</p>{provider?.backend === "builtin_laya" ? <ProviderTarget provider={provider} /> : provider ? <ValidationEvidence kind="provider" status={provider.status} checkedAt={provider.validatedAt} latencyMs={provider.validationLatencyMs} message={provider.validationMessage} /> : <StateBadge state="unavailable" label={t("modelSettings.providerUnavailable")} />}</div></div></TableCell>
+                  <TableCell>{model.backend === "builtin_laya" ? <BuiltinModelStatus status={model.status} /> : <ModelCallEvidence model={model} checking={isTesting(model.id)} />}</TableCell>
                   <TableCell className="text-right tabular-nums">{model.maxConcurrency ?? 2}</TableCell>
                   <TableCell className="pr-5">{ownsModel(model) ? <ResourceActions kind="model" name={model.name} checking={isTesting(model.id)} pending={pending || !administrator} onRetest={() => probeMutation.mutate({ id: model.id })} onRemove={() => setRemoveTarget({ id: model.id, name: model.name })} /> : null}</TableCell>
                 </TableRow>
@@ -857,7 +886,7 @@ function ResourceManagement({ resource, view, administrator, onChanged }: { reso
         ) : <EmptyResource>{t("modelSettings.noModels")}</EmptyResource>}
       </ResourceSection> : null}
 
-      {createMode ? <RegisterModelsDrawer intent={createMode === "provider" ? "add-provider" : "register-models"} initialProviderId={initialProviderId} open onOpenChange={(open) => { if (!open) setCreateMode(null); }} allowProviderCreation={administrator} providers={view.providers} registeredModels={ownedModels} onChanged={onChanged} /> : null}
+      {createMode ? <RegisterModelsDrawer intent={createMode === "provider" ? "add-provider" : "register-models"} initialProviderId={initialProviderId} open onOpenChange={(open) => { if (!open) setCreateMode(null); }} allowProviderCreation={administrator} providers={view.providers.filter(provider => provider.backend !== "builtin_laya")} registeredModels={ownedModels} onChanged={onChanged} /> : null}
       {providerTarget ? <ProviderManagementSheet
         open
         provider={providerTarget}

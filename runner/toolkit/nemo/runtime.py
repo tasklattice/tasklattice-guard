@@ -2468,7 +2468,6 @@ def _trace(
                     ),
                     "on_match": binding.on_unsafe,
                     "on_unknown": binding.parameter("on_unknown") or "block",
-                    "review_unknown": binding.parameter("review_unknown") or "false",
                     "decision_source": "review" if any(step.evaluator_id == "classifier-review" for step in item.result.trace) else "primary",
                 }) if binding.capability in {"content_safety", "jailbreak", "topic_control", "pii"} else None,
                 duration_ms=item.latency_ms,

@@ -58,7 +58,7 @@ def test_business_boundaries_use_two_rules_with_one_topic_classifier_contract():
     assert all(rule.detector.ref == "model/classifier" for rule in rules)
     assert all(rule.detector_options == {
         "profile": "topic-classification", "on_unknown": "{{on_unknown}}",
-        "review_unknown": "{{review_unknown}}", "questions": "{{questions}}",
+        "questions": "{{questions}}",
     } for rule in rules)
     assert {rule.implementation.binding_id for rule in rules} == {"topic_control"}
 

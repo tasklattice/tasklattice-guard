@@ -73,6 +73,7 @@ export type PlaygroundModel = {
 export type PublishedPlaygroundTarget = {
   kind: "published";
   version: string;
+  artifact: string;
 };
 
 export type DraftPlaygroundTarget = {
@@ -296,7 +297,7 @@ export class RunnerPlaygroundClient {
             candidate_version: input.target.candidateVersion,
             plan: input.target.plan,
             runtime_profile: input.target.runtimeProfile,
-          } : { guardrail_version: input.target.version }),
+          } : { guardrail_version: input.target.version, artifact_b64: input.target.artifact }),
           call_id: input.callId,
           protocol: "playground",
           messages: input.history,
@@ -309,6 +310,10 @@ export class RunnerPlaygroundClient {
       },
     );
     if (!response.ok) {
+      if (response.status === 409 && !draft) {
+        throw new ControllerError("The selected version cannot run on the current Runner. Check its environment compatibility and publish a new version after upgrading NeMo.",
+          409, "playground_artifact_incompatible");
+      }
       throw new ControllerError(
         response.status === 404
           ? (draft ? "The prepared Guardrail draft preview expired." : "The selected Guardrail Version has not reached the assigned Runner yet.")

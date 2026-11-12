@@ -73,7 +73,7 @@ describe("Declarative Policy Studio stepper", () => {
     click("Run tests"); await screen.findByText("Passed", { exact: false });
     click("Review & publish");
     expect((screen.getByRole("button", { name: "Publish", exact: true }) as HTMLButtonElement).disabled).toBe(false);
-    expect(persisted!.rules[0]!.detector).toEqual({ ref: "model/classifier", version: "1.0.0", parameters: { profile: "topic-classification", questions: "{{questions}}", topic_mode: "{{topic_mode}}", allowed_topics: "{{allowed_topics}}", restricted_topics: "{{denied_topics}}", on_unknown: "{{on_unknown}}", review_unknown: "{{review_unknown}}" } });
+    expect(persisted!.rules[0]!.detector).toEqual({ ref: "model/classifier", version: "1.0.0", parameters: { profile: "topic-classification", questions: "{{questions}}", topic_mode: "{{topic_mode}}", allowed_topics: "{{allowed_topics}}", restricted_topics: "{{denied_topics}}", on_unknown: "{{on_unknown}}" } });
     expect(persisted!.parameters.find(p => p.name === "denied_topics")!.default).toBeNull();
     expect(persisted!.testing!.parameters).toEqual({ denied_topics: "Cooking recipes", questions });
     goStep(/3 Test Cases/); fill("Denied topics · test value", "Cooking and financial advice"); goStep(/4 Review/);

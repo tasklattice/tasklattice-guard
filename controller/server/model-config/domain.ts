@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { builtinLaya, isBuiltinLaya } from "./builtin-laya.js";
 
 import {
   capabilityBindingById,
@@ -132,7 +133,7 @@ export const providerRegistrationSchema = z.object({
 export const assignmentInputSchema = z.object({
   controlPlane: z.string().uuid().nullable(),
   bindings: z.object(
-    Object.fromEntries(capabilityBindingIds.map((id) => [id, id.startsWith("classifier_review.") ? z.string().uuid().nullable().default(null) : z.string().uuid().nullable()])) as unknown as {
+    Object.fromEntries(capabilityBindingIds.map((id) => [id, z.string().uuid().nullable()])) as unknown as {
       [Id in CapabilityBindingId]: z.ZodType<string | null>;
     },
   ),
@@ -191,8 +192,7 @@ export const profileTransports: Record<ModelProfile, ModelTransport> = {
 
 export const controlPlaneProfiles: readonly ModelProfile[] = controlPlaneProfileRefs;
 
-/** The resolved request mode for Laya runtimes only; legacy NULL rows resolve to
- * the broad "compatible" shape so an older registration keeps working. */
+/** A remote Laya runtime can use the compatible request shape before a connection probe selects its mode. */
 export function resolveLayaRequestMode(
   profile: ModelProfile,
   stored: LayaRequestMode | null | undefined,
@@ -307,6 +307,8 @@ export type ActiveModelRuntime = {
   providerName: string;
   baseUrl: string;
   credentialRef: string;
+  backend?: typeof builtinLaya.backend;
+  checkpointRevision?: string;
   skipTlsVerify?: boolean;
   model: string;
   profile: ModelProfile;
@@ -319,6 +321,34 @@ export type ActiveModelRuntime = {
   lowerThreshold?: number;
   upperThreshold?: number;
 };
+
+export function activeModelRuntime(
+  model: Pick<ActiveModelRuntime, "id" | "model" | "profile" | "timeoutSeconds" | "maxTokens" | "maxConcurrency" | "rateLimitAttempts" | "lowerThreshold" | "upperThreshold"> &
+    { layaRequestMode?: LayaRequestMode | null },
+  provider: { id: string; name: string; baseUrl: string; skipTlsVerify: boolean },
+): ActiveModelRuntime {
+  const builtin = isBuiltinLaya(model.id, provider.id);
+  const layaRequestMode = builtin ? undefined : resolveLayaRequestMode(model.profile, model.layaRequestMode);
+  return {
+    id: model.id, providerId: provider.id, providerName: provider.name, model: model.model, profile: model.profile,
+    ...(builtin ? {
+      backend: builtinLaya.backend, checkpointRevision: builtinLaya.checkpointRevision,
+      baseUrl: "", credentialRef: "", skipTlsVerify: false,
+    } : {
+      baseUrl: provider.baseUrl, credentialRef: provider.id, skipTlsVerify: provider.skipTlsVerify,
+      ...(layaRequestMode ? { layaRequestMode } : {}),
+    }),
+    timeoutSeconds: model.timeoutSeconds, maxTokens: model.maxTokens, maxConcurrency: model.maxConcurrency ?? 2,
+    rateLimitAttempts: model.rateLimitAttempts ?? 3, lowerThreshold: model.lowerThreshold ?? 0.1,
+    upperThreshold: model.upperThreshold ?? 0.9,
+  };
+}
+
+export function modelRuntimeToWire({ profile, ...runtime }: ActiveModelRuntime) {
+  return { ...runtime, profileRef: profile, skipTlsVerify: runtime.skipTlsVerify ?? false,
+    maxConcurrency: runtime.maxConcurrency ?? 2, rateLimitAttempts: runtime.rateLimitAttempts ?? 3,
+    lowerThreshold: runtime.lowerThreshold ?? 0.1, upperThreshold: runtime.upperThreshold ?? 0.9 };
+}
 
 export type ActiveModelConfiguration = {
   revisionId: string;

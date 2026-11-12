@@ -55,10 +55,6 @@ with every question ID. Use yes when the true criterion is supported, no when th
 and unknown when required evidence or context is unavailable. Do not return scores or explanations.""" + "\n" + EVIDENCE_BOUNDARY_PROMPT
 
 
-def review_enabled(request: EvaluationRequest) -> bool:
-    return request.rail_type in {"input", "output"} and dict(request.parameters).get("review_unknown") == "true"
-
-
 def apply_review_transform(request: EvaluationRequest, result: EvaluationResult, *,
                            content: str, replacement: str | None) -> EvaluationResult:
     """Apply the primary adapter's trusted transformation after a review match.
@@ -107,12 +103,6 @@ def _trace(request, verdict, *, model=None, response_model=None, answers=None, e
         error_category="review_inconclusive" if verdict == "unknown" else None,
         evidence=json.dumps({"review_revision":OUTPUT_REVIEW_REVISION if request.rail_type == "output" else REVIEW_REVISION,"requested_model":model,"response_model":response_model,
                              "answers":answers or {},"primary_verdict":"unknown","attempts":attempts}, sort_keys=True))
-
-
-def unavailable_review(request: EvaluationRequest, first: EvaluationResult) -> EvaluationResult:
-    return evaluation_result(request, "error", request.content,
-        reason=f"Classifier review requires a validated classifier_review.{request.rail_type} model binding.",
-        trace=(*first.trace, replace(_trace(request,"error",error_type="ReviewConfigurationError"), error_source="configuration", error_category="configuration")), usage=first.usage)
 
 
 class ClassifierReviewer:

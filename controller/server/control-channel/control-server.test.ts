@@ -9,6 +9,7 @@ import { describe, expect, it, vi } from "vitest";
 import { loadConfig } from "../config.js";
 import type { ControllerMetrics } from "../metrics.js";
 import type { ModelConfigurationService } from "../model-config/service.js";
+import { builtinLaya } from "../model-config/builtin-laya.js";
 import type { ControlPlaneService } from "../services/control-plane.js";
 import type { RunnerLeaseLedger } from "../services/runner-lease-ledger.js";
 import { ControllerError } from "../domain/errors.js";
@@ -1069,6 +1070,37 @@ describe("Runner model-configuration convergence", () => {
     const result = await server.validateRail({ requestId: "rail-test", bindingId: "content_safety.output" });
     expect(result).toMatchObject({ passed: false, message: expect.stringContaining("ordinal 0") });
     expect(stream.write).not.toHaveBeenCalled();
+    await server.stop();
+  });
+
+  it("validates only the advertised built-in checkpoint without a lease on a pool-authenticated stream", async () => {
+    const models = { activeConfiguration: vi.fn().mockResolvedValue(null), bindValidationLease: vi.fn() };
+    const server = new RunnerControlServer({ ...config, runnerPoolTokens: new Map([["default", "test-token"]]) },
+      serviceMock() as unknown as ControlPlaneService, metricsMock() as unknown as ControllerMetrics,
+      models as unknown as ModelConfigurationService);
+    const stream = streamMock(), hello = registration("runner-default-0");
+    hello.registration.compilerCapable = true;
+    hello.registration.labels = { [builtinLaya.revisionLabel]: builtinLaya.checkpointRevision };
+    const connection = await handle(server, stream, hello, null, "default");
+    const runtime = { id: builtinLaya.modelId, providerId: builtinLaya.providerId, backend: builtinLaya.backend,
+      checkpointRevision: builtinLaya.checkpointRevision, profileRef: builtinLaya.profile, model: builtinLaya.model };
+    const request = { requestId: "builtin-test", bindingId: "content_safety.input" };
+    expect(await server.validateRail(request)).toMatchObject({ passed: false, message: expect.stringContaining("credential lease") });
+    expect(await server.validateRail({ ...request, configuration: { runtimes: [{ ...runtime, credentialRef: "remote" }] } }))
+      .toMatchObject({ passed: false });
+    expect(await server.validateRail({ ...request, configuration: { runtimes: [{ ...runtime, checkpointRevision: "0".repeat(40) }] } }))
+      .toMatchObject({ passed: false });
+    const pending = server.validateRail({ ...request, configuration: { runtimes: [runtime] } });
+    await vi.waitFor(() => expect(stream.write).toHaveBeenCalledWith(expect.objectContaining({
+      capabilityValidationRequest: expect.objectContaining({ requestId: request.requestId }),
+    })));
+    expect(models.bindValidationLease).not.toHaveBeenCalled();
+    await handle(server, stream, { capabilityValidationResult: {
+      requestId: request.requestId, passed: true, runtimeProfile: "llmrails-v1", message: "samples", latencyMs: 10,
+      cases: [{ expectedDecision: "allow", actualDecision: "allow", passed: true },
+        { expectedDecision: "block", actualDecision: "block", passed: true }],
+    } }, connection);
+    expect(await pending).toMatchObject({ passed: true });
     await server.stop();
   });
 

@@ -55,7 +55,7 @@ Laya 服务的 `usage.truncated` 只报告状态截断，不报告问题截断�
 
 话题 v3 对以换行或分号分隔的多项允许/禁止主题也要求完整复核。原生编码器在此类列表上出现过高分误拦和低分漏检，因此无论初判方向如何，都保留原分数并追加 `multi_topic_scope_unverified` 覆盖证据，返回 unknown；原生错误仍按错误处理。单一主题检查保持原行为。
 
-`review_unknown` 与 JEV 一样可选。开启时复核合法灰区及上述覆盖不足，使用完整的规范问题与原始内容/历史；不发送第一阶段概率或测试标签。规范问题比 v2 初判问题更完整，内容安全仍包含 23 类及良性例外。第一阶段传输及格式错误不进入复核；合法响应明确报告的截断可以复核，复核自身失败仍为执行错误，复核后仍 Unknown 则 Block。复核需当前 Rail 独立的 `classifier_review.input` 或 `classifier_review.output` 绑定。具体规则见 [灰区复核](classifier-gray-review.md)。
+当前阶段配置并应用复核模型后，会自动复核合法灰区及上述覆盖不足，使用完整的规范问题与原始内容/历史；不发送第一阶段概率或测试标签。规范问题比 v2 初判问题更完整，内容安全仍包含 23 类及良性例外。第一阶段传输及格式错误不进入复核；合法响应明确报告的截断可以复核，复核自身失败仍为执行错误，复核后仍 Unknown 则 Block。复核需当前 Rail 独立的 `classifier_review.input` 或 `classifier_review.output` 绑定。具体规则见 [灰区复核](classifier-gray-review.md)。
 
 `tali.laya.v1` 支持 `content_safety.input`、`content_safety.output`、`jailbreak.input`、`topic_control.input`、`pii_semantic.input`、`pii_semantic.output`。仅话题协议只支持 `topic_control.input`。两者仍不实现控制面用途；JEV Provider 也不能绑定 Laya 协议。
 
@@ -220,7 +220,7 @@ python -m scripts.evaluate_laya \
   --output output/laya-regression.json
 ```
 
-省略全部 `--review-*` 参数可测量单模型结果。该工具不注册、绑定或发布模型；实际使用复核仍需配置独立绑定并开启对应 Rule 的 `review_unknown`。
+省略全部 `--review-*` 参数可测量单模型结果。该工具不注册、绑定或发布模型；实际使用复核时，配置并应用对应阶段的独立复核模型绑定。
 
 输出内容安全另行验收：Laya 单模型 Validate 为 1/2，违规探针的概率为 0.8409，落在 0.1 / 0.9 的灰区；兜底阻断不等于正确识别，因此保留未通过状态。DeepSeek 输出复核的 Validate 为 2/2。`tests/fixtures/laya-output-regression.json` 的 8 条合成样本在 Laya + DeepSeek 复核下全部通过，其中 3 条需要复核。这些小样本只验证适配和组合链路，不能代表全面准确率。
 

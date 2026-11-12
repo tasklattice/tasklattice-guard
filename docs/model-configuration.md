@@ -61,12 +61,11 @@ only models referenced by active Data Plane bindings—and only their
 credentials—to Runner. The API and Runner enforce this compatibility as well
 as the browser dropdown.
 
-Review uses a built-in prompt that automatically includes the original
-classifier questions, evaluated input/output and conversation context. No custom Guard prompt
-is needed. Enable `review_unknown=true` in a supported Guard Policy binding
-to review valid JEV/Laya gray-area input results or content-safety output results.
-Each enabled Rail requires its own review binding. Errors and missing context do
-not trigger review; see [gray-area review](classifier-gray-review.md).
+The active review model for a Rail automatically handles eligible JEV/Laya
+abstentions on that Rail. Its built-in prompt includes the original classifier
+questions, evaluated input or output, and conversation context. Initial model
+failures and missing required context retain their existing handling. See
+[gray-area review](classifier-gray-review.md).
 
 Laya's `tali.laya.v1` profile supports both content-safety Rails, input
 jailbreak, topic checks, and input/output semantic PII. Output classification uses

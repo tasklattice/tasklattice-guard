@@ -3,52 +3,40 @@ import { PolicyCatalog } from "../policy-catalog/catalog.js";
 import { DeclarativeCompiler } from "../policy-studio/declarative.js";
 import { buildGuardrailPlan } from "./guardrail-plan.js";
 import { publishedProtectionCoverage } from "./protection-readiness.js";
-import { assignmentInputSchema, assignmentTargetAcceptsModel, emptyModelAssignments } from "../model-config/domain.js";
+import { assignmentTargetAcceptsModel } from "../model-config/domain.js";
 
 const directory = "../runner/toolkit/policy_library/assets";
 const compiler = new DeclarativeCompiler(directory);
 const policies = PolicyCatalog.load(directory).list().map(p => compiler.catalogView(p));
 
-function plan(id = "content-safety-model", value = "true", rails: Array<"input" | "output"> = ["input"], version?: string) {
+function plan(id: string, rails: Array<"input" | "output"> = ["input"]) {
   const policy = policies.find(p => p.id === id)!;
   const rules = policy.rules.filter(rule => rule.detector.ref === "model/classifier").map(rule => rule.id);
   return buildGuardrailPlan({ guardrailId: "review", guardrailVersion: "1", policies,
     draft: { safetyLevel: "balanced", outputDelivery: "full_buffered", allowedTopics: [], restrictedTopics: [], policyBindings: [{
-      policyId: id, policyVersion: version ?? policy.version, action: null, enabledRails: rails, enabledRuleIds: rules,
+      policyId: id, policyVersion: policy.version, action: null, enabledRails: rails, enabledRuleIds: rules,
       ruleOrder: rules, ruleActions: {}, reasoningPolicy: null,
-      parameterValues: { review_unknown: value, on_unknown: "allow", topic_mode: "permissive", denied_topics: "Fraud" },
+      parameterValues: { on_unknown: "allow", topic_mode: "permissive", denied_topics: "Fraud" },
     }] } });
 }
 
-it.each(["content-safety-model", "prompt-instruction-attacks", "pii-semantic", "business-topics"])("pins %s review opt-in and its input dependency", id => {
+it.each(["content-safety-model", "prompt-instruction-attacks", "pii-semantic", "business-topics"])("compiles %s without a required review model", id => {
   const compiled = plan(id);
-  expect(compiled.steps.every(s => Object.fromEntries(s.parameters).review_unknown === "true")).toBe(true);
-  expect(publishedProtectionCoverage(compiled)!.requiredModelBindings).toContain("classifier_review.input");
-  expect(publishedProtectionCoverage(plan(id,"false"))!.requiredModelBindings).not.toContain("classifier_review.input");
-  expect(() => plan(id,"ignore")).toThrow("review_unknown must be true or false");
+  expect(compiled.steps.length).toBeGreaterThan(0);
+  expect(publishedProtectionCoverage(compiled)!.requiredModelBindings).not.toContain("classifier_review.input");
 });
 
+it("keeps input and output review assignments optional for classifier Rules", () => {
+  expect(publishedProtectionCoverage(plan("content-safety-model", ["output"]))!.requiredModelBindings).toEqual(["content_safety.output"]);
+  expect(publishedProtectionCoverage(plan("content-safety-model", ["input", "output"]))!.requiredModelBindings).toEqual(["content_safety.input", "content_safety.output"]);
+  expect(publishedProtectionCoverage(plan("pii-semantic", ["input", "output"]))!.requiredModelBindings).toEqual(["pii_semantic.input", "pii_semantic.output"]);
+});
 
-it("requires independent review bindings for the same Rail as each opted-in classifier",() => {
-  expect(publishedProtectionCoverage(plan("content-safety-model","true",["output"]))!.requiredModelBindings).toEqual(["content_safety.output","classifier_review.output"]);
-  expect(publishedProtectionCoverage(plan("content-safety-model","true",["input","output"]))!.requiredModelBindings).toEqual([
-    "content_safety.input","classifier_review.input","content_safety.output","classifier_review.output",
-  ]);
+it("validates model compatibility for independent review assignments", () => {
   expect(assignmentTargetAcceptsModel("classifier_review.input","tali.classifier-review.v1","custom-openai-compatible")).toBe(true);
   expect(assignmentTargetAcceptsModel("classifier_review.output","generic-chat","deepseek")).toBe(true);
   expect(assignmentTargetAcceptsModel("classifier_review.input","generic-chat","custom-openai-compatible")).toBe(true);
-  expect(publishedProtectionCoverage(plan("pii-semantic","true",["input","output"]))!.requiredModelBindings).toEqual([
-    "pii_semantic.input","classifier_review.input","pii_semantic.output","classifier_review.output",
-  ]);
   expect(assignmentTargetAcceptsModel("classifier_review.input","tali.nemotron-safety-guard-v3.v1","custom-openai-compatible")).toBe(false);
   expect(assignmentTargetAcceptsModel("content_safety.output","tali.classifier-review.v1","custom-openai-compatible")).toBe(false);
   expect(assignmentTargetAcceptsModel("control_plane","tali.classifier-review.v1","custom-openai-compatible")).toBe(false);
-});
-
-it("accepts old assignment payloads without silently changing existing assignments",() => {
-  const assignments=emptyModelAssignments();
-  const unassigned=structuredClone(assignments);
-  delete (unassigned.bindings as Record<string,unknown>)["classifier_review.input"];
-  delete (unassigned.bindings as Record<string,unknown>)["classifier_review.output"];
-  expect(assignmentInputSchema.parse(unassigned)).toEqual(assignments);
 });

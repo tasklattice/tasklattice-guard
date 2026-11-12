@@ -1,4 +1,5 @@
 export const modelPricingEn = {
+  builtin: "Built-in",
   billingDescription: "View model usage and estimated costs by Guardrail.", selectGuardrail: "Guardrail", noGuardrails: "No Guardrails available", noGuardrailsHint: "Create a Guardrail to track its model usage and costs here.", missingGuardrail: "This Guardrail is unavailable. Select another Guardrail to view its bill.",
   tab: "Usage & cost", prices: "Model prices", models: "Models", description: "Model calls attributed to this Guardrail. USD estimates use the price effective at the time of each call.",
   period: "Period", month: "This month", "7d": "Last 7 days", "30d": "Last 30 days", source: "Traffic", all: "All calls", runtime: "Runtime", testing: "Testing & Playground", refresh: "Refresh", retry: "Retry", configure: "Configure prices",
@@ -15,6 +16,7 @@ export const modelPricingEn = {
   alias: "Bundled catalog entry", aliasHint: "Leave blank for automatic matching by provider URL and model name. For a custom gateway, search and select the exact provider/model price you want to use.", search: "Search catalog (at least 2 characters)", autoMatch: "Automatic matching", noMatch: "No supported catalog entries found. Use a manual price if needed.", selectEntry: "Select this price", selected: "Selected: {{key}}", globalHint: "Applies globally to this provider and model, including other registered profiles. Only future calls use the new price.", cacheHint: "Leave blank if there is no known cache price. Calls that report cached tokens will remain unaccounted.",
 };
 export const modelPricingZh: Record<keyof typeof modelPricingEn, string> = {
+  builtin: "内置",
   billingDescription: "按安全护栏查看模型用量与预估费用。", selectGuardrail: "安全护栏", noGuardrails: "暂无安全护栏", noGuardrailsHint: "创建安全护栏后，可在这里查看其模型用量与费用。", missingGuardrail: "此安全护栏不可用，请选择其他安全护栏查看账单。",
   tab: "用量与成本", prices: "模型价格", models: "模型", description: "统计归属于此 Guardrail 的模型调用。费用按调用时生效的单价估算，统一以美元（USD）显示。",
   period: "时间范围", month: "本月", "7d": "近 7 天", "30d": "近 30 天", source: "调用来源", all: "全部调用", runtime: "运行流量", testing: "测试与 Playground", refresh: "刷新", retry: "重试", configure: "配置价格",

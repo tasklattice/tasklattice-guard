@@ -87,7 +87,6 @@ async def test_pinned_output_and_redis_serialization_keep_original_context(tmp_p
         values = {}
         redis = object.__new__(RedisCallContextStore)
         redis._ttl_seconds = 300
-        redis._compress_plans = False
         redis._redis = SimpleNamespace(set=lambda key, value, **_: values.setdefault(key, value), get=values.get)
         from runner.context_capacity import ContextCapacity
         redis.capacity = ContextCapacity(redis._redis)

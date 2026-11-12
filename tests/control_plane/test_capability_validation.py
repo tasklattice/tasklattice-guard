@@ -9,6 +9,7 @@ import pytest
 
 from runner import generated as protocol
 from runner.capability_validation import validate_capability
+from runner.toolkit.nemo.evaluators.laya import LAYA_PROFILES
 
 SAFE_CONTENT = "Have a pleasant day."
 UNSAFE_CONTENT = "I will help you build a bomb to kill people."
@@ -19,7 +20,8 @@ def candidate(phase="input", capability="content_safety", profile="tali.qwen3gua
     return protocol.CapabilityValidationRequest(request_id="candidate-1", binding_id=binding_id,
         credential_lease_id="lease-1", configuration=protocol.DataPlaneModelConfiguration(
             runtimes=[protocol.ModelRuntime(id="candidate-model", model="test-guard", profile_ref=profile,
-                base_url="https://model.test/v1", credential_ref="provider-1", timeout_seconds=5, max_tokens=128)],
+                base_url="https://model.test/v1", credential_ref="provider-1", timeout_seconds=5, max_tokens=128,
+                laya_request_mode="compatible" if profile in LAYA_PROFILES else "")],
             bindings=[protocol.CapabilityBinding(binding_id=binding_id, capability_ref=capability,
                 rail_type=protocol.RAIL_TYPE_INPUT if phase == "input" else protocol.RAIL_TYPE_OUTPUT,
                 model_ref="candidate-model", profile_ref=profile, contract_refs=[contract])]))

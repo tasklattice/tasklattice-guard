@@ -46,15 +46,6 @@ parameters:
     Rule without skipping other Policies. Matches, errors and missing context keep
     their own handling.
   default: block
-- name: review_unknown
-  label: Review uncertain input results
-  kind: text
-  required: false
-  placeholder: true or false
-  description: When true, a valid JEV input gray-area result is reviewed by the separately
-    validated classifier_review.input binding. Output, matches, errors and missing
-    context keep their handling.
-  default: 'false'
 - name: questions
   label: Classifier questions
   kind: textarea

@@ -16,7 +16,7 @@ import {
 } from "./domain.js";
 
 describe("Laya request mode resolution", () => {
-  it("keeps the mode Laya-only and defaults legacy NULL rows to compatible", () => {
+  it("uses the compatible request shape until a remote Laya connection probe selects a mode", () => {
     expect(resolveLayaRequestMode("tali.laya.v1", null)).toBe("compatible");
     expect(resolveLayaRequestMode("tali.laya-topic.v1", undefined)).toBe("compatible");
     expect(resolveLayaRequestMode("tali.laya.v1", "native")).toBe("native");

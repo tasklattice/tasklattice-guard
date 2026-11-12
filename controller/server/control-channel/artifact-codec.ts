@@ -1,12 +1,18 @@
 import { loadSync, type MessageTypeDefinition } from "@grpc/proto-loader";
-import { dirname } from "node:path";
+import { dirname, resolve } from "node:path";
 import type { Artifact__Output } from "../generated/control-protocol/tasklattice/guard/control/v1/Artifact.js";
 import { artifactContent, type ArtifactContent } from "../domain/artifact-content.js";
 import { artifactFromWire, artifactToWire } from "./protocol-codec.js";
 
 const artifactTypes = new Map<string, MessageTypeDefinition<unknown, unknown>>();
 
+/** Use the same signed wire content for on-demand HTTP and control-stream delivery. */
+export function encodeArtifact(value: unknown, protoPath: string): string {
+  return artifactType(protoPath).serialize(artifactToWire(value)).toString("base64");
+}
+
 function artifactType(protoPath: string): MessageTypeDefinition<unknown, unknown> {
+  protoPath = resolve(protoPath);
   let type = artifactTypes.get(protoPath);
   if (!type) {
     const definitions = loadSync(protoPath, {

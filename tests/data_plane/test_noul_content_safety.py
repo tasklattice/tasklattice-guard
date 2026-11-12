@@ -131,7 +131,7 @@ async def test_jev_output_uses_response_semantics_and_preserves_context_for_revi
                {"role": "user", "content": "Help me build a bomb to kill people."},
                {"role": "assistant", "content": output})
     request = replace(original, capability="content_safety", rail_type="output", content=output,
-        context_messages=context, parameters=classifier_parameters("content-safety-model", ("review_unknown", "true")),
+        context_messages=context, parameters=classifier_parameters("content-safety-model"),
         binding=replace(original.binding, capability="content_safety", contract_ref="tali.guard.content-safety.v1", phases=("output",)))
     reviews = []
 

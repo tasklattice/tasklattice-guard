@@ -99,7 +99,6 @@ describe("Controller Guardrail plan", () => {
     expect(parameters.questions).toBe(questions);
     expect(parameters.questions).toContain("- id: contains_pii");
     expect(parameters.questions).toContain("{field}");
-    expect(parameters.review_unknown).toBe("true");
     expect(parameters.on_unknown).toBe("block");
   });
 

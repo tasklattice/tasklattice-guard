@@ -4,6 +4,7 @@ import { hasPermission, isAccountRole } from "../../shared/rbac.js";
 import { TelemetryUploadAdmission, readBoundedTelemetryBody } from "./telemetry-upload-budget.js";
 import { modelReadiness } from "../../shared/model-readiness.js";
 import { pricingRuleSchema, costQuerySchema } from "../../shared/model-pricing.js";
+import { encodeArtifact } from "../control-channel/artifact-codec.js";
 import { protectionModes } from "../../shared/protection-mode.js";
 import { formalValidationSchema } from "../../shared/formal-validation.js";
 import { testingReportsQuery } from "../services/testing-reports.js";
@@ -713,12 +714,6 @@ export function createHttpApp(input: {
     const body = profileImportBodySchema.parse(await context.req.json());
     return context.json(await input.service.importGuardrailProfilePackage(body.package, context.get("actor").id, body.replace === true));
   });
-  // Compatibility route for existing API clients; both paths read the database.
-  app.get("/api/v1/policy-catalog/protection-presets", authenticated, async (context) => {
-    const items = await input.service.listGuardrailProfiles();
-    // This is a preview, not a save/activation or evidence that runtime checks passed.
-    return context.json({ directories: protectionDirectories, items, count: items.length });
-  });
   app.get("/api/v1/policies/:id", authenticated, async (context) => context.json(publicPolicy(await input.service.getPolicy(context.req.param("id")))));
   app.post("/api/v1/policies", authenticated, async (context) => {
     const body = createProgrammablePolicySchema.parse(await context.req.json());
@@ -894,29 +889,23 @@ export function createHttpApp(input: {
       throw new ControllerError("Guardrail Playground has no model connection configured.", 503, "playground_unavailable");
     }
     const body = playgroundInteractionInput.parse(await context.req.json());
-    const guardrail = await input.service.getGuardrail(context.req.param("guardrailId"));
-    const version = guardrail.versions.find((item) => item.version === body.guardrail_version);
-    if (!version || version.status !== "ready" || !version.artifactId) {
-      throw new ValidationError("Playground requires a ready, immutable Guardrail Version.");
-    }
+    const candidate = await input.service.playgroundPublishedCandidate(context.req.param("guardrailId"), body.guardrail_version);
     const { pool, runner } = await selectRunnerForProject(requireProjectId(context.get("actor").projectId));
     return context.json(await runPlaygroundInteraction({
       guardrail: {
-        id: guardrail.id,
-        name: guardrail.name,
-        version: version.version,
-        publishedAt: version.createdAt,
-        compilerVersion: typeof version.plan.compiler_version === "string"
-          ? version.plan.compiler_version
-          : "TaskLattice Guard Runner",
+        id: candidate.guardrailId,
+        name: candidate.guardrailName,
+        version: candidate.version,
+        publishedAt: candidate.createdAt,
+        compilerVersion: candidate.artifact.compilerVersion,
         targetKind: "published",
         draftRevision: null,
       },
-      target: { kind: "published", version: version.version },
+      target: { kind: "published", version: candidate.version, artifact: encodeArtifact(candidate.artifact, input.config.protoPath) },
       model: playgroundModel,
       runner,
       registerInvocation: callId => input.service.registerPlaygroundInvocation({ callId, projectId: requireProjectId(context.get("actor").projectId),
-        guardrailId: guardrail.id, guardrailVersion: version.version, poolId: pool.poolId, groupId: pool.groupId }),
+        guardrailId: candidate.guardrailId, guardrailVersion: candidate.version, poolId: pool.poolId, groupId: pool.groupId }),
       modelId: body.model_id,
       message: body.message,
       history: body.history,

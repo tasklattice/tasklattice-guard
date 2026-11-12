@@ -73,10 +73,6 @@ class JevNoulEvaluator:
                 raise ValueError(f"Jev {self.id} does not support {rail_type}.")
             self.rails = frozenset({rail_type})
 
-    @property
-    def review_ready(self) -> bool:
-        return self._reviewer is not None
-
     def questions(self, request: EvaluationRequest) -> dict[str, dict[str, object]]:
         raise NotImplementedError
 
@@ -195,10 +191,8 @@ class JevNoulEvaluator:
                                  reason=reason, findings=findings,
                                  trace=(trace,), unknown_reason="uncertain",
                                  usage=action_usage(call, len(request.content)) if call is not None else EvaluationUsage())
-        from .classifier_review import apply_review_transform, review_enabled, unavailable_review
-        if verdict == "unknown" and review_enabled(request):
-            if self._reviewer is None:
-                return unavailable_review(request,result)
+        from .classifier_review import apply_review_transform
+        if verdict == "unknown" and self._reviewer is not None:
             reviewed = await self._reviewer.review(request,questions,self.state(request),result)
             return apply_review_transform(request, reviewed,
                 content=self.result_content(request, reviewed.verdict),

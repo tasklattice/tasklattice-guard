@@ -3683,15 +3683,6 @@
         "default": "block"
       },
       {
-        "name": "review_unknown",
-        "label": "Review uncertain input results",
-        "kind": "text",
-        "required": false,
-        "placeholder": "true or false",
-        "description": "When true, a valid JEV input gray-area result is reviewed by the separately validated classifier_review.input binding. Output, matches, errors and missing context keep their handling.",
-        "default": "false"
-      },
-      {
         "name": "questions",
         "label": "Classifier questions",
         "kind": "textarea",
@@ -3760,7 +3751,6 @@
         "detector_options": {
           "profile": "topic-classification",
           "on_unknown": "{{on_unknown}}",
-          "review_unknown": "{{review_unknown}}",
           "questions": "{{questions}}"
         },
         "taxonomy_ids": [
@@ -3795,7 +3785,6 @@
         "detector_options": {
           "profile": "topic-classification",
           "on_unknown": "{{on_unknown}}",
-          "review_unknown": "{{review_unknown}}",
           "questions": "{{questions}}"
         },
         "taxonomy_ids": [
@@ -3874,15 +3863,6 @@
           "default": "block"
         },
         {
-          "name": "review_unknown",
-          "label": "Review uncertain input results",
-          "kind": "text",
-          "required": false,
-          "placeholder": "true or false",
-          "description": "When true, a valid JEV input gray-area result is reviewed by the separately validated classifier_review.input binding. Output, matches, errors and missing context keep their handling.",
-          "default": "false"
-        },
-        {
           "name": "questions",
           "label": "Classifier questions",
           "kind": "textarea",
@@ -3907,7 +3887,6 @@
             "parameters": {
               "profile": "topic-classification",
               "on_unknown": "{{on_unknown}}",
-              "review_unknown": "{{review_unknown}}",
               "questions": "{{questions}}"
             }
           },
@@ -3938,7 +3917,6 @@
             "parameters": {
               "profile": "topic-classification",
               "on_unknown": "{{on_unknown}}",
-              "review_unknown": "{{review_unknown}}",
               "questions": "{{questions}}"
             }
           },
@@ -20706,15 +20684,6 @@
         "placeholder": "block or allow",
         "description": "Block valid uncertain results by default. Allow continues this Rule without skipping other Policies.",
         "default": "block"
-      },
-      {
-        "name": "review_unknown",
-        "label": "Review uncertain results",
-        "kind": "text",
-        "required": false,
-        "placeholder": "true or false",
-        "description": "Review a valid JEV/Laya gray-area result with the separately validated classifier_review binding for the current input/output stage.",
-        "default": "false"
       }
     ],
     "test_cases": [
@@ -20778,7 +20747,6 @@
         "detector_options": {
           "profile": "safety-classification",
           "on_unknown": "{{on_unknown}}",
-          "review_unknown": "{{review_unknown}}",
           "questions": "{{questions}}"
         },
         "taxonomy_ids": [
@@ -20835,15 +20803,6 @@
           "placeholder": "block or allow",
           "description": "Block valid uncertain results by default. Allow continues this Rule without skipping other Policies.",
           "default": "block"
-        },
-        {
-          "name": "review_unknown",
-          "label": "Review uncertain results",
-          "kind": "text",
-          "required": false,
-          "placeholder": "true or false",
-          "description": "Review a valid JEV/Laya gray-area result with the separately validated classifier_review binding for the current input/output stage.",
-          "default": "false"
         }
       ],
       "rules": [
@@ -20862,7 +20821,6 @@
             "parameters": {
               "profile": "safety-classification",
               "on_unknown": "{{on_unknown}}",
-              "review_unknown": "{{review_unknown}}",
               "questions": "{{questions}}"
             }
           },
@@ -40959,17 +40917,8 @@
         "kind": "text",
         "required": false,
         "placeholder": "block or allow",
-        "description": "Action for a valid uncertain result when review is disabled or the independent review is itself inconclusive. Block keeps the fail-closed default.",
+        "description": "Action for a valid uncertain primary result when this stage has no review model binding. Block is the default.",
         "default": "block"
-      },
-      {
-        "name": "review_unknown",
-        "label": "Review uncertain results",
-        "kind": "text",
-        "required": false,
-        "placeholder": "true or false",
-        "description": "Review valid JEV/Laya uncertainty using the separately validated classifier_review binding for this input/output stage.",
-        "default": "true"
       }
     ],
     "test_cases": [
@@ -41083,7 +41032,7 @@
       {
         "id": "model/pii",
         "name": "PII detector",
-        "description": "Redact semantic personal data using the Policy-authored questions. The Rule only references them; the Runner submits them to the configured decision model. A gray result is reviewed when review_unknown is enabled, and the complete evaluated block is replaced after a match.",
+        "description": "Redact semantic personal data using the Policy-authored questions. The Rule only references them; the Runner submits them to the configured decision model. A gray result is reviewed when this stage has a review model binding. The complete evaluated block is replaced after a match.",
         "rule_id": "model/pii",
         "rule_version": "1.2.0",
         "detector": {
@@ -41108,7 +41057,6 @@
         "detector_options": {
           "profile": "pii-classification",
           "on_unknown": "{{on_unknown}}",
-          "review_unknown": "{{review_unknown}}",
           "questions": "{{questions}}"
         },
         "taxonomy_ids": [
@@ -41169,17 +41117,8 @@
           "kind": "text",
           "required": false,
           "placeholder": "block or allow",
-          "description": "Action for a valid uncertain result when review is disabled or the independent review is itself inconclusive. Block keeps the fail-closed default.",
+          "description": "Action for a valid uncertain primary result when this stage has no review model binding. Block is the default.",
           "default": "block"
-        },
-        {
-          "name": "review_unknown",
-          "label": "Review uncertain results",
-          "kind": "text",
-          "required": false,
-          "placeholder": "true or false",
-          "description": "Review valid JEV/Laya uncertainty using the separately validated classifier_review binding for this input/output stage.",
-          "default": "true"
         }
       ],
       "rules": [
@@ -41187,7 +41126,7 @@
           "id": "model/pii",
           "version": "1.2.0",
           "name": "PII detector",
-          "description": "Redact semantic personal data using the Policy-authored questions. The Rule only references them; the Runner submits them to the configured decision model. A gray result is reviewed when review_unknown is enabled, and the complete evaluated block is replaced after a match.",
+          "description": "Redact semantic personal data using the Policy-authored questions. The Rule only references them; the Runner submits them to the configured decision model. A gray result is reviewed when this stage has a review model binding. The complete evaluated block is replaced after a match.",
           "stages": [
             "input",
             "output"
@@ -41198,7 +41137,6 @@
             "parameters": {
               "profile": "pii-classification",
               "on_unknown": "{{on_unknown}}",
-              "review_unknown": "{{review_unknown}}",
               "questions": "{{questions}}"
             }
           },
@@ -43876,15 +43814,6 @@
         "placeholder": "block or allow",
         "description": "Block valid uncertain input results by default.",
         "default": "block"
-      },
-      {
-        "name": "review_unknown",
-        "label": "Review uncertain results",
-        "kind": "text",
-        "required": false,
-        "placeholder": "true or false",
-        "description": "Review a valid gray-area result with the separately validated classifier_review binding for the current stage.",
-        "default": "false"
       }
     ],
     "test_cases": [
@@ -44981,7 +44910,6 @@
         "detector_options": {
           "profile": "jailbreak-classification",
           "on_unknown": "{{on_unknown}}",
-          "review_unknown": "{{review_unknown}}",
           "questions": "{{questions}}"
         },
         "taxonomy_ids": [
@@ -46608,15 +46536,6 @@
           "placeholder": "block or allow",
           "description": "Block valid uncertain input results by default.",
           "default": "block"
-        },
-        {
-          "name": "review_unknown",
-          "label": "Review uncertain results",
-          "kind": "text",
-          "required": false,
-          "placeholder": "true or false",
-          "description": "Review a valid gray-area result with the separately validated classifier_review binding for the current stage.",
-          "default": "false"
         }
       ],
       "rules": [
@@ -46660,7 +46579,6 @@
             "parameters": {
               "profile": "jailbreak-classification",
               "on_unknown": "{{on_unknown}}",
-              "review_unknown": "{{review_unknown}}",
               "questions": "{{questions}}"
             }
           },

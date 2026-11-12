@@ -214,7 +214,7 @@ in that namespace:
 | `tali-guard-uat-bootstrap-admin` | `username`, login credential and optional `revision`; exact field names and overrides are in [account operations](../../docs/operations.md#bootstrap-account-operations) |
 
 Replace the Secret names and Redis URL with your environment's values. The
-example inherits ClusterIP Services, disabled Ingress, two Runner replicas,
+example inherits ClusterIP Services, disabled Ingress, one Runner replica,
 internal mTLS and automatic internal credentials. Monitoring integrations are
 disabled so it does not require Prometheus Operator/Grafana; omit its
 `observability` block if your UAT uses those integrations. Images and resource
@@ -602,8 +602,8 @@ there is no global runtime baseline or startup package setting.
 ## Scaling contract
 
 Controller remains one replica in this chart version. runner-default defaults to
-one StatefulSet replica in all profiles, with a minimum of one replica and
-`minAvailable: 1`. The initial instance is `runner-default-0`. Scale the data plane with
+one StatefulSet replica in all profiles, with a minimum of one replica.
+The initial instance is `runner-default-0`. Scale the data plane with
 `runner.default.replicaCount`. Manage other Runners manually in the administrator
 UI. Production must set `runner.callContextRedisUrl` when the Default Runner has
 more than one replica so input/output checks for one request remain pinned to the same Guardrail
@@ -863,7 +863,6 @@ The Default Runner receives these settings:
 runner:
   callContext:
     ttlSeconds: 300
-    compressPlans: true
     capacityFallback: true
 redis:
   maxmemory: 4gb
@@ -875,10 +874,8 @@ redis:
 
 An external Redis must be configured separately with an appropriate memory
 budget and `noeviction`; Helm does not change managed Redis configuration.
-Compression requires every shared-context reader to support the new encoding.
-For an upgrade from an older binary, deploy compatible readers with
-`compressPlans: false` first, then enable writes. TTL is not refreshed by
-outcome/completion updates.
+Runner compresses shared call-context plans when their size and compression ratio
+justify it. Outcome and completion updates preserve the original TTL.
 
 With capacity fallback enabled, Redis allocation errors stop context writes and
 history buffering for the current request. Existing readable context remains

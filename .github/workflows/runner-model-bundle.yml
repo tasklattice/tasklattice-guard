@@ -1,0 +1,81 @@
+name: Runner Model Bundle
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/runner-model-bundle.yml
+      - Dockerfile.runner
+      - controller/shared/builtin-laya-manifest.json
+      - deploy/runner-model-bundle/**
+      - '!deploy/runner-model-bundle/README.md'
+      - scripts/runner-model-bundle-ref.sh
+
+permissions:
+  contents: read
+  packages: write
+
+concurrency:
+  group: runner-model-bundle
+  queue: max
+
+jobs:
+  publish:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: docker/setup-buildx-action@v4.2.0
+      - uses: docker/login-action@v4.6.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Check for an existing bundle
+        id: bundle
+        shell: bash
+        run: |
+          set -euo pipefail
+          tag=$(bash scripts/runner-model-bundle-ref.sh)
+          digest=""
+          if result=$(docker buildx imagetools inspect "$tag" --format '{{.Manifest.Digest}}' 2>&1); then
+            [[ "$result" =~ ^sha256:[0-9a-f]{64}$ ]]
+            digest="$result"
+            echo "Reusing $tag at $digest."
+          elif [[ "$result" != *": not found" ]]; then
+            printf '%s\n' "$result" >&2
+            exit 1
+          fi
+          {
+            echo "tag=$tag"
+            echo "digest=$digest"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Build and publish the bundle
+        id: publish
+        if: steps.bundle.outputs.digest == ''
+        uses: docker/build-push-action@v7.3.0
+        with:
+          context: .
+          file: Dockerfile.runner
+          target: runner_model_bundle
+          platforms: linux/amd64,linux/arm64
+          tags: ${{ steps.bundle.outputs.tag }}
+          push: true
+          labels: |
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.title=TALI Guard Runner Model Bundle
+            org.opencontainers.image.licenses=Apache-2.0
+
+      - name: Report the published digest
+        shell: bash
+        env:
+          BUNDLE_TAG: ${{ steps.bundle.outputs.tag }}
+          BUNDLE_DIGEST: ${{ steps.bundle.outputs.digest || steps.publish.outputs.digest }}
+        run: |
+          set -euo pipefail
+          [[ "$BUNDLE_DIGEST" =~ ^sha256:[0-9a-f]{64}$ ]]
+          printf 'Runner Model Bundle `%s@%s`\n' "${BUNDLE_TAG%:*}" "$BUNDLE_DIGEST" >> "$GITHUB_STEP_SUMMARY"

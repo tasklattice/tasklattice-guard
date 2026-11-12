@@ -140,9 +140,7 @@ The default release/context/namespace remain `tali-guard` / `orbstack` / `tali`,
 with UI/runtime ports 38081/38082. The debug command uses this same file plus
 telemetry flags; its backend defaults can be changed with `HELM_OTLP_ENDPOINT`,
 `HELM_PYROSCOPE_ADDRESS` and `HELM_MONITORING_RELEASE`. Additional flags after
-`--` reach Helm as separate arguments. Make targets remain compatibility aliases
-only; new workflows should use npm. Previous `HELM_VALUES_ARGS` is replaced by
-explicit arguments after `--`.
+`--` reach Helm as separate arguments.
 
 ## LiteLLM integration stack
 

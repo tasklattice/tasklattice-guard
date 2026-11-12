@@ -1,4 +1,4 @@
-"""Actual Controller -> signed parameter -> NeMo -> two transports -> F5 evidence."""
+"""Controller plan and same-Rail model bindings through F5 evaluation evidence."""
 import json
 
 import httpx
@@ -13,9 +13,7 @@ from tests.control_plane.classifier_chain import CONTRACTS, build_controller_pla
 
 @pytest.fixture(scope="module")
 def plan():
-    result=build_controller_plan(review=True)
-    assert all(dict(step['parameters']).get('review_unknown')=='true' for step in result['steps'] if step['capability'] in CONTRACTS)
-    return result
+    return build_controller_plan()
 
 
 @pytest.mark.parametrize('capability',CONTRACTS)
@@ -107,15 +105,11 @@ async def test_unresolved_review_blocks_without_relabeling_uncertainty_as_a_matc
     assert row['review']['errorType'] is None
 
 
-async def test_missing_review_binding_prevents_readiness_and_makes_no_model_calls(classifier_backend, plan):
-    response,calls,evidence=await scan(plan,{'content_safety':.5},review={},reviewer_binding=False,require_evidence=False, backend=classifier_backend)
-    assert response.status_code>=400 and not calls
-
-
-async def test_disabling_review_preserves_configured_unknown_handling_even_with_a_review_model(classifier_backend):
-    response,calls,evidence=await scan(build_controller_plan(),{'content_safety':.5},review={'content_safety':'yes'}, backend=classifier_backend)
+async def test_missing_review_binding_preserves_primary_uncertainty_handling(classifier_backend, plan):
+    response,calls,evidence=await scan(plan,{'content_safety':.5},review={'content_safety':'yes'},reviewer_binding=False,backend=classifier_backend)
     assert response.status_code==200 and response.json()['result']['outcome']=='cleared'
     assert len(calls)==3 and not any('review' in r for r in evidence[classifier_backend.evidence_key])
+    assert next(r for r in evidence[classifier_backend.evidence_key] if r['capability']=='content_safety')['verdict']=='unknown'
 
 
 @pytest.mark.parametrize('behavior',['correct','always-safe','always-unsafe','malformed'])
@@ -150,7 +144,7 @@ def test_generic_chat_review_still_requires_matching_rail_binding_and_contract(i
 
 @pytest.fixture(scope="module")
 def output_plan():
-    return build_controller_plan(review=True, phase="output")
+    return build_controller_plan(phase="output")
 
 
 @pytest.mark.parametrize('answer,outcome', [('no', 'cleared'), ('yes', 'blocked'), ('unknown', 'blocked')])
@@ -186,9 +180,12 @@ async def test_output_classifier_uses_its_own_review_binding_and_preserves_evide
 
 
 async def test_output_cannot_borrow_an_input_reviewer(classifier_backend, output_plan):
-    response, calls, _ = await scan(output_plan, {"content_safety": .5}, backend=classifier_backend,
-        phase="output", review={}, reviewer_phase="input", require_evidence=False)
-    assert response.status_code >= 400 and not calls
+    response, calls, evidence = await scan(output_plan, {"content_safety": .5}, backend=classifier_backend,
+        phase="output", review={"content_safety": "yes"}, reviewer_phase="input")
+    assert response.status_code == 200 and response.json()["result"]["outcome"] == "cleared"
+    assert calls == ["content_safety"]
+    row = evidence[classifier_backend.evidence_key][0]
+    assert row["verdict"] == "unknown" and "review" not in row
 
 
 @pytest.mark.parametrize("fault", ["http", "malformed", "timeout"])

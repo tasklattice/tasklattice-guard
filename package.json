@@ -13,7 +13,7 @@
     "policies:test": ".venv/bin/python scripts/policy_sources.py test",
     "policies:import": ".venv/bin/python scripts/policy_sources.py import",
     "policies:export": ".venv/bin/python scripts/policy_sources.py export",
-    "sync": "uv sync --all-extras --frozen && npm ci && npm ci --prefix controller",
+    "sync": "uv sync --extra test --extra formal --frozen && npm ci && npm ci --prefix controller",
     "dev": "npm run dev:controller",
     "dev:setup": "npm run dev:setup --prefix controller",
     "dev:controller": "npm run dev --prefix controller",

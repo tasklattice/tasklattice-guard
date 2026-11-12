@@ -318,8 +318,8 @@ through the Runtime Service. Controller and PostgreSQL are outside that check
 path. Playground is an exception: Controller orchestrates its model calls and
 Runner checks.
 
-The chart uses two baseline Runner replicas, readiness-gated Service endpoints,
-a disruption budget, and a drain window. A synchronized Runner can continue with
+The chart starts with one Default Runner replica, readiness-gated Service
+endpoints, and a drain window. A synchronized Runner can continue with
 its last-known-good generation during a temporary Controller outage. The chart
 still runs one Controller; management, publication, reconciliation, and telemetry
 ingest depend on it. Production availability also depends on failure-domain

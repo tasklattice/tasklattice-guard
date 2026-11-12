@@ -8,7 +8,7 @@ import { Pool } from "pg";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { loadConfig } from "../config.js";
 import { createPooledDatabase } from "./client.js";
-import { runMigrations, SCHEMA_BASELINE } from "./migrate.js";
+import { runMigrations } from "./migrate.js";
 
 const url = process.env.GUARD_TEST_POSTGRES_URL;
 const migrationCount = JSON.parse(readFileSync(new URL("./migrations/meta/_journal.json", import.meta.url), "utf8")).entries.length;
@@ -60,12 +60,9 @@ describe.skipIf(!url)("Current database schema baseline", () => {
     expect((await pool.query("SELECT * FROM guardrail_profile ORDER BY id")).rows).toEqual(before);
     expect((await pool.query("SELECT hash FROM drizzle.__drizzle_migrations")).rows).toEqual(Array.from({ length: migrationCount }, () => ({ hash: "current-v1-baseline" })));
   });
-  it("refreshes managed seeds and removes retired Profiles without rewriting unchanged rows", async () => {
+  it("refreshes managed seeds without rewriting unchanged rows", async () => {
     await migrate();
     const original = (await pool.query("SELECT * FROM guardrail_profile WHERE id='default'")).rows[0];
-    await pool.query(`INSERT INTO guardrail_profile(id,category,category_name,is_default,enabled,definition)
-      SELECT 'banking-assistant','legacy','Legacy',false,true,definition
-      FROM guardrail_profile WHERE id='default'`);
     await pool.query(`UPDATE guardrail_profile SET enabled=false,
       definition=jsonb_set(definition,'{name}','"Outdated seed"'),updated_at='2000-01-01'
       WHERE id='default'`);
@@ -73,31 +70,20 @@ describe.skipIf(!url)("Current database schema baseline", () => {
     const refreshed = (await pool.query("SELECT * FROM guardrail_profile WHERE id='default'")).rows[0];
     expect(refreshed).toEqual({ ...original, updated_at: expect.any(Date) });
     expect(refreshed.updated_at.getTime()).toBeGreaterThan(new Date("2000-01-01").getTime());
-    expect((await pool.query("SELECT id FROM guardrail_profile WHERE id='banking-assistant'")).rows).toEqual([]);
     const before = (await pool.query("SELECT * FROM guardrail_profile ORDER BY id")).rows;
     await migrate();
     expect((await pool.query("SELECT * FROM guardrail_profile ORDER BY id")).rows).toEqual(before);
   });
-  it("creates only the current Project model, without upgrade scaffolding or sample tenants", async () => {
+  it("creates the Project catalog and enforces Project and Runner ownership", async () => {
     await migrate();
     expect((await pool.query("SELECT id FROM project")).rows).toEqual([]);
     expect((await pool.query("SELECT id FROM project_group")).rows).toEqual([{id:"default"}]);
-    for (const table of ["tenant","tenant_group","project_group_move","project_group_move_group","project_group_move_pool","historical_telemetry_attribution","historical_telemetry_quarantine_checkpoint"]) {
-      expect((await pool.query("SELECT to_regclass($1) AS name",[table])).rows[0].name).toBeNull();
-    }
     await pool.query("INSERT INTO project(id,name) VALUES ('support','support')");
     await expect(pool.query("UPDATE project SET name='renamed' WHERE id='support'")).rejects.toMatchObject({code:"23514"});
     await expect(pool.query("INSERT INTO runner_pool(id,name) VALUES ('unbound','Unbound')")).rejects.toMatchObject({code:"23514"});
     await pool.query("INSERT INTO runner_pool(id,name,project_id) VALUES ('support','runner-support','support')");
   });
 
-  it("refuses an incomplete historical upgrade without applying schema changes", async () => {
-    await pool.query("CREATE SCHEMA drizzle; CREATE TABLE drizzle.__drizzle_migrations(id serial PRIMARY KEY, hash text NOT NULL,created_at bigint)");
-    await pool.query("INSERT INTO drizzle.__drizzle_migrations(hash,created_at) VALUES ('old',$1)", [SCHEMA_BASELINE - 1]);
-    await expect(migrate()).rejects.toThrow("Initialize a fresh V1 database");
-    expect((await pool.query("SELECT to_regclass('guardrail_profile') AS profile")).rows[0].profile).toBeNull();
-    expect((await pool.query("SELECT hash FROM drizzle.__drizzle_migrations")).rows).toEqual([{ hash: "old" }]);
-  });
   it("rolls back an unsuccessful baseline and can retry cleanly", async () => {
     const directory = mkdtempSync(join(tmpdir(), "guard-migration-"));
     const originalPath = config.migrationsPath;

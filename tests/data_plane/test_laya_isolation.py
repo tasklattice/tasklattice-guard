@@ -73,7 +73,8 @@ def test_laya_questions_come_from_the_policy_not_the_jev_adapter():
 @pytest.mark.parametrize("binding_profile,runtime_profile", [(LAYA_PROFILE, JEV_PROFILE), (JEV_PROFILE, LAYA_PROFILE)])
 def test_cross_family_binding_cannot_silently_select_a_different_protocol(binding_profile, runtime_profile):
     config = candidate("input", "jailbreak", binding_profile, "tali.guard.jailbreak.v1").configuration
-    config.runtimes[0].profile_ref = runtime_profile
+    other = candidate("input", "jailbreak", runtime_profile, "tali.guard.jailbreak.v1").configuration
+    config.runtimes[0].CopyFrom(other.runtimes[0])
     with pytest.raises(ValueError, match="matching capability, contract and runtime profile"):
         dynamic_runtime_action_providers(config, {"provider-1": "synthetic"})
 

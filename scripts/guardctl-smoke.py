@@ -177,7 +177,7 @@ class GuardctlSmoke(unittest.TestCase):
             "policies policy-1": "/policies/policy-1",
             "policy-test policy-1": "/policies/policy-1/test-runs/latest",
             "policy-test policy-1 report-1": "/policies/policy-1/test-runs/report-1",
-            "protection-presets": "/policy-catalog/protection-presets",
+            "guardrail-profiles": "/guardrail-profiles",
             "actions": "/policy-catalog/actions", "guardrails": "/guardrails",
             "guardrails guard-1": "/guardrails/guard-1",
             "guardrail-logging guard-1": "/guardrails/guard-1/logging",

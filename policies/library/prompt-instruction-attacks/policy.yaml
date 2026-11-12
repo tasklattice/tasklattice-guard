@@ -105,15 +105,6 @@ parameters:
   description: >-
     Block valid uncertain input results by default.
   default: 'block'
-- name: review_unknown
-  label: Review uncertain results
-  kind: text
-  required: false
-  placeholder: true or false
-  description: >-
-    Review a valid gray-area result with the separately validated
-    classifier_review binding for the current stage.
-  default: 'false'
 rules: []
 rule_refs:
 - id: boundary/indirect-injection

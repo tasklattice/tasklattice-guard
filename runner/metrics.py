@@ -27,6 +27,7 @@ from runner.toolkit.runtime.contracts import PlanResolution, ProtectionDecision
 from . import __version__
 from . import generated as protocol
 from .observability import current_exemplar, current_trace_id
+from .resources import cpu_capacity_cores
 
 
 _DURATION_BUCKETS = (
@@ -919,7 +920,7 @@ class RunnerMetrics:
             p95 = _percentile(sorted(window.latencies_ms), 0.95)
             cpu = min(
                 1.0,
-                max(0.0, self._process.cpu_percent(interval=None) / 100 / _cpu_capacity_cores()),
+                max(0.0, self._process.cpu_percent(interval=None) / 100 / cpu_capacity_cores()),
             )
             rss = max(0, self._process.memory_info().rss)
             memory_limit = _memory_limit_bytes()
@@ -1053,29 +1054,6 @@ def _memory_limit_bytes() -> int:
         except (OSError, ValueError):
             pass
     return max(1, psutil.virtual_memory().total)
-
-
-def _cpu_capacity_cores() -> float:
-    try:
-        quota, period = Path("/sys/fs/cgroup/cpu.max").read_text(encoding="utf-8").split()[:2]
-        if quota != "max" and float(period) > 0:
-            return max(0.001, float(quota) / float(period))
-    except (OSError, ValueError):
-        pass
-    try:
-        quota = float(Path("/sys/fs/cgroup/cpu/cpu.cfs_quota_us").read_text(encoding="utf-8"))
-        period = float(Path("/sys/fs/cgroup/cpu/cpu.cfs_period_us").read_text(encoding="utf-8"))
-        if quota > 0 and period > 0:
-            return max(0.001, quota / period)
-    except (OSError, ValueError):
-        pass
-    try:
-        affinity = psutil.Process().cpu_affinity()
-        if affinity:
-            return float(len(affinity))
-    except (AttributeError, NotImplementedError, psutil.Error):
-        pass
-    return float(max(1, psutil.cpu_count() or 1))
 
 
 def _percentile(values: list[float], percentile: float) -> float:
