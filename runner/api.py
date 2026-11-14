@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from .evaluation_evidence import execution_status
+from .evaluation_evidence import builtin_laya_identity, execution_status
 from .toolkit.runtime.outcome import GuardrailExecutionError
 
 import hmac
@@ -719,6 +719,16 @@ def _telemetry_metadata(decision: ProtectionDecision) -> dict[str, Any]:
     """Return structured evidence; guarded content is exported only as ciphertext."""
     usage = asdict(decision.usage) if decision.usage is not None else None
     coverage = asdict(decision.coverage) if decision.coverage is not None else None
+    laya_models = []
+    for step in decision.trace:
+        if step.kind != "evaluation" or not (step.evaluator_id or "").startswith("laya-"):
+            continue
+        try:
+            identity = builtin_laya_identity(json.loads(step.evidence or "{}"))
+            if identity and identity not in laya_models:
+                laya_models.append(identity)
+        except (ValueError, AttributeError):
+            continue
     findings = [
         {
             "id": f"finding-{index}",
@@ -796,6 +806,7 @@ def _telemetry_metadata(decision: ProtectionDecision) -> dict[str, Any]:
         "findings": findings,
         "executionStatus": execution_status(decision),
         "modelStatus": decision.model_status,
+        **({"builtinLayaModels": laya_models} if laya_models else {}),
         "terminationReason": decision.termination_reason,
         "diagnostics": [{"code": d.code, "message": d.message, "stepId": d.step_id,
                          "policyId": d.policy_id, "affectsResult": d.affects_result,

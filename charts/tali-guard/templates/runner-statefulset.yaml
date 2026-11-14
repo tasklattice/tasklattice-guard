@@ -60,7 +60,7 @@ spec:
       {{- end }}
       containers:
         - name: runner
-          image: "{{ .Values.runner.image.repository }}:{{ default .Chart.AppVersion .Values.runner.image.tag }}"
+          image: {{ include "tali-guard.runnerImage" . | quote }}
           imagePullPolicy: {{ .Values.runner.image.pullPolicy }}
           securityContext: {{- toYaml .Values.securityContext | nindent 12 }}
           ports:

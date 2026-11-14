@@ -1520,6 +1520,7 @@ dependencies = [
 [package.optional-dependencies]
 builtin-laya = [
     { name = "laya" },
+    { name = "onnxruntime" },
     { name = "torch", version = "2.6.0", source = { registry = "https://pypi.org/simple" }, marker = "sys_platform != 'linux'" },
     { name = "torch", version = "2.6.0+cpu", source = { registry = "https://download.pytorch.org/whl/cpu" }, marker = "sys_platform == 'linux'" },
     { name = "transformers" },
@@ -1541,6 +1542,7 @@ requires-dist = [
     { name = "httpx", specifier = ">=0.28,<1" },
     { name = "laya", marker = "extra == 'builtin-laya'", specifier = "==0.3.22" },
     { name = "nemoguardrails", extras = ["tracing"], specifier = "==0.24.1" },
+    { name = "onnxruntime", marker = "extra == 'builtin-laya'", specifier = "==1.28.0" },
     { name = "opentelemetry-exporter-otlp-proto-http", specifier = ">=1.27,<2" },
     { name = "opentelemetry-instrumentation-fastapi", specifier = ">=0.48b0,<1" },
     { name = "opentelemetry-instrumentation-httpx", specifier = ">=0.48b0,<1" },

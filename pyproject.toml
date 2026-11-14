@@ -44,6 +44,7 @@ formal = [
 ]
 builtin-laya = [
   "laya==0.3.22",
+  "onnxruntime==1.28.0",
   "torch==2.6.0",
   "transformers==4.57.6",
 ]

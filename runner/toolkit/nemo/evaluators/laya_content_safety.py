@@ -30,13 +30,13 @@ class LayaContentSafetyEvaluator(LayaNoulEvaluator):
     def evidence_extra(self, request: EvaluationRequest) -> dict[str, object]:
         return definition_provenance(request, provider="laya")
 
-    def classify(self, probabilities: dict[str, float]) -> str:
+    def classify(self, probabilities: dict[str, float], *, lower: float, upper: float) -> str:
         # Keep the broad safety question: an assistance-only question misses
         # some harmful requests. Neither native wording is a calibrated oracle.
         # Disagreement is abstention, never a safe result or a forced violation.
-        if all(p >= self._upper for p in probabilities.values()):
+        if all(p >= upper for p in probabilities.values()):
             return "matched"
-        if all(p <= self._lower for p in probabilities.values()):
+        if all(p <= lower for p in probabilities.values()):
             return "not_matched"
         return "unknown"
 

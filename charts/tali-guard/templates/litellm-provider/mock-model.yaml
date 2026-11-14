@@ -50,7 +50,7 @@ spec:
       containers:
         - name: mock-model
           # The Guard Runner image provides FastAPI and uvicorn on PATH.
-          image: "{{ .Values.runner.image.repository }}:{{ default .Chart.AppVersion .Values.runner.image.tag }}"
+          image: {{ include "tali-guard.runnerImage" . | quote }}
           imagePullPolicy: {{ .Values.runner.image.pullPolicy }}
           command: ["python", "/opt/mock/mock_openai_model.py"]
           env:
