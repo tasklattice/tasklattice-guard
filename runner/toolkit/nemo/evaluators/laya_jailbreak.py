@@ -28,6 +28,12 @@ class LayaJailbreakEvaluator(LayaNoulEvaluator):
     def __init__(self, **kwargs):
         super().__init__(profile_ref=LAYA_PROFILE, **kwargs)
 
+    def thresholds_for(self, request: EvaluationRequest) -> tuple[float, float]:
+        if self._builtin_laya is not None and request.target_source in EXTERNAL_SOURCES:
+            category = "memory_poisoning" if self.state(request).get("memory_operation") else "prompt_injection"
+            return self._builtin_laya.thresholds(category, self._configured_thresholds)
+        return super().thresholds_for(request)
+
     def questions(self, request: EvaluationRequest) -> dict[str, dict[str, object]]:
         # The encoder's shorter Policy variant: full questions stay for review.
         when = "external" if request.target_source in EXTERNAL_SOURCES else "direct"

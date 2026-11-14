@@ -72,6 +72,13 @@ spec:
               valueFrom:
                 configMapKeyRef: { name: {{ $config.metadata.name }}, key: {{ $key }} }
             {{- end }}
+            {{- with .Values.runner.builtinLayaCheckpointRevision }}
+            {{- if not (regexMatch "^[0-9a-f]{40}$" .) }}
+            {{- fail "runner.builtinLayaCheckpointRevision must be a 40-character hexadecimal revision" }}
+            {{- end }}
+            - name: CONTROLLER_BUILTIN_LAYA_CHECKPOINT_REVISION
+              value: {{ . | quote }}
+            {{- end }}
             - name: CONTROLLER_DATABASE_URL
               valueFrom: { secretKeyRef: { name: {{ include "tali-guard.databaseSecretName" . }}, key: {{ .Values.database.secretKey }} } }
             - name: CONTROLLER_RUNNER_POOL_TOKENS_JSON

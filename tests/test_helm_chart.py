@@ -562,6 +562,19 @@ def test_image_versions_follow_chart_with_explicit_overrides():
             assert item["spec"]["template"]["spec"]["containers"][0]["image"].endswith(":custom-" + component)
 
 
+def test_runner_digest_and_builtin_model_revision_are_independently_pinned():
+    digest = "sha256:" + "a" * 64
+    revision = "b" * 40
+    documents = render("--set-string", f"runner.image.digest={digest}",
+                       "--set-string", f"runner.builtinLayaCheckpointRevision={revision}")
+    runner = next(item for item in documents if item["metadata"]["name"] == "runner-default"
+                  and item["kind"] == "StatefulSet")
+    assert runner["spec"]["template"]["spec"]["containers"][0]["image"].endswith("@" + digest)
+    controller = next(item for item in documents if item["kind"] == "Deployment")
+    env = controller["spec"]["template"]["spec"]["containers"][0]["env"]
+    assert {"name": "CONTROLLER_BUILTIN_LAYA_CHECKPOINT_REVISION", "value": revision} in env
+
+
 def test_advanced_partial_overrides_keep_runtime_defaults():
     documents = render("--set", "podSecurityContext.runAsUser=10001", "--set", "securityContext.readOnlyRootFilesystem=false",
                        "--set", "observability.serviceMonitor.interval=30s")

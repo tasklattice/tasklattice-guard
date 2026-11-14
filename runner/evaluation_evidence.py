@@ -18,6 +18,21 @@ def _identity(value):
     return value if isinstance(value, str) and _IDENTITY.fullmatch(value) else None
 
 
+def builtin_laya_identity(evidence: dict) -> dict[str, str]:
+    metadata = evidence.get("model_metadata")
+    if not isinstance(metadata, dict) or metadata.get("backend") != "builtin_laya":
+        return {}
+    fields = {"runnerVersion": "runner_version", "modelVersion": "modelVersion",
+              "calibrationVersion": "calibrationVersion", "thresholdPolicyVersion": "thresholdPolicyVersion",
+              "artifactSha256": "artifactSha256"}
+    identity = {key: value for key, field in fields.items()
+                if (value := _identity(metadata.get(field))) is not None}
+    commit = _identity(metadata.get("runner_commit"))
+    if commit is not None and re.fullmatch(r"[a-f0-9]{40}", commit):
+        identity["runnerCommit"] = commit
+    return identity
+
+
 def execution_status(decision: ProtectionDecision) -> str:
     return decision.execution_status or "unknown"
 
@@ -137,6 +152,8 @@ def evaluation_evidence(decision: ProtectionDecision) -> str:
                 row["questionRevision"] = _identity(native.get("question_revision"))
                 row["requestedModel"] = _identity(native.get("requested_model"))
                 row["responseModel"] = _identity(native.get("response_model"))
+                if decision_model == "laya":
+                    row.update(builtin_laya_identity(native))
                 thresholds = native.get("thresholds", {})
                 if (isinstance(thresholds, dict) and all(type(thresholds.get(k)) in (int, float)
                         and math.isfinite(thresholds[k]) for k in ("lower", "upper"))

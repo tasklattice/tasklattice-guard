@@ -1,0 +1,74 @@
+name: Runner model candidate
+
+on:
+  workflow_dispatch:
+    inputs:
+      model_lock:
+        description: JSON lock emitted by the approved Models release
+        type: string
+        required: true
+
+permissions:
+  contents: read
+  packages: read
+
+jobs:
+  build-and-verify:
+    if: github.ref == 'refs/heads/main'
+    name: Build candidate Runner (${{ matrix.architecture }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 35
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - {architecture: amd64, os: ubuntu-24.04}
+          - {architecture: arm64, os: ubuntu-24.04-arm}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.13"
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "24"
+      - uses: astral-sh/setup-uv@v10.0.1
+        with:
+          version: "0.11.32"
+      - uses: docker/setup-buildx-action@v4.2.0
+      - uses: docker/login-action@v4.6.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
+      - run: uv sync --locked --extra formal && npm ci --prefix controller --no-audit --no-fund
+      - run: npm run generate
+      - name: Validate candidate lock
+        env:
+          MODEL_LOCK: ${{ inputs.model_lock }}
+        run: |
+          python3 - <<'PY'
+          import json, os
+          from pathlib import Path
+          from runner.model_bundle_contract import load_lock
+          path = Path("deploy/runner-model-bundle/model-lock.json")
+          path.write_text(json.dumps(json.loads(os.environ["MODEL_LOCK"]), sort_keys=True) + "\n")
+          lock = load_lock(path)
+          owner = os.environ["GITHUB_REPOSITORY_OWNER"].lower()
+          if not lock["image"].startswith(f"ghcr.io/{owner}/tasklattice-guard-models@sha256:"):
+              raise ValueError("Use a model bundle from the Models package.")
+          PY
+      - name: Build and smoke test with networking disabled
+        run: bash scripts/build-runner-model-candidate.sh tali-guard-runner:model-candidate linux/${{ matrix.architecture }}
+      - name: Save candidate image and model lock
+        run: |
+          mkdir -p output/model-candidate
+          docker save tali-guard-runner:model-candidate -o output/model-candidate/runner-image.tar
+          docker image inspect --format '{{.Id}}' tali-guard-runner:model-candidate > output/model-candidate/image-id.txt
+          cp deploy/runner-model-bundle/model-lock.json output/model-candidate/
+      - uses: actions/upload-artifact@v7
+        with:
+          name: runner-model-candidate-${{ matrix.architecture }}
+          path: output/model-candidate/
+          compression-level: 0
+          if-no-files-found: error

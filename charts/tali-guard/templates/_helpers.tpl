@@ -1,3 +1,15 @@
+{{/* Every Runner-based workload shares the same pinned image. */}}
+{{- define "tali-guard.runnerImage" -}}
+{{- with .Values.runner.image.digest -}}
+{{- if not (regexMatch "^sha256:[0-9a-f]{64}$" .) -}}
+{{- fail "runner.image.digest must be a SHA-256 OCI digest" -}}
+{{- end -}}
+{{- printf "%s@%s" $.Values.runner.image.repository . -}}
+{{- else -}}
+{{- printf "%s:%s" .Values.runner.image.repository (default .Chart.AppVersion .Values.runner.image.tag) -}}
+{{- end -}}
+{{- end }}
+
 {{/* Normalize optional runtime settings for each entry point before use. */}}
 {{- define "tali-guard.defaults" -}}
 {{- $values := mergeOverwrite (.Files.Get "files/runtime-defaults.yaml" | fromYaml) .Values -}}
