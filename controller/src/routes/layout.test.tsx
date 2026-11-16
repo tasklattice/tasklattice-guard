@@ -1,4 +1,4 @@
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -12,6 +12,8 @@ let projectId: string | null = "test1";
 let role = "user";
 type SessionState = "authenticated" | "anonymous" | "loading" | "error";
 let sessionState: SessionState = "authenticated";
+let refreshFailed = false;
+const refreshSession = vi.fn(async () => {});
 
 vi.mock("@tanstack/react-router", () => ({
   Link: ({ to, children }: { to: string; children: ReactNode }) => <a href={to}>{children}</a>,
@@ -22,10 +24,11 @@ vi.mock("@tanstack/react-router", () => ({
 
 vi.mock("@/lib/auth", () => ({
   useAuth: () => ({
-    isLoading: sessionState === "loading",
+    isCheckingSession: sessionState === "loading",
     status: sessionState === "loading" || sessionState === "error" ? undefined : { authenticated: sessionState === "authenticated" },
     user: sessionState === "authenticated" ? { role, project_id: projectId } : null,
-    error: sessionState === "error" ? new Error("Session unavailable") : null,
+    error: sessionState === "error" || refreshFailed ? new Error("Session unavailable") : null,
+    refreshSession,
   }),
 }));
 
@@ -57,12 +60,14 @@ vi.mock("react-i18next", () => ({
       "nav.runtimeObservations": "Observability",
       "nav.runner": "Runner",
       "auth.sessionLoading": "Checking your session…",
+      "auth.sessionUnavailable": "Unable to check your session.",
+      "common.retry": "Retry",
     } as Record<string, string>)[key] ?? key,
   }),
 }));
 
 describe("ControlPlaneLayout", () => {
-  afterEach(() => { cleanup(); pathname = "/test1"; projectId = "test1"; role = "user"; sessionState = "authenticated"; });
+  afterEach(() => { cleanup(); pathname = "/test1"; projectId = "test1"; role = "user"; sessionState = "authenticated"; refreshFailed = false; refreshSession.mockClear(); });
 
   it("lands administrators in Platform", () => {
     pathname = "/"; role = "admin"; projectId = null;
@@ -113,10 +118,28 @@ describe("ControlPlaneLayout", () => {
     expect(screen.getByText("Page content")).toBeTruthy();
   });
 
-  it.each<SessionState>(["anonymous", "loading", "error"])("does not mount resources with an %s session", state => {
+  it.each<SessionState>(["anonymous", "loading"])("does not mount resources with an %s session", state => {
     sessionState = state; render(<ControlPlaneLayout />);
     expect(screen.queryByText("Page content")).toBeNull();
     expect(screen.getByText(state === "loading" ? "Checking your session…" : "Sign in")).toBeTruthy();
+  });
+
+  it.each<SessionState>(["anonymous", "error"])("offers a session-only retry after a failed check with an %s session", state => {
+    sessionState = state;
+    refreshFailed = true;
+    render(<ControlPlaneLayout />);
+    expect(screen.queryByText("Sign in")).toBeNull();
+    expect(screen.queryByText("Page content")).toBeNull();
+    expect(screen.getByRole("alert").textContent).toBe("Unable to check your session.");
+    fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+    expect(refreshSession).toHaveBeenCalledOnce();
+  });
+
+  it("keeps the workspace visible when a background session check fails", () => {
+    refreshFailed = true;
+    render(<ControlPlaneLayout />);
+    expect(screen.getByText("Page content")).toBeTruthy();
+    expect(screen.queryByText("Sign in")).toBeNull();
   });
 
   describe.each<SessionState>(["authenticated", "anonymous", "loading", "error"])("documentation with an %s session", state => {

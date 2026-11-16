@@ -16,6 +16,7 @@ vi.mock("@/lib/better-auth", () => ({
 }));
 
 import { getAuthStatus, login, loginSso, updateMe } from "@/lib/identity-api";
+import { currentProjectId, setCurrentProjectId } from "@/lib/project-context";
 
 describe("SSO project return URLs", () => {
   afterEach(() => window.history.replaceState(null, "", "/"));
@@ -44,11 +45,23 @@ describe("identity login", () => {
     signInWithUsername.mockReset();
     signInWithUsername.mockResolvedValue({ data: { user: signedInUser }, error: null });
   });
+  afterEach(() => setCurrentProjectId(null));
 
   it("checks current session state rather than a stale signed cookie", async () => {
     getSession.mockResolvedValue({ data: null, error: null });
     expect(await getAuthStatus()).toEqual({ authenticated: false, user: null });
-    expect(getSession).toHaveBeenCalledWith({ query: { disableCookieCache: true } });
+    expect(getSession).toHaveBeenCalledWith(expect.objectContaining({ query: { disableCookieCache: true } }));
+  });
+
+  it("leaves the current project in place when a superseded session check finishes", async () => {
+    const controller = new AbortController();
+    setCurrentProjectId("projectB");
+    getSession.mockImplementationOnce(async () => {
+      controller.abort();
+      return { data: null, error: null };
+    });
+    await expect(getAuthStatus(controller.signal)).rejects.toMatchObject({ name: "AbortError" });
+    expect(currentProjectId()).toBe("projectB");
   });
 
   it("uses the canonical user role instead of the retired member alias", async () => {
@@ -92,7 +105,7 @@ describe("profile updates", () => {
     const result = await updateMe({ preferred_language: "zh-CN" });
 
     expect(updateUser).toHaveBeenCalledWith({ preferredLanguage: "zh-CN" });
-    expect(getSession).toHaveBeenCalledWith({ query: { disableCookieCache: true } });
+    expect(getSession).toHaveBeenCalledWith(expect.objectContaining({ query: { disableCookieCache: true } }));
     expect(result.user).toMatchObject({
       id: signedInUser.id,
       username: signedInUser.username,

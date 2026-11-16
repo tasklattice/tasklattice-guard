@@ -30,11 +30,18 @@ import type {DirectoryPage} from "../../shared/directory";
 import {directorySearch,type PageQuery} from "./directory-query";
 export type AuthStatus = { authenticated: boolean; user: IdentityUser | null };
 
-export const getAuthStatus = async (): Promise<AuthStatus> => {
+export const getAuthStatus = async (signal?: AbortSignal): Promise<AuthStatus> => {
   // Recovery must agree with the API's current database-backed authority, not
   // the identity stored in the short-lived signed session cookie cache.
-  const result = await authClient.getSession({ query: { disableCookieCache: true } });
+  const timeout = AbortSignal.timeout(5_000);
+  const requestSignal = signal ? AbortSignal.any([signal, timeout]) : timeout;
+  const result = await authClient.getSession({
+    query: { disableCookieCache: true },
+    fetchOptions: { signal: requestSignal, jsonParser: JSON.parse },
+  });
+  requestSignal.throwIfAborted();
   if (result.error) throw new Error(result.error.message || "Authentication status is unavailable.");
+  if (result.data !== null && !result.data?.user) throw new Error("Authentication status is unavailable.");
   const user = result.data ? identityUser(result.data.user,
     result.data.session && "activeProjectId" in result.data.session ? result.data.session.activeProjectId ?? null : undefined) : null;
   setCurrentProjectId(user?.project_id ?? null);
@@ -46,10 +53,6 @@ export const login = async (input: { username: string; password: string }) => {
   const result = await authClient.signIn.username({ username, password: input.password });
   if (result.error) throw new Error(result.error.message || "Sign in failed.");
   if (!result.data?.user) throw new Error("Better Auth did not return the signed-in user.");
-  // The session selects a project independently of the human user's default.
-  const status = await getAuthStatus();
-  if (!status.user) throw new Error("Better Auth did not create a session.");
-  return { user: status.user };
 };
 
 export const logout = async () => {
