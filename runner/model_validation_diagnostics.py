@@ -230,7 +230,9 @@ async def _httpx_response(response: httpx.Response) -> None:
 
 
 def validation_http_hooks() -> dict[str, list[Any]]:
-    return {"request": [httpx_request, _httpx_request], "response": [httpx_response, _httpx_response]} if _CURRENT.get() is not None or active_model_http_call() is not None else {}
+    # Clients may precede the observation scope. Hooks resolve it per request;
+    # HTTP status recording does not require capturing bodies or validation.
+    return {"request": [httpx_request, _httpx_request], "response": [httpx_response, _httpx_response]}
 
 
 class _ObservedAiohttpSession:
@@ -242,12 +244,15 @@ class _ObservedAiohttpSession:
         return getattr(self._delegate, name)
 
     async def request(self, method, url, **kwargs):
+        from runner.toolkit.nemo.actions.model_call import record_model_http_status
+        record_model_http_status(None)
         call = active_model_http_call()
         exchange = call.request(method, url, kwargs.get("headers", {}), kwargs.get("json", kwargs.get("data", b""))) if call else None
         diagnostics = _CURRENT.get()
         captured = diagnostics.request(method=method, url=str(url), headers=kwargs.get("headers", {}), body=kwargs.get("json", kwargs.get("data", b""))) if diagnostics is not None else None
         try:
             response = await self._delegate.request(method, url, **kwargs)
+            record_model_http_status(response.status)
             if call is None and diagnostics is None:
                 return response
             if diagnostics is not None:

@@ -100,10 +100,11 @@ async def test_response_body_failure_preserves_received_headers_and_releases_per
         transport=httpx.MockTransport(lambda request: httpx.Response(503, headers={'x-request-id': 'provider-attempt'}, stream=BrokenBody())))
     with capture_model_http_evidence():
         with pytest.raises(httpx.ReadTimeout):
-            with observe_model_call(jailbreak_request(), provider='fixture', model='body-timeout', operation='classify'):
+            with observe_model_call(jailbreak_request(), provider='fixture', model='body-timeout', operation='classify') as call:
                 async with httpx.AsyncClient(transport=transport, event_hooks=validation_http_hooks()) as client:
                     await client.get('http://model.test')
         response = failed_model_http_evidence()[0]['response']
+        assert call.usage.http_status == 503
         assert response['status'] == 503
         assert ['x-request-id', 'provider-attempt'] in response['headers']
         assert response['bodyComplete'] is False

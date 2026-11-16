@@ -57,6 +57,7 @@ async def test_builtin_prompt_renders_original_questions_input_and_context_for_c
         api_key='synthetic', provider_id='review', transport=httpx.MockTransport(respond))
     result = await reviewer.review(request, questions, state, first)
     assert result.verdict == 'not_matched'
+    assert result.usage.model_calls[0].http_status == 200
     assert len(calls) == 1 and calls[0]['model'] == model
     assert calls[0]['messages'][0] == {'role': 'system', 'content': REVIEW_PROMPT}
     assert json.loads(calls[0]['messages'][1]['content']) == {'questions': questions, 'state': state}
@@ -75,6 +76,7 @@ async def test_one_read_timeout_can_recover_and_both_model_calls_remain_auditabl
     result=await reviewer.review(request,{'first':{}},{'current_input':request.content},first)
     assert result.verdict==verdict and result.usage.model_invocations==2
     assert [c.result for c in result.usage.model_calls]==['timeout','success']
+    assert [c.http_status for c in result.usage.model_calls] == [None, 200]
     assert [a['result'] for a in json.loads(result.trace[-1].evidence)['attempts']]==['timeout','success']
     if verdict == 'unknown':
         assert result.unknown_reason == 'uncertain'

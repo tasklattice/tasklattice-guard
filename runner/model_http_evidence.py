@@ -128,6 +128,8 @@ def failed_model_http_evidence(call_ids=None):
 
 
 async def httpx_request(request):
+    from runner.toolkit.nemo.actions.model_call import record_model_http_status
+    record_model_http_status(None)
     call = _ACTIVE.get()
     if call is not None:
         exchange = call.request(request.method, request.url, request.headers, request.content)
@@ -135,6 +137,9 @@ async def httpx_request(request):
 
 
 async def httpx_response(response):
+    from runner.toolkit.nemo.actions.model_call import record_model_http_status
+    # Record headers before reading the body, which can fail independently.
+    record_model_http_status(response.status_code)
     captured = response.request.extensions.get(_EXTENSION)
     if captured:
         call, exchange = captured

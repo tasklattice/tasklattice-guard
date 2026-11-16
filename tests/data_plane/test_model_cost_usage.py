@@ -19,6 +19,7 @@ def test_missing_usage_is_not_zero_and_cache_tokens_are_preserved():
     call = tracker()
     call.complete(payload={"choices": []})
     assert call.usage.usage_known is False
+    assert call.usage.http_status is None  # Local/no-HTTP calls cannot invent a status.
     call.complete(payload={"usage": {"prompt_tokens": 0, "completion_tokens": 0}})
     assert call.usage.usage_known is True
     call.complete(payload={"usage": {"prompt_tokens": 120, "completion_tokens": 7, "prompt_tokens_details": {"cached_tokens": 80}}})

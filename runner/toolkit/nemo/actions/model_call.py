@@ -61,6 +61,13 @@ def record_model_queue(queue_ms: int, request_sent: bool) -> None:
         call.request_sent = bool(call.request_sent or request_sent)
 
 
+def record_model_http_status(status: int | None) -> None:
+    """Keep the received status, clearing it when a new HTTP attempt starts."""
+    call = _ACTIVE_MODEL_CALL.get() or _ACTIVE_NATIVE_CALL.get()
+    if call is not None:
+        call.http_status = status
+
+
 def record_native_response(response: LLMResponse) -> None:
     """Record validated response evidence before IORails reduces it to a result."""
     if call := _ACTIVE_NATIVE_CALL.get():
@@ -207,6 +214,7 @@ class _NativeModelCall:
     finished: float = 0.0
     queue_duration_ms: int = 0
     request_sent: bool | None = None
+    http_status: int | None = None
 
     def complete(self, response: LLMResponse | LLMResponseChunk) -> None:
         self.result = "success"
@@ -225,7 +233,7 @@ class _NativeModelCall:
         self.result, self.failure = result, failure
         self.error_type = self.failure.error_type if self.failure else "none"
         if self.result != "cancelled":
-            _log_model_failure(self.call_id, self.result, error)
+            _log_model_failure(self.call_id, self.result, error, http_status=self.http_status)
 
     @property
     def usage(self) -> ModelCallUsage:
@@ -258,7 +266,7 @@ class _NativeModelCall:
             error_type=self.error_type,
             error_source=self.failure.source if self.failure else None,
             error_category=self.failure.category if self.failure else None,
-            http_status=self.failure.http_status if self.failure else None,
+            http_status=self.http_status if self.http_status is not None else self.failure.http_status if self.failure else None,
         )
 
 
@@ -388,6 +396,7 @@ class ModelCallTracker:
     finished: float = 0.0
     queue_duration_ms: int = 0
     request_sent: bool | None = None
+    http_status: int | None = None
 
     def complete(
         self,
@@ -429,7 +438,7 @@ class ModelCallTracker:
         self.result, self.failure = result, failure
         self.error_type = self.failure.error_type if self.failure else "none"
         if self.result != "cancelled":
-            _log_model_failure(self.call_id, self.result, error)
+            _log_model_failure(self.call_id, self.result, error, http_status=self.http_status)
 
     @property
     def usage(self) -> ModelCallUsage:
@@ -460,7 +469,7 @@ class ModelCallTracker:
             error_type=self.error_type,
             error_source=self.failure.source if self.failure else None,
             error_category=self.failure.category if self.failure else None,
-            http_status=self.failure.http_status if self.failure else None,
+            http_status=self.http_status if self.http_status is not None else self.failure.http_status if self.failure else None,
         )
 
 
@@ -644,13 +653,13 @@ def model_error_diagnostics(error: BaseException) -> dict[str, Any]:
                                  if isinstance(item, OSError) and type(item.errno) is int]}
 
 
-def _log_model_failure(call_id: str, result: ModelCallResult, error: BaseException) -> None:
+def _log_model_failure(call_id: str, result: ModelCallResult, error: BaseException, *, http_status: int | None = None) -> None:
     _, failure = model_failure(error)
     _LOGGER.warning("%s", json.dumps({"event": "model_call_failed", "call_id": call_id,
         "result": result, **model_error_diagnostics(error),
         "error_source": failure.source if failure else None,
         "error_category": failure.category if failure else None,
-        "http_status": failure.http_status if failure else None}))
+        "http_status": http_status if http_status is not None else failure.http_status if failure else None}))
 
 
 def _tokens(payload: Any) -> tuple[int, int]:

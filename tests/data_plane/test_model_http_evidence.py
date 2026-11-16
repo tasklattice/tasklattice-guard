@@ -1,15 +1,18 @@
 import base64
 import json
 from dataclasses import replace
+from types import SimpleNamespace
+from unittest.mock import AsyncMock
 
 import httpx
 import pytest
 from fastapi import FastAPI
+from nemoguardrails.types import LLMResponse
 
 from runner.api import RunnerAPI
 from runner.model_http_evidence import capture_model_http_evidence, failed_model_http_evidence
-from runner.model_validation_diagnostics import validation_http_hooks
-from runner.toolkit.nemo.actions.model_call import observe_model_call
+from runner.model_validation_diagnostics import validation_http_hooks, _ObservedAiohttpSession
+from runner.toolkit.nemo.actions.model_call import observe_model_call, observe_native_model_call
 from runner.toolkit.runtime.failures import ModelResponseError
 from runner.toolkit.runtime.contracts import RuntimeUsage
 from tests.classifier_cases import jailbreak_request
@@ -19,6 +22,31 @@ from tests.data_plane.test_runtime_log_capture import KEY, decode
 
 def content(record):
     return base64.b64decode(record['bodyBase64'])
+
+
+@pytest.mark.parametrize('native', [False, True])
+@pytest.mark.parametrize('capture', [False, True])
+@pytest.mark.parametrize('status', [200, 201])
+async def test_success_status_survives_without_body_capture_or_validation(native, capture, status):
+    # Clients can be created before the call's observation scope (as in Review).
+    async with httpx.AsyncClient(transport=httpx.MockTransport(lambda _: httpx.Response(status, json={})),
+                                 event_hooks=validation_http_hooks()) as client:
+        with capture_model_http_evidence(enabled=capture):
+            observation = (observe_native_model_call(None, role='safety', provider='p', model='m') if native
+                           else observe_model_call(jailbreak_request(), provider='p', model='m', operation='classify'))
+            with observation as call:
+                await client.post('https://model.test/chat', json={})
+                if native:
+                    call.complete(LLMResponse(content='safe'))
+                else:
+                    call.complete(payload={})
+            assert call.usage.result == 'success'
+            assert call.usage.http_status == status
+            assert failed_model_http_evidence() == []
+            runtime = RunnerAPI(Runtime(), Store('info'), Metrics(), Telemetry(), 'runner', 'internal', KEY)
+            decision = replace(await Runtime().evaluate(None), usage=RuntimeUsage(model_calls=(call.usage,)))
+            await runtime._emit_telemetry(request_id='e', call_id='c', endpoint_id='endpoint-1', phase='input', protocol='litellm', mode='enforce', started=0, decision=decision)
+            assert runtime._telemetry.events[0]['metadata']['usage']['model_calls'][0]['http_status'] == status
 
 
 @pytest.mark.parametrize('status,body', [(429, b'quota exceeded'), (200, b'not valid JSON')])
@@ -35,6 +63,7 @@ async def test_full_exchange_and_all_response_headers_are_preserved_without_plai
                     result.raise_for_status()
                     raise ModelResponseError('json_decode', 'JSONDecodeError')
         evidence = failed_model_http_evidence()
+        assert call.usage.http_status == status
         assert len(evidence) == 1 and evidence[0]['modelCallId'] == call.call_id
         assert content(evidence[0]['request']) == text
         assert content(evidence[0]['response']) == response_body
@@ -59,6 +88,7 @@ async def test_recovered_attempt_is_kept_and_healthy_final_response_is_discarded
                 await client.get('https://model.test/failed')
                 await client.get('https://model.test/ok')
             call.complete(payload={})
+        assert call.usage.http_status == 200
         evidence = failed_model_http_evidence()
         assert len(evidence) == 1 and evidence[0]['response']['status'] == 503
         assert evidence[0]['result'] == 'recovered_failure'
@@ -70,12 +100,38 @@ async def test_network_failure_has_no_fabricated_response():
     def fail(request): raise httpx.ConnectError('private-key', request=request)
     with capture_model_http_evidence():
         with pytest.raises(httpx.ConnectError):
-            with observe_model_call(jailbreak_request(), provider='p', model='m', operation='classify'):
+            with observe_model_call(jailbreak_request(), provider='p', model='m', operation='classify') as call:
                 async with httpx.AsyncClient(transport=httpx.MockTransport(fail), event_hooks=validation_http_hooks()) as client:
                     await client.get('https://user:password@model.test/path?api_key=secret', headers={'authorization':'Bearer private-key'})
         evidence = failed_model_http_evidence()[0]
+        assert call.usage.http_status is None
         assert evidence['response'] is None
         assert all(secret not in json.dumps(evidence) for secret in ('password', 'private-key', 'secret'))
+
+
+async def test_next_attempt_without_response_does_not_reuse_previous_http_status():
+    def respond(request):
+        if request.url.path == '/retry':
+            return httpx.Response(429)
+        raise httpx.ConnectError('Cannot connect', request=request)
+
+    with pytest.raises(httpx.ConnectError):
+        with observe_model_call(jailbreak_request(), provider='p', model='m', operation='classify') as call:
+            async with httpx.AsyncClient(transport=httpx.MockTransport(respond), event_hooks=validation_http_hooks()) as client:
+                await client.get('https://model.test/retry')
+                assert call.usage.http_status == 429
+                await client.get('https://model.test/unreachable')
+    assert call.usage.http_status is None
+
+
+async def test_native_aiohttp_status_is_recorded_without_capturing_response_body():
+    response = SimpleNamespace(status=201, read=AsyncMock())
+    session = _ObservedAiohttpSession(SimpleNamespace(request=AsyncMock(return_value=response)))
+    with observe_native_model_call(None, role='safety', provider='p', model='m') as call:
+        assert await session.request('POST', 'https://model.test/chat') is response
+        call.complete(LLMResponse(content='safe'))
+    assert call.usage.http_status == 201
+    response.read.assert_not_awaited()
 
 
 async def test_validation_retains_success_and_retry_payloads_with_redaction():
