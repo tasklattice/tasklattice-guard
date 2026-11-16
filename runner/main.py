@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import asyncio
 import hmac
+import json
+import logging
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Header, HTTPException, Response
@@ -150,6 +152,17 @@ def create_app(settings: RunnerSettings | None = None) -> FastAPI:
         if builtin_laya is not None:
             with diagnostic_phase("startup.builtin_laya", torch_threads=builtin_laya.torch_threads):
                 await builtin_laya.start()
+            identity = builtin_laya.model_identity
+            metrics.builtin_laya_info.labels(
+                runner_version=SOFTWARE_VERSION["version"], model_version=identity["modelVersion"],
+                calibration_version=identity.get("calibrationVersion", ""),
+                threshold_policy_version=identity.get("thresholdPolicyVersion", ""),
+                artifact_sha256=identity.get("artifactSha256", ""),
+            ).set(1)
+            logging.getLogger("uvicorn.error").info("%s", json.dumps({
+                "event": "runner_builtin_laya_loaded", "runnerVersion": SOFTWARE_VERSION["version"],
+                "runnerCommit": SOFTWARE_VERSION["commit"], **identity,
+            }))
 
         watchdog.start()
         control_task = asyncio.create_task(control.run(), name="runner-control")
@@ -237,7 +250,8 @@ def create_app(settings: RunnerSettings | None = None) -> FastAPI:
                                   desired_state_synchronized=synchronized,
                                   applied_generation=store.generation,
                                   compiler_capable=configured.compiler_capable,
-                                  **({"builtin_laya_revision": builtin_laya.revision}
+                                  **({"builtin_laya_revision": builtin_laya.revision,
+                                      "builtin_laya_model": builtin_laya.model_identity}
                                      if builtin_laya is not None else {}))
 
     @app.head("/version", include_in_schema=False)

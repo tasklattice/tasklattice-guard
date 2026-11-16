@@ -12,12 +12,14 @@ from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from .model_bundle_contract import Bundle, GRAPH, RUNTIME, load_lock, load_onnx_agent, verify_bundle
 from .model_validation_diagnostics import LocalModelCapture, local_model_capture
 from .resources import cpu_capacity_cores
 from .toolkit.runtime.failures import ModelConfigurationError
 
 if TYPE_CHECKING:
     from laya import Agent
+    from laya.onnx_agent import ONNXAgent
 
 
 BUILTIN_LAYA_BACKEND = "builtin_laya"
@@ -88,8 +90,10 @@ def _verify_checkpoint(directory: Path) -> str:
 
 class BuiltinLaya:
     def __init__(self, directory: Path, *, concurrency: int = 1, torch_threads: int | None = None,
-                 queue_capacity: int = 64) -> None:
+                 queue_capacity: int = 64, bundle_lock: Path | None = None) -> None:
         self._directory = directory
+        self._bundle_lock = bundle_lock
+        self._bundle: Bundle | None = None
         self.torch_threads = _torch_thread_count(concurrency) if torch_threads is None else torch_threads
         self._init_torch_threads: Callable[[], None] | None = None
         self._executor = ThreadPoolExecutor(max_workers=concurrency, thread_name_prefix="builtin-laya",
@@ -97,7 +101,7 @@ class BuiltinLaya:
         self._slots = asyncio.Semaphore(concurrency)
         self._capacity = concurrency + queue_capacity
         self._pending = 0
-        self._agent: Agent | None = None
+        self._agent: Agent | ONNXAgent | None = None
         self._closed = False
         self.revision: str | None = None
 
@@ -106,7 +110,22 @@ class BuiltinLaya:
         directory = os.environ.get("GUARD_BUILTIN_LAYA_MODEL_PATH", "").strip()
         if not directory:
             return None
-        return cls(Path(directory), concurrency=_bounded_int("GUARD_BUILTIN_LAYA_INFERENCE_CONCURRENCY", 1))
+        lock = os.environ.get("GUARD_BUILTIN_LAYA_BUNDLE_LOCK", "").strip()
+        return cls(Path(directory), concurrency=_bounded_int("GUARD_BUILTIN_LAYA_INFERENCE_CONCURRENCY", 1),
+                   bundle_lock=Path(lock) if lock else None)
+
+    @property
+    def model_identity(self) -> dict[str, str]:
+        if self._bundle is not None:
+            return self._bundle.identity
+        return {"modelVersion": self.revision} if self.revision is not None else {}
+
+    def thresholds(self, capability: str, fallback: tuple[float, float]) -> tuple[float, float]:
+        if self._bundle is None:
+            return fallback
+        policy = self._bundle.thresholds
+        pair = policy["categories"].get(capability, policy["default"])
+        return pair["allow"], pair["block"]
 
     async def start(self) -> None:
         if self._agent is not None:
@@ -119,25 +138,39 @@ class BuiltinLaya:
             await self.close()
             raise
 
-    def _load(self) -> tuple[str, Agent]:
+    def _load(self) -> tuple[str, Agent | ONNXAgent]:
         directory = self._directory.resolve(strict=True)
-        revision = _verify_checkpoint(directory)
-        import laya
         import torch
 
         from .toolkit.nemo.evaluators.laya import MODEL_HEAD_MAX_LEN, MODEL_MAX_LEN, check_input_coverage, parse_answers
 
         torch.set_num_threads(self.torch_threads)
         self._init_torch_threads = torch.init_num_threads
-        agent = laya.load(str(directory), device="cpu", fast=False, compile=False)
-        agent.model.float().eval()
-        agent.amp_enabled = False
+        bundle = None
+        if self._bundle_lock is not None:
+            lock = load_lock(self._bundle_lock)
+            bundle = verify_bundle(directory, manifest_sha256=lock["manifestSha256"],
+                                   model_version=lock["modelVersion"])
+            if bundle.manifest["artifactSha256"] != lock["artifactSha256"]:
+                raise ValueError("Model bundle artifact SHA-256 differs from its lock.")
+            if (MODEL_MAX_LEN, MODEL_HEAD_MAX_LEN) != (RUNTIME["maxLen"], RUNTIME["headMaxLen"]):
+                raise ValueError("Runner token budgets differ from the locked model contract.")
+            revision = bundle.manifest["artifactSha256"][:40]
+            agent = load_onnx_agent(directory, directory / GRAPH, self.torch_threads)
+        else:
+            import laya
+
+            revision = _verify_checkpoint(directory)
+            agent = laya.load(str(directory), device="cpu", fast=False, compile=False)
+            agent.model.float().eval()
+            agent.amp_enabled = False
         payload = agent.system_one(
             "Hello", {"greeting": {"type": "noul", "instructions": "Does the text contain a greeting?"}},
             lang="en", max_len=MODEL_MAX_LEN, head_max_len=MODEL_HEAD_MAX_LEN,
         )
         parse_answers(payload, {"greeting"})
         check_input_coverage(payload)
+        self._bundle = bundle
         return revision, agent
 
     def _initialize_worker(self) -> None:
@@ -150,6 +183,7 @@ class BuiltinLaya:
         self.revision = None
         await asyncio.to_thread(self._executor.shutdown, cancel_futures=True)
         self._agent = None
+        self._bundle = None
 
     async def predict(self, state: str | dict[str, object], questions: dict[str, dict[str, object]], *,
                       max_len: int, head_max_len: int, deadline: float) -> dict:
@@ -190,7 +224,7 @@ class BuiltinLaya:
                 record_model_queue(round((time.monotonic() - started) * 1000), False)
 
     @staticmethod
-    def _predict(agent: Agent, state: str | dict[str, object], questions: dict[str, dict[str, object]],
+    def _predict(agent: Agent | ONNXAgent, state: str | dict[str, object], questions: dict[str, dict[str, object]],
                  max_len: int, head_max_len: int, capture: LocalModelCapture | None) -> dict:
         options = {"lang": "en", "max_len": max_len, "head_max_len": head_max_len}
         try:

@@ -10,6 +10,7 @@ from ...runtime.failures import ModelResponseError, model_response
 
 from runner.builtin_laya import BUILTIN_LAYA_BACKEND, BuiltinLaya, BuiltinLayaBusyError, BuiltinLayaInferenceError
 from runner.model_validation_diagnostics import record_validation_error, validation_http_hooks
+from runner.software_version import SOFTWARE_VERSION
 from ...runtime.contracts import ProviderEvidence, RiskFinding, RuntimeTraceStep
 from ...safety.taxonomy import taxonomy_for_evaluator
 from ..actions.model_call import ModelCallTracker, action_usage, observe_model_call
@@ -113,6 +114,7 @@ class LayaNoulEvaluator:
         self._timeout, self._transport, self._skip_tls_verify = timeout_seconds, transport, skip_tls_verify
         self._rate_limit_attempts = rate_limit_attempts
         self._lower, self._upper = lower_threshold, upper_threshold
+        self._configured_thresholds = (lower_threshold, upper_threshold)
         self._profile_ref = profile_ref
         self._reviewer = reviewer
         self._builtin_laya = builtin_laya
@@ -125,7 +127,10 @@ class LayaNoulEvaluator:
             self._request_budget["head_max_len"] = MODEL_HEAD_MAX_LEN
         self._model_metadata = {"laya_request_mode": mode}
         if builtin_laya is not None:
-            self._model_metadata.update(backend=BUILTIN_LAYA_BACKEND, checkpoint_revision=builtin_laya.revision)
+            self._lower, self._upper = builtin_laya.thresholds(next(iter(self.capabilities)), self._configured_thresholds)
+            self._model_metadata.update(backend=BUILTIN_LAYA_BACKEND, checkpoint_revision=builtin_laya.revision,
+                                        runner_version=SOFTWARE_VERSION["version"], runner_commit=SOFTWARE_VERSION["commit"],
+                                        **builtin_laya.model_identity)
         elif mode == "compatible":
             # The strict server applies its own head budget when the field is absent.
             self._model_metadata["head_max_len_source"] = "server_default"
@@ -156,9 +161,12 @@ class LayaNoulEvaluator:
     def revision(self, request: EvaluationRequest) -> str:
         return self.question_revision
 
-    def classify(self, probabilities: dict[str, float]) -> str:
-        return ("matched" if any(p >= self._upper for p in probabilities.values()) else
-                "not_matched" if all(p <= self._lower for p in probabilities.values()) else "unknown")
+    def thresholds_for(self, request: EvaluationRequest) -> tuple[float, float]:
+        return self._lower, self._upper
+
+    def classify(self, probabilities: dict[str, float], *, lower: float, upper: float) -> str:
+        return ("matched" if any(p >= upper for p in probabilities.values()) else
+                "not_matched" if all(p <= lower for p in probabilities.values()) else "unknown")
 
     def result_content(self, request: EvaluationRequest, verdict: str) -> str:
         """Content returned by a successful classification; PII may transform it."""
@@ -172,13 +180,14 @@ class LayaNoulEvaluator:
                probabilities: dict[str, float], actual_model: str | None = None,
                error_type: str | None = None, model_metadata: dict | None = None,
                request_budget: dict[str, int] | None = None) -> RuntimeTraceStep:
-        judgments = {key: {"probability": p, "answer": "yes" if p >= self._upper else "no" if p <= self._lower else "uncertain"}
+        lower, upper = self.thresholds_for(request)
+        judgments = {key: {"probability": p, "answer": "yes" if p >= upper else "no" if p <= lower else "uncertain"}
                      for key, p in probabilities.items()}
         metadata = {**self._model_metadata, **(model_metadata or {})}
         evidence = json.dumps({"decision_model": "laya", "profile": self._profile_ref, "question_revision": self.revision(request),
                                "decision_rule": self.decision_rule,
                                "requested_model": self._model, "response_model": actual_model,
-                               "thresholds": {"lower": self._lower, "upper": self._upper},
+                               "thresholds": {"lower": lower, "upper": upper},
                                "request_budget": request_budget if request_budget is not None else dict(self._request_budget),
                                "model_metadata": metadata,
                                "judgments": judgments}, sort_keys=True)
@@ -288,7 +297,8 @@ class LayaNoulEvaluator:
                                actual_model=actual_model, model_metadata=model_metadata,
                                request_budget=request_budget,
                                usage=action_usage(call, len(request.content)) if call is not None else EvaluationUsage())
-        verdict = self.classify(probabilities)
+        lower, upper = self.thresholds_for(request)
+        verdict = self.classify(probabilities, lower=lower, upper=upper)
         reason = self.reasons[verdict]
         # Machine-readable evidence for all outcomes; Noul is not a confidence or severity score.
         trace = self._trace(request, verdict, reason, probabilities, actual_model,

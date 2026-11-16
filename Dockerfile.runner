@@ -16,6 +16,18 @@ FROM scratch AS runner_model_bundle
 COPY --link --from=runner-model-bundle-download /opt/models/ /opt/models/
 # END RUNNER MODEL BUNDLE
 
+# The opt-in candidate target replaces this context with the Models OCI digest.
+FROM scratch AS laya_candidate_bundle
+
+FROM --platform=$BUILDPLATFORM python:${PYTHON_VERSION}-slim-bookworm AS laya-candidate-verify
+COPY --from=laya_candidate_bundle /opt/models/laya/english /opt/models/laya/english
+COPY deploy/runner-model-bundle/verify-candidate.py deploy/runner-model-bundle/model-lock.json /build/
+COPY runner/model_bundle_contract.py /build/model_bundle_contract.py
+RUN PYTHONPATH=/build python /build/verify-candidate.py \
+    /build/model-lock.json /opt/models/laya/english \
+    && chmod -R a+rX /opt/models \
+    && chmod 0444 /build/model-lock.json
+
 FROM node:${NODE_VERSION}-bookworm-slim AS node-runtime
 
 # The JavaScript bundle is platform-independent. Use native build tools while
@@ -82,6 +94,13 @@ CMD ["uvicorn", "runner.main:app", "--host", "0.0.0.0", "--port", "8091"]
 
 FROM runner-base AS runtime-base
 COPY --link --from=dependencies /opt/tasklattice/venv /opt/tasklattice/venv
+
+FROM runner-base AS runtime-candidate
+COPY --link --from=laya-dependencies /opt/tasklattice/venv /opt/tasklattice/venv
+COPY --link --from=laya-candidate-verify /opt/models/ /opt/models/
+COPY --link --from=laya-candidate-verify /build/model-lock.json /opt/models/laya/model-lock.json
+ENV GUARD_BUILTIN_LAYA_MODEL_PATH=/opt/models/laya/english \
+    GUARD_BUILTIN_LAYA_BUNDLE_LOCK=/opt/models/laya/model-lock.json
 
 FROM runner-base AS runtime
 COPY --link --from=laya-dependencies /opt/tasklattice/venv /opt/tasklattice/venv

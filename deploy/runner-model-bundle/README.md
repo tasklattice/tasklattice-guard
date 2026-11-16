@@ -1,5 +1,8 @@
 # Runner Model Bundle
 
+For an approved ONNX bundle produced by the Models repository, use the
+[candidate build and rollback workflow](../../docs/model-mlops.md).
+
 The bundle is an OCI image that holds model files under `/opt/models/`.
 It currently contains the English Laya checkpoint that Runner loads on CPU at
 startup. Its locked Hugging Face revision and file hashes live in the

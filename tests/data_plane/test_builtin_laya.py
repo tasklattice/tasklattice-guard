@@ -14,7 +14,10 @@ import pytest
 from runner import builtin_laya, generated as protocol, resources
 from runner.builtin_laya import BuiltinLaya, BuiltinLayaBusyError, BuiltinLayaInferenceError, _verify_checkpoint
 from runner.capability_validation import validate_capability
+from runner.evaluation_evidence import evaluation_evidence
+from runner.model_bundle_contract import Bundle
 from runner.model_validation_diagnostics import ValidationDiagnostics, capture_validation_case
+from runner.toolkit.runtime.contracts import ProtectionDecision, RuntimeTraceStep
 
 
 REVISION = "85cc74ddae6109077ebe2853a9b3077fb6606a78"
@@ -85,6 +88,36 @@ def test_checkpoint_manifest_rejects_changed_files(tmp_path):
     (tmp_path / "tokenizer/tokenizer.json").write_text("changed")
     with pytest.raises(ValueError, match="checksum mismatch for tokenizer/tokenizer.json"):
         _verify_checkpoint(tmp_path)
+
+
+async def test_builtin_bundle_threshold_and_decision_identity(tmp_path):
+    runtime = BuiltinLaya(tmp_path)
+    runtime._bundle = Bundle(
+        {"modelVersion": "candidate", "calibrationVersion": "cal-v1",
+         "thresholdPolicyVersion": "policy-v1", "artifactSha256": "a" * 64},
+        {},
+        {"default": {"allow": 0.1, "block": 0.9},
+         "categories": {"pii": {"allow": 0.05, "block": 0.75}}},
+    )
+    try:
+        assert runtime.thresholds("pii", (0.2, 0.8)) == (0.05, 0.75)
+        assert runtime.thresholds("content_safety", (0.2, 0.8)) == (0.1, 0.9)
+        evidence = json.dumps({
+            "model_metadata": {"backend": "builtin_laya", "runner_version": "runner-v1", **runtime.model_identity},
+            "thresholds": {"lower": 0.05, "upper": 0.75},
+        })
+        step = RuntimeTraceStep(id="pii:laya", kind="evaluation", name="Laya PII", status="completed", detail="",
+                                capability="pii", evaluator_id="laya-pii", verdict="matched", evidence=evidence)
+        decision = ProtectionDecision(decision="transform", action="transform", guardrail_id="test",
+                                      trace=(step,))
+        [row] = json.loads(evaluation_evidence(decision))["layaEvaluations"]
+        assert row["runnerVersion"] == "runner-v1"
+        assert row["modelVersion"] == "candidate"
+        assert row["calibrationVersion"] == "cal-v1"
+        assert row["thresholdPolicyVersion"] == "policy-v1"
+        assert row["thresholds"] == {"lower": 0.05, "upper": 0.75}
+    finally:
+        await runtime.close()
 
 
 @pytest.mark.asyncio

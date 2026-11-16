@@ -138,6 +138,11 @@ class RunnerMetrics:
             registry=self.registry,
         )
         self.build_info.labels(version=__version__).set(1)
+        self.builtin_laya_info = Gauge(
+            "guard_runner_builtin_laya_info", "Identity of the loaded built-in model bundle.",
+            ["runner_version", "model_version", "calibration_version", "threshold_policy_version", "artifact_sha256"],
+            registry=self.registry,
+        )
         self.guardrail_requests = Counter(
             "guard_runner_guardrail_requests_total",
             "Guardrail executions by stable product identity, result, disposition, and protection state.",

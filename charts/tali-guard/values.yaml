@@ -115,6 +115,9 @@ runner:
     repository: ghcr.io/tasklattice/tali-guard-runner
     pullPolicy: IfNotPresent
     # tag: "0.2.0"
+    # digest: "sha256:<64 hex characters>"
+  # For a model candidate image, use the first 40 characters of artifactSha256.
+  # builtinLayaCheckpointRevision: ""
   # Runtime Service port is fixed at 8091. For direct local exposure:
   # service:
   #   type: ClusterIP
