@@ -39,7 +39,7 @@ def download(url: str, cached: Path, expected: str) -> None:
 
 def fetch(manifest_path: Path, destination: Path, cache: Path) -> None:
     manifest = json.loads(manifest_path.read_text())
-    source = f"https://huggingface.co/convaiinnovations/laya/resolve/{manifest['revision']}"
+    source = f"https://huggingface.co/{manifest['repository']}/resolve/{manifest['revision']}"
     cache.mkdir(parents=True, exist_ok=True)
     for filename, expected in manifest["files"].items():
         target = destination / filename

@@ -4,9 +4,9 @@ For an approved ONNX bundle produced by the Models repository, use the
 [candidate build and rollback workflow](../../docs/model-mlops.md).
 
 The bundle is an OCI image that holds model files under `/opt/models/`.
-It currently contains the English Laya checkpoint that Runner loads on CPU at
-startup. Its locked Hugging Face revision and file hashes live in the
-[shared checkpoint manifest](../../controller/shared/builtin-laya-manifest.json).
+Runner loads the fine-tuned English Laya checkpoint on CPU at startup. The bundle
+pins its Hugging Face repository, commit, and file hashes in the shared manifest.
+[Hugging Face checkpoint](https://huggingface.co/sn0rt/tali-guard) · [Shared checkpoint manifest](../../controller/shared/builtin-laya-manifest.json)
 The Runner image includes the SDK, Transformers and CPU Torch from `uv.lock`.
 
 ## Publish and reuse the bundle
@@ -17,6 +17,9 @@ the tag derived from the inputs and builds and publishes the AMD64 and ARM64
 bundle to `ghcr.io/tasklattice/tali-guard-runner-model-bundle` when the tag is
 missing. The workflow verifies the checkpoint files against their SHA-256
 digests while building the bundle.
+
+To package new weights, update the manifest to the Hugging Face commit and its
+file hashes. CI derives a new bundle tag from the updated manifest.
 
 Print the expected GHCR tag for the checked-out bundle inputs.
 
