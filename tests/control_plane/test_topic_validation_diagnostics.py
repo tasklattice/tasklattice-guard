@@ -176,32 +176,45 @@ async def test_diagnostics_are_scoped_redacted_and_bounded(caplog):
     caplog.set_level(logging.WARNING, logger=LOGGER)
 
     async def failed_case(identifier):
-        with capture_validation_case(enabled=True, secrets=(SECRET,), case_id=identifier) as diagnostics:
-            async with httpx.AsyncClient(event_hooks=validation_http_hooks(), transport=httpx.MockTransport(
-                lambda _: httpx.Response(200, json={"echo": SECRET, "api_key": "another-secret", "content": identifier}))) as client:
+        transport = httpx.MockTransport(
+            lambda _: httpx.Response(200, json={"echo": SECRET, "api_key": "another-secret", "content": identifier}),
+        )
+        async with httpx.AsyncClient(event_hooks=validation_http_hooks(), transport=transport) as client:
+            with capture_validation_case(enabled=True, secrets=(SECRET,), case_id=identifier) as diagnostics:
                 await asyncio.sleep(0)
-                await client.post(f"https://user:{SECRET}@model.test/v1?api_key=another-secret", headers={"authorization": f"Bearer {SECRET}", "x-api-key": "another-secret"}, json={"content": identifier, "password": "another-secret"})
-            diagnostics.failure(expected="block", actual="allow", reason="classification mismatch")
-            huge = diagnostics.body("x" * 40_000 + SECRET)
-            assert len(huge["body"]) == 32_768 and huge["body_truncated"]
-        assert validation_http_hooks() == {}
+                await client.post(
+                    f"https://user:{SECRET}@model.test/v1?api_key=another-secret",
+                    headers={"authorization": f"Bearer {SECRET}", "x-api-key": "another-secret"},
+                    json={"content": identifier, "password": "another-secret"},
+                )
+                diagnostics.failure(expected="block", actual="allow", reason="classification mismatch")
+                huge = diagnostics.body("x" * 40_000 + SECRET)
+                assert len(huge["body"]) == 32_768 and huge["body_truncated"]
+            response = await client.post("https://model.test/v1", json={"content": "outside validation"})
+        assert "tasklattice.validation_exchange" not in response.request.extensions
+        assert len(diagnostics.exchanges) == 1
 
     await asyncio.gather(failed_case("first"), failed_case("second"))
-    for item in events(caplog):
-        if item["event"] == "rail_validation_model_exchange":
-            assert json.loads(item["request"]["body"])["content"] == item["case_id"]
-            assert json.loads(item["response"]["body"])["content"] == item["case_id"]
-    assert SECRET not in json.dumps(events(caplog))
-    assert "another-secret" not in json.dumps(events(caplog))
+    logged = events(caplog)
+    exchanges = [item for item in logged if item["event"] == "rail_validation_model_exchange"]
+    assert sorted(item["case_id"] for item in exchanges) == ["first", "second"]
+    for item in exchanges:
+        assert json.loads(item["request"]["body"])["content"] == item["case_id"]
+        assert json.loads(item["response"]["body"])["content"] == item["case_id"]
+    assert SECRET not in json.dumps(logged)
+    assert "another-secret" not in json.dumps(logged)
 
 
 async def test_outside_validation_no_body_capture_or_diagnostic_logs(caplog):
     caplog.set_level(logging.WARNING, logger=LOGGER)
-    assert validation_http_hooks() == {}
-    async with httpx.AsyncClient(event_hooks=validation_http_hooks(), transport=httpx.MockTransport(
-            lambda _: httpx.Response(200, text="ordinary runtime response"))) as client:
-        response = await client.post("https://model.test/v1", json={"content": "ordinary runtime request"})
-    assert "tasklattice.validation_exchange" not in response.request.extensions
+    body = b"ordinary runtime response"
+    transport = httpx.MockTransport(lambda _: httpx.Response(200, stream=httpx.ByteStream(body)))
+    async with httpx.AsyncClient(event_hooks=validation_http_hooks(), transport=transport) as client:
+        async with client.stream("POST", "https://model.test/v1", json={"content": "ordinary runtime request"}) as response:
+            assert "tasklattice.validation_exchange" not in response.request.extensions
+            assert "tasklattice.model_http_evidence" not in response.request.extensions
+            assert not response.is_stream_consumed
+            assert await response.aread() == body
     assert events(caplog) == []
 
 
