@@ -37,6 +37,7 @@ WORKDIR /build/controller
 COPY --link controller/package.json controller/package-lock.json ./
 RUN --mount=type=cache,target=/root/.npm,sharing=locked npm ci --no-audit --no-fund
 COPY --link controller/src/cli ./src/cli
+COPY --link controller/shared/guardrail-catalog.ts ./shared/guardrail-catalog.ts
 COPY --link controller/tsconfig.cli.json ./
 COPY --link controller/scripts/build-guardctl.mjs ./scripts/
 RUN npm run build:cli

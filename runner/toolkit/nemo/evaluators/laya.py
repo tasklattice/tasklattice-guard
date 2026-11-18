@@ -243,7 +243,14 @@ class LayaNoulEvaluator:
         if (request.rail_type not in self.rails or request.capability not in self.capabilities
             or request.binding.contract_ref not in self.contracts):
             return self._error(request, f"Laya supports {self.scope_label} only.")
-        call = None
+        calls: list[ModelCallTracker] = []
+
+        def collected_usage():
+            usages = [action_usage(item, len(request.content)) for item in calls]
+            return EvaluationUsage(provider_latency_ms=sum(item.provider_latency_ms for item in usages),
+                model_invocations=sum(item.model_invocations for item in usages), input_characters=len(request.content),
+                model_calls=tuple(call for item in usages for call in item.model_calls)) if usages else EvaluationUsage()
+
         probabilities: dict[str, float] = {}
         actual_model: str | None = None
         model_metadata = {}
@@ -260,6 +267,7 @@ class LayaNoulEvaluator:
                 with observe_model_call(request, provider=self._provider_id, model=self._model,
                                         operation=self.operation, profile_ref=self._profile_ref,
                                         runtime_ref=self._provider_id) as call:
+                    calls.append(call)
                     state = self.model_state(request)
                     if self._builtin_laya is not None:
                         payload = await self._builtin_laya.predict(state, questions, deadline=deadline, **request_budget)
@@ -275,8 +283,29 @@ class LayaNoulEvaluator:
                             "usage": {k: usage[k] for k in ("input_tokens", "state_tokens", "state_tokens_dropped", "truncated") if isinstance(usage, dict) and k in usage},
                             "routing": {k: routing[k] for k in ("model", "repo") if isinstance(routing, dict) and k in routing},
                         })
+                        if isinstance(payload.get("inference_batch"), dict):
+                            model_metadata["inference_batch"] = payload["inference_batch"]
                         check_input_coverage(payload)
                     call.complete(payload=payload)
+                lower, upper = self.thresholds_for(request)
+                # The pinned SDK rounds Noul probabilities to four decimals.
+                # Batched tensor shapes can move the last digit. Recheck only
+                # this member near either operating threshold, on its original
+                # input and deadline, before applying the Rule or its reviewer.
+                if (self._builtin_laya is not None and model_metadata.get("inference_batch", {}).get("size", 0) > 1
+                        and any(abs(value - boundary) <= .0002 + 1e-12
+                                for value in probabilities.values() for boundary in (lower, upper))):
+                    with observe_model_call(request, provider=self._provider_id, model=self._model,
+                            operation=self.operation + "_threshold_recheck", profile_ref=self._profile_ref,
+                            runtime_ref=self._provider_id) as recheck:
+                        calls.append(recheck)
+                        payload = await self._builtin_laya.predict(state, questions, deadline=deadline,
+                            allow_batch=False, **request_budget)
+                        with model_response():
+                            actual_model, probabilities = parse_answers(payload, set(questions))
+                            check_input_coverage(payload)
+                        recheck.complete(payload=payload)
+                    model_metadata["batch_threshold_rechecked"] = True
         except (httpx.HTTPError, TimeoutError, ValueError, TypeError, KeyError,
                 BuiltinLayaBusyError, BuiltinLayaInferenceError) as error:
             record_validation_error(error)
@@ -290,13 +319,13 @@ class LayaNoulEvaluator:
                                     model_metadata=model_metadata, request_budget=request_budget)
                 return evaluation_result(request, "unknown", request.content, reason=reason,
                     trace=(trace,), unknown_reason="uncertain",
-                    usage=action_usage(call, len(request.content)) if call is not None else EvaluationUsage())
+                    usage=collected_usage())
             detail = " Input or policy context was truncated; no complete classification is available." if isinstance(error, LayaInputTruncatedError) else ""
             return self._error(request, f"Laya {self.scope_label} evaluation failed: {type(error).__name__}.{detail}",
                                error_type=type(error).__name__,
                                actual_model=actual_model, model_metadata=model_metadata,
                                request_budget=request_budget,
-                               usage=action_usage(call, len(request.content)) if call is not None else EvaluationUsage())
+                               usage=collected_usage())
         lower, upper = self.thresholds_for(request)
         verdict = self.classify(probabilities, lower=lower, upper=upper)
         reason = self.reasons[verdict]
@@ -313,5 +342,5 @@ class LayaNoulEvaluator:
         result = evaluation_result(request, verdict, self.result_content(request, verdict),
                                  reason=reason, findings=findings,
                                  trace=(trace,), unknown_reason="uncertain",
-                                 usage=action_usage(call, len(request.content)) if call is not None else EvaluationUsage())
+                                 usage=collected_usage())
         return result

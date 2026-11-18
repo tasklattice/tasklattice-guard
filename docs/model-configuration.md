@@ -17,7 +17,7 @@ separate UI owners:
 | Health | Global Controller, baseline Guardrail, Runner convergence, and active model-binding readiness |
 | Providers | Endpoint, encrypted credential, discovery, connectivity, and Provider-scoped TLS policy |
 | Models | Registered inventory plus one real callability check per physical model |
-| Protection Capabilities | Capability-level model selection, optional stage overrides, per-stage validation, Save, and activation |
+| Protection Capabilities | Built-in Laya initial classification, optional capability-specific reviewers, specialist models, validation, Save, and activation |
 
 The **Protection Capabilities** name describes this product's configuration page.
 Its protection categories follow NVIDIA's [NeMo Guardrails catalog](https://docs.nvidia.com/nemo/guardrails/latest/configure-guardrails/guardrail-catalog),
@@ -33,13 +33,19 @@ revision maps a stable binding such as `content_safety.input`,
 may serve multiple bindings when its explicit protocol profile supports each
 contract. Input and Output assignments remain independent.
 
-The page shows one row per implemented capability, without Input/Output tabs.
-Capabilities supporting both stages default to one shared model selector; its
-options must support both stage contracts. **Configure by stage** exposes
-independent input and output selectors. JEV and Laya content safety support
-both shared and stage-specific configuration. Existing unequal assignments open in stage mode and are
-preserved. Returning to shared mode requires an explicit model choice before
-replacing unequal assignments.
+Content safety, jailbreak, Topic Control and semantic PII use the packaged Laya
+model automatically on their six supported stage bindings. Their initial model
+is platform managed; it cannot be replaced or cleared through assignment APIs.
+A fresh installation can use these classifiers before any review configuration
+is applied. Startup updates the editable draft to Laya while preserving review,
+Control Plane and specialist settings and their applicable evidence. Existing
+active snapshots follow the normal reviewed rollout; startup does not rewrite them.
+
+The page shows the fixed initial model once and one optional review row per
+capability. **Configure by stage** exposes separate input and output reviewers.
+Unequal review assignments open in stage mode and remain unchanged until an
+explicit shared model is selected. Grounding and automated reasoning keep their
+own specialist models; Laya does not implement those capabilities.
 
 Each capability exposes **Validate** and **Save** as separate row buttons.
 Optional **Validate** runs each configured stage separately and displays its own result
@@ -51,19 +57,31 @@ partial saves do not activate the runtime. Review and Apply remains a separate
 step and accepts saved bindings whether validation passed, failed, or was not run.
 Shared selection is a UI convenience, not a merged validation contract.
 
-An existing `generic-chat` model, including DeepSeek, can also be explicitly
-assigned to `classifier_review.input` or `classifier_review.output` without changing its profile or Control
-Plane assignment. The dedicated `tali.classifier-review.v1` profile remains
-supported. DeepSeek also supports input and output semantic PII through the
+Each optional reviewer is assigned to a capability and stage:
+`classifier_review.content_safety.input/output`, `classifier_review.jailbreak.input`,
+`classifier_review.pii_semantic.input/output`, or `classifier_review.topic_control.input`.
+An existing `generic-chat` model, including DeepSeek, can serve these bindings
+without changing its profile or Control Plane assignment. The dedicated
+`tali.classifier-review.v1` profile also supports these bindings. Native
+`tali.qwen3guard.v1` supports security reviews; Topic review accepts chat models only.
+DeepSeek also supports input and output semantic PII through the
 explicit `tali.openai-compatible-pii.v1` profile; other primary detectors retain
 their specialized protocol requirements. Controller projects
 only models referenced by active Data Plane bindings—and only their
 credentials—to Runner. The API and Runner enforce this compatibility as well
 as the browser dropdown.
 
-The active review model for a Rail automatically handles eligible JEV/Laya
-abstentions on that Rail. Its built-in prompt includes the original classifier
-questions, evaluated input or output, and conversation context. Initial model
+The active reviewer handles only the selected capability on its selected Rail.
+With no Topic reviewer, Laya/JEV remains the final classifier, including the Rule's
+existing Unknown handling. Other reviewers are never borrowed for Topic. An
+explicit empty selection disables that reviewer. Legacy stage-only bindings are
+normalized into security reviews only; Topic remains unassigned and new bindings
+require their own validation evidence. Chat reviewers receive the original classifier
+questions, evaluated input or output, and conversation context. Qwen3Guard-Gen
+receives the original conversation and returns native safety labels for content
+safety, direct jailbreak and semantic PII. It retains Unknown for unsupported
+external-content or memory attack questions; its native safety
+policy does not implement arbitrary Policy criteria. Initial model
 failures and missing required context retain their existing handling. See
 [gray-area review](classifier-gray-review.md).
 

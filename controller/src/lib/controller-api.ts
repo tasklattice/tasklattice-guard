@@ -12,7 +12,7 @@ import type {
   RunnerStatus,
   ValidationRunState,
 } from "../../shared/lifecycle";
-import type { CapabilityBindingId, ImplementedGuardrailRailType } from "../../shared/guardrail-catalog";
+import { capabilityBindingIds, type CapabilityBindingId, type ImplementedGuardrailRailType } from "../../shared/guardrail-catalog";
 import type { PlatformStatusSnapshot } from "../../shared/platform-status";
 import { platformOperationalStatuses, platformStatusReasons } from "../../shared/platform-status";
 import type { SystemHealthSnapshot } from "../../shared/component-health";
@@ -552,7 +552,7 @@ export const getModelReadiness = () => requestController<import("../../shared/mo
 
 export const getModelConfiguration = async () => {
   const view = await requestController<ModelConfigurationView>("/api/v1/model-configuration");
-  if (!view.draft?.assignments?.bindings) {
+  if (!view.draft?.assignments?.bindings || capabilityBindingIds.some(id => !Object.hasOwn(view.draft!.assignments.bindings, id))) {
     throw new Error("The Controller is serving a Model configuration with an unsupported schema. Deploy the matching Controller backend before using Protection Capabilities.");
   }
   return view;

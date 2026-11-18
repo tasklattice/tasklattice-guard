@@ -703,9 +703,10 @@ set -a; . ./.env; set +a
 
 ### 默认值取舍
 
-`classifier_review.input` 和 `classifier_review.output` 独立配置。每个绑定对该阶段的
-受支持 JEV/Laya 分类器生效，包括语义 PII、内容安全、越狱和话题检查。部署时用该阶段的
-实际检测组合评估复核的延迟和成本。
+复核现在按能力与阶段独立配置，例如 `classifier_review.pii_semantic.input` / `.output`。
+语义 PII、内容安全和越狱可选择 Qwen3Guard；话题复核需单独选择通用聊天模型。
+话题未配置时保留 Laya/JEV 初判结果和 Rule 的 Unknown 处理，不继承其他能力的复核模型。
+部署时按实际检测组合评估复核的延迟和成本。
 
 ### 版本策略
 

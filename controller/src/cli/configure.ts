@@ -4,6 +4,7 @@ import { chmod, mkdir, open, readFile, rename, rm, writeFile } from 'node:fs/pro
 import { dirname, resolve } from 'node:path';
 import { parseEnv } from 'node:util';
 import { setTimeout as delay } from 'node:timers/promises';
+import { builtinLayaModelId, capabilityBindingIds, isLayaPrimaryBinding } from '../../shared/guardrail-catalog.js';
 
 export type Api = (path: string, method?: string, body?: any) => Promise<any>;
 type Flags = Record<string, string>;
@@ -39,8 +40,10 @@ export const configurationHelp = `Non-interactive configuration (existing Contro
     [--lower-threshold X --upper-threshold Y]
     Change Model runtime settings in place; a referenced protocol reports the
     separate-Provider recipe instead.
-  guardctl platform bind --binding content_safety.input --model-id ID --state FILE
+  guardctl platform bind --binding classifier_review.content_safety.input --model-id ID --state FILE
     [--validation-id ID | --revalidate] [--wait-seconds 300]
+    Review bindings use classifier_review.<capability>.<input|output>.
+    Initial content safety, jailbreak, Topic Control and semantic PII use built-in Laya.
   guardctl project test --guardrail-id ID [--version VERSION] [--local-only]
   guardctl project profile-validation [--profiles=default,full-feature] [--out=DIR]
     [--name-prefix TEXT] [--wait-seconds 900] [--test-model-rules]
@@ -202,7 +205,7 @@ export async function configureModelSettings(api: Api, flags: Flags): Promise<an
         + 'Register a separate Provider for the new operating point, then bind it:\n'
         + `  guardctl platform register-model --provider-name "${current.name} Review" --provider-kind <kind> `
         + '--provider-url <url> --model <model> --profile <profile> --max-tokens <n> --timeout-seconds <n> --key-env <ENV>\n'
-        + '  guardctl platform bind --binding <capability.input|output> --model-id <new-model-id> --state <file>');
+        + '  guardctl platform bind --binding <binding-id> --model-id <new-model-id> --state <file>');
     }
     throw error;
   }
@@ -268,12 +271,14 @@ export async function publishGuardrail(api: Api, flags: Flags, patch: any | null
 
 export async function bindModel(api: Api, flags: Flags, journal: Journal): Promise<any> {
   const binding = required(flags, 'binding'), modelId = required(flags, 'model-id'), seconds = integer(flags, 'wait-seconds', 300);
-  assert.ok(/^[a-z_]+\.(input|output)$/.test(binding), 'Use a capability.input or capability.output binding');
+  assert.ok((capabilityBindingIds as readonly string[]).includes(binding), 'Use a supported capability binding, including classifier_review.<capability>.<input|output>');
+  assert.ok(!isLayaPrimaryBinding(binding) || modelId === builtinLayaModelId,
+    'Initial classifiers use built-in Laya. Configure classifier_review.<capability>.<input|output> instead.');
   const s = journal.data, request = { binding, modelId };
   if (s.request) assert.deepEqual(s.request, request, 'State belongs to another binding request');
   let view = await api('/api/v1/model-configuration');
   if (!s.request) { assert.ok(!view.activating, 'Another model activation is in progress'); Object.assign(s, { request, originalActive: view.active, originalDraft: view.draft }); await journal.save(); }
-  const activeAssignments = (v: any) => v.active?.assignments ?? { controlPlane: null, bindings: Object.fromEntries(Object.keys(v.draft.assignments.bindings).map(k => [k, null])) };
+  const activeAssignments = (v: any) => v.active?.assignments ?? { controlPlane: null, bindings: Object.fromEntries(Object.keys(v.draft.assignments.bindings).map(k => [k, isLayaPrimaryBinding(k) ? builtinLayaModelId : null])) };
   const originalAssignments = activeAssignments({ active: s.originalActive, draft: s.originalDraft });
   const withoutBinding = (a: any) => ({ ...a, bindings: { ...a.bindings, [binding]: null } });
   assert.deepEqual(withoutBinding(activeAssignments(view)), withoutBinding(originalAssignments), 'Unrelated active assignments changed');

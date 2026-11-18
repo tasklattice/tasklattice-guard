@@ -86,7 +86,10 @@ class LayaTopicEvaluator(LayaNoulEvaluator):
         configured = dict(request.parameters)
         # Coverage decisions describe the same inference, including the
         # mode-derived request budget, rather than a new native request.
-        request_budget = json.loads(result.trace[0].evidence)["request_budget"]
+        primary_evidence = json.loads(result.trace[0].evidence)
+        request_budget = primary_evidence["request_budget"]
+        batch_metadata = {key: value for key, value in primary_evidence.get("model_metadata", {}).items()
+                          if key in {"inference_batch", "batch_threshold_rechecked"}}
         # The native encoder does not reliably evaluate the union of a list:
         # both confident false positives and false negatives were observed.
         # Preserve its scores, but require full-policy review in either direction.
@@ -95,7 +98,7 @@ class LayaTopicEvaluator(LayaNoulEvaluator):
         if any(count > 1 for count in counts.values()):
             reason = "Laya cannot establish complete coverage of a multi-topic policy; independent review is required."
             trace = self._trace(request, "unknown", reason, {}, model_metadata={
-                "topic_counts": counts, "coverage": "multi_topic_scope_unverified"}, request_budget=request_budget)
+                **batch_metadata, "topic_counts": counts, "coverage": "multi_topic_scope_unverified"}, request_budget=request_budget)
             return replace(result, verdict="unknown", findings=(), reason=reason, evidence=reason,
                            trace=(*result.trace, replace(trace, id=trace.id + ":coverage")), unknown_reason="uncertain")
         if result.verdict == "matched":
@@ -103,7 +106,7 @@ class LayaTopicEvaluator(LayaNoulEvaluator):
         parts = topic_parts(request.content)
         if compound_request(request.content):
             reason = "Laya cannot establish that every task in a compound request is in scope; independent review is required."
-            trace = self._trace(request, "unknown", reason, {}, model_metadata={"sentence_count": len(parts),
+            trace = self._trace(request, "unknown", reason, {}, model_metadata={**batch_metadata, "sentence_count": len(parts),
                 "coverage": "compound_scope_unverified"}, request_budget=request_budget)
             return replace(result, verdict="unknown", reason=reason, evidence=reason,
                            trace=(*result.trace, replace(trace, id=trace.id + ":coverage")), unknown_reason="uncertain")

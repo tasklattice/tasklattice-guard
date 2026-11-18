@@ -15,6 +15,7 @@ from .model_http_evidence import capture_model_http_evidence, failed_model_http_
 from .model_validation_diagnostics import ValidationDiagnostics, capture_validation_case
 from .software_version import SOFTWARE_VERSION
 from .providers import dynamic_runtime_action_providers
+from .toolkit.nemo.evaluators.classifier_review import review_binding_scope
 from .toolkit.compiler.nemo_compiler import NeMoConfigCompiler
 from .toolkit.nemo.action_registry import action_providers
 from .toolkit.nemo.builtin_policies import prompt_catalog_yaml
@@ -97,13 +98,16 @@ async def validate_capability(
         binding = config.bindings[0]
         model = config.runtimes[0]
         phase = {protocol.RAIL_TYPE_INPUT: "input", protocol.RAIL_TYPE_OUTPUT: "output"}.get(binding.rail_type)
-        if phase is None or binding.binding_id != request.binding_id or binding.binding_id != f"{binding.capability_ref}.{phase}":
+        review_scope = review_binding_scope(binding.binding_id, phase) if binding.capability_ref == "classifier_review" and phase else None
+        expected_binding = binding.binding_id if binding.capability_ref == "classifier_review" else f"{binding.capability_ref}.{phase}"
+        if phase is None or binding.binding_id != request.binding_id or binding.binding_id != expected_binding:
             raise ValueError("Binding identity must match its implemented Input/Output Rail.")
         if binding.model_ref != model.id or binding.profile_ref != model.profile_ref:
             raise ValueError("Binding and model protocol identities do not match.")
         if model.credential_ref and model.credential_ref not in credentials:
             raise ValueError("The candidate's scoped credential lease is unavailable.")
         formal = request.formal_validation if request.HasField("formal_validation") else None
+        probe_capability = ("pii_semantic" if review_scope == "pii" else review_scope) or binding.capability_ref
         if binding.capability_ref == "automated_reasoning":
             if formal is None or not all(value.strip() for value in (formal.policy_id, formal.policy_version, formal.query, formal.valid_response, formal.invalid_response)):
                 raise ValueError("Provide an existing formal policy ID, version, query, and valid/invalid examples.")
@@ -128,7 +132,8 @@ async def validate_capability(
                                      parameters=(("evaluation_view", "original"), ("precedence", "0")) + (
                                          (("policy_snapshot_id", "candidate-proof"),) if formal else
                                          (("allowed_topics", "Product support and password reset"), ("topic_mode", "strict"))
-                                         if binding.capability_ref == "topic_control" else ()))
+                                         if probe_capability == "topic_control" else ()) + (
+                                         (("review_capability", review_scope),) if review_scope else ()))
             plan = GuardrailPlanSnapshot(
                 guardrail_id=f"rail-validation:{request.request_id}", guardrail_version="20260905-000000.000Z",
                 compiler_version="rail-validation-v1", safety_level="balanced", output_delivery="full_buffered", steps=(step,),
@@ -143,7 +148,7 @@ async def validate_capability(
                                                max_entries=1, max_concurrency_per_guardrail=1, native_models=native)
             runtime = NeMoRuntime(registry)
             result.runtime_profile = snapshot.runtime_profile
-            samples = (formal.valid_response, formal.invalid_response) if formal else _CASES[binding.capability_ref]
+            samples = (formal.valid_response, formal.invalid_response) if formal else _CASES[probe_capability]
             for name, text, expected in zip(("safe", "unsafe"), samples, ("allow", "block"), strict=True):
                 view = None
                 if binding.capability_ref == "contextual_grounding":

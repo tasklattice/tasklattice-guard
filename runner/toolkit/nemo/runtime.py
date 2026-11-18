@@ -28,6 +28,7 @@ from opentelemetry import context as otel_context, trace
 from opentelemetry.trace import Status, StatusCode
 
 from ...model_concurrency import model_slot
+from ...laya_batch import laya_batch_scope
 from ..runtime.content_views import current_context_messages, request_view, with_active_text
 from ..compiler.semantics import collects_complete_evidence
 from ..runtime.outcome import finalize_decision
@@ -288,6 +289,10 @@ class NeMoActionBridge:
         return execute_provider
 
     async def execute_action_group(self, text, group, context):
+        with laya_batch_scope():
+            return await self._execute_action_group(text, group, context)
+
+    async def _execute_action_group(self, text, group, context):
         """Run compiler-proven independent read-only checks inside a NeMo Action.
 
         Block cancels remaining checks; Allow waits for every required member.

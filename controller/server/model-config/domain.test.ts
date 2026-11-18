@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   assignmentTargetAcceptsModel,
   assignmentTargetProfiles,
+  assignmentInputSchema,
   capabilityBindingContracts,
   controlPlaneProfiles,
   emptyModelAssignments,
@@ -37,7 +38,7 @@ describe("Protection Capabilities capability binding profiles", () => {
       expect(assignmentTargetAcceptsModel(target, "tali.laya.v1", "typesafe")).toBe(false);
       expect(assignmentTargetAcceptsModel(target, "tali.typesafe-jev.v1", "laya")).toBe(false);
     }
-    for (const target of ["control_plane", "classifier_review.input", "classifier_review.output"] as const) {
+    for (const target of ["control_plane", "classifier_review.content_safety.input", "classifier_review.content_safety.output"] as const) {
       expect(assignmentTargetAcceptsModel(target, "tali.laya.v1", "laya")).toBe(false);
     }
     expect(providerAcceptsProfile("laya", "generic-chat")).toBe(false);
@@ -58,7 +59,7 @@ describe("Protection Capabilities capability binding profiles", () => {
       expect(assignmentTargetAcceptsModel(target, profile, "typesafe")).toBe(true);
       expect(capabilityBindingContracts(target, profile)).toEqual([contract]);
     }
-    for (const target of ["control_plane", "classifier_review.output"] as const) {
+    for (const target of ["control_plane", "classifier_review.content_safety.output"] as const) {
       expect(assignmentTargetAcceptsModel(target, profile, "typesafe")).toBe(false);
     }
     expect(providerAcceptsProfile("custom-openai-compatible", profile)).toBe(false);
@@ -111,17 +112,21 @@ describe("Protection Capabilities capability binding profiles", () => {
   it("reuses DeepSeek chat for explicit input review while preserving primary detector contracts", () => {
     expect(assignmentTargetAcceptsModel("control_plane", "generic-chat", "deepseek")).toBe(true);
     for (const profile of ["generic-chat", "tali.classifier-review.v1"] as const) {
-      expect(assignmentTargetAcceptsModel("classifier_review.input", profile, "deepseek")).toBe(true);
-      expect(assignmentTargetAcceptsModel("classifier_review.input", profile, "custom-openai-compatible")).toBe(true);
-      expect(capabilityBindingContracts("classifier_review.input", profile)).toEqual(["tali.guard.classifier-review.v1"]);
+      expect(assignmentTargetAcceptsModel("classifier_review.content_safety.input", profile, "deepseek")).toBe(true);
+      expect(assignmentTargetAcceptsModel("classifier_review.content_safety.input", profile, "custom-openai-compatible")).toBe(true);
+      expect(capabilityBindingContracts("classifier_review.content_safety.input", profile)).toEqual(["tali.guard.classifier-review.v1"]);
       expect(providerAcceptsProfile("deepseek", profile)).toBe(true);
-      expect(assignmentTargetAcceptsModel("classifier_review.output", profile, "deepseek")).toBe(true);
+      expect(assignmentTargetAcceptsModel("classifier_review.content_safety.output", profile, "deepseek")).toBe(true);
       for (const target of Object.keys(emptyModelAssignments().bindings).filter(id => !id.startsWith("classifier_review."))) {
         expect(assignmentTargetAcceptsModel(target as Parameters<typeof assignmentTargetAcceptsModel>[0], profile, "deepseek")).toBe(false);
       }
     }
-    expect(assignmentTargetAcceptsModel("classifier_review.input", "tali.qwen3guard.v1", "qwen")).toBe(false);
-    expect(assignmentTargetAcceptsModel("classifier_review.input", "tali.typesafe-jev.v1", "typesafe")).toBe(false);
+    for (const target of ["classifier_review.content_safety.input", "classifier_review.content_safety.output"] as const) {
+      expect(assignmentTargetAcceptsModel(target, "tali.qwen3guard.v1", "qwen")).toBe(true);
+      expect(assignmentTargetAcceptsModel(target, "tali.qwen3guard.v1", "custom-openai-compatible")).toBe(true);
+      expect(capabilityBindingContracts(target, "tali.qwen3guard.v1")).toEqual(["tali.guard.classifier-review.v1"]);
+    }
+    expect(assignmentTargetAcceptsModel("classifier_review.content_safety.input", "tali.typesafe-jev.v1", "typesafe")).toBe(false);
     expect(assignmentTargetAcceptsModel("topic_control.input", "tali.taxonomy-judge.v1", "deepseek")).toBe(false);
     expect(assignmentTargetAcceptsModel("content_safety.output", "tali.qwen3guard.v1", "qwen")).toBe(true);
     expect(providerAcceptsProfile("deepseek", "generic-chat")).toBe(true);
@@ -139,7 +144,7 @@ describe("Protection Capabilities capability binding profiles", () => {
       expect(capabilityBindingContracts(target, profile)).toEqual(["tali.guard.pii.semantic.v1"]);
       expect(assignmentTargetAcceptsModel(target, "generic-chat", "deepseek")).toBe(false);
     }
-    for (const target of ["classifier_review.input", "content_safety.input", "jailbreak.input", "topic_control.input", "control_plane"] as const) {
+    for (const target of ["classifier_review.content_safety.input", "content_safety.input", "jailbreak.input", "topic_control.input", "control_plane"] as const) {
       expect(assignmentTargetAcceptsModel(target, profile, "deepseek")).toBe(false);
     }
   });
@@ -156,6 +161,41 @@ describe("Protection Capabilities capability binding profiles", () => {
 });
 
 describe("capability bindings", () => {
+  it("migrates legacy stage reviewers to security capabilities and leaves Topic unassigned", () => {
+    const input = "f6b9f056-f61b-4ae8-9e27-abca498ae9e3";
+    const output = "4feebaf7-2fb7-4c82-8a99-bf0554aa211d";
+    const migrated = assignmentInputSchema.parse({controlPlane:null, bindings:{
+      ...Object.fromEntries(Object.entries(emptyModelAssignments().bindings).filter(([id]) => !id.startsWith("classifier_review."))),
+      "classifier_review.input":input, "classifier_review.output":output,
+      "classifier_review.pii_semantic.input":null,
+    }});
+    expect(migrated.bindings).toMatchObject({
+      "classifier_review.content_safety.input":input,
+      "classifier_review.content_safety.output":output,
+      "classifier_review.jailbreak.input":input,
+      "classifier_review.pii_semantic.input":null,
+      "classifier_review.pii_semantic.output":output,
+      "classifier_review.topic_control.input":null,
+    });
+    expect(migrated.bindings).not.toHaveProperty("classifier_review.input");
+    expect(modelAssignmentTargetSchema.safeParse("classifier_review.input").success).toBe(false);
+    expect(assignmentInputSchema.safeParse({controlPlane:null,bindings:{}}).success).toBe(false);
+  });
+
+  it("allows Qwen3Guard only for security reviews and chat profiles for Topic review", () => {
+    const topic = "classifier_review.topic_control.input";
+    for (const profile of ["generic-chat", "tali.classifier-review.v1"] as const) {
+      expect(assignmentTargetAcceptsModel(topic, profile, "custom-openai-compatible")).toBe(true);
+      expect(assignmentTargetAcceptsModel(topic, profile, "deepseek")).toBe(true);
+    }
+    expect(assignmentTargetAcceptsModel(topic, "tali.qwen3guard.v1", "qwen")).toBe(false);
+    expect(assignmentTargetAcceptsModel(topic, "tali.laya.v1", "laya")).toBe(false);
+    for (const target of ["classifier_review.jailbreak.input", "classifier_review.pii_semantic.input", "classifier_review.pii_semantic.output"] as const) {
+      expect(assignmentTargetAcceptsModel(target, "tali.qwen3guard.v1", "qwen")).toBe(true);
+      expect(capabilityBindingContracts(target, "tali.qwen3guard.v1")).toEqual(["tali.guard.classifier-review.v1"]);
+    }
+  });
+
   it("normalizes the explicit catalog shape without inferring model roles", () => {
     expect(normalizeModelAssignments({ bindings: { "content_safety.input": "safety" } })).toEqual({
       ...emptyModelAssignments(),

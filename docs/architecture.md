@@ -203,12 +203,22 @@ Provider connectivity, model callability, and Rail validation are separate
 checks. Protection Capabilities revisions assign models to stable bindings such as
 `content_safety.input` and `content_safety.output`. Input and Output execute
 today; Retrieval, Dialog, and Execution are reserved Rail types. DeepSeek
-Providers support Control Plane work and explicit `classifier_review.input` / `classifier_review.output`
-bindings using a Generic chat or dedicated review profile. Laya content safety supports
-both Rails with direction-specific questions; its reviewer binding is scoped to the same Rail. Primary detector
+Providers support Control Plane work and explicit per-capability review bindings
+such as `classifier_review.content_safety.input` and `classifier_review.topic_control.input`.
+Security reviews support Generic chat, dedicated review, and Qwen3Guard profiles;
+Topic review supports chat profiles only and never inherits another capability's
+reviewer. With no reviewer, the primary result and the Rule's Unknown handling
+remain final. Laya content safety supports both Rails with direction-specific
+questions; review bindings belong to both a capability and a Rail. Primary detector
 contracts remain specialized. The active data-plane projection includes
 only models referenced by its bindings; credentials are resolved separately and
 are not embedded in artifacts or desired-state snapshots.
+
+Built-in Laya coalesces primary evaluations inside one compiler-proven read-only
+execution group into a bounded CPU forward, preserving each member's state,
+question set, deadline and evidence. Transforms and conditional dependencies
+remain execution barriers. Reviews still use each capability's own binding.
+See [batched inference](laya-batched-inference.md) for limits and validation.
 
 Capability validation compiles and exercises a candidate binding through the
 actual NeMo runtime, using a short-lived, candidate-scoped credential lease.

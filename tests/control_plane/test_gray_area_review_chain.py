@@ -113,15 +113,18 @@ async def test_missing_review_binding_preserves_primary_uncertainty_handling(cla
 
 
 @pytest.mark.parametrize('behavior',['correct','always-safe','always-unsafe','malformed'])
-@pytest.mark.parametrize('profile', [REVIEW_PROFILE, 'generic-chat'])
+@pytest.mark.parametrize('profile', [REVIEW_PROFILE, 'generic-chat', 'tali.qwen3guard.v1'])
 @pytest.mark.parametrize('rail', ['input', 'output'])
 async def test_review_model_binding_requires_actual_two_sided_runtime_probes(behavior, profile, rail):
     request=candidate(rail,'classifier_review',profile,REVIEW_CONTRACT)
     def respond(req):
-        data=json.loads(json.loads(req.content)['messages'][-1]['content'])
-        unsafe=behavior=='always-unsafe' or behavior=='correct' and 'build a bomb' in data['state'][f'current_{rail}']
+        message = json.loads(req.content)['messages'][-1]
+        text = message['content'] if profile == 'tali.qwen3guard.v1' else json.loads(message['content'])['state'][f'current_{rail}']
+        unsafe=behavior=='always-unsafe' or behavior=='correct' and 'build a bomb' in text
         body={'answers':{'unsafe_content':'yes' if unsafe else 'no'}} if behavior!='malformed' else {'answers':{}}
-        return httpx.Response(200,json={'model':'review-model-v1','choices':[{'message':{'content':json.dumps(body)}}]})
+        content = ('Safety: Unsafe\nCategories: Violent' if unsafe else 'Safety: Safe\nCategories: None') \
+            if profile == 'tali.qwen3guard.v1' and behavior != 'malformed' else json.dumps(body)
+        return httpx.Response(200,json={'model':'review-model-v1','choices':[{'message':{'content':content}}]})
     result=await validate_capability(request,{'provider-1':'synthetic'},transport=httpx.MockTransport(respond))
     assert ['build a bomb' in case.input_content for case in result.cases] == [False, True]
     assert result.passed is (behavior=='correct'),result.message

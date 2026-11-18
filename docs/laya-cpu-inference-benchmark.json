@@ -1,0 +1,256 @@
+{
+  "date": "2026-11-18",
+  "environment": {
+    "architecture": "aarch64",
+    "cpu_capacity_cores": 4,
+    "memory_limit_gib": 6,
+    "image": "b93098c1e2e2",
+    "torch": "2.6.0+cpu",
+    "laya": "0.3.22",
+    "checkpoint": "85cc74ddae6109077ebe2853a9b3077fb6606a78",
+    "network": "none",
+    "read_only": true
+  },
+  "method": "24 requests cycling three synthetic states and two noul questions; CPU seconds / wall seconds; warmup excluded. Fixed code and threadpoolctl 3.6.0 were mounted read-only onto the same Runner image. These are local forward-path samples, not Policy quality or end-to-end request benchmarks.",
+  "runs": {
+    "baseline_two_threads": {
+      "threads": 2,
+      "concurrency": 1,
+      "requests": 24,
+      "capacity_cores": 4,
+      "wall_seconds": 19.403,
+      "cpu_seconds": 62.011,
+      "mean_cpu_cores": 3.2,
+      "requests_per_second": 1.24,
+      "latency_p50_ms": 352.6,
+      "latency_p95_ms": 1738.41,
+      "mean_input_tokens": 263,
+      "forward": {
+        "threads": 2,
+        "device": "cpu",
+        "dtype": "torch.float32",
+        "grad_enabled": false,
+        "training": false
+      },
+      "native_pools": [],
+      "thread_cpu": [
+        {
+          "tid": 9,
+          "name": "python",
+          "cpu_seconds": 18.56
+        },
+        {
+          "tid": 11,
+          "name": "python",
+          "cpu_seconds": 18.4
+        },
+        {
+          "tid": 1,
+          "name": "python",
+          "cpu_seconds": 0.0
+        },
+        {
+          "tid": 10,
+          "name": "python",
+          "cpu_seconds": 0.0
+        },
+        {
+          "tid": 6,
+          "name": "python",
+          "cpu_seconds": 0.0
+        },
+        {
+          "tid": 7,
+          "name": "python",
+          "cpu_seconds": 0.0
+        },
+        {
+          "tid": 8,
+          "name": "python",
+          "cpu_seconds": 0.0
+        }
+      ],
+      "latency_percentile_method": "index_floor_n_minus_one_times_p"
+    },
+    "fixed_two_cores": {
+      "architecture": "aarch64",
+      "model": {
+        "modelVersion": "85cc74ddae6109077ebe2853a9b3077fb6606a78"
+      },
+      "capacity_cores": 4,
+      "configured_cpu_millicores": "2000",
+      "threads_per_worker": 2,
+      "concurrency": 1,
+      "requests": 24,
+      "max_len": 1024,
+      "head_max_len": 512,
+      "wall_seconds": 31.122,
+      "cpu_seconds": 61.482,
+      "mean_cpu_cores": 1.98,
+      "requests_per_second": 0.77,
+      "latency_p50_ms": 530.49,
+      "latency_p95_ms": 2877.95,
+      "mean_input_tokens": 263,
+      "forward": {
+        "threads": 2,
+        "device": "cpu",
+        "dtype": "torch.float32",
+        "grad_enabled": false,
+        "training": false
+      },
+      "native_thread_pools": [
+        {
+          "user_api": "blas",
+          "internal_api": "openblas",
+          "prefix": "libopenblas",
+          "num_threads": 2
+        },
+        {
+          "user_api": "openmp",
+          "internal_api": "openmp",
+          "prefix": "libgomp",
+          "num_threads": 2
+        },
+        {
+          "user_api": "blas",
+          "internal_api": "openblas",
+          "prefix": "libscipy_openblas",
+          "num_threads": 2
+        }
+      ],
+      "repeated_answers_consistent": true,
+      "latency_percentile_method": "nearest_rank_ceil_n_times_p"
+    },
+    "fixed_four_threads": {
+      "threads": 4,
+      "concurrency": 1,
+      "requests": 24,
+      "capacity_cores": 4,
+      "wall_seconds": 16.833,
+      "cpu_seconds": 62.713,
+      "mean_cpu_cores": 3.73,
+      "requests_per_second": 1.43,
+      "latency_p50_ms": 299.49,
+      "latency_p95_ms": 1532.0,
+      "mean_input_tokens": 263,
+      "forward": {
+        "threads": 4,
+        "device": "cpu",
+        "dtype": "torch.float32",
+        "grad_enabled": false,
+        "training": false
+      },
+      "native_pools": [
+        {
+          "user_api": "blas",
+          "internal_api": "openblas",
+          "prefix": "libopenblas",
+          "num_threads": 4
+        },
+        {
+          "user_api": "openmp",
+          "internal_api": "openmp",
+          "prefix": "libgomp",
+          "num_threads": 4
+        },
+        {
+          "user_api": "blas",
+          "internal_api": "openblas",
+          "prefix": "libscipy_openblas",
+          "num_threads": 4
+        }
+      ],
+      "thread_cpu": [
+        {
+          "tid": 9,
+          "name": "python",
+          "cpu_seconds": 15.77
+        },
+        {
+          "tid": 15,
+          "name": "python",
+          "cpu_seconds": 15.66
+        },
+        {
+          "tid": 14,
+          "name": "python",
+          "cpu_seconds": 15.64
+        },
+        {
+          "tid": 13,
+          "name": "python",
+          "cpu_seconds": 15.63
+        },
+        {
+          "tid": 1,
+          "name": "python",
+          "cpu_seconds": 0.01
+        },
+        {
+          "tid": 10,
+          "name": "python",
+          "cpu_seconds": 0.0
+        },
+        {
+          "tid": 11,
+          "name": "python",
+          "cpu_seconds": 0.0
+        },
+        {
+          "tid": 12,
+          "name": "python",
+          "cpu_seconds": 0.0
+        }
+      ],
+      "latency_percentile_method": "index_floor_n_minus_one_times_p"
+    },
+    "fixed_two_workers_one_thread_each": {
+      "architecture": "aarch64",
+      "model": {
+        "modelVersion": "85cc74ddae6109077ebe2853a9b3077fb6606a78"
+      },
+      "capacity_cores": 4,
+      "configured_cpu_millicores": "2000",
+      "threads_per_worker": 1,
+      "concurrency": 2,
+      "requests": 24,
+      "max_len": 1024,
+      "head_max_len": 512,
+      "wall_seconds": 49.185,
+      "cpu_seconds": 60.588,
+      "mean_cpu_cores": 1.23,
+      "requests_per_second": 0.49,
+      "latency_p50_ms": 1009.67,
+      "latency_p95_ms": 5712.13,
+      "mean_input_tokens": 263,
+      "forward": {
+        "threads": 1,
+        "device": "cpu",
+        "dtype": "torch.float32",
+        "grad_enabled": false,
+        "training": false
+      },
+      "native_thread_pools": [
+        {
+          "user_api": "blas",
+          "internal_api": "openblas",
+          "prefix": "libopenblas",
+          "num_threads": 1
+        },
+        {
+          "user_api": "openmp",
+          "internal_api": "openmp",
+          "prefix": "libgomp",
+          "num_threads": 1
+        },
+        {
+          "user_api": "blas",
+          "internal_api": "openblas",
+          "prefix": "libscipy_openblas",
+          "num_threads": 1
+        }
+      ],
+      "latency_percentile_method": "nearest_rank_ceil_n_times_p"
+    }
+  }
+}

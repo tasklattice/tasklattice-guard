@@ -2,7 +2,7 @@
 
 Laya 是独立的 Decision Model 适配，覆盖输入/输出内容安全、输入越狱检测、话题控制、输入/输出语义 PII，以及外部内容/记忆中的越狱判定。适配保留 `/systemone` 与 Noul 概率协议，使用针对小型编码器的短问题、明确的请求预算及独立话题字段，不再直接复制 JEV 的长提示词。内容安全和话题的后续修订增加了表述一致性与策略覆盖检查。两款模型的概率分布和检测质量需要分别验收。
 
-## 独立配置
+## 适配与默认配置
 
 | 项目 | JEV | Laya |
 | --- | --- | --- |
@@ -14,7 +14,7 @@ Laya 是独立的 Decision Model 适配，覆盖输入/输出内容安全、输�
 | 阈值设置 | 对应 JEV 模型的设置 | 对应 Laya 模型的设置 |
 | 响应评估证据 | `evaluations` | `layaEvaluations`，含 `decisionModel: "laya"` |
 
-每个注册模型独立保存上下阈值，默认值均为 **0.1 / 0.9**。在 **模型 → 配置模型** 中选择 Laya，将上阈值改为 `0.85` 即可，不需要修改 Helm values 或环境变量。约束为 `0 ≤ 下阈值 < 上阈值 ≤ 1`。
+内置 Laya 的默认阈值为 **0.1 / 0.9**，锁定的 ONNX 模型包可提供经校准的阈值策略。内置模型由平台管理，不在模型配置抽屉中修改。历史远程模型保留各自的阈值设置，约束为 `0 ≤ 下阈值 < 上阈值 ≤ 1`。
 
 同一模型的所有能力绑定使用这组阈值；需要独立实验时另行注册模型。阈值变化会使此前的能力验证指纹失效，需要重新验证；项目运行组已授权的快照在明确刷新前保持不变。阈值是操作点，不是准确率或置信度保证。
 
@@ -55,7 +55,7 @@ Laya 服务的 `usage.truncated` 只报告状态截断，不报告问题截断�
 
 话题 v3 对以换行或分号分隔的多项允许/禁止主题也要求完整复核。原生编码器在此类列表上出现过高分误拦和低分漏检，因此无论初判方向如何，都保留原分数并追加 `multi_topic_scope_unverified` 覆盖证据，返回 unknown；原生错误仍按错误处理。单一主题检查保持原行为。
 
-当前阶段配置并应用复核模型后，会自动复核合法灰区及上述覆盖不足，使用完整的规范问题与原始内容/历史；不发送第一阶段概率或测试标签。规范问题比 v2 初判问题更完整，内容安全仍包含 23 类及良性例外。第一阶段传输及格式错误不进入复核；合法响应明确报告的截断可以复核，复核自身失败仍为执行错误，复核后仍 Unknown 则 Block。复核需当前 Rail 独立的 `classifier_review.input` 或 `classifier_review.output` 绑定。具体规则见 [灰区复核](classifier-gray-review.md)。
+复核按能力及阶段单独配置：`classifier_review.content_safety.input/output`、`classifier_review.jailbreak.input`、`classifier_review.pii_semantic.input/output`、`classifier_review.topic_control.input`。安全类可以使用 Qwen3Guard-Gen 的 `tali.qwen3guard.v1` 原生标签；话题需单独选择聊天模型。Topic 未配置复核时，保留 Laya 的最终初判结果，Unknown 沿用 Rule 的 `on_unknown`，不会借用其他能力的模型。聊天复核接收完整的规范问题与原始内容/历史，不接收初判概率或测试标签。第一阶段传输及格式错误不进入复核；合法响应明确报告的截断可以复核，复核失败仍为执行错误，复核后仍 Unknown 则 Block。具体规则见 [灰区复核](classifier-gray-review.md)。
 
 `tali.laya.v1` 支持 `content_safety.input`、`content_safety.output`、`jailbreak.input`、`topic_control.input`、`pii_semantic.input`、`pii_semantic.output`。仅话题协议只支持 `topic_control.input`。两者仍不实现控制面用途；JEV Provider 也不能绑定 Laya 协议。
 
@@ -94,28 +94,13 @@ PII 使用四个原生短问题（`name`、`actual_identifier`、`address`、`do
 
 这些文件不继承或调用 JEV 适配类、问题函数。初判问题和完整复核问题独立维护，各自的 `question_revision` 和复核模板修订会保存在证据中。今后调整 Laya 的提示词、类别、概率解析、上下文或阈值，只修改 Laya 对应实现与回归。
 
-## 注册、验证与启用
+## 默认启用与复核配置
 
-UI 中选择 **Laya**，填写实际 API 根地址及凭据，再选择 `auto` 或实际服务支持的模型 ID。`auto` 由服务选择已安装模型；不同服务的选择可能不同。已有注册的模型 ID 保持原值，不会将原生 `laya` 别名自动改成 `auto`。模型发现为可选；目录使用与 JEV 相同的 `{"models":[{"name":"auto"}]}` 形状，不提供目录的服务可以手动注册。
+Runner 自带的 Laya English 固定负责内容安全、越狱、Topic Control 与语义 PII 的六个初判绑定，无需注册远程服务或在能力页面选择模型。首次安装即有默认初判配置；已有配置升级时只调整可编辑草稿，保留复核选择，生效配置仍通过审查与应用流程切换。
 
-先部署包含该适配的 Controller 与 Runner，再执行注册与绑定。升级只增加可配置的 Provider 与协议，不会自动注册 Laya、替换现有 JEV 绑定或修改已发布的 Guard 与 Router。
+初判绑定不可清空或替换。仅需按能力配置可选复核：安全类可选 Qwen3Guard-Gen，Topic 需独立聊天模型；未配置时保留 Laya 结果及 Rule 的 Unknown 处理。上下文事实核查与自动推理使用各自的专用评估模型。
 
-CLI 使用同一组 Controller API：
-
-```sh
-bin/guardctl platform register-model \
-  --url http://localhost:38081 --env-file /private/path/guard.env \
-  --provider-name Laya --provider-kind laya \
-  --provider-url "$LAYA_BASE_URL" \
-  --model auto --profile tali.laya.v1 --key-env LAYA_API_KEY
-
-bin/guardctl platform bind \
-  --url http://localhost:38081 --env-file /private/path/guard.env \
-  --binding content_safety.input --model-id LAYA_MODEL_ID \
-  --state /private/path/laya-content-safety-binding.json
-```
-
-`LAYA_BASE_URL` 与 `LAYA_API_KEY` 由实际服务提供。注册返回的 Model ID 替换 `LAYA_MODEL_ID`。越狱及话题检测分别使用 `jailbreak.input`、`topic_control.input` 和不同的私有 state 文件。每项绑定都通过实际 Runner 的安全/违规双侧探针后再启用；模型连通性不等于检测能力通过。
+CPU 预算、线程池控制与实测见 [CPU 推理检查](laya-cpu-inference.md)。下述远程请求模式用于兼容已有历史配置和协议排障，不作为默认初判的配置步骤。
 
 ### 其他平台返回 HTTP 422
 

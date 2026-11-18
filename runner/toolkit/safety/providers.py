@@ -378,8 +378,8 @@ class SafetyModelProtocolAdapter(Protocol):
 class Qwen3GuardAdapter:
     name: SafetyProviderAdapter = "qwen3guard"
     capabilities = frozenset({"content_safety", "jailbreak", "pii"})
-    _VERDICT = re.compile(r"Safety\s*:\s*(Safe|Unsafe|Controversial)", re.IGNORECASE)
-    _CATEGORIES = re.compile(r"Categories?\s*:\s*([^\r\n]+)", re.IGNORECASE)
+    _VERDICT = re.compile(r"^[ \t]*Safety[ \t]*:[ \t]*([^\r\n]*)\r?$", re.IGNORECASE | re.MULTILINE)
+    _CATEGORIES = re.compile(r"^[ \t]*Categories?[ \t]*:[ \t]*([^\r\n]*)\r?$", re.IGNORECASE | re.MULTILINE)
 
     def messages(
         self,
@@ -399,27 +399,27 @@ class Qwen3GuardAdapter:
         candidate_taxonomy_ids: tuple[str, ...],
     ) -> NativeSafetyAssessment:
         del candidate_taxonomy_ids
-        verdict_match = self._VERDICT.search(content)
-        if verdict_match is None:
-            raise ValueError("Qwen3Guard did not return a Safety label.")
-        verdict = verdict_match.group(1).casefold()
-        category_match = self._CATEGORIES.search(content)
-        categories = ()
-        if category_match is not None:
-            categories = tuple(
-                item.strip()
-                for item in re.split(r"\s*,\s*|\s*;\s*", category_match.group(1))
-                if item.strip() and item.strip().casefold() != "none"
-            )
+        verdict, categories = self.parse_labels(content)
+        return _native_assessment(config, verdict, categories, content, payload)
+
+    @classmethod
+    def parse_labels(cls, content: str) -> tuple[NativeSafetyVerdict, tuple[str, ...]]:
+        verdicts = cls._VERDICT.findall(content)
+        category_lines = cls._CATEGORIES.findall(content)
+        if len(verdicts) != 1 or len(category_lines) != 1:
+            raise ValueError("Qwen3Guard must return one Safety label and one category line.")
+        verdict = verdicts[0].strip().casefold()
+        if verdict not in {"safe", "unsafe", "controversial"}:
+            raise ValueError("Qwen3Guard returned an invalid Safety label.")
+        labels = tuple(item.strip() for item in re.split(r"\s*,\s*|\s*;\s*", category_lines[0]))
+        if any(not label for label in labels) or (len(labels) > 1 and any(label.casefold() == "none" for label in labels)):
+            raise ValueError("Qwen3Guard returned invalid category labels.")
+        categories = tuple(label for label in labels if label.casefold() != "none")
         if verdict != "safe" and not categories:
             raise ValueError("Qwen3Guard returned a harmful verdict without a category.")
-        return _native_assessment(
-            config,
-            verdict,
-            categories,
-            content,
-            payload,
-        )
+        if verdict == "safe" and categories:
+            raise ValueError("Qwen3Guard returned conflicting safety and category labels.")
+        return verdict, categories
 
 
 class LlamaGuard3Adapter:

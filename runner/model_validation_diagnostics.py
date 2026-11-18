@@ -65,7 +65,7 @@ class LocalModelCapture:
     calls: list[dict[str, Any]]
     secrets: tuple[str, ...]
 
-    def invoke(self, arguments: dict[str, Any], predict: Callable[[], dict]) -> dict:
+    def start(self, arguments: dict[str, Any]) -> dict:
         call = {
             **_local_model_part("input", arguments, self.secrets),
             "result": {"output": None, "error": {
@@ -73,14 +73,21 @@ class LocalModelCapture:
             }},
         }
         self.calls.append(call)
+        return call
+
+    def finish(self, call: dict, *, output=None, error: Exception | None = None) -> None:
+        call["result"] = ({"output": None, "error": {
+            "type": type(error).__name__, "message": "Built-in Laya CPU forward failed.",
+        }} if error is not None else _local_model_part("output", output, self.secrets))
+
+    def invoke(self, arguments: dict[str, Any], predict: Callable[[], dict]) -> dict:
+        call = self.start(arguments)
         try:
             output = predict()
         except Exception as error:
-            call["result"] = {"output": None, "error": {
-                "type": type(error).__name__, "message": "Built-in Laya CPU forward failed.",
-            }}
+            self.finish(call, error=error)
             raise
-        call["result"] = _local_model_part("output", output, self.secrets)
+        self.finish(call, output=output)
         return output
 
 

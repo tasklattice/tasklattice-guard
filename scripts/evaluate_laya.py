@@ -18,7 +18,7 @@ import time
 import httpx
 
 from runner.builtin_laya import BuiltinLaya
-from runner.toolkit.nemo.evaluators.classifier_review import ClassifierReviewer
+from runner.toolkit.nemo.evaluators.classifier_review import ClassifierReviewer, REVIEW_PROFILE, REVIEW_PROFILES
 from runner.toolkit.nemo.evaluators.contracts import EvaluationRequest
 from runner.toolkit.nemo.evaluators.laya_content_safety import LayaContentSafetyEvaluator
 from runner.toolkit.nemo.evaluators.laya_jailbreak import LayaJailbreakEvaluator
@@ -99,9 +99,15 @@ async def replay_samples(args, runtime):
     rows, outcomes = [], Counter()
     for sample in samples:
         exchanges = []
-        reviewer = ClassifierReviewer(base_url=args.review_base_url, model=args.review_model,
-            api_key=os.environ[args.review_key_env], provider_id="regression-review", timeout_seconds=45,
-            max_tokens=512, transport=EvidenceTransport(exchanges), rail_type=sample.get("rail_type", "input")) if args.review_model else None
+        topic = sample["capability"] == "topic_control"
+        review_model = args.topic_review_model if topic else args.review_model
+        review_base_url = args.topic_review_base_url if topic else args.review_base_url
+        review_key_env = args.topic_review_key_env if topic else args.review_key_env
+        review_profile = args.topic_review_profile if topic else args.review_profile
+        reviewer = ClassifierReviewer(base_url=review_base_url, model=review_model,
+            api_key=os.environ[review_key_env], provider_id="regression-topic-review" if topic else "regression-review", timeout_seconds=45,
+            max_tokens=512, transport=EvidenceTransport(exchanges), rail_type=sample.get("rail_type", "input"),
+            profile_ref=review_profile, review_capability=sample["capability"]) if review_model else None
         factory, _ = EVALUATORS[sample["capability"]]
         evaluator = factory(base_url=args.base_url or "", model=args.model or ("english" if runtime else "auto"),
             api_key=key, timeout_seconds=20, reviewer=reviewer,
@@ -118,12 +124,16 @@ async def replay_samples(args, runtime):
             "trace": [asdict(step) for step in result.trace], "usage": asdict(result.usage), "exchanges": exchanges}
         rows.append(row)
         report = {"thresholds": {"lower": .1, "upper": .9}, "review_model": args.review_model,
+            "review_profile": args.review_profile if args.review_model else None,
+            "topic_review_model": args.topic_review_model,
+            "topic_review_profile": args.topic_review_profile if args.topic_review_model else None,
             "request_mode": "native" if runtime else args.request_mode,
             **({"checkpoint_revision": runtime.revision} if runtime else {}),
             "total": len(rows), "outcomes": dict(outcomes), "cases": rows}
         args.output.parent.mkdir(parents=True, exist_ok=True)
         encoded = json.dumps(report, ensure_ascii=False, indent=2)
-        for secret in (key, os.environ.get(args.review_key_env, "") if args.review_key_env else ""):
+        for secret in (key, os.environ.get(args.review_key_env, "") if args.review_key_env else "",
+                       os.environ.get(args.topic_review_key_env, "") if args.topic_review_key_env else ""):
             if secret:
                 encoded = encoded.replace(secret, "[REDACTED]")
         args.output.write_text(encoded + "\n")
@@ -142,14 +152,23 @@ def main():
                         help="Declaration of the target Laya deployment's System One schema.")
     parser.add_argument("--key-file", type=Path)
     parser.add_argument("--review-model")
+    parser.add_argument("--review-profile", choices=sorted(REVIEW_PROFILES), default=REVIEW_PROFILE,
+                        help="Review protocol; select tali.qwen3guard.v1 for native Qwen3Guard-Gen moderation.")
     parser.add_argument("--review-base-url")
     parser.add_argument("--review-key-env")
+    parser.add_argument("--topic-review-model")
+    parser.add_argument("--topic-review-base-url")
+    parser.add_argument("--topic-review-key-env")
+    parser.add_argument("--topic-review-profile", choices=("generic-chat", REVIEW_PROFILE), default="generic-chat",
+                        help="Optional independent Topic reviewer; absent means the Laya result is final.")
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args()
     if args.base_url and args.key_file is None:
         parser.error("Remote inference requires --key-file.")
     if any((args.review_model, args.review_base_url, args.review_key_env)) and not all((args.review_model, args.review_base_url, args.review_key_env)):
         parser.error("Review requires --review-model, --review-base-url and --review-key-env together.")
+    if any((args.topic_review_model, args.topic_review_base_url, args.topic_review_key_env)) and not all((args.topic_review_model, args.topic_review_base_url, args.topic_review_key_env)):
+        parser.error("Topic review requires --topic-review-model, --topic-review-base-url and --topic-review-key-env together.")
     return asyncio.run(replay(args))
 
 

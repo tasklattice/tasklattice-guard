@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import json
+import sys
 import threading
 import time
 from copy import deepcopy
@@ -42,6 +43,8 @@ async def test_builtin_laya_sizes_torch_threads_to_cpu_budget(tmp_path, monkeypa
             monkeypatch.delenv(name, raising=False)
         else:
             monkeypatch.setenv(name, value)
+    for name in ("OMP_NUM_THREADS", "MKL_NUM_THREADS", "OPENBLAS_NUM_THREADS"):
+        monkeypatch.delenv(name, raising=False)
     monkeypatch.setenv("GUARD_BUILTIN_LAYA_MODEL_PATH", str(tmp_path))
     monkeypatch.setenv("GUARD_BUILTIN_LAYA_INFERENCE_CONCURRENCY", str(concurrency))
     monkeypatch.setattr(builtin_laya, "cpu_capacity_cores", lambda: capacity)
@@ -50,6 +53,62 @@ async def test_builtin_laya_sizes_torch_threads_to_cpu_budget(tmp_path, monkeypa
     assert runtime is not None
     try:
         assert runtime.torch_threads == expected
+    finally:
+        await runtime.close()
+
+
+def test_cpu_bootstrap_sets_native_defaults_before_loading_frameworks(tmp_path, monkeypatch):
+    monkeypatch.setenv("GUARD_BUILTIN_LAYA_MODEL_PATH", str(tmp_path))
+    monkeypatch.setenv("GUARD_RUNNER_CPU_MILLICORES", "4000")
+    monkeypatch.setenv("GUARD_BUILTIN_LAYA_INFERENCE_CONCURRENCY", "2")
+    monkeypatch.delenv("GUARD_BUILTIN_LAYA_TORCH_THREADS", raising=False)
+    monkeypatch.setattr(builtin_laya, "cpu_capacity_cores", lambda: 8)
+    for name in ("OMP_NUM_THREADS", "MKL_NUM_THREADS", "OPENBLAS_NUM_THREADS"):
+        monkeypatch.setenv(name, "32")
+    builtin_laya.configure_builtin_cpu_environment()
+    for name in ("OMP_NUM_THREADS", "MKL_NUM_THREADS", "OPENBLAS_NUM_THREADS"):
+        assert builtin_laya.os.environ[name] == "2"
+    monkeypatch.delenv("GUARD_BUILTIN_LAYA_MODEL_PATH")
+    monkeypatch.setenv("OMP_NUM_THREADS", "8")
+    builtin_laya.configure_builtin_cpu_environment()
+    assert builtin_laya.os.environ["OMP_NUM_THREADS"] == "8"
+
+
+async def test_native_cpu_budget_covers_blas_and_each_workers_openmp_runtime(tmp_path, monkeypatch):
+    limits = []
+    torch_initializations = []
+    limiter = object()
+
+    def limit(**options):
+        limits.append((threading.get_ident(), options))
+        return limiter
+
+    monkeypatch.setitem(sys.modules, "threadpoolctl", SimpleNamespace(
+        threadpool_limits=limit,
+        threadpool_info=lambda: [
+            {"user_api": "blas", "internal_api": "openblas", "prefix": "libopenblas", "num_threads": 2, "filepath": "/private/library"},
+            {"user_api": "openmp", "internal_api": "openmp", "prefix": "libgomp", "num_threads": 2},
+        ],
+    ))
+    runtime = BuiltinLaya(tmp_path, concurrency=2, torch_threads=2)
+    entered = threading.Barrier(2)
+
+    def load():
+        runtime._init_torch_threads = lambda: torch_initializations.append(threading.get_ident())
+        runtime._configure_native_threads()
+        return REVISION, SimpleNamespace(system_one=lambda *_a, **_kw: (entered.wait(timeout=5), {"model": "laya"})[1])
+
+    monkeypatch.setattr(runtime, "_load", load)
+    try:
+        await runtime.start()
+        await asyncio.gather(*[runtime.predict("test", QUESTIONS, max_len=1024, head_max_len=512,
+                               deadline=time.monotonic() + 5) for _ in range(2)])
+        assert len({thread for thread, _options in limits}) == 2
+        assert [options for _thread, options in limits] == [{"limits": 2}, {"limits": 2}]
+        assert len(torch_initializations) == 1
+        assert runtime._native_thread_limit is limiter
+        assert {pool["user_api"] for pool in runtime.cpu_thread_pools} == {"blas", "openmp"}
+        assert "/private" not in json.dumps(runtime.cpu_thread_pools)
     finally:
         await runtime.close()
 

@@ -1,5 +1,10 @@
 from __future__ import annotations
 
+from .builtin_laya import BuiltinLaya, configure_builtin_cpu_environment
+
+# Native OpenMP defaults are read when the framework loads, before model start.
+configure_builtin_cpu_environment()
+
 import asyncio
 import hmac
 import json
@@ -17,7 +22,6 @@ from runner.toolkit.runtime.service import GuardrailRuntimeService
 
 from .api import RunnerAPI
 from .artifact_store import ArtifactStore
-from .builtin_laya import BuiltinLaya
 from .compiler import DefaultRunnerCompiler
 from .call_context import RedisCallContextStore
 from .config import RunnerSettings
@@ -162,6 +166,8 @@ def create_app(settings: RunnerSettings | None = None) -> FastAPI:
             logging.getLogger("uvicorn.error").info("%s", json.dumps({
                 "event": "runner_builtin_laya_loaded", "runnerVersion": SOFTWARE_VERSION["version"],
                 "runnerCommit": SOFTWARE_VERSION["commit"], **identity,
+                "device": "cpu", "inferenceConcurrency": builtin_laya.concurrency,
+                "intraOpThreads": builtin_laya.torch_threads, "nativeThreadPools": builtin_laya.cpu_thread_pools,
             }))
 
         watchdog.start()

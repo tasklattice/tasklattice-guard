@@ -33,6 +33,8 @@ import { PolicyCatalog, type PolicyDto } from "../policy-catalog/catalog.js";
 import {
   capabilityBindingDefinitions,
   localCapabilitySurfaces,
+  isLayaPrimaryBinding,
+  layaPrimaryBindingIds,
   type CapabilityBindingId,
 } from "../../shared/guardrail-catalog.js";
 import {
@@ -49,6 +51,7 @@ import {
   modelRuntimeToWire,
   modelInputSchema,
   normalizeModelAssignments,
+  withBuiltinLayaPrimaries,
   providerInputSchema,
   providerAcceptsProfile,
   providerRegistrationSchema,
@@ -70,7 +73,7 @@ import { PostgresValidationCredentialLeaseStore, type ValidationCredentialLeaseS
 import type { ControlSessionIdentity } from "../services/runner-control-sessions.js";
 import { GroupRuntimeModelService, type GroupModelTransaction } from "./group-runtime.js";
 import { modelBindingValidationFingerprint, modelRuntimeValidationFingerprint } from "./runtime-fingerprint.js";
-import { builtinLaya, isBuiltinLaya } from "./builtin-laya.js";
+import { builtinLaya, builtinLayaConfigurationId, isBuiltinLaya } from "./builtin-laya.js";
 import { isDedicatedJailbreakDetectEndpoint, isNvidiaModelCatalog, jailbreakDetectAttackInput, jailbreakDetectEndpoint, jailbreakDetectModel, jailbreakDetectProfile, jailbreakDetectResponse, jailbreakDetectSafeInput } from "./jailbreak-detect.js";
 
 const chatEnvelope = z.object({
@@ -158,7 +161,22 @@ export class ModelConfigurationService {
         model: builtinLaya.model, profile: builtinLaya.profile, maxConcurrency: 1, rateLimitAttempts: 1,
       }).onConflictDoNothing({ target: modelDefinitions.id });
     });
-    await this.ensureDraft(null);
+    const draft = await this.ensureDraft(null);
+    const previous = normalizeModelAssignments(draft.assignments);
+    const assignments = withBuiltinLayaPrimaries(previous);
+    if (JSON.stringify(previous) !== JSON.stringify(assignments)) {
+      // Upgrade the editable draft, keeping reviewers and specialist settings.
+      // The active revision still follows the normal reviewed rollout.
+      const changed = layaPrimaryBindingIds.filter(id => previous.bindings[id] !== assignments.bindings[id]);
+      const checks = (draft.validationReport?.checks ?? []).filter(check =>
+        !changed.some(id => checkBelongsToTarget(check, id)));
+      const report = await this.reportFromChecks(assignments, checks);
+      const [updated] = await this.db.update(modelConfigurationRevisions).set({
+        assignments, state: "draft", validationReport: report, validatedAt: null,
+        failureReason: null, updatedAt: new Date(),
+      }).where(unchangedRevision(draft)).returning(editableRevisionColumns);
+      if (!updated) throw new ConflictError("The model draft changed during initialization.", "model_configuration_changed");
+    }
   }
 
   private async builtinReady(providers: readonly ProviderRow[]): Promise<boolean> {
@@ -642,6 +660,7 @@ export class ModelConfigurationService {
   async updateDraft(raw: unknown, actorId: string) {
     assertPlatformAuthority();
     const assignments = assignmentInputSchema.parse(raw);
+    for (const id of layaPrimaryBindingIds) assertManagedPrimary(id, assignments.bindings[id]);
     const ids = [...new Set(assignedModelIds(assignments))];
     const models = ids.length
       ? await this.db.select().from(modelDefinitions).where(and(inArray(modelDefinitions.id, ids),
@@ -723,6 +742,7 @@ export class ModelConfigurationService {
 
   async updateAssignment(target: ModelAssignmentTarget, modelId: string | null, actorId: string, validationId?: string) {
     assertPlatformAuthority();
+    assertManagedPrimary(target, modelId);
     const existing = await this.ensureDraft(actorId);
     const previous = normalizeModelAssignments(existing.assignments);
     if ((target === "control_plane" ? previous.controlPlane : previous.bindings[target]) === modelId && !validationId) return publicRevision(existing);
@@ -872,7 +892,7 @@ export class ModelConfigurationService {
         throw new ConflictError("The reviewed configuration changed. Review the latest changes again.", "model_configuration_changed");
       }
       const proposed = normalizeModelAssignments(draft.assignments);
-      const assignments = normalizeModelAssignments(active?.assignments);
+      const assignments = active ? normalizeModelAssignments(active.assignments) : withBuiltinLayaPrimaries(normalizeModelAssignments(null));
       const changes = modelBindingChanges(proposed, assignments, draft.validationReport?.checks ?? []);
       const selected = new Set(selection.bindingIds);
       if (selection.bindingIds.some(id => !changes.some(change => change.id === id))) {
@@ -923,6 +943,8 @@ export class ModelConfigurationService {
 
   async finalizeActivation(revisionId: string, sourcePoolId?: string): Promise<boolean> {
     assertPlatformAuthority();
+    // Implicit defaults are already effective and have no activation row.
+    if (revisionId === builtinLayaConfigurationId) return true;
     const completed = await this.db.transaction(async (tx) => {
       await advisoryTransactionLock(tx, "traffic-router-bindings");
       // A unique synchronization ID prevents delayed ACKs from replacing a newer config.
@@ -952,6 +974,7 @@ export class ModelConfigurationService {
 
   async failActivation(revisionId: string, reason: string, sourcePoolId?: string): Promise<void> {
     assertPlatformAuthority();
+    if (revisionId === builtinLayaConfigurationId) return;
     await this.db.transaction(async tx => {
       await advisoryTransactionLock(tx, "traffic-router-bindings");
       await tx.select({ id: controllerState.id }).from(controllerState).where(eq(controllerState.id, "singleton")).for("update");
@@ -974,7 +997,20 @@ export class ModelConfigurationService {
         inArray(modelConfigurationRevisions.state, [...states])))
       .orderBy(desc(modelConfigurationRevisions.generation), desc(modelConfigurationRevisions.revision));
     const revision = rows.find((item) => includeActivating && item.state === "activating") ?? rows[0];
-    if (!revision) return null;
+    if (!revision) {
+      // A new installation can inspect with Laya before any optional review
+      // configuration has been saved or activated.
+      const [models, providers] = await Promise.all([
+        database.select().from(modelDefinitions).where(eq(modelDefinitions.id, builtinLaya.modelId)),
+        database.select().from(modelProviders).where(eq(modelProviders.id, builtinLaya.providerId)),
+      ]);
+      const model = models.find(item => item.id === builtinLaya.modelId);
+      const provider = providers.find(item => item.id === builtinLaya.providerId);
+      if (!model || !provider) return null;
+      return { revisionId: builtinLayaConfigurationId, revision: 0, generation: null,
+        assignments: withBuiltinLayaPrimaries(normalizeModelAssignments(null)),
+        models: [activeModelRuntime(model, provider)] };
+    }
     if (database === this.db && !includeActivating && this.activeCache?.id === revision.id) return this.activeCache.configuration;
     const normalizedAssignments = normalizeModelAssignments(revision.assignments);
     const ids = [...new Set(assignedModelIds(normalizedAssignments))];
@@ -1562,7 +1598,13 @@ export class ModelConfigurationService {
     const [latest] = await this.db.select().from(modelConfigurationRevisions)
       .where(isNull(modelConfigurationRevisions.projectId))
       .orderBy(desc(modelConfigurationRevisions.revision)).limit(1);
-    return this.createDraftFrom(normalizeModelAssignments(latest?.assignments), actorId, latest?.validationReport);
+    const previous = normalizeModelAssignments(latest?.assignments);
+    const assignments = withBuiltinLayaPrimaries(previous);
+    const changed = layaPrimaryBindingIds.filter(id => previous.bindings[id] !== assignments.bindings[id]);
+    const report = latest?.validationReport && changed.length
+      ? await this.reportFromChecks(assignments, latest.validationReport.checks.filter(check =>
+        !changed.some(id => checkBelongsToTarget(check, id)))) : latest?.validationReport;
+    return this.createDraftFrom(assignments, actorId, report);
   }
 
   private async createDraftFrom(assignments: ModelAssignments, actorId: string | null, validationReport: ModelValidationReport | null = null) {
@@ -1660,6 +1702,12 @@ function builtinResourceState(builtinReady: boolean) {
     status: builtinReady ? "validated" as const : "pending" as const,
     validationMessage: builtinReady ? "The Default Runner loaded the built-in English checkpoint." : "Waiting for the Default Runner to load the built-in English checkpoint.",
   };
+}
+
+function assertManagedPrimary(target: ModelAssignmentTarget, modelId: string | null) {
+  if (isLayaPrimaryBinding(target) && modelId !== builtinLaya.modelId) {
+    throw new ValidationError(`${target} uses built-in Laya. Configure its classifier_review binding instead.`);
+  }
 }
 
 function publicProvider(provider: ProviderRow, builtinReady = false) {

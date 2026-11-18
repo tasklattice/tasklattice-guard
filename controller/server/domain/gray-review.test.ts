@@ -23,7 +23,7 @@ function plan(id: string, rails: Array<"input" | "output"> = ["input"]) {
 it.each(["content-safety-model", "prompt-instruction-attacks", "pii-semantic", "business-topics"])("compiles %s without a required review model", id => {
   const compiled = plan(id);
   expect(compiled.steps.length).toBeGreaterThan(0);
-  expect(publishedProtectionCoverage(compiled)!.requiredModelBindings).not.toContain("classifier_review.input");
+  expect(publishedProtectionCoverage(compiled)!.requiredModelBindings).not.toContain("classifier_review.content_safety.input");
 });
 
 it("keeps input and output review assignments optional for classifier Rules", () => {
@@ -33,10 +33,10 @@ it("keeps input and output review assignments optional for classifier Rules", ()
 });
 
 it("validates model compatibility for independent review assignments", () => {
-  expect(assignmentTargetAcceptsModel("classifier_review.input","tali.classifier-review.v1","custom-openai-compatible")).toBe(true);
-  expect(assignmentTargetAcceptsModel("classifier_review.output","generic-chat","deepseek")).toBe(true);
-  expect(assignmentTargetAcceptsModel("classifier_review.input","generic-chat","custom-openai-compatible")).toBe(true);
-  expect(assignmentTargetAcceptsModel("classifier_review.input","tali.nemotron-safety-guard-v3.v1","custom-openai-compatible")).toBe(false);
+  expect(assignmentTargetAcceptsModel("classifier_review.content_safety.input","tali.classifier-review.v1","custom-openai-compatible")).toBe(true);
+  expect(assignmentTargetAcceptsModel("classifier_review.content_safety.output","generic-chat","deepseek")).toBe(true);
+  expect(assignmentTargetAcceptsModel("classifier_review.content_safety.input","generic-chat","custom-openai-compatible")).toBe(true);
+  expect(assignmentTargetAcceptsModel("classifier_review.content_safety.input","tali.nemotron-safety-guard-v3.v1","custom-openai-compatible")).toBe(false);
   expect(assignmentTargetAcceptsModel("content_safety.output","tali.classifier-review.v1","custom-openai-compatible")).toBe(false);
   expect(assignmentTargetAcceptsModel("control_plane","tali.classifier-review.v1","custom-openai-compatible")).toBe(false);
 });

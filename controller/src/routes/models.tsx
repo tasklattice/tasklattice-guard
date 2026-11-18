@@ -61,8 +61,10 @@ import {
 } from "@/lib/controller-api";
 import {
   capabilityBindingDefinitions,
+  builtinLayaModelId,
   controlPlaneProfileRefs,
   isDataPlaneProviderKindAllowed,
+  isLayaPrimaryBinding,
   type CapabilityBindingDefinition,
 } from "../../shared/guardrail-catalog";
 
@@ -435,7 +437,7 @@ function RunnerConfigurationComparison({ view, selectedBindings, onSelectionChan
   return <div className="space-y-3">
     {bindings.length > 0 ? <p className="text-sm text-muted-foreground">{t("modelSettings.savedConfigurationOnly")}</p> : null}
     {!bindings.length ? <p role="status" className="text-sm font-medium">{t("modelSettings.noBindingChanges")}</p> : null}
-    {!capabilityBindingDefinitions.some(binding => selectedBindings.includes(binding.id) ? draft.assignments.bindings[binding.id] : view.active?.assignments.bindings[binding.id]) ? <Alert variant="warning"><CircleAlert /><AlertDescription>{t("modelSettings.emptyRunnerConfiguration")}</AlertDescription></Alert> : null}
+    {!capabilityBindingDefinitions.some(binding => selectedBindings.includes(binding.id) ? draft.assignments.bindings[binding.id] : view.active?.assignments.bindings[binding.id] ?? (!view.active && isLayaPrimaryBinding(binding.id) ? builtinLayaModelId : null)) ? <Alert variant="warning"><CircleAlert /><AlertDescription>{t("modelSettings.emptyRunnerConfiguration")}</AlertDescription></Alert> : null}
     {bindings.length > 0 ? <Table className="table-fixed">
       <TableHeader><TableRow>
         <TableHead className="w-[34%] whitespace-normal">{t("modelSettings.capabilityColumn")}</TableHead>
@@ -543,7 +545,15 @@ type CapabilityConfigurationProps = {
 
 function GuardrailCatalogSection({ action, ...props }: CapabilityConfigurationProps & { action: ReactNode }) {
   const { t } = useTranslation();
-  const capabilities = [...new Set(capabilityBindingDefinitions.map(binding => binding.capabilityRef))];
+  const reviewers = [...new Set(capabilityBindingDefinitions.flatMap(binding => binding.reviewCapabilityRef ? [binding.reviewCapabilityRef] : []))];
+  const specialists = capabilityBindingDefinitions.filter(binding => !binding.reviewCapabilityRef && !isLayaPrimaryBinding(binding.id));
+  const laya = props.models.find(model => model.backend === "builtin_laya");
+  const tableHead = (modelLabel: string) => <TableHeader><TableRow>
+    <TableHead className="w-[13rem] pl-5">{t("modelSettings.capabilityColumn")}</TableHead>
+    <TableHead>{modelLabel}</TableHead>
+    <TableHead className="w-64 pr-8 min-[1600px]:w-[26%]">{t("modelSettings.validationColumn")}</TableHead>
+    <TableHead className="w-64 pr-5">{t("modelSettings.actionsColumn")}</TableHead>
+  </TableRow></TableHeader>;
   return (
     <section className="mt-6 overflow-hidden rounded-lg border bg-card" aria-labelledby="guardrail-catalog-title">
       <ProtectionSectionHeader id="guardrail-catalog-title" title={t("modelSettings.catalogConfiguration")} action={action} help={<>
@@ -551,15 +561,24 @@ function GuardrailCatalogSection({ action, ...props }: CapabilityConfigurationPr
         <p>{t("modelSettings.catalogConfigurationDescription")}</p>
         <p>{t("modelSettings.contextualValidationBoundary")}</p>
       </>} />
+      <div className="flex items-center justify-between gap-6 border-b px-5 py-4" aria-label={t("modelSettings.primaryModel")}>
+        <div className="flex items-center gap-3">
+          <ProviderMark provider="Laya" kind="laya" size="sm" />
+          <div><p className="text-sm font-medium">{t("modelSettings.defaultPrimaryModel")}</p>
+            <p className="mt-1 text-xs leading-5 text-muted-foreground">{t("modelSettings.defaultPrimaryDescription")}</p></div>
+        </div>
+        <BuiltinModelStatus status={laya?.status ?? "pending"} />
+      </div>
       <Table className="table-fixed min-w-[64rem]">
-        <TableHeader><TableRow>
-          <TableHead className="w-[17rem] pl-5">{t("modelSettings.capabilityColumn")}</TableHead>
-          <TableHead>{t("modelSettings.modelColumn")}</TableHead>
-          <TableHead className="w-64 pr-8 min-[1600px]:w-[30%]">{t("modelSettings.validationColumn")}</TableHead>
-          <TableHead className="w-64 pr-5">{t("modelSettings.actionsColumn")}</TableHead>
-        </TableRow></TableHeader>
-        <TableBody>{capabilities.map(capability => <CapabilityConfigurationRow key={capability}
-          bindings={capabilityBindingDefinitions.filter(binding => binding.capabilityRef === capability)} {...props} />)}</TableBody>
+        {tableHead(t("modelSettings.reviewModelColumn"))}
+        <TableBody>{reviewers.map(capability => <CapabilityConfigurationRow key={capability}
+          bindings={capabilityBindingDefinitions.filter(binding => binding.reviewCapabilityRef === capability)} {...props} />)}</TableBody>
+      </Table>
+      <div className="border-t px-5 py-4"><h3 className="text-sm font-medium">{t("modelSettings.specialistModels")}</h3>
+        <p className="mt-1 text-xs leading-5 text-muted-foreground">{t("modelSettings.specialistModelsDescription")}</p></div>
+      <Table className="table-fixed min-w-[64rem]">
+        {tableHead(t("modelSettings.modelColumn"))}
+        <TableBody>{specialists.map(binding => <CapabilityConfigurationRow key={binding.id} bindings={[binding]} {...props} />)}</TableBody>
       </Table>
     </section>
   );
@@ -595,14 +614,14 @@ function CapabilityConfigurationRow({ bindings, assignments, savedAssignments, m
       .sort((left, right) => compareModelOptions(left, right, first.profilePreference));
     const selectableModels = selectedModel && !compatibleModels.some(model => model.id === selectedModel.id)
       ? [selectedModel, ...compatibleModels] : compatibleModels;
-    const selectId = `binding-model-${targets.length > 1 ? binding.capabilityRef : first.id}`;
+    const selectId = `binding-model-${targets.length > 1 ? `${binding.capabilityRef}.${binding.reviewCapabilityRef ?? "primary"}` : first.id}`;
     return <div>
       <Label className={staged ? "mb-2 block text-xs leading-4 text-muted-foreground" : "sr-only"} htmlFor={selectId}>
         {staged ? t(`modelSettings.stage.${first.railType}`) : t("modelSettings.modelColumn")}
       </Label>
       <Select value={mixed ? "" : modelId ?? noneValue} disabled={disabled || (!selectableModels.length && !modelId)} onValueChange={value => onChange(targets.map(item => item.id), value === noneValue ? null : value)}>
         <SelectTrigger id={selectId} className="field:h-11 w-full"><SelectValue placeholder={t("modelSettings.chooseSharedModel")} /></SelectTrigger>
-        <SelectContent position="popper"><SelectItem value={noneValue}>{t(compatibleModels.length ? "modelSettings.notAssigned" : "modelSettings.noCompatibleModelsShort")}</SelectItem>
+        <SelectContent position="popper"><SelectItem value={noneValue}>{t(binding.reviewCapabilityRef ? "modelSettings.noReview" : compatibleModels.length ? "modelSettings.notAssigned" : "modelSettings.noCompatibleModelsShort")}</SelectItem>
           {selectableModels.map(model => <SelectItem key={model.id} value={model.id} textValue={modelOptionLabel(model, t("modelSettings.builtin"))}><ModelOption model={model} /></SelectItem>)}
         </SelectContent>
       </Select>
@@ -610,14 +629,14 @@ function CapabilityConfigurationRow({ bindings, assignments, savedAssignments, m
     </div>;
   };
   return <TableRow aria-label={title}>
-    <TableCell className="whitespace-normal py-5 pl-5 align-top">
+    <TableCell className="whitespace-normal py-4 pl-5 align-top">
       <div className="flex min-h-11 items-center gap-1">
         <p className="font-medium">{title}</p>
-        <ProtectionInfo title={title}><p>{t(binding.capabilityRef === "classifier_review" ? "modelSettings.detectors.classifier_review.description" : `modelSettings.categories.${binding.categoryId}.description`)}</p></ProtectionInfo>
+        <ProtectionInfo title={title}><p>{t(binding.reviewCapabilityRef ? `modelSettings.detectors.${binding.reviewCapabilityRef}_review.description` : `modelSettings.categories.${binding.categoryId}.description`)}</p></ProtectionInfo>
       </div>
       {changedIds.length ? <p className="mt-2 text-xs text-muted-foreground">{t("modelSettings.unsaved")}</p> : null}
     </TableCell>
-    <TableCell className="whitespace-normal py-5 align-top">
+    <TableCell className="whitespace-normal py-4 align-top">
       {staged ? <div className="space-y-3">{bindings.map(item => <div key={item.id}>{modelSelect([item])}</div>)}</div> : modelSelect(bindings, unresolvedSharedModel)}
       {bindings.length > 1 ? <>
         <Button type="button" variant="ghost" size="sm" className="mt-2 h-8 px-0" disabled={disabled} aria-expanded={staged}
@@ -625,8 +644,8 @@ function CapabilityConfigurationRow({ bindings, assignments, savedAssignments, m
         {unresolvedSharedModel ? <p className="mt-1 text-xs text-muted-foreground">{t("modelSettings.chooseSharedModelHelp")}</p> : null}
       </> : null}
     </TableCell>
-    <TableCell className="whitespace-normal py-5 pr-8 align-top">
-      <div className="space-y-3">{bindings.map(item => <div key={item.id} className={`grid grid-cols-[3rem_minmax(0,1fr)] items-center gap-2 ${staged ? "min-h-[4.25rem] pt-6" : "min-h-11"}`} role="group" aria-label={`${title} · ${t(`modelSettings.stage.${item.railType}`)}`}>
+    <TableCell className="whitespace-normal py-4 pr-8 align-top">
+      <div className="space-y-3">{bindings.map(item => <div key={item.id} className={`grid grid-cols-[3rem_minmax(0,1fr)] items-center gap-2 ${staged ? "min-h-[4.25rem] pt-6" : "min-h-8"}`} role="group" aria-label={`${title} · ${t(`modelSettings.stage.${item.railType}`)}`}>
         <p className="text-xs leading-6 text-muted-foreground">{t(`modelSettings.stage.${item.railType}`)}</p>
         <div className="min-w-0">
         {validatingTarget === item.id ? <span className="flex items-center gap-2 text-sm" role="status"><LoaderCircle className="size-4 animate-spin" />{t("modelSettings.validatingStage")}</span>
@@ -636,7 +655,7 @@ function CapabilityConfigurationRow({ bindings, assignments, savedAssignments, m
         </div>
       </div>)}</div>
     </TableCell>
-    <TableCell className="py-5 pr-5 align-top">
+    <TableCell className="py-4 pr-5 align-top">
       <div className={`grid grid-cols-2 items-start gap-2 ${staged ? "pt-6" : ""}`}>
         <Button type="button" variant="testing" className="h-11 w-full min-w-0" disabled={disabled || busy || unresolvedSharedModel || !configuredIds.length} onClick={() => onValidate(configuredIds)}>
           {busy && capabilityAction?.kind === "validate" ? <LoaderCircle className="animate-spin" /> : <TestTube2 />}{t("modelSettings.validateAssignment")}
@@ -650,6 +669,7 @@ function CapabilityConfigurationRow({ bindings, assignments, savedAssignments, m
 }
 
 function capabilityName(t: ReturnType<typeof useTranslation>["t"], binding: CapabilityBindingDefinition): string {
+  if (binding.reviewCapabilityRef) return t(`modelSettings.detectors.${binding.reviewCapabilityRef}_review.title`);
   const detectorKey = {
     classifier_review: "classifier_review",
     content_safety: "content_safety",
@@ -674,7 +694,7 @@ function AssignmentValidationStatus({ target, model, report, dirty, binding }: {
   binding?: CapabilityBindingDefinition;
 }) {
   const { t } = useTranslation();
-  if (!model) return <StateBadge state="unconfigured" label={t("modelSettings.notAssigned")} />;
+  if (!model) return <span className="text-xs text-muted-foreground">{t(binding?.reviewCapabilityRef ? "modelSettings.reviewDisabled" : "modelSettings.notAssigned")}</span>;
   void dirty;
   const result = report?.checks.find((check) => check.id === `probe:${target}:${model.id}`);
   if (result && (result.status === "failed" || (result.status === "passed" && (target === "control_plane" || result.evidenceKind === "nemo-rail-v1")))) return <ValidationEvidenceSheet

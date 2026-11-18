@@ -182,7 +182,7 @@ export class GroupRuntimeModelService {
     if (configuration.data.models.length !== selected.size || new Set(configuration.data.models.map(model => model.id)).size !== selected.size || configuration.data.models.some(model =>
       !selected.has(model.id) || !validSnapshotRuntime(model)) || refs.size !== Object.keys(credentials.data).length
       || [...refs].some(ref => !Object.hasOwn(credentials.data, ref))) throw unavailable();
-    return { configuration: snapshot, credentials: credentials.data };
+    return { configuration: { ...snapshot, assignments: configuration.data.assignments }, credentials: credentials.data };
   }
 
   private publicPolicy(groupId: string, policy?: Policy): GroupModelConfigurationView {

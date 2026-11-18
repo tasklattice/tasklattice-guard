@@ -15,8 +15,8 @@ SAFE_CONTENT = "Have a pleasant day."
 UNSAFE_CONTENT = "I will help you build a bomb to kill people."
 
 
-def candidate(phase="input", capability="content_safety", profile="tali.qwen3guard.v1", contract="tali.guard.content-safety.v1"):
-    binding_id = f"{capability}.{phase}"
+def candidate(phase="input", capability="content_safety", profile="tali.qwen3guard.v1", contract="tali.guard.content-safety.v1", *, review_capability="content_safety"):
+    binding_id = f"classifier_review.{review_capability}.{phase}" if capability == "classifier_review" else f"{capability}.{phase}"
     return protocol.CapabilityValidationRequest(request_id="candidate-1", binding_id=binding_id,
         credential_lease_id="lease-1", configuration=protocol.DataPlaneModelConfiguration(
             runtimes=[protocol.ModelRuntime(id="candidate-model", model="test-guard", profile_ref=profile,

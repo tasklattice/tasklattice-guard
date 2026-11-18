@@ -107,21 +107,21 @@ Binding: capability + direction          Published Guardrail version
 | --- | --- |
 | Provider | The external model service URL and its credential. |
 | Model | A model identifier, protocol profile, timeout, and token limit. |
-| Binding | The Model used for a capability and direction, such as `content_safety.input`. |
+| Binding | The Model used for a capability and direction, such as `classifier_review.content_safety.input`. |
 | Policy | The checks, rules, and actions selected in a Guardrail. |
 | Guardrail | A composition of Policies; publishing creates a version the runtime can load. |
 | Router | Routes Endpoint traffic to a specific published Guardrail version. |
 | Endpoint | The callable runtime integration, with a LiteLLM or F5 adapter and its own credential. |
 | Veritas Target | Veritas's configuration for calling that Endpoint. |
 
-Model registration alone does not enable a check. The binding must be active,
+The four initial classifiers use built-in Laya automatically. Model registration alone does not enable a reviewer or specialist check. The binding must be active,
 the Guardrail must include the corresponding Policy and direction, and the
 active Router must point to that Guardrail version.
 
-Bindings are currently **platform-wide**. Changing `content_safety.input`
+Bindings are currently **platform-wide**. Changing `classifier_review.content_safety.input`
 affects every Guardrail that uses input Content Safety. A separate Router or
 Guardrail does not give it a private model binding. Output uses its separate
-binding, `content_safety.output`.
+review binding, `classifier_review.content_safety.output`.
 
 ## Installation and help
 
@@ -240,7 +240,7 @@ guardctl platform bind
 
 | Option | Meaning |
 | --- | --- |
-| `--binding` | One capability/direction, for example `content_safety.input` or `jailbreak.input`. |
+| `--binding` | One capability/direction, for example `classifier_review.content_safety.input` or `classifier_review.jailbreak.input`; initial classifiers use built-in Laya. |
 | `--model-id` | Registered Model ID returned by `register-model`. |
 | `--state` | Private operation journal, saved before mutations. |
 | `--validation-id` | Reuse a current candidate-validation receipt for this account, binding, and Model. |
@@ -295,7 +295,7 @@ Router ID/revision, change-request ID, and state-file path. Newly created
 Endpoint credentials are saved only in the private state file. Reusing an
 Endpoint does not retrieve its existing credential.
 
-## Walkthrough: NVIDIA input Content Safety
+## Walkthrough: Laya Content Safety with Qwen3Guard review
 
 This creates an isolated model-backed input check from a Default copy. It is
 the configuration pattern used for the Content Safety comparison; it does not
@@ -307,15 +307,15 @@ edit the patch's complete `policyBindings` list accordingly.
 ```sh
 bin/guardctl platform register-model \
   --url http://localhost:38081 --env-file .local-secrets/guardctl.env \
-  --provider-name 'NVIDIA NIM' --provider-kind custom-openai-compatible \
-  --provider-url https://integrate.api.nvidia.com/v1 \
-  --model nvidia/llama-3.1-nemotron-safety-guard-8b-v3 \
-  --profile tali.nemotron-safety-guard-v3.v1 \
+  --provider-name Qwen3Guard --provider-kind custom-openai-compatible \
+  --provider-url "$QWEN3GUARD_BASE_URL" \
+  --model Qwen/Qwen3Guard-Gen-8B \
+  --profile tali.qwen3guard.v1 \
   --timeout-seconds 30 --max-tokens 512 \
-  --key-env MODEL_GUARDRAILS_NVIDIA_API_KEY_ENV_VAR
+  --key-env QWEN3GUARD_API_KEY
 ```
 
-Record the returned `modelId` as `NVIDIA_MODEL_ID` in your shell. This is an
+Record the returned `modelId` as `REVIEW_MODEL_ID` in your shell. This is an
 identifier, not a credential.
 
 ### 2. Activate the input binding
@@ -323,8 +323,8 @@ identifier, not a credential.
 ```sh
 bin/guardctl platform bind \
   --url http://localhost:38081 --env-file .local-secrets/guardctl.env \
-  --binding content_safety.input --model-id "$NVIDIA_MODEL_ID" \
-  --state .local-secrets/nvidia-content-input.json
+  --binding classifier_review.content_safety.input --model-id "$REVIEW_MODEL_ID" \
+  --state .local-secrets/qwen-content-input-review.json
 ```
 
 This leaves output and unrelated bindings unchanged.

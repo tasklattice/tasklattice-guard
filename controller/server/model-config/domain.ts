@@ -10,6 +10,7 @@ import {
   isDataPlaneProviderKindAllowed,
   isTypeSafeProfile,
   isLayaProfile,
+  layaPrimaryBindingIds,
 } from "../../shared/guardrail-catalog.js";
 
 export const modelProviderKinds = [
@@ -75,6 +76,13 @@ export const emptyModelAssignments = (): ModelAssignments => ({
   bindings: Object.fromEntries(capabilityBindingIds.map((id) => [id, null])) as Record<CapabilityBindingId, null>,
 });
 
+/** Platform-managed initial classifiers; review and specialist choices survive. */
+export function withBuiltinLayaPrimaries(assignments: ModelAssignments): ModelAssignments {
+  return { ...assignments, bindings: { ...assignments.bindings,
+    ...Object.fromEntries(layaPrimaryBindingIds.map(id => [id, builtinLaya.modelId])),
+  } };
+}
+
 export const providerInputSchema = z.object({
   name: z.string().trim().min(3).max(80),
   kind: z.enum(modelProviderKinds),
@@ -133,11 +141,17 @@ export const providerRegistrationSchema = z.object({
 export const assignmentInputSchema = z.object({
   controlPlane: z.string().uuid().nullable(),
   bindings: z.object(
-    Object.fromEntries(capabilityBindingIds.map((id) => [id, z.string().uuid().nullable()])) as unknown as {
-      [Id in CapabilityBindingId]: z.ZodType<string | null>;
+    Object.fromEntries([
+      ...capabilityBindingDefinitions.map(binding => [binding.id, binding.reviewCapabilityRef
+        ? z.string().uuid().nullable().optional() : z.string().uuid().nullable()]),
+      ...["classifier_review.input", "classifier_review.output"].map(id => [id,z.string().uuid().nullable().optional()]),
+    ]) as {
+      [Id in Exclude<CapabilityBindingId, `classifier_review.${string}`>]: z.ZodNullable<z.ZodString>;
+    } & {
+      [Id in Extract<CapabilityBindingId, `classifier_review.${string}`> | LegacyReviewBindingId]: z.ZodOptional<z.ZodNullable<z.ZodString>>;
     },
   ),
-});
+}).transform(normalizeModelAssignments);
 
 export const profileContracts: Record<ModelProfile, readonly string[]> = {
   "tali.classifier-review.v1": ["tali.guard.classifier-review.v1"],
@@ -146,6 +160,7 @@ export const profileContracts: Record<ModelProfile, readonly string[]> = {
     "tali.guard.content-safety.v1",
     "tali.guard.jailbreak.v1",
     "tali.guard.pii.semantic.v1",
+    "tali.guard.classifier-review.v1",
   ],
   "tali.llama-guard-3.v1": ["tali.guard.content-safety.v1"],
   "tali.nemotron-content-safety.v1": ["tali.guard.content-safety.v1"],
@@ -201,16 +216,25 @@ export function resolveLayaRequestMode(
   return stored === "native" || stored === "compatible" ? stored : "compatible";
 }
 
+type LegacyReviewBindingId = "classifier_review.input" | "classifier_review.output";
+
 export function normalizeModelAssignments(
   value: Partial<{
     controlPlane: string | null;
-    bindings: Partial<Record<CapabilityBindingId, string | null>>;
+    bindings: Partial<Record<CapabilityBindingId | LegacyReviewBindingId, string | null | undefined>>;
   }> | null | undefined,
 ): ModelAssignments {
   const source = value ?? {};
   return {
     controlPlane: source.controlPlane ?? null,
-    bindings: Object.fromEntries(capabilityBindingIds.map((id) => [id, source.bindings?.[id] ?? null])) as Record<CapabilityBindingId, string | null>,
+    bindings: Object.fromEntries(capabilityBindingDefinitions.map((binding) => {
+      // Only absent security-review settings inherit a legacy stage binding.
+      // Explicit null disables review; Topic never inherits another capability's reviewer.
+      const value = source.bindings?.[binding.id];
+      const legacy = binding.reviewCapabilityRef && binding.reviewCapabilityRef !== "topic_control"
+        ? source.bindings?.[`classifier_review.${binding.railType}`] : null;
+      return [binding.id, value === undefined ? legacy ?? null : value];
+    })) as Record<CapabilityBindingId, string | null>,
   };
 }
 

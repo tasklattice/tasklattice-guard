@@ -57,8 +57,9 @@ docker buildx build --load -f Dockerfile.runner -t tali-guard-runner:laya-dev \
   --build-context runner_model_bundle=docker-image://tali-guard-runner-model-bundle:local .
 ```
 
-Open **Protection Capabilities** and select **Built-in · Laya English** for a
-supported rail. For a single-node smoke test, start with one Runner replica,
+Content safety, jailbreak, Topic Control and semantic PII automatically use
+**Built-in Laya English**. **Protection Capabilities** configures only their
+optional independent reviewers. For a single-node smoke test, start with one Runner replica,
 2 requested CPU cores, 3 GiB requested memory and a 6 GiB memory limit.
 
 Helm exposes the Runner's configured CPU limit, or its request when no limit is
@@ -67,4 +68,8 @@ uses its detected cgroup quota and available CPUs. The detected capacity also
 caps the configured budget. The Runner divides that budget among active
 inference workers and rounds down to a minimum of one Torch thread per worker.
 There is one worker by default. Set `GUARD_BUILTIN_LAYA_TORCH_THREADS` to override
-the automatic thread count per worker. The selected count is logged at startup.
+the automatic thread count per worker. Before NeMo/Torch loads, the same budget
+sets the OpenMP, MKL and OpenBLAS defaults. Loaded native pools are also limited
+at model load and worker initialization. The selected count, worker concurrency
+and native pool counts are logged at startup. See the
+[CPU audit and repeatable benchmark](../../docs/laya-cpu-inference.md).

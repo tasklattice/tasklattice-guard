@@ -16,7 +16,10 @@ from runner.toolkit.nemo.actions.topic import ChatTopicEvaluator, TopicJudgeActi
 from runner.toolkit.nemo.actions.grounding import GroundingActionProvider
 from runner.toolkit.nemo.actions.automated_reasoning import HTTPAutomatedReasoningProvider, ReasoningActionProvider
 from runner.toolkit.nemo.evaluators.pii import PiiEvaluator
-from runner.toolkit.nemo.evaluators.classifier_review import ClassifierReviewer, REVIEW_PROFILE, REVIEW_CONTRACT
+from runner.toolkit.nemo.evaluators.classifier_review import (
+    ClassifierReviewer, ClassifierReviewDispatcher, REVIEW_PROFILE, REVIEW_PROFILES, REVIEW_CONTRACT,
+    review_binding_scope,
+)
 from runner.toolkit.nemo.evaluators.jev import JEV_PROFILE, JEV_PROFILES, JEV_TOPIC_PROFILE
 from runner.toolkit.nemo.evaluators.jev_topic import JevTopicEvaluator
 from runner.toolkit.nemo.evaluators.jev_jailbreak import JevJailbreakEvaluator
@@ -117,15 +120,21 @@ def dynamic_runtime_action_providers(
         if (item.capability_ref == "classifier_review" or item.binding_id.startswith("classifier_review.")
             or REVIEW_PROFILE in {item.profile_ref, source_profiles.get(item.model_ref)}):
             phase = _rail_name(item.rail_type)
-            if (item.binding_id != f"classifier_review.{phase}" or item.capability_ref != "classifier_review"
-                or item.profile_ref not in {REVIEW_PROFILE, "generic-chat"}
+            scope = review_binding_scope(item.binding_id, phase)
+            if (item.capability_ref != "classifier_review"
+                or item.profile_ref not in REVIEW_PROFILES
                 or source_profiles.get(item.model_ref) != item.profile_ref or tuple(item.contract_refs) != (REVIEW_CONTRACT,)):
                 raise ValueError("Classifier review requires its own matching Rail binding, runtime and contract.")
             runtime = _assigned_runtime(item.model_ref,runtimes)
-            reviewers[phase] = ClassifierReviewer(base_url=runtime.base_url,model=runtime.model,api_key=runtime.api_key or "",
+            if (scope, phase) in reviewers:
+                raise ValueError("Duplicate classifier review capability and Rail binding.")
+            reviewers[(scope, phase)] = ClassifierReviewer(base_url=runtime.base_url,model=runtime.model,api_key=runtime.api_key or "",
                 provider_id=runtime.id,timeout_seconds=runtime.timeout_seconds,max_tokens=runtime.max_tokens,
                 skip_tls_verify=runtime.skip_tls_verify,transport=transports[runtime.id],rail_type=phase,
-                rate_limit_attempts=runtime.rate_limit_attempts)
+                rate_limit_attempts=runtime.rate_limit_attempts,profile_ref=item.profile_ref,review_capability=scope)
+
+    def reviewer_for(capability, phase):
+        return reviewers.get((capability, phase)) or (reviewers.get((None, phase)) if capability != "topic_control" else None)
     local_providers = local_action_providers(PromptSecurityActionProvider())
     pii_evaluator = PiiEvaluator()
 
@@ -156,8 +165,8 @@ def dynamic_runtime_action_providers(
         for item in provider_configs
     ))
     routes = [EvaluationRoute("pii", CONTRACT_PII_EXACT, pii_evaluator)]
-    for reviewer in reviewers.values():
-        routes.append(EvaluationRoute("classifier_review",REVIEW_CONTRACT,reviewer))
+    if reviewers:
+        routes.append(EvaluationRoute("classifier_review",REVIEW_CONTRACT,ClassifierReviewDispatcher(reviewers)))
     routes.extend(
         EvaluationRoute(
             capability,
@@ -177,7 +186,7 @@ def dynamic_runtime_action_providers(
             base_url=runtime.base_url, model=runtime.model, api_key=runtime.api_key or "",
             provider_id=runtime.id, timeout_seconds=runtime.timeout_seconds,
             skip_tls_verify=runtime.skip_tls_verify, transport=transports[runtime.id],
-            reviewer=reviewers.get(phase), rail_type=phase,
+            reviewer=reviewer_for(capability, phase), rail_type=phase,
             lower_threshold=runtime.lower_threshold, upper_threshold=runtime.upper_threshold,
             rate_limit_attempts=runtime.rate_limit_attempts,
         )
@@ -192,7 +201,7 @@ def dynamic_runtime_action_providers(
             base_url=runtime.base_url, model=runtime.model, api_key=runtime.api_key or "",
             provider_id=runtime.id, timeout_seconds=runtime.timeout_seconds,
             skip_tls_verify=runtime.skip_tls_verify, transport=transports.get(runtime.id),
-            reviewer=reviewers.get(phase), rail_type=phase,
+            reviewer=reviewer_for(capability, phase), rail_type=phase,
             lower_threshold=runtime.lower_threshold, upper_threshold=runtime.upper_threshold,
             rate_limit_attempts=runtime.rate_limit_attempts, request_mode=runtime.laya_request_mode,
             builtin_laya=builtin_laya if runtime.backend == BUILTIN_LAYA_BACKEND else None,
@@ -208,7 +217,7 @@ def dynamic_runtime_action_providers(
                 base_url=runtime.base_url, model=runtime.model, api_key=runtime.api_key or "",
                 provider_id=runtime.id, timeout_seconds=runtime.timeout_seconds,
                 skip_tls_verify=runtime.skip_tls_verify, transport=transports.get(runtime.id),
-                reviewer=reviewers.get(phase), rail_type=phase,
+                reviewer=reviewer_for("pii", phase), rail_type=phase,
                 lower_threshold=runtime.lower_threshold, upper_threshold=runtime.upper_threshold,
                 rate_limit_attempts=runtime.rate_limit_attempts,
             )
@@ -236,7 +245,7 @@ def dynamic_runtime_action_providers(
                 skip_tls_verify=runtime.skip_tls_verify, transport=transports[runtime.id], profile_ref=topic.profile_ref,
                 lower_threshold=runtime.lower_threshold, upper_threshold=runtime.upper_threshold,
                 rate_limit_attempts=runtime.rate_limit_attempts,
-                reviewer=reviewers.get("input"),
+                reviewer=reviewer_for("topic_control", "input"),
             )
         elif topic.profile_ref in LAYA_PROFILES:
             evaluator = LayaTopicEvaluator(
@@ -245,7 +254,7 @@ def dynamic_runtime_action_providers(
                 skip_tls_verify=runtime.skip_tls_verify, transport=transports.get(runtime.id), profile_ref=topic.profile_ref,
                 lower_threshold=runtime.lower_threshold, upper_threshold=runtime.upper_threshold,
                 rate_limit_attempts=runtime.rate_limit_attempts,
-                reviewer=reviewers.get("input"),
+                reviewer=reviewer_for("topic_control", "input"),
                 request_mode=runtime.laya_request_mode,
                 builtin_laya=builtin_laya if runtime.backend == BUILTIN_LAYA_BACKEND else None,
             )
