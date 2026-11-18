@@ -617,7 +617,12 @@ describe("Capability configuration after registration", () => {
     expect(fetcher).not.toHaveBeenCalled();
     expect((await service.validateDraft("admin")).validationReport?.valid).toBe(true);
     expect(fetcher).not.toHaveBeenCalled();
-    expect(railValidator).toHaveBeenCalledTimes(11);
+    expect(railValidator).toHaveBeenCalledTimes(7);
+    const reviews = railValidator.mock.calls.map(([request]) => request).filter(request => request.bindingId.startsWith("classifier_review."));
+    expect(reviews).toHaveLength(1);
+    expect(reviews[0]).toMatchObject({ bindingId: "classifier_review.security", configuration: {
+      bindings: [{ bindingId: "classifier_review.security", modelRef: id }],
+    } });
   });
 
   it("saves and validates capability assignments independently", async () => {

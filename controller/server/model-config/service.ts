@@ -123,20 +123,6 @@ export class ModelConfigurationService {
   setRailValidator(validator: RailValidator): void { this.railValidator = validator; }
 
   private async probeAssignment(target: ModelAssignmentTarget, provider: ProviderRow, model: ModelRow, formalValidation?: FormalValidation): Promise<RailValidationEvidence> {
-    if (target === securityReviewerId) {
-      const results = [];
-      for (const rail of securityReviewRails) {
-        const probe = await this.probeAssignment(rail.id, provider, model);
-        results.push({ rail, probe });
-      }
-      const failures = results.filter(({ probe }) => !probe.passed);
-      return { passed: !failures.length, message: failures.length
-        ? failures.map(({rail, probe}) => rail.id + ": " + probe.message).join("\n")
-        : "Shared reviewer passed all security Rails.",
-        latencyMs: results.reduce((sum, {probe}) => sum + probe.latencyMs, 0),
-        cases: results.flatMap(({rail, probe}) => (probe.cases ?? []).map(sample => ({ ...sample, id: rail.id + ":" + sample.id }))),
-      };
-    }
     const builtin = isBuiltinLaya(model.id, provider.id);
     if (target === "control_plane") return builtin
       ? { passed: false, message: "Built-in Laya is available for Protection Capabilities.", latencyMs: 0 }

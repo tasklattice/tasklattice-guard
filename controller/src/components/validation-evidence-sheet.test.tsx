@@ -198,3 +198,27 @@ it("surfaces the evaluator error type and calls a protocol mismatch an execution
   expect(screen.getByText("Execution error")).toBeTruthy();
   expect(screen.queryByText("Failed")).toBeNull();
 });
+
+it("shows review turns, individual verdicts and the total number of HTTP attempts", () => {
+  const reviewCase = (stage: string, kind: string, expected: Record<string, string>, attempts: number) => {
+    const evidence = output(kind);
+    return { ...check.cases![0], id: `tali.guard.classifier-review.v1:${stage}:${kind}`, inputContent: kind,
+      outputContent: JSON.stringify({ ...evidence,
+        validation_context: { review_stage: stage, expected_verdicts: expected, context_messages: [{role:"user", content:"Original user message"}] },
+        evaluation_evidence: Object.entries(expected).map(([capability, verdict]) => ({ capability, verdict, evaluator_id: "classifier-review" })),
+        model_exchanges: Array.from({length: attempts}, () => evidence.model_exchanges[0]),
+      }) };
+  };
+  open({ ...check, cases: [
+    reviewCase("input", "request", {content_safety:"not_matched", jailbreak:"not_matched", pii:"not_matched"}, 2),
+    reviewCase("output", "response", {content_safety:"matched", pii:"matched"}, 1),
+  ] });
+  expect(screen.getByText("2 / 2 review stages passed · 3 HTTP calls")).toBeTruthy();
+  expect(screen.getByRole("button", {name:/User request review/})).toBeTruthy();
+  expect(screen.getByRole("row", {name:/Jailbreak review not_matched not_matched/})).toBeTruthy();
+  expect(screen.getByRole("tab", {name:"HTTP calls (2)"})).toBeTruthy();
+  fireEvent.click(screen.getByRole("button", {name:/Model response review/}));
+  expect(screen.getByText("Original user message")).toBeTruthy();
+  expect(screen.getByRole("row", {name:/Semantic PII review matched matched/})).toBeTruthy();
+  expect(screen.getByRole("tab", {name:"HTTP calls (1)"})).toBeTruthy();
+});

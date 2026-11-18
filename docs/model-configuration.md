@@ -45,8 +45,11 @@ The page shows one security reviewer for content safety, jailbreak and semantic 
 across their supported stages (`classifier_review.security`) and a separate optional
 Topic reviewer (`classifier_review.topic_control.input`). Grounding and automated
 reasoning use their own specialist models. Save and Apply treat security review
-as one choice. Optional validation exercises each covered capability and stage
-and returns one receipt with the individual cases.
+as one choice. Validation sends one review request for a sample user message
+(content safety, jailbreak and semantic PII) and one for its predefined assistant
+reply (content safety and semantic PII), with the user message as context. The
+receipt records the verdict for each capability and the HTTP exchanges for each
+turn, including retries.
 
 Historical per-capability reviewers remain effective until a shared selection
 is saved and applied. The page lists previous assignments, including disabled

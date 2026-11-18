@@ -166,7 +166,7 @@ class ClassifierReviewer:
         from .laya_jailbreak import LayaJailbreakEvaluator
         from .laya_pii import LayaPiiEvaluator
         from .laya_topic import LayaTopicEvaluator
-        capability = self._capability or "content_safety"
+        capability = self._capability or dict(request.parameters).get("review_capability", "content_safety")
         request = replace(request, capability=capability)
         evaluator_type = {"content_safety": LayaContentSafetyEvaluator, "jailbreak": LayaJailbreakEvaluator,
                           "pii": LayaPiiEvaluator, "topic_control": LayaTopicEvaluator}[capability]
@@ -322,7 +322,10 @@ class ClassifierReviewDispatcher:
         self.rails = frozenset(rail for _, rail in reviewers)
 
     async def evaluate(self, request: EvaluationRequest) -> EvaluationResult:
-        reviewer = self._reviewers.get((dict(request.parameters).get("review_capability"), request.rail_type))
+        scope = dict(request.parameters).get("review_capability")
+        reviewer = self._reviewers.get((scope, request.rail_type))
+        if reviewer is None and (scope in {"content_safety", "pii"} or scope == "jailbreak" and request.rail_type == "input"):
+            reviewer = self._reviewers.get((None, request.rail_type))
         if reviewer is None:
             return evaluation_result(request, "error", request.content,
                 reason="No classifier reviewer is configured for this capability and Rail.",

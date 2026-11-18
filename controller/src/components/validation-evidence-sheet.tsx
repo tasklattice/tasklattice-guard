@@ -15,12 +15,21 @@ import { securityReviewRails } from "../../shared/guardrail-catalog";
 
 export { validationEvidenceDocument } from "@/lib/validation-evidence";
 const key = "modelSettings.evidence.";
+const reviewStages: Record<string, string> = {
+  "tali.guard.classifier-review.v1:input:request": "userRequestReview",
+  "tali.guard.classifier-review.v1:output:response": "modelResponseReview",
+};
 
 export function ValidationEvidenceSheet({ check, subject, label }: { check: ValidationCheck; subject: string; label: string }) {
   const { t } = useTranslation();
   const [open, setOpen] = useState(false);
   const [selectedId, setSelectedId] = useState<string>();
   const cases = check.cases ?? [];
+  const paired = cases.length > 0 && cases.every(item => reviewStages[item.id]);
+  const callCount = open && paired ? cases.reduce((total, item) => {
+    const evidence = parse(item.outputContent);
+    return total + exchanges(evidence).length + Number(evidence.dropped_model_exchanges ?? 0);
+  }, 0) : 0;
   const selected = cases.find(item => item.id === selectedId) ?? cases.find(item => !item.passed) ?? cases[0];
   const output = parse(selected?.outputContent);
   const context = record(output.validation_context);
@@ -32,6 +41,7 @@ export function ValidationEvidenceSheet({ check, subject, label }: { check: Vali
   const evaluations = resultEvidence(output).evaluations;
   const formal = text(context.binding_id).startsWith("automated_reasoning.") || check.id.startsWith("probe:automated_reasoning.");
   const caseName = (id: string) => {
+    if (reviewStages[id]) return t(key + reviewStages[id]);
     const kind = id.split(":").at(-1);
     const label = t(key + (kind === "safe" ? formal ? "validSample" : "safeSample"
       : kind === "unsafe" ? formal ? "invalidSample" : "unsafeSample" : "sample"), { id });
@@ -52,7 +62,7 @@ export function ValidationEvidenceSheet({ check, subject, label }: { check: Vali
   };
   const failedCauses = cases.filter(item => !item.passed).map(caseFailureClass);
   const inconclusive = !passed && failedCauses.length > 0 && failedCauses.every(item => item === "threshold");
-  const badge = <StateBadge state={passed ? "ready" : inconclusive ? "unknown" : "failed"} label={inconclusive ? t(key + "inconclusive") : label} />;
+  const badge = <StateBadge state={passed ? "ready" : inconclusive ? "unknown" : "failed"} label={inconclusive ? t(key + "inconclusive") : paired && passed ? t(key + "passed") : label} />;
   return <Sheet open={open} onOpenChange={value => { setOpen(value); if (value) setSelectedId(undefined); }}>
     <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
       <SheetTrigger asChild><Button variant="ghost" size="sm"
@@ -65,7 +75,7 @@ export function ValidationEvidenceSheet({ check, subject, label }: { check: Vali
         <SheetTitle className="text-xl">{t(key + "title")}</SheetTitle>
         <SheetDescription className="mt-1 break-words">{subject}</SheetDescription>
         <div className="mt-3 flex items-center justify-between gap-4">
-          <div className="flex items-center gap-3">{badge}<span className="text-sm tabular-nums">{t(key + "sampleCount", { passed: cases.filter(item => item.passed).length, total: cases.length })}</span></div>
+          <div className="flex items-center gap-3">{badge}<span className="text-sm tabular-nums">{t(key + (paired ? "reviewStageCount" : "sampleCount"), { passed: cases.filter(item => item.passed).length, total: paired ? 2 : cases.length, calls: callCount })}</span></div>
           <Button variant="outline" size="sm" title={t(key + "exportHint")} onClick={() => {
             const content = JSON.stringify(validationEvidenceDocument(check, subject), null, 2);
             downloadLogFile(new TextEncoder().encode(content), `validation-${check.id.replace(/[^a-zA-Z0-9._-]/g, "-")}.json`, "application/json");

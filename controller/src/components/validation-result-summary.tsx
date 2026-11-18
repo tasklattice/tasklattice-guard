@@ -18,6 +18,7 @@ export function ValidationResultSummary({ sample, output }: { sample: NonNullabl
   const { t } = useTranslation();
   const data = resultEvidence(output);
   const context = record(output.validation_context);
+  const expectedVerdicts = Object.entries(record(context.expected_verdicts));
   const parameters = record(context.parameters);
   const inputContext = list(context.input_context).map(record);
   const policy = record(output.formal_policy);
@@ -32,12 +33,21 @@ export function ValidationResultSummary({ sample, output }: { sample: NonNullabl
     <dl className="flex flex-wrap gap-x-12 gap-y-3">
       <EvidenceField label={t(key + "expected")} value={sample.expectedDecision} />
       <EvidenceField label={t(key + "actual")} value={sample.actualDecision} />
-      <EvidenceField label={t(key + "verdict")} value={data.verdict} />
+      <EvidenceField label={t(key + "verdict")} value={expectedVerdicts.length ? undefined : data.verdict} />
       <EvidenceField label={t(key + "attribution")} value={sample.passed ? "" : cause} />
       <EvidenceField label={t(key + "errorType")} value={data.errorType} />
     </dl>
     {reason ? <p className={`border-l-2 py-2 pl-3 leading-6 whitespace-pre-wrap [overflow-wrap:anywhere] ${sample.passed ? "border-border" : "border-destructive bg-destructive/5"}`}>{reason}</p> : null}
-    <Section title={t(key + "input")}><p className="bg-muted/30 px-3 py-2 leading-6 whitespace-pre-wrap [overflow-wrap:anywhere]">{sample.inputContent}</p></Section>
+    {expectedVerdicts.length > 0 ? <Section title={t(key + "reviewChecks")}>
+      <SummaryTable columns={[t(key + "capability"), t(key + "expectedVerdict"), t(key + "verdict")]}
+        rows={expectedVerdicts.map(([capability, expected]) => {
+          const actual = data.evaluations.find(item => item.evaluator_id === "classifier-review" && item.capability === capability)?.verdict;
+          const name = capability === "pii" ? "pii_semantic" : capability;
+          return [t(`modelSettings.detectors.${name}_review.title`), text(expected), text(actual) || "—"];
+        })} />
+    </Section> : null}
+    <Section title={t(key + (context.review_stage === "output" ? "modelResponse" : context.review_stage === "input" ? "userRequest" : "input"))}><p className="bg-muted/30 px-3 py-2 leading-6 whitespace-pre-wrap [overflow-wrap:anywhere]">{sample.inputContent}</p></Section>
+    {context.review_stage === "output" ? <dl><EvidenceField label={t(key + "userRequest")} value={record(list(context.context_messages)[0]).content} /></dl> : null}
     {inputContext.length > 0 || output.query || parameters.allowed_topics ? <dl className="grid grid-cols-2 gap-4 border-l-2 pl-3">
       <EvidenceField label={t(key + "allowedTopics")} value={parameters.allowed_topics} />
       <EvidenceField label={t(key + "topicMode")} value={parameters.topic_mode} />
