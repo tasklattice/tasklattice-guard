@@ -1,7 +1,6 @@
 # Runner Model Bundle
 
-For an approved ONNX bundle produced by the Models repository, use the
-[candidate build and rollback workflow](../../docs/model-mlops.md).
+For an approved ONNX bundle, use the [candidate build and rollback workflow](../../docs/model-mlops.md). Training and quantization are documented in the [Laya training guide](../../docs/laya-training.md).
 
 The bundle is an OCI image that holds model files under `/opt/models/`.
 Runner loads the fine-tuned English Laya checkpoint on CPU at startup. The bundle

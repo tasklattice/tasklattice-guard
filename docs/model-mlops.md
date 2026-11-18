@@ -1,13 +1,12 @@
 # Laya model delivery
 
-The Models repository produces evaluated Laya bundles. Guard assembles each
-approved model into a candidate Runner image. The Runner continues to use its
-local System One executor, the existing model bindings and the configured
-GuardRail Decision path.
+The Laya training Notebook exports and evaluates checkpoints. The candidate
+build assembles an approved model bundle into a Runner image for the local
+System One executor and configured GuardRail Decision path. [Training and quantization](laya-training.md)
 
 ## Build a candidate
 
-Use the `model-lock.json` from the Models release. In a Guard checkout that
+Use the `model-lock.json` from the approved model bundle. In a Guard checkout that
 includes the candidate build support, run `npm run generate`, put the lock at
 `deploy/runner-model-bundle/model-lock.json`, then run:
 

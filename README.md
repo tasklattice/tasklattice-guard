@@ -50,3 +50,4 @@ supports resource inspection and Guardrail package import and export.
 - [Guardrail lifecycle and testing](docs/document/en/overview/03-term-guardrail.mdx)
 - [Kubernetes deployment](charts/tali-guard/README.md) and [operations](docs/operations.md)
 - [Development and tests](docs/development.md) and [architecture](docs/architecture.md#components-and-ownership)
+- [Laya training, datasets and quantization](docs/laya-training.md)

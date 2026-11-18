@@ -1,0 +1,118 @@
+{
+  "datasetId": "laya-guardrails",
+  "historicalSources": {
+    "notebook-fixed": {
+      "license": "See source dataset licenses",
+      "sha256": "8b4f35929e6a0e628bbf49b068d9c1b7ccae8eb107f308df4b738af053b519d5"
+    },
+    "tasklattice-memory-v1": {
+      "license": "TaskLattice authored",
+      "sha256": "8f46fcf4216f4b580b852219a61da52b05991782894c44e2ccbc028cee807eae"
+    }
+  },
+  "kaggle": {
+    "ref": "wangguohao/tasklattice-guard-notebook-v1/1",
+    "title": "Laya Guardrails Classification Dataset"
+  },
+  "schemaVersion": "1.0",
+  "sha256": "e429e1375f91a3ead4ef21b5c7d816cde0e12e4e4bd2dc8e5898838d9500876f",
+  "splits": {
+    "acceptance": {
+      "categories": {
+        "content_safety": 128,
+        "credential_leakage": 32,
+        "jailbreak": 64,
+        "memory_poisoning": 234,
+        "pii": 92,
+        "prompt_injection": 309
+      },
+      "count": 859,
+      "labels": {
+        "0": 376,
+        "1": 483
+      },
+      "languages": {
+        "en": 176,
+        "und": 683
+      }
+    },
+    "calibration_fit": {
+      "categories": {
+        "content_safety": 1205,
+        "credential_leakage": 3,
+        "jailbreak": 10,
+        "memory_poisoning": 230,
+        "pii": 1446,
+        "prompt_injection": 413
+      },
+      "count": 3307,
+      "labels": {
+        "0": 1187,
+        "1": 2120
+      },
+      "languages": {
+        "en": 2530,
+        "und": 777
+      }
+    },
+    "calibration_policy": {
+      "categories": {
+        "content_safety": 1134,
+        "credential_leakage": 2,
+        "jailbreak": 15,
+        "memory_poisoning": 228,
+        "pii": 1445,
+        "prompt_injection": 421
+      },
+      "count": 3245,
+      "labels": {
+        "0": 1160,
+        "1": 2085
+      },
+      "languages": {
+        "en": 2478,
+        "und": 767
+      }
+    },
+    "train": {
+      "categories": {
+        "content_safety": 22841,
+        "credential_leakage": 20,
+        "jailbreak": 109,
+        "memory_poisoning": 432,
+        "pii": 22077,
+        "prompt_injection": 3951
+      },
+      "count": 49430,
+      "labels": {
+        "0": 18547,
+        "1": 30883
+      },
+      "languages": {
+        "en": 44520,
+        "und": 4910
+      }
+    },
+    "validation": {
+      "categories": {
+        "content_safety": 1346,
+        "credential_leakage": 5,
+        "jailbreak": 25,
+        "memory_poisoning": 220,
+        "pii": 3892,
+        "prompt_injection": 826
+      },
+      "count": 6314,
+      "labels": {
+        "0": 2043,
+        "1": 4271
+      },
+      "languages": {
+        "en": 5153,
+        "und": 1161
+      }
+    }
+  },
+  "transformVersion": "notebook-memory-v2",
+  "version": "notebook-v1"
+}

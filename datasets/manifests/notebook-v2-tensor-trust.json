@@ -1,0 +1,133 @@
+{
+  "basedOn": {
+    "sha256": "e429e1375f91a3ead4ef21b5c7d816cde0e12e4e4bd2dc8e5898838d9500876f",
+    "version": "notebook-v1"
+  },
+  "datasetId": "laya-guardrails",
+  "sha256": "189c1a779978ed258c77d60e6dc25fdc990e682993f8d95b6a2ce95d7ff75970",
+  "splits": {
+    "acceptance": {
+      "categories": {
+        "content_safety": 128,
+        "credential_leakage": 99,
+        "jailbreak": 64,
+        "memory_poisoning": 234,
+        "pii": 92,
+        "prompt_injection": 309
+      },
+      "count": 926,
+      "file": "acceptance.jsonl",
+      "labels": {
+        "0": 411,
+        "1": 515
+      },
+      "languages": {
+        "en": 176,
+        "und": 750
+      },
+      "sha256": "561deda0b888d6e9e29da437f55dffb5e0a50ab648d418ca426de786e3f6736a"
+    },
+    "calibration_fit": {
+      "categories": {
+        "content_safety": 1205,
+        "credential_leakage": 3,
+        "jailbreak": 10,
+        "memory_poisoning": 230,
+        "pii": 1446,
+        "prompt_injection": 413
+      },
+      "count": 3307,
+      "file": "calibration_fit.jsonl",
+      "labels": {
+        "0": 1187,
+        "1": 2120
+      },
+      "languages": {
+        "en": 2530,
+        "und": 777
+      },
+      "sha256": "331f754d4be009b8718c1f83a1768eee0ba3a0bbd1816378428969df44310a21"
+    },
+    "calibration_policy": {
+      "categories": {
+        "content_safety": 1134,
+        "credential_leakage": 2,
+        "jailbreak": 15,
+        "memory_poisoning": 228,
+        "pii": 1445,
+        "prompt_injection": 421
+      },
+      "count": 3245,
+      "file": "calibration_policy.jsonl",
+      "labels": {
+        "0": 1160,
+        "1": 2085
+      },
+      "languages": {
+        "en": 2478,
+        "und": 767
+      },
+      "sha256": "82689abcf84421ad5dcc8eb42ffce7f3a25667c12ea0a33f8d68f9ad1268ea56"
+    },
+    "train": {
+      "categories": {
+        "content_safety": 22841,
+        "credential_leakage": 20,
+        "jailbreak": 109,
+        "memory_poisoning": 432,
+        "pii": 22077,
+        "prompt_injection": 3951
+      },
+      "count": 49430,
+      "file": "train.jsonl",
+      "labels": {
+        "0": 18547,
+        "1": 30883
+      },
+      "languages": {
+        "en": 44520,
+        "und": 4910
+      },
+      "sha256": "d1811606a93af86d7a66a96b128d2ca911b603699071d1916d98c8d47ed7976b"
+    },
+    "validation": {
+      "categories": {
+        "content_safety": 1346,
+        "credential_leakage": 5,
+        "jailbreak": 25,
+        "memory_poisoning": 220,
+        "pii": 3892,
+        "prompt_injection": 826
+      },
+      "count": 6314,
+      "file": "validation.jsonl",
+      "labels": {
+        "0": 2043,
+        "1": 4271
+      },
+      "languages": {
+        "en": 5153,
+        "und": 1161
+      },
+      "sha256": "17c20c445682ed91e38d645a142900fba0aae09487b782bbd902499329fb0442"
+    }
+  },
+  "tensorTrustEvaluation": {
+    "base_manifest_sha256": "e429e1375f91a3ead4ef21b5c7d816cde0e12e4e4bd2dc8e5898838d9500876f",
+    "definition": "Upstream extraction labels with verifiable literal access-code exposure for positives.",
+    "labels": {
+      "0": 51,
+      "1": 48
+    },
+    "masking": "Matched source access codes are replaced by deterministic fictional values of the same shape.",
+    "previous_rows": 32,
+    "skipped_groups": {
+      "conflicting_labels": 28,
+      "duplicate_after_masking": 0,
+      "label_not_verified_by_literal_code": 39,
+      "overlap_with_existing_cases": 1
+    },
+    "source_rows": 230
+  },
+  "version": "notebook-v2-tensor-trust"
+}

@@ -1,0 +1,206 @@
+schemaVersion: '1.0'
+transformVersion: notebook-memory-v2
+labelSchema: schemas/classification.json
+sources:
+  aegis:
+    provider: hf
+    repo: nvidia/Aegis-AI-Content-Safety-Dataset-2.0
+    revision: d86bb8bedff51d25ac834ab7838f1cc61acb7a2c
+    files:
+      train:
+        path: train.json
+        size_bytes: 22705956
+        sha256: 154fba82c71d9fa73abd2ca5588a198e693ddc816c83444df180a22f613e02f6
+      validation:
+        path: validation.json
+        size_bytes: 1137821
+        sha256: a97200e226ad4f6ba6a639982f817f675909bc74513859df3e8fc9a92951dfcd
+      test:
+        path: test.json
+        size_bytes: 1731373
+        sha256: b0a6d602260524866053cb34105194f074f2c2906e3691b68d43b9e6e9318f35
+    license: CC-BY-4.0
+    task: content_safety
+    language: en
+    usage: training_pool
+  deepset:
+    provider: hf
+    repo: deepset/prompt-injections
+    revision: 4f61ecb038e9c3fb77e21034b22511b523772cdd
+    files:
+      train:
+        path: data/train-00000-of-00001-9564e8b05b4757ab.parquet
+        size_bytes: 40323
+        sha256: 2e10bc7ab30f542c97e4e83e2a5683000b5057d25ec10908784c631d44124c04
+      test:
+        path: data/test-00000-of-00001-701d16158af87368.parquet
+        size_bytes: 10892
+        sha256: 39ac797cabc157eeed58435a08593b2952bb6cb16fc394a2d383f447cc7b246e
+    license: Apache-2.0
+    task: prompt_injection
+    language: und
+    usage: training_pool
+  pii-gretel:
+    provider: hf
+    repo: gretelai/synthetic_pii_finance_multilingual
+    revision: 7b844d16738527a04264f50214cb426a4cea0897
+    files:
+      train:
+        path: data/English_train-00000-of-00001.parquet
+        size_bytes: 24403359
+        sha256: 2858af81ec59d8528f81059facb099ac33e6b47caf2501da3eac113bccfee9c7
+      test:
+        path: data/English_test-00000-of-00001.parquet
+        size_bytes: 2720729
+        sha256: c02b06d3c5b7c375525136d6f74acc52ab8fc07fa863d0aa50734910ec0ef2ad
+    license: Apache-2.0
+    task: pii
+    language: en
+    usage: training_pool
+  creddata:
+    provider: hf
+    repo: atlanai/decision-bench
+    revision: 353cc17388ca67913320a39dacd043524a35090a
+    files:
+      pool:
+        path: test.jsonl
+        size_bytes: 4885754
+        sha256: 7ad4fdd7c6b04a0b17ad6630407e28ed60a1c7e1ac74aa7862d8f601883df05a
+    license: Per-record terms in DecisionBench source catalog
+    task: credential_leakage
+    language: und
+    usage: training_pool
+  harmbench:
+    provider: github
+    repo: centerforaisafety/HarmBench
+    revision: 8e1604d1171fe8a48d8febecd22f600e462bdcdd
+    files:
+      dev:
+        path: data/behavior_datasets/harmbench_behaviors_text_val.csv
+        size_bytes: 38024
+        sha256: 7bfaaa5e2b9b95002c89e2d33c019f58e9e8496e2fc65d368f1eeb8179e69534
+      test:
+        path: data/behavior_datasets/harmbench_behaviors_text_test.csv
+        size_bytes: 160828
+        sha256: 75d257b3e7428c52eb7b0154318f455af3e01b09a3794b5e2f3d36054f3c0e29
+    license: MIT
+    task: content_safety
+    language: und
+    usage: training_pool
+  jailbreakbench:
+    provider: hf
+    repo: JailbreakBench/JBB-Behaviors
+    revision: 886acc352a31533ffbcf4ef22c744658688086fc
+    files:
+      benign:
+        path: data/benign-behaviors.csv
+        size_bytes: 20570
+        sha256: 3cda234d21a991fa309bbfea4b6d9dae31ccdf8e9d452424b6a983e4fdc33468
+      harmful:
+        path: data/harmful-behaviors.csv
+        size_bytes: 23116
+        sha256: 4a8ec6832056b631eb092dccc60d37a61c3d441268268888b3d006288afeffa1
+    license: MIT
+    task: content_safety
+    language: und
+    usage: training_pool
+  advbench:
+    provider: hf
+    repo: S3IC/advbench
+    revision: acc3a2be720c48efb8c79db4f43993cf9f98f1fd
+    files:
+      pool:
+        path: advbench.csv
+        size_bytes: 82125
+        sha256: 6cd1a5c63c07610d7eb67307772ee5606017ee950b5770ab288a2c487489d3e1
+    license: Upstream AdvBench terms, see source mirror
+    task: content_safety
+    language: und
+    usage: training_pool
+  tdc2023:
+    provider: github
+    repo: centerforaisafety/tdc2023-starter-kit
+    revision: f7ddd7d1c7bda82c6609ecfaf1484565d08d754a
+    files:
+      dev:
+        path: red_teaming/data/dev/behaviors.json
+        size_bytes: 4080
+        sha256: 9392c63ad0193f0510f33812593f0dc71d13ae8b2ad93f64d670e9795deee1b0
+      test:
+        path: red_teaming/data/test/behaviors.json
+        size_bytes: 3740
+        sha256: c4a630921005fd5e26dfe22dd720e411c8e7866c96f5b1a0ca2d46f0e1d1f8c2
+    license: See pinned upstream repository license
+    task: content_safety
+    language: und
+    usage: training_pool
+  mpbench:
+    provider: github
+    repo: Digital-Trust-Lab/mp-bench
+    revision: 6886880a7c29625e0109e0ad91d0e095029f1577
+    files:
+      benign:
+        path: benign_data.jsonl.jsonl
+        size_bytes: 6564735
+        sha256: 707ef7e311e147d9818a8a9e04293296fc6bf3390241e4cac23c8145765b62d5
+      adversarial:
+        path: adversarial_data.jsonl.jsonl
+        size_bytes: 7339100
+        sha256: f2d23a5a2d483889eb2fdd9a2a082f0759603bc0a17664814a7caafbd318f90d
+    license: Apache-2.0
+    task: prompt_injection
+    language: und
+    usage: training_pool
+  or-bench:
+    provider: hf
+    repo: bench-llm/or-bench
+    revision: e36d8b80e81837c8a8f264bbb2a49f1b32c7e272
+    files:
+      hard-1k:
+        path: or-bench-hard-1k.csv
+        size_bytes: 169255
+        sha256: a6e2f1166416efe5901f3bb05c47dc92ab3aca3acfe143693d38b8057d841e6d
+    license: CC-BY-4.0
+    task: content_safety
+    language: en
+    usage: evaluation_only
+  mendeley-pii:
+    provider: url
+    repo: https://data.mendeley.com/datasets/tzrjx692jy/1
+    revision: 10.17632/tzrjx692jy.1
+    files:
+      test:
+        path: Testing_Set.xlsx
+        size_bytes: 28406
+        url: https://prod-dcd-datasets-public-files-eu-west-1.s3.eu-west-1.amazonaws.com/05a5d0ed-f419-482a-bb61-e4998c04af5f
+        sha256: abf209b309704cda0f6c7f0cab64d8885d0aa07ce78e770343a8130fa57c20c5
+    license: CC-BY-4.0
+    task: pii
+    language: en
+    usage: evaluation_only
+  ai4privacy-pii:
+    provider: hf
+    repo: ai4privacy/pii-masking-300k
+    revision: c8c77895a005822682b66ab547fc0422579bc1d3
+    files:
+      validation:
+        path: data/validation/1english_openpii_8k.jsonl
+        size_bytes: 27338200
+        sha256: 3112f54972d1a117936b75fa455e41872df36d4a8e7500ac9663e3ee671729e1
+    license: See pinned upstream dataset license
+    task: pii
+    language: en
+    usage: evaluation_only
+  tensor-trust:
+    provider: github
+    repo: HumanCompatibleAI/tensor-trust-data
+    revision: 747a75e096761ebc01bd3970158827326b4add23
+    files:
+      test:
+        path: detecting-extractions/v1/prompt_extraction_detection.jsonl
+        size_bytes: 160942
+        sha256: af28d09554db4f8ed91d042005c3457f72c88e763e3787c3b1c76c1d9e8f8260
+    license: See pinned upstream repository license
+    task: credential_leakage
+    language: und
+    usage: evaluation_only
