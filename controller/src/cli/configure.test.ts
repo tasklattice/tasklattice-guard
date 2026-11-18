@@ -6,7 +6,7 @@ import { bindModel, configurationApi, manageTestRun, parseConfigurationArgs, pro
 import { builtinLayaModelId, layaPrimaryBindingIds } from '../../shared/guardrail-catalog.js';
 
 const journal = () => ({ data: {} as any, save: vi.fn(async () => {}) });
-const assignments = (model = 'nvidia') => ({ controlPlane: null, bindings: { 'classifier_review.content_safety.input': model, 'classifier_review.content_safety.output': 'nvidia', 'jailbreak.input': 'jev' } });
+const assignments = (model = 'nvidia') => ({ controlPlane: null, bindings: { 'classifier_review.security': model, 'classifier_review.content_safety.output': 'nvidia', 'jailbreak.input': 'jev' } });
 
 describe('guardctl configuration', () => {
   it('rejects replacement of a managed initial classifier before starting a workflow', async () => {
@@ -94,7 +94,7 @@ describe('guardctl configuration', () => {
     expect(api).toHaveBeenCalledTimes(1);
   });
 
-  it.each(['classifier_review.content_safety.input', 'classifier_review.topic_control.input'])('applies only %s with an optimistic revision and preserves restore information', async (binding) => {
+  it.each(['classifier_review.security', 'classifier_review.topic_control.input'])('applies only %s with an optimistic revision and preserves restore information', async (binding) => {
     const original = { ...assignments(), bindings:{...assignments().bindings, [binding]:'nvidia'} };
     const updated = { ...original, bindings:{...original.bindings, [binding]:'jev'} };
     let view: any = { active: { id: 'old', assignments: original }, draft: { reviewToken: 'before', assignments: original }, activating: null };
@@ -116,26 +116,26 @@ describe('guardctl configuration', () => {
   it('stops on failed candidate validation without applying models', async () => {
     const api = vi.fn(async (path: string, method = 'GET') => {
       if (method === 'GET') return { active: { id: 'old', assignments: assignments() }, draft: { assignments: assignments() } };
-      if (path.endsWith('candidate-validations')) return { validationId: 'failed', validationReport: { checks: [{ id: 'probe:classifier_review.content_safety.input:jev', status: 'failed' }] } };
+      if (path.endsWith('candidate-validations')) return { validationId: 'failed', validationReport: { checks: [{ id: 'probe:classifier_review.security:jev', status: 'failed' }] } };
       throw Error('candidate_validation_failed');
     });
-    await expect(bindModel(api, { binding: 'classifier_review.content_safety.input', 'model-id': 'jev' }, journal())).rejects.toThrow('Candidate probe did not pass');
+    await expect(bindModel(api, { binding: 'classifier_review.security', 'model-id': 'jev' }, journal())).rejects.toThrow('Candidate probe did not pass');
     expect(api.mock.calls.some(([, method]) => method === 'PUT')).toBe(false);
     expect(api.mock.calls.some(([path]) => path.endsWith('/apply'))).toBe(false);
   });
 
   it('can initialize a binding when no active model revision exists', async () => {
     const empty = { controlPlane: null, bindings: { ...Object.fromEntries(layaPrimaryBindingIds.map(id => [id, builtinLayaModelId])),
-      'classifier_review.content_safety.input': null, 'classifier_review.content_safety.output': null } };
+      'classifier_review.security': null, 'classifier_review.content_safety.output': null } };
     let view: any = { active: null, draft: { reviewToken: 'draft', assignments: structuredClone(empty) } };
     const api: Api = async (path, method = 'GET', body) => {
       if (method === 'GET') return structuredClone(view);
-      if (path.endsWith('candidate-validations')) return { validationId: 'v', validationReport: { checks: [{ id: 'probe:classifier_review.content_safety.input:jev', status: 'passed' }] } };
-      if (method === 'PUT') { view.draft.assignments.bindings['classifier_review.content_safety.input'] = body.modelId; return view.draft; }
+      if (path.endsWith('candidate-validations')) return { validationId: 'v', validationReport: { checks: [{ id: 'probe:classifier_review.security:jev', status: 'passed' }] } };
+      if (method === 'PUT') { view.draft.assignments.bindings['classifier_review.security'] = body.modelId; return view.draft; }
       expect(body.expectedActiveId).toBeNull();
       view.active = { id: 'first', assignments: structuredClone(view.draft.assignments) }; return view;
     };
-    expect(await bindModel(api, { binding: 'classifier_review.content_safety.input', 'model-id': 'jev' }, journal())).toMatchObject({ activeRevision: 'first', previousModelId: null });
+    expect(await bindModel(api, { binding: 'classifier_review.security', 'model-id': 'jev' }, journal())).toMatchObject({ activeRevision: 'first', previousModelId: null });
   });
 
   it('duplicates an explicit source and preserves the copy after a compilation failure', async () => {

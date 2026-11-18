@@ -11,6 +11,8 @@ import { ValidationLocalModelInspector } from "./validation-local-model-inspecto
 import { downloadLogFile } from "@/lib/http-log-content";
 import { caseFailureClass, exchanges, list, parse, record, resultEvidence, text, validationEvidenceDocument, type ValidationCheck } from "@/lib/validation-evidence";
 
+import { securityReviewRails } from "../../shared/guardrail-catalog";
+
 export { validationEvidenceDocument } from "@/lib/validation-evidence";
 const key = "modelSettings.evidence.";
 
@@ -29,7 +31,14 @@ export function ValidationEvidenceSheet({ check, subject, label }: { check: Vali
   const showHttp = !runnerLocal || calls.length > 0 || Number(output.dropped_model_exchanges) > 0;
   const evaluations = resultEvidence(output).evaluations;
   const formal = text(context.binding_id).startsWith("automated_reasoning.") || check.id.startsWith("probe:automated_reasoning.");
-  const caseName = (id: string) => t(key + (id.split(":").at(-1) === "safe" ? formal ? "validSample" : "safeSample" : id.split(":").at(-1) === "unsafe" ? formal ? "invalidSample" : "unsafeSample" : "sample"), { id });
+  const caseName = (id: string) => {
+    const kind = id.split(":").at(-1);
+    const label = t(key + (kind === "safe" ? formal ? "validSample" : "safeSample"
+      : kind === "unsafe" ? formal ? "invalidSample" : "unsafeSample" : "sample"), { id });
+    const rail = securityReviewRails.find(item => id.startsWith(item.id + ":"));
+    return rail ? [t(`modelSettings.detectors.${rail.reviewCapabilityRef}_review.title`),
+      t(`modelSettings.stage.${rail.railType}`), label].join(" · ") : label;
+  };
   const passed = check.status === "passed";
   const evidenceLabel = t(key + (passed ? "passedEvidence" : "failedEvidence"));
   // A gray-area result is a failed validation sample, but it is not a wrong

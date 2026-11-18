@@ -35,7 +35,7 @@ import type { ProtoGrpcType } from "../generated/control-protocol/runner_control
 import type { ControllerMetrics } from "../metrics.js";
 import { capabilityBindingContracts, modelRuntimeToWire } from "../model-config/domain.js";
 import { builtinLaya, isBuiltinLaya } from "../model-config/builtin-laya.js";
-import { capabilityBindingDefinitions } from "../../shared/guardrail-catalog.js";
+import { capabilityBindingDefinitions, securityReviewerId } from "../../shared/guardrail-catalog.js";
 import type { ModelConfigurationService } from "../model-config/service.js";
 import type { ControlPlaneService } from "../services/control-plane.js";
 import type { ArtifactContent } from "../domain/artifact-content.js";
@@ -901,7 +901,7 @@ export class RunnerControlServer {
         if (!modelRef) return [];
         const model = modelConfiguration.models.find((item) => item.id === modelRef);
         if (!model) return [];
-        return [{
+        const wire = {
           bindingId: binding.id,
           capabilityRef: binding.capabilityRef,
           railType: binding.railType === "input" ? "RAIL_TYPE_INPUT" as const : "RAIL_TYPE_OUTPUT" as const,
@@ -909,7 +909,13 @@ export class RunnerControlServer {
           modelRef,
           profileRef: model.profile,
           contractRefs: [...capabilityBindingContracts(binding.id, model.profile)],
-        }];
+        };
+        // The Runner stage-wide review binding is security-only. Topic has its own binding.
+        if (binding.id === securityReviewerId) return [
+          { ...wire, bindingId: "classifier_review.input", railType: "RAIL_TYPE_INPUT" as const },
+          { ...wire, bindingId: "classifier_review.output", railType: "RAIL_TYPE_OUTPUT" as const },
+        ];
+        return [wire];
       }) : [];
       const dataModelIds = new Set(dataBindings.map((item) => item.modelRef));
       const snapshot = connection.snapshotAckCapable ? { nonce: randomUUID(), generation: desired.generation,

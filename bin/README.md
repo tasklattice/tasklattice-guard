@@ -107,7 +107,7 @@ Binding: capability + direction          Published Guardrail version
 | --- | --- |
 | Provider | The external model service URL and its credential. |
 | Model | A model identifier, protocol profile, timeout, and token limit. |
-| Binding | The Model used for a capability and direction, such as `classifier_review.content_safety.input`. |
+| Binding | The Model used for a capability and direction, such as `classifier_review.security`. |
 | Policy | The checks, rules, and actions selected in a Guardrail. |
 | Guardrail | A composition of Policies; publishing creates a version the runtime can load. |
 | Router | Routes Endpoint traffic to a specific published Guardrail version. |
@@ -118,10 +118,7 @@ The four initial classifiers use built-in Laya automatically. Model registration
 the Guardrail must include the corresponding Policy and direction, and the
 active Router must point to that Guardrail version.
 
-Bindings are currently **platform-wide**. Changing `classifier_review.content_safety.input`
-affects every Guardrail that uses input Content Safety. A separate Router or
-Guardrail does not give it a private model binding. Output uses its separate
-review binding, `classifier_review.content_safety.output`.
+Bindings are **platform-wide**. `classifier_review.security` covers content safety, jailbreak and semantic PII across their supported stages. `classifier_review.topic_control.input` selects an independent chat reviewer for Topic Control.
 
 ## Installation and help
 
@@ -240,7 +237,7 @@ guardctl platform bind
 
 | Option | Meaning |
 | --- | --- |
-| `--binding` | One capability/direction, for example `classifier_review.content_safety.input` or `classifier_review.jailbreak.input`; initial classifiers use built-in Laya. |
+| `--binding` | One capability/direction, for example `classifier_review.security` or `classifier_review.topic_control.input`; initial classifiers use built-in Laya. |
 | `--model-id` | Registered Model ID returned by `register-model`. |
 | `--state` | Private operation journal, saved before mutations. |
 | `--validation-id` | Reuse a current candidate-validation receipt for this account, binding, and Model. |
@@ -323,7 +320,7 @@ identifier, not a credential.
 ```sh
 bin/guardctl platform bind \
   --url http://localhost:38081 --env-file .local-secrets/guardctl.env \
-  --binding classifier_review.content_safety.input --model-id "$REVIEW_MODEL_ID" \
+  --binding classifier_review.security --model-id "$REVIEW_MODEL_ID" \
   --state .local-secrets/qwen-content-input-review.json
 ```
 

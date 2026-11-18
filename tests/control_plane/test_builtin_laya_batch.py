@@ -26,7 +26,7 @@ def grouped_plan():
 
 @pytest.mark.parametrize("scores,review_topic,truncated,expected", [
     ({}, True, False, "allow"),
-    ({"content_safety": .5, "topic_control": .5}, True, False, "block"),
+    ({"content_safety": .5, "jailbreak": .5, "topic_control": .5}, True, False, "block"),
     ({"topic_control": .5}, False, False, "allow"),
     ({}, True, True, "allow"),
 ])
@@ -65,6 +65,8 @@ async def test_runtime_batches_primaries_but_preserves_independent_reviews(tmp_p
     for capability, profile in [("content_safety", "tali.qwen3guard.v1"),
                                 *([("topic_control", "generic-chat")] if review_topic else [])]:
         review = candidate("input", "classifier_review", profile, REVIEW_CONTRACT, review_capability=capability).configuration
+        if capability == "content_safety":
+            review.bindings[0].binding_id = "classifier_review.input"
         runtime = review.runtimes[0]
         runtime.id = review.bindings[0].model_ref = "review-" + capability
         runtime.model = runtime.id
@@ -113,6 +115,7 @@ async def test_runtime_batches_primaries_but_preserves_independent_reviews(tmp_p
     assert sorted(call["model"] for call in remote_calls) == expected_calls
     if scores.get("content_safety") == .5:
         assert rows["content_safety"]["review"]["profileRef"] == "tali.qwen3guard.v1"
+        assert rows["content_safety"]["review"]["modelCallId"] == rows["jailbreak"]["review"]["modelCallId"]
         assert rows["topic_control"]["review"]["requestedModel"] == "review-topic_control"
     if not review_topic:
         assert rows["topic_control"]["verdict"] == "unknown" and "review" not in rows["topic_control"]

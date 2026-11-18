@@ -17,7 +17,7 @@ separate UI owners:
 | Health | Global Controller, baseline Guardrail, Runner convergence, and active model-binding readiness |
 | Providers | Endpoint, encrypted credential, discovery, connectivity, and Provider-scoped TLS policy |
 | Models | Registered inventory plus one real callability check per physical model |
-| Protection Capabilities | Built-in Laya initial classification, optional capability-specific reviewers, specialist models, validation, Save, and activation |
+| Protection Capabilities | Built-in Laya initial classification, optional security and Topic reviewers, specialist models, validation, Save, and activation |
 
 The **Protection Capabilities** name describes this product's configuration page.
 Its protection categories follow NVIDIA's [NeMo Guardrails catalog](https://docs.nvidia.com/nemo/guardrails/latest/configure-guardrails/guardrail-catalog),
@@ -41,25 +41,17 @@ is applied. Startup updates the editable draft to Laya while preserving review,
 Control Plane and specialist settings and their applicable evidence. Existing
 active snapshots follow the normal reviewed rollout; startup does not rewrite them.
 
-The page shows the fixed initial model once and one optional review row per
-capability. **Configure by stage** exposes separate input and output reviewers.
-Unequal review assignments open in stage mode and remain unchanged until an
-explicit shared model is selected. Grounding and automated reasoning keep their
-own specialist models; Laya does not implement those capabilities.
+The page shows one security reviewer for content safety, jailbreak and semantic PII
+across their supported stages (`classifier_review.security`) and a separate optional
+Topic reviewer (`classifier_review.topic_control.input`). Grounding and automated
+reasoning use their own specialist models. Save and Apply treat security review
+as one choice. Optional validation exercises each covered capability and stage
+and returns one receipt with the individual cases.
 
-Each capability exposes **Validate** and **Save** as separate row buttons.
-Optional **Validate** runs each configured stage separately and displays its own result
-and failure evidence. One failed stage does not skip the other stage. Validation
-records evidence directly when the model assignment is already saved. **Save**
-persists changed bindings and their available validation receipts sequentially. A failed save
-remains visible beside its stage and keeps that selection available for retry;
-partial saves do not activate the runtime. Review and Apply remains a separate
-step and accepts saved bindings whether validation passed, failed, or was not run.
-Shared selection is a UI convenience, not a merged validation contract.
+Historical per-capability reviewers remain effective until a shared selection
+is saved and applied. The page lists previous assignments, including disabled
+stages, so an administrator can choose a replacement or disable security review.
 
-Each optional reviewer is assigned to a capability and stage:
-`classifier_review.content_safety.input/output`, `classifier_review.jailbreak.input`,
-`classifier_review.pii_semantic.input/output`, or `classifier_review.topic_control.input`.
 An existing `generic-chat` model, including DeepSeek, can serve these bindings
 without changing its profile or Control Plane assignment. The dedicated
 `tali.classifier-review.v1` profile also supports these bindings. Native
@@ -71,7 +63,7 @@ only models referenced by active Data Plane bindings—and only their
 credentials—to Runner. The API and Runner enforce this compatibility as well
 as the browser dropdown.
 
-The active reviewer handles only the selected capability on its selected Rail.
+For a shared Qwen3Guard reviewer the Runner reuses one moderation response for identical messages in the same inspection. A shared chat reviewer can answer the questions of independent security checks in one request. Each Rule evaluates its own result.
 With no Topic reviewer, Laya/JEV remains the final classifier, including the Rule's
 existing Unknown handling. Other reviewers are never borrowed for Topic. An
 explicit empty selection disables that reviewer. Legacy stage-only bindings are

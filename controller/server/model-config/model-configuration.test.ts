@@ -604,20 +604,20 @@ describe("Capability configuration after registration", () => {
     expect(revision.validationReport?.checks.filter((check) => check.scope === "capability")).toHaveLength(2);
   });
 
-  it("saves multiple review models with fixed Laya initial classifiers", async () => {
+  it("saves one shared security reviewer with fixed Laya initial classifiers", async () => {
     const { service, fetcher, railValidator } = setup();
     await service.initialize();
     const defaults = withBuiltinLayaPrimaries(emptyModelAssignments());
     const draft = await service.updateDraft({ ...defaults, bindings: { ...defaults.bindings,
-      "classifier_review.content_safety.input": id, "classifier_review.jailbreak.input": id,
+      "classifier_review.security": id,
     } }, "admin");
     expect(draft.assignments.bindings).toMatchObject({ "content_safety.input": builtinLaya.modelId,
-      "classifier_review.content_safety.input": id, "classifier_review.jailbreak.input": id });
+      "classifier_review.security": id });
     expect(draft.state).toBe("draft");
     expect(fetcher).not.toHaveBeenCalled();
     expect((await service.validateDraft("admin")).validationReport?.valid).toBe(true);
     expect(fetcher).not.toHaveBeenCalled();
-    expect(railValidator).toHaveBeenCalledTimes(8);
+    expect(railValidator).toHaveBeenCalledTimes(11);
   });
 
   it("saves and validates capability assignments independently", async () => {

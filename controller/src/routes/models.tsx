@@ -63,6 +63,7 @@ import {
   capabilityBindingDefinitions,
   builtinLayaModelId,
   controlPlaneProfileRefs,
+  hasLegacySecurityReview, securityReviewRails, securityReviewerId,
   isDataPlaneProviderKindAllowed,
   isLayaPrimaryBinding,
   type CapabilityBindingDefinition,
@@ -144,7 +145,12 @@ export function GuardrailCatalogPage() {
     for (const [target, modelId] of Object.entries(assignmentEdits)) {
       if (modelId === undefined) continue;
       if (target === "control_plane") assignments.controlPlane = modelId;
-      else assignments.bindings[target as CapabilityBindingId] = modelId;
+      else {
+        assignments.bindings[target as CapabilityBindingId] = modelId;
+        if (target === securityReviewerId) {
+          for (const rail of securityReviewRails) assignments.bindings[rail.id] = null;
+        }
+      }
     }
   }
   const [previewReport, setPreviewReport] = useState<NonNullable<ModelConfigurationView["draft"]>["validationReport"]>(null);
@@ -353,7 +359,7 @@ export function GuardrailCatalogPage() {
               setAssignmentEdits(previous => {
                 const next = { ...previous };
                 for (const id of bindingIds) {
-                  if (modelId === query.data!.draft!.assignments.bindings[id]) delete next[id];
+                  if (modelId === query.data!.draft!.assignments.bindings[id] && !(id === securityReviewerId && hasLegacySecurityReview(query.data!.draft!.assignments.bindings))) delete next[id];
                   else next[id] = modelId;
                 }
                 return next;
@@ -455,7 +461,7 @@ function RunnerConfigurationComparison({ view, selectedBindings, onSelectionChan
               onChange={event => onSelectionChange(event.target.checked ? [...selectedBindings, binding.id] : selectedBindings.filter(id => id !== binding.id))} />
               {t(change.ready ? "modelSettings.bindingReady" : "modelSettings.bindingNotReady")}</label> : null}
           </TableCell>
-          <TableCell className="whitespace-normal align-top">{modelLabel(current, selected && current !== next && current ? "removed" : undefined)}</TableCell>
+          <TableCell className="whitespace-normal align-top">{binding.id === securityReviewerId && view.active && hasLegacySecurityReview(view.active.assignments.bindings) ? <LegacySecurityAssignments assignments={view.active.assignments} models={view.models} /> : modelLabel(current, selected && current !== next && current ? "removed" : undefined)}</TableCell>
           <TableCell className="whitespace-normal align-top">{modelLabel(next, selected && current !== next && next ? "added" : undefined)}
             {change && !selected ? <p className="text-xs text-muted-foreground">{t("modelSettings.bindingDeferred")}</p> : null}
           </TableCell>
@@ -545,7 +551,7 @@ type CapabilityConfigurationProps = {
 
 function GuardrailCatalogSection({ action, ...props }: CapabilityConfigurationProps & { action: ReactNode }) {
   const { t } = useTranslation();
-  const reviewers = [...new Set(capabilityBindingDefinitions.flatMap(binding => binding.reviewCapabilityRef ? [binding.reviewCapabilityRef] : []))];
+  const reviewers = capabilityBindingDefinitions.filter(binding => binding.reviewCapabilityRef === "security" || binding.reviewCapabilityRef === "topic_control");
   const specialists = capabilityBindingDefinitions.filter(binding => !binding.reviewCapabilityRef && !isLayaPrimaryBinding(binding.id));
   const laya = props.models.find(model => model.backend === "builtin_laya");
   const tableHead = (modelLabel: string) => <TableHeader><TableRow>
@@ -571,14 +577,14 @@ function GuardrailCatalogSection({ action, ...props }: CapabilityConfigurationPr
       </div>
       <Table className="table-fixed min-w-[64rem]">
         {tableHead(t("modelSettings.reviewModelColumn"))}
-        <TableBody>{reviewers.map(capability => <CapabilityConfigurationRow key={capability}
-          bindings={capabilityBindingDefinitions.filter(binding => binding.reviewCapabilityRef === capability)} {...props} />)}</TableBody>
+        <TableBody>{reviewers.map(binding => <CapabilityConfigurationRow key={binding.id}
+          binding={binding} {...props} />)}</TableBody>
       </Table>
       <div className="border-t px-5 py-4"><h3 className="text-sm font-medium">{t("modelSettings.specialistModels")}</h3>
         <p className="mt-1 text-xs leading-5 text-muted-foreground">{t("modelSettings.specialistModelsDescription")}</p></div>
       <Table className="table-fixed min-w-[64rem]">
         {tableHead(t("modelSettings.modelColumn"))}
-        <TableBody>{specialists.map(binding => <CapabilityConfigurationRow key={binding.id} bindings={[binding]} {...props} />)}</TableBody>
+        <TableBody>{specialists.map(binding => <CapabilityConfigurationRow key={binding.id} binding={binding} {...props} />)}</TableBody>
       </Table>
     </section>
   );
@@ -588,84 +594,73 @@ function supportsBinding(model: ModelDefinition, binding: CapabilityBindingDefin
   return isDataPlaneProviderKindAllowed(model.providerKind, binding.id) && binding.profileRefs.includes(model.profile);
 }
 
-function CapabilityConfigurationRow({ bindings, assignments, savedAssignments, models, report, disabled,
-  savingTarget, validatingTarget, capabilityAction, saveErrors, onChange, onSave, onValidate }: CapabilityConfigurationProps & { bindings: CapabilityBindingDefinition[] }) {
+function CapabilityConfigurationRow({ binding, assignments, savedAssignments, models, report, disabled,
+  savingTarget, validatingTarget, capabilityAction, saveErrors, onChange, onSave, onValidate }: CapabilityConfigurationProps & { binding: CapabilityBindingDefinition }) {
   const { t } = useTranslation();
-  const [mode, setMode] = useState<"shared" | "staged" | null>(null);
-  const binding = bindings[0]!;
   const title = capabilityName(t, binding);
-  const ids = bindings.map(item => item.id);
-  const sharedId = assignments.bindings[binding.id];
-  const sameModel = bindings.every(item => assignments.bindings[item.id] === sharedId);
-  // Derive the initial mode from saved bindings. Opening the page or changing
-  // the presentation never overwrites an existing per-stage configuration.
-  const staged = bindings.length > 1 && (mode === "staged" || (mode === null && !sameModel));
-  const unresolvedSharedModel = !staged && !sameModel;
-  const changedIds = ids.filter(id => assignments.bindings[id] !== savedAssignments.bindings[id]);
-  const configuredIds = ids.filter(id => Boolean(assignments.bindings[id]));
-  const busy = ids.some(id => savingTarget === id || validatingTarget === id || capabilityAction?.targets.includes(id));
-  const sharedModels = models.filter(model => bindings.every(item => supportsBinding(model, item)))
+  const target = binding.id;
+  const shared = target === securityReviewerId;
+  const legacy = shared && hasLegacySecurityReview(assignments.bindings);
+  const modelId = assignments.bindings[target] ?? null;
+  const selectedModel = models.find(model => model.id === modelId);
+  const changed = modelId !== (savedAssignments.bindings[target] ?? null) ||
+    (shared && !legacy && hasLegacySecurityReview(savedAssignments.bindings));
+  const busy = savingTarget === target || validatingTarget === target || capabilityAction?.targets.includes(target);
+  const compatible = models.filter(model => supportsBinding(model, binding))
     .sort((left, right) => compareModelOptions(left, right, binding.profilePreference));
-  const modelSelect = (targets: CapabilityBindingDefinition[], mixed = false) => {
-    const first = targets[0]!;
-    const modelId = mixed ? undefined : assignments.bindings[first.id];
-    const selectedModel = models.find(model => model.id === modelId);
-    const compatibleModels = targets.length > 1 ? sharedModels : models.filter(model => supportsBinding(model, first))
-      .sort((left, right) => compareModelOptions(left, right, first.profilePreference));
-    const selectableModels = selectedModel && !compatibleModels.some(model => model.id === selectedModel.id)
-      ? [selectedModel, ...compatibleModels] : compatibleModels;
-    const selectId = `binding-model-${targets.length > 1 ? `${binding.capabilityRef}.${binding.reviewCapabilityRef ?? "primary"}` : first.id}`;
-    return <div>
-      <Label className={staged ? "mb-2 block text-xs leading-4 text-muted-foreground" : "sr-only"} htmlFor={selectId}>
-        {staged ? t(`modelSettings.stage.${first.railType}`) : t("modelSettings.modelColumn")}
-      </Label>
-      <Select value={mixed ? "" : modelId ?? noneValue} disabled={disabled || (!selectableModels.length && !modelId)} onValueChange={value => onChange(targets.map(item => item.id), value === noneValue ? null : value)}>
-        <SelectTrigger id={selectId} className="field:h-11 w-full"><SelectValue placeholder={t("modelSettings.chooseSharedModel")} /></SelectTrigger>
-        <SelectContent position="popper"><SelectItem value={noneValue}>{t(binding.reviewCapabilityRef ? "modelSettings.noReview" : compatibleModels.length ? "modelSettings.notAssigned" : "modelSettings.noCompatibleModelsShort")}</SelectItem>
-          {selectableModels.map(model => <SelectItem key={model.id} value={model.id} textValue={modelOptionLabel(model, t("modelSettings.builtin"))}><ModelOption model={model} /></SelectItem>)}
-        </SelectContent>
-      </Select>
-      {!compatibleModels.length ? <p className="mt-2 text-xs text-muted-foreground">{t(targets.length > 1 && models.some(model => targets.some(target => supportsBinding(model, target))) ? "modelSettings.noSharedModelHelp" : "modelSettings.noCompatibleModelsHelp")}</p> : null}
-    </div>;
-  };
+  const options = selectedModel && !compatible.includes(selectedModel) ? [selectedModel, ...compatible] : compatible;
+  const stage = t(shared ? "modelSettings.bothStages" : `modelSettings.stage.${binding.railType}`);
   return <TableRow aria-label={title}>
     <TableCell className="whitespace-normal py-4 pl-5 align-top">
       <div className="flex min-h-11 items-center gap-1">
         <p className="font-medium">{title}</p>
         <ProtectionInfo title={title}><p>{t(binding.reviewCapabilityRef ? `modelSettings.detectors.${binding.reviewCapabilityRef}_review.description` : `modelSettings.categories.${binding.categoryId}.description`)}</p></ProtectionInfo>
       </div>
-      {changedIds.length ? <p className="mt-2 text-xs text-muted-foreground">{t("modelSettings.unsaved")}</p> : null}
+      {shared ? <p className="mt-1 text-xs leading-5 text-muted-foreground">{t("modelSettings.securityReviewScope")}</p> : null}
+      {changed ? <p className="mt-2 text-xs text-muted-foreground">{t("modelSettings.unsaved")}</p> : null}
     </TableCell>
     <TableCell className="whitespace-normal py-4 align-top">
-      {staged ? <div className="space-y-3">{bindings.map(item => <div key={item.id}>{modelSelect([item])}</div>)}</div> : modelSelect(bindings, unresolvedSharedModel)}
-      {bindings.length > 1 ? <>
-        <Button type="button" variant="ghost" size="sm" className="mt-2 h-8 px-0" disabled={disabled} aria-expanded={staged}
-          onClick={() => setMode(staged ? "shared" : "staged")}>{t(staged ? "modelSettings.useSharedModel" : "modelSettings.configureByStage")}</Button>
-        {unresolvedSharedModel ? <p className="mt-1 text-xs text-muted-foreground">{t("modelSettings.chooseSharedModelHelp")}</p> : null}
-      </> : null}
+      <Select value={legacy ? "" : modelId ?? noneValue} disabled={disabled || (!legacy && !options.length && !modelId)}
+        onValueChange={value => onChange([target], value === noneValue ? null : value)}>
+        <SelectTrigger id={`binding-model-${target}`} aria-label={title} className="field:h-11 w-full">
+          <SelectValue placeholder={t("modelSettings.chooseSharedModel")} />
+        </SelectTrigger>
+        <SelectContent position="popper">
+          <SelectItem value={noneValue}>{t(binding.reviewCapabilityRef ? "modelSettings.noReview" : options.length ? "modelSettings.notAssigned" : "modelSettings.noCompatibleModelsShort")}</SelectItem>
+          {options.map(model => <SelectItem key={model.id} value={model.id} textValue={modelOptionLabel(model, t("modelSettings.builtin"))}><ModelOption model={model} /></SelectItem>)}
+        </SelectContent>
+      </Select>
+      {legacy ? <LegacySecurityAssignments assignments={assignments} models={models} /> : null}
+      {!options.length ? <p className="mt-2 text-xs text-muted-foreground">{t("modelSettings.noCompatibleModelsHelp")}</p> : null}
     </TableCell>
     <TableCell className="whitespace-normal py-4 pr-8 align-top">
-      <div className="space-y-3">{bindings.map(item => <div key={item.id} className={`grid grid-cols-[3rem_minmax(0,1fr)] items-center gap-2 ${staged ? "min-h-[4.25rem] pt-6" : "min-h-8"}`} role="group" aria-label={`${title} · ${t(`modelSettings.stage.${item.railType}`)}`}>
-        <p className="text-xs leading-6 text-muted-foreground">{t(`modelSettings.stage.${item.railType}`)}</p>
-        <div className="min-w-0">
-        {validatingTarget === item.id ? <span className="flex items-center gap-2 text-sm" role="status"><LoaderCircle className="size-4 animate-spin" />{t("modelSettings.validatingStage")}</span>
-          : <AssignmentValidationStatus target={item.id} model={models.find(model => model.id === assignments.bindings[item.id])} report={report}
-            dirty={assignments.bindings[item.id] !== savedAssignments.bindings[item.id]} binding={item} />}
-        {saveErrors[item.id] ? <p role="alert" className="mt-1 text-xs text-destructive">{t("modelSettings.stageSaveFailed", { message: saveErrors[item.id] })}</p> : null}
-        </div>
-      </div>)}</div>
+      <div role="group" aria-label={title + " · " + stage}>
+        <p className="mb-1 text-xs text-muted-foreground">{stage}</p>
+        {validatingTarget === target ? <span className="flex items-center gap-2 text-sm" role="status"><LoaderCircle className="size-4 animate-spin" />{t("modelSettings.validatingStage")}</span>
+          : legacy ? <span className="text-xs">{t("modelSettings.legacyReview")}</span>
+          : <AssignmentValidationStatus target={target} model={selectedModel} report={report} dirty={changed} binding={binding} />}
+        {saveErrors[target] ? <p role="alert" className="mt-1 text-xs text-destructive">{t("modelSettings.stageSaveFailed", { message: saveErrors[target] })}</p> : null}
+      </div>
     </TableCell>
     <TableCell className="py-4 pr-5 align-top">
-      <div className={`grid grid-cols-2 items-start gap-2 ${staged ? "pt-6" : ""}`}>
-        <Button type="button" variant="testing" className="h-11 w-full min-w-0" disabled={disabled || busy || unresolvedSharedModel || !configuredIds.length} onClick={() => onValidate(configuredIds)}>
+      <div className="grid grid-cols-2 items-start gap-2">
+        <Button type="button" variant="testing" className="h-11 w-full min-w-0" disabled={disabled || busy || !modelId || legacy} onClick={() => onValidate([target])}>
           {busy && capabilityAction?.kind === "validate" ? <LoaderCircle className="animate-spin" /> : <TestTube2 />}{t("modelSettings.validateAssignment")}
         </Button>
-        <Button type="button" variant="save" className="h-11 w-full min-w-0" disabled={disabled || busy || unresolvedSharedModel || !changedIds.length} onClick={() => onSave(changedIds)}>
+        <Button type="button" variant="save" className="h-11 w-full min-w-0" disabled={disabled || busy || !changed} onClick={() => onSave([target])}>
           {busy && capabilityAction?.kind === "save" ? <LoaderCircle className="animate-spin" /> : <Save />}{t("modelSettings.saveAssignment")}
         </Button>
       </div>
     </TableCell>
   </TableRow>;
+}
+
+function LegacySecurityAssignments({assignments, models}: {assignments: ModelAssignments; models: ModelDefinition[]}) {
+  const { t } = useTranslation();
+  return <details className="mt-2 text-xs leading-5 text-muted-foreground">
+    <summary className="cursor-pointer">{t("modelSettings.legacyReview")}</summary>
+    {securityReviewRails.map(rail => <p key={rail.id}>{capabilityTitle(t, rail)} · {models.find(model => model.id === assignments.bindings[rail.id])?.name ?? t("modelSettings.noReview")}</p>)}
+  </details>;
 }
 
 function capabilityName(t: ReturnType<typeof useTranslation>["t"], binding: CapabilityBindingDefinition): string {
@@ -683,6 +678,7 @@ function capabilityName(t: ReturnType<typeof useTranslation>["t"], binding: Capa
 }
 
 function capabilityTitle(t: ReturnType<typeof useTranslation>["t"], binding: CapabilityBindingDefinition): string {
+  if (binding.id === securityReviewerId) return capabilityName(t, binding);
   return `${capabilityName(t, binding)} · ${t(binding.railType === "input" ? "modelSettings.inputRail" : "modelSettings.outputRail")}`;
 }
 

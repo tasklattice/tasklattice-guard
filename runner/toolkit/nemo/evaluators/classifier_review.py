@@ -24,6 +24,8 @@ from ...safety.taxonomy import taxonomy_for_evaluator
 from ..actions.model_call import action_usage, observe_model_call
 from ..actions.model_retry import with_connection_retry
 from .contracts import EvaluationRequest, EvaluationResult, EvaluationUsage, evaluation_result
+from runner.laya_batch import current_laya_batch
+from .shared_review import ReviewReply, current_review_scope
 from . import qwen3guard_review
 
 REVIEW_PROFILE = "tali.classifier-review.v1"
@@ -179,13 +181,10 @@ class ClassifierReviewer:
 
     async def review(self, request: EvaluationRequest, questions: dict, state: dict,
                      first: EvaluationResult) -> EvaluationResult:
-        call = None
-        actual_model = None
+        reply = ReviewReply()
         answers = {}
-        error_type = None
-        review_usage = EvaluationUsage()
-        attempts = []
         native_evidence = {}
+        native = self._profile == qwen3guard_review.PROFILE
         try:
             if (request.rail_type not in self.rails or not self._key.strip() or not questions
                 or self._capability is not None and request.capability != self._capability):
@@ -195,16 +194,51 @@ class ClassifierReviewer:
                 if coverage:
                     return self._result(request, first, "unknown", native_evidence={"coverage":coverage},
                         reason="Qwen3Guard cannot review these Policy questions or their context; conservative policy handling applies.")
-            # Finish the child before the enclosing Action deadline so an
-            # upstream timeout still returns the already-completed JEV trace.
             deadline = min(request.deadline - .05, time.monotonic() + self._timeout)
-            remaining = deadline - time.monotonic()
-            if remaining <= 0:
+            if deadline <= time.monotonic():
                 raise TimeoutError("Review deadline exceeded.")
-            body = {"model":self._model, "temperature":0, "max_tokens":self._tokens,
-                    "messages":qwen3guard_review.review_messages(request, state) if self._profile == qwen3guard_review.PROFILE else
-                        [{"role":"system","content":OUTPUT_REVIEW_PROMPT if request.rail_type == "output" else REVIEW_PROMPT},
-                         {"role":"user","content":json.dumps({"questions":questions,"state":state},ensure_ascii=False)}]}
+            scope = current_review_scope() if self._capability is None and request.capability in {"content_safety", "jailbreak", "pii"} else None
+            # One configured reviewer instance owns its stage, transport and credential.
+            identity = (self, request.active_block_id)
+            if native:
+                messages = qwen3guard_review.review_messages(request, state)
+                if scope:
+                    key = (*identity, json.dumps(messages, ensure_ascii=False))
+                    reply = await scope.moderate(key, lambda: self._send(request, messages, None,
+                        time.monotonic() + self._timeout), deadline)
+                else:
+                    reply = await self._send(request, messages, None, deadline)
+                if not reply.error:
+                    verdict, native_evidence = qwen3guard_review.parse_review(reply.content, request.capability)
+            else:
+                async def send(document, keys, limit):
+                    prompt = OUTPUT_REVIEW_PROMPT if request.rail_type == "output" else REVIEW_PROMPT
+                    if "checks" in document:
+                        prompt += "\nFor each check, evaluate its questions using only its own state. Return all question IDs in one answer map."
+                    messages = [{"role": "system", "content": prompt},
+                                {"role": "user", "content": json.dumps(document, ensure_ascii=False)}]
+                    return await self._send(request, messages, keys, limit)
+
+                group = current_laya_batch()
+                if scope and group:
+                    reply, answers = await scope.ask((*identity, group), send, questions, state, deadline)
+                else:
+                    reply = await send({"questions": questions, "state": state}, set(questions), deadline)
+                    answers = reply.answers
+                verdict = "matched" if "yes" in answers.values() else "unknown" if "unknown" in answers.values() else "not_matched"
+            if reply.error:
+                verdict = "error"
+        except (httpx.HTTPError, TimeoutError, ValueError, TypeError, KeyError, IndexError) as error:
+            verdict = "error"
+            reply.error = type(error).__name__
+        call_id = reply.usage.model_calls[-1].call_id if reply.usage.model_calls else None
+        return self._result(request, first, verdict, review_usage=reply.claim_usage(), actual_model=reply.model,
+            answers=answers, error_type=reply.error, attempts=reply.attempts, native_evidence=native_evidence, call_id=call_id)
+
+    async def _send(self, request, messages, question_ids, deadline) -> ReviewReply:
+        reply = ReviewReply()
+        try:
+            body = {"model": self._model, "temperature": 0, "max_tokens": self._tokens, "messages": messages}
             if self._url == "https://integrate.api.nvidia.com/v1/chat/completions" and self._model == "nvidia/nemotron-3.5-lightning-30b-a3b":
                 body["chat_template_kwargs"] = {"enable_thinking":False}
             async with httpx.AsyncClient(transport=self._transport,verify=not self._tls,event_hooks=validation_http_hooks()) as client:
@@ -232,15 +266,15 @@ class ClassifierReviewer:
                                 payload = response.json()
                                 if not isinstance(payload,dict) or not isinstance(payload.get("model"),str) or not payload["model"].strip():
                                     raise ValueError("Review response model is missing.")
-                                actual_model = payload["model"]
+                                reply.model = payload["model"]
                                 content = payload["choices"][0]["message"]["content"]
                                 if not isinstance(content,str):
                                     raise ValueError("Review content must be text.")
-                                if self._profile == qwen3guard_review.PROFILE:
-                                    verdict, native_evidence = qwen3guard_review.parse_review(content, request.capability)
+                                if question_ids is None:
+                                    qwen3guard_review.Qwen3GuardAdapter.parse_labels(content)
+                                    reply.content = content
                                 else:
-                                    answers = parse_review_answers(content,set(questions))
-                                    verdict = "matched" if "yes" in answers.values() else "unknown" if "unknown" in answers.values() else "not_matched"
+                                    reply.answers = parse_review_answers(content, question_ids)
                             call.complete(payload=payload)
                         break
                     except (httpx.ReadTimeout,TimeoutError):
@@ -249,22 +283,21 @@ class ClassifierReviewer:
                     finally:
                         if call is not None:
                             part = action_usage(call,len(request.content))
-                            review_usage = _usage(review_usage,part)
+                            reply.usage = _usage(reply.usage, part)
                             detail = part.model_calls[0]
-                            attempts.append({"result":detail.result,"error_type":detail.error_type,
+                            reply.attempts.append({"result":detail.result,"error_type":detail.error_type,
                                              "duration_ms":detail.duration_ms,"usage_known":detail.usage_known})
         except (httpx.HTTPError,TimeoutError,ValueError,TypeError,KeyError,IndexError) as error:
-            verdict, error_type = "error", type(error).__name__
-        return self._result(request, first, verdict, review_usage=review_usage, actual_model=actual_model,
-            answers=answers, error_type=error_type, attempts=attempts, native_evidence=native_evidence)
+            reply.error = type(error).__name__
+        return reply
 
     def _result(self, request, first, verdict, *, review_usage=EvaluationUsage(), actual_model=None,
-                answers=None, error_type=None, attempts=(), native_evidence=None, reason=None):
+                answers=None, error_type=None, attempts=(), native_evidence=None, reason=None, call_id=None):
         usage = _usage(first.usage,review_usage)
         trace = replace(_trace(request,verdict,model=self._model,response_model=actual_model,answers=answers,
                         error_type=error_type,attempts=attempts,profile_ref=self._profile,native_evidence=native_evidence),
                         duration_ms=review_usage.provider_latency_ms, provider_name=self._provider,
-                        model_call_id=review_usage.model_calls[-1].call_id if verdict == "unknown" and review_usage.model_calls else None)
+                        model_call_id=call_id)
         reason = reason or {"matched":"Independent classifier review confirmed a policy violation.",
                   "not_matched":"Independent classifier review found no policy violation.",
                   "unknown":"Independent classifier review remained uncertain; conservative policy handling applies.",

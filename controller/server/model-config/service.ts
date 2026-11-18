@@ -32,6 +32,7 @@ import { modelReadiness, type ModelReadinessRevision } from "../../shared/model-
 import { PolicyCatalog, type PolicyDto } from "../policy-catalog/catalog.js";
 import {
   capabilityBindingDefinitions,
+  hasLegacySecurityReview, securityReviewerId, securityReviewRails,
   localCapabilitySurfaces,
   isLayaPrimaryBinding,
   layaPrimaryBindingIds,
@@ -122,6 +123,20 @@ export class ModelConfigurationService {
   setRailValidator(validator: RailValidator): void { this.railValidator = validator; }
 
   private async probeAssignment(target: ModelAssignmentTarget, provider: ProviderRow, model: ModelRow, formalValidation?: FormalValidation): Promise<RailValidationEvidence> {
+    if (target === securityReviewerId) {
+      const results = [];
+      for (const rail of securityReviewRails) {
+        const probe = await this.probeAssignment(rail.id, provider, model);
+        results.push({ rail, probe });
+      }
+      const failures = results.filter(({ probe }) => !probe.passed);
+      return { passed: !failures.length, message: failures.length
+        ? failures.map(({rail, probe}) => rail.id + ": " + probe.message).join("\n")
+        : "Shared reviewer passed all security Rails.",
+        latencyMs: results.reduce((sum, {probe}) => sum + probe.latencyMs, 0),
+        cases: results.flatMap(({rail, probe}) => (probe.cases ?? []).map(sample => ({ ...sample, id: rail.id + ":" + sample.id }))),
+      };
+    }
     const builtin = isBuiltinLaya(model.id, provider.id);
     if (target === "control_plane") return builtin
       ? { passed: false, message: "Built-in Laya is available for Protection Capabilities.", latencyMs: 0 }
@@ -689,6 +704,11 @@ export class ModelConfigurationService {
       }
     }
     const existing = await this.ensureDraft(actorId);
+    const prior = normalizeModelAssignments(existing.assignments);
+    if (hasLegacySecurityReview(assignments.bindings) &&
+        securityReviewRails.some(rail => assignments.bindings[rail.id] !== prior.bindings[rail.id])) {
+      throw new ValidationError("Use classifier_review.security to change the shared security reviewer.");
+    }
     if (JSON.stringify(normalizeModelAssignments(existing.assignments)) === JSON.stringify(assignments)) return publicRevision(existing);
     const draft = await this.ensureEditableDraft(actorId);
     const [updated] = await this.db.update(modelConfigurationRevisions).set({
@@ -745,7 +765,8 @@ export class ModelConfigurationService {
     assertManagedPrimary(target, modelId);
     const existing = await this.ensureDraft(actorId);
     const previous = normalizeModelAssignments(existing.assignments);
-    if ((target === "control_plane" ? previous.controlPlane : previous.bindings[target]) === modelId && !validationId) return publicRevision(existing);
+    if ((target === "control_plane" ? previous.controlPlane : previous.bindings[target]) === modelId && !validationId
+        && !(target === securityReviewerId && hasLegacySecurityReview(previous.bindings))) return publicRevision(existing);
     let evidence: ModelValidationCheck | undefined;
     if (modelId) {
       const model = await this.model(modelId).catch((error: unknown) => {
@@ -770,8 +791,12 @@ export class ModelConfigurationService {
     const assignments = normalizeModelAssignments(draft.assignments);
     if (target === "control_plane") assignments.controlPlane = modelId;
     else assignments.bindings[target] = modelId;
+    if (target === securityReviewerId) {
+      for (const rail of securityReviewRails) assignments.bindings[rail.id] = null;
+    }
 
-    const checks = (draft.validationReport?.checks ?? []).filter((check) => !checkBelongsToTarget(check, target));
+    const checks = (draft.validationReport?.checks ?? []).filter((check) => !checkBelongsToTarget(check, target)
+      && !(target === securityReviewerId && securityReviewRails.some(rail => checkBelongsToTarget(check, rail.id))));
     if (evidence) checks.push(evidence);
     checks.push({
       id: `assignment:${target}`,
@@ -899,8 +924,11 @@ export class ModelConfigurationService {
         throw new ConflictError("Only saved binding changes can be applied.", "model_configuration_changed");
       }
       for (const id of selected) assignments.bindings[id] = proposed.bindings[id];
+      if (selected.has(securityReviewerId)) {
+        for (const rail of securityReviewRails) assignments.bindings[rail.id] = null;
+      }
       const checks = [
-        ...(active?.validationReport?.checks ?? []).filter(check => !selection.bindingIds.some(id => checkBelongsToTarget(check, id))),
+        ...(active?.validationReport?.checks ?? []).filter(check => !selection.bindingIds.some(id => checkBelongsToTarget(check, id)) && !(selected.has(securityReviewerId) && securityReviewRails.some(rail => checkBelongsToTarget(check, rail.id)))),
         ...(draft.validationReport?.checks ?? []).filter(check => selection.bindingIds.some(id => checkBelongsToTarget(check, id))),
       ];
       const report = await this.reportFromChecks(assignments, checks, tx);
@@ -1252,7 +1280,7 @@ export class ModelConfigurationService {
         if (!model || !provider || !assignmentTargetAcceptsModel(binding.id, model.profile, provider.kind)) return [];
         const passed = checks.some((check) => check.id === `probe:${binding.id}:${model.id}` && check.status === "passed" && check.evidenceKind === "nemo-rail-v1");
         return passed
-          ? capabilityBindingContracts(binding.id, model.profile).map((contract) => ({ contract, bindingId: binding.id, railType: binding.railType, source: "model" as const, modelId: model.id }))
+          ? capabilityBindingContracts(binding.id, model.profile).flatMap(contract => (binding.id === securityReviewerId ? ["input", "output"] as const : [binding.railType]).map(railType => ({ contract, bindingId: binding.id, railType, source: "model" as const, modelId: model.id })))
           : [];
       }),
     ];
@@ -1291,7 +1319,7 @@ export class ModelConfigurationService {
         if (!model || !provider || !assignmentTargetAcceptsModel(binding.id, model.profile, provider.kind)) return [];
         const passed = checks.some((check) => check.id === `probe:${binding.id}:${model.id}` && check.status === "passed" && check.evidenceKind === "nemo-rail-v1");
         return passed
-          ? capabilityBindingContracts(binding.id, model.profile).map((contract) => ({ contract, bindingId: binding.id, railType: binding.railType, source: "model" as const, modelId: model.id }))
+          ? capabilityBindingContracts(binding.id, model.profile).flatMap(contract => (binding.id === securityReviewerId ? ["input", "output"] as const : [binding.railType]).map(railType => ({ contract, bindingId: binding.id, railType, source: "model" as const, modelId: model.id })))
           : [];
       }),
     ];

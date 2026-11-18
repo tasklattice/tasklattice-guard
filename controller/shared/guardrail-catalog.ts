@@ -117,7 +117,10 @@ export const capabilityProfilePreference = {
   automated_reasoning: ["tali.automated-reasoning.v1"],
 } as const satisfies Record<ModelCapabilityId, readonly string[]>;
 
+export const securityReviewerId = "classifier_review.security" as const;
+
 export type CapabilityBindingId =
+  | typeof securityReviewerId
   | "classifier_review.content_safety.input"
   | "classifier_review.content_safety.output"
   | "classifier_review.jailbreak.input"
@@ -142,7 +145,7 @@ export type CapabilityBindingDefinition = {
   contractRefs: readonly string[];
   profileRefs: readonly string[];
   profilePreference: readonly string[];
-  reviewCapabilityRef?: "content_safety" | "jailbreak" | "topic_control" | "pii_semantic";
+  reviewCapabilityRef?: "security" | "content_safety" | "jailbreak" | "topic_control" | "pii_semantic";
 };
 
 const binding = (definition: CapabilityBindingDefinition): CapabilityBindingDefinition => definition;
@@ -153,6 +156,12 @@ const binding = (definition: CapabilityBindingDefinition): CapabilityBindingDefi
  * ownership. The binding ID is stable persisted configuration identity.
  */
 export const capabilityBindingDefinitions = [
+  binding({
+    id: securityReviewerId, categoryId: "content_safety", capabilityRef: "classifier_review",
+    railType: "input", reviewCapabilityRef: "security",
+    implementationRef: "tali.runtime.classifier-review.v1", contractRefs: ["tali.guard.classifier-review.v1"],
+    profileRefs: capabilityProfileRefs.classifier_review, profilePreference: capabilityProfilePreference.classifier_review,
+  }),
   ...([
     ["content_safety", "content_safety", "input"], ["content_safety", "content_safety", "output"],
     ["jailbreak", "jailbreak_protection", "input"], ["topic_control", "topic_control", "input"],
@@ -211,6 +220,13 @@ export const capabilityBindingById = new Map<CapabilityBindingId, CapabilityBind
   capabilityBindingDefinitions.map((item) => [item.id, item]),
 );
 
+// Persisted per-capability bindings also identify the exact Runner validation probes.
+export const securityReviewRails = capabilityBindingDefinitions.filter(binding =>
+  binding.reviewCapabilityRef && !["security", "topic_control"].includes(binding.reviewCapabilityRef));
+export const isLegacySecurityReview = (id: string) => securityReviewRails.some(binding => binding.id === id);
+export function hasLegacySecurityReview(bindings: Partial<Record<CapabilityBindingId, string | null>>) {
+  return securityReviewRails.some(binding => Boolean(bindings[binding.id]));
+}
 export const localCapabilitySurfaces = [
   { id: "secrets_exact.input", categoryId: "pii_detection", capabilityRef: "secrets", railType: "input", contractRef: "tali.guard.secrets.exact.v1" },
   { id: "secrets_exact.output", categoryId: "pii_detection", capabilityRef: "secrets", railType: "output", contractRef: "tali.guard.secrets.exact.v1" },

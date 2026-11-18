@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { securityReviewerId } from "../../shared/guardrail-catalog.js";
 import { canonicalJson } from "../../shared/canonical-json.js";
 import type { ModelAssignments } from "./domain.js";
 import { builtinLaya, isBuiltinLaya } from "./builtin-laya.js";
@@ -12,7 +13,10 @@ export function modelRuntimeValidationFingerprint(assignments: ModelAssignments,
   const ids = new Set(Object.values(assignments.bindings).filter((id): id is string => Boolean(id)));
   const selected = models.filter(model => ids.has(model.id)).sort((a, b) => a.id.localeCompare(b.id));
   const providerIds = new Set(selected.map(model => model.providerId));
-  const snapshot = { bindings: assignments.bindings, models: selected.map(model => ({ id: model.id,
+  const bindings = { ...assignments.bindings };
+  // Older frozen revisions did not store an unassigned shared reviewer.
+  if (!bindings[securityReviewerId]) Reflect.deleteProperty(bindings, securityReviewerId);
+  const snapshot = { bindings, models: selected.map(model => ({ id: model.id,
     projectId: model.projectId ?? null, providerId: model.providerId, model: model.model, profile: model.profile,
     timeoutSeconds: model.timeoutSeconds, maxTokens: model.maxTokens, lowerThreshold: model.lowerThreshold ?? 0.1, upperThreshold: model.upperThreshold ?? 0.9,
     ...builtinFingerprint(model) })),

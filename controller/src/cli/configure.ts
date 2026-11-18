@@ -4,7 +4,7 @@ import { chmod, mkdir, open, readFile, rename, rm, writeFile } from 'node:fs/pro
 import { dirname, resolve } from 'node:path';
 import { parseEnv } from 'node:util';
 import { setTimeout as delay } from 'node:timers/promises';
-import { builtinLayaModelId, capabilityBindingIds, isLayaPrimaryBinding } from '../../shared/guardrail-catalog.js';
+import { builtinLayaModelId, capabilityBindingIds, isLegacySecurityReview, securityReviewerId, securityReviewRails, isLayaPrimaryBinding } from '../../shared/guardrail-catalog.js';
 
 export type Api = (path: string, method?: string, body?: any) => Promise<any>;
 type Flags = Record<string, string>;
@@ -40,9 +40,9 @@ export const configurationHelp = `Non-interactive configuration (existing Contro
     [--lower-threshold X --upper-threshold Y]
     Change Model runtime settings in place; a referenced protocol reports the
     separate-Provider recipe instead.
-  guardctl platform bind --binding classifier_review.content_safety.input --model-id ID --state FILE
+  guardctl platform bind --binding classifier_review.security --model-id ID --state FILE
     [--validation-id ID | --revalidate] [--wait-seconds 300]
-    Review bindings use classifier_review.<capability>.<input|output>.
+    Review bindings use classifier_review.security or classifier_review.topic_control.input.
     Initial content safety, jailbreak, Topic Control and semantic PII use built-in Laya.
   guardctl project test --guardrail-id ID [--version VERSION] [--local-only]
   guardctl project profile-validation [--profiles=default,full-feature] [--out=DIR]
@@ -271,16 +271,21 @@ export async function publishGuardrail(api: Api, flags: Flags, patch: any | null
 
 export async function bindModel(api: Api, flags: Flags, journal: Journal): Promise<any> {
   const binding = required(flags, 'binding'), modelId = required(flags, 'model-id'), seconds = integer(flags, 'wait-seconds', 300);
-  assert.ok((capabilityBindingIds as readonly string[]).includes(binding), 'Use a supported capability binding, including classifier_review.<capability>.<input|output>');
+  assert.ok((capabilityBindingIds as readonly string[]).includes(binding), 'Use a supported capability binding, including classifier_review.security or classifier_review.topic_control.input');
   assert.ok(!isLayaPrimaryBinding(binding) || modelId === builtinLayaModelId,
-    'Initial classifiers use built-in Laya. Configure classifier_review.<capability>.<input|output> instead.');
+    'Initial classifiers use built-in Laya. Configure classifier_review.security or classifier_review.topic_control.input instead.');
+  assert.ok(!isLegacySecurityReview(binding), "Use classifier_review.security for safety, jailbreak and semantic PII");
   const s = journal.data, request = { binding, modelId };
   if (s.request) assert.deepEqual(s.request, request, 'State belongs to another binding request');
   let view = await api('/api/v1/model-configuration');
   if (!s.request) { assert.ok(!view.activating, 'Another model activation is in progress'); Object.assign(s, { request, originalActive: view.active, originalDraft: view.draft }); await journal.save(); }
   const activeAssignments = (v: any) => v.active?.assignments ?? { controlPlane: null, bindings: Object.fromEntries(Object.keys(v.draft.assignments.bindings).map(k => [k, isLayaPrimaryBinding(k) ? builtinLayaModelId : null])) };
   const originalAssignments = activeAssignments({ active: s.originalActive, draft: s.originalDraft });
-  const withoutBinding = (a: any) => ({ ...a, bindings: { ...a.bindings, [binding]: null } });
+  const withoutBinding = (a: any) => {
+    const bindings = { ...a.bindings, [binding]: null };
+    if (binding === securityReviewerId) for (const rail of securityReviewRails) delete bindings[rail.id];
+    return { ...a, bindings };
+  };
   assert.deepEqual(withoutBinding(activeAssignments(view)), withoutBinding(originalAssignments), 'Unrelated active assignments changed');
   assert.deepEqual(withoutBinding(view.draft.assignments), withoutBinding(s.originalDraft.assignments), 'Unrelated draft assignments changed');
   if (view.activating) assert.equal(view.activating.id, s.activationId, 'Another model activation is in progress');

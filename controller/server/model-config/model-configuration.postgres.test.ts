@@ -148,12 +148,12 @@ describe.skipIf(!url)("Current model configuration PostgreSQL semantics", () => 
     await pool.query("UPDATE model_configuration_revision SET state='active',generation=1 WHERE id=$1", [activeId]);
     const projectAssignments = emptyModelAssignments();
     const projectModelId = randomUUID();
-    projectAssignments.bindings['classifier_review.content_safety.input'] = projectModelId;
+    projectAssignments.bindings['classifier_review.security'] = projectModelId;
     await pool.query("INSERT INTO model_definition(id,project_id,provider_id,name,model,profile) VALUES ($1,'projectB',$2,'Private B','private-b','generic-chat')", [projectModelId, providerId]);
     await pool.query("INSERT INTO model_configuration_revision(id,project_id,revision,generation,state,assignments) VALUES ($1,'projectB',99,99,'active',$2)", [randomUUID(), projectAssignments]);
     const active = await runWithProjectContext({ projectId: 'projectB', role: 'user' }, () => service.activeConfiguration());
     expect(active!.revisionId).toBe(activeId);
-    expect(active!.assignments.bindings['classifier_review.content_safety.input']).toBe(modelId);
+    expect(active!.assignments.bindings['classifier_review.security']).toBe(modelId);
     const readiness = await runWithProjectContext({ projectId: 'projectB', role: 'user' }, () => service.readinessView());
     expect(JSON.stringify(readiness)).not.toContain(projectModelId);
     expect(JSON.stringify(readiness)).not.toContain('private-b');
@@ -178,25 +178,26 @@ describe.skipIf(!url)("Current model configuration PostgreSQL semantics", () => 
   async function seed(assigned = false) {
     await seedBuiltin();
     const assignments = emptyModelAssignments();
-    if (assigned) assignments.bindings['classifier_review.content_safety.input'] = modelId;
+    if (assigned) assignments.bindings['classifier_review.security'] = modelId;
     const id = randomUUID();
     await pool.query("INSERT INTO model_configuration_revision (id,revision,assignments,updated_at) VALUES ($1,1,$2,'2026-09-07T00:00:00.123456Z')", [id, assignments]);
     return id;
   }
   async function review() {
     const view = await service.view();
-    return { bindingIds: ['classifier_review.content_safety.input' as const], expectedDraftToken: view.draft!.reviewToken, expectedActiveId: view.active?.id ?? null };
+    return { bindingIds: ['classifier_review.security' as const], expectedDraftToken: view.draft!.reviewToken, expectedActiveId: view.active?.id ?? null };
   }
   async function seedPartial() {
     const draftId = await seed(true);
+    await pool.query("UPDATE model_definition SET profile='generic-chat' WHERE id=$1", [modelId]);
     const assignments = emptyModelAssignments();
-    assignments.bindings['classifier_review.content_safety.output'] = modelId;
+    assignments.bindings['classifier_review.topic_control.input'] = modelId;
     const activeId = randomUUID();
-    const report = { valid: true, checkedAt: new Date().toISOString(), checks: [{ id: `probe:classifier_review.content_safety.output:${modelId}`, status: 'passed', scope: 'capability', evidenceKind: 'nemo-rail-v1', message: 'Passed' }], contractCoverage: [], policies: [] };
+    const report = { valid: true, checkedAt: new Date().toISOString(), checks: [{ id: `probe:classifier_review.topic_control.input:${modelId}`, status: 'passed', scope: 'capability', evidenceKind: 'nemo-rail-v1', message: 'Passed' }], contractCoverage: [], policies: [] };
     const proposed = emptyModelAssignments();
-    proposed.bindings['classifier_review.content_safety.input'] = modelId;
-    proposed.bindings['classifier_review.content_safety.output'] = randomUUID();
-    const draftReport = { ...report, valid: false, checks: [{ ...report.checks[0]!, id: `probe:classifier_review.content_safety.input:${modelId}` }, { ...report.checks[0]!, id: `probe:classifier_review.content_safety.output:${proposed.bindings['classifier_review.content_safety.output']}`, status: 'failed' }] };
+    proposed.bindings['classifier_review.security'] = modelId;
+    proposed.bindings['classifier_review.topic_control.input'] = randomUUID();
+    const draftReport = { ...report, valid: false, checks: [{ ...report.checks[0]!, id: `probe:classifier_review.security:${modelId}` }, { ...report.checks[0]!, id: `probe:classifier_review.topic_control.input:${proposed.bindings['classifier_review.topic_control.input']}`, status: 'failed' }] };
     await pool.query("UPDATE model_configuration_revision SET revision=2,assignments=$2,validation_report=$3 WHERE id=$1", [draftId, proposed, draftReport]);
     await pool.query("INSERT INTO model_configuration_revision (id,revision,state,assignments,validation_report) VALUES ($1,1,'active',$2,$3)", [activeId, assignments, report]);
     return { draftId, activeId, proposed, selection: await review() };
@@ -210,7 +211,7 @@ describe.skipIf(!url)("Current model configuration PostgreSQL semantics", () => 
     expect(await service.finalizeActivation(defaults.revisionId, "default")).toBe(true);
     await service.failActivation(defaults.revisionId, "Synthetic default snapshot rejection", "default");
     expect((await pool.query("SELECT id FROM controller_outbox")).rows).toHaveLength(0);
-    const target = "classifier_review.jailbreak.input";
+    const target = "classifier_review.security";
     const receipt = await service.previewAssignment(target, modelId, "synthetic-admin");
     await service.updateAssignment(target, modelId, "synthetic-admin", receipt.validationId);
     const select = async () => ({ ...await review(), bindingIds: [target] });
@@ -228,6 +229,20 @@ describe.skipIf(!url)("Current model configuration PostgreSQL semantics", () => 
     expect(active.models).toEqual([expect.objectContaining({ id: builtinLaya.modelId, backend: "builtin_laya" })]);
   });
 
+  it.each([true, false])("replaces a mixed legacy active revision atomically (enable=%s)", async enable => {
+    const { activeId, draftId } = await seedPartial();
+    const legacy = emptyModelAssignments();
+    legacy.bindings["classifier_review.pii_semantic.output"] = modelId;
+    legacy.bindings["classifier_review.topic_control.input"] = modelId;
+    await pool.query("UPDATE model_configuration_revision SET assignments=$1 WHERE id=ANY($2::text[])", [legacy, [activeId, draftId]]);
+    await service.updateAssignment("classifier_review.security", enable ? modelId : null, "admin");
+    expect((await service.activeConfiguration())?.assignments.bindings).toEqual(legacy.bindings);
+    const next = await service.applyConfiguration("admin", await review());
+    expect(next.assignments.bindings["classifier_review.security"]).toBe(enable ? modelId : null);
+    expect(next.assignments.bindings["classifier_review.pii_semantic.output"]).toBeNull();
+    expect(next.assignments.bindings["classifier_review.topic_control.input"]).toBe(modelId);
+  });
+
   it("migrates only the editable classifiers and preserves the active snapshot and reviewer evidence", async () => {
     const { draftId, activeId, proposed } = await seedPartial();
     const before = (await pool.query("SELECT assignments,validation_report FROM model_configuration_revision WHERE id=$1", [activeId])).rows[0];
@@ -235,8 +250,8 @@ describe.skipIf(!url)("Current model configuration PostgreSQL semantics", () => 
     const migrated = (await service.view()).draft!;
     expect(migrated.id).toBe(draftId);
     for (const binding of layaPrimaryBindingIds) expect(migrated.assignments.bindings[binding]).toBe(builtinLaya.modelId);
-    expect(migrated.assignments.bindings["classifier_review.content_safety.output"]).toBe(proposed.bindings["classifier_review.content_safety.output"]);
-    expect(migrated.validationReport!.checks).toContainEqual(expect.objectContaining({ id: `probe:classifier_review.content_safety.input:${modelId}`, status: "passed" }));
+    expect(migrated.assignments.bindings["classifier_review.topic_control.input"]).toBe(proposed.bindings["classifier_review.topic_control.input"]);
+    expect(migrated.validationReport!.checks).toContainEqual(expect.objectContaining({ id: `probe:classifier_review.security:${modelId}`, status: "passed" }));
     expect((await pool.query("SELECT assignments,validation_report FROM model_configuration_revision WHERE id=$1", [activeId])).rows[0]).toEqual(before);
     const after = (await pool.query("SELECT assignments,validation_report,updated_at FROM model_configuration_revision WHERE id=$1", [draftId])).rows[0];
     await service.initialize();
@@ -273,8 +288,8 @@ describe.skipIf(!url)("Current model configuration PostgreSQL semantics", () => 
   it('overwrites current configuration without history and retains deferred edits', async () => {
     const { draftId, activeId, proposed, selection } = await seedPartial();
     const result = await service.applyConfiguration('synthetic-admin', selection);
-    expect(result.assignments.bindings['classifier_review.content_safety.input']).toBe(modelId);
-    expect(result.assignments.bindings['classifier_review.content_safety.output']).toBe(modelId);
+    expect(result.assignments.bindings['classifier_review.security']).toBe(modelId);
+    expect(result.assignments.bindings['classifier_review.topic_control.input']).toBe(modelId);
     expect(result).not.toHaveProperty('revision');
     expect((await service.view()).active?.id).toBe(activeId);
     await service.finalizeActivation(result.id);
@@ -301,26 +316,26 @@ describe.skipIf(!url)("Current model configuration PostgreSQL semantics", () => 
     await seed();
     if (status === "failed") {
       service.setRailValidator(async () => ({ passed: false, message: "Model API returned 429", latencyMs: 1 }));
-      const receipt = await service.previewAssignment("classifier_review.content_safety.input", modelId, "synthetic-admin");
-      await service.updateAssignment("classifier_review.content_safety.input", modelId, "synthetic-admin", receipt.validationId);
+      const receipt = await service.previewAssignment("classifier_review.security", modelId, "synthetic-admin");
+      await service.updateAssignment("classifier_review.security", modelId, "synthetic-admin", receipt.validationId);
     } else {
       const validator = vi.fn();
       service.setRailValidator(validator);
-      const saved = await service.updateAssignment("classifier_review.content_safety.input", modelId, "synthetic-admin");
-      expect(saved.assignments.bindings["classifier_review.content_safety.input"]).toBe(modelId);
+      const saved = await service.updateAssignment("classifier_review.security", modelId, "synthetic-admin");
+      expect(saved.assignments.bindings["classifier_review.security"]).toBe(modelId);
       expect(validator).not.toHaveBeenCalled();
     }
     const result = await service.applyConfiguration("synthetic-admin", await review());
     expect(result.validationReport?.valid).toBe(false);
     await service.finalizeActivation(result.id);
-    expect((await service.activeConfiguration())?.assignments.bindings["classifier_review.content_safety.input"]).toBe(modelId);
+    expect((await service.activeConfiguration())?.assignments.bindings["classifier_review.security"]).toBe(modelId);
     expect(await service.modelHealth([])).toEqual({ status: "healthy", reason: "not_required", bindings: [] });
-    expect(await service.modelHealth(["classifier_review.content_safety.input"])).toMatchObject({ status: "unhealthy", bindings: [{ status }] });
+    expect(await service.modelHealth(["classifier_review.security"])).toMatchObject({ status: "unhealthy", bindings: [{ status }] });
     if (status === "failed") {
-      expect((await service.view()).active?.validationReport?.checks).toContainEqual(expect.objectContaining({ status: "failed", message: "Model API returned 429" }));
+      expect((await service.view()).active?.validationReport?.checks).toContainEqual(expect.objectContaining({ status: "failed", message: expect.stringContaining("Model API returned 429") }));
       service.setRailValidator(async () => ({ passed: true, message: "Recovered", latencyMs: 1 }));
-      await service.validateAssignment("classifier_review.content_safety.input", "synthetic-admin");
-      expect((await service.modelHealth(["classifier_review.content_safety.input"])).status).toBe("healthy");
+      await service.validateAssignment("classifier_review.security", "synthetic-admin");
+      expect((await service.modelHealth(["classifier_review.security"])).status).toBe("healthy");
     }
     expect((await pool.query("SELECT detail FROM audit_event WHERE kind='model_configuration.activation_started'")).rows[0].detail.validationPassed).toBe(false);
   });
@@ -329,21 +344,21 @@ describe.skipIf(!url)("Current model configuration PostgreSQL semantics", () => 
     const { activeId, selection } = await seedPartial();
     await pool.query('DELETE FROM model_configuration_revision WHERE id=$1', [activeId]);
     const result = await service.applyConfiguration('synthetic-admin', { ...selection, expectedActiveId: null });
-    expect(result.assignments.bindings['classifier_review.content_safety.input']).toBe(modelId);
-    expect(result.assignments.bindings['classifier_review.content_safety.output']).toBeNull();
+    expect(result.assignments.bindings['classifier_review.security']).toBe(modelId);
+    expect(result.assignments.bindings['classifier_review.topic_control.input']).toBeNull();
     for (const binding of layaPrimaryBindingIds) expect(result.assignments.bindings[binding]).toBe(builtinLaya.modelId);
   });
   it('allows explicit removal without applying an unselected addition', async () => {
     const { draftId } = await seedPartial();
     const proposed = emptyModelAssignments();
-    proposed.bindings['classifier_review.content_safety.input'] = modelId;
+    proposed.bindings['classifier_review.security'] = modelId;
     const prior = await service.view();
-    const report = { ...prior.draft!.validationReport!, checks: prior.draft!.validationReport!.checks.filter(check => check.id.startsWith('probe:classifier_review.content_safety.input:')) };
+    const report = { ...prior.draft!.validationReport!, checks: prior.draft!.validationReport!.checks.filter(check => check.id.startsWith('probe:classifier_review.security:')) };
     await pool.query('UPDATE model_configuration_revision SET assignments=$2,validation_report=$3 WHERE id=$1', [draftId, proposed, report]);
-    const result = await service.applyConfiguration('synthetic-admin', { ...await review(), bindingIds: ['classifier_review.content_safety.output'] });
-    expect(result.assignments.bindings['classifier_review.content_safety.output']).toBeNull();
-    expect(result.assignments.bindings['classifier_review.content_safety.input']).toBeNull();
-    expect((await service.view()).draft?.assignments.bindings['classifier_review.content_safety.input']).toBe(modelId);
+    const result = await service.applyConfiguration('synthetic-admin', { ...await review(), bindingIds: ['classifier_review.topic_control.input'] });
+    expect(result.assignments.bindings['classifier_review.topic_control.input']).toBeNull();
+    expect(result.assignments.bindings['classifier_review.security']).toBeNull();
+    expect((await service.view()).draft?.assignments.bindings['classifier_review.security']).toBe(modelId);
   });
   it('retains current configuration on rejection and ignores a late ACK', async () => {
     const { activeId, proposed, selection } = await seedPartial();
@@ -374,7 +389,7 @@ describe.skipIf(!url)("Current model configuration PostgreSQL semantics", () => 
     const { activeId, selection } = await seedPartial();
     const first = await service.applyConfiguration('synthetic-admin', selection);
     await service.finalizeActivation(first.id);
-    await service.updateAssignment('classifier_review.content_safety.input', null, 'synthetic-admin');
+    await service.updateAssignment('classifier_review.security', null, 'synthetic-admin');
     const second = await service.applyConfiguration('synthetic-admin', await review());
     await service.finalizeActivation(second.id);
     await service.finalizeActivation(first.id);
@@ -388,17 +403,17 @@ describe.skipIf(!url)("Current model configuration PostgreSQL semantics", () => 
   });
   it('shares receipts and enforces ownership, expiry and unchanged model settings', async () => {
     await seed();
-    const receipt = await service.previewAssignment('classifier_review.content_safety.input', modelId, 'synthetic-admin');
+    const receipt = await service.previewAssignment('classifier_review.security', modelId, 'synthetic-admin');
     const peer = new ModelConfigurationService(database.db, 'synthetic-root', directory);
-    await expect(peer.getAssignmentValidation('classifier_review.content_safety.input', receipt.validationId, 'other')).rejects.toMatchObject({ code: 'not_found' });
-    await expect(peer.updateAssignment('classifier_review.content_safety.input', modelId, 'other', receipt.validationId)).rejects.toMatchObject({ code: 'model_assignment_not_validated' });
+    await expect(peer.getAssignmentValidation('classifier_review.security', receipt.validationId, 'other')).rejects.toMatchObject({ code: 'not_found' });
+    await expect(peer.updateAssignment('classifier_review.security', modelId, 'other', receipt.validationId)).rejects.toMatchObject({ code: 'model_assignment_not_validated' });
     await pool.query('UPDATE model_assignment_validation SET expires_at=now()-interval \'1 minute\' WHERE id=$1', [receipt.validationId]);
-    await expect(peer.updateAssignment('classifier_review.content_safety.input', modelId, 'synthetic-admin', receipt.validationId)).rejects.toMatchObject({ code: 'model_assignment_not_validated' });
+    await expect(peer.updateAssignment('classifier_review.security', modelId, 'synthetic-admin', receipt.validationId)).rejects.toMatchObject({ code: 'model_assignment_not_validated' });
     await pool.query("UPDATE model_assignment_validation SET expires_at=now()+interval '10 minutes' WHERE id=$1", [receipt.validationId]);
     await pool.query("UPDATE model_definition SET name='Changed' WHERE id=$1", [modelId]);
-    await expect(peer.updateAssignment('classifier_review.content_safety.input', modelId, 'synthetic-admin', receipt.validationId)).rejects.toMatchObject({ code: 'model_assignment_not_validated' });
-    const fresh = await service.previewAssignment('classifier_review.content_safety.input', modelId, 'synthetic-admin');
-    expect((await peer.updateAssignment('classifier_review.content_safety.input', modelId, 'synthetic-admin', fresh.validationId)).assignments.bindings['classifier_review.content_safety.input']).toBe(modelId);
+    await expect(peer.updateAssignment('classifier_review.security', modelId, 'synthetic-admin', receipt.validationId)).rejects.toMatchObject({ code: 'model_assignment_not_validated' });
+    const fresh = await service.previewAssignment('classifier_review.security', modelId, 'synthetic-admin');
+    expect((await peer.updateAssignment('classifier_review.security', modelId, 'synthetic-admin', fresh.validationId)).assignments.bindings['classifier_review.security']).toBe(modelId);
   });
   it('updates the same editable config across validation and saves instead of forking versions', async () => {
     const first = await seed();
@@ -428,9 +443,9 @@ describe.skipIf(!url)("Current model configuration PostgreSQL semantics", () => 
   });
   it('creates initial editable configuration and preserves evidence when saving unchanged settings', async () => {
     await seedBuiltin();
-    const receipt = await service.previewAssignment('classifier_review.content_safety.input', modelId, 'synthetic-admin');
-    const saved = await service.updateAssignment('classifier_review.content_safety.input', modelId, 'synthetic-admin', receipt.validationId);
-    const unchanged = await service.updateAssignment('classifier_review.content_safety.input', modelId, 'synthetic-admin');
+    const receipt = await service.previewAssignment('classifier_review.security', modelId, 'synthetic-admin');
+    const saved = await service.updateAssignment('classifier_review.security', modelId, 'synthetic-admin', receipt.validationId);
+    const unchanged = await service.updateAssignment('classifier_review.security', modelId, 'synthetic-admin');
     expect(unchanged.id).toBe(saved.id);
     expect(unchanged.validationReport?.checks).toEqual(saved.validationReport?.checks);
     expect(unchanged).not.toHaveProperty('rowVersion');
@@ -440,12 +455,12 @@ describe.skipIf(!url)("Current model configuration PostgreSQL semantics", () => 
     const id = await seed();
     const { rows: [row] } = await pool.query('SELECT updated_at FROM model_configuration_revision WHERE id=$1', [id]);
     expect((await pool.query('SELECT id FROM model_configuration_revision WHERE id=$1 AND updated_at=$2', [id, row.updated_at])).rowCount).toBe(0);
-    const receipt = await service.previewAssignment('classifier_review.content_safety.input', modelId, 'synthetic-admin');
-    expect((await service.updateAssignment('classifier_review.content_safety.input', modelId, 'synthetic-admin', receipt.validationId)).id).toBe(id);
+    const receipt = await service.previewAssignment('classifier_review.security', modelId, 'synthetic-admin');
+    expect((await service.updateAssignment('classifier_review.security', modelId, 'synthetic-admin', receipt.validationId)).id).toBe(id);
   });
   it.each(['single', 'whole'] as const)('validates microsecond timestamps (%s)', async kind => {
     await seed(true);
-    const result = kind === 'single' ? await service.validateAssignment('classifier_review.content_safety.input', 'synthetic-admin') : await service.validateDraft('synthetic-admin');
+    const result = kind === 'single' ? await service.validateAssignment('classifier_review.security', 'synthetic-admin') : await service.validateDraft('synthetic-admin');
     expect(result.validationReport?.valid).toBe(true);
   });
   it.each(['single', 'whole'] as const)('rejects stale %s validation even if a concurrent write retains the timestamp', async kind => {
@@ -455,13 +470,13 @@ describe.skipIf(!url)("Current model configuration PostgreSQL semantics", () => 
     const started = new Promise<void>(resolve => { entered = resolve; });
     const gate = new Promise<void>(resolve => { release = resolve; });
     service.setRailValidator(async () => { entered(); await gate; return { passed: true, message: 'Stale', latencyMs: 1 }; });
-    const pending = kind === 'single' ? service.validateAssignment('classifier_review.content_safety.input', 'synthetic-admin') : service.validateDraft('synthetic-admin');
+    const pending = kind === 'single' ? service.validateAssignment('classifier_review.security', 'synthetic-admin') : service.validateDraft('synthetic-admin');
     const rejected = expect(pending).rejects.toMatchObject({ code: 'model_configuration_changed' });
     await started;
     try { await pool.query('UPDATE model_configuration_revision SET assignments=$1,updated_at=updated_at WHERE id=$2', [emptyModelAssignments(), id]); }
     finally { release(); }
     await rejected;
-    expect((await service.view()).draft?.assignments.bindings['classifier_review.content_safety.input']).toBeNull();
+    expect((await service.view()).draft?.assignments.bindings['classifier_review.security']).toBeNull();
   });
 
 });

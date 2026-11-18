@@ -1,4 +1,5 @@
 """Native review preserves moderation scope, uncertainty and call evidence."""
+import asyncio
 from dataclasses import replace
 import json
 
@@ -8,6 +9,8 @@ import pytest
 from runner.toolkit.nemo.evaluators.classifier_review import ClassifierReviewer
 from runner.toolkit.nemo.evaluators.contracts import evaluation_result
 from runner.toolkit.nemo.evaluators.qwen3guard_review import PROFILE
+from runner.laya_batch import laya_batch_scope
+from runner.toolkit.nemo.evaluators.shared_review import review_scope
 from runner.toolkit.safety.providers import Qwen3GuardAdapter
 from runner.toolkit.runtime.contracts import RuntimeTraceStep
 from tests.test_safety_model_providers import _request
@@ -155,3 +158,75 @@ async def test_output_without_history_still_uses_response_moderation():
     assert result.verdict == "not_matched"
     assert [message["role"] for message in calls[0]["messages"]] == ["user", "assistant"]
     assert calls[0]["messages"][-1]["content"] == request.content
+
+@pytest.mark.parametrize("native", [True, False])
+async def test_shared_review_sends_three_security_decisions_in_one_request(native):
+    calls = []
+
+    def respond(req):
+        body = json.loads(req.content)
+        calls.append(body)
+        if native:
+            return response("Safety: Unsafe\nCategories: PII")
+        checks = json.loads(body["messages"][-1]["content"])["checks"]
+        assert len(checks) == 3
+        answers = {key: ("no" if key.endswith("jailbreak_attempt") else "yes")
+                   for check in checks for key in check["questions"]}
+        return response(json.dumps({"answers": answers}))
+
+    transport = httpx.MockTransport(respond)
+    model = ClassifierReviewer(base_url="https://review.test/v1", model="shared", api_key="key",
+        provider_id="shared", profile_ref=PROFILE if native else "generic-chat", transport=transport)
+
+    async def evaluate(capability, question):
+        request = _request("Synthetic record", capability=capability)
+        first = evaluation_result(request, "unknown", request.content, unknown_reason="uncertain")
+        return await model.review(request, {question: {}}, {"current_input": request.content}, first)
+
+    async with review_scope():
+        with laya_batch_scope():
+            results = await asyncio.gather(evaluate("content_safety", "unsafe_content"),
+                evaluate("jailbreak", "jailbreak_attempt"), evaluate("pii", "contains_pii"))
+        assert len(calls) == 1
+        assert [item.verdict for item in results] == ["matched", "not_matched", "matched"]
+        ids = {item.trace[-1].model_call_id for item in results}
+        assert len(ids) == 1 and None not in ids
+        assert sum(item.usage.model_invocations for item in results) == 1
+        if native:
+            assert (await evaluate("pii", "contains_pii")).usage.model_invocations == 0
+    if native:
+        async with review_scope():
+            assert (await evaluate("pii", "contains_pii")).usage.model_invocations == 1
+        assert len(calls) == 2
+
+
+async def test_shared_native_review_keeps_remaining_waiter_and_separates_contexts():
+    entered, release = asyncio.Event(), asyncio.Event()
+    calls = []
+
+    async def respond(req):
+        calls.append(json.loads(req.content)["messages"])
+        entered.set()
+        await release.wait()
+        return response("Safety: Safe\nCategories: None")
+
+    model = reviewer(httpx.MockTransport(respond))
+    async def evaluate(capability, question, *, context=()):
+        request = _request("Same content", capability=capability)
+        first = evaluation_result(request, "unknown", request.content, unknown_reason="uncertain")
+        return await model.review(request, {question: {}}, {"current_input": request.content,
+            "context_messages": context}, first)
+
+    async with review_scope():
+        first = asyncio.create_task(evaluate("content_safety", "unsafe_content"))
+        await entered.wait()
+        second = asyncio.create_task(evaluate("pii", "contains_pii"))
+        first.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await first
+        release.set()
+        surviving = await second
+        assert surviving.verdict == "not_matched" and surviving.usage.model_invocations == 1
+        assert len(calls) == 1
+        await evaluate("jailbreak", "jailbreak_attempt", context=[{"role": "user", "content": "Another context"}])
+        assert len(calls) == 2

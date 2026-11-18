@@ -392,7 +392,7 @@ PII evaluator 覆盖这两个钩子即可；内容安全/越狱/话题的行为�
 
 ### 7.4 灰区复核（可选，第二阶段）
 
-当前 Rail 的 `classifier_review.<rail>` 绑定生效后，自动复核 JEV/Laya 语义 PII 灰区。
+共享的 `classifier_review.security` 绑定生效后，自动复核 JEV/Laya 语义 PII 灰区。
 没有复核模型时，由 Policy 的 `on_unknown` 处理普通灰区。
 
 - 复核问题使用 PII 的完整类别与排除项；`yes` → matched、全部 `no` → not_matched、
@@ -703,7 +703,7 @@ set -a; . ./.env; set +a
 
 ### 默认值取舍
 
-复核现在按能力与阶段独立配置，例如 `classifier_review.pii_semantic.input` / `.output`。
+语义 PII 与内容安全、越狱共用 `classifier_review.security`。
 语义 PII、内容安全和越狱可选择 Qwen3Guard；话题复核需单独选择通用聊天模型。
 话题未配置时保留 Laya/JEV 初判结果和 Rule 的 Unknown 处理，不继承其他能力的复核模型。
 部署时按实际检测组合评估复核的延迟和成本。

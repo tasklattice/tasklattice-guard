@@ -55,14 +55,13 @@ Replace `REVIEW_MODEL_ID` with the returned ID:
 ```sh
 bin/guardctl platform bind \
   --url http://localhost:38081 --env-file .local-secrets/guardctl.env \
-  --binding classifier_review.content_safety.input --model-id REVIEW_MODEL_ID \
+  --binding classifier_review.security --model-id REVIEW_MODEL_ID \
   --state .local-secrets/review-binding.json
 ```
 
 This performs real safe/unsafe candidate probes, saves the validated assignment,
-applies only `classifier_review.content_safety.input`, and waits for activation. The API still
-enforces validation and optimistic concurrency. Output and unrelated bindings
-remain unchanged. Bindings are **platform-wide**: every Guardrail using this
+applies only `classifier_review.security`, and waits for activation. The API still
+enforces validation and optimistic concurrency. The shared security reviewer covers input and output. Bindings are **platform-wide**: every Guardrail using this
 capability and direction uses the selected reviewer on uncertain results. The six initial classifier
 bindings remain platform-managed Laya; they cannot be replaced or cleared.
 
@@ -71,15 +70,11 @@ includes `previousModelId`. After comparison, bind that ID with a **new** state
 file (for example `restore-nvidia.json`); this validates and restores only the
 selected binding. Do not run tests during activation.
 
-Optional gray-area reviewers use the same bind command, with a separate target
-for each capability and stage: `classifier_review.content_safety.input/output`,
-`classifier_review.jailbreak.input`, `classifier_review.pii_semantic.input/output`,
-and `classifier_review.topic_control.input`. Use the full input or output binding
-ID in each command. Security reviewers accept `generic-chat`,
+Optional review uses two targets, `classifier_review.security` and `classifier_review.topic_control.input`. Security reviewers accept `generic-chat`,
 `tali.classifier-review.v1`, or `tali.qwen3guard.v1`; Topic accepts the two chat
 profiles only. A missing Topic reviewer leaves the Laya/JEV result and the Rule's
 Unknown handling unchanged. No other review binding is used as its fallback.
-Each binding reviews only its own capability and Rail. See [JEV / Laya gray-area review](classifier-gray-review.md)
+See [JEV / Laya gray-area review](classifier-gray-review.md)
 for evidence and failure behavior.
 
 ## Project: create from a Profile and publish a test Endpoint

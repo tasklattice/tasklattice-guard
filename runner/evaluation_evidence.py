@@ -195,6 +195,8 @@ def evaluation_evidence(decision: ProtectionDecision) -> str:
                         "answers":{k:v for k,v in answers.items() if k in probability_keys[step.capability] and v in {"yes","no","unknown"}} if isinstance(answers,dict) else {},
                         "policyAction":row["policyAction"], "enforcedAction":row["enforcedAction"],
                         "errorType":_identity(review_step.error_type)}
+                    if review_step.model_call_id:
+                        row["review"]["modelCallId"] = _identity(review_step.model_call_id)
                     if review_step.profile_ref == "tali.qwen3guard.v1":
                         categories = review.get("native_categories", [])
                         known_categories = {item.native_category for item in mappings_for("qwen3guard")}

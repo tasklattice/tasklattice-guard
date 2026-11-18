@@ -4,6 +4,8 @@ import { builtinLaya, isBuiltinLaya } from "./builtin-laya.js";
 import {
   capabilityBindingById,
   capabilityBindingDefinitions,
+  isLegacySecurityReview,
+  securityReviewerId,
   capabilityBindingIds,
   type CapabilityBindingId,
   controlPlaneProfileRefs,
@@ -69,7 +71,7 @@ export type ModelAssignments = {
 
 export const modelAssignmentTargets = ["control_plane", ...capabilityBindingIds] as const;
 export type ModelAssignmentTarget = (typeof modelAssignmentTargets)[number];
-export const modelAssignmentTargetSchema = z.enum(modelAssignmentTargets);
+export const modelAssignmentTargetSchema = z.enum(modelAssignmentTargets).refine(id => !isLegacySecurityReview(id), "Use classifier_review.security for security review.");
 
 export const emptyModelAssignments = (): ModelAssignments => ({
   controlPlane: null,
@@ -231,8 +233,9 @@ export function normalizeModelAssignments(
       // Only absent security-review settings inherit a legacy stage binding.
       // Explicit null disables review; Topic never inherits another capability's reviewer.
       const value = source.bindings?.[binding.id];
-      const legacy = binding.reviewCapabilityRef && binding.reviewCapabilityRef !== "topic_control"
+      const legacy = isLegacySecurityReview(binding.id)
         ? source.bindings?.[`classifier_review.${binding.railType}`] : null;
+      if (source.bindings?.[securityReviewerId] && isLegacySecurityReview(binding.id)) return [binding.id, null];
       return [binding.id, value === undefined ? legacy ?? null : value];
     })) as Record<CapabilityBindingId, string | null>,
   };

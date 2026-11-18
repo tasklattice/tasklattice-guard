@@ -55,7 +55,7 @@ Laya 服务的 `usage.truncated` 只报告状态截断，不报告问题截断�
 
 话题 v3 对以换行或分号分隔的多项允许/禁止主题也要求完整复核。原生编码器在此类列表上出现过高分误拦和低分漏检，因此无论初判方向如何，都保留原分数并追加 `multi_topic_scope_unverified` 覆盖证据，返回 unknown；原生错误仍按错误处理。单一主题检查保持原行为。
 
-复核按能力及阶段单独配置：`classifier_review.content_safety.input/output`、`classifier_review.jailbreak.input`、`classifier_review.pii_semantic.input/output`、`classifier_review.topic_control.input`。安全类可以使用 Qwen3Guard-Gen 的 `tali.qwen3guard.v1` 原生标签；话题需单独选择聊天模型。Topic 未配置复核时，保留 Laya 的最终初判结果，Unknown 沿用 Rule 的 `on_unknown`，不会借用其他能力的模型。聊天复核接收完整的规范问题与原始内容/历史，不接收初判概率或测试标签。第一阶段传输及格式错误不进入复核；合法响应明确报告的截断可以复核，复核失败仍为执行错误，复核后仍 Unknown 则 Block。具体规则见 [灰区复核](classifier-gray-review.md)。
+复核分为共享的 `classifier_review.security` 和可选的 `classifier_review.topic_control.input`。安全类可以使用 Qwen3Guard-Gen 的 `tali.qwen3guard.v1` 原生标签；话题需单独选择聊天模型。Topic 未配置复核时，保留 Laya 的最终初判结果，Unknown 沿用 Rule 的 `on_unknown`，不会借用其他能力的模型。聊天复核接收完整的规范问题与原始内容/历史，不接收初判概率或测试标签。第一阶段传输及格式错误不进入复核；合法响应明确报告的截断可以复核，复核失败仍为执行错误，复核后仍 Unknown 则 Block。具体规则见 [灰区复核](classifier-gray-review.md)。
 
 `tali.laya.v1` 支持 `content_safety.input`、`content_safety.output`、`jailbreak.input`、`topic_control.input`、`pii_semantic.input`、`pii_semantic.output`。仅话题协议只支持 `topic_control.input`。两者仍不实现控制面用途；JEV Provider 也不能绑定 Laya 协议。
 
