@@ -59,6 +59,9 @@ An existing `generic-chat` model, including DeepSeek, can serve these bindings
 without changing its profile or Control Plane assignment. The dedicated
 `tali.classifier-review.v1` profile also supports these bindings. Native
 `tali.qwen3guard.v1` supports security reviews; Topic review accepts chat models only.
+The same DeepSeek registration can serve Control Plane Chat with its review,
+semantic PII or grounding profile. Chat validation uses an ordinary Chat
+Completions request. Protection checks use their own protocol and validation.
 DeepSeek also supports input and output semantic PII through the
 explicit `tali.openai-compatible-pii.v1` profile; other primary detectors retain
 their specialized protocol requirements. Controller projects

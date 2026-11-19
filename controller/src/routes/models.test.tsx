@@ -593,6 +593,23 @@ describe("Models and Protection Capabilities", { timeout: 30_000 }, () => {
     expect(activateModelConfiguration).not.toHaveBeenCalled();
   });
 
+  it("lists the same DeepSeek security reviewer in the Control Plane chat selector", async () => {
+    const deepseek = { ...chatModel, id: "ds-review", name: "DeepSeek Flash", providerKind: "deepseek" as const, profile: "tali.classifier-review.v1" as const };
+    vi.mocked(getModelConfiguration).mockResolvedValue({ ...view, models: [deepseek, safetyModel], draft: {
+      ...view.draft, assignments: { controlPlane: null, bindings: { ...assignments.bindings, "classifier_review.security": deepseek.id } },
+    } });
+    renderPage(<GuardrailCatalogPage />);
+    const review = await screen.findByLabelText("modelSettings.detectors.security_review.title", { selector: "tr" });
+    expect(within(review).getByRole("combobox").textContent).toContain(deepseek.name);
+    fireEvent.click(screen.getByRole("tab", { name: "modelSettings.controlPlane" }));
+    const section = screen.getByRole("heading", { name: "modelSettings.controlPlane" }).closest("section")!;
+    fireEvent.keyDown(within(section).getByRole("combobox"), { key: "ArrowDown" });
+    expect(screen.queryByRole("option", { name: /Qwen Guard/ })).toBeNull();
+    fireEvent.click(screen.getByRole("option", { name: /DeepSeek Flash/ }));
+    fireEvent.click(within(section).getByRole("button", { name: "modelSettings.validateAssignment" }));
+    await waitFor(() => expect(validateModelAssignment).toHaveBeenCalledWith("control_plane", deepseek.id));
+  });
+
   it("opens failed validation evidence and lets users inspect the passing sample too", async () => {
     const message = "Model probe returned HTTP 500 with a complete upstream diagnostic response.";
     vi.mocked(getModelConfiguration).mockResolvedValue({

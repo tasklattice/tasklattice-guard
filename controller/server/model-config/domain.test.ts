@@ -5,7 +5,6 @@ import {
   assignmentTargetProfiles,
   assignmentInputSchema,
   capabilityBindingContracts,
-  controlPlaneProfiles,
   emptyModelAssignments,
   modelInputSchema,
   modelAssignmentTargetSchema,
@@ -83,7 +82,7 @@ describe("Protection Capabilities capability binding profiles", () => {
     const profile = "tali.nemotron-content-safety.v1";
     expect(assignmentTargetProfiles("content_safety.input")).toContain(profile);
     expect(assignmentTargetProfiles("content_safety.output")).toContain(profile);
-    expect(controlPlaneProfiles).not.toContain(profile);
+    expect(assignmentTargetProfiles("control_plane")).not.toContain(profile);
     expect(profileContracts[profile]).toEqual(["tali.guard.content-safety.v1"]);
     expect(modelInputSchema.parse({
       providerId: "2da89935-e001-4a43-a47b-95f419666bb0",
@@ -97,7 +96,7 @@ describe("Protection Capabilities capability binding profiles", () => {
     const profile = "tali.nemoguard-jailbreak-detect.v1";
     expect(assignmentTargetProfiles("jailbreak.input")).toContain(profile);
     expect(assignmentTargetProfiles("jailbreak.input")).toContain("tali.openai-compatible-jailbreak.v1");
-    expect(controlPlaneProfiles).not.toContain(profile);
+    expect(assignmentTargetProfiles("control_plane")).not.toContain(profile);
     expect(assignmentTargetProfiles("content_safety.input")).not.toContain(profile);
     expect(profileContracts[profile]).toEqual(["tali.guard.jailbreak.v1"]);
     expect(profileTransports[profile]).toBe("nemoguard_jailbreak_detect");
@@ -110,8 +109,8 @@ describe("Protection Capabilities capability binding profiles", () => {
   });
 
   it("reuses DeepSeek chat for explicit input review while preserving primary detector contracts", () => {
-    expect(assignmentTargetAcceptsModel("control_plane", "generic-chat", "deepseek")).toBe(true);
     for (const profile of ["generic-chat", "tali.classifier-review.v1"] as const) {
+      expect(assignmentTargetAcceptsModel("control_plane", profile, "deepseek")).toBe(true);
       expect(assignmentTargetAcceptsModel("classifier_review.content_safety.input", profile, "deepseek")).toBe(true);
       expect(assignmentTargetAcceptsModel("classifier_review.content_safety.input", profile, "custom-openai-compatible")).toBe(true);
       expect(capabilityBindingContracts("classifier_review.content_safety.input", profile)).toEqual(["tali.guard.classifier-review.v1"]);
@@ -133,6 +132,7 @@ describe("Protection Capabilities capability binding profiles", () => {
     // Generic chat models may serve the grounding judge; see
     // "feat(models): allow chat grounding judge".
     expect(providerAcceptsProfile("deepseek", "tali.grounding-judge.v1")).toBe(true);
+    expect(assignmentTargetAcceptsModel("control_plane", "tali.grounding-judge.v1", "deepseek")).toBe(true);
   });
 
   it("allows DeepSeek PII on both rails only with the explicit PII protocol", () => {
@@ -144,7 +144,8 @@ describe("Protection Capabilities capability binding profiles", () => {
       expect(capabilityBindingContracts(target, profile)).toEqual(["tali.guard.pii.semantic.v1"]);
       expect(assignmentTargetAcceptsModel(target, "generic-chat", "deepseek")).toBe(false);
     }
-    for (const target of ["classifier_review.content_safety.input", "content_safety.input", "jailbreak.input", "topic_control.input", "control_plane"] as const) {
+    expect(assignmentTargetAcceptsModel("control_plane", profile, "deepseek")).toBe(true);
+    for (const target of ["classifier_review.content_safety.input", "content_safety.input", "jailbreak.input", "topic_control.input"] as const) {
       expect(assignmentTargetAcceptsModel(target, profile, "deepseek")).toBe(false);
     }
   });

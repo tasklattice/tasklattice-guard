@@ -44,7 +44,6 @@ import {
   assignmentTargetAcceptsModel,
   assignmentTargetProfiles,
   assignmentInputSchema,
-  controlPlaneProfiles,
   capabilityBindingContracts,
   isRetiredModel,
   modelConfigurationInputSchema,
@@ -126,7 +125,7 @@ export class ModelConfigurationService {
     const builtin = isBuiltinLaya(model.id, provider.id);
     if (target === "control_plane") return builtin
       ? { passed: false, message: "Built-in Laya is available for Protection Capabilities.", latencyMs: 0 }
-      : this.probeModel(provider, model);
+      : this.probeModel(provider, { ...model, profile: "generic-chat" });
     if (!this.railValidator) return { passed: false, message: "Runner Rail validation is unavailable. A model connection check cannot validate an Input/Output Rail.", latencyMs: 0 };
     const binding = capabilityBindingDefinitions.find((item) => item.id === target)!;
     const requestId = randomUUID();
@@ -1203,12 +1202,11 @@ export class ModelConfigurationService {
     const modelById = new Map(models.map((model) => [model.id, model]));
     const providerById = new Map(providers.map((provider) => [provider.id, provider]));
     const probes = new Map<string, RailValidationEvidence>();
-    const targets: Array<{ id: ModelAssignmentTarget; modelId: string | null; profiles: readonly ModelProfile[] }> = [
-      { id: "control_plane", modelId: assignments.controlPlane, profiles: controlPlaneProfiles },
+    const targets: Array<{ id: ModelAssignmentTarget; modelId: string | null }> = [
+      { id: "control_plane", modelId: assignments.controlPlane },
       ...capabilityBindingDefinitions.map((binding) => ({
         id: binding.id,
         modelId: assignments.bindings[binding.id],
-        profiles: binding.profileRefs as readonly ModelProfile[],
       })),
     ];
     for (const target of targets) {
@@ -1228,7 +1226,7 @@ export class ModelConfigurationService {
         checks.push({ id: `assignment:${target.id}`, scope: "configuration", status: "failed", message: `${target.id} references an unavailable Model.` });
         continue;
       }
-      if (!target.profiles.includes(model.profile) || !assignmentTargetAcceptsModel(target.id, model.profile, provider.kind)) {
+      if (!assignmentTargetAcceptsModel(target.id, model.profile, provider.kind)) {
         checks.push({ id: `assignment:${target.id}`, scope: "configuration", status: "failed", message: `${model.name} is incompatible with ${target.id}.` });
         continue;
       }

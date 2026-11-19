@@ -62,7 +62,12 @@ export function isLayaPrimaryBinding(id: string): id is typeof layaPrimaryBindin
   return (layaPrimaryBindingIds as readonly string[]).includes(id);
 }
 
-export const controlPlaneProfileRefs = ["generic-chat"] as const;
+const genericChatProfiles = ["generic-chat"] as const;
+const deepseekChatProfiles = [...genericChatProfiles, "tali.classifier-review.v1", "tali.openai-compatible-pii.v1", "tali.grounding-judge.v1"] as const;
+
+export function controlPlaneChatProfiles(providerKind?: string) {
+  return providerKind === "deepseek" ? deepseekChatProfiles : genericChatProfiles;
+}
 export const typeSafeProfileRefs = ["tali.typesafe-jev.v1", "tali.typesafe-jev-topic.v1"] as const;
 export const isTypeSafeProfile = (profile: string): profile is typeof typeSafeProfileRefs[number] => (typeSafeProfileRefs as readonly string[]).includes(profile);
 export const layaProfileRefs = ["tali.laya.v1", "tali.laya-topic.v1"] as const;

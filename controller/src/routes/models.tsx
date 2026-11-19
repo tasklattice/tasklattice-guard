@@ -62,7 +62,7 @@ import {
 import {
   capabilityBindingDefinitions,
   builtinLayaModelId,
-  controlPlaneProfileRefs,
+  controlPlaneChatProfiles,
   hasLegacySecurityReview, securityReviewRails, securityReviewerId,
   isDataPlaneProviderKindAllowed,
   isLayaPrimaryBinding,
@@ -504,7 +504,7 @@ function ControlPlaneSection({ models, selectedId, savedId, report, disabled, sa
   onValidate: () => void;
 }) {
   const { t } = useTranslation();
-  const available = models.filter((model) => controlPlaneProfileRefs.includes(model.profile as "generic-chat"));
+  const available = models.filter(model => controlPlaneChatProfiles(model.providerKind).some(profile => profile === model.profile));
   const selected = available.find((model) => model.id === selectedId);
   const dirty = selectedId !== savedId;
   return (

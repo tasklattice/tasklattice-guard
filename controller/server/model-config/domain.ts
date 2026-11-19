@@ -8,7 +8,7 @@ import {
   securityReviewerId,
   capabilityBindingIds,
   type CapabilityBindingId,
-  controlPlaneProfileRefs,
+  controlPlaneChatProfiles,
   isDataPlaneProviderKindAllowed,
   isTypeSafeProfile,
   isLayaProfile,
@@ -207,8 +207,6 @@ export const profileTransports: Record<ModelProfile, ModelTransport> = {
   "tali.automated-reasoning.v1": "openai_chat",
 };
 
-export const controlPlaneProfiles: readonly ModelProfile[] = controlPlaneProfileRefs;
-
 /** A remote Laya runtime can use the compatible request shape before a connection probe selects its mode. */
 export function resolveLayaRequestMode(
   profile: ModelProfile,
@@ -262,9 +260,9 @@ export function capabilityBindingUsesModel(assignments: ModelAssignments, bindin
   return assignments.bindings[bindingId] === modelId;
 }
 
-export function assignmentTargetProfiles(target: ModelAssignmentTarget): readonly ModelProfile[] {
+export function assignmentTargetProfiles(target: ModelAssignmentTarget, providerKind?: ModelProviderKind): readonly ModelProfile[] {
   if (target === "control_plane") {
-    return controlPlaneProfiles;
+    return controlPlaneChatProfiles(providerKind);
   }
   return (capabilityBindingById.get(target)?.profileRefs ?? []) as readonly ModelProfile[];
 }
@@ -275,7 +273,7 @@ export function assignmentTargetAcceptsModel(
   providerKind: ModelProviderKind,
 ): boolean {
   return providerAcceptsProfile(providerKind, profile)
-    && assignmentTargetProfiles(target).includes(profile)
+    && assignmentTargetProfiles(target, providerKind).includes(profile)
     && (target === "control_plane" || isDataPlaneProviderKindAllowed(providerKind, target));
 }
 
@@ -287,9 +285,7 @@ export function providerAcceptsProfile(providerKind: ModelProviderKind, profile:
     return providerKind === "typesafe" && isTypeSafeProfile(profile);
   }
   return isDataPlaneProviderKindAllowed(providerKind)
-    || profile === "generic-chat" || profile === "tali.classifier-review.v1"
-    || profile === "tali.openai-compatible-pii.v1"
-    || profile === "tali.grounding-judge.v1";
+    || controlPlaneChatProfiles(providerKind).some(allowed => allowed === profile);
 }
 
 export { localGuardrailContracts } from "../../shared/protection-dependencies.js";

@@ -350,6 +350,35 @@ describe("Capability configuration after registration", () => {
     expect(rows.get(modelConfigurationRevisions)![0]!.state).not.toBe("active");
   });
 
+  it("validates chat and security review independently for one registered DeepSeek model", async () => {
+    const { service, rows, fetcher, railValidator } = setup();
+    rows.get(modelProviders)![0]!.kind = "deepseek";
+    const profile = "tali.classifier-review.v1";
+    Object.assign(rows.get(modelDefinitions)![0]!, { model: "deepseek-flash", profile });
+    fetcher.mockImplementation(async () => Response.json({ choices: [{ message: { content: "OK" } }] }));
+
+    const review = await service.previewAssignment("classifier_review.security", id, "admin");
+    await service.updateAssignment("classifier_review.security", id, "admin", review.validationId);
+    expect(await service.controlPlaneModel("playground_chat")).toBeNull();
+    const chat = await service.previewAssignment("control_plane", id, "admin");
+    const saved = await service.updateAssignment("control_plane", id, "admin", chat.validationId);
+
+    expect(saved.assignments).toMatchObject({ controlPlane: id, bindings: { "classifier_review.security": id } });
+    expect(await service.controlPlaneModel("playground_chat")).toMatchObject({ model: "deepseek-flash" });
+    const { validationReport } = await service.validateDraft("admin");
+    expect(validationReport?.checks).toEqual(expect.arrayContaining([
+      expect.objectContaining({ id: `probe:control_plane:${id}`, status: "passed", evidenceKind: "model-probe" }),
+      expect.objectContaining({ id: `probe:classifier_review.security:${id}`, status: "passed", evidenceKind: "nemo-rail-v1" }),
+    ]));
+    expect(fetcher).toHaveBeenCalledWith("https://provider.test/v1/chat/completions", expect.objectContaining({
+      body: expect.stringContaining("Reply with exactly OK."),
+    }));
+    expect(railValidator).toHaveBeenCalledWith(expect.objectContaining({
+      configuration: expect.objectContaining({ bindings: [expect.objectContaining({ modelRef: id, profileRef: profile })] }),
+    }));
+    expect(rows.get(modelDefinitions)![0]!.profile).toBe(profile);
+  });
+
   it("keeps undeclared custom dependencies unknown in the actual setup report", async () => {
     const { service, rows, fetcher, railValidator } = setup();
     rows.set(policyVersions, [
