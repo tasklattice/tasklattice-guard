@@ -57,6 +57,7 @@ it("registers a dedicated allocation in one request with the reviewed assignment
 it("requires reviewing the shared policy impact before assigning an unallocated project",async()=>{
  detail={...detail,groupId:"test1",pool:null,modelScope:{projectCount:1,poolCount:0}};
  mount();fireEvent.click(await screen.findByRole("button",{name:"Allocate Runner"}));
+ fireEvent.click(screen.getByRole("radio",{name:/Shared/}));
  expect(api.configureProjectRunner).not.toHaveBeenCalled();
  expect(screen.getByText(/will use the shared Runner's model policy/)).toBeTruthy();
  fireEvent.click(screen.getByRole("button",{name:"Use default shared Runner"}));
@@ -82,6 +83,7 @@ it("keeps low-frequency reallocation in a more menu, separate from settings",asy
 it("keeps the reviewed allocation version while the query cache refreshes",async()=>{
  detail={...detail,groupId:"test1",pool:null,modelScope:{projectCount:1,poolCount:0}};
  mount();fireEvent.click(await screen.findByRole("button",{name:"Allocate Runner"}));
+ fireEvent.click(screen.getByRole("radio",{name:/Shared/}));
  await act(async()=>{client.setQueryData(["project-runner","test1"],{...detail,groupId:"changed"});});
  fireEvent.click(screen.getByRole("button",{name:"Use default shared Runner"}));
  await waitFor(()=>expect(api.configureProjectRunner).toHaveBeenCalledWith("test1",{mode:"shared",expectedGroupId:"test1",expectedPoolId:null}));
