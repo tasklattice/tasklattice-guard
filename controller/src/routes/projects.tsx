@@ -127,9 +127,13 @@ export function ProjectsPage() {
         <CreateProjectSheet
           returnFocusRef={trigger}
           onClose={() => setCreateOpen(false)}
-          onCreated={async () => {
+          onCreated={async (project) => {
             setCreateOpen(false);
             await client.invalidateQueries({ queryKey: ["projects"] });
+            if (project.groupId !== "default") {
+              runnerTrigger.current = trigger.current;
+              setRunnerProject(project);
+            }
           }}
         />
       )}
@@ -247,21 +251,23 @@ function CreateProjectSheet({
   returnFocusRef,
 }: {
   onClose: () => void;
-  onCreated: (id: string) => Promise<void>;
+  onCreated: (project: Project) => Promise<void>;
   returnFocusRef: React.RefObject<HTMLButtonElement | null>;
 }) {
   const { t } = useTranslation();
   const [name, setName] = useState("");
   const [department, setDepartment] = useState("");
+  const [runnerMode, setRunnerMode] = useState<"shared" | "dedicated">("shared");
   const create = useMutation({
     mutationFn: () =>
       createProject({
         name: normalizeProjectName(name),
+        ...(runnerMode === "dedicated" ? { runnerMode } : {}),
         ...(department.trim()
           ? { externalDepartmentId: department.trim() }
           : {}),
       }),
-    onSuccess: (project) => onCreated(project.id),
+    onSuccess: (project) => onCreated(project),
   });
   return (
     <EntitySheet
@@ -329,10 +335,21 @@ function CreateProjectSheet({
           <span>{t("accountForm.projectUrl")}</span>
           <p>{window.location.origin}/{normalizeProjectName(name)}</p>
         </div> : <p role="alert" className="text-xs text-destructive">{t("projects.invalidName")}</p>)}
-        <div className="project-create-fact">
+        <fieldset className="grid gap-3">
+          <legend className="mb-2 text-sm font-medium">{t("projects.runnerAllocation")}</legend>
+          <label className="flex items-center gap-2 text-sm">
+            <input type="radio" name="runner-mode" checked={runnerMode === "shared"} disabled={create.isPending} onChange={() => setRunnerMode("shared")} />
+            {t("projects.useSharedRunner")}
+          </label>
+          <label className="flex items-center gap-2 text-sm">
+            <input type="radio" name="runner-mode" checked={runnerMode === "dedicated"} disabled={create.isPending} onChange={() => setRunnerMode("dedicated")} />
+            {t("projects.dedicatedRunner")}
+          </label>
+          <p className="text-xs text-muted-foreground">{t(runnerMode === "shared" ? "projects.createSharedRunnerHint" : "projects.createDedicatedRunnerHint")}</p>
+        </fieldset>
+        {runnerMode === "shared" && <div className="project-create-fact">
           <span>{t("accountForm.defaultRunner")}</span><p>runner-default</p>
-          <p className="text-xs text-muted-foreground">{t("accountForm.defaultRunnerHint")}</p>
-        </div>
+        </div>}
         <label className="grid gap-2 text-sm font-medium">
           {t("projects.newDepartment")}
           <Input

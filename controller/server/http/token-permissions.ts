@@ -179,14 +179,13 @@ export function requiredAccountPermission(method: string, path: string): { resou
   return { resource: permission[2], action: permission[3] };
 }
 
-/** Business inventories always need an explicit project for administrators.
- * Platform catalogs have no project owner. Models have both platform and project inventories. */
+/** Business inventories require an explicit project for administrators.
+ * Some reads have both platform and Project views. */
 export function adminProjectScope(method: string, path: string): "required" | "optional" | undefined {
   const permission = requiredTokenPermission(method, path);
   if (!permission || permission[3] !== "read") return undefined;
-  if (path === "/api/v1/models" || path === "/api/v1/model-configuration") return "optional";
-  if (["/api/v1/guardrail-capabilities", "/api/v1/authoring/capabilities", "/api/v1/policy-catalog/actions", "/api/v1/policy-catalog/detectors"].includes(path)
-    || path === "/api/v1/routing/selector-fields") return undefined;
+  if (["/api/v1/models", "/api/v1/model-configuration", "/api/v1/routing/selector-fields"].includes(path)) return "optional";
+  if (["/api/v1/guardrail-capabilities", "/api/v1/authoring/capabilities", "/api/v1/policy-catalog/actions", "/api/v1/policy-catalog/detectors"].includes(path)) return undefined;
   if (["guardrails", "routers", "endpoints", "policies", "playground"].includes(permission[2])) return "required";
   return undefined;
 }

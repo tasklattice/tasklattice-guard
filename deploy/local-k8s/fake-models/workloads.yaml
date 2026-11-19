@@ -1,0 +1,129 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: fake-llm-echo
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: fake-llm-echo
+  template:
+    metadata:
+      labels:
+        app: fake-llm-echo
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65532
+        runAsGroup: 65532
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: model
+          image: ghcr.io/tasklattice/tali-guard-runner:local-v2-a760af90
+          imagePullPolicy: Never
+          command: [/opt/tasklattice/venv/bin/uvicorn, server:app]
+          args: [--app-dir, /mock, --host, 0.0.0.0, --port, "8097", --no-access-log]
+          env:
+            - name: FAKE_MODEL_MODE
+              value: echo
+            - name: PYTHONDONTWRITEBYTECODE
+              value: "1"
+          ports:
+            - {name: http, containerPort: 8097}
+          resources:
+            requests: {cpu: 25m, memory: 32Mi}
+            limits: {memory: 128Mi}
+          readinessProbe:
+            httpGet: {path: /health, port: http}
+          livenessProbe:
+            httpGet: {path: /health, port: http}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: [ALL]
+          volumeMounts:
+            - {name: source, mountPath: /mock, readOnly: true}
+      volumes:
+        - name: source
+          configMap:
+            name: fake-llm-source
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: fake-llm-echo
+spec:
+  selector:
+    app: fake-llm-echo
+  ports:
+    - {name: http, port: 8097, targetPort: http}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: fake-llm-guard
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: fake-llm-guard
+  template:
+    metadata:
+      labels:
+        app: fake-llm-guard
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65532
+        runAsGroup: 65532
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: model
+          image: ghcr.io/tasklattice/tali-guard-runner:local-v2-a760af90
+          imagePullPolicy: Never
+          command: [/opt/tasklattice/venv/bin/uvicorn, server:app]
+          args: [--app-dir, /mock, --host, 0.0.0.0, --port, "8097", --no-access-log]
+          env:
+            - name: FAKE_MODEL_MODE
+              value: guard
+            - name: PYTHONDONTWRITEBYTECODE
+              value: "1"
+          ports:
+            - {name: http, containerPort: 8097}
+          resources:
+            requests: {cpu: 25m, memory: 32Mi}
+            limits: {memory: 128Mi}
+          readinessProbe:
+            httpGet: {path: /health, port: http}
+          livenessProbe:
+            httpGet: {path: /health, port: http}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: [ALL]
+          volumeMounts:
+            - {name: source, mountPath: /mock, readOnly: true}
+            - {name: mapping, mountPath: /mapping, readOnly: true}
+      volumes:
+        - name: source
+          configMap:
+            name: fake-llm-source
+        - name: mapping
+          configMap:
+            name: fake-llm-guard-mapping
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: fake-llm-guard
+spec:
+  selector:
+    app: fake-llm-guard
+  ports:
+    - {name: http, port: 8097, targetPort: http}

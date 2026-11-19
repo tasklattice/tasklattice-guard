@@ -6,6 +6,7 @@ import type {
   Project,
   ProjectMember,
   ProjectAccessStatus,
+  CreateProjectInput,
 } from "../../shared/projects";
 
 const json = (method: string, body: unknown) => ({
@@ -28,10 +29,7 @@ export const listProjects = (
     `/api/v1/projects${directorySearch(query)}`,
     { signal },
   );
-export const createProject = (input: {
-  name: string;
-  externalDepartmentId?: string;
-}) => requestController<Project>("/api/v1/projects", json("POST", input));
+export const createProject = (input: CreateProjectInput) => requestController<Project>("/api/v1/projects", json("POST", input));
 export const getProjectAccess = () =>
   requestController<ProjectAccessStatus>("/api/v1/account/project-access");
 export const refreshProjectAccess = () =>

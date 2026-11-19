@@ -100,7 +100,7 @@ Scan 协议只提交单段 input 和方向。本轮没有把历史拼入文本�
 
 验证包括 93 项 Scan 协议与评分测试通过，以及真实 HTTP 预检中的鉴权、非法参数、默认 flagOnly 和显式模式检查。共享部署的 Default、活动模型版本、Endpoint 和 Router 前后复核一致，见 `shared-deployment-after.json`。
 
-证据目录：[`output/default-f5-public-evaluation/live-20261019`](../output/default-f5-public-evaluation/live-20261019/)。关键文件为 `comparison.json`、`live/results.jsonl`、`live/decisions.jsonl`、`live/model-http.jsonl`、`controls/`、`manifest.json` 和 `checksums.json`。
+历史证据目录：`output/default-f5-public-evaluation/live-20261019/`（本地生成材料，当前源码检出不包含）。关键文件为 `comparison.json`、`live/results.jsonl`、`live/decisions.jsonl`、`live/model-http.jsonl`、`controls/`、`manifest.json` 和 `checksums.json`。
 
 本轮未执行目标模型生成或攻击成功率评估，没有独立审查变换后的语义风险。公开集训练重叠及托管模型权重版本不可见的限制继承上一轮报告。现有集群升级、Controller 发布同步、Ingress／多副本、真实业务模型交付需要各自的验收，不能由本机隔离 Endpoint 结果替代。
 

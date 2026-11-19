@@ -5,7 +5,11 @@ export const projectIdSchema = z.string().regex(/^[a-zA-Z0-9_-]{1,128}$/);
 export const createProjectSchema = z.strictObject({
   name: projectNameSchema, groupId: projectIdSchema.default("default"),
   externalDepartmentId: projectIdSchema.optional(),
+  runnerMode: z.enum(["shared", "dedicated"]).optional().describe("Shared uses default capacity; dedicated creates an isolated, unallocated runtime group for subsequent Runner registration and deployment."),
+}).refine(input => input.runnerMode === undefined || input.groupId === "default", {
+  path: ["groupId"], message: "Use either runnerMode or a non-default groupId to choose runtime placement.",
 });
+export type CreateProjectInput = z.input<typeof createProjectSchema>;
 export type Project = { id: string; name: string; groupId: string; externalDepartmentId?: string | null; access?: "read" | "write"; roles?: string[] };
 export type ProjectMember = { userId: string; username: string | null; email: string; source: string; access: "read" | "write"; roles: string[] };
 export type ProjectSummary = Project & {groupName:string;poolId:string|null;poolName:string|null;memberCount:number};

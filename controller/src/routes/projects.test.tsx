@@ -41,3 +41,18 @@ it('opens only the chosen Runner detail and keeps the project list as summaries'
  expect(api.getProjectRunner).toHaveBeenCalledWith('support',expect.any(AbortSignal));
  expect(api.listProjectMembers).not.toHaveBeenCalled();
 });
+
+it('starts dedicated setup at creation without assigning shared capacity',async()=>{
+ vi.mocked(api.createProject).mockResolvedValue({id:'new-project',name:'new-project',groupId:'isolated-new-project'});
+ vi.mocked(api.getProjectRunner).mockResolvedValue({projectId:'new-project',projectName:'new-project',groupId:'isolated-new-project',pool:null,modelScope:{projectCount:1,poolCount:0}});
+ mount();await screen.findByText('runner-default');fireEvent.click(screen.getByRole('button',{name:'Create project'}));
+ const sheet=screen.getByRole('dialog');fireEvent.change(within(sheet).getByLabelText('Project name'),{target:{value:'New Project'}});
+ fireEvent.click(within(sheet).getByRole('radio',{name:'Dedicated Runner'}));
+ expect(within(sheet).queryByText('runner-default')).toBeNull();
+ expect(within(sheet).getByText(/existing Runners stay online/)).toBeTruthy();
+ fireEvent.click(within(sheet).getByRole('button',{name:'Create project'}));
+ await waitFor(()=>expect(api.createProject).toHaveBeenCalledWith({name:'new-project',runnerMode:'dedicated'}));
+ fireEvent.click(await screen.findByRole('button',{name:'Allocate Runner'}));
+ expect(await screen.findByRole('button',{name:'Register dedicated Runner'})).toBeTruthy();
+ expect(screen.queryByText(/Stop the current allocation/)).toBeNull();
+});

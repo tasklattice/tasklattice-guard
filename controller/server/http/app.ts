@@ -1341,7 +1341,10 @@ export function createHttpApp(input: {
   });
   app.get("/api/v1/routing/selector-fields", authenticated, async context => {
     const endpointIds = context.req.query("endpointIds")?.split(",").filter(Boolean);
-    const all = await input.service.listEndpoints();
+    const { projectId } = context.get("actor");
+    if (!projectId && endpointIds?.length)
+      throw new ControllerError("X-Project-ID is required to read Endpoint selector fields.", 400, "project_required");
+    const all = projectId ? await input.service.listEndpoints() : [];
     const selected = endpointIds ? all.filter(e => endpointIds.includes(e.id)) : all;
     const items = selectableSelectorFields(selected);
     return context.json({ items, endpoints: selected.map(e => ({ id: e.id, adapter: e.adapter })), count: items.length });
@@ -1560,10 +1563,11 @@ function authentication(auth: ControllerAuth, tokens?: AccessTokenService, proje
     else await runWithUserContext(actor.id, actor.role as "user", next);
   };
   return async (context, next) => {
+    // The same API URL can return a different response after a Project switch.
+    context.header("Cache-Control", "no-store");
     const authorizationHeader = context.req.header("authorization");
     if (authorizationHeader !== undefined) {
       // An explicit credential never falls back to a browser session.
-      context.header("Cache-Control", "no-store");
       const match = /^Bearer ([^\s]+)$/i.exec(authorizationHeader);
       const actor = match && tokens ? await tokens.authenticate(match[1]!) : null;
       if (!actor) {
