@@ -98,6 +98,10 @@ describe("Generated OpenAPI contract", () => {
       expect(contract.paths[path].get.parameters).toContainEqual(expect.objectContaining({ name: "X-Project-ID", in: "header", "x-required-for-roles": ["admin"] }));
     }
     expect(contract.paths["/api/v1/models"].get["x-admin-project-scope"]).toBe("optional");
+    const selectors = contract.paths["/api/v1/routing/selector-fields"].get;
+    expect(selectors["x-admin-project-scope"]).toBe("optional");
+    expect(selectors.description).toContain("Supplying Endpoint IDs as an administrator requires X-Project-ID");
+    expect(selectors.responses[200].headers["Cache-Control"].schema.const).toBe("no-store");
     expect(contract.paths["/api/v1/projects"].post["x-token-permission"]).toEqual({ module: "projects", access: "write" });
     expect(contract.paths["/api/v1/projects"].post.security).toContainEqual({ personalAccessToken: [] });
     expect(contract.paths["/api/v1/guardrails/{id}/publish"].post["x-account-roles"]).toEqual(["user"]);

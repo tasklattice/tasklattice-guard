@@ -46,7 +46,7 @@ class GuardrailRuntimeService:
 
     def _resolve_call(self, request, *, require_existing=False, allow_new_output=False):
         self._begin_context_request()
-        stored = self._contexts.get(request.call_id)
+        stored = self._contexts.get(request.context_storage_key)
         composed = getattr(self._resolver, "composed_endpoint", lambda _: False)(request.context.endpoint_id)
         if stored is not None:
             if stored.resolution.allocation_context_id and request.context.endpoint_snapshot is None:
@@ -62,7 +62,7 @@ class GuardrailRuntimeService:
         resolution = self._resolver.resolve(replace(request.context, call_id=request.call_id))
         blocks = request.content_blocks or text_blocks(request.phase, request.texts,
             request.context.value("field", "target_source") or "user_input")
-        stored = self._contexts.claim(request.call_id, request.messages, resolution, blocks)
+        stored = self._contexts.claim(request.context_storage_key, request.messages, resolution, blocks)
         if stored.resolution.endpoint_id != request.context.endpoint_id:
             from runner.routing import RoutingError
             raise RoutingError("call_endpoint_mismatch")
@@ -91,17 +91,17 @@ class GuardrailRuntimeService:
                 "eventType": "route_assignment", "callId": call_id or a["decisionId"],
                 "occurredAt": a["decisionAt"]})
 
-    async def complete_call(self, resolution, call_id, outcome, failure_reason=None):
+    async def complete_call(self, resolution, request, outcome, failure_reason=None):
         if resolution.route_assignment and self.routing_event_sink:
             a = resolution.route_assignment
             now = datetime.now(UTC)
-            outcome = self._contexts.record_outcome(call_id, outcome)
+            outcome = self._contexts.record_outcome(request.context_storage_key, outcome)
             event = {**a, "id": a["decisionId"] + ":completion",
-                "eventType": "completion", "callId": call_id or a["decisionId"],
+                "eventType": "completion", "callId": request.call_id or a["decisionId"],
                 "occurredAt": now.isoformat(), "outcome": outcome,
                 "durationMs": max(0, round((now-datetime.fromisoformat(a["decisionAt"])).total_seconds()*1000)),
                 **({"failureReason": failure_reason} if failure_reason else {})}
-            await self.routing_event_sink(self._contexts.finish(call_id, event))
+            await self.routing_event_sink(self._contexts.finish(request.context_storage_key, event))
 
 
     async def evaluate(
@@ -125,13 +125,13 @@ class GuardrailRuntimeService:
         try:
             decision = await self._evaluate_online(request, resolution, stored)
         except Exception as error:
-            await self.complete_call(resolution, request.call_id,
+            await self.complete_call(resolution, request,
                 "timeout" if isinstance(error, TimeoutError) or isinstance(error, GuardrailExecutionError) and error.timed_out else "error", type(error).__name__)
             raise
         outcome = call_outcome(decision)
-        outcome = self._contexts.record_outcome(request.call_id, outcome)
+        outcome = self._contexts.record_outcome(request.context_storage_key, outcome)
         if outcome in {"error", "block"} or (request.phase == "output" and request.context.value("field", "routing.stream") != "true"):
-            await self.complete_call(resolution, request.call_id, outcome)
+            await self.complete_call(resolution, request, outcome)
         return self._context_evidence(decision)
 
     async def stream_output(self, request, source, *, ready, emit, observe, allow_new_output=False):
@@ -167,7 +167,7 @@ class GuardrailRuntimeService:
                 route_assignment=resolution.route_assignment,
                 allocation_context_id=resolution.allocation_context_id,
                 trace=decision.trace if decision.router_id else (*resolution.trace, *decision.trace))
-            self._contexts.record_outcome(request.call_id, call_outcome(decision))
+            self._contexts.record_outcome(request.context_storage_key, call_outcome(decision))
             await observe(self._context_evidence(decision))
 
         async def prepared(contract):
@@ -187,7 +187,7 @@ class GuardrailRuntimeService:
             outcome = "timeout" if error.timed_out else "error"
             raise
         finally:
-            await self.complete_call(resolution, request.call_id, outcome)
+            await self.complete_call(resolution, request, outcome)
 
     async def evaluate_standalone(
         self, request: ProtectionRequest, *,
@@ -242,7 +242,7 @@ class GuardrailRuntimeService:
         prepared_resolution: PlanResolution | None = None,
     ) -> ProtectionDecision:
         self._begin_context_request()
-        stored = self._contexts.get(request.call_id)
+        stored = self._contexts.get(request.context_storage_key)
         resolver = getattr(self._resolver, "resolve_guardrail", None)
         if resolver is None:
             raise LookupError("This Runner cannot resolve an explicit Guardrail Version.")
@@ -267,7 +267,7 @@ class GuardrailRuntimeService:
         )
         if request.phase == "input":
             self._contexts.put(
-                request.call_id,
+                request.context_storage_key,
                 request.messages,
                 resolution,
                 incoming_blocks,
@@ -481,7 +481,7 @@ class GuardrailRuntimeService:
                     async with asyncio.timeout(2):
                         await close()
             finally:
-                await self.complete_call(resolution, request.call_id, outcome)
+                await self.complete_call(resolution, request, outcome)
 
 
 def _trusted_instruction(

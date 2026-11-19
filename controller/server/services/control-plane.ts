@@ -27,6 +27,7 @@ import type { TestingReportDeletionImpact } from "../../shared/testing-report-de
 import { assertGuardrailVersionCapacity, guardrailVersionCapacityIssue } from "./guardrail-version-limit.js";
 import { clearGuardrailOperationalData, guardrailTelemetryFilter } from "./guardrail-operational-data.js";
 import { callFailureEvents, runtimeLogSource, runtimeLogPageSource } from "./runtime-log-source.js";
+import { RUNTIME_LOG_CONTENT_RETENTION_DAYS, runtimeLogContentCutoff, runtimeLogContentFields, withoutRuntimeLogContent } from "./runtime-log-content.js";
 import { advancesValidationProgress, type ValidationProgress } from "../../shared/validation-progress.js";
 import { queryAuditEvents } from "./audit-events.js";
 import type { AuditQuery } from "../../shared/audit-query.js";
@@ -1762,7 +1763,7 @@ export class ControlPlaneService {
         resourceReadPredicate("guardrail", guardrails.id, guardrails.projectId),
       ));
     if (!guardrail) throw new NotFoundError("Guardrail", id);
-    return { ...guardrail, contentCaptureEnabled: this.runtimeLogEncryptionKey !== null, retentionDays: 30 };
+    return { ...guardrail, contentCaptureEnabled: this.runtimeLogEncryptionKey !== null, retentionDays: RUNTIME_LOG_CONTENT_RETENTION_DAYS };
   }
 
   async updateGuardrailLogging(input: { id: string; level: "info" | "debug" | "trace"; actorId: string }) {
@@ -1787,7 +1788,7 @@ export class ControlPlaneService {
       });
       return rows;
     });
-    return { ...updated, contentCaptureEnabled: this.runtimeLogEncryptionKey !== null, retentionDays: 30 };
+    return { ...updated, contentCaptureEnabled: this.runtimeLogEncryptionKey !== null, retentionDays: RUNTIME_LOG_CONTENT_RETENTION_DAYS };
   }
 
   async listEndpoints() {
@@ -1806,7 +1807,7 @@ export class ControlPlaneService {
 
   async verifyScanTestCredential(id: string, credential: string) {
     const [endpoint] = await this.db.select().from(endpoints)
-      .where(and(eq(endpoints.id, id), isNull(endpoints.deletedAt)));
+      .where(and(eq(endpoints.id, id), isNull(endpoints.deletedAt), resourceReadPredicate("endpoint", endpoints.id, endpoints.projectId)));
     const digest = createHash("sha256").update(credential).digest("hex");
     if (!endpoint || endpoint.adapter !== "f5-scan" || endpoint.status !== "active" ||
         !activeEndpointCredentials(endpoint.verification).some(item => item.sha256 === digest)) {
@@ -1862,17 +1863,24 @@ export class ControlPlaneService {
       const { allocationContextId: _allocationContextId, ...visible } = event;
       return visible;
     }
-    // Exclude large bodies in SQL, before the database driver allocates them in Node.
-    const metadata = includeContent ? runtimeEvents.metadata : sql<Record<string, unknown>>`(${runtimeEvents.metadata} - 'contentCiphertext' - 'contentBefore' - 'contentAfter' - 'httpRequest' - 'modelExchanges') || jsonb_build_object('contentAvailable',
+    // Exclude large or expired bodies before the database driver allocates them in Node.
+    const contentCutoff = runtimeLogContentCutoff();
+    const contentCurrent = gt(runtimeEvents.occurredAt, contentCutoff);
+    const safeMetadata = sql<Record<string, unknown>>`(${runtimeEvents.metadata} - ${sql.param(runtimeLogContentFields)}::text[]) || jsonb_build_object('contentAvailable', ${contentCurrent} AND (
       (${this.runtimeLogEncryptionKey !== null} AND coalesce(${runtimeEvents.metadata}->>'contentCiphertext', '') <> '')
       OR ${runtimeEvents.metadata}->'contentBefore' IS NOT NULL AND ${runtimeEvents.metadata}->'contentBefore' <> 'null'::jsonb
       OR ${runtimeEvents.metadata}->'httpRequest' IS NOT NULL AND ${runtimeEvents.metadata}->'httpRequest' <> 'null'::jsonb
-      OR ${runtimeEvents.metadata}->'contentAfter' IS NOT NULL AND ${runtimeEvents.metadata}->'contentAfter' <> 'null'::jsonb)`;
+      OR ${runtimeEvents.metadata}->'contentAfter' IS NOT NULL AND ${runtimeEvents.metadata}->'contentAfter' <> 'null'::jsonb))`;
+    const metadata = includeContent
+      ? sql<Record<string, unknown>>`case when ${contentCurrent} then ${runtimeEvents.metadata} else ${safeMetadata} end`
+      : safeMetadata;
     const [item] = await boundedRead(this.db, tx => tx.select({ ...getTableColumns(runtimeEvents), metadata }).from(runtimeEvents).where(and(eq(runtimeEvents.id, id), resourceWritePredicate(runtimeEvents.projectId))).limit(1));
     if (!item) throw new NotFoundError("Runtime event", id);
-    const { contentCiphertext: _ciphertext, contentBefore: _before, contentAfter: _after, httpRequest: _httpRequest, modelExchanges: _modelExchanges, ...safe } = item.metadata;
     const { allocationContextId: _allocationContextId, ...visible } = item;
-    return { ...visible, metadata: includeContent ? decryptRuntimeEventMetadata(item.metadata, this.runtimeLogEncryptionKey) : safe };
+    if (item.occurredAt <= contentCutoff) {
+      return { ...visible, metadata: { ...withoutRuntimeLogContent(item.metadata), contentAvailable: false } };
+    }
+    return { ...visible, metadata: includeContent ? decryptRuntimeEventMetadata(item.metadata, this.runtimeLogEncryptionKey) : withoutRuntimeLogContent(item.metadata) };
   }
 
   private endpointActivityCache = new Map<string, { until: number; value: { items: Record<string, unknown>[] } }>();

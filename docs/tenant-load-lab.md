@@ -152,6 +152,9 @@ Unlike the generator, it uses current management APIs to check supplied
 Project-bound identities, direct-ID resource isolation and denied administrator
 controls. It then sends a gateway request for each Project and waits for paired
 Input/Output telemetry on the configured Endpoint, Router and Guardrail version.
+The Project that owns the pair must be able to read both event details. For
+every other Project, the filtered list must be empty and both event detail
+requests must return HTTP 404.
 
 Use existing business-user access tokens with read permissions for identity,
 resources and runtime evidence, or existing browser sessions that select the
@@ -213,8 +216,8 @@ configured Guardrail; the default is `Hello.`.
 Optional settings extend the evidence:
 
 - `administratorAuth` uses the same token-or-session shape for current allocation
-  and public Model-policy reads; optional per-Project `expectedGroupId` and
-  `expectedPoolId` assert operator expectations.
+  and public Model-policy reads (`platform`, `scoped` or `blocked`). Optional
+  per-Project `expectedGroupId` and `expectedPoolId` assert operator expectations.
 - `modelStatus: { "url": "https://model.example.test/state", "token": "PRIVATE_MODEL_TOKEN" }`
   checks an idle external model's `completed`/`active` counters for dispatch.
 - Per-Project `resources.endpointCredential` enables Endpoint verification and

@@ -49,7 +49,8 @@ def register_path_testing(api):
                         observation.resolve(resolution)
                     try:
                         decision = await api._runtime.evaluate(
-                            ProtectionRequest(phase="input", texts=(payload.text,), context=context, call_id=call_id, mode="enforce"),
+                            ProtectionRequest(phase="input", texts=(payload.text,), context=context, call_id=call_id,
+                                mode="enforce", call_context_scope="router-probe"),
                             on_resolved=verify_resolution,
                         )
                         observation.complete(decision)

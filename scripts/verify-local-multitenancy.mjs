@@ -123,6 +123,7 @@ export async function runAcceptance(raw, { fetcher = fetch, sleep = delay, save 
   const config = validateConfiguration(raw), secrets = secretValues(config);
   const result = { schemaVersion: 1, startedAt: new Date(now()).toISOString(), status: 'running', checks: [], runtime: [],
     capabilities: { resourceIsolation: true, projectBoundIdentity: true, gatewayCompletion: true, pairedGuardTelemetry: true,
+      telemetryIsolation: true,
       administratorPlacement: Boolean(config.administratorAuth), externalModelDispatch: Boolean(config.modelStatus),
       wrongPoolCredentialDenial: config.projects.some(project => project.resources.endpointCredential
         && config.projects.some(other => other.runnerBaseUrl !== project.runnerBaseUrl)) },
@@ -206,7 +207,7 @@ export async function runAcceptance(raw, { fetcher = fetch, sleep = delay, save 
       if (project.expectedGroupId !== undefined) assert.equal(allocation.groupId, project.expectedGroupId, 'Current Project group differs from operator expectation.');
       if (project.expectedPoolId !== undefined) assert.equal(allocation.pool.id, project.expectedPoolId, 'Current Runner pool differs from operator expectation.');
       const policy = await api(config.administratorAuth, `/api/v1/project-groups/${encodeURIComponent(allocation.groupId)}/model-configuration`);
-      requireValue(policy.groupId === allocation.groupId && ['legacy', 'scoped', 'blocked'].includes(policy.mode), 'Current group Model policy is invalid.');
+      requireValue(policy.groupId === allocation.groupId && ['platform', 'scoped', 'blocked'].includes(policy.mode), 'Current group Model policy is invalid.');
       for (const field of ['credentials', 'credentialCiphertexts', 'runtimePayload', 'baseUrl']) requireValue(!Object.hasOwn(policy, field), 'Public Model policy exposes private runtime/credential data.');
       allocations.push({ projectId: project.id, groupId: allocation.groupId, poolId: allocation.pool.id, modelPolicy: policy.mode });
     }
@@ -218,6 +219,7 @@ export async function runAcceptance(raw, { fetcher = fetch, sleep = delay, save 
       requireValue(ready?.ready && ready.controller_connected && ready.desired_state_synchronized, 'Configured Runner has not synchronized with Controller.');
     }
   });
+  const runtimeEvidence = [];
   await check('Gateways complete through the configured Project Guard path', async () => {
     for (const project of config.projects) {
       const since = new Date(now()).toISOString(), before = config.modelStatus ? await modelState() : null;
@@ -231,11 +233,12 @@ export async function runAcceptance(raw, { fetcher = fetch, sleep = delay, save 
       const matches = row => row.endpointId === project.resources.endpointId && row.routerId === project.resources.routerId
         && row.guardrailId === project.resources.guardrailId && row.guardrailVersion === project.resources.guardrailVersion;
       const identity = value => typeof value === 'string' && value.trim().length > 0;
+      const identified = row => identity(row.id) && identity(row.requestId) && identity(row.runnerId);
       const paired = value => {
         const rows = value.items.filter(matches);
-        const incoming = rows.find(row => row.direction === 'incoming' && identity(row.requestId) && identity(row.runnerId)
-          && rows.some(other => other.direction === 'outgoing' && other.requestId === row.requestId && identity(other.runnerId)));
-        const outgoing = incoming && rows.find(row => row.direction === 'outgoing' && row.requestId === incoming.requestId && identity(row.runnerId));
+        const incoming = rows.find(row => row.direction === 'incoming' && identified(row)
+          && rows.some(other => other.direction === 'outgoing' && other.requestId === row.requestId && identified(other)));
+        const outgoing = incoming && rows.find(row => row.direction === 'outgoing' && row.requestId === incoming.requestId && identified(row));
         return incoming && outgoing ? { incoming, outgoing } : null;
       };
       const events = await until(async () => {
@@ -244,12 +247,35 @@ export async function runAcceptance(raw, { fetcher = fetch, sleep = delay, save 
         return value;
       }, value => paired(value) !== null);
       const { incoming, outgoing } = paired(events);
+      runtimeEvidence.push({ owner: project, eventIds: [incoming.id, outgoing.id] });
       result.runtime.push({ projectId: project.id, status: 'delivered', durationMs: Math.max(0, now() - started),
         endpointId: project.resources.endpointId, guardrailId: project.resources.guardrailId,
         guardrailVersion: project.resources.guardrailVersion, inputRunnerId: incoming.runnerId, outputRunnerId: outgoing.runnerId, requestId: incoming.requestId,
         externalModelDispatchVerified: Boolean(config.modelStatus) });
     }
     return { delivered: config.projects.length, pairedGuardTelemetry: true, externalModelDispatchVerified: Boolean(config.modelStatus) };
+  });
+  await check('Runtime telemetry remains private across Projects', async () => {
+    let ownDetails = 0, foreignLists = 0, foreignDetails = 0;
+    for (const { owner, eventIds } of runtimeEvidence) {
+      const paths = eventIds.map(id => `/api/v1/telemetry/events/${encodeURIComponent(id)}`);
+      for (const path of paths) {
+        await status(config.controllerBaseUrl, path, { auth: owner.auth, projectId: owner.id });
+        ownDetails++;
+      }
+      const query = new URLSearchParams({ endpointId: owner.resources.endpointId, limit: '1' });
+      for (const viewer of config.projects.filter(project => project.id !== owner.id)) {
+        const value = await api(viewer.auth, `/api/v1/telemetry/events?${query}`, viewer.id);
+        requireValue(Array.isArray(value?.items), 'Runtime evidence response does not contain an event list.');
+        requireValue(value.items.length === 0, 'Foreign Project telemetry list is not empty.');
+        foreignLists++;
+        for (const path of paths) {
+          await status(config.controllerBaseUrl, path, { auth: viewer.auth, projectId: viewer.id, expect: 404 });
+          foreignDetails++;
+        }
+      }
+    }
+    return { ownDetails, foreignLists, foreignDetails };
   });
   if (result.capabilities.wrongPoolCredentialDenial) await check('Endpoint credentials are valid only on their configured Runner origins', async () => {
     let verified = 0, denied = 0;

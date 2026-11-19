@@ -250,6 +250,14 @@ class ProtectionRequest:
     mode: EnforcementMode = "enforce"
     evidence_scope: EvidenceScope = "interventions"
     execution_purpose: ExecutionPurpose = "online"
+    # Controller probes can reuse call IDs without reading or writing live pins.
+    call_context_scope: Literal["router-probe"] | None = None
+
+    @property
+    def context_storage_key(self) -> str | None:
+        if self.call_id and self.call_context_scope:
+            return f"{self.call_context_scope}:{self.call_id}"
+        return self.call_id
 
 
 @dataclass(frozen=True, slots=True)
