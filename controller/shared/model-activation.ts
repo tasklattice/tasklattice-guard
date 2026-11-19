@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { capabilityBindingIds, type CapabilityBindingId } from "./guardrail-catalog.js";
+import { hasLegacySecurityReview, isLegacySecurityReview, securityReviewerId, builtinLayaModelId, capabilityBindingIds, isLayaPrimaryBinding, type CapabilityBindingId } from "./guardrail-catalog.js";
 
 export const partialModelActivationSchema = z.object({
   bindingIds: z.array(z.enum(capabilityBindingIds)).min(1).refine(ids => new Set(ids).size === ids.length, "Duplicate binding"),
@@ -13,9 +13,12 @@ type Check = { id: string; status: string; evidenceKind?: string | undefined };
 /** Saved changes and their test evidence. `ready` describes passing tests, not permission to activate. */
 export function modelBindingChanges(draft: Assignments, active: Assignments | null | undefined, checks: readonly Check[]) {
   return capabilityBindingIds.flatMap(id => {
-    const current = active?.bindings[id] ?? null;
+    const current = active?.bindings[id] ?? (!active && isLayaPrimaryBinding(id) ? builtinLayaModelId : null);
     const next = draft.bindings[id] ?? null;
-    if (current === next) return [];
+    if (isLegacySecurityReview(id)) return [];
+    const replacesLegacy = id === securityReviewerId && active && hasLegacySecurityReview(active.bindings)
+      && !hasLegacySecurityReview(draft.bindings);
+    if (current === next && !replacesLegacy) return [];
     const ready = next === null || checks.some(check => check.id === `probe:${id}:${next}` && check.status === "passed" && check.evidenceKind === "nemo-rail-v1");
     return [{ id, current, next, ready }];
   });

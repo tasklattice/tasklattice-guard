@@ -18,6 +18,7 @@ from runner.toolkit.runtime.contracts import PlanResolution, ProtectionRequest, 
 from runner.toolkit.runtime.service import GuardrailRuntimeService
 from tests.control_plane.test_capability_validation import candidate
 from tests.control_plane.test_nemo_iorails_topic import _plan, _semantic_input
+from tests.policy_fixtures import question_parameter
 
 
 def jev_candidate():
@@ -53,8 +54,9 @@ async def test_monitor_runs_jev_preserves_evidence_and_never_enforces(behavior):
             key: {"type": "noul", "noul": 0.99 if behavior == "violation" else 0.01 if behavior == "safe" else 0.5} for key in body["questions"]}})
     config = jev_candidate().configuration
     providers = action_providers(*dynamic_runtime_action_providers(config, {"provider-1": "synthetic"}, transport=httpx.MockTransport(respond)))
-    deny = replace(_semantic_input(), id="deny", parameters=(("evaluation_view", "original"), ("topic_mode", "permissive"), ("restricted_topics", "Refund fraud")))
-    allow = replace(_semantic_input(), id="allow", parameters=(("evaluation_view", "original"), ("topic_mode", "strict"), ("allowed_topics", "Order support")))
+    questions = question_parameter("topic_control")
+    deny = replace(_semantic_input(), id="deny", parameters=(("evaluation_view", "original"), *questions, ("topic_mode", "permissive"), ("restricted_topics", "Refund fraud")))
+    allow = replace(_semantic_input(), id="allow", parameters=(("evaluation_view", "original"), *questions, ("topic_mode", "strict"), ("allowed_topics", "Order support")))
     plan = _plan(deny, allow)
     snapshot = NeMoConfigCompiler().compile(plan)
     runtime = NeMoRuntime(NeMoRuntimeRegistry(_CandidateStore(plan, snapshot), providers))
@@ -145,8 +147,9 @@ async def test_one_jev_model_serves_two_independent_bindings_in_one_runtime():
             key: {"type": "noul", "noul": 0.01} for key in body["questions"]}})
 
     providers = action_providers(*dynamic_runtime_action_providers(config, {"provider-1": "synthetic"}, transport=httpx.MockTransport(respond)))
-    topic = _semantic_input()
-    jailbreak = replace(topic, id="jailbreak", capability="jailbreak", contract_ref="tali.guard.jailbreak.v1", parameters=(("evaluation_view", "original"),))
+    topic = replace(_semantic_input(), parameters=(("evaluation_view", "original"), *question_parameter("topic_control")))
+    jailbreak = replace(topic, id="jailbreak", capability="jailbreak", contract_ref="tali.guard.jailbreak.v1",
+                        parameters=(("evaluation_view", "original"), *question_parameter("jailbreak")))
     plan = _plan(topic, jailbreak)
     snapshot = NeMoConfigCompiler().compile(plan)
     runtime = NeMoRuntime(NeMoRuntimeRegistry(_CandidateStore(plan, snapshot), providers))

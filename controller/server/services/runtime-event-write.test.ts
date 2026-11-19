@@ -4,7 +4,7 @@ import { PgDialect } from "drizzle-orm/pg-core";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ControllerDatabase } from "../db/client.js";
 import type { RuntimeEventInput } from "../domain/models.js";
-import { writeRuntimeEvent } from "./runtime-event-write.js";
+import { writeRuntimeEvents } from "./runtime-event-write.js";
 
 afterEach(() => vi.restoreAllMocks());
 
@@ -32,13 +32,13 @@ describe("runtime event content expiry", () => {
     const { db, values, onConflictDoNothing, onConflictDoUpdate } = writeFixture();
     const event = capturedEvent(new Date("2026-10-19T12:00:00Z"));
 
-    await writeRuntimeEvent(db, event, "pool-a");
+    await writeRuntimeEvents(db, [event], "pool-a");
 
-    expect(values).toHaveBeenCalledWith(expect.objectContaining({ metadata: {
+    expect(values).toHaveBeenCalledWith([expect.objectContaining({ metadata: {
       runtimeLogCaptured: true, contentCaptureStatus: "captured",
       modelEvidenceStatus: "captured", modelEvidenceCount: 2,
       findings: ["finding"], trace: ["step"], usage: { model_invocations: 1 },
-    } }));
+    } })]);
     expect(onConflictDoNothing).not.toHaveBeenCalled();
     expect(onConflictDoUpdate).toHaveBeenCalledOnce();
     expect(event.metadata.contentCiphertext).toBe("encrypted");
@@ -46,23 +46,27 @@ describe("runtime event content expiry", () => {
     const { set, setWhere } = onConflictDoUpdate.mock.calls[0]![0];
     const dialect = new PgDialect();
     const enrichment = dialect.sqlToQuery(set.metadata);
-    expect(JSON.parse(String(enrichment.params[0]))).toEqual({ runtimeLogCaptured: true, contentCaptureStatus: "captured",
-      modelEvidenceStatus: "captured", modelEvidenceCount: 2 });
+    expect(enrichment.sql).toContain("FROM jsonb_each(excluded.metadata)");
+    expect(enrichment.sql).toContain("'modelEvidenceStatus','modelEvidenceCount'");
     const guard = dialect.sqlToQuery(setWhere);
     expect(guard.sql).toContain('"runtime_event"."project_id" IS NOT DISTINCT FROM excluded.project_id');
     expect(guard.sql).toContain("excluded.project_id IS NOT NULL");
-    expect(guard.sql).toContain('"runtime_event"."occurred_at" =');
-    expect(guard.params).toContain(event.occurredAt.toISOString());
+    expect(guard.sql).toContain('"runtime_event"."occurred_at" = excluded.occurred_at');
   });
 
-  it("retains encrypted content for eligible replay within the window", async () => {
+  it("retains eligible encrypted content alongside an expired event in the same batch", async () => {
     vi.spyOn(Date, "now").mockReturnValue(Date.parse("2026-11-18T12:00:00Z"));
     const { db, values, onConflictDoNothing, onConflictDoUpdate } = writeFixture();
-    const event = capturedEvent(new Date("2026-10-19T12:00:00.001Z"));
+    const expired = { ...capturedEvent(new Date("2026-10-19T12:00:00Z")), id: "expired" };
+    const current = { ...capturedEvent(new Date("2026-10-19T12:00:00.001Z")), id: "current" };
 
-    await writeRuntimeEvent(db, event);
+    await writeRuntimeEvents(db, [expired, current]);
 
-    expect(values).toHaveBeenCalledWith(expect.objectContaining({ metadata: event.metadata }));
+    expect(values).toHaveBeenCalledOnce();
+    expect(values).toHaveBeenCalledWith([
+      expect.objectContaining({ id: expired.id, metadata: expect.not.objectContaining({ contentCiphertext: "encrypted" }) }),
+      expect.objectContaining({ id: current.id, metadata: current.metadata }),
+    ]);
     expect(onConflictDoUpdate).toHaveBeenCalledOnce();
     expect(onConflictDoNothing).not.toHaveBeenCalled();
   });

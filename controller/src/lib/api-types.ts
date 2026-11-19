@@ -3,7 +3,6 @@ import type { RuntimeOutcome } from "../../shared/runtime-outcome";
 import type { RiskSeverity, EventSeverity } from "../../shared/security-severity";
 import type { EnforcementAction } from "../../shared/enforcement-action.generated";
 import type { GuardrailCategoryId } from "../../shared/guardrail-catalog";
-import type { PlatformStatusReason } from "../../shared/platform-status";
 import type {
   GuardrailReadinessState,
   EndpointSetupState,
@@ -1004,6 +1003,9 @@ export type SystemStatus = {
 };
 
 export type Metrics = {
+  view?: "overview" | "diagnostics";
+  window_end?: string;
+  latency_method?: "exact" | "histogram_5pct";
   findings_summary?: GuardrailFindingPage['summary'];
   data_availability?: {
     runtime_events: "complete" | "truncated";
@@ -1154,9 +1156,6 @@ export type Metrics = {
     none: MetricTrendSeries[];
     guardrail: MetricTrendSeries[];
   };
-  system_status: "healthy" | "degraded";
-  /** Platform-wide observations, not evidence that this Guardrail lacks a capability. */
-  system_reasons?: PlatformStatusReason[];
 };
 
 export type RuntimeComponentMetric = {

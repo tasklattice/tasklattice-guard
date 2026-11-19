@@ -1,7 +1,14 @@
 from __future__ import annotations
 
+from .builtin_laya import BuiltinLaya, configure_builtin_cpu_environment
+
+# Native OpenMP defaults are read when the framework loads, before model start.
+configure_builtin_cpu_environment()
+
 import asyncio
 import hmac
+import json
+import logging
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Header, HTTPException, Response
@@ -38,14 +45,15 @@ from .software_version import SOFTWARE_VERSION
 
 def create_app(settings: RunnerSettings | None = None) -> FastAPI:
     configured = settings or RunnerSettings.from_env()
+    builtin_laya = BuiltinLaya.from_env()
     if configured.group_rate_admission is not None:
         if (configured.distributed_rate_admission is not None or configured.project_admission is None or
-            not configured.call_context_redis_url or not configured.control_token):
-            raise ValueError("Group v2 rate requires local admission, Redis, pool control and v1 disabled.")
+            not configured.call_context_redis_url):
+            raise ValueError("Group v2 rate requires local admission, Redis and v1 disabled.")
         configured.group_rate_admission.validate_runner(configured.pool_id, configured.project_admission.project_limits)
     if configured.distributed_rate_admission is not None:
-        if configured.project_admission is None or not configured.call_context_redis_url or not configured.control_token:
-            raise ValueError("Distributed rate admission requires local admission, Redis and pool control authentication.")
+        if configured.project_admission is None or not configured.call_context_redis_url:
+            raise ValueError("Distributed rate admission requires local admission and Redis.")
         if (configured.distributed_rate_admission.pool_id != configured.pool_id or
             set(configured.distributed_rate_admission.project_limits) != set(configured.project_admission.project_limits)):
             raise ValueError("Distributed rate policy must match the trusted pool and local project configuration.")
@@ -65,7 +73,6 @@ def create_app(settings: RunnerSettings | None = None) -> FastAPI:
     contexts = (
         RedisCallContextStore(configured.call_context_redis_url,
                               ttl_seconds=configured.call_context_ttl_seconds,
-                              compress_plans=configured.call_context_compress_plans,
                               capacity_fallback=configured.call_context_capacity_fallback,
                               metrics_registry=metrics.registry)
         if configured.call_context_redis_url
@@ -82,10 +89,9 @@ def create_app(settings: RunnerSettings | None = None) -> FastAPI:
     )
     telemetry = RuntimeTelemetryExporter(
         configured.telemetry_endpoint,
-        configured.telemetry_token,
+        configured.control_token,
         configured.artifact_state_path,
         configured.telemetry_batch_size,
-        configured.runner_id,
         metrics,
     )
     compiler = DefaultRunnerCompiler() if configured.compiler_capable else None
@@ -106,6 +112,7 @@ def create_app(settings: RunnerSettings | None = None) -> FastAPI:
         ),
         compiler=compiler,
         telemetry=telemetry,
+        builtin_laya=builtin_laya,
     )
     metrics.set_control_state(synchronized=control.synchronized)
     log_capture = RuntimeLogCapture(configured.call_context_redis_url,
@@ -128,7 +135,7 @@ def create_app(settings: RunnerSettings | None = None) -> FastAPI:
         metrics,
         telemetry,
         configured.runner_id,
-        configured.controller_http_token or configured.controller_token,
+        configured.controller_http_token,
         configured.runtime_log_encryption_key,
         draft_previews,
         scan_max_body_bytes=configured.scan_max_body_bytes,
@@ -145,6 +152,23 @@ def create_app(settings: RunnerSettings | None = None) -> FastAPI:
                 await asyncio.sleep(30)
                 log_capture.prune()
                 await registry.collect_retired()
+
+        if builtin_laya is not None:
+            with diagnostic_phase("startup.builtin_laya", torch_threads=builtin_laya.torch_threads):
+                await builtin_laya.start()
+            identity = builtin_laya.model_identity
+            metrics.builtin_laya_info.labels(
+                runner_version=SOFTWARE_VERSION["version"], model_version=identity["modelVersion"],
+                calibration_version=identity.get("calibrationVersion", ""),
+                threshold_policy_version=identity.get("thresholdPolicyVersion", ""),
+                artifact_sha256=identity.get("artifactSha256", ""),
+            ).set(1)
+            logging.getLogger("uvicorn.error").info("%s", json.dumps({
+                "event": "runner_builtin_laya_loaded", "runnerVersion": SOFTWARE_VERSION["version"],
+                "runnerCommit": SOFTWARE_VERSION["commit"], **identity,
+                "device": "cpu", "inferenceConcurrency": builtin_laya.concurrency,
+                "intraOpThreads": builtin_laya.torch_threads, "nativeThreadPools": builtin_laya.cpu_thread_pools,
+            }))
 
         watchdog.start()
         control_task = asyncio.create_task(control.run(), name="runner-control")
@@ -171,7 +195,11 @@ def create_app(settings: RunnerSettings | None = None) -> FastAPI:
             try:
                 await engine.shutdown()
             finally:
-                await asyncio.to_thread(observability.shutdown)
+                try:
+                    if builtin_laya is not None:
+                        await builtin_laya.close()
+                finally:
+                    await asyncio.to_thread(observability.shutdown)
 
     app = FastAPI(
         title="TaskLattice Guard Runner",
@@ -227,7 +255,10 @@ def create_app(settings: RunnerSettings | None = None) -> FastAPI:
                                   controller_connected=connected,
                                   desired_state_synchronized=synchronized,
                                   applied_generation=store.generation,
-                                  compiler_capable=configured.compiler_capable)
+                                  compiler_capable=configured.compiler_capable,
+                                  **({"builtin_laya_revision": builtin_laya.revision,
+                                      "builtin_laya_model": builtin_laya.model_identity}
+                                     if builtin_laya is not None else {}))
 
     @app.head("/version", include_in_schema=False)
     @app.get("/version")

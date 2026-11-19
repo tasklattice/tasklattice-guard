@@ -241,12 +241,6 @@ async def test_unleased_validation_never_executes_or_replays_cached_result(enfor
     assert result.validation_status_notice.reason == "Runner serving lease is unavailable."
 
 
-def test_programmatic_enforcement_requires_a_pool_credential():
-    with pytest.raises(ValueError, match="pool token"):
-        RunnerControlClient(SimpleNamespace(compiler_capable=False, experimental_lease_enforcement=True,
-                                           control_token=None), Store(), Metrics())
-
-
 @pytest.mark.asyncio
 async def test_silent_stream_or_blocked_send_forces_reconnect(enforced, monkeypatch):
     client, _ = enforced

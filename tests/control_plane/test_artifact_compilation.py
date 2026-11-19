@@ -113,15 +113,14 @@ def test_rail_and_enforcement_flags_survive_compilation(
     assert binding["timeout_ms"] == 750
 
 
-# Regenerating every signed Artifact fixture and comparing its checksum costs
-# several seconds and multiple Node subprocesses. It is a fixture-maintenance
-# gate, not a per-run regression: run it explicitly with `npm run fixtures:check`
-# (CI runs it once) so ordinary test runs do not repeat that work.
+# Regenerating every signed Artifact fixture costs several seconds and multiple
+# Node subprocesses. It is a determinism gate, not a per-run regression, so run
+# it explicitly with `npm run fixtures:check`; CI runs it once.
 @pytest.mark.skipif(
     os.environ.get("GUARD_VERIFY_TEST_FIXTURES") != "1",
-    reason="Set GUARD_VERIFY_TEST_FIXTURES=1 (or run npm run fixtures:check) to regenerate and verify checked-in Artifact fixtures.",
+    reason="Set GUARD_VERIFY_TEST_FIXTURES=1 (or run npm run fixtures:check) to prove every generated Artifact fixture is reproducible.",
 )
-def test_checked_in_runner_fixture_is_the_current_compiler_output() -> None:
+def test_generated_runner_fixtures_are_reproducible() -> None:
     result = subprocess.run(
         [sys.executable, "scripts/generate_test_artifacts.py", "--check"],
         cwd=ROOT,
@@ -130,6 +129,33 @@ def test_checked_in_runner_fixture_is_the_current_compiler_output() -> None:
     )
 
     assert result.returncode == 0, result.stdout + result.stderr
+
+
+def test_fixture_check_rejects_missing_or_changed_output(tmp_path, monkeypatch, capsys) -> None:
+    from scripts import generate_test_artifacts as generator
+
+    monkeypatch.setattr(generator, "OUTPUT", tmp_path)
+    monkeypatch.setattr(generator, "ROOT", tmp_path)
+    args = ["generate_test_artifacts.py", "--fixture", generator.FIXTURE_NAME]
+    monkeypatch.setattr(sys, "argv", [*args, "--check"])
+    assert generator.main() == 1
+    assert "desired-state.pb.b64" in capsys.readouterr().out
+
+    monkeypatch.setattr(sys, "argv", args)
+    assert generator.main() == 0
+    monkeypatch.setattr(sys, "argv", [*args, "--check"])
+    assert generator.main() == 0
+    capsys.readouterr()
+
+    manifest = tmp_path / generator.FIXTURE_NAME / "manifest.json"
+    original = manifest.read_text()
+    manifest.write_text("{}\n")
+    assert generator.main() == 1
+    assert "manifest.json" in capsys.readouterr().out
+    manifest.write_text(original)
+    (manifest.parent / "public-key.pem").unlink()
+    assert generator.main() == 1
+    assert "public-key.pem" in capsys.readouterr().out
 
 
 def test_model_capability_compiles_to_a_provider_agnostic_action_binding() -> None:

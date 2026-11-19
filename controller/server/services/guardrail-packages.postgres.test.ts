@@ -1,4 +1,6 @@
+import { runnerAuthEnv } from "../../test/runner-auth-fixture.js";
 import { withTestProject } from "../db/postgres-test-database.js";
+import { freezeTestSuite } from "../domain/test-suite.js";
 import { completeReport, getReport } from "../db/report-test-utils.js";
 // @vitest-environment node
 import { generateKeyPairSync } from "node:crypto";
@@ -71,7 +73,7 @@ describe.skipIf(!url)("Guardrail release packages between isolated environments"
   let uatArtifactKey: ReturnType<typeof keyPair>;
   let prodArtifactKey: ReturnType<typeof keyPair>;
   const environment = (artifactKey: string, extra: Record<string, string>) => loadConfig({
-    NODE_ENV: "test", CONTROLLER_DATABASE_URL: url!, CONTROLLER_RUNNER_TOKEN: "runner-token-that-is-at-least-32-characters",
+    NODE_ENV: "test", CONTROLLER_DATABASE_URL: url!, ...runnerAuthEnv("runner-token-that-is-at-least-32-characters"),
     CONTROLLER_ARTIFACT_SIGNING_KEY_PATH: artifactKey, CONTROLLER_POLICY_CATALOG_DIR: catalogDir, CONTROLLER_PROTO_PATH: protoPath,
     BETTER_AUTH_SECRET: "better-auth-secret-that-is-at-least-32-characters", ...extra,
   });
@@ -159,7 +161,9 @@ describe.skipIf(!url)("Guardrail release packages between isolated environments"
     expect(await prod.requiredPlatformModelBindings()).toEqual([]);
     const updated = await prod.getGuardrail(defaultId);
     expect(updated.draftConfig.policyBindings).toHaveLength(17);
-    expect((await prodDb.pool.query("SELECT jsonb_array_length(test_suite) AS count FROM guardrail_version WHERE guardrail_id=$1", [defaultId])).rows[0].count).toBe(726);
+    const expectedSuite = freezeTestSuite((await prod.listTestCases(defaultId)).filter(test => !test.excluded));
+    expect(expectedSuite.length).toBeGreaterThan(0);
+    expect((await prodDb.pool.query("SELECT test_suite FROM guardrail_version WHERE guardrail_id=$1", [defaultId])).rows[0].test_suite).toEqual(expectedSuite);
   });
 
   it("requires models only for enabled routed targets, not historical versions or disabled routes", async () => {

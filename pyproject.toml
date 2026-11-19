@@ -12,7 +12,7 @@ dependencies = [
   "cryptography>=45,<47",
   "fastapi>=0.115,<1",
   "httpx>=0.28,<1",
-  "nemoguardrails[tracing]==0.24.0",
+  "nemoguardrails[tracing]==0.24.1",
   "opentelemetry-instrumentation-fastapi>=0.48b0,<1",
   "opentelemetry-instrumentation-httpx>=0.48b0,<1",
   "opentelemetry-sdk>=1.27,<2",
@@ -42,6 +42,21 @@ test = [
 formal = [
   "z3-solver==4.16.0.0",
 ]
+builtin-laya = [
+  "laya==0.3.22",
+  "threadpoolctl==3.6.0",
+  "onnxruntime==1.28.0",
+  "torch==2.6.0",
+  "transformers==4.57.6",
+]
+
+[tool.uv.sources]
+torch = [{ index = "pytorch-cpu", marker = "sys_platform == 'linux'" }]
+
+[[tool.uv.index]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true
 
 [tool.hatch.build.targets.wheel]
 packages = ["runner"]

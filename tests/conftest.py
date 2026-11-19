@@ -1,10 +1,38 @@
 from __future__ import annotations
 
+import subprocess
+import sys
 from pathlib import Path
 
 import pytest
 
 from tests.classifier_cases import CLASSIFIER_BACKENDS
+
+
+ROOT = Path(__file__).resolve().parents[1]
+GENERATE_ARTIFACT_FIXTURES = ROOT / "scripts" / "generate_test_artifacts.py"
+
+
+@pytest.fixture(scope="session", autouse=True)
+def generated_artifact_fixtures() -> None:
+    """Signed Artifact fixtures are generator output, not committed source.
+
+    Regenerating once per session keeps a fresh checkout, CI and a working tree
+    on one path: data-plane and contract tests never consume a stale blob, and a
+    compiler or Policy change never needs a binary fixture commit. Generation is
+    deterministic and writes only changed bytes, so repeated runs are inert.
+    """
+    result = subprocess.run(
+        [sys.executable, str(GENERATE_ARTIFACT_FIXTURES)],
+        cwd=ROOT, capture_output=True, text=True, timeout=600,
+    )
+    if result.returncode != 0:
+        pytest.fail(
+            "Artifact fixture generation failed. It needs the development "
+            "dependencies (`npm run sync`); run "
+            f"`{GENERATE_ARTIFACT_FIXTURES.relative_to(ROOT)}` to see the cause.\n"
+            f"{result.stdout}{result.stderr}"
+        )
 
 
 @pytest.fixture(scope="module", params=CLASSIFIER_BACKENDS, ids=lambda backend: backend.name)
@@ -33,6 +61,8 @@ _DATA_PLANE = frozenset({
     "test_runner_model_config.py",
     "test_runner_observability.py",
     "test_runner_telemetry.py",
+    "test_runner_telemetry_wal.py",
+    "test_runner_transport_outage.py",
     "test_safety_model_providers.py",
 })
 _CONTRACT = frozenset({

@@ -1,4 +1,5 @@
 // @vitest-environment node
+import { runnerAuthEnv } from "../test/runner-auth-fixture.js";
 import { betterAuth } from "better-auth";
 import { memoryAdapter } from "better-auth/adapters/memory";
 import { describe, expect, it } from "vitest";
@@ -9,7 +10,7 @@ import { BootstrapAccountSynchronizer, ensureBootstrapAdmin, ensureBootstrapUser
 
 function fixture() {
   const config = loadConfig({ NODE_ENV: "test", CONTROLLER_DATABASE_URL: "postgresql://unused:unused@localhost/unused",
-    CONTROLLER_RUNNER_TOKEN: "test-runner-token-at-least-32-characters", CONTROLLER_ARTIFACT_SIGNING_KEY_PATH: "/unused-key",
+    ...runnerAuthEnv("test-runner-token-at-least-32-characters"), CONTROLLER_ARTIFACT_SIGNING_KEY_PATH: "/unused-key",
     BETTER_AUTH_SECRET: "test-auth-secret-at-least-32-characters", CONTROLLER_PUBLIC_URL: "http://localhost:8080" });
   const data: Record<string, Array<Record<string, any>>> = { user: [], account: [], session: [], verification: [] };
   const options = createAuth(config, {} as ControllerDatabase).options;

@@ -3,7 +3,7 @@ import { cn } from "@/lib/utils";
 
 export function ProviderMark({ provider, kind, model, size = "md" }: { provider: string; kind: ModelProviderKind; model?: string; size?: "sm" | "md" }) {
   const identity = `${provider} ${kind} ${model ?? ""}`.toLowerCase();
-  const brand = identity.includes("nvidia") || identity.includes("nemotron") || identity.includes("nemoguard")
+  const providerBrand = identity.includes("nvidia") || identity.includes("nemotron") || identity.includes("nemoguard")
     ? { label: "NVIDIA", src: "/assets/providers/nvidia.webp" }
     : identity.includes("qwen") || identity.includes("dashscope")
       ? { label: "Qwen", src: "/assets/providers/qwen.webp" }
@@ -16,6 +16,7 @@ export function ProviderMark({ provider, kind, model, size = "md" }: { provider:
             : kind === "vllm"
               ? { label: "vLLM", src: "/assets/providers/vllm.webp" }
               : { label: provider, src: "/assets/providers/custom.svg" };
+  const brand = kind === "laya" ? { label: "Laya", src: "/assets/providers/laya.webp" } : providerBrand;
   return (
     <span aria-label={brand.label} title={brand.label} className={cn("block shrink-0 overflow-hidden rounded-md", size === "sm" ? "size-5" : "size-9")}>
       <img src={brand.src} alt="" className="size-full object-cover" />

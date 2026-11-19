@@ -62,7 +62,8 @@ function programmableFixture() {
 const canonicalize = (content: ArtifactContent) => canonicalArtifactContent(content, protoPath);
 
 describe("Artifact content digest", () => {
-  it.each(readdirSync(resolve("../tests/fixtures/artifacts")))("matches the Runner digest and survives the transport unchanged: %s", name => {
+  it.each(readdirSync(resolve("../tests/fixtures/artifacts"), { withFileTypes: true })
+    .filter(entry => entry.isDirectory()).map(entry => entry.name))("matches the Runner digest and survives the transport unchanged: %s", name => {
     const { content, checksum } = fixture(name);
     expect(artifactContentDigest(content)).toBe(checksum);
     expect(canonicalize(content)).toEqual(content);

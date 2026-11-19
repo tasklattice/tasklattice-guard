@@ -20,7 +20,7 @@ type ProfileInput = {
 type AuthContextValue = {
   status: AuthStatus | undefined;
   user: IdentityUser | null;
-  isLoading: boolean;
+  isCheckingSession: boolean;
   error: unknown;
   login: (input: LoginInput) => Promise<void>;
   logout: () => Promise<void>;
@@ -58,14 +58,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const statusQuery = useQuery({
     queryKey: queryKeys.auth,
     queryFn: async ({ signal }) => {
-      const next = await getAuthStatus();
-      if (signal.aborted) throw new Error("Session refresh cancelled.");
+      const next = await getAuthStatus(signal);
+      signal.throwIfAborted();
       await clearChangedIdentity(next);
       return next;
     },
     staleTime: 30_000,
-    retry: false,
+    retry: 1,
+    networkMode: "always",
+    refetchOnReconnect: true,
   });
+  const { refetch } = statusQuery;
 
   const setAuthenticatedUser = useCallback(async (user: IdentityUser) => {
     await queryClient.cancelQueries({ queryKey: queryKeys.auth, exact: true });
@@ -76,7 +79,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const loginMutation = useMutation({
     mutationFn: loginRequest,
-    onSuccess: ({ user }) => setAuthenticatedUser(user),
+    onSuccess: async () => {
+      // Read identity and the selected Project after the browser receives its cookie.
+      // A failed check stays in the session query so recovery can just retry the read.
+      await queryClient.cancelQueries({ queryKey: queryKeys.auth, exact: true });
+      const { data } = await refetch({ throwOnError: true });
+      if (!data?.user) throw new Error(i18n.t("auth.sessionNotEstablished"));
+    },
   });
   const logoutMutation = useMutation({
     mutationFn: logoutRequest,
@@ -90,7 +99,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   });
 
   const user = statusQuery.data?.user ?? null;
-  const { refetch } = statusQuery;
   const refreshSession = useCallback(async () => { await refetch({ throwOnError: true }); }, [refetch]);
 
   useEffect(() => {
@@ -132,7 +140,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       value={{
         status: statusQuery.data,
         user,
-        isLoading: statusQuery.isLoading,
+        isCheckingSession: statusQuery.isFetching,
         error: statusQuery.error,
         login: async (input) => { await loginMutation.mutateAsync(input); },
         logout: async () => { await logoutMutation.mutateAsync(); },

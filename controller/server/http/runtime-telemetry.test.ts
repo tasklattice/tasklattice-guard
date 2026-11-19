@@ -1,4 +1,5 @@
 // @vitest-environment node
+import { runnerAuthEnv } from "../../test/runner-auth-fixture.js";
 import { resolve } from "node:path";
 
 import { describe, expect, it, vi } from "vitest";
@@ -14,7 +15,7 @@ const token = "runner-token-that-is-at-least-32-characters";
 const config = loadConfig({
   NODE_ENV: "test",
   CONTROLLER_DATABASE_URL: "postgresql://controller:controller@localhost/controller",
-  CONTROLLER_RUNNER_TOKEN: token,
+  ...runnerAuthEnv(token),
   CONTROLLER_ARTIFACT_SIGNING_KEY_PATH: "/tmp/controller-signing-key.pem",
   CONTROLLER_POLICY_CATALOG_DIR: resolve("../runner/toolkit/policy_library/assets"),
   BETTER_AUTH_SECRET: "better-auth-secret-that-is-at-least-32-characters",
@@ -71,13 +72,12 @@ describe("Runner telemetry channel", () => {
     } finally { logged.mockRestore(); }
   });
 
-  it("accepts a zero-traffic watermark from an authenticated Runner", async () => {
+  it("acknowledges an authenticated zero-traffic probe", async () => {
     const recordRuntimeEvents = vi.fn().mockResolvedValue(undefined);
-    const recordTelemetryWatermark = vi.fn().mockResolvedValue(undefined);
     const app = createHttpApp({
       config,
       auth: { handler: vi.fn(), api: {} } as unknown as ControllerAuth,
-      service: { recordRuntimeEvents, recordTelemetryWatermark } as unknown as ControlPlaneService,
+      service: { recordRuntimeEvents } as unknown as ControlPlaneService,
       runnerControl: {} as RunnerControlServer,
       metrics: {} as ControllerMetrics,
     });
@@ -85,13 +85,12 @@ describe("Runner telemetry channel", () => {
     const response = await app.request("/api/internal/v1/runtime-events", {
       method: "POST",
       headers: { authorization: `Bearer ${token}`, "content-type": "application/json" },
-      body: JSON.stringify({ events: [], runnerId: "runner-0", observedAt: new Date().toISOString() }),
+      body: JSON.stringify({ events: [] }),
     });
 
     expect(response.status).toBe(202);
     await expect(response.json()).resolves.toEqual({ accepted: 0 });
-    expect(recordRuntimeEvents).toHaveBeenCalledWith([]);
-    expect(recordTelemetryWatermark).toHaveBeenCalledWith("runner-0");
+    expect(recordRuntimeEvents).toHaveBeenCalledWith([], "default");
   });
 
   it("does not accept an anonymous empty telemetry batch", async () => {
@@ -105,11 +104,11 @@ describe("Runner telemetry channel", () => {
 
     const response = await app.request("/api/internal/v1/runtime-events", {
       method: "POST",
-      headers: { authorization: `Bearer ${token}`, "content-type": "application/json" },
+      headers: { "content-type": "application/json" },
       body: JSON.stringify({ events: [] }),
     });
 
-    expect(response.status).toBe(400);
+    expect(response.status).toBe(401);
   });
 });
 

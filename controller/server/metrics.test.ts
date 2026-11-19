@@ -268,7 +268,7 @@ describe("Controller metrics contract", () => {
   it("converts persisted Guardrail topology into bounded observability states", async () => {
     const select = vi.fn()
       .mockImplementationOnce(() => ({
-        from: vi.fn().mockResolvedValue([{ runnerId: "runner-0", lastReceivedAt: new Date() }]),
+        from: vi.fn(() => ({ where: vi.fn().mockResolvedValue([{ runnerId: "runner-0", lastReceivedAt: new Date() }]) })),
       }))
       .mockImplementationOnce(() => ({
         from: vi.fn(() => ({

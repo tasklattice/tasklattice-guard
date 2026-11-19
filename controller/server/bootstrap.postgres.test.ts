@@ -1,4 +1,5 @@
 // @vitest-environment node
+import { runnerAuthEnv } from "../test/runner-auth-fixture.js";
 import { eq } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createAuth } from "./auth.js";
@@ -14,7 +15,7 @@ describe.skipIf(!process.env.GUARD_TEST_POSTGRES_URL)("username bootstrap (Postg
     const url = process.env.GUARD_TEST_POSTGRES_URL!;
     database = await createTestDatabase(url, "username_bootstrap");
     const config = loadConfig({ NODE_ENV: "test", CONTROLLER_DATABASE_URL: url,
-      CONTROLLER_RUNNER_TOKEN: "test-runner-token-at-least-32-characters",
+      ...runnerAuthEnv("test-runner-token-at-least-32-characters"),
       CONTROLLER_ARTIFACT_SIGNING_KEY_PATH: "/unused-test-signing-key",
       BETTER_AUTH_SECRET: "test-auth-secret-at-least-32-characters", CONTROLLER_PUBLIC_URL: "http://localhost:38081" });
     auth = createAuth(config, database.db);

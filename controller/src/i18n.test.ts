@@ -103,14 +103,14 @@ describe("Policy Library jurisdiction translations", () => {
 describe("Controller operations translations", () => {
   it("explains project and administrator Guardrail deletion scope in both languages", async () => {
     const { default: i18n } = await import("./i18n");
-    const en = i18n.getFixedT("en")("guardrails.deleteRetentionNote");
-    const zh = i18n.getFixedT("zh-CN")("guardrails.deleteRetentionNote");
-    expect(en).toContain("other projects' and unattributed runtime history are retained");
-    expect(en).toContain("platform administrator");
-    expect(en).toContain("runtime history for all projects and unattributed records is deleted");
-    expect(zh).toContain("其他项目及归属不明的运行历史会保留");
-    expect(zh).toContain("平台管理员删除时");
-    expect(zh).toContain("将删除所有项目及归属不明的运行历史");
+    const en = i18n.getFixedT("en");
+    const zh = i18n.getFixedT("zh-CN");
+    expect(en("guardrails.deleteProjectScope")).toContain("Other projects' and unattributed runtime history are kept");
+    expect(en("guardrails.deleteAdminScopeTitle")).toBe("Platform administrator:");
+    expect(en("guardrails.deleteAdminScope")).toContain("Data from all projects, including unattributed runtime history");
+    expect(zh("guardrails.deleteProjectScope")).toContain("其他项目及归属不明的运行历史会保留");
+    expect(zh("guardrails.deleteAdminScopeTitle")).toBe("平台管理员：");
+    expect(zh("guardrails.deleteAdminScope")).toContain("清理所有项目的数据，包括归属不明的运行历史");
   });
 
   it("provides Playground mode copy for the page and Endpoint shortcut in both languages", async () => {

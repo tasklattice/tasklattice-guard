@@ -2,12 +2,11 @@ import { useQuery } from "@tanstack/react-query";
 
 import { queryKeys } from "@/features/query-keys";
 import {
-  getGuardrails,
   getMetrics,
   metricWindowMilliseconds,
   type MetricWindow,
 } from "@/lib/api";
-import { listRuntimeEvents } from "@/lib/controller-api";
+import { getControllerSystemStatus, listRuntimeEvents, listGuardrailOptions } from "@/lib/controller-api";
 
 export type DashboardFilters = {
   guardrailId?: string;
@@ -15,9 +14,16 @@ export type DashboardFilters = {
 };
 
 export function useGuardrailsDashboard(filters: DashboardFilters) {
+  const status = useQuery({
+    queryKey: queryKeys.systemStatus,
+    queryFn: ({ signal }) => getControllerSystemStatus(signal),
+    retry: false,
+    refetchInterval: 30_000,
+    refetchOnWindowFocus: false,
+  });
   const metrics = useQuery({
-    queryKey: queryKeys.metricsScope(filters),
-    queryFn: ({ signal }) => getMetrics(filters, signal),
+    queryKey: [...queryKeys.metricsScope(filters), "overview"],
+    queryFn: ({ signal }) => getMetrics({ ...filters, view: "overview" }, signal),
     refetchInterval: 30_000,
     refetchOnWindowFocus: false,
   });
@@ -31,14 +37,15 @@ export function useGuardrailsDashboard(filters: DashboardFilters) {
     refetchOnWindowFocus: false,
   });
   const guardrails = useQuery({
-    queryKey: queryKeys.guardrails,
-    queryFn: getGuardrails,
+    queryKey: [...queryKeys.guardrails, "options"],
+    queryFn: ({ signal }) => listGuardrailOptions(signal),
   });
   return {
+    status,
     metrics,
     events,
     guardrails,
-    error: metrics.error ?? events.error ?? guardrails.error,
+    error: metrics.error ?? guardrails.error,
   };
 }
 

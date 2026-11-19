@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { PlaygroundDraftPreviewStore } from "./service.js";
+import { PlaygroundDraftPreviewStore, RunnerPlaygroundClient } from "./service.js";
 
 const candidate = {
   actorId: "admin-1",
@@ -13,6 +13,14 @@ const candidate = {
   runtimeProfile: "auto",
   compilerVersion: "controller-plan-v1",
 };
+
+it("reports an incompatible historical Artifact as a version conflict", async () => {
+  const runner = new RunnerPlaygroundClient({ baseUrl: "http://runner", token: "test",
+    fetcher: async () => Response.json({ detail: "incompatible" }, { status: 409 }) });
+  await expect(runner.evaluate({ guardrailId: "g", target: { kind: "published", version: candidate.candidateVersion,
+    artifact: "signed-artifact" }, phase: "input", text: "hello", callId: "playground:test", history: [] }))
+    .rejects.toMatchObject({ status: 409, code: "playground_artifact_incompatible" });
+});
 
 describe("PlaygroundDraftPreviewStore", () => {
   it("binds a preview to its administrator and preserves the draft revision", () => {

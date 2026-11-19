@@ -1,4 +1,5 @@
 // @vitest-environment node
+import { runnerAuthEnv } from "../../test/runner-auth-fixture.js";
 import { resolve } from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
 import { loadConfig } from '../config.js';
@@ -10,7 +11,7 @@ import { RunnerPlaygroundClient } from '../playground/service.js';
 import { createHttpApp } from './app.js';
 
 const config = loadConfig({ NODE_ENV: 'test', CONTROLLER_DATABASE_URL: 'postgresql://a:b@localhost/a',
-  CONTROLLER_RUNNER_TOKEN: 'runner-token-that-is-at-least-32-characters', CONTROLLER_ARTIFACT_SIGNING_KEY_PATH: '/tmp/key',
+  ...runnerAuthEnv({ beta: "test-beta-control-token-at-least-32-characters" }), CONTROLLER_ARTIFACT_SIGNING_KEY_PATH: '/tmp/key',
   CONTROLLER_POLICY_CATALOG_DIR: resolve('../runner/toolkit/policy_library/assets'), BETTER_AUTH_SECRET: 'better-auth-secret-that-is-at-least-32-characters',
   CONTROLLER_RUNTIME_SERVICE_URL: 'http://default-runner:8091', CONTROLLER_RUNTIME_PUBLIC_URL: 'https://default.example.test' });
 
@@ -21,7 +22,7 @@ function setup() {
   const runnerControl = { distributionStatus: vi.fn(async () => ({ desiredGeneration: 1, distributionStatus: 'ready' })) };
   const app = createHttpApp({ config, auth: { api: { getSession: vi.fn().mockResolvedValue({ session: { id: 'fixture-session', activeProjectId: 'projectB' }, user: { id: 'user-b', role: 'user' } }) } } as unknown as ControllerAuth,
     service: service as unknown as ControlPlaneService, runnerControl: runnerControl as unknown as RunnerControlServer, metrics: {} as ControllerMetrics,
-    playgroundRunner: new RunnerPlaygroundClient({ baseUrl: config.runtimeServiceUrl, token: config.runnerToken, fetcher }) });
+    playgroundRunner: new RunnerPlaygroundClient({ baseUrl: config.runtimeServiceUrl, token: config.runnerHttpTokens.get("default")!, fetcher }) });
   return { app, groupRouting, runnerControl, fetcher };
 }
 

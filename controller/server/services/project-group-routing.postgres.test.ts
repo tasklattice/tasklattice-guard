@@ -1,4 +1,5 @@
 // @vitest-environment node
+import { runnerAuthEnv } from "../../test/runner-auth-fixture.js";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { loadConfig } from "../config.js";
 import { createTestDatabase } from "../db/postgres-test-database.js";
@@ -20,7 +21,7 @@ describe.skipIf(!url)("Project group Runner routing against PostgreSQL", () => {
       INSERT INTO controller_state (id, desired_generation) VALUES ('singleton', 4);
       INSERT INTO guardrail (id,project_id,name,draft_config,status) VALUES ('g-b','projectB','B guard','{}','active');`);
     const config = loadConfig({ NODE_ENV: "test", CONTROLLER_DATABASE_URL: url!,
-      CONTROLLER_RUNNER_TOKEN: "runner-token-that-is-at-least-32-characters", CONTROLLER_ARTIFACT_SIGNING_KEY_PATH: "/tmp/unused-key",
+      ...runnerAuthEnv("runner-token-that-is-at-least-32-characters"), CONTROLLER_ARTIFACT_SIGNING_KEY_PATH: "/tmp/unused-key",
       BETTER_AUTH_SECRET: "better-auth-secret-that-is-at-least-32-characters",
       CONTROLLER_RUNTIME_SERVICE_URL: "http://default-runtime:8091", CONTROLLER_RUNTIME_PUBLIC_URL: "https://default.example.test" });
     routing = new ProjectGroupRouting(database.db, config);

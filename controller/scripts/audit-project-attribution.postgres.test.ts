@@ -1,4 +1,5 @@
 // @vitest-environment node
+import { runnerAuthEnv } from "../test/runner-auth-fixture.js";
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { createTestDatabase } from '../server/db/postgres-test-database.js';
@@ -13,7 +14,7 @@ describe.skipIf(!url)('regression: Playground project attribution', () => {
 it('attributes Playground evidence to the caller and quarantines unknown provenance', async () => {
   const database = await createTestDatabase(url!, 'guard_attribution_audit');
   try {
-    const config = loadConfig({ NODE_ENV: 'test', CONTROLLER_DATABASE_URL: url!, CONTROLLER_RUNNER_TOKEN: 'runner-token-that-is-at-least-32-characters', CONTROLLER_ARTIFACT_SIGNING_KEY_PATH: '/tmp/test-key.pem', CONTROLLER_POLICY_CATALOG_DIR: fileURLToPath(new URL('../../runner/toolkit/policy_library/assets', import.meta.url)), BETTER_AUTH_SECRET: 'better-auth-secret-that-is-at-least-32-characters' });
+    const config = loadConfig({ NODE_ENV: 'test', CONTROLLER_DATABASE_URL: url!, ...runnerAuthEnv(), CONTROLLER_ARTIFACT_SIGNING_KEY_PATH: '/tmp/test-key.pem', CONTROLLER_POLICY_CATALOG_DIR: fileURLToPath(new URL('../../runner/toolkit/policy_library/assets', import.meta.url)), BETTER_AUTH_SECRET: 'better-auth-secret-that-is-at-least-32-characters' });
     const service = new ControlPlaneService(database.db, config);
     await database.pool.query(`INSERT INTO guardrail (id,project_id,name,draft_config) VALUES ('shared-c','projectA','Synthetic A','{}');
       INSERT INTO endpoint (id,project_id,name,adapter) VALUES ('endpoint-a','projectA','Synthetic A','litellm-generic-guardrail');`);

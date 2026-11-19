@@ -6,6 +6,7 @@ import math
 import re
 
 from .toolkit.runtime.contracts import ProtectionDecision
+from .toolkit.safety.mappings import mappings_for
 
 REQUEST_HEADER = "x-guard-evidence"
 RESPONSE_HEADER = "x-guard-evaluation-evidence"
@@ -16,6 +17,30 @@ _IDENTITY = re.compile(r"[A-Za-z0-9_.:/-]{1,160}\Z")
 
 def _identity(value):
     return value if isinstance(value, str) and _IDENTITY.fullmatch(value) else None
+
+
+def builtin_laya_identity(evidence: dict) -> dict[str, object]:
+    metadata = evidence.get("model_metadata")
+    if not isinstance(metadata, dict) or metadata.get("backend") != "builtin_laya":
+        return {}
+    fields = {"runnerVersion": "runner_version", "modelVersion": "modelVersion",
+              "calibrationVersion": "calibrationVersion", "thresholdPolicyVersion": "thresholdPolicyVersion",
+              "artifactSha256": "artifactSha256"}
+    identity = {key: value for key, field in fields.items()
+                if (value := _identity(metadata.get(field))) is not None}
+    commit = _identity(metadata.get("runner_commit"))
+    if commit is not None and re.fullmatch(r"[a-f0-9]{40}", commit):
+        identity["runnerCommit"] = commit
+    batch = metadata.get("inference_batch")
+    if (isinstance(batch, dict) and isinstance(batch.get("id"), str)
+            and re.fullmatch(r"[a-f0-9]{32}", batch["id"])
+            and all(type(batch.get(key)) is int for key in ("size", "index", "question_count"))
+            and 1 <= batch["size"] <= 8 and 0 <= batch["index"] < batch["size"]
+            and 1 <= batch["question_count"] <= 16):
+        identity["inferenceBatch"] = {key: batch[key] for key in ("id", "size", "index", "question_count")}
+        if metadata.get("batch_threshold_rechecked") is True:
+            identity["batchThresholdRechecked"] = True
+    return identity
 
 
 def execution_status(decision: ProtectionDecision) -> str:
@@ -47,6 +72,7 @@ def evaluation_evidence(decision: ProtectionDecision) -> str:
     # An outer Action deadline can cancel the evaluator before its own trace
     # exists. Retain that failed classifier without inventing a model label.
     native_steps += [s for s in decision.trace if s.kind == "action" and s.profile_ref in native_profiles
+                     and s.capability in {"content_safety", "jailbreak", "pii"}
                      and not any(e.id == f"{s.id.removeprefix('nemo:action:')}:native-safety"
                                  and e.content_block_id == s.content_block_id for e in native_steps)]
     if native_steps:
@@ -137,6 +163,8 @@ def evaluation_evidence(decision: ProtectionDecision) -> str:
                 row["questionRevision"] = _identity(native.get("question_revision"))
                 row["requestedModel"] = _identity(native.get("requested_model"))
                 row["responseModel"] = _identity(native.get("response_model"))
+                if decision_model == "laya":
+                    row.update(builtin_laya_identity(native))
                 thresholds = native.get("thresholds", {})
                 if (isinstance(thresholds, dict) and all(type(thresholds.get(k)) in (int, float)
                         and math.isfinite(thresholds[k]) for k in ("lower", "upper"))
@@ -167,6 +195,18 @@ def evaluation_evidence(decision: ProtectionDecision) -> str:
                         "answers":{k:v for k,v in answers.items() if k in probability_keys[step.capability] and v in {"yes","no","unknown"}} if isinstance(answers,dict) else {},
                         "policyAction":row["policyAction"], "enforcedAction":row["enforcedAction"],
                         "errorType":_identity(review_step.error_type)}
+                    if review_step.model_call_id:
+                        row["review"]["modelCallId"] = _identity(review_step.model_call_id)
+                    if review_step.profile_ref == "tali.qwen3guard.v1":
+                        categories = review.get("native_categories", [])
+                        known_categories = {item.native_category for item in mappings_for("qwen3guard")}
+                        row["review"].update({
+                            "profileRef": review_step.profile_ref,
+                            "nativeVerdict": review.get("native_verdict") if review.get("native_verdict") in {"safe", "unsafe", "controversial"} else None,
+                            "nativeCategories": [category for category in categories[:10]
+                                if isinstance(category, str) and category in known_categories] if isinstance(categories, list) else [],
+                            "coverage": _identity(review.get("coverage")),
+                        })
                     row["decisionSource"] = "review"
                     row["finalPolicyAction"] = row["policyAction"]
                     # The primary model abstained; enforcement belongs to the

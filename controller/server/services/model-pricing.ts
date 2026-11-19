@@ -9,6 +9,7 @@ import { NotFoundError, ValidationError } from "../domain/errors.js";
 import type { RuntimeEventInput } from "../domain/models.js";
 import { modelRatesSchema, pricingRuleSchema, type CostGroup, type GuardrailMonthlyCost, type CostQuery, type GuardrailCostView, type ModelPricingView, type PricingSyncView } from "../../shared/model-pricing.js";
 import { automaticCatalogKeys, LITELLM_PRICE_URL, meteredCalls, priceCall } from "./model-pricing-domain.js";
+import { isBuiltinLaya } from "../model-config/builtin-laya.js";
 
 import bundledCatalog from "../catalog/model-prices.json" with { type: "json" };
 import { z } from "zod";
@@ -21,10 +22,12 @@ const catalogKey = (key: string) => `litellm:${key}`;
 const iso = (at: Date | null | undefined) => at?.toISOString() ?? null;
 const modelsQuery = (db: ReadDb) => db.select({ id: modelDefinitions.id, providerId: modelProviders.id, provider: modelProviders.name, baseUrl: modelProviders.baseUrl, model: modelDefinitions.model }).from(modelDefinitions).innerJoin(modelProviders, eq(modelProviders.id, modelDefinitions.providerId));
 type PricingModel = Awaited<ReturnType<typeof modelsQuery>>[number];
+const builtinPrice = { id: null, source: "builtin", rates: { unit: "free", currency: "USD" }, effectiveAt: null } as const;
 async function revision(db: ReadDb, key: string, at: Date) {
   return (await db.select().from(prices).where(and(eq(prices.key, key), lte(prices.effectiveAt, at))).orderBy(desc(prices.effectiveAt), desc(prices.id)).limit(1))[0] ?? null;
 }
 async function resolvedPrice(db: ReadDb, model: PricingModel, at: Date) {
+  if (isBuiltinLaya(model.id, model.providerId)) return { rule: null, price: builtinPrice, key: null };
   const rule = await revision(db, modelKey(model.providerId, model.model), at);
   if (rule?.source === "manual") return { rule, price: rule, key: null };
   const keys = rule?.catalogKey ? [rule.catalogKey] : automaticCatalogKeys(model.baseUrl, model.model);
@@ -142,7 +145,7 @@ export class ModelPricingService {
     for (const model of models) {
       const resolved = await resolvedPrice(this.db, model, now);
       result.push({ modelId: model.id, model: model.model, provider: model.provider, mode: resolved.rule?.source === "manual" ? "manual" : "automatic",
-        catalogKey: resolved.key, source: resolved.price?.rates ? resolved.price.source === "litellm" ? "litellm" : "manual" : null,
+        catalogKey: resolved.key, source: resolved.price?.rates ? resolved.price.source === "automatic" ? "manual" : resolved.price.source : null,
         rates: resolved.price?.rates ?? null, effectiveAt: iso(resolved.price?.effectiveAt) });
     }
     return { sync: await this.status(), models: result };
@@ -161,6 +164,7 @@ export class ModelPricingService {
     const input = pricingRuleSchema.parse(raw);
     const model = (await modelsQuery(this.db).where(and(eq(modelDefinitions.id, modelId), isNull(modelDefinitions.projectId))))[0];
     if (!model) throw new NotFoundError("Model", modelId);
+    if (isBuiltinLaya(model.id, model.providerId)) throw new ValidationError("The built-in Model has a fixed zero rate.");
     if (input.mode === "automatic" && input.catalogKey && !(await revision(this.db, catalogKey(input.catalogKey), new Date()))?.rates) throw new ValidationError("Select an existing LiteLLM price entry.");
     await this.db.transaction(async tx => {
       await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${modelKey(model.providerId, model.model)}))`);

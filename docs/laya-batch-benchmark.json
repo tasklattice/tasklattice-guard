@@ -1,0 +1,119 @@
+{
+  "date": "2026-11-18",
+  "environment": {
+    "architecture": "aarch64",
+    "cpu_cores": 2,
+    "memory_limit_gib": 6,
+    "laya": "0.3.22",
+    "torch": "2.6.0+cpu",
+    "threadpoolctl": "3.6.0",
+    "network": "none",
+    "read_only": true
+  },
+  "method": "Four independent synthetic classifier inputs, eight Noul questions, four rounds per mode after warmup. Same checkpoint, states, questions and token budgets. Native forwards counted by a model forward hook. Current Runner code and locked threadpoolctl mounted read-only onto the existing Runner image; no deployment changes.",
+  "model": {
+    "modelVersion": "85cc74ddae6109077ebe2853a9b3077fb6606a78"
+  },
+  "threads_per_worker": 2,
+  "iterations": 4,
+  "maximum_probability_delta": 0.0001,
+  "equal_token_and_coverage_usage": true,
+  "timing": {
+    "serial": {
+      "forward_calls": 16,
+      "wall_seconds": 8.893,
+      "cpu_seconds": 17.571,
+      "request_groups_per_second": 0.45,
+      "shapes": [
+        [
+          2,
+          46
+        ],
+        [
+          1,
+          46
+        ],
+        [
+          1,
+          62
+        ],
+        [
+          4,
+          61
+        ],
+        [
+          2,
+          46
+        ],
+        [
+          1,
+          46
+        ],
+        [
+          1,
+          62
+        ],
+        [
+          4,
+          61
+        ],
+        [
+          2,
+          46
+        ],
+        [
+          1,
+          46
+        ],
+        [
+          1,
+          62
+        ],
+        [
+          4,
+          61
+        ],
+        [
+          2,
+          46
+        ],
+        [
+          1,
+          46
+        ],
+        [
+          1,
+          62
+        ],
+        [
+          4,
+          61
+        ]
+      ]
+    },
+    "batch": {
+      "forward_calls": 4,
+      "wall_seconds": 8.569,
+      "cpu_seconds": 16.906,
+      "request_groups_per_second": 0.467,
+      "shapes": [
+        [
+          8,
+          62
+        ],
+        [
+          8,
+          62
+        ],
+        [
+          8,
+          62
+        ],
+        [
+          8,
+          62
+        ]
+      ]
+    }
+  }
+}

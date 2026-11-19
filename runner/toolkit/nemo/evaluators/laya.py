@@ -8,10 +8,12 @@ import time
 import httpx
 from ...runtime.failures import ModelResponseError, model_response
 
+from runner.builtin_laya import BUILTIN_LAYA_BACKEND, BuiltinLaya, BuiltinLayaBusyError, BuiltinLayaInferenceError
 from runner.model_validation_diagnostics import record_validation_error, validation_http_hooks
+from runner.software_version import SOFTWARE_VERSION
 from ...runtime.contracts import ProviderEvidence, RiskFinding, RuntimeTraceStep
 from ...safety.taxonomy import taxonomy_for_evaluator
-from ..actions.model_call import action_usage, observe_model_call
+from ..actions.model_call import ModelCallTracker, action_usage, observe_model_call
 from ..actions.model_retry import with_connection_retry
 from .contracts import EvaluationRequest, EvaluationResult, EvaluationUsage, evaluation_result
 
@@ -33,14 +35,9 @@ LAYA_REQUEST_MODES = frozenset({"native", "compatible"})
 DEFAULT_REQUEST_MODE = "compatible"
 
 
-def normalize_request_mode(request_mode: str) -> str:
-    """Resolve the declared Controller mode; an empty value means compatible."""
-    if not isinstance(request_mode, str):
+def validate_request_mode(request_mode: str) -> None:
+    if not isinstance(request_mode, str) or request_mode not in LAYA_REQUEST_MODES:
         raise ValueError(f"Laya request mode must be native or compatible, got {request_mode!r}.")
-    mode = request_mode or DEFAULT_REQUEST_MODE
-    if mode not in LAYA_REQUEST_MODES:
-        raise ValueError(f"Laya request mode must be native or compatible, got {request_mode!r}.")
-    return mode
 
 
 def admission_rejected(response: httpx.Response) -> bool:
@@ -108,7 +105,8 @@ class LayaNoulEvaluator:
                  upper_threshold: float = DEFAULT_UPPER_THRESHOLD,
                  transport: httpx.AsyncBaseTransport | None = None,
                  skip_tls_verify: bool = False, request_mode: str = DEFAULT_REQUEST_MODE,
-                 profile_ref: str, reviewer=None, rail_type: str | None = None) -> None:
+                 profile_ref: str, reviewer=None, rail_type: str | None = None,
+                 builtin_laya: BuiltinLaya | None = None) -> None:
         if not 0 <= lower_threshold < upper_threshold <= 1:
             raise ValueError("Expected 0 <= lower_threshold < upper_threshold <= 1.")
         self._url = base_url.rstrip("/") + "/systemone"
@@ -116,26 +114,30 @@ class LayaNoulEvaluator:
         self._timeout, self._transport, self._skip_tls_verify = timeout_seconds, transport, skip_tls_verify
         self._rate_limit_attempts = rate_limit_attempts
         self._lower, self._upper = lower_threshold, upper_threshold
+        self._configured_thresholds = (lower_threshold, upper_threshold)
         self._profile_ref = profile_ref
         self._reviewer = reviewer
+        self._builtin_laya = builtin_laya
         # The wire budget is fixed once by the Controller's declared deployment
         # mode and recorded verbatim as evidence; it is never negotiated.
-        self._request_mode = normalize_request_mode(request_mode)
+        mode = "native" if builtin_laya is not None else request_mode
+        validate_request_mode(mode)
         self._request_budget = {"max_len": MODEL_MAX_LEN}
-        if self._request_mode == "native":
+        if mode == "native":
             self._request_budget["head_max_len"] = MODEL_HEAD_MAX_LEN
-        self._model_metadata = {"laya_request_mode": self._request_mode}
-        if self._request_mode == "compatible":
+        self._model_metadata = {"laya_request_mode": mode}
+        if builtin_laya is not None:
+            self._lower, self._upper = builtin_laya.thresholds(next(iter(self.capabilities)), self._configured_thresholds)
+            self._model_metadata.update(backend=BUILTIN_LAYA_BACKEND, checkpoint_revision=builtin_laya.revision,
+                                        runner_version=SOFTWARE_VERSION["version"], runner_commit=SOFTWARE_VERSION["commit"],
+                                        **builtin_laya.model_identity)
+        elif mode == "compatible":
             # The strict server applies its own head budget when the field is absent.
             self._model_metadata["head_max_len_source"] = "server_default"
         if rail_type is not None:
             if rail_type not in self.rails:
                 raise ValueError(f"Laya {self.id} does not support {rail_type}.")
             self.rails = frozenset({rail_type})
-
-    @property
-    def review_ready(self) -> bool:
-        return self._reviewer is not None
 
     def questions(self, request: EvaluationRequest) -> dict[str, dict[str, object]]:
         raise NotImplementedError
@@ -159,9 +161,12 @@ class LayaNoulEvaluator:
     def revision(self, request: EvaluationRequest) -> str:
         return self.question_revision
 
-    def classify(self, probabilities: dict[str, float]) -> str:
-        return ("matched" if any(p >= self._upper for p in probabilities.values()) else
-                "not_matched" if all(p <= self._lower for p in probabilities.values()) else "unknown")
+    def thresholds_for(self, request: EvaluationRequest) -> tuple[float, float]:
+        return self._lower, self._upper
+
+    def classify(self, probabilities: dict[str, float], *, lower: float, upper: float) -> str:
+        return ("matched" if any(p >= upper for p in probabilities.values()) else
+                "not_matched" if all(p <= lower for p in probabilities.values()) else "unknown")
 
     def result_content(self, request: EvaluationRequest, verdict: str) -> str:
         """Content returned by a successful classification; PII may transform it."""
@@ -175,13 +180,14 @@ class LayaNoulEvaluator:
                probabilities: dict[str, float], actual_model: str | None = None,
                error_type: str | None = None, model_metadata: dict | None = None,
                request_budget: dict[str, int] | None = None) -> RuntimeTraceStep:
-        judgments = {key: {"probability": p, "answer": "yes" if p >= self._upper else "no" if p <= self._lower else "uncertain"}
+        lower, upper = self.thresholds_for(request)
+        judgments = {key: {"probability": p, "answer": "yes" if p >= upper else "no" if p <= lower else "uncertain"}
                      for key, p in probabilities.items()}
         metadata = {**self._model_metadata, **(model_metadata or {})}
         evidence = json.dumps({"decision_model": "laya", "profile": self._profile_ref, "question_revision": self.revision(request),
                                "decision_rule": self.decision_rule,
                                "requested_model": self._model, "response_model": actual_model,
-                               "thresholds": {"lower": self._lower, "upper": self._upper},
+                               "thresholds": {"lower": lower, "upper": upper},
                                "request_budget": request_budget if request_budget is not None else dict(self._request_budget),
                                "model_metadata": metadata,
                                "judgments": judgments}, sort_keys=True)
@@ -209,21 +215,42 @@ class LayaNoulEvaluator:
 
     async def evaluate(self, request: EvaluationRequest) -> EvaluationResult:
         result = await self.evaluate_primary(request)
-        from .classifier_review import apply_review_transform, review_enabled, unavailable_review
-        if result.verdict == "unknown" and review_enabled(request):
-            if self._reviewer is None:
-                return unavailable_review(request, result)
+        from .classifier_review import apply_review_transform
+        if result.verdict == "unknown" and self._reviewer is not None:
             reviewed = await self._reviewer.review(request, self.review_questions(request), self.state(request), result)
             return apply_review_transform(request, reviewed,
                 content=self.result_content(request, reviewed.verdict),
                 replacement=self.result_replacement(request, reviewed.verdict))
         return result
 
+    async def _send_http(self, state: str | dict[str, object], questions: dict[str, dict[str, object]],
+                         request_budget: dict[str, int], deadline: float, remaining: float,
+                         call: ModelCallTracker) -> httpx.Response:
+        async with httpx.AsyncClient(timeout=remaining, transport=self._transport, verify=not self._skip_tls_verify,
+                                     event_hooks=validation_http_hooks()) as client:
+            body = {"model": self._model, "state": state, "questions": questions, **request_budget}
+
+            async def send() -> httpx.Response:
+                attempt = await client.post(self._url, headers={"authorization": f"Bearer {self._api_key}"}, json=body)
+                attempt.raise_for_status()
+                return attempt
+
+            return await with_connection_retry(send, deadline=deadline, call=call,
+                                               rate_limit_attempts=self._rate_limit_attempts,
+                                               retryable_rejection=admission_rejected)
+
     async def evaluate_primary(self, request: EvaluationRequest) -> EvaluationResult:
         if (request.rail_type not in self.rails or request.capability not in self.capabilities
             or request.binding.contract_ref not in self.contracts):
             return self._error(request, f"Laya supports {self.scope_label} only.")
-        call = None
+        calls: list[ModelCallTracker] = []
+
+        def collected_usage():
+            usages = [action_usage(item, len(request.content)) for item in calls]
+            return EvaluationUsage(provider_latency_ms=sum(item.provider_latency_ms for item in usages),
+                model_invocations=sum(item.model_invocations for item in usages), input_characters=len(request.content),
+                model_calls=tuple(call for item in usages for call in item.model_calls)) if usages else EvaluationUsage()
+
         probabilities: dict[str, float] = {}
         actual_model: str | None = None
         model_metadata = {}
@@ -231,7 +258,7 @@ class LayaNoulEvaluator:
         try:
             questions = self.questions(request)
             if questions:
-                if not self._api_key.strip():
+                if self._builtin_laya is None and not self._api_key.strip():
                     return self._error(request, "Laya credential is not configured.")
                 deadline = min(request.deadline, time.monotonic() + self._timeout)
                 remaining = deadline - time.monotonic()
@@ -240,40 +267,67 @@ class LayaNoulEvaluator:
                 with observe_model_call(request, provider=self._provider_id, model=self._model,
                                         operation=self.operation, profile_ref=self._profile_ref,
                                         runtime_ref=self._provider_id) as call:
-                    async with httpx.AsyncClient(timeout=remaining, transport=self._transport, verify=not self._skip_tls_verify, event_hooks=validation_http_hooks()) as client:
-                        body = {
-                            "model": self._model,
-                            "state": self.model_state(request),
-                            "questions": questions,
-                            **request_budget,
-                        }
-                        async def send() -> httpx.Response:
-                            attempt = await client.post(self._url, headers={"authorization": f"Bearer {self._api_key}"}, json=body)
-                            attempt.raise_for_status()
-                            return attempt
-
-                        response = await with_connection_retry(send, deadline=deadline, call=call, rate_limit_attempts=self._rate_limit_attempts,
-                                                               retryable_rejection=admission_rejected)
+                    calls.append(call)
+                    state = self.model_state(request)
+                    if self._builtin_laya is not None:
+                        payload = await self._builtin_laya.predict(state, questions, deadline=deadline, **request_budget)
+                    else:
+                        response = await self._send_http(state, questions, request_budget, deadline, remaining, call)
                         with model_response():
                             payload = response.json()
+                    with model_response():
+                        actual_model, probabilities = parse_answers(payload, set(questions))
+                        usage = payload.get("usage", {})
+                        routing = payload.get("routing", {})
+                        model_metadata.update({
+                            "usage": {k: usage[k] for k in ("input_tokens", "state_tokens", "state_tokens_dropped", "truncated") if isinstance(usage, dict) and k in usage},
+                            "routing": {k: routing[k] for k in ("model", "repo") if isinstance(routing, dict) and k in routing},
+                        })
+                        if isinstance(payload.get("inference_batch"), dict):
+                            model_metadata["inference_batch"] = payload["inference_batch"]
+                        check_input_coverage(payload)
+                    call.complete(payload=payload)
+                lower, upper = self.thresholds_for(request)
+                # The pinned SDK rounds Noul probabilities to four decimals.
+                # Batched tensor shapes can move the last digit. Recheck only
+                # this member near either operating threshold, on its original
+                # input and deadline, before applying the Rule or its reviewer.
+                if (self._builtin_laya is not None and model_metadata.get("inference_batch", {}).get("size", 0) > 1
+                        and any(abs(value - boundary) <= .0002 + 1e-12
+                                for value in probabilities.values() for boundary in (lower, upper))):
+                    with observe_model_call(request, provider=self._provider_id, model=self._model,
+                            operation=self.operation + "_threshold_recheck", profile_ref=self._profile_ref,
+                            runtime_ref=self._provider_id) as recheck:
+                        calls.append(recheck)
+                        payload = await self._builtin_laya.predict(state, questions, deadline=deadline,
+                            allow_batch=False, **request_budget)
+                        with model_response():
                             actual_model, probabilities = parse_answers(payload, set(questions))
-                            usage = payload.get("usage", {})
-                            routing = payload.get("routing", {})
-                            model_metadata.update({
-                                "usage": {k: usage[k] for k in ("input_tokens", "state_tokens", "state_tokens_dropped", "truncated") if isinstance(usage, dict) and k in usage},
-                                "routing": {k: routing[k] for k in ("model", "repo") if isinstance(routing, dict) and k in routing},
-                            })
                             check_input_coverage(payload)
-                        call.complete(payload=payload)
-        except (httpx.HTTPError, TimeoutError, ValueError, TypeError, KeyError) as error:
+                        recheck.complete(payload=payload)
+                    model_metadata["batch_threshold_rechecked"] = True
+        except (httpx.HTTPError, TimeoutError, ValueError, TypeError, KeyError,
+                BuiltinLayaBusyError, BuiltinLayaInferenceError) as error:
             record_validation_error(error)
+            if isinstance(error, LayaInputTruncatedError) and self._reviewer is not None:
+                # A well-formed partial answer cannot decide the full request.
+                # Keep the failed native call for audit, discard its judgments,
+                # and let the configured reviewer inspect the original state.
+                reason = "Laya input or policy context was truncated; independent full-context review is required."
+                model_metadata.update(coverage="input_truncated", discarded_probabilities=probabilities)
+                trace = self._trace(request, "unknown", reason, {}, actual_model,
+                                    model_metadata=model_metadata, request_budget=request_budget)
+                return evaluation_result(request, "unknown", request.content, reason=reason,
+                    trace=(trace,), unknown_reason="uncertain",
+                    usage=collected_usage())
             detail = " Input or policy context was truncated; no complete classification is available." if isinstance(error, LayaInputTruncatedError) else ""
             return self._error(request, f"Laya {self.scope_label} evaluation failed: {type(error).__name__}.{detail}",
                                error_type=type(error).__name__,
                                actual_model=actual_model, model_metadata=model_metadata,
                                request_budget=request_budget,
-                               usage=action_usage(call, len(request.content)) if call is not None else EvaluationUsage())
-        verdict = self.classify(probabilities)
+                               usage=collected_usage())
+        lower, upper = self.thresholds_for(request)
+        verdict = self.classify(probabilities, lower=lower, upper=upper)
         reason = self.reasons[verdict]
         # Machine-readable evidence for all outcomes; Noul is not a confidence or severity score.
         trace = self._trace(request, verdict, reason, probabilities, actual_model,
@@ -288,5 +342,5 @@ class LayaNoulEvaluator:
         result = evaluation_result(request, verdict, self.result_content(request, verdict),
                                  reason=reason, findings=findings,
                                  trace=(trace,), unknown_reason="uncertain",
-                                 usage=action_usage(call, len(request.content)) if call is not None else EvaluationUsage())
+                                 usage=collected_usage())
         return result

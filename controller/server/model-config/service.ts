@@ -19,6 +19,7 @@ import {
   policyRecords,
   policyVersions,
   runnerPools,
+  runnerInstances,
   projectGroups,
 } from "../db/schema.js";
 import { ConflictError, NotFoundError, ValidationError } from "../domain/errors.js";
@@ -31,10 +32,14 @@ import { modelReadiness, type ModelReadinessRevision } from "../../shared/model-
 import { PolicyCatalog, type PolicyDto } from "../policy-catalog/catalog.js";
 import {
   capabilityBindingDefinitions,
+  hasLegacySecurityReview, securityReviewerId, securityReviewRails,
   localCapabilitySurfaces,
+  isLayaPrimaryBinding,
+  layaPrimaryBindingIds,
   type CapabilityBindingId,
 } from "../../shared/guardrail-catalog.js";
 import {
+  activeModelRuntime,
   assignedModelIds,
   assignmentTargetAcceptsModel,
   assignmentTargetProfiles,
@@ -44,14 +49,15 @@ import {
   isRetiredModel,
   modelConfigurationInputSchema,
   modelRuntimeSettingsInputSchema,
+  modelRuntimeToWire,
   modelInputSchema,
   normalizeModelAssignments,
+  withBuiltinLayaPrimaries,
   providerInputSchema,
   providerAcceptsProfile,
   providerRegistrationSchema,
   providerUpdateSchema,
   profileTransports,
-  resolveLayaRequestMode,
   type ActiveModelConfiguration,
   type LayaRequestMode,
   type ModelAssignments,
@@ -68,6 +74,7 @@ import { PostgresValidationCredentialLeaseStore, type ValidationCredentialLeaseS
 import type { ControlSessionIdentity } from "../services/runner-control-sessions.js";
 import { GroupRuntimeModelService, type GroupModelTransaction } from "./group-runtime.js";
 import { modelBindingValidationFingerprint, modelRuntimeValidationFingerprint } from "./runtime-fingerprint.js";
+import { builtinLaya, builtinLayaConfigurationId, isBuiltinLaya } from "./builtin-laya.js";
 import { isDedicatedJailbreakDetectEndpoint, isNvidiaModelCatalog, jailbreakDetectAttackInput, jailbreakDetectEndpoint, jailbreakDetectModel, jailbreakDetectProfile, jailbreakDetectResponse, jailbreakDetectSafeInput } from "./jailbreak-detect.js";
 
 const chatEnvelope = z.object({
@@ -116,22 +123,23 @@ export class ModelConfigurationService {
   setRailValidator(validator: RailValidator): void { this.railValidator = validator; }
 
   private async probeAssignment(target: ModelAssignmentTarget, provider: ProviderRow, model: ModelRow, formalValidation?: FormalValidation): Promise<RailValidationEvidence> {
-    if (target === "control_plane") return this.probeModel(provider, model);
+    const builtin = isBuiltinLaya(model.id, provider.id);
+    if (target === "control_plane") return builtin
+      ? { passed: false, message: "Built-in Laya is available for Protection Capabilities.", latencyMs: 0 }
+      : this.probeModel(provider, model);
     if (!this.railValidator) return { passed: false, message: "Runner Rail validation is unavailable. A model connection check cannot validate an Input/Output Rail.", latencyMs: 0 };
     const binding = capabilityBindingDefinitions.find((item) => item.id === target)!;
-    const layaRequestMode = resolveLayaRequestMode(model.profile, model.layaRequestMode);
-    const leaseId = randomUUID();
+    const requestId = randomUUID();
+    const leaseId = builtin ? undefined : randomUUID();
     let leased = false;
     try {
-      leased = await this.validationLeases.create(leaseId, provider);
-      if (!leased) return { passed: false, message: "Too many Rail validations are in progress. Retry shortly.", latencyMs: 0 };
-      return await this.railValidator({ requestId: randomUUID(), bindingId: target, credentialLeaseId: leaseId, ...(formalValidation ? { formalValidation } : {}),
-        configuration: { revisionId: `validation:${leaseId}`, revision: 0,
-          runtimes: [{ id: model.id, providerId: provider.id, providerName: provider.name, baseUrl: provider.baseUrl,
-            credentialRef: provider.id, model: model.model, profileRef: model.profile,
-            ...(layaRequestMode ? { layaRequestMode } : {}),
-            timeoutSeconds: model.timeoutSeconds, maxTokens: model.maxTokens, maxConcurrency: model.maxConcurrency ?? 2,
-            rateLimitAttempts: model.rateLimitAttempts ?? 3, lowerThreshold: model.lowerThreshold ?? 0.1, upperThreshold: model.upperThreshold ?? 0.9, skipTlsVerify: provider.skipTlsVerify }],
+      if (leaseId) {
+        leased = await this.validationLeases.create(leaseId, provider);
+        if (!leased) return { passed: false, message: "Too many Rail validations are in progress. Retry shortly.", latencyMs: 0 };
+      }
+      return await this.railValidator({ requestId, bindingId: target, ...(leaseId ? { credentialLeaseId: leaseId } : {}), ...(formalValidation ? { formalValidation } : {}),
+        configuration: { revisionId: `validation:${requestId}`, revision: 0,
+          runtimes: [modelRuntimeToWire(activeModelRuntime(model, provider))],
           bindings: [{ bindingId: target, capabilityRef: binding.capabilityRef,
             railType: binding.railType === "input" ? "RAIL_TYPE_INPUT" : "RAIL_TYPE_OUTPUT",
             implementationRef: binding.implementationRef, modelRef: model.id, profileRef: model.profile,
@@ -140,11 +148,43 @@ export class ModelConfigurationService {
       });
     } catch {
       return { passed: false, message: "Runner Rail validation did not complete. Retry after checking Runner health.", latencyMs: 0 };
-    } finally { if (leased) await this.validationLeases.revoke(leaseId); }
+    } finally { if (leaseId && leased) await this.validationLeases.revoke(leaseId); }
   }
 
   async initialize(): Promise<void> {
-    await this.ensureDraft(null);
+    await this.db.transaction(async tx => {
+      await tx.insert(modelProviders).values({
+        id: builtinLaya.providerId, name: builtinLaya.providerName, kind: "laya", baseUrl: "",
+        credentialCiphertext: "", status: "validated", validationMessage: "Runner local model.",
+      }).onConflictDoNothing({ target: modelProviders.id });
+      await tx.insert(modelDefinitions).values({
+        id: builtinLaya.modelId, providerId: builtinLaya.providerId, name: builtinLaya.modelName,
+        model: builtinLaya.model, profile: builtinLaya.profile, maxConcurrency: 1, rateLimitAttempts: 1,
+      }).onConflictDoNothing({ target: modelDefinitions.id });
+    });
+    const draft = await this.ensureDraft(null);
+    const previous = normalizeModelAssignments(draft.assignments);
+    const assignments = withBuiltinLayaPrimaries(previous);
+    if (JSON.stringify(previous) !== JSON.stringify(assignments)) {
+      // Upgrade the editable draft, keeping reviewers and specialist settings.
+      // The active revision still follows the normal reviewed rollout.
+      const changed = layaPrimaryBindingIds.filter(id => previous.bindings[id] !== assignments.bindings[id]);
+      const checks = (draft.validationReport?.checks ?? []).filter(check =>
+        !changed.some(id => checkBelongsToTarget(check, id)));
+      const report = await this.reportFromChecks(assignments, checks);
+      const [updated] = await this.db.update(modelConfigurationRevisions).set({
+        assignments, state: "draft", validationReport: report, validatedAt: null,
+        failureReason: null, updatedAt: new Date(),
+      }).where(unchangedRevision(draft)).returning(editableRevisionColumns);
+      if (!updated) throw new ConflictError("The model draft changed during initialization.", "model_configuration_changed");
+    }
+  }
+
+  private async builtinReady(providers: readonly ProviderRow[]): Promise<boolean> {
+    if (!providers.some(provider => provider.id === builtinLaya.providerId)) return false;
+    const [runner] = await this.db.select({ labels: runnerInstances.labels }).from(runnerInstances)
+      .where(and(eq(runnerInstances.poolId, "default"), eq(runnerInstances.runnerId, "runner-default-0"), eq(runnerInstances.status, "ready")));
+    return runner?.labels?.[builtinLaya.revisionLabel] === builtinLaya.checkpointRevision;
   }
 
   async view() {
@@ -165,11 +205,13 @@ export class ModelConfigurationService {
     const active = revisions.find((item) => item.state === "active") ?? null;
     const activating = revisions.find((item) => item.state === "activating") ?? null;
     const failed = revisions.find((item) => item.state === "failed") ?? null;
+    const builtinReady = await this.builtinReady(providers);
     return {
-      providers: providers.map((provider) => currentProjectId() ? publicProviderMetadata(provider) : publicProvider(provider)),
+      providers: providers.map((provider) => currentProjectId() ? publicProviderMetadata(provider, builtinReady) : publicProvider(provider, builtinReady)),
       models: models.map((model) => ({
-        ...publicModel(model, providers.find((provider) => provider.id === model.providerId)),
-        protocolEditable: model.projectId === currentProjectId() && !revisions.some((revision) => assignedModelIds(normalizeModelAssignments(revision.assignments)).includes(model.id)),
+        ...publicModel(model, providers.find((provider) => provider.id === model.providerId), builtinReady),
+        protocolEditable: !isBuiltinLaya(model.id, model.providerId) && model.projectId === currentProjectId()
+          && !revisions.some((revision) => assignedModelIds(normalizeModelAssignments(revision.assignments)).includes(model.id)),
       })),
       draft: draft ? publicRevision(draft) : null,
       active: active ? publicRevision(active) : null,
@@ -180,7 +222,8 @@ export class ModelConfigurationService {
 
   async listProviders() {
     const providers = await this.db.select().from(modelProviders).orderBy(asc(modelProviders.name));
-    return providers.map((provider) => currentProjectId() ? publicProviderMetadata(provider) : publicProvider(provider));
+    const builtinReady = await this.builtinReady(providers);
+    return providers.map((provider) => currentProjectId() ? publicProviderMetadata(provider, builtinReady) : publicProvider(provider, builtinReady));
   }
 
   /** Global detector evidence is available to business workflows independently of project inventories. */
@@ -221,6 +264,7 @@ export class ModelConfigurationService {
   async createProvider(raw: unknown, actorId: string) {
     assertPlatformAuthority();
     const input = providerInputSchema.parse(raw);
+    assertAvailableProviderName(input.name);
     const id = randomUUID();
     const validation = await this.probeProviderFromCatalog(input.baseUrl, input.apiKey, input.skipTlsVerify, input.kind);
     const [created] = await this.db.insert(modelProviders).values({
@@ -248,7 +292,9 @@ export class ModelConfigurationService {
 
   async updateProvider(id: string, raw: unknown, actorId: string) {
     assertPlatformAuthority();
+    assertEditableProvider(id);
     const input = providerUpdateSchema.parse(raw);
+    if (input.name !== undefined) assertAvailableProviderName(input.name);
     const [current] = await this.db.select().from(modelProviders).where(eq(modelProviders.id, id));
     if (!current) throw new NotFoundError("Model Provider", id);
     const targetKind = input.kind ?? current.kind;
@@ -325,6 +371,7 @@ export class ModelConfigurationService {
 
   async revalidateProvider(id: string, actorId: string) {
     assertPlatformAuthority();
+    assertEditableProvider(id);
     const current = await this.provider(id);
     const apiKey = decryptModelCredential(current.credentialCiphertext, this.rootSecret);
     const target = await this.providerValidationModel(id);
@@ -351,6 +398,7 @@ export class ModelConfigurationService {
 
   async discoverProviderModels(id: string) {
     assertPlatformAuthority();
+    assertEditableProvider(id);
     const provider = await this.provider(id);
     const apiKey = decryptModelCredential(provider.credentialCiphertext, this.rootSecret);
     try {
@@ -380,6 +428,7 @@ export class ModelConfigurationService {
   async registerProviderModels(raw: unknown, actorId: string) {
     assertPlatformAuthority();
     const input = providerRegistrationSchema.parse(raw);
+    assertAvailableProviderName(input.connection.name);
     const invalid = input.models.find((model) => !providerAcceptsProfile(input.connection.kind, model.profile));
     if (invalid) {
       throw new ValidationError(`${input.connection.name} does not support the ${invalid.profile} protocol for ${invalid.name}.`);
@@ -422,6 +471,7 @@ export class ModelConfigurationService {
 
   async deleteProvider(id: string, actorId: string): Promise<void> {
     assertPlatformAuthority();
+    assertEditableProvider(id);
     await this.db.transaction(async tx => {
       await advisoryTransactionLock(tx, "traffic-router-bindings");
       const dependencies = await tx.select({ id: modelDefinitions.id, projectId: modelDefinitions.projectId }).from(modelDefinitions)
@@ -438,6 +488,7 @@ export class ModelConfigurationService {
 
   async createModel(raw: unknown, actorId: string) {
     const input = modelInputSchema.parse(raw);
+    assertEditableProvider(input.providerId);
     const provider = await this.provider(input.providerId);
     if (!providerAcceptsProfile(provider.kind, input.profile)) {
       throw new ValidationError(`${provider.name} does not support the ${input.profile} protocol.`);
@@ -610,6 +661,7 @@ export class ModelConfigurationService {
   async updateDraft(raw: unknown, actorId: string) {
     assertPlatformAuthority();
     const assignments = assignmentInputSchema.parse(raw);
+    for (const id of layaPrimaryBindingIds) assertManagedPrimary(id, assignments.bindings[id]);
     const ids = [...new Set(assignedModelIds(assignments))];
     const models = ids.length
       ? await this.db.select().from(modelDefinitions).where(and(inArray(modelDefinitions.id, ids),
@@ -638,6 +690,11 @@ export class ModelConfigurationService {
       }
     }
     const existing = await this.ensureDraft(actorId);
+    const prior = normalizeModelAssignments(existing.assignments);
+    if (hasLegacySecurityReview(assignments.bindings) &&
+        securityReviewRails.some(rail => assignments.bindings[rail.id] !== prior.bindings[rail.id])) {
+      throw new ValidationError("Use classifier_review.security to change the shared security reviewer.");
+    }
     if (JSON.stringify(normalizeModelAssignments(existing.assignments)) === JSON.stringify(assignments)) return publicRevision(existing);
     const draft = await this.ensureEditableDraft(actorId);
     const [updated] = await this.db.update(modelConfigurationRevisions).set({
@@ -691,9 +748,11 @@ export class ModelConfigurationService {
 
   async updateAssignment(target: ModelAssignmentTarget, modelId: string | null, actorId: string, validationId?: string) {
     assertPlatformAuthority();
+    assertManagedPrimary(target, modelId);
     const existing = await this.ensureDraft(actorId);
     const previous = normalizeModelAssignments(existing.assignments);
-    if ((target === "control_plane" ? previous.controlPlane : previous.bindings[target]) === modelId && !validationId) return publicRevision(existing);
+    if ((target === "control_plane" ? previous.controlPlane : previous.bindings[target]) === modelId && !validationId
+        && !(target === securityReviewerId && hasLegacySecurityReview(previous.bindings))) return publicRevision(existing);
     let evidence: ModelValidationCheck | undefined;
     if (modelId) {
       const model = await this.model(modelId).catch((error: unknown) => {
@@ -718,8 +777,12 @@ export class ModelConfigurationService {
     const assignments = normalizeModelAssignments(draft.assignments);
     if (target === "control_plane") assignments.controlPlane = modelId;
     else assignments.bindings[target] = modelId;
+    if (target === securityReviewerId) {
+      for (const rail of securityReviewRails) assignments.bindings[rail.id] = null;
+    }
 
-    const checks = (draft.validationReport?.checks ?? []).filter((check) => !checkBelongsToTarget(check, target));
+    const checks = (draft.validationReport?.checks ?? []).filter((check) => !checkBelongsToTarget(check, target)
+      && !(target === securityReviewerId && securityReviewRails.some(rail => checkBelongsToTarget(check, rail.id))));
     if (evidence) checks.push(evidence);
     checks.push({
       id: `assignment:${target}`,
@@ -840,15 +903,18 @@ export class ModelConfigurationService {
         throw new ConflictError("The reviewed configuration changed. Review the latest changes again.", "model_configuration_changed");
       }
       const proposed = normalizeModelAssignments(draft.assignments);
-      const assignments = normalizeModelAssignments(active?.assignments);
+      const assignments = active ? normalizeModelAssignments(active.assignments) : withBuiltinLayaPrimaries(normalizeModelAssignments(null));
       const changes = modelBindingChanges(proposed, assignments, draft.validationReport?.checks ?? []);
       const selected = new Set(selection.bindingIds);
       if (selection.bindingIds.some(id => !changes.some(change => change.id === id))) {
         throw new ConflictError("Only saved binding changes can be applied.", "model_configuration_changed");
       }
       for (const id of selected) assignments.bindings[id] = proposed.bindings[id];
+      if (selected.has(securityReviewerId)) {
+        for (const rail of securityReviewRails) assignments.bindings[rail.id] = null;
+      }
       const checks = [
-        ...(active?.validationReport?.checks ?? []).filter(check => !selection.bindingIds.some(id => checkBelongsToTarget(check, id))),
+        ...(active?.validationReport?.checks ?? []).filter(check => !selection.bindingIds.some(id => checkBelongsToTarget(check, id)) && !(selected.has(securityReviewerId) && securityReviewRails.some(rail => checkBelongsToTarget(check, rail.id)))),
         ...(draft.validationReport?.checks ?? []).filter(check => selection.bindingIds.some(id => checkBelongsToTarget(check, id))),
       ];
       const report = await this.reportFromChecks(assignments, checks, tx);
@@ -891,6 +957,8 @@ export class ModelConfigurationService {
 
   async finalizeActivation(revisionId: string, sourcePoolId?: string): Promise<boolean> {
     assertPlatformAuthority();
+    // Implicit defaults are already effective and have no activation row.
+    if (revisionId === builtinLayaConfigurationId) return true;
     const completed = await this.db.transaction(async (tx) => {
       await advisoryTransactionLock(tx, "traffic-router-bindings");
       // A unique synchronization ID prevents delayed ACKs from replacing a newer config.
@@ -920,6 +988,7 @@ export class ModelConfigurationService {
 
   async failActivation(revisionId: string, reason: string, sourcePoolId?: string): Promise<void> {
     assertPlatformAuthority();
+    if (revisionId === builtinLayaConfigurationId) return;
     await this.db.transaction(async tx => {
       await advisoryTransactionLock(tx, "traffic-router-bindings");
       await tx.select({ id: controllerState.id }).from(controllerState).where(eq(controllerState.id, "singleton")).for("update");
@@ -942,7 +1011,20 @@ export class ModelConfigurationService {
         inArray(modelConfigurationRevisions.state, [...states])))
       .orderBy(desc(modelConfigurationRevisions.generation), desc(modelConfigurationRevisions.revision));
     const revision = rows.find((item) => includeActivating && item.state === "activating") ?? rows[0];
-    if (!revision) return null;
+    if (!revision) {
+      // A new installation can inspect with Laya before any optional review
+      // configuration has been saved or activated.
+      const [models, providers] = await Promise.all([
+        database.select().from(modelDefinitions).where(eq(modelDefinitions.id, builtinLaya.modelId)),
+        database.select().from(modelProviders).where(eq(modelProviders.id, builtinLaya.providerId)),
+      ]);
+      const model = models.find(item => item.id === builtinLaya.modelId);
+      const provider = providers.find(item => item.id === builtinLaya.providerId);
+      if (!model || !provider) return null;
+      return { revisionId: builtinLayaConfigurationId, revision: 0, generation: null,
+        assignments: withBuiltinLayaPrimaries(normalizeModelAssignments(null)),
+        models: [activeModelRuntime(model, provider)] };
+    }
     if (database === this.db && !includeActivating && this.activeCache?.id === revision.id) return this.activeCache.configuration;
     const normalizedAssignments = normalizeModelAssignments(revision.assignments);
     const ids = [...new Set(assignedModelIds(normalizedAssignments))];
@@ -970,22 +1052,7 @@ export class ModelConfigurationService {
       models: models.map((model) => {
         const provider = byProvider.get(model.providerId);
         if (!provider) throw new Error(`Model Provider ${model.providerId} is unavailable.`);
-        const layaRequestMode = resolveLayaRequestMode(model.profile, model.layaRequestMode);
-        return {
-          id: model.id,
-          providerId: provider.id,
-          providerName: provider.name,
-          baseUrl: provider.baseUrl,
-          credentialRef: provider.id,
-          skipTlsVerify: provider.skipTlsVerify,
-          ...(layaRequestMode ? { layaRequestMode } : {}),
-          model: model.model,
-          profile: model.profile,
-          timeoutSeconds: model.timeoutSeconds,
-          maxTokens: model.maxTokens,
-          maxConcurrency: model.maxConcurrency ?? 2,
-          rateLimitAttempts: model.rateLimitAttempts ?? 3, lowerThreshold: model.lowerThreshold ?? 0.1, upperThreshold: model.upperThreshold ?? 0.9,
-        };
+        return activeModelRuntime(model, provider);
       }),
     };
     if (database === this.db && !includeActivating) this.activeCache = { id: revision.id, configuration };
@@ -1030,26 +1097,18 @@ export class ModelConfigurationService {
   }
 
   /** Bind before dispatch, and never allow a lease to be reassigned to another pool. */
-  async bindValidationLease(leaseId: string, poolId: string, session?: ControlSessionIdentity): Promise<boolean> {
+  async bindValidationLease(leaseId: string, poolId: string, session: ControlSessionIdentity): Promise<boolean> {
     return this.validationLeases.bind(leaseId, poolId, session);
   }
 
-  async resolveCredentials(refs: string[], leaseId?: string, poolId?: string): Promise<Record<string, string>> {
+  async resolveCredentials(refs: string[], leaseId: string | undefined, poolId: string): Promise<Record<string, string>> {
     assertPlatformAuthority();
-    if (poolId !== undefined) {
-      // A configured token is a pool identity, not proof that the allocation
-      // still exists. Stale token-map entries must not retain secret access
-      // after deprovisioning or an invalid group allocation.
-      const [pool] = await this.db.select({ id: runnerPools.id }).from(runnerPools)
-        .where(and(eq(runnerPools.id, poolId), validPoolAllocation(poolId))).limit(1);
-      if (!pool) return {};
-    }
     if (leaseId) {
       const lease = await this.validationLeases.resolve(leaseId, refs, poolId);
       if (!lease) return {};
       return { [lease.providerId]: decryptModelCredential(lease.credentialCiphertext, this.rootSecret) };
     }
-    if (poolId !== undefined) return this.db.transaction(async tx => {
+    return this.db.transaction(async tx => {
       await advisoryTransactionLock(tx, "traffic-router-bindings");
       await tx.select({ id: controllerState.id }).from(controllerState).where(eq(controllerState.id, "singleton")).for("share");
       const selected = await this.groupRuntime.selectionForPool(poolId, tx);
@@ -1058,25 +1117,23 @@ export class ModelConfigurationService {
       const configuration = await this.activeConfiguration(true, tx);
       return this.credentialsFromConfiguration(refs, configuration, tx, poolId, selected.groupId);
     });
-    const configuration = await this.activeConfiguration(true);
-    return this.credentialsFromConfiguration(refs, configuration, this.db);
   }
 
   private async credentialsFromConfiguration(refs: string[], configuration: ActiveModelConfiguration | null,
-    database: Pick<ControllerDatabase, "select">, poolId?: string, groupId?: string): Promise<Record<string, string>> {
+    database: Pick<ControllerDatabase, "select">, poolId: string, groupId: string): Promise<Record<string, string>> {
     if (!configuration) return {};
     const dataModelIds = new Set(Object.values(configuration.assignments.bindings).filter((value): value is string => Boolean(value)));
     const allowed = new Set(
       configuration.models
-        .filter((model) => dataModelIds.has(model.id))
+        .filter((model) => dataModelIds.has(model.id) && model.credentialRef)
         .map((model) => model.credentialRef),
     );
     const requested = [...new Set(refs)].filter((ref) => allowed.has(ref));
     if (!requested.length) return {};
     const providers = await database.select().from(modelProviders).where(and(inArray(modelProviders.id, requested),
-      poolId === undefined ? undefined : validPoolAllocation(poolId),
-      poolId === undefined ? undefined : sql`exists (select 1 from runner_pool p left join project_group_model_configuration c on c.group_id=p.group_id
-        where p.id=${poolId} and p.group_id='default' and p.group_id=${groupId ?? null} and coalesce(c.mode,'platform')='platform')`));
+      validPoolAllocation(poolId),
+      sql`exists (select 1 from runner_pool p left join project_group_model_configuration c on c.group_id=p.group_id
+        where p.id=${poolId} and p.group_id='default' and p.group_id=${groupId} and coalesce(c.mode,'platform')='platform')`));
     return Object.fromEntries(providers.map((provider) => [
       provider.id,
       decryptModelCredential(provider.credentialCiphertext, this.rootSecret),
@@ -1209,7 +1266,7 @@ export class ModelConfigurationService {
         if (!model || !provider || !assignmentTargetAcceptsModel(binding.id, model.profile, provider.kind)) return [];
         const passed = checks.some((check) => check.id === `probe:${binding.id}:${model.id}` && check.status === "passed" && check.evidenceKind === "nemo-rail-v1");
         return passed
-          ? capabilityBindingContracts(binding.id, model.profile).map((contract) => ({ contract, bindingId: binding.id, railType: binding.railType, source: "model" as const, modelId: model.id }))
+          ? capabilityBindingContracts(binding.id, model.profile).flatMap(contract => (binding.id === securityReviewerId ? ["input", "output"] as const : [binding.railType]).map(railType => ({ contract, bindingId: binding.id, railType, source: "model" as const, modelId: model.id })))
           : [];
       }),
     ];
@@ -1248,7 +1305,7 @@ export class ModelConfigurationService {
         if (!model || !provider || !assignmentTargetAcceptsModel(binding.id, model.profile, provider.kind)) return [];
         const passed = checks.some((check) => check.id === `probe:${binding.id}:${model.id}` && check.status === "passed" && check.evidenceKind === "nemo-rail-v1");
         return passed
-          ? capabilityBindingContracts(binding.id, model.profile).map((contract) => ({ contract, bindingId: binding.id, railType: binding.railType, source: "model" as const, modelId: model.id }))
+          ? capabilityBindingContracts(binding.id, model.profile).flatMap(contract => (binding.id === securityReviewerId ? ["input", "output"] as const : [binding.railType]).map(railType => ({ contract, bindingId: binding.id, railType, source: "model" as const, modelId: model.id })))
           : [];
       }),
     ];
@@ -1555,7 +1612,13 @@ export class ModelConfigurationService {
     const [latest] = await this.db.select().from(modelConfigurationRevisions)
       .where(isNull(modelConfigurationRevisions.projectId))
       .orderBy(desc(modelConfigurationRevisions.revision)).limit(1);
-    return this.createDraftFrom(normalizeModelAssignments(latest?.assignments), actorId, latest?.validationReport);
+    const previous = normalizeModelAssignments(latest?.assignments);
+    const assignments = withBuiltinLayaPrimaries(previous);
+    const changed = layaPrimaryBindingIds.filter(id => previous.bindings[id] !== assignments.bindings[id]);
+    const report = latest?.validationReport && changed.length
+      ? await this.reportFromChecks(assignments, latest.validationReport.checks.filter(check =>
+        !changed.some(id => checkBelongsToTarget(check, id)))) : latest?.validationReport;
+    return this.createDraftFrom(assignments, actorId, report);
   }
 
   private async createDraftFrom(assignments: ModelAssignments, actorId: string | null, validationReport: ModelValidationReport | null = null) {
@@ -1577,6 +1640,7 @@ export class ModelConfigurationService {
   }
 
   private async assertModelOwner(id: string): Promise<void> {
+    if (id === builtinLaya.modelId) throw new ValidationError("The built-in Model is managed by the platform.");
     const [owned] = await this.db.select({ id: modelDefinitions.id }).from(modelDefinitions)
       .where(and(eq(modelDefinitions.id, id), modelOwnerPredicate()));
     if (!owned) throw new NotFoundError("Model", id);
@@ -1638,21 +1702,47 @@ function modelReadPredicate() {
     : isNull(modelDefinitions.projectId);
 }
 
-function publicProvider(provider: ProviderRow) {
+function assertEditableProvider(id: string): void {
+  if (id === builtinLaya.providerId) throw new ValidationError("The built-in Provider is managed by the platform.");
+}
+
+function assertAvailableProviderName(name: string): void {
+  if (name === builtinLaya.providerName) throw new ValidationError("This Provider name is reserved for the built-in Model.");
+}
+
+function builtinResourceState(builtinReady: boolean) {
+  return {
+    backend: builtinLaya.backend, checkpointRevision: builtinLaya.checkpointRevision,
+    status: builtinReady ? "validated" as const : "pending" as const,
+    validationMessage: builtinReady ? "The Default Runner loaded the built-in English checkpoint." : "Waiting for the Default Runner to load the built-in English checkpoint.",
+  };
+}
+
+function assertManagedPrimary(target: ModelAssignmentTarget, modelId: string | null) {
+  if (isLayaPrimaryBinding(target) && modelId !== builtinLaya.modelId) {
+    throw new ValidationError(`${target} uses built-in Laya. Configure its classifier_review binding instead.`);
+  }
+}
+
+function publicProvider(provider: ProviderRow, builtinReady = false) {
   const { credentialCiphertext: _credentialCiphertext, ...safe } = provider;
-  return { ...safe, credentialConfigured: Boolean(provider.credentialCiphertext) };
+  return { ...safe, credentialConfigured: Boolean(provider.credentialCiphertext),
+    ...(provider.id === builtinLaya.providerId ? builtinResourceState(builtinReady) : {}) };
 }
 
-function publicProviderMetadata(provider: ProviderRow) {
+function publicProviderMetadata(provider: ProviderRow, builtinReady = false) {
   return { id: provider.id, name: provider.name, kind: provider.kind, baseUrl: provider.baseUrl,
-    status: provider.status, createdAt: provider.createdAt, updatedAt: provider.updatedAt };
+    status: provider.status, createdAt: provider.createdAt, updatedAt: provider.updatedAt,
+    ...(provider.id === builtinLaya.providerId ? builtinResourceState(builtinReady) : {}) };
 }
 
-function publicModel(model: ModelRow, provider?: ProviderRow) {
+function publicModel(model: ModelRow, provider?: ProviderRow, builtinReady = false) {
+  const builtin = isBuiltinLaya(model.id, model.providerId) ? builtinResourceState(builtinReady) : undefined;
   return {
     ...model,
     providerName: provider?.name ?? "Unavailable Provider",
     providerKind: provider?.kind ?? "custom-openai-compatible",
+    ...(builtin ? { ...builtin, connectionStatus: builtin.status, connectionMessage: builtin.validationMessage } : {}),
   };
 }
 

@@ -23,7 +23,7 @@ CONTRACTS = {"jailbreak": "tali.guard.jailbreak.v1", "content_safety": "tali.gua
              "topic_control": "tali.guard.topic-control.semantic.v1"}
 
 
-def build_controller_plan(*, review=False, phase="input", pii_only=False):
+def build_controller_plan(*, phase="input", pii_only=False):
     source = """
       import { PolicyCatalog } from './server/policy-catalog/catalog.ts';
       import { DeclarativeCompiler } from './server/policy-studio/declarative.ts';
@@ -39,7 +39,7 @@ def build_controller_plan(*, review=False, phase="input", pii_only=False):
         return { policyId: id, policyVersion: p.version, action: null, enabledRails: [phase],
           enabledRuleIds: rules, ruleOrder: rules, ruleActions: {}, reasoningPolicy: null,
           parameterValues: id === 'content-filters' ? {blocked_words: 'CHAIN_BLOCK', brand_name: 'TaskLattice', competitors: 'Example', phrase_entries: JSON.stringify([{ id: 'x', phrase: 'CHAIN_BLOCK', action: 'block', replacement: '[REDACTED]' }])} :
-            {on_unknown: 'allow', review_unknown: process.env.GUARD_TEST_REVIEW ?? 'false', topic_mode: 'permissive', denied_topics: 'Synthetic forbidden task'} };
+            {on_unknown: 'allow', topic_mode: 'permissive', denied_topics: 'Synthetic forbidden task'} };
       });
       console.log(JSON.stringify(buildGuardrailPlan({guardrailId: 'classifier-chain',
         guardrailVersion: '20261029-000000.001Z', policies,
@@ -48,7 +48,7 @@ def build_controller_plan(*, review=False, phase="input", pii_only=False):
     """
     result = subprocess.run(["node", "--import", "tsx", "--input-type=module", "-e", source],
                             cwd=ROOT / "controller", capture_output=True, text=True, check=True, timeout=60,
-                            env={**os.environ,"GUARD_TEST_REVIEW":"true" if review else "false", "GUARD_TEST_PHASE":phase,
+                            env={**os.environ, "GUARD_TEST_PHASE":phase,
                                  "GUARD_TEST_PII":"true" if pii_only else "false"})
     return json.loads(result.stdout)
 
@@ -56,7 +56,7 @@ def build_controller_plan(*, review=False, phase="input", pii_only=False):
 async def scan(plan, probabilities, *, content="An ordinary synthetic request.", fault=None,
                backend, topic_profile=None, scope="full", review=None, review_fault=None, reviewer_binding=True,
                reviewer_profile="tali.classifier-review.v1", require_evidence=True, phase="input", reviewer_phase=None,
-               pii_only=False):
+               pii_only=False, guard_context=None, reviewer_capabilities=None, topic_reviewer_profile=None):
     topic_profile = topic_profile or backend.profile
     config = candidate("input", "jailbreak", backend.profile, CONTRACTS["jailbreak"]).configuration
     for capability in ("content_safety", "topic_control"):
@@ -81,33 +81,61 @@ async def scan(plan, probabilities, *, content="An ordinary synthetic request.",
     credentials = {"provider-1":"synthetic"}
     if review is not None and reviewer_binding:
         from runner.toolkit.nemo.evaluators.classifier_review import REVIEW_CONTRACT
-        extra = candidate(reviewer_phase or phase,"classifier_review",reviewer_profile,REVIEW_CONTRACT).configuration
-        extra.runtimes[0].id = extra.bindings[0].model_ref = "review-runtime"
-        extra.runtimes[0].model = "review-model-v1"
-        extra.runtimes[0].credential_ref = "review-provider"
-        config.runtimes.extend(extra.runtimes);config.bindings.extend(extra.bindings)
-        credentials["review-provider"] = "review-synthetic"
+        capabilities = reviewer_capabilities if reviewer_capabilities is not None else (
+            ["pii_semantic"] if pii_only else ["content_safety"] if phase == "output" else list(CONTRACTS))
+        for capability in capabilities:
+            profile = topic_reviewer_profile if capability == "topic_control" and topic_reviewer_profile else reviewer_profile
+            if capability == "topic_control" and profile == "tali.qwen3guard.v1":
+                continue
+            extra = candidate(reviewer_phase or phase,"classifier_review",profile,REVIEW_CONTRACT,review_capability=capability).configuration
+            dedicated_topic = capability == "topic_control" and topic_reviewer_profile is not None
+            identity = "topic-review" if dedicated_topic else "review"
+            extra.runtimes[0].id = extra.bindings[0].model_ref = identity + "-runtime"
+            extra.runtimes[0].model = identity + "-model-v1"
+            extra.runtimes[0].credential_ref = identity + "-provider"
+            if not any(runtime.id == extra.runtimes[0].id for runtime in config.runtimes):
+                config.runtimes.extend(extra.runtimes)
+            config.bindings.extend(extra.bindings)
+            credentials[identity + "-provider"] = identity + "-synthetic"
     calls = []
 
     def respond(request):
         body = json.loads(request.content)
         if str(request.url).endswith('/chat/completions'):
-            assert request.headers['authorization'] == 'Bearer review-synthetic'
-            data=json.loads(body['messages'][-1]['content'])
-            assert f"current_{phase}" in data['state']
-            keys=set(data['questions'])
-            capability = ('pii' if pii_only else 'jailbreak' if 'jailbreak_attempt' in keys else 'content_safety' if 'unsafe_content' in keys else 'topic_control')
+            dedicated_topic = body['model'] == 'topic-review-model-v1'
+            assert request.headers['authorization'] == ('Bearer topic-review-synthetic' if dedicated_topic else 'Bearer review-synthetic')
+            native = reviewer_profile == 'tali.qwen3guard.v1' and not dedicated_topic
+            if native:
+                security_answers = {key:value for key,value in review.items() if key != 'topic_control'}
+                assert len(security_answers) == 1
+                capability = next(iter(security_answers))
+                assert body['messages'][-1] == {'role':'assistant' if phase == 'output' else 'user','content':content}
+            else:
+                data=json.loads(body['messages'][-1]['content'])
+                assert data['state'][f"current_{phase}"] == content
+                keys=set(data['questions'])
+                if 'task_hijack' in keys and guard_context and guard_context.get('query'):
+                    assert data['state']['user_task'] == guard_context['query']
+                capability = ('pii' if pii_only else 'jailbreak' if keys & {'jailbreak_attempt','task_hijack'} else 'content_safety' if 'unsafe_content' in keys else 'topic_control')
+                assert set(data)=={'questions','state'}
+                assert not any(k in data['state'] for k in ('expected','label','dataset','caseId','probabilities'))
             calls.append('review:'+capability)
-            assert set(data)=={'questions','state'}
-            assert not any(k in data['state'] for k in ('expected','label','dataset','caseId','probabilities'))
             if review_fault and review_fault[0]==capability:
+                if review_fault[1]=='timeout-once' and calls.count('review:'+capability)==1:
+                    raise httpx.ReadTimeout('Synthetic recovered review timeout',request=request)
                 if review_fault[1]=='timeout':raise httpx.ReadTimeout('Synthetic review timeout',request=request)
                 if review_fault[1]=='http':return httpx.Response(503)
                 if review_fault[1]=='malformed':return httpx.Response(200,json={'model':'review-model-v1','choices':[{'message':{'content':'{"answers":{"unsafe_content":true}}'}}]})
             answer=review.get(capability,'no')
-            return httpx.Response(200,json={'model':'review-model-v1','choices':[{'message':{'content':json.dumps({'answers':{k:answer for k in keys}})}}]})
+            if native:
+                label = {'yes':'Unsafe', 'no':'Safe', 'unknown':'Controversial'}[answer]
+                category = 'None' if answer == 'no' else {'content_safety':'Violent','jailbreak':'Jailbreak','pii':'PII'}[capability]
+                output = f'Safety: {label}\nCategories: {category}'
+            else:
+                output = json.dumps({'answers':{k:answer for k in keys}})
+            return httpx.Response(200,json={'model':body['model'],'choices':[{'message':{'content':output}}]})
         keys = set(body["questions"])
-        capability = ("pii" if pii_only else "jailbreak" if "jailbreak_attempt" in keys else
+        capability = ("pii" if pii_only else "jailbreak" if keys & {"jailbreak_attempt", "task_hijack"} else
                       "content_safety" if "unsafe_content" in keys else "topic_control")
         calls.append(capability)
         if fault and capability == fault[0]:
@@ -115,9 +143,11 @@ async def scan(plan, probabilities, *, content="An ordinary synthetic request.",
                 raise httpx.ReadTimeout("Synthetic timeout", request=request)
             if fault[1] == "http":
                 return httpx.Response(503)
-            return httpx.Response(200, json={"model": backend.model, "answers": {}})
+            if fault[1] != "truncated":
+                return httpx.Response(200, json={"model": backend.model, "answers": {}})
         return httpx.Response(200, json={"model": backend.model, "answers": {
-            key: {"type": "noul", "noul": probabilities.get(capability, .01)} for key in keys}})
+            key: {"type": "noul", "noul": probabilities.get(capability, .01)} for key in keys},
+            "usage": {"truncated": True, "state_tokens_dropped": 400} if fault == (capability, "truncated") else {}})
 
     providers = action_providers(*dynamic_runtime_action_providers(config, credentials,
         transport=httpx.MockTransport(respond)))
@@ -140,7 +170,8 @@ async def scan(plan, probabilities, *, content="An ordinary synthetic request.",
     try:
         async with httpx.AsyncClient(transport=httpx.ASGITransport(app), base_url="http://runner") as client:
             response = await client.post(SCAN_URL, headers={"authorization": "Bearer key", "x-guard-evidence": "evaluations-v1"},
-                                         json={"input": content, "flagOnly": False, "scanDirection": "response" if phase == "output" else "request"})
+                                         json={"input": content, "flagOnly": False, "scanDirection": "response" if phase == "output" else "request",
+                                               **({"guardrail_context":guard_context} if guard_context else {})})
         if require_evidence:
             assert "x-guard-evaluation-evidence" in response.headers, (response.text, failures)
         return response, calls, json.loads(response.headers["x-guard-evaluation-evidence"]) if "x-guard-evaluation-evidence" in response.headers else None

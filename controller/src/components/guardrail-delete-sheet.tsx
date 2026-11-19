@@ -44,7 +44,25 @@ export function DeleteGuardrailSheet({ guardrail, open, impact, loading, deletin
       description: t("guardrails.deleteDialogDescription", { name: guardrail.name }),
       protectedMessage: t("guardrails.recentTrafficWarning"),
       clearMessage: t("guardrails.noRecentTraffic"),
-      retentionNote: t("guardrails.deleteRetentionNote"),
+      retentionNote: <div className="space-y-4 font-sans text-sm leading-5 text-foreground">
+        <section className="space-y-2">
+          <h3 className="text-sm font-semibold tracking-normal text-destructive">{t("guardrails.deleteDataTitle")}</h3>
+          <p>{t("guardrails.deleteTestingData")}</p>
+          <p>{t("guardrails.deleteRuntimeData")}</p>
+          <ul className="list-disc space-y-1.5 pl-4">
+            <li><strong className="font-semibold">{t("guardrails.deleteProjectScopeTitle")}</strong>{" "}{t("guardrails.deleteProjectScope")}</li>
+            <li><strong className="font-semibold">{t("guardrails.deleteAdminScopeTitle")}</strong>{" "}{t("guardrails.deleteAdminScope")}</li>
+          </ul>
+        </section>
+        <section className="space-y-1">
+          <h3 className="text-sm font-semibold tracking-normal">{t("guardrails.deleteKeptTitle")}</h3>
+          <p>{t("guardrails.deleteKeptData")}</p>
+        </section>
+        <section className="space-y-1">
+          <h3 className="text-sm font-semibold tracking-normal">{t("guardrails.deleteRestoreTitle")}</h3>
+          <p>{t("guardrails.deleteRestoreDescription")}</p>
+        </section>
+      </div>,
       continueLabel: t("guardrails.continueDelete"),
       deleteLabel: t("guardrails.deleteConfirm"),
       deletingLabel: t("guardrails.deleting"),

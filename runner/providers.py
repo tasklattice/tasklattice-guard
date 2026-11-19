@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import httpx
 
+from runner.builtin_laya import BUILTIN_LAYA_BACKEND, BuiltinLaya
 from runner.model_concurrency import ModelConcurrencyTransport, configure_model_limit
 
 from runner.toolkit.nemo.actions import (
@@ -15,12 +16,15 @@ from runner.toolkit.nemo.actions.topic import ChatTopicEvaluator, TopicJudgeActi
 from runner.toolkit.nemo.actions.grounding import GroundingActionProvider
 from runner.toolkit.nemo.actions.automated_reasoning import HTTPAutomatedReasoningProvider, ReasoningActionProvider
 from runner.toolkit.nemo.evaluators.pii import PiiEvaluator
-from runner.toolkit.nemo.evaluators.classifier_review import ClassifierReviewer, REVIEW_PROFILE, REVIEW_CONTRACT
+from runner.toolkit.nemo.evaluators.classifier_review import (
+    ClassifierReviewer, ClassifierReviewDispatcher, REVIEW_PROFILE, REVIEW_PROFILES, REVIEW_CONTRACT,
+    review_binding_scope,
+)
 from runner.toolkit.nemo.evaluators.jev import JEV_PROFILE, JEV_PROFILES, JEV_TOPIC_PROFILE
 from runner.toolkit.nemo.evaluators.jev_topic import JevTopicEvaluator
 from runner.toolkit.nemo.evaluators.jev_jailbreak import JevJailbreakEvaluator
 from runner.toolkit.nemo.evaluators.jev_content_safety import JevContentSafetyEvaluator
-from runner.toolkit.nemo.evaluators.laya import LAYA_PROFILE, LAYA_PROFILES, LAYA_TOPIC_PROFILE
+from runner.toolkit.nemo.evaluators.laya import LAYA_PROFILE, LAYA_PROFILES, LAYA_TOPIC_PROFILE, validate_request_mode
 from runner.toolkit.nemo.evaluators.laya_topic import LayaTopicEvaluator
 from runner.toolkit.nemo.evaluators.laya_jailbreak import LayaJailbreakEvaluator
 from runner.toolkit.nemo.evaluators.laya_content_safety import LayaContentSafetyEvaluator
@@ -44,8 +48,20 @@ def dynamic_runtime_action_providers(
     credentials: dict[str, str],
     *,
     transport: httpx.AsyncBaseTransport | None = None,
+    builtin_laya: BuiltinLaya | None = None,
 ) -> tuple[ActionProvider, ...]:
     """Build providers using each Model's Controller-owned runtime settings."""
+
+    for item in configuration.runtimes:
+        if item.backend == BUILTIN_LAYA_BACKEND:
+            if item.profile_ref not in LAYA_PROFILES or item.credential_ref or item.laya_request_mode:
+                raise ValueError("Built-in Laya requires a Laya profile and local model settings.")
+            if not item.checkpoint_revision or builtin_laya is None or item.checkpoint_revision != builtin_laya.revision:
+                raise ValueError("The configured built-in Laya checkpoint is unavailable on this Runner.")
+        elif item.backend or item.checkpoint_revision:
+            raise ValueError("Unsupported remote Model Runtime backend or checkpoint revision.")
+        elif item.profile_ref in LAYA_PROFILES:
+            validate_request_mode(item.laya_request_mode)
 
     source_profiles = {item.id: item.profile_ref for item in configuration.runtimes}
     for binding in configuration.bindings:
@@ -89,28 +105,36 @@ def dynamic_runtime_action_providers(
             upper_threshold=item.upper_threshold if item.HasField("upper_threshold") else 0.9,
             skip_tls_verify=item.skip_tls_verify,
             laya_request_mode=item.laya_request_mode,
+            backend=item.backend or "http",
         )
         for item in configuration.runtimes
     }
-    for runtime in runtimes.values():
+    remote_runtimes = [runtime for runtime in runtimes.values() if runtime.backend == "http"]
+    for runtime in remote_runtimes:
         configure_model_limit(runtime.id, runtime.max_concurrency)
     transports = {runtime.id: ModelConcurrencyTransport(runtime.id, timeout_seconds=runtime.timeout_seconds,
-        skip_tls_verify=runtime.skip_tls_verify, transport=transport) for runtime in runtimes.values()}
+        skip_tls_verify=runtime.skip_tls_verify, transport=transport) for runtime in remote_runtimes}
     bindings = {item.binding_id: item for item in configuration.bindings}
     reviewers = {}
     for item in configuration.bindings:
         if (item.capability_ref == "classifier_review" or item.binding_id.startswith("classifier_review.")
             or REVIEW_PROFILE in {item.profile_ref, source_profiles.get(item.model_ref)}):
             phase = _rail_name(item.rail_type)
-            if (item.binding_id != f"classifier_review.{phase}" or item.capability_ref != "classifier_review"
-                or item.profile_ref not in {REVIEW_PROFILE, "generic-chat"}
+            scope = review_binding_scope(item.binding_id, phase)
+            if (item.capability_ref != "classifier_review"
+                or item.profile_ref not in REVIEW_PROFILES
                 or source_profiles.get(item.model_ref) != item.profile_ref or tuple(item.contract_refs) != (REVIEW_CONTRACT,)):
                 raise ValueError("Classifier review requires its own matching Rail binding, runtime and contract.")
             runtime = _assigned_runtime(item.model_ref,runtimes)
-            reviewers[phase] = ClassifierReviewer(base_url=runtime.base_url,model=runtime.model,api_key=runtime.api_key or "",
+            if (scope, phase) in reviewers:
+                raise ValueError("Duplicate classifier review capability and Rail binding.")
+            reviewers[(scope, phase)] = ClassifierReviewer(base_url=runtime.base_url,model=runtime.model,api_key=runtime.api_key or "",
                 provider_id=runtime.id,timeout_seconds=runtime.timeout_seconds,max_tokens=runtime.max_tokens,
                 skip_tls_verify=runtime.skip_tls_verify,transport=transports[runtime.id],rail_type=phase,
-                rate_limit_attempts=runtime.rate_limit_attempts)
+                rate_limit_attempts=runtime.rate_limit_attempts,profile_ref=item.profile_ref,review_capability=scope)
+
+    def reviewer_for(capability, phase):
+        return reviewers.get((capability, phase)) or (reviewers.get((None, phase)) if capability != "topic_control" else None)
     local_providers = local_action_providers(PromptSecurityActionProvider())
     pii_evaluator = PiiEvaluator()
 
@@ -141,8 +165,8 @@ def dynamic_runtime_action_providers(
         for item in provider_configs
     ))
     routes = [EvaluationRoute("pii", CONTRACT_PII_EXACT, pii_evaluator)]
-    for reviewer in reviewers.values():
-        routes.append(EvaluationRoute("classifier_review",REVIEW_CONTRACT,reviewer))
+    if reviewers:
+        routes.append(EvaluationRoute("classifier_review",REVIEW_CONTRACT,ClassifierReviewDispatcher(reviewers)))
     routes.extend(
         EvaluationRoute(
             capability,
@@ -162,7 +186,7 @@ def dynamic_runtime_action_providers(
             base_url=runtime.base_url, model=runtime.model, api_key=runtime.api_key or "",
             provider_id=runtime.id, timeout_seconds=runtime.timeout_seconds,
             skip_tls_verify=runtime.skip_tls_verify, transport=transports[runtime.id],
-            reviewer=reviewers.get(phase), rail_type=phase,
+            reviewer=reviewer_for(capability, phase), rail_type=phase,
             lower_threshold=runtime.lower_threshold, upper_threshold=runtime.upper_threshold,
             rate_limit_attempts=runtime.rate_limit_attempts,
         )
@@ -176,10 +200,11 @@ def dynamic_runtime_action_providers(
         evaluator = evaluator_type(
             base_url=runtime.base_url, model=runtime.model, api_key=runtime.api_key or "",
             provider_id=runtime.id, timeout_seconds=runtime.timeout_seconds,
-            skip_tls_verify=runtime.skip_tls_verify, transport=transports[runtime.id],
-            reviewer=reviewers.get(phase), rail_type=phase,
+            skip_tls_verify=runtime.skip_tls_verify, transport=transports.get(runtime.id),
+            reviewer=reviewer_for(capability, phase), rail_type=phase,
             lower_threshold=runtime.lower_threshold, upper_threshold=runtime.upper_threshold,
             rate_limit_attempts=runtime.rate_limit_attempts, request_mode=runtime.laya_request_mode,
+            builtin_laya=builtin_laya if runtime.backend == BUILTIN_LAYA_BACKEND else None,
         )
         routes.append(EvaluationRoute(capability, next(iter(evaluator.contracts)), evaluator))
     for profile, evaluator_type in ((JEV_PROFILE, JevPiiEvaluator), (LAYA_PROFILE, LayaPiiEvaluator)):
@@ -191,13 +216,14 @@ def dynamic_runtime_action_providers(
             options = dict(
                 base_url=runtime.base_url, model=runtime.model, api_key=runtime.api_key or "",
                 provider_id=runtime.id, timeout_seconds=runtime.timeout_seconds,
-                skip_tls_verify=runtime.skip_tls_verify, transport=transports[runtime.id],
-                reviewer=reviewers.get(phase), rail_type=phase,
+                skip_tls_verify=runtime.skip_tls_verify, transport=transports.get(runtime.id),
+                reviewer=reviewer_for("pii", phase), rail_type=phase,
                 lower_threshold=runtime.lower_threshold, upper_threshold=runtime.upper_threshold,
                 rate_limit_attempts=runtime.rate_limit_attempts,
             )
             if evaluator_type is LayaPiiEvaluator:
                 options["request_mode"] = runtime.laya_request_mode
+                options["builtin_laya"] = builtin_laya if runtime.backend == BUILTIN_LAYA_BACKEND else None
             routes.append(EvaluationRoute("pii", CONTRACT_PII_SEMANTIC, evaluator_type(**options)))
     providers: list[ActionProvider] = [
         *local_providers,
@@ -219,17 +245,18 @@ def dynamic_runtime_action_providers(
                 skip_tls_verify=runtime.skip_tls_verify, transport=transports[runtime.id], profile_ref=topic.profile_ref,
                 lower_threshold=runtime.lower_threshold, upper_threshold=runtime.upper_threshold,
                 rate_limit_attempts=runtime.rate_limit_attempts,
-                reviewer=reviewers.get("input"),
+                reviewer=reviewer_for("topic_control", "input"),
             )
         elif topic.profile_ref in LAYA_PROFILES:
             evaluator = LayaTopicEvaluator(
                 base_url=runtime.base_url, model=runtime.model, api_key=runtime.api_key or "",
                 provider_id=runtime.id, timeout_seconds=runtime.timeout_seconds,
-                skip_tls_verify=runtime.skip_tls_verify, transport=transports[runtime.id], profile_ref=topic.profile_ref,
+                skip_tls_verify=runtime.skip_tls_verify, transport=transports.get(runtime.id), profile_ref=topic.profile_ref,
                 lower_threshold=runtime.lower_threshold, upper_threshold=runtime.upper_threshold,
                 rate_limit_attempts=runtime.rate_limit_attempts,
-                reviewer=reviewers.get("input"),
+                reviewer=reviewer_for("topic_control", "input"),
                 request_mode=runtime.laya_request_mode,
+                builtin_laya=builtin_laya if runtime.backend == BUILTIN_LAYA_BACKEND else None,
             )
         else:
             if topic.profile_ref not in {"tali.taxonomy-judge.v1", "tali.nemoguard-topic-control.v1"}:

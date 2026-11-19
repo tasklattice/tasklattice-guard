@@ -23,7 +23,8 @@ from tests.data_plane.test_artifact_execution import _desired_state
 
 @pytest.fixture
 async def serving(monkeypatch, tmp_path):
-    monkeypatch.setenv("GUARD_CONTROLLER_TOKEN", "test-token-000000000000000000000000")
+    monkeypatch.setenv("GUARD_RUNNER_CONTROL_TOKEN", "test-control-token-000000000000000000000000")
+    monkeypatch.setenv("GUARD_CONTROLLER_HTTP_TOKEN", "test-inbound-http-token-000000000000000000000000")
     monkeypatch.setenv("GUARD_ARTIFACT_PUBLIC_KEY_PATH", str(Path(__file__).parents[1] / "fixtures/artifacts/local-secrets-v1/public-key.pem"))
     monkeypatch.setenv("GUARD_RUNNER_STATE_PATH", str(tmp_path))
     monkeypatch.setenv("GUARD_RUNNER_COMPILER_CAPABLE", "false")

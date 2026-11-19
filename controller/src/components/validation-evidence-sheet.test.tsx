@@ -43,6 +43,60 @@ it("shows evidence for success, switches samples, and exports every sample and c
   expect(exported.check.cases[1].outputContent).toEqual(output("unsafe wire input"));
 });
 
+it("shows local inference evidence and keeps the HTTP inspector for captured calls", () => {
+  const remote = output("captured request");
+  const local = {
+    ...remote,
+    validation_context: { ...remote.validation_context, backend: "builtin_laya", checkpoint_revision: "85cc74dd" },
+    duration_ms: 42,
+    model_exchanges: [],
+  };
+  open({ ...check, cases: [
+    { ...check.cases![0], outputContent: JSON.stringify(local) },
+    { ...check.cases![1], outputContent: JSON.stringify({ ...local, model_exchanges: remote.model_exchanges }) },
+  ] });
+  expect(screen.queryByRole("tab", { name: /HTTP calls/ })).toBeNull();
+  expect(screen.getByText(/Run Validate again to collect new evidence/)).toBeTruthy();
+  expect(screen.getByText("Classifier judgments")).toBeTruthy();
+  fireEvent.click(screen.getByText("Runner local inference"));
+  expect(screen.getByText("85cc74dd")).toBeTruthy();
+  expect(screen.getByText("42 ms")).toBeTruthy();
+
+  fireEvent.click(screen.getByRole("button", { name: /Unsafe sample/ }));
+  fireEvent.click(screen.getByRole("tab", { name: "HTTP calls (1)" }));
+  expect(screen.getByRole("region", { name: "Response" }).textContent).toContain('"english"');
+});
+
+it("shows and exports the captured model input and raw output for each local sample", () => {
+  const call = (state: string, noul: number) => ({
+    input: { state, questions: { unsafe_content: { type: "noul", instructions: "Is the content unsafe?" } }, lang: "en", max_len: 512, head_max_len: 128 },
+    output: { answers: { unsafe_content: { noul } }, model: "english" },
+  });
+  const local = (captured: ReturnType<typeof call>) => ({
+    validation_context: { backend: "builtin_laya" }, model_exchanges: [], local_model_calls: [captured],
+  });
+  const safe = call("Actual model state", 0.02);
+  const unsafe = call("Different model state", 0.98);
+  open({ ...check, cases: [
+    { ...check.cases![0], outputContent: JSON.stringify(local(safe)) },
+    { ...check.cases![1], outputContent: JSON.stringify(local(unsafe)) },
+  ] });
+
+  expect(screen.queryByRole("tab", { name: /HTTP calls/ })).toBeNull();
+  fireEvent.click(screen.getByRole("tab", { name: "Local model calls (1)" }));
+  expect(JSON.parse(screen.getByRole("region", { name: "Model input" }).textContent!)).toEqual(safe.input);
+  expect(JSON.parse(screen.getByRole("region", { name: "Raw model output" }).textContent!)).toEqual(safe.output);
+
+  fireEvent.click(screen.getByRole("button", { name: /Unsafe sample/ }));
+  fireEvent.click(screen.getByRole("tab", { name: "Local model calls (1)" }));
+  expect(JSON.parse(screen.getByRole("region", { name: "Model input" }).textContent!)).toEqual(unsafe.input);
+  expect(JSON.parse(screen.getByRole("region", { name: "Raw model output" }).textContent!)).toEqual(unsafe.output);
+  fireEvent.click(screen.getByRole("button", { name: "Export full evidence" }));
+  const [bytes] = vi.mocked(downloadLogFile).mock.calls[0];
+  const exported = JSON.parse(new TextDecoder().decode(bytes));
+  expect(exported.check.cases.map((item: { outputContent: unknown }) => item.outputContent)).toEqual([local(safe), local(unsafe)]);
+});
+
 it("selects the failing case first and distinguishes a transport error from an HTTP response", () => {
   open({...check,status:"failed", cases:[check.cases![0],{...check.cases![1],passed:false,actualDecision:"block",outputContent:JSON.stringify({model_exchanges:[{request:{url:"https://laya.test",body:"sent"},response:null,error:{type:"ReadTimeout",message:"timed out"}}]})}]});
   expect(screen.getByText("Unsafe input")).toBeTruthy();
@@ -143,4 +197,28 @@ it("surfaces the evaluator error type and calls a protocol mismatch an execution
   // A broken protocol response is an execution error, not a wrong model judgement.
   expect(screen.getByText("Execution error")).toBeTruthy();
   expect(screen.queryByText("Failed")).toBeNull();
+});
+
+it("shows review turns, individual verdicts and the total number of HTTP attempts", () => {
+  const reviewCase = (stage: string, kind: string, expected: Record<string, string>, attempts: number) => {
+    const evidence = output(kind);
+    return { ...check.cases![0], id: `tali.guard.classifier-review.v1:${stage}:${kind}`, inputContent: kind,
+      outputContent: JSON.stringify({ ...evidence,
+        validation_context: { review_stage: stage, expected_verdicts: expected, context_messages: [{role:"user", content:"Original user message"}] },
+        evaluation_evidence: Object.entries(expected).map(([capability, verdict]) => ({ capability, verdict, evaluator_id: "classifier-review" })),
+        model_exchanges: Array.from({length: attempts}, () => evidence.model_exchanges[0]),
+      }) };
+  };
+  open({ ...check, cases: [
+    reviewCase("input", "request", {content_safety:"not_matched", jailbreak:"not_matched", pii:"not_matched"}, 2),
+    reviewCase("output", "response", {content_safety:"matched", pii:"matched"}, 1),
+  ] });
+  expect(screen.getByText("2 / 2 review stages passed · 3 HTTP calls")).toBeTruthy();
+  expect(screen.getByRole("button", {name:/User request review/})).toBeTruthy();
+  expect(screen.getByRole("row", {name:/Jailbreak review not_matched not_matched/})).toBeTruthy();
+  expect(screen.getByRole("tab", {name:"HTTP calls (2)"})).toBeTruthy();
+  fireEvent.click(screen.getByRole("button", {name:/Model response review/}));
+  expect(screen.getByText("Original user message")).toBeTruthy();
+  expect(screen.getByRole("row", {name:/Semantic PII review matched matched/})).toBeTruthy();
+  expect(screen.getByRole("tab", {name:"HTTP calls (1)"})).toBeTruthy();
 });

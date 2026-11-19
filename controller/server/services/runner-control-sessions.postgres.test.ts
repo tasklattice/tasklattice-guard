@@ -1,4 +1,5 @@
 // @vitest-environment node
+import { runnerAuthEnv } from "../../test/runner-auth-fixture.js";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { createTestDatabase } from "../db/postgres-test-database.js";
 import { loadConfig } from "../config.js";
@@ -23,7 +24,7 @@ describe.skipIf(!url)("durable Runner control stream identity", () => {
   beforeAll(async () => {
     database = await createTestDatabase(url!, "runner_control_sessions");
     const config = loadConfig({ NODE_ENV: "test", CONTROLLER_DATABASE_URL: "postgresql://unused:unused@localhost/unused",
-      CONTROLLER_RUNNER_TOKEN: "synthetic-token-at-least-32-characters", CONTROLLER_ARTIFACT_SIGNING_KEY_PATH: "/tmp/key",
+      ...runnerAuthEnv("synthetic-token-at-least-32-characters"), CONTROLLER_ARTIFACT_SIGNING_KEY_PATH: "/tmp/key",
       BETTER_AUTH_SECRET: "synthetic-auth-secret-at-least-32-characters" });
     first = new ControlPlaneService(database.db, config);
     second = new ControlPlaneService(database.db, config);

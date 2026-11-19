@@ -46,7 +46,7 @@ async def test_jailbreak_has_independent_question_probability_evidence_and_nativ
     assert all(f.confidence is None and f.risk_severity is None for f in result.findings)
     assert result.usage.model_invocations == 1
     evidence = json.loads(result.trace[0].evidence)
-    assert evidence["profile"] == classifier_backend.profile and evidence["question_revision"] == classifier_backend.jailbreak_revision
+    assert evidence["profile"] == classifier_backend.profile and evidence["question_revision"].startswith(f"jailbreak:{classifier_backend.name}:")
     assert evidence["judgments"]["jailbreak_attempt"]["probability"] == probability
     assert "synthetic-key" not in result.trace[0].evidence
 

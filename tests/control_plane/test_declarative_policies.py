@@ -335,10 +335,11 @@ async def test_model_tests_are_explicitly_not_run_without_a_model_environment():
 def test_bundled_strict_jailbreak_preserves_uncertainty_parameter():
     package = load_package(ROOT / "policies/library/prompt-instruction-attacks")
     compiled = compile_policy(package.definition, sources.registry())
-    assert compiled["version"] == "1.0.0"
+    assert compiled["version"] == package.definition.metadata.version
     jailbreak = next(rule for rule in compiled["rules"] if rule["id"] == "model/jailbreak")
     assert jailbreak["detector_options"] == {
-        "profile": "jailbreak-classification", "on_unknown": "{{on_unknown}}", "review_unknown": "{{review_unknown}}",
+        "profile": "jailbreak-classification", "on_unknown": "{{on_unknown}}",
+        "questions": "{{questions}}",
     }
     assert next(p for p in compiled["parameters"] if p["name"] == "on_unknown")["default"] == "block"
     candidate = package.definition.model_dump()
@@ -346,13 +347,13 @@ def test_bundled_strict_jailbreak_preserves_uncertainty_parameter():
     with pytest.raises(ValueError, match="on_unknown must be"):
         compile_policy(definition(candidate), sources.registry())
     next(rule for rule in candidate["rules"] if rule["id"] == "model/jailbreak")["detector"]["parameters"] = {
-        "profile": "pii-classification", "on_unknown": "block",
+        "profile": "pii-classification", "on_unknown": "block", "unsupported_parameter": "value",
     }
-    with pytest.raises(ValueError, match="unknown detector parameters"):
+    with pytest.raises(ValueError, match="unknown detector parameters.*unsupported_parameter"):
         compile_policy(definition(candidate), sources.registry())
 
 
-@pytest.mark.parametrize("profile", ["safety-classification", "topic-classification"])
+@pytest.mark.parametrize("profile", ["safety-classification", "topic-classification", "pii-classification"])
 def test_classifier_uncertainty_parameter_survives_package_compilation(profile):
     package = load_package(ROOT / "policies/library/prompt-instruction-attacks")
     candidate = package.definition.model_dump()
@@ -367,16 +368,14 @@ def test_classifier_uncertainty_parameter_survives_package_compilation(profile):
         compile_policy(definition(candidate), sources.registry())
 
 
-@pytest.mark.parametrize("policy", ["content-safety-model", "prompt-instruction-attacks", "business-topics"])
-def test_shipped_v1_classifiers_wire_unknown_and_review(policy):
+@pytest.mark.parametrize("policy", ["content-safety-model", "prompt-instruction-attacks", "business-topics", "pii-semantic"])
+def test_shipped_classifiers_declare_primary_uncertainty_action(policy):
     current = load_package(ROOT / "policies/library" / policy)
     compiled = compile_policy(current.definition, sources.registry())
-    assert compiled["version"] == "1.0.0"
+    assert compiled["version"] == current.definition.metadata.version
     assert next(p for p in compiled["parameters"] if p["name"] == "on_unknown")["default"] == "block"
     classifiers = [r for r in compiled["rules"] if r["detector"]["ref"] == "model/classifier"]
     assert classifiers and all(r["detector_options"]["on_unknown"] == "{{on_unknown}}" for r in classifiers)
-    assert next(p for p in compiled["parameters"] if p["name"] == "review_unknown")["default"] == "false"
-    assert all(r["detector_options"]["review_unknown"] == "{{review_unknown}}" for r in classifiers)
 
 
 

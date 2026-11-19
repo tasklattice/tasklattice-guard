@@ -1,4 +1,6 @@
+import { runnerAuthEnv } from "../../test/runner-auth-fixture.js";
 import { withTestProject } from "../db/postgres-test-database.js";
+import { runWithProjectContext } from "./project-context.js";
 import { completeReport, getReport } from "../db/report-test-utils.js";
 // @vitest-environment node
 import { generateKeyPairSync } from "node:crypto";
@@ -41,7 +43,7 @@ describe.skipIf(!url)("Publishing the tested candidate in PostgreSQL", { timeout
   beforeAll(async () => {
     database = await createTestDatabase(url!, "guard_publication");
     service = new ControlPlaneService(database.db, loadConfig({
-      NODE_ENV: "test", CONTROLLER_DATABASE_URL: url!, CONTROLLER_RUNNER_TOKEN: "runner-token-that-is-at-least-32-characters",
+      NODE_ENV: "test", CONTROLLER_DATABASE_URL: url!, ...runnerAuthEnv("runner-token-that-is-at-least-32-characters"),
       CONTROLLER_ARTIFACT_SIGNING_KEY_PATH: join(keys, "private.pem"), CONTROLLER_POLICY_CATALOG_DIR: catalogDir,
       CONTROLLER_PROTO_PATH: protoPath,
       BETTER_AUTH_SECRET: "better-auth-secret-that-is-at-least-32-characters",
@@ -561,8 +563,9 @@ describe.skipIf(!url)("Publishing the tested candidate in PostgreSQL", { timeout
     expect((await database.pool.query("SELECT count(*)::int AS n FROM guardrail WHERE creation_key IS NOT NULL")).rows[0].n).toBe(1);
   });
 
-  it("keeps missing-model publications out of unrelated rollout and admits them independently", async () => {
+  it("checks historical versions explicitly without adding them to rollout or changing its generation", async () => {
     const { guardrail, version } = await releasedFixture();
+    const generation = (await service.desiredStateForPool("default")).generation;
     expect((await service.desiredStateForPool("default")).artifacts.some(a => a.guardrailId === guardrail.id)).toBe(false);
     service.setArtifactAdmission(async () => [{ poolId: "default", runnerId: "runner", admitted: false, unavailable: false, reason: "Missing model", nemoVersion: "0.24.0", modelRevisionId: "" }]);
     await service.packages.checkVersionEnvironment(guardrail.id, version.version);
@@ -570,7 +573,12 @@ describe.skipIf(!url)("Publishing the tested candidate in PostgreSQL", { timeout
     expect((await service.desiredStateForPool("default")).artifacts.some(a => a.guardrailId === guardrail.id)).toBe(false);
     service.setArtifactAdmission(async () => [{ poolId: "default", runnerId: "runner", admitted: true, unavailable: false, reason: "", nemoVersion: "0.24.0", modelRevisionId: "" }]);
     await service.packages.checkVersionEnvironment(guardrail.id, version.version);
-    expect((await service.desiredStateForPool("default")).artifacts.some(a => a.guardrailId === guardrail.id)).toBe(true);
+    expect((await service.desiredStateForPool("default")).artifacts.some(a => a.guardrailId === guardrail.id)).toBe(false);
+    expect((await service.desiredStateForPool("default")).generation).toBe(generation);
+    expect(await withTestProject(() => service.playgroundPublishedCandidate(guardrail.id, version.version)))
+      .toMatchObject({ guardrailId: guardrail.id, version: version.version, artifact: { id: version.artifactId } });
+    await expect(runWithProjectContext({ projectId: "projectB", role: "user" },
+      () => service.playgroundPublishedCandidate(guardrail.id, version.version))).rejects.toMatchObject({ status: 404 });
     expect((await service.getGuardrail(guardrail.id)).versions[0]).toMatchObject({ status: "ready", environmentCheck: { status: "compatible" } });
   });
 
@@ -585,7 +593,7 @@ describe.skipIf(!url)("Publishing the tested candidate in PostgreSQL", { timeout
     expect((await service.desiredStateForPool("default")).artifacts.some(a => a.id === version.artifactId)).toBe(false);
     // Never silently drop a routed protection: the dispatch gate must reject it.
     const snapshots = vi.spyOn(service.trafficRouting, "runtimeSnapshots").mockResolvedValue([
-      { routes: [{ targets: [{ artifactId: version.artifactId }] }] } as never,
+      { routes: [{ enabled: true, targets: [{ artifactId: version.artifactId, weightBps: 10000 }] }] } as never,
     ]);
     expect((await service.desiredStateForPool("default")).artifacts.some(a => a.id === version.artifactId)).toBe(true);
     snapshots.mockRestore();
@@ -599,6 +607,22 @@ describe.skipIf(!url)("Publishing the tested candidate in PostgreSQL", { timeout
     expect(await getReport(service, run.id)).toMatchObject({ status: "failed" });
     expect(await service.requestGuardrailPublish({ guardrailId: guardrail.id, actorId: "admin" })).toEqual(published);
     expect(compiler).toHaveBeenCalledOnce();
+  });
+
+  it("omits disabled and zero-weight references but preserves every serving target", async () => {
+    const { guardrail, version } = await releasedFixture();
+    const target = { artifactId: version.artifactId, weightBps: 10000 };
+    const snapshots = vi.spyOn(service.trafficRouting, "runtimeSnapshots");
+    try {
+      snapshots.mockResolvedValue([{ routes: [{ enabled: false, targets: [target] }] }] as never);
+      expect((await service.desiredStateForPool("default")).artifacts).toEqual([]);
+      snapshots.mockResolvedValue([{ routes: [{ enabled: true, targets: [{ ...target, weightBps: 0 }] }] }] as never);
+      expect((await service.desiredStateForPool("default")).artifacts).toEqual([]);
+      snapshots.mockResolvedValue([{ routes: [{ enabled: true, targets: [target] }] }] as never);
+      expect((await service.desiredStateForPool("default")).artifacts.map(a => a.id)).toEqual([version.artifactId]);
+      await database.pool.query("UPDATE guardrail_version SET status='pending', released_at=NULL, released_by=NULL WHERE guardrail_id=$1 AND version=$2", [guardrail.id, version.version]);
+      await expect(withTestProject(() => service.playgroundPublishedCandidate(guardrail.id, version.version))).rejects.toMatchObject({ status: 404 });
+    } finally { snapshots.mockRestore(); }
   });
 
   it("rejects an unsupported compiler result before signing a new publication", async () => {

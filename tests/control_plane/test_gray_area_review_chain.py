@@ -1,4 +1,4 @@
-"""Actual Controller -> signed parameter -> NeMo -> two transports -> F5 evidence."""
+"""Controller plan and same-Rail model bindings through F5 evaluation evidence."""
 import json
 
 import httpx
@@ -13,9 +13,7 @@ from tests.control_plane.classifier_chain import CONTRACTS, build_controller_pla
 
 @pytest.fixture(scope="module")
 def plan():
-    result=build_controller_plan(review=True)
-    assert all(dict(step['parameters']).get('review_unknown')=='true' for step in result['steps'] if step['capability'] in CONTRACTS)
-    return result
+    return build_controller_plan()
 
 
 @pytest.mark.parametrize('capability',CONTRACTS)
@@ -58,6 +56,20 @@ async def test_review_failure_keeps_primary_unknown_and_is_an_execution_error(cl
     assert row['review']['verdict']=='error' and row['review']['answers']=={}
 
 
+@pytest.mark.parametrize('capability', CONTRACTS)
+@pytest.mark.parametrize('answer,outcome', [('no', 'cleared'), ('yes', 'blocked'), ('unknown', 'blocked')])
+async def test_recovered_review_timeout_keeps_audit_without_failing_scan(classifier_backend, plan, capability, answer, outcome):
+    response,calls,evidence=await scan(plan,{capability:.5},review={capability:answer},
+        review_fault=(capability,'timeout-once'),backend=classifier_backend)
+    assert response.status_code==200,response.text
+    assert response.json()['result']['outcome']==outcome
+    assert evidence['execution']['status']=='complete'
+    assert calls.count('review:'+capability)==2
+    row=next(e for e in evidence[classifier_backend.evidence_key] if e['capability']==capability)
+    assert [a['result'] for a in row['review']['attempts']]==['timeout','success']
+    assert row['review']['verdict']=={'no':'not_matched','yes':'matched','unknown':'unknown'}[answer]
+
+
 @pytest.mark.parametrize('capability',CONTRACTS)
 async def test_primary_errors_do_not_start_review(classifier_backend, plan,capability):
     response,calls,evidence=await scan(plan,{},review={},fault=(capability,'http'), backend=classifier_backend)
@@ -93,27 +105,26 @@ async def test_unresolved_review_blocks_without_relabeling_uncertainty_as_a_matc
     assert row['review']['errorType'] is None
 
 
-async def test_missing_review_binding_prevents_readiness_and_makes_no_model_calls(classifier_backend, plan):
-    response,calls,evidence=await scan(plan,{'content_safety':.5},review={},reviewer_binding=False,require_evidence=False, backend=classifier_backend)
-    assert response.status_code>=400 and not calls
-
-
-async def test_disabling_review_preserves_configured_unknown_handling_even_with_a_review_model(classifier_backend):
-    response,calls,evidence=await scan(build_controller_plan(),{'content_safety':.5},review={'content_safety':'yes'}, backend=classifier_backend)
+async def test_missing_review_binding_preserves_primary_uncertainty_handling(classifier_backend, plan):
+    response,calls,evidence=await scan(plan,{'content_safety':.5},review={'content_safety':'yes'},reviewer_binding=False,backend=classifier_backend)
     assert response.status_code==200 and response.json()['result']['outcome']=='cleared'
     assert len(calls)==3 and not any('review' in r for r in evidence[classifier_backend.evidence_key])
+    assert next(r for r in evidence[classifier_backend.evidence_key] if r['capability']=='content_safety')['verdict']=='unknown'
 
 
 @pytest.mark.parametrize('behavior',['correct','always-safe','always-unsafe','malformed'])
-@pytest.mark.parametrize('profile', [REVIEW_PROFILE, 'generic-chat'])
+@pytest.mark.parametrize('profile', [REVIEW_PROFILE, 'generic-chat', 'tali.qwen3guard.v1'])
 @pytest.mark.parametrize('rail', ['input', 'output'])
 async def test_review_model_binding_requires_actual_two_sided_runtime_probes(behavior, profile, rail):
     request=candidate(rail,'classifier_review',profile,REVIEW_CONTRACT)
     def respond(req):
-        data=json.loads(json.loads(req.content)['messages'][-1]['content'])
-        unsafe=behavior=='always-unsafe' or behavior=='correct' and 'build a bomb' in data['state'][f'current_{rail}']
+        message = json.loads(req.content)['messages'][-1]
+        text = message['content'] if profile == 'tali.qwen3guard.v1' else json.loads(message['content'])['state'][f'current_{rail}']
+        unsafe=behavior=='always-unsafe' or behavior=='correct' and 'build a bomb' in text
         body={'answers':{'unsafe_content':'yes' if unsafe else 'no'}} if behavior!='malformed' else {'answers':{}}
-        return httpx.Response(200,json={'model':'review-model-v1','choices':[{'message':{'content':json.dumps(body)}}]})
+        content = ('Safety: Unsafe\nCategories: Violent' if unsafe else 'Safety: Safe\nCategories: None') \
+            if profile == 'tali.qwen3guard.v1' and behavior != 'malformed' else json.dumps(body)
+        return httpx.Response(200,json={'model':'review-model-v1','choices':[{'message':{'content':content}}]})
     result=await validate_capability(request,{'provider-1':'synthetic'},transport=httpx.MockTransport(respond))
     assert ['build a bomb' in case.input_content for case in result.cases] == [False, True]
     assert result.passed is (behavior=='correct'),result.message
@@ -136,7 +147,19 @@ def test_generic_chat_review_still_requires_matching_rail_binding_and_contract(i
 
 @pytest.fixture(scope="module")
 def output_plan():
-    return build_controller_plan(review=True, phase="output")
+    return build_controller_plan(phase="output")
+
+
+@pytest.mark.parametrize('answer,outcome', [('no', 'cleared'), ('yes', 'blocked'), ('unknown', 'blocked')])
+async def test_output_review_retry_recovers_without_losing_attempt_evidence(classifier_backend, output_plan, answer, outcome):
+    response,calls,evidence=await scan(output_plan,{'content_safety':.5},phase='output',
+        review={'content_safety':answer},review_fault=('content_safety','timeout-once'),backend=classifier_backend)
+    assert response.status_code==200,response.text
+    assert response.json()['result']['outcome']==outcome
+    assert evidence['execution']['status']=='complete'
+    assert calls.count('review:content_safety')==2
+    row=evidence[classifier_backend.evidence_key][0]
+    assert [a['result'] for a in row['review']['attempts']]==['timeout','success']
 
 
 @pytest.mark.parametrize("score,answer,outcome,expected_calls", [
@@ -151,7 +174,7 @@ async def test_output_classifier_uses_its_own_review_binding_and_preserves_evide
     assert response.json()["result"]["outcome"] == outcome
     assert len(calls) == expected_calls
     row = evidence[classifier_backend.evidence_key][0]
-    assert row["questionRevision"] == ("laya-content-safety-output.v3" if classifier_backend.name == "laya" else "content-safety-output.v1")
+    assert row["questionRevision"].startswith(f"content_safety:{classifier_backend.name}:")
     if expected_calls == 2:
         assert row["verdict"] == "unknown" and row["decisionSource"] == "review"
         assert row["review"]["revision"] == "classifier-review-output.v2"
@@ -160,9 +183,12 @@ async def test_output_classifier_uses_its_own_review_binding_and_preserves_evide
 
 
 async def test_output_cannot_borrow_an_input_reviewer(classifier_backend, output_plan):
-    response, calls, _ = await scan(output_plan, {"content_safety": .5}, backend=classifier_backend,
-        phase="output", review={}, reviewer_phase="input", require_evidence=False)
-    assert response.status_code >= 400 and not calls
+    response, calls, evidence = await scan(output_plan, {"content_safety": .5}, backend=classifier_backend,
+        phase="output", review={"content_safety": "yes"}, reviewer_phase="input")
+    assert response.status_code == 200 and response.json()["result"]["outcome"] == "cleared"
+    assert calls == ["content_safety"]
+    row = evidence[classifier_backend.evidence_key][0]
+    assert row["verdict"] == "unknown" and "review" not in row
 
 
 @pytest.mark.parametrize("fault", ["http", "malformed", "timeout"])

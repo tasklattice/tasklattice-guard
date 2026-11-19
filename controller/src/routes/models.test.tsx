@@ -59,14 +59,19 @@ vi.mock("@/components/ui/notifications", () => ({ toast: { success: vi.fn(), err
 const assignments: ModelAssignments = {
   controlPlane: "chat-model",
   bindings: {
-    "classifier_review.input": null,
-    "classifier_review.output": null,
-    "content_safety.input": "safety-model",
-    "content_safety.output": "safety-model",
-    "jailbreak.input": null,
-    "topic_control.input": null,
-    "pii_semantic.input": null,
-    "pii_semantic.output": null,
+    "classifier_review.security": "safety-model",
+    "classifier_review.content_safety.input": null,
+    "classifier_review.content_safety.output": null,
+    "classifier_review.jailbreak.input": null,
+    "classifier_review.topic_control.input": null,
+    "classifier_review.pii_semantic.input": null,
+    "classifier_review.pii_semantic.output": null,
+    "content_safety.input": "29552d89-6b79-4d32-8871-09ed926d3d16",
+    "content_safety.output": "29552d89-6b79-4d32-8871-09ed926d3d16",
+    "jailbreak.input": "29552d89-6b79-4d32-8871-09ed926d3d16",
+    "topic_control.input": "29552d89-6b79-4d32-8871-09ed926d3d16",
+    "pii_semantic.input": "29552d89-6b79-4d32-8871-09ed926d3d16",
+    "pii_semantic.output": "29552d89-6b79-4d32-8871-09ed926d3d16",
     "contextual_grounding.output": null,
     "automated_reasoning.output": null,
   },
@@ -95,20 +100,28 @@ const safetyModel = {
   id: "safety-model", name: "Qwen Guard", model: "mock/qwen-guard", profile: "tali.qwen3guard.v1" as const, maxTokens: 128,
   connectionStatus: "failed" as const, connectionMessage: "Model call returned HTTP 404: model not found.", connectionLatencyMs: 17,
 };
+const builtinProvider = {
+  ...provider, id: "builtin-provider", name: "Built-in", kind: "laya" as const,
+  baseUrl: "", credentialConfigured: false, backend: "builtin_laya" as const,
+};
+const builtinModel = {
+  ...safetyModel, id: "29552d89-6b79-4d32-8871-09ed926d3d16", name: "Laya English", model: "laya-english",
+  providerId: builtinProvider.id, providerName: builtinProvider.name, providerKind: builtinProvider.kind,
+  backend: builtinProvider.backend, profile: "tali.laya.v1" as const, checkpointRevision: "85cc74ddae6109077ebe2853a9b3077fb6606a78",
+};
 const now = "2026-09-01T00:00:00Z";
 const view: ModelConfigurationView = {
-  providers: [provider], models: [chatModel, safetyModel],
+  providers: [provider, builtinProvider], models: [chatModel, safetyModel, builtinModel],
   draft: {
     id: "revision-2", reviewToken: "review-token", revision: 2, state: "validated", generation: null, assignments,
     validationReport: {
       valid: true, checkedAt: now,
       checks: [
-        { id: "probe:content_safety.input:safety-model", scope: "capability", status: "passed", evidenceKind: "nemo-rail-v1", message: "Input Rail samples passed.", latencyMs: 6 },
-        { id: "probe:content_safety.output:safety-model", scope: "capability", status: "passed", evidenceKind: "nemo-rail-v1", message: "Output Rail samples passed.", latencyMs: 6 },
+        { id: "probe:classifier_review.security:safety-model", scope: "capability", status: "passed", evidenceKind: "nemo-rail-v1", message: "Input Rail samples passed.", latencyMs: 6 },
       ],
       contractCoverage: [
         { contract: "tali.guard.secrets.exact.v1", source: "local", modelId: null, bindingId: null, railType: "input" },
-        { contract: "tali.guard.content-safety.v1", source: "model", modelId: "safety-model", bindingId: "content_safety.input", railType: "input" },
+        { contract: "tali.guard.content-safety.v1", source: "model", modelId: "safety-model", bindingId: "classifier_review.security", railType: "input" },
       ],
       policies: [],
     },
@@ -167,6 +180,26 @@ describe("Models and Protection Capabilities", { timeout: 30_000 }, () => {
 
   afterEach(() => { cleanup(); client?.clear(); client = null; });
 
+  it("uses Laya for initial classification without a model selector or save action", async () => {
+    renderPage(<GuardrailCatalogPage />);
+    const primary = await screen.findByLabelText("modelSettings.primaryModel");
+    expect(within(primary).getByText("modelSettings.defaultPrimaryModel")).toBeTruthy();
+    expect(within(primary).getByText("modelSettings.builtinReady")).toBeTruthy();
+    expect(within(primary).queryByRole("combobox")).toBeNull();
+    expect(within(primary).queryByRole("button")).toBeNull();
+    expect(screen.queryByLabelText("modelSettings.detectors.content_safety.title", { selector: "tr" })).toBeNull();
+    expect(discoverModelProvider).not.toHaveBeenCalled();
+    expect(saveModelAssignment).not.toHaveBeenCalled();
+  });
+
+  it("shows the built-in Provider as Runner local without connection controls", async () => {
+    vi.mocked(getModelConfiguration).mockResolvedValue({ ...view, providers: [builtinProvider], models: [builtinModel] });
+    renderPage(<ProvidersPage />);
+    const row = (await screen.findByText("modelSettings.runnerLocal")).closest("tr")!;
+    expect(within(row).getByText("modelSettings.builtinReady")).toBeTruthy();
+    expect(within(row).queryByRole("button", { name: /modelSettings.manageProvider/ })).toBeNull();
+  });
+
   it("lets platform administrators manage global models without mutating project models", async () => {
     vi.mocked(getModelConfiguration).mockResolvedValue({ ...view, models: [
       { ...chatModel, projectId: null },
@@ -188,31 +221,23 @@ describe("Models and Protection Capabilities", { timeout: 30_000 }, () => {
       { ...safetyModel, id: "project-model", name: "Project A private model", projectId: "projectA" },
     ] });
     renderPage(<GuardrailCatalogPage />);
-    const jailbreak = await screen.findByLabelText("modelSettings.detectors.jailbreak_detection.title", { selector: "tr" });
-    fireEvent.keyDown(within(jailbreak).getByRole("combobox", { name: "modelSettings.modelColumn" }), { key: "ArrowDown" });
+    const jailbreak = await screen.findByLabelText("modelSettings.detectors.security_review.title", { selector: "tr" });
+    fireEvent.keyDown(within(jailbreak).getByRole("combobox"), { key: "ArrowDown" });
     expect(await screen.findByRole("option", { name: /Qwen Guard · Mock provider/ })).toBeTruthy();
     expect(screen.queryByRole("option", { name: /Project A private model/ })).toBeNull();
   });
 
-  it("shows one row per capability with shared models and separate stage results, without Rail tabs", async () => {
+  it("shows one security reviewer, one Topic reviewer and the two specialist models", async () => {
     renderPage(<GuardrailCatalogPage />);
-    const runner = (await screen.findByRole("heading", { name: "modelSettings.catalogConfiguration" })).closest("section")!;
-    expect(within(runner).queryByRole("tab")).toBeNull();
-    expect(within(runner).getAllByRole("row")).toHaveLength(8);
-    const safety = within(runner).getByLabelText("modelSettings.detectors.content_safety.title", { selector: "tr" });
-    expect(within(safety).getAllByRole("combobox")).toHaveLength(1);
-    expect(await catalogAction(safety, "modelSettings.saveAssignment")).toHaveProperty("disabled", true);
-    for (const stage of ["input", "output"]) {
-      const result = within(safety).getByRole("group", { name: `modelSettings.detectors.content_safety.title · modelSettings.stage.${stage}` });
-      expect(within(result).getByText("modelSettings.evidence.passedEvidence")).toBeTruthy();
-    }
-    const jailbreak = within(runner).getByLabelText("modelSettings.detectors.jailbreak_detection.title", { selector: "tr" });
-    expect(within(jailbreak).queryByText("modelSettings.stage.output")).toBeNull();
-    const grounding = within(runner).getByLabelText("modelSettings.detectors.contextual_grounding.title", { selector: "tr" });
-    expect(within(grounding).queryByText("modelSettings.stage.input")).toBeNull();
+    const section = (await screen.findByRole("heading", {name: "modelSettings.catalogConfiguration"})).closest("section")!;
+    const rows = [...section.querySelectorAll("tr[aria-label]")];
+    expect(rows.map(row => row.getAttribute("aria-label"))).toEqual(
+      ["security_review", "topic_control_review", "contextual_grounding", "automated_reasoning"].map(key => "modelSettings.detectors." + key + ".title"));
+    for (const row of rows) expect(row.querySelectorAll('[role="combobox"]')).toHaveLength(1);
+    expect(within(section).queryByText("modelSettings.configureByStage")).toBeNull();
   });
 
-  it("selects one shared model, validates both stages, and saves their separate receipts", async () => {
+  it("selects one shared model, validates the security group, and saves its receipt", async () => {
     const current = structuredClone(view);
     current.models.push({ ...safetyModel, id: "replacement", name: "Replacement Guard" });
     vi.mocked(getModelConfiguration).mockImplementation(async () => structuredClone(current));
@@ -226,7 +251,7 @@ describe("Models and Protection Capabilities", { timeout: 30_000 }, () => {
       return structuredClone(current.draft!);
     });
     renderPage(<GuardrailCatalogPage />);
-    const row = await screen.findByLabelText("modelSettings.detectors.content_safety.title", { selector: "tr" });
+    const row = await screen.findByLabelText("modelSettings.detectors.security_review.title", { selector: "tr" });
     fireEvent.keyDown(within(row).getByRole("combobox"), { key: "ArrowDown" });
     fireEvent.click(await screen.findByRole("option", { name: /Replacement Guard/ }));
     expect(await catalogAction(row, "modelSettings.saveAssignment")).toHaveProperty("disabled", false);
@@ -235,16 +260,14 @@ describe("Models and Protection Capabilities", { timeout: 30_000 }, () => {
     expect(await catalogAction(row, "modelSettings.saveAssignment")).toHaveProperty("disabled", true);
     fireEvent.keyDown(within(row).getByRole("combobox"), { key: "ArrowDown" });
     fireEvent.click(await screen.findByRole("option", { name: /Replacement Guard/ }));
-    expect(within(row).getAllByText("modelSettings.notChecked")).toHaveLength(2);
+    expect(within(row).getAllByText("modelSettings.notChecked")).toHaveLength(1);
     fireEvent.click(await catalogAction(row, "modelSettings.validateAssignment"));
-    await waitFor(() => expect(validateModelAssignment).toHaveBeenCalledTimes(2));
-    expect(validateModelAssignment).toHaveBeenNthCalledWith(1, "content_safety.input", "replacement");
-    expect(validateModelAssignment).toHaveBeenNthCalledWith(2, "content_safety.output", "replacement");
-    await waitFor(() => expect(within(row).getAllByText("modelSettings.evidence.passedEvidence")).toHaveLength(2));
+    await waitFor(() => expect(validateModelAssignment).toHaveBeenCalledTimes(1));
+    expect(validateModelAssignment).toHaveBeenNthCalledWith(1, "classifier_review.security", "replacement");
+    await waitFor(() => expect(within(row).getAllByText("modelSettings.evidence.passedEvidence")).toHaveLength(1));
     fireEvent.click(await catalogAction(row, "modelSettings.saveAssignment"));
-    await waitFor(() => expect(saveModelAssignment).toHaveBeenCalledTimes(2));
-    expect(saveModelAssignment).toHaveBeenNthCalledWith(1, "content_safety.input", "replacement", "receipt-content_safety.input");
-    expect(saveModelAssignment).toHaveBeenNthCalledWith(2, "content_safety.output", "replacement", "receipt-content_safety.output");
+    await waitFor(() => expect(saveModelAssignment).toHaveBeenCalledTimes(1));
+    expect(saveModelAssignment).toHaveBeenNthCalledWith(1, "classifier_review.security", "replacement", "receipt-classifier_review.security");
     await waitFor(() => expect(within(row).queryByText("modelSettings.unsaved")).toBeNull());
     expect(await catalogAction(row, "modelSettings.saveAssignment")).toHaveProperty("disabled", true);
     expect(activateModelConfiguration).not.toHaveBeenCalled();
@@ -263,7 +286,7 @@ describe("Models and Protection Capabilities", { timeout: 30_000 }, () => {
       return structuredClone(current.draft!);
     });
     renderPage(<GuardrailCatalogPage />);
-    const row = await screen.findByLabelText("modelSettings.detectors.content_safety.title", { selector: "tr" });
+    const row = await screen.findByLabelText("modelSettings.detectors.security_review.title", { selector: "tr" });
     expect(within(row).getByRole("button", { name: "modelSettings.validateAssignment" })).toBeTruthy();
     expect(within(row).getByRole("button", { name: "modelSettings.saveAssignment" })).toBeTruthy();
     expect(within(row).queryByRole("button", { name: /^modelSettings.actionsColumn/ })).toBeNull();
@@ -271,69 +294,54 @@ describe("Models and Protection Capabilities", { timeout: 30_000 }, () => {
     fireEvent.click(await screen.findByRole("option", { name: /Untested Guard/ }));
     fireEvent.click(await catalogAction(row, "modelSettings.saveAssignment"));
     await waitFor(() => expect(within(row).queryByText("modelSettings.unsaved")).toBeNull());
-    expect(saveModelAssignment).toHaveBeenNthCalledWith(1, "content_safety.input", "untested-model", undefined);
-    expect(saveModelAssignment).toHaveBeenNthCalledWith(2, "content_safety.output", "untested-model", undefined);
+    expect(saveModelAssignment).toHaveBeenNthCalledWith(1, "classifier_review.security", "untested-model", undefined);
     fireEvent.click(screen.getByRole("button", { name: "modelSettings.reviewActivation" }));
     const review = await screen.findByRole("dialog");
     const apply = within(review).getByRole("button", { name: "modelSettings.activateRevisionAction" });
     expect(apply).toHaveProperty("disabled", false);
     fireEvent.click(apply);
     await waitFor(() => expect(activateModelConfiguration).toHaveBeenCalledWith({
-      bindingIds: ["content_safety.input", "content_safety.output"], expectedDraftToken: "saved-content_safety.output", expectedActiveId: "active-config",
+      bindingIds: ["classifier_review.security"], expectedDraftToken: "saved-classifier_review.security", expectedActiveId: "active-config",
     }));
     expect(validateModelAssignment).not.toHaveBeenCalled();
     expect(within(row).queryByText("modelSettings.evidence.passedEvidence")).toBeNull();
   });
 
-  it("preserves unequal saved assignments and requires an explicit choice when returning to shared mode", async () => {
-    const configured = structuredClone(view);
-    configured.models.push({ ...safetyModel, id: "output-model", name: "Output Guard" });
-    configured.draft!.assignments.bindings["content_safety.output"] = "output-model";
-    vi.mocked(getModelConfiguration).mockResolvedValue(configured);
+  it("keeps historical selections until the administrator explicitly clears the shared reviewer", async () => {
+    const draft = structuredClone(view.draft!);
+    draft.assignments.bindings["classifier_review.security"] = null;
+    draft.assignments.bindings["classifier_review.pii_semantic.output"] = "chat-model";
+    vi.mocked(getModelConfiguration).mockResolvedValue({ ...view, draft });
     renderPage(<GuardrailCatalogPage />);
-    const row = await screen.findByLabelText("modelSettings.detectors.content_safety.title", { selector: "tr" });
-    expect(within(row).getByRole("combobox", { name: "modelSettings.stage.input" }).textContent).toContain("Qwen Guard");
-    expect(within(row).getByRole("combobox", { name: "modelSettings.stage.output" }).textContent).toContain("Output Guard");
-    fireEvent.click(within(row).getByRole("button", { name: "modelSettings.useSharedModel" }));
+    const row = await screen.findByLabelText("modelSettings.detectors.security_review.title", { selector: "tr" });
     expect(within(row).getByRole("combobox").textContent).toContain("modelSettings.chooseSharedModel");
     expect(await catalogAction(row, "modelSettings.saveAssignment")).toHaveProperty("disabled", true);
-    expect(saveModelAssignment).not.toHaveBeenCalled();
-    fireEvent.click(within(row).getByRole("button", { name: "modelSettings.configureByStage" }));
-    expect(within(row).getByRole("combobox", { name: "modelSettings.stage.output" }).textContent).toContain("Output Guard");
-    expect(within(row).queryByText("modelSettings.unsaved")).toBeNull();
+    fireEvent.keyDown(within(row).getByRole("combobox"), { key: "ArrowDown" });
+    fireEvent.click(await screen.findByRole("option", { name: "modelSettings.noReview" }));
+    fireEvent.click(await catalogAction(row, "modelSettings.saveAssignment"));
+    await waitFor(() => expect(saveModelAssignment).toHaveBeenCalledWith("classifier_review.security", null, undefined));
   });
 
-  it("offers JEV in shared and per-stage content safety configuration", async () => {
+  it("offers review protocols without offering initial classifier protocols", async () => {
     vi.mocked(getModelConfiguration).mockResolvedValue({ ...view, models: [...view.models,
       { ...chatModel, id: "jev", name: "JEV", providerKind: "typesafe", profile: "tali.typesafe-jev.v1" },
     ] });
     renderPage(<GuardrailCatalogPage />);
-    const row = await screen.findByLabelText("modelSettings.detectors.content_safety.title", { selector: "tr" });
+    const row = await screen.findByLabelText("modelSettings.detectors.security_review.title", { selector: "tr" });
     fireEvent.keyDown(within(row).getByRole("combobox"), { key: "ArrowDown" });
-    expect(await screen.findByRole("option", { name: /JEV/ })).toBeTruthy();
-    fireEvent.keyDown(within(row).getByRole("combobox"), { key: "Escape" });
-    fireEvent.click(within(row).getByRole("button", { name: "modelSettings.configureByStage" }));
-    fireEvent.keyDown(within(row).getByRole("combobox", { name: "modelSettings.stage.input" }), { key: "ArrowDown" });
-    fireEvent.click(await screen.findByRole("option", { name: /JEV/ }));
-    const output = within(row).getByRole("combobox", { name: "modelSettings.stage.output" });
-    expect(output.textContent).toContain("Qwen Guard");
-    fireEvent.keyDown(output, { key: "ArrowDown" });
-    fireEvent.click(await screen.findByRole("option", { name: /JEV/ }));
-    fireEvent.click(await catalogAction(row, "modelSettings.validateAssignment"));
-    await waitFor(() => expect(validateModelAssignment).toHaveBeenCalledWith("content_safety.output", "jev"));
-    expect(validateModelAssignment).toHaveBeenCalledWith("content_safety.input", "jev");
+    expect(screen.queryByRole("option", { name: /JEV|Laya English/ })).toBeNull();
+    expect(screen.getByRole("option", { name: /Qwen Guard/ })).toBeTruthy();
+    expect(screen.getByRole("option", { name: /Authoring model/ })).toBeTruthy();
   });
 
-  it("replaces a stale pass after an input request failure and still validates output", async () => {
+  it("replaces a stale security pass after a validation request fails", async () => {
     vi.mocked(validateSavedModelAssignment).mockRejectedValueOnce(new Error("Input service unavailable"));
     renderPage(<GuardrailCatalogPage />);
-    const row = await screen.findByLabelText("modelSettings.detectors.content_safety.title", { selector: "tr" });
+    const row = await screen.findByLabelText("modelSettings.detectors.security_review.title", { selector: "tr" });
     fireEvent.click(await catalogAction(row, "modelSettings.validateAssignment"));
-    await waitFor(() => expect(validateSavedModelAssignment).toHaveBeenCalledTimes(2));
-    const input = within(row).getByRole("group", { name: "modelSettings.detectors.content_safety.title · modelSettings.stage.input" });
-    const output = within(row).getByRole("group", { name: "modelSettings.detectors.content_safety.title · modelSettings.stage.output" });
+    await waitFor(() => expect(validateSavedModelAssignment).toHaveBeenCalledTimes(1));
+    const input = within(row).getByRole("group", { name: "modelSettings.detectors.security_review.title · modelSettings.bothStages" });
     expect(within(input).queryByText("modelSettings.evidence.passedEvidence")).toBeNull();
-    expect(within(output).getByText("modelSettings.evidence.passedEvidence")).toBeTruthy();
     expect(await catalogAction(row, "modelSettings.saveAssignment")).toHaveProperty("disabled", true);
     expect(saveModelAssignment).not.toHaveBeenCalled();
     fireEvent.click(within(input).getByRole("button", { name: /modelSettings.evidence.failedEvidence/ }));
@@ -341,132 +349,62 @@ describe("Models and Protection Capabilities", { timeout: 30_000 }, () => {
     expect(toast.success).not.toHaveBeenCalled();
   });
 
-  it("retains a failed stage save for retry even when the other stage saves successfully", async () => {
+  it("clears the security group without issuing validation calls", async () => {
+    renderPage(<GuardrailCatalogPage />);
+    const row = await screen.findByLabelText("modelSettings.detectors.security_review.title", { selector: "tr" });
+    fireEvent.keyDown(within(row).getByRole("combobox"), { key: "ArrowDown" });
+    fireEvent.click(await screen.findByRole("option", { name: "modelSettings.noReview" }));
+    expect(await catalogAction(row, "modelSettings.validateAssignment")).toHaveProperty("disabled", true);
+    fireEvent.click(await catalogAction(row, "modelSettings.saveAssignment"));
+    await waitFor(() => expect(saveModelAssignment).toHaveBeenCalledTimes(1));
+    expect(saveModelAssignment).toHaveBeenCalledWith("classifier_review.security", null, undefined);
+    expect(validateModelAssignment).not.toHaveBeenCalled();
+  });
+
+  it("offers only chat models for Topic review and saves that capability independently", async () => {
+    renderPage(<GuardrailCatalogPage />);
+    const topic = await screen.findByLabelText("modelSettings.detectors.topic_control_review.title", {selector:"tr"});
+    fireEvent.keyDown(within(topic).getByRole("combobox"), {key:"ArrowDown"});
+    expect(screen.queryByRole("option", {name:/Qwen Guard/})).toBeNull();
+    expect(screen.getByRole("option", {name:"modelSettings.noReview"})).toBeTruthy();
+    fireEvent.click(screen.getByRole("option", {name:/Authoring model/}));
+    fireEvent.click(await catalogAction(topic, "modelSettings.validateAssignment"));
+    await waitFor(() => expect(validateModelAssignment).toHaveBeenCalledWith("classifier_review.topic_control.input", "chat-model"));
+    fireEvent.click(await catalogAction(topic, "modelSettings.saveAssignment"));
+    await waitFor(() => expect(saveModelAssignment).toHaveBeenCalledWith("classifier_review.topic_control.input", "chat-model", "candidate-validation"));
+    expect(saveModelAssignment).toHaveBeenCalledTimes(1);
+  });
+
+  it("can clear Topic review without changing its primary or security reviewers", async () => {
+    vi.mocked(getModelConfiguration).mockResolvedValue({...view, draft:{...view.draft!, assignments:{
+      ...assignments, bindings:{...assignments.bindings, "topic_control.input":"safety-model",
+        "classifier_review.topic_control.input":"chat-model", "classifier_review.security":"safety-model"},
+    }}});
+    renderPage(<GuardrailCatalogPage />);
+    const topic = await screen.findByLabelText("modelSettings.detectors.topic_control_review.title", {selector:"tr"});
+    fireEvent.keyDown(within(topic).getByRole("combobox"), {key:"ArrowDown"});
+    fireEvent.click(screen.getByRole("option", {name:"modelSettings.noReview"}));
+    fireEvent.click(await catalogAction(topic, "modelSettings.saveAssignment"));
+    await waitFor(() => expect(saveModelAssignment).toHaveBeenCalledWith("classifier_review.topic_control.input", null, undefined));
+    expect(saveModelAssignment).toHaveBeenCalledTimes(1);
+    expect(validateModelAssignment).not.toHaveBeenCalled();
+  });
+
+  it("keeps all six initial bindings unchanged when a reviewer is cleared", async () => {
     const current = structuredClone(view);
-    current.models.push({ ...safetyModel, id: "replacement", name: "Replacement Guard" });
+    const primaries = Object.fromEntries(Object.entries(current.draft!.assignments.bindings).filter(([id]) => !id.startsWith("classifier_review.")));
     vi.mocked(getModelConfiguration).mockImplementation(async () => structuredClone(current));
-    let failInput = true;
     vi.mocked(saveModelAssignment).mockImplementation(async (target, modelId) => {
-      if (target === "content_safety.input" && failInput) throw new Error("Input save rejected");
       if (target !== "control_plane") current.draft!.assignments.bindings[target] = modelId;
       return structuredClone(current.draft!);
     });
     renderPage(<GuardrailCatalogPage />);
-    const row = await screen.findByLabelText("modelSettings.detectors.content_safety.title", { selector: "tr" });
+    const row = await screen.findByLabelText("modelSettings.detectors.security_review.title", { selector: "tr" });
     fireEvent.keyDown(within(row).getByRole("combobox"), { key: "ArrowDown" });
-    fireEvent.click(await screen.findByRole("option", { name: /Replacement Guard/ }));
+    fireEvent.click(screen.getByRole("option", { name: "modelSettings.noReview" }));
     fireEvent.click(await catalogAction(row, "modelSettings.saveAssignment"));
-    await waitFor(() => expect(saveModelAssignment).toHaveBeenCalledTimes(2));
-    expect(current.draft!.assignments.bindings["content_safety.input"]).toBe("safety-model");
-    expect(current.draft!.assignments.bindings["content_safety.output"]).toBe("replacement");
-    expect(within(row).getByRole("combobox").textContent).toContain("Replacement Guard");
-    expect(within(row).getByRole("alert")).toBeTruthy();
-    expect(within(row).getByText("modelSettings.unsaved")).toBeTruthy();
-    expect(toast.success).not.toHaveBeenCalled();
-    failInput = false;
-    fireEvent.click(await catalogAction(row, "modelSettings.saveAssignment"));
-    await waitFor(() => expect(within(row).queryByText("modelSettings.unsaved")).toBeNull());
-    expect(within(row).queryByRole("alert")).toBeNull();
-    expect(current.draft!.assignments.bindings["content_safety.input"]).toBe("replacement");
-    expect(saveModelAssignment).toHaveBeenCalledTimes(3);
-    expect(saveModelAssignment).toHaveBeenLastCalledWith("content_safety.input", "replacement", undefined);
-    expect(activateModelConfiguration).not.toHaveBeenCalled();
-  });
-
-  it("clears both shared bindings without issuing validation calls", async () => {
-    renderPage(<GuardrailCatalogPage />);
-    const row = await screen.findByLabelText("modelSettings.detectors.content_safety.title", { selector: "tr" });
-    fireEvent.keyDown(within(row).getByRole("combobox"), { key: "ArrowDown" });
-    fireEvent.click(await screen.findByRole("option", { name: "modelSettings.notAssigned" }));
-    expect(await catalogAction(row, "modelSettings.validateAssignment")).toHaveProperty("disabled", true);
-    fireEvent.click(await catalogAction(row, "modelSettings.saveAssignment"));
-    await waitFor(() => expect(saveModelAssignment).toHaveBeenCalledTimes(2));
-    expect(saveModelAssignment).toHaveBeenCalledWith("content_safety.input", null, undefined);
-    expect(saveModelAssignment).toHaveBeenCalledWith("content_safety.output", null, undefined);
-    expect(validateModelAssignment).not.toHaveBeenCalled();
-  });
-
-  it("allows saving before testing and preserves a preview receipt when tested", async () => {
-    vi.mocked(validateModelAssignment).mockResolvedValue({ validationId: "candidate-validation",
-      ...view.draft, validationReport: { ...view.draft.validationReport!, checks: [
-        { id: "probe:jailbreak.input:safety-model", scope: "capability", status: "passed", evidenceKind: "nemo-rail-v1", message: "Passed" },
-      ] },
-    });
-    renderPage(<GuardrailCatalogPage />);
-    const jailbreak = await screen.findByLabelText("modelSettings.detectors.jailbreak_detection.title", { selector: "tr" });
-    fireEvent.keyDown(within(jailbreak).getByRole("combobox", { name: "modelSettings.modelColumn" }), { key: "ArrowDown" });
-    fireEvent.click(await screen.findByRole("option", { name: /Qwen Guard · Mock provider/ }));
-    const save = await catalogAction(jailbreak, "modelSettings.saveAssignment");
-    expect(save.hasAttribute("disabled")).toBe(false);
-    fireEvent.click(await catalogAction(jailbreak, "modelSettings.validateAssignment"));
-    const testedSave = await catalogAction(jailbreak, "modelSettings.saveAssignment");
-    expect(testedSave).toHaveProperty("disabled", false);
-    expect(saveModelAssignment).not.toHaveBeenCalled();
-    fireEvent.click(testedSave);
-    await waitFor(() => expect(saveModelAssignment).toHaveBeenCalledWith("jailbreak.input", "safety-model", "candidate-validation"));
-  });
-
-  it.each(["input", "output"] as const)("offers the existing DeepSeek chat for independent %s review and validates that explicit binding", async (rail) => {
-    vi.mocked(getModelConfiguration).mockResolvedValue({ ...view, models: [
-      { ...chatModel, name: "DeepSeek Chat", providerKind: "deepseek", providerName: "DeepSeek" }, safetyModel,
-    ] });
-    renderPage(<GuardrailCatalogPage />);
-    const reviewer = await screen.findByLabelText(`modelSettings.detectors.classifier_review.title`, { selector: "tr" });
-    fireEvent.click(within(reviewer).getByRole("button", { name: "modelSettings.configureByStage" }));
-    expect(within(reviewer).getByText("modelSettings.detectors.classifier_review.description")).toBeTruthy();
-    fireEvent.keyDown(within(reviewer).getByRole("combobox", { name: `modelSettings.stage.${rail}` }), { key: "ArrowDown" });
-    expect(screen.queryByRole("option", { name: /Qwen Guard/ })).toBeNull();
-    fireEvent.click(await screen.findByRole("option", { name: /DeepSeek Chat · DeepSeek/ }));
-    fireEvent.click(await catalogAction(reviewer, "modelSettings.validateAssignment"));
-    await waitFor(() => expect(validateModelAssignment).toHaveBeenCalledWith(`classifier_review.${rail}`, "chat-model"));
-    fireEvent.click(await catalogAction(reviewer, "modelSettings.saveAssignment"));
-    await waitFor(() => expect(saveModelAssignment).toHaveBeenCalledWith(`classifier_review.${rail}`, "chat-model", "candidate-validation"));
-    expect(saveModelAssignment).toHaveBeenCalledTimes(1);
-    const primary = screen.getByLabelText(`modelSettings.detectors.content_safety.title`, { selector: "tr" });
-    fireEvent.click(within(primary).getByRole("button", { name: "modelSettings.configureByStage" }));
-    fireEvent.keyDown(within(primary).getByRole("combobox", { name: `modelSettings.stage.${rail}` }), { key: "ArrowDown" });
-    expect(screen.queryByRole("option", { name: /DeepSeek Chat/ })).toBeNull();
-    expect(screen.getByRole("option", { name: /Qwen Guard/ })).toBeTruthy();
-  });
-
-  it.each(["input", "output"] as const)("offers Laya content safety and semantic PII on the %s Rail", async (rail) => {
-    vi.mocked(getModelConfiguration).mockResolvedValue({ ...view, models: [
-      ...view.models, { ...chatModel, id: "laya-model", name: "Laya Auto", providerKind: "laya", providerName: "Laya", profile: "tali.laya.v1" },
-    ] });
-    renderPage(<GuardrailCatalogPage />);
-    const primary = await screen.findByLabelText(`modelSettings.detectors.content_safety.title`, { selector: "tr" });
-    fireEvent.click(within(primary).getByRole("button", { name: "modelSettings.configureByStage" }));
-    fireEvent.keyDown(within(primary).getByRole("combobox", { name: `modelSettings.stage.${rail}` }), { key: "ArrowDown" });
-    fireEvent.click(await screen.findByRole("option", { name: /Laya Auto · Laya/ }));
-    fireEvent.click(await catalogAction(primary, "modelSettings.validateAssignment"));
-    await waitFor(() => expect(validateModelAssignment).toHaveBeenCalledWith(`content_safety.${rail}`, "laya-model"));
-    const pii = screen.getByLabelText(`modelSettings.detectors.pii_detection.title`, { selector: "tr" });
-    fireEvent.click(within(pii).getByRole("button", { name: "modelSettings.configureByStage" }));
-    fireEvent.keyDown(within(pii).getByRole("combobox", { name: `modelSettings.stage.${rail}` }), { key: "ArrowDown" });
-    expect(await screen.findByRole("option", { name: /Laya Auto/ })).toBeTruthy();
-  });
-
-  it.each(["input", "output"] as const)("offers DeepSeek with the explicit PII protocol on the %s Rail", async (rail) => {
-    const binding = `pii_semantic.${rail}` as const;
-    vi.mocked(getModelConfiguration).mockResolvedValue({ ...view, models: [
-      { ...chatModel, name: "DeepSeek Chat", providerKind: "deepseek", providerName: "DeepSeek" },
-      { ...chatModel, id: "pii-model", name: "DeepSeek PII", providerKind: "deepseek", providerName: "DeepSeek", profile: "tali.openai-compatible-pii.v1" },
-    ] });
-    vi.mocked(validateModelAssignment).mockResolvedValue({ ...view.draft!, validationId: "pii-validation", validationReport: {
-      ...view.draft!.validationReport!, checks: [
-        { id: `probe:${binding}:pii-model`, scope: "capability", status: "passed", evidenceKind: "nemo-rail-v1", message: "Passed" },
-      ],
-    } });
-    renderPage(<GuardrailCatalogPage />);
-    const pii = await screen.findByLabelText(`modelSettings.detectors.pii_detection.title`, { selector: "tr" });
-    fireEvent.click(within(pii).getByRole("button", { name: "modelSettings.configureByStage" }));
-    fireEvent.keyDown(within(pii).getByRole("combobox", { name: `modelSettings.stage.${rail}` }), { key: "ArrowDown" });
-    expect(screen.queryByRole("option", { name: /DeepSeek Chat/ })).toBeNull();
-    fireEvent.click(await screen.findByRole("option", { name: /DeepSeek PII · DeepSeek/ }));
-    fireEvent.click(await catalogAction(pii, "modelSettings.validateAssignment"));
-    await waitFor(() => expect(validateModelAssignment).toHaveBeenCalledWith(binding, "pii-model"));
-    fireEvent.click(await catalogAction(pii, "modelSettings.saveAssignment"));
-    await waitFor(() => expect(saveModelAssignment).toHaveBeenCalledWith(binding, "pii-model", "pii-validation"));
+    await waitFor(() => expect(saveModelAssignment).toHaveBeenCalledTimes(1));
+    for (const [id, modelId] of Object.entries(primaries)) expect(current.draft!.assignments.bindings[id as keyof ModelAssignments["bindings"]]).toBe(modelId);
   });
 
   it("previews the saved Runner configuration before activating its revision", async () => {
@@ -477,11 +415,11 @@ describe("Models and Protection Capabilities", { timeout: 30_000 }, () => {
     const review = await screen.findByRole("dialog");
     expect(within(review).getAllByText("modelSettings.pendingConfiguration")).toHaveLength(2);
     expect(within(review).queryByRole("button", { name: /rollback/i })).toBeNull();
-    expect(within(review).getAllByText("Qwen Guard").length).toBe(2);
+    expect(within(review).getAllByText("Qwen Guard").length).toBe(1);
     expect(within(review).queryByText("Authoring model")).toBeNull();
     fireEvent.click(within(review).getByRole("button", { name: "modelSettings.activateRevisionAction" }));
     await waitFor(() => expect(activateModelConfiguration).toHaveBeenCalledWith({
-      bindingIds: ["content_safety.input", "content_safety.output"], expectedDraftToken: "review-token", expectedActiveId: null,
+      bindingIds: ["classifier_review.security"], expectedDraftToken: "review-token", expectedActiveId: null,
     }));
   });
 
@@ -489,18 +427,18 @@ describe("Models and Protection Capabilities", { timeout: 30_000 }, () => {
     const configured = structuredClone(view);
     configured.draft!.state = "draft";
     configured.draft!.validationReport!.valid = false;
-    configured.draft!.assignments.bindings["jailbreak.input"] = "safety-model";
-    configured.draft!.validationReport!.checks.push({ id: "probe:jailbreak.input:safety-model", scope: "capability", status: "failed", evidenceKind: "nemo-rail-v1", message: "Not ready" });
+    configured.draft!.assignments.bindings["classifier_review.topic_control.input"] = "safety-model";
+    configured.draft!.validationReport!.checks.push({ id: "probe:classifier_review.topic_control.input:safety-model", scope: "capability", status: "failed", evidenceKind: "nemo-rail-v1", message: "Not ready" });
     vi.mocked(getModelConfiguration).mockResolvedValue(configured);
     renderPage(<GuardrailCatalogPage />);
     fireEvent.click(await screen.findByRole("button", { name: "modelSettings.reviewActivation" }));
     const review = await screen.findByRole("dialog");
-    expect(within(review).getByRole("checkbox", { name: "modelSettings.applyBinding jailbreak.input" }).hasAttribute("disabled")).toBe(false);
+    expect(within(review).getByRole("checkbox", { name: "modelSettings.applyBinding classifier_review.topic_control.input" }).hasAttribute("disabled")).toBe(false);
     expect(within(review).getByText("modelSettings.reviewNeedsValidation")).toBeTruthy();
-    fireEvent.click(within(review).getByRole("checkbox", { name: "modelSettings.applyBinding content_safety.output" }));
+    fireEvent.click(within(review).getByRole("checkbox", { name: "modelSettings.applyBinding classifier_review.security" }));
     fireEvent.click(within(review).getByRole("button", { name: "modelSettings.activateRevisionAction" }));
     await waitFor(() => expect(activateModelConfiguration).toHaveBeenCalledWith({
-      bindingIds: ["content_safety.input", "jailbreak.input"], expectedDraftToken: "review-token", expectedActiveId: null,
+      bindingIds: ["classifier_review.topic_control.input"], expectedDraftToken: "review-token", expectedActiveId: null,
     }));
   });
 
@@ -515,7 +453,7 @@ describe("Models and Protection Capabilities", { timeout: 30_000 }, () => {
   it("shows active bindings and removals alongside the saved draft", async () => {
     const configured = structuredClone(view);
     configured.active = { ...structuredClone(view.draft!), id: "revision-1", revision: 1, state: "active" };
-    configured.active.assignments.bindings["jailbreak.input"] = "safety-model";
+    configured.active.assignments.bindings["classifier_review.topic_control.input"] = "safety-model";
     vi.mocked(getModelConfiguration).mockResolvedValue(configured);
     renderPage(<GuardrailCatalogPage />);
     expect(screen.queryByText("modelSettings.runnerConfiguration")).toBeNull();
@@ -548,10 +486,10 @@ describe("Models and Protection Capabilities", { timeout: 30_000 }, () => {
     const configured = structuredClone(view);
     configured.models.push({ ...safetyModel, id: "old-model", name: "Previous guard" });
     configured.active = { ...structuredClone(view.draft!), id: "revision-1", revision: 1, state: "active" };
-    configured.active.assignments.bindings["content_safety.input"] = "old-model";
-    configured.active.assignments.bindings["jailbreak.input"] = "safety-model";
-    configured.draft!.assignments.bindings["pii_semantic.input"] = "safety-model";
-    configured.draft!.validationReport!.checks.push({ id: "probe:pii_semantic.input:safety-model", scope: "capability", status: "passed", evidenceKind: "nemo-rail-v1", message: "Passed" });
+    configured.active.assignments.bindings["classifier_review.security"] = "old-model";
+    configured.active.assignments.bindings["classifier_review.topic_control.input"] = "safety-model";
+    configured.draft!.assignments.bindings["classifier_review.topic_control.input"] = "chat-model";
+    configured.draft!.validationReport!.checks.push({ id: "probe:classifier_review.pii_semantic.input:safety-model", scope: "capability", status: "passed", evidenceKind: "nemo-rail-v1", message: "Passed" });
     vi.mocked(getModelConfiguration).mockResolvedValue(configured);
     renderPage(<GuardrailCatalogPage />);
     fireEvent.click(await screen.findByRole("button", { name: "modelSettings.reviewActivation" }));
@@ -562,90 +500,36 @@ describe("Models and Protection Capabilities", { timeout: 30_000 }, () => {
     expect(removals).toHaveLength(2);
     for (const label of additions) expect(label.closest("div")!.className).toContain("bg-emerald-500/10");
     for (const label of removals) expect(label.closest("div")!.className).toContain("bg-destructive/10");
-    expect(within(review).queryByText("modelSettings.detectors.content_safety.title · modelSettings.outputRail")).toBeNull();
+    expect(within(review).queryByText("modelSettings.detectors.security_review.title · modelSettings.outputRail")).toBeNull();
     fireEvent.click(within(review).getByRole("button", { name: "common.cancel" }));
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
     expect(activateModelConfiguration).not.toHaveBeenCalled();
   });
 
-  it("explains when activation would distribute no model bindings", async () => {
-    const empty = structuredClone(view);
-    for (const target of Object.keys(empty.draft!.assignments.bindings)) {
-      empty.draft!.assignments.bindings[target as keyof ModelAssignments["bindings"]] = null;
+  it("has no pending model changes when only default Laya is configured", async () => {
+    const defaults = structuredClone(view);
+    for (const target of Object.keys(defaults.draft!.assignments.bindings).filter(id => id.startsWith("classifier_review."))) {
+      defaults.draft!.assignments.bindings[target as keyof ModelAssignments["bindings"]] = null;
     }
-    vi.mocked(getModelConfiguration).mockResolvedValue(empty);
+    vi.mocked(getModelConfiguration).mockResolvedValue(defaults);
     renderPage(<GuardrailCatalogPage />);
     fireEvent.click(await screen.findByRole("button", { name: "modelSettings.reviewActivation" }));
     const review = await screen.findByRole("dialog");
-    expect(within(review).getByText("modelSettings.emptyRunnerConfiguration")).toBeTruthy();
     expect(within(review).getByText("modelSettings.noBindingChanges")).toBeTruthy();
-    expect(within(review).queryByRole("table")).toBeNull();
+    expect(within(review).queryByText("modelSettings.emptyRunnerConfiguration")).toBeNull();
     expect(within(review).getByRole("button", { name: "modelSettings.activateRevisionAction" })).toHaveProperty("disabled", true);
     expect(activateModelConfiguration).not.toHaveBeenCalled();
   });
 
-  it("keeps a validated PII selection when another assignment refreshes the draft", async () => {
-    vi.mocked(validateModelAssignment).mockResolvedValue({ ...view.draft!, validationId: "pii-validation", validationReport: {
-      ...view.draft!.validationReport!, checks: [
-        { id: "probe:pii_semantic.input:safety-model", scope: "capability", status: "passed", evidenceKind: "nemo-rail-v1", message: "Passed" },
-      ],
-    } });
-    renderPage(<GuardrailCatalogPage />);
-    const pii = await screen.findByLabelText("modelSettings.detectors.pii_detection.title", { selector: "tr" });
-    const expand = within(pii).queryByRole("button", { name: "modelSettings.configureByStage" });
-    if (expand) fireEvent.click(expand);
-    fireEvent.keyDown(within(pii).getByRole("combobox", { name: "modelSettings.stage.input" }), { key: "ArrowDown" });
-    fireEvent.click(await screen.findByRole("option", { name: /Qwen Guard · Mock provider/ }));
-    fireEvent.click(await catalogAction(pii, "modelSettings.validateAssignment"));
-    expect(await catalogAction(pii, "modelSettings.saveAssignment")).toHaveProperty("disabled", false);
-
-    const refreshed = structuredClone(view);
-    refreshed.draft!.updatedAt = "2026-09-01T00:01:00Z";
-    vi.mocked(getModelConfiguration).mockResolvedValue(refreshed);
-    await act(async () => { await client!.refetchQueries(); });
-    await waitFor(() => expect(within(pii).getByRole("combobox", { name: "modelSettings.stage.input" }).textContent).toContain("Qwen Guard"));
-
-    // Saving another row also refreshes the draft and must preserve PII edits.
-    vi.mocked(saveModelAssignment).mockImplementation(async (target, modelId) => {
-      if (target !== "control_plane") refreshed.draft!.assignments.bindings[target] = modelId;
-      return structuredClone(refreshed.draft!);
-    });
-    const safety = screen.getByLabelText("modelSettings.detectors.content_safety.title", { selector: "tr" });
-    fireEvent.keyDown(within(safety).getByRole("combobox"), { key: "ArrowDown" });
-    fireEvent.click(await screen.findByRole("option", { name: "modelSettings.notAssigned" }));
-    fireEvent.click(await catalogAction(safety, "modelSettings.saveAssignment"));
-    await waitFor(() => expect(saveModelAssignment).toHaveBeenCalledWith("content_safety.output", null, undefined));
-    await waitFor(() => expect(within(safety).queryByText("modelSettings.unsaved")).toBeNull());
-    expect(await catalogAction(pii, "modelSettings.saveAssignment")).toHaveProperty("disabled", false);
-    expect(within(pii).getByRole("combobox", { name: "modelSettings.stage.input" }).textContent).toContain("Qwen Guard");
-
-    const saved = structuredClone(refreshed);
-    saved.draft!.assignments.bindings["pii_semantic.input"] = "safety-model";
-    saved.draft!.updatedAt = "2026-09-01T00:02:00Z";
-    vi.mocked(saveModelAssignment).mockImplementation(async () => {
-      vi.mocked(getModelConfiguration).mockResolvedValue(saved);
-      return saved.draft!;
-    });
-    fireEvent.click(await catalogAction(pii, "modelSettings.saveAssignment"));
-    await waitFor(() => expect(saveModelAssignment).toHaveBeenCalledWith("pii_semantic.input", "safety-model", "pii-validation"));
-    await waitFor(() => expect(screen.queryByText("modelSettings.unsaved")).toBeNull());
-    cleanup();
-    client!.clear();
-    renderPage(<GuardrailCatalogPage />);
-    const reloaded = await screen.findByLabelText("modelSettings.detectors.pii_detection.title", { selector: "tr" });
-    expect(within(reloaded).getByRole("combobox", { name: "modelSettings.stage.input" }).textContent).toContain("Qwen Guard");
-  });
-
-  it("keeps failed saves visible and preserves the selected PII model for retry", async () => {
+  it("keeps failed saves visible and preserves the selected security model for retry", async () => {
     vi.mocked(saveModelAssignment).mockRejectedValue(new Error("Validation receipt expired; validate this model again."));
     renderPage(<GuardrailCatalogPage />);
-    const pii = await screen.findByLabelText("modelSettings.detectors.pii_detection.title", { selector: "tr" });
-    fireEvent.click(within(pii).getByRole("button", { name: "modelSettings.configureByStage" }));
-    fireEvent.keyDown(within(pii).getByRole("combobox", { name: "modelSettings.stage.input" }), { key: "ArrowDown" });
-    fireEvent.click(await screen.findByRole("option", { name: /Qwen Guard/ }));
+    const pii = await screen.findByLabelText("modelSettings.detectors.security_review.title", { selector: "tr" });
+    fireEvent.keyDown(within(pii).getByRole("combobox"), { key: "ArrowDown" });
+    fireEvent.click(await screen.findByRole("option", { name: /Authoring model/ }));
     fireEvent.click(await catalogAction(pii, "modelSettings.saveAssignment"));
     expect(await screen.findByText(/Validation receipt expired; validate this model again/)).toBeTruthy();
-    expect(within(pii).getByRole("combobox", { name: "modelSettings.stage.input" }).textContent).toContain("Qwen Guard");
+    expect(within(pii).getByRole("combobox").textContent).toContain("Authoring model");
     expect(toast.success).not.toHaveBeenCalled();
   });
 
@@ -665,9 +549,9 @@ describe("Models and Protection Capabilities", { timeout: 30_000 }, () => {
 
   it("validates only the selected detector without a global Catalog action", async () => {
     renderPage(<GuardrailCatalogPage />);
-    const contentSafety = await screen.findByLabelText("modelSettings.detectors.content_safety.title", { selector: "tr" });
+    const contentSafety = await screen.findByLabelText("modelSettings.detectors.security_review.title", { selector: "tr" });
     fireEvent.click(await catalogAction(contentSafety, "modelSettings.validateAssignment"));
-    await waitFor(() => expect(validateSavedModelAssignment).toHaveBeenCalledWith("content_safety.input", "safety-model", undefined));
+    await waitFor(() => expect(validateSavedModelAssignment).toHaveBeenCalledWith("classifier_review.security", "safety-model", undefined));
     expect(screen.queryByRole("button", { name: "modelSettings.validateCatalog" })).toBeNull();
   });
 
@@ -719,7 +603,7 @@ describe("Models and Protection Capabilities", { timeout: 30_000 }, () => {
         validationReport: {
           ...view.draft.validationReport!,
           valid: false,
-          checks: [{ id: "probe:content_safety.input:safety-model", scope: "capability", status: "failed", message, cases: [
+          checks: [{ id: "probe:classifier_review.security:safety-model", scope: "capability", status: "failed", message, cases: [
             { id: "unsafe", passed: false, inputContent: "Unsafe example input", outputContent: "Unexpected output", expectedDecision: "block", actualDecision: "allow", reason: "Missed unsafe content" },
             { id: "safe", passed: true, inputContent: "Passing example hidden", outputContent: "Safe", expectedDecision: "allow", actualDecision: "allow", reason: "" },
           ] }],
@@ -727,7 +611,7 @@ describe("Models and Protection Capabilities", { timeout: 30_000 }, () => {
       },
     });
     renderPage(<GuardrailCatalogPage />);
-    const row = await screen.findByLabelText("modelSettings.detectors.content_safety.title", { selector: "tr" });
+    const row = await screen.findByLabelText("modelSettings.detectors.security_review.title", { selector: "tr" });
     expect(within(row).queryByText(message)).toBeNull();
     fireEvent.click(within(row).getAllByRole("button", { name: /modelSettings.evidence.failedEvidence/ })[0]!);
     const inspector = screen.getByRole("dialog", { name: "modelSettings.evidence.title" });

@@ -41,7 +41,6 @@ describe.skipIf(!url)("bounded telemetry transactions and replay", () => {
     await service.recordRuntimeEvents([...events].reverse());
     expect((await database.pool.query("SELECT count(*)::int AS n FROM runtime_event")).rows[0].n).toBe(120);
     expect((await database.pool.query("SELECT count(*)::int AS n FROM model_usage_cost")).rows[0].n).toBe(120);
-    expect((await database.pool.query("SELECT last_event_occurred_at FROM telemetry_watermark WHERE runner_id='runner'")).rows[0].last_event_occurred_at).toEqual(events[119]!.occurredAt);
     expect(database.pool.idleCount).toBe(1); expect(database.pool.waitingCount).toBe(0);
   });
 

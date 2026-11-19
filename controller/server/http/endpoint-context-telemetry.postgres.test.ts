@@ -1,4 +1,5 @@
 // @vitest-environment node
+import { runnerAuthEnv } from "../../test/runner-auth-fixture.js";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { Registry } from "prom-client";
 import { createTestDatabase } from "../db/postgres-test-database.js";
@@ -15,9 +16,9 @@ const tokenA = "pool-a-control-token-that-is-at-least-32-characters";
 const tokenC = "pool-c-control-token-that-is-at-least-32-characters";
 const version = "20260912-083000.123Z";
 const config = loadConfig({ NODE_ENV: "test", CONTROLLER_DATABASE_URL: "postgresql://unused:unused@localhost/unused",
-  CONTROLLER_RUNNER_TOKEN: "legacy-token-that-is-at-least-32-characters", BETTER_AUTH_SECRET: "better-auth-secret-that-is-at-least-32-characters",
-  CONTROLLER_RUNNER_POOL_TOKENS_JSON: JSON.stringify({ "pool-a": tokenA, "pool-c": tokenC }),
-  CONTROLLER_RUNNER_SCOPED_TELEMETRY: "true", CONTROLLER_ARTIFACT_SIGNING_KEY_PATH: "/tmp/test-key.pem" });
+  BETTER_AUTH_SECRET: "better-auth-secret-that-is-at-least-32-characters",
+  ...runnerAuthEnv({ "pool-a": tokenA, "pool-c": tokenC }),
+  CONTROLLER_ARTIFACT_SIGNING_KEY_PATH: "/tmp/test-key.pem" });
 const endpoint = { endpointId: "endpoint-a", projectId: "projectA", adapter: "litellm-generic-guardrail", trafficRouterId: "router-a", verification: { credentials: [] }, scanFlagOnlyDefault: true };
 const router = { routerId: "router-a", revision: 3, routes: [{ id: "route-a", enabled: true, targets: [{ id: "target-c", guardrailId: "shared-c", guardrailVersion: version, weightBps: 10000 }] }] };
 
@@ -62,7 +63,6 @@ describe.skipIf(!url)("immutable Endpoint telemetry allocation context", () => {
       .toEqual([{ project_id: "projectA", allocation_context_id: contextId }]);
     expect(JSON.stringify(await service.getRuntimeEvent("own-context"))).not.toContain(contextId);
     expect(JSON.stringify(await service.queryRuntimeEvents({}))).not.toContain(contextId);
-    expect((await database.pool.query("SELECT * FROM telemetry_watermark")).rows).toEqual([]);
   });
   it("quarantines wrong-pool, unknown and mismatched frozen identities without poisoning a mixed batch", async () => {
     expect((await post([event("wrong-pool")], tokenC)).status).toBe(202);

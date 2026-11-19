@@ -12,8 +12,9 @@ import type {
   RunnerStatus,
   ValidationRunState,
 } from "../../shared/lifecycle";
-import type { CapabilityBindingId, ImplementedGuardrailRailType } from "../../shared/guardrail-catalog";
+import { capabilityBindingIds, type CapabilityBindingId, type ImplementedGuardrailRailType } from "../../shared/guardrail-catalog";
 import type { PlatformStatusSnapshot } from "../../shared/platform-status";
+import { platformOperationalStatuses, platformStatusReasons } from "../../shared/platform-status";
 import type { SystemHealthSnapshot } from "../../shared/component-health";
 export type { SystemHealthSnapshot } from "../../shared/component-health";
 import type { GuardrailVersionDeletionImpact } from "../../shared/guardrail-version-deletion";
@@ -37,6 +38,8 @@ export type ModelProvider = {
   name: string;
   kind: ModelProviderKind;
   baseUrl: string;
+  backend?: "builtin_laya";
+  checkpointRevision?: string;
   credentialHint: string | null;
   credentialConfigured: boolean;
   status: "pending" | "validated" | "failed";
@@ -52,6 +55,8 @@ export type DiscoveredProviderModels = {
 };
 
 export type ModelDefinition = {
+  backend?: "builtin_laya";
+  checkpointRevision?: string;
   projectId?: string | null;
   protocolEditable?: boolean;
   connectionStatus?: "pending" | "validated" | "failed";
@@ -517,10 +522,19 @@ function formatApiError(detail: unknown): string | undefined {
 
 const json = (method: string, body?: unknown): RequestInit => ({ method, body: body === undefined ? undefined : JSON.stringify(body) });
 
-export const getControllerSystemStatus = async () => {
-  const response = await fetch("/api/v1/system/status", { credentials: "same-origin" });
-  if (response.status === 200 || response.status === 503) return response.json() as Promise<SystemStatus>;
-  throw new Error(`System status failed with status ${response.status}.`);
+export const getControllerSystemStatus = async (signal?: AbortSignal): Promise<SystemStatus> => {
+  const timeout = AbortSignal.timeout(3_000);
+  const response = await fetch("/api/v1/system/status", {
+    credentials: "same-origin", signal: signal ? AbortSignal.any([signal, timeout]) : timeout,
+  });
+  if (response.status !== 200 && response.status !== 503) throw new Error(`System status failed with status ${response.status}.`);
+  const snapshot = await response.json() as SystemStatus;
+  if (!snapshot || !platformOperationalStatuses.includes(snapshot.status)
+    || !Array.isArray(snapshot.reasons) || !snapshot.reasons.every(reason => platformStatusReasons.includes(reason))
+    || !Number.isFinite(Date.parse(snapshot.observedAt))) {
+    throw new Error("System status response is unavailable or incomplete.");
+  }
+  return snapshot;
 };
 export const getControllerSystemHealth = async (signal?: AbortSignal) => {
   const timeout = AbortSignal.timeout(10_000);
@@ -538,7 +552,7 @@ export const getModelReadiness = () => requestController<import("../../shared/mo
 
 export const getModelConfiguration = async () => {
   const view = await requestController<ModelConfigurationView>("/api/v1/model-configuration");
-  if (!view.draft?.assignments?.bindings) {
+  if (!view.draft?.assignments?.bindings || capabilityBindingIds.some(id => !Object.hasOwn(view.draft!.assignments.bindings, id))) {
     throw new Error("The Controller is serving a Model configuration with an unsupported schema. Deploy the matching Controller backend before using Protection Capabilities.");
   }
   return view;
@@ -569,6 +583,7 @@ export const validateModelAssignment = (target: ModelAssignmentTarget, modelId?:
 export const validateSavedModelAssignment = (target: CapabilityBindingId, modelId: string, formalValidation?: FormalValidation) => requestController<ModelConfigurationRevision>(`/api/v1/model-configuration/draft/assignments/${encodeURIComponent(target)}/validations`, json("POST", { modelId, formalValidation }));
 export const applyModelConfiguration = (selection: import("../../shared/model-activation").PartialModelActivation) => requestController<ModelConfigurationView & { distribution: { desiredGeneration: number; distributionStatus: "ready" | "syncing" } }>("/api/v1/model-configuration/apply", json("POST", selection));
 export const listControllerGuardrails = () => requestController<Collection<Guardrail>>("/api/v1/guardrails");
+export const listGuardrailOptions = (signal?: AbortSignal) => requestController<Collection<{ id: string; name: string }>>("/api/v1/guardrails?view=options", { signal });
 export const getControllerGuardrail = (id: string) => requestController<GuardrailDetail>(`/api/v1/guardrails/${encodeURIComponent(id)}`);
 export const createControllerGuardrail = (input: Pick<Guardrail, "name" | "draftConfig" | "runtimeProfile">) => requestController<Guardrail>("/api/v1/guardrails", json("POST", input));
 export const previewControllerGuardrailPlan = (input: Pick<Guardrail, "name" | "draftConfig" | "runtimeProfile">) => requestController<GuardrailPlanPreview>("/api/v1/authoring/plan-previews", json("POST", input));

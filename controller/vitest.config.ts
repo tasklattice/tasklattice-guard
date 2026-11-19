@@ -4,7 +4,7 @@ export default mergeConfig(
   viteConfig,
   defineConfig({ test: {
     exclude: [...configDefaults.exclude, "dist/**", "dist-*/**"],
-    globalSetup: ["./scripts/setup-openapi.mjs"],
+    globalSetup: ["./scripts/setup-openapi.mjs", "./scripts/setup-artifact-fixtures.mjs"],
     setupFiles: ["./src/test/browser-apis.ts"],
   } }),
 );

@@ -1,7 +1,23 @@
 {{- include "tali-guard.defaults" . -}}
 {{- include "tali-guard.validateValues" . -}}
+{{- $runnerAuth := include "tali-guard.runnerAuthRefs" . | fromJson -}}
+{{- if hasKey .Values.runner "scanTimeoutSeconds" -}}
+{{- $scanTimeout := toString .Values.runner.scanTimeoutSeconds -}}
+{{- if or (not (regexMatch "^[0-9]+$" $scanTimeout)) (lt (int $scanTimeout) 1) (gt (int $scanTimeout) 300) -}}
+{{- fail "runner.scanTimeoutSeconds must be a whole number between 1 and 300" -}}
+{{- end -}}
+{{- end -}}
 {{- $runnerName := include "tali-guard.defaultRunnerName" . -}}
 {{- $headlessServiceName := printf "%s-headless" $runnerName -}}
+{{- $runnerResources := .Values.runner.default.resources | default dict -}}
+{{- $cpuResource := "" -}}
+{{/* Kubelet substitutes node allocatable for zero CPU limits in the Downward API. */}}
+{{- $positiveCpuQuantity := "^\\+?[0-9.]*[1-9]" -}}
+{{- if regexMatch $positiveCpuQuantity (get ($runnerResources.limits | default dict) "cpu" | toString) -}}
+{{- $cpuResource = "limits.cpu" -}}
+{{- else if regexMatch $positiveCpuQuantity (get ($runnerResources.requests | default dict) "cpu" | toString) -}}
+{{- $cpuResource = "requests.cpu" -}}
+{{- end -}}
 apiVersion: apps/v1
 kind: StatefulSet
 metadata:
@@ -44,7 +60,7 @@ spec:
       {{- end }}
       containers:
         - name: runner
-          image: "{{ .Values.runner.image.repository }}:{{ default .Chart.AppVersion .Values.runner.image.tag }}"
+          image: {{ include "tali-guard.runnerImage" . | quote }}
           imagePullPolicy: {{ .Values.runner.image.pullPolicy }}
           securityContext: {{- toYaml .Values.securityContext | nindent 12 }}
           ports:
@@ -55,6 +71,16 @@ spec:
             - { name: GUARD_RUNNER_POOL_ID, value: "default" }
             - { name: GUARD_RUNNER_COMPILER_CAPABLE, value: "true" }
             - { name: GUARD_RUNNER_MAX_CONCURRENCY, value: {{ .Values.runner.default.maxConcurrency | quote }} }
+            {{- with $cpuResource }}
+            - name: GUARD_RUNNER_CPU_MILLICORES
+              valueFrom:
+                resourceFieldRef:
+                  resource: {{ . | quote }}
+                  divisor: 1m
+            {{- end }}
+            {{- if hasKey .Values.runner "scanTimeoutSeconds" }}
+            - { name: GUARD_SCAN_TIMEOUT_SECONDS, value: {{ .Values.runner.scanTimeoutSeconds | quote }} }
+            {{- end }}
             - { name: GUARD_CONTROLLER_TARGET, value: {{ printf "%s:%v" (include "tali-guard.controllerName" .) 9090 | quote }} }
             - { name: GUARD_CONTROLLER_TELEMETRY_ENDPOINT, value: {{ printf "http://%s:%v/api/internal/v1/runtime-events" (include "tali-guard.controllerName" .) 8080 | quote }} }
             {{- if or .Values.observability.performanceDebug.enabled .Values.observability.tracing.enabled }}
@@ -70,23 +96,10 @@ spec:
             - { name: GUARD_PYROSCOPE_SERVER_ADDRESS, value: {{ required "observability.profiling.serverAddress is required when profiling or performanceDebug is enabled" .Values.observability.profiling.serverAddress | quote }} }
             - { name: GUARD_PYROSCOPE_SAMPLE_RATE, value: {{ .Values.observability.profiling.sampleRate | quote }} }
             {{- end }}
-            {{- if not (and .Values.security.poolAuthentication.scopedTelemetry .Values.security.runnerHttpAuthentication.enabled) }}
-            - name: GUARD_CONTROLLER_TOKEN
-              valueFrom: { secretKeyRef: { name: {{ include "tali-guard.controlSecretName" . }}, key: {{ .Values.security.controlSecret.runnerTokenKey }} } }
-            {{- end }}
-            {{- if .Values.security.poolAuthentication.scopedTelemetry }}
-            - { name: GUARD_RUNNER_SCOPED_TELEMETRY, value: "true" }
-            {{- end }}
-            {{- if .Values.security.poolAuthentication.enabled }}
-            {{- $poolSecret := get .Values.security.poolAuthentication.runnerSecrets "default" }}
             - name: GUARD_RUNNER_CONTROL_TOKEN
-              valueFrom: { secretKeyRef: { name: {{ $poolSecret.name | quote }}, key: {{ $poolSecret.key | quote }} } }
-            {{- end }}
-            {{- if .Values.security.runnerHttpAuthentication.enabled }}
-            {{- $httpSecret := get .Values.security.runnerHttpAuthentication.runnerSecrets "default" }}
+              valueFrom: { secretKeyRef: { name: {{ $runnerAuth.control.runner.name | quote }}, key: {{ $runnerAuth.control.runner.key | quote }} } }
             - name: GUARD_CONTROLLER_HTTP_TOKEN
-              valueFrom: { secretKeyRef: { name: {{ $httpSecret.name | quote }}, key: {{ $httpSecret.key | quote }} } }
-            {{- end }}
+              valueFrom: { secretKeyRef: { name: {{ $runnerAuth.http.runner.name | quote }}, key: {{ $runnerAuth.http.runner.key | quote }} } }
             - name: GUARD_METRICS_TOKEN
               valueFrom: { secretKeyRef: { name: {{ include "tali-guard.metricsSecretName" . }}, key: {{ .Values.security.metrics.tokenKey }} } }
             - name: MODEL_GUARDRAILS_RUNTIME_LOG_ENCRYPTION_KEY
@@ -101,7 +114,6 @@ spec:
             - { name: GUARD_RUNNER_CALL_CONTEXT_REDIS_URL, value: {{ . | quote }} }
             {{- end }}
             - { name: GUARD_RUNNER_CALL_CONTEXT_TTL_SECONDS, value: {{ .Values.runner.callContext.ttlSeconds | quote }} }
-            - { name: GUARD_RUNNER_CALL_CONTEXT_COMPRESS_PLANS, value: {{ .Values.runner.callContext.compressPlans | quote }} }
             - { name: GUARD_RUNNER_CALL_CONTEXT_CAPACITY_FALLBACK, value: {{ .Values.runner.callContext.capacityFallback | quote }} }
           volumeMounts:
             - { name: artifact-signing, mountPath: /var/run/tasklattice/artifact, readOnly: true }
@@ -122,7 +134,7 @@ spec:
                 # Give Service endpoint propagation time before Uvicorn receives
                 # SIGTERM and drains requests inside the remaining grace period.
                 command: [/bin/sh, -c, "sleep 5"]
-          resources: {{- toYaml .Values.runner.default.resources | nindent 12 }}
+          resources: {{- toYaml $runnerResources | nindent 12 }}
       volumes:
         - name: artifact-signing
           secret:

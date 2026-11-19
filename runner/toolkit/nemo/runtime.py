@@ -28,6 +28,8 @@ from opentelemetry import context as otel_context, trace
 from opentelemetry.trace import Status, StatusCode
 
 from ...model_concurrency import model_slot
+from .evaluators.shared_review import review_scope
+from ...laya_batch import laya_batch_scope
 from ..runtime.content_views import current_context_messages, request_view, with_active_text
 from ..compiler.semantics import collects_complete_evidence
 from ..runtime.outcome import finalize_decision
@@ -288,6 +290,10 @@ class NeMoActionBridge:
         return execute_provider
 
     async def execute_action_group(self, text, group, context):
+        with laya_batch_scope():
+            return await self._execute_action_group(text, group, context)
+
+    async def _execute_action_group(self, text, group, context):
         """Run compiler-proven independent read-only checks inside a NeMo Action.
 
         Block cancels remaining checks; Allow waits for every required member.
@@ -1075,6 +1081,10 @@ class NeMoRuntime:
                 cache_hit=cache_hit, queue_latency_ms=queue_wait)
 
     async def _evaluate_complete(self, request: EngineRequest, *, acquisition=None) -> ProtectionDecision:
+        async with review_scope():
+            return await self._evaluate_scoped(request, acquisition=acquisition)
+
+    async def _evaluate_scoped(self, request: EngineRequest, *, acquisition=None) -> ProtectionDecision:
         instance, cache_hit, registry_queue_latency_ms = acquisition or await self._registry.acquire_async(
             request.plan,
             **({"release_id": request.effective_release_id} if request.effective_release_id else {}),
@@ -2468,7 +2478,6 @@ def _trace(
                     ),
                     "on_match": binding.on_unsafe,
                     "on_unknown": binding.parameter("on_unknown") or "block",
-                    "review_unknown": binding.parameter("review_unknown") or "false",
                     "decision_source": "review" if any(step.evaluator_id == "classifier-review" for step in item.result.trace) else "primary",
                 }) if binding.capability in {"content_safety", "jailbreak", "topic_control", "pii"} else None,
                 duration_ms=item.latency_ms,
@@ -3210,6 +3219,9 @@ def _native_model_trace_steps(
             route="cancelled" if cancelled else (failure_mode if failed else "complete"),
             capability=risk,
             module_id=module.id if module is not None else "__unknown__",
+            # Match the assessment for this content block. Otherwise a recovered
+            # attempt has no owning result and is treated as a fatal failure.
+            content_block_id=request.active_block_id,
             guardrail_id=request.plan.guardrail_id,
             guardrail_version=request.plan.guardrail_version,
             policy_id=(

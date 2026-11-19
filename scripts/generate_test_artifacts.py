@@ -2,8 +2,13 @@
 """Generate deterministic signed artifacts consumed by Runner-only tests.
 
 The fixture private key is deliberately test-only. Data-plane tests receive
-only the checked-in public key and serialized DesiredState, exactly like a
-Runner that has no Controller database or compiler in its hot path.
+only the generated public key and serialized DesiredState, exactly like a Runner
+that has no Controller database or compiler in its hot path.
+
+The three generated files per fixture are build output, not reviewable source,
+so they are not committed: `tests/conftest.py` regenerates them for a test
+session, `npm run fixtures:generate` writes them on demand, and
+`npm run fixtures:check` proves a second generation is byte-identical.
 """
 
 from __future__ import annotations
@@ -12,6 +17,7 @@ import argparse
 import base64
 import hashlib
 import json
+import os
 import subprocess
 import tempfile
 from dataclasses import dataclass
@@ -399,23 +405,36 @@ def generate(fixture_name: str = FIXTURE_NAME) -> FixtureFiles:
 
 def _write(directory: Path, files: FixtureFiles) -> None:
     directory.mkdir(parents=True, exist_ok=True)
-    (directory / "desired-state.pb.b64").write_text(files.desired_state, encoding="utf-8")
-    (directory / "public-key.pem").write_text(files.public_key, encoding="utf-8")
-    (directory / "manifest.json").write_text(files.manifest, encoding="utf-8")
+    for name, content in (("desired-state.pb.b64", files.desired_state),
+                          ("public-key.pem", files.public_key),
+                          ("manifest.json", files.manifest)):
+        _write_if_changed(directory / name, content)
+
+
+def _write_if_changed(path: Path, content: str) -> None:
+    """Replace atomically and only when the bytes move, so re-runs are inert."""
+    encoded = content.encode("utf-8")
+    if path.exists() and path.read_bytes() == encoded:
+        return
+    temporary = path.with_name(f".{path.name}.{os.getpid()}.tmp")
+    temporary.write_bytes(encoded)
+    temporary.replace(path)
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--check", action="store_true")
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--check", action="store_true",
+                        help="compare the working tree copy against a fresh generation")
     parser.add_argument("--fixture", choices=FIXTURE_NAMES)
     args = parser.parse_args()
     mismatches = []
+    written = 0
     for fixture_name in (args.fixture,) if args.fixture else FIXTURE_NAMES:
         files = generate(fixture_name)
         destination = OUTPUT / fixture_name
         if not args.check:
             _write(destination, files)
-            print(f"generated {destination.relative_to(ROOT)}")
+            written += 1
             continue
         with tempfile.TemporaryDirectory() as raw:
             candidate = Path(raw) / fixture_name
@@ -426,11 +445,13 @@ def main() -> int:
                 if not (destination / name).exists()
                 or (destination / name).read_bytes() != (candidate / name).read_bytes()
             )
+    if not args.check:
+        print(f"generated {written} Artifact fixtures under {OUTPUT.relative_to(ROOT)}")
     if mismatches:
         print(
             "stale deterministic test artifacts: "
             + ", ".join(mismatches)
-            + "; run scripts/generate_test_artifacts.py"
+            + "; run npm run fixtures:generate"
         )
         return 1
     return 0

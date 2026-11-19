@@ -167,15 +167,13 @@ function runtimeLogContent(value: unknown): RuntimeLogInteraction["entries"][num
 }
 
 export async function getMetrics(filters: {
-  guardrailId?: string; routerId?: string; window?: MetricWindow;
+  guardrailId?: string; routerId?: string; window?: MetricWindow; view?: "overview" | "diagnostics";
 } = {}, signal?: AbortSignal): Promise<Metrics> {
   const query = new URLSearchParams({ window: filters.window ?? "24h" });
   if (filters.guardrailId) query.set("guardrailId", filters.guardrailId);
   if (filters.routerId) query.set("routerId", filters.routerId);
-  const [metrics, status] = await Promise.all([
-    controllerApi.requestController<Omit<Metrics, "system_status" | "system_reasons">>(`/api/v1/telemetry/metrics?${query}`, signal ? { signal } : undefined),
-    controllerApi.getControllerSystemStatus(),
-  ]);
+  if (filters.view) query.set("view", filters.view);
+  const metrics = await controllerApi.requestController<Metrics>(`/api/v1/telemetry/metrics?${query}`, signal ? { signal } : undefined);
   // A successful HTTP response can still be a collection or an incomplete
   // snapshot. Reject it before rendering; missing telemetry is not zero traffic.
   if (!metrics || ![
@@ -194,7 +192,7 @@ export async function getMetrics(filters: {
     || !validMetricSeries(metrics.trend_series?.none)) {
     throw new Error("Runtime metrics are unavailable or incomplete. Check the Controller response and retry.");
   }
-  return { ...metrics, system_status: status.status === "healthy" ? "healthy" : "degraded", system_reasons: status.reasons };
+  return metrics;
 }
 
 export type RequestRatePoint = { timestamp: string; total: number };
@@ -205,7 +203,7 @@ export type GuardrailRequestRates = {
 
 /** One shared snapshot for the registry; no extra system-status request per row. */
 export async function getGuardrailRequestRates(signal?: AbortSignal): Promise<GuardrailRequestRates> {
-  const metrics = await controllerApi.requestController<Metrics>("/api/v1/telemetry/metrics?window=1h", signal ? { signal } : undefined);
+  const metrics = await controllerApi.requestController<Metrics>("/api/v1/telemetry/metrics?window=1h&view=overview", signal ? { signal } : undefined);
   const all = metrics?.trend_series?.none;
   const grouped = metrics?.trend_series?.guardrail;
   if (metrics?.window !== "1h" || metrics.interval !== "1m"

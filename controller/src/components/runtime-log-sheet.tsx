@@ -3,7 +3,7 @@ import { RuntimeModelEvidence } from "./runtime-model-evidence";
 import { RuntimeErrorDetails } from "@/components/runtime-error-details";
 import { RuntimeOutcomeBadge } from "@/components/runtime-outcome-badge";
 import { SecuritySeverityBadge } from "@/components/security-severity";
-import { type ReactNode, useEffect, useState } from "react";
+import { type ReactNode, useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { ArrowDownToLine, ArrowUpFromLine, Clock3, LockKeyhole, ChevronRight } from "lucide-react";
 import { useTranslation } from "react-i18next";
@@ -16,6 +16,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { getRuntimeEvent, listRuntimeEvents } from "@/lib/controller-api";
 import { runtimeLogInteractions, type RuntimeLogEntry } from "@/lib/api";
+import { createLogTimeFormatter } from "@/lib/log-time";
 
 export function RuntimeLogSheet({ requestId, guardrailId, checkpointId, onCheckpointChange, canViewContent, guardrailName, routerName, open, onOpenChange }: {
   requestId?: string; guardrailId?: string; checkpointId?: string;
@@ -25,6 +26,7 @@ export function RuntimeLogSheet({ requestId, guardrailId, checkpointId, onCheckp
   open: boolean; onOpenChange: (open: boolean) => void;
 }) {
   const { t, i18n } = useTranslation();
+  const timeFormatter = useMemo(() => createLogTimeFormatter(i18n.language), [i18n.language]);
   const paging = useEventCursor(`${requestId}:${guardrailId}`);
   const [localCheckpointId, setLocalCheckpointId] = useState<string>();
   const selectCheckpoint = onCheckpointChange ?? setLocalCheckpointId;
@@ -52,12 +54,12 @@ export function RuntimeLogSheet({ requestId, guardrailId, checkpointId, onCheckp
   const entry = detail.data?.entries[0];
   return <EntitySheet open={open} onOpenChange={onOpenChange} eyebrow={t("logs.interactionDetailEyebrow")} title={t("logs.detailTitle")} description={<span className="break-all font-mono text-xs">{requestId}</span>} width="xl" footer={<Button variant="outline" onClick={() => onOpenChange(false)}>{t("common.close")}</Button>}>
     <div className="grid gap-5">
-      {interaction ? <dl className="grid grid-cols-2 gap-x-6 gap-y-4 border-b pb-5"><Fact label={t("logs.time")} value={new Date(interaction.created_at).toLocaleString(i18n.language)} /><Fact label={t("logs.context")} value={`${routerName(interaction.router_id)} · ${interaction.protocol}`} /><div className="col-span-2"><Fact label={t("logs.guardrail")} value={<>{guardrailName(interaction.guardrail_id)}{interaction.guardrail_version ? <span className="ml-2 font-mono text-xs text-muted-foreground">{interaction.guardrail_version}</span> : null}</>} /></div></dl> : null}
+      {interaction ? <dl className="grid grid-cols-2 gap-x-6 gap-y-4 border-b pb-5"><Fact label={t("logs.time")} value={timeFormatter.format(new Date(interaction.created_at))} /><Fact label={t("logs.context")} value={`${routerName(interaction.router_id)} · ${interaction.protocol}`} /><div className="col-span-2"><Fact label={t("logs.guardrail")} value={<>{guardrailName(interaction.guardrail_id)}{interaction.guardrail_version ? <span className="ml-2 font-mono text-xs text-muted-foreground">{interaction.guardrail_version}</span> : null}</>} /></div></dl> : null}
       {!canViewContent && entry?.content_available ? <div className="flex gap-3 rounded-lg border bg-muted/25 p-4"><LockKeyhole className="mt-0.5 size-4 shrink-0" /><div><p className="text-sm font-medium">{t("logs.restrictedContentTitle")}</p><p className="mt-1 text-xs leading-5 text-muted-foreground">{t("logs.restrictedContentDescription")}</p></div></div> : null}
       {checkpoints.isPending && !expanded ? <p role="status">{t('logs.loadingDetail')}</p> : checkpoints.error ? <div><ErrorNotice error={checkpoints.error} /><Button variant="outline" onClick={() => void checkpoints.refetch()}>{t('common.retry')}</Button></div> : null}
       {(checkpoints.data?.items.length ?? 0) > 1 ? <div className="grid divide-y border-y">{checkpoints.data?.items.map(event => <button type="button" key={event.id} className={`grid min-h-11 w-full grid-cols-[minmax(0,1fr)_auto] items-center gap-x-4 border-l-2 px-3 py-3 text-left focus-visible:outline-2 focus-visible:outline-ring ${expanded === event.id ? "border-l-primary bg-muted" : "border-l-transparent hover:bg-muted/50"}`} onClick={() => selectCheckpoint(event.id)} aria-pressed={expanded === event.id}>
         <span className="text-sm font-medium">{t(event.direction === 'completion' ? 'logs.callCompletion' : event.direction === 'incoming' ? 'logs.inboundCheckpoint' : 'logs.outboundCheckpoint')}</span>
-        <time className="text-xs tabular-nums text-muted-foreground" dateTime={event.occurredAt}>{new Date(event.occurredAt).toLocaleString(i18n.language)}</time>
+        <time className="text-xs tabular-nums text-muted-foreground" dateTime={event.occurredAt}>{timeFormatter.format(new Date(event.occurredAt))}</time>
         <span className="col-span-2 mt-1 break-all font-mono text-xs text-muted-foreground">{event.id}</span>
       </button>)}</div> : null}
       {paging.page > 1 || checkpoints.data?.nextCursor ? <EventPagination page={paging.page} busy={checkpoints.isFetching} nextCursor={checkpoints.data?.nextCursor} onNext={cursor => { selectCheckpoint(undefined); paging.next(cursor); }} onPrevious={() => { selectCheckpoint(undefined); paging.previous(); }} onLatest={() => { selectCheckpoint(undefined); paging.latest(); }} /> : null}

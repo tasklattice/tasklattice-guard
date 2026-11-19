@@ -1,0 +1,11 @@
+{
+  "repository": "sn0rt/tali-guard",
+  "revision": "120d1e0e26b33b1003382a038c889153c32bbff4",
+  "files": {
+    "encoder/config.json": "bf3ab80598fdccf414855a2ce80f22859e4492d06ca8a62ddd1cfb63972f8979",
+    "model.safetensors": "c5836c5a6bb17cb3272e73d95f7ba6c1a0b705175832d0a4dbb15fedf971c4cd",
+    "rl_agent_config.json": "e5ed5b10570916ef2a2fc58d1315902e9bc8e58cb43ee684c867f92237a11e03",
+    "tokenizer/tokenizer.json": "6c8aaa9a542084f2457eab775d4eeb51f92a70c0fd9de28d5edb0ddec3c08d30",
+    "tokenizer/tokenizer_config.json": "50044de60daaa73df97d262e15a40d4faf0160e7d742df64b377877a1320dd12"
+  }
+}

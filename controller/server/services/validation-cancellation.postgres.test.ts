@@ -1,3 +1,4 @@
+import { runnerAuthEnv } from "../../test/runner-auth-fixture.js";
 import { completeReport } from "../db/report-test-utils.js";
 // @vitest-environment node
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
@@ -69,7 +70,7 @@ describe.skipIf(!url)("durable test cancellation", () => {
       (id, guardrail_id, name, policy_id, phase, content, expected_decision, origin)
       VALUES ('case-cli', 'cli-run', 'CLI lifecycle', '', 'input', 'hello', 'allow', 'custom')`);
     const config = loadConfig({ NODE_ENV: "test", CONTROLLER_DATABASE_URL: url!,
-      CONTROLLER_RUNNER_TOKEN: "runner-token-that-is-at-least-32-characters",
+      ...runnerAuthEnv("runner-token-that-is-at-least-32-characters"),
       CONTROLLER_ARTIFACT_SIGNING_KEY_PATH: "/tmp/test-key.pem", CONTROLLER_POLICY_CATALOG_DIR: catalogDir,
       BETTER_AUTH_SECRET: "better-auth-secret-that-is-at-least-32-characters" });
     const app = createHttpApp({ config, service: new ControlPlaneService(database.db, config),

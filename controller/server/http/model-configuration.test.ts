@@ -1,3 +1,4 @@
+import { runnerAuthEnv } from "../../test/runner-auth-fixture.js";
 import { resolve } from "node:path";
 
 import { describe, expect, it, vi } from "vitest";
@@ -13,7 +14,7 @@ import { createHttpApp } from "./app.js";
 const config = loadConfig({
   NODE_ENV: "test",
   CONTROLLER_DATABASE_URL: "postgresql://controller:controller@localhost/controller",
-  CONTROLLER_RUNNER_TOKEN: "runner-token-that-is-at-least-32-characters",
+  ...runnerAuthEnv("runner-token-that-is-at-least-32-characters"),
   CONTROLLER_ARTIFACT_SIGNING_KEY_PATH: "/tmp/controller-signing-key.pem",
   CONTROLLER_POLICY_CATALOG_DIR: resolve("../runner/toolkit/policy_library/assets"),
   BETTER_AUTH_SECRET: "better-auth-secret-that-is-at-least-32-characters",
@@ -315,7 +316,7 @@ describe("Model configuration HTTP routes", () => {
     const runner = await app.request("/api/internal/v1/model-credentials/resolve", {
       method: "POST",
       headers: {
-        authorization: `Bearer ${config.runnerToken}`,
+        authorization: `Bearer ${config.runnerPoolTokens.get("default")!}`,
         "content-type": "application/json",
       },
       body: JSON.stringify({ refs: [providerId, "33dcc196-94f6-42ac-b104-0c975b3be5ef"] }),
@@ -327,10 +328,10 @@ describe("Model configuration HTTP routes", () => {
     expect(models.resolveCredentials).toHaveBeenCalledWith([
       providerId,
       "33dcc196-94f6-42ac-b104-0c975b3be5ef",
-    ], undefined);
+    ], undefined, "default");
   });
 
-  it("requires pool credentials for model resolution when pool identities are enabled", async () => {
+  it("uses the authenticated Pool for model resolution and rejects the HTTP role", async () => {
     const poolA = "pool-a-token-with-at-least-32-characters";
     const poolB = "pool-b-token-with-at-least-32-characters";
     const scopedConfig = { ...config, runnerPoolTokens: new Map([["pool-a", poolA], ["pool-b", poolB]]) };
@@ -340,7 +341,7 @@ describe("Model configuration HTTP routes", () => {
     const request = (token: string) => app.request("/api/internal/v1/model-credentials/resolve", {
       method: "POST", headers: { "content-type": "application/json", authorization: `Bearer ${token}` }, body,
     });
-    expect((await request(config.runnerToken)).status).toBe(401);
+    expect((await request(config.runnerHttpTokens.get("default")!)).status).toBe(401);
     expect(models.resolveCredentials).not.toHaveBeenCalled();
     expect((await request(poolA)).status).toBe(200);
     expect(models.resolveCredentials).toHaveBeenLastCalledWith(["2da89935-e001-4a43-a47b-95f419666bb0"], "2da89935-e001-4a43-a47b-95f419666bb1", "pool-a");

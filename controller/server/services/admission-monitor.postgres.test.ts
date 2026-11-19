@@ -1,4 +1,5 @@
 // @vitest-environment node
+import { runnerAuthEnv } from "../../test/runner-auth-fixture.js";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { createTestDatabase } from "../db/postgres-test-database.js";
 import { loadConfig } from "../config.js";
@@ -19,7 +20,7 @@ describe.skipIf(!url)("admission monitoring uses accepted durable Runner identit
   let config: ReturnType<typeof loadConfig>;
   beforeAll(async () => {
     database = await createTestDatabase(url!, "admission_monitor");
-    config = loadConfig({ NODE_ENV: "test", CONTROLLER_DATABASE_URL: url!, CONTROLLER_RUNNER_TOKEN: "test-runner-token-that-is-at-least-32-characters",
+    config = loadConfig({ NODE_ENV: "test", CONTROLLER_DATABASE_URL: url!, ...runnerAuthEnv("test-runner-token-that-is-at-least-32-characters"),
       BETTER_AUTH_SECRET: "test-auth-secret-that-is-at-least-32-characters", CONTROLLER_ARTIFACT_SIGNING_KEY_PATH: "/tmp/test-key.pem" });
     await database.pool.query(`INSERT INTO controller_state(id,desired_generation) VALUES ('singleton',7) ON CONFLICT(id) DO UPDATE SET desired_generation=7;
       INSERT INTO project_group(id,name) VALUES ('ab','A + B'),('c','C isolated');

@@ -7,7 +7,7 @@ from tests.control_plane.classifier_chain import build_controller_plan, scan
 
 @pytest.fixture(scope="module", params=["input", "output"])
 def pii_plan(request):
-    return request.param, build_controller_plan(review=True, phase=request.param, pii_only=True)
+    return request.param, build_controller_plan(phase=request.param, pii_only=True)
 
 
 @pytest.mark.parametrize("score,answer,outcome,calls", [
@@ -36,21 +36,18 @@ async def test_reviewed_pii_uses_trusted_redaction_and_preserves_both_decisions(
         assert "review" not in row
 
 
-@pytest.mark.parametrize("failure", ["malformed", "timeout", "http", "missing-binding"])
+@pytest.mark.parametrize("failure", ["malformed", "timeout", "http"])
 async def test_pii_review_failure_never_releases_unredacted_content(classifier_backend, pii_plan, failure):
     phase, plan = pii_plan
     response, calls, evidence = await scan(plan, {"pii": .5}, phase=phase,
         backend=classifier_backend, pii_only=True, review={"pii": "unknown"},
-        review_fault=("pii", failure) if failure in {"malformed", "timeout", "http"} else None,
-        reviewer_binding=failure != "missing-binding", require_evidence=failure != "missing-binding")
+        review_fault=("pii", failure))
     assert response.status_code >= 400, response.text
-    if failure == "missing-binding":
-        assert not calls
-    else:
-        assert evidence["execution"]["status"] in {"error", "timeout"}
-        row = evidence[classifier_backend.evidence_key][0]
-        assert row["verdict"] == "unknown"
-        assert row["review"]["verdict"] == "error"
+    assert calls[:2] == ["pii", "review:pii"]
+    assert evidence["execution"]["status"] in {"error", "timeout"}
+    row = evidence[classifier_backend.evidence_key][0]
+    assert row["verdict"] == "unknown"
+    assert row["review"]["verdict"] == "error"
 
 
 async def test_unresolved_pii_review_blocks_without_transforming_or_reporting_an_error(classifier_backend, pii_plan):
@@ -67,14 +64,14 @@ async def test_unresolved_pii_review_blocks_without_transforming_or_reporting_an
 
 
 @pytest.mark.parametrize("on_unknown,outcome", [("allow", "cleared"), ("block", "blocked")])
-async def test_disabling_pii_review_preserves_the_pinned_unknown_action(classifier_backend, pii_plan, on_unknown, outcome):
+async def test_missing_pii_reviewer_preserves_the_pinned_unknown_action(classifier_backend, pii_plan, on_unknown, outcome):
     phase, original = pii_plan
     plan = deepcopy(original)
     for step in plan["steps"]:
-        step["parameters"] = [[k, "false" if k == "review_unknown" else on_unknown if k == "on_unknown" else v]
+        step["parameters"] = [[k, on_unknown if k == "on_unknown" else v]
                               for k, v in step["parameters"]]
     response, calls, _ = await scan(plan, {"pii": .5}, phase=phase, pii_only=True,
-        backend=classifier_backend, review={"pii": "yes"})
+        backend=classifier_backend, review={"pii": "yes"}, reviewer_binding=False)
     assert response.status_code == 200 and response.json()["result"]["outcome"] == outcome
     assert calls == ["pii"]
 

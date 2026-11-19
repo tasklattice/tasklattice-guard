@@ -22,7 +22,7 @@ import {
   SidebarRail,
   useSidebar,
 } from "@/components/ui/sidebar";
-import { getGuardrails, getEndpoints } from "@/lib/api";
+import { listGuardrailOptions, listControllerEndpoints } from "@/lib/controller-api";
 import { queryKeys } from "@/features/query-keys";
 import { listTrafficRouters, trafficRouterKeys } from "@/lib/traffic-routing-api";
 import { useAuth } from "@/lib/auth";
@@ -90,9 +90,9 @@ export function ControlPlaneSidebar() {
   const workflowUser = hasPermission(user?.role, "guardrails", "write") && Boolean(user?.project_id);
   const { setOpenMobile, state } = useSidebar();
   const pathname = useRouterState({ select: (routerState) => projectRoutePath(routerState.location.pathname) });
-  const guardrails = useQuery({ queryKey: [...queryKeys.guardrails, "project", user?.project_id], queryFn: getGuardrails, enabled: workflowUser });
+  const guardrails = useQuery({ queryKey: [...queryKeys.guardrails, "options", "project", user?.project_id], queryFn: ({ signal }) => listGuardrailOptions(signal), enabled: workflowUser });
   const routers = useQuery({ queryKey: [...trafficRouterKeys.all, "project", user?.project_id], queryFn: listTrafficRouters, enabled: workflowUser });
-  const endpoints = useQuery({ queryKey: [...queryKeys.endpoints, "project", user?.project_id], queryFn: getEndpoints, enabled: workflowUser });
+  const endpoints = useQuery({ queryKey: [...queryKeys.endpoints, "definitions", "project", user?.project_id], queryFn: listControllerEndpoints, enabled: workflowUser });
   const counts: Record<string, number | undefined> = {
     guardrails: guardrails.data?.items.length,
     routers: routers.data?.items.length,

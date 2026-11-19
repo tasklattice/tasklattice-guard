@@ -1,4 +1,5 @@
 // @vitest-environment node
+import { runnerAuthEnv } from "../../test/runner-auth-fixture.js";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { EventEmitter } from "node:events";
 import { resolve } from "node:path";
@@ -23,9 +24,9 @@ describe.skipIf(!url)("experimental authenticated lease probe and durable ledger
       INSERT INTO controller_state (id,desired_generation) VALUES ('singleton',7)
       ON CONFLICT (id) DO UPDATE SET desired_generation=7`);
     const config = loadConfig({ NODE_ENV: "test", CONTROLLER_DATABASE_URL: "postgresql://unused:unused@localhost/unused",
-      CONTROLLER_RUNNER_TOKEN: "legacy-token-with-at-least-32-characters", CONTROLLER_ARTIFACT_SIGNING_KEY_PATH: "/tmp/test-key.pem",
+      ...runnerAuthEnv("legacy-token-with-at-least-32-characters"), CONTROLLER_ARTIFACT_SIGNING_KEY_PATH: "/tmp/test-key.pem",
       CONTROLLER_PROTO_PATH: resolve("../proto/tasklattice/guard/control/v1/runner_control.proto"), BETTER_AUTH_SECRET: "synthetic-test-auth-secret-at-least-32-chars",
-      CONTROLLER_RUNNER_POOL_TOKENS_JSON: JSON.stringify({ "pool-a": poolToken }), CONTROLLER_EXPERIMENTAL_RUNNER_LEASE_GRANTS: "true" });
+      ...runnerAuthEnv({ "pool-a": poolToken }), CONTROLLER_EXPERIMENTAL_RUNNER_LEASE_GRANTS: "true" });
     const service = new ControlPlaneService(db.db, config);
     vi.spyOn(service, "desiredStateForPool").mockResolvedValue({ generation: 7, groupId: "default", artifacts: [], disabledGuardrailIds: [], disabledEndpointIds: [], routerRevisions: [], endpoints: [], guardrailLoggingLevels: {} });
     const metrics = Object.fromEntries(["observeControlMessage", "controlConnection", "observeReconcile", "observeArtifactResult", "observeJob", "observeHeartbeat"].map(k => [k, vi.fn()]));

@@ -76,7 +76,7 @@ async function writer(index, saved) {
     [id,`memory-bench-guard-${index}`,json({total:cases,passed:0})]);
   const credentials = grpc.credentials.createSsl(readFileSync('/var/run/tasklattice/bench-tls/ca.crt'), readFileSync('/var/run/tasklattice/bench-tls/runner.key'), readFileSync('/var/run/tasklattice/bench-tls/runner.crt'));
   const client = new descriptor.RunnerControl(`${host}:9090`, credentials, {'grpc.max_receive_message_length':16*1024*1024});
-  const metadata = new grpc.Metadata(); metadata.set('authorization',`Bearer ${config.runnerToken}`);
+  const metadata = new grpc.Metadata(); metadata.set('authorization',`Bearer ${config.runnerPoolTokens.get("default")}`);
   const stream = client.Connect(metadata), waiters = new Map();
   let streamError;
   stream.on('error', error => {if(error.code !== grpc.status.CANCELLED) out({phase:'transport_error',code:error.code,reason:String(error.details).replace(/Bearer [^ ]+/g,'Bearer [redacted]').slice(0,300)});streamError = error; for (const w of waiters.values()) w.reject(Object.assign(new Error(`gRPC status ${error.code}`),{code:error.code}));});

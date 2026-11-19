@@ -20,6 +20,7 @@ from runner.toolkit.runtime.outcome import GuardrailExecutionError
 from runner.toolkit.runtime.service import GuardrailRuntimeService
 from tests.control_plane.test_capability_validation import candidate
 from tests.control_plane.test_nemo_iorails_topic import _plan, _semantic_input
+from tests.policy_fixtures import question_parameter
 
 
 @pytest.mark.parametrize('on_unknown', ['default', 'allow', 'block', 'invalid'])
@@ -47,7 +48,7 @@ async def test_observation_respects_action_without_relabeling_model_verdict(acti
     config = candidate('input', capability, JEV_PROFILE, contract).configuration
     providers = action_providers(*dynamic_runtime_action_providers(
         config, {'provider-1': 'synthetic'}, transport=httpx.MockTransport(respond)))
-    parameters = (("evaluation_view", "original"),)
+    parameters = (("evaluation_view", "original"), *question_parameter(capability))
     if capability == 'topic_control':
         parameters += (("topic_mode", "permissive"), ("restricted_topics", "Synthetic denied task"))
     step = replace(_semantic_input(), id=capability, capability=capability,

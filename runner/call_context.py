@@ -22,10 +22,8 @@ _PLAN_CODEC = "zlib-base64-v1"
 _MAX_COMPRESSED_PLAN_BYTES = 64 * 1024 * 1024
 
 
-def _encode_plan(plan: dict[str, Any], compress: bool) -> dict[str, Any]:
+def _encode_plan(plan: dict[str, Any]) -> dict[str, Any]:
     """Compress only the immutable plan; Lua still updates the JSON envelope."""
-    if not compress:
-        return {"plan": plan}
     raw = json.dumps(plan, separators=(",", ":")).encode()
     # Keep small/non-compressible plans and plans above the compression limit readable as-is.
     if len(raw) < 4096 or len(raw) > _MAX_COMPRESSED_PLAN_BYTES:
@@ -38,7 +36,7 @@ def _encode_plan(plan: dict[str, Any], compress: bool) -> dict[str, Any]:
 
 def _decode_plan(resolution: dict[str, Any]) -> dict[str, Any]:
     if "plan_encoding" not in resolution:
-        return resolution["plan"]  # Calls created before the rollout remain pinned.
+        return resolution["plan"]
     if resolution["plan_encoding"] != _PLAN_CODEC or "plan" in resolution:
         raise ValueError("Unsupported or ambiguous call-context plan encoding")
     encoded = resolution["plan_encoded"]
@@ -58,12 +56,11 @@ def _decode_plan(resolution: dict[str, Any]) -> dict[str, Any]:
 class RedisCallContextStore:
     """Share input/output version pinning across horizontally scaled Runners."""
 
-    def __init__(self, url: str, ttl_seconds: int = 300, *, compress_plans: bool = False,
+    def __init__(self, url: str, ttl_seconds: int = 300, *,
                  capacity_fallback: bool = False, metrics_registry=None) -> None:
         self._redis: Redis = Redis.from_url(url, decode_responses=True,
                                           socket_connect_timeout=1, socket_timeout=1)
         self._ttl_seconds = ttl_seconds
-        self._compress_plans = compress_plans
         self.capacity = ContextCapacity(self._redis, enabled=capacity_fallback, registry=metrics_registry)
 
     def begin_request(self):
@@ -93,7 +90,7 @@ class RedisCallContextStore:
             "messages": messages[-20:],
             "content_blocks": [asdict(item) for item in content_blocks],
             "resolution": {
-                **_encode_plan(asdict(resolution.plan), self._compress_plans),
+                **_encode_plan(asdict(resolution.plan)),
                 "router_id": resolution.router_id,
                 "endpoint_id": resolution.endpoint_id,
                 "effective_release_id": resolution.effective_release_id,

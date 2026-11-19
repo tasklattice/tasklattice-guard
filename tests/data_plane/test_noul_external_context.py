@@ -42,7 +42,7 @@ async def test_external_boundary_is_preserved_and_native_judgments_are_distinct(
     result = await classifier_backend.evaluator("jailbreak", respond).evaluate(request)
     assert result.verdict == verdict
     assert result.usage.model_invocations == 1
-    assert json.loads(result.trace[0].evidence)["question_revision"] == classifier_backend.external_revision
+    assert json.loads(result.trace[0].evidence)["question_revision"].startswith(f"jailbreak:{classifier_backend.name}:")
 
 
 async def test_external_scope_does_not_mutate_later_direct_input_evidence(classifier_backend):
@@ -54,7 +54,7 @@ async def test_external_scope_does_not_mutate_later_direct_input_evidence(classi
     await service.evaluate(external_request())
     direct = await service.evaluate(jailbreak_request())
     evidence = json.loads(direct.trace[0].evidence)
-    assert evidence["question_revision"] == classifier_backend.jailbreak_revision
+    assert evidence["question_revision"].startswith(f"jailbreak:{classifier_backend.name}:")
     assert set(evidence["judgments"]) == {"jailbreak_attempt", "unsafe_pretext"}
 
 

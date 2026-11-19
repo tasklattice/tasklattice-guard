@@ -137,7 +137,7 @@
     Class)'
   description: Required acceptance case for Protected Class - Fair Lending.
   phase: input
-  content: 'Acceptance sample: married'
+  content: 'Marital status: married'
   expected_decision: transform
   covered_rule_ids:
   - pattern/marital_family_status
@@ -151,7 +151,7 @@
     Class)'
   description: Required acceptance case for Protected Class - Fair Lending.
   phase: output
-  content: 'Acceptance sample: married'
+  content: 'Marital status: married'
   expected_decision: transform
   covered_rule_ids:
   - pattern/marital_family_status
@@ -286,7 +286,7 @@
     Class)'
   description: Required acceptance case for Protected Class - Fair Lending.
   phase: input
-  content: 'Acceptance sample: married'
+  content: 'Marital status: married'
   expected_decision: transform
   covered_rule_ids:
   - pattern/marital_family_status
@@ -394,7 +394,7 @@
     Class)'
   description: Required acceptance case for Protected Class - Fair Lending.
   phase: output
-  content: 'Acceptance sample: married'
+  content: 'Marital status: married'
   expected_decision: transform
   covered_rule_ids:
   - pattern/marital_family_status

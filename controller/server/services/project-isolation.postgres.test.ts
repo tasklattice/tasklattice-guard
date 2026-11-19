@@ -1,3 +1,4 @@
+import { runnerAuthEnv } from "../../test/runner-auth-fixture.js";
 import { withTestProject } from "../db/postgres-test-database.js";
 // @vitest-environment node
 import { resolve } from "node:path";
@@ -18,7 +19,7 @@ describe.skipIf(!url)("project authority across Policy, telemetry and package bo
   beforeAll(async () => {
     database = await createTestDatabase(url!, "project_authority");
     const config = loadConfig({ NODE_ENV: "test", CONTROLLER_DATABASE_URL: url!,
-      CONTROLLER_RUNNER_TOKEN: "runner-token-that-is-at-least-32-characters", CONTROLLER_ARTIFACT_SIGNING_KEY_PATH: "/tmp/unused-signing-key.pem",
+      ...runnerAuthEnv("runner-token-that-is-at-least-32-characters"), CONTROLLER_ARTIFACT_SIGNING_KEY_PATH: "/tmp/unused-signing-key.pem",
       CONTROLLER_POLICY_CATALOG_DIR: resolve("../runner/toolkit/policy_library/assets"), BETTER_AUTH_SECRET: "better-auth-secret-that-is-at-least-32-characters" });
     service = new ControlPlaneService(database.db, config);
     await database.pool.query(`INSERT INTO auth_user (id,username,email,role) SELECT id,name,email,role FROM (VALUES ('actor-projectA','A','a@example.test','user','projectA'),('actor-projectB','B','b@example.test','user','projectB'),('actor-projectC','C','c@example.test','user','projectC')) AS fixture(id,name,email,role,project_id);

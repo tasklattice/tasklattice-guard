@@ -109,7 +109,18 @@ describe("scoped classifier uncertainty handling", () => {
   it("rejects invalid literals and unsupported detector scopes", () => {
     const definition = classifier();definition.rules[0]!.detector.parameters.on_unknown = "ignore";
     expect(() => compiler.compile(definition)).toThrow("on_unknown must be allow or block");
-    const other = classifier();other.rules[0]!.detector.parameters.profile = "pii-classification";
-    expect(() => compiler.compile(other)).toThrow("supported only by the jailbreak, content safety and topic classifiers");
+    const other = classifier();other.rules[0]!.detector.ref = "model/grounding";
+    other.rules[0]!.detector.parameters = { on_unknown: "block" };
+    expect(() => compiler.compile(other)).toThrow("on_unknown requires a supported safety, jailbreak, topic or PII classifier");
+  });
+  it("preserves the PII primary uncertainty action through compilation", () => {
+    const definition = classifier();
+    definition.rules[0]!.detector.parameters.profile = "pii-classification";
+    const compiled = compiler.compile(definition);
+    expect(compiled.definition!.rules[0]!.detector.parameters).toMatchObject({
+      profile: "pii-classification", on_unknown: "{{on_unknown}}",
+    });
+    expect(stepValues(plan(definition, { on_unknown: "block" })))
+      .toEqual(expect.arrayContaining([expect.objectContaining({ on_unknown: "block" })]));
   });
 });

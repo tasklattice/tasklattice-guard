@@ -33,8 +33,9 @@ import type { RunnerControlHandlers } from "../generated/control-protocol/taskla
 import type { ValidationResult__Output } from "../generated/control-protocol/tasklattice/guard/control/v1/ValidationResult.js";
 import type { ProtoGrpcType } from "../generated/control-protocol/runner_control.js";
 import type { ControllerMetrics } from "../metrics.js";
-import { capabilityBindingContracts } from "../model-config/domain.js";
-import { capabilityBindingDefinitions } from "../../shared/guardrail-catalog.js";
+import { capabilityBindingContracts, modelRuntimeToWire } from "../model-config/domain.js";
+import { builtinLaya, isBuiltinLaya } from "../model-config/builtin-laya.js";
+import { capabilityBindingDefinitions, securityReviewerId } from "../../shared/guardrail-catalog.js";
 import type { ModelConfigurationService } from "../model-config/service.js";
 import type { ControlPlaneService } from "../services/control-plane.js";
 import type { ArtifactContent } from "../domain/artifact-content.js";
@@ -79,6 +80,7 @@ type Connection = {
   bootId: string;
   poolId: string;
   compilerCapable: boolean;
+  builtinLayaRevision?: string;
   offlineCompilation?: boolean;
   appliedGeneration: number;
   appliedModelRevisionId: string;
@@ -89,7 +91,6 @@ type Connection = {
   snapshotAckCapable: boolean;
   pendingSnapshot: SnapshotDispatch | null;
   verifiedSnapshot: SnapshotDispatch | null;
-  poolAuthenticated: boolean;
   leaseProbeCapable: boolean;
 };
 
@@ -225,7 +226,14 @@ export class RunnerControlServer {
       }
     }
     if (!runner || !request.requestId) return { passed: false, message: "The Default testing Runner (ordinal 0) is unavailable. Retry after it reconnects.", latencyMs: 0 };
-    if (this.config.runnerPoolTokens != null && (!request.credentialLeaseId ||
+    const [model, extraModel] = request.configuration?.runtimes ?? [];
+    const builtin = model?.backend === builtinLaya.backend;
+    if (builtin && (extraModel || !isBuiltinLaya(model.id ?? "", model.providerId ?? "") || model.baseUrl || model.credentialRef
+      || request.credentialLeaseId || model.checkpointRevision !== builtinLaya.checkpointRevision
+      || runner.builtinLayaRevision !== model.checkpointRevision)) {
+      return { passed: false, message: "The Default Runner does not have the required built-in English checkpoint.", latencyMs: 0 };
+    }
+    if (!builtin && (!request.credentialLeaseId ||
       !await this.models.bindValidationLease(request.credentialLeaseId, runner.poolId, {
         poolId: runner.poolId, runnerId: runner.runnerId, bootId: runner.bootId, sessionId: runner.sessionId,
       }))) {
@@ -248,9 +256,22 @@ export class RunnerControlServer {
    * ownership check atomic with a network send or the Runner's work. */
   private async isCurrentConnection(connection: Connection): Promise<boolean> {
     if (this.connections.get(connection.runnerId) !== connection) return false;
+    const current = await this.checkControlSession(connection);
+    return current && this.connections.get(connection.runnerId) === connection;
+  }
+
+  private async checkControlSession(connection: Connection): Promise<boolean> {
     const current = await this.service.runnerControlSessions.isCurrent({ sessionId: connection.sessionId,
       runnerId: connection.runnerId, bootId: connection.bootId, poolId: connection.poolId });
-    return current && this.connections.get(connection.runnerId) === connection;
+    // A heartbeat timeout invalidates the durable session without closing gRPC.
+    // End that stream so the Runner can register again instead of silently
+    // dropping every subsequent heartbeat. An async check must never evict a
+    // replacement connection, including one with the same Runner boot ID.
+    if (!current && this.connections.get(connection.runnerId) === connection) {
+      this.releaseConnection(connection);
+      connection.stream.end();
+    }
+    return current;
   }
 
   async start(): Promise<void> {
@@ -278,7 +299,6 @@ export class RunnerControlServer {
     this.timers = [
       every("Validation dispatch", 1_000, () => this.dispatchValidationRequests()),
       every("Desired state dispatch", 1_000, () => this.dispatchDesiredStateChanges()),
-      every("Artifact environment checks", 5_000, () => this.connections.size ? this.service.packages?.checkPendingEnvironments?.() : undefined),
       every("Runner reconciliation", 30_000, () => this.reconcileAll()),
       every("Traffic expiry", 30_000, () => this.service.trafficRouting?.expireCalls()),
       every("Endpoint provenance retention", 60_000, () => this.service.pruneEndpointTelemetryContexts?.()),
@@ -361,8 +381,7 @@ export class RunnerControlServer {
     if (!connection.protectionCapable || !this.service.protectionModes) return;
     const protection = await this.service.protectionModes.desiredState(connection.poolId);
     if (this.connections.get(connection.runnerId) !== connection) return;
-    if (!await this.service.runnerControlSessions.isCurrent({ sessionId: connection.sessionId,
-      runnerId: connection.runnerId, bootId: connection.bootId, poolId: connection.poolId })) return;
+    if (!await this.isCurrentConnection(connection)) return;
     if (connection.lastProtectionGeneration < protection.generation) {
       this.write(connection.stream, { protectionState: { generation: String(protection.generation), modes: protection.modes } });
       connection.lastProtectionGeneration = protection.generation;
@@ -501,13 +520,13 @@ export class RunnerControlServer {
     stream: RunnerStream,
     message: RunnerMessage__Output,
     current: Connection | null,
-    authorizedPoolId: string | null = null,
+    authorizedPoolId: string,
     draining = false,
   ): Promise<Connection | null> {
     if (message.registration) {
       if (current) throw new Error("Runner registered more than once on one stream.");
       const registration = message.registration;
-      if (authorizedPoolId !== null && registration.poolId !== authorizedPoolId) throw new PoolIdentityMismatch();
+      if (registration.poolId !== authorizedPoolId) throw new PoolIdentityMismatch();
       const sessionId = randomUUID();
       const desiredGeneration = await this.service.registerRunner({
         runnerId: registration.runnerId,
@@ -527,6 +546,7 @@ export class RunnerControlServer {
         bootId: registration.bootId,
         poolId: registration.poolId,
         compilerCapable: registration.compilerCapable,
+        ...(registration.labels?.[builtinLaya.revisionLabel] ? { builtinLayaRevision: registration.labels[builtinLaya.revisionLabel] } : {}),
         appliedGeneration: number(registration.appliedGeneration),
         offlineCompilation: registration.labels?.[OFFLINE_COMPILATION_CAPABILITY] === "1",
         appliedModelRevisionId: "",
@@ -537,7 +557,6 @@ export class RunnerControlServer {
         snapshotAckCapable: registration.labels?.[SNAPSHOT_ACK_CAPABILITY] === "1",
         pendingSnapshot: null,
         verifiedSnapshot: null,
-        poolAuthenticated: authorizedPoolId !== null,
         leaseProbeCapable: registration.labels?.[LEASE_PROBE_CAPABILITY] === "1",
       };
       const prior = this.connections.get(connection.runnerId);
@@ -568,8 +587,9 @@ export class RunnerControlServer {
     // admission closed (especially queued reports) must still persist. Never
     // let an old stream act on a replacement connection's registration.
     if (registered !== current && (!draining || registered)) return null;
-    if (!await this.service.runnerControlSessions.isCurrent({ sessionId: current.sessionId,
-      runnerId: current.runnerId, bootId: current.bootId, poolId: current.poolId })) return null;
+    if (!await this.checkControlSession(current)) return null;
+    const afterCheck = this.connections.get(current.runnerId);
+    if (afterCheck !== current && (!draining || afterCheck)) return null;
     if (message.heartbeat) {
       const heartbeat = message.heartbeat;
       if (heartbeat.runnerId !== current.runnerId || heartbeat.bootId !== current.bootId) {
@@ -584,6 +604,9 @@ export class RunnerControlServer {
           sequence: number(heartbeat.sequence),
           appliedGeneration: number(heartbeat.appliedGeneration),
           load: normalizeLoad(heartbeat.load),
+          ...(heartbeat.telemetryDrainedAtUnixMs === undefined ? {} : {
+            telemetryDrainedAtUnixMs: number(heartbeat.telemetryDrainedAtUnixMs),
+          }),
           ...(admissionSnapshot === undefined ? {} : { admissionSnapshot }),
         });
         this.metrics.observeHeartbeat(current.poolId, accepted ? "accepted" : "stale_or_unknown");
@@ -724,7 +747,7 @@ export class RunnerControlServer {
           snapshotNonce: request.snapshotNonce, durationMs: 0,
         } });
       };
-      if (!this.config.experimentalRunnerLeaseGrants || !this.leaseLedger || !current.poolAuthenticated ||
+      if (!this.config.experimentalRunnerLeaseGrants || !this.leaseLedger ||
           !current.leaseProbeCapable || !current.snapshotAckCapable || !snapshot ||
           request.runnerId !== current.runnerId || request.bootId !== current.bootId ||
           !Number.isSafeInteger(epoch) || epoch < 0 || !Number.isSafeInteger(generation) || generation < 0 ||
@@ -841,8 +864,7 @@ export class RunnerControlServer {
   private async reconcileOnce(connection: Connection): Promise<void> {
     const started = performance.now();
     try {
-      if (!await this.service.runnerControlSessions.isCurrent({ sessionId: connection.sessionId,
-        runnerId: connection.runnerId, bootId: connection.bootId, poolId: connection.poolId })) return;
+      if (!await this.isCurrentConnection(connection)) return;
       // Send the operating overlay before materializing any model/Artifact state.
       // Old Runners cannot ACK this message and remain visibly unsupported.
       await this.reconcileProtectionModes(connection);
@@ -879,7 +901,7 @@ export class RunnerControlServer {
         if (!modelRef) return [];
         const model = modelConfiguration.models.find((item) => item.id === modelRef);
         if (!model) return [];
-        return [{
+        const wire = {
           bindingId: binding.id,
           capabilityRef: binding.capabilityRef,
           railType: binding.railType === "input" ? "RAIL_TYPE_INPUT" as const : "RAIL_TYPE_OUTPUT" as const,
@@ -887,7 +909,13 @@ export class RunnerControlServer {
           modelRef,
           profileRef: model.profile,
           contractRefs: [...capabilityBindingContracts(binding.id, model.profile)],
-        }];
+        };
+        // The Runner stage-wide review binding is security-only. Topic has its own binding.
+        if (binding.id === securityReviewerId) return [
+          { ...wire, bindingId: "classifier_review.input", railType: "RAIL_TYPE_INPUT" as const },
+          { ...wire, bindingId: "classifier_review.output", railType: "RAIL_TYPE_OUTPUT" as const },
+        ];
+        return [wire];
       }) : [];
       const dataModelIds = new Set(dataBindings.map((item) => item.modelRef));
       const snapshot = connection.snapshotAckCapable ? { nonce: randomUUID(), generation: desired.generation,
@@ -938,21 +966,7 @@ export class RunnerControlServer {
         modelConfiguration: modelConfiguration ? {
           revisionId: modelConfiguration.revisionId,
           revision: modelConfiguration.revision,
-          runtimes: modelConfiguration.models.filter((model) => dataModelIds.has(model.id)).map((model) => ({
-            id: model.id,
-            providerId: model.providerId,
-            providerName: model.providerName,
-            baseUrl: model.baseUrl,
-            credentialRef: model.credentialRef,
-            skipTlsVerify: model.skipTlsVerify ?? false,
-            model: model.model,
-            profileRef: model.profile,
-            ...(model.layaRequestMode ? { layaRequestMode: model.layaRequestMode } : {}),
-            timeoutSeconds: model.timeoutSeconds,
-            maxTokens: model.maxTokens,
-            maxConcurrency: model.maxConcurrency ?? 2,
-          rateLimitAttempts: model.rateLimitAttempts ?? 3, lowerThreshold: model.lowerThreshold ?? 0.1, upperThreshold: model.upperThreshold ?? 0.9,
-          })),
+          runtimes: modelConfiguration.models.filter((model) => dataModelIds.has(model.id)).map(modelRuntimeToWire),
           bindings: dataBindings,
         } : null,
       },

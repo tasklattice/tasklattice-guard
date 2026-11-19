@@ -118,8 +118,12 @@ describe("AccountPage", () => {
       fireEvent.click(await screen.findByRole("option", { name: "common.chinese" }));
       fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
 
-      await waitFor(() => expect(authClientMock.updateUser).toHaveBeenCalledWith({ preferredLanguage: "zh-CN" }));
-      expect(authClientMock.getSession).toHaveBeenCalledWith({ query: { disableCookieCache: true } });
+      await waitFor(() => {
+        expect(authClientMock.updateUser).toHaveBeenCalledWith({ preferredLanguage: "zh-CN" });
+        expect(authClientMock.getSession).toHaveBeenCalledWith(expect.objectContaining({
+          query: { disableCookieCache: true },
+        }));
+      });
       expect(screen.queryByRole("alert")).toBeNull();
     } finally {
       if (scrollIntoView) Object.defineProperty(HTMLElement.prototype, "scrollIntoView", scrollIntoView);

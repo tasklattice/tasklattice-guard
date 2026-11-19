@@ -7,6 +7,8 @@ import { ControlPlaneService } from "./control-plane.js";
 import type { ControllerConfig } from "../config.js";
 import type { RuntimeEventInput } from "../domain/models.js";
 import { runWithProjectContext } from "./project-context.js";
+import { builtinLaya } from "../model-config/builtin-laya.js";
+import { ModelConfigurationService } from "../model-config/service.js";
 const url = process.env.GUARD_TEST_POSTGRES_URL;
 const catalog = (input = 2e-7) => Object.fromEntries(Array.from({ length: 12 }, (_, index) => [index === 0 ? "groq/llama-guard-3-8b" : `model-${index}`, { mode: "chat", input_cost_per_token: input, output_cost_per_token: 6e-7 }]));
 describe.skipIf(!url)("global model prices and immutable Guardrail costs", () => {
@@ -114,6 +116,24 @@ describe.skipIf(!url)("global model prices and immutable Guardrail costs", () =>
       { mode: 'manual', rates: { unit: 'request', currency: 'USD', request: 1 } }, 'admin'));
     expect((await pricing.view()).models.map(model => model.modelId)).toEqual(['model-1']);
     expect((await pricing.view()).models.every(model => model.source === 'manual' && model.rates?.unit === 'request')).toBe(true);
+  });
+
+  it("records built-in Laya as a priced zero call alongside a separately billed external model", async () => {
+    await new ModelConfigurationService(database.db, "test-secret", "").initialize();
+    await service.recordRuntimeEvents([event("builtin-with-review", { metadata: { usage: { model_calls: [
+      { call_id: "local", runtime_ref: builtinLaya.modelId, provider: builtinLaya.providerId, model: builtinLaya.model },
+      { call_id: "review", runtime_ref: "model-1", provider: "provider-1", model: "llama-guard-3-8b" },
+    ] } } })]);
+    const records = await database.pool.query("SELECT model_id, amount, reason FROM model_usage_cost WHERE event_id=$1 ORDER BY model_id", ["builtin-with-review"]);
+    expect(records.rows).toEqual([
+      { model_id: builtinLaya.modelId, amount: "0.000000000000", reason: "priced" },
+      { model_id: "model-1", amount: "0.001000000000", reason: "priced" },
+    ]);
+    expect((await pricing.view()).models.find(model => model.modelId === builtinLaya.modelId)).toMatchObject({
+      source: "builtin", rates: { unit: "free", currency: "USD" },
+    });
+    await expect(pricing.configure(builtinLaya.modelId, { mode: "manual", rates: { unit: "free", currency: "USD" } }, "admin"))
+      .rejects.toThrow("fixed zero rate");
   });
 
 

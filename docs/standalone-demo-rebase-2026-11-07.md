@@ -48,10 +48,8 @@ administrator boundaries, credential validation on the correct Runner before
 foreign-Runner rejection, and paired call evidence across different Runner
 replicas. Failure reports redact configured tokens and session-cookie secrets.
 
-The branch has no product runtime changes relative to the upstream target.
-No live cluster, database migration or deployment is part of this source
-integration; the verification tests use controlled transports and loopback
-fixtures rather than the operator's deployment.
+The 7 November rebase changed standalone tools and documentation. Its
+verification used controlled transports and loopback fixtures.
 
 The final patch and staged changes pass `git diff --check`; the rebase has no
 unresolved index entries. Local runtime reports and generated build output are

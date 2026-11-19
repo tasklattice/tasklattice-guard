@@ -101,6 +101,9 @@ controller:
       memory: 2Gi
 
 runner:
+  # Optional Scan request budget in seconds (1..300). Omit to use the Runner
+  # default of 25. Clients must allow more time than this total request budget.
+  # scanTimeoutSeconds: 90
   # Optional different data-plane URL; normally inherits top-level publicUrl.
   # Overrides CONTROLLER_RUNTIME_PUBLIC_URL in the Controller ConfigMap.
   # When neither URL is configured, Endpoint addresses use the incoming Controller origin.
@@ -112,6 +115,9 @@ runner:
     repository: ghcr.io/tasklattice/tali-guard-runner
     pullPolicy: IfNotPresent
     # tag: "0.2.0"
+    # digest: "sha256:<64 hex characters>"
+  # For a model candidate image, use the first 40 characters of artifactSha256.
+  # builtinLayaCheckpointRevision: ""
   # Runtime Service port is fixed at 8091. For direct local exposure:
   # service:
   #   type: ClusterIP
@@ -120,22 +126,21 @@ runner:
   #     type: LoadBalancer
   #     port: 38082 # Service port; NodePort is allocated by Kubernetes.
   default:
-    # Default Runner starts at one replica; scale up explicitly for availability.
+    # One replica serves the built-in English Laya model on CPU.
     replicaCount: 1
     maxConcurrency: 64
     resources:
       requests:
-        cpu: 500m
-        memory: 1Gi
+        cpu: "2"
+        memory: 3Gi
       limits:
-        memory: 4Gi
+        memory: 6Gi
   # Shared context for Default Runner replicas; required above one replica
   # unless redis.enabled=true. Cannot be combined with redis.enabled=true.
   callContextRedisUrl: ""
   # Model concurrency, retries and decision thresholds are configured in Models.
   callContext:
     ttlSeconds: 300
-    compressPlans: true
     # Only Redis allocation failures degrade to checks of current content.
     capacityFallback: true
   # Example: redis://redis.uat.svc.cluster.local:6379/0
@@ -237,16 +242,13 @@ security:
   # artifactSigning:
   #   existingSecret: guard-artifact-signing # private-key.pem, public-key.pem
   # controlSecret:
-  #   existingSecret: guard-control # runner-token, better-auth-secret
-  # poolAuthentication: # optional: references only; never put token values here
-  #   enabled: true
-  #   scopedTelemetry: false # opt-in quarantine/freshness limitations; see README
+  #   existingSecret: guard-control # better-auth-secret
+  # poolAuthentication: # optional external Secret references for Runner-to-Controller requests
   #   controllerSecret: guard-pool-token-map
   #   controllerKey: pool-tokens.json
   #   runnerSecrets:
   #     default: { name: guard-default-pool-token, key: token }
-  # runnerHttpAuthentication: # optional separate Controller-to-Runner role; requires poolAuthentication
-  #   enabled: true
+  # runnerHttpAuthentication: # optional external Secret references for Controller-to-Runner HTTP requests
   #   controllerSecret: guard-http-token-map
   #   controllerKey: pool-http-tokens.json
   #   runnerSecrets:

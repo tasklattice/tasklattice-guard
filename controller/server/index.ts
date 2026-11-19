@@ -25,7 +25,6 @@ await service.initialize();
 await service.initializeProjects();
 await service.pricing.start();
 const models = new ModelConfigurationService(db, config.betterAuthSecret, config.policyCatalogDir);
-await models.groupRuntime.assertAuthenticationCompatibility(config.runnerPoolTokens !== null);
 await models.initialize();
 
 const auth = createAuth(config, db);
@@ -51,9 +50,7 @@ await runnerControl.start();
 
 const playgroundRunner = new RunnerPlaygroundClient({
   baseUrl: config.runtimeServiceUrl,
-  // In scoped HTTP mode every actual dispatch selects its pool token. An
-  // unconfigured default must never preserve the shared bearer as a fallback.
-  token: config.runnerHttpTokens === null ? config.runnerToken : config.runnerHttpTokens.get("default") ?? "",
+  token: config.runnerHttpTokens.get("default")!,
 });
 let shuttingDown = false;
 const app = createHttpApp({

@@ -3,11 +3,20 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it, vi } from 'vitest';
 import { bindModel, configurationApi, manageTestRun, parseConfigurationArgs, provisionProject, registerModel, validateProfiles, type Api } from './configure.js';
+import { builtinLayaModelId, layaPrimaryBindingIds } from '../../shared/guardrail-catalog.js';
 
 const journal = () => ({ data: {} as any, save: vi.fn(async () => {}) });
-const assignments = (model = 'nvidia') => ({ controlPlane: null, bindings: { 'content_safety.input': model, 'content_safety.output': 'nvidia', 'jailbreak.input': 'jev' } });
+const assignments = (model = 'nvidia') => ({ controlPlane: null, bindings: { 'classifier_review.security': model, 'classifier_review.content_safety.output': 'nvidia', 'jailbreak.input': 'jev' } });
 
 describe('guardctl configuration', () => {
+  it('rejects replacement of a managed initial classifier before starting a workflow', async () => {
+    const api = vi.fn();
+    const state = journal();
+    await expect(bindModel(api, { binding: 'content_safety.input', 'model-id': 'external-model' }, state))
+      .rejects.toThrow('Initial classifiers use built-in Laya');
+    expect(api).not.toHaveBeenCalled();
+    expect(state.save).not.toHaveBeenCalled();
+  });
   it('reports Profile failures without excluding cases or retrying to obtain a pass', async () => {
     const out = await mkdtemp(join(tmpdir(), 'profile-validation-'));
     const exitCode = process.exitCode;
@@ -85,45 +94,48 @@ describe('guardctl configuration', () => {
     expect(api).toHaveBeenCalledTimes(1);
   });
 
-  it('applies only the requested binding with an optimistic revision and preserves restore information', async () => {
-    let view: any = { active: { id: 'old', assignments: assignments() }, draft: { reviewToken: 'before', assignments: assignments() }, activating: null };
+  it.each(['classifier_review.security', 'classifier_review.topic_control.input'])('applies only %s with an optimistic revision and preserves restore information', async (binding) => {
+    const original = { ...assignments(), bindings:{...assignments().bindings, [binding]:'nvidia'} };
+    const updated = { ...original, bindings:{...original.bindings, [binding]:'jev'} };
+    let view: any = { active: { id: 'old', assignments: original }, draft: { reviewToken: 'before', assignments: original }, activating: null };
     const api = vi.fn(async (path: string, method = 'GET', body?: any) => {
       if (method === 'GET') return structuredClone(view);
-      if (path.endsWith('candidate-validations')) return { validationId: 'validation', validationReport: { checks: [{ id: 'probe:content_safety.input:jev', status: 'passed' }] } };
-      if (method === 'PUT') { expect(body).toEqual({ modelId: 'jev', validationId: 'validation' }); view.draft = { reviewToken: 'after', assignments: assignments('jev') }; return view.draft; }
-      expect(body).toEqual({ bindingIds: ['content_safety.input'], expectedDraftToken: 'after', expectedActiveId: 'old' });
-      view.active = { id: 'new', assignments: assignments('jev') }; return view;
+      if (path.endsWith('candidate-validations')) return { validationId: 'validation', validationReport: { checks: [{ id: `probe:${binding}:jev`, status: 'passed' }] } };
+      if (method === 'PUT') { expect(body).toEqual({ modelId: 'jev', validationId: 'validation' }); view.draft = { reviewToken: 'after', assignments: updated }; return view.draft; }
+      expect(body).toEqual({ bindingIds: [binding], expectedDraftToken: 'after', expectedActiveId: 'old' });
+      view.active = { id: 'new', assignments: updated }; return view;
     });
     const j = journal();
-    expect(await bindModel(api, { binding: 'content_safety.input', 'model-id': 'jev' }, j)).toMatchObject({ activeRevision: 'new', previousModelId: 'nvidia' });
-    expect(j.data.originalActive.assignments).toEqual(assignments());
+    expect(await bindModel(api, { binding, 'model-id': 'jev' }, j)).toMatchObject({ activeRevision: 'new', previousModelId: 'nvidia' });
+    expect(j.data.originalActive.assignments).toEqual(original);
     const mutations = api.mock.calls.filter(([, method]) => method && method !== 'GET').length;
-    await bindModel(api, { binding: 'content_safety.input', 'model-id': 'jev' }, j);
+    await bindModel(api, { binding, 'model-id': 'jev' }, j);
     expect(api.mock.calls.filter(([, method]) => method && method !== 'GET')).toHaveLength(mutations);
   });
 
   it('stops on failed candidate validation without applying models', async () => {
     const api = vi.fn(async (path: string, method = 'GET') => {
       if (method === 'GET') return { active: { id: 'old', assignments: assignments() }, draft: { assignments: assignments() } };
-      if (path.endsWith('candidate-validations')) return { validationId: 'failed', validationReport: { checks: [{ id: 'probe:content_safety.input:jev', status: 'failed' }] } };
+      if (path.endsWith('candidate-validations')) return { validationId: 'failed', validationReport: { checks: [{ id: 'probe:classifier_review.security:jev', status: 'failed' }] } };
       throw Error('candidate_validation_failed');
     });
-    await expect(bindModel(api, { binding: 'content_safety.input', 'model-id': 'jev' }, journal())).rejects.toThrow('Candidate probe did not pass');
+    await expect(bindModel(api, { binding: 'classifier_review.security', 'model-id': 'jev' }, journal())).rejects.toThrow('Candidate probe did not pass');
     expect(api.mock.calls.some(([, method]) => method === 'PUT')).toBe(false);
     expect(api.mock.calls.some(([path]) => path.endsWith('/apply'))).toBe(false);
   });
 
   it('can initialize a binding when no active model revision exists', async () => {
-    const empty = { controlPlane: null, bindings: { 'content_safety.input': null, 'content_safety.output': null } };
+    const empty = { controlPlane: null, bindings: { ...Object.fromEntries(layaPrimaryBindingIds.map(id => [id, builtinLayaModelId])),
+      'classifier_review.security': null, 'classifier_review.content_safety.output': null } };
     let view: any = { active: null, draft: { reviewToken: 'draft', assignments: structuredClone(empty) } };
     const api: Api = async (path, method = 'GET', body) => {
       if (method === 'GET') return structuredClone(view);
-      if (path.endsWith('candidate-validations')) return { validationId: 'v', validationReport: { checks: [{ id: 'probe:content_safety.input:jev', status: 'passed' }] } };
-      if (method === 'PUT') { view.draft.assignments.bindings['content_safety.input'] = body.modelId; return view.draft; }
+      if (path.endsWith('candidate-validations')) return { validationId: 'v', validationReport: { checks: [{ id: 'probe:classifier_review.security:jev', status: 'passed' }] } };
+      if (method === 'PUT') { view.draft.assignments.bindings['classifier_review.security'] = body.modelId; return view.draft; }
       expect(body.expectedActiveId).toBeNull();
       view.active = { id: 'first', assignments: structuredClone(view.draft.assignments) }; return view;
     };
-    expect(await bindModel(api, { binding: 'content_safety.input', 'model-id': 'jev' }, journal())).toMatchObject({ activeRevision: 'first', previousModelId: null });
+    expect(await bindModel(api, { binding: 'classifier_review.security', 'model-id': 'jev' }, journal())).toMatchObject({ activeRevision: 'first', previousModelId: null });
   });
 
   it('duplicates an explicit source and preserves the copy after a compilation failure', async () => {

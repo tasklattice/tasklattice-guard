@@ -4,6 +4,11 @@ import type { ControllerDatabase } from "../db/client.js";
 import { NEMO_COMPILER_VERSION, PLAN_COMPILER_VERSION } from "../domain/artifact-execution-contract.js";
 import { ControlPlaneService } from "./control-plane.js";
 
+vi.mock("./endpoint-telemetry-contexts.js", async importOriginal => ({
+  ...await importOriginal<typeof import("./endpoint-telemetry-contexts.js")>(),
+  issueEndpointTelemetryContexts: vi.fn(async () => new Map()),
+}));
+
 // Every query in these paths ends in an awaited builder, so one thenable
 // builder that pops the next scripted result keeps the fixtures compact.
 function scriptedSelect(results: unknown[][]) {
@@ -15,7 +20,7 @@ function scriptedSelect(results: unknown[][]) {
   });
 }
 
-const config = { runnerToken: "runner-token-0123456789abcdef0123456789", deletionTrafficWindowMinutes: 5, offlineAfterSeconds: 60, telemetryStaleAfterSeconds: 120 } as unknown as ControllerConfig;
+const config = { betterAuthSecret: "test-secret-0123456789abcdef0123456789", deletionTrafficWindowMinutes: 5, offlineAfterSeconds: 60, telemetryStaleAfterSeconds: 120 } as unknown as ControllerConfig;
 const artifact = (id: string) => ({ artifact: {
   id, guardrailId: `guardrail-${id}`, guardrailVersion: "v1",
   compilerVersion: NEMO_COMPILER_VERSION,
@@ -35,13 +40,13 @@ function desiredStateService(results: unknown[][], snapshots = [revision]) {
   return service;
 }
 
-// Select order: pool allocation, controller state, group projects, visible ready
+// Select order: pool allocation, controller state, group projects, routed
 // artifacts, disabled Guardrails, logging levels, disabled Endpoints, active Endpoints.
 const desiredStateResults = () => [
   [{ groupId: "group-one" }],
   [{ desiredGeneration: 9 }],
   [{ id: "projectA" }],
-  [artifact("art-1"), artifact("art-2"), artifact("art-default")],
+  [artifact("art-1")],
   [], [], [],
   [{ id: "endpoint-1", projectId: "projectA", trafficRouterId: "router-1", adapter: "litellm-generic-guardrail", credentialRequired: true, verification: { credentials: [] } }],
 ] as unknown[][];
@@ -53,13 +58,13 @@ describe("desired state per pool", () => {
     const desired = await desiredStateService(results).desiredStateForPool("default");
     expect(desired.endpoints[0]).toMatchObject({ endpointId: "scan", credentialRequired: false, scanFlagOnlyDefault: false });
   });
-  it("keeps visible ready versions for Playground in every pool of the assigned group", async () => {
+  it("distributes serving artifacts within the assigned group", async () => {
     const service = desiredStateService(desiredStateResults());
     const desired = await service.desiredStateForPool("edge");
     expect(desired.generation).toBe(9);
     expect(desired.groupId).toBe("group-one");
     expect(service.trafficRouting.runtimeSnapshots).toHaveBeenCalledWith(["projectA"], expect.anything());
-    expect(desired.artifacts.map((item) => item.id).sort()).toEqual(["art-1", "art-2", "art-default"]);
+    expect(desired.artifacts.map((item) => item.id)).toEqual(["art-1"]);
     expect(desired).not.toHaveProperty("routers");
     expect(desired.routerRevisions).toEqual([expect.objectContaining({ routerId: "router-1", assignmentAlgorithm: "hmac-sha256-v1", assignmentKeyId: "v1" })]);
     expect(desired.routerRevisions[0]!.assignmentKey).toHaveLength(32);
@@ -68,7 +73,7 @@ describe("desired state per pool", () => {
 
   it("uses the default pool's allocation rather than treating its name as global authority", async () => {
     const desired = await desiredStateService(desiredStateResults()).desiredStateForPool("default");
-    expect(desired.artifacts.map((item) => item.id).sort()).toEqual(["art-1", "art-2", "art-default"]);
+    expect(desired.artifacts.map((item) => item.id)).toEqual(["art-1"]);
     expect(desired).not.toHaveProperty("routers");
   });
 
@@ -96,6 +101,7 @@ describe("desired state per pool", () => {
     results[2] = [];
     results[3] = [];
     results[7] = [];
+    results.splice(3, 1); // No artifact query without serving references.
     const service = desiredStateService(results, []);
     const desired = await service.desiredStateForPool("empty-group-pool");
     expect(service.trafficRouting.runtimeSnapshots).toHaveBeenCalledWith([], expect.anything());

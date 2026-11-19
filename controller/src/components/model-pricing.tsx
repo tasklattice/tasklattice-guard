@@ -44,7 +44,13 @@ export function ModelPricingPanel({ administrator }: { administrator: boolean })
     </div>
     {status.error && <Alert><AlertTitle>{t("modelPricing.syncError")}</AlertTitle><AlertDescription>{status.error}</AlertDescription></Alert>}
     <div className="border bg-card"><Table><TableHeader><TableRow><TableHead>{t("modelPricing.model")}</TableHead><TableHead>{t("modelPricing.provider")}</TableHead><TableHead>{t("modelPricing.mode")}</TableHead><TableHead>{t("modelPricing.rate")}</TableHead>{administrator && <TableHead><span className="sr-only">{t("modelPricing.edit")}</span></TableHead>}</TableRow></TableHeader><TableBody>
-      {query.data.models.map(model => <TableRow key={model.modelId}><TableCell className="max-w-80 break-all font-mono text-xs">{model.model}</TableCell><TableCell>{model.provider}</TableCell><TableCell>{model.source ? t(`modelPricing.${model.source === "litellm" ? "automatic" : "manual"}`) : "—"}</TableCell><TableCell><ModelRate rates={model.rates} /></TableCell>{administrator && <TableCell className="text-right"><Button variant="ghost" aria-label={t("modelPricing.editFor", { model: model.model })} onClick={event => { opener.current = event.currentTarget; setEditing(model); }}>{t("modelPricing.edit")}</Button></TableCell>}</TableRow>)}
+      {query.data.models.map(model => <TableRow key={model.modelId}>
+        <TableCell className="max-w-80 break-all font-mono text-xs">{model.model}</TableCell>
+        <TableCell>{model.provider}</TableCell>
+        <TableCell>{model.source ? t(`modelPricing.${model.source === "litellm" ? "automatic" : model.source}`) : "—"}</TableCell>
+        <TableCell><ModelRate rates={model.rates} /></TableCell>
+        {administrator && <TableCell className="text-right">{model.source !== "builtin" && <Button variant="ghost" aria-label={t("modelPricing.editFor", { model: model.model })} onClick={event => { opener.current = event.currentTarget; setEditing(model); }}>{t("modelPricing.edit")}</Button>}</TableCell>}
+      </TableRow>)}
       {!query.data.models.length && <TableRow><TableCell colSpan={administrator ? 5 : 4} className="h-28 text-center text-muted-foreground">{t("modelPricing.noModels")}</TableCell></TableRow>}
     </TableBody></Table></div>
     {editing && <PriceEditor model={editing} onClose={() => setEditing(null)} returnFocusRef={opener} />}

@@ -1,9 +1,9 @@
 import { guardrailProfiles as guardrailProfileSeeds } from "../../shared/guardrail-profiles.js";
-import { inArray, sql } from "drizzle-orm";
+import { sql } from "drizzle-orm";
 import type { ControllerDatabase } from "./client.js";
 import { guardrailProfiles } from "./schema.js";
 
-type SeedDb = Pick<ControllerDatabase, "insert" | "update" | "delete">;
+type SeedDb = Pick<ControllerDatabase, "insert">;
 
 function rows(profiles: readonly (typeof guardrailProfileSeeds)[number][], sortStart = 0) {
   return profiles.map(({ id, category, categoryName, isDefault, ...definition }, index) => ({
@@ -12,17 +12,12 @@ function rows(profiles: readonly (typeof guardrailProfileSeeds)[number][], sortS
 }
 
 /** Fresh databases use the same pinned Profiles as the product catalog. */
-export async function seedProfiles(db: Pick<ControllerDatabase, "insert">) {
+export async function seedProfiles(db: SeedDb) {
   await db.insert(guardrailProfiles).values(rows(guardrailProfileSeeds));
 }
 
-/** Profile IDs that belonged to the retired seed catalog. */
-const REMOVED_PROFILE_IDS = ["banking-assistant", "full-feature-baseline", "internet-customer-support", "local-baseline", "securities-assistant"];
-
-/** Existing installations upgrade their seed catalog on startup. */
+/** Refresh the managed Profile catalog at startup. */
 export async function syncProfiles(db: SeedDb): Promise<void> {
-  // User-created Profiles are untouched; only the reviewed seeds are updated.
-  await db.delete(guardrailProfiles).where(inArray(guardrailProfiles.id, REMOVED_PROFILE_IDS));
   for (const [sortOrder, row] of rows(guardrailProfileSeeds).entries()) {
     await db.insert(guardrailProfiles).values({ ...row, enabled: true })
       .onConflictDoUpdate({ target: guardrailProfiles.id, set: {

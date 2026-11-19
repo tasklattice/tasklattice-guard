@@ -6,6 +6,7 @@ export const metricWindows = {
   "30d": 2_592_000_000,
 };
 export type MetricScope = {
+  view?: "overview" | "diagnostics" | undefined;
   window: keyof typeof metricWindows;
   guardrailId?: string | undefined;
   routerId?: string | undefined;

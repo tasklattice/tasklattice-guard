@@ -137,9 +137,22 @@ supported execution contract.
 Unsupported artifacts fail admission with `artifact_recompile_required` before
 runtime activation or test execution. A rejected update preserves the current
 valid release; a cold Runner with only an old persisted release stays unready
-and logs the reason. Old artifacts with cached successful environment checks
-are excluded from optional preloading; a Router referencing one causes explicit
+and logs the reason. Only enabled published Router targets with positive weight
+are included in durable Runner snapshots. Historical versions are never preloaded,
+even if an earlier environment check succeeded; a Router referencing an unsupported version causes explicit
 rollout rejection instead of silently omitting that protection.
+
+Playground sends only the selected signed Artifact when a test runs, with both
+input and output checks so different Runner replicas can load it independently.
+The Runner verifies its signature, execution contract and exact NeMo version,
+then caches a temporary release against the current model configuration. Up to
+32 temporary releases are retained for 10 minutes after use; the 30-second
+collector waits for running/queued requests before closing them. These releases
+never enter the persisted snapshot or change production routing. A full cache
+rejects new loads until leases expire. An incompatible historical version must
+be republished for the current runtime; its frozen content is never rewritten.
+Environment checks are explicit (or performed before routing imported versions);
+there is no background scan that continually loads unused historical versions.
 
 Deploy matching Controller and Runner versions, then publish the Guardrail draft
 again. Publication recompiles when its existing version or test candidate uses

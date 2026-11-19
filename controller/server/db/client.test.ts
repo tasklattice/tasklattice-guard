@@ -1,4 +1,5 @@
 // @vitest-environment node
+import { runnerAuthEnv } from "../../test/runner-auth-fixture.js";
 import { describe, expect, it, vi } from "vitest";
 import { loadConfig } from "../config.js";
 import { createDatabase } from "./client.js";
@@ -7,7 +8,7 @@ describe("Controller PostgreSQL pool", () => {
   it("handles idle connection errors without crashing or logging client credentials", async () => {
     const { pool } = createDatabase(loadConfig({
       NODE_ENV: "test", CONTROLLER_DATABASE_URL: "postgresql://controller:controller@localhost/controller",
-      CONTROLLER_RUNNER_TOKEN: "runner-token-that-is-at-least-32-characters",
+      ...runnerAuthEnv("runner-token-that-is-at-least-32-characters"),
       CONTROLLER_ARTIFACT_SIGNING_KEY_PATH: "/tmp/controller-signing-key.pem",
       BETTER_AUTH_SECRET: "better-auth-secret-that-is-at-least-32-characters",
     }));

@@ -52,15 +52,10 @@ const environmentSchema = z.object({
     .string()
     .default("../proto/tasklattice/guard/control/v1/runner_control.proto"),
   CONTROLLER_MIGRATIONS_PATH: z.string().default("server/db/migrations"),
-  CONTROLLER_RUNNER_TOKEN: z.string().min(32),
-  // Optional first step toward pool identities. When present the control
-  // channel accepts only these pool credentials, never the legacy token.
-  CONTROLLER_RUNNER_POOL_TOKENS_JSON: z.string().optional(),
+  // Runner-to-Controller control and telemetry authority, one token per pool.
+  CONTROLLER_RUNNER_POOL_TOKENS_JSON: z.string(),
   // Separate Controller-to-Runner internal HTTP authority, one token per pool.
-  CONTROLLER_RUNNER_HTTP_TOKENS_JSON: z.string().optional(),
-  // Experimental: scope Playground telemetry by authenticated pool. Other
-  // origins are quarantined until their allocation provenance is available.
-  CONTROLLER_RUNNER_SCOPED_TELEMETRY: z.enum(["true", "false"]).default("false").transform(value => value === "true"),
+  CONTROLLER_RUNNER_HTTP_TOKENS_JSON: z.string(),
   CONTROLLER_ENDPOINT_CONTEXT_MAX_ROWS_PER_POOL: z.coerce.number().int().positive().max(1_000_000).default(defaultEndpointContextStorageLimits.maxRowsPerPool),
   CONTROLLER_ENDPOINT_CONTEXT_MAX_ROWS_GLOBAL: z.coerce.number().int().positive().max(1_000_000).default(defaultEndpointContextStorageLimits.maxRowsGlobal),
   CONTROLLER_ENDPOINT_CONTEXT_MAX_PAYLOAD_BYTES_PER_CONTEXT: z.coerce.number().int().positive().max(2_147_483_647).default(defaultEndpointContextStorageLimits.maxPayloadBytesPerContext),
@@ -126,21 +121,19 @@ const environmentSchema = z.object({
 export type ControllerConfig = ReturnType<typeof loadConfig>;
 
 /** Parse secret configuration without including credential values in errors. */
-function parseRunnerPoolTokens(raw: string | undefined, legacyToken: string,
-  setting = "CONTROLLER_RUNNER_POOL_TOKENS_JSON"): ReadonlyMap<string, string> | null {
-  if (raw === undefined) return null;
-  const invalid = () => new Error(`${setting} must be a non-empty object mapping unique pool IDs to distinct tokens of at least 32 printable ASCII characters without whitespace; tokens must differ from the legacy token.`);
+function parseRunnerPoolTokens(raw: string, setting: string): ReadonlyMap<string, string> {
+  const invalid = () => new Error(`${setting} must map unique pool IDs, including default, to distinct tokens of at least 32 printable ASCII characters without whitespace.`);
   const entries = parseFlatSecretMap(raw, invalid);
-  if (!entries.length) throw invalid();
   const tokens = new Set<string>();
   const poolTokens = new Map<string, string>();
   for (const [poolId, token] of entries) {
     if (!/^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/.test(poolId)
       || typeof token !== "string" || token.length < 32 || /[^\x21-\x7e]/.test(token)
-      || token === legacyToken || tokens.has(token)) throw invalid();
+      || tokens.has(token)) throw invalid();
     tokens.add(token);
     poolTokens.set(poolId, token);
   }
+  if (!poolTokens.has("default")) throw invalid();
   return poolTokens;
 }
 
@@ -191,24 +184,14 @@ function parseFlatSecretMap(raw: string, invalid: () => Error): Array<[string, s
 export function loadConfig(environment: NodeJS.ProcessEnv = process.env) {
   environment = clusterBootstrapEnvironment(environment);
   const parsed = environmentSchema.parse(environment);
-  const runnerPoolTokens = parseRunnerPoolTokens(parsed.CONTROLLER_RUNNER_POOL_TOKENS_JSON, parsed.CONTROLLER_RUNNER_TOKEN);
-  const runnerHttpTokens = parseRunnerPoolTokens(parsed.CONTROLLER_RUNNER_HTTP_TOKENS_JSON, parsed.CONTROLLER_RUNNER_TOKEN,
-    "CONTROLLER_RUNNER_HTTP_TOKENS_JSON");
-  if (runnerHttpTokens) {
-    if (!runnerPoolTokens || runnerPoolTokens.size !== runnerHttpTokens.size ||
-        [...runnerPoolTokens.keys()].some(poolId => !runnerHttpTokens.has(poolId))) {
-      throw new Error("CONTROLLER_RUNNER_HTTP_TOKENS_JSON requires exactly the pool IDs configured in CONTROLLER_RUNNER_POOL_TOKENS_JSON.");
-    }
-    const controlTokens = new Set(runnerPoolTokens.values());
-    if ([...runnerHttpTokens.values()].some(token => controlTokens.has(token))) {
-      throw new Error("Controller-to-Runner HTTP tokens must differ from all Runner pool control tokens.");
-    }
+  const runnerPoolTokens = parseRunnerPoolTokens(parsed.CONTROLLER_RUNNER_POOL_TOKENS_JSON, "CONTROLLER_RUNNER_POOL_TOKENS_JSON");
+  const runnerHttpTokens = parseRunnerPoolTokens(parsed.CONTROLLER_RUNNER_HTTP_TOKENS_JSON, "CONTROLLER_RUNNER_HTTP_TOKENS_JSON");
+  if (runnerPoolTokens.size !== runnerHttpTokens.size || [...runnerPoolTokens.keys()].some(poolId => !runnerHttpTokens.has(poolId))) {
+    throw new Error("CONTROLLER_RUNNER_HTTP_TOKENS_JSON requires exactly the pool IDs configured in CONTROLLER_RUNNER_POOL_TOKENS_JSON.");
   }
-  if (parsed.CONTROLLER_RUNNER_SCOPED_TELEMETRY && !runnerPoolTokens) {
-    throw new Error("CONTROLLER_RUNNER_SCOPED_TELEMETRY requires CONTROLLER_RUNNER_POOL_TOKENS_JSON.");
-  }
-  if (parsed.CONTROLLER_EXPERIMENTAL_RUNNER_LEASE_GRANTS && !runnerPoolTokens) {
-    throw new Error("CONTROLLER_EXPERIMENTAL_RUNNER_LEASE_GRANTS requires CONTROLLER_RUNNER_POOL_TOKENS_JSON.");
+  const controlTokens = new Set(runnerPoolTokens.values());
+  if ([...runnerHttpTokens.values()].some(token => controlTokens.has(token))) {
+    throw new Error("Controller-to-Runner HTTP tokens must differ from all Runner pool control tokens.");
   }
   return {
     nodeEnv: parsed.NODE_ENV,
@@ -236,10 +219,8 @@ export function loadConfig(environment: NodeJS.ProcessEnv = process.env) {
     policyCatalogDir: parsed.CONTROLLER_POLICY_CATALOG_DIR,
     protoPath: parsed.CONTROLLER_PROTO_PATH,
     migrationsPath: parsed.CONTROLLER_MIGRATIONS_PATH,
-    runnerToken: parsed.CONTROLLER_RUNNER_TOKEN,
     runnerPoolTokens,
     runnerHttpTokens,
-    runnerScopedTelemetry: parsed.CONTROLLER_RUNNER_SCOPED_TELEMETRY,
     endpointContextStorage: validateEndpointContextStorageLimits({
       maxRowsPerPool: parsed.CONTROLLER_ENDPOINT_CONTEXT_MAX_ROWS_PER_POOL,
       maxRowsGlobal: parsed.CONTROLLER_ENDPOINT_CONTEXT_MAX_ROWS_GLOBAL,

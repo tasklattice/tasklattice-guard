@@ -1,3 +1,4 @@
+import { runnerAuthEnv } from "../../test/runner-auth-fixture.js";
 import { completeReport, getReport } from "../db/report-test-utils.js";
 // @vitest-environment node
 import { generateKeyPairSync } from "node:crypto";
@@ -23,7 +24,7 @@ describe.skipIf(!url)("Historical model-enabled Default publication uses the ord
     const key = join(directory, "signing.pem");
     writeFileSync(key, generateKeyPairSync("ed25519").privateKey.export({ type: "pkcs8", format: "pem" }));
     try {
-      const config = loadConfig({ NODE_ENV: "test", CONTROLLER_DATABASE_URL: url!, CONTROLLER_RUNNER_TOKEN: "test-runner-token-that-is-at-least-32-chars",
+      const config = loadConfig({ NODE_ENV: "test", CONTROLLER_DATABASE_URL: url!, ...runnerAuthEnv("test-runner-token-that-is-at-least-32-chars"),
         CONTROLLER_ARTIFACT_SIGNING_KEY_PATH: key, CONTROLLER_POLICY_CATALOG_DIR: resolve("../runner/toolkit/policy_library/assets"),
         CONTROLLER_PROTO_PATH: resolve("../proto/tasklattice/guard/control/v1/runner_control.proto"), BETTER_AUTH_SECRET: "test-auth-secret-that-is-at-least-32-chars" });
       const service = new ControlPlaneService(database.db, config);

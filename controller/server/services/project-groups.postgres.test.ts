@@ -1,4 +1,5 @@
 // @vitest-environment node
+import { runnerAuthEnv } from "../../test/runner-auth-fixture.js";
 import { generateKeyPairSync } from "node:crypto";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -31,7 +32,7 @@ describe.skipIf(!url)("Project Group persistence and safe allocation in PostgreS
     writeFileSync(signingKey, generateKeyPairSync("ed25519").privateKey.export({type:"pkcs8",format:"pem"}), {mode:0o600});
     database = await createTestDatabase(url!, "project_groups"); service = new ProjectGroupService(database.db);
     control = new ControlPlaneService(database.db, loadConfig({ NODE_ENV: "test", CONTROLLER_DATABASE_URL: url!,
-      CONTROLLER_RUNNER_TOKEN: "runner-token-that-is-at-least-32-characters", CONTROLLER_ARTIFACT_SIGNING_KEY_PATH: signingKey,
+      ...runnerAuthEnv("runner-token-that-is-at-least-32-characters"), CONTROLLER_ARTIFACT_SIGNING_KEY_PATH: signingKey,
       BETTER_AUTH_SECRET: "better-auth-secret-that-is-at-least-32-characters" }));
     await database.pool.query("INSERT INTO auth_user (id,username,email,role) SELECT id,name,email,role FROM (VALUES ($1,'Group admin','group-admin@example.test','admin','projectA')) AS fixture(id,name,email,role,project_id)", [actor]);
   }, 30000);
@@ -115,7 +116,7 @@ describe.skipIf(!url)("Project Group persistence and safe allocation in PostgreS
     const fresh = await createTestDatabase(url!, "pool_bootstrap");
     try {
       const bootstrap = new ControlPlaneService(fresh.db, loadConfig({NODE_ENV:"test",CONTROLLER_DATABASE_URL:url!,
-        CONTROLLER_RUNNER_TOKEN:"test-bootstrap-runner-token-at-least-32",BETTER_AUTH_SECRET:"test-bootstrap-auth-secret-at-least-32",
+        ...runnerAuthEnv("test-bootstrap-runner-token-at-least-32"), BETTER_AUTH_SECRET:"test-bootstrap-auth-secret-at-least-32",
         CONTROLLER_ARTIFACT_SIGNING_KEY_PATH:join(keyDirectory,"signing.pem")}));
       await bootstrap.initialize();
       expect((await fresh.pool.query("SELECT id,name,is_default FROM runner_pool WHERE id='default'")).rows)
@@ -188,9 +189,9 @@ describe.skipIf(!url)("Project Group persistence and safe allocation in PostgreS
   it("prevents a scoped pool from taking over a Runner ID registered to another pool, even when offline", async () => {
     await group("team-a"); await group("team-b"); await pool("team-a", "pool-a"); await pool("team-b", "pool-b");
     const scoped = new ControlPlaneService(database.db, loadConfig({ NODE_ENV: "test", CONTROLLER_DATABASE_URL: url!,
-      CONTROLLER_RUNNER_TOKEN: "legacy-runner-token-with-at-least-32-characters", CONTROLLER_ARTIFACT_SIGNING_KEY_PATH: "/tmp/unused-key",
+      CONTROLLER_ARTIFACT_SIGNING_KEY_PATH: "/tmp/unused-key",
       BETTER_AUTH_SECRET: "better-auth-secret-that-is-at-least-32-characters",
-      CONTROLLER_RUNNER_POOL_TOKENS_JSON: JSON.stringify({ "pool-a": "pool-a-token-with-at-least-32-characters", "pool-b": "pool-b-token-with-at-least-32-characters" }),
+      ...runnerAuthEnv({ "pool-a": "pool-a-token-with-at-least-32-characters", "pool-b": "pool-b-token-with-at-least-32-characters" }),
     }));
     const registration = { runnerId: "runner-pool-a-0", bootId: "boot-a", poolId: "pool-a", runnerVersion: "test", nemoVersion: "test",
       maxConcurrency: 4, compilerCapable: false, labels: {}, appliedGeneration: 0 };
@@ -205,9 +206,9 @@ describe.skipIf(!url)("Project Group persistence and safe allocation in PostgreS
   it("blocks non-noop reassignment in experimental lease mode even when all Runners appear offline", async () => {
     await group("team-a"); await group("team-b"); await pool("team-a", "pool-a");
     const guarded = new ControlPlaneService(database.db, loadConfig({ NODE_ENV: "test", CONTROLLER_DATABASE_URL: url!,
-      CONTROLLER_RUNNER_TOKEN: "legacy-runner-token-with-at-least-32-characters", CONTROLLER_ARTIFACT_SIGNING_KEY_PATH: "/tmp/unused-key",
+      CONTROLLER_ARTIFACT_SIGNING_KEY_PATH: "/tmp/unused-key",
       BETTER_AUTH_SECRET: "better-auth-secret-that-is-at-least-32-characters",
-      CONTROLLER_RUNNER_POOL_TOKENS_JSON: JSON.stringify({ "pool-a": "pool-a-token-with-at-least-32-characters" }),
+      ...runnerAuthEnv({ "pool-a": "pool-a-token-with-at-least-32-characters" }),
       CONTROLLER_EXPERIMENTAL_RUNNER_LEASE_GRANTS: "true",
     })).projectGroups;
     await database.pool.query("INSERT INTO runner_instance(runner_id,boot_id,pool_id,runner_version,nemo_version,max_concurrency,status) VALUES ('old-offline','boot','default','test','test',4,'offline')");

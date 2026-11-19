@@ -46,7 +46,7 @@ def test_preview_uses_the_same_runtime_assignment_and_fallback():
 async def test_internal_probe_requires_auth_and_does_not_execute_for_simulation():
     runtime = SimpleNamespace(evaluate=AsyncMock())
     from tests.test_runner_api import Metrics
-    api = SimpleNamespace(router=FastAPI(), _metrics=Metrics(), _emit_telemetry=AsyncMock(), _runtime=runtime, _store=store(), _runner_id='runner-1', _controller_token='secret')
+    api = SimpleNamespace(router=FastAPI(), _metrics=Metrics(), _emit_telemetry=AsyncMock(), _runtime=runtime, _store=store(), _runner_id='runner-1', _controller_http_token='secret')
     register_path_testing(api)
     body = dict(revision=1, endpoint_id='endpoint', action='simulate', call_id='call', fields={}, business_request={'x-channel': ['partner']}, text='hello')
     async with httpx.AsyncClient(transport=httpx.ASGITransport(app=api.router), base_url='http://runner') as client:
@@ -86,7 +86,7 @@ async def test_internal_routing_capability_is_not_exposed_in_user_responses():
         decision='allow', action='allow', route_assignment={'routeId': 'first', 'internalCapability': secret},
     )))
     api = SimpleNamespace(router=FastAPI(), _metrics=Metrics(), _emit_telemetry=AsyncMock(), _runtime=runtime,
-                          _store=s, _runner_id='runner-1', _controller_token='secret')
+                          _store=s, _runner_id='runner-1', _controller_http_token='secret')
     register_path_testing(api)
     body = dict(revision=1, endpoint_id='endpoint', action='execute', call_id='call', fields={},
                 business_request={'x-channel': ['partner']}, text='hello')
@@ -117,15 +117,12 @@ async def test_internal_routing_capability_is_not_exposed_in_user_responses():
 
 @pytest.mark.asyncio
 async def test_router_execution_runs_signed_artifact_in_real_nemo_runtime(tmp_path):
-    import base64
-    from runner import generated as protocol
     from runner.api import RunnerAPI
     from runner.metrics import RunnerMetrics
     from runner.toolkit.runtime.service import GuardrailRuntimeService
-    from tests.data_plane.test_artifact_execution import RUNTIME_CREDENTIAL, Telemetry, _runtime
-    from tests.data_plane.test_composed_routing import FIXTURE
+    from tests.data_plane.test_artifact_execution import RUNTIME_CREDENTIAL, Telemetry, _desired_state, _runtime
     s, _, engine = _runtime(tmp_path)
-    desired = protocol.DesiredState.FromString(base64.b64decode((FIXTURE / 'desired-state.pb.b64').read_text()))
+    desired = _desired_state()
     artifact = desired.artifacts[0]
     r = router()
     del r.routes[:2]

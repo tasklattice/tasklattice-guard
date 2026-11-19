@@ -27,9 +27,6 @@ export function publishedProtectionCoverage(value: unknown): ProtectionCoverage 
     for (const phase of new Set(phases)) {
       coverage[phase === "input" ? "inputChecks" : "outputChecks"]++;
       dependencies(step.contract_ref, phase as "input" | "output");
-      if (list(step.parameters).some(entry => Array.isArray(entry) && entry[0] === "review_unknown" && entry[1] === "true")) {
-        dependencies("tali.guard.classifier-review.v1", phase as "input" | "output");
-      }
     }
     if (phases.length) {
       const parameter = list(step.parameters).find((entry) => Array.isArray(entry) && entry[0] === "policy_id");

@@ -1,3 +1,4 @@
+import { runnerAuthEnv } from "../../test/runner-auth-fixture.js";
 import { withTestProject } from "../db/postgres-test-database.js";
 // @vitest-environment node
 import { generateKeyPairSync, verify } from "node:crypto";
@@ -8,6 +9,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { loadConfig } from "../config.js";
 import { createTestDatabase } from "../db/postgres-test-database.js";
 import { ControlPlaneService } from "./control-plane.js";
+import { freezeTestSuite } from "../domain/test-suite.js";
 
 const url = process.env.GUARD_TEST_POSTGRES_URL;
 describe.skipIf(!url)("Preconfigured Guardrail lifecycle", () => {
@@ -21,7 +23,7 @@ describe.skipIf(!url)("Preconfigured Guardrail lifecycle", () => {
     const keyPath = join(directory, "artifact.pem");
     writeFileSync(keyPath, key.privateKey.export({ type: "pkcs8", format: "pem" }));
     config = loadConfig({ NODE_ENV: "test", CONTROLLER_DATABASE_URL: url!,
-      CONTROLLER_RUNNER_TOKEN: "runner-token-that-is-at-least-32-characters",
+      ...runnerAuthEnv("runner-token-that-is-at-least-32-characters"),
       CONTROLLER_ARTIFACT_SIGNING_KEY_PATH: keyPath,
       CONTROLLER_POLICY_CATALOG_DIR: resolve("../runner/toolkit/policy_library/assets"),
       CONTROLLER_PROTO_PATH: resolve("../proto/tasklattice/guard/control/v1/runner_control.proto"),
@@ -39,7 +41,10 @@ describe.skipIf(!url)("Preconfigured Guardrail lifecycle", () => {
     const initial = await service.getGuardrail(id);
     expect(initial.draftConfig.policyBindings).toHaveLength(17);
     expect(initial.versions).toHaveLength(1);
-    expect(initial.versions[0]!.testSuiteCount).toBe(726);
+    const expectedSuite = freezeTestSuite((await service.listTestCases(id)).filter(test => !test.excluded));
+    expect(expectedSuite.length).toBeGreaterThan(0);
+    expect(initial.versions[0]!.testSuiteCount).toBe(expectedSuite.length);
+    expect((await service.guardrailVersionTestSuite(id, initial.versions[0]!.version)).items).toEqual(expectedSuite);
     expect(initial.versions[0]!.validationRunId).toBeNull();
     const artifact = initial.versions[0]!.artifact!;
     expect(verify(null, Buffer.from(artifact.checksum, "utf8"), key.publicKey, Buffer.from(artifact.signature, "base64"))).toBe(true);

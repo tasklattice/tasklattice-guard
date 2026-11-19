@@ -19,18 +19,17 @@ def large_resolution():
     first, *rest = item.plan.steps
     first = replace(first, parameters=(*first.parameters, ("synthetic-patterns", "abc[0-9]{32}|" * 20_000)))
     return replace(item, plan=replace(item.plan, steps=(first, *rest)),
-                   effective_release_id="release-before-rollout", model_revision_id="models-before-rollout")
+                   effective_release_id="pinned-release", model_revision_id="pinned-models")
 
 
 def test_large_plan_round_trip_is_lossless_and_materially_smaller():
     plan = asdict(large_resolution().plan)
-    encoded = _encode_plan(plan, True)
+    encoded = _encode_plan(plan)
     assert encoded["plan_encoding"] == "zlib-base64-v1"
     assert len(json.dumps(encoded)) < len(json.dumps(plan)) / 10
     # JSON canonicalization changes tuples to lists; the actual plan codec restores them.
     assert _decode_plan(encoded) == json.loads(json.dumps(plan))
-    assert _decode_plan(_encode_plan(plan, False)) == plan
-    assert _encode_plan({"steps": []}, True) == {"plan": {"steps": []}}
+    assert _encode_plan({"steps": []}) == {"plan": {"steps": []}}
 
 
 @pytest.mark.parametrize("payload", [
@@ -55,16 +54,17 @@ def test_decompression_is_bounded(monkeypatch):
         _decode_plan({"plan_encoding": "zlib-base64-v1", "plan_encoded": encoded})
 
 
-@pytest.mark.parametrize("compressed", [False, True])
-def test_real_redis_preserves_atomic_pin_ttl_and_completion(compressed):
+@pytest.mark.parametrize(("make_resolution", "encoding"), [
+    (resolution, None), (large_resolution, "zlib-base64-v1"),
+])
+def test_real_redis_preserves_atomic_pin_ttl_and_completion(make_resolution, encoding):
     url = os.environ.get("GUARD_TEST_REDIS_URL")
     if not url:
         pytest.skip("Set GUARD_TEST_REDIS_URL to isolated loopback Redis")
     assert urlparse(url).hostname in {"127.0.0.1", "localhost", "::1"}
-    writers = [RedisCallContextStore(url, ttl_seconds=60, compress_plans=compressed),
-               RedisCallContextStore(url, ttl_seconds=60, compress_plans=not compressed)]
+    writers = [RedisCallContextStore(url, ttl_seconds=60) for _ in range(2)]
     identity = "compressed-context-test-" + str(uuid4())
-    chosen = large_resolution()
+    chosen = make_resolution()
     changed = replace(chosen, plan=replace(chosen.plan, guardrail_version="new-version"))
     try:
         writers[0].claim(identity, ({"role": "user", "content": "synthetic text"},), chosen)
@@ -74,7 +74,7 @@ def test_real_redis_preserves_atomic_pin_ttl_and_completion(compressed):
         assert all(c.resolution == chosen for c in claims)
         assert all(c.messages == ({"role": "user", "content": "synthetic text"},) for c in claims)
         raw = writers[0]._redis.get(writers[0]._key(identity))
-        assert ("plan_encoding" in json.loads(raw)["resolution"]) is compressed
+        assert json.loads(raw)["resolution"].get("plan_encoding") == encoding
         assert writers[0].record_outcome(identity, "block") == "block"
         assert writers[1].record_outcome(identity, "allow") == "block"
         assert writers[1].get(identity).resolution == chosen

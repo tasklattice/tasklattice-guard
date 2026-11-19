@@ -1,12 +1,15 @@
 import { resolve } from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import type { ControllerDatabase } from "../db/client.js";
-import { modelAssignmentValidations, controllerState, outboxEvents, modelConfigurationRevisions, modelDefinitions, modelProviders, policyVersions, runnerPools } from "../db/schema.js";
-import { emptyModelAssignments, modelInputSchema, modelRuntimeSettingsInputSchema } from "./domain.js";
+import type { CapabilityValidationRequest } from "../generated/control-protocol/tasklattice/guard/control/v1/CapabilityValidationRequest.js";
+import { modelAssignmentValidations, controllerState, outboxEvents, modelConfigurationRevisions, modelDefinitions, modelProviders, policyVersions, runnerInstances, runnerPools } from "../db/schema.js";
+import { emptyModelAssignments, withBuiltinLayaPrimaries, modelInputSchema, modelRuntimeSettingsInputSchema } from "./domain.js";
 import { ModelConfigurationService } from "./service.js";
 import { runWithProjectContext } from "../services/project-context.js";
 import { jailbreakDetectAttackInput, jailbreakDetectProfile, jailbreakDetectSafeInput } from "./jailbreak-detect.js";
 import type { ValidationCredentialLeaseStore } from "./validation-credential-leases.js";
+import { builtinLaya } from "./builtin-laya.js";
+import { layaPrimaryBindingIds } from "../../shared/guardrail-catalog.js";
 
 const id = "7471c0eb-a533-449a-8814-98c3bc23aa98";
 const input = { profile: "tali.qwen3guard.v1", timeoutSeconds: 30, maxTokens: 512 };
@@ -37,7 +40,13 @@ function setup(state = "draft", assigned = false, failProbe = false) {
       rows.set(table, updated);
       return Object.assign(Promise.resolve(updated), { returning: async () => updated });
     } }) })),
-    insert: vi.fn((table: unknown) => ({ values: vi.fn(async (value: Record<string, unknown>) => { if (table === modelAssignmentValidations) rows.set(table, [value]); }) })),
+    insert: vi.fn((table: unknown) => ({ values: vi.fn((value: Record<string, unknown>) => {
+      if (table === modelAssignmentValidations) rows.set(table, [value]);
+      return Object.assign(Promise.resolve(), { onConflictDoNothing: async () => {
+        const existing = rows.get(table) ?? [];
+        if (!existing.some(row => row.id === value.id)) rows.set(table, [...existing, value]);
+      } });
+    }) })),
   };
   const db = { ...tx, transaction: async (run: (value: typeof tx) => unknown) => run(tx) };
   const fetcher = vi.fn(async () => failProbe ? new Response("Unavailable", { status: 503 }) : Response.json({ choices: [{ message: { content: "Safety: Safe\nCategories: None" } }] }));
@@ -58,12 +67,81 @@ function setup(state = "draft", assigned = false, failProbe = false) {
     async revoke(leaseId) { candidates.delete(leaseId); },
   };
   const service = new ModelConfigurationService(db as unknown as ControllerDatabase, "test-root-secret", resolve("../runner/toolkit/policy_library/assets"), fetcher, leases);
-  const railValidator = vi.fn(async () => ({ passed: !failProbe, message: failProbe ? "Runner Rail case failed." : "Runner safe and unsafe cases passed.", latencyMs: 12 }));
+  const railValidator = vi.fn(async (_request: CapabilityValidationRequest) => ({ passed: !failProbe, message: failProbe ? "Runner Rail case failed." : "Runner safe and unsafe cases passed.", latencyMs: 12 }));
   service.setRailValidator(railValidator);
   return { service, rows, tx, fetcher, railValidator };
 }
 
 describe("Capability configuration after registration", () => {
+  it("defaults every initial classifier to Laya and preserves review settings during initialization", async () => {
+    const { service, rows, railValidator } = setup("draft", true);
+    const legacy = rows.get(modelConfigurationRevisions)![0]!;
+    legacy.assignments = { ...emptyModelAssignments(), controlPlane: id, bindings: {
+      ...emptyModelAssignments().bindings, "content_safety.input": id,
+      "classifier_review.content_safety.input": id, "classifier_review.topic_control.input": null,
+    } };
+    await service.initialize();
+    const draft = (await service.view()).draft!;
+    for (const binding of layaPrimaryBindingIds) expect(draft.assignments.bindings[binding]).toBe(builtinLaya.modelId);
+    expect(draft.assignments.controlPlane).toBe(id);
+    expect(draft.assignments.bindings["classifier_review.content_safety.input"]).toBe(id);
+    expect(draft.assignments.bindings["classifier_review.topic_control.input"]).toBeNull();
+    expect(railValidator).not.toHaveBeenCalled();
+    const before = structuredClone(rows.get(modelConfigurationRevisions));
+    await service.initialize();
+    expect(rows.get(modelConfigurationRevisions)).toEqual(before);
+    rows.set(modelConfigurationRevisions, []);
+    const defaults = (await service.activeConfiguration())!;
+    expect(defaults.revision).toBe(0);
+    expect(defaults.models).toEqual([expect.objectContaining({ id: builtinLaya.modelId, backend: "builtin_laya" })]);
+    for (const binding of layaPrimaryBindingIds) expect(defaults.assignments.bindings[binding]).toBe(builtinLaya.modelId);
+    expect(defaults.assignments.bindings["classifier_review.content_safety.input"]).toBeNull();
+  });
+
+  it.each(layaPrimaryBindingIds)("keeps %s platform managed through both assignment APIs", async target => {
+    const { service, tx } = setup();
+    for (const modelId of [null, id]) {
+      await expect(service.updateAssignment(target, modelId, "admin")).rejects.toThrow("uses built-in Laya");
+      const invalid = withBuiltinLayaPrimaries(emptyModelAssignments());
+      invalid.bindings[target] = modelId;
+      await expect(service.updateDraft(invalid, "admin")).rejects.toThrow("uses built-in Laya");
+    }
+    expect(tx.update).not.toHaveBeenCalled();
+  });
+
+  it("seeds built-in Laya, advertises the loaded revision, and validates without an endpoint or lease", async () => {
+    const { service, rows, railValidator, fetcher } = setup();
+    rows.set(modelProviders, []);
+    rows.set(modelDefinitions, []);
+    await service.initialize();
+    await service.initialize();
+    expect(rows.get(modelProviders)).toHaveLength(1);
+    expect(rows.get(modelDefinitions)).toHaveLength(1);
+    expect((await service.view()).models[0]).toMatchObject({ id: builtinLaya.modelId, status: "pending", protocolEditable: false });
+
+    rows.set(runnerInstances, [{ labels: { [builtinLaya.revisionLabel]: builtinLaya.checkpointRevision } }]);
+    expect((await service.view()).models[0]).toMatchObject({
+      backend: builtinLaya.backend, checkpointRevision: builtinLaya.checkpointRevision, status: "validated",
+    });
+    const candidate = await service.previewAssignment("content_safety.input", builtinLaya.modelId, "admin");
+    const request = railValidator.mock.calls[0]?.[0];
+    expect(request).not.toHaveProperty("credentialLeaseId");
+    expect(request).toMatchObject({
+      bindingId: "content_safety.input",
+      configuration: { runtimes: [{ id: builtinLaya.modelId, backend: builtinLaya.backend,
+        checkpointRevision: builtinLaya.checkpointRevision, baseUrl: "", credentialRef: "" }] },
+    });
+    expect(request?.configuration?.runtimes?.[0]).not.toHaveProperty("layaRequestMode");
+    await service.updateAssignment("content_safety.input", builtinLaya.modelId, "admin", candidate.validationId);
+    rows.get(modelConfigurationRevisions)![0]!.state = "active";
+    expect((await service.activeConfiguration())?.models[0]).toMatchObject({
+      backend: builtinLaya.backend, checkpointRevision: builtinLaya.checkpointRevision, baseUrl: "", credentialRef: "",
+    });
+    await expect(service.deleteModel(builtinLaya.modelId, "admin")).rejects.toThrow("managed by the platform");
+    await expect(service.deleteProvider(builtinLaya.providerId, "admin")).rejects.toThrow("managed by the platform");
+    expect(fetcher).not.toHaveBeenCalled();
+  });
+
   it.each(["projectA", "projectB"])("prevents project %s users from changing global bindings or resolving credentials", async (projectId) => {
     const { service, tx, fetcher, railValidator } = setup("validated");
     const operations = [
@@ -76,7 +154,7 @@ describe("Capability configuration after registration", () => {
       () => service.applyConfiguration("group_b", {} as never),
       () => service.finalizeActivation("revision-1"),
       () => service.failActivation("revision-1", "Project supplied failure"),
-      () => service.resolveCredentials(["provider-1"]),
+      () => service.resolveCredentials(["provider-1"], undefined, "pool-a"),
     ];
     for (const operation of operations) {
       await expect(runWithProjectContext({ projectId, actorId: "group_b", role: "user" }, operation))
@@ -87,48 +165,60 @@ describe("Capability configuration after registration", () => {
     expect(fetcher).not.toHaveBeenCalled();
     expect(railValidator).not.toHaveBeenCalled();
   });
-  it.each(["input", "output"] as const)("validates and saves an existing DeepSeek chat as a %s reviewer without changing its profile or Control Plane assignment", async (rail) => {
-    const target = `classifier_review.${rail}` as const;
+  it.each([
+    { scope:"content_safety", rail: "input", kind: "deepseek", profile: "generic-chat", model: "deepseek-chat" },
+    { scope:"content_safety", rail: "output", kind: "deepseek", profile: "generic-chat", model: "deepseek-chat" },
+    { scope:"content_safety", rail: "input", kind: "qwen", profile: "tali.qwen3guard.v1", model: "Qwen/Qwen3Guard-Gen-8B" },
+    { scope:"content_safety", rail: "output", kind: "qwen", profile: "tali.qwen3guard.v1", model: "Qwen/Qwen3Guard-Gen-8B" },
+    { scope:"jailbreak", rail: "input", kind: "qwen", profile: "tali.qwen3guard.v1", model: "Qwen/Qwen3Guard-Gen-8B" },
+    { scope:"pii_semantic", rail: "input", kind: "qwen", profile: "tali.qwen3guard.v1", model: "Qwen/Qwen3Guard-Gen-8B" },
+    { scope:"pii_semantic", rail: "output", kind: "qwen", profile: "tali.qwen3guard.v1", model: "Qwen/Qwen3Guard-Gen-8B" },
+    { scope:"topic_control", rail: "input", kind: "deepseek", profile: "generic-chat", model: "deepseek-chat" },
+  ] as const)("validates and saves $profile for $scope $rail review while preserving other assignments", async ({ rail, kind, profile, model, scope }) => {
+    const target = `classifier_review.${scope}.${rail}` as import("./domain.js").CapabilityBindingId;
     const { service, rows, fetcher } = setup();
-    rows.get(modelProviders)![0]!.kind = "deepseek";
-    Object.assign(rows.get(modelDefinitions)![0]!, { profile: "generic-chat", model: "deepseek-chat" });
-    rows.get(modelConfigurationRevisions)![0]!.assignments = { ...emptyModelAssignments(), controlPlane: id };
+    rows.get(modelProviders)![0]!.kind = kind;
+    Object.assign(rows.get(modelDefinitions)![0]!, { profile, model });
+    const existingAssignments = profile === "generic-chat"
+      ? { ...emptyModelAssignments(), controlPlane: id }
+      : { ...emptyModelAssignments(), bindings: { ...emptyModelAssignments().bindings, "content_safety.input": id } };
+    rows.get(modelConfigurationRevisions)![0]!.assignments = existingAssignments;
     const before = structuredClone(rows.get(modelConfigurationRevisions));
     service.setRailValidator(async (request) => {
       expect(request.bindingId).toBe(target);
-      expect(request.configuration?.runtimes).toEqual([expect.objectContaining({ id, model: "deepseek-chat", profileRef: "generic-chat" })]);
+      expect(request.configuration?.runtimes).toEqual([expect.objectContaining({ id, model, profileRef: profile })]);
       expect(request.configuration?.bindings).toEqual([expect.objectContaining({
         bindingId: target, capabilityRef: "classifier_review", railType: rail === "input" ? "RAIL_TYPE_INPUT" : "RAIL_TYPE_OUTPUT",
-        modelRef: id, profileRef: "generic-chat", contractRefs: ["tali.guard.classifier-review.v1"],
+        modelRef: id, profileRef: profile, contractRefs: ["tali.guard.classifier-review.v1"],
       })]);
       return { passed: true, message: "Review Rail samples passed.", latencyMs: 12 };
     });
     const preview = await service.previewAssignment(target, id, "admin");
     expect(rows.get(modelConfigurationRevisions)).toEqual(before);
     const saved = await service.updateAssignment(target, id, "admin", preview.validationId);
-    expect(saved.assignments.controlPlane).toBe(id);
-    expect(saved.assignments.bindings).toEqual({ ...emptyModelAssignments().bindings, [target]: id });
+    expect(saved.assignments.controlPlane).toBe(existingAssignments.controlPlane);
+    expect(saved.assignments.bindings).toEqual({ ...existingAssignments.bindings, [target]: id });
     expect(saved.validationReport?.checks).toContainEqual(expect.objectContaining({
       id: `probe:${target}:${id}`, status: "passed", evidenceKind: "nemo-rail-v1",
     }));
-    expect(rows.get(modelDefinitions)![0]!.profile).toBe("generic-chat");
+    expect(rows.get(modelDefinitions)![0]!.profile).toBe(profile);
     rows.get(modelConfigurationRevisions)![0]!.state = "active";
-    expect((await service.activeConfiguration())?.models).toEqual([expect.objectContaining({ id, profile: "generic-chat" })]);
+    expect((await service.activeConfiguration())?.models).toEqual([expect.objectContaining({ id, profile })]);
     expect(fetcher).not.toHaveBeenCalled();
   });
 
-  it.each(["pii_semantic.input", "pii_semantic.output"] as const)("validates and saves DeepSeek %s with the semantic PII contract", async (target) => {
+  it.each(["classifier_review.pii_semantic.input", "classifier_review.pii_semantic.output"] as const)("validates and saves DeepSeek %s with the classifier review contract", async (target) => {
     const { service, rows, railValidator } = setup();
     rows.get(modelProviders)![0]!.kind = "deepseek";
-    Object.assign(rows.get(modelDefinitions)![0]!, { profile: "tali.openai-compatible-pii.v1", model: "deepseek-chat" });
+    Object.assign(rows.get(modelDefinitions)![0]!, { profile: "generic-chat", model: "deepseek-chat" });
     const before = structuredClone(rows.get(modelConfigurationRevisions));
     const preview = await service.previewAssignment(target, id, "admin");
     expect(rows.get(modelConfigurationRevisions)).toEqual(before);
     expect(railValidator).toHaveBeenCalledWith(expect.objectContaining({
       bindingId: target,
       configuration: expect.objectContaining({ bindings: [expect.objectContaining({
-        bindingId: target, capabilityRef: "pii_semantic", modelRef: id,
-        profileRef: "tali.openai-compatible-pii.v1", contractRefs: ["tali.guard.pii.semantic.v1"],
+        bindingId: target, capabilityRef: "classifier_review", modelRef: id,
+        profileRef: "generic-chat", contractRefs: ["tali.guard.classifier-review.v1"],
         railType: target.endsWith("input") ? "RAIL_TYPE_INPUT" : "RAIL_TYPE_OUTPUT",
       })] }),
     }));
@@ -166,25 +256,17 @@ describe("Capability configuration after registration", () => {
     rows.get(modelProviders)![0]!.kind = "laya";
     rows.get(modelDefinitions)![0]!.profile = "tali.laya.v1";
     rows.get(modelDefinitions)![0]!.model = "laya";
+    rows.get(modelDefinitions)![0]!.layaRequestMode = "native";
     rows.get(modelConfigurationRevisions)![0]!.assignments = { ...emptyModelAssignments(), bindings: { ...emptyModelAssignments().bindings, "jailbreak.input": id } };
     const result = await service.validateAssignment("jailbreak.input", "admin");
     expect(result.validationReport?.checks.some(c => c.id === `probe:jailbreak.input:${id}` && c.status === "passed")).toBe(true);
     expect(JSON.stringify(railValidator.mock.calls)).toContain("tali.laya.v1");
     expect(JSON.stringify(railValidator.mock.calls)).toContain("tali.guard.jailbreak.v1");
-    // A legacy row without a stored mode still tells the Runner which shape to send.
     expect(railValidator).toHaveBeenCalledWith(expect.objectContaining({
-      configuration: expect.objectContaining({ runtimes: [expect.objectContaining({ id, layaRequestMode: "compatible" })] }),
+      configuration: expect.objectContaining({ runtimes: [expect.objectContaining({ id, layaRequestMode: "native" })] }),
     }));
     expect(fetcher).not.toHaveBeenCalled();
     expect(rows.get(modelConfigurationRevisions)?.filter(r => r.state === "active")).toEqual([]);
-  });
-
-  it("projects a legacy Laya mode as compatible in the active configuration", async () => {
-    const { service, rows } = setup("active");
-    rows.get(modelProviders)![0]!.kind = "laya";
-    Object.assign(rows.get(modelDefinitions)![0]!, { profile: "tali.laya.v1", model: "laya", layaRequestMode: null });
-    rows.get(modelConfigurationRevisions)![0]!.assignments = { ...emptyModelAssignments(), bindings: { ...emptyModelAssignments().bindings, "content_safety.input": id } };
-    expect((await service.activeConfiguration())?.models[0]).toMatchObject({ id, profile: "tali.laya.v1", layaRequestMode: "compatible" });
   });
 
   it("omits the Laya mode from non-Laya active runtimes", async () => {
@@ -230,26 +312,26 @@ describe("Capability configuration after registration", () => {
   });
   it("allows untested assignments and preserves later preview evidence", async () => {
     const { service, rows } = setup();
-    expect((await service.updateAssignment("content_safety.input", id, "admin")).validationReport?.valid).toBe(false);
+    expect((await service.updateAssignment("classifier_review.content_safety.input", id, "admin")).validationReport?.valid).toBe(false);
     const before = structuredClone(rows.get(modelConfigurationRevisions));
-    const receipt1 = await service.previewAssignment("content_safety.input", id, "admin");
+    const receipt1 = await service.previewAssignment("classifier_review.content_safety.input", id, "admin");
     expect(rows.get(modelConfigurationRevisions)).toEqual(before);
-    const saved = await service.updateAssignment("content_safety.input", id, "admin", receipt1.validationId);
+    const saved = await service.updateAssignment("classifier_review.content_safety.input", id, "admin", receipt1.validationId);
     expect(saved.validationReport?.checks).toContainEqual(expect.objectContaining({
-      id: `probe:content_safety.input:${id}`, status: "passed", evidenceKind: "nemo-rail-v1",
+      id: `probe:classifier_review.content_safety.input:${id}`, status: "passed", evidenceKind: "nemo-rail-v1",
     }));
   });
 
   it("retains failed previews but rejects stale receipts after model changes", async () => {
     const { service, rows, railValidator } = setup();
     railValidator.mockResolvedValueOnce({ passed: false, message: "Failed", latencyMs: 1 });
-    const receipt2 = await service.previewAssignment("content_safety.input", id, "admin");
-    const saved = await service.updateAssignment("content_safety.input", id, "admin", receipt2.validationId);
+    const receipt2 = await service.previewAssignment("classifier_review.content_safety.input", id, "admin");
+    const saved = await service.updateAssignment("classifier_review.content_safety.input", id, "admin", receipt2.validationId);
     expect(saved.validationReport?.valid).toBe(false);
     expect(saved.validationReport?.checks).toContainEqual(expect.objectContaining({ status: "failed", message: "Failed" }));
-    const receipt3 = await service.previewAssignment("content_safety.input", id, "admin");
+    const receipt3 = await service.previewAssignment("classifier_review.content_safety.input", id, "admin");
     rows.get(modelDefinitions)![0]!.model = "changed-model";
-    await expect(service.updateAssignment("content_safety.input", id, "admin", receipt3.validationId))
+    await expect(service.updateAssignment("classifier_review.content_safety.input", id, "admin", receipt3.validationId))
       .rejects.toMatchObject({ code: "model_assignment_not_validated" });
   });
 
@@ -285,34 +367,15 @@ describe("Capability configuration after registration", () => {
     expect(fetcher).not.toHaveBeenCalled();
     expect(railValidator).not.toHaveBeenCalled();
   });
-  it("leases only the candidate Provider credential and revokes it after Rail validation", async () => {
-    const { service, fetcher } = setup("draft", true);
-    let leaseId = "";
-    service.setRailValidator(async (request) => {
-      leaseId = request.credentialLeaseId!;
-      expect(request.bindingId).toBe("content_safety.input");
-      expect(request.configuration?.bindings?.[0]?.railType).toBe("RAIL_TYPE_INPUT");
-      expect(await service.resolveCredentials(["provider-1"], leaseId)).toEqual({ "provider-1": "" });
-      expect(await service.resolveCredentials([], leaseId)).toEqual({});
-      expect(await service.resolveCredentials(["provider-1", "provider-1"], leaseId)).toEqual({ "provider-1": "" });
-      expect(await service.resolveCredentials(["other-provider"], leaseId)).toEqual({});
-      expect(await service.resolveCredentials(["provider-1", "other-provider"], leaseId)).toEqual({});
-      return { passed: true, message: "Rail samples passed.", latencyMs: 1 };
-    });
-    const revision = await service.validateAssignment("content_safety.input", "admin");
-    expect(await service.resolveCredentials(["provider-1"], leaseId)).toEqual({});
-    expect(fetcher).not.toHaveBeenCalled();
-    expect(revision.validationReport?.checks).toContainEqual(expect.objectContaining({ evidenceKind: "nemo-rail-v1", status: "passed" }));
-  });
-
   it("binds a validation lease to the dispatched pool and rejects other pools", async () => {
     const { service } = setup("draft", true);
+    const session = { poolId: "pool-a", runnerId: "runner-pool-a-0", bootId: "boot", sessionId: "session" };
     let leaseId = "";
     service.setRailValidator(async request => {
       leaseId = request.credentialLeaseId!;
       expect(await service.resolveCredentials(["provider-1"], leaseId, "pool-a")).toEqual({});
-      expect(await service.bindValidationLease(leaseId, "pool-a")).toBe(true);
-      expect(await service.bindValidationLease(leaseId, "pool-b")).toBe(false);
+      expect(await service.bindValidationLease(leaseId, "pool-a", session)).toBe(true);
+      expect(await service.bindValidationLease(leaseId, "pool-b", { ...session, poolId: "pool-b" })).toBe(false);
       expect(await service.resolveCredentials(["provider-1"], leaseId, "pool-b")).toEqual({});
       expect(await service.resolveCredentials([], leaseId, "pool-a")).toEqual({});
       expect(await service.resolveCredentials(["other-provider"], leaseId, "pool-a")).toEqual({});
@@ -323,7 +386,7 @@ describe("Capability configuration after registration", () => {
     });
     await service.validateAssignment("content_safety.input", "admin");
     expect(await service.resolveCredentials(["provider-1"], leaseId, "pool-a")).toEqual({});
-    expect(await service.bindValidationLease(leaseId, "pool-a")).toBe(false);
+    expect(await service.bindValidationLease(leaseId, "pool-a", session)).toBe(false);
   });
 
   it.each([true, false])("retains all sample evidence in assignment validation reports (passed=%s)", async (passed) => {
@@ -401,11 +464,11 @@ describe("Capability configuration after registration", () => {
     expect(requests[1]!.messages.at(-1)!.content).not.toContain(jailbreakDetectSafeInput);
   });
 
-  it("validates and publishes the new implementation under the existing jailbreak contract", async () => {
+  it("still evaluates a historical native jailbreak binding", async () => {
     const { service, rows, fetcher } = setup();
     Object.assign(rows.get(modelDefinitions)![0]!, { profile: jailbreakDetectProfile });
     const empty = emptyModelAssignments();
-    await service.updateDraft({ ...empty, bindings: { ...empty.bindings, "jailbreak.input": id } }, "admin");
+    rows.get(modelConfigurationRevisions)![0]!.assignments = { ...empty, bindings: { ...empty.bindings, "jailbreak.input": id } };
     fetcher.mockResolvedValueOnce(Response.json({ jailbreak: false, score: 0.01 }))
       .mockResolvedValueOnce(Response.json({ jailbreak: true, score: 0.99 }));
     const revision = await service.validateDraft("admin");
@@ -541,36 +604,48 @@ describe("Capability configuration after registration", () => {
     expect(revision.validationReport?.checks.filter((check) => check.scope === "capability")).toHaveLength(2);
   });
 
-  it("assigns a registered but unvalidated model to multiple capabilities before probing", async () => {
+  it("saves one shared security reviewer with fixed Laya initial classifiers", async () => {
     const { service, fetcher, railValidator } = setup();
-    const empty = emptyModelAssignments();
-    const draft = await service.updateDraft({ ...empty, bindings: { ...empty.bindings, "content_safety.input": id, "jailbreak.input": id } }, "admin");
-    expect(draft.assignments.bindings).toMatchObject({ "content_safety.input": id, "jailbreak.input": id });
+    await service.initialize();
+    const defaults = withBuiltinLayaPrimaries(emptyModelAssignments());
+    const draft = await service.updateDraft({ ...defaults, bindings: { ...defaults.bindings,
+      "classifier_review.security": id,
+    } }, "admin");
+    expect(draft.assignments.bindings).toMatchObject({ "content_safety.input": builtinLaya.modelId,
+      "classifier_review.security": id });
     expect(draft.state).toBe("draft");
     expect(fetcher).not.toHaveBeenCalled();
     expect((await service.validateDraft("admin")).validationReport?.valid).toBe(true);
     expect(fetcher).not.toHaveBeenCalled();
-    expect(railValidator).toHaveBeenCalledTimes(2);
+    expect(railValidator).toHaveBeenCalledTimes(7);
+    const reviews = railValidator.mock.calls.map(([request]) => request).filter(request => request.bindingId.startsWith("classifier_review."));
+    expect(reviews).toHaveLength(1);
+    expect(reviews[0]).toMatchObject({ bindingId: "classifier_review.security", configuration: {
+      bindings: [{ bindingId: "classifier_review.security", modelRef: id }],
+    } });
   });
 
   it("saves and validates capability assignments independently", async () => {
-    const { service, fetcher, railValidator } = setup("draft", true);
-    const receipt5 = await service.previewAssignment("content_safety.input", id, "admin");
+    const { service, rows, fetcher, railValidator } = setup();
+    rows.get(modelConfigurationRevisions)![0]!.assignments = { ...emptyModelAssignments(), bindings: {
+      ...emptyModelAssignments().bindings, "classifier_review.content_safety.input": id, "classifier_review.jailbreak.input": id,
+    } };
+    const receipt5 = await service.previewAssignment("classifier_review.content_safety.input", id, "admin");
     railValidator.mockClear();
-    const saved = await service.updateAssignment("content_safety.input", id, "admin", receipt5.validationId);
-    expect(saved.assignments.bindings["content_safety.input"]).toBe(id);
+    const saved = await service.updateAssignment("classifier_review.content_safety.input", id, "admin", receipt5.validationId);
+    expect(saved.assignments.bindings["classifier_review.content_safety.input"]).toBe(id);
     expect(fetcher).not.toHaveBeenCalled();
 
-    const first = await service.validateAssignment("content_safety.input", "admin");
+    const first = await service.validateAssignment("classifier_review.content_safety.input", "admin");
     expect(railValidator).toHaveBeenCalledOnce();
-    expect(first.validationReport?.checks).toContainEqual(expect.objectContaining({ id: `probe:content_safety.input:${id}`, status: "passed" }));
-    expect(first.validationReport?.checks.some((check) => check.id.startsWith("probe:jailbreak.input:"))).toBe(false);
+    expect(first.validationReport?.checks).toContainEqual(expect.objectContaining({ id: `probe:classifier_review.content_safety.input:${id}`, status: "passed" }));
+    expect(first.validationReport?.checks.some((check) => check.id.startsWith("probe:classifier_review.jailbreak.input:"))).toBe(false);
     expect(first.validationReport?.valid).toBe(false);
 
-    const second = await service.validateAssignment("jailbreak.input", "admin");
+    const second = await service.validateAssignment("classifier_review.jailbreak.input", "admin");
     expect(railValidator).toHaveBeenCalledTimes(2);
-    expect(second.validationReport?.checks).toContainEqual(expect.objectContaining({ id: `probe:content_safety.input:${id}`, status: "passed" }));
-    expect(second.validationReport?.checks).toContainEqual(expect.objectContaining({ id: `probe:jailbreak.input:${id}`, status: "passed" }));
+    expect(second.validationReport?.checks).toContainEqual(expect.objectContaining({ id: `probe:classifier_review.content_safety.input:${id}`, status: "passed" }));
+    expect(second.validationReport?.checks).toContainEqual(expect.objectContaining({ id: `probe:classifier_review.jailbreak.input:${id}`, status: "passed" }));
     expect(second.validationReport?.valid).toBe(true);
   });
 });

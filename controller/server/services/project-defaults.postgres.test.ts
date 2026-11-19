@@ -1,4 +1,5 @@
 // @vitest-environment node
+import { runnerAuthEnv } from "../../test/runner-auth-fixture.js";
 import { generateKeyPairSync, verify } from "node:crypto";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -14,6 +15,7 @@ import { PolicyCatalog } from "../policy-catalog/catalog.js";
 import { profileDraft } from "../policy-catalog/presets.js";
 import { createAuth } from "../auth.js";
 import { BootstrapAccountSynchronizer } from "../bootstrap.js";
+import { freezeTestSuite } from "../domain/test-suite.js";
 
 const url = process.env.GUARD_TEST_POSTGRES_URL;
 describe.skipIf(!url)("Project Default Guardrail provisioning", () => {
@@ -32,7 +34,7 @@ describe.skipIf(!url)("Project Default Guardrail provisioning", () => {
     database = await createTestDatabase(url!, "project_defaults");
     await database.pool.query("INSERT INTO auth_user(id,username,email,role) VALUES ('admin','Admin','admin@example.test','admin')");
     const config = loadConfig({ NODE_ENV: "test", CONTROLLER_DATABASE_URL: url!,
-      CONTROLLER_RUNNER_TOKEN: "runner-token-that-is-at-least-32-characters",
+      ...runnerAuthEnv("runner-token-that-is-at-least-32-characters"),
       CONTROLLER_ARTIFACT_SIGNING_KEY_PATH: keyPath,
       CONTROLLER_POLICY_CATALOG_DIR: resolve("../runner/toolkit/policy_library/assets"),
       CONTROLLER_PROTO_PATH: resolve("../proto/tasklattice/guard/control/v1/runner_control.proto"),
@@ -53,7 +55,10 @@ describe.skipIf(!url)("Project Default Guardrail provisioning", () => {
       const guardrail = await inProject(row.project_id, () => service.getGuardrail(row.id));
       expect(guardrail.readiness).toBe("ready");
       expect(guardrail.versions).toHaveLength(1);
-      expect(guardrail.versions[0]!.testSuiteCount).toBe(726);
+      const expectedSuite = freezeTestSuite((await inProject(row.project_id, () => service.listTestCases(row.id))).filter(test => !test.excluded));
+      expect(expectedSuite.length).toBeGreaterThan(0);
+      expect(guardrail.versions[0]!.testSuiteCount).toBe(expectedSuite.length);
+      expect((await inProject(row.project_id, () => service.guardrailVersionTestSuite(row.id, guardrail.versions[0]!.version))).items).toEqual(expectedSuite);
       const artifact = guardrail.versions[0]!.artifact!;
       expect(verify(null, Buffer.from(artifact.checksum, "utf8"), keys.publicKey, Buffer.from(artifact.signature, "base64"))).toBe(true);
     }
@@ -132,14 +137,14 @@ describe.skipIf(!url)("Project Default Guardrail provisioning", () => {
     await expect(inProject("projectC", () => service.getGuardrail(second.id))).rejects.toMatchObject({ code: "not_found" });
   });
 
-  it("preloads verified Project Defaults only into their allocated Runner pool", async () => {
+  it("does not preload unrouted Project Defaults even after a successful load check", async () => {
     const pool = await service.projectGroups.createPool("default", { projectId: "projectB", runtimeUrl: "http://dedicated.invalid" }, "admin");
     const row = (await defaults()).find(item => item.project_id === "projectB")!;
     expect((await service.desiredStateForPool(pool.id)).artifacts).toEqual([]);
     // Simulate successful Runner load checks; provisioning itself must not bypass them.
     await database.pool.query(`UPDATE guardrail_version SET environment_check='{"status":"compatible"}'
       WHERE guardrail_id IN (SELECT id FROM guardrail WHERE project_id IS NOT NULL)`);
-    expect((await service.desiredStateForPool(pool.id)).artifacts.map(artifact => artifact.guardrailId)).toEqual([row.id]);
+    expect((await service.desiredStateForPool(pool.id)).artifacts).toEqual([]);
     expect((await service.desiredStateForPool("default")).artifacts.some(artifact => artifact.guardrailId === row.id)).toBe(false);
   });
 });

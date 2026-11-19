@@ -1,6 +1,4 @@
 import type { ControllerDatabase } from "../db/client.js";
-import { sql } from "drizzle-orm";
-import { telemetryWatermarks } from "../db/schema.js";
 
 type Transaction = Parameters<Parameters<ControllerDatabase["transaction"]>[0]>[0];
 export const TELEMETRY_BATCH_SIZE = 50;
@@ -26,24 +24,4 @@ export async function telemetryBatches<T>(db: ControllerDatabase, events: readon
       return written;
     });
   }
-}
-
-/** One write per Runner per chunk, ordered to avoid cross-batch lock inversions. */
-export function telemetryWatermarkBatch(tx: Transaction) {
-  const newest = new Map<string, Date>();
-  return {
-    add(runnerId: string, occurredAt: Date) {
-      if (!newest.has(runnerId) || newest.get(runnerId)! < occurredAt) newest.set(runnerId, occurredAt);
-    },
-    async flush() {
-      for (const [runnerId, occurredAt] of [...newest].sort(([a], [b]) => a.localeCompare(b))) {
-        const now = new Date();
-        await tx.insert(telemetryWatermarks).values({ runnerId, lastEventOccurredAt: occurredAt, lastReceivedAt: now, updatedAt: now })
-          .onConflictDoUpdate({ target: telemetryWatermarks.runnerId, set: {
-            lastEventOccurredAt: sql`greatest(${telemetryWatermarks.lastEventOccurredAt}, excluded.last_event_occurred_at)`,
-            lastReceivedAt: now, updatedAt: now,
-          } });
-      }
-    },
-  };
 }

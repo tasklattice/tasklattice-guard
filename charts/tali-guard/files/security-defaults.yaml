@@ -20,18 +20,14 @@ bootstrapUser:
   credentialKey: ''
 controlSecret:
   existingSecret: ''
-  runnerTokenKey: runner-token
   betterAuthSecretKey: better-auth-secret
 poolAuthentication:
-  enabled: false
-  scopedTelemetry: false
   controllerSecret: ''
-  controllerKey: pool-tokens.json
+  controllerKey: ''
   runnerSecrets: {}
 runnerHttpAuthentication:
-  enabled: false
   controllerSecret: ''
-  controllerKey: pool-http-tokens.json
+  controllerKey: ''
   runnerSecrets: {}
 runtimeLogs:
   existingSecret: ''

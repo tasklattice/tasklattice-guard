@@ -8,6 +8,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 from collections import Counter
+from contextlib import asynccontextmanager
 from dataclasses import asdict
 import json
 import os
@@ -16,7 +17,8 @@ import time
 
 import httpx
 
-from runner.toolkit.nemo.evaluators.classifier_review import ClassifierReviewer
+from runner.builtin_laya import BuiltinLaya
+from runner.toolkit.nemo.evaluators.classifier_review import ClassifierReviewer, REVIEW_PROFILE, REVIEW_PROFILES
 from runner.toolkit.nemo.evaluators.contracts import EvaluationRequest
 from runner.toolkit.nemo.evaluators.laya_content_safety import LayaContentSafetyEvaluator
 from runner.toolkit.nemo.evaluators.laya_jailbreak import LayaJailbreakEvaluator
@@ -56,7 +58,7 @@ class EvidenceTransport(httpx.AsyncBaseTransport):
         await self.inner.aclose()
 
 
-def evaluation_request(sample, *, review=False, timeout=75, regression_id="laya-regression"):
+def evaluation_request(sample, *, timeout=75, regression_id="laya-regression"):
     capability = sample["capability"]
     _, contract = EVALUATORS[capability]
     plan = GuardrailPlanSnapshot(guardrail_id=regression_id, guardrail_version="offline",
@@ -65,7 +67,7 @@ def evaluation_request(sample, *, review=False, timeout=75, regression_id="laya-
     return EvaluationRequest(content=sample["content"], rail_type=rail, guardrail_id=plan.guardrail_id,
         guardrail_version=plan.guardrail_version, policy_id=None, policy_version=None, trusted_context=(),
         content_blocks=(), deadline=time.monotonic() + timeout,
-        parameters=tuple(sample.get("parameters", {}).items()) + (("review_unknown", str(review).lower()),),
+        parameters=tuple(sample.get("parameters", {}).items()),
         capability=capability, proposed_action="block", plan=plan,
         binding=NeMoActionBinding(id=f"{regression_id}-check", capability=capability, contract_ref=contract,
             phases=(rail,), on_unsafe="block"),
@@ -73,20 +75,45 @@ def evaluation_request(sample, *, review=False, timeout=75, regression_id="laya-
         evidence_scope="full", execution_purpose="validation")
 
 
+@asynccontextmanager
+async def builtin_runtime(directory):
+    if directory is None:
+        yield None
+        return
+    runtime = BuiltinLaya(directory)
+    try:
+        await runtime.start()
+        yield runtime
+    finally:
+        await runtime.close()
+
+
 async def replay(args):
+    async with builtin_runtime(args.builtin_model_dir) as runtime:
+        return await replay_samples(args, runtime)
+
+
+async def replay_samples(args, runtime):
     samples = json.loads(args.samples.read_text())
-    key = args.key_file.read_text().strip()
+    key = args.key_file.read_text().strip() if args.key_file else ""
     rows, outcomes = [], Counter()
     for sample in samples:
         exchanges = []
-        reviewer = ClassifierReviewer(base_url=args.review_base_url, model=args.review_model,
-            api_key=os.environ[args.review_key_env], provider_id="regression-review", timeout_seconds=45,
-            max_tokens=512, transport=EvidenceTransport(exchanges), rail_type=sample.get("rail_type", "input")) if args.review_model else None
+        topic = sample["capability"] == "topic_control"
+        review_model = args.topic_review_model if topic else args.review_model
+        review_base_url = args.topic_review_base_url if topic else args.review_base_url
+        review_key_env = args.topic_review_key_env if topic else args.review_key_env
+        review_profile = args.topic_review_profile if topic else args.review_profile
+        reviewer = ClassifierReviewer(base_url=review_base_url, model=review_model,
+            api_key=os.environ[review_key_env], provider_id="regression-topic-review" if topic else "regression-review", timeout_seconds=45,
+            max_tokens=512, transport=EvidenceTransport(exchanges), rail_type=sample.get("rail_type", "input"),
+            profile_ref=review_profile, review_capability=sample["capability"]) if review_model else None
         factory, _ = EVALUATORS[sample["capability"]]
-        evaluator = factory(base_url=args.base_url, model=args.model, api_key=key, timeout_seconds=20,
-            reviewer=reviewer, transport=EvidenceTransport(exchanges), rail_type=sample.get("rail_type", "input"),
-            request_mode=args.request_mode)
-        request = evaluation_request(sample, review=reviewer is not None)
+        evaluator = factory(base_url=args.base_url or "", model=args.model or ("english" if runtime else "auto"),
+            api_key=key, timeout_seconds=20, reviewer=reviewer,
+            transport=EvidenceTransport(exchanges) if runtime is None else None, rail_type=sample.get("rail_type", "input"),
+            request_mode=args.request_mode, builtin_laya=runtime)
+        request = evaluation_request(sample)
         started = time.monotonic()
         result = await evaluator.evaluate(request)
         outcome = "correct" if result.verdict == sample["expected"] else result.verdict if result.verdict in {"unknown", "error"} else "incorrect"
@@ -97,11 +124,16 @@ async def replay(args):
             "trace": [asdict(step) for step in result.trace], "usage": asdict(result.usage), "exchanges": exchanges}
         rows.append(row)
         report = {"thresholds": {"lower": .1, "upper": .9}, "review_model": args.review_model,
-            "request_mode": args.request_mode,
+            "review_profile": args.review_profile if args.review_model else None,
+            "topic_review_model": args.topic_review_model,
+            "topic_review_profile": args.topic_review_profile if args.topic_review_model else None,
+            "request_mode": "native" if runtime else args.request_mode,
+            **({"checkpoint_revision": runtime.revision} if runtime else {}),
             "total": len(rows), "outcomes": dict(outcomes), "cases": rows}
         args.output.parent.mkdir(parents=True, exist_ok=True)
         encoded = json.dumps(report, ensure_ascii=False, indent=2)
-        for secret in (key, os.environ.get(args.review_key_env, "") if args.review_key_env else ""):
+        for secret in (key, os.environ.get(args.review_key_env, "") if args.review_key_env else "",
+                       os.environ.get(args.topic_review_key_env, "") if args.topic_review_key_env else ""):
             if secret:
                 encoded = encoded.replace(secret, "[REDACTED]")
         args.output.write_text(encoded + "\n")
@@ -112,18 +144,31 @@ async def replay(args):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--samples", type=Path, default=Path("tests/fixtures/laya-regression.json"))
-    parser.add_argument("--base-url", required=True)
-    parser.add_argument("--model", default="auto")
+    backend = parser.add_mutually_exclusive_group(required=True)
+    backend.add_argument("--base-url")
+    backend.add_argument("--builtin-model-dir", type=Path)
+    parser.add_argument("--model")
     parser.add_argument("--request-mode", choices=("native", "compatible"), default="compatible",
                         help="Declaration of the target Laya deployment's System One schema.")
-    parser.add_argument("--key-file", type=Path, required=True)
+    parser.add_argument("--key-file", type=Path)
     parser.add_argument("--review-model")
+    parser.add_argument("--review-profile", choices=sorted(REVIEW_PROFILES), default=REVIEW_PROFILE,
+                        help="Review protocol; select tali.qwen3guard.v1 for native Qwen3Guard-Gen moderation.")
     parser.add_argument("--review-base-url")
     parser.add_argument("--review-key-env")
+    parser.add_argument("--topic-review-model")
+    parser.add_argument("--topic-review-base-url")
+    parser.add_argument("--topic-review-key-env")
+    parser.add_argument("--topic-review-profile", choices=("generic-chat", REVIEW_PROFILE), default="generic-chat",
+                        help="Optional independent Topic reviewer; absent means the Laya result is final.")
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args()
+    if args.base_url and args.key_file is None:
+        parser.error("Remote inference requires --key-file.")
     if any((args.review_model, args.review_base_url, args.review_key_env)) and not all((args.review_model, args.review_base_url, args.review_key_env)):
         parser.error("Review requires --review-model, --review-base-url and --review-key-env together.")
+    if any((args.topic_review_model, args.topic_review_base_url, args.topic_review_key_env)) and not all((args.topic_review_model, args.topic_review_base_url, args.topic_review_key_env)):
+        parser.error("Topic review requires --topic-review-model, --topic-review-base-url and --topic-review-key-env together.")
     return asyncio.run(replay(args))
 
 

@@ -56,7 +56,7 @@ export function RuntimeMetricChart({ metrics, metric: selectedMetric, onMetricCh
         <Suspense fallback={<div className="runtime-metric-plot-loading" role="status">{t("runtimeMetrics.loading")}</div>}>
           <RuntimeMetricPlot key={`${metrics.scope?.guardrail_id ?? "all"}:${metrics.window}`} data={data} visible={visible} window={metrics.window} locale={i18n.language} />
         </Suspense>
-        <p className="mt-1 text-xs text-muted-foreground">{t("runtimeMetrics.axes")}</p>
+        <p className="mt-1 text-xs text-muted-foreground">{t("runtimeMetrics.axes")}{metrics.latency_method === "histogram_5pct" ? ` ${t("dashboard.latencyEstimate")}` : ""}</p>
       </>}
     </CardContent>
   </Card>;

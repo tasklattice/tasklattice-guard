@@ -305,7 +305,7 @@ export class ControllerMetrics {
           );
           const watermark = watermarkByRunner.get(runner.runnerId);
           this.runnerTelemetryAge.labels(pool.id, runner.runnerId).set(
-            watermark ? Math.max(0, (now - watermark.lastReceivedAt.getTime()) / 1_000) : -1,
+            watermark?.lastReceivedAt ? Math.max(0, (now - watermark.lastReceivedAt.getTime()) / 1_000) : -1,
           );
         }
       }

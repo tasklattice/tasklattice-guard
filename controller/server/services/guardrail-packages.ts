@@ -3,7 +3,7 @@ import { resetProtectionMode } from "../../shared/protection-mode.js";
 import { clearGuardrailOperationalData } from "./guardrail-operational-data.js";
 import { assertGuardrailVersionCapacity, guardrailVersionLimitIssue } from "./guardrail-version-limit.js";
 import { createHash, randomUUID } from "node:crypto";
-import { and, asc, eq, inArray, isNull, or, sql } from "drizzle-orm";
+import { and, eq, inArray, isNull } from "drizzle-orm";
 import { canonicalJson } from "../../shared/canonical-json.js";
 import type { ControllerConfig } from "../config.js";
 import { canonicalArtifactContent } from "../control-channel/artifact-codec.js";
@@ -424,41 +424,12 @@ export class GuardrailPackageService {
       if (!active || active.deletedAt || active.operationalResetAt?.getTime() !== installation.operationalResetAt?.getTime()) {
         throw new ConflictError("This Guardrail was deleted or restored during the check. Run a new environment check.", "guardrail_lifecycle_changed");
       }
-      const [current] = await tx.select({ environmentCheck: guardrailVersions.environmentCheck }).from(guardrailVersions)
-        .where(and(eq(guardrailVersions.guardrailId, guardrailId), eq(guardrailVersions.version, version))).for("update");
       await tx.update(guardrailVersions).set({ environmentCheck: check })
         .where(and(eq(guardrailVersions.guardrailId, guardrailId), eq(guardrailVersions.version, version)));
-      // The default pool preloads published versions that passed a load check,
-      // so a verdict crossing "compatible" changes what Runners should hold.
-      if ((current?.environmentCheck?.status === "compatible") === (check.status === "compatible")) return;
-      const [state] = await tx.update(controllerState).set({ desiredGeneration: increment(controllerState.desiredGeneration), updatedAt: new Date() })
-        .where(eq(controllerState.id, "singleton")).returning();
-      await tx.insert(outboxEvents).values({
-        id: randomUUID(), kind: "runner.desired_state_changed", aggregateId: `${guardrailId}@${version}`,
-        payload: { generation: state?.desiredGeneration ?? 0, guardrailId, version, environment: check.status },
-      });
+      // A load verdict is diagnostic evidence, not a request to distribute a
+      // historical version. Only routing changes alter durable Runner state.
     });
     return check;
-  }
-
-  private checkingEnvironments = false;
-
-  /** Published content is checked asynchronously; missing dependencies never undo publication. */
-  async checkPendingEnvironments(): Promise<void> {
-    if (!this.admission || this.checkingEnvironments) return;
-    this.checkingEnvironments = true;
-    try {
-      const rows = await this.db.select({ id: guardrailVersions.guardrailId, version: guardrailVersions.version })
-        .from(guardrailVersions).innerJoin(guardrails, and(eq(guardrails.id, guardrailVersions.guardrailId), isNull(guardrails.deletedAt)))
-        .where(and(eq(guardrailVersions.status, "ready"), or(isNull(guardrailVersions.environmentCheck),
-          sql`(${guardrailVersions.environmentCheck}->>'status' <> 'compatible' AND (${guardrailVersions.environmentCheck}->>'checkedAt')::timestamptz < now() - interval '30 seconds')`)))
-        .orderBy(sql`${guardrailVersions.environmentCheck}->>'checkedAt' ASC NULLS FIRST`, asc(guardrailVersions.createdAt)).limit(2);
-      // Do not declare the job idle (or drained during shutdown) while a sibling
-      // check can still make admission requests and write its database result.
-      const results = await Promise.allSettled(rows.map(row => this.checkVersionEnvironment(row.id, row.version)));
-      const failure = results.find(result => result.status === "rejected");
-      if (failure?.status === "rejected") throw failure.reason;
-    } finally { this.checkingEnvironments = false; }
   }
 
   /**

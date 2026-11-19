@@ -56,12 +56,16 @@ import {
   type ModelAssignmentTarget,
   type ModelConfigurationView,
   type ModelDefinition,
+  type ModelProvider,
   type CapabilityBindingId,
 } from "@/lib/controller-api";
 import {
   capabilityBindingDefinitions,
+  builtinLayaModelId,
   controlPlaneProfileRefs,
+  hasLegacySecurityReview, securityReviewRails, securityReviewerId,
   isDataPlaneProviderKindAllowed,
+  isLayaPrimaryBinding,
   type CapabilityBindingDefinition,
 } from "../../shared/guardrail-catalog";
 
@@ -141,7 +145,12 @@ export function GuardrailCatalogPage() {
     for (const [target, modelId] of Object.entries(assignmentEdits)) {
       if (modelId === undefined) continue;
       if (target === "control_plane") assignments.controlPlane = modelId;
-      else assignments.bindings[target as CapabilityBindingId] = modelId;
+      else {
+        assignments.bindings[target as CapabilityBindingId] = modelId;
+        if (target === securityReviewerId) {
+          for (const rail of securityReviewRails) assignments.bindings[rail.id] = null;
+        }
+      }
     }
   }
   const [previewReport, setPreviewReport] = useState<NonNullable<ModelConfigurationView["draft"]>["validationReport"]>(null);
@@ -350,7 +359,7 @@ export function GuardrailCatalogPage() {
               setAssignmentEdits(previous => {
                 const next = { ...previous };
                 for (const id of bindingIds) {
-                  if (modelId === query.data!.draft!.assignments.bindings[id]) delete next[id];
+                  if (modelId === query.data!.draft!.assignments.bindings[id] && !(id === securityReviewerId && hasLegacySecurityReview(query.data!.draft!.assignments.bindings))) delete next[id];
                   else next[id] = modelId;
                 }
                 return next;
@@ -434,7 +443,7 @@ function RunnerConfigurationComparison({ view, selectedBindings, onSelectionChan
   return <div className="space-y-3">
     {bindings.length > 0 ? <p className="text-sm text-muted-foreground">{t("modelSettings.savedConfigurationOnly")}</p> : null}
     {!bindings.length ? <p role="status" className="text-sm font-medium">{t("modelSettings.noBindingChanges")}</p> : null}
-    {!capabilityBindingDefinitions.some(binding => selectedBindings.includes(binding.id) ? draft.assignments.bindings[binding.id] : view.active?.assignments.bindings[binding.id]) ? <Alert variant="warning"><CircleAlert /><AlertDescription>{t("modelSettings.emptyRunnerConfiguration")}</AlertDescription></Alert> : null}
+    {!capabilityBindingDefinitions.some(binding => selectedBindings.includes(binding.id) ? draft.assignments.bindings[binding.id] : view.active?.assignments.bindings[binding.id] ?? (!view.active && isLayaPrimaryBinding(binding.id) ? builtinLayaModelId : null)) ? <Alert variant="warning"><CircleAlert /><AlertDescription>{t("modelSettings.emptyRunnerConfiguration")}</AlertDescription></Alert> : null}
     {bindings.length > 0 ? <Table className="table-fixed">
       <TableHeader><TableRow>
         <TableHead className="w-[34%] whitespace-normal">{t("modelSettings.capabilityColumn")}</TableHead>
@@ -452,7 +461,7 @@ function RunnerConfigurationComparison({ view, selectedBindings, onSelectionChan
               onChange={event => onSelectionChange(event.target.checked ? [...selectedBindings, binding.id] : selectedBindings.filter(id => id !== binding.id))} />
               {t(change.ready ? "modelSettings.bindingReady" : "modelSettings.bindingNotReady")}</label> : null}
           </TableCell>
-          <TableCell className="whitespace-normal align-top">{modelLabel(current, selected && current !== next && current ? "removed" : undefined)}</TableCell>
+          <TableCell className="whitespace-normal align-top">{binding.id === securityReviewerId && view.active && hasLegacySecurityReview(view.active.assignments.bindings) ? <LegacySecurityAssignments assignments={view.active.assignments} models={view.models} /> : modelLabel(current, selected && current !== next && current ? "removed" : undefined)}</TableCell>
           <TableCell className="whitespace-normal align-top">{modelLabel(next, selected && current !== next && next ? "added" : undefined)}
             {change && !selected ? <p className="text-xs text-muted-foreground">{t("modelSettings.bindingDeferred")}</p> : null}
           </TableCell>
@@ -542,7 +551,15 @@ type CapabilityConfigurationProps = {
 
 function GuardrailCatalogSection({ action, ...props }: CapabilityConfigurationProps & { action: ReactNode }) {
   const { t } = useTranslation();
-  const capabilities = [...new Set(capabilityBindingDefinitions.map(binding => binding.capabilityRef))];
+  const reviewers = capabilityBindingDefinitions.filter(binding => binding.reviewCapabilityRef === "security" || binding.reviewCapabilityRef === "topic_control");
+  const specialists = capabilityBindingDefinitions.filter(binding => !binding.reviewCapabilityRef && !isLayaPrimaryBinding(binding.id));
+  const laya = props.models.find(model => model.backend === "builtin_laya");
+  const tableHead = (modelLabel: string) => <TableHeader><TableRow>
+    <TableHead className="w-[13rem] pl-5">{t("modelSettings.capabilityColumn")}</TableHead>
+    <TableHead>{modelLabel}</TableHead>
+    <TableHead className="w-64 pr-8 min-[1600px]:w-[26%]">{t("modelSettings.validationColumn")}</TableHead>
+    <TableHead className="w-64 pr-5">{t("modelSettings.actionsColumn")}</TableHead>
+  </TableRow></TableHeader>;
   return (
     <section className="mt-6 overflow-hidden rounded-lg border bg-card" aria-labelledby="guardrail-catalog-title">
       <ProtectionSectionHeader id="guardrail-catalog-title" title={t("modelSettings.catalogConfiguration")} action={action} help={<>
@@ -550,15 +567,24 @@ function GuardrailCatalogSection({ action, ...props }: CapabilityConfigurationPr
         <p>{t("modelSettings.catalogConfigurationDescription")}</p>
         <p>{t("modelSettings.contextualValidationBoundary")}</p>
       </>} />
+      <div className="flex items-center justify-between gap-6 border-b px-5 py-4" aria-label={t("modelSettings.primaryModel")}>
+        <div className="flex items-center gap-3">
+          <ProviderMark provider="Laya" kind="laya" size="sm" />
+          <div><p className="text-sm font-medium">{t("modelSettings.defaultPrimaryModel")}</p>
+            <p className="mt-1 text-xs leading-5 text-muted-foreground">{t("modelSettings.defaultPrimaryDescription")}</p></div>
+        </div>
+        <BuiltinModelStatus status={laya?.status ?? "pending"} />
+      </div>
       <Table className="table-fixed min-w-[64rem]">
-        <TableHeader><TableRow>
-          <TableHead className="w-[17rem] pl-5">{t("modelSettings.capabilityColumn")}</TableHead>
-          <TableHead>{t("modelSettings.modelColumn")}</TableHead>
-          <TableHead className="w-64 pr-8 min-[1600px]:w-[30%]">{t("modelSettings.validationColumn")}</TableHead>
-          <TableHead className="w-64 pr-5">{t("modelSettings.actionsColumn")}</TableHead>
-        </TableRow></TableHeader>
-        <TableBody>{capabilities.map(capability => <CapabilityConfigurationRow key={capability}
-          bindings={capabilityBindingDefinitions.filter(binding => binding.capabilityRef === capability)} {...props} />)}</TableBody>
+        {tableHead(t("modelSettings.reviewModelColumn"))}
+        <TableBody>{reviewers.map(binding => <CapabilityConfigurationRow key={binding.id}
+          binding={binding} {...props} />)}</TableBody>
+      </Table>
+      <div className="border-t px-5 py-4"><h3 className="text-sm font-medium">{t("modelSettings.specialistModels")}</h3>
+        <p className="mt-1 text-xs leading-5 text-muted-foreground">{t("modelSettings.specialistModelsDescription")}</p></div>
+      <Table className="table-fixed min-w-[64rem]">
+        {tableHead(t("modelSettings.modelColumn"))}
+        <TableBody>{specialists.map(binding => <CapabilityConfigurationRow key={binding.id} binding={binding} {...props} />)}</TableBody>
       </Table>
     </section>
   );
@@ -568,79 +594,60 @@ function supportsBinding(model: ModelDefinition, binding: CapabilityBindingDefin
   return isDataPlaneProviderKindAllowed(model.providerKind, binding.id) && binding.profileRefs.includes(model.profile);
 }
 
-function CapabilityConfigurationRow({ bindings, assignments, savedAssignments, models, report, disabled,
-  savingTarget, validatingTarget, capabilityAction, saveErrors, onChange, onSave, onValidate }: CapabilityConfigurationProps & { bindings: CapabilityBindingDefinition[] }) {
+function CapabilityConfigurationRow({ binding, assignments, savedAssignments, models, report, disabled,
+  savingTarget, validatingTarget, capabilityAction, saveErrors, onChange, onSave, onValidate }: CapabilityConfigurationProps & { binding: CapabilityBindingDefinition }) {
   const { t } = useTranslation();
-  const [mode, setMode] = useState<"shared" | "staged" | null>(null);
-  const binding = bindings[0]!;
   const title = capabilityName(t, binding);
-  const ids = bindings.map(item => item.id);
-  const sharedId = assignments.bindings[binding.id];
-  const sameModel = bindings.every(item => assignments.bindings[item.id] === sharedId);
-  // Derive the initial mode from saved bindings. Opening the page or changing
-  // the presentation never overwrites an existing per-stage configuration.
-  const staged = bindings.length > 1 && (mode === "staged" || (mode === null && !sameModel));
-  const unresolvedSharedModel = !staged && !sameModel;
-  const changedIds = ids.filter(id => assignments.bindings[id] !== savedAssignments.bindings[id]);
-  const configuredIds = ids.filter(id => Boolean(assignments.bindings[id]));
-  const busy = ids.some(id => savingTarget === id || validatingTarget === id || capabilityAction?.targets.includes(id));
-  const sharedModels = models.filter(model => bindings.every(item => supportsBinding(model, item)))
-    .sort((left, right) => binding.profilePreference.indexOf(left.profile) - binding.profilePreference.indexOf(right.profile) || left.name.localeCompare(right.name));
-  const modelSelect = (targets: CapabilityBindingDefinition[], mixed = false) => {
-    const first = targets[0]!;
-    const modelId = mixed ? undefined : assignments.bindings[first.id];
-    const selectedModel = models.find(model => model.id === modelId);
-    const compatibleModels = targets.length > 1 ? sharedModels : models.filter(model => supportsBinding(model, first))
-      .sort((left, right) => first.profilePreference.indexOf(left.profile) - first.profilePreference.indexOf(right.profile) || left.name.localeCompare(right.name));
-    const selectableModels = selectedModel && !compatibleModels.some(model => model.id === selectedModel.id)
-      ? [selectedModel, ...compatibleModels] : compatibleModels;
-    const selectId = `binding-model-${targets.length > 1 ? binding.capabilityRef : first.id}`;
-    return <div>
-      <Label className={staged ? "mb-2 block text-xs leading-4 text-muted-foreground" : "sr-only"} htmlFor={selectId}>
-        {staged ? t(`modelSettings.stage.${first.railType}`) : t("modelSettings.modelColumn")}
-      </Label>
-      <Select value={mixed ? "" : modelId ?? noneValue} disabled={disabled || (!selectableModels.length && !modelId)} onValueChange={value => onChange(targets.map(item => item.id), value === noneValue ? null : value)}>
-        <SelectTrigger id={selectId} className="field:h-11 w-full"><SelectValue placeholder={t("modelSettings.chooseSharedModel")} /></SelectTrigger>
-        <SelectContent position="popper"><SelectItem value={noneValue}>{t(compatibleModels.length ? "modelSettings.notAssigned" : "modelSettings.noCompatibleModelsShort")}</SelectItem>
-          {selectableModels.map(model => <SelectItem key={model.id} value={model.id}><ModelOption model={model} /></SelectItem>)}
-        </SelectContent>
-      </Select>
-      {!compatibleModels.length ? <p className="mt-2 text-xs text-muted-foreground">{t(targets.length > 1 && models.some(model => targets.some(target => supportsBinding(model, target))) ? "modelSettings.noSharedModelHelp" : "modelSettings.noCompatibleModelsHelp")}</p> : null}
-    </div>;
-  };
+  const target = binding.id;
+  const shared = target === securityReviewerId;
+  const legacy = shared && hasLegacySecurityReview(assignments.bindings);
+  const modelId = assignments.bindings[target] ?? null;
+  const selectedModel = models.find(model => model.id === modelId);
+  const changed = modelId !== (savedAssignments.bindings[target] ?? null) ||
+    (shared && !legacy && hasLegacySecurityReview(savedAssignments.bindings));
+  const busy = savingTarget === target || validatingTarget === target || capabilityAction?.targets.includes(target);
+  const compatible = models.filter(model => supportsBinding(model, binding))
+    .sort((left, right) => compareModelOptions(left, right, binding.profilePreference));
+  const options = selectedModel && !compatible.includes(selectedModel) ? [selectedModel, ...compatible] : compatible;
+  const stage = t(shared ? "modelSettings.bothStages" : `modelSettings.stage.${binding.railType}`);
   return <TableRow aria-label={title}>
-    <TableCell className="whitespace-normal py-5 pl-5 align-top">
+    <TableCell className="whitespace-normal py-4 pl-5 align-top">
       <div className="flex min-h-11 items-center gap-1">
         <p className="font-medium">{title}</p>
-        <ProtectionInfo title={title}><p>{t(binding.capabilityRef === "classifier_review" ? "modelSettings.detectors.classifier_review.description" : `modelSettings.categories.${binding.categoryId}.description`)}</p></ProtectionInfo>
+        <ProtectionInfo title={title}><p>{t(binding.reviewCapabilityRef ? `modelSettings.detectors.${binding.reviewCapabilityRef}_review.description` : `modelSettings.categories.${binding.categoryId}.description`)}</p></ProtectionInfo>
       </div>
-      {changedIds.length ? <p className="mt-2 text-xs text-muted-foreground">{t("modelSettings.unsaved")}</p> : null}
+      {shared ? <p className="mt-1 text-xs leading-5 text-muted-foreground">{t("modelSettings.securityReviewScope")}</p> : null}
+      {changed ? <p className="mt-2 text-xs text-muted-foreground">{t("modelSettings.unsaved")}</p> : null}
     </TableCell>
-    <TableCell className="whitespace-normal py-5 align-top">
-      {staged ? <div className="space-y-3">{bindings.map(item => <div key={item.id}>{modelSelect([item])}</div>)}</div> : modelSelect(bindings, unresolvedSharedModel)}
-      {bindings.length > 1 ? <>
-        <Button type="button" variant="ghost" size="sm" className="mt-2 h-8 px-0" disabled={disabled} aria-expanded={staged}
-          onClick={() => setMode(staged ? "shared" : "staged")}>{t(staged ? "modelSettings.useSharedModel" : "modelSettings.configureByStage")}</Button>
-        {unresolvedSharedModel ? <p className="mt-1 text-xs text-muted-foreground">{t("modelSettings.chooseSharedModelHelp")}</p> : null}
-      </> : null}
+    <TableCell className="whitespace-normal py-4 align-top">
+      <Select value={legacy ? "" : modelId ?? noneValue} disabled={disabled || (!legacy && !options.length && !modelId)}
+        onValueChange={value => onChange([target], value === noneValue ? null : value)}>
+        <SelectTrigger id={`binding-model-${target}`} aria-label={title} className="field:h-11 w-full">
+          <SelectValue placeholder={t("modelSettings.chooseSharedModel")} />
+        </SelectTrigger>
+        <SelectContent position="popper">
+          <SelectItem value={noneValue}>{t(binding.reviewCapabilityRef ? "modelSettings.noReview" : options.length ? "modelSettings.notAssigned" : "modelSettings.noCompatibleModelsShort")}</SelectItem>
+          {options.map(model => <SelectItem key={model.id} value={model.id} textValue={modelOptionLabel(model, t("modelSettings.builtin"))}><ModelOption model={model} /></SelectItem>)}
+        </SelectContent>
+      </Select>
+      {legacy ? <LegacySecurityAssignments assignments={assignments} models={models} /> : null}
+      {!options.length ? <p className="mt-2 text-xs text-muted-foreground">{t("modelSettings.noCompatibleModelsHelp")}</p> : null}
     </TableCell>
-    <TableCell className="whitespace-normal py-5 pr-8 align-top">
-      <div className="space-y-3">{bindings.map(item => <div key={item.id} className={`grid grid-cols-[3rem_minmax(0,1fr)] items-center gap-2 ${staged ? "min-h-[4.25rem] pt-6" : "min-h-11"}`} role="group" aria-label={`${title} · ${t(`modelSettings.stage.${item.railType}`)}`}>
-        <p className="text-xs leading-6 text-muted-foreground">{t(`modelSettings.stage.${item.railType}`)}</p>
-        <div className="min-w-0">
-        {validatingTarget === item.id ? <span className="flex items-center gap-2 text-sm" role="status"><LoaderCircle className="size-4 animate-spin" />{t("modelSettings.validatingStage")}</span>
-          : <AssignmentValidationStatus target={item.id} model={models.find(model => model.id === assignments.bindings[item.id])} report={report}
-            dirty={assignments.bindings[item.id] !== savedAssignments.bindings[item.id]} binding={item} />}
-        {saveErrors[item.id] ? <p role="alert" className="mt-1 text-xs text-destructive">{t("modelSettings.stageSaveFailed", { message: saveErrors[item.id] })}</p> : null}
-        </div>
-      </div>)}</div>
+    <TableCell className="whitespace-normal py-4 pr-8 align-top">
+      <div role="group" aria-label={title + " · " + stage}>
+        <p className="mb-1 text-xs text-muted-foreground">{stage}</p>
+        {validatingTarget === target ? <span className="flex items-center gap-2 text-sm" role="status"><LoaderCircle className="size-4 animate-spin" />{t("modelSettings.validatingStage")}</span>
+          : legacy ? <span className="text-xs">{t("modelSettings.legacyReview")}</span>
+          : <AssignmentValidationStatus target={target} model={selectedModel} report={report} dirty={changed} binding={binding} />}
+        {saveErrors[target] ? <p role="alert" className="mt-1 text-xs text-destructive">{t("modelSettings.stageSaveFailed", { message: saveErrors[target] })}</p> : null}
+      </div>
     </TableCell>
-    <TableCell className="py-5 pr-5 align-top">
-      <div className={`grid grid-cols-2 items-start gap-2 ${staged ? "pt-6" : ""}`}>
-        <Button type="button" variant="testing" className="h-11 w-full min-w-0" disabled={disabled || busy || unresolvedSharedModel || !configuredIds.length} onClick={() => onValidate(configuredIds)}>
+    <TableCell className="py-4 pr-5 align-top">
+      <div className="grid grid-cols-2 items-start gap-2">
+        <Button type="button" variant="testing" className="h-11 w-full min-w-0" disabled={disabled || busy || !modelId || legacy} onClick={() => onValidate([target])}>
           {busy && capabilityAction?.kind === "validate" ? <LoaderCircle className="animate-spin" /> : <TestTube2 />}{t("modelSettings.validateAssignment")}
         </Button>
-        <Button type="button" variant="save" className="h-11 w-full min-w-0" disabled={disabled || busy || unresolvedSharedModel || !changedIds.length} onClick={() => onSave(changedIds)}>
+        <Button type="button" variant="save" className="h-11 w-full min-w-0" disabled={disabled || busy || !changed} onClick={() => onSave([target])}>
           {busy && capabilityAction?.kind === "save" ? <LoaderCircle className="animate-spin" /> : <Save />}{t("modelSettings.saveAssignment")}
         </Button>
       </div>
@@ -648,7 +655,16 @@ function CapabilityConfigurationRow({ bindings, assignments, savedAssignments, m
   </TableRow>;
 }
 
+function LegacySecurityAssignments({assignments, models}: {assignments: ModelAssignments; models: ModelDefinition[]}) {
+  const { t } = useTranslation();
+  return <details className="mt-2 text-xs leading-5 text-muted-foreground">
+    <summary className="cursor-pointer">{t("modelSettings.legacyReview")}</summary>
+    {securityReviewRails.map(rail => <p key={rail.id}>{capabilityTitle(t, rail)} · {models.find(model => model.id === assignments.bindings[rail.id])?.name ?? t("modelSettings.noReview")}</p>)}
+  </details>;
+}
+
 function capabilityName(t: ReturnType<typeof useTranslation>["t"], binding: CapabilityBindingDefinition): string {
+  if (binding.reviewCapabilityRef) return t(`modelSettings.detectors.${binding.reviewCapabilityRef}_review.title`);
   const detectorKey = {
     classifier_review: "classifier_review",
     content_safety: "content_safety",
@@ -662,6 +678,7 @@ function capabilityName(t: ReturnType<typeof useTranslation>["t"], binding: Capa
 }
 
 function capabilityTitle(t: ReturnType<typeof useTranslation>["t"], binding: CapabilityBindingDefinition): string {
+  if (binding.id === securityReviewerId) return capabilityName(t, binding);
   return `${capabilityName(t, binding)} · ${t(binding.railType === "input" ? "modelSettings.inputRail" : "modelSettings.outputRail")}`;
 }
 
@@ -673,7 +690,7 @@ function AssignmentValidationStatus({ target, model, report, dirty, binding }: {
   binding?: CapabilityBindingDefinition;
 }) {
   const { t } = useTranslation();
-  if (!model) return <StateBadge state="unconfigured" label={t("modelSettings.notAssigned")} />;
+  if (!model) return <span className="text-xs text-muted-foreground">{t(binding?.reviewCapabilityRef ? "modelSettings.reviewDisabled" : "modelSettings.notAssigned")}</span>;
   void dirty;
   const result = report?.checks.find((check) => check.id === `probe:${target}:${model.id}`);
   if (result && (result.status === "failed" || (result.status === "passed" && (target === "control_plane" || result.evidenceKind === "nemo-rail-v1")))) return <ValidationEvidenceSheet
@@ -685,8 +702,36 @@ function AssignmentValidationStatus({ target, model, report, dirty, binding }: {
   return <StateBadge state="needs_validation" label={t("modelSettings.notChecked")} />;
 }
 
+function compareModelOptions(left: ModelDefinition, right: ModelDefinition, preference: readonly string[]) {
+  return Number(Boolean(right.backend)) - Number(Boolean(left.backend))
+    || preference.indexOf(left.profile) - preference.indexOf(right.profile) || left.name.localeCompare(right.name);
+}
+
+function modelOptionLabel(model: ModelDefinition, builtinLabel: string) {
+  return model.backend === "builtin_laya" ? `${builtinLabel} · ${model.name}` : `${model.name} · ${model.providerName}`;
+}
+
 function ModelOption({ model }: { model: ModelDefinition }) {
-  return <span className="flex min-w-0 items-center gap-2"><ProviderMark provider={model.providerName} kind={model.providerKind} model={model.model} size="sm" /><span className="truncate">{model.name} · {model.providerName}</span></span>;
+  const { t } = useTranslation();
+  const label = modelOptionLabel(model, t("modelSettings.builtin"));
+  return <span className="flex min-w-0 items-center gap-2">
+    <span aria-hidden="true"><ProviderMark provider={model.providerName} kind={model.providerKind} model={model.model} size="sm" /></span>
+    <span className="truncate">{label}</span>
+  </span>;
+}
+
+function BuiltinModelStatus({ status }: { status: ModelProvider["status"] }) {
+  const { t } = useTranslation();
+  const ready = status === "validated";
+  return <StateBadge state={ready ? "ready" : "unavailable"} label={t(ready ? "modelSettings.builtinReady" : "modelSettings.builtinUnavailable")} />;
+}
+
+function ProviderTarget({ provider }: { provider: ModelProvider }) {
+  const { t } = useTranslation();
+  return provider.backend === "builtin_laya" ? <span className="text-xs">{t("modelSettings.runnerLocal")}</span> : <>
+    <code className="block max-w-80 truncate text-xs text-muted-foreground" title={provider.baseUrl}>{provider.baseUrl}</code>
+    {provider.skipTlsVerify ? <p className="mt-1 text-xs font-medium text-amber-700 dark:text-amber-400">{t("providerRegistration.tlsSkipped")}</p> : null}
+  </>;
 }
 
 type BatchTestResult = { id: string; name: string; status: "passed" | "failed"; message: string | null };
@@ -694,7 +739,7 @@ type BatchTestRun = { running: boolean; total: number; current: { id: string; na
 
 function ResourceManagement({ resource, view, administrator, onChanged }: { resource: "provider" | "model"; view: ModelConfigurationView; administrator: boolean; onChanged: () => Promise<void> }) {
   const { t } = useTranslation();
-  const ownsModel = (model: ModelDefinition) => model.projectId == null;
+  const ownsModel = (model: ModelDefinition) => model.projectId == null && model.backend !== "builtin_laya";
   const ownedModels = view.models.filter(ownsModel);
   const isMobile = useIsMobile();
   const queryClient = useQueryClient();
@@ -795,10 +840,10 @@ function ResourceManagement({ resource, view, administrator, onChanged }: { reso
                     </div>
                   </div>
                   <div className="grid grid-cols-[minmax(0,1fr)_auto] gap-4 rounded-lg bg-muted/35 px-3 py-2.5">
-                    <div className="min-w-0"><p className="text-[11px] font-medium text-muted-foreground">{t("modelSettings.endpoint")}</p><code className="mt-1 block truncate text-xs" title={provider.baseUrl}>{provider.baseUrl}</code>{provider.skipTlsVerify ? <p className="mt-1 text-xs font-medium text-amber-700 dark:text-amber-400">{t("providerRegistration.tlsSkipped")}</p> : null}</div>
+                    <div className="min-w-0"><p className="text-[11px] font-medium text-muted-foreground">{t("modelSettings.endpoint")}</p><ProviderTarget provider={provider} /></div>
                     <div className="text-right"><p className="text-[11px] font-medium text-muted-foreground">{t("modelSettings.registeredModels")}</p><p className="mt-1 text-sm font-semibold">{providerModelCount}</p></div>
                   </div>
-                  {administrator ? <Button type="button" variant="outline" className="h-11 w-full justify-between" disabled={pending} aria-label={`${t("modelSettings.manageProvider")} ${provider.name}`} onClick={() => setProviderTargetId(provider.id)}>{t("modelSettings.manageProvider")}<ChevronRight /></Button> : null}
+                  {administrator && provider.backend !== "builtin_laya" ? <Button type="button" variant="outline" className="h-11 w-full justify-between" disabled={pending} aria-label={`${t("modelSettings.manageProvider")} ${provider.name}`} onClick={() => setProviderTargetId(provider.id)}>{t("modelSettings.manageProvider")}<ChevronRight /></Button> : null}
                 </article>;
               })}
             </div>
@@ -807,11 +852,11 @@ function ResourceManagement({ resource, view, administrator, onChanged }: { reso
                 <TableHeader><TableRow><TableHead className="pl-5">{t("modelSettings.provider")}</TableHead><TableHead>{t("modelSettings.endpoint")}</TableHead><TableHead>{t("modelSettings.registeredModels")}</TableHead><TableHead>{t("modelSettings.providerConnection")}</TableHead><TableHead className="pr-5 text-right">{t("modelSettings.actions")}</TableHead></TableRow></TableHeader>
                 <TableBody>{view.providers.map((provider) => (
                   <TableRow key={provider.id}>
-                    <TableCell className="pl-5"><div className="flex items-center gap-3"><ProviderMark provider={provider.name} kind={provider.kind} /><div><p className="font-medium">{provider.name}</p><p className="mt-0.5 text-xs text-muted-foreground">{provider.kind}</p></div></div></TableCell>
-                    <TableCell><code className="block max-w-80 truncate text-xs text-muted-foreground" title={provider.baseUrl}>{provider.baseUrl}</code>{provider.skipTlsVerify ? <p className="mt-1 text-xs font-medium text-amber-700 dark:text-amber-400">{t("providerRegistration.tlsSkipped")}</p> : null}</TableCell>
+                    <TableCell className="pl-5"><div className="flex items-center gap-3"><ProviderMark provider={provider.name} kind={provider.kind} /><div><p className="font-medium">{provider.backend === "builtin_laya" ? t("modelSettings.builtin") : provider.name}</p><p className="mt-0.5 text-xs text-muted-foreground">{provider.kind}</p></div></div></TableCell>
+                    <TableCell><ProviderTarget provider={provider} /></TableCell>
                     <TableCell>{view.models.filter((model) => model.providerId === provider.id).length}</TableCell>
-                    <TableCell><ValidationEvidence kind="provider" status={provider.status} checkedAt={provider.validatedAt} latencyMs={provider.validationLatencyMs} message={provider.validationMessage} /></TableCell>
-                    <TableCell className="pr-5 text-right">{administrator ? <Button type="button" variant="outline" className="h-11" disabled={pending} aria-label={`${t("modelSettings.manageProvider")} ${provider.name}`} onClick={() => setProviderTargetId(provider.id)}>{t("modelSettings.manageProvider")}<ChevronRight /></Button> : null}</TableCell>
+                    <TableCell>{provider.backend === "builtin_laya" ? <BuiltinModelStatus status={provider.status} /> : <ValidationEvidence kind="provider" status={provider.status} checkedAt={provider.validatedAt} latencyMs={provider.validationLatencyMs} message={provider.validationMessage} />}</TableCell>
+                    <TableCell className="pr-5 text-right">{administrator && provider.backend !== "builtin_laya" ? <Button type="button" variant="outline" className="h-11" disabled={pending} aria-label={`${t("modelSettings.manageProvider")} ${provider.name}`} onClick={() => setProviderTargetId(provider.id)}>{t("modelSettings.manageProvider")}<ChevronRight /></Button> : null}</TableCell>
                   </TableRow>
                 ))}</TableBody>
               </Table>
@@ -843,12 +888,16 @@ function ResourceManagement({ resource, view, administrator, onChanged }: { reso
             <TableHeader><TableRow><TableHead className="pl-5">{t("modelSettings.model")}</TableHead><TableHead>{t("modelSettings.providerConnection")}</TableHead><TableHead>{t("modelSettings.modelCall")}</TableHead><TableHead className="text-right">{t("modelSettings.maxConcurrency")}</TableHead><TableHead className="pr-5 text-right">{t("modelSettings.actions")}</TableHead></TableRow></TableHeader>
             <TableBody>{view.models.map((model) => {
               const provider = view.providers.find((item) => item.id === model.providerId);
+              const builtIn = model.backend === "builtin_laya";
+              const concurrencyHint = builtIn ? t("modelSettings.runnerManagedConcurrency") : undefined;
               return (
                 <TableRow key={model.id}>
-                  <TableCell className="pl-5"><div><p className="font-medium">{model.name}</p><code className="mt-1 block max-w-80 truncate text-xs text-muted-foreground" title={model.model}>{model.model}</code></div></TableCell>
-                  <TableCell><div className="flex items-start gap-3"><ProviderMark provider={model.providerName} kind={model.providerKind} model={model.model} /><div><p className="mb-1.5 font-medium">{model.providerName}</p>{provider ? <ValidationEvidence kind="provider" status={provider.status} checkedAt={provider.validatedAt} latencyMs={provider.validationLatencyMs} message={provider.validationMessage} /> : <StateBadge state="unavailable" label={t("modelSettings.providerUnavailable")} />}</div></div></TableCell>
-                  <TableCell><ModelCallEvidence model={model} checking={isTesting(model.id)} /></TableCell>
-                  <TableCell className="text-right tabular-nums">{model.maxConcurrency ?? 2}</TableCell>
+                  <TableCell className="pl-5"><div><p className="font-medium">{model.name}</p><code className="mt-1 block max-w-80 truncate text-xs text-muted-foreground" title={model.checkpointRevision ?? model.model}>{model.checkpointRevision?.slice(0, 12) ?? model.model}</code></div></TableCell>
+                  <TableCell><div className="flex items-start gap-3"><ProviderMark provider={model.providerName} kind={model.providerKind} model={model.model} /><div><p className="mb-1.5 font-medium">{model.backend === "builtin_laya" ? t("modelSettings.builtin") : model.providerName}</p>{provider?.backend === "builtin_laya" ? <ProviderTarget provider={provider} /> : provider ? <ValidationEvidence kind="provider" status={provider.status} checkedAt={provider.validatedAt} latencyMs={provider.validationLatencyMs} message={provider.validationMessage} /> : <StateBadge state="unavailable" label={t("modelSettings.providerUnavailable")} />}</div></div></TableCell>
+                  <TableCell>{model.backend === "builtin_laya" ? <BuiltinModelStatus status={model.status} /> : <ModelCallEvidence model={model} checking={isTesting(model.id)} />}</TableCell>
+                  <TableCell className="text-right tabular-nums" title={concurrencyHint} aria-label={concurrencyHint}>
+                    {builtIn ? <span aria-hidden="true" className="text-muted-foreground">—</span> : model.maxConcurrency ?? 2}
+                  </TableCell>
                   <TableCell className="pr-5">{ownsModel(model) ? <ResourceActions kind="model" name={model.name} checking={isTesting(model.id)} pending={pending || !administrator} onRetest={() => probeMutation.mutate({ id: model.id })} onRemove={() => setRemoveTarget({ id: model.id, name: model.name })} /> : null}</TableCell>
                 </TableRow>
               );
@@ -857,7 +906,7 @@ function ResourceManagement({ resource, view, administrator, onChanged }: { reso
         ) : <EmptyResource>{t("modelSettings.noModels")}</EmptyResource>}
       </ResourceSection> : null}
 
-      {createMode ? <RegisterModelsDrawer intent={createMode === "provider" ? "add-provider" : "register-models"} initialProviderId={initialProviderId} open onOpenChange={(open) => { if (!open) setCreateMode(null); }} allowProviderCreation={administrator} providers={view.providers} registeredModels={ownedModels} onChanged={onChanged} /> : null}
+      {createMode ? <RegisterModelsDrawer intent={createMode === "provider" ? "add-provider" : "register-models"} initialProviderId={initialProviderId} open onOpenChange={(open) => { if (!open) setCreateMode(null); }} allowProviderCreation={administrator} providers={view.providers.filter(provider => provider.backend !== "builtin_laya")} registeredModels={ownedModels} onChanged={onChanged} /> : null}
       {providerTarget ? <ProviderManagementSheet
         open
         provider={providerTarget}

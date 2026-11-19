@@ -1,4 +1,5 @@
 import { executionError, executionTimeout } from "./runtime-execution.js";
+import { overviewRanges, queryOverviewTotals } from "./runtime-overview.js";
 import {
   and,
   count,
@@ -62,7 +63,8 @@ export async function queryRuntimeMetrics(
   db: ControllerDatabase,
   scope: MetricScope,
 ) {
-  const now = Date.now();
+  const overview = scope.view === "overview";
+  const now = overview ? overviewRanges(scope, Date.now()).end : Date.now();
   const duration = metricWindows[scope.window];
   const start = new Date(now - duration);
   const interval = (
@@ -177,7 +179,7 @@ export async function queryRuntimeMetrics(
     ).as("event_dimensions");
     const usageSum = (key: string) =>
       coalesce<number>(sum(numericJson(groups.usage, key)), literal(0));
-    const totals = await execute(
+    const totals = overview ? await queryOverviewTotals(tx, scope, now, step, execute) : await execute(
       tx
         .with(base)
         .select({
@@ -326,7 +328,7 @@ export async function queryRuntimeMetrics(
         .where(isNotNull(steps.policy_id)),
     ).as("component_dimensions");
     const c = componentGroups;
-    const components = await execute(
+    const components = overview ? [] : await execute(
       tx
         .with(steps)
         .select({
@@ -385,14 +387,14 @@ export async function queryRuntimeMetrics(
         .innerJoin(finding.source, eq(event.id, event.id))
         .where(and(currentPredicate, securityFinding(finding.item))),
     );
-    const risks = await execute(
+    const risks = overview ? [] : await execute(
       tx
         .with(findingRows)
         .select({ risk: findingRows.risk, count: count() })
         .from(findingRows)
         .groupBy(findingRows.risk),
     );
-    const findings = await execute(
+    const findings = overview ? [] : await execute(
       tx
         .with(findingRows)
         .select({
@@ -478,6 +480,9 @@ export async function queryRuntimeMetrics(
         ints,
       ),
       findings_summary: findings[0],
+      view: overview ? "overview" as const : "diagnostics" as const,
+      window_end: new Date(now).toISOString(),
+      latency_method: overview ? "histogram_5pct" as const : "exact" as const,
     };
   });
 }

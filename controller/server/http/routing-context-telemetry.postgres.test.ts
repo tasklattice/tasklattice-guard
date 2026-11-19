@@ -1,4 +1,5 @@
 // @vitest-environment node
+import { runnerAuthEnv } from "../../test/runner-auth-fixture.js";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { Registry } from "prom-client";
 import { createTestDatabase } from "../db/postgres-test-database.js";
@@ -15,9 +16,9 @@ const tokenA = "pool-a-routing-token-at-least-32-characters";
 const tokenC = "pool-c-routing-token-at-least-32-characters";
 const version = "20260912-083000.123Z";
 const config = loadConfig({ NODE_ENV: "test", CONTROLLER_DATABASE_URL: "postgresql://unused:unused@localhost/unused",
-  CONTROLLER_RUNNER_TOKEN: "legacy-token-that-is-at-least-32-characters", BETTER_AUTH_SECRET: "better-auth-secret-that-is-at-least-32-characters",
-  CONTROLLER_RUNNER_POOL_TOKENS_JSON: JSON.stringify({ "pool-a": tokenA, "pool-c": tokenC }),
-  CONTROLLER_RUNNER_SCOPED_TELEMETRY: "true", CONTROLLER_ARTIFACT_SIGNING_KEY_PATH: "/tmp/test-key.pem" });
+  BETTER_AUTH_SECRET: "better-auth-secret-that-is-at-least-32-characters",
+  ...runnerAuthEnv({ "pool-a": tokenA, "pool-c": tokenC }),
+  CONTROLLER_ARTIFACT_SIGNING_KEY_PATH: "/tmp/test-key.pem" });
 const endpoint = { endpointId: "endpoint-a", projectId: "projectA", adapter: "litellm-generic-guardrail", trafficRouterId: "router-a", verification: { credentials: [] }, scanFlagOnlyDefault: true };
 const router = { routerId: "router-a", revision: 3, routes: [{ id: "route-a", enabled: true, targets: [{ id: "target-c", guardrailId: "shared-c", guardrailVersion: version, weightBps: 10000 }] }] };
 
@@ -50,14 +51,13 @@ describe.skipIf(!url)("pool-bound archived routing provenance", () => {
     headers: { authorization: `Bearer ${token}`, "content-type": "application/json" }, body: JSON.stringify({ events }) });
   const row = async (id: string) => (await database.pool.query("SELECT * FROM route_assignment WHERE decision_id=$1", [id])).rows[0];
 
-  it("deduplicates completion-before-assignment and pins owner/context without publishing watermarks", async () => {
+  it("deduplicates completion-before-assignment and pins the owner and context", async () => {
     const assignment = event("own");
     const completion = { ...assignment, id: "own:completion", eventType: "completion", outcome: "error", durationMs: 17 };
     expect((await post([completion, assignment, completion, assignment])).status).toBe(202);
     expect(await row("own")).toMatchObject({ project_id: "projectA", allocation_context_id: contextId, outcome: "error", duration_ms: 17 });
     expect((await database.pool.query("SELECT count(*)::int AS count FROM route_assignment WHERE decision_id='own'")).rows[0].count).toBe(1);
     expect(JSON.stringify(await service.getRuntimeEvent("call:own"))).not.toContain(contextId);
-    expect((await database.pool.query("SELECT * FROM telemetry_watermark")).rows).toEqual([]);
   });
   it("quarantines foreign pools, unknown contexts and every conflicting routing identity", async () => {
     expect((await post([event("wrong-pool")], tokenC)).status).toBe(202);

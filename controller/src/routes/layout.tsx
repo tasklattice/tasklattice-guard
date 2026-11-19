@@ -64,10 +64,26 @@ export function ControlPlaneLayout() {
     ?? (pathname.startsWith("/guardrails/") ? names["/guardrails"] : undefined)
     ?? (pathname.startsWith("/integration/routers/") ? names["/integration/routers"] : undefined)
     ?? { page: "nav.dashboard" };
-  if (auth.isLoading) {
-    return <div className="flex min-h-dvh items-center justify-center bg-background"><div className="flex items-center gap-3 text-sm text-muted-foreground"><ShieldCheck className="size-5 animate-pulse text-primary" />{t("auth.sessionLoading")}</div></div>;
+  if (!auth.status?.authenticated || !auth.user) {
+    if (!auth.error && auth.status?.authenticated === false) return <LoginPage />;
+    return (
+      <main className="flex min-h-dvh items-center justify-center bg-background px-6">
+        {auth.error ? (
+          <div className="flex max-w-md flex-col items-start gap-4">
+            <p role="alert" className="text-sm leading-6 text-foreground">{t("auth.sessionUnavailable")}</p>
+            <Button className="min-h-11" disabled={auth.isCheckingSession} onClick={() => void auth.refreshSession().catch(() => undefined)}>
+              {t(auth.isCheckingSession ? "auth.sessionLoading" : "common.retry")}
+            </Button>
+          </div>
+        ) : (
+          <div role="status" className="flex items-center gap-3 text-sm text-muted-foreground">
+            <ShieldCheck aria-hidden="true" className="size-5 motion-safe:animate-pulse text-primary" />
+            {t("auth.sessionLoading")}
+          </div>
+        )}
+      </main>
+    );
   }
-  if (!auth.status?.authenticated || !auth.user) return <LoginPage />;
   if (auth.user.role === "user") {
     if (scoped && scoped.projectId !== auth.user.project_id) return <ProjectRouteSelection key={scoped.projectId} projectId={scoped.projectId} />;
   }

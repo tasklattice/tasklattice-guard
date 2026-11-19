@@ -56,7 +56,7 @@ async def test_lease_expiry_reconnects_and_requires_a_fresh_challenged_snapshot(
     assert port > 0
     await server.start()
     settings = SimpleNamespace(runner_id='runner', pool_id='pool-a', compiler_capable=False,
-        max_concurrency=1, controller_token='legacy', control_token='pool-credential',
+        max_concurrency=1, control_token='pool-credential',
         controller_target=f'127.0.0.1:{port}', controller_ca_path=None, experimental_lease_enforcement=True)
     client = RunnerControlClient(settings, Store(), Metrics())
     task = asyncio.create_task(client.run())

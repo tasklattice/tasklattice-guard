@@ -73,10 +73,6 @@ class JevNoulEvaluator:
                 raise ValueError(f"Jev {self.id} does not support {rail_type}.")
             self.rails = frozenset({rail_type})
 
-    @property
-    def review_ready(self) -> bool:
-        return self._reviewer is not None
-
     def questions(self, request: EvaluationRequest) -> dict[str, dict[str, object]]:
         raise NotImplementedError
 
@@ -102,6 +98,10 @@ class JevNoulEvaluator:
         """Replacement recorded on a matched finding, if the action is transform."""
         return None
 
+    def evidence_extra(self, request: EvaluationRequest) -> dict[str, object]:
+        """Adapter-specific provenance merged into the evaluation evidence."""
+        return {}
+
     def _trace(self, request: EvaluationRequest, verdict: str, reason: str,
                probabilities: dict[str, float], actual_model: str | None = None,
                error_type: str | None = None) -> RuntimeTraceStep:
@@ -110,7 +110,7 @@ class JevNoulEvaluator:
         evidence = json.dumps({"profile": self._profile_ref, "question_revision": self.revision(request),
                                "requested_model": self._model, "response_model": actual_model,
                                "thresholds": {"lower": self._lower, "upper": self._upper},
-                               "judgments": judgments}, sort_keys=True)
+                               "judgments": judgments, **self.evidence_extra(request)}, sort_keys=True)
         return RuntimeTraceStep(id=f"{request.binding.id}:jev", kind="evaluation", name=self.display_name,
                                 status="error" if verdict == "error" else "completed", detail=reason,
                                 evidence=evidence, verdict=verdict, error_type=error_type,
@@ -191,10 +191,8 @@ class JevNoulEvaluator:
                                  reason=reason, findings=findings,
                                  trace=(trace,), unknown_reason="uncertain",
                                  usage=action_usage(call, len(request.content)) if call is not None else EvaluationUsage())
-        from .classifier_review import apply_review_transform, review_enabled, unavailable_review
-        if verdict == "unknown" and review_enabled(request):
-            if self._reviewer is None:
-                return unavailable_review(request,result)
+        from .classifier_review import apply_review_transform
+        if verdict == "unknown" and self._reviewer is not None:
             reviewed = await self._reviewer.review(request,questions,self.state(request),result)
             return apply_review_transform(request, reviewed,
                 content=self.result_content(request, reviewed.verdict),

@@ -10,6 +10,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import i18n from "@/i18n";
 
 import { ControlPlaneSidebar } from "./control-plane-sidebar";
+import * as controllerApi from "@/lib/controller-api";
 
 const identity = vi.hoisted(() => ({ role: "admin", project_id: "projectA" }));
 vi.mock("@/lib/auth", () => ({ useAuth: () => ({ user: { role: identity.role, project_id: identity.project_id } }) }));
@@ -93,6 +94,19 @@ describe("ControlPlaneSidebar", () => {
     render(<SidebarProvider defaultOpen={false}><TooltipProvider><ControlPlaneSidebar /></TooltipProvider></SidebarProvider>);
     expect(screen.getByRole("link", { name: "TaskLattice Guard" }).getAttribute("href")).toBe("/projectA");
     expect(screen.getByRole("link", { name: "Guardrails" }).getAttribute("href")).toBe("/projectA/guardrails");
+  });
+
+  it("loads selector definitions for badges without billing or endpoint activity", async () => {
+    identity.role = "user";
+    const options = vi.spyOn(controllerApi, "listGuardrailOptions").mockResolvedValue({ items: [], count: 0 });
+    try {
+      render(<SidebarProvider><ControlPlaneSidebar /></SidebarProvider>);
+      const queries = vi.mocked(useQuery).mock.calls.map(([query]) => query);
+      const guard = queries.find(query => query.queryKey.includes("options"))!;
+      await (guard.queryFn as (context: { signal: AbortSignal }) => Promise<unknown>)({ signal: new AbortController().signal });
+      expect(options).toHaveBeenCalledOnce();
+      expect(queries.find(query => query.queryKey.includes("definitions"))!.queryFn).toBe(controllerApi.listControllerEndpoints);
+    } finally { options.mockRestore(); }
   });
 
   it("updates Chinese labels and collapsed accessible names when switching languages", async () => {

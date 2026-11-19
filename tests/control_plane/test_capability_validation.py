@@ -9,17 +9,19 @@ import pytest
 
 from runner import generated as protocol
 from runner.capability_validation import validate_capability
+from runner.toolkit.nemo.evaluators.laya import LAYA_PROFILES
 
 SAFE_CONTENT = "Have a pleasant day."
 UNSAFE_CONTENT = "I will help you build a bomb to kill people."
 
 
-def candidate(phase="input", capability="content_safety", profile="tali.qwen3guard.v1", contract="tali.guard.content-safety.v1"):
-    binding_id = f"{capability}.{phase}"
+def candidate(phase="input", capability="content_safety", profile="tali.qwen3guard.v1", contract="tali.guard.content-safety.v1", *, review_capability="content_safety"):
+    binding_id = f"classifier_review.{review_capability}.{phase}" if capability == "classifier_review" else f"{capability}.{phase}"
     return protocol.CapabilityValidationRequest(request_id="candidate-1", binding_id=binding_id,
         credential_lease_id="lease-1", configuration=protocol.DataPlaneModelConfiguration(
             runtimes=[protocol.ModelRuntime(id="candidate-model", model="test-guard", profile_ref=profile,
-                base_url="https://model.test/v1", credential_ref="provider-1", timeout_seconds=5, max_tokens=128)],
+                base_url="https://model.test/v1", credential_ref="provider-1", timeout_seconds=5, max_tokens=128,
+                laya_request_mode="compatible" if profile in LAYA_PROFILES else "")],
             bindings=[protocol.CapabilityBinding(binding_id=binding_id, capability_ref=capability,
                 rail_type=protocol.RAIL_TYPE_INPUT if phase == "input" else protocol.RAIL_TYPE_OUTPUT,
                 model_ref="candidate-model", profile_ref=profile, contract_refs=[contract])]))
@@ -402,3 +404,59 @@ def test_validation_capture_keeps_the_most_recent_calls_when_the_limit_is_reache
     assert session.exchanges[0]["request"]["url"] == "https://model.test/4"
     assert session.exchanges[-1]["request"]["url"] == "https://model.test/19"
     assert all(isinstance(item["duration_ms"], int) for item in session.exchanges)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("profile", ["generic-chat", "tali.qwen3guard.v1"])
+@pytest.mark.parametrize("miss_pii", [False, True])
+async def test_shared_security_review_sends_one_request_for_each_conversation_turn(profile, miss_pii):
+    request = candidate(capability="classifier_review", profile=profile, contract="tali.guard.classifier-review.v1")
+    request.binding_id = request.configuration.bindings[0].binding_id = "classifier_review.security"
+    calls = []
+
+    def respond(http_request):
+        assert http_request.method == "POST" and http_request.url.path == "/v1/chat/completions"
+        messages = json.loads(http_request.content)["messages"]
+        output = bool(calls)
+        calls.append(messages)
+        if profile == "generic-chat":
+            checks = json.loads(messages[-1]["content"])["checks"]
+            assert len(checks) == (2 if output else 3)
+            answers = {key: "yes" if output and (not miss_pii or key.endswith("_unsafe_content")) else "no"
+                       for check in checks for key in check["questions"]}
+            content = json.dumps({"answers": answers})
+        elif output:
+            content = "Safety: Unsafe\nCategories: " + ("Violent" if miss_pii else "PII") + "\nRefusal: No"
+        else:
+            content = "Safety: Safe\nCategories: None"
+        return httpx.Response(200, json={"model": "test-guard", "choices": [{"message": {"content": content}}]})
+
+    result = await validate_capability(request, {"provider-1": "synthetic-secret"}, transport=httpx.MockTransport(respond))
+    assert result.passed is (not miss_pii), result.message
+    assert len(calls) == len(result.cases) == 2, result.message
+    user_request, model_response = result.cases
+    assert user_request.passed
+    assert model_response.actual_decision == "block"
+    assert model_response.passed is (not miss_pii)
+    if miss_pii:
+        assert "pii: expected matched" in model_response.reason
+    conversation = [{"role": "user", "content": user_request.input_content}]
+    if profile == "generic-chat":
+        for check in json.loads(calls[0][-1]["content"])["checks"]:
+            assert check["state"]["current_input"] == user_request.input_content
+        for check in json.loads(calls[1][-1]["content"])["checks"]:
+            assert check["state"]["current_output"] == model_response.input_content
+            assert check["state"]["context_messages"] == conversation
+    else:
+        assert calls == [conversation, [*conversation, {"role": "assistant", "content": model_response.input_content}]]
+    call_ids = []
+    for case, capabilities in zip(result.cases, [{"content_safety", "jailbreak", "pii"}, {"content_safety", "pii"}], strict=True):
+        evidence = json.loads(case.output_content)
+        traces = [step for step in evidence["evaluation_evidence"] if step["evaluator_id"] == "classifier-review"]
+        assert {step["capability"] for step in traces} == capabilities
+        ids = {step["model_call_id"] for step in traces}
+        assert len(ids) == 1 and None not in ids
+        call_ids.append(ids.pop())
+        assert len(evidence["model_exchanges"]) == 1
+        assert "synthetic-secret" not in case.output_content
+    assert call_ids[0] != call_ids[1]

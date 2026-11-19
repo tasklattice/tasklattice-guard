@@ -113,6 +113,28 @@ function clusterFixture(initial: Record<string, any> = {}) {
   });
   return { stored, request };
 }
+
+it("keeps distinct default Runner role credentials and matching Controller maps across bootstrap runs", async () => {
+  const runnerAuth = { name: "runner-auth-init", kind: "runnerAuth" };
+  const { stored, request } = clusterFixture();
+  expect(await ensureSecret(request, "namespace", "release", runnerAuth, owner)).toBe("created");
+  const secret = stored.get(runnerAuth.name);
+  const data = secret.data;
+  const read = (key: string) => Buffer.from(data[key], "base64").toString("utf8");
+  const control = read("runner-control-token");
+  const inbound = read("controller-http-token");
+  expect(control).toMatch(/^[a-f0-9]{64}$/);
+  expect(inbound).toMatch(/^[a-f0-9]{64}$/);
+  expect(inbound).not.toBe(control);
+  expect(JSON.parse(read("pool-tokens.json"))).toEqual({ default: control });
+  expect(JSON.parse(read("pool-http-tokens.json"))).toEqual({ default: inbound });
+  expect(await ensureSecret(request, "namespace", "release", runnerAuth, owner)).toBe("reused");
+  expect(stored.get(runnerAuth.name)).toBe(secret);
+
+  data["pool-http-tokens.json"] = data["pool-tokens.json"];
+  await expect(ensureSecret(request, "namespace", "release", runnerAuth, owner)).rejects.toThrow("inconsistent Runner credentials");
+  expect(request.mock.calls.map(([method]) => method)).toEqual(["GET", "POST", "GET", "GET"]);
+});
 const dbSpec = { name: "db-init", kind: "database", host: "postgres", username: "guard", database: "guard" };
 
 describe("database, account and gateway bootstrap", () => {

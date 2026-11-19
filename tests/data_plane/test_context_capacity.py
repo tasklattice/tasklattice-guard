@@ -101,7 +101,7 @@ async def test_real_redis_oom_keeps_existing_pin_checks_new_output_and_skips_log
     if not url: pytest.skip("requires an isolated disposable Redis")
     from urllib.parse import urlparse
     assert urlparse(url).hostname in {"127.0.0.1", "localhost", "::1"}
-    store = RedisCallContextStore(url, compress_plans=True, capacity_fallback=True)
+    store = RedisCallContextStore(url, capacity_fallback=True)
     original = store._redis.config_get("maxmemory")["maxmemory"]
     identity = "capacity-test-" + str(uuid4()); missing = identity + "-new"
     logs = RuntimeLogCapture(url, on_capacity=Mock())

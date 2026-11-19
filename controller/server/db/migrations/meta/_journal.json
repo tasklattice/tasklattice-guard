@@ -57,6 +57,27 @@
       "when": 1794200000000,
       "tag": "0007_policy_version_tests",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1794300000000,
+      "tag": "0008_telemetry_query_indexes",
+      "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1794400000000,
+      "tag": "0009_runtime_overview",
+      "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1794499200000,
+      "tag": "0010_runner_telemetry_watermark",
+      "breakpoints": true
     }
   ]
 }

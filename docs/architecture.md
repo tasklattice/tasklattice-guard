@@ -52,7 +52,7 @@ renamed by a database migration.
 
 ## Deployment topology
 
-The chart runs one Controller and at least two runner-default Runners. Every
+The chart runs one Controller and one runner-default replica by default. Every
 Runner pool is a StatefulSet with stable ordinal identities. A stable Runtime
 Service balances across ready replicas with `sessionAffinity: None`; a private
 headless Service provides StatefulSet identity. Upstreams use the Runtime
@@ -75,12 +75,10 @@ Production Endpoint checks bypass Controller and PostgreSQL. Playground is an
 explicit exception: Controller orchestrates model calls and invokes Runner
 checks, including isolated draft previews and path tests.
 
-The baseline provides data-plane rolling-update availability using two Runner
-replicas, readiness checks, `minReadySeconds: 5`, a `minAvailable: 1` PDB, and a
-drain window. It does not provide complete infrastructure HA: Controller is a
-single replica, the chart does not enforce placement across failure domains,
-and development PostgreSQL/Redis are single replicas. Production HA requires
-appropriate scheduling, spare capacity, and HA dependencies.
+Runner rollouts use readiness checks, `minReadySeconds: 5`, and a drain window.
+Replacing or evicting the only Runner replica can interrupt data-plane traffic.
+Controller and development PostgreSQL/Redis run as single replicas. Production
+HA requires scheduling across failure domains, spare capacity, and HA dependencies.
 
 Already synchronized Runners can serve their last-known-good generation during
 a temporary Controller outage. Management, publication, reconciliation, and
@@ -181,7 +179,7 @@ Generated bindings live in `runner/generated/` and
 `controller/server/generated/control-protocol/`, with domain conversion in the
 protocol boundary codecs. Enforcement-action helpers are also generated from
 Proto. Contract comments document field semantics, absence, units, and ranges.
-Run `make proto-generate` after changes and `make proto-check` to detect stale
+Run `npm run proto:generate` after changes and `npm run proto:check` to detect stale
 outputs. Management OpenAPI is an ignored build artifact generated before
 development, tests, typechecking, and server builds. Its `openapi:check` script
 generates the document and validates the API contract; production serves the
@@ -205,12 +203,22 @@ Provider connectivity, model callability, and Rail validation are separate
 checks. Protection Capabilities revisions assign models to stable bindings such as
 `content_safety.input` and `content_safety.output`. Input and Output execute
 today; Retrieval, Dialog, and Execution are reserved Rail types. DeepSeek
-Providers support Control Plane work and explicit `classifier_review.input` / `classifier_review.output`
-bindings using a Generic chat or dedicated review profile. Laya content safety supports
-both Rails with direction-specific questions; its reviewer binding is scoped to the same Rail. Primary detector
+Providers support Control Plane work and the security and Topic review bindings
+`classifier_review.security` and `classifier_review.topic_control.input`.
+Security reviews support Generic chat, dedicated review, and Qwen3Guard profiles;
+Topic review supports chat profiles only and never inherits another capability's
+reviewer. With no reviewer, the primary result and the Rule's Unknown handling
+remain final. Laya content safety supports both Rails with direction-specific
+questions. The security reviewer covers both Rails. Primary detector
 contracts remain specialized. The active data-plane projection includes
 only models referenced by its bindings; credentials are resolved separately and
 are not embedded in artifacts or desired-state snapshots.
+
+Built-in Laya coalesces primary evaluations inside one compiler-proven read-only
+execution group into a bounded CPU forward, preserving each member's state,
+question set, deadline and evidence. Transforms and conditional dependencies
+remain execution barriers. Security checks use one shared reviewer. Topic review has its own binding.
+See [batched inference](laya-batched-inference.md) for limits and validation.
 
 Capability validation compiles and exercises a candidate binding through the
 actual NeMo runtime, using a short-lived, candidate-scoped credential lease.
@@ -456,8 +464,7 @@ Architecture acceptance covers chart topology/Redis/mTLS constraints, independen
 component builds, signed artifact verification and atomic activation, direct
 Runner traffic, pinned call/stream behavior, authenticated telemetry with encrypted
 content capture, and deletion evidence retention. Run the relevant Controller,
-Runner, protocol, and Helm checks through the repository's Makefile and package
-scripts; this document is not a test-results ledger.
+Runner, protocol, and Helm checks through the repository's npm scripts.
 
 
 ## Topic Control boundaries
@@ -534,9 +541,8 @@ Seeds run once through the migration journal; runtime startup never replaces
 operator changes. Add new defaults through a migration, not a request-time seed.
 
 `GET /api/v1/guardrail-profiles` reads enabled records from PostgreSQL on each
-request and expands their pinned Policy references. The
-`/api/v1/policy-catalog/protection-presets` route remains a database-backed alias.
-Both require authenticated Policies read access. Profile application copies
+request, expands their pinned Policy references, and requires authenticated
+Policies read access. Profile application copies
 bindings and draft settings into the draft; later Profile changes do not rewrite existing Guardrails.
 Each Profile response has an `availability` result. A missing pinned version
 disables only that Profile, and never substitutes another version.

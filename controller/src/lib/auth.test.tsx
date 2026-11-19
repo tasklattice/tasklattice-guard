@@ -21,8 +21,9 @@ const dashboardKeys = [
   queryKeys.runtimeEventsScope({ window: "1h", limit: 50, guardrailId: "private-guardrail" }),
 ];
 function Probe() { const auth = useAuth(); return <><p>{auth.user ? `${auth.user.id}:${auth.user.role}` : "signed-out"}</p>
-  <button onClick={() => void auth.login({ username: "second", password: "test-only" })}>Sign in</button><button onClick={() => void auth.logout()}>Sign out</button></>; }
-afterEach(() => { cleanup(); vi.clearAllMocks(); });
+  {auth.error instanceof Error ? <p role="alert">{auth.error.message}</p> : null}
+  <button onClick={() => void auth.login({ username: "second", password: "test-only" }).catch(() => undefined)}>Sign in</button><button onClick={() => void auth.logout()}>Sign out</button></>; }
+afterEach(() => { cleanup(); vi.resetAllMocks(); });
 
 describe("Authenticated cache boundaries", () => {
   it("discards open form state when another tab switches the active project", async () => {
@@ -80,7 +81,8 @@ describe("Authenticated cache boundaries", () => {
     client.setQueryData(queryKeys.auth, { authenticated: true, user });
     for (const key of [["identity", "users"], ["resources", "model-configuration"], ["provider-discovery"]]) client.setQueryData(key, { private: "projectA" });
     client.getMutationCache().build(client, { mutationKey: ["old-project-operation"], mutationFn: async () => ({ private: "projectA" }) });
-    mocks.login.mockResolvedValue({ user: { ...user, id: "second", role: "user", project_id: "projectB" } });
+    mocks.login.mockResolvedValue(undefined);
+    mocks.getAuthStatus.mockResolvedValue({ authenticated: true, user: { ...user, id: "second", role: "user", project_id: "projectB" } });
     mocks.logout.mockResolvedValue(undefined);
     render(<QueryClientProvider client={client}><AuthProvider><Probe /></AuthProvider></QueryClientProvider>);
     fireEvent.click(screen.getByRole("button", { name: action === "login" ? "Sign in" : "Sign out" }));
@@ -121,8 +123,9 @@ describe("Authenticated cache boundaries", () => {
     client.setQueryData(queryKeys.auth, { authenticated: true, user });
     client.setQueryData(queryKeys.users, { users: ["prior-private-user"] });
     let finish!: (value: AuthStatus) => void;
-    mocks.getAuthStatus.mockImplementationOnce(() => new Promise(resolve => { finish = resolve; }));
-    mocks.login.mockResolvedValue({ user: { ...user, id: "second" } });
+    mocks.getAuthStatus.mockImplementationOnce(() => new Promise(resolve => { finish = resolve; }))
+      .mockResolvedValue({ authenticated: true, user: { ...user, id: "second" } });
+    mocks.login.mockResolvedValue(undefined);
     render(<QueryClientProvider client={client}><AuthProvider><Probe /></AuthProvider></QueryClientProvider>);
     const pending = client.invalidateQueries({ queryKey: queryKeys.auth });
     fireEvent.click(screen.getByRole("button", { name: "Sign in" }));
@@ -132,6 +135,23 @@ describe("Authenticated cache boundaries", () => {
     await act(async () => { finish({ authenticated: true, user }); await pending; });
     expect(screen.getByText("second:admin")).toBeTruthy();
     expect(client.getQueryData(queryKeys.guardrails)).toEqual({ items: ["second-account-data"] });
+    client.clear();
+  });
+
+  it("recovers from a failed post-login session check without submitting credentials again", async () => {
+    const client = new QueryClient({ defaultOptions: { queries: { retryDelay: 0 } } });
+    client.setQueryData(queryKeys.auth, { authenticated: false, user: null });
+    const error = new Error("Session temporarily unavailable");
+    mocks.login.mockResolvedValue(undefined);
+    mocks.getAuthStatus.mockRejectedValueOnce(error).mockRejectedValueOnce(error)
+      .mockResolvedValueOnce({ authenticated: true, user: { ...user, role: "user", project_id: "projectB" } });
+    render(<QueryClientProvider client={client}><AuthProvider><Probe /></AuthProvider></QueryClientProvider>);
+    fireEvent.click(screen.getByRole("button", { name: "Sign in" }));
+    expect((await screen.findByRole("alert")).textContent).toBe(error.message);
+    expect(mocks.getAuthStatus).toHaveBeenCalledTimes(2);
+    await act(async () => { await client.refetchQueries({ queryKey: queryKeys.auth }); });
+    expect(await screen.findByText("first:user")).toBeTruthy();
+    expect(mocks.login).toHaveBeenCalledTimes(1);
     client.clear();
   });
 });

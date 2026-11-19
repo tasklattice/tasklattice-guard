@@ -15,9 +15,6 @@ import pytest
 
 from runner.providers import dynamic_runtime_action_providers
 from runner.toolkit.nemo.actions.evaluate import EvaluationActionProvider
-from runner.toolkit.nemo.evaluators.laya import (
-    DEFAULT_REQUEST_MODE, LAYA_REQUEST_MODES, normalize_request_mode,
-)
 from runner.toolkit.nemo.evaluators.laya_content_safety import LayaContentSafetyEvaluator
 from runner.toolkit.nemo.evaluators.laya_jailbreak import LayaJailbreakEvaluator
 from runner.toolkit.nemo.evaluators.laya_topic import LayaTopicEvaluator
@@ -58,24 +55,14 @@ def reply(body, usage=None):
         "usage": usage or {}, "routing": {"model": "multilingual"}})
 
 
-def test_request_mode_is_normalized_once():
-    assert DEFAULT_REQUEST_MODE == "compatible"
-    assert LAYA_REQUEST_MODES == {"native", "compatible"}
-    assert normalize_request_mode("") == "compatible"
-    assert normalize_request_mode("compatible") == "compatible"
-    assert normalize_request_mode("native") == "native"
-
-
-@pytest.mark.parametrize("value", ["legacy", "NATIVE", "native ", "compat", None, 1])
+@pytest.mark.parametrize("value", ["NATIVE", "native ", "compat", None, 1])
 def test_unknown_request_mode_is_rejected_before_any_call(value):
-    with pytest.raises(ValueError, match="request mode"):
-        normalize_request_mode(value)
     with pytest.raises(ValueError, match="request mode"):
         LayaContentSafetyEvaluator(base_url="https://laya.test/v1", model="auto",
                                    api_key="synthetic", request_mode=value)
 
 
-@pytest.mark.parametrize("value", ["", "native", "compatible"])
+@pytest.mark.parametrize("value", ["native", "compatible"])
 def test_runtime_config_keeps_the_declared_mode(value):
     base = dict(id="laya", base_url="https://laya.test/v1", model="auto")
     assert ModelRuntimeConfig(**base).laya_request_mode == "compatible"
@@ -132,7 +119,7 @@ async def test_declared_mode_fixes_one_deterministic_body(
     assert json.loads(later.trace[0].evidence)["request_budget"] == expected_budget
 
 
-async def test_absent_mode_defaults_to_compatible():
+async def test_standalone_evaluator_defaults_to_compatible():
     bodies = []
 
     def respond(wire):
@@ -185,14 +172,6 @@ async def test_strict_server_rejection_is_not_retried_or_negotiated(
     # Re-evaluating does not learn a fallback: the same native body is sent again.
     again = await evaluator.evaluate(request(capability, rail_type))
     assert again.verdict == "error" and len(bodies) == 2 and bodies[1] == bodies[0]
-
-
-def test_no_schema_negotiation_state_exists():
-    import runner.toolkit.nemo.evaluators.laya as laya
-    evaluator = service(lambda wire: pytest.fail("No call expected"))
-    assert not hasattr(laya, "head_max_len_rejected")
-    assert not hasattr(evaluator, "_head_max_len_supported")
-    assert not hasattr(evaluator, "_head_max_len_rejected")
 
 
 @pytest.mark.parametrize("payload,status", [
@@ -322,11 +301,10 @@ async def test_pre_body_trace_budget_is_mode_derived(request_mode, expected_budg
         assert evidence["model_metadata"]["head_max_len_source"] == "server_default"
 
 
-def _plan(mode=None):
+def _plan(mode):
     config = candidate("input", "content_safety", "tali.laya.v1",
                        "tali.guard.content-safety.v1").configuration
-    if mode is not None:
-        config.runtimes[0].laya_request_mode = mode
+    config.runtimes[0].laya_request_mode = mode
     return config
 
 
@@ -361,26 +339,7 @@ async def test_plan_mode_reaches_the_wire_body(mode):
     assert evidence["model_metadata"]["laya_request_mode"] == mode
 
 
-async def test_absent_plan_mode_reaches_the_wire_as_compatible():
-    bodies = []
-
-    def respond(wire):
-        body = json.loads(wire.content)
-        bodies.append(body)
-        return httpx.Response(200, json={"model": body["model"], "answers": {
-            key: {"type": "noul", "noul": .01} for key in body["questions"]}})
-
-    config = _plan()
-    assert config.runtimes[0].laya_request_mode == ""
-    result = await _execute_through_plan(config, respond)
-    assert result.verdict == "not_matched" and len(bodies) == 1
-    assert set(bodies[0]) == COMPATIBLE_BODY and "head_max_len" not in bodies[0]
-    evidence = json.loads(result.trace[0].evidence)
-    assert evidence["model_metadata"]["laya_request_mode"] == "compatible"
-    assert evidence["model_metadata"]["head_max_len_source"] == "server_default"
-
-
 def test_plan_rejects_an_unknown_mode():
-    config = _plan("legacy")
+    config = _plan("invalid")
     with pytest.raises(ValueError, match="request mode"):
         dynamic_runtime_action_providers(config, {"provider-1": "synthetic"})

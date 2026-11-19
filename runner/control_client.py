@@ -25,6 +25,7 @@ from runner.toolkit.nemo.native_models import NativeRailModel, native_rail_model
 from .report_chunks import ReportSpool
 from .software_version import SOFTWARE_VERSION
 from .artifact_store import ArtifactStore
+from .builtin_laya import BUILTIN_LAYA_BACKEND, BUILTIN_LAYA_REVISION_LABEL, BuiltinLaya
 from .compiler import DefaultRunnerCompiler
 from .capability_validation import validate_capability
 from .config import RunnerSettings
@@ -34,6 +35,7 @@ from .control_transport import CONTROL_CHANNEL_OPTIONS
 from . import generated as protocol
 from .generated import runner_control_pb2_grpc as services
 from .metrics import RunnerMetrics
+from .outage import TransportOutage
 from .admission_snapshot_codec import admission_snapshot_to_proto
 from .providers import dynamic_runtime_action_providers
 from .protocol_codec import validation_case_result_to_proto, validation_metrics_to_proto
@@ -54,10 +56,11 @@ class _LeaseAuthorityLost(RuntimeError):
 
 def _prepare_model_dependencies(
     configuration: protocol.DataPlaneModelConfiguration, credentials: dict[str, str],
+    builtin_laya: BuiltinLaya | None = None,
 ) -> tuple[ActionProviders, tuple[NativeRailModel, ...]]:
     with diagnostic_phase("desired_state.models", model_revision_id=configuration.revision_id):
         providers = action_providers(*dynamic_runtime_action_providers(
-            configuration, credentials))
+            configuration, credentials, builtin_laya=builtin_laya))
         return providers, native_rail_models(configuration, credentials)
 
 
@@ -71,8 +74,10 @@ class RunnerControlClient:
         provider_observer: Callable[[ActionProviders], Awaitable[None]] | None = None,
         compiler: DefaultRunnerCompiler | None = None,
         telemetry: RuntimeTelemetryExporter | None = None,
+        builtin_laya: BuiltinLaya | None = None,
     ) -> None:
         self._telemetry = telemetry
+        self._builtin_laya = builtin_laya
         self._settings = settings
         self._store = store
         self._metrics = metrics
@@ -87,8 +92,6 @@ class RunnerControlClient:
         self._synchronization_lost.set()
         self._synchronization_epoch = 0
         lease_enforcement = getattr(settings, "experimental_lease_enforcement", False)
-        if lease_enforcement and not settings.control_token:
-            raise ValueError("Experimental lease enforcement requires a Runner pool token.")
         self._serving_lease = ServingLease(5.0) if lease_enforcement else None
         self._lease_snapshot_nonce: str | None = None
         self._lease_snapshot_ready = asyncio.Event()
@@ -115,6 +118,7 @@ class RunnerControlClient:
         self._providers = providers
         self._materialization_key: str | None = None
         self._provider_observer = provider_observer
+        self._control_outage = TransportOutage("controller control stream")
         self._validator = (
             DefaultRunnerValidator(self._compiler, providers, self._store.verify)
             if self._compiler
@@ -161,12 +165,16 @@ class RunnerControlClient:
                     delay = 1.0
                 except asyncio.CancelledError:
                     raise
-                except Exception:
+                except Exception as error:
                     self._connected.clear()
                     self._revoke_synchronization()
                     self._metrics.set_control_state(connected=False)
                     self._metrics.observe_control_reconnect("stream_error")
-                    logger.exception("Runner control stream failed; reconnecting in %.1f seconds.", delay)
+                    # A Controller that is absent, restarting or rolling is the
+                    # normal case; one line per outage, no traceback per retry.
+                    self._control_outage.failed(
+                        error, retry_in=delay, target=self._settings.controller_target,
+                    )
                     try:
                         await asyncio.wait_for(self._stop.wait(), timeout=delay)
                     except TimeoutError:
@@ -202,7 +210,7 @@ class RunnerControlClient:
         channel = self._channel()
         stub = services.RunnerControlStub(channel)
         heartbeat = asyncio.create_task(self._heartbeats())
-        metadata = (("authorization", f"Bearer {self._settings.control_token or self._settings.controller_token}"),)
+        metadata = (("authorization", f"Bearer {self._settings.control_token}"),)
         # Own the sender task explicitly. gRPC's iterator consumer can remain
         # blocked on our empty queue after the server has closed the RPC.
         response_stream = stub.Connect(metadata=metadata)
@@ -272,6 +280,8 @@ class RunnerControlClient:
         async with asyncio.TaskGroup() as tasks:
             tasks.create_task(consume())
             async for message in stream:
+                if not self._connected.is_set():
+                    self._control_outage.recovered()
                 self._connected.set()
                 self._metrics.set_control_state(connected=True)
                 if message.WhichOneof("body") in {"protection_state", "serving_lease_response", "validation_cancel_request", "validation_report_chunk_ack", "validation_report_ack"}:
@@ -327,6 +337,8 @@ class RunnerControlClient:
                 applied_generation=self._store.generation,
                 applied_protection_generation=self._store.protection_generation,
                 load=self._metrics.heartbeat(),
+                telemetry_drained_at_unix_ms=(self._telemetry.drained_at_unix_ms
+                                              if self._telemetry is not None else None),
                 project_admission_snapshot=(admission_snapshot_to_proto(self._metrics.project_admission_snapshot_json())
                     if callable(getattr(self._metrics, "project_admission_snapshot_json", None)) else None),
             ),
@@ -457,6 +469,7 @@ class RunnerControlClient:
                 if materialization_key != self._materialization_key:
                     providers, native_models = await prepare(
                         _prepare_model_dependencies, desired_state.model_configuration, credentials,
+                        self._builtin_laya,
                     )
             else:
                 materialization_key = None
@@ -537,6 +550,9 @@ class RunnerControlClient:
         configuration: protocol.DataPlaneModelConfiguration,
         lease_id: str | None = None,
     ) -> dict[str, str]:
+        if any(runtime.backend == BUILTIN_LAYA_BACKEND and runtime.credential_ref
+               for runtime in configuration.runtimes):
+            raise ValueError("Built-in Laya cannot request a Model credential lease.")
         refs = sorted({
             runtime.credential_ref
             for runtime in configuration.runtimes
@@ -552,7 +568,7 @@ class RunnerControlClient:
             response = await client.post(
                 f"{base_url}/api/internal/v1/model-credentials/resolve",
                 headers={
-                    "authorization": f"Bearer {self._settings.control_token or self._settings.controller_token}",
+                    "authorization": f"Bearer {self._settings.control_token}",
                     "content-type": "application/json",
                 },
                 json={"refs": refs, **({"leaseId": lease_id} if lease_id else {})},
@@ -708,7 +724,8 @@ class RunnerControlClient:
                 raise ValueError("This Runner is not compiler-capable.")
             async with asyncio.timeout(90):
                 credentials = await self._model_credentials(request.configuration, request.credential_lease_id)
-                result = await validate_capability(request, credentials, runner_id=self._settings.runner_id)
+                result = await validate_capability(request, credentials, runner_id=self._settings.runner_id,
+                                                   builtin_laya=self._builtin_laya)
         except Exception as error:
             result = protocol.CapabilityValidationResult(request_id=request.request_id,
                 message=f"Rail validation could not complete ({type(error).__name__}). Check Runner availability and retry.")
@@ -1052,6 +1069,7 @@ class RunnerControlClient:
         self._metrics.set_control_queue_depth(self._outgoing.qsize())
 
     def _registration(self) -> protocol.RunnerMessage:
+        builtin_revision = self._builtin_laya.revision if self._builtin_laya is not None else None
         return protocol.RunnerMessage(
             message_id=str(uuid.uuid4()),
             sent_at_unix_ms=_now_ms(),
@@ -1062,6 +1080,7 @@ class RunnerControlClient:
                 runner_version=SOFTWARE_VERSION["version"],
                 labels={"tasklattice.build": json.dumps(SOFTWARE_VERSION), "tasklattice.protection-modes": "1",
                         "tasklattice.snapshot-ack": "1", "tasklattice.offline-compilation": "1",
+                        **({BUILTIN_LAYA_REVISION_LABEL: builtin_revision} if builtin_revision else {}),
                         **({"tasklattice.lease-probe": "1"} if self._serving_lease is not None else {})},
                 nemo_version=importlib.metadata.version("nemoguardrails"),
                 max_concurrency=self._settings.max_concurrency,

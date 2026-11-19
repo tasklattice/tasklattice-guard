@@ -24,6 +24,7 @@ import { RuntimeHealthAlert } from "@/components/dashboard/runtime-health-alert"
 import { RuntimeEventStream } from "@/components/dashboard/runtime-event-stream";
 import { ErrorNotice, InfoNotice, PageHeader } from "@/components/product-shell";
 import { Button } from "@/components/ui/button";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -66,10 +67,27 @@ export function DashboardPage() {
         }
       />
 
+      {dashboard.status.isPending || dashboard.status.isError ? (
+        <div className="mt-5">
+          <Alert variant="info">
+            <AlertTitle>{t(dashboard.status.isError ? "dashboard.statusUnavailable" : "dashboard.statusChecking")}</AlertTitle>
+            <AlertDescription>
+              <p>{t(dashboard.status.isError ? "dashboard.statusUnavailableDescription" : "dashboard.statusCheckingDescription")}</p>
+              {dashboard.status.isError ? <Button variant="ghost" disabled={dashboard.status.isFetching}
+                onClick={() => void dashboard.status.refetch()}>{t("common.retry")}</Button> : null}
+            </AlertDescription>
+          </Alert>
+        </div>
+      ) : dashboard.status.data.status !== "healthy" ? (
+        <div className="mt-5"><RuntimeHealthAlert metrics={{
+          system_status: dashboard.status.data.status, system_reasons: dashboard.status.data.reasons,
+        }} /></div>
+      ) : null}
+
       {dashboard.error ? (
         <div className="mt-5 flex flex-col gap-3 sm:flex-row sm:items-center">
           <div className="min-w-0 flex-1"><ErrorNotice error={dashboard.error} /></div>
-          <Button variant="outline" onClick={() => void Promise.all([dashboard.metrics.refetch(), dashboard.events.refetch(), dashboard.guardrails.refetch()])}>{t("common.retry")}</Button>
+          <Button variant="outline" onClick={() => void Promise.all([dashboard.metrics.refetch(), dashboard.guardrails.refetch()])}>{t("common.retry")}</Button>
         </div>
       ) : null}
 
@@ -105,11 +123,11 @@ export function DashboardPage() {
               investigation={runtimeInvestigation(dashboard.metrics.data, "p95_latency")}
               onInvestigate={() => openInvestigation("p95_latency")}
               label={t("dashboard.p95Latency")}
-              value={dashboard.metrics.data.total_decisions ? `${dashboard.metrics.data.runtime_p95_ms.toLocaleString()} ms` : "—"}
+              value={dashboard.metrics.data.total_decisions ? `${dashboard.metrics.data.latency_method === "histogram_5pct" ? "≈ " : ""}${dashboard.metrics.data.runtime_p95_ms.toLocaleString()} ms` : "—"}
               delta={dashboard.metrics.data.comparison.runtime_p95_delta_ms}
               deltaKind="milliseconds"
               semantic="lower-is-better"
-              definition={t("dashboard.metricDefinitions.p95Latency")}
+              definition={`${t("dashboard.metricDefinitions.p95Latency")}${dashboard.metrics.data.latency_method === "histogram_5pct" ? ` ${t("dashboard.latencyEstimate")}` : ""}`}
             />
             <OverviewMetricCard
               metric="error_rate"
@@ -132,13 +150,18 @@ export function DashboardPage() {
           </div>
 
           <ProtectionOutcome metrics={dashboard.metrics.data} />
-          <RuntimeEventStream
-            items={dashboard.events.data?.items ?? []}
-            loading={dashboard.events.isLoading}
-            guardrails={guardrails}
-          />
         </div>
       ) : null}
+      <div className="mt-4">
+        <RuntimeEventStream
+          items={dashboard.events.data?.items ?? []}
+          loading={dashboard.events.isLoading}
+          error={dashboard.events.error}
+          refreshing={dashboard.events.isFetching}
+          onRetry={() => void dashboard.events.refetch()}
+          guardrails={guardrails}
+        />
+      </div>
       {investigation ? <RuntimeInvestigationSheet metrics={investigation.metrics} metric={investigation.metric} onClose={() => setInvestigation(null)} /> : null}
     </section>
   );

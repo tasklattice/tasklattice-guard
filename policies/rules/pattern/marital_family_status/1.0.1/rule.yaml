@@ -1,0 +1,28 @@
+id: pattern/marital_family_status
+version: 1.0.1
+name: Marital & Family Status (Protected Class)
+description: >-
+  Detects a marital or family status disclosure - protected under ECOA. A status is a
+  value the person states about themselves or is asked for, not an incidental
+  relationship reference: "My husband and I like gardening" describes a companion, not
+  a protected attribute, and stays readable.
+stages:
+- input
+- output
+detector:
+  ref: text/regex
+  version: 1.0.0
+  parameters:
+    expression: (?i:(?:(?:marital|family|dependent)\s+status\b\s*(?:is|:|=)?\s*|(?:i\s+am|i'm|i’m|we\s+are|we're|we’re|he\s+is|he's|she\s+is|she's|are\s+you|is\s+he|is\s+she)\s+(?:currently\s+|legally\s+|still\s+)?)(?P<attribute_self>married|unmarried|single|divorced|separated|widowed|widow|widower|a\s+widow|a\s+widower|domestic\s+partner|civil\s+union|common[- ]?law|single\s+parent|single\s+mother|single\s+father|childless|child[- ]?free|pregnant|expecting)\b)
+    detector_options:
+      capture_group: attribute_self
+on_match:
+  action: transform
+  replacement: '[marital_family_status_REDACTED]'
+risk_level: medium
+metadata:
+  taxonomy_ids:
+  - TALI-PRIVACY-SENSITIVE-ATTRIBUTE
+runtime_adapter:
+  binding_id: local-sensitive-attribute-terms
+  implementation_rule_id: pattern/marital_family_status

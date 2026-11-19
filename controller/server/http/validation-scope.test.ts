@@ -1,4 +1,5 @@
 // @vitest-environment node
+import { runnerAuthEnv } from "../../test/runner-auth-fixture.js";
 import { resolve } from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import type { ControllerAuth } from "../auth.js";
@@ -10,7 +11,7 @@ import { requiredTokenPermission } from "./token-permissions.js";
 import { createHttpApp } from "./app.js";
 
 const config = loadConfig({ NODE_ENV: "test", CONTROLLER_DATABASE_URL: "postgresql://test@localhost/test",
-  CONTROLLER_RUNNER_TOKEN: "runner-token-that-is-at-least-32-characters", CONTROLLER_ARTIFACT_SIGNING_KEY_PATH: "/tmp/test.pem",
+  ...runnerAuthEnv("runner-token-that-is-at-least-32-characters"), CONTROLLER_ARTIFACT_SIGNING_KEY_PATH: "/tmp/test.pem",
   CONTROLLER_POLICY_CATALOG_DIR: resolve("../runner/toolkit/policy_library/assets"), BETTER_AUTH_SECRET: "better-auth-secret-that-is-at-least-32-characters" });
 function setup(role: string | null) {
   const requestValidation = vi.fn().mockResolvedValue({ id: "run" });

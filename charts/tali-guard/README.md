@@ -93,75 +93,38 @@ temporary admin session when done. It uses the management API with a mounted Sec
 Existing databases predating the current schema baseline are not reset by this
 command. Initialize a separate development database/namespace to test that case.
 
-## Optional pool-bound Runner credentials
+## Runner pool credentials
 
-The chart can inject pre-provisioned pool credentials without putting token
-values in Helm values or rendered manifests. Create Kubernetes Secrets in the
-release namespace through your secret manager. One Controller Secret key must
-contain the JSON map from each pool ID to its distinct high-entropy token. Each
-Runner needs a separate Secret key containing only its pool's matching token.
-The chart injects a Runner reference only for `default`:
+The bootstrap Job creates and retains the `<release-fullname>-runner-auth-init`
+Secret for the default pool. Runner uses its control token for the gRPC stream,
+model credential requests and telemetry uploads. Controller uses a distinct
+HTTP token for internal requests to Runner. Controller reads the two token maps,
+and Runner reads only the two keys for its pool.
+
+To provision credentials externally, store each map and pool token in Kubernetes
+Secrets in the release namespace. The maps contain each pool ID and the matching
+token for that role. Use the same pool IDs in both maps, including `default`,
+and a distinct token of at least 32 printable ASCII characters without
+whitespace for every pool and role.
 
 ```yaml
 security:
   poolAuthentication:
-    enabled: true
-    controllerSecret: guard-pool-map
+    controllerSecret: guard-control-map
     controllerKey: pool-tokens.json
     runnerSecrets:
-      default: { name: guard-default-token, key: token }
-```
-
-Only `default` belongs in `runnerSecrets`. The chart rejects missing or unknown
-Runner references and a Runner reference to the Controller map key. It cannot
-inspect Secret contents or verify they match: Kubernetes must find every referenced Secret and key, and Controller
-startup validates the JSON and distinct token values. An externally managed
-pool needs a corresponding entry in the Controller's map and independent
-provisioning for that workload.
-
-Enabling the map immediately makes the Controller reject legacy credentials
-for the control stream and model-credential endpoint. Upgrade and restart all
-participating Controller and Runner workloads together in a maintenance window
-after provisioning matching Secrets. Kubernetes Secret environment variables
-do not update in running containers; rotate the map and pool Secrets as one
-coordinated change and restart the affected workloads. Existing control streams
-are not revoked merely by editing a Secret. Maintain a recovery plan for an
-inconsistent rollout.
-
-Pool control authentication alone leaves the legacy inbound HTTP and telemetry
-bearer on Runners. To use a separate inbound Controller-to-Runner credential
-for each pool, provision a second map and distinct per-pool Secret keys:
-
-```yaml
-security:
+      default: { name: guard-default-control, key: token }
   runnerHttpAuthentication:
-    enabled: true
     controllerSecret: guard-http-map
     controllerKey: pool-http-tokens.json
     runnerSecrets:
       default: { name: guard-default-http, key: token }
 ```
 
-This requires `poolAuthentication.enabled: true` and the same pool IDs in both
-maps. The chart rejects inbound HTTP Secret references that overlap control or
-legacy roles. Controller startup rejects duplicate decoded pool keys, incomplete
-maps, non-printable/non-ASCII token values and token-value reuse across roles.
-New pool-role tokens require at least 32 printable ASCII characters without
-whitespace. Selected pools without an HTTP token
-fail closed; a Runtime URL pointing at a foreign pool receives the selected
-pool's token and is rejected by that destination.
-
-Setting `security.poolAuthentication.scopedTelemetry: true` sets the scoped
-telemetry flags on both component types. When combined with separate HTTP
-authentication, it also omits `GUARD_CONTROLLER_TOKEN` from Runner containers.
-That mode currently quarantines Endpoint and routing telemetry without verified
-snapshot context, suppresses scoped
-Runner watermarks and makes freshness-based distribution/deletion actions
-unavailable. It does not yet provide complete production telemetry.
-
-Active model configuration remains platform-wide, and safe reassignment has
-additional requirements. Separate credential references do not change any
-defaults.
+The chart deploys the `default` Runner. Provision additional Runner pools
+separately and add their credentials to both external Controller maps. Rotate
+the corresponding map and pool keys together and restart the affected
+workloads so they reload Secret environment variables.
 
 Runtime telemetry uses a local WAL in the Runner's existing ephemeral state
 directory, `/var/lib/tasklattice/guard-runner`, shared with the artifact cache;
@@ -251,7 +214,7 @@ in that namespace:
 | `tali-guard-uat-bootstrap-admin` | `username`, login credential and optional `revision`; exact field names and overrides are in [account operations](../../docs/operations.md#bootstrap-account-operations) |
 
 Replace the Secret names and Redis URL with your environment's values. The
-example inherits ClusterIP Services, disabled Ingress, two Runner replicas,
+example inherits ClusterIP Services, disabled Ingress, one Runner replica,
 internal mTLS and automatic internal credentials. Monitoring integrations are
 disabled so it does not require Prometheus Operator/Grafana; omit its
 `observability` block if your UAT uses those integrations. Images and resource
@@ -639,8 +602,8 @@ there is no global runtime baseline or startup package setting.
 ## Scaling contract
 
 Controller remains one replica in this chart version. runner-default defaults to
-one StatefulSet replica in all profiles, with a minimum of one replica and
-`minAvailable: 1`. The initial instance is `runner-default-0`. Scale the data plane with
+one StatefulSet replica in all profiles, with a minimum of one replica.
+The initial instance is `runner-default-0`. Scale the data plane with
 `runner.default.replicaCount`. Manage other Runners manually in the administrator
 UI. Production must set `runner.callContextRedisUrl` when the Default Runner has
 more than one replica so input/output checks for one request remain pinned to the same Guardrail
@@ -900,7 +863,6 @@ The Default Runner receives these settings:
 runner:
   callContext:
     ttlSeconds: 300
-    compressPlans: true
     capacityFallback: true
 redis:
   maxmemory: 4gb
@@ -912,10 +874,8 @@ redis:
 
 An external Redis must be configured separately with an appropriate memory
 budget and `noeviction`; Helm does not change managed Redis configuration.
-Compression requires every shared-context reader to support the new encoding.
-For an upgrade from an older binary, deploy compatible readers with
-`compressPlans: false` first, then enable writes. TTL is not refreshed by
-outcome/completion updates.
+Runner compresses shared call-context plans when their size and compression ratio
+justify it. Outcome and completion updates preserve the original TTL.
 
 With capacity fallback enabled, Redis allocation errors stop context writes and
 history buffering for the current request. Existing readable context remains

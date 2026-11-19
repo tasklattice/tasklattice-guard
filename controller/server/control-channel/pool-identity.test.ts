@@ -1,4 +1,5 @@
 // @vitest-environment node
+import { runnerAuthEnv } from "../../test/runner-auth-fixture.js";
 import { EventEmitter } from "node:events";
 import { resolve } from "node:path";
 import { status } from "@grpc/grpc-js";
@@ -9,17 +10,15 @@ import type { ModelConfigurationService } from "../model-config/service.js";
 import type { ControlPlaneService } from "../services/control-plane.js";
 import { RunnerControlServer } from "./control-server.js";
 
-const legacy = "legacy-controller-token-with-32-characters";
 const tokens = { "pool-a": "pool-a-secret-with-at-least-32-characters", "pool-b": "pool-b-secret-with-at-least-32-characters", default: "default-secret-with-at-least-32-characters" };
-function makeConfig(scoped: boolean) {
+function makeConfig() {
   return loadConfig({ NODE_ENV: "test", CONTROLLER_DATABASE_URL: "postgresql://unused:unused@localhost/unused",
-    CONTROLLER_RUNNER_TOKEN: legacy, CONTROLLER_ARTIFACT_SIGNING_KEY_PATH: "/tmp/test-key.pem",
+    ...runnerAuthEnv(tokens), CONTROLLER_ARTIFACT_SIGNING_KEY_PATH: "/tmp/test-key.pem",
     CONTROLLER_PROTO_PATH: resolve("../proto/tasklattice/guard/control/v1/runner_control.proto"),
     BETTER_AUTH_SECRET: "synthetic-test-auth-secret-at-least-32-chars",
-    ...(scoped ? { CONTROLLER_RUNNER_POOL_TOKENS_JSON: JSON.stringify(tokens) } : {}),
   });
 }
-function setup(scoped = true) {
+function setup() {
   const service = {
     runnerControlSessions: { isCurrent: vi.fn().mockResolvedValue(true), dispatched: vi.fn().mockResolvedValue(true), dispatchedAllocation: vi.fn().mockResolvedValue({ epoch: 0, groupId: "default" }), acknowledged: vi.fn().mockResolvedValue(true) },
     registerRunner: vi.fn(async () => 7), disconnectRunner: vi.fn(),
@@ -28,7 +27,7 @@ function setup(scoped = true) {
   };
   const metrics = Object.fromEntries(["observeControlMessage", "controlConnection", "observeReconcile", "observeArtifactResult", "observeJob", "observeHeartbeat"].map(key => [key, vi.fn()]));
   const models = { activeConfiguration: vi.fn(async () => null), bindValidationLease: vi.fn(() => true) };
-  const server = new RunnerControlServer(makeConfig(scoped), service as unknown as ControlPlaneService, metrics as unknown as ControllerMetrics,
+  const server = new RunnerControlServer(makeConfig(), service as unknown as ControlPlaneService, metrics as unknown as ControllerMetrics,
     models as unknown as ModelConfigurationService);
   return { server, service, models };
 }
@@ -67,18 +66,12 @@ describe("pool-bound Runner control channel", () => {
     expect(service.desiredStateForPool).not.toHaveBeenCalled();
     expect(attempt.writes).toHaveLength(0);
   });
-  it.each([legacy, "unknown-credential-with-32-characters"])("rejects legacy or unknown credential in scoped mode", async token => {
+  it.each(["test-pool-a-controller-http-token-32-characters", "unknown-credential-with-32-characters"])("rejects an HTTP role or unknown credential", async token => {
     const { server, service } = setup();
     const attempt = connect(server, token, "pool-a");
     expect(attempt.errors[0]?.code).toBe(status.UNAUTHENTICATED);
     expect(service.registerRunner).not.toHaveBeenCalled();
     expect(service.desiredStateForPool).not.toHaveBeenCalled();
-  });
-  it("retains the explicitly unscoped legacy control channel when no map is configured", async () => {
-    const { server, service } = setup(false);
-    const attempt = connect(server, legacy, "pool-b");
-    await vi.waitFor(() => expect(service.registerRunner).toHaveBeenCalledOnce());
-    expect(attempt.errors).toHaveLength(0);
   });
   it("does not send Catalog validation to ordinal 0 in another pool", async () => {
     const { server, service, models } = setup();

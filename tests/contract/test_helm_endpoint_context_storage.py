@@ -36,11 +36,10 @@ def test_complete_controller_budget_overrides_reach_the_runtime_config(tmp_path)
     }
 
 
-def test_chart_uses_controller_budget_defaults_without_implicitly_enabling_scoped_mode(tmp_path):
+def test_chart_uses_controller_budget_defaults(tmp_path):
     result = render(tmp_path, None)
     assert result.returncode == 0, result.stderr
     assert "CONTROLLER_ENDPOINT_CONTEXT_MAX_" not in result.stdout
-    assert 'CONTROLLER_RUNNER_SCOPED_TELEMETRY: "false"' in result.stdout
 
 
 @pytest.mark.parametrize("policy", [{}, {**POLICY, "unknown": 1}, {**POLICY, "maxRowsPerPool": 513},

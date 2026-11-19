@@ -1,4 +1,3 @@
-from dataclasses import replace
 import json
 
 import httpx
@@ -42,6 +41,37 @@ async def test_truncated_input_never_becomes_a_pass_or_a_detection(usage, probab
     assert evidence["model_metadata"]["usage"] == usage
 
 
+@pytest.mark.parametrize("usage", [
+    {"truncated": True, "state_tokens_dropped": 20},
+    {"truncated": False, "state_tokens_dropped": 1},
+])
+@pytest.mark.parametrize("probability", [.01, .99])
+async def test_truncation_review_preserves_failure_evidence_and_complete_state(usage, probability):
+    content = "Neutral context. " * 500 + "The final sentence must be checked."
+    item = request(content=content, context_messages=[{"role": "user", "content": "Prior turn."}])
+    seen = []
+
+    class Reviewer:
+        async def review(self, original, questions, state, first):
+            seen.append(first)
+            assert original is item
+            assert state == {"current_input": content, "context_messages": [{"role": "user", "content": "Prior turn."}]}
+            assert first.verdict == "unknown" and not first.findings
+            return first
+
+    service = LayaContentSafetyEvaluator(base_url="https://laya.test/v1", model="auto", api_key="secret",
+        reviewer=Reviewer(), transport=httpx.MockTransport(lambda wire: reply(json.loads(wire.content), probability, usage)))
+    result = await service.evaluate(item)
+    assert len(seen) == 1
+    call = result.usage.model_calls[0]
+    assert call.result == "invalid_response" and call.error_type == "LayaInputTruncatedError"
+    evidence = json.loads(result.trace[0].evidence)
+    assert evidence["judgments"] == {}
+    assert evidence["model_metadata"]["coverage"] == "input_truncated"
+    assert evidence["model_metadata"]["usage"] == usage
+    assert set(evidence["model_metadata"]["discarded_probabilities"].values()) == {probability}
+
+
 @pytest.mark.parametrize("capability,factory", [
     ("content_safety", LayaContentSafetyEvaluator), ("jailbreak", LayaJailbreakEvaluator),
     ("topic_control", LayaTopicEvaluator),
@@ -81,12 +111,12 @@ async def test_confident_partial_topic_match_requires_full_request_review(conten
     service = LayaTopicEvaluator(base_url="https://laya.test/v1", model="auto", api_key="secret", reviewer=Reviewer(),
         transport=httpx.MockTransport(lambda wire: reply(json.loads(wire.content))))
     item = request("topic_control", content, parameters={"allowed_topics": "Product support"})
-    primary = await service.evaluate(item)
+    primary = await service.evaluate_primary(item)
     assert primary.verdict == "unknown" and not seen
     assert json.loads(primary.trace[0].evidence)["judgments"]["unlisted_task"]["probability"] == .01
     assert json.loads(primary.trace[-1].evidence)["model_metadata"]["coverage"] == "compound_scope_unverified"
     assert primary.usage.model_invocations == 1
-    reviewed = await service.evaluate(replace(item, parameters=(*item.parameters, ("review_unknown", "true"))))
+    reviewed = await service.evaluate(item)
     assert reviewed.verdict == "matched" and len(seen) == 1
     questions, state, first = seen[0]
     assert state["current_input"] == content and "UNION" in questions["unlisted_task"]["instructions"]["question"]
@@ -103,7 +133,7 @@ async def test_review_keeps_full_taxonomy_and_context_and_runs_only_for_unknown(
         service = LayaContentSafetyEvaluator(base_url="https://laya.test/v1", model="auto", api_key="secret", reviewer=Reviewer(),
             transport=httpx.MockTransport(lambda wire: reply(json.loads(wire.content), p)))
         item = request(context_messages=[{"role": "user", "content": "Prior context."}])
-        return await service.evaluate(replace(item, parameters=(("review_unknown", "true"),)))
+        return await service.evaluate(item)
     assert (await check(.01)).verdict == "not_matched" and not seen
     assert (await check(.99)).verdict == "matched" and not seen
     assert (await check(.5)).verdict == "unknown" and len(seen) == 1
@@ -131,9 +161,9 @@ async def test_output_checks_assistant_only_and_review_retains_context(probabili
     service = LayaContentSafetyEvaluator(base_url="https://laya.test/v1", model="auto", api_key="secret",
         rail_type="output", reviewer=Reviewer(), transport=httpx.MockTransport(respond))
     item = request(content=output, rail_type="output", context_messages=context)
-    result = await service.evaluate(replace(item, parameters=(("review_unknown", "true"),)))
+    result = await service.evaluate(item)
     assert bool(seen) is reviewed
-    assert json.loads(result.trace[0].evidence)["question_revision"] == "laya-content-safety-output.v3"
+    assert json.loads(result.trace[0].evidence)["question_revision"].startswith("content_safety:laya:")
     if reviewed:
         questions, state = seen[0]
         assert state == {"current_output": output, "context_messages": context[:-1]}
@@ -179,8 +209,8 @@ async def test_multi_topic_policy_requires_review_in_both_directions(probability
     service = LayaTopicEvaluator(base_url="https://laya.test/v1", model="auto", api_key="secret",
         transport=httpx.MockTransport(lambda wire: reply(json.loads(wire.content), probability)), reviewer=Reviewer())
     item = request("topic_control", parameters={"topic_mode": "permissive", "restricted_topics": "Fraud\nViolence"})
-    primary = await service.evaluate(item)
+    primary = await service.evaluate_primary(item)
     assert primary.verdict == "unknown" and not primary.findings and not seen
     assert json.loads(primary.trace[-1].evidence)["model_metadata"]["coverage"] == "multi_topic_scope_unverified"
-    reviewed = await service.evaluate(replace(item, parameters=(*item.parameters, ("review_unknown", "true"))))
+    reviewed = await service.evaluate(item)
     assert reviewed.verdict == "not_matched" and len(seen) == 1

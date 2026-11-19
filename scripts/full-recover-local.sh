@@ -175,20 +175,10 @@ ensure_signing_keys() {
 }
 
 normalize_local_env() {
-  local controller_token
-  local runner_token
   local metrics_token
   local auth_secret
 
   ensure_env_file
-
-  controller_token="$(read_env_value CONTROLLER_RUNNER_TOKEN || true)"
-  runner_token="$(read_env_value GUARD_CONTROLLER_TOKEN || true)"
-  if ! is_real_secret "${controller_token}" || [[ "${controller_token}" != "${runner_token}" ]]; then
-    controller_token="$(random_secret)"
-    write_env_value "CONTROLLER_RUNNER_TOKEN" "${controller_token}"
-    write_env_value "GUARD_CONTROLLER_TOKEN" "${controller_token}"
-  fi
 
   metrics_token="$(read_env_value CONTROLLER_METRICS_TOKEN || true)"
   if ! is_real_secret "${metrics_token}"; then
@@ -506,6 +496,7 @@ main() {
   ensure_dirs
   normalize_local_env
   ensure_signing_keys
+  run node "${ROOT_DIR}/controller/scripts/dev-setup.mjs"
   ensure_postgres
   stop_stale_processes
   sync_dependencies

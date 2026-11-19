@@ -24,30 +24,23 @@ credentials. Provider secrets are read by environment-variable name and never
 printed. Environment variables override values in `--env-file`.
 
 Examples below use `.local-secrets/guardctl.env`. Add the provider keys there as
-`MODEL_GUARDRAILS_JEV_API_KEY_ENV_VAR` and
-`MODEL_GUARDRAILS_NVIDIA_API_KEY_ENV_VAR`, or export them into the process.
+`QWEN3GUARD_API_KEY`, or export them into the process.
 Use `--url` for the Controller origin; separate `GUARD_PLATFORM_URL` and
 `GUARD_PROJECT_URL` are also supported.
 
 ## Platform: register the models
 
+Laya initial classification is packaged with the Runner and needs no registration.
+Register a reviewer, using your deployed Qwen3Guard chat endpoint:
+
 ```sh
 bin/guardctl platform register-model \
   --url http://localhost:38081 --env-file .local-secrets/guardctl.env \
-  --provider-name 'TypeSafe JEV' --provider-kind typesafe \
-  --provider-url https://api.typesafe.ai/v1 \
-  --model jev-1.13.0 --profile tali.typesafe-jev.v1 \
-  --timeout-seconds 20 --max-tokens 512 \
-  --key-env MODEL_GUARDRAILS_JEV_API_KEY_ENV_VAR
-
-bin/guardctl platform register-model \
-  --url http://localhost:38081 --env-file .local-secrets/guardctl.env \
-  --provider-name 'NVIDIA NIM' --provider-kind custom-openai-compatible \
-  --provider-url https://integrate.api.nvidia.com/v1 \
-  --model nvidia/llama-3.1-nemotron-safety-guard-8b-v3 \
-  --profile tali.nemotron-safety-guard-v3.v1 \
+  --provider-name Qwen3Guard --provider-kind custom-openai-compatible \
+  --provider-url "$QWEN3GUARD_BASE_URL" \
+  --model Qwen/Qwen3Guard-Gen-8B --profile tali.qwen3guard.v1 \
   --timeout-seconds 30 --max-tokens 512 \
-  --key-env MODEL_GUARDRAILS_NVIDIA_API_KEY_ENV_VAR
+  --key-env QWEN3GUARD_API_KEY
 ```
 
 The result contains `modelId`. Existing matching definitions are reused. A
@@ -57,33 +50,32 @@ existing Provider key.
 
 ## Platform: bind a model
 
-Replace `JEV_MODEL_ID` with the returned ID:
+Replace `REVIEW_MODEL_ID` with the returned ID:
 
 ```sh
 bin/guardctl platform bind \
   --url http://localhost:38081 --env-file .local-secrets/guardctl.env \
-  --binding content_safety.input --model-id JEV_MODEL_ID \
-  --state .local-secrets/jev-binding.json
+  --binding classifier_review.security --model-id REVIEW_MODEL_ID \
+  --state .local-secrets/review-binding.json
 ```
 
 This performs real safe/unsafe candidate probes, saves the validated assignment,
-applies only `content_safety.input`, and waits for activation. The API still
-enforces validation and optimistic concurrency. Output and unrelated bindings
-remain unchanged. Bindings are **platform-wide**: every Guardrail using this
-capability and direction uses the selected model. JEV Content Safety supports
-both `content_safety.input` and `content_safety.output`.
+applies only `classifier_review.security`, and waits for activation. The API still
+enforces validation and optimistic concurrency. The shared security reviewer covers input and output. Bindings are **platform-wide**: every Guardrail using this
+capability and direction uses the selected reviewer on uncertain results. The six initial classifier
+bindings remain platform-managed Laya; they cannot be replaced or cleared.
 
 The state records the original assignments before any write. The JSON result
 includes `previousModelId`. After comparison, bind that ID with a **new** state
 file (for example `restore-nvidia.json`); this validates and restores only the
 selected binding. Do not run tests during activation.
 
-The optional gray-area reviewer uses the same bind command with
-`--binding classifier_review.input` for JEV/Laya input or `--binding classifier_review.output`
-for JEV/Laya content-safety output. Its model profile is `generic-chat` or
-`tali.classifier-review.v1`; the corresponding Policy binding must explicitly enable
-`review_unknown` in a supporting Policy version. See
-[JEV 灰区复核](classifier-gray-review.md) for versions, evidence and failure behavior.
+Optional review uses two targets, `classifier_review.security` and `classifier_review.topic_control.input`. Security reviewers accept `generic-chat`,
+`tali.classifier-review.v1`, or `tali.qwen3guard.v1`; Topic accepts the two chat
+profiles only. A missing Topic reviewer leaves the Laya/JEV result and the Rule's
+Unknown handling unchanged. No other review binding is used as its fallback.
+See [JEV / Laya gray-area review](classifier-gray-review.md)
+for evidence and failure behavior.
 
 ## Project: create from a Profile and publish a test Endpoint
 

@@ -76,9 +76,9 @@ async def test_typescript_controller_distributes_signed_artifact_or_rejects_inva
             store = ArtifactStore(FIXTURE / "public-key.pem", tmp_path / "state")
             registry = NeMoRuntimeRegistry(store, action_providers(*local_action_providers()))
             store.attach_registry(registry)
-            settings = SimpleNamespace(runner_id="cross-language", pool_id="default", compiler_capable=False,
+            settings = SimpleNamespace(runner_id="runner-default-0", pool_id="default", compiler_capable=False,
                 max_concurrency=4, controller_ca_path=None, client_key_path=None, client_certificate_path=None,
-                controller_target=f"127.0.0.1:{ready['port']}", controller_token="fixture-runner-token-at-least-32-characters", control_token=None)
+                controller_target=f"127.0.0.1:{ready['port']}", control_token="fixture-runner-token-at-least-32-characters")
             client = RunnerControlClient(settings, store, RunnerMetrics(4))
             client_task = asyncio.create_task(client._connect_once())
             if invalid_action is not None:

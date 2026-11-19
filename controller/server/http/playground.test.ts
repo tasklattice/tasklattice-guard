@@ -1,3 +1,4 @@
+import { runnerAuthEnv } from "../../test/runner-auth-fixture.js";
 import { resolve } from "node:path";
 
 import { describe, expect, it, vi } from "vitest";
@@ -13,10 +14,23 @@ import { createHttpApp } from "./app.js";
 const config = loadConfig({
   NODE_ENV: "test",
   CONTROLLER_DATABASE_URL: "postgresql://controller:controller@localhost/controller",
-  CONTROLLER_RUNNER_TOKEN: "runner-token-that-is-at-least-32-characters",
+  ...runnerAuthEnv({
+    "pool-a": "playground-pool-a-control-token-at-least-32-characters",
+    "pool-b": "playground-pool-b-control-token-at-least-32-characters",
+    "pool-c": "playground-pool-c-control-token-at-least-32-characters",
+  }),
   CONTROLLER_ARTIFACT_SIGNING_KEY_PATH: "/tmp/controller-signing-key.pem",
   CONTROLLER_POLICY_CATALOG_DIR: resolve("../runner/toolkit/policy_library/assets"),
   BETTER_AUTH_SECRET: "better-auth-secret-that-is-at-least-32-characters",
+});
+
+const publishedCandidate = (version: string) => ({
+  guardrailId: "guardrail-default", guardrailName: "Default Guardrail", version, createdAt: new Date("2026-08-20T00:00:00Z"),
+  artifact: { id: "artifact-3", guardrailId: "guardrail-default", guardrailVersion: version, generation: 3,
+    compilerVersion: "runner-compiler-v1", nemoVersion: "0.24.1", checksum: "signed-checksum", signature: "signature",
+    runtimeProfile: "llmrails_colang1_standard", plan: { guardrail_id: "guardrail-default", guardrail_version: version,
+      safety_level: "strict", output_delivery: "full_buffered" },
+    configYaml: "models: []", colangContent: "", prompts: [], actionBindings: [], dependencyManifest: [] },
 });
 
 describe("Guardrail Playground HTTP capability", () => {
@@ -28,7 +42,7 @@ describe("Guardrail Playground HTTP capability", () => {
       const path = String(url);
       expect(path.startsWith("https://group-a.test/")).toBe(true);
       const request = JSON.parse(String(init?.body)) as Record<string, unknown>;
-      expect(init?.headers).toMatchObject({ authorization: `Bearer ${config.runnerToken}` });
+      expect(init?.headers).toMatchObject({ authorization: `Bearer ${config.runnerHttpTokens.get("pool-a")!}` });
       if (!path.endsWith("/evaluate")) {
         expect(request).toMatchObject({
           guardrail_id: "guardrail-draft",
@@ -89,7 +103,7 @@ describe("Guardrail Playground HTTP capability", () => {
       playgroundModel: new OpenAICompatiblePlaygroundModel({
         provider: "DeepSeek", baseUrl: "https://model.test", model: "deepseek-test", apiKey: "key", fetcher: modelFetch,
       }),
-      playgroundRunner: new RunnerPlaygroundClient({ baseUrl: "https://runtime.test", token: config.runnerToken, fetcher: runnerFetch }),
+      playgroundRunner: new RunnerPlaygroundClient({ baseUrl: "https://runtime.test", token: config.runnerHttpTokens.get("default")!, fetcher: runnerFetch }),
     });
 
     const prepared = await app.request("/api/v1/playground/guardrails/guardrail-draft/draft-previews", {
@@ -160,9 +174,10 @@ describe("Guardrail Playground HTTP capability", () => {
     const runnerFetch = vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
       expect(String(url).startsWith("https://group-b.test/")).toBe(true);
       expect(registered).toBe(true);
-      const request = JSON.parse(String(init?.body)) as { phase: string; guardrail_version: string };
-      expect(init?.headers).toMatchObject({ authorization: `Bearer ${config.runnerToken}` });
+      const request = JSON.parse(String(init?.body)) as { phase: string; guardrail_version: string; artifact_b64: string };
+      expect(init?.headers).toMatchObject({ authorization: `Bearer ${config.runnerHttpTokens.get("pool-b")!}` });
       expect(request.guardrail_version).toBe(versionId);
+      expect(Buffer.from(request.artifact_b64, "base64").toString()).toContain("signed-checksum");
       return Response.json({
         decision: "allow",
         action: "allow",
@@ -184,17 +199,7 @@ describe("Guardrail Playground HTTP capability", () => {
       service: {
         groupRouting: { poolForProject },
         registerPlaygroundInvocation: registerInvocation,
-        getGuardrail: vi.fn().mockResolvedValue({
-          id: "guardrail-default",
-          name: "Default Guardrail",
-          versions: [{
-            version: versionId,
-            status: "ready",
-            artifactId: "artifact-3",
-            createdAt: new Date("2026-08-20T00:00:00Z"),
-            plan: { compiler_version: "runner-compiler-v1" },
-          }],
-        }),
+        playgroundPublishedCandidate: vi.fn().mockResolvedValue(publishedCandidate(versionId)),
       } as unknown as ControlPlaneService,
       runnerControl: {} as RunnerControlServer,
       metrics: {} as ControllerMetrics,
@@ -207,7 +212,7 @@ describe("Guardrail Playground HTTP capability", () => {
       }),
       playgroundRunner: new RunnerPlaygroundClient({
         baseUrl: "https://runtime.test",
-        token: config.runnerToken,
+        token: config.runnerHttpTokens.get("default")!,
         fetcher: runnerFetch,
       }),
     });
@@ -272,16 +277,14 @@ describe("Guardrail Playground HTTP capability", () => {
     const playgroundModel = new OpenAICompatiblePlaygroundModel({
       provider: "DeepSeek", baseUrl: "https://model.test", model: "deepseek-test", apiKey: "key", fetcher: modelFetch as typeof fetch,
     });
-    const playgroundRunner = new RunnerPlaygroundClient({ baseUrl: "https://runtime.test", token: config.runnerToken, fetcher: runnerFetch });
+    const playgroundRunner = new RunnerPlaygroundClient({ baseUrl: "https://runtime.test", token: config.runnerHttpTokens.get("default")!, fetcher: runnerFetch });
     const auth = {
       api: { getSession: vi.fn().mockResolvedValue({ session: { id: "fixture-session", activeProjectId: "projectA" }, user: { id: "member-1", role: "user", projectId: "projectA" } }) }, handler: vi.fn(),
     } as unknown as ControllerAuth;
     const app = createHttpApp({
       config, auth,
-      service: { registerPlaygroundInvocation: vi.fn().mockResolvedValue(undefined), getGuardrail: vi.fn().mockResolvedValue({
-        id: "guardrail-default", name: "Default Guardrail",
-        versions: [{ version: versionId, status: "ready", artifactId: "artifact-1", createdAt: new Date(), plan: {} }],
-      }) } as unknown as ControlPlaneService,
+      service: { registerPlaygroundInvocation: vi.fn().mockResolvedValue(undefined),
+        playgroundPublishedCandidate: vi.fn().mockResolvedValue(publishedCandidate(versionId)) } as unknown as ControlPlaneService,
       runnerControl: {} as RunnerControlServer,
       metrics: {} as ControllerMetrics,
       playgroundModel,

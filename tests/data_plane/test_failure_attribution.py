@@ -38,8 +38,8 @@ def answer():
 @pytest.mark.parametrize("fault,source,category,status", [
     (503,"model","unavailable",503), (401,"configuration","authentication",401),
     (403,"configuration","permission",403), (429,"model","rate_limit",429),
-    ("timeout","model","timeout",None), ("json","model","json_decode",None),
-    ("schema","model","response_schema",None), ("label","model","response_schema",None),
+    ("timeout","model","timeout",None), ("json","model","json_decode",200),
+    ("schema","model","response_schema",200), ("label","model","response_schema",200),
 ])
 async def test_model_fault_survives_real_runtime_telemetry_and_report_wire(tmp_path, monkeypatch, fault, source, category, status):
     def respond(request):

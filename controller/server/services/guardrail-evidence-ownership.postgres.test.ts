@@ -1,4 +1,5 @@
 // @vitest-environment node
+import { runnerAuthEnv } from "../../test/runner-auth-fixture.js";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createTestDatabase } from "../db/postgres-test-database.js";
 import { loadConfig } from "../config.js";
@@ -16,7 +17,7 @@ describe.skipIf(!url)("Guardrail evidence ownership", () => {
   beforeAll(async () => {
     database = await createTestDatabase(url!, "guardrail_evidence_owner");
     service = new ControlPlaneService(database.db, loadConfig({ NODE_ENV: "test", CONTROLLER_DATABASE_URL: url!,
-      CONTROLLER_RUNNER_TOKEN: "runner-token-that-is-at-least-32-characters", CONTROLLER_ARTIFACT_SIGNING_KEY_PATH: "/tmp/test-key",
+      ...runnerAuthEnv("runner-token-that-is-at-least-32-characters"), CONTROLLER_ARTIFACT_SIGNING_KEY_PATH: "/tmp/test-key",
       BETTER_AUTH_SECRET: "better-auth-secret-that-is-at-least-32-characters" }));
     await database.pool.query("INSERT INTO guardrail(id,project_id,name,draft_config) VALUES ('owned-evidence','projectA','Owned','{}')");
     await database.pool.query(`INSERT INTO guardrail_version(guardrail_id,version,generation,status,runtime_profile,plan,policies,test_suite,released_at)

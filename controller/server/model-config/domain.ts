@@ -1,14 +1,18 @@
 import { z } from "zod";
+import { builtinLaya, isBuiltinLaya } from "./builtin-laya.js";
 
 import {
   capabilityBindingById,
   capabilityBindingDefinitions,
+  isLegacySecurityReview,
+  securityReviewerId,
   capabilityBindingIds,
   type CapabilityBindingId,
   controlPlaneProfileRefs,
   isDataPlaneProviderKindAllowed,
   isTypeSafeProfile,
   isLayaProfile,
+  layaPrimaryBindingIds,
 } from "../../shared/guardrail-catalog.js";
 
 export const modelProviderKinds = [
@@ -67,12 +71,19 @@ export type ModelAssignments = {
 
 export const modelAssignmentTargets = ["control_plane", ...capabilityBindingIds] as const;
 export type ModelAssignmentTarget = (typeof modelAssignmentTargets)[number];
-export const modelAssignmentTargetSchema = z.enum(modelAssignmentTargets);
+export const modelAssignmentTargetSchema = z.enum(modelAssignmentTargets).refine(id => !isLegacySecurityReview(id), "Use classifier_review.security for security review.");
 
 export const emptyModelAssignments = (): ModelAssignments => ({
   controlPlane: null,
   bindings: Object.fromEntries(capabilityBindingIds.map((id) => [id, null])) as Record<CapabilityBindingId, null>,
 });
+
+/** Platform-managed initial classifiers; review and specialist choices survive. */
+export function withBuiltinLayaPrimaries(assignments: ModelAssignments): ModelAssignments {
+  return { ...assignments, bindings: { ...assignments.bindings,
+    ...Object.fromEntries(layaPrimaryBindingIds.map(id => [id, builtinLaya.modelId])),
+  } };
+}
 
 export const providerInputSchema = z.object({
   name: z.string().trim().min(3).max(80),
@@ -132,11 +143,17 @@ export const providerRegistrationSchema = z.object({
 export const assignmentInputSchema = z.object({
   controlPlane: z.string().uuid().nullable(),
   bindings: z.object(
-    Object.fromEntries(capabilityBindingIds.map((id) => [id, id.startsWith("classifier_review.") ? z.string().uuid().nullable().default(null) : z.string().uuid().nullable()])) as unknown as {
-      [Id in CapabilityBindingId]: z.ZodType<string | null>;
+    Object.fromEntries([
+      ...capabilityBindingDefinitions.map(binding => [binding.id, binding.reviewCapabilityRef
+        ? z.string().uuid().nullable().optional() : z.string().uuid().nullable()]),
+      ...["classifier_review.input", "classifier_review.output"].map(id => [id,z.string().uuid().nullable().optional()]),
+    ]) as {
+      [Id in Exclude<CapabilityBindingId, `classifier_review.${string}`>]: z.ZodNullable<z.ZodString>;
+    } & {
+      [Id in Extract<CapabilityBindingId, `classifier_review.${string}`> | LegacyReviewBindingId]: z.ZodOptional<z.ZodNullable<z.ZodString>>;
     },
   ),
-});
+}).transform(normalizeModelAssignments);
 
 export const profileContracts: Record<ModelProfile, readonly string[]> = {
   "tali.classifier-review.v1": ["tali.guard.classifier-review.v1"],
@@ -145,6 +162,7 @@ export const profileContracts: Record<ModelProfile, readonly string[]> = {
     "tali.guard.content-safety.v1",
     "tali.guard.jailbreak.v1",
     "tali.guard.pii.semantic.v1",
+    "tali.guard.classifier-review.v1",
   ],
   "tali.llama-guard-3.v1": ["tali.guard.content-safety.v1"],
   "tali.nemotron-content-safety.v1": ["tali.guard.content-safety.v1"],
@@ -191,8 +209,7 @@ export const profileTransports: Record<ModelProfile, ModelTransport> = {
 
 export const controlPlaneProfiles: readonly ModelProfile[] = controlPlaneProfileRefs;
 
-/** The resolved request mode for Laya runtimes only; legacy NULL rows resolve to
- * the broad "compatible" shape so an older registration keeps working. */
+/** A remote Laya runtime can use the compatible request shape before a connection probe selects its mode. */
 export function resolveLayaRequestMode(
   profile: ModelProfile,
   stored: LayaRequestMode | null | undefined,
@@ -201,16 +218,26 @@ export function resolveLayaRequestMode(
   return stored === "native" || stored === "compatible" ? stored : "compatible";
 }
 
+type LegacyReviewBindingId = "classifier_review.input" | "classifier_review.output";
+
 export function normalizeModelAssignments(
   value: Partial<{
     controlPlane: string | null;
-    bindings: Partial<Record<CapabilityBindingId, string | null>>;
+    bindings: Partial<Record<CapabilityBindingId | LegacyReviewBindingId, string | null | undefined>>;
   }> | null | undefined,
 ): ModelAssignments {
   const source = value ?? {};
   return {
     controlPlane: source.controlPlane ?? null,
-    bindings: Object.fromEntries(capabilityBindingIds.map((id) => [id, source.bindings?.[id] ?? null])) as Record<CapabilityBindingId, string | null>,
+    bindings: Object.fromEntries(capabilityBindingDefinitions.map((binding) => {
+      // Only absent security-review settings inherit a legacy stage binding.
+      // Explicit null disables review; Topic never inherits another capability's reviewer.
+      const value = source.bindings?.[binding.id];
+      const legacy = isLegacySecurityReview(binding.id)
+        ? source.bindings?.[`classifier_review.${binding.railType}`] : null;
+      if (source.bindings?.[securityReviewerId] && isLegacySecurityReview(binding.id)) return [binding.id, null];
+      return [binding.id, value === undefined ? legacy ?? null : value];
+    })) as Record<CapabilityBindingId, string | null>,
   };
 }
 
@@ -307,6 +334,8 @@ export type ActiveModelRuntime = {
   providerName: string;
   baseUrl: string;
   credentialRef: string;
+  backend?: typeof builtinLaya.backend;
+  checkpointRevision?: string;
   skipTlsVerify?: boolean;
   model: string;
   profile: ModelProfile;
@@ -319,6 +348,34 @@ export type ActiveModelRuntime = {
   lowerThreshold?: number;
   upperThreshold?: number;
 };
+
+export function activeModelRuntime(
+  model: Pick<ActiveModelRuntime, "id" | "model" | "profile" | "timeoutSeconds" | "maxTokens" | "maxConcurrency" | "rateLimitAttempts" | "lowerThreshold" | "upperThreshold"> &
+    { layaRequestMode?: LayaRequestMode | null },
+  provider: { id: string; name: string; baseUrl: string; skipTlsVerify: boolean },
+): ActiveModelRuntime {
+  const builtin = isBuiltinLaya(model.id, provider.id);
+  const layaRequestMode = builtin ? undefined : resolveLayaRequestMode(model.profile, model.layaRequestMode);
+  return {
+    id: model.id, providerId: provider.id, providerName: provider.name, model: model.model, profile: model.profile,
+    ...(builtin ? {
+      backend: builtinLaya.backend, checkpointRevision: builtinLaya.checkpointRevision,
+      baseUrl: "", credentialRef: "", skipTlsVerify: false,
+    } : {
+      baseUrl: provider.baseUrl, credentialRef: provider.id, skipTlsVerify: provider.skipTlsVerify,
+      ...(layaRequestMode ? { layaRequestMode } : {}),
+    }),
+    timeoutSeconds: model.timeoutSeconds, maxTokens: model.maxTokens, maxConcurrency: model.maxConcurrency ?? 2,
+    rateLimitAttempts: model.rateLimitAttempts ?? 3, lowerThreshold: model.lowerThreshold ?? 0.1,
+    upperThreshold: model.upperThreshold ?? 0.9,
+  };
+}
+
+export function modelRuntimeToWire({ profile, ...runtime }: ActiveModelRuntime) {
+  return { ...runtime, profileRef: profile, skipTlsVerify: runtime.skipTlsVerify ?? false,
+    maxConcurrency: runtime.maxConcurrency ?? 2, rateLimitAttempts: runtime.rateLimitAttempts ?? 3,
+    lowerThreshold: runtime.lowerThreshold ?? 0.1, upperThreshold: runtime.upperThreshold ?? 0.9 };
+}
 
 export type ActiveModelConfiguration = {
   revisionId: string;

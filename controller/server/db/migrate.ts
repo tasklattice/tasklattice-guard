@@ -7,7 +7,7 @@ import { pathToFileURL } from "node:url";
 import type { ControllerConfig } from "../config.js";
 import { withDatabaseConnection, type ControllerDatabase } from "./client.js";
 
-export const SCHEMA_BASELINE = 1793700000000;
+const SCHEMA_BASELINE = 1793700000000;
 
 export async function runMigrations(config: ControllerConfig, db: ControllerDatabase): Promise<void> {
   // The migrator invokes session.transaction directly, bypassing the public

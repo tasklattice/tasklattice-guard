@@ -1,4 +1,5 @@
 // @vitest-environment node
+import { runnerAuthEnv } from "../../test/runner-auth-fixture.js";
 import { spawn } from "node:child_process";
 import { createHash } from "node:crypto";
 import { createInterface } from "node:readline";
@@ -12,6 +13,7 @@ import type { RunnerControlServer } from "../control-channel/control-server.js";
 import { createTestDatabase } from "../db/postgres-test-database.js";
 import type { ControllerMetrics } from "../metrics.js";
 import { ControlPlaneService } from "../services/control-plane.js";
+import { issueEndpointTelemetryContexts } from "../services/endpoint-telemetry-contexts.js";
 import { createHttpApp } from "./app.js";
 
 const url = process.env.GUARD_TEST_POSTGRES_URL;
@@ -19,7 +21,7 @@ const token = "endpoint-pipeline-test-token-at-least-32-characters";
 
 it.skipIf(!url).each(["trace", "models"])("delivers a real Endpoint %s backlog to project counters and Runtime logs", async scenario => {
   const database = await createTestDatabase(url!, "endpoint_pipeline");
-  const config = loadConfig({ NODE_ENV: "test", CONTROLLER_DATABASE_URL: url!, CONTROLLER_RUNNER_TOKEN: token,
+  const config = loadConfig({ NODE_ENV: "test", CONTROLLER_DATABASE_URL: url!, ...runnerAuthEnv(token),
     CONTROLLER_ARTIFACT_SIGNING_KEY_PATH: "/tmp/unused.pem", BETTER_AUTH_SECRET: "test-auth-secret-at-least-32-characters" });
   const service = new ControlPlaneService(database.db, config);
   const getSession = vi.fn().mockResolvedValue({ session: { id: "test-session", activeProjectId: "projectA" },
@@ -44,14 +46,24 @@ it.skipIf(!url).each(["trace", "models"])("delivers a real Endpoint %s backlog t
       if (line.done) throw new Error(`Runner fixture exited: ${stderr}`);
       return JSON.parse(line.value);
     };
+    const runtime = await read() as { endpointId: string; routerId: string; routerRevision: number;
+      routeId: string; targetId: string; guardrailId: string; guardrailVersion: string };
+    await database.pool.query("INSERT INTO guardrail(id,project_id,name,draft_config) VALUES ($1,'projectA','Fixture','{}')", [runtime.guardrailId]);
+    await database.pool.query("INSERT INTO endpoint(id,project_id,name,adapter) VALUES ($1,'projectA','Fixture','litellm-generic-guardrail')", [runtime.endpointId]);
+    await database.pool.query("INSERT INTO traffic_router(id,project_id,name,draft) VALUES ($1,'projectA','Fixture','{}')", [runtime.routerId]);
+    const contexts = await database.db.transaction(tx => issueEndpointTelemetryContexts(tx, {
+      poolId: "default", groupId: "default", epoch: 0, generation: 2,
+      endpoints: [{ endpointId: runtime.endpointId, projectId: "projectA", adapter: "litellm-generic-guardrail",
+        trafficRouterId: runtime.routerId, verification: { credentials: [] }, scanFlagOnlyDefault: true }],
+      routers: [{ routerId: runtime.routerId, revision: runtime.routerRevision,
+        routes: [{ id: runtime.routeId, enabled: true, targets: [{ id: runtime.targetId,
+          guardrailId: runtime.guardrailId, guardrailVersion: runtime.guardrailVersion, weightBps: 10000 }] }] }],
+    }));
+    child.stdin!.end(`${contexts.get(runtime.endpointId)!}\n`);
     const generated = await read();
     expect(generated.statuses).toEqual(Array(6).fill(200));
     if (scenario === "trace") expect(generated.batchBytes).toBeGreaterThan(8 * 1024 * 1024);
     else expect(generated.modelCalls).toBe(300);
-    await database.pool.query("INSERT INTO guardrail(id,project_id,name,draft_config) VALUES ($1,'projectA','Fixture','{}')", [generated.guardrailId]);
-    await database.pool.query("INSERT INTO endpoint(id,project_id,name,adapter) VALUES ('fixture-endpoint','projectA','Fixture','litellm-generic-guardrail')");
-    await database.pool.query("INSERT INTO traffic_router(id,project_id,name,draft) VALUES ($1,'projectA','Fixture','{}')", [generated.routerId]);
-    child.stdin!.end("ready\n");
     const delivered = await read();
     expect(await exited, stderr).toBe(0);
     expect(delivered.uploads.length).toBeGreaterThan(1);

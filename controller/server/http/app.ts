@@ -4,6 +4,7 @@ import { hasPermission, isAccountRole } from "../../shared/rbac.js";
 import { TelemetryUploadAdmission, readBoundedTelemetryBody } from "./telemetry-upload-budget.js";
 import { modelReadiness } from "../../shared/model-readiness.js";
 import { pricingRuleSchema, costQuerySchema } from "../../shared/model-pricing.js";
+import { encodeArtifact } from "../control-channel/artifact-codec.js";
 import { protectionModes } from "../../shared/protection-mode.js";
 import { formalValidationSchema } from "../../shared/formal-validation.js";
 import { testingReportsQuery } from "../services/testing-reports.js";
@@ -218,12 +219,6 @@ const runtimeEventInput = z.object({
 });
 const runtimeEventBatchInput = z.object({
   events: z.array(z.union([routingEventSchema, runtimeEventInput])).max(1_000),
-  runnerId: z.string().min(1).optional(),
-  observedAt: z.coerce.date().optional(),
-}).superRefine((value, context) => {
-  if (value.events.length === 0 && !value.runnerId) {
-    context.addIssue({ code: "custom", path: ["runnerId"], message: "runnerId is required for an empty telemetry batch." });
-  }
 });
 const modelCredentialRefsInput = z.object({ refs: z.array(z.string().uuid()).max(64), leaseId: z.string().uuid().optional() });
 export function createHttpApp(input: {
@@ -270,14 +265,9 @@ export function createHttpApp(input: {
   const selectRunnerForProject = async (projectId: string) => {
     if (!playgroundRunner) throw new ControllerError("Runner is not configured.", 503, "playground_runner_unavailable");
     const pool = await projectPool(projectId);
-    if (input.config.runnerHttpTokens != null) {
-      const token = input.config.runnerHttpTokens.get(pool.poolId);
-      if (!token) throw new ControllerError("The selected Runner pool has no configured Controller HTTP credential.", 503, "runner_http_credential_unavailable");
-      return { pool, runner: playgroundRunner.forBaseUrl(pool.runtimeUrl, token) };
-    }
-    const runner = pool.poolId === "default" && pool.runtimeUrl === input.config.runtimeServiceUrl
-      ? playgroundRunner : playgroundRunner.forBaseUrl(pool.runtimeUrl);
-    return { pool, runner };
+    const token = input.config.runnerHttpTokens.get(pool.poolId);
+    if (!token) throw new ControllerError("The selected Runner pool has no configured Controller HTTP credential.", 503, "runner_http_credential_unavailable");
+    return { pool, runner: playgroundRunner.forBaseUrl(pool.runtimeUrl, token) };
   };
   const runnerForProject = async (projectId: string) => (await selectRunnerForProject(projectId)).runner;
   const hasProjectCompiler = async (projectId: string) => {
@@ -724,12 +714,6 @@ export function createHttpApp(input: {
     const body = profileImportBodySchema.parse(await context.req.json());
     return context.json(await input.service.importGuardrailProfilePackage(body.package, context.get("actor").id, body.replace === true));
   });
-  // Compatibility route for existing API clients; both paths read the database.
-  app.get("/api/v1/policy-catalog/protection-presets", authenticated, async (context) => {
-    const items = await input.service.listGuardrailProfiles();
-    // This is a preview, not a save/activation or evidence that runtime checks passed.
-    return context.json({ directories: protectionDirectories, items, count: items.length });
-  });
   app.get("/api/v1/policies/:id", authenticated, async (context) => context.json(publicPolicy(await input.service.getPolicy(context.req.param("id")))));
   app.post("/api/v1/policies", authenticated, async (context) => {
     const body = createProgrammablePolicySchema.parse(await context.req.json());
@@ -814,7 +798,10 @@ export function createHttpApp(input: {
     });
   });
 
-  app.get("/api/v1/guardrails", authenticated, async (context) => context.json({ items: await input.service.listGuardrails() }));
+  app.get("/api/v1/guardrails", authenticated, async context => {
+    const { view } = z.object({ view: z.enum(['options']).optional().describe('Only id and name for selectors; skips testing and billing summaries.') }).parse(context.req.query());
+    return context.json({ items: view === 'options' ? await input.service.listGuardrailOptions() : await input.service.listGuardrails() });
+  });
   app.get("/api/v1/playground/models", authenticated, async (context) => {
     const playgroundModel = await currentPlaygroundModel();
     const items = playgroundModel ? [playgroundModel.descriptor] : [];
@@ -902,29 +889,23 @@ export function createHttpApp(input: {
       throw new ControllerError("Guardrail Playground has no model connection configured.", 503, "playground_unavailable");
     }
     const body = playgroundInteractionInput.parse(await context.req.json());
-    const guardrail = await input.service.getGuardrail(context.req.param("guardrailId"));
-    const version = guardrail.versions.find((item) => item.version === body.guardrail_version);
-    if (!version || version.status !== "ready" || !version.artifactId) {
-      throw new ValidationError("Playground requires a ready, immutable Guardrail Version.");
-    }
+    const candidate = await input.service.playgroundPublishedCandidate(context.req.param("guardrailId"), body.guardrail_version);
     const { pool, runner } = await selectRunnerForProject(requireProjectId(context.get("actor").projectId));
     return context.json(await runPlaygroundInteraction({
       guardrail: {
-        id: guardrail.id,
-        name: guardrail.name,
-        version: version.version,
-        publishedAt: version.createdAt,
-        compilerVersion: typeof version.plan.compiler_version === "string"
-          ? version.plan.compiler_version
-          : "TaskLattice Guard Runner",
+        id: candidate.guardrailId,
+        name: candidate.guardrailName,
+        version: candidate.version,
+        publishedAt: candidate.createdAt,
+        compilerVersion: candidate.artifact.compilerVersion,
         targetKind: "published",
         draftRevision: null,
       },
-      target: { kind: "published", version: version.version },
+      target: { kind: "published", version: candidate.version, artifact: encodeArtifact(candidate.artifact, input.config.protoPath) },
       model: playgroundModel,
       runner,
       registerInvocation: callId => input.service.registerPlaygroundInvocation({ callId, projectId: requireProjectId(context.get("actor").projectId),
-        guardrailId: guardrail.id, guardrailVersion: version.version, poolId: pool.poolId, groupId: pool.groupId }),
+        guardrailId: candidate.guardrailId, guardrailVersion: candidate.version, poolId: pool.poolId, groupId: pool.groupId }),
       modelId: body.model_id,
       message: body.message,
       history: body.history,
@@ -1193,8 +1174,7 @@ export function createHttpApp(input: {
   app.put("/api/v1/project-groups/:id/model-configuration", authenticated, async context => {
     if (!input.models) throw new ControllerError("Model configuration is unavailable.", 503, "model_configuration_unavailable");
     const body = groupModelConfigurationInput.parse(await context.req.json());
-    return context.json(await input.models.groupRuntime.update(context.req.param("id"), body, context.get("actor").id,
-      input.config.runnerPoolTokens != null));
+    return context.json(await input.models.groupRuntime.update(context.req.param("id"), body, context.get("actor").id));
   });
   app.post("/api/v1/project-groups", authenticated, async context => context.json(await input.service.projectGroups.create(
     createProjectGroupSchema.parse(await context.req.json()), context.get("actor").id), 201));
@@ -1400,9 +1380,13 @@ export function createHttpApp(input: {
     const query = z.object({ includeContent: z.enum(['true', 'false']).default('false') }).parse(context.req.query());
     return context.json(await input.service.getRuntimeEvent(context.req.param('id'), query.includeContent === 'true' && hasPermission(context.get('actor').role, 'runtime')));
   });
-  app.get('/api/v1/telemetry/endpoint-activity', authenticated, async context => context.json(await input.service.runtimeEndpointActivity()));
+  app.get('/api/v1/telemetry/endpoint-activity', authenticated, async context => {
+    const { endpointId } = z.object({ endpointId: z.string().min(1).max(256).optional() }).parse(context.req.query());
+    return context.json(await input.service.runtimeEndpointActivity(endpointId));
+  });
   app.get('/api/v1/telemetry/metrics', authenticated, async context => {
-    const scope = z.object({ window: z.enum(['1h','24h','7d','15d','30d']).default('24h'), guardrailId:z.string().max(256).optional(), routerId:z.string().max(256).optional() }).parse(context.req.query());
+    const scope = z.object({ window: z.enum(['1h','24h','7d','15d','30d']).default('24h'), guardrailId:z.string().max(256).optional(), routerId:z.string().max(256).optional(),
+      view: z.enum(['overview','diagnostics']).optional().describe('overview reads persistent time buckets with exact counts and histogram latency (5% relative bucket width plus 1 ms rounding). Windows align to whole minutes; window_end can be up to one minute ahead of now. Component/finding/usage diagnostics are not collected in this view. Omit for full diagnostics with exact percentiles.') }).parse(context.req.query());
     return context.json(await input.service.runtimeMetrics(scope));
   });
   app.get("/api/v1/audit-events", authenticated, async (context) => {
@@ -1411,16 +1395,10 @@ export function createHttpApp(input: {
   });
 
   app.post("/api/internal/v1/runtime-events", async (context) => {
-    let authenticatedPoolId: string | undefined;
-    if (input.config.runnerScopedTelemetry) {
-      const principal = authenticateRunnerPrincipal(context.req.header("authorization"), input.config);
-      if (!principal?.poolId) return context.json({ error: { code: "runner_unauthenticated", message: "Runner authentication failed." } }, 401);
-      authenticatedPoolId = principal.poolId;
-    } else if (context.req.header("authorization") !== `Bearer ${input.config.runnerToken}`) {
-      return context.json({ error: { code: "runner_unauthenticated", message: "Runner authentication failed." } }, 401);
-    }
+    const principal = authenticateRunnerPrincipal(context.req.header("authorization"), input.config);
+    if (!principal) return context.json({ error: { code: "runner_unauthenticated", message: "Runner authentication failed." } }, 401);
     let upload: ReturnType<TelemetryUploadAdmission["acquire"]>;
-    try { upload = telemetryUploads.acquire(authenticatedPoolId ?? "legacy"); }
+    try { upload = telemetryUploads.acquire(principal.poolId); }
     catch (error) { context.header("Retry-After", "1"); throw error; }
     try {
     const rawBody = await readBoundedTelemetryBody(context.req.raw);
@@ -1440,14 +1418,8 @@ export function createHttpApp(input: {
     try {
       const routing = body.events.filter(event => "eventType" in event);
       const runtime = body.events.filter(event => "requestId" in event);
-      if (authenticatedPoolId === undefined) {
-        if (routing.length) await input.service.trafficRouting.recordEvents(routing);
-        await input.service.recordRuntimeEvents(runtime);
-      } else {
-        if (routing.length) await input.service.trafficRouting.recordEvents(routing, true, authenticatedPoolId);
-        await input.service.recordRuntimeEvents(runtime, authenticatedPoolId);
-      }
-      if (body.runnerId && authenticatedPoolId === undefined) await input.service.recordTelemetryWatermark(body.runnerId);
+      if (routing.length) await input.service.trafficRouting.recordEvents(routing, true, principal.poolId);
+      await input.service.recordRuntimeEvents(runtime, principal.poolId);
       input.metrics.observeTelemetryBatch?.(
         "accepted", body.events.map((event) => event.occurredAt), body.events.length,
       );
@@ -1468,9 +1440,7 @@ export function createHttpApp(input: {
     if (!principal) return context.json({ error: { code: "runner_unauthenticated", message: "Runner authentication failed." } }, 401);
     if (!input.models) throw new ControllerError("Model configuration is unavailable.", 503, "model_configuration_unavailable");
     const body = modelCredentialRefsInput.parse(await context.req.json());
-    const credentials = principal.poolId === null
-      ? await input.models.resolveCredentials(body.refs, body.leaseId)
-      : await input.models.resolveCredentials(body.refs, body.leaseId, principal.poolId);
+    const credentials = await input.models.resolveCredentials(body.refs, body.leaseId, principal.poolId);
     return context.json({ credentials });
   });
 

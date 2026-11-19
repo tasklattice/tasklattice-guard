@@ -1,3 +1,4 @@
+import { runnerAuthEnv } from "../../test/runner-auth-fixture.js";
 import { resolve } from "node:path";
 import { EventEmitter } from "node:events";
 import { createHash } from "node:crypto";
@@ -8,6 +9,7 @@ import { describe, expect, it, vi } from "vitest";
 import { loadConfig } from "../config.js";
 import type { ControllerMetrics } from "../metrics.js";
 import type { ModelConfigurationService } from "../model-config/service.js";
+import { builtinLaya } from "../model-config/builtin-laya.js";
 import type { ControlPlaneService } from "../services/control-plane.js";
 import type { RunnerLeaseLedger } from "../services/runner-lease-ledger.js";
 import { ControllerError } from "../domain/errors.js";
@@ -17,7 +19,7 @@ import { PLAN_COMPILER_VERSION, NEMO_COMPILER_VERSION } from "../domain/artifact
 const config = loadConfig({
   NODE_ENV: "test",
   CONTROLLER_DATABASE_URL: "postgresql://controller:controller@localhost/controller",
-  CONTROLLER_RUNNER_TOKEN: "runner-token-that-is-at-least-32-characters",
+  ...runnerAuthEnv("runner-token-that-is-at-least-32-characters"),
   CONTROLLER_ARTIFACT_SIGNING_KEY_PATH: "/tmp/controller-signing-key.pem",
   CONTROLLER_PROTO_PATH: resolve("../proto/tasklattice/guard/control/v1/runner_control.proto"),
   BETTER_AUTH_SECRET: "better-auth-secret-that-is-at-least-32-characters",
@@ -69,6 +71,51 @@ const activeConfiguration = (revisionId: string, revision: number, layaRequestMo
 });
 
 describe("Runner model-configuration convergence", () => {
+  it.each(["heartbeat", "reconcile"])("ends an expired session during %s so the Runner can register again", async trigger => {
+    const service = { ...serviceMock(), recordHeartbeat: vi.fn().mockResolvedValue(true) };
+    const server = new RunnerControlServer(config, service as unknown as ControlPlaneService,
+      metricsMock() as unknown as ControllerMetrics, { activeConfiguration: vi.fn().mockResolvedValue(null) } as unknown as ModelConfigurationService);
+    const stream = streamMock(), hello = registration("expired");
+    const connection = await handle(server, stream, hello, null);
+    service.runnerControlSessions.isCurrent.mockResolvedValue(false);
+    if (trigger === "heartbeat") await handle(server, stream, { heartbeat: {
+      runnerId: "expired", bootId: "boot-expired", sequence: "1", appliedGeneration: "9", load: {},
+    } }, connection);
+    else await (server as unknown as { reconcile(connection: unknown): Promise<void> }).reconcile(connection);
+    expect(stream.end).toHaveBeenCalledOnce();
+    expect(service.recordHeartbeat).not.toHaveBeenCalled();
+    expect((server as any).connections.has("expired")).toBe(false);
+
+    service.runnerControlSessions.isCurrent.mockResolvedValue(true);
+    const replacement = streamMock();
+    const fresh = await handle(server, replacement, hello, null);
+    await handle(server, replacement, { heartbeat: {
+      runnerId: "expired", bootId: "boot-expired", sequence: "2", appliedGeneration: "9", load: {},
+    } }, fresh);
+    expect(service.recordHeartbeat).toHaveBeenCalledOnce();
+    expect(replacement.end).not.toHaveBeenCalled();
+  });
+
+  it.each([false, true])("preserves a replacement session when an old ownership check resolves %s", async current => {
+    const service = { ...serviceMock(), recordHeartbeat: vi.fn().mockResolvedValue(true) };
+    const server = new RunnerControlServer(config, service as unknown as ControlPlaneService,
+      metricsMock() as unknown as ControllerMetrics, { activeConfiguration: vi.fn().mockResolvedValue(null) } as unknown as ModelConfigurationService);
+    const stream = streamMock(), hello = registration("same-boot");
+    const connection = await handle(server, stream, hello, null);
+    const check = Promise.withResolvers<boolean>();
+    service.runnerControlSessions.isCurrent.mockReturnValueOnce(check.promise);
+    const pending = handle(server, stream, { heartbeat: {
+      runnerId: "same-boot", bootId: "boot-same-boot", sequence: "1", appliedGeneration: "9", load: {},
+    } }, connection);
+    const replacement = streamMock();
+    const fresh = await handle(server, replacement, hello, null);
+    check.resolve(current);
+    await pending;
+    expect((server as any).connections.get("same-boot")).toBe(fresh);
+    expect(replacement.end).not.toHaveBeenCalled();
+    expect(service.recordHeartbeat).not.toHaveBeenCalled();
+  });
+
   it("uses the selected pool's group Models and keeps its ACK/NACK out of global activation", async () => {
     const service = serviceMock();
     const scoped = activeConfiguration("project-group-model:grant-a", 1);
@@ -183,12 +230,19 @@ describe("Runner model-configuration convergence", () => {
     await dispatch();
     expect(stale.write).not.toHaveBeenCalled();
     expect(current.write).not.toHaveBeenCalled();
-    // A missed dispatch is retryable; it must not leave this run marked busy.
+    expect(stale.end).toHaveBeenCalledOnce();
+    expect(current.end).toHaveBeenCalledOnce();
+    // An expired stream registers again. The missed dispatch must not leave
+    // its run marked busy or prevent the replacement compiler from taking it.
     service.deferOutbox.mockResolvedValue(undefined);
     service.runnerControlSessions.isCurrent.mockImplementation(async identity => identity.runnerId === "current-0");
+    const recovered = streamMock(), hello = registration("current-0");
+    hello.registration.compilerCapable = true;
+    await handle(server, recovered, hello, null);
+    recovered.write.mockClear();
     await dispatch();
     expect(stale.write).not.toHaveBeenCalled();
-    expect(current.write).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({
+    expect(recovered.write).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({
       validationRequest: expect.objectContaining({ runId: "run-current" }),
     }));
   });
@@ -251,9 +305,9 @@ describe("Runner model-configuration convergence", () => {
   });
   it("grants only pool-authenticated, negotiated and exactly acknowledged snapshots", async () => {
     const experimental = loadConfig({ NODE_ENV: "test", CONTROLLER_DATABASE_URL: "postgresql://localhost/test",
-      CONTROLLER_RUNNER_TOKEN: "runner-token-that-is-at-least-32-characters", CONTROLLER_ARTIFACT_SIGNING_KEY_PATH: "/tmp/key",
+      ...runnerAuthEnv("runner-token-that-is-at-least-32-characters"), CONTROLLER_ARTIFACT_SIGNING_KEY_PATH: "/tmp/key",
       CONTROLLER_PROTO_PATH: config.protoPath, BETTER_AUTH_SECRET: "better-auth-secret-that-is-at-least-32-characters",
-      CONTROLLER_RUNNER_POOL_TOKENS_JSON: JSON.stringify({ default: "pool-secret-with-at-least-32-characters" }),
+      ...runnerAuthEnv({ default: "pool-secret-with-at-least-32-characters" }),
       CONTROLLER_EXPERIMENTAL_RUNNER_LEASE_GRANTS: "true" });
     const ledger = { issueSnapshotBound: vi.fn().mockResolvedValue({}) };
     const models = { activeConfiguration: vi.fn().mockResolvedValue(activeConfiguration("revision-9", 9)), finalizeActivation: vi.fn() };
@@ -303,8 +357,8 @@ describe("Runner model-configuration convergence", () => {
     expect(stream.write.mock.calls.map(([message]) => message.servingLeaseResponse).filter(Boolean)).toEqual([]);
   });
 
-  it("rejects grants when the flag, pool authentication, or capability is absent", async () => {
-    for (const [enabled, poolAuthenticated, capable] of [[false, true, true], [true, false, true], [true, true, false]] as const) {
+  it("rejects grants when the experiment or Runner capability is absent", async () => {
+    for (const [enabled, capable] of [[false, true], [true, false]] as const) {
       const ledger = { issueSnapshotBound: vi.fn() };
       const models = { activeConfiguration: vi.fn().mockResolvedValue(activeConfiguration("revision-9", 9)), finalizeActivation: vi.fn() };
       const server = new RunnerControlServer({ ...config, experimentalRunnerLeaseGrants: enabled }, serviceMock() as unknown as ControlPlaneService,
@@ -312,7 +366,7 @@ describe("Runner model-configuration convergence", () => {
       const stream = streamMock();
       const hello = registration("lease-runner");
       hello.registration.labels = { "tasklattice.snapshot-ack": "1", ...(capable ? { "tasklattice.lease-probe": "1" } : {}) };
-      const connection = await handle(server, stream, hello, null, poolAuthenticated ? "default" : undefined);
+      const connection = await handle(server, stream, hello, null, "default");
       const sent = stream.write.mock.calls.map(([message]) => message.desiredState).find(Boolean);
       await handle(server, stream, { desiredStateResult: { ...desiredResult("lease-runner", true).desiredStateResult, snapshotNonce: sent.snapshotNonce } }, connection);
       await handle(server, stream, { servingLeaseRequest: { runnerId: "lease-runner", bootId: "boot-lease-runner", nonce: "one",
@@ -335,6 +389,7 @@ describe("Runner model-configuration convergence", () => {
     await handle(server, oldStream, { desiredStateResult: { ...desiredResult("lease-runner", true).desiredStateResult, snapshotNonce: sent.snapshotNonce } }, old);
     const pending = handle(server, oldStream, { servingLeaseRequest: { runnerId: "lease-runner", bootId: "boot-lease-runner", nonce: "one",
       epoch: "0", generation: "9", snapshotNonce: sent.snapshotNonce } }, old);
+    await vi.waitFor(() => expect(ledger.issueSnapshotBound).toHaveBeenCalledOnce());
     await handle(server, replacement, hello, null, "default");
     finish();
     await pending;
@@ -973,7 +1028,7 @@ describe("Runner model-configuration convergence", () => {
     } finally { logged.mockRestore(); }
   });
   it.each([true, false])("accepts Rail evidence only from the assigned Runner with both verdicts (complete=%s)", async (complete) => {
-    const models = { activeConfiguration: vi.fn().mockResolvedValue(null) };
+    const models = { activeConfiguration: vi.fn().mockResolvedValue(null), bindValidationLease: vi.fn().mockResolvedValue(true) };
     const server = new RunnerControlServer(config, serviceMock() as unknown as ControlPlaneService,
       metricsMock() as unknown as ControllerMetrics, models as unknown as ModelConfigurationService);
     const otherStream = streamMock();
@@ -985,7 +1040,7 @@ describe("Runner model-configuration convergence", () => {
     hello.registration.compilerCapable = true;
     const connection = await handle(server, stream, hello, null);
     otherStream.write.mockClear();
-    const pending = server.validateRail({ requestId: "rail-test", bindingId: "content_safety.input" });
+    const pending = server.validateRail({ requestId: "rail-test", bindingId: "content_safety.input", credentialLeaseId: "lease" });
     const settled = vi.fn();
     void pending.then(settled);
     await vi.waitFor(() => expect(stream.write).toHaveBeenCalledWith(expect.objectContaining({
@@ -1015,6 +1070,37 @@ describe("Runner model-configuration convergence", () => {
     const result = await server.validateRail({ requestId: "rail-test", bindingId: "content_safety.output" });
     expect(result).toMatchObject({ passed: false, message: expect.stringContaining("ordinal 0") });
     expect(stream.write).not.toHaveBeenCalled();
+    await server.stop();
+  });
+
+  it("validates only the advertised built-in checkpoint without a lease on a pool-authenticated stream", async () => {
+    const models = { activeConfiguration: vi.fn().mockResolvedValue(null), bindValidationLease: vi.fn() };
+    const server = new RunnerControlServer({ ...config, runnerPoolTokens: new Map([["default", "test-token"]]) },
+      serviceMock() as unknown as ControlPlaneService, metricsMock() as unknown as ControllerMetrics,
+      models as unknown as ModelConfigurationService);
+    const stream = streamMock(), hello = registration("runner-default-0");
+    hello.registration.compilerCapable = true;
+    hello.registration.labels = { [builtinLaya.revisionLabel]: builtinLaya.checkpointRevision };
+    const connection = await handle(server, stream, hello, null, "default");
+    const runtime = { id: builtinLaya.modelId, providerId: builtinLaya.providerId, backend: builtinLaya.backend,
+      checkpointRevision: builtinLaya.checkpointRevision, profileRef: builtinLaya.profile, model: builtinLaya.model };
+    const request = { requestId: "builtin-test", bindingId: "content_safety.input" };
+    expect(await server.validateRail(request)).toMatchObject({ passed: false, message: expect.stringContaining("credential lease") });
+    expect(await server.validateRail({ ...request, configuration: { runtimes: [{ ...runtime, credentialRef: "remote" }] } }))
+      .toMatchObject({ passed: false });
+    expect(await server.validateRail({ ...request, configuration: { runtimes: [{ ...runtime, checkpointRevision: "0".repeat(40) }] } }))
+      .toMatchObject({ passed: false });
+    const pending = server.validateRail({ ...request, configuration: { runtimes: [runtime] } });
+    await vi.waitFor(() => expect(stream.write).toHaveBeenCalledWith(expect.objectContaining({
+      capabilityValidationRequest: expect.objectContaining({ requestId: request.requestId }),
+    })));
+    expect(models.bindValidationLease).not.toHaveBeenCalled();
+    await handle(server, stream, { capabilityValidationResult: {
+      requestId: request.requestId, passed: true, runtimeProfile: "llmrails-v1", message: "samples", latencyMs: 10,
+      cases: [{ expectedDecision: "allow", actualDecision: "allow", passed: true },
+        { expectedDecision: "block", actualDecision: "block", passed: true }],
+    } }, connection);
+    expect(await pending).toMatchObject({ passed: true });
     await server.stop();
   });
 
@@ -1155,7 +1241,7 @@ function metricsMock() {
 function streamMock() {
   return Object.assign(new EventEmitter(), {
     write: vi.fn(), end: vi.fn(),
-    metadata: { get: () => [`Bearer ${config.runnerToken}`] },
+    metadata: { get: () => [`Bearer ${config.runnerPoolTokens.get("default")!}`] },
   });
 }
 
@@ -1192,14 +1278,14 @@ async function handle(
   stream: ReturnType<typeof streamMock>,
   message: Record<string, unknown>,
   current: unknown,
-  authorizedPoolId?: string,
+  authorizedPoolId = (message.registration as { poolId?: string } | undefined)?.poolId ?? "default",
 ) {
   return (server as unknown as {
     handleMessage: (
       stream: unknown,
       message: Record<string, unknown>,
       current: unknown,
-      authorizedPoolId?: string,
+      authorizedPoolId: string,
     ) => Promise<unknown>;
   }).handleMessage(stream, message, current, authorizedPoolId);
 }

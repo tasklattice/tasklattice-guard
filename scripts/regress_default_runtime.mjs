@@ -2,6 +2,7 @@
 /** Replay the published isolated Default. Never modifies drafts or publishes. */
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
+import { encodePublishedArtifact } from "./encode-published-artifact.mjs";
 
 const required = (key) => { assert(process.env[key], `Set ${key}.`); return process.env[key]; };
 const controller = new URL(required("GUARD_REGRESSION_CONTROLLER_URL"));
@@ -39,9 +40,9 @@ assert.equal(rail.draftConfig.outputDelivery, "full_buffered");
 assert.deepEqual(rail.excludedTestCaseIds, []);
 assert.deepEqual(version.plan.policy_bindings.map((item) => [item.policy_id, item.policy_version]),
   rail.draftConfig.policyBindings.map((item) => [item.policyId, item.policyVersion]));
+const artifact = encodePublishedArtifact(version.artifact);
 const ready = (await call(runner, "/health/ready")).value;
 assert(ready.ready && ready.controller_connected && ready.desired_state_synchronized);
-assert(ready.applied_generation >= version.generation);
 const cases = (await call(controller, `/api/v1/test-cases?guardrailId=${encodeURIComponent(targetId)}`)).value.items;
 assert(cases.length > 0 && cases.every((item) => !item.excluded));
 let checked = 0, exactOutputs = 0;
@@ -49,7 +50,7 @@ const configChecksums = new Set();
 async function replay(test) {
   const expected = test.expectationOverride ?? test;
   const verdict = (await call(runner, `/internal/v1/guardrails/${encodeURIComponent(targetId)}/evaluate`, {
-    guardrail_version: version.version, phase: test.phase, texts: [test.content],
+    guardrail_version: version.version, artifact_b64: artifact, phase: test.phase, texts: [test.content],
     call_id: `${runId}:${checked}`, messages: test.trustedInstruction ? [{ role: "system", content: test.trustedInstruction }] : [],
   })).value;
   const label = `${test.id ?? test.caseId ?? checked} (${test.phase})`;
