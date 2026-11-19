@@ -196,9 +196,17 @@ export class ProjectService {
   }
 
   async create(actorId: string, raw: unknown) {
-    const input = createProjectSchema.parse(raw);
+    const { runnerMode, ...input } = createProjectSchema.parse(raw);
     return this.db.transaction(async (tx) => {
       await advisoryTransactionLock(tx, "traffic-router-bindings");
+      if (runnerMode === "dedicated") {
+        input.groupId = `group-${randomUUID()}`;
+        await tx.insert(projectGroups).values({ id: input.groupId, name: input.name });
+        await tx.insert(auditEvents).values({
+          id: randomUUID(), actorId, kind: "project_group.created", resourceType: "project_group",
+          resourceId: input.groupId, detail: { name: input.name, source: "project_creation" },
+        });
+      }
       const [group] = await tx
         .select({ id: projectGroups.id })
         .from(projectGroups)
@@ -227,7 +235,7 @@ export class ProjectService {
           kind: "project.created",
           resourceType: "project",
           resourceId: id,
-          detail: { name: input.name },
+          detail: { name: input.name, groupId: input.groupId, ...(runnerMode ? { runnerMode } : {}) },
         });
       return { id: project.id, name: project.name, groupId: project.groupId };
     });

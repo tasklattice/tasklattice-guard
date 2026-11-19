@@ -75,7 +75,7 @@ export function ProjectRunnerConfiguration({ project, onClose, returnFocusRef }:
           </div>
         </> : <>
           <p className="project-runner-muted">{t("projects.noRunnerHint")}</p>
-          <Button onClick={() => chooseView("shared")}>{t("projects.allocateRunner")}</Button>
+          <Button onClick={() => chooseView(data.groupId === "default" ? "shared" : "dedicated")}>{t("projects.allocateRunner")}</Button>
         </>}
       </section>
       {data.pool && <>
@@ -146,7 +146,7 @@ function ConnectionForm({ data, view, scope, onChoose, onBack, onSaved, onDismis
       {(view === "shared" || sharedConnection) && <p className="project-runner-impact">{view === "shared" ? t("projects.sharedAssignmentImpact") : scope}</p>}
       {view === "dedicated" && <>
         <dl className="project-runner-facts"><div><dt>{t("projects.runnerInstanceName")}</dt><dd>runner-{data.projectName}-0</dd></div></dl>
-        <p className="project-runner-impact">{t("projects.dedicatedAssignmentImpact")}</p>
+        <p className="project-runner-impact">{t(data.pool ? "projects.dedicatedAssignmentImpact" : "projects.dedicatedSetupImpact")}</p>
       </>}
       {view !== "shared" && <>
         <label htmlFor="runner-internal">{t("projects.runnerInternalUrl")}</label>

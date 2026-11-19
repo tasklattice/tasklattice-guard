@@ -25,6 +25,18 @@ This follows Relay's User → ProjectMember → Project model. Internal resource
 - Business users: select a project in the header. Users without membership can sign in and manage their account but cannot access business resources.
 - Runner allocation: open [Projects](/access/projects), then choose **Configure Runner** for a project. Connection settings and model access are separate settings. Shared configuration changes show their impact; **Runner options** contains the switch to dedicated capacity. Registering a pool does not deploy its workload, and allocation changes retain their offline checks.
 
+When creating a Project, choose shared capacity or dedicated Runner setup. Dedicated
+setup creates an isolated runtime group with no shared pool allocation, then opens
+Runner configuration. Register and deploy its dedicated Runner separately. Existing
+Runners can stay online because the new Project never enters their runtime group.
+Moving an existing shared Project to dedicated capacity still requires its source
+group's Runners to be offline.
+
+API clients can send `runnerMode: "dedicated"` to `POST /api/v1/projects` for this
+atomic setup. Omit it (or use `"shared"`) for default shared capacity. Existing
+clients can still supply `groupId` to choose a previously created group; do not
+combine a non-default `groupId` with `runnerMode`.
+
 User, Project, group and Runner directories return 25 summaries per page. Details, memberships and Runner instances load separately when opened. Search and cursors are handled by the server; member selection and Project switching do not preload the entire directory.
 
 A Project has one canonical, immutable lowercase name, used as its Project ID and dedicated pool ID. Dedicated instances use `runner-<project-name>-<index>`; shared instances use `runner-default-<index>`. Only the default runtime group inherits platform Models. Other groups require an explicit grant.

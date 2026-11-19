@@ -1,6 +1,9 @@
 import type { ProjectAccessStatus } from "../shared/projects";
 
 export const projectsEn = {
+  createSharedRunnerHint: "Use runner-default capacity and its model access.",
+  createDedicatedRunnerHint: "Start with isolated Runner setup. Register and deploy your dedicated Runner next; existing Runners stay online.",
+  dedicatedSetupImpact: "Register this project's dedicated Runner without stopping other Projects' Runners. Configure model access if required, then deploy the workload separately.",
   directoryPages: "List pages", directoryPageSummary: "Page {{page}} · {{count}} items",
   newDepartment: "Keycloak department ID (optional)",
   ssoMappingHint: "The Project name is its ID. Keycloak Group Paths must use this name and the matching department ID.",
@@ -56,6 +59,9 @@ export const projectsEn = {
   empty: "No projects", createHint: "Create a project, then add human users as members.",
 };
 export const projectsZh = {
+  createSharedRunnerHint: "使用 runner-default 的共享容量和模型授权。",
+  createDedicatedRunnerHint: "为项目创建独立的 Runner 配置范围，随后登记并部署专属 Runner；现有 Runner 无需停止。",
+  dedicatedSetupImpact: "可直接登记此项目的独立 Runner，无需停止其他项目的 Runner。按需配置模型授权，并单独部署工作负载。",
   directoryPages: "列表分页", directoryPageSummary: "第 {{page}} 页 · 本页 {{count}} 项",
   newDepartment: "Keycloak 部门 ID（可选）",
   ssoMappingHint: "项目名称就是 Project ID；SSO Group Path 中的项目名称和部门 ID 必须与此处一致。",
