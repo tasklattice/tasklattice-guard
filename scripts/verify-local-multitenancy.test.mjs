@@ -65,18 +65,33 @@ function deployment(options = {}) {
       const policy = /^\/api\/v1\/project-groups\/([^/]+)\/model-configuration$/.exec(url.pathname);
       if (policy) {
         assert(admin);
-        return json({ groupId: decodeURIComponent(policy[1]), mode: 'scoped', ignoredPrivateExtension: config.projects[0].gateway.apiKey,
+        const groupId = decodeURIComponent(policy[1]);
+        return json({ groupId, mode: options.modelPolicy ?? (groupId === 'default' ? 'platform' : 'scoped'), ignoredPrivateExtension: config.projects[0].gateway.apiKey,
           ...(options.policySecret ? { credentialCiphertexts: { provider: config.projects[0].gateway.apiKey } } : {}) });
       }
       if (url.pathname === '/api/v1/telemetry/events') {
         assert(actor);
-        assert.equal(url.searchParams.get('endpointId'), actor.resources.endpointId);
+        const owner = config.projects.find(project => project.resources.endpointId === url.searchParams.get('endpointId'));
+        assert(owner);
+        if (actor.id !== owner.id) {
+          assert.equal(url.searchParams.get('limit'), '1');
+          const items = events.get(owner.id).slice(0, 1);
+          assert(items.length > 0);
+          return json({ items: options.foreignTelemetryList ? items : [] });
+        }
         assert.equal(url.searchParams.get('limit'), '100');
         const since = url.searchParams.get('since');
         assert(Number.isFinite(Date.parse(since)) && Date.parse(since) <= time);
         if (!queryStarts.has(actor.id)) queryStarts.set(actor.id, since);
         assert.equal(since, queryStarts.get(actor.id), 'Polling must retain the gateway request start boundary.');
         return json(options.invalidTelemetry ? {} : { items: events.get(actor.id) });
+      }
+      const eventDetail = /^\/api\/v1\/telemetry\/events\/([^/]+)$/.exec(url.pathname);
+      if (eventDetail) {
+        assert(actor);
+        const owner = config.projects.find(project => events.get(project.id).some(row => row.id === decodeURIComponent(eventDetail[1])));
+        assert(owner);
+        return json({}, actor.id === owner.id ? 200 : options.foreignTelemetryDetail ? 200 : 404);
       }
     }
     const gateway = config.projects.find(project => new URL(project.gateway.baseUrl).origin === url.origin);
@@ -91,7 +106,7 @@ function deployment(options = {}) {
       const requestId = `observed-request-${gateway.id}`;
       for (const direction of ['incoming', 'outgoing']) {
         if (options.missingOutput && direction === 'outgoing') continue;
-        events.get(gateway.id).push({ ...gateway.resources, direction,
+        events.get(gateway.id).push({ ...gateway.resources, id: `event:${gateway.id}:${direction}`, direction,
           requestId: options.mismatchedRequest && direction === 'outgoing' ? 'another-request' : requestId,
           guardrailId: options.mismatchedPath && direction === 'outgoing' ? 'another-guardrail' : gateway.resources.guardrailId,
           guardrailVersion: options.staleVersion ? 'old-v0' : gateway.resources.guardrailVersion,
@@ -124,8 +139,12 @@ function deployment(options = {}) {
 test('standalone Project acceptance checks supplied identities, privacy, real gateways and optional allocation evidence', async () => {
   const setup = deployment();
   const result = await setup.execute();
-  assert.equal(result.status, 'passed'); assert.equal(result.checks.length, 7); assert.equal(result.runtime.length, 3);
+  assert.equal(result.status, 'passed'); assert.equal(result.checks.length, 8); assert.equal(result.runtime.length, 3);
   assert.deepEqual(result.checks.at(-1).facts, { verified: 3, denied: 3 });
+  assert.deepEqual(result.checks.at(-2).facts, { ownDetails: 6, foreignLists: 6, foreignDetails: 12 });
+  const allocation = result.checks.find(check => check.facts?.allocations);
+  assert.deepEqual(allocation.facts.allocations.map(entry => entry.modelPolicy), ['platform', 'platform', 'scoped']);
+  assert.equal(result.capabilities.telemetryIsolation, true);
   assert.equal(result.capabilities.externalModelDispatch, true);
   assert(result.runtime.every(item => item.externalModelDispatchVerified));
   assert.equal(setup.requests.filter(item => item.url.pathname === '/v1/chat/completions').length, 3);
@@ -141,11 +160,17 @@ test('standalone Project acceptance checks supplied identities, privacy, real ga
 test('external acceptance works for any two configured Projects without administrator or model-counter authority', async () => {
   const setup = deployment({ projectCount: 2, optional: false });
   const result = await setup.execute();
-  assert.equal(result.status, 'passed'); assert.equal(result.checks.length, 5); assert.equal(result.runtime.length, 2);
+  assert.equal(result.status, 'passed'); assert.equal(result.checks.length, 6); assert.equal(result.runtime.length, 2);
   assert.equal(result.capabilities.administratorPlacement, false); assert.equal(result.capabilities.externalModelDispatch, false);
   assert.equal(result.capabilities.wrongPoolCredentialDenial, false);
   assert(result.limitations.some(item => item.includes('External model dispatch is unverified')));
   assert(!setup.requests.some(item => /model-configuration|\/runner$|\/verify$/.test(item.url.pathname)));
+});
+
+test('administrator allocation check accepts blocked Model policies', async () => {
+  const result = await deployment({ modelPolicy: 'blocked' }).execute();
+  const allocation = result.checks.find(check => check.facts?.allocations);
+  assert(allocation.facts.allocations.every(entry => entry.modelPolicy === 'blocked'));
 });
 
 test('paired Input and Output may execute on different replicas behind the configured Runtime Service', async () => {
@@ -189,8 +214,11 @@ for (const [name, options, expected] of [
   ['an active model counter with unrelated traffic', { modelBusy: true }, /pause other traffic/],
   ['an Endpoint key not accepted by its own Runner', { ownCredentialStatus: 401 }, /Expected HTTP 200/],
   ['an Endpoint key accepted by a foreign Runner', { wrongPoolStatus: 200 }, /Expected HTTP 401/],
+  ['an obsolete Model-policy mode', { modelPolicy: 'legacy' }, /Current group Model policy is invalid/],
   ['private Model snapshot data exposed through the public policy', { policySecret: true }, /private runtime\/credential data/],
   ['malformed runtime evidence', { invalidTelemetry: true }, /event list/],
+  ['foreign runtime events appearing in a Project list', { foreignTelemetryList: true }, /Foreign Project telemetry list is not empty/],
+  ['a foreign runtime event detail becoming readable', { foreignTelemetryDetail: true }, /Expected HTTP 404/],
   ['an oversized response', { oversizedIdentity: true }, /response budget/],
 ]) {
   test(`acceptance fails and saves a bounded report for ${name}`, async () => {

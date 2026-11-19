@@ -3,12 +3,15 @@ import { and, eq, sql } from "drizzle-orm";
 import type { ControllerDatabase } from "../db/client.js";
 import { runtimeEvents } from "../db/schema.js";
 import type { RuntimeEventInput } from "../domain/models.js";
+import { runtimeLogContentCutoff, withoutRuntimeLogContent } from "./runtime-log-content.js";
 
 type Writer = Pick<ControllerDatabase, "insert">;
 
 /** A later checkpoint may select earlier bodies. Enrich the original event;
  * never replace its evidence, identity, timestamp, or already captured content. */
 export async function writeRuntimeEvent(db: Writer, event: RuntimeEventInput, authenticatedPoolId?: string) {
+  const contentExpired = event.occurredAt <= runtimeLogContentCutoff();
+  const metadata = contentExpired ? withoutRuntimeLogContent(event.metadata) : event.metadata;
   const insert = db.insert(runtimeEvents).values({
     id: event.id,
     projectId: runtimeEventProjectId(event, authenticatedPoolId),
@@ -17,15 +20,16 @@ export async function writeRuntimeEvent(db: Writer, event: RuntimeEventInput, au
     guardrailVersion: event.guardrailVersion ?? null, endpointId: event.endpointId ?? null,
     routerId: event.routerId ?? null, direction: event.direction,
     allocationContextId: event.allocationContextId ?? null,
-    decision: event.decision, durationMs: event.durationMs, metadata: event.metadata,
+    decision: event.decision, durationMs: event.durationMs, metadata,
   });
-  if (event.metadata.runtimeLogCaptured !== true) {
+  if (metadata.runtimeLogCaptured !== true) {
     await insert.onConflictDoNothing();
     return;
   }
+  // Delayed Runner WAL replay may still provide evidence after body expiry.
   const enrichment = Object.fromEntries([
     "runtimeLogCaptured", "contentCiphertext", "contentCaptureStatus", "callCaptureIncomplete", "modelEvidenceStatus", "modelEvidenceCount",
-  ].filter(key => event.metadata[key] !== undefined).map(key => [key, event.metadata[key]]));
+  ].filter(key => metadata[key] !== undefined).map(key => [key, metadata[key]]));
   await insert.onConflictDoUpdate({
     target: runtimeEvents.id,
     set: { metadata: sql`${runtimeEvents.metadata} || ${JSON.stringify(enrichment)}::jsonb` },

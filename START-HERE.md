@@ -114,6 +114,8 @@ then [projects.ts](controller/server/services/projects.ts),
 [project-context.ts](controller/server/services/project-context.ts),
 [project-groups.ts](controller/server/services/project-groups.ts) and
 [project-group-routing.ts](controller/server/services/project-group-routing.ts).
+See [Project multi-tenancy](docs/multi-tenancy.md) for feature coverage, open
+gaps and the deployment acceptance checklist.
 Projects own resources; runtime groups and pools allocate execution capacity.
 A dedicated Runner uses the canonical immutable Project name in its instance ID.
 

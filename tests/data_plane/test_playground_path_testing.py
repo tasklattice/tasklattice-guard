@@ -1,4 +1,5 @@
 from dataclasses import replace
+import json
 from threading import RLock
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
@@ -121,9 +122,8 @@ async def test_router_execution_runs_signed_artifact_in_real_nemo_runtime(tmp_pa
     from runner.api import RunnerAPI
     from runner.metrics import RunnerMetrics
     from runner.toolkit.runtime.service import GuardrailRuntimeService
-    from tests.data_plane.test_artifact_execution import _runtime
+    from tests.data_plane.test_artifact_execution import RUNTIME_CREDENTIAL, Telemetry, _runtime
     from tests.data_plane.test_composed_routing import FIXTURE
-    from tests.test_runner_api import Telemetry
     s, _, engine = _runtime(tmp_path)
     desired = protocol.DesiredState.FromString(base64.b64decode((FIXTURE / 'desired-state.pb.b64').read_text()))
     artifact = desired.artifacts[0]
@@ -134,19 +134,44 @@ async def test_router_execution_runs_signed_artifact_in_real_nemo_runtime(tmp_pa
     desired.router_revisions.append(r)
     desired.endpoints[0].router_id = r.router_id
     desired.endpoints[0].adapter = 'litellm-generic-guardrail'
+    desired.endpoints[0].telemetry_context_id = 'fixture-telemetry-context'
     desired.generation += 1
     s.apply(desired)
+    telemetry = Telemetry()
     app = FastAPI()
-    app.include_router(RunnerAPI(GuardrailRuntimeService(engine, s), s, RunnerMetrics(4), Telemetry(), 'real-runner', 'secret').router)
-    body = dict(revision=1, endpoint_id=desired.endpoints[0].endpoint_id, action='execute', call_id='real-call', fields={}, business_request={}, text='Hello')
+    app.include_router(RunnerAPI(GuardrailRuntimeService(engine, s), s, RunnerMetrics(4), telemetry, 'real-runner', 'secret').router)
+    endpoint_id = desired.endpoints[0].endpoint_id
+    body = dict(revision=1, endpoint_id=endpoint_id, action='execute', call_id='real-call', fields={}, business_request={}, text='Hello')
+    probe_path = '/internal/v1/playground/routers/router/test'
+    probe_headers = {'authorization': 'Bearer secret'}
+    endpoint_path = f'/runtime/v1/endpoints/{endpoint_id}/beta/litellm_basic_guardrail_api'
+    endpoint_headers = {'x-api-key': RUNTIME_CREDENTIAL}
+    endpoint_body = {'litellm_call_id': body['call_id'], 'texts': ['Hello']}
     try:
         async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url='http://runner') as client:
-            result = await client.post('/internal/v1/playground/routers/router/test', json=body, headers={'authorization': 'Bearer secret'})
+            result = await client.post(probe_path, json=body, headers=probe_headers)
             assert result.status_code == 200, result.text
             data = result.json()
             assert data['simulation'] is False
             assert data['decision']['guardrail_id'] == artifact.guardrail_id
             assert data['decision']['usage']['runtime_engine'] == 'llmrails'
             assert data['assignment']['guardrailVersion'] == artifact.guardrail_version
+            live_input = await client.post(endpoint_path, headers=endpoint_headers,
+                                           json={**endpoint_body, 'input_type': 'request'})
+            live_output = await client.post(endpoint_path, headers=endpoint_headers,
+                                            json={**endpoint_body, 'input_type': 'response'})
+            repeat_probe = await client.post(probe_path, json=body, headers=probe_headers)
+
+        assert live_input.status_code == live_output.status_code == repeat_probe.status_code == 200
+        live_assignment = json.loads(live_input.headers['x-guard-route-assignment'])
+        assert json.loads(live_output.headers['x-guard-route-assignment']) == live_assignment
+        assert repeat_probe.json()['assignment'] == data['assignment']
+        assert data['assignment']['decisionId'] != live_assignment['decisionId']
+        assert data['assignment']['targetId'] == live_assignment['targetId']
+
+        live_events = [event for event in telemetry.routing_events if event['decisionId'] == live_assignment['decisionId']]
+        assert {event['eventType'] for event in live_events} == {'route_assignment', 'completion'}
+        assert all(event['allocationContextId'] == 'fixture-telemetry-context' for event in live_events)
+        assert {event['callId'] for event in telemetry.routing_events} == {f'{endpoint_id}:real-call'}
     finally:
         await engine.shutdown()

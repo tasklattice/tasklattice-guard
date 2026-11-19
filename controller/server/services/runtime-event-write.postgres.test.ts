@@ -19,7 +19,7 @@ describe.skipIf(!url)("correlated runtime body enrichment (PostgreSQL)", () => {
   }, 30_000);
   afterAll(async () => { await database?.drop(); });
   function event(id: string): RuntimeEventInput {
-    return { id, occurredAt: new Date("2026-10-14T01:00:00Z"), requestId: "call", runnerId: "input-runner",
+    return { id, occurredAt: new Date(), requestId: "call", runnerId: "input-runner",
       guardrailId: "guard", endpointId: "endpoint", direction: "incoming", decision: "allow", durationMs: 4,
       metadata: { runtimeLogCaptured: false, captureLevel: "debug", trace: [{ id: "step" }], findings: [] } };
   }

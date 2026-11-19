@@ -24,6 +24,11 @@ function setup(identity: TokenIdentity | null = { id: "owner", role: "admin", pr
     create: vi.fn().mockResolvedValue({ secret: "one-time-secret" }), revoke: vi.fn() };
   const createRouter = vi.fn().mockResolvedValue({ id: "new" });
   const updateRunnerPool = vi.fn().mockResolvedValue({ id: "pool" });
+  const listEndpoints = vi.fn(async () => {
+    const projectId = currentProjectId();
+    return (projectId ? [projectId] : ["projectA", "projectB"])
+      .map(id => ({ id: `endpoint-${id}`, adapter: "f5-scan" }));
+  });
   const projects = { requireExists: vi.fn(async (id: string) => { if (!["projectA", "projectB"].includes(id)) throw new NotFoundError("Project", id); }),
     list: vi.fn(async () => ({ items: [{ id: "projectA" }], nextCursor: null })),
     create: vi.fn(async () => ({ id: "new-project" })), members: vi.fn(async () => ({ items: [], nextCursor: null })),
@@ -33,6 +38,7 @@ function setup(identity: TokenIdentity | null = { id: "owner", role: "admin", pr
     accessTokens: accessTokens as unknown as AccessTokenService, projects: projects as unknown as ProjectService,
     models: { view: vi.fn(async () => ({ models: [{ projectId: currentProjectId() }] })), createModel: vi.fn(async () => ({ projectId: currentProjectId() })) } as unknown as ModelConfigurationService,
     service: { trafficRouting: { list: async () => [], create: createRouter }, listGuardrails: vi.fn(async () => [{ projectId: currentProjectId() }]),
+      listEndpoints,
       queryRuntimeEvents: async () => ({ items: [], count: 0 }),
       querySecurityEvents: async () => ({ items: [], count: 0, nextCursor: null }),
       getRuntimeEvent: async (_id: string, includeContent: boolean) => ({ id: "event", metadata: includeContent ? { contentBefore: [{ text: "Captured project request" }] } : {} }),
@@ -42,7 +48,7 @@ function setup(identity: TokenIdentity | null = { id: "owner", role: "admin", pr
   const request = (method: string, path: string, authorization: string | null = "Bearer test", body?: unknown, extra: Record<string,string> = {}) => app.request(`/api/v1${path}`, {
     method, headers: { cookie: "valid-session", ...(authorization === null ? {} : { authorization }), "content-type": "application/json", "x-project-id": "projectA", ...extra }, ...(body === undefined ? {} : { body: JSON.stringify(body) }),
   });
-  return { app, projects, request, accessTokens, getSession, createRouter, updateRunnerPool };
+  return { app, projects, request, accessTokens, getSession, createRouter, updateRunnerPool, listEndpoints };
 }
 describe("Access token HTTP authority", () => {
   it.each(["admin"])("allows %s Runner writes only with the matching token grant", async role => {
@@ -166,6 +172,27 @@ describe("Access token HTTP authority", () => {
     // Browser administrators obey the same read boundary.
     expect((await app.request("/api/v1/guardrails")).status).toBe(400);
     expect(await (await request("GET", "/guardrails", null)).json()).toMatchObject({ items: [{ projectId: "projectA" }] });
+  });
+  it.each(["Bearer token", null])("limits Selector field Endpoint metadata to a chosen Project with credential %s", async authorization => {
+    const { app, listEndpoints, request } = setup();
+    const path = "/routing/selector-fields";
+    const headers = authorization ? { authorization } : { cookie: "valid-session" };
+    const catalog = await app.request(`/api/v1${path}`, { headers });
+    expect(catalog.status).toBe(200);
+    expect(catalog.headers.get("cache-control")).toBe("no-store");
+    expect(await catalog.json()).toMatchObject({
+      items: expect.arrayContaining([expect.objectContaining({ id: "protocol" })]), endpoints: [],
+    });
+    const missingProject = await app.request(`/api/v1${path}?endpointIds=endpoint-projectA`, { headers });
+    expect(missingProject.status).toBe(400);
+    expect(await missingProject.json()).toMatchObject({ error: { code: "project_required" } });
+    expect(listEndpoints).not.toHaveBeenCalled();
+
+    const scoped = await request("GET", `${path}?endpointIds=endpoint-projectA,endpoint-projectB`, authorization);
+    expect(scoped.status).toBe(200);
+    expect(scoped.headers.get("cache-control")).toBe("no-store");
+    expect(await scoped.json()).toMatchObject({ endpoints: [{ id: "endpoint-projectA", adapter: "f5-scan" }] });
+    expect(listEndpoints).toHaveBeenCalledOnce();
   });
   it.each(tokenRoutePermissions.filter(([, , module, access]) => access === "write" && ["guardrails", "routers", "endpoints", "policies", "playground"].includes(module)))(
     "never permits administrator business writes: %s %s", async (method, template, module) => {
