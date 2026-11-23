@@ -25,7 +25,7 @@ Each resource offers **No access**, **Read only**, or **Read and write**, capped
 | `runtime` | Runtime logs | None | Read only | Project events, traffic metrics and captured content |
 | `audit` | Audit log | Read only | None | Platform activity records |
 
-Global catalogs (`guardrail-capabilities`, `authoring/capabilities`, `policy-catalog/actions`, `policy-catalog/detectors`, `routing/selector-fields`) have no project owner and do not require a Project ID. Their existing module read grants still apply. Group model configuration and candidate-validation operations retain platform authority checks.
+Global catalogs (`guardrail-capabilities`, `authoring/capabilities`, `policy-catalog/actions`, `policy-catalog/detectors`) are available without a Project ID. Their module read grants still apply. Group model configuration and candidate-validation operations retain platform authority checks.
 
 A Router's Endpoint bindings are Router lifecycle operations and do not require separate Endpoint write access. Combined Provider registration belongs to `providers:write`. A project's Runner allocation belongs to `projects`; pool connectivity and capacity belong to `runners`. Cross-resource references do not grant independent API access to another resource type.
 
@@ -47,17 +47,19 @@ This includes lists, details, nested versions/test results, package previews/dow
 - Missing header: `400 project_required`.
 - Invalid ID (only letters, digits, `_` and `-`, 1–128 characters): `400 invalid_project_id`.
 - Unknown project: `404 not_found`.
-- Resource owned by another project: `404 not_found`, including resources shared into the selected project. Administrator inspection returns resources owned by the selected project only.
+- Resource owned by another project: `404 not_found`. Administrator inspection returns resources owned by the selected project only.
 - `?projectId=...` is not a project selector and returns `400 invalid_project_selector` on these reads. Use the header.
 - An ungranted operation returns `403 insufficient_token_permission` before inspecting the project.
 
 `GET /api/v1/models` and `GET /api/v1/model-configuration` read the **platform** inventory without the header. Send `X-Project-ID` to inspect a project's inventory read-only. Platform model mutations carrying this header return `403 project_read_only`; it cannot be used to modify project Models.
 
+For administrators, `GET /api/v1/routing/selector-fields` returns the built-in catalog without a Project header. Send `X-Project-ID` to inspect Endpoint capabilities in a project. Providing one or more Endpoint IDs in the `endpointIds` filter without a Project header returns `400 project_required`.
+
 Project administration uses the Project ID in the URL where applicable, e.g. `/api/v1/projects/<id>/members`. It does not require `X-Project-ID`. Platform entities such as Providers, groups and pricing also do not require a project header.
 
 ### Project-user tokens
 
-Project-user tokens are permanently bound to the active project at creation. Requests need no Project ID. Switching the browser's project, sending a project header or supplying a query parameter cannot change the token's project. Reads include owned resources and resources explicitly shared to that project; writes require ownership. Membership removal, loss of required write access, account disablement/deletion, or a change between user and administrator invalidates the token. SSO credentials additionally require a sufficiently recent SSO login under the existing membership-refresh policy.
+Project-user tokens are permanently bound to the active project at creation. Requests need no Project ID. Switching the browser's project, sending a project header or supplying a query parameter cannot change the token's project. Project-owned resources are scoped to that project. Membership removal, loss of required write access, account disablement/deletion, or a change between user and administrator invalidates the token. SSO credentials additionally require a sufficiently recent SSO login under the existing membership-refresh policy.
 
 ## Projects management
 

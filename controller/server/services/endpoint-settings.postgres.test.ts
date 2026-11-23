@@ -4,6 +4,7 @@ import { withTestProject } from "../db/postgres-test-database.js";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createTestDatabase } from "../db/postgres-test-database.js";
 import { ControlPlaneService } from "./control-plane.js";
+import { runWithProjectContext } from "./project-context.js";
 import { loadConfig } from "../config.js";
 
 const url = process.env.GUARD_TEST_POSTGRES_URL;
@@ -86,6 +87,16 @@ describe.skipIf(!url)("Endpoint settings in PostgreSQL", () => {
     expect(rotated.credentials).toHaveLength(2);
     await service.revokeEndpointCredential({ id: created.id, credentialId: created.credentials[0]!.id, actorId: "admin" });
     expect((await service.getEndpoint(created.id)).credentials).toEqual(rotated.credentials.filter(item => item.id !== created.credentials[0]!.id));
+  });
+
+  it("verifies Scan credentials only within the current Project", async () => {
+    const endpoint = await withTestProject(() => service.createEndpoint({
+      name: "Project Scan", adapter: "f5-scan", actorId: "admin",
+    }));
+    const verify = () => service.verifyScanTestCredential(endpoint.id, endpoint.credential);
+    await expect(withTestProject(verify)).resolves.toBeUndefined();
+    await expect(runWithProjectContext({ projectId: "projectB", role: "user" }, verify))
+      .rejects.toMatchObject({ code: "validation_failed" });
   });
 
 });

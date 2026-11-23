@@ -157,7 +157,7 @@ try {
       operation['x-admin-project-scope'] = projectScope;
       const description = projectScope === 'required'
         ? 'Administrators must send X-Project-ID for every request (including detail reads); missing/invalid selection returns 400, unknown project or resource outside it returns 404. Only resources owned by that project are returned. Project user tokens use their persisted project; the header cannot change it.'
-        : 'Administrators read platform Models/configuration without this header. X-Project-ID selects a project read-only; unknown projects return 404. Project user tokens use their persisted project.';
+        : 'Without this header, administrators stay in platform scope. X-Project-ID selects a project read-only; unknown projects return 404. Project user tokens use their persisted project.';
       operation.description += ` ${description} The projectId query parameter is not a project selector.`;
       operation.parameters.push({ name: 'X-Project-ID', in: 'header', required: false, 'x-required-for-roles': projectScope === 'required' ? ['admin'] : [], schema: inputSchema(projectIdSchema, 'ProjectSelection'), description });
     }
@@ -222,7 +222,7 @@ try {
     for(const status of [400,404,409,422,500,503,...(authenticated?[401,403]:[]),...(sessionOnly?[415]:[])])
       operation.responses[status]??={description:statusDescription[status],content:{'application/json':{schema:ref('Error')}}};
     operation.responses.default={description:'Other Controller or upstream failure. Inspect error.code and error.message before deciding whether to retry.',content:{'application/json':{schema:ref('Error')}}};
-    if(sessionOnly || path==='/api/v1/account/identity') for(const [status,response] of Object.entries(operation.responses).filter(([status])=>Number(status)<400)) response.headers={'Cache-Control':{schema:{type:'string',const:'no-store'},description:'Credentials and identity responses must not be cached.'}};
+    if(authenticated) for(const [status,response] of Object.entries(operation.responses).filter(([status])=>Number(status)<400)) response.headers={'Cache-Control':{schema:{type:'string',const:'no-store'},description:'Authenticated responses must not be cached.'}};
     if(!operation.parameters.length)delete operation.parameters;
     paths[template]??={}; assert(!paths[template][method.toLowerCase()],`Duplicate operation ${id}`); paths[template][method.toLowerCase()]=operation;
   }

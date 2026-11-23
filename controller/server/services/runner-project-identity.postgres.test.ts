@@ -45,6 +45,27 @@ describe.skipIf(!url)("Project names and dedicated Runner identity", () => {
     expect((await routing.poolsForProject("projectA")).map(pool => pool.id)).toEqual(["default"]);
     await expect(dedicate(project.id)).rejects.toMatchObject({code:"runner_pool_exists"});
   });
+  it("creates isolated dedicated setup and registers its pool while the shared Runner remains online", async () => {
+    await registration("runner-default-0", "default");
+    const project = await projects.create("admin", { name: "new-dedicated", runnerMode: "dedicated" });
+    expect(project.groupId).not.toBe("default");
+    expect(await routing.poolsForProject(project.id)).toEqual([]);
+    expect(await groups.projectRunner(project.id)).toMatchObject({pool:null,modelScope:{projectCount:1,poolCount:0}});
+    await expect(admin(() => groups.configureProjectRunner(project.id, {
+      mode:"dedicated", expectedGroupId:project.groupId, expectedPoolId:null,
+      runtimeUrl:"http://runner-new-dedicated:8091", publicUrl:null,
+    }, "admin"))).resolves.toMatchObject({groupId:project.groupId,pool:{id:project.id}});
+    expect((await routing.poolsForProject("projectA")).map(pool=>pool.id)).toEqual(["default"]);
+    expect((await database.pool.query("SELECT status FROM runner_instance WHERE runner_id='runner-default-0'")).rows[0].status).not.toBe("offline");
+    expect((await database.pool.query("SELECT count(*)::int AS n FROM project_group_model_configuration WHERE group_id=$1",[project.groupId])).rows[0].n).toBe(0);
+    const groupCount=(await database.pool.query("SELECT count(*)::int AS n FROM project_group")).rows[0].n;
+    await expect(projects.create("admin", { name:"ambiguous-placement", groupId:project.groupId, runnerMode:"dedicated" })).rejects.toThrow("Use either runnerMode");
+    await expect(projects.create("admin", { name:"new-dedicated", runnerMode:"dedicated" })).rejects.toMatchObject({code:"project_exists"});
+    const failing=new ProjectService(database.db,async()=>{throw new Error("Provisioning failed");});
+    await expect(failing.create("admin",{name:"failed-dedicated",runnerMode:"dedicated"})).rejects.toThrow("Provisioning failed");
+    expect((await database.pool.query("SELECT count(*)::int AS n FROM project_group")).rows[0].n).toBe(groupCount);
+    expect((await database.pool.query("SELECT id FROM project WHERE id='failed-dedicated'")).rows).toEqual([]);
+  });
   it("rejects wrong names, negative/padded ordinals and a different Project's name at registration", async () => {
     await dedicate((await create()).id);
     for (const id of ["runner-default-0","runner-support-search-01","runner-support-search--1","other-0"])

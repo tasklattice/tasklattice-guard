@@ -3,10 +3,13 @@ import { and, sql } from "drizzle-orm";
 import type { ControllerDatabase } from "../db/client.js";
 import { runtimeEvents } from "../db/schema.js";
 import type { RuntimeEventInput } from "../domain/models.js";
+import { runtimeLogContentCutoff, withoutRuntimeLogContent } from "./runtime-log-content.js";
 
 type Writer = Pick<ControllerDatabase, "insert">;
 
-function runtimeEventRow(event: RuntimeEventInput, authenticatedPoolId?: string) {
+function runtimeEventRow(event: RuntimeEventInput, contentCutoff: Date, authenticatedPoolId?: string) {
+  // Delayed Runner WAL replay may still provide evidence after body expiry.
+  const metadata = event.occurredAt <= contentCutoff ? withoutRuntimeLogContent(event.metadata) : event.metadata;
   return {
     id: event.id,
     projectId: runtimeEventProjectId(event, authenticatedPoolId),
@@ -15,7 +18,7 @@ function runtimeEventRow(event: RuntimeEventInput, authenticatedPoolId?: string)
     guardrailVersion: event.guardrailVersion ?? null, endpointId: event.endpointId ?? null,
     routerId: event.routerId ?? null, direction: event.direction,
     allocationContextId: event.allocationContextId ?? null,
-    decision: event.decision, durationMs: event.durationMs, metadata: event.metadata,
+    decision: event.decision, durationMs: event.durationMs, metadata,
   };
 }
 
@@ -46,8 +49,10 @@ export async function writeRuntimeEvent(db: Writer, event: RuntimeEventInput, au
 }
 
 async function writeBatch(db: Writer, events: readonly RuntimeEventInput[], authenticatedPoolId?: string) {
-  const insert = db.insert(runtimeEvents).values(events.map(event => runtimeEventRow(event, authenticatedPoolId)));
-  if (!events.some(event => event.metadata.runtimeLogCaptured === true)) {
+  const contentCutoff = runtimeLogContentCutoff();
+  const rows = events.map(event => runtimeEventRow(event, contentCutoff, authenticatedPoolId));
+  const insert = db.insert(runtimeEvents).values(rows);
+  if (!rows.some(row => row.metadata.runtimeLogCaptured === true)) {
     await insert.onConflictDoNothing();
     return;
   }

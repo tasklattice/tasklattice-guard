@@ -1,0 +1,17 @@
+FROM ghcr.io/tasklattice/tali-litellm:1.87.0-guard.3@sha256:d4aa2dadb233f6475edd8b063eda40ab1a9f50b78bb303266a5b0f0d0d4c3eaa AS upstream
+FROM python:3.13-slim-bookworm
+COPY --from=ghcr.io/astral-sh/uv:0.11.32 /uv /usr/local/bin/uv
+ENV UV_SYSTEM_PYTHON=1 UV_CONCURRENT_DOWNLOADS=2 UV_CONCURRENT_INSTALLS=1
+RUN uv pip install --system --no-cache 'litellm[proxy]==1.87.0'
+COPY --from=upstream /app/litellm /opt/upstream/litellm
+# Optional licensed modules are absent; core provider source and checks are unchanged.
+RUN rm -rf /usr/local/lib/python3.13/site-packages/litellm_enterprise
+# Compile once during build so read-only, non-root Pods do not compile on every startup.
+RUN python -m compileall -q -j 1 /opt/upstream/litellm /usr/local/lib/python3.13/site-packages
+ENV PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=/opt/upstream LITELLM_LOCAL_MODEL_COST_MAP=True LITELLM_TELEMETRY=False LITELLM_MODE=PRODUCTION STORE_MODEL_IN_DB=False
+LABEL io.tasklattice.guard.output-stream-protocol="1" io.tasklattice.guard.provider-version="3" io.tasklattice.litellm.version="1.87.0" io.tasklattice.upstream.digest="sha256:d4aa2dadb233f6475edd8b063eda40ab1a9f50b78bb303266a5b0f0d0d4c3eaa"
+WORKDIR /tmp
+USER 65532:65532
+EXPOSE 4000
+ENTRYPOINT ["litellm"]
+CMD ["--host","0.0.0.0","--port","4000","--num_workers","1"]
